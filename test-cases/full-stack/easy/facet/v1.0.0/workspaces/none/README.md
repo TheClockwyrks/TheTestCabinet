@@ -2,7 +2,9 @@
 
 This repository is the starting point for building Facet, the game the
 specification under `specs/` describes. Read `specs/overview.md` first; it says
-how the rest of the specification is organized.
+how the rest of the specification is organized. This file is the starter
+README, not a deliverable: `specs/overview.md` states the `README.md` the
+finished build ships in its place.
 
 This build runs on no engine. Nothing here supplies a frame loop, input, audio,
 asset loading, or an overlay, and there is no game code to start from. What the
@@ -49,9 +51,7 @@ invokes no tool.
 Every figure the specification fixes is stated in `specs/`: the stage and board
 geometry, the cell pitch and the targeting radius, the gem kinds, cuts, and
 strain, the swap and resolution rules, the chain cadence, the scoring and level
-figures, the action names, the cue names, and the screen copy. Name each one
-once in your own module and read from it, rather than restating a number at each
-use.
+figures, the action names, the cue names, and the screen copy.
 
 Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test`
 runs them in process, in Node, with coverage over `src/`. `@napi-rs/canvas` is
@@ -80,15 +80,3 @@ entries and scripts alone.
 - `npm run lint` runs ESLint.
 - `npm run format` runs Prettier in check mode.
 - `npm test` runs Vitest over `src/**/*.test.ts`, with coverage.
-
-## Before you finish
-
-- `npm run build` produces `dist/` with `index.html` at its root, and that
-  directory runs as-is on any static host, from a sub-path included.
-- `npm run typecheck`, `npm run lint`, `npm run format`, and `npm test` all
-  pass. The same four commands are run over the repository you leave behind.
-- The produced files under `public/assets/` are committed alongside your
-  source.
-- **Replace this file** with the `README.md` `specs/overview.md` asks the
-  finished build to ship: what the game is, how to install it, how to run it in
-  development, how to produce the production build, and the controls.

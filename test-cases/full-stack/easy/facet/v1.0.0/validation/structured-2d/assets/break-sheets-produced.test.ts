@@ -46,16 +46,12 @@ import { dirname, join } from "node:path";
 import { it } from "vitest";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { assertGreaterThanOrEqual, assertNotNull, fail } from "../assert";
+import {
+  ASSETS_DIR,
+  MIN_SHEET_FRAMES,
+  REQUIRED_BREAK_SHEETS,
+} from "../constants";
 import { mediaDestination, siteRoot } from "../harness";
-
-/** One break animation for each of the seven kinds. */
-const REQUIRED_SHEETS = 7;
-
-/** The fewest files a sequence of separate frames can be made of. */
-const MIN_FRAMES = 2;
-
-/** The served tree specs/assets.md commits every produced file under. */
-const ASSETS_DIR = "assets";
 
 /** The height one frame is drawn at in the filmstrip left as evidence. */
 const STRIP_FRAME = 96;
@@ -113,7 +109,7 @@ async function frameHash(path: string): Promise<string | null> {
 async function readSheet(dir: string): Promise<Sheet | null> {
   if (hasSubdirectory(dir)) return null;
   const candidates = pngsIn(dir);
-  if (candidates.length < MIN_FRAMES) return null;
+  if (candidates.length < MIN_SHEET_FRAMES) return null;
   const frames: string[] = [];
   const hashes = new Set<string>();
   for (const path of candidates) {
@@ -122,7 +118,8 @@ async function readSheet(dir: string): Promise<Sheet | null> {
     frames.push(path);
     hashes.add(hash);
   }
-  if (frames.length < MIN_FRAMES || hashes.size < MIN_FRAMES) return null;
+  if (frames.length < MIN_SHEET_FRAMES || hashes.size < MIN_SHEET_FRAMES)
+    return null;
   return { dir, frames };
 }
 
@@ -181,7 +178,7 @@ it("ships at least seven multi-frame produced sequences", async () => {
 
   assertGreaterThanOrEqual(
     sheets.length,
-    REQUIRED_SHEETS,
+    REQUIRED_BREAK_SHEETS,
     "produced directories holding two or more PNG frames, " +
       "at least two of which are different pictures",
   );

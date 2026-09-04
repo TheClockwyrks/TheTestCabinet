@@ -21,7 +21,7 @@ Whatever its shape, the state carries the following:
   than from the state.
 - The round's figures: the score, the level counted from `1`, and the score
   banked toward the current level. The level's target is `LEVEL_TARGET_STEP`
-  (`2000`) times the level rather than a stored figure.
+  (`2000`) times the level.
 - What the current level has been worth: the points the move currently running
   has scored, the most points one move has scored in the level, and the deepest
   chain step the level has reached, as `specs/rules.md` defines the three.
@@ -29,11 +29,10 @@ Whatever its shape, the state carries the following:
   chain step, which is `0` unless the phase is `resolving`; the game time
   accumulated into the swap in motion; and the game time accumulated into the
   step in progress. The chain multiplier is `min(chainStep, MAX_MULTIPLIER)`,
-  `MAX_MULTIPLIER` (`8`), rather than a stored figure.
+  `MAX_MULTIPLIER` (`8`).
 - What the most recent chain step did: how many cells it cleared, how many
   points it scored, and the greatest wave R6 gave its clear set. How far the
-  step's longest fall was comes from the `fell` on the board rather than from a
-  stored figure.
+  step's longest fall was is the greatest `fell` on the board.
 - The selected cell when one is selected, the cell the selected gem is currently
   offered into when one is offered, and the refused pair when a swap has just
   been refused, together with the game time that refusal has stood for.
@@ -48,10 +47,9 @@ Whatever its shape, the state carries the following:
 - The state of the seeded random generator, which the deal of an opening board
   and the refill in R9 draw from.
 
-Whether a legal swap exists on the board is derived from R1 and R3 in
-`specs/rules.md` rather than stored, so it answers to the board as it stands.
-The current screen's pointer targets are likewise derived from the screen rather
-than stored.
+Whether a legal swap exists on the board follows from R1 and R3 in
+`specs/rules.md` over the board as it stands. The current screen's pointer
+targets follow from the screen, as `specs/controls.md` fixes them.
 {{else if (eq engine.slug "simple-2d")}}
 `src/game.ts` declares and exports the state the game is written against. This
 section is that declaration: write it into `src/game.ts` exactly as it stands
@@ -264,8 +262,9 @@ posed and read back by reading them.
   seed sets it, so reseeding and replaying the same calls reproduces the same
   result. The deal of an opening board and the refill in R9 draw from it.
 
-Six facts the game shows are derived rather than stored. A cell's center comes
-from the cell center formulas in `specs/board.md`. The level's target is
+Six facts the game shows follow from the declared fields rather than being
+fields of their own. A cell's center comes from the cell center formulas in
+`specs/board.md`. The level's target is
 `LEVEL_TARGET_STEP` (`2000`) times `level`. The chain multiplier is
 `min(chainStep, MAX_MULTIPLIER)`, `MAX_MULTIPLIER` (`8`). The most recent step's
 longest fall is the greatest `fell` on the board. Whether a legal swap exists
@@ -514,8 +513,9 @@ reading them.
   seed sets it, so reseeding and replaying the same calls reproduces the same
   result. The deal of an opening board and the refill in R9 draw from it.
 
-Six facts the game shows are derived rather than stored. A cell's center comes
-from the cell center formulas in `specs/board.md`. The level's target is
+Six facts the game shows follow from the declared fields rather than being
+fields of their own. A cell's center comes from the cell center formulas in
+`specs/board.md`. The level's target is
 `LEVEL_TARGET_STEP` (`2000`) times `level`. The chain multiplier is
 `min(chainStep, MAX_MULTIPLIER)`, `MAX_MULTIPLIER` (`8`). The most recent step's
 longest fall is the greatest `fell` on the board. Whether a legal swap exists

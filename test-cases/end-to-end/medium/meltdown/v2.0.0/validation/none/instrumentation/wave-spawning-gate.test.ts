@@ -94,7 +94,7 @@ it("releases nothing over a minute with the gate shut", async () => {
     "the world gate the run was posed with",
   );
 
-  const swept = await h.skipUntil((snapshot) => snapshot.surge.length > 0, {
+  const swept = await h.coastUntil((snapshot) => snapshot.surge.length > 0, {
     maxSeconds: QUIET_SECONDS,
     pollSeconds: SAMPLE_SECONDS,
     hz: SAMPLE_HZ,
@@ -118,7 +118,7 @@ it("fills the roster with the gate open", async () => {
   await poseAWaitingWave();
   await h.debug.setWaveSpawning(true);
 
-  const swept = await h.skipUntil(
+  const swept = await h.coastUntil(
     (snapshot) => snapshot.surge.length >= MIN_RELEASED,
     { maxSeconds: OPEN_SECONDS, pollSeconds: SAMPLE_SECONDS, hz: SAMPLE_HZ },
   );

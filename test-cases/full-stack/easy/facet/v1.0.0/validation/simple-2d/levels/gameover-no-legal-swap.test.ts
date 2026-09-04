@@ -30,17 +30,14 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThan } from "../assert";
-import { GRID_COLS, GRID_ROWS, LEVEL_TARGET_STEP } from "../constants";
+import { LEVEL_TARGET_STEP } from "../constants";
 import {
   assertBoardEquals,
   deadBoard,
   hasAnyRun,
   legalSwapExists,
-  parseRows,
   quietRowsWithEscape,
   swapIsLegal,
-  tokenAt,
-  type BoardRows,
   type CellRef,
   type PlacedToken,
 } from "../board";
@@ -50,6 +47,7 @@ import {
   createHarness,
   loadBoard,
   swapAndStep,
+  writeBoard,
   type Harness,
 } from "../harness";
 
@@ -76,18 +74,6 @@ afterEach(() => {
   h.dispose();
 });
 
-/** Write every cell of a board in the notation onto the live board, `setGem` by `setGem`. */
-function writeBoard(rows: BoardRows): void {
-  // Parsed on this side first, so a typo in the fixture fails here rather than
-  // crossing into the build one cell at a time.
-  parseRows(rows);
-  for (let row = 0; row < GRID_ROWS; row += 1) {
-    for (let col = 0; col < GRID_COLS; col += 1) {
-      h.debug.setGem(col, row, tokenAt(rows, col, row));
-    }
-  }
-}
-
 it("turns the screen to gameover when the settled board carries no legal swap", async () => {
   const posed = quietRowsWithEscape(RUN_CELLS);
   const dead = deadBoard();
@@ -113,7 +99,7 @@ it("turns the screen to gameover when the settled board carries no legal swap", 
     assertEqual(first.screen, "playing", "the screen while the chain runs");
 
     // The board goes dead under the running step.
-    writeBoard(dead);
+    writeBoard(h, dead);
     const held = h.snapshot();
     assertEqual(held.phase, "resolving", "the phase setGem left standing");
     assertEqual(held.screen, "playing", "the screen setGem left standing");

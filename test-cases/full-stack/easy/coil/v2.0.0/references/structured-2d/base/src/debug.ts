@@ -36,7 +36,7 @@ import {
 } from "./constants";
 import { resetSession } from "./flow";
 import { coilState, type CoilState } from "./game";
-import { menuItems } from "./menus";
+import { menuItemRect, menuItems, type MenuRect } from "./menus";
 import { HAS_OBSTACLES } from "./mode";
 import type { World } from "@test-cabinet/structured-2d";
 
@@ -47,6 +47,7 @@ export interface CoilSnapshot {
   version: number;
   screen: Screen;
   menuIndex: number;
+  titleIndex: number;
   mode: typeof MODE;
   score: number;
   best: number;
@@ -71,6 +72,7 @@ export interface CoilDebugApi {
   version: number;
   reset(options?: { seed?: number }): void;
   snapshot(): CoilSnapshot;
+  menuItemRect(index: number): MenuRect | null;
   setScreen(screen: Screen): void;
   setMenuIndex(index: number): void;
   setScore(points: number): void;
@@ -171,6 +173,7 @@ export function createDebugApi(world: () => World): CoilDebugApi {
         version: COIL_DEBUG_VERSION,
         screen: live.screen,
         menuIndex: live.menuIndex,
+        titleIndex: live.titleIndex,
         mode: MODE,
         score: live.score,
         best: live.best,
@@ -188,6 +191,20 @@ export function createDebugApi(world: () => World): CoilDebugApi {
         travel: live.travel,
         pelletRespawn: live.pelletRespawn,
       };
+    },
+
+    /**
+     * The hit region item `index` occupies on the menu the current screen shows,
+     * in logical units. It reports position alone and changes nothing.
+     *
+     * `null` on `playing`, which shows no menu, and whenever `index` names no
+     * item of the current menu: a caller asks where an item is before it knows
+     * what the menu holds, so an item that is not there is answered rather than
+     * refused.
+     */
+    menuItemRect(index) {
+      const value = requireWhole("menuItemRect(index)", index, 0);
+      return menuItemRect(state().screen, value);
     },
 
     /**

@@ -18,7 +18,7 @@ import {
   waveSizeOf,
   waveTypeOf,
 } from "./modes";
-import { controlsOf, type Controls } from "./panel";
+import { controlsOf, menuRects, type Controls } from "./panel";
 import { heldValid } from "./build";
 import { routesOf } from "./routes";
 import { remainingOf } from "./surge";
@@ -106,6 +106,15 @@ export interface BuildReport {
   readonly valid: boolean;
 }
 
+/** One row of the current screen's menu, as its hit rectangle. */
+export interface MenuRowReport {
+  readonly index: number;
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+}
+
 /** The whole snapshot. */
 export interface MeltdownSnapshot {
   readonly version: number;
@@ -150,6 +159,7 @@ export interface MeltdownSnapshot {
     readonly left: { readonly length: number };
     readonly top: { readonly length: number };
   };
+  readonly menu: readonly MenuRowReport[];
   readonly controls: Controls;
   readonly towers: readonly TowerReport[];
   readonly surge: readonly UnitReport[];
@@ -219,6 +229,7 @@ export function snapshotOf(state: MeltdownState): MeltdownSnapshot {
       left: { length: routes.leftLength },
       top: { length: routes.topLength },
     },
+    menu: menuRects(state).map((rect, index) => ({ index, ...rect })),
     controls: controlsOf(state),
     towers: state.towers.map((tower) => ({
       id: tower.id,

@@ -71,6 +71,9 @@ function approachable(course: readonly Cell[]): Approach {
   );
 }
 
+/** Ticks run after the tick this point reads, so its outcome is on the recording. */
+const SETTLE = 3;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -98,7 +101,11 @@ it("ends the round on the tick the head enters a course cell", async () => {
   );
   assertEqual(posed.screen, "playing", "the round before the tick");
 
-  const after = await captureReplay(h, "obstacle", () => h.tick());
+  const after = await captureReplay(h, "obstacle", async () => {
+    const resolved = await h.tick();
+    await h.tick(SETTLE);
+    return resolved;
+  });
 
   assertEqual(after.ticks, 1, "ticks resolved");
   assertEqual(after.screen, "gameover", "the screen the obstacle reached");

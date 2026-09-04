@@ -13,7 +13,7 @@ import {
   captureStill,
   drewText,
   openHarness,
-  poseScene,
+  startFreshSession,
   type Harness,
 } from "../harness";
 
@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 it("draws RESUME and QUIT on the paused frame", async () => {
-  poseScene(h, "playing");
+  startFreshSession(h);
   h.debug.setScreen("paused");
 
   const { calls } = await h.frameDraw();

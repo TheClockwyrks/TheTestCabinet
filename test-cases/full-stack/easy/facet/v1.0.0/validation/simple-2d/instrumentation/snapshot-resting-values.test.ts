@@ -28,7 +28,8 @@
 // `targets` category's point rather than this one's.
 //
 // WHAT IT DELIBERATELY DOES NOT DECIDE. That `reset` puts the game here is
-// `instrumentation/reset-restores`; what the title screen SHOWS is the
+// `instrumentation/reset-restores-every-field`; what the title screen SHOWS is
+// the
 // `screens` points. The screen is read as the precondition — no board is in play
 // — and everything asserted after it is the resting reading itself.
 

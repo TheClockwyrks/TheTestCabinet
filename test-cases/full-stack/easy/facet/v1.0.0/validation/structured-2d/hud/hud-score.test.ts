@@ -23,7 +23,8 @@
 // the frame came from the score and from nothing else.
 //
 // The board is posed rather than dealt because this point is not about what is
-// on the board: `loadBoard` moves to `playing` with `phase` `idle` and leaves
+// on the board: the harness's `loadBoard` poses a board on `playing` with
+// `phase` `idle` and leaves
 // `score` where it stands, and `setScore` then writes the one figure under
 // test. Nothing here settles a chain, so the round stays on `playing` for both
 // readings even though the quiet filler carries no legal swap of its own.

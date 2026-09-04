@@ -55,11 +55,9 @@ import {
   assertBoardEquals,
   legalSwaps,
   maximalRuns,
-  parseRows,
   quietRowsWith,
   quietRowsWithEscape,
   swapIsLegal,
-  tokenAt,
   type BoardRows,
   type CellRef,
   type PlacedToken,
@@ -71,6 +69,7 @@ import {
   framesPast,
   loadBoard,
   swapAndStep,
+  writeBoard,
   type Harness,
 } from "../harness";
 
@@ -97,18 +96,6 @@ const HOLDS_SHOWING = 4;
 
 let h: Harness;
 
-/** Write a whole board onto the live one, `setGem` by `setGem`. */
-function writeBoard(rows: BoardRows): void {
-  // Parsed on this side first, so a typo in the fixture fails here rather than
-  // crossing into the build one cell at a time.
-  parseRows(rows);
-  for (let row = 0; row < GRID_ROWS; row += 1) {
-    for (let col = 0; col < GRID_COLS; col += 1) {
-      h.debug.setGem(col, row, tokenAt(rows, col, row));
-    }
-  }
-}
-
 beforeEach(async () => {
   h = await createHarness();
 });
@@ -132,7 +119,7 @@ it("holds the finished board and every timer for as long as the level-clear scre
   const first = await swapAndStep(h, SWAP_A, SWAP_B);
   assertEqual(first.phase, "resolving", "the phase the accepted swap opened");
 
-  writeBoard(SETTLED);
+  writeBoard(h, SETTLED);
   const standing = h.snapshot();
   assertGreaterThan(standing.levelTarget, 0, "the target the round reports");
   h.debug.setLevelScore(standing.levelTarget);

@@ -21,7 +21,8 @@
 // `back` at all. `controls.pause-key` reads that half. Only the OPENING is read
 // here, because that is the case specs/controls.md gives `back` on the `playing`
 // screen; what `back` does ON the pause screen is specs/screens.md's rule and
-// `screens.pause-resume`'s item.
+// `screens.esc-resumes`'s item, which presses `back` on the pause screen and
+// reads what it returned to.
 //
 // THE FREEZE IS NOT READ HERE. That the floor stops while the screen is `paused`
 // is `waves.pause-freezes-the-floor`, measured there on the build's own clock,

@@ -37,6 +37,7 @@ import {
   setPreviewRotation,
   upgrade,
 } from "./build";
+import { menuRects } from "./menus";
 import { modeFigures, type BuildZone } from "./modes";
 import { panelControls, type PanelControls } from "./panel";
 import { addUnit, clearSurge, removeUnit } from "./sim";
@@ -133,6 +134,15 @@ export interface SnapshotUnit {
   motion: boolean;
 }
 
+/** One row of the current screen's menu, as its hit rectangle. */
+export interface SnapshotMenuRow {
+  index: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /** Everything `snapshot` reports (specs/instrumentation.md). */
 export interface MeltdownSnapshot {
   version: number;
@@ -169,6 +179,7 @@ export interface MeltdownSnapshot {
   } | null;
   buildZone: BuildZone | null;
   paths: { left: { length: number }; top: { length: number } };
+  menu: SnapshotMenuRow[];
   controls: PanelControls;
   towers: SnapshotTower[];
   surge: SnapshotUnit[];
@@ -202,7 +213,7 @@ export interface DebugHost {
 export interface MeltdownDebugApi {
   version: number;
 
-  reset(options?: { seed?: number }): void;
+  reset(seed?: number): void;
   snapshot(): MeltdownSnapshot;
 
   setAutoStep(enabled: boolean): void;
@@ -348,6 +359,7 @@ export function readSnapshot(
       left: { length: state.floor.routeLength("left") },
       top: { length: state.floor.routeLength("top") },
     },
+    menu: menuRects(state.screen).map((rect, index) => ({ index, ...rect })),
     controls: panelControls(state),
     towers: state.towers.map(readTower),
     surge: state.surge.map((unit) => ({
@@ -384,8 +396,8 @@ export function createDebugApi(host: DebugHost): MeltdownDebugApi {
   return {
     version: MELTDOWN_DEBUG_VERSION,
 
-    reset(options) {
-      resetState(host.state, options);
+    reset(seed) {
+      resetState(host.state, seed);
     },
 
     snapshot() {

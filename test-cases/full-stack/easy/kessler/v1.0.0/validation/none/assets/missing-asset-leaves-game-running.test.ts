@@ -18,7 +18,12 @@
 
 import { it } from "vitest";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
-import { assertGreaterThan, assertGreaterThanOrEqual, assertNotEqual, fail } from "../assert";
+import {
+  assertGreaterThan,
+  assertGreaterThanOrEqual,
+  assertNotEqual,
+  fail,
+} from "../assert";
 import { HANDLE } from "../surface";
 import type { KesslerSnapshot } from "../surface";
 import { writeImageBytes } from "./media-out";
@@ -40,7 +45,9 @@ async function distinctColors(png: Buffer): Promise<number> {
     for (let x = 0; x < image.width; x += stepX) {
       const at = (y * image.width + x) * 4;
       seen.add(
-        ((data[at] >> 4) << 8) | ((data[at + 1] >> 4) << 4) | (data[at + 2] >> 4),
+        ((data[at] >> 4) << 8) |
+          ((data[at + 1] >> 4) << 4) |
+          (data[at + 2] >> 4),
       );
     }
   }
@@ -50,9 +57,9 @@ async function distinctColors(png: Buffer): Promise<number> {
 async function snap(site: Site): Promise<KesslerSnapshot> {
   return site.page.evaluate(
     (handle) =>
-      (
-        window as unknown as Record<string, { snapshot(): KesslerSnapshot }>
-      )[handle].snapshot(),
+      (window as unknown as Record<string, { snapshot(): KesslerSnapshot }>)[
+        handle
+      ].snapshot(),
     HANDLE,
   );
 }
@@ -79,9 +86,9 @@ it("still runs with the planet sprite unavailable", async () => {
     // Into play, on the build's own loop.
     await site.page.evaluate(
       (handle) =>
-        (
-          window as unknown as Record<string, { setScreen(s: string): void }>
-        )[handle].setScreen("playing"),
+        (window as unknown as Record<string, { setScreen(s: string): void }>)[
+          handle
+        ].setScreen("playing"),
       HANDLE,
     );
     await site.page.waitForTimeout(300);

@@ -77,11 +77,29 @@ export function pointerMove(
   y: number,
 ): InputResult {
   state.pointer = { x, y, down: state.pointer.down };
-  if (state.screen !== "playing") return noResult();
+  if (state.screen !== "playing") return reachMenuRow(state, x, y);
   carryPreview(state, x, y);
   const hit = hitPanel(state, x, y);
   state.hoverShop = hit !== null && hit.kind === "shop" ? hit.type : null;
   return noResult();
+}
+
+/**
+ * A move onto a row of the menu the current screen shows makes that row the
+ * highlighted row and raises the `menu` cue on the frame the highlight changes
+ * (specs/controls.md).
+ *
+ * Off every row the highlight stays where it last landed, and reaching the row
+ * already highlighted changes nothing and raises nothing. Reaching a row takes
+ * it no further: a row is taken on the release.
+ */
+function reachMenuRow(state: MeltdownState, x: number, y: number): InputResult {
+  const row = menuRowAt(state.screen, x, y);
+  if (row === null || row === state.menuIndex) return noResult();
+  state.menuIndex = row;
+  const result = noResult();
+  result.cues.menu = true;
+  return result;
 }
 
 /** Operate one of the panel's controls. */

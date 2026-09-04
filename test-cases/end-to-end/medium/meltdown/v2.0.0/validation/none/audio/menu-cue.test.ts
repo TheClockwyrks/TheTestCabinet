@@ -27,6 +27,11 @@
 // `specs/instrumentation.md` says a reset leaves behind, and the check reads both
 // back before it presses anything.
 //
+// THE KEY PATH ONLY. `specs/controls.md` raises the same cue when the pointer
+// reaches a row, and a build can sound for one route and stay silent on the
+// other, so that route is `audio.menu-cue-on-pointer`'s and this point says
+// nothing about it.
+//
 // THE KEY IS A REAL ONE, held through Chromium's own input pipeline and released
 // the moment the highlight has moved. `specs/controls.md` reads every action "as a
 // press edge" that "fires once per press", and holding a key "fires its action
@@ -72,7 +77,7 @@ afterEach(async () => {
   await h?.dispose();
 });
 
-it("sounds on the frame of each move, and on no frame between them", async () => {
+it("sounds on the frame of each key move, and on no other", async () => {
   // The harness has already reset the game, so this is the title with its
   // highlight on the first of two rows.
   await h.advance(1);

@@ -16,6 +16,7 @@
 // vocabulary `src/constants.ts` fixes.
 
 import { ACTIONS, BINDINGS, type ActionName } from "./constants";
+import type { PointerMove } from "./flow";
 import type { InitApi, InputReader } from "@test-cabinet/structured-2d";
 
 /** The actions read as one press edge per press, in `ACTIONS` order. */
@@ -37,4 +38,18 @@ export function registerActions(api: Pick<InitApi, "input">): void {
  */
 export function pressedActions(input: InputReader): ActionName[] {
   return EDGE_ACTIONS.filter((action) => input.pressed(action));
+}
+
+/**
+ * This frame's pointer samples, in arrival order, in the stage's own logical
+ * units. A mouse, a pen and a touch contact all arrive here the same way, so
+ * the menus answer any of them (`specs/controls.md`). The engine has already
+ * mapped each position through the letterboxed fit, so nothing here reads the
+ * device pixel ratio or the canvas.
+ */
+export function pointerMoves(input: InputReader): PointerMove[] {
+  return input
+    .pointerSamples()
+    .filter((sample) => sample.primary)
+    .map((sample) => ({ type: sample.type, x: sample.x, y: sample.y }));
 }

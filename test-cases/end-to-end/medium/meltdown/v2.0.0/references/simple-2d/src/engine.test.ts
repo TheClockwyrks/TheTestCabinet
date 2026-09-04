@@ -20,10 +20,16 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   BUILD_PHASE_TIME,
   CUES,
+  DIFFICULTY_ITEMS,
+  ENDING_ITEMS,
+  HOWTO_ITEMS,
   LAYOUT,
+  MODE_ITEMS,
+  PAUSE_ITEMS,
   STAGE_H,
   STAGE_W,
   TILE,
+  TITLE_ITEMS,
   TOWER_DEFS,
   TRIP_TIME,
   tileCX,
@@ -998,7 +1004,7 @@ describe("the release", () => {
 
   it("draws each unit's vent from the seed", async () => {
     const vents = async (seed: number): Promise<string[]> => {
-      h.pose((d, s) => d.reset(s, { seed }));
+      h.pose((d, s) => d.reset(s, seed));
       h.pose((d, s) => d.setScreen(s, "playing"));
       h.pose((d, s) => d.setPhase(s, "wave"));
       h.pose((d, s) => d.setWavePending(s, 12));
@@ -1119,6 +1125,81 @@ describe("freshness", () => {
     h.pose((d, s) => d.upgradeTower(s, id));
     expect(tower(id).fresh).toBe(false);
     expect(tower(id).refund).toBe(Math.floor(0.7 * 30));
+  });
+});
+
+describe("the reported menu", () => {
+  it("reports one rectangle per row, in row order, on every menu screen", () => {
+    for (const [screen, items] of [
+      ["title", TITLE_ITEMS],
+      ["modeselect", MODE_ITEMS],
+      ["difficultyselect", DIFFICULTY_ITEMS],
+      ["howto", HOWTO_ITEMS],
+      ["paused", PAUSE_ITEMS],
+      ["victory", ENDING_ITEMS],
+      ["gameover", ENDING_ITEMS],
+    ] as const) {
+      h.pose((d, s) => d.setScreen(s, screen));
+      const rows = h.snap().menu;
+      expect(rows).toHaveLength(items.length);
+      expect(rows.map((row) => row.index)).toEqual(
+        items.map((_item, index) => index),
+      );
+    }
+  });
+
+  it("reports none at all while the screen is playing", () => {
+    startRun();
+    expect(h.snap().menu).toEqual([]);
+  });
+});
+
+describe("the pointer on a menu", () => {
+  it("highlights the row it reaches and cues, without taking it", async () => {
+    const row = h.snap().menu[1];
+    h.pointer("pointermove", row.x + row.w / 2, row.y + row.h / 2);
+    await h.engine.advance(1);
+    expect(h.snap().menuIndex).toBe(1);
+    expect(h.snap().screen).toBe("title");
+    expect(h.cues.filter((c) => c.cue === CUES.menu)).toHaveLength(1);
+  });
+
+  it("leaves the highlight where it last landed when it moves off", async () => {
+    const row = h.snap().menu[1];
+    h.pointer("pointermove", row.x + row.w / 2, row.y + row.h / 2);
+    await h.engine.advance(1);
+    h.pointer("pointermove", 4, 4);
+    await h.engine.advance(1);
+    expect(h.snap().menuIndex).toBe(1);
+    expect(h.cues.filter((c) => c.cue === CUES.menu)).toHaveLength(1);
+  });
+});
+
+describe("the BACK rows", () => {
+  it("take each list to the screen behind it, starting nothing", async () => {
+    for (const [screen, items, behind] of [
+      ["modeselect", MODE_ITEMS, "title"],
+      ["difficultyselect", DIFFICULTY_ITEMS, "modeselect"],
+      ["howto", HOWTO_ITEMS, "title"],
+    ] as const) {
+      h.pose((d, s) => d.reset(s));
+      h.pose((d, s) => d.setScreen(s, screen));
+      h.pose((d, s) => d.setMenuIndex(s, items.indexOf("BACK")));
+      h.tap("Enter");
+      await h.engine.advance(1);
+      const snap = h.snap();
+      expect(snap.screen).toBe(behind);
+      expect(snap.towers).toEqual([]);
+    }
+  });
+
+  it("returns from the how-to screen with HOW TO PLAY highlighted", async () => {
+    h.pose((d, s) => d.setScreen(s, "howto"));
+    h.tap("Escape");
+    await h.engine.advance(1);
+    const snap = h.snap();
+    expect(snap.screen).toBe("title");
+    expect(snap.menuIndex).toBe(TITLE_ITEMS.indexOf("HOW TO PLAY"));
   });
 });
 

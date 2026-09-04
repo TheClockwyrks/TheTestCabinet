@@ -216,9 +216,9 @@ describe("the wave progression", () => {
   it("draws each unit's vent from the seed, and replays it", async () => {
     const harness = await createHarness();
     const run = async (seed: number): Promise<string[]> => {
-      harness.debug.reset({ seed });
+      harness.debug.reset(seed);
       startRun(harness);
-      harness.debug.reset({ seed });
+      harness.debug.reset(seed);
       harness.debug.setScreen("playing");
       harness.debug.setPhase("building");
       harness.debug.setWaveSpawning(true);

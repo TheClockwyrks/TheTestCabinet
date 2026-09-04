@@ -65,20 +65,12 @@ import type {
   UnitState,
 } from "./game";
 
-/** What `reset` accepts. */
-export interface ResetOptions {
-  /** The seed all of the game's randomness runs off. Defaults to `1`. */
-  readonly seed?: number;
-}
-
 /** The debug and automation surface, in this engine's spelling. */
 export interface MeltdownDebugApi {
   readonly version: number;
 
-  reset(
-    state: DeepReadonly<MeltdownState>,
-    options?: ResetOptions,
-  ): MeltdownState;
+  /** `seed` seeds all of the game's randomness, defaulting to `DEFAULT_SEED`. */
+  reset(state: DeepReadonly<MeltdownState>, seed?: number): MeltdownState;
   snapshot(state: DeepReadonly<MeltdownState>): MeltdownSnapshot;
 
   setScreen(state: DeepReadonly<MeltdownState>, screen: Screen): MeltdownState;
@@ -271,8 +263,7 @@ export function createDebugApi(): MeltdownDebugApi {
   return {
     version: MELTDOWN_DEBUG_VERSION,
 
-    reset: (state, options) =>
-      resetState(held(state), options?.seed ?? DEFAULT_SEED),
+    reset: (state, seed) => resetState(held(state), seed ?? DEFAULT_SEED),
     snapshot: (state) => snapshotOf(held(state)),
 
     setScreen: (state, screen) => ({ ...held(state), screen }),

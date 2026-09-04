@@ -8,7 +8,7 @@
 // board tells a player a chain is running when none is, and the readout stops
 // meaning anything at all.
 //
-// THE ANTECEDENT. specs/instrumentation.md has `loadBoard` move to `playing`
+// THE ANTECEDENT. The harness's `loadBoard` poses a board on `playing`
 // with `phase` `idle`, `chainStep` and `stepTimer` at `0`, and specs/rules.md
 // has a posed board rest exactly as written until a swap is accepted on it. So
 // the quiet filler, on which no swap is even productive, is a settled board

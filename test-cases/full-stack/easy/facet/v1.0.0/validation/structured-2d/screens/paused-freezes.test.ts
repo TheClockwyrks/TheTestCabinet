@@ -67,6 +67,7 @@ import {
   createHarness,
   framesPast,
   loadBoard,
+  pauseGame,
   swapAndStep,
   type Harness,
 } from "../harness";
@@ -138,7 +139,7 @@ it("holds the board, the chain and every timer for as long as the game is paused
   assertTrue(held.stepTimer > 0, "the step timer the pause catches is running");
   assertTrue(held.stepHold > held.stepTimer, "the step still has hold left");
 
-  h.debug.pause();
+  pauseGame(h);
   assertEqual(h.snapshot().screen, "paused", "the screen driven from");
 
   // Four of THIS step's holds, read off the step the pause caught, so the

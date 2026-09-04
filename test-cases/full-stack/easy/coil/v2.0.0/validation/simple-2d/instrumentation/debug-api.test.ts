@@ -30,8 +30,10 @@ import {
   assertContains,
   assertDeepEqual,
   assertEqual,
+  assertGreaterThan,
   assertLength,
   assertNull,
+  fail,
 } from "../assert";
 import {
   COIL_DEBUG_VERSION,
@@ -40,8 +42,8 @@ import {
   SCREENS,
   START_CELLS,
   TICK_SECONDS,
-  TITLE_ITEMS,
-} from "../../src/constants";
+  TITLE_ITEM_COUNT,
+} from "../constants";
 import {
   captureStill,
   chainFrom,
@@ -126,6 +128,7 @@ it("reports the whole documented snapshot shape, off a driven game", async () =>
   assertEqual(s.version, COIL_DEBUG_VERSION);
   assertContains(SCREENS, s.screen);
   assertEqual(typeof s.menuIndex, "number", "menuIndex");
+  assertEqual(typeof s.titleIndex, "number", "titleIndex");
   assertContains(["classic", "maze"], s.mode);
   assertEqual(typeof s.score, "number", "score");
   assertEqual(typeof s.best, "number", "best");
@@ -214,15 +217,41 @@ it("poses the running game through each of its operations", async () => {
 
   // The highlight, on a screen that carries a menu.
   debug.setScreen(MENU_SCREEN);
-  debug.setMenuIndex(TITLE_ITEMS.length - 1);
+  debug.setMenuIndex(TITLE_ITEM_COUNT - 1);
   const menu = h.snapshot();
   assertEqual(menu.screen, MENU_SCREEN, "setScreen to a menu screen");
-  assertEqual(menu.menuIndex, TITLE_ITEMS.length - 1, "setMenuIndex");
+  assertEqual(menu.menuIndex, TITLE_ITEM_COUNT - 1, "setMenuIndex");
+
+  // And the reading that reports where the build DREW that item, which
+  // specs/instrumentation.md words as a region in logical units and specs/ui.md
+  // makes the region a pointer selects the item from. What a pointer over it
+  // does is the `pointer` and `touch` points; what is read here is that the
+  // reading answers a region at all, and answers `null` where it says it does.
+  const region = debug.menuItemRect(TITLE_ITEM_COUNT - 1);
+  if (region === null) {
+    return fail(
+      `menuItemRect(${TITLE_ITEM_COUNT - 1}) to report the hit region of that ` +
+        `item on the ${MENU_SCREEN} menu (specs/instrumentation.md)`,
+      region,
+    );
+  }
+  for (const side of ["x", "y", "w", "h"] as const) {
+    assertEqual(typeof region[side], "number", `menuItemRect().${side}`);
+  }
+  assertGreaterThan(region.w, 0, "the width of the item's hit region");
+  assertGreaterThan(region.h, 0, "the height of the item's hit region");
+
+  debug.setScreen("playing");
+  assertNull(
+    debug.menuItemRect(0),
+    "menuItemRect on playing, which shows no menu",
+  );
 
   // And a reset returns the whole of it to the opening state.
   debug.reset();
   const opened = h.snapshot();
   assertEqual(opened.screen, "title", "reset");
+  assertEqual(opened.titleIndex, 0, "reset");
   assertDeepEqual(opened.snake, [...START_CELLS], "reset");
   assertEqual(opened.score, 0, "reset");
 });

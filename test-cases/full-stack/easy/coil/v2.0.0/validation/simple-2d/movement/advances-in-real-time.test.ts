@@ -23,7 +23,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { WallClock } from "@test-cabinet/simple-2d";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { TICK_SECONDS } from "../../src/constants";
+import { TICK_SECONDS } from "../constants";
 import {
   arrangeStep,
   captureStill,

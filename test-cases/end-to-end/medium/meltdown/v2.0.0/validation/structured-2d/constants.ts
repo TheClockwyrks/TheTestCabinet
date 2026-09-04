@@ -624,8 +624,10 @@ export const MODE_ITEMS = [
   "DEEP POCKETS",
   "BOTTLENECK",
   "SUDDEN DEATH",
+  "BACK",
 ] as const;
-export const DIFFICULTY_ITEMS = ["EASY", "MEDIUM", "HARD"] as const;
+export const DIFFICULTY_ITEMS = ["EASY", "MEDIUM", "HARD", "BACK"] as const;
+export const HOWTO_ITEMS = ["BACK"] as const;
 export const PAUSE_ITEMS = ["RESUME", "RESTART", "QUIT TO MENU"] as const;
 export const ENDING_ITEMS = ["PLAY AGAIN", "MENU"] as const;
 
@@ -633,7 +635,13 @@ export const HUD_WAVE_LABEL = "WAVE";
 export const HUD_MONEY_LABEL = "MONEY";
 export const HUD_LIVES_LABEL = "LIVES";
 
-/** The smallest side a panel control may be drawn at, in logical units. */
+/**
+ * The smallest side a panel control may be drawn at, in logical units.
+ *
+ * `specs/hud.md` states the figure for the panel's controls and
+ * `specs/screens.md` names it again for a menu row, so one transcription serves
+ * both.
+ */
 export const MIN_TOUCH_TARGET = 32;
 
 /* -------------------------------------------------------------------------- */

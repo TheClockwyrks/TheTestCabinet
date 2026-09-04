@@ -352,7 +352,8 @@ function cellToken(cell: BoardReading["board"]["cells"][number]): string {
  * A cell is placed by the `col` and `row` it reports rather than by its position
  * in the list, so what this renders is the board the build says it holds.
  * Whether `cells` is listed in reading order is a separate question, and
- * `instrumentation/debug-api` is where it is asked — which is also where a cell
+ * `instrumentation/debug-api-snapshot-shape` is where it is asked — which is also
+ * where a cell
  * reported outside the board is named, so one is passed over here rather than
  * failing a check that was about something else.
  */
@@ -660,7 +661,8 @@ export function hasPrism(rows: BoardRows): boolean {
  *
  * R3 says nothing about where the two cells are — that is R1's job, and
  * {@link swapIsLegal} is the two together. Keeping them apart is what lets
- * `moves/r1-non-adjacent-refused` pose a NON-adjacent pair whose exchange would
+ * `moves/r1-diagonal-refused` and `moves/r1-distant-refused` pose a NON-adjacent
+ * pair whose exchange would
  * make a run and still say what it is posing.
  */
 export function swapIsProductive(
@@ -849,7 +851,7 @@ export interface ClearSet {
  * wave a cell is written with is never lowered later.
  *
  * The wave changes nothing about which cells the set holds, so the membership
- * this returns is the membership `expansion/r6-closure`,
+ * this returns is the membership the two `expansion/r6-closure-*` points,
  * `chain/chain-second-step` and `scoring/score-multiplier` state their
  * expectation with, over the board they OBSERVED rather than one they predicted.
  */

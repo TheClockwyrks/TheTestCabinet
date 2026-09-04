@@ -330,12 +330,10 @@ function resolvePaddle(
   prev: Polar,
   cur: Polar,
 ): boolean {
-  if (!(
+  const crossedInward =
     prev.r > DEFLECTOR_BALL_CONTACT_RADIUS &&
-    cur.r <= DEFLECTOR_BALL_CONTACT_RADIUS
-  )) {
-    return false;
-  }
+    cur.r <= DEFLECTOR_BALL_CONTACT_RADIUS;
+  if (!crossedInward) return false;
   const n = radialAt(cur.angleDeg);
   const velocity = { x: ball.vx, y: ball.vy };
   if (dot(velocity, n) >= 0) return false;

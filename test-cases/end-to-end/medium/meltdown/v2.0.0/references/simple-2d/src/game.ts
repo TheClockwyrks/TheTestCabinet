@@ -231,8 +231,6 @@ function handleInput(
   switch (base.screen) {
     case "playing":
       return playingInput(base, edges, events);
-    case "howto":
-      return edges.back ? back(base) : base;
     default:
       return menuScreenInput(base, edges, events);
   }

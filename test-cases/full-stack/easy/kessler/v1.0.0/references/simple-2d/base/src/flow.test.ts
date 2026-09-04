@@ -11,6 +11,8 @@ import {
   advanceTime,
   applyAction,
   bootState,
+  cloneState,
+  enterWaveclear,
   poseScreen,
   type FlowIo,
   type KesslerState,
@@ -19,6 +21,13 @@ import {
 import { pointAt } from "./polar";
 
 const debug = createDebugApi();
+
+/** The interstitial entered exactly as the clearing event enters it. */
+function enterWaveclearFrom(view: View): KesslerState {
+  const draft = cloneState(view);
+  enterWaveclear(draft);
+  return draft;
+}
 
 function makeGame() {
   const cues: Cue[] = [];
@@ -115,10 +124,43 @@ describe("the title menu", () => {
     expect(game.snapshot().screen).toBe("howto");
     game.act("confirm");
     expect(game.snapshot().screen).toBe("title");
-    game.act("down");
     game.act("confirm");
     game.act("back");
     expect(game.snapshot().screen).toBe("title");
+  });
+
+  it("returns from the how-to with HOW TO PLAY highlighted", () => {
+    const game = makeGame();
+    game.act("down");
+    game.act("confirm");
+    game.act("back");
+    const snap = game.snapshot();
+    expect(snap.screen).toBe("title");
+    expect(snap.menu.index).toBe(1);
+  });
+
+  it("returns from a discarded session with START highlighted", () => {
+    const game = makeGame();
+    game.act("confirm");
+    game.act("pause");
+    game.act("down");
+    game.act("confirm");
+    const snap = game.snapshot();
+    expect(snap.screen).toBe("title");
+    expect(snap.menu.index).toBe(0);
+  });
+
+  it("opens the pause menu on RESUME however far the highlight had moved", () => {
+    const game = makeGame();
+    game.act("confirm");
+    game.act("pause");
+    game.act("down");
+    expect(game.snapshot().menu.index).toBe(1);
+    game.act("pause");
+    game.act("pause");
+    const snap = game.snapshot();
+    expect(snap.screen).toBe("paused");
+    expect(snap.menu.index).toBe(0);
   });
 });
 
@@ -202,7 +244,7 @@ describe("the wave-clear interstitial", () => {
   it("runs 180 ticks and lays out the next wave", () => {
     const game = makeGame();
     game.act("confirm");
-    game.pose((s) => poseScreen(s, "waveclear"));
+    game.pose((s) => enterWaveclearFrom(s));
     game.tick(179);
     expect(game.snapshot().screen).toBe("waveclear");
     game.tick();
@@ -223,7 +265,7 @@ describe("the wave-clear interstitial", () => {
     game.pose((s) => debug.setEffectTicks(s, "pierce", 100));
     game.pose((s) => debug.setShield(s, true));
     game.pose((s) => debug.spawnPod(s, "widen", 800, 500));
-    game.pose((s) => poseScreen(s, "waveclear"));
+    game.pose((s) => enterWaveclearFrom(s));
     const snap = game.snapshot();
     expect(snap.balls).toEqual([]);
     expect(snap.pods).toEqual([]);
@@ -303,7 +345,7 @@ describe("reset and determinism", () => {
   it("reproduces identical snapshots from the same seed and drive", () => {
     const run = () => {
       const game = makeGame();
-      game.pose((s) => debug.reset(s, { seed: 123 }));
+      game.pose((s) => debug.reset(s, 123));
       game.act("confirm");
       game.act("launch");
       game.held.right = true;

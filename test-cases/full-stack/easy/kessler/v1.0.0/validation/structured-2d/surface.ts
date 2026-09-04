@@ -33,7 +33,12 @@ export const DEFAULT_SEED = 1;
 
 /** Every screen the state machine moves between. The game opens on `title`. */
 export type Screen =
-  "title" | "howto" | "playing" | "waveclear" | "paused" | "gameover";
+  | "title"
+  | "howto"
+  | "playing"
+  | "waveclear"
+  | "paused"
+  | "gameover";
 
 /** The five salvage pod kinds, as `specs/pods.md` names them. */
 export type PodKind = "widen" | "narrow" | "multiball" | "shield" | "pierce";
@@ -49,9 +54,12 @@ export type EffectKind = "widen" | "narrow" | "pierce";
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "menuItemRect",
   "setScreen",
   "setScore",
   "setLives",
+  "setMenuIndex",
+  "setInterstitialTicks",
   "setWave",
   "setPaddleAngle",
   "launchBall",
@@ -78,11 +86,17 @@ export type OperationName = (typeof REQUIRED_OPS)[number];
  * alone cannot say at runtime which members return a value, so the
  * specification names them.
  */
-export const READINGS = ["snapshot"] as const;
+export const READINGS = ["snapshot", "menuItemRect"] as const;
 
-/** `reset`'s options: the seed the pod generator is laid with. */
-export interface ResetOptions {
-  seed?: number;
+/**
+ * The hit region `menuItemRect` reports, in the stage's logical units, with
+ * `(x, y)` the region's top-left corner.
+ */
+export interface MenuItemRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 /** One live ball, the parked ball included, as the snapshot reports it. */
@@ -140,6 +154,10 @@ export interface KesslerSnapshot {
   wave: number;
   score: number;
   lives: number;
+  /** The seed the last `reset` laid the pod generator with. */
+  seed: number;
+  /** Ticks left of the interstitial; counts down on `waveclear` alone. */
+  interstitialTicks: number;
   /** Driver switch: whether the clearing event fires. */
   waveAdvance: boolean;
   /** Driver switch: whether a destruction makes the pod draw. */
@@ -173,21 +191,27 @@ export interface KesslerDebugApi {
    * lives, wave `1`, `ticks` `0`, the deflector at angle `90` span `48`,
    * every ring slot filled at full hit points with every ring angle `0` and
    * wave-1 speeds, no balls, no pods, no timed effect, no shield, both
-   * driver switches on. `options.seed` seeds the pod generator, defaulting
-   * to `DEFAULT_SEED` (`1`).
+   * driver switches on, and the interstitial timer at `0`. `seed` seeds the
+   * pod generator, defaulting to `DEFAULT_SEED` (`1`).
    */
-  reset(options?: ResetOptions): void;
+  reset(seed?: number): void;
 
   /** A pure read of the state; changes nothing. */
   snapshot(): KesslerSnapshot;
 
   /**
-   * Enters screen `name` exactly as the real transition does, the entering
-   * menu highlighting its top entry. `playing` starts a fresh session as
-   * confirming START does; `waveclear` enters the interstitial as the
-   * clearing event does; `paused` freezes as `Escape` does; `gameover` shows
-   * score and wave as they stand; `title` discards the session as QUIT does;
-   * `howto` as confirming HOW TO PLAY does. No cue sounds at the call.
+   * Where the build drew menu entry `index` on the current screen, or `null`
+   * off a menu and for an `index` outside the menu's entries. It changes
+   * nothing.
+   */
+  menuItemRect(index: number): MenuItemRect | null;
+
+  /**
+   * Sets `screen` to `name` and changes nothing else: the score, the lives,
+   * the wave, the deflector, the balls, the rings, the pods, the timed
+   * effects, the shield, the interstitial timer, the menu highlight, and
+   * both driver switches all stand exactly as they stood. No cue sounds at
+   * the call.
    */
   setScreen(name: Screen): void;
 
@@ -195,6 +219,14 @@ export interface KesslerDebugApi {
   setScore(n: number): void;
   /** Sets the lives to `n`, a whole number of at least `0`. */
   setLives(n: number): void;
+  /**
+   * Sets the highlighted menu entry to `n`, a whole number from `0` to the
+   * current screen's entry count minus `1`. No cue sounds; off a menu the
+   * call changes nothing.
+   */
+  setMenuIndex(n: number): void;
+  /** Sets the interstitial timer to `ticks`, a whole number of at least `0`. */
+  setInterstitialTicks(ticks: number): void;
 
   /**
    * Sets the wave counter to `n` (whole, at least `1`) and puts the wave-`n`

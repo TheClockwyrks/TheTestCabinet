@@ -1,25 +1,18 @@
-// building/sell-clears-the-selection — selling the selected tower deselects, and
-// selling a different one leaves the selection where it was.
+// Meltdown — building/sell-clears-the-selection — selling the selected tower deselects.
 //
-// specs/building.md, Selling: "the selection is cleared when the tower sold was the
-// selected one. Selling a tower that was not selected leaves the selection where it
-// was." specs/building.md, Selecting, is where the field's shape comes from:
-// "Selecting is by tower: one tower is selected at a time, or none."
+// specs/building.md, Selling: "the selection is cleared when the tower sold was
+// the selected one." specs/building.md, Selecting, is where the field's shape
+// comes from: "Selecting is by tower: one tower is selected at a time, or none."
 //
-// TWO CLAUSES, AND BOTH HAVE TO BE READ, because a build that clears the selection on
-// EVERY sale satisfies the first on its own and is exactly as wrong as one that never
-// clears it. So two towers stand on the floor and B is selected throughout: selling A
-// must leave B selected, and selling B must leave nothing selected. Between them the
-// two readings name which of the two wrong builds was written — a build that always
-// clears fails the first, one that never clears fails the second.
+// ONE DIRECTION, BECAUSE THE OTHER IS ITS OWN POINT. A build that clears the
+// selection on EVERY sale satisfies this one and is exactly as wrong as one that
+// never clears it, so the second direction — selling a tower that was NOT selected
+// leaves the selection alone — is `building.sell-another-keeps-the-selection`'s,
+// and the two verdicts between them name which of the two wrong builds was
+// written.
 //
-// THE ORDER IS DELIBERATE. The sale that must NOT disturb the selection comes first,
-// while there is still another tower to sell; taking them the other way round would
-// leave nothing to make the second reading on.
-//
-// THE TWO TOWERS ARE POSED WITH `poseTower`, the atom, and stand on quiet anchors six
-// tiles apart, so neither is on a corridor and neither touches the other: the
-// requirement here is what a SALE does to the selection, and nothing about how either
+// THE TOWER IS POSED WITH `poseTower`, the atom, on a quiet anchor, so the
+// requirement here is what a SALE does to the selection and nothing about how the
 // tower got onto the floor is being graded.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -33,10 +26,9 @@ import {
 } from "../harness";
 import { freeSite } from "./sites";
 
-/** The two towers, on quiet anchors six tiles apart. */
+/** The tower sold, on a quiet anchor. */
 const HELD = "arc";
-const FIRST = freeSite(0);
-const SECOND = freeSite(1);
+const SITE = freeSite(0);
 
 /** Enough money that nothing here is about affordability. */
 const PURSE = 200;
@@ -51,25 +43,15 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("clears the selection on selling the selected tower and leaves it on selling another", async () => {
+it("clears the selection on selling the selected tower", async () => {
   startRun(h);
   h.debug.setMoney(PURSE);
-  const a = poseTower(h, HELD, FIRST.col, FIRST.row);
-  const b = poseTower(h, HELD, SECOND.col, SECOND.row);
+  const id = poseTower(h, HELD, SITE.col, SITE.row);
 
-  h.debug.setSelected(b);
-  assertEqual(h.snapshot().selected, b, "the tower the scenario selected");
+  h.debug.setSelected(id);
+  assertEqual(h.snapshot().selected, id, "the tower the scenario selected");
 
-  // Selling a tower that was not the selected one.
-  h.debug.sellTower(a);
-  assertEqual(
-    h.snapshot().selected,
-    b,
-    "the selection after selling the tower that was NOT selected",
-  );
-
-  // Selling the selected one.
-  h.debug.sellTower(b);
+  h.debug.sellTower(id);
   const after = h.snapshot();
 
   await h.advance(1);

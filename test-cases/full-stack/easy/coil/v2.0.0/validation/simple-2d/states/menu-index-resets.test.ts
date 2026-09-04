@@ -1,17 +1,18 @@
 // states/menu-index-resets — arriving at a menu-bearing screen highlights its
 // first item.
 //
-// specs/ui.md: "Arriving at any of these screens sets `menuIndex` to `0`." The
-// screen left is the title with its highlight moved OFF the first item, because a
-// build that simply never touches `menuIndex` would arrive on `0` from a screen
-// that was already on `0` and pass without doing anything.
+// specs/ui.md: "Arriving at `howto`, `paused`, `gameover`, or `cleared` sets
+// `menuIndex` to `0`." The screen arrived at is `howto`, and the title is left
+// with its highlight moved OFF the first item, because a build that simply never
+// touches `menuIndex` would arrive on `0` from a screen that was already on `0`
+// and pass without doing anything.
 //
 // The highlight is moved through the surface rather than by pressing `down`,
 // because which item `down` lands on is `controls/menu-highlight-moves`; what is
 // pressed here is the `confirm` that makes the crossing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

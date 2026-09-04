@@ -12,10 +12,10 @@
 // yet reporting an honest zero rather than a runner error.
 //
 // Both reporters write a FILE as well as the table, into `coverage/`, which this
-// project already ignores in git and in Prettier. The Test Cabinet reads the
-// recorded test results and coverage figures out of those two files and never
-// out of what the command printed, so a change to a reporter's terminal layout
-// can no longer change a recorded figure.
+// project already ignores in git and in Prettier. A machine-readable report is
+// what any tool reads a suite's results and its coverage out of, rather than
+// parsing what the command printed, so a change to a reporter's terminal layout
+// cannot change what a tool sees.
 //
 // Coverage is measured by ISTANBUL, not by v8. Istanbul instruments the source,
 // so a branch is an `if`, a ternary, a logical operator, a default parameter or a
@@ -44,8 +44,8 @@ export default defineConfig({
     environment: "node",
     passWithNoTests: true,
     // `default` keeps the human-readable run in the log; `json` writes the
-    // machine-readable report The Test Cabinet reads the recorded figures out of.
-    // Nothing is ever scraped back out of the terminal output.
+    // machine-readable report a tool reads the figures out of. Nothing is ever
+    // scraped back out of the terminal output.
     reporters: ["default", "json"],
     outputFile: { json: "coverage/test-report.json" },
     coverage: {

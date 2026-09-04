@@ -31,8 +31,10 @@ screen the game is in, and the game opens on `title`.
 `title`, `howto`, `paused`, `gameover`, and `cleared` carry a menu, and
 `menuIndex` is the highlighted item on each of them. The highlighted item
 is drawn distinctly from the others, so a player always sees which item `confirm`
-would accept. Arriving at any of these screens sets `menuIndex` to `0`. On
-`playing` the highlight is not shown and `menuIndex` rests at `0`.
+would accept. Arriving at `howto`, `paused`, `gameover`, or `cleared` sets
+`menuIndex` to `0`, and arriving at `title` sets it to `titleIndex`, as Menu
+input below states. On `playing` the highlight is not shown and `menuIndex` rests
+at `0`.
 
 ### `title`
 
@@ -104,6 +106,49 @@ the same screen under two headings.
 `confirm` on `PLAY AGAIN` starts a fresh round in the same mode. `MENU` returns
 to `title`. `back` returns to `title`. The final frame of the round may show
 behind the panel.
+
+## Menu input
+
+Every menu-bearing screen is driven by the keyboard, by a pointer, and by touch,
+over the items that screen shows. `specs/controls.md` fixes the keyboard actions
+and what each does on a menu, and each screen's section above fixes what
+`confirm` accepts there.
+
+### Pointer and touch
+
+Each menu item occupies a rectangular hit region the build lays out.
+`specs/instrumentation.md` states the reading the build reports an item's region
+through, in the logical units of `specs/overview.md`, so the menus keep the
+layout the build chose.
+
+| Input | Effect |
+| --- | --- |
+| A pointer moves onto an item's region | `menuIndex` becomes that item's index. |
+| A touch contact lands inside an item's region, or travels onto one | `menuIndex` becomes that item's index. |
+| A pointer is pressed and released inside one item's region | `menuIndex` becomes that item's index, and that item is confirmed. |
+| A touch contact lands and lifts inside one item's region | `menuIndex` becomes that item's index, and that item is confirmed. |
+
+A confirm takes both of its edges inside one item's region: the press and its
+release for a pointer, the landing and the lift for a touch contact. Two edges
+that fall in different regions, and an edge that falls outside every region,
+confirm no item. The item every confirm acts on is the item at `menuIndex`,
+whichever input raised it, and the effect is the one that screen carries for
+`confirm`.
+
+The pointer and the touch contacts are read once per frame, in the same input
+read as the keyboard actions, and are applied after that frame's keyboard edges.
+A press and the release that follows it may arrive on one frame, and that frame
+confirms. A pointer and a touch contact drive the menus directly rather than
+through an action, so neither steers the snake and neither is read on `playing`.
+
+### The remembered title selection
+
+`titleIndex` is the title menu's remembered selection, reported by the snapshot
+`specs/instrumentation.md` fixes and opening at `0`. Confirming an item on the
+title menu sets `titleIndex` to that item's index, from the keyboard, from a
+pointer, and from a touch contact alike. Returning to `title` from any screen
+sets `menuIndex` to `titleIndex`, so leaving `howto` lands back on `HOW TO PLAY`
+and leaving a round for the title lands back on the mode entry that started it.
 
 ## What advances on each screen
 

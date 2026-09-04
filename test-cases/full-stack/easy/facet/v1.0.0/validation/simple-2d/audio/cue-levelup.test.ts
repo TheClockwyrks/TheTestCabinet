@@ -69,17 +69,14 @@ import {
   assertLength,
   fail,
 } from "../assert";
-import { CUES, GRID_COLS, GRID_ROWS } from "../constants";
+import { CUES } from "../constants";
 import {
   hasAnyRun,
   legalSwapExists,
   maximalRuns,
-  parseRows,
   quietRowsWithEscape,
   swapIsLegal,
   swapped,
-  tokenAt,
-  type BoardRows,
   type CellRef,
   type PlacedToken,
 } from "../board";
@@ -92,6 +89,7 @@ import {
   requestSwap,
   stepDriveFrames,
   watchCues,
+  writeBoard,
   type Harness,
 } from "../harness";
 
@@ -117,18 +115,6 @@ const TO: CellRef = { col: 5, row: 3 };
 const SEARCH_MARGIN = 2;
 
 let h: Harness;
-
-/** Write every cell of a written board onto the live board, `setGem` by `setGem`. */
-function writeBoard(rows: BoardRows): void {
-  // Parsed on this side first, so a typo in the fixture fails here rather than
-  // crossing into the build one cell at a time.
-  parseRows(rows);
-  for (let row = 0; row < GRID_ROWS; row += 1) {
-    for (let col = 0; col < GRID_COLS; col += 1) {
-      h.debug.setGem(col, row, tokenAt(rows, col, row));
-    }
-  }
-}
 
 /** Run frames one at a time until `chainStep` reaches `step`, and name the frame. */
 async function stepFrame(step: number): Promise<number> {
@@ -228,7 +214,7 @@ it("plays the level-up cue on the frame the level is completed", async () => {
 
     // The board goes quiet under the running step, so the read that ends the
     // chain seeds nothing and the settle is the next thing that happens.
-    writeBoard(quiet);
+    writeBoard(h, quiet);
     assertEqual(
       h.snapshot().phase,
       "resolving",

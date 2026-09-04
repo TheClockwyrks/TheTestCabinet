@@ -11,7 +11,7 @@
 // that opens it, so a build that cannot pause fails `controls/p-pauses` alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   HOME_HEAD,

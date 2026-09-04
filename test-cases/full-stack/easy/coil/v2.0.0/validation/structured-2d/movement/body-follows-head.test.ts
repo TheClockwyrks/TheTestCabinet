@@ -40,6 +40,12 @@ const CHAIN: Cell[] = [
   { col: 9, row: 10 },
 ];
 
+/** Ticks of clear travel before the tick this point reads. */
+const RUN_UP = 3;
+
+/** Ticks run after it, so what it left behind is on the recording. */
+const SETTLE = 3;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -54,7 +60,13 @@ it("hands every segment the cell the one ahead of it held", async () => {
   const posed = poseScene(h, { snake: CHAIN, dir: "right", pellet: null });
   assertDeepEqual(posed.snake, CHAIN, "the posed chain");
 
-  const after = await captureReplay(h, "follow", () => h.tick());
+  const run = await captureReplay(h, "follow", async () => {
+    const before = await h.tick(RUN_UP);
+    const stepped = await h.tick();
+    await h.tick(SETTLE);
+    return { before, stepped };
+  });
+  const { before, stepped: after } = run;
 
   assertLength(
     after.snake,
@@ -63,13 +75,13 @@ it("hands every segment the cell the one ahead of it held", async () => {
   );
   assertDeepEqual(
     after.snake[0],
-    ahead(CHAIN[0], "right"),
+    ahead(before.snake[0], "right"),
     "the head after the tick",
   );
   for (let i = 1; i < CHAIN.length; i += 1) {
     assertDeepEqual(
       after.snake[i],
-      CHAIN[i - 1],
+      before.snake[i - 1],
       `segment ${i} takes the cell segment ${i - 1} held`,
     );
   }

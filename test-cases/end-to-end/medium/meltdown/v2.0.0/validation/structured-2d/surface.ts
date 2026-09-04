@@ -53,14 +53,25 @@ export type Phase = "opening" | "building" | "wave";
 
 /** The five modes. */
 export type ModeName =
-  "containment" | "hundred" | "deeppockets" | "bottleneck" | "suddendeath";
+  | "containment"
+  | "hundred"
+  | "deeppockets"
+  | "bottleneck"
+  | "suddendeath";
 
 /** The three difficulties. Containment alone offers a choice of them. */
 export type DifficultyName = "easy" | "medium" | "hard";
 
 /** The eight towers, in shop order. */
 export type TowerType =
-  "arc" | "stutter" | "rime" | "flak" | "bloom" | "lance" | "forge" | "sink";
+  | "arc"
+  | "stutter"
+  | "rime"
+  | "flak"
+  | "bloom"
+  | "lance"
+  | "forge"
+  | "sink";
 
 /** The six surge types. */
 export type SurgeType = "mote" | "sprint" | "hulk" | "swarm" | "drift" | "core";
@@ -107,6 +118,17 @@ export interface SnapshotControls {
   speed: ControlRect;
   pause: ControlRect;
   mute: ControlRect;
+}
+
+/**
+ * One row of the current screen's menu, as the build drew it.
+ *
+ * `index` is the row number `menuIndex` counts. `specs/screens.md` leaves the
+ * layout of a menu to the build and requires every row to be a pointer target,
+ * so the build reports what it drew and a scenario presses that rectangle.
+ */
+export interface MenuRow extends ControlRect {
+  index: number;
 }
 
 /** One tower on the floor, as a snapshot reports it. */
@@ -261,6 +283,11 @@ export interface MeltdownSnapshot {
     left: { length: number };
     top: { length: number };
   };
+  /**
+   * Every row of the menu the current screen shows, in row order from `0`, and
+   * empty while the screen is `playing`. Refreshed at the call.
+   */
+  menu: MenuRow[];
   controls: SnapshotControls;
   /** Every tower on the floor, in roster order. */
   towers: TowerSnapshot[];
@@ -285,7 +312,7 @@ export interface MeltdownSnapshot {
 export interface MeltdownDebugApi {
   version: number;
 
-  reset(options?: { seed?: number }): void;
+  reset(seed?: number): void;
   snapshot(): MeltdownSnapshot;
 
   setScreen(screen: Screen): void;

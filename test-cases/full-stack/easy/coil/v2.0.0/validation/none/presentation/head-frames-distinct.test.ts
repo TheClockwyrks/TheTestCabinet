@@ -24,10 +24,9 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, fail } from "../assert";
-import { HEAD_FILES } from "../constants";
+import { DIFFER_MIN_PIXELS, HEAD_FILES } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import {
-  DIFFER_MIN_PIXELS,
   decodeSprites,
   differingPixels,
   showSpriteFiles,

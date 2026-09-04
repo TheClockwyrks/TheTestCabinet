@@ -34,10 +34,15 @@ function listLine<T>(
   return rest > 0 ? `${shown}  +${rest} more` : shown;
 }
 
-/** The sources, each named and each a read through `read` at the call. */
+/**
+ * The sources, each named and each a read through `read` at the call.
+ *
+ * Every one answers a `string`, which is what the engine's registry takes: its
+ * `register` wants a `() => DiagnosticValue`, and `unknown` is wider than that.
+ */
 export function diagnosticSources(
   read: () => MeltdownState,
-): [string, () => unknown][] {
+): [string, () => string][] {
   return [
     ["screen", () => `${read().screen} / ${read().phase}`],
     ["mode", () => `${read().mode} / ${read().difficulty}`],

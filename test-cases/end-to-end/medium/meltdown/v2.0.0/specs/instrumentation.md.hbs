@@ -154,7 +154,7 @@ read and changes nothing.
 
 | Operation | Effect |
 | --- | --- |
-| `reset(options)` | Restores every declared field of the state to its title-screen value, listed below. |
+| `reset(seed)` | Restores every declared field of the state to its title-screen value, listed below. |
 | `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
 
 `reset` restores `screen` to `"title"`, `phase` to `"opening"`, `menuIndex` to
@@ -165,8 +165,8 @@ starting money that pair gives, `lives` to its starting lives, `score` to `0`,
 `0`. It empties the tower and surge rosters, clears the spawner's clock, and
 turns the world gate `waveSpawning` back on.
 
-`options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the
-game's randomness. `muted` is left exactly as it stands, because muting is a
+`seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the game's
+randomness. `muted` is left exactly as it stands, because muting is a
 player preference the runtime owns, and so is `pointer`, which mirrors something
 the runtime owns as well.
 {{#if (eq engine.slug "none")}}
@@ -373,6 +373,10 @@ present, so every operation is verifiable by setting a value and reading it back
     left: { length: <number> },             // left vent to right exhaust
     top:  { length: <number> },             // top vent to bottom exhaust
   },
+  // Every row of the menu the current screen shows, as its hit rectangle in
+  // logical stage units, in row order from 0, so a scripted scenario presses the
+  // row the build drew. Empty while the screen is `playing`.
+  menu: [ { index: <number>, x, y, w, h }, ... ],
   // Every control the build panel offers, as its hit rectangle in logical stage
   // units, so a scripted scenario operates the panel the build laid out.
   controls: {
@@ -464,6 +468,10 @@ Notes on the shape:
   point outward after the tower's placement rotation.
 - A unit's `baseSpeed` is its type's speed and its `speed` is that base reduced
   by any live slow. `slowed` is true exactly when `slowFactor` is above `0`.
+- `menu` reports where the current screen drew each of its menu rows, refreshed
+  at the call, in the row order `specs/screens.md` gives that menu and with
+  `index` matching the row number `menuIndex` counts. It is a diagnostic read: no
+  operation sets it and nothing in the game depends on it.
 - `controls` reports where the build panel put each control, refreshed at the
   call. It is a diagnostic read: no operation sets it and nothing in the game
   depends on it.

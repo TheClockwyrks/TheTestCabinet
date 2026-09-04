@@ -40,11 +40,17 @@ import {
   cloneState,
   consumeTime,
   handleActionDraft,
+  handlePointerDraft,
   type FlowIo,
   type KesslerState,
 } from "./flow";
 import { installSystems, spawnFx } from "./fx";
-import { heldRotation, pressedActions, registerActions } from "./input";
+import {
+  heldRotation,
+  pointerMoves,
+  pressedActions,
+  registerActions,
+} from "./input";
 import { renderGame } from "./render";
 import { COLORS } from "./theme";
 
@@ -100,7 +106,10 @@ export const game: Game<KesslerState, KesslerDebugApi> = {
    * must not also launch the ball on the play screen it just opened. Then the
    * frame's seconds are consumed into whole ticks, each tick playing its own
    * cues and raising its own particles, and the screen's music bed is
-   * reconciled on the state the frame leaves behind.
+   * reconciled on the state the frame leaves behind. The pointer's samples
+   * are routed between the two, in the order they arrived, because the menus
+   * answer the pointer and touch as well as the keyboard
+   * (`specs/controls.md`).
    */
   update(
     state: DeepReadonly<KesslerState>,
@@ -115,6 +124,7 @@ export const game: Game<KesslerState, KesslerDebugApi> = {
       if (!SCREEN_ACTIONS[arrivalScreen].includes(action)) continue;
       handleActionDraft(draft, action, io);
     }
+    for (const move of pointerMoves(api)) handlePointerDraft(draft, move, io);
 
     consumeTime(draft, dt, heldRotation(api), io);
     draft.lastFrameDt = dt;

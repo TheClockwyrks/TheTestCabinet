@@ -59,6 +59,7 @@ describe("the snapshot", () => {
         "snake",
         "steering",
         "ticks",
+        "titleIndex",
         "travel",
         "turns",
         "version",

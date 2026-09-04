@@ -192,8 +192,17 @@ export const BEST_LABEL = "BEST";
 export const GAMEOVER_TEXT = "GAME OVER";
 export const CLEARED_TEXT = "BOARD CLEARED";
 
-/** The title menu's second item. Its first is the mode's, below. */
+/**
+ * The title menu holds two items: the mode's entry, then `HOW TO PLAY`.
+ *
+ * The first is `specs/mode.md`'s `MODE_ITEM`, which is the mode's word and so
+ * sits under {@link MODE_LABEL} below; the second is the same on both modes.
+ */
+export const TITLE_ITEM_COUNT = 2;
+
+/** The title menu's second item, and the index it sits at. */
 export const HOWTO_ITEM = "HOW TO PLAY";
+export const HOWTO_INDEX = 1;
 
 export const PAUSE_ITEMS: readonly string[] = ["RESUME", "RESTART", "MENU"];
 
@@ -353,3 +362,54 @@ export const DISTINCT_MIN = 50;
 
 /** The greatest RGB distance there is, corner to corner of the cube. */
 export const DISTINCT_SPAN = Math.hypot(255, 255, 255);
+
+/**
+ * How much of a sprite must carry paint for it to be a sprite rather than a
+ * stray pixel: one hundredth of its area, which is ten pixels of a `32 x 32`.
+ *
+ * `specs/assets.md` requires each sprite to be pixel art that reads as its piece
+ * at one cell rather than an empty canvas, and fixes no coverage figure; this
+ * floor sits an order of magnitude below the thinnest outline any of the four
+ * pieces could legibly be drawn as.
+ */
+export const PAINT_MIN_SHARE = 0.01;
+
+/**
+ * How many pixels of two sprites must differ for them to be two sprites: four,
+ * which is the smallest square mark a player can see at one cell.
+ *
+ * `specs/assets.md` gives the head sheet four named poses and the body set three
+ * named pieces, and words the guard itself — frame `2` is to be "a visibly open
+ * mouth rather than a shifted pixel". Four pixels is a shifted pixel and no more.
+ */
+export const DIFFER_MIN_PIXELS = 4;
+
+/**
+ * How many rows of a sprite's joining edge must carry paint for the piece to
+ * join its neighbour: four of the 32 a cell holds.
+ *
+ * `specs/assets.md` requires the pieces to "join without a seam or a gap" at the
+ * cell boundary they share, and fixes no thickness; four rows is the thinnest run
+ * that reads as a join rather than as a stray pixel at the edge.
+ */
+export const JOIN_MIN_ROWS = 4;
+
+/**
+ * How much of the tail's far edge may be clear and still be a taper rather than
+ * a blunt end: half of it.
+ *
+ * `specs/assets.md` has the tail narrow toward the cell where it ends, so its far
+ * edge carries less paint than its joining edge. Half leaves a taper that stops
+ * short of the far edge, or one that ends in a blunt tip, comfortably inside.
+ */
+export const FREE_MAX_SHARE = 0.5;
+
+/**
+ * The peak sample a produced sound must reach to be carrying signal rather than
+ * silence: a hundredth of full scale, which is 40 dB down.
+ *
+ * `specs/assets.md` asks for four sounds a player hears and tells apart, and
+ * fixes no level, so what a check can honestly read is the difference between a
+ * sound and no sound.
+ */
+export const SILENCE_FLOOR = 0.01;

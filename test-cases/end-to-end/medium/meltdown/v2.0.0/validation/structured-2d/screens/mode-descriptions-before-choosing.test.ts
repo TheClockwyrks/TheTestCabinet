@@ -68,15 +68,26 @@ function namesAMode(text: string): boolean {
   return MODE_ITEMS.some((item) => upper.includes(item));
 }
 
+/**
+ * The rows a description is read on: the five that name a mode.
+ *
+ * `BACK` is the sixth row of `MODE_ITEMS` and is excluded, because
+ * specs/screens.md says of it that it "names no mode and draws no description".
+ */
+const MODE_ROWS: readonly { index: number; item: string }[] =
+  MODE_ITEMS.flatMap((item, index) =>
+    item === "BACK" ? [] : [{ index, item }],
+  );
+
 it("draws a different body of text for each of the five modes, and starts none of them", async () => {
   resetTo(h);
   h.debug.setScreen("modeselect");
 
   const bodies: string[][] = [];
-  for (const [index, item] of MODE_ITEMS.entries()) {
+  for (const [leg, { index, item }] of MODE_ROWS.entries()) {
     h.debug.setMenuIndex(index);
     const runs = await readScreen(h);
-    if (index === 0) captureStill(h, "description");
+    if (leg === 0) captureStill(h, "description");
 
     assertEqual(
       h.snapshot().screen,
@@ -96,11 +107,11 @@ it("draws a different body of text for each of the five modes, and starts none o
   }
 
   const rendered = bodies.map((body) => [...body].sort().join("\n"));
-  for (const [index, item] of MODE_ITEMS.entries()) {
-    for (const [other, otherItem] of MODE_ITEMS.entries()) {
-      if (other <= index) continue;
+  for (const [leg, { item }] of MODE_ROWS.entries()) {
+    for (const [other, { item: otherItem }] of MODE_ROWS.entries()) {
+      if (other <= leg) continue;
       assertNotEqual(
-        rendered[index],
+        rendered[leg],
         rendered[other],
         `the body of text drawn for ${item} differs from the one drawn for ${otherItem}`,
       );

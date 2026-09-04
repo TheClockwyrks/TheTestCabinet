@@ -9,7 +9,7 @@
 // board records where every gem stands and nothing about how it got there — so
 // `0` is the only answer a pose can give.
 //
-// WHY THIS IS A POINT OF ITS OWN RATHER THAN A REPETITION OF `board/load-board`.
+// WHY THIS IS A POINT OF ITS OWN RATHER THAN A REPETITION OF `board/load-board-carries-the-tokens`.
 // That point poses a board and reads the kinds, cuts and strains back. This one
 // poses a board OVER A FALLEN ONE. A build that writes the notation faithfully
 // but carries the figures the previous board was holding answers a pose from rest

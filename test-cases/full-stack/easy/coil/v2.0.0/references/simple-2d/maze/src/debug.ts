@@ -38,7 +38,7 @@ import {
 } from "./constants";
 import { resetSession, type CoilState } from "./game";
 import { HAS_OBSTACLES } from "./mode";
-import { menuItems } from "./menus";
+import { menuItemRect, menuItems, type MenuRect } from "./menus";
 import type { DeepReadonly } from "ts-essentials";
 
 /** The state every operation is handed: the engine's read-only view of it. */
@@ -51,6 +51,7 @@ export interface CoilSnapshot {
   version: number;
   screen: Screen;
   menuIndex: number;
+  titleIndex: number;
   mode: typeof MODE;
   score: number;
   best: number;
@@ -75,6 +76,7 @@ export interface CoilDebugApi {
   version: number;
   reset(state: View, options?: { seed?: number }): CoilState;
   snapshot(state: View): CoilSnapshot;
+  menuItemRect(state: View, index: number): MenuRect | null;
   setScreen(state: View, screen: Screen): CoilState;
   setMenuIndex(state: View, index: number): CoilState;
   setScore(state: View, points: number): CoilState;
@@ -168,6 +170,7 @@ export function createDebugApi(): CoilDebugApi {
         version: COIL_DEBUG_VERSION,
         screen: state.screen,
         menuIndex: state.menuIndex,
+        titleIndex: state.titleIndex,
         mode: MODE,
         score: state.score,
         best: state.best,
@@ -185,6 +188,21 @@ export function createDebugApi(): CoilDebugApi {
         travel: state.travel,
         pelletRespawn: state.pelletRespawn,
       };
+    },
+
+    /**
+     * The hit region item `index` occupies on the menu the current screen shows,
+     * in logical units. It reports position alone, so it poses nothing and
+     * returns no state.
+     *
+     * `null` on `playing`, which shows no menu, and whenever `index` names no
+     * item of the current menu: a caller asks where an item is before it knows
+     * what the menu holds, so an item that is not there is answered rather than
+     * refused.
+     */
+    menuItemRect(state, index) {
+      const value = requireWhole("menuItemRect(index)", index, 0);
+      return menuItemRect(state.screen, value);
     },
 
     /**

@@ -16,11 +16,16 @@
 // the CLOCK, and a clock belongs to whatever is driving the frames.
 // `pointerDown`, `pointerMove`, and `pointerUp` are in `controls.ts`, because
 // they are not stand-ins for the pointer at all but the very path a real
-// pointer takes. And the poses that move between screens — `start`, `openHowTo`,
-// `pause`, `resume`, `continueLevel`, `quit` — are the transitions in
-// `flow.ts`, posed as exactly the choices a player makes; `continueLevel` is
-// re-exported here so the whole level-clear pose is reachable from this module
-// as well.
+// pointer takes.
+//
+// Every operation here writes ONE element of the state, which is what
+// `specs/instrumentation.md` specifies: `setScreen` shows a screen and touches
+// nothing else, `loadBoard` writes the board and touches nothing else, and so
+// on. The menu choices a player makes — starting a round, opening the how-to
+// screen, pausing, resuming, continuing to the next level, quitting — are the
+// transitions in `flow.ts`, reached by the game's own input path. A caller that
+// wants a round posed writes the fields a round starts with, one operation at a
+// time.
 
 import { DEFAULT_SEED, FACET_DEBUG_VERSION } from "../constants";
 import {
@@ -36,6 +41,7 @@ import { lastFall, legalSwapExists } from "./rules";
 import { targetsFor } from "./targets";
 import {
   createInitialState,
+  EMPTY_BOARD,
   type Cell,
   type Cut,
   type FacetState,
@@ -43,8 +49,7 @@ import {
   type PointerDevice,
   type Screen,
 } from "./state";
-
-export { continueLevel } from "./flow";
+import { dealOpeningBoard } from "./deal";
 
 /** One cell as the snapshot reports it; `kind` is `null` for a prism. */
 export interface SnapshotCell {
@@ -201,40 +206,68 @@ export function reset(
   };
 }
 
+/** The screen shown. Nothing else changes. */
+export function setScreen(state: FacetState, screen: Screen): FacetState {
+  return { ...state, screen };
+}
+
+/** The highlighted menu item on whichever menu the screen shows, from `0`. */
+export function setMenuIndex(state: FacetState, index: number): FacetState {
+  return { ...state, menuIndex: Math.max(0, Math.floor(index)) };
+}
+
 /**
- * An arbitrary board posed, and the game moved to `playing` with the chain
- * settled, nothing selected, nothing offered, and nothing armed. Every gem of a
- * posed board is standing still in the cell it was written at, so every cell
- * reports a `fell` of `0`, which the notation gives it.
+ * An arbitrary board posed. Every gem of a posed board is standing still in the
+ * cell it was written at, so every cell reports a `fell` of `0`, which the
+ * notation gives it.
  *
- * A board posed this way is a board like any other: it rests exactly as it was
- * written until a swap is accepted on it, and the rules govern it unchanged
- * from there.
- *
- * `score`, `level`, `levelScore`, `moveScore`, `bestMove`, `bestChain`,
- * `rngState`, and `simTime` stand where they were, which is what lets a
- * scenario pose a board on top of a round in progress.
+ * The board is the whole of what it writes: the screen, the menu index, the
+ * phase and its timers, the selection, the offer, the refusal, and every figure
+ * of the round stand where they were. A board posed this way is a board like
+ * any other: it rests exactly as it was written until a swap is accepted on it,
+ * and the rules govern it unchanged from there.
  */
 export function loadBoard(
   state: FacetState,
   rows: readonly string[],
 ): FacetState {
+  return { ...state, board: parseBoard(rows) };
+}
+
+/**
+ * A fresh opening board dealt through the game's own code, so it holds no run
+ * under R4, carries at least one legal swap, and comes in from above. Only the
+ * board and the generator state it drew from change.
+ */
+export function dealBoard(state: FacetState): FacetState {
+  const deal = dealOpeningBoard(state.rngState);
+  return { ...state, board: deal.board, rngState: deal.rngState };
+}
+
+/** No board in play. Nothing else changes. */
+export function clearBoard(state: FacetState): FacetState {
+  return { ...state, board: EMPTY_BOARD };
+}
+
+/**
+ * Resolution settled: the swap or the chain step in motion dropped and the
+ * phase back at `idle` with the resting timers an idle board reports. The
+ * board is left exactly as the dropped step found it.
+ */
+export function clearChain(state: FacetState): FacetState {
   return {
     ...state,
-    screen: "playing",
-    menuIndex: 0,
-    board: parseBoard(rows),
     phase: "idle",
     chainStep: 0,
     swapTimer: 0,
     stepTimer: 0,
     chainSwap: null,
-    selection: null,
-    offer: null,
-    refusal: null,
-    refusalTimer: 0,
-    armedTarget: null,
   };
+}
+
+/** No refusal standing, whatever time the standing one had left. */
+export function clearRefusal(state: FacetState): FacetState {
+  return { ...state, refusal: null, refusalTimer: 0 };
 }
 
 /**
@@ -285,6 +318,11 @@ export function setBestChain(state: FacetState, chainStep: number): FacetState {
 /** `bestMove` set. Nothing else changes, and `moveScore` is its own figure. */
 export function setBestMove(state: FacetState, points: number): FacetState {
   return { ...state, bestMove: points };
+}
+
+/** `moveScore` set. Nothing else changes, and `bestMove` is its own figure. */
+export function setMoveScore(state: FacetState, points: number): FacetState {
+  return { ...state, moveScore: points };
 }
 
 /** A cell made the selection, whatever was selected before. No swap is asked. */

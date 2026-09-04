@@ -28,7 +28,7 @@ import {
   type Dir,
 } from "./constants";
 import { SCREENS, type Game, type Screen } from "./game";
-import { menuItems } from "./menus";
+import { menuItemRect, menuItems, type MenuRect } from "./menus";
 import { HAS_OBSTACLES, MODE, type Mode } from "./mode";
 import { isAdjacent } from "./sim";
 
@@ -40,6 +40,7 @@ export interface CoilSnapshot {
   version: number;
   screen: Screen;
   menuIndex: number;
+  titleIndex: number;
   mode: Mode;
   score: number;
   best: number;
@@ -76,6 +77,7 @@ export interface CoilDebugApi {
   advance(seconds: number, frames?: number): void;
   reset(options?: { seed?: number }): void;
   snapshot(): CoilSnapshot;
+  menuItemRect(index: number): MenuRect | null;
   setScreen(screen: Screen): void;
   setMenuIndex(index: number): void;
   setScore(points: number): void;
@@ -197,6 +199,7 @@ export function createDebugApi(game: Game, clock: DebugClock): CoilDebugApi {
         version: COIL_DEBUG_VERSION,
         screen: game.screen,
         menuIndex: game.menuIndex,
+        titleIndex: game.titleIndex,
         mode: MODE,
         score: sim.score,
         best: game.best,
@@ -220,6 +223,20 @@ export function createDebugApi(game: Game, clock: DebugClock): CoilDebugApi {
         travel: sim.travel,
         pelletRespawn: sim.pelletRespawn,
       };
+    },
+
+    /**
+     * The hit region item `index` occupies on the menu the current screen shows,
+     * in logical units. It reports position alone and changes nothing.
+     *
+     * `null` on `playing`, which shows no menu, and whenever `index` names no
+     * item of the current menu: a caller asks where an item is before it knows
+     * what the menu holds, so an item that is not there is answered rather than
+     * refused.
+     */
+    menuItemRect(index) {
+      const value = requireWhole("menuItemRect(index)", index, 0);
+      return menuItemRect(game.screen, value);
     },
 
     /**

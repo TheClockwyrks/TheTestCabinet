@@ -1,5 +1,5 @@
 // board/obstacles-layout — the course a round is laid with is the eighteen cells
-// specs/mode.md fixes, and it stands still while the round runs.
+// specs/mode.md fixes.
 //
 // WHAT THE SPECIFICATION FIXES. specs/mode.md names `OBSTACLE_CELLS` as four
 // bars, tabulated cell by cell, and says of them: "They are the same cells in
@@ -13,13 +13,9 @@
 // of the course missing, no cell on the board that the course does not name, and
 // no cell laid twice.
 //
-// AND THEN THE ROUND IS RUN. "They never change while a round runs" is a second
-// sentence and a second read: the round's own opening chain is walked down the
-// starting row, with the pellet off the board so nothing is eaten and nothing
-// grows, and the list is read again. A build that lays the course from a
-// generator, or that drops a cell the head passes beside, differs between the two
-// reads. Nothing is posed onto the board for the walk, so the only thing that can
-// go wrong between the two reads is the thing this point is about.
+// "They never change while a round runs" is a second sentence and a second point,
+// `board/obstacles-stand-still`: a build that lays the right cells and then drops
+// one the head passes beside fails that one and passes this.
 //
 // The Classic mode lays no obstacle cell, and this point belongs only to the mode
 // that lays a course.
@@ -33,14 +29,6 @@ import {
   poseScene,
   type Harness,
 } from "../harness";
-
-/**
- * Ticks the round is run for before the course is read a second time.
- *
- * The opening chain of specs/board.md heads right from `(15, 8)`, so twelve ticks
- * carry it to `(27, 8)` and leave it inside the border.
- */
-const TICKS = 12;
 
 /** A cell as one comparable string, so two courses compare as sets. */
 function keys(cells: readonly Cell[]): string[] {
@@ -57,7 +45,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("lays exactly the fixed course, and holds it through the round", async () => {
+it("lays exactly the fixed course", async () => {
   const laid = await poseScene(h, { obstacles: "course", pellet: null });
   await h.advance(1);
   await captureStill(h, "layout");
@@ -71,12 +59,5 @@ it("lays exactly the fixed course, and holds it through the round", async () => 
     keys(laid.obstacles),
     keys(MAZE_OBSTACLES),
     "the course the board carries, as a set of cells",
-  );
-
-  const played = await h.tick(TICKS);
-  assertDeepEqual(
-    keys(played.obstacles),
-    keys(MAZE_OBSTACLES),
-    `the course after ${TICKS} ticks of play, as a set of cells`,
   );
 });

@@ -7,10 +7,10 @@
 // `confirm` on the wrong thing for a player who has just loaded the game and
 // pressed it.
 //
-// The word is stated here rather than read off the seeded `src/constants.ts`,
-// which carries whichever mode's copy the project was seeded with: this point is
-// one of the three each mode states its own version of, so the entry it is about
-// is the one specs/mode.md fixes for THIS mode.
+// The word is stated here rather than read off the build, and it is stated
+// LITERALLY rather than taken from this project's mode table: this point is one
+// of the three each mode states its own version of, so the entry it is about is
+// the one specs/mode.md fixes for THIS mode.
 //
 // Order is read from where the two runs were anchored, mapped through whatever
 // transform the build drew under, and `specs/controls.md` makes the highlight
@@ -21,8 +21,8 @@
 // whose menus do not work still has this point decided on what it draws.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_ITEMS } from "../../src/constants";
 import { assertEqual, assertLessThan, fail } from "../assert";
+import { HOWTO_ITEM } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -34,9 +34,6 @@ import { topmostRunY } from "./copy";
 
 /** `MODE_ITEM` for this mode, as specs/mode.md tables it. */
 const MODE_ITEM = "CLASSIC";
-
-/** `HOW TO PLAY` is the second item of `TITLE_ITEMS` (specs/ui.md). */
-const HOWTO_ITEM = TITLE_ITEMS[1];
 
 let h: Harness;
 

@@ -51,10 +51,17 @@ describe("the core's surface", () => {
       "snapshot",
       "reset",
       "loadBoard",
+      "dealBoard",
+      "clearBoard",
+      "clearChain",
+      "clearRefusal",
+      "setScreen",
+      "setMenuIndex",
       "setOffer",
       "clearOffer",
       "setBestChain",
       "setBestMove",
+      "setMoveScore",
       "poseSwap",
     ]) {
       expect(typeof core[name as keyof typeof core]).toBe("function");

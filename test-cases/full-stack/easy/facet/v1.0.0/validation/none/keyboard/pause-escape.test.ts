@@ -20,11 +20,11 @@
 // and fails exactly here. What the same key does on a screen `back` acts on is
 // `keyboard/back-key`'s point.
 //
-// THE KEY IS REAL, NOT POSED. specs/instrumentation.md carries a `pause()`
-// operation that arranges the same screen, and driving that would prove the
-// screen exists while saying nothing about the binding — which is the whole
-// point. The key is pressed through the real input path instead, and the frame
-// that press runs is what the screen is read after.
+// THE KEY IS REAL, NOT POSED. `setScreen("paused")` arranges the same screen,
+// and driving that would prove the screen exists while saying nothing about the
+// binding — which is the whole point. The key is pressed through the real input
+// path instead, and the frame that press runs is what the screen is read
+// after.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

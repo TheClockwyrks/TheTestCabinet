@@ -3,13 +3,13 @@
 //
 // specs/ui.md gives `levelclear` two items and this is the second: "`QUIT` — Sets
 // `screen = title` and `menuIndex = 0`, abandoning the round."
-// specs/instrumentation.md poses that choice as `quit()`, "the choice of `QUIT`,
-// which the pause menu and the game-over menu both offer", and says what it
-// leaves: "the screen becomes `title` with its first menu item highlighted, no
-// board is in play".
+// specs/ui.md then says what the title holds: "No board is in play on this
+// screen", and specs/instrumentation.md fixes the resting values a snapshot
+// reports for that.
 //
-// WHY IT IS ITS OWN POINT. It is the same choice `screens/quit-to-title` reads
-// from the pause and game-over menus, offered from a THIRD screen. A build wires
+// WHY IT IS ITS OWN POINT. It is the same choice `screens/quit-from-paused` and
+// `screens/quit-from-gameover` read from their own menus, offered from a THIRD
+// screen. A build wires
 // a menu screen at a time, so one that answered QUIT on the two menus a player
 // meets more often can still strand a player on a cleared level, and nothing else
 // in this checklist would see it. specs/ui.md also says `back` does nothing on
@@ -32,6 +32,7 @@ import {
   assertLength,
   assertTrue,
 } from "../assert";
+import { LEVELCLEAR_ITEMS } from "../constants";
 import {
   hasAnyRun,
   quietRowsWithEscape,
@@ -45,6 +46,7 @@ import {
   loadBoard,
   resolveChain,
   swapAndStep,
+  takeMenuItem,
   type Harness,
 } from "../harness";
 
@@ -60,6 +62,9 @@ const RUN_SWAP: { a: CellRef; b: CellRef } = {
   a: { col: 3, row: 3 },
   b: { col: 3, row: 4 },
 };
+
+/** Where `QUIT` sits on the level-clear menu, from specs/ui.md's `LEVELCLEAR_ITEMS`. */
+const LEVELCLEAR_QUIT_INDEX = LEVELCLEAR_ITEMS.indexOf("QUIT");
 
 let h: Harness;
 
@@ -95,7 +100,10 @@ it("returns to the title with no board in play", async () => {
     "the screen QUIT is offered from",
   );
 
-  await h.debug.quit();
+  // QUIT is really CHOSEN, which is what the item says: the highlight is
+  // posed onto it — `setMenuIndex` takes no item — and `confirm` is what takes
+  // it, through the key specs/controls.md binds and the build's own input path.
+  await takeMenuItem(h, LEVELCLEAR_QUIT_INDEX);
 
   // The frame the title is drawn on, and the picture of it.
   await h.advance(1);

@@ -31,7 +31,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { CUES } from "../../src/constants";
+import { CUES } from "../constants";
 import {
   captureReplay,
   createHarness,

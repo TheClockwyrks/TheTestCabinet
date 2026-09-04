@@ -14,11 +14,11 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween } from "../assert";
 import {
-  INTERIOR_MAX_COL,
-  INTERIOR_MAX_ROW,
-  INTERIOR_MIN_COL,
-  INTERIOR_MIN_ROW,
-} from "../../src/constants";
+  INTERIOR_COL_MAX,
+  INTERIOR_ROW_MAX,
+  INTERIOR_COL_MIN,
+  INTERIOR_ROW_MIN,
+} from "../constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import { driveEats } from "./eats";
 
@@ -43,14 +43,14 @@ it("places every pellet inside the interior specs/board.md fixes", async () => {
   for (const [index, placed] of run.placements.entries()) {
     assertBetween(
       placed.pellet.col,
-      INTERIOR_MIN_COL,
-      INTERIOR_MAX_COL,
+      INTERIOR_COL_MIN,
+      INTERIOR_COL_MAX,
       `the column of pellet ${index + 1} of ${EATS}`,
     );
     assertBetween(
       placed.pellet.row,
-      INTERIOR_MIN_ROW,
-      INTERIOR_MAX_ROW,
+      INTERIOR_ROW_MIN,
+      INTERIOR_ROW_MAX,
       `the row of pellet ${index + 1} of ${EATS}`,
     );
   }

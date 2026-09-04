@@ -174,7 +174,7 @@ it("leaves muting exactly as it stands, both ways", async () => {
   await tapAction(h, "mute");
   const pressed = (await h.snapshot()).muted;
   await poseADivergentRun();
-  await h.debug.reset({ seed: DEFAULT_SEED });
+  await h.debug.reset(DEFAULT_SEED);
   assertEqual(
     (await h.snapshot()).muted,
     pressed,

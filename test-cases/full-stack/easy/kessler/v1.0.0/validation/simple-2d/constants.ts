@@ -42,7 +42,10 @@ export const SHIELD_CONTACT_RADIUS = 100;
 /** The deflector track annulus. */
 export const DEFLECTOR_TRACK_INNER = 170;
 export const DEFLECTOR_TRACK_OUTER = 186;
-/** Deflector ball contact radius, crossed inward within the span. */
+/**
+ * Deflector ball contact radius, crossed inward within the span. A parked ball
+ * also sits at this radius, at the deflector's center angle.
+ */
 export const DEFLECTOR_BALL_CONTACT_RADIUS = 194;
 /** Deflector pod catch radius, crossed inward within the span. */
 export const DEFLECTOR_POD_CATCH_RADIUS = 196;
@@ -287,6 +290,9 @@ export const POD_SPRITES: Readonly<Record<string, string>> = {
 export const BALL_SPRITES: readonly string[] = [0, 1, 2, 3, 4, 5].map(
   (frame) => `sprites/ball/${frame}.png`,
 );
+/** The least each bed runs before it loops, in seconds. */
+export const MUSIC_MIN_SECONDS = 12;
+
 /** Sprite canvas sizes, in pixels (drawn 1:1 in logical units). */
 export const PLANET_SPRITE_SIZE = 160;
 export const PLANET_DISC_SIZE = 140;

@@ -10,6 +10,9 @@
 // `step` runs whole ticks immediately, each followed by a render, so a
 // stepped scenario's canvas always reflects its state.
 //
+// The pointer's samples are drained in the same pass, in arrival order, so a
+// press and the release that follows it reach the menus as two moments.
+//
 // A press is routed against the screen that was up when the frame began, so
 // the `Space` that confirms START does not also launch on the play screen it
 // opens: `Space` carries both `confirm` and `launch`, and the two never
@@ -21,7 +24,7 @@ import { SCREEN_ACTIONS, TICK_DT } from "./constants";
 import type { Diagnostics } from "./diagnostics";
 import type { Fx } from "./fx";
 import type { Game } from "./game";
-import type { Keyboard } from "./input";
+import type { Keyboard, Pointer } from "./input";
 import { drawOverlay } from "./overlay";
 import { render } from "./render";
 import { syncCanvas } from "./viewport";
@@ -39,6 +42,7 @@ export class Runtime {
   private readonly game: Game;
   private readonly assets: Assets;
   private readonly keyboard: Keyboard;
+  private readonly pointer: Pointer;
   private readonly diagnostics: Diagnostics;
   private readonly audio: WebAudioBus;
   private readonly fx: Fx;
@@ -53,6 +57,7 @@ export class Runtime {
     game: Game;
     assets: Assets;
     keyboard: Keyboard;
+    pointer: Pointer;
     diagnostics: Diagnostics;
     audio: WebAudioBus;
     fx: Fx;
@@ -62,6 +67,7 @@ export class Runtime {
     this.game = options.game;
     this.assets = options.assets;
     this.keyboard = options.keyboard;
+    this.pointer = options.pointer;
     this.diagnostics = options.diagnostics;
     this.audio = options.audio;
     this.fx = options.fx;
@@ -120,6 +126,9 @@ export class Runtime {
     for (const action of this.keyboard.drainEdges()) {
       if (answered.includes(action)) this.game.handleAction(action);
     }
+    // The menus answer the pointer and touch as well as the keyboard
+    // (specs/controls.md), and each sample is routed in arrival order.
+    for (const move of this.pointer.drain()) this.game.handlePointer(move);
   }
 
   /** Draw the frame the state describes, and keep the right bed looping. */

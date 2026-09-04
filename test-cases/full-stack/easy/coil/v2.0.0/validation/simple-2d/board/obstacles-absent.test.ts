@@ -29,11 +29,11 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import {
-  INTERIOR_MAX_COL,
-  INTERIOR_MAX_ROW,
-  INTERIOR_MIN_COL,
-  INTERIOR_MIN_ROW,
-} from "../../src/constants";
+  INTERIOR_COL_MAX,
+  INTERIOR_ROW_MAX,
+  INTERIOR_COL_MIN,
+  INTERIOR_ROW_MIN,
+} from "../constants";
 import {
   captureStill,
   createHarness,
@@ -44,16 +44,16 @@ import {
 } from "../harness";
 
 /** Cells across the interior, so `COLS - 1` ticks carry the head along a row. */
-const COLS = INTERIOR_MAX_COL - INTERIOR_MIN_COL + 1;
+const COLS = INTERIOR_COL_MAX - INTERIOR_COL_MIN + 1;
 
 /** Interior rows, each walked end to end. */
-const ROWS = INTERIOR_MAX_ROW - INTERIOR_MIN_ROW + 1;
+const ROWS = INTERIOR_ROW_MAX - INTERIOR_ROW_MIN + 1;
 
 /** The chain posed at the start of the walk, head first, along the top row. */
 const START: readonly Cell[] = [
-  { col: 3, row: INTERIOR_MIN_ROW },
-  { col: 2, row: INTERIOR_MIN_ROW },
-  { col: 1, row: INTERIOR_MIN_ROW },
+  { col: 3, row: INTERIOR_ROW_MIN },
+  { col: 2, row: INTERIOR_ROW_MIN },
+  { col: 1, row: INTERIOR_ROW_MIN },
 ];
 
 /**
@@ -89,14 +89,14 @@ it("reports no obstacle, and carries the head over every interior cell", async (
   );
 
   let walked: CoilSnapshot = opened;
-  for (let row = INTERIOR_MIN_ROW; row <= INTERIOR_MAX_ROW; row += 1) {
-    if (row > INTERIOR_MIN_ROW) {
+  for (let row = INTERIOR_ROW_MIN; row <= INTERIOR_ROW_MAX; row += 1) {
+    if (row > INTERIOR_ROW_MIN) {
       h.debug.setDirection("down");
       walked = await h.tick(1);
     }
-    const rightwards = (row - INTERIOR_MIN_ROW) % 2 === 0;
+    const rightwards = (row - INTERIOR_ROW_MIN) % 2 === 0;
     h.debug.setDirection(rightwards ? "right" : "left");
-    walked = await h.tick(row === INTERIOR_MIN_ROW ? COLS - 3 : COLS - 1);
+    walked = await h.tick(row === INTERIOR_ROW_MIN ? COLS - 3 : COLS - 1);
   }
 
   await h.advance(1);

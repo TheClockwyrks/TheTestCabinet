@@ -10,7 +10,7 @@ import {
   type Cue,
 } from "./constants";
 import { Game, type AudioBus } from "./game";
-import { menuItems } from "./menus";
+import { menuItemRect, menuItems } from "./menus";
 
 /** An audio bus that records what it was asked for, and makes no sound. */
 class RecordingBus implements AudioBus {
@@ -43,6 +43,9 @@ beforeEach(() => {
   audio = new RecordingBus();
   game = new Game(audio);
 });
+
+/** `HOW TO PLAY` is the second item of the title menu (specs/ui.md). */
+const HOWTO_INDEX = 1;
 
 /** A straight chain of `length` cells running left from `(col, row)`. */
 function chain(col: number, row: number, length: number): Cell[] {
@@ -411,5 +414,82 @@ describe("reset", () => {
     game.handleAction("mute");
     game.reset(1);
     expect(game.muted).toBe(true);
+  });
+});
+
+describe("the pointer and the touch contact over the menus", () => {
+  /** The middle of item `index`'s region on the screen the game is on. */
+  function middleOf(index: number): { x: number; y: number } {
+    const rect = menuItemRect(game.screen, index);
+    if (rect === null) throw new Error(`no item ${index} on ${game.screen}`);
+    return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+  }
+
+  it("selects the item a move arrives over, confirming nothing", () => {
+    const at = middleOf(HOWTO_INDEX);
+    game.handlePointer("move", at.x, at.y);
+    expect(game.menuIndex).toBe(HOWTO_INDEX);
+    expect(game.screen).toBe("title");
+  });
+
+  it("confirms the item a press and its release both fall inside", () => {
+    const at = middleOf(HOWTO_INDEX);
+    game.handlePointer("down", at.x, at.y);
+    game.handlePointer("up", at.x, at.y);
+    expect(game.screen).toBe("howto");
+  });
+
+  it("confirms nothing when the two edges fall in different items", () => {
+    const from = middleOf(HOWTO_INDEX);
+    const to = middleOf(0);
+    game.handlePointer("down", from.x, from.y);
+    game.handlePointer("move", to.x, to.y);
+    game.handlePointer("up", to.x, to.y);
+    expect(game.screen).toBe("title");
+    expect(game.menuIndex).toBe(0);
+  });
+
+  it("confirms nothing when an edge falls outside every region", () => {
+    const at = middleOf(HOWTO_INDEX);
+    game.handlePointer("down", at.x, at.y);
+    game.handlePointer("up", 0, 0);
+    expect(game.screen).toBe("title");
+  });
+
+  it("is not read on the playing screen, which shows no menu", () => {
+    const at = middleOf(HOWTO_INDEX);
+    game.startRound();
+    game.handlePointer("down", at.x, at.y);
+    game.handlePointer("up", at.x, at.y);
+    expect(game.screen).toBe("playing");
+    expect(game.menuIndex).toBe(0);
+  });
+});
+
+describe("the remembered title selection", () => {
+  it("opens at zero", () => {
+    expect(game.titleIndex).toBe(0);
+  });
+
+  it("follows the item the title confirmed, whichever input confirmed it", () => {
+    game.handleAction("down");
+    game.handleAction("confirm");
+    expect(game.screen).toBe("howto");
+    expect(game.titleIndex).toBe(HOWTO_INDEX);
+  });
+
+  it("is where the title opens on the way back", () => {
+    game.handleAction("down");
+    game.handleAction("confirm");
+    game.handleAction("back");
+    expect(game.screen).toBe("title");
+    expect(game.menuIndex).toBe(HOWTO_INDEX);
+  });
+
+  it("leaves every other screen opening on its first item", () => {
+    game.handleAction("down");
+    game.handleAction("confirm");
+    game.goTo("paused");
+    expect(game.menuIndex).toBe(0);
   });
 });

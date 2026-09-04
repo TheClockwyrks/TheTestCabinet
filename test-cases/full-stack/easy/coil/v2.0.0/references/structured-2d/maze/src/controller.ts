@@ -17,7 +17,7 @@
 
 import { PlayerController } from "@test-cabinet/structured-2d";
 import { startMusic } from "./audio";
-import { handleAction } from "./flow";
+import { handleAction, handlePointer } from "./flow";
 import { coilState } from "./game";
 import { pressedActions } from "./input";
 
@@ -30,6 +30,12 @@ export class CoilController extends PlayerController {
       } else if (handleAction(state, action).roundBegan) {
         // The one thing routing does that the state cannot record: a round
         // BEGAN, which `specs/ui.md` sounds the music bed on.
+        startMusic(this.world.audio);
+      }
+    }
+    // After the frame's keyboard edges, as `specs/ui.md` states.
+    for (const sample of this.input.pointerSamples()) {
+      if (handlePointer(state, sample).roundBegan) {
         startMusic(this.world.audio);
       }
     }

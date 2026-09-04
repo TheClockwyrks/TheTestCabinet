@@ -27,6 +27,12 @@ const BEST = 100;
 /** The score the tick begins on: one eat carries it five past the best. */
 const SCORE = BEST - PELLET_POINTS + 5;
 
+/** Ticks of clear travel before the head reaches the pellet. */
+const RUN_UP = 3;
+
+/** Ticks run after the eat, so what it left behind is on the recording. */
+const SETTLE = 3;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -43,10 +49,16 @@ it("raises the best to the score on the tick the score overtakes it", async () =
     best: BEST,
     combo: 1,
     comboWindow: 0,
+    runUp: RUN_UP + 1,
   });
   assertEqual(posed.snapshot.best, BEST, "the best the round is carrying");
 
-  const after = await captureReplay(h, "best", () => h.tick());
+  const after = await captureReplay(h, "best", async () => {
+    await h.tick(RUN_UP);
+    const eaten = await h.tick();
+    await h.tick(SETTLE);
+    return eaten;
+  });
 
   assertEqual(after.screen, "playing", "the screen the reading is taken on");
   assertEqual(after.score, SCORE + PELLET_POINTS, "the score after the eat");

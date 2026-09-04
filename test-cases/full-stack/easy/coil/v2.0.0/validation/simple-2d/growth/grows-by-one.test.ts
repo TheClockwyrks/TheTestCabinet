@@ -27,6 +27,12 @@ import {
 /** The chain posed under the eat: long enough that a kept tail is visibly kept. */
 const LENGTH = 5;
 
+/** Ticks of clear travel before the head reaches the pellet. */
+const RUN_UP = 3;
+
+/** Ticks run after the eat, so what it left behind is on the recording. */
+const SETTLE = 3;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -38,11 +44,16 @@ afterEach(() => {
 });
 
 it("keeps the tail and adds the head on the tick that eats", async () => {
-  const scene = arrangeEat(h, { length: LENGTH });
-  const before = scene.snapshot;
-  assertLength(before.snake, LENGTH, "the posed chain");
+  const scene = arrangeEat(h, { length: LENGTH, runUp: RUN_UP + 1 });
+  assertLength(scene.snapshot.snake, LENGTH, "the posed chain");
 
-  const after = await captureReplay(h, "grow", () => h.tick());
+  const run = await captureReplay(h, "grow", async () => {
+    const before = await h.tick(RUN_UP);
+    const eaten = await h.tick();
+    await h.tick(SETTLE);
+    return { before, eaten };
+  });
+  const { before, eaten: after } = run;
 
   assertDeepEqual(after.snake[0], scene.pellet, "the head on the eaten cell");
   assertLength(after.snake, LENGTH + 1, "the chain after the eat");
@@ -51,5 +62,5 @@ it("keeps the tail and adds the head on the tick that eats", async () => {
     before.snake[before.snake.length - 1],
     "the tail cell the eat kept",
   );
-  assertEqual(after.ticks, 1, "ticks resolved");
+  assertEqual(after.ticks, RUN_UP + 1, "ticks resolved");
 });

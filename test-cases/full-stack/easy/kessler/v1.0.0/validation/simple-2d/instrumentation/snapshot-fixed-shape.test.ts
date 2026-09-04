@@ -46,6 +46,12 @@ it("carries the whole documented shape on every screen", async () => {
     assertEqual(typeof s.wave, "number", `wave on ${screen}`);
     assertEqual(typeof s.score, "number", `score on ${screen}`);
     assertEqual(typeof s.lives, "number", `lives on ${screen}`);
+    assertEqual(typeof s.seed, "number", `seed on ${screen}`);
+    assertEqual(
+      typeof s.interstitialTicks,
+      "number",
+      `interstitialTicks on ${screen}`,
+    );
     assertEqual(typeof s.waveAdvance, "boolean", `waveAdvance on ${screen}`);
     assertEqual(typeof s.podSpawn, "boolean", `podSpawn on ${screen}`);
     assertEqual(Array.isArray(s.balls), true, `balls on ${screen}`);

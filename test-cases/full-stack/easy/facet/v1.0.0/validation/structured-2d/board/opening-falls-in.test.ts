@@ -21,7 +21,7 @@
 // granted. So `board.ts` expresses a dealt gem's fall as `{ atLeast: row + 1 }`
 // and `assertFell` reads it as the bound it is.
 //
-// WHERE THE READING IS TAKEN. On the board `start` left, with no frame advanced.
+// WHERE THE READING IS TAKEN. On the board the deal left, with no frame advanced.
 // `loadBoard` and `setGem` both give a gem a `fell` of `0`, and a step's own R9
 // writes the figure again, so a reading taken after the game had run would be
 // about whatever happened since rather than about what the deal wrote.
@@ -29,8 +29,8 @@
 // WHY SEVERAL SEEDS. Each seed is a different draw off the build's own random
 // source, and the property has to hold of every board it deals rather than of a
 // lucky one. specs/instrumentation.md makes a round from a known deal `reset`
-// carrying a seed followed by `start`, which is what the sweep below does twelve
-// times.
+// carrying a seed followed by a `dealBoard`, which is what the harness's
+// `startRound` runs and what the sweep below does twelve times.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
@@ -83,7 +83,7 @@ afterEach(() => {
 it("deals every gem in from above its own row, from every seed", async () => {
   for (const seed of SEEDS) {
     // The evidence is the first deal's worth, and the reading it is taken from
-    // is the one `start` returned, before the recorded frames ran.
+    // is the one the deal returned, before the recorded frames ran.
     const opened =
       seed === SEEDS[0]
         ? await captureReplay(h, "deal", async () => {

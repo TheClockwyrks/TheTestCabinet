@@ -19,7 +19,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual } from "../assert";
-import { COMBO_WINDOW, TICK_SECONDS } from "../../src/constants";
+import { COMBO_WINDOW, TICK_SECONDS } from "../constants";
 import {
   arrangeEat,
   captureReplay,
@@ -29,6 +29,12 @@ import {
 
 /** Seconds left on the window at the eat: one tick's worth, and still open. */
 const NEARLY_SPENT = TICK_SECONDS;
+
+/** Ticks of clear travel before the head reaches the pellet. */
+const RUN_UP = 3;
+
+/** Ticks run after the eat, so what it left behind is on the recording. */
+const SETTLE = 3;
 
 let h: Harness;
 
@@ -41,17 +47,28 @@ afterEach(() => {
 });
 
 it("puts a full window back on the tick that ate", async () => {
-  const scene = arrangeEat(h, { combo: 2, comboWindow: NEARLY_SPENT });
-  assertCloseTo(
-    scene.snapshot.comboWindow,
-    NEARLY_SPENT,
-    9,
-    "the window before the eat",
-  );
+  // The window is posed with the run-up's ticks still on it, so it is down to
+  // `NEARLY_SPENT` by the time the eat resolves.
+  arrangeEat(h, {
+    combo: 2,
+    comboWindow: NEARLY_SPENT + RUN_UP * TICK_SECONDS,
+    runUp: RUN_UP + 1,
+  });
 
-  const after = await captureReplay(h, "reopen", () => h.tick());
+  const after = await captureReplay(h, "reopen", async () => {
+    const closing = await h.tick(RUN_UP);
+    assertCloseTo(
+      closing.comboWindow,
+      NEARLY_SPENT,
+      9,
+      "the window before the eat",
+    );
+    const eaten = await h.tick();
+    await h.tick(SETTLE);
+    return eaten;
+  });
 
-  assertEqual(after.ticks, 1, "ticks resolved");
+  assertEqual(after.ticks, RUN_UP + 1, "ticks resolved");
   assertCloseTo(
     after.comboWindow,
     COMBO_WINDOW - TICK_SECONDS,

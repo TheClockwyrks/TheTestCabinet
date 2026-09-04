@@ -10,14 +10,14 @@
 
 import {
   GAMEOVER_TEXT,
-  PAUSE_ITEMS,
   POD_KINDS,
   STAGE_W,
   TITLE_TEXT,
-  TITLE_ITEMS,
   WAVE_CLEAR_BONUS_PER_WAVE,
+  type Screen,
 } from "./constants";
 import { roundRect, text } from "./draw";
+import { entryBaseline, menuEntries, menuItemRects } from "./menus";
 import { drawHud, ready } from "./render";
 import { COLORS } from "./theme";
 import type { KesslerAssets } from "./assets";
@@ -69,12 +69,14 @@ function dim(ctx: CanvasRenderingContext2D, alpha: number): void {
  */
 function drawMenu(
   ctx: CanvasRenderingContext2D,
-  entries: readonly string[],
+  screen: Screen,
   index: number,
-  top: number,
 ): void {
+  const entries = menuEntries(screen);
+  const rects = menuItemRects(screen);
+  if (entries === null || rects === null) return;
   entries.forEach((entry, i) => {
-    const y = top + i * 56;
+    const y = entryBaseline(rects[i]);
     const highlighted = i === index;
     text(ctx, entry, CX, y, {
       size: 26,
@@ -119,7 +121,7 @@ function drawTitle(ctx: CanvasRenderingContext2D, state: KesslerState): void {
     align: "center",
     spacing: 10,
   });
-  drawMenu(ctx, TITLE_ITEMS, state.menuIndex, 560);
+  drawMenu(ctx, "title", state.menuIndex);
   text(ctx, "W/S OR ARROWS - SELECT   ·   SPACE/ENTER - CONFIRM", CX, 730, {
     size: 13,
     color: COLORS.textFaint,
@@ -281,7 +283,7 @@ function drawPaused(ctx: CanvasRenderingContext2D, state: KesslerState): void {
     align: "center",
     spacing: 12,
   });
-  drawMenu(ctx, PAUSE_ITEMS, state.menuIndex, 494);
+  drawMenu(ctx, "paused", state.menuIndex);
   text(ctx, "ESC OR P - RESUME", CX, 626, {
     size: 13,
     color: COLORS.textFaint,

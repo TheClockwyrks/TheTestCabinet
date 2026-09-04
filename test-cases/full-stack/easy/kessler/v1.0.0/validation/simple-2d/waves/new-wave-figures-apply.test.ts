@@ -21,7 +21,12 @@ import {
   ringSpeedAtWave,
   WAVECLEAR_TICKS,
 } from "../constants";
-import { captureReplay, openHarness, type Harness } from "../harness";
+import {
+  captureReplay,
+  openHarness,
+  poseInterstitial,
+  type Harness,
+} from "../harness";
 
 let h: Harness;
 
@@ -36,7 +41,7 @@ afterEach(() => {
 it("serves at 270 and orbits at +15/-10 on wave 2", async () => {
   h.reset();
   h.debug.setScreen("playing");
-  h.debug.setScreen("waveclear");
+  poseInterstitial(h);
   const after = await h.tick(WAVECLEAR_TICKS);
   assertEqual(after.screen, "playing", "the interstitial ran out");
   assertEqual(after.wave, 2, "the new wave");

@@ -201,10 +201,7 @@ export function createState(seed: number = DEFAULT_SEED): MeltdownState {
  * something the runtime owns, and a reset restores the game rather than the
  * runtime beneath it.
  */
-export function resetState(
-  state: MeltdownState,
-  options?: { seed?: number },
-): void {
+export function resetState(state: MeltdownState, seed?: number): void {
   const figures = modeFigures("containment", "medium");
   state.screen = "title";
   state.phase = "opening";
@@ -226,7 +223,7 @@ export function resetState(
   state.build = null;
   state.waveSpawning = true;
   state.simTime = 0;
-  state.rng = createRng(options?.seed ?? DEFAULT_SEED);
+  state.rng = createRng(seed ?? DEFAULT_SEED);
   state.nextId = 1;
   state.shots = [];
   state.press = null;

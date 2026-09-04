@@ -32,7 +32,7 @@ import {
   START_CELLS,
   START_DIR,
   TICK_SECONDS,
-} from "../src/constants";
+} from "./constants";
 import {
   FRAMES_PER_TICK,
   FRAME_MS,
@@ -228,7 +228,7 @@ it("answers the obstacle operations by the mode the build ships", () => {
   expect(obstacleSurface(h) === null).toBe(mode !== "maze");
 
   expect(poseScene(h, { obstacles: "course" }).obstacles).toEqual([
-    ...OBSTACLE_CELLS,
+    ...OBSTACLE_CELLS[mode],
   ]);
   expect(poseScene(h, {}).obstacles).toEqual([]);
 });

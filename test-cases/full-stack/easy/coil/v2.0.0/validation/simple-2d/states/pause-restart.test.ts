@@ -13,12 +13,7 @@
 // `controls/menu-highlight-moves` alone rather than losing this point to it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BINDINGS,
-  COMBO_WINDOW,
-  PAUSE_ITEMS,
-  START_CELLS,
-} from "../../src/constants";
+import { BINDINGS, COMBO_WINDOW, PAUSE_ITEMS, START_CELLS } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   HOME_HEAD,

@@ -227,6 +227,14 @@ it("reports the whole documented shape over a fully posed floor", async () => {
   assertType(s.paths.left.length, "number", "paths.left.length");
   assertType(s.paths.top.length, "number", "paths.top.length");
 
+  /* ---- The menu rows ----------------------------------------------------- */
+  // The floor posed here is `playing`, which shows no menu, so what the SHAPE
+  // requires is the field itself: an array, present on every screen. What it
+  // holds on each of the seven menu screens, and that it is empty here, is
+  // `screens.menu-rows-reported`'s.
+  assertHasProperty(s, "menu", "menu");
+  assertEqual(Array.isArray(s.menu), true, "menu, an array on every screen");
+
   /* ---- The panel's controls --------------------------------------------- */
   // One entry per type, in the shop order `specs/hud.md` fixes.
   assertLength(s.controls.shop, TOWER_TYPES.length, "controls.shop");

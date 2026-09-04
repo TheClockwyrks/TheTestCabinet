@@ -44,29 +44,14 @@ import { dirname, join } from "node:path";
 import { createCanvas } from "@napi-rs/canvas";
 import { it } from "vitest";
 import { assertGreaterThanOrEqual, assertNotNull, assertTrue } from "../assert";
-import { MAX_MULTIPLIER } from "../constants";
+import {
+  AUDIO_DIR,
+  MAX_MULTIPLIER,
+  MUSIC_PIECES,
+  SAMPLED_BODIES,
+  SYNTH_CUES,
+} from "../constants";
 import { mediaDestination, siteRoot } from "../harness";
-
-/** The directory specs/assets.md lands every produced sound in. */
-const AUDIO_DIR = join("assets", "audio");
-
-/** The cues specs/assets.md names one by one for `sfx-synth` to produce. */
-const SYNTH_CUES = [
-  "select",
-  "swap",
-  "refuse",
-  "land",
-  "flaw",
-  "cut",
-  "levelup",
-  "gameover",
-] as const;
-
-/** The shatter body `sfx-sample` produces: one file. */
-const SAMPLED_BODIES = 1;
-
-/** The title theme and the play bed `music` produces: two files. */
-const MUSIC_PIECES = 2;
 
 /**
  * How many distinct sounds the specification asks for, added up from its own
@@ -331,8 +316,8 @@ function writeWaveforms(sounds: readonly Sound[]): void {
 it("ships at least the sounds and music the production contract lists", () => {
   const root = siteRoot();
   assertNotNull(root, "the built site on disk");
-  const audio = join(root as string, AUDIO_DIR);
-  assertTrue(existsSync(audio), `a produced ${AUDIO_DIR}/ directory`);
+  const audio = join(root as string, ...AUDIO_DIR);
+  assertTrue(existsSync(audio), `a produced ${AUDIO_DIR.join("/")}/ directory`);
 
   const sounds = findWavs(audio).map(readSound);
   writeWaveforms(sounds);
@@ -346,7 +331,7 @@ it("ships at least the sounds and music the production contract lists", () => {
   assertGreaterThanOrEqual(
     distinct.size,
     REQUIRED_SOUNDS,
-    `distinct non-silent .wav files under ${AUDIO_DIR}/ — ${
+    `distinct non-silent .wav files under ${AUDIO_DIR.join("/")}/ — ${
       sounds.length
     } found, ${carrying.length} carrying sound${
       sounds.length === carrying.length

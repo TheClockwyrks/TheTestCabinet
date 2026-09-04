@@ -24,7 +24,7 @@
 import { afterEach, it } from "vitest";
 import { ConstantClock } from "@test-cabinet/simple-2d";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
-import { TICK_SECONDS } from "../../src/constants";
+import { TICK_SECONDS } from "../constants";
 import {
   arrangeStep,
   captureReplay,

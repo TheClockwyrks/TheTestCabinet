@@ -30,7 +30,7 @@ import { defineCues, playTickEvents } from "./audio";
 import { createDebugApi, type CoilDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
 import { pressedActions, registerActions } from "./input";
-import { menuItems } from "./menus";
+import { menuItemAt, menuItems } from "./menus";
 import { renderGame } from "./render";
 import { seedState } from "./rng";
 import { layChain, requestTurn, spawnPellet, tick } from "./sim";
@@ -49,6 +49,7 @@ import {
 import type {
   Game,
   InitApi,
+  PointerSample,
   RenderApi,
   UpdateApi,
 } from "@test-cabinet/simple-2d";
@@ -72,6 +73,15 @@ export interface CoilState {
   readonly screen: Screen;
   /** The highlighted item of the current screen's menu, counted from 0. */
   readonly menuIndex: number;
+  /** The title menu's remembered selection, which the title opens on. */
+  readonly titleIndex: number;
+  /**
+   * The item a live pointer press landed on, or `null` while none is down.
+   *
+   * `specs/ui.md` takes both edges of a confirm inside one region, so the press
+   * has to be remembered until the release that answers it.
+   */
+  readonly pressedItem: number | null;
 
   /** The running score of the current round. */
   readonly score: number;
@@ -154,6 +164,8 @@ export function createInitialState(
   return layChain({
     screen: "title",
     menuIndex: 0,
+    titleIndex: 0,
+    pressedItem: null,
     score: 0,
     best: 0,
     combo: 1,
@@ -202,9 +214,20 @@ export function startRound(state: CoilState): CoilState {
   return spawnPellet(laid).state;
 }
 
-/** Move to `screen` and highlight its first item. */
+/**
+ * Move to `screen` and highlight the item it opens on.
+ *
+ * The title opens on its remembered selection, so leaving how-to-play lands back
+ * on the entry that opened it and a round left for the title lands back on the
+ * entry that started it (`specs/ui.md`). Every other screen opens on its first
+ * item.
+ */
 export function goTo(state: CoilState, screen: Screen): CoilState {
-  return { ...state, screen, menuIndex: 0 };
+  return {
+    ...state,
+    screen,
+    menuIndex: screen === "title" ? state.titleIndex : 0,
+  };
 }
 
 // ---- Routing one press edge ----------------------------------------------
@@ -288,8 +311,10 @@ function routeMenu(state: CoilState, action: ActionName): Routed {
  * Keyed by the item's index rather than by its label, so the title's first item
  * starts a round whatever the mode names it.
  */
-function accept(state: CoilState): Routed {
-  const index = state.menuIndex;
+function accept(base: CoilState): Routed {
+  const index = base.menuIndex;
+  // The title remembers what was confirmed on it, whichever input confirmed it.
+  const state = base.screen === "title" ? { ...base, titleIndex: index } : base;
   switch (state.screen) {
     case "title":
       return index === 0
@@ -309,6 +334,30 @@ function accept(state: CoilState): Routed {
     default:
       return routed(state);
   }
+}
+
+/**
+ * Route one pointer or touch sample over the current screen's menu
+ * (`specs/ui.md`).
+ *
+ * A sample carries the logical stage units the menus are laid out in. A move,
+ * and a contact landing, select the item they are over; a press and the release
+ * that answers it confirm the item when both fell inside the one region, so a
+ * press slid off its entry confirms nothing. The `playing` screen shows no menu,
+ * so nothing there is read.
+ */
+function handlePointer(state: CoilState, sample: PointerSample): Routed {
+  if (state.screen === "playing") {
+    return routed({ ...state, pressedItem: null });
+  }
+  const item = menuItemAt(state.screen, sample.x, sample.y);
+  const selected = item === null ? state : { ...state, menuIndex: item };
+  if (sample.type === "move") return routed(selected);
+  if (sample.type === "down") return routed({ ...selected, pressedItem: item });
+  const armed = selected.pressedItem;
+  const released: CoilState = { ...selected, pressedItem: null };
+  if (item === null || item !== armed) return routed(released);
+  return accept(released);
 }
 
 /** Leave the current screen for the one it was reached from. */
@@ -448,6 +497,13 @@ export const game: Game<CoilState, CoilDebugApi> = {
       next = result.state;
       // The one thing routing does that the state cannot record: a round BEGAN,
       // which `specs/ui.md` sounds the music bed on.
+      if (result.roundBegan) startMusic(api);
+    }
+
+    // After the frame's keyboard edges, as `specs/ui.md` states.
+    for (const sample of api.input.pointerSamples()) {
+      const result = handlePointer(next, sample);
+      next = result.state;
       if (result.roundBegan) startMusic(api);
     }
 

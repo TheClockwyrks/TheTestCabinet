@@ -35,13 +35,8 @@ import {
   fail,
 } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
-import {
-  FREE_MAX_SHARE,
-  JOIN_MIN_ROWS,
-  decodeSprite,
-  edgeRows,
-  showSpriteFiles,
-} from "./sprites";
+import { decodeSprite, edgeRows, showSpriteFiles } from "./sprites";
+import { FREE_MAX_SHARE, JOIN_MIN_ROWS } from "../constants";
 
 /** The path `specs/assets.md` fixes for the tail sprite. */
 const FILE = "assets/snake/tail.png";

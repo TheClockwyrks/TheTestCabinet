@@ -17,7 +17,7 @@
 
 import type { InitApi, UpdateApi } from "@test-cabinet/simple-2d";
 import { ACTIONS, BINDINGS, type Action } from "./figures";
-import type { Held } from "./flow";
+import type { Held, PointerMove } from "./flow";
 
 /** Register every action in `ACTIONS`, bound to its keys. */
 export function registerActions(api: Pick<InitApi, "input">): void {
@@ -41,4 +41,18 @@ export function heldRotation(api: Pick<UpdateApi, "input">): Held {
  */
 export function pressedActions(api: Pick<UpdateApi, "input">): Action[] {
   return ACTIONS.filter((action) => api.input.pressed(action));
+}
+
+/**
+ * This frame's pointer samples, in arrival order, in the stage's own logical
+ * units. A mouse, a pen and a touch contact all arrive here the same way, so
+ * the menus answer any of them (`specs/controls.md`). The engine has already
+ * mapped each position through the letterboxed fit, so nothing here reads the
+ * device pixel ratio or the canvas.
+ */
+export function pointerMoves(api: Pick<UpdateApi, "input">): PointerMove[] {
+  return api.input
+    .pointerSamples()
+    .filter((sample) => sample.primary)
+    .map((sample) => ({ type: sample.type, x: sample.x, y: sample.y }));
 }

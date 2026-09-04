@@ -45,9 +45,10 @@ import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { expect, inject } from "vitest";
-import type { Browser, BrowserContext, Page } from "playwright";
+import type { Browser, BrowserContext, CDPSession, Page } from "playwright";
 import { connectChromium } from "./chromium";
 import { fail } from "./assert";
+import { hostFault } from "./case-harness/host";
 import {
   CUE_NAMES,
   MUSIC_PLAY,
@@ -56,6 +57,7 @@ import {
   STAGE_W,
   TICK_MS,
   UNBOUND_KEY,
+  WAVECLEAR_TICKS,
   outwardVelocity,
   pointAt,
   type Screen,
@@ -66,10 +68,11 @@ import {
   type DrivenSurface,
   type KesslerDebugApi,
   type KesslerSnapshot,
+  type MenuItemRect,
 } from "./surface";
 
 export { HANDLE, REQUIRED_OPS };
-export type { KesslerSnapshot, KesslerDebugApi, DrivenSurface };
+export type { KesslerSnapshot, KesslerDebugApi, DrivenSurface, MenuItemRect };
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -157,6 +160,16 @@ export interface HarnessOptions {
   cssHeight?: number;
   /** Device pixels per CSS pixel. Defaults to 1, so one device pixel is one unit. */
   dpr?: number;
+  /**
+   * Whether the browser reports a touchscreen.
+   *
+   * Off by default, because it is a property of the DEVICE the build believes
+   * it is running on: with it on `navigator.maxTouchPoints` is non-zero and a
+   * contact arrives with `pointerType: "touch"`. `specs/controls.md` requires
+   * the menus to answer a touch contact, so the check that is ABOUT touch asks
+   * for it and every other check stays on the shape the rest were taken at.
+   */
+  touch?: boolean;
 }
 
 /** How far a sweep may run, in whole ticks. */
@@ -237,6 +250,15 @@ export interface Harness {
   viewport(): Viewport;
   /** Where a logical point lands in the canvas's backing store. */
   device(x: number, y: number): { x: number; y: number };
+  /**
+   * Where a logical point lands in CSS pixels, which is what a real pointer or
+   * a real contact is moved in.
+   *
+   * Taken through the DEVICE mapping and back, so it answers the CSS position
+   * of the pixel the point lands on — which is where a press has to land to
+   * reach what was drawn there.
+   */
+  css(x: number, y: number): { x: number; y: number };
   /** The device pixel under a logical point, as `[r, g, b, a]`. */
   pixel(x: number, y: number): Promise<[number, number, number, number]>;
   /** Many logical points at once, in one crossing into the page. */
@@ -274,6 +296,9 @@ const INIT_SCRIPTS = [
   "image-init.js",
 ] as const;
 
+/** The case this project validates, which prefixes what the harness prints. */
+const SLUG = "kessler";
+
 /** This module's directory: the validator project's root. */
 const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 
@@ -303,7 +328,9 @@ const AUDIO_LOAD_TIMEOUT_MS = 2_000;
 let browserPromise: Promise<Browser> | null = null;
 
 async function sharedBrowser(): Promise<Browser> {
-  browserPromise ??= connectChromium(inject("kesslerBrowserWs"));
+  browserPromise ??= connectChromium(inject("kesslerBrowserWs"), {
+    slug: SLUG,
+  });
   return browserPromise;
 }
 
@@ -324,8 +351,13 @@ const contexts = new Map<string, BrowserContext>();
 /** Every page this worker opened, so none is left behind in the shared browser. */
 const openPages = new Set<Page>();
 
-function shapeKey(cssWidth: number, cssHeight: number, dpr: number): string {
-  return `${cssWidth}x${cssHeight}@${dpr}`;
+function shapeKey(
+  cssWidth: number,
+  cssHeight: number,
+  dpr: number,
+  touch: boolean,
+): string {
+  return `${cssWidth}x${cssHeight}@${dpr}${touch ? "+touch" : ""}`;
 }
 
 /** The context for a window of this shape, opened and instrumented on demand. */
@@ -333,8 +365,9 @@ async function contextFor(
   cssWidth: number,
   cssHeight: number,
   dpr: number,
+  touch: boolean,
 ): Promise<BrowserContext> {
-  const key = shapeKey(cssWidth, cssHeight, dpr);
+  const key = shapeKey(cssWidth, cssHeight, dpr, touch);
   const existing = contexts.get(key);
   if (existing !== undefined) return existing;
 
@@ -342,6 +375,7 @@ async function contextFor(
   const context = await browser.newContext({
     viewport: { width: cssWidth, height: cssHeight },
     deviceScaleFactor: dpr,
+    hasTouch: touch,
   });
   for (const name of INIT_SCRIPTS) {
     await context.addInitScript(readFileSync(join(PROJECT_ROOT, name), "utf8"));
@@ -458,8 +492,32 @@ export async function openHarness(
   const cssWidth = options.cssWidth ?? STAGE_W;
   const cssHeight = options.cssHeight ?? STAGE_H;
   const dpr = options.dpr ?? 1;
-  const context = await contextFor(cssWidth, cssHeight, dpr);
-  const page = await context.newPage();
+
+  // A BROWSER THAT NEVER CAME UP, OR A PAGE THAT WAS NEVER SERVED, IS THE HOST'S
+  // DOING AND NOT THE BUILD'S, so it leaves the running check UNDECIDED rather
+  // than failing it. `hostFault` is the shared harness's — see its `host.ts` —
+  // and it reaches the running check through the hook `setup.ts` registers. A
+  // throw here would instead mark every point the file decides failed, on a
+  // build that was never asked anything, because this runs in the `beforeEach`
+  // of every check file.
+  //
+  // Only these three reach it: the browser, the page, and the served file.
+  // A page that loaded and then installed no surface, drew nothing, or answered
+  // a call wrongly is the build's own doing, and is failed as such below.
+  let page: Page;
+  try {
+    const context = await contextFor(
+      cssWidth,
+      cssHeight,
+      dpr,
+      options.touch ?? false,
+    );
+    page = await context.newPage();
+  } catch (error) {
+    return hostFault(
+      `no page could be opened in the shared Chromium (${String(error)})`,
+    );
+  }
   openPages.add(page);
 
   // Whatever this page throws or logs as an error while THIS harness drives it.
@@ -473,7 +531,14 @@ export async function openHarness(
     if (message.type() === "error") pageErrors.push(message.text());
   });
 
-  await page.goto(inject("kesslerUrl"), { waitUntil: "load" });
+  try {
+    await page.goto(inject("kesslerUrl"), { waitUntil: "load" });
+  } catch (error) {
+    return hostFault(
+      `the built site would not load from this project's own server ` +
+        `(${String(error)})`,
+    );
+  }
 
   const surfaceFault = await readSurfaceFault(page);
   const refuse = (): never => failSurface(surfaceFault ?? "");
@@ -741,7 +806,7 @@ export async function openHarness(
     snapshot: () => readSnapshot(),
 
     reset: async (seed) => {
-      await (seed === undefined ? debug.reset() : debug.reset({ seed }));
+      await (seed === undefined ? debug.reset() : debug.reset(seed));
       return readSnapshot();
     },
 
@@ -835,6 +900,10 @@ export async function openHarness(
 
     viewport: () => ({ ...view }),
     device: (x, y) => toDevice(view, x, y),
+    css: (x, y) => {
+      const at = toDevice(view, x, y);
+      return { x: at.x / dpr, y: at.y / dpr };
+    },
     pixel: async (x, y) => (await readPixels([toDevice(view, x, y)]))[0],
     pixels: (points) => readPixels(points.map((p) => toDevice(view, p.x, p.y))),
     devicePixel: async (x, y) => (await readPixels([{ x, y }]))[0],
@@ -1873,17 +1942,18 @@ export async function samplePoints(
  * consequence IS the requirement. `seed` seeds the pod generator for a scenario
  * that will turn `podSpawn` back on.
  *
- * The order is deliberate: the reset first, so nothing a previous section left
- * is inherited (and both switches come back on, as `reset` restores them); the
- * screen next, entered exactly as confirming START enters it, so the wave-1
- * figures are in force; then the clears and the switches over the running
- * session. The deflector stands at its start angle `90` with its baseline span.
+ * Every call here is one of the surface's atomic poses, in a deliberate order:
+ * the reset first, which is what puts the wave-1 figures in force and stands
+ * the deflector at angle `90` with its baseline span, so nothing a previous
+ * section left is inherited; then `setScreen("playing")`, which sets the screen
+ * and nothing else; then the clears, which take away the full wave the reset
+ * laid; then the two switches.
  */
 export async function isolate(
   h: Harness,
   seed?: number,
 ): Promise<KesslerSnapshot> {
-  await (seed === undefined ? h.debug.reset() : h.debug.reset({ seed }));
+  await (seed === undefined ? h.debug.reset() : h.debug.reset(seed));
   await h.debug.setScreen("playing");
   await h.debug.clearTargets();
   await h.debug.clearBalls();
@@ -1908,15 +1978,21 @@ export async function startPlay(
   h: Harness,
   seed?: number,
 ): Promise<KesslerSnapshot> {
-  await (seed === undefined ? h.debug.reset() : h.debug.reset({ seed }));
+  await (seed === undefined ? h.debug.reset() : h.debug.reset(seed));
   await tap(h, "Enter");
   return h.snapshot();
 }
 
 /**
- * Enter the screen `screen` exactly as the real transition into it enters it,
- * through the surface's `setScreen`, and read what it left. The direct route to
- * a screen for every check that is not about the menus.
+ * Set the screen to `screen` and read what stands, without arranging anything
+ * else — `setScreen` sets the screen and nothing else, so this is the direct
+ * route to a screen for a check that is about the screen rather than about a
+ * scene under it.
+ *
+ * A check that wants the screen arranged the way the real transition into it
+ * arranges it calls the sequence that arranges it: {@link startFreshSession}
+ * for a session begun the way confirming START begins one, and
+ * {@link poseInterstitial} for the interstitial the clearing event enters.
  */
 export async function poseScene(
   h: Harness,
@@ -1968,4 +2044,179 @@ export async function spawnPodPolar(
 ): Promise<void> {
   const at = pointAt(r, thetaDeg);
   await h.debug.spawnPod(kind, at.x, at.y);
+}
+
+/**
+ * Start a fresh session the way confirming START starts one, out of atomic
+ * poses: the reset lays wave 1 — score `0`, `3` lives, wave `1`, every slot
+ * filled, every ring angle at `0`, the wave-1 figures in force, the deflector
+ * at angle `90` with its baseline span — `setScreen("playing")` puts the game
+ * on the live field, and `parkBall` puts the serve on the deflector.
+ *
+ * `setScreen` is atomic by specification, so the arrangement is this sequence
+ * rather than the call: the guide puts every compound sequence in the harness,
+ * and this is the one every check that needs a session in play shares. `seed`
+ * seeds the pod generator.
+ */
+export async function startFreshSession(
+  h: Harness,
+  seed?: number,
+): Promise<KesslerSnapshot> {
+  await (seed === undefined ? h.debug.reset() : h.debug.reset(seed));
+  await h.debug.setScreen("playing");
+  await h.debug.parkBall();
+  return h.snapshot();
+}
+
+/**
+ * Enter the interstitial the way the clearing event enters it, out of atomic
+ * poses: every ball, every pod, every timed effect and the shield are removed,
+ * the interstitial timer is set to the `180` ticks `specs/screens.md` fixes,
+ * and the screen becomes `waveclear`.
+ *
+ * The wave the interstitial is running out belongs to the caller: it poses
+ * `setWave` and the ring state it wants before calling this, exactly as it
+ * poses any other part of the world.
+ */
+export async function poseInterstitial(
+  h: Harness,
+  ticks: number = WAVECLEAR_TICKS,
+): Promise<KesslerSnapshot> {
+  await h.debug.clearBalls();
+  await h.debug.clearPods();
+  for (const kind of ["widen", "narrow", "pierce"] as const) {
+    await h.debug.setEffectTicks(kind, 0);
+  }
+  await h.debug.setShield(false);
+  await h.debug.setInterstitialTicks(ticks);
+  await h.debug.setScreen("waveclear");
+  return h.snapshot();
+}
+
+/**
+ * Stand on the menu-bearing screen `screen` with entry `index` highlighted,
+ * through the two poses that say exactly that and nothing else.
+ *
+ * The route for every check whose requirement is what `confirm` does to an
+ * entry rather than how the highlight got there: walking to the entry with the
+ * `down` key would fail the check on a build whose only fault is its `down`
+ * key, which is a defect `controls/arrow-down-moves-highlight` already decides.
+ */
+export async function poseMenu(
+  h: Harness,
+  screen: Screen,
+  index: number,
+): Promise<KesslerSnapshot> {
+  await h.debug.setScreen(screen);
+  await h.debug.setMenuIndex(index);
+  return h.snapshot();
+}
+
+/**
+ * The hit region the build reports for menu entry `index` on the screen it is
+ * standing on, or `null` where there is no such entry.
+ *
+ * The layout is the build's — `specs/screens.md` fixes no position for a menu —
+ * so a check that drives the pointer at an entry asks the build where it drew
+ * it, exactly as `specs/instrumentation.md` has it report.
+ */
+export async function menuRect(
+  h: Harness,
+  index: number,
+): Promise<MenuItemRect | null> {
+  return h.debug.menuItemRect(index);
+}
+
+/** The middle of a reported hit region, which is where a press aims. */
+export function rectCenter(rect: MenuItemRect): { x: number; y: number } {
+  return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+}
+
+/* -------------------------------------------------------------------------- */
+/* The pointer and the finger                                                 */
+/* -------------------------------------------------------------------------- */
+//
+// `specs/controls.md` puts the pointer in the runtime layer the build wrote, so
+// the surface carries no operation for it and a check drives Chromium's own
+// mouse and Chromium's own touch contact instead — which is the only way a
+// build's pointer handling is exercised at all.
+//
+// EACH PART OF A GESTURE RUNS ITS OWN FRAME. A build is free to read the
+// pointer once per frame, so a press that ran no frame would never reach it and
+// a press released before a frame ran would be invisible to a build that
+// compares held state between frames. So each of the parts below lets the
+// build's own loop run a frame, and a caller can add them up.
+
+/** Move the real mouse onto the logical stage point `(x, y)`, and let it land. */
+export async function pointerTo(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<void> {
+  const at = h.css(x, y);
+  await h.page.mouse.move(at.x, at.y);
+  await h.settleFrame();
+}
+
+/** Press the real mouse's primary button where it stands, and let it land. */
+export async function pointerDown(h: Harness): Promise<void> {
+  await h.page.mouse.down();
+  await h.settleFrame();
+}
+
+/** Release the real mouse's primary button, and let the release land. */
+export async function pointerUp(h: Harness): Promise<void> {
+  await h.page.mouse.up();
+  await h.settleFrame();
+}
+
+/**
+ * Land a real touch contact on the logical stage point `(x, y)`, and let it
+ * land. The harness must have been opened with `touch: true`.
+ */
+export async function touchDown(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<void> {
+  await dispatchTouch(h, "touchStart", h.css(x, y));
+  await h.settleFrame();
+}
+
+/** Lift the held contact, and let the lift land. */
+export async function touchUp(h: Harness): Promise<void> {
+  await dispatchTouch(h, "touchEnd", null);
+  await h.settleFrame();
+}
+
+/** The contact identifier every touch gesture here drives: one finger. */
+const CONTACT_ID = 1;
+
+/**
+ * The CDP session a page's contacts are driven through, opened once and HELD.
+ *
+ * Chromium tracks live contacts per CDP client, so a session opened for the
+ * landing and detached again takes the contact with it and the lift that
+ * follows is refused. The session therefore outlives the whole gesture, and the
+ * page closing is what closes it.
+ */
+const touchSessions = new WeakMap<Page, Promise<CDPSession>>();
+
+async function dispatchTouch(
+  h: Harness,
+  type: "touchStart" | "touchMove" | "touchEnd",
+  point: { x: number; y: number } | null,
+): Promise<void> {
+  let session = touchSessions.get(h.page);
+  if (session === undefined) {
+    session = h.page.context().newCDPSession(h.page);
+    touchSessions.set(h.page, session);
+  }
+  await (
+    await session
+  ).send("Input.dispatchTouchEvent", {
+    type,
+    touchPoints:
+      point === null ? [] : [{ x: point.x, y: point.y, id: CONTACT_ID }],
+  });
 }

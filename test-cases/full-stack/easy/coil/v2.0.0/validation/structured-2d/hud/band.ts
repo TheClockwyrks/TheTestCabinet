@@ -26,7 +26,7 @@
 // whole band is taken in ONE read and averaged into small blocks: nothing drawn
 // in the band can fall between two blocks.
 
-import { BOARD_Y, STAGE_W } from "../../src/constants";
+import { BOARD_Y, STAGE_W } from "../constants";
 import {
   colorDistance,
   textDraws,
@@ -49,14 +49,6 @@ import {
 export function bandBottom(h: Harness): number {
   return h.device(0, BOARD_Y).y;
 }
-
-/**
- * The RGB distance two sampled colours must exceed to count as clearly apart:
- * 50 of the 441 the RGB cube spans, which is the figure this case words every
- * "told apart at a glance" requirement in. The specification fixes no palette,
- * so distinguishability is the whole of what such a reading can decide.
- */
-export const DISTINCT_MIN = 50;
 
 /** Logical units one averaged block of the band covers. */
 const BLOCK_W = 4;

@@ -6,7 +6,7 @@ menus are walked with key input, the floor is built on with the pointer, each
 wave is sent early from the panel's own SEND control, and the wave is then
 fought by the build's own rules. Several takes are auditioned by seed and the
 most watchable one is replayed under the engine's recorder. Nothing is posed
-mid-play — the only debug call the driver makes is `reset({seed})`, before the
+mid-play — the only debug call the driver makes is `reset(seed)`, before the
 take begins, because the vent each unit enters at is the game's only randomness
 and a seed is what makes a take reproducible.
 

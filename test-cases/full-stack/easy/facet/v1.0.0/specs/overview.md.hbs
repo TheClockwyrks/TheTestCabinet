@@ -261,10 +261,8 @@ the root of any static file server, and equally when served from a sub-path, so
 every asset reference in the build is relative rather than root-absolute. The
 scripts that do this are already in `package.json`.
 
-The build is self-contained. The asset tools on this machine's `PATH` are
-development tools for producing the files `specs/assets.md` lists and locates;
-the produced files are committed, the build bundles them, and neither `npm ci`
-nor `npm run build` invokes a tool.
+The build is self-contained: `specs/assets.md` states how the produced files
+are committed and bundled, and that no tool is invoked to build them.
 
 ## Goal of this build
 
@@ -300,8 +298,8 @@ the board every level is dealt on.
 - Run in the browser with no backend. Everything needed to play is
   self-contained, and no API key or credential is needed to build, run, or play.
 {{#if (eq engine.slug "none")}}
-- Hold the game's whole state in one value, the one the frame loop advances and
-  the debug surface reads.
+- Carry the debug and automation surface `specs/instrumentation.md` fixes,
+  reading and posing the same state the frame loop advances.
 {{else if (eq engine.slug "simple-2d")}}
 - Hold the game's whole state in `FacetState`, as `specs/state.md` declares it.
 {{else}}

@@ -18,7 +18,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull } from "../assert";
-import { DEFAULT_SEED, START_CELLS } from "../../src/constants";
+import { DEFAULT_SEED, START_CELLS } from "../constants";
 import {
   captureStill,
   chooseItem,

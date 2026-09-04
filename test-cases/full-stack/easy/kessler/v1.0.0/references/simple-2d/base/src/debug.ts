@@ -39,6 +39,11 @@ import {
   type KesslerState,
   type View,
 } from "./flow";
+import {
+  menuEntries,
+  menuItemRect as menuItemRectOf,
+  type MenuItemRect,
+} from "./menus";
 import { normalizeDeg, pointAt, polarOf } from "./polar";
 import { launchParkedBall } from "./sim";
 import { piercingNow, spanOf } from "./state";
@@ -50,6 +55,8 @@ export interface KesslerSnapshot {
   wave: number;
   score: number;
   lives: number;
+  seed: number;
+  interstitialTicks: number;
   waveAdvance: boolean;
   podSpawn: boolean;
   paddle: { angleDeg: number; spanDeg: number };
@@ -78,11 +85,14 @@ export interface KesslerSnapshot {
 
 /** The reads and poses of the debug surface. */
 export interface KesslerDebugApi {
-  reset(state: View, options?: { seed?: number }): KesslerState;
+  reset(state: View, seed?: number): KesslerState;
   snapshot(state: View): KesslerSnapshot;
+  menuItemRect(state: View, index: number): MenuItemRect | null;
   setScreen(state: View, name: ScreenName): KesslerState;
   setScore(state: View, n: number): KesslerState;
   setLives(state: View, n: number): KesslerState;
+  setMenuIndex(state: View, n: number): KesslerState;
+  setInterstitialTicks(state: View, ticks: number): KesslerState;
   setWave(state: View, n: number): KesslerState;
   setPaddleAngle(state: View, deg: number): KesslerState;
   launchBall(state: View): KesslerState;
@@ -157,21 +167,13 @@ export function createDebugApi(): KesslerDebugApi {
     /**
      * The boot state (`specs/instrumentation.md`): the title screen over the
      * boot layout, zero ticks, both driver switches on, and the pod stream
-     * seeded with `options.seed`, defaulting to `DEFAULT_SEED`.
+     * seeded with `seed`, defaulting to `DEFAULT_SEED`.
      */
-    reset(state, options) {
-      let seed = DEFAULT_SEED;
-      if (options !== undefined && options !== null) {
-        if (typeof options !== "object") {
-          throw new Error(
-            `reset options must be an object; got ${String(options)}`,
-          );
-        }
-        if (options.seed !== undefined) {
-          seed = mustFinite("options.seed", options.seed);
-        }
-      }
-      return resetState(state, seed);
+    reset(state, seed) {
+      return resetState(
+        state,
+        seed === undefined ? DEFAULT_SEED : mustWhole("reset seed", seed, 0),
+      );
     },
 
     /** A pure read of the state. It poses nothing, so it returns no state. */
@@ -184,6 +186,8 @@ export function createDebugApi(): KesslerDebugApi {
         wave: session.wave,
         score: session.score,
         lives: session.lives,
+        seed: state.seed,
+        interstitialTicks: state.interstitialTicks,
         waveAdvance: state.waveAdvance,
         podSpawn: state.podSpawn,
         paddle: { angleDeg: session.paddleAngleDeg, spanDeg: spanOf(session) },
@@ -216,7 +220,15 @@ export function createDebugApi(): KesslerDebugApi {
       };
     },
 
-    /** Enters `name` exactly as the real transition does, silently. */
+    /**
+     * A pure read of where the build drew menu entry `index` on the current
+     * screen. `null` on a screen with no menu and past the menu's entries.
+     */
+    menuItemRect(state, index) {
+      return menuItemRectOf(state.screen, index);
+    },
+
+    /** Sets the screen, and changes nothing else. */
     setScreen(state, name) {
       if (!SCREENS.includes(name)) {
         throw new Error(`setScreen: unknown screen ${String(name)}`);
@@ -237,6 +249,32 @@ export function createDebugApi(): KesslerDebugApi {
       const value = mustWhole("setLives n", n, 0);
       const draft = cloneState(state);
       draft.session.lives = value;
+      return draft;
+    },
+
+    /**
+     * Moves the highlight exactly as `up` and `down` move it, silently. On a
+     * screen with no menu the call changes nothing.
+     */
+    setMenuIndex(state, n) {
+      const entries = menuEntries(state.screen);
+      if (entries === null) return cloneState(state);
+      const value = mustWhole("setMenuIndex n", n, 0);
+      if (value >= entries.length) {
+        throw new Error(
+          `setMenuIndex n must be 0 to ${entries.length - 1}; got ${value}`,
+        );
+      }
+      const draft = cloneState(state);
+      draft.menuIndex = value;
+      return draft;
+    },
+
+    /** Sets the interstitial timer; it counts down on `waveclear` alone. */
+    setInterstitialTicks(state, ticks) {
+      const value = mustWhole("setInterstitialTicks ticks", ticks, 0);
+      const draft = cloneState(state);
+      draft.interstitialTicks = value;
       return draft;
     },
 

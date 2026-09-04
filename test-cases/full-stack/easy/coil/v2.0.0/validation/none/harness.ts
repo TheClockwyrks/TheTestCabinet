@@ -52,6 +52,14 @@ import { gzipSync } from "node:zlib";
 import { expect, inject } from "vitest";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { connectChromium } from "./chromium";
+import {
+  mouseGlide,
+  mousePress,
+  mouseRelease,
+  touchGlide,
+  touchPress,
+  touchRelease,
+} from "./case-harness/index";
 import { fail } from "./assert";
 import {
   BOARD_X,
@@ -80,10 +88,11 @@ import {
   type CoilDebugApi,
   type CoilSnapshot,
   type DrivenSurface,
+  type MenuRect,
 } from "./surface";
 
 export { HANDLE, REQUIRED_OPS, OBSTACLE_OPS };
-export type { Cell, CoilSnapshot, CoilDebugApi, DrivenSurface };
+export type { Cell, CoilSnapshot, CoilDebugApi, DrivenSurface, MenuRect };
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -306,6 +315,14 @@ export interface Harness {
   viewport(): Viewport;
   /** Where a logical point lands in the canvas's backing store. */
   device(x: number, y: number): { x: number; y: number };
+  /**
+   * The CSS position of the device pixel a logical point lands on.
+   *
+   * Where a real gesture has to be delivered to hit the thing drawn at that
+   * point: Playwright's mouse and Chromium's touch dispatch both address the
+   * page in CSS pixels, and the canvas's backing store is `dpr` times that.
+   */
+  css(x: number, y: number): { x: number; y: number };
   /** The device pixel under a logical point, as `[r, g, b, a]`. */
   pixel(x: number, y: number): Promise<[number, number, number, number]>;
   /** Many logical points at once, in one crossing into the page. */
@@ -414,6 +431,11 @@ async function contextFor(
   const context = await browser.newContext({
     viewport: { width: cssWidth, height: cssHeight },
     deviceScaleFactor: dpr,
+    // `specs/ui.md` gives every menu a touch contact as well as a pointer, so the
+    // device the build believes it is running on has to report a touchscreen:
+    // without it `navigator.maxTouchPoints` is zero and a dispatched contact
+    // arrives as a mouse.
+    hasTouch: true,
   });
   for (const name of INIT_SCRIPTS) {
     await context.addInitScript(readFileSync(join(PROJECT_ROOT, name), "utf8"));
@@ -916,6 +938,10 @@ export async function createHarness(
 
     viewport: () => ({ ...view }),
     device: (x, y) => toDevice(view, x, y),
+    css: (x, y) => {
+      const at = toDevice(view, x, y);
+      return { x: at.x / dpr, y: at.y / dpr };
+    },
     pixel: async (x, y) => (await readPixels([toDevice(view, x, y)]))[0],
     pixels: (points) => readPixels(points.map((p) => toDevice(view, p.x, p.y))),
     devicePixel: async (x, y) => (await readPixels([{ x, y }]))[0],
@@ -2247,6 +2273,16 @@ export interface StepOptions extends Omit<Scene, "snake" | "dir"> {
   head?: Cell;
   dir?: Dir;
   length?: number;
+  /**
+   * Ticks of clear travel between the posed head and the moment the scenario is
+   * about — the pellet for {@link arrangeEat}, the fatal cell for
+   * {@link arrangeApproach}. One by default, which is the moment itself and no
+   * run-up at all.
+   *
+   * A check whose `replay` output has to show the behaviour ARRIVING poses more
+   * than one and ticks the difference off inside its recording.
+   */
+  runUp?: number;
 }
 
 /**
@@ -2281,7 +2317,8 @@ export interface EatScene extends StepScene {
 }
 
 /**
- * Pose a chain with the pellet one cell ahead of its head, so the next tick eats.
+ * Pose a chain with the pellet `runUp` cells ahead of its head, so the tick after
+ * `runUp - 1` ticks of clear travel eats it. One by default: the eat itself.
  *
  * Respawn is off by default, because a check watching one eat should not then be
  * met by a pellet landing on a cell it did not choose — `specs/instrumentation.md`
@@ -2294,7 +2331,7 @@ export async function arrangeEat(
 ): Promise<EatScene> {
   const head = options.head ?? HOME_HEAD;
   const dir = options.dir ?? "right";
-  const pellet = ahead(head, dir);
+  const pellet = ahead(head, dir, options.runUp ?? 1);
   const step = await arrangeStep(h, {
     pelletRespawn: false,
     ...options,
@@ -2306,15 +2343,15 @@ export async function arrangeEat(
 }
 
 /**
- * Pose a chain whose head is one cell from `target`, facing it, so the next tick
- * enters it.
+ * Pose a chain whose head is `runUp` cells from `target`, facing it, so the tick
+ * after `runUp - 1` ticks of clear travel enters it.
  *
  * `target` is the fatal cell a collision point is about — a wall cell, an
  * obstacle cell, or a segment of the snake's own body — and `dir` is the
  * direction it is approached from, defaulting to `right`. The head is placed one
- * cell short of `target` along that direction and the chain trails back behind
- * it. The pellet is off the board, so the tick that resolves is the collision
- * alone.
+ * `runUp` cells short of `target` along that direction — one by default, which
+ * is the fatal tick itself — and the chain trails back behind it. The pellet is
+ * off the board, so the tick that resolves is the collision alone.
  */
 export async function arrangeApproach(
   h: Harness,
@@ -2324,7 +2361,7 @@ export async function arrangeApproach(
   const dir = options.dir ?? "right";
   return arrangeStep(h, {
     ...options,
-    head: ahead(target, OPPOSITE[dir]),
+    head: ahead(target, OPPOSITE[dir], options.runUp ?? 1),
     dir,
   });
 }
@@ -2364,6 +2401,142 @@ export async function startRoundWithKeys(h: Harness): Promise<CoilSnapshot> {
   await openTitle(h);
   await chooseItem(h, 0);
   return h.snapshot();
+}
+
+/* -------------------------------------------------------------------------- */
+/* The menus, where the build drew them                                       */
+/* -------------------------------------------------------------------------- */
+//
+// `specs/ui.md` gives every menu-bearing screen a pointer and a touch contact as
+// well as the keyboard, and deliberately leaves the LAYOUT to the build: what it
+// fixes is that the build reports each item's hit region through `menuItemRect`
+// (`specs/instrumentation.md`), and that a pointer over that region selects the
+// item. So every helper below asks the build where it put the item and then
+// drives the real device there. Nothing here knows a menu coordinate, and a build
+// that lays its menus out any way it likes passes.
+//
+// THE DEVICE IS REAL. Chromium's own mouse and its own touch contact, delivered
+// to the page, one driven frame per edge — never a position posed through the
+// surface, which would tell the build where the pointer is without making the
+// build's own input layer see a press, a travel and a lift the way a hand does.
+// The three mouse verbs and the three touch verbs are the shared harness
+// package's, which is where every engineless case reaches a real device from.
+
+/** A logical point on the stage. */
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/**
+ * The hit region of item `index` on the menu the current screen shows.
+ *
+ * `menuItemRect` answers `null` on `"playing"`, which shows no menu, and for an
+ * index the current menu has no item at, so a check that asked for an item it
+ * expects to exist gets a failure naming the reading rather than a `TypeError` on
+ * the next line.
+ */
+export async function menuRect(h: Harness, index: number): Promise<MenuRect> {
+  const rect = await h.debug.menuItemRect(index);
+  if (rect === null || rect === undefined) {
+    fail(
+      `menuItemRect(${index}) to report the hit region of item ${index} on the ` +
+        "menu the current screen shows, in logical units " +
+        "(specs/instrumentation.md)",
+      rect,
+    );
+  }
+  return rect;
+}
+
+/** The centre of item `index`'s hit region, in logical units. */
+export async function menuItemCenter(
+  h: Harness,
+  index: number,
+): Promise<Point> {
+  const rect = await menuRect(h, index);
+  return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+}
+
+/**
+ * Move the pointer onto item `index` and run the frame that reads it.
+ *
+ * A move alone, with no button: `specs/ui.md` makes a pointer arriving over an
+ * item's region select it, which is the hover a mouse does and the reason this is
+ * separate from a click.
+ */
+export async function hoverMenuItem(h: Harness, index: number): Promise<Point> {
+  const at = await menuItemCenter(h, index);
+  await mouseGlide(h, at.x, at.y);
+  return at;
+}
+
+/**
+ * Click item `index`: move onto it, press, release.
+ *
+ * Both edges fall inside the one region, which is what `specs/ui.md` requires of
+ * a confirm.
+ */
+export async function clickMenuItem(h: Harness, index: number): Promise<Point> {
+  const at = await menuItemCenter(h, index);
+  await mouseGlide(h, at.x, at.y);
+  await mousePress(h, at.x, at.y);
+  await mouseRelease(h);
+  return at;
+}
+
+/**
+ * Land a touch contact inside item `index`'s region and LEAVE IT DOWN.
+ *
+ * No move in front of the landing, because a finger does not hover — which is why
+ * `specs/ui.md` makes the landing itself select the item. Left down so a check
+ * about selection reads what the landing alone did, with no lift to confirm on.
+ */
+export async function landOnMenuItem(
+  h: Harness,
+  index: number,
+): Promise<Point> {
+  const at = await menuItemCenter(h, index);
+  await touchPress(h, at.x, at.y);
+  return at;
+}
+
+/** Land a touch contact inside item `index`'s region and lift it there. */
+export async function tapMenuItem(h: Harness, index: number): Promise<Point> {
+  const at = await landOnMenuItem(h, index);
+  await touchRelease(h);
+  return at;
+}
+
+/**
+ * Press the pointer on item `from`, travel onto item `to`, and release there.
+ *
+ * The ordinary affordance that lets a player slide off a control to cancel: two
+ * edges in different regions confirm nothing (`specs/ui.md`).
+ */
+export async function slideOffMenuItems(
+  h: Harness,
+  from: number,
+  to: number,
+): Promise<void> {
+  const start = await menuItemCenter(h, from);
+  const end = await menuItemCenter(h, to);
+  await mousePress(h, start.x, start.y);
+  await mouseGlide(h, end.x, end.y);
+  await mouseRelease(h);
+}
+
+/** {@link slideOffMenuItems} with a finger: a contact that lifts where it did not land. */
+export async function dragOffMenuItems(
+  h: Harness,
+  from: number,
+  to: number,
+): Promise<void> {
+  const start = await menuItemCenter(h, from);
+  const end = await menuItemCenter(h, to);
+  await touchPress(h, start.x, start.y);
+  await touchGlide(h, end.x, end.y);
+  await touchRelease(h);
 }
 
 /* -------------------------------------------------------------------------- */

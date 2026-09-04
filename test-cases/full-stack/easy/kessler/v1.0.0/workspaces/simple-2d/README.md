@@ -62,25 +62,11 @@ Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test`
 runs them in process, with coverage over `src/`. The engine's documentation
 carries a complete worked example of testing a game this way.
 
-## What you must not edit
+## What stays as it is
 
-- **`src/main.ts`** — the fixed entry point. It creates the engine over the
-  page's canvas, binds `game` to it, and runs.
-- **`src/constants.ts`** — every figure the specification fixes: the stage
-  geometry and every contact radius, the tick, the deflector's motion and
-  bounce, the rings and their orbits, the pod draw and the effects, the scores,
-  the action names and their keys, the cue names, the produced-asset paths, and
-  the screen copy. Read from it.
-- **`index.html`** — the page and the canvas the engine fits the stage into.
-- **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
-  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
-  and `.gitignore`.
-- **`.tcab/`** — the vendored engine and runtime libraries.
-- **`engine/`** — the engine's own documentation.
-
-Add dependencies to `package.json` if you genuinely need them, and commit the
-`package-lock.json` — the build is installed with `npm ci`. Leave the existing
-entries alone.
+`specs/overview.md` lists the files this project supplies and keeps, including
+`src/main.ts`, `src/constants.ts`, `index.html`, `engine/`, `.tcab/` and the
+toolchain, and states the one change `package.json` takes.
 
 ## Commands
 
@@ -92,15 +78,8 @@ entries alone.
 - `npm run format` — Prettier, in check mode.
 - `npm test` — Vitest over `src/**/*.test.ts`, with coverage.
 
-## Before you finish
+## This file
 
-- `npm run build` produces `dist/` with `index.html` at its root, and that
-  directory runs as-is on any static host, at its root and under a sub-path.
-- `npm run typecheck`, `npm run lint`, `npm run format`, and `npm test` all pass.
-  The same four commands are run over the repository you leave behind.
-- The assets `specs/assets.md` asks for are produced and committed under
-  `assets/`, and the game loads them.
-- The `showcase/` directory `specs/showcase.md` asks for is present.
-- **Replace this file** with the `README.md` `specs/overview.md` asks the
-  finished build to ship: what the game is, how to install it, how to run it in
-  development, how to produce the production build, and the controls.
+This starter README is replaced by the `README.md` `specs/overview.md` asks the
+finished build to ship: what the game is, how to install it, how to run it in
+development, how to produce the production build, and the controls.

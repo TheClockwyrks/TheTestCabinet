@@ -42,8 +42,8 @@ import {
   type Dir,
 } from "./constants";
 import { roundRect, text } from "./draw";
-import type { Game } from "./game";
-import { menuItems } from "./menus";
+import type { Game, Screen } from "./game";
+import { menuItems, menuLayout } from "./menus";
 import { HAS_OBSTACLES, MODE_LABEL } from "./mode";
 import type { Sim } from "./sim";
 import { COLORS, FONT } from "./theme";
@@ -359,19 +359,18 @@ function drawHud(
 
 function drawMenu(
   ctx: CanvasRenderingContext2D,
-  items: readonly string[],
+  screen: Screen,
   selected: number,
-  centerX: number,
-  topY: number,
-  gap: number,
-  size: number,
 ): void {
+  const layout = menuLayout(screen);
+  if (layout === null) return;
+  const items = menuItems(screen);
   for (let i = 0; i < items.length; i++) {
     const label = items[i]!;
-    const y = topY + i * gap;
+    const y = layout.topY + i * layout.gap;
     const on = i === selected;
-    text(ctx, label, centerX, y, {
-      size,
+    text(ctx, label, layout.centerX, y, {
+      size: layout.size,
       color: on ? COLORS.text : COLORS.textDim,
       bold: on,
       align: "center",
@@ -380,14 +379,14 @@ function drawMenu(
       glowColor: COLORS.head,
     });
     if (!on) continue;
-    const half = measureLabel(ctx, label, size) / 2;
-    text(ctx, "▶", centerX - half - 30, y, {
-      size: size - 8,
+    const half = measureLabel(ctx, label, layout.size) / 2;
+    text(ctx, "▶", layout.centerX - half - 30, y, {
+      size: layout.size - 8,
       color: COLORS.head,
       align: "center",
     });
-    text(ctx, "◀", centerX + half + 30, y, {
-      size: size - 8,
+    text(ctx, "◀", layout.centerX + half + 30, y, {
+      size: layout.size - 8,
       color: COLORS.head,
       align: "center",
     });
@@ -472,7 +471,7 @@ function drawTitle(
     spacing: 2,
   });
 
-  drawMenu(ctx, menuItems("title"), game.menuIndex, STAGE_CX, 516, 58, 30);
+  drawMenu(ctx, "title", game.menuIndex);
   text(ctx, "▲ ▼ MOVE     ENTER SELECT", STAGE_CX, 686, {
     size: 16,
     color: COLORS.textFaint,
@@ -561,7 +560,7 @@ function drawHowto(ctx: CanvasRenderingContext2D, game: Game): void {
     y += 30;
   }
 
-  drawMenu(ctx, menuItems("howto"), game.menuIndex, STAGE_CX, 660, 40, 24);
+  drawMenu(ctx, "howto", game.menuIndex);
 }
 
 function drawPausePanel(ctx: CanvasRenderingContext2D, game: Game): void {
@@ -574,7 +573,7 @@ function drawPausePanel(ctx: CanvasRenderingContext2D, game: Game): void {
     glow: 18,
     spacing: 4,
   });
-  drawMenu(ctx, menuItems("paused"), game.menuIndex, STAGE_CX, 358, 50, 26);
+  drawMenu(ctx, "paused", game.menuIndex);
 }
 
 function drawEndPanel(
@@ -618,15 +617,7 @@ function drawEndPanel(
     align: "center",
     spacing: 2,
   });
-  drawMenu(
-    ctx,
-    menuItems(cleared ? "cleared" : "gameover"),
-    game.menuIndex,
-    STAGE_CX,
-    482,
-    52,
-    30,
-  );
+  drawMenu(ctx, cleared ? "cleared" : "gameover", game.menuIndex);
 }
 
 // ---- The frame ----------------------------------------------------------------

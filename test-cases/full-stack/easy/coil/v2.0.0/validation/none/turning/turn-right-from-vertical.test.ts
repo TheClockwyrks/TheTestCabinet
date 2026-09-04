@@ -28,6 +28,12 @@ import {
  */
 const HEAD: Cell = { col: 10, row: 8 };
 
+/** Ticks of clear travel before the request, so the run is on the recording. */
+const RUN_UP = 3;
+
+/** Ticks run after the tick that resolves it, so its outcome is too. */
+const SETTLE = 3;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -42,15 +48,19 @@ it("turns right from an upward run, on the tick after the request", async () => 
   const posed = await arrangeStep(h, { head: HEAD, dir: "up", length: 3 });
   assertEqual(posed.snapshot.dir, "up", "the posed direction");
 
-  const turned = await captureReplay(h, "right", async () => {
+  const run = await captureReplay(h, "right", async () => {
+    const before = await h.tick(RUN_UP);
     await h.tap(KEY.right);
-    return h.tick();
+    const stepped = await h.tick();
+    await h.tick(SETTLE);
+    return { before, stepped };
   });
+  const { before, stepped: turned } = run;
 
   assertEqual(turned.dir, "right", "dir after the tick");
   assertDeepEqual(
     turned.snake[0],
-    ahead(HEAD, "right"),
+    ahead(before.snake[0], "right"),
     "the head after the tick",
   );
 });

@@ -12,7 +12,7 @@ import {
   pressCell,
   releaseBoard,
 } from "./controls";
-import { loadBoard } from "./debug";
+import { loadBoard, setScreen } from "./debug";
 import { quietRowsWith } from "./fixtures";
 import { goBack } from "./flow";
 import { targetsFor } from "./targets";
@@ -21,7 +21,7 @@ import { createInitialState, type FacetState, type Screen } from "./state";
 const title = () => createInitialState(1);
 
 const play = (edits: Readonly<Record<string, string>> = {}): FacetState =>
-  loadBoard(createInitialState(1), quietRowsWith(edits));
+  setScreen(loadBoard(createInitialState(1), quietRowsWith(edits)), "playing");
 
 /** The swap that drops a third ruby into (3, 4), making a row run of three. */
 const ROW_RUN = { "3,3": "R0", "4,4": "R0" };

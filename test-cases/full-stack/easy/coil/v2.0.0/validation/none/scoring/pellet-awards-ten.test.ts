@@ -28,6 +28,12 @@ import {
 /** A score the round is already carrying, so the award is read as an increment. */
 const CARRIED = 250;
 
+/** Ticks of clear travel before the head reaches the pellet. */
+const RUN_UP = 3;
+
+/** Ticks run after the eat, so what it left behind is on the recording. */
+const SETTLE = 3;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -39,9 +45,19 @@ afterEach(async () => {
 });
 
 it("raises the score by exactly PELLET_POINTS when the window is closed", async () => {
-  await arrangeEat(h, { score: CARRIED, combo: 1, comboWindow: 0 });
+  await arrangeEat(h, {
+    score: CARRIED,
+    combo: 1,
+    comboWindow: 0,
+    runUp: RUN_UP + 1,
+  });
 
-  const after = await captureReplay(h, "award", () => h.tick());
+  const after = await captureReplay(h, "award", async () => {
+    await h.tick(RUN_UP);
+    const eaten = await h.tick();
+    await h.tick(SETTLE);
+    return eaten;
+  });
 
   assertEqual(after.score, CARRIED + PELLET_POINTS, "the score after one eat");
 });

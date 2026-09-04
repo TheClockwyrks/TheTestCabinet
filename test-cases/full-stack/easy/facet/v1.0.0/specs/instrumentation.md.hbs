@@ -188,86 +188,39 @@ no refusal and no armed target, the pointer reported as up and driven by
 A pure read of the state, returned as the plain object under Snapshot shape
 below. It changes nothing.
 
-### `start()`
+### `setScreen(screen)`
 {{else if (eq engine.slug "simple-2d")}}
 ### `snapshot(state)`
 
 A pure reading of `state`, returned as the plain object under Snapshot shape
 below. It returns no state, because it poses nothing.
 
-### `start(state)`
+### `setScreen(state, screen)`
 {{else}}
 ### `snapshot()`
 
 A pure read of the state, returned as the plain object under Snapshot shape
 below. It changes nothing.
 
-### `start()`
+### `setScreen(screen)`
 {{/if}}
 
-Poses the choice of `PLAY` from the title menu, which is the same choice
-`PLAY AGAIN` makes from `gameover`. A round begins: `score` at `0`, `level` at
-`1`, `levelScore` at `0`, `moveScore`, `bestMove` and `bestChain` at `0`, `phase`
-`idle` with `chainStep`, `swapTimer` and `stepTimer` at `0`, `menuIndex` at `0`,
-no selection, no offer, no refusal, and a fresh opening board dealt through the
-game's own code, so it holds no run under R4, carries at least one legal swap,
-and comes in from above the board as `specs/rules.md` requires. The screen
-becomes `playing`.
-
-It leaves `rngState`, `simTime`, and `muted` as they stand, so a round from a
-known deal is a `reset` carrying a seed followed by this.
+Shows `screen`, one of `title`, `howto`, `playing`, `paused`, `levelclear`, and
+`gameover`. Nothing else changes: the board, the round's figures, the chain, the
+selection and `menuIndex` stand where they were. The screen behaves from there
+exactly as it does when a player reaches it, so game time stops advancing the
+board on the screens `specs/ui.md` says it does.
 
 {{#if (eq engine.slug "none")}}
-### `openHowTo()`
+### `setMenuIndex(index)`
 {{else if (eq engine.slug "simple-2d")}}
-### `openHowTo(state)`
+### `setMenuIndex(state, index)`
 {{else}}
-### `openHowTo()`
+### `setMenuIndex(index)`
 {{/if}}
 
-Poses the choice of `HOW TO PLAY` from the title menu: the screen becomes
-`howto` with `menuIndex` at `0`, exactly as choosing that item does. Nothing
-else changes.
-
-{{#if (eq engine.slug "none")}}
-### `pause()`
-{{else if (eq engine.slug "simple-2d")}}
-### `pause(state)`
-{{else}}
-### `pause()`
-{{/if}}
-
-Poses the `pause` action from `playing`: the screen becomes `paused` with the
-first item of `PAUSED_ITEMS` highlighted. The board, the chain, and every timer
-stand where they were, and game time stops advancing them for as long as the
-game is paused.
-
-{{#if (eq engine.slug "none")}}
-### `resume()`
-{{else if (eq engine.slug "simple-2d")}}
-### `resume(state)`
-{{else}}
-### `resume()`
-{{/if}}
-
-Poses the choice of `RESUME` from the pause menu: the screen returns to
-`playing` and the board, the chain, and every timer carry on from exactly where
-`pause` left them.
-
-{{#if (eq engine.slug "none")}}
-### `quit()`
-{{else if (eq engine.slug "simple-2d")}}
-### `quit(state)`
-{{else}}
-### `quit()`
-{{/if}}
-
-Poses the choice of `QUIT`, which the pause menu and the game-over menu both
-offer. The round ends: the screen becomes `title` with its first menu item
-highlighted, no board is in play, `phase` is `idle` with `chainStep` and
-`stepTimer` at `0`, and there is no selection and no refusal. `score`, `level`,
-and `levelScore` hold what the round left them at, and the next `start` begins a
-fresh round.
+Highlights the menu item at `index`, counted from `0`, on whichever vertical
+menu the current screen shows. Nothing else changes, and no item is taken.
 
 {{#if (eq engine.slug "none")}}
 ### `loadBoard(rows)`
@@ -277,20 +230,46 @@ fresh round.
 ### `loadBoard(rows)`
 {{/if}}
 
-Poses an arbitrary board and moves to `playing`, with `phase` `idle`,
-`chainStep`, `swapTimer` and `stepTimer` at `0`, no selection, no offer, and no
-refusal. `rows` is the board notation `specs/board.md` defines, one string per
-row, `GRID_ROWS` (`8`) of them carrying `GRID_COLS` (`8`) tokens each. Every gem
-of a posed board is standing still where it was written, so every cell reports a
-`fell` of `0`. Cell centers follow the formulas in `specs/board.md`, so a posed
-board sits on the stage exactly where a dealt board does. `score`, `level`,
-`levelScore`, `moveScore`, `bestMove`, `bestChain`, `rngState`, and `simTime`
+Poses an arbitrary board. `rows` is the board notation `specs/board.md` defines,
+one string per row, `GRID_ROWS` (`8`) of them carrying `GRID_COLS` (`8`) tokens
+each, and the board it writes takes those dimensions. Every gem of a posed board
+is standing still where it was written, so every cell reports a `fell` of `0`.
+Cell centers follow the formulas in `specs/board.md`, so a posed board sits on
+the stage exactly where a dealt board does.
+
+The board is the whole of what it writes: the screen, `menuIndex`, the phase and
+its timers, the selection, the offer, the refusal, and every figure of the round
 stand where they were.
 
 A board posed this way is a board like any other, and the rules in
 `specs/rules.md` govern it unchanged. Those rules run a chain from an accepted
 swap and evaluate the level and end conditions when one settles, so a posed
 board rests exactly as it was written until a swap is accepted on it.
+
+{{#if (eq engine.slug "none")}}
+### `dealBoard()`
+{{else if (eq engine.slug "simple-2d")}}
+### `dealBoard(state)`
+{{else}}
+### `dealBoard()`
+{{/if}}
+
+Deals a fresh opening board through the game's own code, drawing from
+`rngState`, so it holds no run under R4, carries at least one legal swap, and
+comes in from above the board as `specs/rules.md` requires. The board is the
+whole of what it writes: the screen, `menuIndex`, the phase, the selection and
+every figure of the round stand where they were.
+
+{{#if (eq engine.slug "none")}}
+### `clearBoard()`
+{{else if (eq engine.slug "simple-2d")}}
+### `clearBoard(state)`
+{{else}}
+### `clearBoard()`
+{{/if}}
+
+Leaves no board in play, so `cols` and `rows` are `0` and no cell is reported.
+Nothing else changes.
 
 {{#if (eq engine.slug "none")}}
 ### `setGem(col, row, token)`
@@ -363,18 +342,15 @@ Sets `bestMove` to `points`. Nothing else changes, and `moveScore` is its own
 figure.
 
 {{#if (eq engine.slug "none")}}
-### `continueLevel()`
+### `setMoveScore(points)`
 {{else if (eq engine.slug "simple-2d")}}
-### `continueLevel(state)`
+### `setMoveScore(state, points)`
 {{else}}
-### `continueLevel()`
+### `setMoveScore(points)`
 {{/if}}
 
-Poses the choice of `CONTINUE` from the level-clear menu: `level` rises by `1`,
-`levelScore`, `bestMove`, `bestChain` and `moveScore` return to `0`, a fresh
-opening board is dealt through the game's own code, and the screen becomes
-`playing` with `menuIndex` at `0`, no selection, no offer and no refusal.
-`score` carries across.
+Sets `moveScore` to `points`. Nothing else changes, and `bestMove` is its own
+figure.
 
 {{#if (eq engine.slug "none")}}
 ### `setSelection(col, row)`
@@ -421,6 +397,31 @@ and no swap is requested: a release is what plays the offer, as
 
 Leaves nothing offered. The selection, the board, and the phase stand where they
 were.
+
+{{#if (eq engine.slug "none")}}
+### `clearRefusal()`
+{{else if (eq engine.slug "simple-2d")}}
+### `clearRefusal(state)`
+{{else}}
+### `clearRefusal()`
+{{/if}}
+
+Leaves no refusal standing, whatever time the standing one had left. The
+selection, the offer, the board, and the phase stand where they were.
+
+{{#if (eq engine.slug "none")}}
+### `clearChain()`
+{{else if (eq engine.slug "simple-2d")}}
+### `clearChain(state)`
+{{else}}
+### `clearChain()`
+{{/if}}
+
+Settles resolution. The swap or the chain step in motion is dropped, `phase`
+returns to `idle`, and `chainStep`, `swapTimer` and `stepTimer` take the resting
+values the snapshot shape below fixes for an idle board. The board is left
+exactly as the dropped step found it, and the screen, the figures and the
+selection stand where they were.
 
 {{#if (eq engine.slug "none")}}
 ### `requestSwap(colA, rowA, colB, rowB)`
@@ -570,7 +571,8 @@ game actually hit-tests against, so pressing and releasing at a listed target's
 center takes that target.
 
 Every field is read straight off the game's state, so what the snapshot reports
-is what the game holds. Six are derived rather than stored:
+is what the game holds. Seven follow from other fields rather than being
+reported independently:
 
 | Field | Derived from |
 | --- | --- |

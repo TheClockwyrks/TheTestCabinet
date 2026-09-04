@@ -25,11 +25,11 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertLength, fail } from "../assert";
 import {
-  INTERIOR_MAX_COL,
-  INTERIOR_MAX_ROW,
-  INTERIOR_MIN_COL,
-  INTERIOR_MIN_ROW,
-} from "../../src/constants";
+  INTERIOR_COL_MAX,
+  INTERIOR_ROW_MAX,
+  INTERIOR_COL_MIN,
+  INTERIOR_ROW_MIN,
+} from "../constants";
 import {
   ahead,
   captureStill,
@@ -45,8 +45,8 @@ import {
 
 /** Interior cells the board holds, as specs/board.md's bounds count them. */
 const INTERIOR_CELLS =
-  (INTERIOR_MAX_COL - INTERIOR_MIN_COL + 1) *
-  (INTERIOR_MAX_ROW - INTERIOR_MIN_ROW + 1);
+  (INTERIOR_COL_MAX - INTERIOR_COL_MIN + 1) *
+  (INTERIOR_ROW_MAX - INTERIOR_ROW_MIN + 1);
 
 let h: Harness;
 

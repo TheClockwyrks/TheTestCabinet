@@ -20,7 +20,7 @@
 // mute changes between the two frames.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS, DISTINCT_MIN } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   HOME_HEAD,
@@ -30,7 +30,7 @@ import {
   poseScene,
   type Harness,
 } from "../harness";
-import { DISTINCT_MIN, bandDifferences, readBand } from "./band";
+import { bandDifferences, readBand } from "./band";
 
 /** The key `specs/controls.md` binds to `mute`. */
 const MUTE = BINDINGS.mute[0];

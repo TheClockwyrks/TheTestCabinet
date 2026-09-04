@@ -62,7 +62,9 @@ it("runs unchanged mounted under a sub-path", async () => {
         `every URL the site requests resolving under the ${PREFIX} mount`,
         `requests failed to resolve: ${unresolved
           .slice(0, 5)
-          .map((request) => `${request.path} (${request.status ?? "no response"})`)
+          .map(
+            (request) => `${request.path} (${request.status ?? "no response"})`,
+          )
           .join(", ")}`,
       );
     }

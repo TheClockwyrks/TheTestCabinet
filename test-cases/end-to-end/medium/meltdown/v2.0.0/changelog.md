@@ -95,8 +95,8 @@ the game running on its own clock, and the speed toggle.
 
 ## Every review item is decided by a validator
 
-The checklist grew from `107` items to `344`, and the twenty-nine categories that
-held them became eighteen. Every one of the `344` names a Vitest suite under
+The checklist grew from `107` items to `376`, and the twenty-nine categories that
+held them became nineteen. Every one of the `376` names a Vitest suite under
 `validation/<engine>/`, the domains its failure lowers, and how far it lowers
 them. The `100` standalone `.mjs` browser drivers of `v1.0.0`, and the single
 module they shared, are gone, and so are the seven items it left for a reviewer
@@ -235,6 +235,6 @@ scored here.
 `showcase/` beside its source: a player-facing description and a short ordered
 carousel of captured media, framed as the game's store-page presentation rather
 than as evidence any item is judged on. The case ships one of its own for the
-`base` variant, captured from the engineless reference under scripted input, so
+`base` variant, captured from the `structured-2d` reference under scripted input, so
 what the catalog shows is the game's own rules playing out rather than an outcome
 posed through the debug surface.

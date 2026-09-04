@@ -23,7 +23,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThan, fail } from "../assert";
-import { CUES, TICK_SECONDS } from "../../src/constants";
+import { CUES, TICK_SECONDS } from "../constants";
 import {
   ahead,
   captureStill,

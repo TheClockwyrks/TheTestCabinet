@@ -57,8 +57,8 @@ Whatever its shape, the state carries the following.
   creates, so no two entities live at one moment share an id.
 
 Everything the mode and difficulty derive, the routes across the floor, and the
-rectangles the build panel laid its controls out on are all rebuilt from the
-above rather than stored as authority.
+rectangles the build panel laid its controls out on and the current screen drew
+its menu rows on are all rebuilt from the above rather than stored as authority.
 {{else if (eq engine.slug "simple-2d")}}
 `src/game.ts` declares and exports the state the game is written against. This
 section is that declaration: write it into `src/game.ts` exactly as it stands
@@ -400,7 +400,8 @@ The declaration above is what the debug surface reads and poses.
 {{/if}}
 - Fields you add hold derived data you can rebuild from the declared ones. The
   run's derived figures, the routes across the floor, and the rectangles the
-  build panel laid its controls out on are all of that kind. A `reset` restores
+  build panel laid its controls out on and the current screen drew its menu rows
+  on are all of that kind. A `reset` restores
   the declared fields to their title-screen values, so those fields are the whole
   of the authoritative state.
 {{/if}}

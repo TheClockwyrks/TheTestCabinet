@@ -21,6 +21,11 @@
 // simulation does not run off the `playing` screen, so no shot, kill, leak, trip
 // or clear is reachable. That is what makes "the menu cue and nothing else" a
 // reading of the build rather than of the scenario.
+//
+// THE KEY PATH ONLY. `specs/controls.md` raises the same cue when the pointer
+// reaches a row, and a build can sound for one route and stay silent on the
+// other, so that route is `audio.menu-cue-on-pointer`'s and this point says
+// nothing about it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -58,7 +63,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("plays the menu cue on the frame the highlight moves", async () => {
+it("plays the menu cue on the frame a key moves the highlight", async () => {
   // `reset` restores the title screen with `menuIndex` at `0`
   // (specs/instrumentation.md).
   h.debug.reset();
@@ -105,5 +110,12 @@ it("plays the menu cue on the frame the highlight moves", async () => {
     played[0].gain,
     0,
     "the gain the menu cue played at on an unmuted bus (specs/audio.md)",
+  );
+
+  assertLength(
+    played,
+    1,
+    "the cues played over the whole scenario: the one the key's move raised " +
+      "(specs/audio.md)",
   );
 });

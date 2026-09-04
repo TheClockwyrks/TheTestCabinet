@@ -27,12 +27,12 @@ import { assertGreaterThanOrEqual, fail } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import {
   BODY_FILES,
-  DIFFER_MIN_PIXELS,
   decodeSprites,
   differingPixels,
   showSpriteFiles,
   type Sprite,
 } from "./sprites";
+import { DIFFER_MIN_PIXELS } from "../constants";
 
 let h: Harness;
 

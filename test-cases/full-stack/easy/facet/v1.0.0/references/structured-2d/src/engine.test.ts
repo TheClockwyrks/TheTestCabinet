@@ -9,7 +9,7 @@
 // render produced.
 
 import { describe, expect, it } from "vitest";
-import { createHarness, FRAME_MS } from "./harness";
+import { createHarness, FRAME_MS, type Harness } from "./harness";
 import { assetManifest, assets } from "./assets";
 import { cellCenter } from "./core";
 import {
@@ -49,6 +49,28 @@ const CASCADE_SWAP = { a: { col: 3, row: 6 }, b: { col: 4, row: 6 } };
 
 /** Frames enough to carry an accepted swap into its first chain step. */
 const SWAP_FRAMES = Math.ceil(SWAP_SECONDS / (FRAME_MS / 1000)) + 1;
+
+/**
+ * A round begun the way a caller begins one, out of the surface's
+ * single-element operations: the surface carries no operation that arranges a
+ * whole round at once (specs/instrumentation.md).
+ */
+function startRound(harness: Harness): void {
+  const d = harness.debug;
+  d.setScore(0);
+  d.setLevel(1);
+  d.setLevelScore(0);
+  d.setMoveScore(0);
+  d.setBestMove(0);
+  d.setBestChain(0);
+  d.clearSelection();
+  d.clearOffer();
+  d.clearRefusal();
+  d.clearChain();
+  d.dealBoard();
+  d.setMenuIndex(0);
+  d.setScreen("playing");
+}
 
 describe("the engine stands the game up", () => {
   it("opens on the title screen with no board in play", async () => {
@@ -222,7 +244,7 @@ describe("the keyboard drives the menus", () => {
   it("pauses, resumes, and quits from the keyboard", async () => {
     const harness = await createHarness();
     try {
-      harness.debug.start();
+      startRound(harness);
       harness.tap("KeyP");
       await harness.advance(1);
       expect(harness.state.screen).toBe("paused");
@@ -452,7 +474,7 @@ describe("a chain runs as the frames advance", () => {
       const harness = await createHarness();
       try {
         harness.debug.reset({ seed: 7 });
-        harness.debug.start();
+        startRound(harness);
         harness.debug.requestSwap(0, 0, 1, 0);
         harness.engine.setClock({ delta: () => stepMs });
         await harness.advance(frames);
@@ -504,7 +526,7 @@ describe("the audio bus", () => {
       expect(harness.engine.world.audio.looping("music-title")).toBe(true);
       expect(harness.engine.world.audio.looping("music-play")).toBe(false);
 
-      harness.debug.start();
+      startRound(harness);
       await harness.advance(1);
       expect(harness.engine.world.audio.looping("music-play")).toBe(true);
       expect(harness.engine.world.audio.looping("music-title")).toBe(false);

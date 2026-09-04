@@ -43,7 +43,7 @@ import {
   assertGreaterThanOrEqual,
   assertLength,
 } from "../assert";
-import { MAX_STRAIN } from "../constants";
+import { FX_DIR, MAX_STRAIN, REQUIRED_FX_SYSTEMS } from "../constants";
 import {
   clearSetFromRuns,
   maximalRuns,
@@ -62,12 +62,6 @@ import {
   type Harness,
 } from "../harness";
 import type { FacetSnapshot } from "../surface";
-
-/** The clear burst, the flawed detonation, the cut-gem flash, and the cut aura. */
-const REQUIRED_SYSTEMS = 4;
-
-/** The served directory specs/assets.md lands the particle systems under. */
-const FX_SEGMENTS = ["assets", "fx"];
 
 /** The kind the run is made of, and how many cells it holds. */
 const RUN_KIND = "ruby";
@@ -117,8 +111,8 @@ function fxAsset(request: string): string | null {
   const segments = request.split(/[?#]/u)[0].split("/");
   for (let at = 0; at + 2 < segments.length; at += 1) {
     if (
-      segments[at] === FX_SEGMENTS[0] &&
-      segments[at + 1] === FX_SEGMENTS[1] &&
+      segments[at] === FX_DIR[0] &&
+      segments[at + 1] === FX_DIR[1] &&
       segments[at + 2] !== ""
     ) {
       return segments.slice(at).join("/");
@@ -196,8 +190,8 @@ it("fetches four distinct particle systems from its own assets/fx/", async () =>
   const loaded = fxAssets(h.requests);
   assertGreaterThanOrEqual(
     loaded.length,
-    REQUIRED_SYSTEMS,
-    `distinct files under ${FX_SEGMENTS.join("/")}/ the build asked for, ` +
+    REQUIRED_FX_SYSTEMS,
+    `distinct files under ${FX_DIR.join("/")}/ the build asked for, ` +
       `of ${JSON.stringify(loaded)}`,
   );
   assertLength(

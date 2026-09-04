@@ -16,7 +16,7 @@
 // score of zero and an empty window are exactly what a restart would leave.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, COMBO_WINDOW } from "../../src/constants";
+import { BINDINGS, COMBO_WINDOW } from "../constants";
 import { assertCloseTo, assertDeepEqual, assertEqual } from "../assert";
 import {
   captureReplay,

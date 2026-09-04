@@ -60,11 +60,9 @@ import {
   assertBoardEquals,
   legalSwaps,
   maximalRuns,
-  parseRows,
   quietRowsWith,
   quietRowsWithEscape,
   swapIsLegal,
-  tokenAt,
   type BoardRows,
   type CellRef,
   type PlacedToken,
@@ -76,6 +74,7 @@ import {
   loadBoard,
   showsText,
   swapAndStep,
+  writeBoard,
   type Harness,
 } from "../harness";
 
@@ -118,18 +117,6 @@ function requireCopy(drawn: readonly string[], wanted: string): void {
   }
 }
 
-/** Write a whole board onto the live one, `setGem` by `setGem`. */
-function writeBoard(rows: BoardRows): void {
-  // Parsed on this side first, so a typo in the fixture fails here rather than
-  // crossing into the build one cell at a time.
-  parseRows(rows);
-  for (let row = 0; row < GRID_ROWS; row += 1) {
-    for (let col = 0; col < GRID_COLS; col += 1) {
-      h.debug.setGem(col, row, tokenAt(rows, col, row));
-    }
-  }
-}
-
 beforeEach(async () => {
   h = await createHarness();
 });
@@ -153,7 +140,7 @@ it("draws the best-move label and the level's best move", async () => {
   const first = await swapAndStep(h, SWAP_A, SWAP_B);
   assertEqual(first.phase, "resolving", "the phase the accepted swap opened");
 
-  writeBoard(SETTLED);
+  writeBoard(h, SETTLED);
   assertBoardEquals(h.board(), SETTLED, "the board the step is read against");
   h.debug.setLevel(FINISHED_LEVEL);
 

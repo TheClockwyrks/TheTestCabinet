@@ -34,7 +34,8 @@
 // strain read is the one step's, not a chain's.
 //
 // What a flawed gem then DOES is other points': that it is drawn into the next
-// clear set is `expansion/r6-flawed-adjacent`, that it scores FLAWED_SCORE is
+// clear set is `expansion/r6-flawed-adjacent-taken`, that it scores FLAWED_SCORE
+// is
 // `scoring/score-flawed-rate`. None of it is asserted here.
 
 import { afterEach, beforeEach, it } from "vitest";

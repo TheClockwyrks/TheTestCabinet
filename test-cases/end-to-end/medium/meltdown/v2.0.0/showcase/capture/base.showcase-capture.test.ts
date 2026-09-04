@@ -8,7 +8,7 @@
 // control, and lets the build's own rules decide everything that happens.
 //
 // NOTHING IS POSED MID-PLAY. The one call this file makes to the debug surface
-// is `reset({seed})`, before the take begins, because the vent each unit enters
+// is `reset(seed)`, before the take begins, because the vent each unit enters
 // at is the game's only randomness and a chosen seed is what makes a take
 // reproducible. From the title screen on, every input is a key edge or a pointer
 // event at the engine's own event target: the same path a human uses. The heat
@@ -547,7 +547,7 @@ async function runTake(
   seed: number,
   record: boolean,
 ): Promise<Take> {
-  h.debug.reset({ seed });
+  h.debug.reset(seed);
   await h.advance(1);
   const p = new Player(h);
 

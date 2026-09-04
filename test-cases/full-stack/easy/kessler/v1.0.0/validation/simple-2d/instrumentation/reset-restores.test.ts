@@ -6,7 +6,8 @@
 // wave `1`, `ticks` at `0`, the deflector at angle `90` with span `48`, every
 // ring slot filled at its full hit points with every ring angle at `0` and
 // each ring's speed from the wave-1 formulas, no balls, no pods, no timed
-// effect, no shield, and both driver switches on."
+// effect, no shield, the interstitial timer at `0`, and both driver switches
+// on."
 //
 // WHY IT IS ITS OWN POINT. Every posed scene in this project opens with a
 // reset, so a reset that leaves anything behind fails quietly: it leaks one
@@ -55,6 +56,7 @@ it("restores the boot state from a thoroughly disturbed session", async () => {
   h.debug.spawnPod("narrow", pod.x, pod.y);
   h.debug.setEffectTicks("widen", 300);
   h.debug.setShield(true);
+  h.debug.setInterstitialTicks(77);
   h.debug.setWaveAdvance(false);
   h.debug.setPodSpawn(false);
   const disturbed = await h.tick(5);
@@ -80,6 +82,7 @@ it("restores the boot state from a thoroughly disturbed session", async () => {
   assertEqual(s.effects.narrowTicks, 0, "no narrow effect");
   assertEqual(s.effects.pierceTicks, 0, "no pierce effect");
   assertEqual(s.effects.shieldActive, false, "no shield");
+  assertEqual(s.interstitialTicks, 0, "the interstitial timer at 0");
   assertEqual(s.waveAdvance, true, "the waveAdvance switch, back on");
   assertEqual(s.podSpawn, true, "the podSpawn switch, back on");
 });

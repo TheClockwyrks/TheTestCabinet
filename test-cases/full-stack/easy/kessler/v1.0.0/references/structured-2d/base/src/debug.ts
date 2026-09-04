@@ -23,6 +23,11 @@ import {
 import { FxActor } from "./actors";
 import { ringSpeedForWave } from "./figures";
 import { poseScreen, resetState } from "./flow";
+import {
+  menuEntries,
+  menuItemRect as menuItemRectOf,
+  type MenuItemRect,
+} from "./menus";
 import { kesslerState, type KesslerState } from "./state";
 import { normalizeDeg, pointAt, polarOf } from "./polar";
 import { launchParkedBall } from "./sim";
@@ -36,6 +41,8 @@ export interface KesslerSnapshot {
   wave: number;
   score: number;
   lives: number;
+  seed: number;
+  interstitialTicks: number;
   waveAdvance: boolean;
   podSpawn: boolean;
   paddle: { angleDeg: number; spanDeg: number };
@@ -64,11 +71,14 @@ export interface KesslerSnapshot {
 
 /** The debug and automation surface, exactly as the specification lists it. */
 export interface KesslerDebugApi {
-  reset(options?: { seed?: number }): void;
+  reset(seed?: number): void;
   snapshot(): KesslerSnapshot;
+  menuItemRect(index: number): MenuItemRect | null;
   setScreen(name: Screen): void;
   setScore(n: number): void;
   setLives(n: number): void;
+  setMenuIndex(n: number): void;
+  setInterstitialTicks(ticks: number): void;
   setWave(n: number): void;
   setPaddleAngle(deg: number): void;
   launchBall(): void;
@@ -127,6 +137,8 @@ export function snapshotOf(state: KesslerState): KesslerSnapshot {
     wave: state.wave,
     score: state.score,
     lives: state.lives,
+    seed: state.seed,
+    interstitialTicks: state.interstitialTicks,
     waveAdvance: state.waveAdvance,
     podSpawn: state.podSpawn,
     paddle: { angleDeg: state.paddleAngleDeg, spanDeg: spanOf(state) },
@@ -166,19 +178,11 @@ export function snapshotOf(state: KesslerState): KesslerSnapshot {
 export function createDebugApi(worldOf: () => World): KesslerDebugApi {
   const stateOf = (): KesslerState => kesslerState(worldOf());
   return {
-    reset(options) {
-      let seed: number | undefined;
-      if (options !== undefined && options !== null) {
-        if (typeof options !== "object") {
-          throw new Error(
-            `reset options must be an object; got ${String(options)}`,
-          );
-        }
-        if (options.seed !== undefined) {
-          seed = mustFinite("options.seed", options.seed);
-        }
-      }
-      resetState(stateOf(), seed);
+    reset(seed) {
+      resetState(
+        stateOf(),
+        seed === undefined ? undefined : mustWhole("reset seed", seed, 0),
+      );
       // A reset wants a bare field, live effects included.
       worldOf().find(FxActor)?.fx.clear();
     },
@@ -187,6 +191,15 @@ export function createDebugApi(worldOf: () => World): KesslerDebugApi {
       return snapshotOf(stateOf());
     },
 
+    /**
+     * A pure read of where the build drew menu entry `index` on the current
+     * screen. `null` on a screen with no menu and past the menu's entries.
+     */
+    menuItemRect(index) {
+      return menuItemRectOf(stateOf().screen, index);
+    },
+
+    /** Sets the screen, and changes nothing else. */
     setScreen(name) {
       if (!SCREENS.includes(name)) {
         throw new Error(`setScreen: unknown screen ${String(name)}`);
@@ -200,6 +213,32 @@ export function createDebugApi(worldOf: () => World): KesslerDebugApi {
 
     setLives(n) {
       stateOf().lives = mustWhole("setLives n", n, 0);
+    },
+
+    /**
+     * Moves the highlight exactly as `up` and `down` move it, silently. On a
+     * screen with no menu the call changes nothing.
+     */
+    setMenuIndex(n) {
+      const state = stateOf();
+      const entries = menuEntries(state.screen);
+      if (entries === null) return;
+      const value = mustWhole("setMenuIndex n", n, 0);
+      if (value >= entries.length) {
+        throw new Error(
+          `setMenuIndex n must be 0 to ${entries.length - 1}; got ${value}`,
+        );
+      }
+      state.menuIndex = value;
+    },
+
+    /** Sets the interstitial timer; it counts down on `waveclear` alone. */
+    setInterstitialTicks(ticks) {
+      stateOf().interstitialTicks = mustWhole(
+        "setInterstitialTicks ticks",
+        ticks,
+        0,
+      );
     },
 
     setWave(n) {

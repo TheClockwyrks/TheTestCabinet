@@ -74,6 +74,15 @@ export class CoilState extends GameState {
   screen: Screen = "title";
   /** The highlighted item of the current screen's menu, counted from 0. */
   menuIndex = 0;
+  /** The title menu's remembered selection, which the title opens on. */
+  titleIndex = 0;
+  /**
+   * The item a live pointer press landed on, or `null` while none is down.
+   *
+   * `specs/ui.md` takes both edges of a confirm inside one region, so the press
+   * has to be remembered until the release that answers it.
+   */
+  pressedItem: number | null = null;
 
   /** The running score of the current round. */
   score = 0;

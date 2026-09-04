@@ -14,6 +14,8 @@
 // touch stays out of the way.
 
 import { GRID_COLS, GRID_ROWS } from "../constants";
+import { loadBoard, setScreen } from "./debug";
+import { createInitialState, type FacetState } from "./state";
 
 /** The kind letters of the notation, in the order of `GEM_KINDS`. */
 const KIND_LETTERS = ["R", "A", "C", "J", "B", "S", "M"] as const;
@@ -62,4 +64,20 @@ export function quietRowsWith(
   edits: Readonly<Record<string, string>>,
 ): string[] {
   return rewrite(quietRows(), edits);
+}
+
+/**
+ * The quiet board posed and in play, which is the substrate nearly every test
+ * starts from. It is written the way a caller writes it: the board posed with
+ * `loadBoard`, the screen shown with `setScreen`, one element of the state at a
+ * time (specs/instrumentation.md).
+ */
+export function posedPlaying(
+  edits: Readonly<Record<string, string>> = {},
+  seed = 1,
+): FacetState {
+  return setScreen(
+    loadBoard(createInitialState(seed), quietRowsWith(edits)),
+    "playing",
+  );
 }

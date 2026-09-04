@@ -20,12 +20,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, fail } from "../assert";
-import { CELL, SPRITE_PATHS } from "../../src/constants";
+import { CELL, PAINT_MIN_SHARE, SPRITE_PATHS } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import {
   decodeSprite,
   isCellSized,
-  PAINT_MIN_SHARE,
   paintShare,
   showSpriteFiles,
 } from "./sprites";

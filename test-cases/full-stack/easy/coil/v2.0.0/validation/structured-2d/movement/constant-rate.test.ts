@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertDeepEqual, assertEqual } from "../assert";
-import { TICK_SECONDS } from "../../src/constants";
+import { TICK_SECONDS } from "../constants";
 import {
   ahead,
   arrangeStep,

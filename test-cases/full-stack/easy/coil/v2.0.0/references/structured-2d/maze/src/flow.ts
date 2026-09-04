@@ -20,7 +20,8 @@ import {
   type Screen,
 } from "./constants";
 import type { CoilState } from "./game";
-import { menuItems } from "./menus";
+import type { PointerSample } from "@test-cabinet/structured-2d";
+import { menuItemAt, menuItems } from "./menus";
 import { seedState } from "./rng";
 import { layChain, requestTurn, spawnPellet } from "./sim";
 
@@ -68,6 +69,8 @@ const STEER: Partial<Record<ActionName, Direction>> = {
 export function resetSession(state: CoilState, seed = DEFAULT_SEED): void {
   state.screen = "title";
   state.menuIndex = 0;
+  state.titleIndex = 0;
+  state.pressedItem = null;
   state.best = 0;
   state.ticks = 0;
   state.simTime = 0;
@@ -99,10 +102,45 @@ export function startRound(state: CoilState): void {
   spawnPellet(state);
 }
 
-/** Move to `screen` and highlight its first item. */
+/**
+ * Move to `screen` and highlight the item it opens on.
+ *
+ * The title opens on its remembered selection, so leaving how-to-play lands back
+ * on the entry that opened it and a round left for the title lands back on the
+ * entry that started it (`specs/ui.md`). Every other screen opens on its first
+ * item.
+ */
 export function goTo(state: CoilState, screen: Screen): void {
   state.screen = screen;
-  state.menuIndex = 0;
+  state.menuIndex = screen === "title" ? state.titleIndex : 0;
+}
+
+/**
+ * Route one pointer or touch sample over the current screen's menu
+ * (`specs/ui.md`).
+ *
+ * A sample carries the logical stage units the menus are laid out in. A move,
+ * and a contact landing, select the item they are over; a press and the release
+ * that answers it confirm the item when both fell inside the one region, so a
+ * press slid off its entry confirms nothing. The `playing` screen shows no menu,
+ * so nothing there is read.
+ */
+export function handlePointer(state: CoilState, sample: PointerSample): Routed {
+  if (state.screen === "playing") {
+    state.pressedItem = null;
+    return ROUTED_NOTHING;
+  }
+  const item = menuItemAt(state.screen, sample.x, sample.y);
+  if (item !== null) state.menuIndex = item;
+  if (sample.type === "move") return ROUTED_NOTHING;
+  if (sample.type === "down") {
+    state.pressedItem = item;
+    return ROUTED_NOTHING;
+  }
+  const armed = state.pressedItem;
+  state.pressedItem = null;
+  if (item === null || item !== armed) return ROUTED_NOTHING;
+  return accept(state);
 }
 
 /**
@@ -155,6 +193,8 @@ function routeMenu(state: CoilState, action: ActionName): Routed {
  */
 function accept(state: CoilState): Routed {
   const index = state.menuIndex;
+  // The title remembers what was confirmed on it, whichever input confirmed it.
+  if (state.screen === "title") state.titleIndex = index;
   switch (state.screen) {
     case "title":
       if (index !== 0) {

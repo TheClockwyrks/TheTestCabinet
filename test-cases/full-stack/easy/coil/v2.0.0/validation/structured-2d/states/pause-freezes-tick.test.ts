@@ -16,7 +16,7 @@
 // `states/pause-reachable`, and this decides only what a pause holds still.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COMBO_WINDOW } from "../../src/constants";
+import { COMBO_WINDOW } from "../constants";
 import { assertCloseTo, assertDeepEqual, assertEqual } from "../assert";
 import {
   HOME_HEAD,

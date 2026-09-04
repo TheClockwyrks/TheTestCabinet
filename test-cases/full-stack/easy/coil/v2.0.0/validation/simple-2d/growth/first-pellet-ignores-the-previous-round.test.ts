@@ -41,7 +41,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNotNull } from "../assert";
-import { START_CELLS, type Cell } from "../../src/constants";
+import { START_CELLS, type Cell } from "../constants";
 import {
   captureStill,
   chooseItem,
