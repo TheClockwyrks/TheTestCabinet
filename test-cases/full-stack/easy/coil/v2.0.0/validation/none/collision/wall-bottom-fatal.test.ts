@@ -17,6 +17,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
 import { type Cell } from "../constants";
 import {
+  ahead,
   arrangeApproach,
   captureReplay,
   createHarness,
@@ -29,6 +30,12 @@ import {
  */
 const WALL: Cell = { col: 10, row: 17 };
 
+/** Ticks of clear travel before the head reaches the wall. */
+const RUN_UP = 3;
+
+/** Ticks run after the death, so the screen it opened is on the recording. */
+const SETTLE = 3;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -40,12 +47,30 @@ afterEach(async () => {
 });
 
 it("ends the round on the tick the head enters the bottom wall", async () => {
-  const posed = await arrangeApproach(h, WALL, { dir: "down", length: 3 });
-  assertDeepEqual(posed.next, WALL, "the cell the next tick enters");
+  const posed = await arrangeApproach(h, WALL, {
+    dir: "down",
+    length: 3,
+    runUp: RUN_UP + 1,
+  });
   assertEqual(posed.snapshot.screen, "playing", "the round before the tick");
 
-  const after = await captureReplay(h, "bottom", () => h.tick());
+  const after = await captureReplay(h, "bottom", async () => {
+    const travelled = await h.tick(RUN_UP);
+    assertEqual(
+      travelled.screen,
+      "playing",
+      "the round on the way to the wall",
+    );
+    assertDeepEqual(
+      ahead(travelled.snake[0], "down"),
+      WALL,
+      "the cell the next tick enters",
+    );
+    const fatal = await h.tick();
+    await h.tick(SETTLE);
+    return fatal;
+  });
 
-  assertEqual(after.ticks, 1, "ticks resolved");
+  assertEqual(after.ticks, RUN_UP + 1, "ticks resolved");
   assertEqual(after.screen, "gameover", "the screen the fatal tick reached");
 });

@@ -13,7 +13,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import {
   ahead,
   arrangeStep,
@@ -27,6 +27,12 @@ import {
  * Where the chain is posed: clear board below it, and behind it for the chain to trail into.
  */
 const HEAD: Cell = { col: 10, row: 8 };
+
+/** Ticks of clear travel before the request, so the run is on the recording. */
+const RUN_UP = 3;
+
+/** Ticks run after the tick that resolves it, so its outcome is too. */
+const SETTLE = 3;
 
 let h: Harness;
 
@@ -42,15 +48,19 @@ it("turns down from a rightward run, on the tick after the request", async () =>
   const posed = arrangeStep(h, { head: HEAD, dir: "right", length: 3 });
   assertEqual(posed.snapshot.dir, "right", "the posed direction");
 
-  const turned = await captureReplay(h, "down", async () => {
+  const run = await captureReplay(h, "down", async () => {
+    const before = await h.tick(RUN_UP);
     await h.tap(BINDINGS.down[0]);
-    return h.tick();
+    const stepped = await h.tick();
+    await h.tick(SETTLE);
+    return { before, stepped };
   });
+  const { before, stepped: turned } = run;
 
   assertEqual(turned.dir, "down", "dir after the tick");
   assertDeepEqual(
     turned.snake[0],
-    ahead(HEAD, "down"),
+    ahead(before.snake[0], "down"),
     "the head after the tick",
   );
 });

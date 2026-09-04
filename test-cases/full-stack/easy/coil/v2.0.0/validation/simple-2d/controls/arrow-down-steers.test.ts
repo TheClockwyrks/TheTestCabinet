@@ -14,7 +14,7 @@
 // `steering.ts` states what is posed and why the snake's travel is held still.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import { assertEqual } from "../assert";
 import { createHarness, type Harness } from "../harness";
 import { steerOnce } from "./steering";

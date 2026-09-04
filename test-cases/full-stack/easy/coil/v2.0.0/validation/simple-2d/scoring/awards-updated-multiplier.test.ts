@@ -14,7 +14,7 @@
 // this point needs it open beyond argument.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COMBO_WINDOW, PELLET_POINTS } from "../../src/constants";
+import { COMBO_WINDOW, PELLET_POINTS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   arrangeEat,
@@ -29,6 +29,12 @@ const MET = 3;
 /** A score the round is already carrying, so the award is read as an increment. */
 const CARRIED = 500;
 
+/** Ticks of clear travel before the head reaches the pellet. */
+const RUN_UP = 3;
+
+/** Ticks run after the eat, so what it left behind is on the recording. */
+const SETTLE = 3;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -40,9 +46,19 @@ afterEach(() => {
 });
 
 it("raises M to four and awards forty from an M of three", async () => {
-  arrangeEat(h, { score: CARRIED, combo: MET, comboWindow: COMBO_WINDOW });
+  arrangeEat(h, {
+    score: CARRIED,
+    combo: MET,
+    comboWindow: COMBO_WINDOW,
+    runUp: RUN_UP + 1,
+  });
 
-  const after = await captureReplay(h, "award", () => h.tick());
+  const after = await captureReplay(h, "award", async () => {
+    await h.tick(RUN_UP);
+    const eaten = await h.tick();
+    await h.tick(SETTLE);
+    return eaten;
+  });
 
   assertEqual(after.combo, MET + 1, "the multiplier after the eat");
   assertEqual(

@@ -27,7 +27,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertNull } from "../assert";
-import { COMBO_WINDOW, CUES } from "../../src/constants";
+import { COMBO_WINDOW, CUES } from "../constants";
 import {
   arrangeEat,
   captureReplay,

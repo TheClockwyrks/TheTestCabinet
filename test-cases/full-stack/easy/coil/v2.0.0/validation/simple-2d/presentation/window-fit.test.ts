@@ -60,13 +60,13 @@ import {
 import {
   GRID_COLS,
   GRID_ROWS,
-  INTERIOR_MAX_COL,
-  INTERIOR_MAX_ROW,
-  INTERIOR_MIN_COL,
-  INTERIOR_MIN_ROW,
+  INTERIOR_COL_MAX,
+  INTERIOR_ROW_MAX,
+  INTERIOR_COL_MIN,
+  INTERIOR_ROW_MIN,
   STAGE_H,
   STAGE_W,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureStill,
   chainFrom,
@@ -105,10 +105,10 @@ const READ_CELLS: readonly Cell[] = [
   { col: GRID_COLS - 1, row: 8 },
   { col: 14, row: 0 },
   { col: 14, row: GRID_ROWS - 1 },
-  { col: INTERIOR_MIN_COL, row: INTERIOR_MIN_ROW },
-  { col: INTERIOR_MAX_COL, row: INTERIOR_MIN_ROW },
-  { col: INTERIOR_MIN_COL, row: INTERIOR_MAX_ROW },
-  { col: INTERIOR_MAX_COL, row: INTERIOR_MAX_ROW },
+  { col: INTERIOR_COL_MIN, row: INTERIOR_ROW_MIN },
+  { col: INTERIOR_COL_MAX, row: INTERIOR_ROW_MIN },
+  { col: INTERIOR_COL_MIN, row: INTERIOR_ROW_MAX },
+  { col: INTERIOR_COL_MAX, row: INTERIOR_ROW_MAX },
   PELLET_CELL,
 ];
 

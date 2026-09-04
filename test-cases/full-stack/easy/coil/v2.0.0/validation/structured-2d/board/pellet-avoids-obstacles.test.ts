@@ -35,7 +35,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { START_CELLS } from "../../src/constants";
+import { START_CELLS } from "../constants";
 import {
   ahead,
   captureReplay,

@@ -27,7 +27,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, fail } from "../assert";
-import { COMBO_WINDOW, CUES } from "../../src/constants";
+import { COMBO_WINDOW, CUES, SILENCE_FLOOR } from "../constants";
 import {
   ahead,
   captureStill,
@@ -36,7 +36,7 @@ import {
   HOME_HEAD,
   type Harness,
 } from "../harness";
-import { CUE_FILES, readSound, SILENCE_FLOOR, showRound } from "./sounds";
+import { CUE_FILES, readSound, showRound } from "./sounds";
 
 /** The path `specs/assets.md` fixes for the combo cue. */
 const FILE = CUE_FILES[CUES.comboUp];

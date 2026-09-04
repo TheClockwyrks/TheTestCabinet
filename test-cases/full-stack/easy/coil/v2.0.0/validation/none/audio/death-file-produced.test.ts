@@ -26,14 +26,20 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, fail } from "../assert";
-import { CUES, CUE_FILES, INTERIOR_COL_MAX, type Cell } from "../constants";
+import {
+  type Cell,
+  CUE_FILES,
+  CUES,
+  INTERIOR_COL_MAX,
+  SILENCE_FLOOR,
+} from "../constants";
 import {
   captureStill,
   chainFrom,
   createHarness,
   type Harness,
 } from "../harness";
-import { decodeSound, SILENCE_FLOOR, showRound } from "./sounds";
+import { decodeSound, showRound } from "./sounds";
 
 /** The path `specs/assets.md` fixes for the death cue. */
 const FILE = CUE_FILES[CUES.death];

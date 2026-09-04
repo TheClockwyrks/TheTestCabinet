@@ -10,7 +10,7 @@
 // this one to the same fault. What is pressed here is the key that leaves it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

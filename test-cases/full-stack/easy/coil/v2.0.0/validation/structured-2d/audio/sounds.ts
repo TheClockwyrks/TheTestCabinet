@@ -38,7 +38,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { CUES, CUE_PATHS } from "../../src/constants";
+import { CUES, CUE_PATHS } from "../constants";
 import { poseScene, type Harness, type Scene } from "../harness";
 import { WORKSPACE } from "../harness";
 
@@ -49,19 +49,6 @@ export const CUE_FILES: Readonly<Record<string, string>> = {
   [CUES.death]: `assets/${CUE_PATHS[CUES.death]}`,
   [CUES.music]: `assets/${CUE_PATHS[CUES.music]}`,
 };
-
-/**
- * The peak sample a file must reach to be carrying signal rather than silence:
- * a hundredth of full scale, which is 40 dB down.
- *
- * `specs/assets.md` asks for four sounds a player hears and tells apart, and
- * fixes no level, so what a check can honestly read is the difference between a
- * sound and no sound. Forty decibels below full scale is inaudible under any
- * mix, so a file that fails this carries nothing a player could hear, while a
- * file mastered as quietly as anyone would sensibly master a game cue clears it
- * many times over.
- */
-export const SILENCE_FLOOR = 0.01;
 
 /** One produced sound, as its container describes it. */
 export interface Sound {

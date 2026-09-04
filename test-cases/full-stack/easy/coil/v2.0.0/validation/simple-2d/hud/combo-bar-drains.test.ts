@@ -22,7 +22,7 @@
 // still, so nothing but the window differs between them.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COMBO_WINDOW } from "../../src/constants";
+import { COMBO_WINDOW } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   HOME_HEAD,

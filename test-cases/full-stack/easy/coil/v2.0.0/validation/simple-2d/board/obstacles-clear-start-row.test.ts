@@ -24,7 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertGreaterThan } from "../assert";
-import { START_CELLS } from "../../src/constants";
+import { START_CELLS } from "../constants";
 import {
   captureStill,
   createHarness,

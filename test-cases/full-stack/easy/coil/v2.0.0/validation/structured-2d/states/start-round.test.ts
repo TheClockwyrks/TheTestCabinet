@@ -11,7 +11,7 @@
 // decides that the round opens at all.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

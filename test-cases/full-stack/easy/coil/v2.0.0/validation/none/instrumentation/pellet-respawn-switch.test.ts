@@ -22,6 +22,12 @@ import {
   type Harness,
 } from "../harness";
 
+/** Ticks of clear travel before the head reaches the pellet. */
+const RUN_UP = 3;
+
+/** Ticks run after the eat, so what it left behind is on the recording. */
+const SETTLE = 3;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -33,7 +39,10 @@ afterEach(async () => {
 });
 
 it("leaves the board without a pellet when one is eaten", async () => {
-  const scene = await arrangeEat(h, { pelletRespawn: false });
+  const scene = await arrangeEat(h, {
+    pelletRespawn: false,
+    runUp: RUN_UP + 1,
+  });
   assertEqual(
     scene.snapshot.pelletRespawn,
     false,
@@ -46,7 +55,12 @@ it("leaves the board without a pellet when one is eaten", async () => {
   );
   const before = scene.snapshot;
 
-  const after = await captureReplay(h, "unreplaced", () => h.tick());
+  const after = await captureReplay(h, "unreplaced", async () => {
+    await h.tick(RUN_UP);
+    const eaten = await h.tick();
+    await h.tick(SETTLE);
+    return eaten;
+  });
 
   // The pellet was eaten: the head is on its cell and the eat resolved.
   assertDeepEqual(after.snake[0], scene.pellet, "the head on the eaten cell");

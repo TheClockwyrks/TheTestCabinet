@@ -43,6 +43,9 @@ const CHAIN: Cell[] = [
   { col: 9, row: 8 },
 ];
 
+/** Ticks run after the tick this point reads, so its outcome is on the recording. */
+const SETTLE = 3;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -59,7 +62,11 @@ it("ends the round on the tick the head enters its own body", async () => {
   assertDeepEqual(entering, CHAIN[3], "the segment the next tick enters");
   assertDeepEqual(posed.snake, CHAIN, "the posed chain");
 
-  const after = await captureReplay(h, "self", () => h.tick());
+  const after = await captureReplay(h, "self", async () => {
+    const resolved = await h.tick();
+    await h.tick(SETTLE);
+    return resolved;
+  });
 
   assertEqual(after.ticks, 1, "ticks resolved");
   assertEqual(after.screen, "gameover", "the screen the fatal tick reached");

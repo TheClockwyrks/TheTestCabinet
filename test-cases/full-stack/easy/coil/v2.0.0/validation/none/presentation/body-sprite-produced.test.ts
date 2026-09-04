@@ -19,12 +19,11 @@
 // picture of the file itself, since this point drives no game.
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, fail } from "../assert";
-import { CELL } from "../constants";
+import { CELL, PAINT_MIN_SHARE } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import {
   decodeSprite,
   isCellSized,
-  PAINT_MIN_SHARE,
   paintShare,
   showSpriteFiles,
 } from "./sprites";

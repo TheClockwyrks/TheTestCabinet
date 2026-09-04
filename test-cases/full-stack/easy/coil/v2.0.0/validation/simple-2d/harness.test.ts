@@ -29,7 +29,7 @@ import {
   START_CELLS,
   START_DIR,
   TICK_SECONDS,
-} from "../src/constants";
+} from "./constants";
 import {
   FRAMES_PER_TICK,
   FRAME_MS,

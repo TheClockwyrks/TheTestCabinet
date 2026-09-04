@@ -30,7 +30,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotEqual, assertNotNull } from "../assert";
-import { BITE_SECONDS } from "../../src/constants";
+import { BITE_SECONDS } from "../constants";
 import {
   HOME_HEAD,
   arrangeEat,

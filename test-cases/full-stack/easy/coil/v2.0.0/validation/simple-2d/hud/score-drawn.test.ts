@@ -15,7 +15,7 @@
 // this decides is the readout, not the round.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SCORE_LABEL } from "../../src/constants";
+import { SCORE_LABEL } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

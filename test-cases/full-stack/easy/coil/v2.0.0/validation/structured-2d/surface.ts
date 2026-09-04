@@ -32,12 +32,6 @@
 // them reaches them through the harness's obstacle helpers, which say what is
 // missing rather than throwing a `TypeError` several frames later.
 
-/** The surface's version, reported as `version` (`COIL_DEBUG_VERSION`). */
-export const COIL_DEBUG_VERSION = 1;
-
-/** The seed `reset` restores when the caller names none (`DEFAULT_SEED`). */
-export const DEFAULT_SEED = 1;
-
 /** One cell of the board, addressed from the top-left as `specs/board.md` does. */
 export interface Cell {
   col: number;
@@ -63,6 +57,7 @@ export type Mode = "classic" | "maze";
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "menuItemRect",
   "setScreen",
   "setMenuIndex",
   "setScore",
@@ -94,11 +89,26 @@ export type OperationName =
  * sweeps the surface (`instrumentation/debug-api`) calls a reading for its value
  * and a pose for its effect.
  */
-export const READINGS = ["snapshot"] as const;
+export const READINGS = ["snapshot", "menuItemRect"] as const;
 
 /** `reset`'s options: the seed the pellet generator is laid with. */
 export interface ResetOptions {
   seed?: number;
+}
+
+/**
+ * The hit region a menu item occupies, in the logical units of
+ * `specs/overview.md`: `x` and `y` are its top-left corner, `w` and `h` its size.
+ *
+ * `specs/ui.md` leaves the LAYOUT of a menu to the build and fixes only that a
+ * pointer over an item's region selects it, so the region is something the build
+ * reports rather than something this project knows.
+ */
+export interface MenuRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 /**
@@ -113,6 +123,8 @@ export interface CoilSnapshot {
   screen: Screen;
   /** The highlighted item, `0` on a screen with no menu. */
   menuIndex: number;
+  /** The title menu's remembered selection. */
+  titleIndex: number;
   mode: Mode;
   score: number;
   /** The best score of the session. */
@@ -163,6 +175,11 @@ export interface CoilDebugApi {
 
   reset(options?: ResetOptions): void;
   snapshot(): CoilSnapshot;
+  /**
+   * The hit region of item `index` on the menu the current screen shows, or
+   * `null` on `"playing"` and for an index that menu has no item at.
+   */
+  menuItemRect(index: number): MenuRect | null;
 
   setScreen(screen: Screen): void;
   setMenuIndex(index: number): void;

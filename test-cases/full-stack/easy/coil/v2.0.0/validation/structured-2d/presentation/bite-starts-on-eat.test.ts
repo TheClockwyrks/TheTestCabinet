@@ -31,7 +31,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertNotNull, assertNull, fail } from "../assert";
-import { BITE_SECONDS } from "../../src/constants";
+import { BITE_SECONDS } from "../constants";
 import {
   arrangeEat,
   captureReplay,

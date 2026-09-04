@@ -13,7 +13,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import {
   ahead,
   arrangeStep,
@@ -25,6 +25,12 @@ import {
 
 /** Where the chain is posed: clear board above it and to its right. */
 const HEAD: Cell = { col: 10, row: 8 };
+
+/** Ticks of clear travel before the request, so the run is on the recording. */
+const RUN_UP = 3;
+
+/** Ticks run after the tick that resolves it, so its outcome is too. */
+const SETTLE = 3;
 
 let h: Harness;
 
@@ -38,21 +44,25 @@ afterEach(() => {
 
 it("buffers the request, and applies it on the next tick", async () => {
   const posed = arrangeStep(h, { head: HEAD, dir: "right", length: 3 });
+  assertEqual(posed.snapshot.dir, "right", "the posed direction");
 
   const turn = await captureReplay(h, "turn", async () => {
+    const before = await h.tick(RUN_UP);
     await h.tap(BINDINGS.up[0]);
     const requested = h.snapshot();
-    return { requested, turned: await h.tick() };
+    const turned = await h.tick();
+    await h.tick(SETTLE);
+    return { before, requested, turned };
   });
 
   // At the call: nothing moved, the heading is the old one, and the request is
   // waiting on the buffer. The frame the press was delivered on is a fraction of
   // a tick, so no tick has resolved on it.
-  assertEqual(turn.requested.ticks, 0, "ticks at the request");
+  assertEqual(turn.requested.ticks, RUN_UP, "ticks at the request");
   assertEqual(turn.requested.dir, "right", "dir at the request");
   assertDeepEqual(
     turn.requested.snake,
-    posed.snapshot.snake,
+    turn.before.snake,
     "the chain at the request",
   );
   assertDeepEqual(turn.requested.turns, ["up"], "the buffered request");
@@ -61,7 +71,7 @@ it("buffers the request, and applies it on the next tick", async () => {
   assertEqual(turn.turned.dir, "up", "dir after the tick");
   assertDeepEqual(
     turn.turned.snake[0],
-    ahead(HEAD, "up"),
+    ahead(turn.before.snake[0], "up"),
     "the head after the tick",
   );
 });

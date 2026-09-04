@@ -37,6 +37,7 @@ export const REQUIRED_OPS = [
   "advance",
   "reset",
   "snapshot",
+  "menuItemRect",
   "setScreen",
   "setMenuIndex",
   "setScore",
@@ -66,6 +67,21 @@ export interface ResetOptions {
 }
 
 /**
+ * The hit region a menu item occupies, in the logical units of
+ * `specs/overview.md`: `x` and `y` are its top-left corner, `w` and `h` its size.
+ *
+ * `specs/ui.md` leaves the LAYOUT of a menu to the build and fixes only that a
+ * pointer over an item's region selects it, so the region is something the build
+ * reports rather than something this project knows.
+ */
+export interface MenuRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
  * The plain object `snapshot()` returns, field for field as
  * `specs/instrumentation.md` states it.
  *
@@ -77,6 +93,8 @@ export interface CoilSnapshot {
   screen: Screen;
   /** The highlighted item, `0` on a screen with no menu. */
   menuIndex: number;
+  /** The title menu's remembered selection. */
+  titleIndex: number;
   mode: Mode;
   score: number;
   /** The best score of the session. */
@@ -128,6 +146,11 @@ export interface CoilDebugApi {
 
   reset(options?: ResetOptions): void;
   snapshot(): CoilSnapshot;
+  /**
+   * The hit region of item `index` on the menu the current screen shows, or
+   * `null` on `"playing"` and for an index that menu has no item at.
+   */
+  menuItemRect(index: number): MenuRect | null;
 
   setScreen(screen: Screen): void;
   setMenuIndex(index: number): void;

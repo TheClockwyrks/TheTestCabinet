@@ -19,7 +19,7 @@ import {
   GAMEOVER_TEXT,
   OVER_ITEMS,
   SCORE_LABEL,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   arrangeFullBoard,

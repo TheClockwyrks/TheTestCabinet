@@ -17,7 +17,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertDeepEqual, assertEqual } from "../assert";
-import { COMBO_WINDOW } from "../../src/constants";
+import { COMBO_WINDOW } from "../constants";
 import {
   arrangeApproach,
   captureReplay,
@@ -34,6 +34,12 @@ const COMBO = 3;
 
 /** Seconds left on the window, part spent so step 6 has something to draw off. */
 const WINDOW = COMBO_WINDOW / 2;
+
+/** Ticks of clear travel before the tick this point reads. */
+const RUN_UP = 3;
+
+/** Ticks run after it, so what it left behind is on the recording. */
+const SETTLE = 3;
 
 let h: Harness;
 
@@ -52,12 +58,19 @@ it("leaves the chain, the score and the window as the tick found them", async ()
     score: SCORE,
     combo: COMBO,
     comboWindow: WINDOW,
+    runUp: RUN_UP + 1,
   });
-  const before = posed.snapshot;
-  assertDeepEqual(posed.next, WALL_CELL, "the fatal cell the next tick enters");
-  assertCloseTo(before.comboWindow, WINDOW, 9, "the window before the tick");
+  assertEqual(posed.snapshot.screen, "playing", "the round before the tick");
 
-  const after = await captureReplay(h, "halted", () => h.tick());
+  // The readings the fatal tick is measured against are taken at the END of the
+  // run-up, because the window drains on every tick the chain travels.
+  const run = await captureReplay(h, "halted", async () => {
+    const before = await h.tick(RUN_UP);
+    const fatal = await h.tick();
+    await h.tick(SETTLE);
+    return { before, fatal };
+  });
+  const { before, fatal: after } = run;
 
   assertEqual(after.screen, "gameover", "the screen the fatal tick reached");
   // Step 4 did not run: the chain is exactly as it was, head included.
@@ -67,7 +80,7 @@ it("leaves the chain, the score and the window as the tick found them", async ()
   // Step 6 did not run.
   assertCloseTo(
     after.comboWindow,
-    WINDOW,
+    before.comboWindow,
     9,
     "the seconds left on the window after the fatal tick",
   );

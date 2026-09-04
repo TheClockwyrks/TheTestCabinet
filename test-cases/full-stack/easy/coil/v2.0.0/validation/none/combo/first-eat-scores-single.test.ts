@@ -22,6 +22,12 @@ import {
   type Harness,
 } from "../harness";
 
+/** Ticks of clear travel before the head reaches the pellet. */
+const RUN_UP = 3;
+
+/** Ticks run after the eat, so what it left behind is on the recording. */
+const SETTLE = 3;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -33,12 +39,17 @@ afterEach(async () => {
 });
 
 it("resolves the first eat of a round at a multiplier of one", async () => {
-  const scene = await arrangeEat(h);
+  const scene = await arrangeEat(h, { runUp: RUN_UP + 1 });
   assertEqual(scene.snapshot.combo, 1, "the multiplier a round opens at");
   assertEqual(scene.snapshot.comboWindow, 0, "the window a round opens with");
   assertEqual(scene.snapshot.score, 0, "the score a round opens at");
 
-  const after = await captureReplay(h, "first", () => h.tick());
+  const after = await captureReplay(h, "first", async () => {
+    await h.tick(RUN_UP);
+    const eaten = await h.tick();
+    await h.tick(SETTLE);
+    return eaten;
+  });
 
   assertEqual(after.combo, 1, "the multiplier the first eat resolved at");
   assertEqual(after.score, PELLET_POINTS, "the points the first eat awarded");

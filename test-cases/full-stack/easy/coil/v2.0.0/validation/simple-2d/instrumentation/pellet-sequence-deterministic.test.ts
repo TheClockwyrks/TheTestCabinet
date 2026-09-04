@@ -21,7 +21,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
-import { DEFAULT_SEED } from "../../src/constants";
+import { DEFAULT_SEED } from "../constants";
 import {
   ahead,
   captureReplay,

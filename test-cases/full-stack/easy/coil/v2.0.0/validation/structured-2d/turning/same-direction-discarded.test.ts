@@ -13,7 +13,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import {
   ahead,
   arrangeStep,
@@ -25,6 +25,12 @@ import {
 
 /** Where the chain is posed: a clear run to its right. */
 const HEAD: Cell = { col: 10, row: 8 };
+
+/** Ticks of clear travel before the request, so the run is on the recording. */
+const RUN_UP = 3;
+
+/** Ticks run after the tick that resolves it, so its outcome is too. */
+const SETTLE = 3;
 
 let h: Harness;
 
@@ -39,15 +45,19 @@ afterEach(() => {
 it("keeps the heading and empties the buffer on a repeated request", async () => {
   arrangeStep(h, { head: HEAD, dir: "right", length: 3 });
 
-  const after = await captureReplay(h, "repeat", async () => {
+  const run = await captureReplay(h, "repeat", async () => {
+    const before = await h.tick(RUN_UP);
     await h.tap(BINDINGS.right[0]);
-    return h.tick();
+    const stepped = await h.tick();
+    await h.tick(SETTLE);
+    return { before, stepped };
   });
+  const { before, stepped: after } = run;
 
   assertEqual(after.dir, "right", "dir after a repeated request");
   assertDeepEqual(
     after.snake[0],
-    ahead(HEAD, "right"),
+    ahead(before.snake[0], "right"),
     "the head after a repeated request",
   );
   assertDeepEqual(after.turns, [], "turns after step 1 discarded the request");

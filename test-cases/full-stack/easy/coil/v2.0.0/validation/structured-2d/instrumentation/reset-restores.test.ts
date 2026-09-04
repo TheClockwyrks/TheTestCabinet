@@ -9,7 +9,7 @@
 // whole snapshot back at once.
 //
 // WHAT THE OPENING STATE IS. specs/instrumentation.md lists it: the title screen
-// with `menuIndex` at 0, the score and the best score at 0, the multiplier at 1
+// with `menuIndex` and `titleIndex` at 0, the score and the best score at 0, the multiplier at 1
 // with its window closed, `ticks` and `simTime` at 0, the starting chain of
 // specs/board.md facing right, an empty turn buffer, no live pellet, the mode's
 // own obstacle course back on the board, and all three driver switches on.
@@ -28,14 +28,17 @@ import {
 } from "../assert";
 import {
   COMBO_WINDOW,
+  HOWTO_INDEX,
+  KEY,
   OBSTACLE_CELLS,
   START_CELLS,
   START_DIR,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureStill,
   chainFrom,
   createHarness,
+  openTitle,
   poseScene,
   type Cell,
   type Harness,
@@ -60,6 +63,19 @@ function byCell(a: Cell, b: Cell): number {
 }
 
 it("restores every field the snapshot reports to its opening value", async () => {
+  // The title's remembered selection first, because `titleIndex` has no setter:
+  // specs/ui.md writes it by confirming an item on the title menu, so that is how
+  // a reset is given something to clear. It is the one field of the snapshot this
+  // point cannot pose.
+  openTitle(h);
+  h.debug.setMenuIndex(HOWTO_INDEX);
+  await h.tap(KEY.confirm);
+  assertEqual(
+    h.snapshot().titleIndex,
+    HOWTO_INDEX,
+    "the remembered selection a reset has to clear",
+  );
+
   // A thoroughly disturbed game: the chain moved and turned, a score and a best,
   // a live combo at a raised multiplier, a pellet somewhere it was put, every
   // switch off, and a screen that is not the title.
@@ -92,6 +108,7 @@ it("restores every field the snapshot reports to its opening value", async () =>
 
   assertEqual(after.screen, "title", "screen");
   assertEqual(after.menuIndex, 0, "menuIndex");
+  assertEqual(after.titleIndex, 0, "titleIndex");
   assertEqual(after.score, 0, "score");
   assertEqual(after.best, 0, "best");
   assertEqual(after.combo, 1, "combo");
@@ -108,11 +125,11 @@ it("restores every field the snapshot reports to its opening value", async () =>
   assertEqual(after.pelletRespawn, true, "pelletRespawn");
 
   // The obstacle course the mode lays is back on the board, whichever mode this
-  // build ships. specs/mode.md fixes it per mode, `src/constants.ts` names it as
-  // `OBSTACLE_CELLS`, and the snapshot reports which mode is running.
+  // build ships. specs/mode.md fixes it per mode as `OBSTACLE_CELLS`, and the
+  // snapshot reports which mode is running.
   assertDeepEqual(
     [...after.obstacles].sort(byCell),
-    [...OBSTACLE_CELLS].sort(byCell),
+    [...OBSTACLE_CELLS[after.mode]].sort(byCell),
     `the ${after.mode} mode's obstacle course`,
   );
 });
