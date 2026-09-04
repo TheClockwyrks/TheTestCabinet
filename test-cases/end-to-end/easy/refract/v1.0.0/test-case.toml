@@ -1755,7 +1755,7 @@ title = "Pointer and touch"
 [[review.categories.items]]
 id = "targets-listed-per-screen"
 title = "Every screen reports the pointer targets it carries"
-description = "On each of the six screens, the snapshot's targets list carries exactly the ids specs/controls.md fixes for it, in that order: menu-0 through menu-2 on title, back on howto, board-1 through board-24 then back on select, clear then back on playing, menu-0 through menu-2 on solved for a board that is not the last, and menu-0 and menu-1 on complete."
+description = "On each of the six screens, the snapshot's targets list carries exactly the ids specs/controls.md fixes for it, in that order: menu-0 through menu-2 on title, back on howto, board-1 through board-24 then back on select, clear then back on playing, menu-0 through menu-2 on the campaign's solved screen for a board that is not the last and menu-0 and menu-1 on Cascade's, and menu-0 and menu-1 on complete."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "pointer/targets-listed-per-screen.test.ts", outputs = [
@@ -1882,7 +1882,7 @@ validation = { script = "pointer/a-target-press-begins-no-trace.test.ts", output
 id = "pointer-takes-a-solved-choice"
 title = "A press and release takes a choice on the solved screen"
 description = "On the solved screen, a press and release at the center of the menu-0 target takes the first choice, which is what confirm with menuIndex 0 does."
-domains = ["cascade"]
+domains = ["campaign"]
 failure_cap = "scuffed"
 validation = { script = "pointer/pointer-takes-a-solved-choice.test.ts", outputs = [
   { id = "next", name = "The next board reached with the pointer", kind = "image" },
