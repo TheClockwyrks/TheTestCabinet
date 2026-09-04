@@ -25,6 +25,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Harness } from "../harness";
+import { PLANET_DISC_SIZE } from "../constants";
 
 /**
  * The root of the repository the build produced.
@@ -61,9 +62,9 @@ export const BALL_FILES: readonly string[] = [0, 1, 2, 3, 4, 5].map(
 /**
  * The planet's disc is "140 pixels across on the 160-pixel canvas"
  * (`specs/assets.md`), so its footprint is the circle of this diameter
- * centered on the canvas.
+ * centered on the canvas. The figure is the project's, from `constants.ts`.
  */
-export const PLANET_DISC_SIZE = 140;
+export { PLANET_DISC_SIZE };
 
 /**
  * How far inside the disc's rim the footprint is sampled: two pixels, so an
@@ -169,30 +170,33 @@ export async function decodeSprite(
   if (bytes === null) return { sprite: null, reason: `no file at ${file}` };
   if (bytes.length === 0) return { sprite: null, reason: `${file} is empty` };
 
-  const decoded = await h.page.evaluate(async (url: string) => {
-    const image = new Image();
-    const loaded = await new Promise<boolean>((settle) => {
-      image.onload = () => settle(true);
-      image.onerror = () => settle(false);
-      image.src = url;
-    });
-    if (!loaded) return null;
-    const width = image.naturalWidth;
-    const height = image.naturalHeight;
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (ctx === null) return null;
-    ctx.imageSmoothingEnabled = false;
-    ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(image, 0, 0);
-    return {
-      width,
-      height,
-      pixels: Array.from(ctx.getImageData(0, 0, width, height).data),
-    };
-  }, dataUrl(bytes, file));
+  const decoded = await h.page.evaluate(
+    async (url: string) => {
+      const image = new Image();
+      const loaded = await new Promise<boolean>((settle) => {
+        image.onload = () => settle(true);
+        image.onerror = () => settle(false);
+        image.src = url;
+      });
+      if (!loaded) return null;
+      const width = image.naturalWidth;
+      const height = image.naturalHeight;
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (ctx === null) return null;
+      ctx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, width, height);
+      ctx.drawImage(image, 0, 0);
+      return {
+        width,
+        height,
+        pixels: Array.from(ctx.getImageData(0, 0, width, height).data),
+      };
+    },
+    dataUrl(bytes, file),
+  );
 
   if (decoded === null) {
     return { sprite: null, reason: `${file} did not decode as an image` };
@@ -303,7 +307,9 @@ export async function showSpriteFiles(
       const gap = 16;
       const tile = Math.min(
         256,
-        Math.floor((1000 - gap * (shown.length + 1)) / Math.max(shown.length, 1)),
+        Math.floor(
+          (1000 - gap * (shown.length + 1)) / Math.max(shown.length, 1),
+        ),
       );
       const sheet = document.createElement("div");
       sheet.style.cssText = [

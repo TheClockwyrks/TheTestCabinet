@@ -287,6 +287,9 @@ export const POD_SPRITES: Readonly<Record<string, string>> = {
 export const BALL_SPRITES: readonly string[] = [0, 1, 2, 3, 4, 5].map(
   (frame) => `sprites/ball/${frame}.png`,
 );
+/** The least each bed runs before it loops, in seconds. */
+export const MUSIC_MIN_SECONDS = 12;
+
 /** Sprite canvas sizes, in pixels (drawn 1:1 in logical units). */
 export const PLANET_SPRITE_SIZE = 160;
 export const PLANET_DISC_SIZE = 140;

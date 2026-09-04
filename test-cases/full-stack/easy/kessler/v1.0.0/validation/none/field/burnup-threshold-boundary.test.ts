@@ -13,6 +13,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertLength } from "../assert";
+import { BURN_UP_RADIUS } from "../constants";
 import { captureReplay, isolate, openHarness, type Harness } from "../harness";
 import { readBall, spawnAimed, unparked } from "./reading";
 
@@ -21,9 +22,9 @@ const THETA = 250;
 const SPEED = 240;
 const TICKS = 6;
 /** Lands the center at ~77.9 after six ticks: at or below the threshold. */
-const BURN_FROM = 78 - 0.1 + (TICKS * SPEED) / 60;
+const BURN_FROM = BURN_UP_RADIUS - 0.1 + (TICKS * SPEED) / 60;
 /** Lands the center at ~78.1 after six ticks: just above the threshold. */
-const HOLD_FROM = 78 + 0.1 + (TICKS * SPEED) / 60;
+const HOLD_FROM = BURN_UP_RADIUS + 0.1 + (TICKS * SPEED) / 60;
 
 let h: Harness;
 
