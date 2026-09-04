@@ -109,7 +109,10 @@ export function pointerDown(
   y: number,
   device: PointerDevice = "mouse",
 ): TraceResult {
-  const base: RefractState = { ...state, pointer: { x, y, down: true, device } };
+  const base: RefractState = {
+    ...state,
+    pointer: { x, y, down: true, device },
+  };
   if (base.screen !== "playing" || base.tracing !== null) {
     return { state: base, events: NO_EVENTS };
   }

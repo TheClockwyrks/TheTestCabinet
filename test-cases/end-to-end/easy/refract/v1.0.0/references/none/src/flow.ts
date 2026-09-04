@@ -231,10 +231,7 @@ export function enterSelected(state: RefractState): RefractState {
 }
 
 /** The campaign's solved menu, in the order `campaignSolvedItems` lists. */
-function takeCampaignSolved(
-  state: RefractState,
-  index: number,
-): RefractState {
+function takeCampaignSolved(state: RefractState, index: number): RefractState {
   const item = campaignSolvedItems(state.boardIndex)[index];
   if (item === "NEXT BOARD") {
     return enterCampaignBoard(state, state.boardIndex + 1);

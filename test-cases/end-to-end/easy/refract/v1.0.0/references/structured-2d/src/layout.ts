@@ -56,8 +56,7 @@ export const TILE_H = 82;
 export const TILE_PITCH_X = 122;
 export const TILE_PITCH_Y = 110;
 export const GRID_TOP = 208;
-export const SELECT_FIRST_X =
-  STAGE_CX - ((SELECT_COLS - 1) * TILE_PITCH_X) / 2;
+export const SELECT_FIRST_X = STAGE_CX - ((SELECT_COLS - 1) * TILE_PITCH_X) / 2;
 
 /** The center of the grid tile for the board at `index`, counted from 0. */
 export function tileCenter(index: number): { x: number; y: number } {
@@ -154,7 +153,12 @@ function menuTargets(
   w: number,
 ): PointerTarget[] {
   return Array.from({ length: count }, (_item, index) =>
-    around(`menu-${index}`, { x: cx, y: firstY + index * gap }, w, MENU_TARGET_H),
+    around(
+      `menu-${index}`,
+      { x: cx, y: firstY + index * gap },
+      w,
+      MENU_TARGET_H,
+    ),
   );
 }
 
