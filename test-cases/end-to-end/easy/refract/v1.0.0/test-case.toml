@@ -1576,6 +1576,15 @@ validation = { script = "cascade/cascade-solved-copy.test.ts", outputs = [
   { id = "solved", name = "The solved screen over the finished board", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "solved-next-board"
+title = "NEXT BOARD hands the player a fresh board at the tier the run has reached"
+description = "After five solves (solvedCount 5, tier 2), confirm on NEXT BOARD moves to playing with a board present and every beam empty, and leaves solvedCount at 5 and tier at 2, which is what separates it from RESTART."
+domains = ["cascade"]
+failure_cap = "scuffed"
+validation = { script = "cascade/solved-next-board.test.ts", outputs = [
+  { id = "board", name = "The fresh board NEXT BOARD handed the player", kind = "image" },
+] }
+[[review.categories.items]]
 id = "restart"
 title = "RESTART drops to tier 1"
 description = "After two solves, RESTART returns solvedCount to 0 and tier to 1, generates a board, and moves to playing with every beam empty."
