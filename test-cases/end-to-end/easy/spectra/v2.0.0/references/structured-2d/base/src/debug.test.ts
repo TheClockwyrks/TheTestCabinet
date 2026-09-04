@@ -73,11 +73,13 @@ describe("every pose reads back", () => {
     h.debug.setLives(2);
     h.debug.setStage(4);
     h.debug.setExtraLifeAwarded(true);
+    h.debug.setChallengeHits(17);
     const s = h.debug.snapshot();
     expect(s.score).toBe(1234);
     expect(s.lives).toBe(2);
     expect(s.stage).toBe(4);
     expect(s.extraLifeAwarded).toBe(true);
+    expect(s.challengeHits).toBe(17);
   });
 
   it("poses the three world gates and the dive clock", () => {

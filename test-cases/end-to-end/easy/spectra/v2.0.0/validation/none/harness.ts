@@ -148,6 +148,7 @@ export const REQUIRED_OPS = [
   "setLives",
   "setStage",
   "setExtraLifeAwarded",
+  "setChallengeHits",
   // The world gates and the dive clock.
   "setWaveEntry",
   "setDiveLaunching",
@@ -309,6 +310,7 @@ export interface SpectraSnapshot {
   score: number;
   lives: number;
   extraLifeAwarded: boolean;
+  challengeHits: number;
   resonance: number;
   dischargeReady: boolean;
   inversion: number;
@@ -361,6 +363,7 @@ export interface SpectraDebugApi {
   setLives(lives: number): Promise<void>;
   setStage(stage: number): Promise<void>;
   setExtraLifeAwarded(awarded: boolean): Promise<void>;
+  setChallengeHits(hits: number): Promise<void>;
 
   setWaveEntry(enabled: boolean): Promise<void>;
   setDiveLaunching(enabled: boolean): Promise<void>;
@@ -3564,6 +3567,7 @@ export async function startPosed(
     ["setLives", START_LIVES],
     ["setScore", 0],
     ["setExtraLifeAwarded", false],
+    ["setChallengeHits", 0],
     ["setDiveClock", 0],
   ]);
 }

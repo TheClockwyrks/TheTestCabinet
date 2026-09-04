@@ -57,6 +57,7 @@ describe("the surface", () => {
         "score",
         "lives",
         "extraLifeAwarded",
+        "challengeHits",
         "resonance",
         "dischargeReady",
         "inversion",
@@ -285,6 +286,8 @@ describe("every pose reads back", () => {
     expect(d.snapshot().stage).toBe(11);
     d.setExtraLifeAwarded(true);
     expect(d.snapshot().extraLifeAwarded).toBe(true);
+    d.setChallengeHits(17);
+    expect(d.snapshot().challengeHits).toBe(17);
   });
 
   it("poses the three world gates and the dive clock", () => {

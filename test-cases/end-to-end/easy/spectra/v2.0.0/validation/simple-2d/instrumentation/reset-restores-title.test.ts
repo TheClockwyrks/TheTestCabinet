@@ -10,9 +10,9 @@
 // `waveEntry`, `diveLaunching`, and `ship.contact` back on; it returns the wave's
 // entry, sway, and dive clocks, and the gap the next dive waits for, to their
 // fresh-wave values, `diveClock` at `0` and the gap at `DIVE_FIRST_DELAY`; it
-// sets `extraLifeAwarded` to `false` and the challenge-stage hit count to `0`;
-// and it sets `simTime` to `0` and the counter the next entity's id is taken from
-// back to the first id".
+// sets `extraLifeAwarded` to `false` and `challengeHits` to `0`; and it sets
+// `simTime` to `0` and the counter the next entity's id is taken from back to the
+// first id".
 //
 // THE RUN IS MADE MESSY FIRST, AND EVERY FIELD IS MOVED OFF ITS TITLE VALUE
 // BEFORE THE RESET. A reset read off a game that was already at its title values
@@ -79,6 +79,7 @@ const MESSY_INVERSION = 3.5;
 const MESSY_PHASE_TIMER = 0.9;
 const MESSY_MENU_INDEX = 2;
 const MESSY_DIVE_CLOCK = 1.75;
+const MESSY_CHALLENGE_HITS = 12;
 
 /** The ship, posed off the centre of its lane, off its opening band, and with
  * both of its cannon's timers running. */
@@ -177,6 +178,7 @@ it("restores every declared field to its title value, and leaves mute alone", as
   h.debug.setLives(MESSY_LIVES);
   h.debug.setStage(MESSY_STAGE);
   h.debug.setExtraLifeAwarded(true);
+  h.debug.setChallengeHits(MESSY_CHALLENGE_HITS);
   h.debug.setMenuIndex(MESSY_MENU_INDEX);
   h.debug.setPhase("ready");
   h.debug.setPhaseTimer(MESSY_PHASE_TIMER);
@@ -232,6 +234,7 @@ it("restores every declared field to its title value, and leaves mute alone", as
   assertEqual(title.lives, START_LIVES, "reset restores lives to START_LIVES");
   assertEqual(title.stage, 1, "reset restores stage");
   assertEqual(title.extraLifeAwarded, false, "reset clears extraLifeAwarded");
+  assertEqual(title.challengeHits, 0, "reset clears challengeHits");
 
   // The band systems.
   assertCloseTo(title.resonance, 0, EXACT_DIGITS, "reset restores resonance");

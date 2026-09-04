@@ -1695,6 +1695,7 @@ export function startPosed(h: Harness): void {
   h.debug.setLives(START_LIVES);
   h.debug.setScore(0);
   h.debug.setExtraLifeAwarded(false);
+  h.debug.setChallengeHits(0);
   h.debug.setDiveClock(0);
 }
 

@@ -157,10 +157,10 @@ on the cyan band with `0` seconds of fire lockout and `0` seconds of fire cooldo
 it turns the three world gates `waveEntry`, `diveLaunching`, and `ship.contact` back
 on; it returns the wave's entry, sway, and dive clocks, and the gap the next dive
 waits for, to their fresh-wave values, `diveClock` at `0` and the gap at
-`DIVE_FIRST_DELAY`; it sets `extraLifeAwarded` to `false` and the challenge-stage hit
-count to `0`; and it sets `simTime` to `0` and the counter the next entity's id is
-taken from back to the first id, so two runs reset with the same seed report the same
-ids for the same scenario.
+`DIVE_FIRST_DELAY`; it sets `extraLifeAwarded` to `false` and `challengeHits` to `0`;
+and it sets `simTime` to `0` and the counter the next entity's id is taken from back
+to the first id, so two runs reset with the same seed report the same ids for the same
+scenario.
 
 `options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the game's
 randomness. `muted` is left exactly as it stands, because muting is a player
@@ -208,6 +208,7 @@ and `advance(1, 60)` cover the same second of game time and reach the same state
 | `setLives(n)` | Sets the lives remaining. |
 | `setStage(n)` | Sets the current stage, a whole number from `1`. |
 | `setExtraLifeAwarded(awarded)` | Sets whether the run's single extra life has already been awarded. Reported as `extraLifeAwarded`. |
+| `setChallengeHits(n)` | Sets how many of the current challenge stage's drones the run has destroyed, a whole number from `0`. It destroys nothing and pays nothing: it is the latch alone, and the bonus belongs to the scoring path. Reported as `challengeHits`. |
 
 `setScore` grants no extra life, whatever boundary it carries the score across: the
 award belongs to the scoring path, and this is a precondition. It also leaves
@@ -341,6 +342,7 @@ so every operation is verifiable by setting a value and reading it back.
   score: <number>,
   lives: <number>,
   extraLifeAwarded: <boolean>,       // the run's one extra life has been paid
+  challengeHits: <number>,           // challenge drones this stage has destroyed
   resonance: <number>,               // 0..RESONANCE_MAX
   dischargeReady: <boolean>,         // derived: resonance >= RESONANCE_MAX
   inversion: <number>,               // seconds of spectral inversion left, 0 for none
@@ -437,9 +439,10 @@ their own, and the notes that go with them:
 - `mode` names the mode this build ships, which `specs/mode.md` defines.
 - `muted` is the game's copy of the runtime's mute bit, refreshed in every update. No
   operation sets it; the `mute` action does.
-- `diveClock` is the wave's own dive timer and `extraLifeAwarded` is the run's
-  one-extra-life latch. Both are plain settable state rather than derived figures, and
-  both are restored by `reset`.
+- `diveClock` is the wave's own dive timer, `extraLifeAwarded` is the run's
+  one-extra-life latch, and `challengeHits` is the current challenge stage's tally of
+  drones destroyed. All three are plain settable state rather than derived figures,
+  and all three are restored by `reset`.
 - `bursts[].particles` is the count the burst's own particle simulation holds at the
   call.
 - `simTime` accumulates the time the game's sub-steps cover, as

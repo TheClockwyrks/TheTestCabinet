@@ -141,6 +141,7 @@ function assertShape(s: SpectraSnapshot): void {
       "stage",
       "score",
       "lives",
+      "challengeHits",
       "resonance",
       "inversion",
       "diveClock",

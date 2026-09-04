@@ -137,6 +137,7 @@ export interface SpectraSnapshot {
   score: number;
   lives: number;
   extraLifeAwarded: boolean;
+  challengeHits: number;
   resonance: number;
   dischargeReady: boolean;
   inversion: number;
@@ -186,6 +187,7 @@ export interface SpectraDebugApi {
   setLives(lives: number): void;
   setStage(stage: number): void;
   setExtraLifeAwarded(awarded: boolean): void;
+  setChallengeHits(hits: number): void;
 
   // The world gates and the dive clock.
   setWaveEntry(enabled: boolean): void;
@@ -247,6 +249,7 @@ export function snapshotOf(state: SpectraState): SpectraSnapshot {
     score: state.score,
     lives: state.lives,
     extraLifeAwarded: state.extraLifeAwarded,
+    challengeHits: state.challengeHits,
     resonance: state.resonance,
     dischargeReady: dischargeReady(state),
     inversion: state.inversion,
@@ -418,6 +421,16 @@ export function createDebugApi(
 
     setExtraLifeAwarded(awarded) {
       state.extraLifeAwarded = Boolean(awarded);
+    },
+
+    /**
+     * Set the current challenge stage's tally of drones destroyed.
+     *
+     * It destroys nothing and pays nothing: it is the latch alone, and the
+     * bonus belongs to the scoring path.
+     */
+    setChallengeHits(hits) {
+      state.challengeHits = Math.max(0, Math.round(hits));
     },
 
     setWaveEntry(enabled) {

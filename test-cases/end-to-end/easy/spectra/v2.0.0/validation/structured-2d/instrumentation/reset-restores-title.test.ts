@@ -10,10 +10,10 @@
 // the cyan band with `0` seconds of fire lockout and `0` seconds of fire cooldown;
 // it turns the three world gates `waveEntry`, `diveLaunching`, and `ship.contact`
 // back on; it returns the wave's clocks to their fresh-wave values, `diveClock` at
-// `0`; it sets `extraLifeAwarded` to `false`; and it sets `simTime` to `0`. Every
-// one of those is read below, in that order, except the wave's entry and sway
-// clocks and the gap the next dive waits for, which no field of the snapshot
-// reports.
+// `0`; it sets `extraLifeAwarded` to `false` and `challengeHits` to `0`; and it
+// sets `simTime` to `0`. Every one of those is read below, in that order, except
+// the wave's entry and sway clocks and the gap the next dive waits for, which no
+// field of the snapshot reports.
 //
 // EVERY FIELD IS POSED AWAY FROM ITS TITLE VALUE FIRST. A reset that restored
 // nothing would pass on a game still sitting at the title, so the run this point
@@ -23,8 +23,8 @@
 // far end of its lane on the other band with a lockout and a cooldown running, a
 // meter most of the way up, an inversion running, all three rosters carrying
 // entries, a wave discharging, all three world gates held off, a dive clock part
-// way to its next launch, the extra-life latch paid, and accumulated simulation
-// time.
+// way to its next launch, the extra-life latch paid, a challenge stage's tally of
+// drones destroyed standing at a count, and accumulated simulation time.
 //
 // TWO OF THOSE CANNOT BE POSED AND HAVE TO BE DRIVEN. There is no operation that
 // adds a burst and none that discharges (specs/instrumentation.md, The bursts and
@@ -115,6 +115,7 @@ const SHIP_BAND = "magenta" as const;
 const LOCKOUT = 0.2;
 const COOLDOWN = 0.1;
 const DIVE_CLOCK = 1.7;
+const POSED_CHALLENGE_HITS = 12;
 
 /** Where the drones that outlive the kill stand, and where the popped one does. */
 const STANDING: readonly { x: number; y: number }[] = [
@@ -215,6 +216,7 @@ it("restores every declared field to its title value and leaves muted alone", as
   h.debug.setFireLockout(LOCKOUT);
   h.debug.setFireCooldown(COOLDOWN);
   h.debug.setExtraLifeAwarded(true);
+  h.debug.setChallengeHits(POSED_CHALLENGE_HITS);
   h.debug.setDiveClock(DIVE_CLOCK);
   h.debug.setWaveEntry(false);
   h.debug.setDiveLaunching(false);
@@ -334,6 +336,12 @@ it("restores every declared field to its title value and leaves muted alone", as
     title.extraLifeAwarded,
     false,
     "snapshot().extraLifeAwarded after reset(), the run's one-extra-life latch",
+  );
+  assertEqual(
+    title.challengeHits,
+    0,
+    "snapshot().challengeHits after reset(), the challenge stage's tally of " +
+      "drones destroyed",
   );
   assertEqual(title.simTime, 0, "snapshot().simTime after reset()");
 

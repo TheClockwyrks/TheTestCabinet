@@ -93,10 +93,10 @@ const POLL_FRAMES = ticksFor(0.25);
 /**
  * The fewest settled drones this reads before it decides.
  *
- * The item asks for eight spread slots. specs/swarm.md's standard wave is "Shards of
- * both bands as the bulk of it", at least two Fluxes and at least one Prism, so
- * eight is far below any conformant stage-1 wave — a floor that says the reading
- * happened, not a demand on how many drones a wave holds.
+ * The item asks for at least eight resting drones. specs/swarm.md's standard
+ * wave is "Shards of both bands as the bulk of it", at least two Fluxes and at
+ * least one Prism, so eight is far below any conformant stage-1 wave — a floor
+ * that says the reading happened, not a demand on how many drones a wave holds.
  */
 const SLOTS_MIN = 8;
 

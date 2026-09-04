@@ -193,6 +193,8 @@ export interface SpectraSnapshot {
   lives: number;
   /** The run's one extra life has been paid. */
   extraLifeAwarded: boolean;
+  /** The current challenge stage's tally of drones destroyed. */
+  challengeHits: number;
   /** `0..RESONANCE_MAX`. */
   resonance: number;
   /** Derived: `resonance >= RESONANCE_MAX`. */
@@ -275,6 +277,11 @@ export interface SpectraDebugApi<S = unknown> {
   setStage(state: DeepReadonly<S>, n: number): S;
   /** Sets the run's one-extra-life latch. */
   setExtraLifeAwarded(state: DeepReadonly<S>, awarded: boolean): S;
+  /**
+   * Sets the current challenge stage's tally of drones destroyed, a whole
+   * number from `0`. It destroys nothing and pays nothing.
+   */
+  setChallengeHits(state: DeepReadonly<S>, n: number): S;
 
   // ---- The world gates and the dive clock --------------------------------
 
@@ -391,6 +398,7 @@ export const REQUIRED_OPS = [
   "setLives",
   "setStage",
   "setExtraLifeAwarded",
+  "setChallengeHits",
 
   "setWaveEntry",
   "setDiveLaunching",

@@ -74,6 +74,7 @@ const MENU_INDEX = 1;
 const SCORE = 13570;
 const LIVES = 2;
 const STAGE = 4;
+const CHALLENGE_HITS = 17;
 const RESONANCE = 37;
 const INVERSION = 2.75;
 const DIVE_CLOCK = 1.25;
@@ -149,6 +150,7 @@ it("reports every posed value back through snapshot", async () => {
   h.debug.setLives(LIVES);
   h.debug.setStage(STAGE);
   h.debug.setExtraLifeAwarded(true);
+  h.debug.setChallengeHits(CHALLENGE_HITS);
   h.debug.setMenuIndex(MENU_INDEX);
   h.debug.setPhaseTimer(PHASE_TIMER);
   h.debug.setScreen(SCREEN);
@@ -222,6 +224,7 @@ it("reports every posed value back through snapshot", async () => {
   assertEqual(s.lives, LIVES, "setLives");
   assertEqual(s.stage, STAGE, "setStage");
   assertEqual(s.extraLifeAwarded, true, "setExtraLifeAwarded");
+  assertEqual(s.challengeHits, CHALLENGE_HITS, "setChallengeHits");
 
   // The band systems.
   assertCloseTo(s.resonance, RESONANCE, EXACT_DIGITS, "setResonance");

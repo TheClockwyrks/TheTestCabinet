@@ -68,6 +68,7 @@ describe("the debug surface", () => {
       "setLives",
       "setStage",
       "setExtraLifeAwarded",
+      "setChallengeHits",
       "setWaveEntry",
       "setDiveLaunching",
       "setShipContact",
@@ -162,6 +163,7 @@ describe("the debug surface", () => {
     h.pose((s, d) => d.setLives(s, 2));
     h.pose((s, d) => d.setStage(s, 7));
     h.pose((s, d) => d.setExtraLifeAwarded(s, true));
+    h.pose((s, d) => d.setChallengeHits(s, 17));
     h.pose((s, d) => d.setWaveEntry(s, false));
     h.pose((s, d) => d.setDiveLaunching(s, false));
     h.pose((s, d) => d.setShipContact(s, false));
@@ -182,6 +184,7 @@ describe("the debug surface", () => {
     expect(snap.lives).toBe(2);
     expect(snap.stage).toBe(7);
     expect(snap.extraLifeAwarded).toBe(true);
+    expect(snap.challengeHits).toBe(17);
     expect(snap.waveEntry).toBe(false);
     expect(snap.diveLaunching).toBe(false);
     expect(snap.ship.contact).toBe(false);

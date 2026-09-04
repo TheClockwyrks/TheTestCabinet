@@ -39,15 +39,7 @@ project root, with no other manual step.
 
 ## Driving the game in a browser
 
-{{#if (eq engine.slug "none")}}
-The project's Playwright and its headless Chromium are installed, so you can
-serve the built game and drive it in a real browser, watch a wave fly in, check
-for console errors, or exercise `window.__spectra`.
-{{else}}
-The project's Playwright and its headless Chromium are installed, so you can
-serve the built game and drive it in a real browser, watch a wave fly in, and
-check for console errors.
-{{/if}}
+The project's Playwright and its headless Chromium are installed.
 
 When you launch the browser, use the project's own Playwright: import it from
 your project (for example `import { chromium } from "playwright"`) or run the
@@ -64,10 +56,8 @@ sandbox and a default launch fails.
 
 Your project root is a git repository, initialized before you started with the
 starter files in its first commit. Your finished implementation is published
-directly from this repository's commits, so work you leave uncommitted is not
-published. When the build is complete, commit everything: run `git add -A` then
-`git commit`, and confirm `git status` reports a clean working tree with nothing
-uncommitted or untracked. A `.gitignore` already excludes `node_modules/`, the
-build output, and coverage reports, so a clean tree means committing your source,
-your tests, your `package-lock.json`, your `showcase/` directory, and your
-`README.md`.
+directly from this repository's commits, so leave a clean working tree:
+everything committed, nothing untracked. A `.gitignore` already excludes
+`node_modules/`, the build output, and coverage reports, so a clean tree means
+committing your source, your tests, your `package-lock.json`, your `showcase/`
+directory, and your `README.md`.

@@ -874,11 +874,11 @@ validation = { script = "field/ship-lane.test.ts", outputs = [
 [[review.categories.items]]
 id = "slot-grid"
 title = "A formation slot sits where the grid puts it"
-description = "A drone posed into column c, row r for eight spread slots reports its centre at slotX(c), slotY(r) plus the sway offset, within one unit."
+description = "Every drone of the build's own stage-1 wave, once settled, rests on a slot of the specified grid: its centre sits at slotX(col), slotY(row) plus the block's single sway offset, within one unit, over at least eight resting drones."
 domains = ["swarm"]
 failure_cap = "passable"
 validation = { script = "field/slot-grid.test.ts", outputs = [
-  { id = "grid", name = "The eight slots the drones were posed into", kind = "image" },
+  { id = "grid", name = "The wave settled onto the grid's slots", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "sway-amplitude"
@@ -2840,6 +2840,15 @@ validation = { script = "screens/pause-menu-items.test.ts", outputs = [
   { id = "menu", name = "The pause menu and its entries", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "pause-resume"
+title = "Resume returns to the live wave"
+description = "Confirming RESUME returns to inWave in the live phase, with the score, the lives and the stage exactly as they were."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "screens/pause-resume.test.ts", outputs = [
+  { id = "resumed", name = "The wave the resume returned to", kind = "image" },
+] }
+[[review.categories.items]]
 id = "pause-restart"
 title = "Restart begins a fresh run"
 description = "Confirming RESTART returns the score to zero, the lives to START_LIVES and the stage to 1."
@@ -2901,6 +2910,15 @@ domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "screens/game-over-play-again.test.ts", outputs = [
   { id = "restarted", name = "The fresh run play again began", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-menu-returns"
+title = "Menu returns to the title"
+description = "Confirming MENU opens the title screen with the highlight on the mode entry."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "screens/game-over-menu-returns.test.ts", outputs = [
+  { id = "title", name = "The title screen the menu entry returned to", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "hud-score"

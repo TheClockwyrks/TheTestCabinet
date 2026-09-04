@@ -78,6 +78,7 @@ const MENU_INDEX = 2;
 const SCORE = 4321;
 const LIVES = START_LIVES + 2;
 const STAGE = 7;
+const CHALLENGE_HITS = 17;
 const RESONANCE = 42;
 const INVERSION = 3.5;
 const SHIP_X = 417;
@@ -194,6 +195,12 @@ it("reports every posed field back through snapshot", async () => {
       `snapshot().extraLifeAwarded after setExtraLifeAwarded(${awarded})`,
     );
   }
+  readsBack(
+    () => h.debug.setChallengeHits(CHALLENGE_HITS),
+    (s) => s.challengeHits,
+    CHALLENGE_HITS,
+    `snapshot().challengeHits after setChallengeHits(${CHALLENGE_HITS})`,
+  );
 
   // ---- Resonance and the inversion ----------------------------------------
 

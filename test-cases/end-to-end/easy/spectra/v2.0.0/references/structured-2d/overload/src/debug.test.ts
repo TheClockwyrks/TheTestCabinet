@@ -47,6 +47,7 @@ describe("the surface", () => {
     d.setLives(5);
     d.setStage(6);
     d.setExtraLifeAwarded(true);
+    d.setChallengeHits(17);
     d.setWaveEntry(false);
     d.setDiveLaunching(false);
     d.setShipContact(false);
@@ -69,6 +70,7 @@ describe("the surface", () => {
       lives: 5,
       stage: 6,
       extraLifeAwarded: true,
+      challengeHits: 17,
       waveEntry: false,
       diveLaunching: false,
       diveClock: 0.75,
