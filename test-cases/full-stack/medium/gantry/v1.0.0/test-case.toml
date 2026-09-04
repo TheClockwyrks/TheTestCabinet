@@ -193,8 +193,9 @@ tick_hz = 60
 # solve and failure, `rigging` the cable, pendulum, attach, and release,
 # `program` the axes, the tape, and the run, `controls` the camera, picking, and
 # key actions, `state` the state shape, `instrumentation` the debug surface,
-# `ui` the screens and audio, `sites` the six fixed sites, and `assets` the
-# production contract.
+# `ui` the screens and audio, `sites` the six fixed sites, `assets` the
+# production contract, and `showcase` the presentation the finished game ships
+# beside its source.
 #
 # The `.hbs` sources branch on ONE axis, `engine.slug`, which selects what the
 # build is handed and what it must write. Nothing branches on the variant.
@@ -233,6 +234,15 @@ source = "specs/sites.md"
 
 [[spec]]
 source = "specs/assets.md.hbs"
+
+# The showcase the finished build ships beside its source: a `showcase/`
+# directory holding a player-facing description and a short carousel of media
+# captured from the game as it plays. Seeded verbatim — unlike the 2D cases it
+# does not branch on the engine, because Gantry has no draw-command path worth
+# recording: the yard is a WebGL picture on every engine, so the leading entry is
+# a `.webm` clip under all three and the stills are `.png` under all three.
+[[spec]]
+source = "specs/showcase.md"
 
 # No `[[reference]]`, no `[[check]]`, and no `[[proof]]`. Gantry fixes no
 # palette, no models, and no scene styling: every build is expected to look
@@ -276,7 +286,7 @@ description = "The produced voxel models and audio and the 3D scene they sit in:
 # the three harnesses export one async API, so a point is graded identically
 # whichever runtime the run selected.
 #
-# 797 points across 13 categories. Each asserts ONE
+# 827 points across 14 categories. Each asserts ONE
 # observable behavior, because a build that gets half of a compound point right
 # must score differently from one that gets all of it right. A domain's rating is
 # the worst cap among its failures, so the count weights nothing — what the split

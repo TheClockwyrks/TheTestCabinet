@@ -139,6 +139,14 @@ project-local CLI with `npx playwright`. There is no global Playwright on
 Launch Chromium with the `--no-sandbox` argument, since this container has no
 Chromium sandbox and a default launch fails.
 
+## The showcase
+
+The game ships with its store-page presentation: a `showcase/` directory at the
+project root holding a player-facing description of the game and a short
+carousel of media captured from the running game. `specs/showcase.md` defines
+its contents — the description, the `showcase.toml` carousel, and the media it
+names.
+
 ## Commit your work
 
 Your project root is a git repository, initialized before you started with the
@@ -148,5 +156,5 @@ published. When the build is complete, commit everything: run `git add -A` then
 `git commit`, and confirm `git status` reports a clean working tree with nothing
 uncommitted or untracked. A `.gitignore` already excludes `node_modules/`, the
 build output, and coverage reports, so a clean tree means committing your
-source, your tests, your produced files under `assets/`, your
-`package-lock.json`, and your `README.md`.
+source, your tests, your produced files under `assets/`, your `showcase/`
+directory, your `package-lock.json`, and your `README.md`.
