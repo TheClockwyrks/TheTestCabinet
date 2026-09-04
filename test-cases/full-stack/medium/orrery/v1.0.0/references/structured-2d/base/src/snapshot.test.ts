@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createDebugApi } from "./debug";
+import { handleAction } from "./flow";
 import { Bench } from "./harness";
 import { moleculeOut, partOut, snapshotOf } from "./snapshot";
 import type { DragState } from "./types";
@@ -124,6 +125,23 @@ describe("the snapshot's derived and posed shapes", () => {
         cell: { q: 0, r: 0 },
       },
     ]);
+  });
+
+  it("reports the title menu's remembered selection, whatever the screen", () => {
+    const game = new Bench();
+    const api = createDebugApi(() => game);
+    expect(snapshotOf(game.state).titleIndex).toBe(0);
+    api.setMenuIndex(1);
+    handleAction(game, "confirm");
+    expect(snapshotOf(game.state).titleIndex).toBe(1);
+    api.openChallenge("extras", 0);
+    expect(snapshotOf(game.state).titleIndex).toBe(1);
+  });
+
+  it("keeps the armed menu press out of the shape, which is fixed", () => {
+    const game = new Bench();
+    game.state.menuPress = 2;
+    expect(snapshotOf(game.state)).not.toHaveProperty("menuPress");
   });
 
   it("copies a part out rather than handing over the one it holds", () => {
