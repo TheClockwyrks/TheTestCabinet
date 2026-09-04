@@ -15,7 +15,7 @@
 // below: whether anything is removed inside the first interval after the mark
 // arrives.
 //
-// THE TEN SECONDS ARE SPENT WITH `skip`, which runs the same real update off
+// THE TEN SECONDS ARE SPENT WITH `coast`, which runs the same real update off
 // camera. Nothing is measured across them, so no frame boundary needs to be
 // opened, and the point costs a replay nothing.
 //
@@ -56,7 +56,7 @@ afterEach(async () => {
 
 it("The fire clock waits for a target", async () => {
   await poseGun(h, TOWER, HEAT);
-  await h.skip(IDLE_SECONDS);
+  await h.coast(IDLE_SECONDS);
 
   const mark = await poseMarkEast(h, TOWER, "mote", NEAR_UNITS);
   const opened = await readHp(h, mark);

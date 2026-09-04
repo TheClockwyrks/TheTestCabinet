@@ -87,7 +87,7 @@ async function ventsFrom(seed: number, picture: boolean): Promise<Vent[]> {
   await debug.setWavePending(DRAWS);
 
   const seen = new Map<number, Vent>();
-  await h.skipUntil(
+  await h.coastUntil(
     (snapshot) => {
       for (const unit of snapshot.surge) seen.set(unit.id, unit.vent);
       return seen.size >= DRAWS;

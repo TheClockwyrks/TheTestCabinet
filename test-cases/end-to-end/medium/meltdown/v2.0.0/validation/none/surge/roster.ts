@@ -366,7 +366,7 @@ export async function watchRelease(
   };
 
   gather(await h.snapshot());
-  await h.skipUntil(
+  await h.coastUntil(
     (snapshot) => {
       gather(snapshot);
       return false;

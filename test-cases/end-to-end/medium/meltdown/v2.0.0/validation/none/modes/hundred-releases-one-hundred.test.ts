@@ -123,7 +123,7 @@ it("counts a hundred units onto one wave and releases exactly those", async () =
   const seen = new Set<number>();
   for (const unit of opened.surge) seen.add(unit.id);
   const watch = (duration: number): Promise<unknown> =>
-    h.skipUntil(
+    h.coastUntil(
       (snapshot) => {
         for (const unit of snapshot.surge) seen.add(unit.id);
         return false;

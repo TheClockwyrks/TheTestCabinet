@@ -81,7 +81,7 @@ it("moves the phase to wave when the countdown runs out", async () => {
   await h.debug.setBuildTimer(POSED);
 
   const opened = await h.snapshot();
-  const swept = await h.skipUntil((snapshot) => snapshot.phase === "wave", {
+  const swept = await h.coastUntil((snapshot) => snapshot.phase === "wave", {
     maxSeconds: WATCH_SECONDS,
     pollSeconds: SAMPLE_SECONDS,
   });

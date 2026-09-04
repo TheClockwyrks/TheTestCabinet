@@ -7,7 +7,10 @@
 // clocks, the shared arithmetic, the observation channels, and the evidence
 // writers — really does what the suites assume of it, because a helper that
 // silently did less would turn every item that leans on it into a wrong verdict
-// with a confident face.
+// with a confident face. Most of that machinery is
+// `@test-cabinet/case-harness`'s, which carries its own tests; what is pinned
+// here is that the case's own layer over it — its poses, its two clocks, its
+// arithmetic — behaves as the suites assume against a real build.
 //
 // What is pinned here, and why:
 //
@@ -18,7 +21,7 @@
 //     they are for and leave the other alone; `poseTarget` stands still,
 //     `poseWalker` walks, and `boxIn` really seals all four faces.
 //   - THE STEPPED CLOCK. `advance` runs exactly the frames it is asked for and
-//     `skip` covers game time off camera.
+//     `coast` covers game time off camera.
 //   - THE BUILD'S OWN CLOCK. `withOwnClock` hands the clock over and takes it
 //     back however the scenario ends, and the three-leg contrast the pause items
 //     are written as reads the way it must: the floor runs, the pause stops it,
@@ -32,7 +35,7 @@
 //     Backquote binding plus the draw recorder.
 //   - THE EVIDENCE. `captureStill` and `captureReplay` write real files under
 //     the media directory, at the staged suite's address, and a capture keeps
-//     the frames `advance` drove and not the ones `skip` passed over.
+//     the frames `advance` drove and not the ones `coast` passed over.
 //
 // No review item names this file, so a run never loads it. It runs with the
 // whole project, which is how a case author runs these suites while writing
@@ -338,7 +341,7 @@ it("boxIn seals all four faces, and the two-phase rule holds the centre", async 
   );
 });
 
-it("advance runs exactly the frames it is asked for, and skip covers time off camera", async () => {
+it("advance runs exactly the frames it is asked for, and coast covers time off camera", async () => {
   await startRun(h);
   const before = (await h.snapshot()).simTime;
 
@@ -358,12 +361,12 @@ it("advance runs exactly the frames it is asked for, and skip covers time off ca
     "the frame arithmetic round-trips",
   );
 
-  await h.skip(2);
+  await h.coast(2);
   assertCloseTo(
     (await h.snapshot()).simTime - driven.simTime,
     2,
     3,
-    "two seconds skipped off camera",
+    "two seconds coasted off camera",
   );
 });
 
@@ -633,9 +636,9 @@ it("writes a still and a replay under the media directory", async () => {
 
     const value = await captureReplay(h, "replay-check", async () => {
       // Off camera, then on: the recording must hold the twelve driven frames
-      // and nothing of the half-second the skip passed over, which is what lets
+      // and nothing of the half-second the coast passed over, which is what lets
       // a trip check record the cooldown rather than the wait before it.
-      await h.skip(0.5);
+      await h.coast(0.5);
       await h.advance(12);
       return "returned";
     });

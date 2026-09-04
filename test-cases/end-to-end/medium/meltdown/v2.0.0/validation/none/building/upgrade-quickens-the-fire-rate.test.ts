@@ -175,7 +175,7 @@ it("multiplies the fire rate once per level", async () => {
       0,
       `${at}: the per-shot damage the shot count below is divided by`,
     );
-    await h.skip(WINDOW_SECONDS);
+    await h.coast(WINDOW_SECONDS);
     const closing = requireTower(await h.snapshot(), id, at);
     const shots = (closing.damageDealt - opening.damageDealt) / opening.damage;
     assertBetween(

@@ -91,7 +91,7 @@ it("never raises the lives across a wave cleared and the build phase after it", 
   );
   const cleared = await h.snapshot();
   // And through the whole build phase that clear opened.
-  const held = await h.skipUntil((snapshot) => snapshot.lives > LIVES, {
+  const held = await h.coastUntil((snapshot) => snapshot.lives > LIVES, {
     maxSeconds: WATCH_SECONDS,
     pollSeconds: SAMPLE_SECONDS,
     // Diced on the long-drive clock (`harness.ts`, The long-drive clock).
