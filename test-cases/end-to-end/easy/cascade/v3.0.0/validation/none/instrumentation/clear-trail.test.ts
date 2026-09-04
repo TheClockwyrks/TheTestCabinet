@@ -34,7 +34,7 @@
 //
 // WHAT THIS DOES NOT DECIDE. That a stamp is laid, or persists, or accumulates
 // (`cascade/trail-persists`, `cascade/trail-accumulates`), that the painting can be
-// gated (`instrumentation/trail-painting-gate`), or that `reset` clears the layer
+// gated (`instrumentation/trail-painting-gate-off`), or that `reset` clears the layer
 // (`instrumentation/reset-clears-trail`).
 
 import { afterEach, beforeEach, it } from "vitest";

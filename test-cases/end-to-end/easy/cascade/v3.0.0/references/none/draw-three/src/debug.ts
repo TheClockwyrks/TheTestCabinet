@@ -29,6 +29,7 @@ import {
   DEAL_MODE_LABEL,
   DEFAULT_SEED,
   TURN_COUNT,
+  type Rect,
   type Suit,
 } from "./constants";
 import {
@@ -37,6 +38,7 @@ import {
   deal as dealGame,
   turnStock as turnTheStock,
 } from "./moves";
+import { menuItemRect } from "./menus";
 import type { PointerPhase } from "./pointer";
 import { takeId } from "./state";
 import {
@@ -72,6 +74,16 @@ export interface DebugHost {
   advance(seconds: number, frames?: number): void;
   /** Deliver one pointer sample at a point on the logical stage. */
   pointer(phase: PointerPhase, x: number, y: number): void;
+  /**
+   * Set the runtime's mute bit, and read it back.
+   *
+   * The runtime layer holds it, so `setMuted` reaches past the state exactly as
+   * the clock does (specs/instrumentation.md, What the runtime provides
+   * instead).
+   */
+  setMuted(muted: boolean): void;
+  /** Whether the runtime's bus is muted. */
+  muted(): boolean;
 }
 
 /** One card, as the snapshot reports it. */
@@ -107,6 +119,8 @@ export interface DragSnapshot {
 export interface CascadeSnapshot {
   version: number;
   screen: Screen;
+  menuIndex: number;
+  titleIndex: number;
   dealMode: string;
   turnCount: number;
   dealModeLabel: string;
@@ -146,10 +160,16 @@ export interface CascadeDebugApi {
   reset(options?: { seed?: number }): void;
   snapshot(): CascadeSnapshot;
 
+  menuItemRect(index: number): Rect | null;
+
   setAutoStep(enabled: boolean): void;
   advance(seconds: number, frames?: number): void;
 
+  setMuted(muted: boolean): void;
+
   setScreen(screen: Screen): void;
+  setMenuIndex(index: number): void;
+  setTitleIndex(index: number): void;
 
   addCard(
     pile: PileKind,
@@ -270,6 +290,8 @@ export function createDebugApi(
       return {
         version: CASCADE_DEBUG_VERSION,
         screen: state.screen,
+        menuIndex: state.menuIndex,
+        titleIndex: state.titleIndex,
         dealMode: DEAL_MODE,
         turnCount: TURN_COUNT,
         dealModeLabel: DEAL_MODE_LABEL,
@@ -347,9 +369,42 @@ export function createDebugApi(
       host.advance(seconds, frames);
     },
 
+    /**
+     * The hit region of item `index` on the menu the current screen shows.
+     *
+     * `null` on `won`, which shows no menu, and for an index naming no item of
+     * the menu the current screen shows (specs/instrumentation.md). It is a
+     * READING: the layout is this build's, and this is how it reports it.
+     */
+    menuItemRect(index) {
+      return menuItemRect(state.screen, index);
+    },
+
+    /**
+     * Set the runtime's mute bit: the same bit the HUD's `SOUND` control
+     * toggles and the same bit `snapshot` reports as `muted`. It plays no cue
+     * and changes no other field (specs/instrumentation.md, Muting).
+     */
+    setMuted(muted) {
+      host.setMuted(muted);
+      // Mirrored at once as well as in every update, so the bit the snapshot
+      // reports is the bit the runtime holds the instant the pose landed.
+      state.muted = host.muted();
+    },
+
     /** The current screen, and nothing else: the table is left as it stands. */
     setScreen(screen) {
       state.screen = screen;
+    },
+
+    /** The selected item on the menu the current screen shows. */
+    setMenuIndex(index) {
+      state.menuIndex = index;
+    },
+
+    /** Set the title entry a return to the title restores, and nothing else. */
+    setTitleIndex(index) {
+      state.titleIndex = index;
     },
 
     /**

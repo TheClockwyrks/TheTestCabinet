@@ -1,13 +1,16 @@
-// Cascade — the keyboard, which this game uses for exactly one thing.
+// Cascade — the keyboard the runtime layer reads.
 //
-// Cascade is played with a pointer (specs/controls.md), so the keyboard carries
-// no game control at all. The one key it answers is the backtick that shows and
-// hides the debug overlay, and that key belongs to the runtime rather than to the
-// game (specs/instrumentation.md).
+// Two things reach the game through a key. The backtick shows and hides the
+// debug overlay, which belongs to the runtime rather than to the game
+// (specs/instrumentation.md); the four MENU ACTIONS specs/controls.md names do
+// change the game, so they are latched as press EDGES and handed to the update
+// that follows.
 //
-// This module is therefore small on purpose: it normalizes a DOM event into a
-// `KeyboardEvent.code`, and it holds a watch list of the codes the runtime cares
-// about. A build that later needed named actions would grow them here.
+// AN EDGE, NOT A HELD KEY. specs/controls.md: "Each is read once per frame as a
+// press edge, so holding a key moves the selection one step rather than
+// repeating it." An OS auto-repeat is dropped by {@link asKeyboardEvent}, so a
+// key held across many frames raises one edge, and the edges a frame collected
+// are consumed by that frame.
 
 /** The part of a `KeyboardEvent` this build reads. */
 export interface KeyLike {
@@ -62,5 +65,51 @@ export class KeyWatcher {
       // A key handler cannot fail the page.
     }
     return true;
+  }
+}
+
+/** The four actions specs/controls.md gives the keyboard over a menu. */
+export type MenuAction = "menu-up" | "menu-down" | "menu-confirm" | "menu-back";
+
+/** Which `KeyboardEvent.code`s raise each action. */
+export type MenuBindings = Readonly<Record<MenuAction, readonly string[]>>;
+
+/**
+ * The menu-action press edges a frame collected, in arrival order.
+ *
+ * `take` consumes them, and `clear` discards whatever the frame did not, so one
+ * bad frame cannot leave an edge to surface later, out of order.
+ */
+export class MenuEdges {
+  private readonly bindings: MenuBindings;
+  private pending: MenuAction[] = [];
+
+  constructor(bindings: MenuBindings) {
+    this.bindings = bindings;
+  }
+
+  /** Record the edge a key raises, and report whether it raised one. */
+  handle(event: Event): boolean {
+    const key = asKeyboardEvent(event);
+    if (key === null) return false;
+    for (const action of Object.keys(this.bindings) as MenuAction[]) {
+      if (this.bindings[action].includes(key.code)) {
+        this.pending.push(action);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** This frame's edges, in arrival order. Consumes them. */
+  take(): MenuAction[] {
+    const taken = this.pending;
+    this.pending = [];
+    return taken;
+  }
+
+  /** Drop whatever the frame did not consume. */
+  clear(): void {
+    this.pending = [];
   }
 }

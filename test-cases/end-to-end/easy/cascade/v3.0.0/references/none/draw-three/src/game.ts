@@ -15,6 +15,7 @@ import { defineCues, flushCues } from "./audio";
 import { stepCascade } from "./cascade";
 import { registerDiagnostics } from "./diagnostics";
 import { handlePointer } from "./input";
+import { applyMenuActions } from "./navigation";
 import { render as draw } from "./render";
 import type { Game } from "./runtime";
 import { createState, type CascadeState } from "./state";
@@ -36,6 +37,9 @@ export const game: Game<CascadeState> = {
     // moment of the read (specs/instrumentation.md).
     state.muted = api.audio.muted();
     state.simTime += dt;
+    // The frame's menu-action edges, in the order specs/controls.md fixes for a
+    // frame carrying more than one.
+    applyMenuActions(state, api.keys.edges(), api.audio);
     stepCascade(state, dt);
     // Each cue this frame raised, played once, in the fixed order
     // (specs/audio.md).

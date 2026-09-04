@@ -57,6 +57,8 @@ import type {
   Suit,
 } from "./game";
 import type { DeepReadonly } from "ts-essentials";
+import { menuItemRect } from "./layout";
+import type { Rect } from "./layout";
 
 /** A card as the snapshot reports it: its identity, its face, and its color. */
 export interface CardSnapshot {
@@ -91,6 +93,8 @@ export interface DragSnapshot {
 export interface CascadeSnapshot {
   version: number;
   screen: Screen;
+  menuIndex: number;
+  titleIndex: number;
   dealMode: string;
   turnCount: number;
   dealModeLabel: string;
@@ -132,8 +136,19 @@ export interface CascadeDebugApi {
     options?: { seed?: number },
   ): CascadeState;
   snapshot(state: DeepReadonly<CascadeState>): CascadeSnapshot;
+  /**
+   * The hit region of item `index` on the menu the current screen shows.
+   *
+   * A READING like `snapshot`: it changes nothing, and it is how this build
+   * reports the layout specs/controls.md leaves to it. `null` on `won`, which
+   * shows no menu, and for an index naming no item of the current screen's menu.
+   */
+  menuItemRect(state: DeepReadonly<CascadeState>, index: number): Rect | null;
 
   setScreen(state: DeepReadonly<CascadeState>, screen: Screen): CascadeState;
+  /** Set the selected item on the menu the current screen shows. */
+  setMenuIndex(state: DeepReadonly<CascadeState>, index: number): CascadeState;
+  setTitleIndex(state: DeepReadonly<CascadeState>, index: number): CascadeState;
 
   addCard(
     state: DeepReadonly<CascadeState>,
@@ -303,6 +318,8 @@ export function createDebugApi(): CascadeDebugApi {
       return {
         version: CASCADE_DEBUG_VERSION,
         screen: state.screen,
+        menuIndex: state.menuIndex,
+        titleIndex: state.titleIndex,
         dealMode: DEAL_MODE,
         turnCount: TURN_COUNT,
         dealModeLabel: DEAL_MODE_LABEL,
@@ -348,8 +365,20 @@ export function createDebugApi(): CascadeDebugApi {
       };
     },
 
+    menuItemRect(state, index) {
+      return menuItemRect(state.screen, index);
+    },
+
     setScreen(state, screen) {
       return { ...state, screen };
+    },
+
+    setMenuIndex(state, index) {
+      return { ...state, menuIndex: index };
+    },
+
+    setTitleIndex(state, index) {
+      return { ...state, titleIndex: index };
     },
 
     addCard(state, pile, index, suit, rank, faceUp) {

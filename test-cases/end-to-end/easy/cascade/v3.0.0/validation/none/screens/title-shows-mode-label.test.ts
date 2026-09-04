@@ -28,9 +28,9 @@ import {
   captureStill,
   createHarness,
   drewText,
+  openTitle,
   type Harness,
 } from "../harness";
-import { openTitle } from "./screens";
 
 /** A label has text in it (`specs/stock.md`), so the search below can mean something. */
 const MIN_LABEL_LENGTH = 1;

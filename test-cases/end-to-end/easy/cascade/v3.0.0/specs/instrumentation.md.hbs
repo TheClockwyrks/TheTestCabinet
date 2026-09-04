@@ -95,9 +95,8 @@ The clock is the exception, because nothing outside this build owns it. The
 surface is what takes the game off real time and advances it, through
 `setAutoStep` and `advance` below.
 
-Muting is the other. There is no operation that sets it: mute is reached the way
-a player reaches it, through the HUD's `SOUND` control, and the snapshot reports
-the result.
+Muting is the other. The runtime layer holds the mute bit, so `setMuted` below
+sets it directly, and the HUD's `SOUND` control toggles that same bit.
 {{else}}
 The clock, the audio bus, and the overlay belong to the {{engine.name}} engine,
 which documents them in the `engine/` directory at the root of this repository,
@@ -172,13 +171,21 @@ the live game and returns the verdict its row states.
 | --- | --- |
 | `reset(options)` | Restores every declared field of the state to its title-screen value, listed below. |
 | `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
+| `menuItemRect(index)` | The hit region of item `index` on the menu the current screen shows. It changes nothing. |
 
-`reset` restores `screen` to `"title"`; empties all thirteen piles and the
-waste's set memory; clears the run in hand, the drop target, and the last press;
-puts the pointer at `(0, 0)` and up; turns `autoFlip`, `winDetect`, `launching`,
-and `trailPainting` back on; sets `launchClock` to `0`, `launched` to `0`, and
-`cascadeDone` to `false`; removes every flyer; clears the painted layer and sets
-`trailStamps` to `0`; and sets `simTime` to `0`.
+`reset` restores `screen` to `"title"`; sets `menuIndex` and `titleIndex` to `0`;
+empties all thirteen piles and the waste's set memory; clears the run in hand,
+the drop target, and the last press; puts the pointer at `(0, 0)` and up; turns
+`autoFlip`, `winDetect`, `launching`, and `trailPainting` back on; sets
+`launchClock` to `0`, `launched` to `0`, and `cascadeDone` to `false`; removes
+every flyer; clears the painted layer and sets `trailStamps` to `0`; and sets
+`simTime` to `0`.
+
+`menuItemRect` returns `{ x, y, w, h }` in logical units, with `x` and `y` the
+region's top-left corner and `w` and `h` its size: the region a pointer selects
+that item from, as `specs/controls.md` states. It returns `null` on `won`, which
+shows no menu, and when `index` names no item of the menu the current screen
+shows.
 
 `options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the
 game's randomness. `muted` is left exactly as it stands, because muting is a
@@ -203,15 +210,30 @@ time, each worth `seconds / frames`, immediately and in order. `frames` defaults
 to `1`. Each is a real frame, the same update the loop runs followed by a render,
 so the game's own rules produce the result and the canvas reflects it.
 
+### Muting
+
+| Operation | Effect |
+| --- | --- |
+| `setMuted(muted)` | Sets whether sound is muted. |
+
+It sets the runtime's mute bit, the same bit the HUD's `SOUND` control toggles
+and the same bit `snapshot` reports as `muted`. It plays no cue and changes no
+other field.
+
 {{/if}}
-### The screen
+### The screen and the menus
 
 | Operation | Effect |
 | --- | --- |
 | `setScreen(screen)` | Sets the current screen: `"title"`, `"howto"`, `"playing"`, or `"won"`. |
+| `setMenuIndex(index)` | Sets the selected item on the menu the current screen shows. |
+| `setTitleIndex(index)` | Sets `titleIndex`, the title entry a return to the title restores. |
 
-It changes no other field, so a screen posed this way leaves the table exactly as
-it stands.
+Each sets its own field alone. `setScreen` changes no other field, so a screen
+posed this way leaves the table and the selection exactly as they stand, and the
+screen it sets then behaves exactly as `specs/screens.md` states for it. Neither
+`setMenuIndex` nor `setTitleIndex` touches the other's field, and neither
+activates anything.
 
 ### The cards
 
@@ -342,6 +364,8 @@ present, so every operation is verifiable by setting a value and reading it back
 {
   version: 1,
   screen: "title" | "howto" | "playing" | "won",
+  menuIndex: <number>,         // the selected item on the current screen's menu
+  titleIndex: <number>,        // the title menu's remembered selection
   dealMode: <string>,          // this build's DEAL_MODE
   turnCount: <number>,         // this build's TURN_COUNT
   dealModeLabel: <string>,     // this build's DEAL_MODE_LABEL
@@ -403,8 +427,12 @@ field of their own:
 Five more need a note:
 
 - `muted` is the game's copy of the runtime's mute bit, refreshed in every
-  update, so the snapshot reports the bit the runtime holds. No operation sets
-  it; the HUD's `SOUND` control does.
+  update, so the snapshot reports the bit the runtime holds.
+{{#if (eq engine.slug "none")}}
+  `setMuted` sets that bit, and so does the HUD's `SOUND` control.
+{{else}}
+  No operation sets it; the HUD's `SOUND` control does.
+{{/if}}
 - `launched` is counted up by the cascade as it launches cards. It is not fifty-two
   less the cards on the foundations, so a posed flyer on a cleared table leaves it
   where it stands.

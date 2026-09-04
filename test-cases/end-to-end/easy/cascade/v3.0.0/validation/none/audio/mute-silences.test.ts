@@ -2,17 +2,23 @@
 // the game stays fully playable, and the snapshot reports muted throughout.
 //
 // `specs/audio.md`: "While sound is muted every cue is silent and the game stays
-// fully playable." `specs/screens.md` fixes the control that mutes it, the HUD's
-// `SOUND`, and `specs/instrumentation.md` has `muted` as "the game's copy of the
-// runtime's mute bit, refreshed in every update" and gives the surface NO
-// operation that sets it. So mute is reached the way a player reaches it, by a
-// real click inside the `HUD_SOUND` rectangle `specs/controls.md` fixes, and read
-// back off the snapshot.
+// fully playable." `specs/instrumentation.md` has `muted` as "the game's copy of
+// the runtime's mute bit, refreshed in every update", and under this engine it
+// gives the surface an operation that sets it: `setMuted(muted)`, "the same bit
+// the HUD's `SOUND` control toggles and the same bit `snapshot` reports as
+// `muted`".
+//
+// MUTE IS POSED, NOT CLICKED, AND THAT IS THE POINT'S OWN BOUNDARY. This item is
+// about what a MUTED game sounds like, so the way it was muted must not be able
+// to fail it: a build whose `SOUND` control is dead would otherwise fail this
+// item, `screens/hud-sound-mutes` and `screens/hud-sound-unmutes` for one defect
+// and say least about the one that is really broken. `setMuted` reaches the bit
+// directly, so the only thing left for this point to decide is the silence.
 //
 // THE TABLE STARTS UNMUTED, WHICH IS THE PRECONDITION THAT MAKES THE READING MEAN
 // ANYTHING. A build that opened already muted would be silent here for a reason
-// that has nothing to do with the control, so the bit is read before the click
-// and after it, and the click is what turns one into the other.
+// that has nothing to do with muting, so the bit is read before the pose and
+// after it, and the pose is what turns one into the other.
 //
 // THREE EVENTS, FROM THREE CORNERS OF THE CUE TABLE, so a build that silenced one
 // path and not another is caught: a stock turn, a card carried to a foundation —
@@ -35,7 +41,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
-import { HUD_NEW_GAME, HUD_SOUND, type Suit } from "../constants";
+import { HUD_NEW_GAME_ITEM, type Suit } from "../constants";
 import {
   captureStill,
   cardCenter,
@@ -47,6 +53,7 @@ import {
   openTable,
   poseColumn,
   poseStock,
+  menuPoint,
   rectCenter,
   watchCues,
   type Harness,
@@ -91,24 +98,21 @@ it("plays nothing at all on a turn, a card sent home or a deal while muted", asy
   await poseColumn(h, FROM, cards(CARRIED));
   await h.armAudio();
 
-  // The bit a fresh page reports before the control is touched. `reset` leaves it
+  // The bit a fresh page reports before anything mutes it. `reset` leaves it
   // exactly as it stands (`specs/instrumentation.md`), and this page never has.
   await h.advance(1);
   assertEqual(
     (await h.snapshot()).muted,
     false,
-    "the mute bit a fresh page reports before the SOUND control is clicked",
+    "the mute bit a fresh page reports before setMuted is called",
   );
 
-  const muted = await realClick(
-    h,
-    rectCenter(HUD_SOUND),
-    (snapshot) => snapshot.muted,
-  );
+  await h.debug.setMuted(true);
   assertEqual(
-    muted.hit,
+    (await h.snapshot()).muted,
     true,
-    "one click on the HUD's SOUND control to mute the game",
+    "the mute bit after setMuted(true) (specs/instrumentation.md) — a pose " +
+      "that does not land leaves this point nothing to read",
   );
 
   // Watched from here, so nothing before the toggle can be counted against it.
@@ -137,7 +141,7 @@ it("plays nothing at all on a turn, a card sent home or a deal while muted", asy
   // A fresh deal, from the HUD's own control.
   const dealt = await realClick(
     h,
-    rectCenter(HUD_NEW_GAME),
+    await menuPoint(h, HUD_NEW_GAME_ITEM),
     (snapshot) => snapshot.tableau[snapshot.tableau.length - 1].length > 0,
   );
   await h.advance(SETTLE_FRAMES);

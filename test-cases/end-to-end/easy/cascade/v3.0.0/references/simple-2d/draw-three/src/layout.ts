@@ -25,9 +25,20 @@ import {
   TOP_ROW_Y,
   WASTE_FAN,
   WASTE_X,
-  type Rect,
 } from "./constants";
 import type { PileKind, Suit } from "./game";
+
+/**
+ * An axis-aligned rectangle in the stage's logical units. `specs/table.md` fixes
+ * the thirteen drop rectangles in this shape, and `specs/controls.md` leaves each
+ * control's hit region to this build in it.
+ */
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 /** The most cards the waste ever fans; the rest are squared away beneath them. */
 export const WASTE_FAN_MAX = 3;

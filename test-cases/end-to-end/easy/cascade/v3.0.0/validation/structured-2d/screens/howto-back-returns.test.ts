@@ -19,11 +19,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { HOWTO_BACK } from "../constants";
+import { HOWTO_BACK_ITEM } from "../constants";
 import {
   captureStill,
-  clickControl,
+  clickAt,
   createHarness,
+  menuPoint,
   resetTo,
   type Harness,
 } from "../harness";
@@ -48,13 +49,14 @@ it("returns to the title when BACK is clicked on the how-to screen", async () =>
       "control belongs to (specs/instrumentation.md)",
   );
 
-  clickControl(h, HOWTO_BACK);
+  // The middle of the region the build reports for the how-to screen's BACK item.
+  clickAt(h, menuPoint(h, HOWTO_BACK_ITEM).x, menuPoint(h, HOWTO_BACK_ITEM).y);
   await h.advance(1);
   captureStill(h, "title");
 
   assertEqual(
     h.snapshot().screen,
     "title",
-    "the screen a click inside HOWTO_BACK reaches (specs/screens.md)",
+    "the screen a click inside the region the build reports for it reaches (specs/screens.md)",
   );
 });

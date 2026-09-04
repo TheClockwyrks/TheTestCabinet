@@ -37,11 +37,7 @@ import {
   openTable,
   type Harness,
 } from "../harness";
-
-/** specs/stock.md: this variant's `DEAL_MODE`, the identifier the build reports. */
-const DEAL_MODE = "draw-one";
-/** specs/stock.md: this variant's `TURN_COUNT`, the cards one turn moves. */
-const TURN_COUNT = 1;
+import { DEAL_MODE, TURN_COUNT } from "./constants";
 
 let h: Harness;
 

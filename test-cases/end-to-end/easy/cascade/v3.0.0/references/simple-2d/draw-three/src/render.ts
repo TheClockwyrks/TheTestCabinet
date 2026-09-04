@@ -15,25 +15,27 @@ import {
   DEAL_MODE_LABEL,
   FACE_UP_OFFSET,
   FOUNDATION_COUNT,
-  HOWTO_BACK,
   HOWTO_BACK_LABEL,
   HUD_H,
   HUD_ITEMS,
-  HUD_MENU,
-  HUD_NEW_GAME,
-  HUD_SOUND,
   HUD_Y,
   STAGE_H,
   STAGE_W,
   TABLEAU_COLUMNS,
   TAGLINE_TEXT,
-  TITLE_HOW_TO,
   TITLE_ITEMS,
-  TITLE_NEW_GAME,
   TITLE_TEXT,
   WIN_TEXT,
-  type Rect,
 } from "./constants";
+import {
+  HOWTO_BACK,
+  HUD_MENU,
+  HUD_NEW_GAME,
+  HUD_SOUND,
+  TITLE_HOW_TO,
+  TITLE_NEW_GAME,
+} from "./menus";
+import type { Rect } from "./layout";
 import { drawCard, drawCardFace, drawEmptySlot } from "./card-art";
 import { dropRect, drawnCards, pileAnchor, wasteShownCount } from "./layout";
 import { COLOR, font } from "./theme";
@@ -86,11 +88,26 @@ function plate(ctx: Ctx2D, rect: Rect, fill: string, line: string): void {
   ctx.strokeRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2);
 }
 
-/** Draw a label centred in its own rectangle. */
-function labelled(ctx: Ctx2D, rect: Rect, label: string, size: number): void {
+/**
+ * Draw a label centred in its own rectangle.
+ *
+ * THE SELECTED ITEM IS DRAWN DISTINCTLY, which specs/controls.md requires of
+ * every menu: "the selected item is drawn distinctly from the others".
+ * Here that is the label's colour, and {@link plate} carries the same mark on the
+ * border; the plate's fill and the rectangle's size are left alone, so a label is
+ * read against the same ground whichever item is selected.
+ */
+function labelled(
+  ctx: Ctx2D,
+  rect: Rect,
+  label: string,
+  size: number,
+  selected = false,
+): void {
   text(ctx, label, rect.x + rect.w / 2, rect.y + rect.h / 2, {
     size,
     weight: "bold",
+    ...(selected ? { color: COLOR.highlight } : {}),
   });
 }
 
@@ -156,14 +173,24 @@ function drawHeldRun(ctx: Ctx2D, state: DeepReadonly<CascadeState>): void {
 }
 
 /** The strip along the bottom: three controls and the deal-mode label. */
-function drawHud(ctx: Ctx2D, width: number): void {
+function drawHud(
+  ctx: Ctx2D,
+  width: number,
+  state: DeepReadonly<CascadeState>,
+): void {
   ctx.fillStyle = COLOR.hudBar;
   ctx.fillRect(0, HUD_Y, width, HUD_H);
 
   const rects: readonly Rect[] = [HUD_NEW_GAME, HUD_MENU, HUD_SOUND];
   rects.forEach((rect, i) => {
-    plate(ctx, rect, COLOR.hudKey, COLOR.panelLine);
-    labelled(ctx, rect, HUD_ITEMS[i] ?? "", 17);
+    const selected = state.menuIndex === i;
+    plate(
+      ctx,
+      rect,
+      COLOR.hudKey,
+      selected ? COLOR.highlight : COLOR.panelLine,
+    );
+    labelled(ctx, rect, HUD_ITEMS[i] ?? "", 17, selected);
   });
 
   text(ctx, DEAL_MODE_LABEL, width - 24, HUD_Y + HUD_H / 2, {
@@ -187,11 +214,16 @@ function drawPlaying(
   drawPiles(ctx, state);
   drawDropTarget(ctx, state);
   drawHeldRun(ctx, state);
-  drawHud(ctx, width);
+  drawHud(ctx, width, state);
 }
 
 /** The opening screen. */
-function drawTitle(ctx: Ctx2D, width: number, height: number): void {
+function drawTitle(
+  ctx: Ctx2D,
+  width: number,
+  height: number,
+  state: DeepReadonly<CascadeState>,
+): void {
   drawFelt(ctx, width, height);
 
   ctx.fillStyle = COLOR.feltShade;
@@ -211,13 +243,19 @@ function drawTitle(ctx: Ctx2D, width: number, height: number): void {
 
   const items: readonly Rect[] = [TITLE_NEW_GAME, TITLE_HOW_TO];
   items.forEach((rect, i) => {
-    plate(ctx, rect, COLOR.panel, COLOR.panelLine);
-    labelled(ctx, rect, TITLE_ITEMS[i] ?? "", 24);
+    const selected = state.menuIndex === i;
+    plate(ctx, rect, COLOR.panel, selected ? COLOR.highlight : COLOR.panelLine);
+    labelled(ctx, rect, TITLE_ITEMS[i] ?? "", 24, selected);
   });
 }
 
 /** How to play. */
-function drawHowTo(ctx: Ctx2D, width: number, height: number): void {
+function drawHowTo(
+  ctx: Ctx2D,
+  width: number,
+  height: number,
+  state: DeepReadonly<CascadeState>,
+): void {
   drawFelt(ctx, width, height);
 
   text(ctx, "HOW TO PLAY", width / 2, 96, { size: 48, weight: "bold" });
@@ -236,8 +274,15 @@ function drawHowTo(ctx: Ctx2D, width: number, height: number): void {
     });
   });
 
-  plate(ctx, HOWTO_BACK, COLOR.hudKey, COLOR.panelLine);
-  labelled(ctx, HOWTO_BACK, HOWTO_BACK_LABEL, 24);
+  // The screen's only item, so it is always the selected one.
+  const selected = state.menuIndex === 0;
+  plate(
+    ctx,
+    HOWTO_BACK,
+    COLOR.hudKey,
+    selected ? COLOR.highlight : COLOR.panelLine,
+  );
+  labelled(ctx, HOWTO_BACK, HOWTO_BACK_LABEL, 24, selected);
 }
 
 /** The victory cascade, and the message that follows it. */
@@ -275,10 +320,10 @@ export function renderGame(
 ): void {
   switch (state.screen) {
     case "title":
-      drawTitle(ctx, width, height);
+      drawTitle(ctx, width, height, state);
       return;
     case "howto":
-      drawHowTo(ctx, width, height);
+      drawHowTo(ctx, width, height, state);
       return;
     case "playing":
       drawPlaying(ctx, state, width, height);

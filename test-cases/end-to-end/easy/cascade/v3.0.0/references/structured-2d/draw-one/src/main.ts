@@ -35,9 +35,9 @@ const engine = createEngine({
   // The table background, which the engine clears the canvas to each frame so the
   // letterbox bars match the table. The game owns the color.
   background: BACKGROUND,
-  // No `layout`, and no registered actions. Cascade is played entirely with the
-  // pointer — every control is a rectangle a press lands in (specs/controls.md) —
-  // and the engine reports the pointer without any registration.
+  // No `layout`. The engine reports the pointer without any registration, and the
+  // four menu actions specs/controls.md names are registered by the game itself,
+  // through `InitApi.input.register` from its `initialize` (see `engine/input.md`).
 });
 
 async function main(): Promise<void> {

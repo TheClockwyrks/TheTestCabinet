@@ -26,12 +26,7 @@ import {
   openTable,
   type Harness,
 } from "../harness";
-
-/** The deal-mode id specs/stock.md fixes for this variant, as `DEAL_MODE`. */
-const DEAL_MODE = "draw-three";
-
-/** The turn count specs/stock.md fixes for this variant, as `TURN_COUNT`. */
-const TURN_COUNT = 3;
+import { DEAL_MODE, TURN_COUNT } from "./constants";
 
 let h: Harness;
 

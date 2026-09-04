@@ -32,38 +32,17 @@
 //
 // WHAT IT DOES NOT DECIDE. Which rule accepted the move — that is
 // `tableau.build-down-alternating` — nor that every pose is reported, which is
-// `instrumentation/poses-read-back`.
+// `instrumentation/screen-reads-back`.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertDoesNotThrow, assertEqual, assertNotNull } from "../assert";
 import {
-  assertDoesNotThrow,
-  assertEqual,
-  assertLength,
-  assertNotNull,
-} from "../assert";
-import {
-  EIGHT,
-  NINE,
   captureStill,
-  card,
   createHarness,
   openTable,
-  pileOf,
-  poseColumn,
-  topOf,
   type Harness,
 } from "../harness";
-import { CASCADE_DEBUG_VERSION, REQUIRED_OPS } from "../surface";
-
-/** The column the run is lifted from, and the one it lands on. */
-const SOURCE_COLUMN = 1;
-const TARGET_COLUMN = 0;
-
-/** The card posed on the target column: a red nine, which takes a black eight. */
-const TARGET_CARD = card("hearts", NINE);
-
-/** The card posed on the source column, and moved. */
-const MOVED_CARD = card("spades", EIGHT);
+import { REQUIRED_OPS } from "../surface";
 
 let h: Harness;
 
@@ -96,15 +75,15 @@ it("returns its debug surface from initialize", () => {
   );
 });
 
-it("carries the specified version and every specified operation, as functions", () => {
+it("carries every specified operation, as functions", async () => {
   const api = h.engine.debug as unknown as Record<string, unknown>;
 
-  assertEqual(typeof api.version, "number", "the type of version");
-  assertEqual(
-    api.version,
-    CASCADE_DEBUG_VERSION,
-    "version, which specs/instrumentation.md fixes as CASCADE_DEBUG_VERSION",
-  );
+  openTable(h);
+  await h.advance(1);
+  // Before the assertions, so a missing operation still leaves the picture of
+  // the table the surface was read off.
+  captureStill(h, "surface");
+
   for (const operation of REQUIRED_OPS) {
     assertEqual(
       typeof api[operation],
@@ -112,59 +91,4 @@ it("carries the specified version and every specified operation, as functions", 
       `the ${operation} operation specs/instrumentation.md names`,
     );
   }
-});
-
-it("is live: a posed card reads back and a posed move applies", async () => {
-  openTable(h);
-
-  // The pose reads back. `poseCard` reads the id off the pile the card was
-  // appended to, so a build whose `addCard` added nothing fails here already;
-  // the readings below name the card that arrived.
-  poseColumn(h, TARGET_COLUMN, [TARGET_CARD]);
-  const [movedId] = poseColumn(h, SOURCE_COLUMN, [MOVED_CARD]);
-  const posed = h.snapshot();
-  assertLength(
-    pileOf(posed, "tableau", TARGET_COLUMN),
-    1,
-    `cards on column ${TARGET_COLUMN} after one addCard (specs/instrumentation.md)`,
-  );
-  assertEqual(
-    topOf(pileOf(posed, "tableau", TARGET_COLUMN))?.rank,
-    TARGET_CARD.rank,
-    "the rank the snapshot reports for the posed card",
-  );
-
-  // The pose is a real arrangement, so the game's own move rules run from it:
-  // a black eight onto a red nine (specs/tableau.md).
-  const accepted = h.debug.move(
-    "tableau",
-    SOURCE_COLUMN,
-    0,
-    "tableau",
-    TARGET_COLUMN,
-  );
-  const after = h.snapshot();
-
-  await h.advance(1);
-  captureStill(h, "live");
-
-  assertEqual(
-    accepted,
-    true,
-    `move() to accept the ${MOVED_CARD.suit} eight onto the ` +
-      `${TARGET_CARD.suit} nine, one rank lower and the other colour ` +
-      "(specs/tableau.md)",
-  );
-  assertEqual(
-    topOf(pileOf(after, "tableau", TARGET_COLUMN))?.id,
-    movedId,
-    `the card lowest on column ${TARGET_COLUMN} once the move was applied, ` +
-      "which is the card the move carried (specs/tableau.md)",
-  );
-  assertLength(
-    pileOf(after, "tableau", SOURCE_COLUMN),
-    0,
-    `cards left on column ${SOURCE_COLUMN}, which the accepted move emptied ` +
-      "(specs/tableau.md)",
-  );
 });

@@ -23,7 +23,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { COLUMN_X, FOUNDATION_X, TOP_ROW_Y } from "../constants";
+import { FOUNDATION_X, TOP_ROW_GAP_X, TOP_ROW_Y } from "../constants";
 import {
   ACE,
   ALL_SUITS,
@@ -58,9 +58,6 @@ const CARD_LIKE_TOLERANCE = 0.2;
  * nearest neighbouring anchor is a column pitch — `122` units — away.
  */
 const ANCHOR_TOLERANCE = 1;
-
-/** The top-row position that carries no pile (specs/table.md). */
-const EMPTY_TOP_ROW_X = COLUMN_X[2];
 
 let h: Harness;
 
@@ -103,9 +100,9 @@ it("draws nothing card-sized at the empty top-row position", async () => {
   const boxes = cardBoxes(h, calls, CARD_LIKE_TOLERANCE);
 
   assertEqual(
-    boxesAt(boxes, EMPTY_TOP_ROW_X, TOP_ROW_Y, ANCHOR_TOLERANCE).length,
+    boxesAt(boxes, TOP_ROW_GAP_X, TOP_ROW_Y, ANCHOR_TOLERANCE).length,
     0,
-    `card-sized boxes drawn with their top-left at (${EMPTY_TOP_ROW_X}, ` +
+    `card-sized boxes drawn with their top-left at (${TOP_ROW_GAP_X}, ` +
       `${TOP_ROW_Y}), where the top row carries no pile; the frame drew ` +
       `card-sized boxes at ${corners(boxes)}`,
   );

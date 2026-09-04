@@ -30,22 +30,20 @@
 // between the two figures are the specification's own margin, and a build that
 // spends them has already failed the compression items and not this one.
 //
-// THE FIRST CLAUSE IS A CONSISTENCY GUARD, NOT A GRADE. The three control
-// rectangles are figures `specs/controls.md` fixes and this project restates, so
-// checking that each lies inside the strip `specs/table.md` fixes decides nothing
-// about a build — it decides that the case's own two files agree, and it would
-// catch a transcription error in `validation/none/constants.ts` that would
-// otherwise make `presentation/hud-labels-drawn` grade against the wrong box. The
-// grade this item carries rests entirely on the cards.
+// THE FIRST CLAUSE IS THE OTHER HALF OF THE SAME RULE, and it is a grade.
+// `specs/controls.md`: "The HUD's three regions lie inside the HUD strip
+// `specs/table.md` fixes, which holds no pile, so a press over the table during
+// play is never a press on a control." WHERE those regions are is the build's
+// own, so they are read back through `menuItemRect` and held against the strip:
+// a build that hung a control over the table has taken a press away from the
+// cards under it, which is the same fault from the other side.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   CARD_H,
   HUD_H,
-  HUD_MENU,
-  HUD_NEW_GAME,
-  HUD_SOUND,
+  HUD_ITEMS,
   HUD_Y,
   RANK_MAX,
   STAGE_W,
@@ -57,6 +55,7 @@ import {
   captureStill,
   columnRowTops,
   createHarness,
+  menuRect,
   faceDown,
   openTable,
   poseColumn,
@@ -84,13 +83,6 @@ const RUN = runDown(card("KS"), RANK_MAX);
 /** The HUD strip itself (`specs/table.md`). */
 const STRIP: Rect = { x: 0, y: HUD_Y, w: STAGE_W, h: HUD_H };
 
-/** The three control rectangles the strip carries (`specs/screens.md`). */
-const CONTROLS: readonly { name: string; rect: Rect }[] = [
-  { name: "HUD_NEW_GAME", rect: HUD_NEW_GAME },
-  { name: "HUD_MENU", rect: HUD_MENU },
-  { name: "HUD_SOUND", rect: HUD_SOUND },
-];
-
 /**
  * How many cards each posed column must actually have been drawn as.
  *
@@ -115,7 +107,12 @@ afterEach(async () => {
 });
 
 it("keeps the deepest columns out of the HUD strip", async () => {
-  for (const { name, rect } of CONTROLS) {
+  await openTable(h);
+
+  // The three regions the build itself reports for the HUD's menu, in the order
+  // `HUD_ITEMS` fixes.
+  for (const [index, name] of HUD_ITEMS.entries()) {
+    const rect = await menuRect(h, index);
     assertGreaterThanOrEqual(
       rect.y,
       STRIP.y,
@@ -138,7 +135,6 @@ it("keeps the deepest columns out of the HUD strip", async () => {
     );
   }
 
-  await openTable(h);
   for (let col = 0; col < TABLEAU_COLUMNS; col += 1) {
     await poseColumn(h, col, [...BURIED, ...RUN]);
   }

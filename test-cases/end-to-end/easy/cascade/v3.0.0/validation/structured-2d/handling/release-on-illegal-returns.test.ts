@@ -19,8 +19,8 @@
 // which is why "in order" is the whole reading.
 //
 // THE GESTURE IS UNAMBIGUOUSLY A DROP. The release lies about `127` units from
-// its press, far past `DRAG_THRESHOLD` (`5`), and `handling/drag-threshold` is
-// the point that decides the threshold itself.
+// its press, far past `DRAG_THRESHOLD` (`5`), and `handling/short-gesture-is-a-click` and
+// `handling/long-gesture-is-a-drop` are the point that decides the threshold itself.
 //
 // WHAT IS READ. The source column, exactly as it was posed, and the target
 // column, still holding only its own card.

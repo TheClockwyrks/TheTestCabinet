@@ -1,11 +1,11 @@
 // screens/hud-new-game-deals — the HUD's `NEW GAME` deals a fresh game and stays
 // on `playing`.
 //
-// `specs/screens.md`, the HUD's table: "`NEW GAME` | `HUD_ITEMS[0]` |
-// `HUD_NEW_GAME` | Deals a fresh game and stays on `playing`."
-// `specs/controls.md` fixes the rectangle at `{ x: 224, y: 680, w: 180, h: 36 }`
-// and fixes that a control answers a click — a press with its release within
-// `DRAG_THRESHOLD` of it.
+// `specs/screens.md`, the HUD's table: "`NEW GAME` | `HUD_ITEMS[0]` | Deals a
+// fresh game and stays on `playing`." `specs/controls.md` fixes how it is
+// activated: one region holding both the press point and the release point.
+// WHERE that region is is the build's, so the press is made at the middle of what
+// `menuItemRect(HUD_NEW_GAME_ITEM)` answered with.
 //
 // BOTH HALVES ARE ASSERTED, because the sentence has two, and they fail
 // differently: a build that dealt and dropped back to the title has the same
@@ -15,25 +15,22 @@
 //
 // It is the HUD's own item. The title screen's `NEW GAME`, which reaches
 // `playing` from OUTSIDE it, is `screens/title-new-game-enters-play`: two
-// controls, two rectangles, two items, so a build that wired one and not the
-// other grades for exactly the one it missed. The shape of the deal belongs to
-// the `deal` group.
+// controls on two menus, two items, so a build that wired one and not the other
+// grades for exactly the one it missed. The shape of the deal belongs to the
+// `deal` group.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
-import { DECK_SIZE, HUD_NEW_GAME } from "../constants";
+import { DECK_SIZE, HUD_NEW_GAME_ITEM } from "../constants";
 import {
   captureStill,
   clickAt,
   createHarness,
   everyCard,
+  menuPoint,
   openTable,
-  rectCenter,
   type Harness,
 } from "../harness";
-
-/** The point pressed and released: the centre of the control's own rectangle. */
-const PRESS = rectCenter(HUD_NEW_GAME);
 
 /** One frame, so the canvas carries the table the assertions read. */
 const SETTLE_FRAMES = 1;
@@ -56,7 +53,8 @@ it("deals a full deck without leaving the table", async () => {
     "the cards on the table before the click",
   );
 
-  await clickAt(h, PRESS.x, PRESS.y);
+  const press = await menuPoint(h, HUD_NEW_GAME_ITEM);
+  await clickAt(h, press.x, press.y);
   await h.advance(SETTLE_FRAMES);
   await captureStill(h, "dealt");
 

@@ -22,20 +22,15 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { HUD_MENU } from "../constants";
+import { HUD_MENU_ITEM } from "../constants";
 import {
   captureStill,
   createHarness,
+  menuPoint,
   openTable,
   tapPointer,
   type Harness,
 } from "../harness";
-
-/** A point inside `HUD_MENU`: its center (specs/controls.md). */
-const PRESS = {
-  x: HUD_MENU.x + HUD_MENU.w / 2,
-  y: HUD_MENU.y + HUD_MENU.h / 2,
-};
 
 let h: Harness;
 
@@ -52,16 +47,18 @@ it("reaches the title screen when the HUD's MENU is clicked", async () => {
   assertEqual(
     h.snapshot().screen,
     "playing",
-    "posing: the game is in live play, where HUD_MENU answers " +
+    "posing: the game is in live play, where that item answers " +
       "(specs/controls.md: a control answers only on the screen it belongs to)",
   );
 
-  await tapPointer(h, PRESS.x, PRESS.y);
+  // The middle of the region the build reports for the HUD's MENU item.
+  const press = menuPoint(h, HUD_MENU_ITEM);
+  await tapPointer(h, press.x, press.y);
   captureStill(h, "title");
 
   assertEqual(
     h.snapshot().screen,
     "title",
-    "the screen after a click inside HUD_MENU (specs/screens.md)",
+    "the screen after a click inside the region the build reports for it (specs/screens.md)",
   );
 });

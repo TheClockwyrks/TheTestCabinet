@@ -28,17 +28,18 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { CUES, DOUBLE_CLICK_WINDOW, HUD_NEW_GAME } from "../constants";
+import { CUES, DOUBLE_CLICK_WINDOW, HUD_NEW_GAME_ITEM } from "../constants";
 import {
   captureStill,
   createHarness,
   framesFor,
+  menuPoint,
   openTable,
   tapPointer,
   watchCues,
   type Harness,
 } from "../harness";
-import { centerOf, playedAfter, playedBefore, playedOn } from "./cues";
+import { playedAfter, playedBefore, playedOn } from "./cues";
 
 /**
  * Frames of silence driven on the empty table, on each side of the click.
@@ -58,7 +59,6 @@ import { centerOf, playedAfter, playedBefore, playedOn } from "./cues";
 const QUIET_WINDOW = framesFor(DOUBLE_CLICK_WINDOW);
 
 /** A point inside the HUD's `NEW GAME` rectangle (specs/controls.md). */
-const NEW_GAME = centerOf(HUD_NEW_GAME);
 
 let h: Harness;
 
@@ -75,6 +75,8 @@ it("plays CUES.deal on the frame a fresh game is dealt, and on no frame either s
   openTable(h);
   await h.advance(QUIET_WINDOW);
 
+  // The middle of the region the build reports for the HUD's NEW GAME item.
+  const NEW_GAME = menuPoint(h, HUD_NEW_GAME_ITEM);
   await tapPointer(h, NEW_GAME.x, NEW_GAME.y);
   const at = h.engine.frame().count;
   captureStill(h, "deal");

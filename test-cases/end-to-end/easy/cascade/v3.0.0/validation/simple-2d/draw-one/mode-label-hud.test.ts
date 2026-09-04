@@ -47,9 +47,7 @@ import {
   openTable,
   type Harness,
 } from "../harness";
-
-/** The deal-mode label specs/stock.md fixes for this variant, as `DEAL_MODE_LABEL`. */
-const DEAL_MODE_LABEL = "DRAW ONE";
+import { DEAL_MODE_LABEL } from "./constants";
 
 /**
  * `DEAL_MODE_LABEL`'s words, in order, however the build spaces or splits them.

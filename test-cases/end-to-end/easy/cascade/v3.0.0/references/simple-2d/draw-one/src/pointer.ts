@@ -18,9 +18,11 @@ import {
   cardCenter,
   cardRect,
   cardTopLeft,
-  controlAtPoint,
+  menuControl,
+  menuItemAt,
   pileAtPoint,
   pointIn,
+  wrapMenuIndex,
   type ControlId,
 } from "./layout";
 import {
@@ -130,6 +132,10 @@ export function pointerDown(
     ...state,
     pointer: { x, y, down: true },
     lastPress: { x, y, at: state.simTime },
+    // A finger never hovers, so the LANDING is what selects it; a mouse pressed
+    // inside a region has moved onto it already, and selecting again changes
+    // nothing (specs/controls.md).
+    menuIndex: selectItemUnder(state, x, y),
   };
 
   if (pressed.screen === "won") return newGame(pressed);
@@ -161,6 +167,10 @@ export function pointerMove(
   const moved: CascadeState = {
     ...state,
     pointer: { ...state.pointer, x, y },
+    // "A mouse moves onto an item's region, its button up or down" and "a finger
+    // ... travels onto one while down" are the same sample here, and both select
+    // (specs/controls.md).
+    menuIndex: selectItemUnder(state, x, y),
     drag:
       state.drag === null
         ? null
@@ -169,28 +179,58 @@ export function pointerMove(
   return unchanged(withDropTarget(moved));
 }
 
-/** What a control does when a click activates it (specs/screens.md). */
+/** What a control does when it is activated (specs/screens.md). */
 function activate(state: CascadeState, control: ControlId): Outcome {
   switch (control) {
     case "title-new-game":
+      // The title's entries also record what they were: specs/screens.md has
+      // `titleIndex` follow the entry last activated there.
+      return newGame({ ...state, titleIndex: 0 });
     case "hud-new-game":
       return newGame(state);
     case "title-how-to":
-      return unchanged({ ...state, screen: "howto" });
+      return unchanged({
+        ...state,
+        titleIndex: 1,
+        screen: "howto",
+        menuIndex: 0,
+      });
     case "howto-back":
     case "hud-menu":
-      return unchanged({ ...state, screen: "title" });
+      // "Both return to `title` with `menuIndex` set to `titleIndex`, the title
+      // entry last activated" (specs/screens.md).
+      return unchanged({
+        ...state,
+        screen: "title",
+        menuIndex: wrapMenuIndex("title", state.titleIndex),
+      });
     case "hud-sound":
       return unchanged({ ...state, muted: !state.muted });
   }
 }
 
-/** A click: the held run returns, and whatever the press landed in answers. */
+/**
+ * Activate the item at `menuIndex` on the current screen.
+ *
+ * specs/controls.md: "The item every activation acts on is the item at
+ * `menuIndex`, whichever input raised it, and the effect is the one the keyboard
+ * table gives `menu-confirm` on that screen." So a key, a mouse click and a
+ * finger tap all end here.
+ */
+export function activateMenuItem(state: CascadeState): Outcome {
+  const control = menuControl(state.screen, state.menuIndex);
+  return control === null ? unchanged(state) : activate(state, control);
+}
+
+/** Select the item whose region holds a point, where one does. */
+function selectItemUnder(state: CascadeState, x: number, y: number): number {
+  const index = menuItemAt(state.screen, x, y);
+  return index === null ? state.menuIndex : index;
+}
+
+/** A click: the held run returns, and the stock answers where the press landed. */
 function click(state: CascadeState, press: PressState): Outcome {
   const returned = returnRun(state);
-
-  const control = controlAtPoint(returned.screen, press.x, press.y);
-  if (control !== null) return activate(returned, control);
 
   if (
     returned.screen === "playing" &&
@@ -235,6 +275,20 @@ export function pointerUp(state: CascadeState, x: number, y: number): Outcome {
   };
   const press = state.lastPress;
   if (press === null) return unchanged(released);
+
+  // The menu first, and whatever KIND of gesture this was: specs/controls.md has
+  // either kind activate a control "when one control's hit region holds both the
+  // press point and the release point".
+  const pressedItem = menuItemAt(released.screen, press.x, press.y);
+  if (
+    pressedItem !== null &&
+    pressedItem === menuItemAt(released.screen, x, y)
+  ) {
+    return activateMenuItem({
+      ...returnRun(released),
+      menuIndex: pressedItem,
+    });
+  }
 
   return distance(x, y, press.x, press.y) <= DRAG_THRESHOLD
     ? click(released, press)

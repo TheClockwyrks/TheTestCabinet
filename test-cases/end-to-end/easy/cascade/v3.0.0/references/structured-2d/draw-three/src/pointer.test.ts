@@ -1,15 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { DEAL_STOCK_CARDS, TURN_COUNT } from "./constants";
 import {
-  DEAL_STOCK_CARDS,
   HOWTO_BACK,
   HUD_MENU,
   HUD_NEW_GAME,
   HUD_SOUND,
   TITLE_HOW_TO,
   TITLE_NEW_GAME,
-  TURN_COUNT,
-  type Rect,
-} from "./constants";
+} from "./menus";
+import type { Rect } from "./layout";
 import {
   centreOf,
   clickAt,

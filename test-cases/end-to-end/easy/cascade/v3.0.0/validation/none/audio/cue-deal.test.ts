@@ -25,18 +25,21 @@
 //
 // THE PRESS FRAME IS REQUIRED TO BE SILENT AS WELL. `specs/audio.md` gives a
 // press on a control no cue, and `specs/controls.md` makes a press inside a
-// control's rectangle lift nothing, so the only frame of this drive that may
+// control's hit region lift nothing, so the only frame of this drive that may
 // sound is the one the deal landed on.
+//
+// THE REGION IS THE BUILD'S OWN, read back through `menuItemRect`, because
+// `specs/controls.md` leaves the HUD's layout to the build.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
-import { HUD_NEW_GAME } from "../constants";
+import { HUD_NEW_GAME_ITEM } from "../constants";
 import {
   captureStill,
   createHarness,
   framesFor,
+  menuPoint,
   openTable,
-  rectCenter,
   watchCues,
   type Harness,
 } from "../harness";
@@ -74,7 +77,7 @@ it("sounds on the frame the deal happens, and on no other frame", async () => {
 
   const dealt = await realClick(
     h,
-    rectCenter(HUD_NEW_GAME),
+    await menuPoint(h, HUD_NEW_GAME_ITEM),
     (snapshot) => snapshot.stock.length > 0,
   );
   const onTheDeal = soundsOn([...played], dealt.frame);

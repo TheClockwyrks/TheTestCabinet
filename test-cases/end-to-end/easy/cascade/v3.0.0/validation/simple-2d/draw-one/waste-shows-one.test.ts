@@ -40,9 +40,9 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNotNull } from "../assert";
 import { FOUNDATION_X, TOP_ROW_Y, WASTE_X } from "../constants";
 import {
-  CARD_BOX_TOLERANCE,
   boxAt,
   captureStill,
+  CARD_BOX_TOLERANCE,
   cardBoxes,
   createHarness,
   drawFrame,
@@ -51,6 +51,7 @@ import {
   poseStock,
   type Harness,
 } from "../harness";
+import { TURN_COUNT } from "./constants";
 
 /** Turns taken before the waste is read, which the review item fixes at three. */
 const TURNS = 3;
@@ -74,9 +75,6 @@ const STOCK = ["#2C", "#5D", "#9H", "#JS", "#7D", "#4S", "#QC", "#8H", "#AD"];
  * past that is a second card a player can see.
  */
 const SQUARED_TOLERANCE = CARD_BOX_TOLERANCE;
-
-/** The turn count specs/stock.md fixes for this variant, as `TURN_COUNT`. */
-const TURN_COUNT = 1;
 
 let h: Harness;
 

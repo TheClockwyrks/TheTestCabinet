@@ -43,14 +43,15 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
-  cardSpec,
   captureStill,
+  cardSpec,
   createHarness,
   openTable,
   poseStock,
   topOf,
   type Harness,
 } from "../harness";
+import { TURN_COUNT } from "./constants";
 
 /**
  * The stock the two turns are taken from, bottom card first.
@@ -70,9 +71,6 @@ const NEWER = "AS";
 
 /** The empty foundation the Ace is sent to. Any suit may start any slot. */
 const FOUNDATION = 0;
-
-/** The turn count specs/stock.md fixes for this variant, as `TURN_COUNT`. */
-const TURN_COUNT = 1;
 
 let h: Harness;
 

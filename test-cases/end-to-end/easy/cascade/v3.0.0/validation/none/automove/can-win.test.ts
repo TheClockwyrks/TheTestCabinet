@@ -11,7 +11,7 @@
 // NOTHING ABOUT THE ENDING IS POSED. Fifty-one cards are placed and the
 // fifty-second is sent by the operation under test, so the build's own win test
 // is what moves the screen. `setWinDetect` is left ON at its reset default and
-// asserted so: the gate is `instrumentation/win-detect-gate`'s to grade.
+// asserted so: the gate is `instrumentation/win-detect-gate-off`'s to grade.
 //
 // THE READING IS TAKEN BEFORE A FRAME RUNS. `specs/victory.md` starts the launch
 // clock full — "so the first card launches on the cascade's first frame" — so the

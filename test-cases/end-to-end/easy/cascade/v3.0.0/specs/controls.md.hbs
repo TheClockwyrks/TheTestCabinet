@@ -2,9 +2,10 @@
 
 This file defines how a player operates the game: what a press picks up, how a
 held run follows and lands, what separates a click from a drop, the double click,
-and the rectangle each on-screen control answers. The piles these gestures act on
-are in `specs/table.md`, and the rules that accept or refuse a move are in
-`specs/foundations.md`, `specs/tableau.md`, and `specs/stock.md`.
+the controls each screen carries, and how the menus over those controls are
+driven. The piles these gestures act on are in `specs/table.md`, and the rules
+that accept or refuse a move are in `specs/foundations.md`, `specs/tableau.md`,
+and `specs/stock.md`.
 
 ## How input reaches the game
 
@@ -41,8 +42,8 @@ mouse attached, and dragging a card neither scrolls nor zooms the page.
 ## What a press picks up
 
 The rules of this section are the `playing` screen's. On `title` and `howto` the
-pointer answers the controls listed at the end of this file, and on `won` a press
-deals a fresh game, as `specs/victory.md` states.
+pointer answers that screen's controls, as Menu navigation below states, and on
+`won` a press deals a fresh game, as `specs/victory.md` states.
 
 A press resolves to the card drawn over every other card at the press point,
 which in a column is the lowest of the cards whose footprint contains that point.
@@ -81,20 +82,21 @@ which of the two kinds of gesture it was:
 | Within `DRAG_THRESHOLD` (`5`) of the press point | A click |
 | Farther than `DRAG_THRESHOLD` from the press point | A drop |
 
-A click does all of the following, in this order:
+A click does both of the following, in this order:
 
 1. It returns any held run to the pile it was lifted from, in the order it was
    lifted, with every face unchanged.
-2. It activates the control whose hit rectangle contains the press point, when
-   the press point lies in one.
-3. It turns the stock, as `specs/stock.md` states, when the press point lies in
+2. It turns the stock, as `specs/stock.md` states, when the press point lies in
    the stock's drop rectangle.
 
 A drop resolves the run in hand against the drop rectangles `specs/table.md`
-fixes. It activates no control and turns no stock.
+fixes. It turns no stock.
 
-A release with nothing in hand and no control or stock under its press changes
-nothing.
+Either kind of gesture activates a control when one control's hit region holds
+both the press point and the release point, as Menu navigation below states.
+
+A release with nothing in hand that activates no control and turns no stock
+changes nothing.
 
 ## Where a drop lands
 
@@ -134,20 +136,89 @@ press the next one is measured against.
 
 ## The controls
 
-Each control answers a click whose press point lies inside its rectangle. Every
-rectangle is given as `{ x, y, w, h }` in logical units, and each control's label
-is drawn inside its own rectangle. What each one does is in `specs/screens.md`.
+Each control occupies a rectangular hit region the build lays out, and its label
+is drawn inside that region. `specs/instrumentation.md` states the reading
+through which the build reports an item's region in logical units, so the
+controls keep the layout the build chose. What each one does is in
+`specs/screens.md`.
 
-| Constant | Rectangle | Where it is |
+| Screen | Its controls, in order |
+| --- | --- |
+| `title` | The two items of `TITLE_ITEMS` |
+| `howto` | The one item labelled `HOWTO_BACK_LABEL` |
+| `playing` | The three items of `HUD_ITEMS` |
+| `won` | None |
+
+A control answers only on the screen it belongs to, and the regions on one screen
+do not overlap each other, so a point lies in at most one of them. The HUD's
+three regions lie inside the HUD strip `specs/table.md` fixes, which holds no
+pile, so a press over the table during play is never a press on a control.
+
+## Menu navigation
+
+The controls a screen carries are that screen's menu, in the order the table
+above gives them. `menuIndex` is the selected item on that menu, counted from `0`
+for the first, and the selected item is drawn distinctly from the others. Every
+menu is driven by the keyboard, by a mouse, and by touch alike.
+
+### Keyboard
+
+{{#if (eq engine.slug "none")}}
+The game reads exactly the four actions below, each raised by the keys given
+beside it. The runtime layer reads the keyboard by `KeyboardEvent.code`, so the
+bindings hold on any layout.
+{{else}}
+The keyboard belongs to the {{engine.name}} engine. Register exactly the four
+actions below, each bound to the keys given beside it. Bindings are
+`KeyboardEvent.code` values, so they hold on any layout.
+{{/if}}
+
+| Action | Keys |
+| --- | --- |
+| `menu-up` | `ArrowUp`, `KeyW` |
+| `menu-down` | `ArrowDown`, `KeyS` |
+| `menu-confirm` | `Enter`, `Space` |
+| `menu-back` | `Escape` |
+
+Holding a key moves the selection one step rather than repeating it.
+
+| Screen | Action | Effect |
 | --- | --- | --- |
-| `TITLE_NEW_GAME` | `{ x: 480, y: 448, w: 320, h: 52 }` | The title screen |
-| `TITLE_HOW_TO` | `{ x: 480, y: 516, w: 320, h: 52 }` | The title screen |
-| `HOWTO_BACK` | `{ x: 480, y: 600, w: 320, h: 52 }` | The how-to screen |
-| `HUD_NEW_GAME` | `{ x: 224, y: 680, w: 180, h: 36 }` | The HUD, during play |
-| `HUD_MENU` | `{ x: 420, y: 680, w: 120, h: 36 }` | The HUD, during play |
-| `HUD_SOUND` | `{ x: 556, y: 680, w: 120, h: 36 }` | The HUD, during play |
+| `title` | `menu-up` | `menuIndex` moves up one, wrapping from `0` to the last item. |
+| `title` | `menu-down` | `menuIndex` moves down one, wrapping from the last item to `0`. |
+| `title` | `menu-confirm` | Activates the item at `menuIndex`, as `specs/screens.md` states. |
+| `title` | `menu-back` | Nothing. |
+| `howto` | `menu-up`, `menu-down` | Nothing. The screen carries one item, so `menuIndex` stays `0`. |
+| `howto` | `menu-confirm`, `menu-back` | Activates the item labelled `HOWTO_BACK_LABEL`, as `specs/screens.md` states. |
+| `playing` | `menu-up` | `menuIndex` moves up one over `HUD_ITEMS`, wrapping from `0` to the last item. |
+| `playing` | `menu-down` | `menuIndex` moves down one over `HUD_ITEMS`, wrapping from the last item to `0`. |
+| `playing` | `menu-confirm` | Activates the HUD item at `menuIndex`, as `specs/screens.md` states. |
+| `playing` | `menu-back` | Nothing. |
 
-A control answers only on the screen it belongs to.
+`won` shows no menu and reads none of the four.
+
+When several edges arrive on one frame, `menu-up` is applied before `menu-down`,
+and movement before `menu-confirm`: a frame carrying both an up edge and a down
+edge moves up only, and a frame carrying a movement edge and a confirm edge moves
+only.
+
+### Pointer and touch
+
+A press is a mouse button going down or a finger touching down and a release is
+the button coming up or the finger lifting, as this file's first section states,
+so a finger landing and lifting inside one region activates its item exactly as a
+mouse click does.
+
+| Input | Effect |
+| --- | --- |
+| A mouse moves onto an item's region, its button up or down | `menuIndex` becomes that item's index. |
+| A finger touches down inside an item's region, or travels onto one while down | `menuIndex` becomes that item's index. |
+| A press and the release that follows it both land inside one item's region | `menuIndex` becomes that item's index, and the item is activated. |
+| The two edges of a gesture land in different regions, or either lands outside every region | No item is activated. |
+
+The item every activation acts on is the item at `menuIndex`, whichever input
+raised it, and the effect is the one the keyboard table gives `menu-confirm` on
+that screen.
 
 ## The debug overlay
 

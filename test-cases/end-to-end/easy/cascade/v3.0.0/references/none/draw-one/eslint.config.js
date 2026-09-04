@@ -2,8 +2,7 @@
 //
 // A deliberately small flat config: the ESLint and typescript-eslint recommended
 // sets, with unused bindings allowed when they are named with a leading
-// underscore (which is how the stubs in `src/game.ts` mark the arguments they do
-// not use yet). Linting is not type-aware, so it runs without a TypeScript
+// underscore. Linting is not type-aware, so it runs without a TypeScript
 // program and stays fast.
 //
 // THIS COPY IS THE REFERENCE WORKSPACE'S, NOT THE SEEDED ONE. It carries five

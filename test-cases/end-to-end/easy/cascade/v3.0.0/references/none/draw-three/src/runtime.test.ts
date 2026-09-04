@@ -90,6 +90,12 @@ function stand(): Stand {
     width: STAGE_W,
     height: STAGE_H,
     game,
+    menuBindings: {
+      "menu-up": ["ArrowUp"],
+      "menu-down": ["ArrowDown"],
+      "menu-confirm": ["Enter"],
+      "menu-back": ["Escape"],
+    },
     background: "#000000",
     surface,
     audioContext: () => null,

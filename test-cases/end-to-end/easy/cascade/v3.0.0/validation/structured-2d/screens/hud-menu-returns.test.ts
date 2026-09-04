@@ -9,7 +9,7 @@
 //
 // ONE DIRECTION, AND NOTHING ELSE. What this decides is that the control leaves
 // the table for the title. The HUD's other two controls are
-// `screens/hud-new-game-deals` and `screens/hud-sound-toggles`, so a build with
+// `screens/hud-new-game-deals` and `screens/hud-sound-mutes`, so a build with
 // one working control and one broken one grades apart from one with both broken.
 //
 // THE TABLE IS EMPTY: the control belongs to the `playing` screen and owes
@@ -18,11 +18,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { HUD_MENU } from "../constants";
+import { HUD_MENU_ITEM } from "../constants";
 import {
   captureStill,
-  clickControl,
+  clickAt,
   createHarness,
+  menuPoint,
   openTable,
   type Harness,
 } from "../harness";
@@ -46,13 +47,14 @@ it("reaches the title screen when the HUD's MENU is clicked", async () => {
       "(specs/screens.md)",
   );
 
-  clickControl(h, HUD_MENU);
+  // The middle of the region the build reports for the HUD's MENU item.
+  clickAt(h, menuPoint(h, HUD_MENU_ITEM).x, menuPoint(h, HUD_MENU_ITEM).y);
   await h.advance(1);
   captureStill(h, "title");
 
   assertEqual(
     h.snapshot().screen,
     "title",
-    "the screen a click inside HUD_MENU reaches (specs/screens.md)",
+    "the screen a click inside the region the build reports for it reaches (specs/screens.md)",
   );
 });

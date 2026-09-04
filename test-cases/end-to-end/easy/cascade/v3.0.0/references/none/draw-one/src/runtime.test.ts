@@ -61,6 +61,12 @@ function bench(cssWidth = 1280, cssHeight = 720, dpr = 1) {
     height: 720,
     game,
     background: "#000000",
+    menuBindings: {
+      "menu-up": ["ArrowUp"],
+      "menu-down": ["ArrowDown"],
+      "menu-confirm": ["Enter"],
+      "menu-back": ["Escape"],
+    },
     surface,
     audioContext: () => null,
   });

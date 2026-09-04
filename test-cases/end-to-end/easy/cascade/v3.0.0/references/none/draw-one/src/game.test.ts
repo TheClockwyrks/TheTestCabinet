@@ -40,6 +40,7 @@ function updateApi(audio: RecordingAudio, queue: PointerSample[]) {
       samples: () => queue.splice(0),
       current: () => position,
     },
+    keys: { edges: () => [] },
     audio,
   };
   return api;

@@ -2,12 +2,18 @@
 // event raises are audible on the frame that event happens.
 //
 // `specs/audio.md`: "While sound is muted every cue is silent ... and turning
-// mute off makes the same cues audible again." `specs/screens.md` fixes the
-// control that does both, the HUD's `SOUND`, which "Toggles muting", and
-// `specs/instrumentation.md` gives the surface no operation that sets the bit —
-// so both halves of the round trip are driven as a player drives them, by real
-// clicks inside the `HUD_SOUND` rectangle, and the bit is read back off the
-// snapshot.
+// mute off makes the same cues audible again." `specs/instrumentation.md` gives
+// the surface an operation that sets that bit under this engine — `setMuted(muted)`,
+// "the same bit the HUD's `SOUND` control toggles and the same bit `snapshot`
+// reports as `muted`" — so the round trip is posed and the bit is read back off
+// the snapshot.
+//
+// MUTE IS POSED, NOT CLICKED, AND THAT IS THE POINT'S OWN BOUNDARY. This item is
+// about what an UNMUTED game sounds like, so the way the round trip was made must
+// not be able to fail it: a build whose `SOUND` control is dead is graded for
+// exactly that by `screens/hud-sound-mutes` and `screens/hud-sound-unmutes`, and
+// charging it here as well would cost three points for one defect and say least
+// about the one that is really broken.
 //
 // THIS POINT DECIDES ONE DIRECTION: THE AUDIBLE ONE. That a muted cue is silent
 // is `audio/mute-silences`, and this point deliberately does not re-decide it. A
@@ -30,7 +36,6 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
-import { HUD_SOUND } from "../constants";
 import {
   captureStill,
   cardCenter,
@@ -39,8 +44,6 @@ import {
   createHarness,
   dropRect,
   framesFor,
-  mousePress,
-  mouseRelease,
   openTable,
   poseColumn,
   rectCenter,
@@ -85,20 +88,24 @@ it("sounds on the frame a card reaches its foundation once mute has been turned 
   await poseColumn(h, FROM, cards(CARRIED));
   await h.armAudio();
 
-  // Muted, then unmuted, through the one control that does both. Neither click
-  // is listened to: what this point is about is the cue AFTER the round trip.
-  const sound = rectCenter(HUD_SOUND);
-  for (let click = 0; click < 2; click += 1) {
-    await mousePress(h, sound.x, sound.y);
-    await mouseRelease(h);
-    await h.advance(TOGGLE_FRAMES);
-  }
+  // Muted, then unmuted again. Neither pose is listened to: what this point is
+  // about is the cue AFTER the round trip.
+  await h.debug.setMuted(true);
+  await h.advance(TOGGLE_FRAMES);
+  assertEqual(
+    (await h.snapshot()).muted,
+    true,
+    "the mute bit after setMuted(true) — a round trip that never went out has " +
+      "nothing to come back from",
+  );
+  await h.debug.setMuted(false);
+  await h.advance(TOGGLE_FRAMES);
 
   // The precondition that makes the reading mean anything: sound is back on.
   assertEqual(
     (await h.snapshot()).muted,
     false,
-    "the mute bit after the SOUND control has been clicked twice",
+    "the mute bit after setMuted(false) (specs/instrumentation.md)",
   );
 
   const played = watchCues(h);

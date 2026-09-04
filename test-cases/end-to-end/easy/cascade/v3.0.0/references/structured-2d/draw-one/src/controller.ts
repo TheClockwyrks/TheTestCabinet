@@ -20,11 +20,19 @@ import { PlayerController } from "@test-cabinet/structured-2d";
 import { applyAudio, mergeCues, noCues } from "./audio";
 import { cascadeState } from "./game";
 import { pointerDown, pointerMove, pointerUp } from "./input";
+import { applyMenuActions } from "./navigation";
 
 export class CascadeController extends PlayerController {
   override tick(): void {
     const state = cascadeState(this.world);
     const cues = noCues();
+
+    // The frame's menu-action edges, in the order specs/controls.md fixes for a
+    // frame carrying more than one. Read before the pointer, so a frame that
+    // carried both leaves the pointer's own gesture the last word on the table.
+    const keyed = noCues();
+    applyMenuActions(state, this.input, keyed);
+    mergeCues(cues, keyed);
 
     for (const sample of this.input.pointerSamples()) {
       const one = noCues();

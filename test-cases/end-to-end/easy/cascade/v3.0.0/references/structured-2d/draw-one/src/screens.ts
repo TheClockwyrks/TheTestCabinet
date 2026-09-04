@@ -13,38 +13,50 @@
 
 import {
   DEAL_MODE_LABEL,
-  HOWTO_BACK,
   HOWTO_BACK_LABEL,
   HUD_H,
   HUD_ITEMS,
-  HUD_MENU,
-  HUD_NEW_GAME,
-  HUD_SOUND,
   HUD_Y,
   STAGE_H,
   STAGE_W,
   TAGLINE_TEXT,
-  TITLE_HOW_TO,
   TITLE_ITEMS,
-  TITLE_NEW_GAME,
   TITLE_TEXT,
   WIN_TEXT,
-  type Rect,
 } from "./constants";
+import {
+  HOWTO_BACK,
+  HUD_MENU,
+  HUD_NEW_GAME,
+  HUD_SOUND,
+  TITLE_HOW_TO,
+  TITLE_NEW_GAME,
+} from "./menus";
+import type { Rect } from "./layout";
 import type { CascadeState } from "./game";
 import { COLOR, font, withAlpha } from "./theme";
 
 type Ctx = CanvasRenderingContext2D;
 
 /** One labelled control: a plate the label is drawn centered inside. */
-function drawControl(ctx: Ctx, rect: Rect, label: string, size: number): void {
+function drawControl(
+  ctx: Ctx,
+  rect: Rect,
+  label: string,
+  size: number,
+  selected = false,
+): void {
   ctx.fillStyle = COLOR.hud;
   ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-  ctx.strokeStyle = COLOR.hudEdge;
+  // THE SELECTED ITEM IS DRAWN DISTINCTLY, which specs/controls.md requires of
+  // every menu: "the selected item is drawn distinctly from the others".
+  // The border and the label carry it; the plate's fill and the rectangle's size
+  // are left alone, so a label is read against the same ground either way.
+  ctx.strokeStyle = selected ? COLOR.highlight : COLOR.hudEdge;
   ctx.lineWidth = 2;
   ctx.strokeRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2);
 
-  ctx.fillStyle = COLOR.text;
+  ctx.fillStyle = selected ? COLOR.highlight : COLOR.text;
   ctx.font = font(size);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -64,9 +76,9 @@ export function renderHud(state: CascadeState, ctx: Ctx): void {
   ctx.lineTo(STAGE_W, HUD_Y + 1);
   ctx.stroke();
 
-  drawControl(ctx, HUD_NEW_GAME, HUD_ITEMS[0], 20);
-  drawControl(ctx, HUD_MENU, HUD_ITEMS[1], 20);
-  drawControl(ctx, HUD_SOUND, HUD_ITEMS[2], 20);
+  drawControl(ctx, HUD_NEW_GAME, HUD_ITEMS[0], 20, state.menuIndex === 0);
+  drawControl(ctx, HUD_MENU, HUD_ITEMS[1], 20, state.menuIndex === 1);
+  drawControl(ctx, HUD_SOUND, HUD_ITEMS[2], 20, state.menuIndex === 2);
 
   ctx.fillStyle = COLOR.dim;
   ctx.font = font(20);
@@ -81,7 +93,7 @@ function drawScrim(ctx: Ctx): void {
   ctx.fillRect(0, 0, STAGE_W, STAGE_H);
 }
 
-function drawTitle(ctx: Ctx): void {
+function drawTitle(state: CascadeState, ctx: Ctx): void {
   drawScrim(ctx);
 
   ctx.textAlign = "center";
@@ -99,8 +111,8 @@ function drawTitle(ctx: Ctx): void {
   ctx.font = font(24);
   ctx.fillText(DEAL_MODE_LABEL, STAGE_W / 2, 366);
 
-  drawControl(ctx, TITLE_NEW_GAME, TITLE_ITEMS[0], 26);
-  drawControl(ctx, TITLE_HOW_TO, TITLE_ITEMS[1], 26);
+  drawControl(ctx, TITLE_NEW_GAME, TITLE_ITEMS[0], 26, state.menuIndex === 0);
+  drawControl(ctx, TITLE_HOW_TO, TITLE_ITEMS[1], 26, state.menuIndex === 1);
 }
 
 /**
@@ -122,7 +134,7 @@ const HOWTO_LINES: readonly string[] = [
   "on. DOUBLE-CLICK a card to send it straight home.",
 ];
 
-function drawHowTo(ctx: Ctx): void {
+function drawHowTo(state: CascadeState, ctx: Ctx): void {
   drawScrim(ctx);
 
   ctx.textAlign = "center";
@@ -139,7 +151,8 @@ function drawHowTo(ctx: Ctx): void {
     ctx.fillText(line, STAGE_W / 2, 186 + index * 34);
   });
 
-  drawControl(ctx, HOWTO_BACK, HOWTO_BACK_LABEL, 26);
+  // The screen's only item, so it is always the selected one.
+  drawControl(ctx, HOWTO_BACK, HOWTO_BACK_LABEL, 26, state.menuIndex === 0);
 }
 
 function drawWon(state: CascadeState, ctx: Ctx): void {
@@ -174,10 +187,10 @@ function drawWon(state: CascadeState, ctx: Ctx): void {
 export function renderScreens(state: CascadeState, ctx: Ctx): void {
   switch (state.screen) {
     case "title":
-      drawTitle(ctx);
+      drawTitle(state, ctx);
       return;
     case "howto":
-      drawHowTo(ctx);
+      drawHowTo(state, ctx);
       return;
     case "playing":
       return;

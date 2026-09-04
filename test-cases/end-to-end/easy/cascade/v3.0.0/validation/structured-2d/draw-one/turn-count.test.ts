@@ -34,21 +34,19 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLength } from "../assert";
 import {
-  FIVE,
-  JACK,
-  NINE,
-  SEVEN,
-  TWO,
   captureStill,
   card,
   createHarness,
+  FIVE,
+  JACK,
+  NINE,
   openTable,
   poseStock,
+  SEVEN,
+  TWO,
   type Harness,
 } from "../harness";
-
-/** specs/stock.md: this variant's `TURN_COUNT`, the cards one turn moves. */
-const TURN_COUNT = 1;
+import { TURN_COUNT } from "./constants";
 
 /**
  * The stock the turn is taken from, bottom card first.

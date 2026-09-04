@@ -27,21 +27,16 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
-import { DECK_SIZE, HUD_NEW_GAME } from "../constants";
+import { DECK_SIZE, HUD_NEW_GAME_ITEM } from "../constants";
 import {
   captureStill,
   createHarness,
+  menuPoint,
   openTable,
   tableCards,
   tapPointer,
   type Harness,
 } from "../harness";
-
-/** A point inside `HUD_NEW_GAME`: its center (specs/controls.md). */
-const PRESS = {
-  x: HUD_NEW_GAME.x + HUD_NEW_GAME.w / 2,
-  y: HUD_NEW_GAME.y + HUD_NEW_GAME.h / 2,
-};
 
 let h: Harness;
 
@@ -58,7 +53,7 @@ it("deals a full deck and stays on playing when the HUD's NEW GAME is clicked", 
   assertEqual(
     h.snapshot().screen,
     "playing",
-    "posing: the game is in live play, where HUD_NEW_GAME answers " +
+    "posing: the game is in live play, where that item answers " +
       "(specs/controls.md: a control answers only on the screen it belongs to)",
   );
   assertLength(
@@ -68,14 +63,16 @@ it("deals a full deck and stays on playing when the HUD's NEW GAME is clicked", 
       "can only have come from the deal (specs/instrumentation.md)",
   );
 
-  await tapPointer(h, PRESS.x, PRESS.y);
+  // The middle of the region the build reports for the HUD's NEW GAME item.
+  const press = menuPoint(h, HUD_NEW_GAME_ITEM);
+  await tapPointer(h, press.x, press.y);
   captureStill(h, "dealt");
 
   const snapshot = h.snapshot();
   assertLength(
     tableCards(snapshot),
     DECK_SIZE,
-    "cards on the thirteen piles after a click inside HUD_NEW_GAME, which " +
+    "cards on the thirteen piles after a click inside the region the build reports for it, which " +
       "specs/deal.md fixes at DECK_SIZE (52) for a fresh deal " +
       "(specs/screens.md)",
   );

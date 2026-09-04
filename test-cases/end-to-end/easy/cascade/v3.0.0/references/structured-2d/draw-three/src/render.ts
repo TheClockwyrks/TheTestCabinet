@@ -19,24 +19,26 @@ import {
   CARD_W,
   DEAL_MODE_LABEL,
   FACE_UP_OFFSET,
-  HOWTO_BACK,
   HOWTO_BACK_LABEL,
   HUD_H,
   HUD_ITEMS,
-  HUD_MENU,
-  HUD_NEW_GAME,
-  HUD_SOUND,
   HUD_Y,
   STAGE_H,
   STAGE_W,
   TAGLINE_TEXT,
-  TITLE_HOW_TO,
   TITLE_ITEMS,
-  TITLE_NEW_GAME,
   TITLE_TEXT,
   WIN_TEXT,
-  type Rect,
 } from "./constants";
+import {
+  HOWTO_BACK,
+  HUD_MENU,
+  HUD_NEW_GAME,
+  HUD_SOUND,
+  TITLE_HOW_TO,
+  TITLE_NEW_GAME,
+} from "./menus";
+import type { Rect } from "./layout";
 import { colorOf, rankLabel } from "./deck";
 import type { CardState, CascadeState, Suit } from "./game";
 import { columnBottom, drawnCards, pileAnchor } from "./layout";
@@ -290,12 +292,17 @@ function drawControl(
   rect: Rect,
   label: string,
   size: number,
+  selected = false,
 ): void {
   roundRectPath(ctx, rect.x, rect.y, rect.w, rect.h, 8);
   ctx.fillStyle = COLOR.plate;
   ctx.fill();
   ctx.lineWidth = 2;
-  ctx.strokeStyle = COLOR.plateEdge;
+  // THE SELECTED ITEM IS DRAWN DISTINCTLY, which specs/controls.md requires of
+  // every menu: "the selected item is drawn distinctly from the others".
+  // The border and the label carry it; the plate's fill and the rectangle's size
+  // are left alone, so a label is read against the same ground either way.
+  ctx.strokeStyle = selected ? COLOR.highlight : COLOR.plateEdge;
   ctx.stroke();
   centredText(
     ctx,
@@ -303,7 +310,7 @@ function drawControl(
     rect.x + rect.w / 2,
     rect.y + rect.h / 2,
     font(size),
-    COLOR.ink,
+    selected ? COLOR.highlight : COLOR.ink,
   );
 }
 
@@ -431,13 +438,16 @@ export function renderHand(
 }
 
 /** The HUD strip: its three controls and this build's deal-mode label. */
-export function renderHud(ctx: CanvasRenderingContext2D): void {
+export function renderHud(
+  ctx: CanvasRenderingContext2D,
+  menuIndex: number,
+): void {
   ctx.fillStyle = COLOR.hudStrip;
   ctx.fillRect(0, HUD_Y, STAGE_W, HUD_H);
 
-  drawControl(ctx, HUD_NEW_GAME, HUD_ITEMS[0], 18);
-  drawControl(ctx, HUD_MENU, HUD_ITEMS[1], 18);
-  drawControl(ctx, HUD_SOUND, HUD_ITEMS[2], 18);
+  drawControl(ctx, HUD_NEW_GAME, HUD_ITEMS[0], 18, menuIndex === 0);
+  drawControl(ctx, HUD_MENU, HUD_ITEMS[1], 18, menuIndex === 1);
+  drawControl(ctx, HUD_SOUND, HUD_ITEMS[2], 18, menuIndex === 2);
 
   ctx.font = font(18);
   ctx.fillStyle = COLOR.inkDim;
@@ -447,16 +457,22 @@ export function renderHud(ctx: CanvasRenderingContext2D): void {
 }
 
 /** The title screen. */
-export function renderTitle(ctx: CanvasRenderingContext2D): void {
+export function renderTitle(
+  ctx: CanvasRenderingContext2D,
+  menuIndex: number,
+): void {
   centredText(ctx, TITLE_TEXT, STAGE_W / 2, 190, font(104), COLOR.accent);
   centredText(ctx, TAGLINE_TEXT, STAGE_W / 2, 282, font(34), COLOR.ink);
   centredText(ctx, DEAL_MODE_LABEL, STAGE_W / 2, 344, font(26), COLOR.inkDim);
-  drawControl(ctx, TITLE_NEW_GAME, TITLE_ITEMS[0], 26);
-  drawControl(ctx, TITLE_HOW_TO, TITLE_ITEMS[1], 26);
+  drawControl(ctx, TITLE_NEW_GAME, TITLE_ITEMS[0], 26, menuIndex === 0);
+  drawControl(ctx, TITLE_HOW_TO, TITLE_ITEMS[1], 26, menuIndex === 1);
 }
 
 /** The how-to screen. */
-export function renderHowto(ctx: CanvasRenderingContext2D): void {
+export function renderHowto(
+  ctx: CanvasRenderingContext2D,
+  menuIndex: number,
+): void {
   centredText(ctx, "HOW TO PLAY", STAGE_W / 2, 150, font(58), COLOR.accent);
   HOWTO_LINES.forEach((line, i) => {
     centredText(
@@ -468,7 +484,8 @@ export function renderHowto(ctx: CanvasRenderingContext2D): void {
       COLOR.ink,
     );
   });
-  drawControl(ctx, HOWTO_BACK, HOWTO_BACK_LABEL, 26);
+  // The screen's only item, so it is always the selected one.
+  drawControl(ctx, HOWTO_BACK, HOWTO_BACK_LABEL, 26, menuIndex === 0);
 }
 
 /** The message the won screen shows over the painted table, once the cascade is done. */

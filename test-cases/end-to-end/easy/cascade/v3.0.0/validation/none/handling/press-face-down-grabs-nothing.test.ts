@@ -17,7 +17,7 @@
 //
 // The automatic flip is left ON at its reset default, because a lift turns
 // nothing in any case (`specs/tableau.md`) and the gate is
-// `instrumentation/auto-flip-gate`'s to grade.
+// `instrumentation/auto-flip-gate-off`'s to grade.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull } from "../assert";

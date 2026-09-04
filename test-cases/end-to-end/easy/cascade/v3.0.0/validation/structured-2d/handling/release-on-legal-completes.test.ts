@@ -10,7 +10,8 @@
 // moves, and a release with the leading card sitting on the target column's
 // anchor — so its centre lies inside that column's drop rectangle
 // (specs/table.md) and the release lies `122` units from its press, well past
-// `DRAG_THRESHOLD` (`5`). `handling/drag-threshold` is the point that decides the
+// `DRAG_THRESHOLD` (`5`). `handling/short-gesture-is-a-click` and `handling/long-gesture-is-a-drop` are the
+// points that decide the
 // threshold itself; this one only needs a gesture that is unambiguously a drop.
 //
 // THE TARGET ACCEPTS. A red five onto a black six is one rank lower and the

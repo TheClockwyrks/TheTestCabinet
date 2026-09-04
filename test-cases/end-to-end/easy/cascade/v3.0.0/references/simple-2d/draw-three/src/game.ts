@@ -36,7 +36,7 @@
 // spreads, and the result is assignable to `CascadeState` because the only
 // difference between the two is the `readonly` markers.
 
-import { STAGE_H, STAGE_W } from "./constants";
+import { MENU_BINDINGS, STAGE_H, STAGE_W } from "./constants";
 import { defineCues } from "./audio";
 import { createDebugApi, type CascadeDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
@@ -54,6 +54,7 @@ import type {
   UpdateApi,
 } from "@test-cabinet/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
+import { applyMenuActions } from "./navigation";
 
 // The surface's type belongs beside the state it poses, so it is exported from
 // here whichever module implements it.
@@ -119,6 +120,10 @@ export interface FlyerState {
 
 export interface CascadeState {
   readonly screen: Screen;
+  /** The selected item on the menu the current screen shows. */
+  readonly menuIndex: number;
+  /** The title menu's remembered selection: the entry last activated there. */
+  readonly titleIndex: number;
 
   readonly stock: readonly CardState[];
   readonly waste: readonly CardState[];
@@ -169,6 +174,12 @@ export const game: Game<CascadeState, CascadeDebugApi> = {
   initialize(api: InitApi<CascadeState>): [CascadeState, CascadeDebugApi] {
     defineCues(api);
     registerDiagnostics(api);
+    // The four menu actions specs/controls.md names, each bound to the codes it
+    // fixes. The engine owns the keyboard, so the game registers names and reads
+    // press edges back through `api.input.pressed`.
+    for (const [name, keys] of Object.entries(MENU_BINDINGS)) {
+      api.input.register(name, { keys: [...keys] });
+    }
     return [openingState(), createDebugApi()];
   },
 
@@ -182,6 +193,10 @@ export const game: Game<CascadeState, CascadeDebugApi> = {
     // Every sample the frame delivered, answered on its own and in the order it
     // arrived (specs/controls.md), then the clock and the cascade.
     stepFrame(sim, api.input.pointerSamples(), dt);
+
+    // The frame's menu-action edges, in the order specs/controls.md fixes for a
+    // frame carrying more than one.
+    applyMenuActions(sim, api);
 
     // Muting is the engine's bit and the HUD's `SOUND` control is the game's
     // binding for it, so the toggle is reconciled here, where the audio bus is
