@@ -20,15 +20,19 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { DIFFICULTIES, LOAD_ROSTER, type LoadType } from "../../src/constants";
+import {
+  DIFFICULTIES,
+  LOAD_ROSTER,
+  type LoadType,
+  scaledHp,
+} from "../constants";
 import {
   captureStill,
   createHarness,
+  type Harness,
   openYard,
   releaseUnit,
-  scaledHp,
   unitById,
-  type Harness,
 } from "../harness";
 
 /** Waves sampled at every difficulty, all inside the shortest run's `40`. */

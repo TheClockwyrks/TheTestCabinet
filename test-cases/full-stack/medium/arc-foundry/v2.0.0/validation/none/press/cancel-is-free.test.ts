@@ -8,13 +8,18 @@
 //
 // The reading is the state after the cancel: the hand empty, the allowance whole,
 // and nothing on the yard.
+//
+// THE CANCEL IS THE PLAYER'S ACT, so it is made through the player's control:
+// `back` "puts a held rock away" (`specs/controls.md`) and is the only way a
+// player has of doing it. The surface's own `clearHeld` empties the cursor too,
+// but a check that used it would be reading what the debug pose costs rather than
+// what the cancel costs, which is what `specs/scrap-press.md` fixes.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import { STAMPS_PER_LEVEL } from "../constants";
 import {
   captureStill,
-  clearHand,
   createHarness,
   openYard,
   pressAction,
@@ -42,7 +47,7 @@ it("puts a held rock away with the allowance whole and the yard empty", async ()
     "the rock the press armed on the cursor",
   );
 
-  await clearHand(h);
+  await pressAction(h, "back");
   const cancelled = await h.snapshot();
   await captureStill(h, "cancel");
 

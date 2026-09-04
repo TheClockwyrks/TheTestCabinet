@@ -22,15 +22,15 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,
-  componentFireRate,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
   structureById,
   ticks,
-  type Harness,
 } from "../harness";
+import { componentFireRate } from "../constants";
 
 /** The anchor both structures stand on, one after the other. */
 const ANCHOR = { col: 10, row: 10 };

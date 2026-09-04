@@ -20,16 +20,16 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
-  componentRange,
   createHarness,
+  DISTINCT,
+  type Harness,
+  maxDistance,
   openYard,
+  sample,
   standComponent,
   structureById,
-  structureCenter,
-  type Harness,
-  type Tier,
 } from "../harness";
-import { DISTINCT, maxDistance, sample } from "./reading";
+import { componentRange, structureCenter, type Tier } from "../constants";
 
 const TYPE = "capacitor";
 const ANCHOR = { col: 10, row: 10 };

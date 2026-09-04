@@ -24,14 +24,15 @@ import {
 import {
   captureStill,
   createHarness,
+  figures,
+  type Harness,
   openYard,
+  PANEL,
   standBlocker,
   standComponent,
   structureById,
-  type Harness,
 } from "../harness";
 import { componentDamage, componentRange } from "../constants";
-import { PANEL, figures } from "./reading";
 
 const TYPE = "capacitor";
 const TIER = 3;

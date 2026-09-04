@@ -12,16 +12,13 @@
 // on, and how much Grid Integrity is left.
 
 import { assertEqual } from "../assert";
+import { type Harness, openYard, releaseUnit, ticks } from "../harness";
 import {
   COLLECTOR_WAYPOINT,
   difficultyById,
   mapById,
-  openYard,
-  releaseUnit,
-  ticks,
   tileCenter,
-  type Harness,
-} from "../harness";
+} from "../constants";
 
 /** The difficulty both endings are driven at: the shortest run, so `N` is 40. */
 export const ENDING_DIFFICULTY = "easy";

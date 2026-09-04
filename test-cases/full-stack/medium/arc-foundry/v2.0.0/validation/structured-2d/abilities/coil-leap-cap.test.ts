@@ -15,18 +15,17 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { COIL_LEAP_RANGE, COIL_LEAPS } from "../../src/constants";
+import { COIL_LEAP_RANGE, COIL_LEAPS, TIERS } from "../constants";
 import {
   captureReplay,
   createHarness,
   emptyYard,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
   structureById,
-  TIERS,
   unitById,
-  type Harness,
 } from "../harness";
 import { awaitImpact } from "./impact";
 

@@ -1016,6 +1016,9 @@ export const LAYOUT = "single-vertical";
  * Every action Arc Foundry registers. The layout supplies `up`, `down`,
  * `confirm`, `back`, `pause`, and `mute`; the rest are Arc Foundry's own and
  * sit beyond the layout.
+ *
+ * `pause` is the in-place pause and `pause-menu` opens and closes the pause
+ * menu, so the two are separate actions on separate keys (specs/controls.md).
  */
 export const ACTIONS = [
   "stamp",
@@ -1027,6 +1030,7 @@ export const ACTIONS = [
   "dismantle",
   "speed",
   "pause",
+  "pause-menu",
   "combos",
   "damage",
   "mute",
@@ -1056,6 +1060,7 @@ export const BINDINGS: Readonly<Record<ActionName, readonly string[]>> = {
   dismantle: ["KeyX"],
   speed: ["KeyF"],
   pause: ["Space"],
+  "pause-menu": ["Escape", "KeyP"],
   combos: ["KeyV"],
   damage: ["KeyL"],
   mute: ["KeyM"],

@@ -21,13 +21,15 @@ import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
+  DISTINCT,
+  type Harness,
+  maxDistance,
   openYard,
+  sample,
   standComponent,
   structureById,
-  type Harness,
 } from "../harness";
 import { componentRange, structureCenter, type Tier } from "../constants";
-import { DISTINCT, maxDistance, sample } from "./reading";
 
 const TYPE = "capacitor";
 const ANCHOR = { col: 10, row: 10 };

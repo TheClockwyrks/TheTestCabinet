@@ -16,16 +16,18 @@
 // that never returned is a transition the engine never stored.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { GRID_COLS, GRID_ROWS } from "../../src/constants";
-import { assertEqual } from "../assert";
 import {
+  GRID_COLS,
+  GRID_ROWS,
   MAX_ANCHOR_COL,
   MAX_ANCHOR_ROW,
+} from "../constants";
+import { assertEqual } from "../assert";
+import {
   captureStill,
   createHarness,
-  openYard,
   type Harness,
+  openYard,
 } from "../harness";
 
 /**

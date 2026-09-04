@@ -22,13 +22,12 @@
 // carries its own firing cue and this point is about the kill cue's count.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { CUES } from "../../src/constants";
+import { CUES } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureReplay,
   createHarness,
-  holdWaveOpen,
+  holdWave,
   openYard,
   parkUnit,
   standComponent,
@@ -56,7 +55,7 @@ afterEach(() => {
 
 it("plays the kill cue once on a frame three units die on", async () => {
   openYard(h, { wave: 1 });
-  holdWaveOpen(h);
+  holdWave(h);
   const node = standComponent(h, "arcnode", 1, ANCHOR.col, ANCHOR.row);
   h.debug.setTargeting(node, "nearest");
 

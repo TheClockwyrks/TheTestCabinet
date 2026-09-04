@@ -35,12 +35,12 @@ import {
   COMPONENT_TYPES,
   DIFFICULTY_IDS,
   MAP_IDS,
+  mapById,
   SCREENS,
   SPAWN_TYPES,
   SPEEDS,
-  TARGETING_PRIORITIES,
-  mapById,
   structureCenter,
+  TARGETING_PRIORITIES,
   tileCenter,
 } from "../constants";
 import {
@@ -86,6 +86,7 @@ const SNAPSHOT_FIELDS = [
   "wave",
   "totalWaves",
   "waveActive",
+  "waveHeld",
   "charge",
   "integrity",
   "refinement",
@@ -249,6 +250,7 @@ it("reports the whole documented shape off a fully posed yard", async () => {
   assertEqual(typeof s.wave, "number", "typeof snapshot().wave");
   assertEqual(typeof s.totalWaves, "number", "typeof snapshot().totalWaves");
   assertEqual(typeof s.waveActive, "boolean", "typeof snapshot().waveActive");
+  assertEqual(typeof s.waveHeld, "boolean", "typeof snapshot().waveHeld");
   assertEqual(typeof s.charge, "number", "typeof snapshot().charge");
   assertEqual(typeof s.integrity, "number", "typeof snapshot().integrity");
   assertEqual(typeof s.refinement, "number", "typeof snapshot().refinement");

@@ -14,17 +14,20 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo } from "../assert";
-import { COMBO_DAMAGE_MULT, type ComboId } from "../../src/constants";
 import {
-  captureStill,
+  COMBO_DAMAGE_MULT,
   COMBO_LEVELS,
   comboDamage,
   comboDef,
+  type ComboId,
+} from "../constants";
+import {
+  captureStill,
   createHarness,
+  type Harness,
   openYard,
   standCombo,
   structureById,
-  type Harness,
 } from "../harness";
 
 /** One tower whose products are whole, and one whose products are not. */

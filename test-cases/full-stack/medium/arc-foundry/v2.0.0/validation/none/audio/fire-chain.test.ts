@@ -18,7 +18,7 @@
 // the name of a sound is not observable; that half is the reviewer's, by ear.
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
-import { COMPONENT_TYPES, FIRE_CUE, type ComponentType } from "../constants";
+import { COMPONENT_TYPES, type ComponentType, FIRE_CUE } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -35,7 +35,7 @@ const TYPES: readonly ComponentType[] = COMPONENT_TYPES.filter(
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -43,7 +43,6 @@ afterEach(async () => {
 });
 
 it("sounds on the frame a Coil fires, and not before", async () => {
-  await h.armAudio();
   await openYard(h, { wave: 1 });
   await settle(h);
 

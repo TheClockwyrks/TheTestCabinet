@@ -41,7 +41,7 @@ const SCORE = "audio/music.mid";
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -50,7 +50,6 @@ afterEach(async () => {
 
 it("produces twelve cue files that decode and carry a sound", async () => {
   await evidence(h, "run", async () => {
-    await h.armAudio();
     await openYard(h, { wave: 1 });
     await standComponent(h, "capacitor", 1, ANCHOR.col, ANCHOR.row);
     await parkUnit(h, "mote", TARGET, { hp: 1 });

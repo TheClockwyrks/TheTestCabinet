@@ -13,8 +13,7 @@
 // it. The screen and the reported map are read after each.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { MAPS, type FoundryMap } from "../../src/constants";
+import { type FoundryMap, MAPS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

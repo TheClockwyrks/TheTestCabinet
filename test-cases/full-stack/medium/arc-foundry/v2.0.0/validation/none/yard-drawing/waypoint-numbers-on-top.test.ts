@@ -23,13 +23,16 @@ import { assertGreaterThan, fail } from "../assert";
 import {
   captureStill,
   createHarness,
+  type Harness,
+  imageDraws,
+  inRegion,
   openYard,
   parkUnit,
   standComponent,
-  type Harness,
+  textDraws,
+  YARD,
 } from "../harness";
 import { mapById, tileCenter } from "../constants";
-import { YARD, imageDraws, inRegion, textDraws } from "./reading";
 
 const MAP = "substation";
 /** How far a number may sit from its platform's anchor and still be its number. */

@@ -27,9 +27,9 @@ import { assertEqual } from "../assert";
 import {
   DIFFICULTIES,
   DIFFICULTY_MENU_ACTION,
+  type DifficultyDef,
   loadDef,
   scaledHp,
-  type DifficultyDef,
 } from "../constants";
 import {
   captureStill,

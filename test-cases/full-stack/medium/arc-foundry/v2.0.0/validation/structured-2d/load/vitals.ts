@@ -12,29 +12,32 @@
 // exactly three sources and sinks in the whole game (specs/economy.md): a
 // bounty, the wave-clear bonus, and the two things Charge is spent on. So the
 // yard carries one Capacitor and nothing else, no refinement is bought, no tower
-// is upgraded, and a held unit at the entry keeps the live wave from clearing
+// is upgraded, and `setWaveHold` holds the wave's own clear-and-pay resolution
 // while a bounty is being read — because a clear pays a bonus into the same
-// counter. Grid Integrity has exactly one mover, a leak, and it never
-// regenerates, so nothing but the unit being read can touch it either.
+// counter. The hold is on that resolution alone, so the bounty this reads is
+// still paid by the game's own rules. Grid Integrity has exactly one mover, a
+// leak, and it never regenerates, so nothing but the unit being read can touch
+// it either.
 //
-// THE GUN IS FAR FROM BOTH. The Capacitor's `100` reach covers the point a kill
-// is staged at and nothing else: not the entry, where the held unit stands, and
-// not the stretch a leak is walked over. So the unit being read is the only one
-// it can fire at.
+// THE GUN IS FAR FROM THE LEAK. The Capacitor's `100` reach covers the point a
+// kill is staged at and nothing else, not the stretch a leak is walked over, so
+// the unit being read is the only one it can fire at.
 
 import { assertEqual } from "../assert";
-import { type LoadType } from "../../src/constants";
 import {
   COLLECTOR_WAYPOINT,
-  holdWaveOpen,
+  type LoadType,
+  structureCenter,
+  tileCenter,
+} from "../constants";
+import {
+  type Harness,
+  holdWaveClear,
   openYard,
   parkUnit,
   releaseUnit,
   standComponent,
-  structureCenter,
-  tileCenter,
   unitById,
-  type Harness,
   type YardOptions,
 } from "../harness";
 
@@ -65,8 +68,30 @@ export interface Grounded {
 /** Pose the field these readings are taken on. */
 export function openField(h: Harness, options: YardOptions): void {
   openYard(h, options);
-  holdWaveOpen(h);
+  holdWaveClear(h);
   standComponent(h, "capacitor", 1, GUN.col, GUN.row);
+}
+
+/**
+ * One unit of that type, released and TRAVELLING, read on the frame it left.
+ *
+ * The roster's speed is what a unit moves at, so the reading is taken off a unit
+ * the spawner released and nothing has touched: no hold, no slow, no gun. It is
+ * released three tiles short of the collector purely so the walk it is read on is
+ * a real leg of the chain.
+ */
+export function travelling(h: Harness, type: LoadType): Grounded {
+  const id = releaseUnit(h, type, {
+    at: LEAK_FROM,
+    waypoint: COLLECTOR_WAYPOINT,
+  });
+  const walking = unitById(h.snapshot(), id);
+  return {
+    leak: 0,
+    speed: walking.speed,
+    baseSpeed: walking.baseSpeed,
+    flying: walking.flying,
+  };
 }
 
 /** The Charge one kill of that type paid, read on the frame the unit was removed. */

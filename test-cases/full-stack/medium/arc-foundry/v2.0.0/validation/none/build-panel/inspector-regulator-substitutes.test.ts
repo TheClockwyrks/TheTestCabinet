@@ -16,13 +16,14 @@ import { assertContains, assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
+  figures,
+  type Harness,
   openYard,
+  PANEL,
   standComponent,
   structureById,
-  type Harness,
 } from "../harness";
 import { NON_FIRING_TYPE, REGULATOR_AURA, type Tier } from "../constants";
-import { PANEL, figures } from "./reading";
 
 const TIERS_READ: readonly Tier[] = [3, 5];
 

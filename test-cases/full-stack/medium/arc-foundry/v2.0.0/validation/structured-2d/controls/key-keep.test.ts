@@ -13,18 +13,17 @@
 // standing on those tiles and the phase the run is now in.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual, assertTruthy } from "../assert";
 import {
   captureStill,
   createHarness,
-  keyFor,
+  type Harness,
   openYard,
   pressAction,
   standCandidate,
   structureAt,
-  type Harness,
 } from "../harness";
+import { keyFor } from "../constants";
 
 /** Where the candidate is dropped: clear of the chain and of the yard edges. */
 const ANCHOR = { col: 10, row: 0 };

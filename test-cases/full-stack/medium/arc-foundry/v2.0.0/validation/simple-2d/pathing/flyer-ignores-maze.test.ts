@@ -14,18 +14,17 @@
 // the same seed, the same speed multiplier, the same unit.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertGreaterThan, assertLength, assertLessThan } from "../assert";
 import {
   captureReplay,
   createHarness,
   distance,
+  type Harness,
   openYard,
   releaseUnit,
   standBlocker,
-  type Harness,
-  type Point,
 } from "../harness";
+import type { Point } from "../constants";
 
 /** Fifteen footprints laid across the straight lines the chain flies. */
 const MAZE = [

@@ -16,17 +16,16 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo } from "../assert";
-import { REGULATOR_AURA } from "../../src/constants";
+import { componentDamage, REGULATOR_AURA } from "../constants";
 import {
   captureReplay,
-  componentDamage,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
   structureById,
   unitById,
-  type Harness,
 } from "../harness";
 import { awaitImpact } from "./impact";
 

@@ -32,16 +32,14 @@
 // run while a whole campaign's worth of waves is being read.
 
 import { ConstantClock } from "@test-cabinet/structured-2d";
-
 import { assertEqual, assertTruthy, fail } from "../assert";
-import { type DifficultyId } from "../../src/constants";
+import type { DifficultyId, SpawnType } from "../constants";
 import {
   createHarness,
+  type Harness,
   openYard,
   startWave,
   TICK_MS,
-  type Harness,
-  type SpawnType,
 } from "../harness";
 
 /** One unit a wave released, as the snapshot first reported it. */

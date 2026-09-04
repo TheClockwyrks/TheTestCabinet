@@ -14,17 +14,16 @@
 // set are gone, and the overlay and the screen are where they were.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertDeepEqual, assertEqual, assertNull } from "../assert";
 import {
   captureStill,
   createHarness,
-  keyFor,
+  type Harness,
   openYard,
   pressAction,
   standComponent,
-  type Harness,
 } from "../harness";
+import { keyFor } from "../constants";
 
 /** Where the selected structure stands: clear of the chain. */
 const ANCHOR = { col: 10, row: 0 };

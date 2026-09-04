@@ -23,8 +23,8 @@ import { assertCloseTo, assertEqual, assertLength } from "../assert";
 import {
   COMBO_DAMAGE_MULT,
   COMBO_RANGE_BONUS,
-  comboDef,
   comboDamage,
+  comboDef,
   comboRange,
 } from "../constants";
 import {
@@ -34,7 +34,7 @@ import {
   standComponent,
   type Harness,
 } from "../harness";
-import { abilityNames, anchored } from "./towers";
+import { abilityNames, anchored, rowAbilities } from "./towers";
 
 /** The tower this check assembles, and the three anchors its recipe is stood on. */
 const TOWER = comboDef("staticweb");
@@ -108,7 +108,7 @@ it("folds a recipe's exact ingredients into its tower at the initiating footprin
   assertCloseTo(tower.fireRate, TOWER.fireRate, 6, "the reference fire rate");
   assertEqual(
     abilityNames(tower).join(", "),
-    [...TOWER.abilities].sort().join(", "),
+    rowAbilities(TOWER).join(", "),
     `the ${TOWER.name}'s abilities`,
   );
 

@@ -10,8 +10,7 @@
 // charges even one per rock is caught rather than rounded away.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { STAMPS_PER_LEVEL } from "../../src/constants";
+import { STAMPS_PER_LEVEL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

@@ -16,17 +16,20 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertCloseTo } from "../assert";
-import { RECTIFIER_BURN_DUR, RECTIFIER_BURN_FRAC } from "../../src/constants";
+import {
+  componentDamage,
+  RECTIFIER_BURN_DUR,
+  RECTIFIER_BURN_FRAC,
+} from "../constants";
 import {
   captureReplay,
-  componentDamage,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
   structureById,
   unitById,
-  type Harness,
 } from "../harness";
 import { awaitEffect } from "./impact";
 

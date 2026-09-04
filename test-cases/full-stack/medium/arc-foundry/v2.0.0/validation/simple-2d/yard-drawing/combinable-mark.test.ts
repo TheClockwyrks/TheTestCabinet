@@ -26,12 +26,15 @@ import { assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
-  openYard,
-  standComponent,
+  DISTINCT,
   type Harness,
+  lattice,
+  maxDistance,
+  openYard,
+  sample,
+  standComponent,
 } from "../harness";
-import { FOOTPRINT, TILE } from "../../src/constants";
-import { DISTINCT, lattice, maxDistance, sample } from "./reading";
+import { FOOTPRINT, TILE } from "../constants";
 
 /** A type and tier no recipe of specs/combinations.md calls for. */
 const TYPE = "capacitor";

@@ -34,21 +34,23 @@ import {
 import {
   captureReplay,
   createHarness,
+  type DrawCall,
+  figures,
+  type Harness,
   openYard,
   parkUnit,
+  type Region,
   standComponent,
   structureById,
-  type Harness,
+  textLines,
 } from "../harness";
 import {
   componentDamage,
+  type ComponentType,
   STAGE_H,
   STAGE_W,
   structureCenter,
-  type ComponentType,
 } from "../constants";
-import { figures, textLines, type Region } from "./reading";
-import type { DrawCall } from "../harness";
 
 /** Deep enough that a unit only dies when its health is posed to one shot's worth. */
 const WAVE = 30;

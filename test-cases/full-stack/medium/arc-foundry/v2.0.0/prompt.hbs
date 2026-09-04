@@ -44,8 +44,9 @@ declare, so the project does not type-check until those declarations exist.
 
 This build runs on no engine, so the layer beneath the game is yours as well: the
 frame loop and the delta time it hands each update, fitting the fixed logical stage
-onto the canvas, the pointer and the keyboard the player drives the game with, the
-audio, loading the produced asset files, and the on-screen debug overlay. The
+onto the canvas, the keyboard, the pointer and the touch contact the player drives the
+game with, the audio, loading the produced asset files, and the on-screen debug
+overlay. The
 specification in `specs/` states what Arc Foundry needs from that layer and fixes
 nothing else about it.
 {{else if (eq engine.slug "simple-2d")}}
@@ -118,15 +119,8 @@ dependency.
 
 ## Driving the game in a browser
 
-{{#if (eq engine.slug "none")}}
-The project's Playwright and its headless Chromium are installed, so you can serve
-the built game and drive it in a real browser, walk a wave, check for console errors,
-or exercise `window.__foundry`.
-{{else}}
-The project's Playwright and its headless Chromium are installed, so you can serve
-the built game and drive it in a real browser, walk a wave, and check for console
-errors.
-{{/if}}
+The project's Playwright and its headless Chromium are installed, so the built game
+can be served and driven in a real browser.
 
 When you launch the browser, use the project's own Playwright: import it from your
 project (for example `import { chromium } from "playwright"`) or run the

@@ -11,12 +11,14 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import {
+  BAR,
   captureStill,
   createHarness,
-  openYard,
+  drew,
   type Harness,
+  openYard,
 } from "../harness";
-import { BAR, drew } from "./reading";
+import { PAUSED_TEXT } from "../constants";
 
 let h: Harness;
 
@@ -32,7 +34,7 @@ it("reads PAUSED only while the in-place pause is engaged", async () => {
   await openYard(h);
 
   assertEqual(
-    drew(await h.frameCalls(), BAR, "PAUSED"),
+    drew(await h.frameCalls(), BAR, PAUSED_TEXT),
     false,
     "whether the bar reads PAUSED while the game is running",
   );
@@ -41,7 +43,7 @@ it("reads PAUSED only while the in-place pause is engaged", async () => {
   const paused = await h.frameCalls();
   await captureStill(h, "paused");
   assertEqual(
-    drew(paused, BAR, "PAUSED"),
+    drew(paused, BAR, PAUSED_TEXT),
     true,
     "whether the bar reads PAUSED while the in-place pause is engaged",
   );

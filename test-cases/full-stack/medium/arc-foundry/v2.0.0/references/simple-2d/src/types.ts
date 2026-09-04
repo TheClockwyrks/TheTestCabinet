@@ -269,6 +269,15 @@ export interface FoundryWorld {
   paused: boolean;
   /** The highlighted entry on whichever menu is showing, counted from `0`. */
   menuIndex: number;
+  /**
+   * The menu entry a pointer press or a touch landing fell inside, until its
+   * release.
+   *
+   * `specs/ui.md` takes an entry "only when both edges of the gesture fall inside
+   * one entry's region", so the entry the press landed in is what the release is
+   * held against. `null` whenever no gesture is in flight.
+   */
+  pressedMenu: string | null;
 
   // ---- The run ----
   mapId: MapId;
@@ -311,6 +320,14 @@ export interface FoundryWorld {
   activeWave: Wave | null;
   /** The surface's hold on the spawner: a live wave with an empty schedule. */
   spawnerHeld: boolean;
+  /**
+   * The surface's hold on the wave's own clear-and-pay resolution.
+   *
+   * While it is on, a wave whose units have all died or leaked stays running: no
+   * wave-clear bonus is paid, the wave counter does not advance, and no build phase
+   * opens. Everything else keeps running (specs/instrumentation.md).
+   */
+  waveHeld: boolean;
   nextWave: Wave;
   spawnCursor: number;
   /** Milliseconds into the active wave. */

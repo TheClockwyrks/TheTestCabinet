@@ -17,14 +17,16 @@ exists yet; create them.
 `index.html` loads `/src/main.ts` as its entry point, so that module is where
 your build starts. Beyond that the structure is yours. You write the runtime a
 browser game needs — the frame loop and the delta time it measures, fitting the
-fixed logical stage onto the canvas, pointer and keyboard input, audio, loading
-the produced files, and the diagnostics overlay — and you write the game itself
-on top of it.
+fixed logical stage onto the canvas, keyboard, pointer and touch input, audio,
+loading the produced files, and the diagnostics overlay — and you write the game
+itself on top of it.
 
-The yard is built with the pointer, so the pointer path is part of what you
-build: taking the cursor off the page and delivering its position in the game's
-logical units, with its press and release edges, to the game. `specs/controls.md`
-states what Arc Foundry does with them.
+The yard is built with the pointer and the menus answer to a finger, so both
+paths are part of what you build: taking the cursor off the page and delivering
+its position in the game's logical units with its press and release edges, and
+delivering a touch contact in those same units as a landing, the positions it
+travels through while it is down, and a lift. `specs/controls.md` states what
+Arc Foundry does with each.
 
 You also write the `window.__foundry` debugging and automation API that
 `specs/instrumentation.md` specifies. It is a required deliverable: it is how the

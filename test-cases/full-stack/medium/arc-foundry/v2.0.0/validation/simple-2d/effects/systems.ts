@@ -16,14 +16,12 @@
 // effects reach the yard is decided by the points that drive the build.
 
 import { existsSync, readFileSync } from "node:fs";
-
 import type { ParticleSystem } from "@test-cabinet/particle-runtime";
-
-import { EFFECTS, type EffectName } from "../../src/constants";
+import { type EffectName, EFFECTS } from "../constants";
 import { fail } from "../assert";
 import { ASSETS } from "./produced";
 
-export { EFFECTS, type EffectName } from "../../src/constants";
+export { EFFECTS, type EffectName } from "../constants";
 export { ASSETS } from "./produced";
 
 /**

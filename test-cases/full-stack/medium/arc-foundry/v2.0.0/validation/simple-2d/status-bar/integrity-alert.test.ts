@@ -14,29 +14,27 @@
 // crossing moves strictly more. A build with no alert treatment moves the same
 // points either way.
 //
-// WHERE THE READ IS SAMPLED. `specs/hud.md` orders the bar left to right, with
-// the Charge, Grid Integrity, wave, and maze-length reads all left of the combos
-// toggle, and `statusControls` reports where that toggle was drawn. So the strip
-// of the bar left of it is where the four reads were drawn, and it is sampled
-// whole rather than at a rectangle no reading reports.
+// WHERE THE READ IS SAMPLED. Where the build drew it. `specs/hud.md` leaves every
+// read's rectangle to the build, so `specs/instrumentation.md` has the build report
+// each one through `statusReadouts`, and the sampling is the reported `integrity`
+// rectangle and nothing else. A build that animates its Charge read, or that draws
+// its wave read on a pulse, moves nothing this check reads.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan } from "../assert";
 import {
   captureStill,
-  createHarness,
-  openYard,
-  statusControl,
-  type Harness,
-} from "../harness";
-import { BAR_H, INTEGRITY_ALERT } from "../../src/constants";
-import {
-  DISTINCT,
   changedPoints,
+  createHarness,
+  DISTINCT,
+  type Harness,
   lattice,
   maxDistance,
+  openYard,
   sample,
-} from "./reading";
+  statusReadout,
+} from "../harness";
+import { INTEGRITY_ALERT } from "../constants";
 
 /** The crossing, and a control that redraws the same digit ten above it. */
 const CROSSING = [INTEGRITY_ALERT + 1, INTEGRITY_ALERT] as const;
@@ -55,9 +53,15 @@ afterEach(() => {
 it("draws the Grid Integrity read differently at five and below", async () => {
   openYard(h, { charge: 473 });
 
-  // Everything left of the first status control: the four reads of specs/hud.md.
-  const combos = statusControl(h, "combos");
-  const reads = lattice({ x: 0, y: 0, w: Math.max(combos.x, 1), h: BAR_H }, 2);
+  // The Grid Integrity read's own rectangle, as the build reported it.
+  const read = statusReadout(h, "integrity");
+  assertGreaterThan(
+    read.w * read.h,
+    0,
+    "the area of the rectangle the build reports for its Grid Integrity read " +
+      "(specs/instrumentation.md)",
+  );
+  const reads = lattice({ x: read.x, y: read.y, w: read.w, h: read.h }, 2);
 
   const readAt = async (integrity: number) => {
     h.debug.setIntegrity(integrity);

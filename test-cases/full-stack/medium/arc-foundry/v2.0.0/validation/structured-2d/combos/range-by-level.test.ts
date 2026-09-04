@@ -14,17 +14,20 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo } from "../assert";
-import { COMBO_RANGE_BONUS, type ComboId } from "../../src/constants";
+import {
+  COMBO_LEVELS,
+  COMBO_RANGE_BONUS,
+  comboDef,
+  type ComboId,
+  comboRange,
+} from "../constants";
 import {
   captureStill,
-  COMBO_LEVELS,
-  comboDef,
-  comboRange,
   createHarness,
+  type Harness,
   openYard,
   standCombo,
   structureById,
-  type Harness,
 } from "../harness";
 
 const TOWERS: ComboId[] = ["forkarray", "auroralance"];

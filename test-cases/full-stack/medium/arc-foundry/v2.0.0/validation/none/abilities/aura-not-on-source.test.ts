@@ -83,7 +83,7 @@ it("leaves an aura's own source unbuffed while its neighbour is buffed", async (
 
   yard = await h.snapshot();
   assertEqual(
-    comboDef("nullcore").abilities.includes("aura"),
+    comboDef("nullcore").abilities.aura !== undefined,
     true,
     "the Null Core's own stat block carrying an aura (specs/combinations.md)",
   );

@@ -12,12 +12,12 @@
 // sibling point `reset-leaves-mute-and-pointer`, in the other direction.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import {
   STAMPS_PER_LEVEL,
   START_CHARGE,
   START_INTEGRITY,
-} from "../../src/constants";
+  tileCenter,
+} from "../constants";
 import {
   assertDeepEqual,
   assertEqual,
@@ -28,11 +28,9 @@ import {
 import {
   captureStill,
   createHarness,
-  parkUnit,
-  pressAction,
-  standComponent,
-  tileCenter,
   type Harness,
+  parkUnit,
+  standComponent,
 } from "../harness";
 
 /** The seed the reset under test is given. */
@@ -44,6 +42,9 @@ const SECOND_AT = { col: 24, row: 10 };
 
 /** Where the posed unit stands: inside the first structure's range. */
 const UNIT_AT = tileCenter(23, 10);
+
+/** Where the rock that leaves one on the cursor lands: clear of both anchors. */
+const ROCK_AT = { col: 30, row: 20 };
 
 /** The resting record `held` reports when no rock is on the cursor. */
 const HELD_AT_REST = { active: false, col: 0, row: 0, legal: false };
@@ -75,10 +76,16 @@ it("restores every title-screen value after a run has been driven", async () => 
     SECOND_AT.col,
     SECOND_AT.row,
   );
+  // A rock on the cursor and an armed roll. The rock comes from a drop rather than
+  // from the `stamp` key, because `specs/scrap-press.md` makes placement
+  // continuous — a drop that leaves stamps in the allowance arms the next rock
+  // immediately — and this point is about `reset` rather than about a binding. It
+  // is dropped BEFORE the selection is posed, because a drop selects what it
+  // landed (`specs/controls.md`) and the selection this check dirties is its own.
+  h.debug.placeRock(ROCK_AT.col, ROCK_AT.row);
+  h.debug.setNextRoll("coil", 2);
   h.debug.select(first);
   h.debug.addToCombineSet(second);
-  h.debug.setNextRoll("coil", 2);
-  await pressAction(h, "stamp");
   h.debug.setOverlay("combos", true);
   h.debug.setOverlay("damage", true);
   h.debug.setWave(7);
@@ -90,6 +97,7 @@ it("restores every title-screen value after a run has been driven", async () => 
   // A live wave, a walked clock, and a firing structure, so the fields a run
   // fills in on its own are filled in too.
   parkUnit(h, "overload", UNIT_AT);
+  h.debug.setWaveHold(true);
   await h.advanceSeconds(2);
   h.debug.setPaused(true);
 
@@ -105,6 +113,7 @@ it("restores every title-screen value after a run has been driven", async () => 
   assertEqual(dirty.stampsLeft, 2, "the dirtied stamp allowance");
   assertEqual(dirty.speed, 2, "the dirtied speed multiplier");
   assertEqual(dirty.paused, true, "the engaged pause");
+  assertEqual(dirty.waveHeld, true, "the engaged wave-clear hold");
   assertDeepEqual(
     dirty.overlays,
     { combos: true, damage: true },
@@ -137,6 +146,7 @@ it("restores every title-screen value after a run has been driven", async () => 
   assertEqual(s.integrity, START_INTEGRITY, "snapshot().integrity after reset");
   assertEqual(s.refinement, 0, "snapshot().refinement after reset");
   assertEqual(s.wave, 0, "snapshot().wave after reset");
+  assertEqual(s.waveHeld, false, "snapshot().waveHeld after reset");
   assertEqual(
     s.stampsLeft,
     STAMPS_PER_LEVEL,

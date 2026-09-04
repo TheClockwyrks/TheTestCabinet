@@ -24,7 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { difficultyById, loadDef, scaledHp, type LoadType } from "../constants";
+import { difficultyById, loadDef, type LoadType, scaledHp } from "../constants";
 import {
   captureStill,
   createHarness,

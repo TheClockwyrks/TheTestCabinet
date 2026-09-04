@@ -12,19 +12,16 @@
 // is watched across the wall's own columns and is never on one of its tiles.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { FOOTPRINT, TILE } from "../../src/constants";
+import { FOOTPRINT, type Point, TILE, tileCenter } from "../constants";
 import { assertGreaterThan, assertTrue } from "../assert";
 import {
   captureReplay,
   createHarness,
+  type Harness,
   openYard,
   releaseUnit,
   standCandidate,
-  tileCenter,
   unitById,
-  type Harness,
-  type Point,
 } from "../harness";
 
 /** The wall: three footprints stacked across the Entry -> WP1 leg at row 5. */

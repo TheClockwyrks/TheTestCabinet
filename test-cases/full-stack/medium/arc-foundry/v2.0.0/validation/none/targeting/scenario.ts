@@ -18,7 +18,7 @@
 // CHOICE the structure made rather than what it happened to hit.
 
 import { assertEqual, assertTruthy } from "../assert";
-import { type Targeting } from "../constants";
+import type { Targeting } from "../constants";
 import {
   standComponent,
   ticks,

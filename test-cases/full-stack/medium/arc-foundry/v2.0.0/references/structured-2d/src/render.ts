@@ -494,6 +494,9 @@ export function renderUiLayer(
     drawTooltip(ctx, frame);
   }
 
+  // `recipeEntries` reports the cells of the frame that drew the book, and nothing
+  // on a frame that did not (`specs/instrumentation.md`).
+  g.bookCells = [];
   if (g.screen === "playing" && g.showCombos) drawRecipeBook(g, ctx, list);
   if (g.screen === "playing" && g.showDamage)
     drawLeaderboard(g, ctx, list, frame);
@@ -2379,6 +2382,19 @@ function drawRecipe(
           ? COL.legal
           : COL.text2;
     ctx.fillText(token, cx, cy);
+    // The cell as this build drew it, for `recipeEntries`. The baseline is middle,
+    // so the box is centred on `cy`.
+    g.bookCells.push({
+      combo,
+      ingredient: i,
+      type: r.type,
+      quality: r.tier,
+      state,
+      x: cx,
+      y: cy - size * 0.7,
+      w: tokenW,
+      h: size * 1.4,
+    });
     cx += tokenW;
     if (i < recipe.length - 1) {
       ctx.font = `400 ${size}px ${FONT}`;
@@ -3091,7 +3107,7 @@ function drawHowto(
   text(ctx, "CONTROLS", 150, fy + 22, 12, COL.text3, "left", "700", 1.5);
   wrap(
     ctx,
-    "B press · press to place and select · SHIFT-press to add to a combine set · K keep · G downgrade · C combine · U upgrade · T target · X dismantle · F speed · SPACE pause · V recipes · L damage · M mute · ↑ ↓ move · Enter confirm · Esc back",
+    "B press · press to place and select · SHIFT-press to add to a combine set · K keep · G downgrade · C combine · U upgrade · T target · X dismantle · F speed · SPACE pause · P pause menu · V recipes · L damage · M mute · ↑ ↓ move · Enter confirm · Esc back",
     150,
     fy + 44,
     980,

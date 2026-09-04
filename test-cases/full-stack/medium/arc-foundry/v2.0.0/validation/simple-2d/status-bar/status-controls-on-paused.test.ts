@@ -30,7 +30,7 @@ import {
   statusControl,
   type Harness,
 } from "../harness";
-import { STATUS_CONTROLS } from "../../src/constants";
+import { STATUS_CONTROLS } from "../constants";
 
 /** A multiplier that is not the resting `1`, so a default row is told apart. */
 const SPEED = 4;

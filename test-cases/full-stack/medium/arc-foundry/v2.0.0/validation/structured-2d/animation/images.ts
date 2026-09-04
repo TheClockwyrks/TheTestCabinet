@@ -15,9 +15,7 @@
 // that needs a real 2D context outside a browser.
 
 import { existsSync } from "node:fs";
-
 import { createCanvas, loadImage } from "@napi-rs/canvas";
-
 import { fail } from "../assert";
 import { captureStill, type Harness } from "../harness";
 import { ASSETS } from "./produced";

@@ -32,19 +32,18 @@
 // frame `0` shows exactly one however long the window is.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertGreaterThanOrEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   ticks,
-  tileCenter,
-  type Harness,
 } from "../harness";
 import { serveProducedAssets } from "./produced";
 import { distinct, lattice, readOverFrames } from "./region";
+import { tileCenter } from "../constants";
 
 /** Where the unit is held: clear ground, well away from the chain's platforms. */
 const AT = tileCenter(24, 16);

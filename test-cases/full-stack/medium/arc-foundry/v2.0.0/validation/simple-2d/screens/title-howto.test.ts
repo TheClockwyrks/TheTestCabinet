@@ -13,15 +13,14 @@
 // `confirm` action through, and the screen is read.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  keyFor,
-  openMenu,
   type Harness,
+  openMenu,
 } from "../harness";
+import { keyFor } from "../constants";
 
 let h: Harness;
 

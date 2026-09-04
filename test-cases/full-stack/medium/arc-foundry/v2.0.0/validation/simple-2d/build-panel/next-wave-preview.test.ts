@@ -20,11 +20,12 @@ import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  openYard,
+  drew,
   type Harness,
+  openYard,
+  PANEL,
 } from "../harness";
-import { LOAD_TYPES } from "../../src/constants";
-import { PANEL, drew } from "./reading";
+import { LOAD_TYPES } from "../constants";
 
 /** The only types specs/enemies.md lets waves 1 through 3 carry. */
 const OPENING = ["mote", "spark"];

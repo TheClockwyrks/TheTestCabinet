@@ -12,7 +12,7 @@
 // NOTHING ELSE CAN MOVE THE COUNTER. specs/economy.md gives Charge exactly two
 // incomes and two sinks: a bounty, the wave-clear bonus, refining the press and
 // upgrading a tower. The yard here carries one Capacitor and no tower, nothing
-// refines, and a held unit at the entry keeps the live wave from clearing while
+// refines, and `setWaveHold` holds the wave's own clear-and-pay resolution while
 // the six kills are read — a bonus landing mid-reading would be
 // indistinguishable from the bounty it landed on top of. What is left is the
 // bounty.
@@ -24,11 +24,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { LOAD_ROSTER } from "../../src/constants";
+import { LOAD_ROSTER } from "../constants";
 import {
   captureReplay,
   createHarness,
-  holdWaveOpen,
+  holdWaveClear,
   openYard,
   type Harness,
 } from "../harness";
@@ -46,7 +46,7 @@ afterEach(() => {
 
 it("pays each roster type's bounty on the frame the kill lands", async () => {
   openYard(h, { wave: 1, charge: 0 });
-  holdWaveOpen(h);
+  holdWaveClear(h);
   standGun(h);
 
   const paid = await captureReplay(h, "kill", async () => {

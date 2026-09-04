@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertCloseTo, assertEqual } from "../assert";
-import { CHOKE_SLOW, CHOKE_SLOW_DUR } from "../../src/constants";
+import { CHOKE_SLOW, CHOKE_SLOW_DUR } from "../constants";
 import {
   captureReplay,
   createHarness,

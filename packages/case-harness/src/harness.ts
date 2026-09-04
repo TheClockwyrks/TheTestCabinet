@@ -100,6 +100,24 @@ export interface HarnessOptions {
    * put back before the harness is handed over. See {@link ArmGesture}.
    */
   armAudio?: boolean;
+  /**
+   * Something to do to the page after it is opened and BEFORE the build is
+   * loaded into it.
+   *
+   * The one moment a case can reach that this package cannot supply for it: a
+   * scenario about what the build does when a file it produced does not arrive
+   * has to be routing the request before the navigation, and the navigation
+   * happens in here. Everything else a case arranges it arranges through the
+   * surface, after the harness is handed over.
+   *
+   * Kept deliberately narrow. It is handed the Playwright page and nothing else,
+   * it is awaited, and a case that does not pass one pays nothing — no route is
+   * installed, no crossing is made, and the page is navigated exactly as before.
+   * It is not a general extension point for driving the build: an operation a
+   * check makes on the game belongs on the case's debug surface, where the
+   * case's specification declares it.
+   */
+  beforeLoad?: (page: Page) => Promise<void>;
 }
 
 /**
@@ -801,6 +819,10 @@ export function createHarnessFactory<S, D extends object>(
     // for the higher ceiling.
     page.setDefaultTimeout(PAGE_DEADLINE_MS);
     page.setDefaultNavigationTimeout(PAGE_DEADLINE_MS);
+
+    // Whatever the case has to arrange on the page itself, before the build is
+    // fetched into it. See {@link HarnessOptions.beforeLoad}.
+    if (options.beforeLoad !== undefined) await options.beforeLoad(page);
 
     const loaded = await loadBuild(page);
 

@@ -121,7 +121,7 @@ it("commits nothing when a disabled inspector slot is pressed", async () => {
   assertEqual(
     (await h.snapshot()).phase,
     "wave",
-    "the phase a released unit puts the run into (specs/instrumentation.md)",
+    "the phase `setPhase` puts the run into (specs/instrumentation.md)",
   );
 
   const dismantle = await panelControl(h, "dismantle");

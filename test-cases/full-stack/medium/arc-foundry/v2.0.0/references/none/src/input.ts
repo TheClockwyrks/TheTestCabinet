@@ -1,10 +1,11 @@
 // Arc Foundry — the device input layer (specs/controls.md).
 //
-// This game stands on no engine, so the pointer and the keyboard belong to the runtime
-// layer written here. The layer's whole job is to take the cursor and the keys off the page
-// and deliver them to the game in the game's own terms: a pointer position in logical units
-// on the 1280 x 720 stage with its press and release edges, and a `KeyboardEvent.code` per
-// key edge.
+// This game stands on no engine, so the pointer, the touch contact and the keyboard belong
+// to the runtime layer written here. The layer's whole job is to take the cursor, the
+// fingers and the keys off the page and deliver them to the game in the game's own terms: a
+// pointer position in logical units on the 1280 x 720 stage with its press and release
+// edges, a touch contact's landing, travel and lift in those same units, and a
+// `KeyboardEvent.code` per key edge.
 //
 // Each act is delivered IMMEDIATELY, as the browser reports it, rather than queued for the
 // next update. That is what makes a player's press and a posed press the same event to the
@@ -14,6 +15,9 @@ export interface InputHandlers {
   pointerMove(x: number, y: number): void;
   pointerDown(x: number, y: number): void;
   pointerUp(): void;
+  touchStart(x: number, y: number): void;
+  touchMove(x: number, y: number): void;
+  touchEnd(): void;
   keyDown(code: string): void;
   keyUp(code: string): void;
 }
@@ -26,15 +30,29 @@ export class Input {
   constructor(private readonly on: InputHandlers) {}
 
   attach(canvas: HTMLCanvasElement): void {
+    // A touch contact is delivered as a contact rather than as a pointer, so the two
+    // paths are separated here: a `pointerType` of `touch` goes to the touch handlers
+    // and everything else to the pointer's (specs/controls.md).
     canvas.addEventListener("pointermove", (e) => {
       const p = this.toLogical(e.clientX, e.clientY);
-      this.on.pointerMove(p.x, p.y);
+      if (e.pointerType === "touch") this.on.touchMove(p.x, p.y);
+      else this.on.pointerMove(p.x, p.y);
     });
     canvas.addEventListener("pointerdown", (e) => {
       const p = this.toLogical(e.clientX, e.clientY);
-      this.on.pointerDown(p.x, p.y);
+      if (e.pointerType === "touch") this.on.touchStart(p.x, p.y);
+      else this.on.pointerDown(p.x, p.y);
     });
-    window.addEventListener("pointerup", () => this.on.pointerUp());
+    window.addEventListener("pointerup", (e) => {
+      if (e.pointerType === "touch") this.on.touchEnd();
+      else this.on.pointerUp();
+    });
+    window.addEventListener("pointercancel", (e) => {
+      if (e.pointerType === "touch") this.on.touchEnd();
+      else this.on.pointerUp();
+    });
+    // The page must not scroll or zoom under a contact driving the stage.
+    canvas.style.touchAction = "none";
     window.addEventListener("keydown", (e) => {
       // Keep the page from scrolling on Space and the arrows while playing.
       if (e.code === "Space" || e.code === "ArrowUp" || e.code === "ArrowDown")

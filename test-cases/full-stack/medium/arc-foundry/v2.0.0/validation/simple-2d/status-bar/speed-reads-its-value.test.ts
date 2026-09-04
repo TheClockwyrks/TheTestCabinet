@@ -17,11 +17,14 @@ import { assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
-  openYard,
-  statusControl,
+  DISTINCT,
   type Harness,
+  lattice,
+  maxDistance,
+  openYard,
+  sample,
+  statusControl,
 } from "../harness";
-import { DISTINCT, lattice, maxDistance, sample } from "./reading";
 
 let h: Harness;
 

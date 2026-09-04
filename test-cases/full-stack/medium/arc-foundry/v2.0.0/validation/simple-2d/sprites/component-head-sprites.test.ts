@@ -10,13 +10,12 @@
 import { it } from "vitest";
 import { assertEqual } from "../assert";
 import {
-  TIERS,
   captureStill,
   createHarness,
   openYard,
   standComponent,
 } from "../harness";
-import { COMPONENT_TYPES } from "../../src/constants";
+import { COMPONENT_TYPES, TIERS } from "../constants";
 import { canvasOf, componentHead } from "./png";
 import { serveProducedAssets } from "./host";
 

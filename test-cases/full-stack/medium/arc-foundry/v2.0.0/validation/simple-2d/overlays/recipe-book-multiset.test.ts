@@ -10,28 +10,30 @@
 // tiers", and `specs/combinations.md` states the counting rule there: "a recipe is
 // satisfied only when the yard holds every ingredient it lists, counted as a
 // multiset". So the requirement is instantiated at the one recipe the twelve
-// provide: a yard holding a single Arc-Node has covered ONE of the Singularity's
-// two Arc-Node ingredients, and standing the second one has to move the book
-// again. A build that counted ownership by type, or that let one structure
-// satisfy every ingredient naming it, marks both on the first Arc-Node and moves
-// nothing on the second.
+// provide: a yard holding a single Arc-Node at one of those two tiers covers THAT
+// ingredient and not the other, and the other is covered only once a second
+// Arc-Node stands at its own tier.
 //
-// Both tiers appear in that one recipe and nowhere else in the twelve, so each
-// step moves exactly one ingredient of one recipe.
+// The two cells are read by name, because `specs/instrumentation.md` has the build
+// report each ingredient cell with the type and quality it stands for. A build that
+// counted ownership by type, or that let one structure satisfy every ingredient
+// naming it, marks both cells on the first Arc-Node and fails here on the cell it
+// marked early rather than on a pixel somewhere in the overlay.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan } from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
   openYard,
+  recipeCells,
   standComponent,
   type Harness,
 } from "../harness";
-import type { ComponentType, Tier } from "../harness";
-import { readBook, movedPoints, type Pose } from "./book";
+import type { ComboId, ComponentType, Tier } from "../constants";
 
 /** The Singularity's two Arc-Nodes (specs/combinations.md). */
+const COMBO: ComboId = "singularity";
 const TYPE: ComponentType = "arcnode";
 const FIRST: Tier = 2;
 const SECOND: Tier = 5;
@@ -46,55 +48,63 @@ afterEach(() => {
   h.dispose();
 });
 
+/** The state the book draws the Singularity's Arc-Node at `tier` in. */
+function stateAt(tier: Tier): string {
+  const cells = recipeCells(h, COMBO).filter(
+    (c) => c.type === TYPE && c.quality === tier,
+  );
+  assertEqual(
+    cells.length,
+    1,
+    `how many cells the ${COMBO}'s recipe gives a ${TYPE} at tier ${tier} ` +
+      "(specs/combinations.md)",
+  );
+  return cells[0]!.state;
+}
+
 it("covers the second Arc-Node only once a second one stands", async () => {
   openYard(h);
+  h.debug.setOverlay("combos", true);
 
-  const poses: Pose[] = [
-    {
-      name: "neither",
-      arrange: (harness) => {
-        harness.debug.clearStructures();
-      },
-    },
-    {
-      name: "one",
-      arrange: (harness) => {
-        harness.debug.clearStructures();
-        standComponent(harness, TYPE, FIRST, 10, 10);
-      },
-    },
-    {
-      name: "both",
-      arrange: (harness) => {
-        harness.debug.clearStructures();
-        standComponent(harness, TYPE, FIRST, 10, 10);
-        standComponent(harness, TYPE, SECOND, 14, 10);
-      },
-    },
-  ];
+  const recipe = recipeCells(h, COMBO);
+  assertGreaterThan(
+    recipe.length,
+    0,
+    `how many ingredient cells the book reports for the ${COMBO} ` +
+      "(specs/instrumentation.md)",
+  );
 
-  const read = await readBook(h, "combos", poses);
+  // Neither Arc-Node stands.
+  assertEqual(stateAt(FIRST), "missing", `the ${TYPE} at tier ${FIRST}`);
+  assertEqual(stateAt(SECOND), "missing", `the ${TYPE} at tier ${SECOND}`);
+
+  // One does, at the first tier: it covers that ingredient and not the other.
+  standComponent(h, TYPE, FIRST, 10, 10);
+  assertEqual(
+    stateAt(FIRST),
+    "owned",
+    `the ${TYPE} at tier ${FIRST} with one standing on the yard ` +
+      "(specs/hud.md)",
+  );
+  assertEqual(
+    stateAt(SECOND),
+    "missing",
+    `the ${TYPE} at tier ${SECOND} with only a tier-${FIRST} one standing; ` +
+      "ownership counts as a multiset, so one structure covers one ingredient " +
+      "(specs/hud.md)",
+  );
+
+  // And the second one covers the second ingredient.
+  standComponent(h, TYPE, SECOND, 14, 10);
   captureStill(h, "multiset");
-  assertGreaterThan(
-    read.points,
-    0,
-    "how many points of the stage the recipe book was found to paint",
+  assertEqual(
+    stateAt(FIRST),
+    "owned",
+    `the ${TYPE} at tier ${FIRST} with both standing`,
   );
-
-  const [neither, one, both] = read.open as [
-    (typeof read.open)[number],
-    (typeof read.open)[number],
-    (typeof read.open)[number],
-  ];
-  assertGreaterThan(
-    movedPoints(neither, one),
-    0,
-    `how many of the book's points the first Arc-Node at tier ${FIRST} moves`,
-  );
-  assertGreaterThan(
-    movedPoints(one, both),
-    0,
-    `how many of the book's points the second Arc-Node at tier ${SECOND} ` +
-      "moves, which is what the first one may not have covered already",
+  assertEqual(
+    stateAt(SECOND),
+    "owned",
+    `the ${TYPE} at tier ${SECOND} with one of each standing (specs/hud.md)`,
   );
 });

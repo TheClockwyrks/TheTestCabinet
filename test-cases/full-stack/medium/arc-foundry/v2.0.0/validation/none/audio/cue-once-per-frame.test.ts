@@ -49,7 +49,7 @@ const SPREAD = 25;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -93,7 +93,6 @@ async function discharge(
 }
 
 it("plays the same on a frame three units die on as on one", async () => {
-  await h.armAudio();
   await openYard(h, { wave: 1 });
   await settle(h);
 

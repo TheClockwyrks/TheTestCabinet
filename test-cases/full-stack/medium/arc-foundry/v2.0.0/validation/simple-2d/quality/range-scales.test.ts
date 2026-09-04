@@ -16,16 +16,14 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo } from "../assert";
 import {
   captureStill,
-  componentRange,
   createHarness,
   emptyYard,
-  FIRING_TYPES,
+  type Harness,
   openYard,
   standComponent,
   structureById,
-  TIERS,
-  type Harness,
 } from "../harness";
+import { componentRange, FIRING_TYPES, TIERS } from "../constants";
 
 /** One anchor per tier, each footprint two tiles clear of the next. */
 const ANCHORS = [8, 12, 16, 20, 24].map((col) => ({ col, row: 10 }));

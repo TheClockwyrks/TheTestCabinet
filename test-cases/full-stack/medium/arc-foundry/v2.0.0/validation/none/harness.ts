@@ -1,4 +1,4 @@
-// Arc Foundry — the shared validator harness. CASE-PROVIDED.
+// Arc Foundry — the case's half of the validator harness. CASE-PROVIDED.
 //
 // Every check in this project is an ordinary vitest test that drives the built
 // site IN A REAL BROWSER. There is nothing to import: an engineless run seeds no
@@ -9,6 +9,24 @@
 // reaches the game the way anything reaches it: over the surface the
 // specification told the build to install.
 //
+// THE MACHINERY THAT DOES THAT IS NOT ARC FOUNDRY'S. Serving the build,
+// connecting to the one browser, opening a page per harness, injecting the
+// draw-command recorder and the counting audio probe, bracketing each driven
+// frame around one `advance(dt, 1)` of the build's surface, reading pixels and
+// draw calls back out, and writing the evidence a review point declares — every
+// engineless case needs exactly that, and it lives once, in
+// `@test-cabinet/case-harness`, staged beside this file as `./case-harness/`.
+// What is left here is what is genuinely Arc Foundry's: the shape of its
+// snapshot, the operations `specs/instrumentation.md` requires, the withholding
+// of one produced file, the snapshot readers, and the compound sequences that
+// pose an isolated yard.
+//
+// The seam is one call. `createCaseHarness` takes the case's TYPES as type
+// arguments and the case's VALUES as one object, and hands back the machinery
+// with Arc Foundry's names and Arc Foundry's types on it. The suites next door
+// import `createHarness`, `captureReplay`, `openYard`, `parkUnit` and the rest
+// from `../harness` without knowing which half of the machinery each belongs to.
+//
 // IT IS STILL A VITEST PROJECT, AND THAT IS DELIBERATE. The runner locates the
 // build output before it chooses between the vitest and browser paths, so `dist/`
 // is on disk by the time this project runs. Staying a vitest project is what lets
@@ -17,11 +35,12 @@
 // run selected — and what keeps `format = 2` resolution passing.
 //
 // WHAT A CHECK READS. The game's own state (through `window.__foundry`'s
-// `snapshot`), the four control readings, the frames the harness itself drove,
-// the operations the build issued against its 2D context, the pixels those
-// operations left on the canvas, and the sounds the build emitted. Nothing here
-// fabricates an outcome: the scenario helpers below only ARRANGE the yard through
-// the surface, and the real update the build wrote is what runs from there.
+// `snapshot`), the seven control and layout readings, the frames the harness
+// itself drove, the operations the build issued against its 2D context, the
+// pixels those operations left on the canvas, and the sounds the build emitted.
+// Nothing here fabricates an outcome: the scenario helpers below only ARRANGE the
+// yard through the surface, and the real update the build wrote is what runs from
+// there.
 //
 // THE CLOCK IS THE SURFACE'S. Nothing outside an engineless build owns its loop,
 // so `specs/instrumentation.md` puts the clock on the surface: `setAutoStep(false)`
@@ -36,12 +55,6 @@
 // `debug.setCharge(state, 500)`. The scenarios, the tolerances, and the assertions
 // are the same ones, because they are the case's rather than the runtime's.
 //
-// ONE SERVER, ONE BROWSER, ONE PAGE PER HARNESS. `globalSetup.ts` starts the
-// server and the browser once for the whole project; this module connects to them
-// from inside each suite's worker and opens a page per harness, so every check
-// drives a build that has just started and no check can be affected by what the
-// one before it pressed, placed or muted.
-//
 // AND THIS FILE OWNS EVERY COMPOUND SEQUENCE. The surface is atomic by design: one
 // operation sets one field. Opening a run, emptying the yard, standing one
 // structure up, releasing one held unit, pressing one named control — each of
@@ -49,38 +62,50 @@
 // hundred suites say what their scenario is about in one line and say it the same
 // way. A check that needs only part of a sequence calls the operations it needs.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, sep } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { gzipSync } from "node:zlib";
-import { expect, inject } from "vitest";
-import type { Browser, BrowserContext, Page } from "playwright";
-import { connectChromium } from "./chromium";
+import type { Page } from "playwright";
+import {
+  createCaseHarness,
+  type DrawCall,
+  type Harness as BaseHarness,
+  type HarnessOptions as BaseHarnessOptions,
+  type Pixel,
+  type UntilResult as BaseUntilResult,
+} from "./case-harness/index";
 import { assertTruthy, fail } from "./assert";
 import {
-  DEFAULT_SEED,
-  STAGE_H,
-  STAGE_W,
-  STAMPS_PER_LEVEL,
-  TARGETING_PRIORITIES,
-  UNBOUND_KEY,
-  keyFor,
-  structureCenter,
-  tileCenter,
   type Action,
+  BAR_H,
+  BOARD_H,
+  BOARD_W,
+  BOARD_X,
+  BOARD_Y,
   type ComboId,
   type ComponentType,
+  DEFAULT_SEED,
   type DifficultyId,
+  keyFor,
   type MapId,
   type MenuAction,
+  PANEL_W,
+  PANEL_X,
   type PanelAction,
   type Point,
   type PressAction,
   type Screen,
   type SpawnType,
+  STAGE_H,
+  STAGE_W,
+  STAMPS_PER_LEVEL,
   type StatusAction,
+  structureCenter,
   type Targeting,
+  TARGETING_PRIORITIES,
   type Tier,
+  tileCenter,
+  UNBOUND_KEY,
 } from "./constants";
 import {
   HANDLE,
@@ -90,7 +115,10 @@ import {
   type MenuButton,
   type PanelButton,
   type PressButton,
+  type ReadoutName,
+  type RecipeEntry,
   type StatusControl,
+  type StatusReadout,
   type StructureView,
   type UnitView,
 } from "./surface";
@@ -100,472 +128,34 @@ export {
   REQUIRED_OPS,
   FOUNDRY_DEBUG_VERSION,
   type FoundrySnapshot,
+  type IngredientState,
   type MenuButton,
   type PanelButton,
   type PressButton,
+  type ReadoutName,
+  type RecipeEntry,
   type StatusControl,
+  type StatusReadout,
   type StructureView,
   type UnitView,
 } from "./surface";
 
-declare module "vitest" {
-  export interface ProvidedContext {
-    /** Where the built site is served, from `globalSetup.ts`. */
-    foundryUrl: string;
-    /** The one Chromium every suite worker connects to. */
-    foundryBrowserWs: string;
-  }
-}
-
 /* -------------------------------------------------------------------------- */
-/* The step schedule                                                          */
+/* Withholding one produced file                                              */
 /* -------------------------------------------------------------------------- */
 //
-// The suite chooses the size of a frame, because the specification deliberately
-// fixes none: every rate in this game is per second and is integrated against the
-// elapsed time of the frame, so a build must reach the same place however that
-// time was divided. The default is a steady 120 Hz, which makes every duration
-// below a whole number of frames — and which keeps a projectile's step
-// (`PROJECTILE_SPEED / 120`, about 4.3 units) inside its own hit radius, so a
-// shot's arrival is a fact about the game rather than about the step size.
-
-/** A source of frame deltas, in milliseconds. */
-export interface Clock {
-  /** The next frame's delta, in ms. */
-  delta(): number;
-}
-
-/** The frame the suite steps in, in milliseconds. */
-export const TICK_HZ = 120;
-export const TICK_MS = 1000 / TICK_HZ;
-
-/** Every frame the same length. */
-export class ConstantClock implements Clock {
-  constructor(private readonly ms: number) {}
-  delta(): number {
-    return this.ms;
-  }
-}
-
-/** A repeating pattern of steps: what an uneven but predictable display gives. */
-export class SequenceClock implements Clock {
-  private index = 0;
-  constructor(private readonly stepsMs: readonly number[]) {
-    if (stepsMs.length === 0) {
-      throw new RangeError("SequenceClock needs at least one step, got none");
-    }
-  }
-  delta(): number {
-    const step = this.stepsMs[this.index % this.stepsMs.length]!;
-    this.index += 1;
-    return step;
-  }
-}
-
-/**
- * A hash of the seed and the frame index, avalanched so that neighbouring
- * indices — which is all a frame counter ever produces — do not yield
- * neighbouring outputs.
- */
-function hash32(seed: number, index: number): number {
-  let h =
-    (Math.imul(seed | 0, 0x9e3779b1) ^ Math.imul(index | 0, 0x85ebca6b)) >>> 0;
-  h = (h ^ (h >>> 16)) >>> 0;
-  h = Math.imul(h, 0x21f0aaad) >>> 0;
-  h = (h ^ (h >>> 15)) >>> 0;
-  h = Math.imul(h, 0x735a2d97) >>> 0;
-  h = (h ^ (h >>> 15)) >>> 0;
-  return h >>> 0;
-}
-
-/**
- * A seeded draw from a range, indexed by frame: the clock that stands in for a
- * real machine under load. The seed is mandatory, because a claim that a build is
- * delta-time independent is worth making only when the failing case replays.
- */
-export class JitterClock implements Clock {
-  private index = 0;
-  private readonly spanMs: number;
-  constructor(
-    private readonly minMs: number,
-    maxMs: number,
-    private readonly seed: number,
-  ) {
-    if (maxMs < minMs) {
-      throw new RangeError(
-        `JitterClock needs maxMs >= minMs, got minMs ${minMs} and maxMs ${maxMs}`,
-      );
-    }
-    this.spanMs = maxMs - minMs;
-  }
-  delta(): number {
-    const index = this.index;
-    this.index += 1;
-    return (
-      this.minMs + (hash32(this.seed, index) / 0x1_0000_0000) * this.spanMs
-    );
-  }
-}
-
-/** Seconds of simulated time in `ticks` frames of the default clock. */
-export function seconds(ticks: number): number {
-  return ticks / TICK_HZ;
-}
-
-/** Frames of the default clock covering `s` seconds, rounded up. */
-export function ticks(s: number): number {
-  return Math.ceil(s * TICK_HZ);
-}
-
-/** A speed in units per second from a displacement measured over `n` frames. */
-export function speedOverTicks(delta: number, n: number): number {
-  return (Math.abs(delta) * TICK_HZ) / n;
-}
-
-/** The straight-line distance between two points. */
-export function distance(a: Point, b: Point): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-/* -------------------------------------------------------------------------- */
-/* The harness                                                                */
-/* -------------------------------------------------------------------------- */
-
-/** One recorded operation on the 2D context, in the order the render made it. */
-export type DrawCall =
-  | { kind: "call"; method: string; args: unknown[] }
-  | { kind: "set"; property: string; value: unknown };
-
-/** A sound the build emitted, and the frame of the drive it emitted it on. */
-export interface TimedCue {
-  /** The frame it sounded on, 1-based, as {@link Harness.frame} reports. */
-  frame: number;
-  /** The frame loop's simulated time at that frame, in milliseconds. */
-  t: number;
-}
-
-/** How the stage is mapped onto the canvas: one uniform scale and a letterbox. */
-export interface Viewport {
-  width: number;
-  height: number;
-  scale: number;
-  offsetX: number;
-  offsetY: number;
-}
-
-export interface HarnessOptions {
-  /** The clock each frame takes its delta from. Defaults to 120 Hz. */
-  clock?: Clock;
-  /** The window's CSS width. Defaults to the logical stage width. */
-  cssWidth?: number;
-  /** The window's CSS height. Defaults to the logical stage height. */
-  cssHeight?: number;
-  /** Device pixels per CSS pixel. Defaults to 1, so one device pixel is one unit. */
-  dpr?: number;
-  /**
-   * Produced files this page is not given, named by the path `specs/assets.md`
-   * fixes for each under `assets/` (`fx/aura.json`).
-   *
-   * WHY A CHECK WOULD WANT THIS. A produced particle system played at a place and a
-   * shape the build draws in code at the same place look alike from outside, and
-   * only the first stops when its file does not arrive. So a check that has to tell
-   * them apart gives the build everything it produced except one file and reads the
-   * same scene again.
-   *
-   * WHY IT IS MATCHED ON CONTENT RATHER THAN ON A URL. An engineless build bundles
-   * its own files, and the bundler configuration is seeded rather than the build's
-   * to write: a produced file leaves the build under a hashed name of the bundler's
-   * choosing, and a small one leaves it carried inside another file as a base64
-   * `data:` URI. Neither is the path the file was committed at, so the file is
-   * recognised by its BYTES, read off disk here, in both of the shapes a site can
-   * carry it in — see {@link withholdProduced}.
-   *
-   * WHAT IT CANNOT REACH, which every check built on it states in its own header: a
-   * build that imports a produced file as a module carries it as parsed source, and
-   * neither shape is on the wire. Such a build is out of this reading's reach, so a
-   * withheld reading may only ever PASS one, never fail it.
-   */
-  withhold?: readonly string[];
-}
-
-/** How far a sweep may run, and how many frames separate two samples. */
-export interface UntilOptions {
-  maxFrames?: number;
-  poll?: number;
-}
-
-/** What a sweep found: whether the predicate ever held, and where it stopped. */
-export interface UntilResult {
-  hit: boolean;
-  /** Frames advanced before the sample that ended the sweep. */
-  frames: number;
-  snapshot: FoundrySnapshot;
-}
-
-export interface Harness {
-  /** The page the build is running in. For a check that needs Playwright itself. */
-  readonly page: Page;
-  /**
-   * The surface the BUILD installed, as operations that cross into the page.
-   *
-   * Read off `window.__foundry` and never constructed here — see
-   * {@link unexposedSurface}.
-   */
-  readonly debug: DrivenFoundryDebugApi;
-  /**
-   * Why the build's surface cannot be driven, or `null` when it can.
-   *
-   * A fault here is the build's: the surface is missing, or it is missing an
-   * operation the specification requires. It says what was found
-   * (`window.__foundry was still absent 5s after the page loaded`), and
-   * {@link failSurface} pairs it with what the specification requires. Every
-   * operation fails by assertion with that pair rather than throwing, so the
-   * fault lands on the points whose checks reach the game through the surface.
-   */
-  readonly surfaceFault: string | null;
-  /** Everything the page logged to `console.error`, or threw, oldest first. */
-  readonly pageErrors: string[];
-
-  /** The frames this harness has driven, 1-based, as a recorded frame counts them. */
-  frame(): number;
-  /** The simulated time those frames covered, in milliseconds. */
-  timeMs(): number;
-
-  /** A fresh read of the game's state through the build's `snapshot`. */
-  snapshot(): Promise<FoundrySnapshot>;
-  /** Run `frames` frames back to back, each the length the clock says. */
-  advance(frames: number): Promise<void>;
-  /** Run whole frames of the default clock covering `s` seconds of game time. */
-  advanceSeconds(s: number): Promise<void>;
-  /** Advance until `predicate` holds, sampling every `poll` frames. */
-  until(
-    predicate: (snapshot: FoundrySnapshot) => boolean,
-    options?: UntilOptions,
-  ): Promise<UntilResult>;
-  /** Hand the game back to its own frame loop for `ms` of real time, then take it back. */
-  runFor(ms: number): Promise<void>;
-
-  /** Press a real key and leave it down, as a player holding it would. */
-  hold(code: string): Promise<void>;
-  /** Release a real key held by `hold`. */
-  release(code: string): Promise<void>;
-  /**
-   * Press a real key, run the one frame that delivers it, and release it.
-   *
-   * A press that ran no frame would never reach the game, and a press released
-   * before a frame ran would be invisible to a build that reads its keyboard by
-   * comparing held state between frames — so the frame goes between the two.
-   */
-  tap(code: string): Promise<void>;
-
-  /** Run exactly one frame and hand back every operation its render issued. */
-  frameCalls(): Promise<DrawCall[]>;
-  /** Reflect the surface without invoking it: `typeof` for each name, and the version. */
-  probe(
-    names: readonly string[],
-  ): Promise<{ version: unknown; ops: Record<string, string> }>;
-
-  /** How the stage is mapped onto this harness's canvas. */
-  viewport(): Viewport;
-  /** Where a logical point lands in the canvas's backing store. */
-  device(x: number, y: number): { x: number; y: number };
-  /** The device pixel under a logical point, as `[r, g, b, a]`. */
-  pixel(x: number, y: number): Promise<[number, number, number, number]>;
-  /** Many logical points at once, in one crossing into the page. */
-  pixels(
-    points: readonly { x: number; y: number }[],
-  ): Promise<[number, number, number, number][]>;
-  /** A pixel addressed in the canvas's own backing store, past the fit. */
-  devicePixel(x: number, y: number): Promise<[number, number, number, number]>;
-  /** The canvas's backing store size, as the build sized it. */
-  surface(): Promise<{ width: number; height: number; dpr: number }>;
-
-  /** Give the build a real, browser-trusted gesture, so its audio can open. */
-  armAudio(): Promise<void>;
-
-  /** Release anything held, and let the page go. */
-  dispose(): Promise<void>;
-}
-
-/* ---- The page ------------------------------------------------------------- */
-
-/** The init scripts injected before any of the build's own script runs. */
-const INIT_SCRIPTS = ["recorder-init.js", "audio-init.js"] as const;
+// The one thing this project arranges on the PAGE rather than through the debug
+// surface, which is why it is the case's own and why the shared harness takes it
+// as a `beforeLoad` hook rather than owning it: a check that has to tell a played
+// particle system apart from geometry the build draws in code gives the build
+// everything it produced except one file, and that routing has to be in place
+// before the bundle is ever fetched.
 
 /** This module's directory: the validator project's root. */
 const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 
 /** `assets/` at the root of the produced repository, as `specs/assets.md` fixes it. */
 const PRODUCED_ASSETS = join(PROJECT_ROOT, "..", "assets");
-
-/**
- * How long the surface is waited for before the build is called non-conformant.
- *
- * Generous against a conformant build and cheap against one: the wait is a poll
- * that returns the instant the global appears, and a build installs it while its
- * entry module runs, so a page that has fired `load` has either installed it
- * already or is not going to. What the ceiling really bounds is the cost of a
- * build with no surface at all, which pays it once per harness — and there is a
- * cap on the whole suite run, so a wait long enough to exhaust it would turn
- * "every point this decides failed" into "the validators did not run", which
- * tells a reviewer far less.
- */
-const SURFACE_TIMEOUT_MS = 5_000;
-
-let browserPromise: Promise<Browser> | null = null;
-
-async function sharedBrowser(): Promise<Browser> {
-  browserPromise ??= connectChromium(inject("foundryBrowserWs"));
-  return browserPromise;
-}
-
-/**
- * One browser context per WINDOW SHAPE, shared by every harness of that shape in
- * this file, and one PAGE per harness inside it.
- *
- * The split is what the init scripts force and what correctness wants. The
- * recorder and the audio probe are installed on the CONTEXT, so every page it
- * opens is instrumented before a line of the build's script runs, and a context
- * is also where the viewport and the device pixel ratio are fixed — which is the
- * one thing the window-fit checks vary. Everything else about a harness is the
- * page: a fresh one opens on a build that has just started, with no key held, no
- * audio context opened, and the mute preference back off, which is a stronger
- * guarantee than any reset the surface offers, since `reset()` deliberately
- * leaves muting alone.
- *
- * A page per harness rather than a page reused between them, because a check may
- * legitimately hold two harnesses at once — a delta-time check runs the same
- * scenario under two step sizes — and a harness whose page had been taken over by
- * a later one would read someone else's game while looking exactly like it
- * worked.
- */
-const contexts = new Map<string, BrowserContext>();
-
-/** Every page this worker opened, so none is left behind in the shared browser. */
-const openPages = new Set<Page>();
-
-function shapeKey(cssWidth: number, cssHeight: number, dpr: number): string {
-  return `${cssWidth}x${cssHeight}@${dpr}`;
-}
-
-/** The context for a window of this shape, opened and instrumented on demand. */
-async function contextFor(
-  cssWidth: number,
-  cssHeight: number,
-  dpr: number,
-): Promise<BrowserContext> {
-  const key = shapeKey(cssWidth, cssHeight, dpr);
-  const existing = contexts.get(key);
-  if (existing !== undefined) return existing;
-
-  const browser = await sharedBrowser();
-  const context = await browser.newContext({
-    viewport: { width: cssWidth, height: cssHeight },
-    deviceScaleFactor: dpr,
-  });
-  for (const name of INIT_SCRIPTS) {
-    await context.addInitScript(readFileSync(join(PROJECT_ROOT, name), "utf8"));
-  }
-  contexts.set(key, context);
-  return context;
-}
-
-/**
- * Shut everything this worker opened.
- *
- * Registered from `setup.ts` as an `afterAll`, so a suite file never has to think
- * about it and a worker cannot leave a page behind in the shared browser.
- */
-export async function closeWorkerBrowser(): Promise<void> {
-  for (const page of openPages) await page.close().catch(() => undefined);
-  openPages.clear();
-  for (const context of contexts.values()) {
-    await context.close().catch(() => undefined);
-  }
-  contexts.clear();
-  const browser = browserPromise;
-  browserPromise = null;
-  if (browser !== null) await (await browser).close().catch(() => undefined);
-}
-
-/* ---- The surface a build never installed ---------------------------------- */
-
-/**
- * A stand-in for a surface that is missing or incomplete: every operation on it
- * fails the check that reached for it, with the fault named.
- *
- * A proxy rather than a hand-written stub, so an operation the specification adds
- * later, or one a check reaches for by name, reports the build's missing install
- * rather than looking like a harness bug.
- *
- * Keys that belong to the MACHINERY rather than to a check are answered with
- * `undefined` instead: awaiting a value probes `then`, and vitest's own error
- * formatting probes symbols and `constructor`. Failing those would replace the
- * verdict below with noise from the machinery that was trying to report it.
- */
-function unexposedSurface(reason: string): DrivenFoundryDebugApi {
-  return new Proxy({} as DrivenFoundryDebugApi, {
-    get: (_target, property): unknown => {
-      if (typeof property === "symbol") return undefined;
-      if (property === "then" || property === "constructor") return undefined;
-      return () => failSurface(reason);
-    },
-  });
-}
-
-/**
- * What `specs/instrumentation.md` requires of the surface: the `Expected:` line of
- * the failure a build with no usable surface lands on every check that reaches
- * for it, beside the {@link Harness.surfaceFault} that says what was found.
- */
-export const SURFACE_REQUIREMENT =
-  `a usable debug and automation surface on window.${HANDLE} as soon as the ` +
-  `game has initialized, carrying every operation specs/instrumentation.md ` +
-  `requires`;
-
-/**
- * Fail the running check on `fault`, the harness's account of what is wrong with
- * the build's surface, paired with what the specification requires.
- */
-export function failSurface(fault: string): never {
-  return fail(SURFACE_REQUIREMENT, fault);
-}
-
-/**
- * What is wrong with the surface this page installed, or `null` when nothing is:
- * the surface never appeared, or it appeared without an operation the
- * specification requires.
- */
-async function readSurfaceFault(page: Page): Promise<string | null> {
-  try {
-    await page.waitForFunction(
-      (handle) =>
-        typeof (window as never)[handle] === "object" &&
-        (window as never)[handle] !== null,
-      HANDLE,
-      { timeout: SURFACE_TIMEOUT_MS },
-    );
-  } catch {
-    return `window.${HANDLE} was still absent ${SURFACE_TIMEOUT_MS / 1000}s after the page loaded`;
-  }
-  const missing = await page.evaluate(
-    ([handle, ops]) => {
-      const target = (
-        window as unknown as Record<string, Record<string, unknown>>
-      )[handle]!;
-      return ops.filter((op) => typeof target[op] !== "function");
-    },
-    [HANDLE, [...REQUIRED_OPS]] as const,
-  );
-  if (missing.length > 0) {
-    return `window.${HANDLE} is installed but carries no ${missing
-      .map((op) => `${op}()`)
-      .join(", ")}`;
-  }
-  return null;
-}
-
-/* ---- Building one --------------------------------------------------------- */
 
 /** What a build that never produced a file gets when it asks the site for one. */
 const WITHHELD_BODY = "withheld";
@@ -624,6 +214,144 @@ async function withholdProduced(
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/* The harness, bound to this case                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The frame the suite steps in.
+ *
+ * The suite chooses the size of a frame, because the specification deliberately
+ * fixes none: every rate in this game is per second and is integrated against the
+ * elapsed time of the frame, so a build must reach the same place however that
+ * time was divided. A steady 120 Hz makes every duration in this project a whole
+ * number of frames — and keeps a projectile's step (`PROJECTILE_SPEED / 120`,
+ * about 4.3 units) inside its own hit radius, so a shot's arrival is a fact about
+ * the game rather than about the step size.
+ */
+const TICK_RATE = 120;
+
+/**
+ * The ground a replay is composited over when a frame paints no background.
+ *
+ * The near-black of a switchyard at night, so a recording of a scene the build
+ * drew nothing behind reads as the yard rather than as a hole.
+ */
+export const REPLAY_BACKGROUND = "#05080c";
+
+/**
+ * How long the surface is waited for before the build is called non-conformant.
+ *
+ * Generous against a conformant build and cheap against one: the wait is a poll
+ * that returns the instant the global appears. A full-stack build decodes some
+ * hundred produced sprites and a dozen sounds before it is ready, this project
+ * holds eight pages of one browser open at once, and the host running it is
+ * running a model's build under it — so the ceiling is set against a loaded
+ * machine rather than an idle one, and a build that installed its surface from
+ * its entry module pays none of it.
+ */
+const SURFACE_TIMEOUT_MS = 15_000;
+
+/**
+ * The shared harness, with Arc Foundry's snapshot, Arc Foundry's surface and Arc
+ * Foundry's figures bound into it.
+ *
+ * `projectRoot` comes from THIS module and must never come from the package's:
+ * the package is staged one directory deeper than this file, and a produced
+ * replay or still is addressed by the running suite's path relative to the
+ * project root. Taken from the package it would address every output one level
+ * too deep — and silently, because a writer that raised on a failed write would
+ * be blaming the build for the host's problem, so neither of them raises.
+ */
+const kit = createCaseHarness<FoundrySnapshot, DrivenFoundryDebugApi>({
+  slug: "arc-foundry",
+  handle: HANDLE,
+  requiredOps: REQUIRED_OPS,
+  // `advance(seconds, frames)`: whole frames covering a chosen span of simulated
+  // time, so the suite's clock is what says how long a frame is. The package's
+  // shared list of required operations stops short of naming the step operation,
+  // and this case's `REQUIRED_OPS` in `surface.ts` is what a surface fault reports
+  // against.
+  step: { kind: "seconds-frames", op: "advance" },
+  stage: { width: STAGE_W, height: STAGE_H },
+  tickHz: TICK_RATE,
+  // A GENUINE browser gesture, so the build's audio can open: a build is free to
+  // open its audio context from a real DOM event alone (both are conformant), so
+  // a key delivered any other way would leave a perfectly good build silent.
+  // `UNBOUND_KEY` is bound to nothing (specs/controls.md), so arming changes no
+  // game state — and it is delivered before the opening `reset`, which restores
+  // every declared field, so a check that asked for it starts where every other
+  // check does.
+  arm: { kind: "key", code: UNBOUND_KEY },
+  // The seed the opening `reset` fixes, so a scenario driven from a fresh harness
+  // is reproducible from that line on. `specs/instrumentation.md` defaults
+  // `options.seed` to `DEFAULT_SEED` itself, and the harness passes it explicitly
+  // so the call the build sees is the same one whether or not a check named a
+  // seed of its own.
+  defaultSeed: DEFAULT_SEED,
+  replayBackground: REPLAY_BACKGROUND,
+  surfaceTimeoutMs: SURFACE_TIMEOUT_MS,
+  projectRoot: PROJECT_ROOT,
+});
+
+export const {
+  captureReplay,
+  captureStill,
+  watchCues,
+  fitViewport,
+  failSurface,
+  SURFACE_REQUIREMENT,
+  TICK_HZ,
+  TICK_MS,
+  seconds,
+  ticks,
+  speedOverTicks,
+} = kit;
+
+/**
+ * Everything a check reads off one page running this build.
+ *
+ * The shared harness's interface, bound to this case's snapshot and this case's
+ * surface, plus the one drive this project states in SECONDS rather than in
+ * frames — every duration `specs/enemies.md`, `specs/components.md` and
+ * `specs/economy.md` fix is a span of simulated time, and a check that named its
+ * own frame count for each would be restating the rate at every call site.
+ */
+type FoundryHarness = BaseHarness<FoundrySnapshot, DrivenFoundryDebugApi>;
+
+export interface Harness extends FoundryHarness {
+  /** Run whole frames of the default clock covering `s` seconds of game time. */
+  advanceSeconds(s: number): Promise<void>;
+}
+
+/** How a harness opens its page, and what it steps in. */
+export interface HarnessOptions extends BaseHarnessOptions {
+  /**
+   * Produced files this page is not given, named by the path `specs/assets.md`
+   * fixes for each under `assets/` (`fx/aura.json`).
+   *
+   * WHY A CHECK WOULD WANT THIS. A produced particle system played at a place and a
+   * shape the build draws in code at the same place look alike from outside, and
+   * only the first stops when its file does not arrive. So a check that has to tell
+   * them apart gives the build everything it produced except one file and reads the
+   * same scene again.
+   *
+   * WHY IT IS MATCHED ON CONTENT RATHER THAN ON A URL. An engineless build bundles
+   * its own files, and the bundler configuration is seeded rather than the build's
+   * to write: a produced file leaves the build under a hashed name of the bundler's
+   * choosing, and a small one leaves it carried inside another file as a base64
+   * `data:` URI. Neither is the path the file was committed at, so the file is
+   * recognised by its BYTES, read off disk here, in both of the shapes a site can
+   * carry it in — see {@link withholdProduced}.
+   *
+   * WHAT IT CANNOT REACH, which every check built on it states in its own header: a
+   * build that imports a produced file as a module carries it as parsed source, and
+   * neither shape is on the wire. Such a build is out of this reading's reach, so a
+   * withheld reading may only ever PASS one, never fail it.
+   */
+  withhold?: readonly string[];
+}
+
 /**
  * Load the built site in a browser, take the game off the wall clock, and hand
  * back everything a check reads.
@@ -635,952 +363,63 @@ async function withholdProduced(
 export async function createHarness(
   options: HarnessOptions = {},
 ): Promise<Harness> {
-  const cssWidth = options.cssWidth ?? STAGE_W;
-  const cssHeight = options.cssHeight ?? STAGE_H;
-  const dpr = options.dpr ?? 1;
-  const clock = options.clock ?? new ConstantClock(TICK_MS);
-  const context = await contextFor(cssWidth, cssHeight, dpr);
-  const page = await context.newPage();
-  openPages.add(page);
-
-  // Installed before the page is ever navigated, so the build's own loader meets a
-  // missing file rather than one that went missing halfway through loading.
-  await withholdProduced(page, options.withhold ?? []);
-
-  // Whatever this page throws or logs as an error while THIS harness drives it.
-  // The page belongs to one harness, so the log cannot pick up what some other
-  // check provoked.
-  const pageErrors: string[] = [];
-  page.on("pageerror", (error) => {
-    pageErrors.push(String(error.message || error));
+  const { withhold, ...rest } = options;
+  const base = await kit.createHarness(
+    withhold === undefined || withhold.length === 0
+      ? rest
+      : {
+          ...rest,
+          beforeLoad: (page: Page) => withholdProduced(page, withhold),
+        },
+  );
+  return Object.assign(base, {
+    advanceSeconds: (s: number): Promise<void> => base.advance(ticks(s)),
   });
-  page.on("console", (message) => {
-    if (message.type() === "error") pageErrors.push(message.text());
-  });
-
-  await page.goto(inject("foundryUrl"), { waitUntil: "load" });
-
-  const surfaceFault = await readSurfaceFault(page);
-  const refuse = (): never => failSurface(surfaceFault ?? "");
-
-  const call = async (operation: string, args: unknown[]): Promise<unknown> => {
-    if (surfaceFault !== null) refuse();
-    return page.evaluate(
-      ([handle, name, rest]) =>
-        (
-          window as unknown as Record<
-            string,
-            Record<string, (...a: unknown[]) => unknown>
-          >
-        )[handle]![name]!(...rest),
-      [HANDLE, operation, args] as const,
-    );
-  };
-
-  const debug =
-    surfaceFault !== null
-      ? unexposedSurface(surfaceFault)
-      : (new Proxy({} as DrivenFoundryDebugApi, {
-          get: (_target, property): unknown => {
-            if (typeof property === "symbol") return undefined;
-            if (property === "then" || property === "constructor")
-              return undefined;
-            const name = String(property);
-            return (...args: unknown[]) => call(name, args);
-          },
-        }) as DrivenFoundryDebugApi);
-
-  if (surfaceFault === null) {
-    // Off the wall clock and back to the title before a check touches anything:
-    // from here the game changes only when this harness says so.
-    await call("setAutoStep", [false]);
-    await call("reset", []);
-    // And a recorder over the surface before a check can arm one. A build is free
-    // to ask for its 2D context on the frame it first draws rather than while it
-    // initializes, so the surface can be installed and answering before any
-    // context exists to record — and a `captureReplay` armed in that window arms
-    // nothing and writes no evidence for a section that drew.
-    await page
-      .waitForFunction(
-        () =>
-          (
-            window as unknown as { __foundryRec: { ready(): boolean } }
-          ).__foundryRec.ready(),
-        undefined,
-        { timeout: SURFACE_TIMEOUT_MS },
-      )
-      .catch(() => undefined);
-  }
-
-  const view = fitViewport(cssWidth, cssHeight, dpr);
-  const cueSinks: TimedCue[][] = [];
-  let frameCount = 0;
-  let timeMs = 0;
-
-  /**
-   * Run `frames` frames and read the state they left, in one crossing.
-   *
-   * Each frame is opened and closed around a single `advance(dt, 1)`, all inside
-   * one synchronous evaluation, so nothing the page's own animation frame renders
-   * can land inside a recorded frame — and so a frame the recorder keeps is
-   * exactly one frame the game ran.
-   */
-  const drive = async (frames: number): Promise<FoundrySnapshot> => {
-    if (surfaceFault !== null) refuse();
-    const deltas: number[] = [];
-    for (let i = 0; i < frames; i += 1) deltas.push(clock.delta());
-    const result = (await page.evaluate(
-      ([handle, dts]) => {
-        const api = (
-          window as unknown as Record<
-            string,
-            Record<string, (...a: unknown[]) => unknown>
-          >
-        )[handle]!;
-        const rec = (
-          window as unknown as {
-            __foundryRec: Record<string, (...a: unknown[]) => unknown>;
-          }
-        ).__foundryRec;
-        const audio = (
-          window as unknown as { __foundryAudio: { started(): number } }
-        ).__foundryAudio;
-        const sounds: number[] = [];
-        for (const dt of dts) {
-          const before = audio.started();
-          rec.begin!();
-          api.advance!(dt / 1000, 1);
-          rec.end!(dt);
-          sounds.push(audio.started() - before);
-        }
-        return { snapshot: api.snapshot!(), sounds };
-      },
-      [HANDLE, deltas] as const,
-    )) as { snapshot: FoundrySnapshot; sounds: number[] };
-
-    for (const [index, delta] of deltas.entries()) {
-      frameCount += 1;
-      timeMs += delta;
-      for (let n = 0; n < result.sounds[index]!; n += 1) {
-        for (const sink of cueSinks)
-          sink.push({ frame: frameCount, t: timeMs });
-      }
-    }
-    return result.snapshot;
-  };
-
-  const readPixels = async (
-    devicePoints: readonly { x: number; y: number }[],
-  ): Promise<[number, number, number, number][]> =>
-    page.evaluate(
-      (points) => {
-        const canvases = Array.from(document.querySelectorAll("canvas"));
-        if (canvases.length === 0)
-          throw new Error("arc foundry: the page has no <canvas>");
-        let canvas = canvases[0]!;
-        for (const other of canvases) {
-          if (other.width * other.height > canvas.width * canvas.height)
-            canvas = other;
-        }
-        const ctx = canvas.getContext("2d");
-        if (ctx === null)
-          throw new Error("arc foundry: the canvas has no 2D context");
-        return points.map((point) => {
-          const x = Math.min(
-            Math.max(point.x, 0),
-            Math.max(canvas.width - 1, 0),
-          );
-          const y = Math.min(
-            Math.max(point.y, 0),
-            Math.max(canvas.height - 1, 0),
-          );
-          const { data } = ctx.getImageData(x, y, 1, 1);
-          return [data[0], data[1], data[2], data[3]] as [
-            number,
-            number,
-            number,
-            number,
-          ];
-        });
-      },
-      devicePoints as { x: number; y: number }[],
-    );
-
-  const harness: Harness = {
-    page,
-    debug,
-    surfaceFault,
-    pageErrors,
-
-    frame: () => frameCount,
-    timeMs: () => timeMs,
-
-    snapshot: () => debug.snapshot(),
-
-    advance: async (frames) => {
-      await drive(frames);
-    },
-
-    advanceSeconds: async (s) => {
-      await drive(ticks(s));
-    },
-
-    async until(predicate, untilOptions = {}) {
-      const maxFrames = untilOptions.maxFrames ?? 1200;
-      const poll = Math.max(1, untilOptions.poll ?? 1);
-
-      let snapshot = await this.snapshot();
-      if (predicate(snapshot)) return { hit: true, frames: 0, snapshot };
-
-      let frames = 0;
-      while (frames < maxFrames) {
-        const step = Math.min(poll, maxFrames - frames);
-        snapshot = await drive(step);
-        frames += step;
-        if (predicate(snapshot)) return { hit: true, frames, snapshot };
-      }
-      return { hit: false, frames, snapshot };
-    },
-
-    async runFor(ms) {
-      if (surfaceFault !== null) refuse();
-      // The one thing here that depends on real elapsed time, so the one thing a
-      // browser's own idea of which page matters can distort. The launch already
-      // turns the throttling off; bringing the page forward as well means this
-      // does not rest on a flag alone.
-      await page.bringToFront().catch(() => undefined);
-      await page.evaluate(
-        ([handle]) => {
-          (
-            window as unknown as { __foundryRec: { setMode(m: string): void } }
-          ).__foundryRec.setMode("raf");
-          (
-            window as unknown as Record<
-              string,
-              { setAutoStep(on: boolean): void }
-            >
-          )[handle]!.setAutoStep(true);
-        },
-        [HANDLE] as const,
-      );
-      await page.waitForTimeout(ms);
-      await page.evaluate(
-        ([handle]) => {
-          (
-            window as unknown as Record<
-              string,
-              { setAutoStep(on: boolean): void }
-            >
-          )[handle]!.setAutoStep(false);
-          (
-            window as unknown as { __foundryRec: { setMode(m: string): void } }
-          ).__foundryRec.setMode("manual");
-        },
-        [HANDLE] as const,
-      );
-    },
-
-    hold: (code) => page.keyboard.down(code),
-    release: (code) => page.keyboard.up(code),
-    async tap(code) {
-      // Down, ONE frame, up. The frame between the two is what makes this a press
-      // a build can actually see: an engineless build wrote its own keyboard
-      // layer, and the two conformant ways to read a press — latching the edge in
-      // the event handler, or comparing held state at the top of each frame —
-      // agree only if the key is genuinely held while a frame runs. A down and an
-      // up delivered back to back would be invisible to the second, which is a
-      // build a real player has no trouble with. Exactly one frame passes either
-      // way, so nothing a caller counts moves.
-      await page.keyboard.down(code);
-      await drive(1);
-      await page.keyboard.up(code);
-    },
-
-    async frameCalls() {
-      await drive(1);
-      const ops = (await page.evaluate(() =>
-        (
-          window as unknown as { __foundryRec: { last(): unknown[] } }
-        ).__foundryRec.last(),
-      )) as RecordedOp[];
-      return ops.map(toDrawCall);
-    },
-
-    probe: (names) =>
-      page.evaluate(
-        ([handle, wanted]) => {
-          const target =
-            (window as unknown as Record<string, Record<string, unknown>>)[
-              handle
-            ] ?? {};
-          const ops: Record<string, string> = {};
-          for (const name of wanted) ops[name] = typeof target[name];
-          return { version: target.version, ops };
-        },
-        [HANDLE, [...names]] as const,
-      ),
-
-    viewport: () => ({ ...view }),
-    device: (x, y) => toDevice(view, x, y),
-    pixel: async (x, y) => (await readPixels([toDevice(view, x, y)]))[0]!,
-    pixels: (points) => readPixels(points.map((p) => toDevice(view, p.x, p.y))),
-    devicePixel: async (x, y) => (await readPixels([{ x, y }]))[0]!,
-
-    surface: () =>
-      page.evaluate(() => {
-        const canvases = Array.from(document.querySelectorAll("canvas"));
-        if (canvases.length === 0) {
-          throw new Error(
-            "arc foundry: the page has no <canvas>, so the build drew nowhere " +
-              "— index.html supplies one and the build is asked not to edit it " +
-              "(specs/overview.md)",
-          );
-        }
-        let canvas = canvases[0]!;
-        for (const other of canvases) {
-          if (other.width * other.height > canvas.width * canvas.height)
-            canvas = other;
-        }
-        return {
-          width: canvas.width,
-          height: canvas.height,
-          dpr: window.devicePixelRatio,
-        };
-      }),
-
-    async armAudio() {
-      // A GENUINE browser gesture, not a posed one: a build is free to open its
-      // audio context from a real DOM event alone (both are conformant), so a key
-      // delivered any other way would leave a perfectly good build silent. The key
-      // is bound to nothing, so arming changes no game state.
-      await page.keyboard.press(UNBOUND_KEY);
-    },
-
-    async dispose() {
-      // The context stays: it holds the init scripts and the window shape, and the
-      // next harness of this shape wants both. The page goes, so nothing this
-      // check pressed, placed or muted can reach the next one.
-      openPages.delete(page);
-      await page.close().catch(() => undefined);
-    },
-  };
-
-  harnessCues.set(harness, cueSinks);
-  return harness;
 }
 
-/** Where {@link watchCues} attaches, per harness. */
-const harnessCues = new WeakMap<Harness, TimedCue[][]>();
-
-/* ---- The fit -------------------------------------------------------------- */
-
-/**
- * How the stage maps onto a surface of this shape, as `specs/overview.md` fixes
- * it: one uniform scale, the whole stage inside, centred, with the leftover split
- * evenly into two bars.
- *
- * Computed rather than read from the build, deliberately. Under an engine the fit
- * is the engine's and a check can ask it what it derived; here the fit is the
- * build's own work, so asking it would be asking a build to grade itself. Every
- * check but the window-fit ones runs at the stage's own size, where this is the
- * identity and the question does not arise.
- */
-export function fitViewport(
-  cssWidth: number,
-  cssHeight: number,
-  dpr: number,
-): Viewport {
-  const deviceWidth = Math.round(cssWidth * dpr);
-  const deviceHeight = Math.round(cssHeight * dpr);
-  const scale = Math.min(cssWidth / STAGE_W, cssHeight / STAGE_H) * dpr;
-  return {
-    width: STAGE_W,
-    height: STAGE_H,
-    scale,
-    offsetX: (deviceWidth - STAGE_W * scale) / 2,
-    offsetY: (deviceHeight - STAGE_H * scale) / 2,
-  };
-}
-
-function toDevice(
-  view: Viewport,
-  x: number,
-  y: number,
-): { x: number; y: number } {
-  return {
-    x: Math.round(view.offsetX + x * view.scale),
-    y: Math.round(view.offsetY + y * view.scale),
-  };
-}
-
-/* ---- Draw calls ----------------------------------------------------------- */
-
-/** One operation as the injected recorder writes it. */
-export type RecordedOp =
-  | { op: "call"; method: string; args: unknown[] }
-  | { op: "set"; property: string; value: unknown };
-
-function toDrawCall(op: RecordedOp): DrawCall {
-  return op.op === "call"
-    ? { kind: "call", method: op.method, args: op.args }
-    : { kind: "set", property: op.property, value: op.value };
-}
-
-/** Every argument list `method` was called with, in order. */
-export function callsTo(
-  calls: readonly DrawCall[],
-  method: string,
-): unknown[][] {
-  return calls.flatMap((call) =>
-    call.kind === "call" && call.method === method ? [call.args] : [],
-  );
-}
-
-/** Every value `property` was set to, in order. */
-export function setsOf(
-  calls: readonly DrawCall[],
-  property: string,
-): unknown[] {
-  return calls.flatMap((call) =>
-    call.kind === "set" && call.property === property ? [call.value] : [],
-  );
-}
-/* -------------------------------------------------------------------------- */
-/* Evidence capture                                                           */
-/* -------------------------------------------------------------------------- */
+/* ---- What the package brings, under this project's own names -------------- */
 //
-// A review item may declare a `replay` OUTPUT beside its verdict: the frames the
-// build itself drew while a check drove it, kept as evidence a reviewer can
-// scrub and compare against the reference implementation's. `captureReplay` is
-// how a check produces one.
-//
-// Four properties are what make it usable, and each is deliberate:
-//
-// 1. IT RECORDS THE SECTION, NOT THE RUN. The recorder is armed around the
-//    caller's scenario and disarmed the moment that scenario returns, so what is
-//    kept is the part the check is ABOUT and never the setup that got there.
-// 2. IT IS EVIDENCE, NEVER A VERDICT. The scenario's own value comes straight
-//    back, and a scenario that THROWS still writes what it had recorded before
-//    the failure travels on — a failing check is the one whose replay a reviewer
-//    most wants. A recording that cannot be written is reported as an output that
-//    never turned up, which is a fact about the host rather than about the build.
-// 3. IT WRITES ONLY WHAT THERE IS TO LOOK AT. A capture that closed no frames
-//    leaves no file, so the run reports the output absent instead of offering the
-//    reviewer a replay of nothing.
-// 4. IT COSTS NOTHING WHEN NOBODY IS COLLECTING. Outside a run the media
-//    directory is unset and the whole thing is a no-op that still runs the
-//    scenario, so a check cannot pass in one place and fail in the other.
+// Named one at a time rather than re-exported wholesale, so the list of what the
+// suites next door may reach for is the list a reader can count.
 
-/** The environment variable the runner names the media directory in. */
-const MEDIA_DIR_ENV = "TCAB_VALIDATION_MEDIA_DIR";
+export type {
+  Clock,
+  DrawCall,
+  Pixel,
+  Point as ReadPoint,
+  RecordedFrame,
+  RecordedOp,
+  RecordedResource,
+  RecordedState,
+  Recording,
+  Rgb,
+  TimedCue,
+  UntilOptions,
+  Viewport,
+} from "./case-harness/index";
 
-/**
- * The directory the runner stages this project to inside the build's tree.
- *
- * A recording is addressed by the STAGED path of the suite that produced it —
- * `validation/firing/in-range.test.ts` — because that is the path the review
- * item's declared script resolves to, and so the only name the case's manifest and
- * the runner both already agree on. Stating the prefix here is what keeps that
- * address the same when this suite is run in place against a reference
- * implementation, where the project root is `validation/none/` instead.
- */
-const STAGED_PROJECT_DIR = "validation";
+export {
+  callsTo,
+  closeWorkerBrowser,
+  colorDistance,
+  ConstantClock,
+  distance,
+  drawnText,
+  drewText,
+  JitterClock,
+  luminance,
+  meanColor,
+  retable,
+  rgbOf,
+  sampleColor,
+  SequenceClock,
+  setsOf,
+  thinReplay,
+  MAX_REPLAY_FRAMES,
+} from "./case-harness/index";
 
-/**
- * The most frames a written recording holds.
- *
- * The injected recorder already holds the page's side to twice this, decimating
- * as it fills, so what arrives here is at most a few hundred frames however long
- * the section ran. This is the same cap the engine-backed harness writes under, so
- * a replay recorded under either engine is the same size of thing.
- */
-const MAX_REPLAY_FRAMES = 300;
-
-/**
- * The ground the console's player paints behind a recorded frame.
- *
- * The specification fixes no palette: the build paints its own yard, its status
- * bar and its build panel each frame, and the recorded frames carry that paint.
- * What the player needs is a colour for the canvas under them, and the page the
- * build is served on is painted `#05080c` by the case's own `index.html`, so that
- * is what a replay says.
- */
-export const REPLAY_BACKGROUND = "#05080c";
-
-/** One frame of a recording, as the console's player reads it. */
-export interface RecordedFrame {
-  count: number;
-  timeMs: number;
-  deltaMs: number;
-  surface: { width: number; height: number };
-  /** Index into the recording's `states` of the state this frame inherited. */
-  state: number;
-  /**
-   * Indices into the recording's `states` of the states saved under this frame,
-   * outermost first.
-   *
-   * A build may `save` on one frame and `restore` on the next, so the stack of
-   * saved states survives a frame boundary along with the state on top of it. A
-   * player pushes these before the frame's own state, which is what makes a
-   * `restore` among the frame's operations return where the original returned.
-   */
-  stack: number[];
-  /** Indices into the recording's `ops`, in the order the frame issued them. */
-  ops: number[];
-  /**
-   * Whether part of what this frame inherited was too large for the format to
-   * carry, and was cut down to the bound.
-   *
-   * The save stack, the clip region and the current path are each shadowed by the
-   * recorder and each bounded. Past a bound the recorder keeps what a following
-   * operation can still reach and drops the rest, so the frame replays under a
-   * state close to the build's rather than equal to it — and the player reports
-   * that beside everything else it could not reproduce. Present only on a frame
-   * that was in fact cut down.
-   */
-  truncated?: boolean;
-}
-
-/** The context state a frame is drawn from, before its own operations. */
-export interface RecordedState {
-  properties: Record<string, unknown>;
-  transform: number[] | null;
-  lineDash: number[] | null;
-  /** The clip region in force, as the segments that built it, in order. */
-  clip: RecordedPathSegment[];
-  /**
-   * The current path, as the operations issued since the last `beginPath`.
-   *
-   * A canvas keeps its path across a frame boundary, so a build is free to open
-   * one on one frame and fill it on the next. Carrying it is also what an
-   * inherited clip makes unavoidable: applying a clip means replaying that clip's
-   * own path operations, which leaves the clip outline current, and a frame that
-   * then issues a bare `fill` would fill the outline of its clip.
-   */
-  path: RecordedPathSegment[];
-}
-
-/**
- * One run of path operations, and the transform they were issued under.
- *
- * A path is given in user space, so both the clip and the current path are split
- * into one segment per transform and a player replays each under its own.
- */
-export interface RecordedPathSegment {
-  transform: number[] | null;
-  ops: RecordedOp[];
-}
-
-/** A value the context produced, as the recipe that rebuilds it. */
-export interface RecordedResource {
-  make: { method: string; args: unknown[] };
-  then: RecordedOp[];
-}
-
-/**
- * A recording, as the console's player reads it.
- *
- * A frame names its state and its operations by index, and the values those
- * operations draw with — the gradients, the captured images — live in tables the
- * whole recording shares. So every reference a frame makes resolves at whichever
- * frame a reviewer lands on, and each distinct thing is written once.
- */
-export interface Recording {
-  format: number;
-  width: number;
-  height: number;
-  background: string | null;
-  images: unknown[];
-  resources: RecordedResource[];
-  ops: RecordedOp[];
-  states: RecordedState[];
-  frames: RecordedFrame[];
-}
-
-/**
- * Where the running suite's `outputId` output belongs, or `null` when nothing is
- * collecting media.
- *
- * The suite is the one vitest is currently running rather than one the caller
- * names, because the two must not be able to disagree: a check that named its own
- * path would be free to write its evidence under some other point's address.
- */
-function mediaDestination(outputId: string, extension: string): string | null {
-  const mediaDir = process.env[MEDIA_DIR_ENV];
-  if (mediaDir === undefined || mediaDir === "") return null;
-  const testPath = expect.getState().testPath;
-  if (testPath === undefined) return null;
-  const suite = relative(PROJECT_ROOT, testPath).split(sep).join("/");
-  return join(mediaDir, STAGED_PROJECT_DIR, suite, `${outputId}.${extension}`);
-}
-
-/**
- * A value's JSON with object keys in a fixed order, as the key a table
- * deduplicates on.
- *
- * Two operations that mean the same thing have to serialize identically for a
- * table to hold one copy of each, and the key order inside an argument the build
- * passed is the build's own business rather than ours.
- */
-function canonical(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value) ?? "null";
-  }
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  const record = value as Record<string, unknown>;
-  return `{${Object.keys(record)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`)
-    .join(",")}}`;
-}
-
-/** Add `entry` to a table if it is new, and answer where it lives. */
-function intern<T>(table: T[], at: Map<string, number>, entry: T): number {
-  const key = canonical(entry);
-  const found = at.get(key);
-  if (found !== undefined) return found;
-  const index = table.length;
-  table.push(entry);
-  at.set(key, index);
-  return index;
-}
-
-/**
- * `frames` re-expressed against tables holding only what those frames name.
- *
- * DROPPING A FRAME DROPS THE LAST REFERENCE TO WHATEVER ONLY THAT FRAME DREW
- * WITH. Tables carried over whole would put operations, gradients and images in
- * the file that no frame asks for — dead weight in a document whose whole point
- * is to say each thing once, and the bulk of it in a game that draws procedurally
- * and so repeats almost nothing between frames.
- *
- * Every entry here is reached from a kept frame, and every reference inside one
- * is rewritten as it is reached, transitively: a frame names its own state and
- * the states saved under it, whose clip and path segments and inherited fill name
- * operations and resources, whose own creating calls may name images. What is
- * deduplicated is the rewritten entry, so an operation two hundred frames issue
- * identically is written once and named two hundred times, and every index a
- * frame carries addresses the table it was interned into.
- *
- * Exported for the suite beside this file, which drives it over a recording a
- * browser cannot deliver: Playwright's serializer drops an own field named
- * `__proto__` on the way out of the page, so handing one to this directly is the
- * only way to check that the rewrite carries it.
- */
-export function retable(
-  recording: Recording,
-  frames: RecordedFrame[],
-): Recording {
-  const images: unknown[] = [];
-  const imageAt = new Map<number, number>();
-  const resources: RecordedResource[] = [];
-  const resourceAt = new Map<number, number>();
-  const ops: RecordedOp[] = [];
-  const opAt = new Map<string, number>();
-  const states: RecordedState[] = [];
-  const stateAt = new Map<string, number>();
-
-  const takeImage = (source: number): number => {
-    const found = imageAt.get(source);
-    if (found !== undefined) return found;
-    const index = images.length;
-    images.push(recording.images[source]);
-    imageAt.set(source, index);
-    return index;
-  };
-
-  const takeResource = (source: number): number => {
-    const found = resourceAt.get(source);
-    if (found !== undefined) return found;
-    const recipe = recording.resources[source];
-    // A recipe's own arguments can only name values made before it, so rewriting
-    // it terminates and cannot re-enter this resource.
-    const rebuilt: RecordedResource = {
-      make: { method: recipe.make.method, args: recipe.make.args.map(value) },
-      then: recipe.then.map(operation),
-    };
-    const index = resources.length;
-    resources.push(rebuilt);
-    resourceAt.set(source, index);
-    return index;
-  };
-
-  const value = (entry: unknown): unknown => {
-    if (Array.isArray(entry)) return entry.map(value);
-    if (entry === null || typeof entry !== "object") return entry;
-    const record = entry as Record<string, unknown>;
-    if (typeof record.$img === "number")
-      return { $img: takeImage(record.$img) };
-    if (typeof record.$res === "number")
-      return { $res: takeResource(record.$res) };
-    const rewritten: Record<string, unknown> = {};
-    for (const [key, held] of Object.entries(record)) {
-      // Defined rather than assigned: a build's own object may carry a field named
-      // `__proto__`, and assigning that name reaches the prototype setter instead
-      // of writing a field the document carries.
-      Object.defineProperty(rewritten, key, {
-        value: value(held),
-        enumerable: true,
-        writable: true,
-        configurable: true,
-      });
-    }
-    return rewritten;
-  };
-
-  const operation = (op: RecordedOp): RecordedOp =>
-    op.op === "call"
-      ? { op: "call", method: op.method, args: op.args.map(value) }
-      : { op: "set", property: op.property, value: value(op.value) };
-
-  const segments = (list: RecordedPathSegment[]): RecordedPathSegment[] =>
-    list.map((segment) => ({
-      transform: segment.transform,
-      ops: segment.ops.map(operation),
-    }));
-
-  const stateOf = (state: RecordedState): RecordedState => {
-    const properties: Record<string, unknown> = {};
-    for (const [name, held] of Object.entries(state.properties)) {
-      Object.defineProperty(properties, name, {
-        value: value(held),
-        enumerable: true,
-        writable: true,
-        configurable: true,
-      });
-    }
-    return {
-      properties,
-      transform: state.transform,
-      lineDash: state.lineDash,
-      clip: segments(state.clip),
-      path: segments(state.path),
-    };
-  };
-
-  const takeState = (source: number): number =>
-    intern(states, stateAt, stateOf(recording.states[source]));
-
-  return {
-    ...recording,
-    images,
-    resources,
-    ops,
-    states,
-    frames: frames.map((frame) => ({
-      ...frame,
-      state: takeState(frame.state),
-      stack: frame.stack.map(takeState),
-      ops: frame.ops.map((op) =>
-        intern(ops, opAt, operation(recording.ops[op])),
-      ),
-    })),
-  };
-}
-
-/**
- * A recording of at most {@link MAX_REPLAY_FRAMES} frames, covering the whole of
- * what was captured, with each kept frame's `deltaMs` restated as the time since
- * the frame kept before it.
- *
- * The restatement is what makes a decimated recording play at the speed the game
- * really ran at: the deltas still sum to the section's elapsed time. The frame
- * `count` is left as it was recorded, so a reader can see that frames were
- * skipped rather than being told a smooth lie. The last frame is always kept
- * whatever the stride lands on — it is the frame the check's sweep stopped at, and
- * the one a reviewer looks at first.
- *
- * Keeping it costs a frame rather than the cap. The stride rounds up, so a section
- * whose length is an exact multiple of the cap strides over exactly that many
- * frames and stops one stride short of the end: the last frame still has to come
- * in, and the cap is a ceiling rather than a target. It takes the place of the
- * final strided frame — the frame nearest it, so the swap opens the smallest gap
- * available anywhere in the section — and is measured from where that frame was
- * measured from, which is what keeps the kept deltas summing to the elapsed time.
- *
- * What survives is then re-expressed against tables of its own, so the file
- * carries what the kept frames draw with and nothing the dropped ones did.
- *
- * Exported for the suite beside this file, which reaches it over frame counts a
- * driven section cannot hand it. The injected recorder decimates in the page as
- * the section runs, halving its kept set the moment it reaches twice this cap, so
- * a written recording is thinned twice and what arrives here is never more than
- * twice the cap. Twice it EXACTLY does arrive, and with it the exact multiple of
- * the cap that the arithmetic above turns on: the page holds up to 599 frames
- * after a halving and its `stop()` appends the section's last frame to them, so a
- * section of 1,198 driven frames hands this 600. The displacement branch is
- * therefore ordinary production behaviour rather than a case only a test can pose.
- */
-export function thinReplay(recording: Recording): Recording {
-  const { frames } = recording;
-  if (frames.length === 0) return recording;
-
-  const stride = Math.max(1, Math.ceil(frames.length / MAX_REPLAY_FRAMES));
-  const kept: RecordedFrame[] = [];
-  let previousMs = frames[0].timeMs - frames[0].deltaMs;
-  const keep = (frame: RecordedFrame): void => {
-    kept.push({ ...frame, deltaMs: frame.timeMs - previousMs });
-    previousMs = frame.timeMs;
-  };
-
-  for (let i = 0; i < frames.length; i += stride) keep(frames[i]);
-  const last = frames[frames.length - 1];
-  if (kept[kept.length - 1].count !== last.count) {
-    if (kept.length >= MAX_REPLAY_FRAMES) {
-      // The stride spent the whole budget on the way to a frame short of the end.
-      // Drop the frame it stopped on, and put the moment back to the one before
-      // it: a kept frame's restated delta is measured from exactly that moment, so
-      // subtracting it recovers it, and the last frame's own delta then spans the
-      // gap the two of them leave.
-      const displaced = kept[kept.length - 1];
-      kept.length -= 1;
-      previousMs = displaced.timeMs - displaced.deltaMs;
-    }
-    keep(last);
-  }
-
-  return retable(recording, kept);
-}
-
-/**
- * Write a recording out, reporting rather than raising anything that goes wrong.
- *
- * A capture that closed no frames writes nothing: a file holding an empty frame
- * list would be collected as an output that turned up, and the run would tell the
- * reviewer there is a replay to watch and then open the player on nothing.
- *
- * What lands on disk is gzip rather than raw JSON. A recording is text made
- * almost entirely of numbers and repeated field names, which gzip takes down to a
- * fraction of its size, and every host that serves one declares the encoding so
- * the browser inflates it before the player sees it. The document inside is the
- * same one.
- *
- * Never throws. A file that cannot be written says something about the machine the
- * validators ran on, and failing the point over it would blame the build for the
- * host's problem.
- */
-function writeReplay(destination: string, recording: Recording | null): void {
-  if (recording === null || recording.frames.length === 0) return;
-  try {
-    mkdirSync(dirname(destination), { recursive: true });
-    writeFileSync(destination, gzipSync(JSON.stringify(thinReplay(recording))));
-  } catch (error) {
-    console.warn(
-      `arc foundry: could not write ${destination}: ${String(error)}`,
-    );
-  }
-}
-
-/**
- * Record the frames `scenario` drives and keep them as the review item's
- * `outputId` output, handing back whatever the scenario returned.
- *
- * Wrap the drive, not the arrangement:
- *
- * ```ts
- * const point = await captureReplay(h, "goal", () => driveGoal(h));
- * assertEqual(point.hit, true);
- * ```
- *
- * The assertions stay exactly where they were and read exactly what they did.
- */
-export async function captureReplay<T>(
-  h: Harness,
-  outputId: string,
-  scenario: () => T | Promise<T>,
-): Promise<T> {
-  const destination = mediaDestination(outputId, "json.gz");
-  if (destination === null) return scenario();
-
-  await h.page.evaluate(
-    (design) =>
-      (
-        window as unknown as { __foundryRec: { arm(d: unknown): boolean } }
-      ).__foundryRec.arm(design),
-    { width: STAGE_W, height: STAGE_H, background: REPLAY_BACKGROUND },
-  );
-  try {
-    return await scenario();
-  } finally {
-    // In a `finally`, so a scenario that failed still leaves its evidence behind.
-    const recording = (await h.page.evaluate(() =>
-      (
-        window as unknown as { __foundryRec: { disarm(): unknown } }
-      ).__foundryRec.disarm(),
-    )) as Recording | null;
-    writeReplay(destination, recording);
-  }
-}
-
-/**
- * Keep the picture currently on the canvas as the review item's `outputId` output.
- *
- * The companion to {@link captureReplay}, for a point whose evidence is one
- * PICTURE rather than a stretch of motion: which screen the game opened on, what
- * the inspector drew for a selected structure, where the letterbox bars fell.
- *
- * What is written is whatever the last frame that RAN left behind, so call it
- * after the frame that poses the thing under test and before the assertions, so a
- * check that fails still leaves the picture that shows why. Nothing here can
- * change a verdict: outside a run this is a no-op, and a still that cannot be
- * written is reported as an output that never turned up.
- */
-export async function captureStill(
-  h: Harness,
-  outputId: string,
-): Promise<void> {
-  const destination = mediaDestination(outputId, "png");
-  if (destination === null) return;
-  try {
-    mkdirSync(dirname(destination), { recursive: true });
-    await h.page.screenshot({ path: destination, type: "png" });
-  } catch (error) {
-    console.warn(
-      `arc foundry: could not write ${destination}: ${String(error)}`,
-    );
-  }
-}
-
-/* -------------------------------------------------------------------------- */
-/* Cues                                                                       */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Record every sound the build emits from now on, stamped with the frame of the
- * drive it sounded on.
- *
- * WHAT IS OBSERVED, AND WHY IT IS THE FAIR READING. `specs/ui.md` requires one
- * cue per event, played on the update its event happens and at most once on that
- * update, and says nothing at all about how a build makes a sound — under this
- * engine the whole audio layer is the build's. So `audio-init.js` watches the two
- * doors a browser can emit sound through (a Web Audio source being `start()`ed,
- * whatever kind it is, and an `<audio>` element being played) and counts what
- * goes through them; the harness brackets each driven frame around that count, so
- * a sound is attributed to the frame that produced it. A firing blip made of two
- * oscillators counts as two, which is why a check asserts that a frame sounded
- * rather than how many times: the number of sources is the build's business and
- * the specification never fixed it.
- *
- * WHAT IS LOST HERE THAT AN ENGINE GIVES. The cue's NAME. Under an engine the
- * game asks the bus for `CUES.kill` by name and the bus announces it, so a build
- * that plays its leak blip on every kill is caught. There is no bus here to ask,
- * so these checks confirm that a sound was emitted and on which frame, and a
- * reviewer decides by ear whether the twelve are told apart. That is a real
- * reduction, and the alternative — inferring the cue from the waveform the
- * reference happens to use — would grade builds against an implementation rather
- * than against the specification.
- *
- * THE MUSIC BED IS A SOUND LIKE ANY OTHER. `specs/ui.md` loops `music` under the
- * yard from the first build phase onward, and a loop restarting is a source
- * starting, so a check that counts sounds over a long stretch must either park
- * itself on a frame it can attribute or read the frame a cue landed on rather
- * than the total.
- */
-export function watchCues(h: Harness): TimedCue[] {
-  const played: TimedCue[] = [];
-  harnessCues.get(h)?.push(played);
-  return played;
-}
+/** What a sweep found: whether the predicate ever held, and where it stopped. */
+export type UntilResult = BaseUntilResult<FoundrySnapshot>;
 
 /* -------------------------------------------------------------------------- */
 /* Reading a snapshot                                                         */
@@ -1789,15 +628,23 @@ export async function openYard(
 }
 
 /**
- * Put away whatever is held on the cursor, as `back` does.
+ * Put away whatever is held on the cursor.
  *
  * `placeRock` goes through the real continuous-placement path, so it re-arms the
  * press the moment it lands and the panel then shows the held-rock read rather
- * than the inspector. A check that placed a rock and wants to read the inspector
- * clears the hand first — and `back` is what a player presses to do it.
+ * than the inspector. A check that placed a rock and is about anything other than
+ * the held rock puts it away first.
+ *
+ * THE ATOMIC POSE, NOT THE `back` KEY. `specs/instrumentation.md` carries
+ * `clearHeld` for exactly this, and it is what a scenario reaches for: the `back`
+ * action of `specs/controls.md` clears the hand too, but a check that routed
+ * through it would fail on a build whose `back` binding is wrong, on every point
+ * about the press, the combines, the panel and the campaign — defects belonging
+ * to `input/back-held-rock` and `press/cancel-is-free` alone. Those two suites
+ * press `back` themselves, because the control is what they are about.
  */
 export async function clearHand(h: Harness): Promise<void> {
-  await pressAction(h, "back");
+  await h.debug.clearHeld();
 }
 
 /** Refill the level's stamp allowance, for a scenario that needs a sixth rock. */
@@ -1942,8 +789,8 @@ export interface UnitPose {
  * wave whose spawn schedule is empty: the units on the yard are exactly the ones
  * released here and nothing else arrives. That wave clears the ordinary way, when
  * every one of them has died or leaked, and clearing it pays the ordinary
- * wave-clear bonus — so a check reading `charge` after a kill either keeps a
- * bystander alive with {@link holdWaveOpen} or expects the bounty and the bonus.
+ * wave-clear bonus — so a check reading `charge` after a kill either holds the
+ * resolution with {@link holdWaveOpen} or expects the bounty and the bonus.
  *
  * The poses are applied in the order `specs/instrumentation.md` leaves them
  * independent in: the checkpoint first, because setting it moves the unit
@@ -2007,15 +854,26 @@ export async function parkUnit(
 }
 
 /**
- * A held unit at the map's entry that nothing is shooting at, so the live wave
- * `spawnUnit` opened cannot clear while the check is reading.
+ * Open a live wave and hold its clear-and-pay resolution, so nothing the check is
+ * reading moves because the wave ended under it.
  *
- * Clearing a wave pays the wave-clear bonus, and a bonus landing in the middle of
- * a check that is reading `charge` would be indistinguishable from the bounty it
- * was measuring. Keeping one unit alive is what separates them.
+ * Clearing a wave pays the wave-clear bonus and opens the next build phase, and a
+ * bonus landing in the middle of a check that is reading `charge` would be
+ * indistinguishable from the bounty it was measuring.
+ *
+ * A GATE ON THE RUN, NOT A BYSTANDER. `specs/instrumentation.md` carries
+ * `setWaveHold` for exactly this, and `setPhase` for putting the run into the
+ * phase without releasing anything. What this replaces is a Mote parked at the
+ * map entry and frozen — an entity kept quiet by the build's own freeze and by
+ * the test gun's range not reaching it, which is the containment the validator
+ * guide rules out: a build with a leaky freeze would let it walk, leak and clear
+ * the wave, and every scenario that staged it would report a defect belonging to
+ * the freeze check. The gate holds one faculty and nothing else, so a scenario
+ * holds only the units its requirement is about.
  */
-export async function holdWaveOpen(h: Harness): Promise<number> {
-  return releaseUnit(h, "mote", { frozen: true });
+export async function holdWaveOpen(h: Harness): Promise<void> {
+  await h.debug.setPhase("wave");
+  await h.debug.setWaveHold(true);
 }
 
 /**
@@ -2061,10 +919,107 @@ export function controlCenter(rect: ControlRect): Point {
   return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
 }
 
+/**
+ * A point on the stage inside none of `rects`.
+ *
+ * `specs/ui.md` gives an edge "outside every region" an outcome of its own, and
+ * where a menu draws its entries is the build's, so a point outside every one of
+ * them is SEARCHED FOR over the stage rather than named here: a build that draws
+ * its menu somewhere else still has the point decided against its own layout. The
+ * stage is walked on a coarse lattice, inset from the edges so the point is one a
+ * player could really put a finger on, and the first square inside no reported
+ * rectangle is taken.
+ */
+export function pointOutside(rects: readonly ControlRect[]): Point {
+  const STEP = 20;
+  const INSET = 10;
+  for (let y = INSET; y <= STAGE_H - INSET; y += STEP) {
+    for (let x = INSET; x <= STAGE_W - INSET; x += STEP) {
+      const covered = rects.some(
+        (r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h,
+      );
+      if (!covered) return { x, y };
+    }
+  }
+  return fail(
+    "somewhere on the stage outside every reported menu rectangle",
+    "every point covered by one",
+  );
+}
+
 /** A press and a release at a logical point: one click. */
 export async function clickAt(h: Harness, x: number, y: number): Promise<void> {
   await h.debug.pointerDown(x, y);
   await h.debug.pointerUp();
+}
+
+/**
+ * Move the pointer onto a logical point, without pressing.
+ *
+ * `specs/controls.md` gives a bare move effects of its own — the menu highlight
+ * follows it, the held footprint snaps under it — so a check about a hover delivers
+ * the move alone and nothing else.
+ */
+export async function hoverAt(h: Harness, x: number, y: number): Promise<void> {
+  await h.debug.pointerMove(x, y);
+}
+
+/** Move the pointer onto the center of a reported control rectangle. */
+export function hoverControl(h: Harness, rect: ControlRect): Promise<void> {
+  const point = controlCenter(rect);
+  return hoverAt(h, point.x, point.y);
+}
+
+/**
+ * Press at one logical point and release at another.
+ *
+ * The gesture `specs/ui.md` takes no entry for: "Two edges in different regions take
+ * no entry, and an edge outside every region takes none." `pointerUp` releases at
+ * the position the pointer is at, so the release is placed by moving there first.
+ */
+export async function pointerDrag(
+  h: Harness,
+  from: Point,
+  to: Point,
+): Promise<void> {
+  await h.debug.pointerDown(from.x, from.y);
+  await h.debug.pointerMove(to.x, to.y);
+  await h.debug.pointerUp();
+}
+
+/** A touch contact landing and lifting at one logical point: a tap. */
+export async function tapAt(h: Harness, x: number, y: number): Promise<void> {
+  await h.debug.touchStart(x, y);
+  await h.debug.touchEnd();
+}
+
+/** Tap the center of a reported control rectangle. */
+export function tapControl(h: Harness, rect: ControlRect): Promise<void> {
+  const point = controlCenter(rect);
+  return tapAt(h, point.x, point.y);
+}
+
+/**
+ * Land a touch contact at one logical point and travel it to another, leaving it
+ * down, so what the travel alone changes can be read before the lift.
+ */
+export async function touchOnto(
+  h: Harness,
+  from: Point,
+  to: Point,
+): Promise<void> {
+  await h.debug.touchStart(from.x, from.y);
+  await h.debug.touchMove(to.x, to.y);
+}
+
+/** Land a contact at one logical point, travel it to another, and lift it there. */
+export async function touchDrag(
+  h: Harness,
+  from: Point,
+  to: Point,
+): Promise<void> {
+  await touchOnto(h, from, to);
+  await h.debug.touchEnd();
 }
 
 /** A click at the center of a tile. */
@@ -2160,10 +1115,97 @@ export async function statusControl(
   return found as StatusControl;
 }
 
+/**
+ * The status bar's read carrying that name, or a failure naming what was drawn.
+ *
+ * `specs/hud.md` fixes the bar's reads and their left-to-right order and leaves
+ * each one's rectangle to the build, so this is how a check finds a read without
+ * knowing where it was drawn — and the rectangle it reports is where the read is,
+ * so a pointer at its center is over it.
+ */
+export async function statusReadout(
+  h: Harness,
+  readout: ReadoutName,
+): Promise<StatusReadout> {
+  const drawn = await h.debug.statusReadouts();
+  const found = drawn.find((r) => r.readout === readout);
+  assertTruthy(
+    found,
+    `statusReadouts() to carry a \`${readout}\` read ` +
+      `(specs/instrumentation.md); it carries ${describeReadouts(drawn)}`,
+  );
+  return found as StatusReadout;
+}
+
+/** Move the pointer to the center of the bar's read carrying that name. */
+export async function hoverReadout(
+  h: Harness,
+  readout: ReadoutName,
+): Promise<StatusReadout> {
+  const read = await statusReadout(h, readout);
+  const point = controlCenter(read);
+  await h.debug.pointerMove(point.x, point.y);
+  return read;
+}
+
+/**
+ * Every ingredient cell the recipe book is drawing for one combination tower, in
+ * the order `specs/combinations.md` lists that recipe's ingredients.
+ *
+ * The book's layout is the build's, so the build reports which cell it drew where
+ * and in which of the three states `specs/hud.md` fixes. A check decides the state
+ * from the report and reads pixels only inside the reported rectangle, for the
+ * half of the requirement that is about the picture.
+ */
+export async function recipeCells(
+  h: Harness,
+  combo: ComboId,
+): Promise<RecipeEntry[]> {
+  const drawn = await h.debug.recipeEntries();
+  const cells = drawn
+    .filter((entry) => entry.combo === combo)
+    .sort((a, b) => a.ingredient - b.ingredient);
+  assertTruthy(
+    cells.length > 0,
+    `recipeEntries() to carry the ${combo}'s ingredient cells while the recipe ` +
+      `book is open (specs/instrumentation.md); it carries ` +
+      `${drawn.length === 0 ? "none" : `${drawn.length} cells, for ${[...new Set(drawn.map((e) => e.combo))].join(", ")}`}`,
+  );
+  return cells;
+}
+
+/**
+ * One ingredient cell of one recipe, by the ingredient's index within it.
+ *
+ * The index is `specs/combinations.md`'s own order, counted from `0`, so a recipe
+ * naming the same type twice is still two cells and a check can name either.
+ */
+export async function recipeCell(
+  h: Harness,
+  combo: ComboId,
+  ingredient: number,
+): Promise<RecipeEntry> {
+  const cells = await recipeCells(h, combo);
+  const found = cells.find((entry) => entry.ingredient === ingredient);
+  assertTruthy(
+    found,
+    `recipeEntries() to carry the ${combo}'s ingredient ${ingredient} ` +
+      `(specs/instrumentation.md); it carries ingredients ` +
+      `${cells.map((entry) => entry.ingredient).join(", ")}`,
+  );
+  return found as RecipeEntry;
+}
+
 function describeControls(drawn: readonly { action: string }[]): string {
   return drawn.length === 0
     ? "none"
     : drawn.map((c) => `\`${c.action}\``).join(", ");
+}
+
+function describeReadouts(drawn: readonly { readout: string }[]): string {
+  return drawn.length === 0
+    ? "none"
+    : drawn.map((r) => `\`${r.readout}\``).join(", ");
 }
 
 /** Find the inspector's control by action and press its center. */
@@ -2244,4 +1286,435 @@ export async function openMenu(
 ): Promise<MenuButton[]> {
   await h.debug.setScreen(screen);
   return h.debug.menuButtons();
+}
+
+/* -------------------------------------------------------------------------- */
+/* What a check reads off one drawn frame                                     */
+/* -------------------------------------------------------------------------- */
+//
+// Everything below is a pure function over one frame's recorded operations or
+// over a grid of sampled pixels, and every category that decides a point from
+// what the build DREW reads it from here.
+//
+// WHY A FRAME'S TEXT IS NOT SIMPLY `callsTo(calls, "fillText")`. Two reasons, and
+// a suite that ignored either would grade a build's layout choices rather than
+// its reads.
+//
+//  1. A BUILD DRAWS UNDER ITS OWN TRANSFORM. `specs/overview.md` fixes the three
+//     regions in the stage's logical units and says nothing about how a build
+//     gets its pen there, so a bar drawn at a translated origin has to read the
+//     same as one drawn in stage coordinates. Every anchor below is therefore
+//     mapped through the transform in force at the call, and a check asks for the
+//     text of a REGION rather than for the arguments of a call.
+//  2. A BUILD IS FREE TO LETTER-SPACE. A label drawn one character at a time is
+//     six `fillText` calls and the word `PAUSED` appears in none of them. So the
+//     draws of a baseline are joined back into the line they read as: two single
+//     characters close together are one word, and anything else is separated —
+//     which is also what stops two neighbouring FIGURES from reading as one long
+//     number.
+
+/* -------------------------------------------------------------------------- */
+/* Regions                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/** A rectangle on the `1280 x 720` stage, as a half-open extent. */
+export interface Region {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/** The status bar (`specs/overview.md`). */
+export const BAR: Region = { x0: 0, y0: 0, x1: STAGE_W, y1: BAR_H };
+
+/** The build panel (`specs/overview.md`). */
+export const PANEL: Region = {
+  x0: PANEL_X,
+  y0: BAR_H,
+  x1: PANEL_X + PANEL_W,
+  y1: STAGE_H,
+};
+
+/** The yard (`specs/overview.md`). */
+export const YARD: Region = {
+  x0: BOARD_X,
+  y0: BOARD_Y,
+  x1: BOARD_X + BOARD_W,
+  y1: BOARD_Y + BOARD_H,
+};
+
+/** A point falls inside a region. */
+export function inRegion(region: Region, x: number, y: number): boolean {
+  return x >= region.x0 && x <= region.x1 && y >= region.y0 && y <= region.y1;
+}
+
+/* -------------------------------------------------------------------------- */
+/* The transform in force                                                     */
+/* -------------------------------------------------------------------------- */
+
+type Matrix = [number, number, number, number, number, number];
+
+const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
+
+function multiply(m: Matrix, n: Matrix): Matrix {
+  return [
+    m[0] * n[0] + m[2] * n[1],
+    m[1] * n[0] + m[3] * n[1],
+    m[0] * n[2] + m[2] * n[3],
+    m[1] * n[2] + m[3] * n[3],
+    m[0] * n[4] + m[2] * n[5] + m[4],
+    m[1] * n[4] + m[3] * n[5] + m[5],
+  ];
+}
+
+function at(m: Matrix, x: number, y: number): { x: number; y: number } {
+  return { x: m[0] * x + m[2] * y + m[4], y: m[1] * x + m[3] * y + m[5] };
+}
+
+/** `count` numbers from `args`, starting at `from`, or `null`. */
+function numbers(
+  args: readonly unknown[],
+  from: number,
+  count: number,
+): number[] | null {
+  const taken: number[] = [];
+  for (let i = from; i < from + count; i += 1) {
+    const value = args[i];
+    if (typeof value !== "number" || !Number.isFinite(value)) return null;
+    taken.push(value);
+  }
+  return taken;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Text                                                                       */
+/* -------------------------------------------------------------------------- */
+
+/** One `fillText` or `strokeText`, with its anchor mapped onto the stage. */
+export interface TextDraw {
+  text: string;
+  x: number;
+  y: number;
+  /** Where it sat in the frame's operations, so two draws can be ordered. */
+  index: number;
+}
+
+/** One operation of a frame, with the transform that was in force at it. */
+interface Placed {
+  call: { method: string; args: unknown[] };
+  matrix: Matrix;
+  index: number;
+}
+
+/**
+ * Every call of a frame, each paired with the transform in force when it ran.
+ *
+ * The transform is tracked rather than assumed, because a build is free to draw
+ * its yard, its bar, and its panel from any origin it likes and the
+ * specification fixes only where the result lands.
+ */
+function placedCalls(calls: readonly DrawCall[]): Placed[] {
+  const placed: Placed[] = [];
+  const stack: Matrix[] = [];
+  let m: Matrix = IDENTITY;
+  calls.forEach((call, index) => {
+    if (call.kind !== "call") return;
+    const { method, args } = call;
+    if (method === "save") {
+      stack.push(m);
+    } else if (method === "restore") {
+      m = stack.pop() ?? IDENTITY;
+    } else if (method === "translate") {
+      const v = numbers(args, 0, 2);
+      if (v) m = multiply(m, [1, 0, 0, 1, v[0]!, v[1]!]);
+    } else if (method === "scale") {
+      const v = numbers(args, 0, 2);
+      if (v) m = multiply(m, [v[0]!, 0, 0, v[1]!, 0, 0]);
+    } else if (method === "rotate") {
+      const v = numbers(args, 0, 1);
+      if (v) {
+        const c = Math.cos(v[0]!);
+        const s = Math.sin(v[0]!);
+        m = multiply(m, [c, s, -s, c, 0, 0]);
+      }
+    } else if (method === "transform") {
+      const v = numbers(args, 0, 6);
+      if (v) m = multiply(m, v as Matrix);
+    } else if (method === "setTransform") {
+      const v = numbers(args, 0, 6);
+      m = v ? (v as Matrix) : IDENTITY;
+    } else if (method === "resetTransform") {
+      m = IDENTITY;
+    }
+    placed.push({ call: { method, args }, matrix: m, index });
+  });
+  return placed;
+}
+
+/** Every text draw of a frame, each anchored where it actually landed. */
+export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
+  const draws: TextDraw[] = [];
+  for (const { call, matrix, index } of placedCalls(calls)) {
+    if (call.method !== "fillText" && call.method !== "strokeText") continue;
+    const text = call.args[0];
+    const v = numbers(call.args, 1, 2);
+    if (typeof text !== "string" || !v) continue;
+    const point = at(matrix, v[0]!, v[1]!);
+    draws.push({ text, x: point.x, y: point.y, index });
+  }
+  return draws;
+}
+
+/** One `drawImage`, with the destination it blitted to mapped onto the stage. */
+export interface ImageDraw {
+  /** The destination rectangle's bounding box on the stage. */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Its center, which is where a rotated head lands whatever it was rotated by. */
+  cx: number;
+  cy: number;
+  /** Where it sat in the frame's operations, so two draws can be ordered. */
+  index: number;
+}
+
+/**
+ * Every image a frame blitted, mapped onto the stage.
+ *
+ * A `drawImage` carries its destination in the last two or four of its
+ * arguments; the three-argument form leaves the size to the image itself, which
+ * the recorder cannot see, so that form reports a point rather than a rectangle.
+ */
+export function imageDraws(calls: readonly DrawCall[]): ImageDraw[] {
+  const draws: ImageDraw[] = [];
+  for (const { call, matrix, index } of placedCalls(calls)) {
+    if (call.method !== "drawImage") continue;
+    const args = call.args;
+    const box =
+      args.length >= 9
+        ? numbers(args, 5, 4)
+        : args.length >= 5
+          ? numbers(args, 1, 4)
+          : (() => {
+              const point = numbers(args, 1, 2);
+              return point === null ? null : [point[0]!, point[1]!, 0, 0];
+            })();
+    if (box === null) continue;
+    const [dx, dy, dw, dh] = box as [number, number, number, number];
+    const corners = [
+      at(matrix, dx, dy),
+      at(matrix, dx + dw, dy),
+      at(matrix, dx, dy + dh),
+      at(matrix, dx + dw, dy + dh),
+    ];
+    const xs = corners.map((c) => c.x);
+    const ys = corners.map((c) => c.y);
+    const center = at(matrix, dx + dw / 2, dy + dh / 2);
+    draws.push({
+      x: Math.min(...xs),
+      y: Math.min(...ys),
+      w: Math.max(...xs) - Math.min(...xs),
+      h: Math.max(...ys) - Math.min(...ys),
+      cx: center.x,
+      cy: center.y,
+      index,
+    });
+  }
+  return draws;
+}
+
+/** How far apart two draws may sit and still read as one letter-spaced word. */
+const LETTER_GAP = 24;
+
+/** How far apart two baselines may sit and still read as one line. */
+const LINE_GAP = 3;
+
+/**
+ * The lines a region's text reads as, top to bottom.
+ *
+ * Draws sharing a baseline are one line, ordered left to right, and two of them
+ * are run together only when both are single characters set close enough to be
+ * letter spacing. Everything else is separated by a space, so `473` beside `17`
+ * never reads as `47317`.
+ */
+export function textLines(
+  calls: readonly DrawCall[],
+  region: Region,
+): string[] {
+  const draws = textDraws(calls)
+    .filter((d) => inRegion(region, d.x, d.y))
+    .sort((a, b) => (a.y === b.y ? a.x - b.x : a.y - b.y));
+  const lines: string[] = [];
+  let baseline: number | null = null;
+  let row: TextDraw[] = [];
+  const close = (): void => {
+    if (row.length === 0) return;
+    const ordered = [...row].sort((a, b) => a.x - b.x);
+    let line = "";
+    let previous: TextDraw | null = null;
+    for (const draw of ordered) {
+      if (previous !== null) {
+        const spaced =
+          previous.text.length <= 1 &&
+          draw.text.length <= 1 &&
+          draw.x - previous.x < LETTER_GAP;
+        if (!spaced) line += " ";
+      }
+      line += draw.text;
+      previous = draw;
+    }
+    lines.push(line);
+    row = [];
+  };
+  for (const draw of draws) {
+    if (baseline === null || Math.abs(draw.y - baseline) > LINE_GAP) {
+      close();
+      baseline = draw.y;
+    }
+    row.push(draw);
+  }
+  close();
+  return lines;
+}
+
+/** Every line of a region, joined, as one reading. */
+export function textIn(calls: readonly DrawCall[], region: Region): string {
+  return textLines(calls, region).join("\n");
+}
+
+/**
+ * One reading of a piece of text: its letters and its digits, and nothing else.
+ *
+ * Case, spacing, and punctuation all come off, on both sides of a comparison,
+ * because a build is free to letter-space a label, to wrap a long line, and to
+ * set `Arc-Node` as `ARC NODE`. What the specification fixes is the words.
+ */
+function normalize(text: string): string {
+  return text.toUpperCase().replace(/[^A-Z0-9]+/g, "");
+}
+
+/** A region's text carries `needle`, read that way. */
+export function drew(
+  calls: readonly DrawCall[],
+  region: Region,
+  needle: string,
+): boolean {
+  return normalize(textLines(calls, region).join(" ")).includes(
+    normalize(needle),
+  );
+}
+
+/** `1,234` reads as one figure rather than as `1` beside `234`. */
+function stripGrouping(line: string): string {
+  let out = line;
+  for (;;) {
+    const next = out.replace(/(\d),(\d{3})(?!\d)/g, "$1$2");
+    if (next === out) return out;
+    out = next;
+  }
+}
+
+/** Every number a region's text draws, in reading order. */
+export function figures(calls: readonly DrawCall[], region: Region): number[] {
+  const found: number[] = [];
+  for (const line of textLines(calls, region)) {
+    for (const match of stripGrouping(line).matchAll(/\d+(?:\.\d+)?/g)) {
+      found.push(Number(match[0]));
+    }
+  }
+  return found;
+}
+
+/**
+ * The figure a region draws for `value`, or a failure naming what it drew.
+ *
+ * `tolerance` is the room a build has to round: `specs/pathing.md` reports a
+ * route length in tiles as a real number, so a bar that draws `168` for `168.4`
+ * has drawn the figure.
+ */
+export function drawnFigure(
+  calls: readonly DrawCall[],
+  region: Region,
+  value: number,
+  what: string,
+  tolerance = 0.5,
+): number {
+  const drawn = figures(calls, region);
+  const near = drawn
+    .filter((f) => Math.abs(f - value) <= tolerance)
+    .sort((a, b) => Math.abs(a - value) - Math.abs(b - value));
+  if (near.length === 0) {
+    fail(
+      `${what} drawn as ${value}${tolerance === 0 ? "" : ` (± ${tolerance})`}`,
+      drawn,
+    );
+  }
+  return near[0]!;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Pixels                                                                     */
+/* -------------------------------------------------------------------------- */
+
+/** A rectangle a reading reports, as `specs/instrumentation.md` gives it. */
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** The distance two pixels are told apart by, of the 441 the cube spans. */
+export const DISTINCT = 50;
+
+/** A lattice of logical points inside a rectangle, `step` units apart. */
+export function lattice(rect: Rect, step = 2): { x: number; y: number }[] {
+  const points: { x: number; y: number }[] = [];
+  for (let y = rect.y + step / 2; y < rect.y + rect.h; y += step) {
+    for (let x = rect.x + step / 2; x < rect.x + rect.w; x += step) {
+      points.push({ x, y });
+    }
+  }
+  return points;
+}
+
+/** The straight-line distance between two colours, ignoring alpha. */
+export function rgbDistance(a: Pixel, b: Pixel): number {
+  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+}
+
+/** The furthest apart any one of two samplings of the same points reads. */
+export function maxDistance(
+  before: readonly Pixel[],
+  after: readonly Pixel[],
+): number {
+  let worst = 0;
+  for (let i = 0; i < Math.min(before.length, after.length); i += 1) {
+    worst = Math.max(worst, rgbDistance(before[i]!, after[i]!));
+  }
+  return worst;
+}
+
+/** How many of two samplings of the same points read as told apart. */
+export function changedPoints(
+  before: readonly Pixel[],
+  after: readonly Pixel[],
+  threshold = DISTINCT,
+): number {
+  let changed = 0;
+  for (let i = 0; i < Math.min(before.length, after.length); i += 1) {
+    if (rgbDistance(before[i]!, after[i]!) > threshold) changed += 1;
+  }
+  return changed;
+}
+
+/** Draw one frame and sample it at every point given. */
+export async function sample(
+  h: Harness,
+  points: readonly { x: number; y: number }[],
+): Promise<Pixel[]> {
+  await h.advance(1);
+  return h.pixels(points);
 }

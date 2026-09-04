@@ -12,7 +12,6 @@
 // nothing held on the cursor, and both fields are read back.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertDeepEqual, assertEqual, assertNull } from "../assert";
 import {
   captureStill,

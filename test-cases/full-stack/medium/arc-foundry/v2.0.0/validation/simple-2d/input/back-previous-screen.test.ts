@@ -17,16 +17,15 @@
 // missing rather than reporting that "back is broken".
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  keyFor,
-  pressAction,
   type Harness,
+  pressAction,
   type Screen,
 } from "../harness";
+import { keyFor } from "../constants";
 
 /** Each screen `specs/ui.md` gives a previous screen, and the screen it is. */
 const ROUTES: { from: Screen; to: Screen }[] = [

@@ -28,7 +28,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-
 import { loadImage, type Image } from "@napi-rs/canvas";
 
 /** The repository this project sits in, which is where `assets/` is rooted. */

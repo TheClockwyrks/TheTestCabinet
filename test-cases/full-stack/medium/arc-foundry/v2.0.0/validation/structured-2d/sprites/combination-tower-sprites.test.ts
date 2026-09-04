@@ -8,7 +8,7 @@
 import { it } from "vitest";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, openYard, standCombo } from "../harness";
-import { COMBO_IDS } from "../../src/constants";
+import { COMBO_IDS } from "../constants";
 import { canvasOf, comboBase, comboHead } from "./png";
 import { serveProducedAssets } from "./host";
 

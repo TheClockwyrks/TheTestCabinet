@@ -15,18 +15,15 @@
 // released unit is grounded out at the collector and the run is read again.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual, assertLength } from "../assert";
 import {
-  COLLECTOR_WAYPOINT,
   captureReplay,
   createHarness,
-  mapById,
+  type Harness,
   openYard,
   releaseUnit,
-  tileCenter,
-  type Harness,
 } from "../harness";
+import { COLLECTOR_WAYPOINT, mapById, tileCenter } from "../constants";
 
 /** The wave the run is posed at: deep enough to compose a crowd of its own. */
 const WAVE = 6;

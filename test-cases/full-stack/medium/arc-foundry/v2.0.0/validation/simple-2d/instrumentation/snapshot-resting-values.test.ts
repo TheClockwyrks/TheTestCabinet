@@ -14,7 +14,6 @@
 // yard. This one reads it where the game holds nothing at all.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import {
   assertDeepEqual,
   assertEqual,
@@ -60,6 +59,11 @@ it("reports every unused field at its resting value on the title screen", async 
   // Off the yard there is no phase, no wave, and no rating.
   assertNull(s.phase, "snapshot().phase off the yard");
   assertEqual(s.wave, 0, "snapshot().wave before wave 1");
+  assertEqual(
+    s.waveHeld,
+    false,
+    "snapshot().waveHeld with nothing holding the wave's resolution",
+  );
   assertEqual(s.mazeRating, 0, "snapshot().mazeRating before the finale");
 
   // Nothing is selected and nothing is armed.

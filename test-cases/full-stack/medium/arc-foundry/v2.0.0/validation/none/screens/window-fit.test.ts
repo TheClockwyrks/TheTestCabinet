@@ -6,13 +6,12 @@
 // "the uniform scale that preserves the aspect ratio, the letterboxed centering,
 // and the device pixel ratio", with "the complete stage ... on screen at every
 // window size, on load and at any pixel density, with nothing clipped and no
-// scrolling camera" — and adds that "the letterbox bars around the stage carry the
-// stage's background color". An engineless build derives all of that itself, so
-// there is no viewport map to ask it for. Asking would be asking the build to
-// grade itself, so the harness computes the fit the SPECIFICATION requires
+// scrolling camera". An engineless build derives all of that itself, so there is
+// no viewport map to ask it for. Asking would be asking the build to grade
+// itself, so the harness computes the fit the SPECIFICATION requires
 // (`fitViewport`) and the readings below are taken against that.
 //
-// THREE READINGS, OVER SIX WINDOWS.
+// TWO READINGS, OVER SIX WINDOWS.
 //
 //   The arithmetic. The canvas's backing store has to be the window at the device
 //   pixel ratio, and the stage has to fit inside it under one uniform scale, whole
@@ -24,9 +23,9 @@
 //   the specified fit. A build that scaled non-uniformly, that cropped, that
 //   ignored the pixel ratio, or that drew in device pixels puts something other
 //   than a structure at the first point.
-//   The bars. On a window with letterboxing, the bar pixels are sampled in device
-//   coordinates — they are outside the logical space — and held against the
-//   nearest of several sampled patches of the stage's own background.
+//
+// What the LETTERBOX BARS are filled with is a second requirement of its own, and
+// `screens/letterbox-bars` decides that.
 //
 // EACH SHAPE IS A WINDOW OF ITS OWN. A device pixel ratio belongs to a browser
 // context rather than to a page, so `createHarness` opens one per shape and the
@@ -46,9 +45,8 @@ import {
   openYard,
   standComponent,
   type Harness,
-  type Viewport,
 } from "../harness";
-import { DISTINCT_MIN, colorDistance, sampleColor, toRgb } from "./reading";
+import { DISTINCT_MIN, colorDistance, sampleColor } from "./reading";
 
 /** The window shapes the fit is read over. */
 const SURFACES = [
@@ -88,56 +86,6 @@ const SURFACES = [
 /** Where the structure the picture is read on stands, and an empty tile beside it. */
 const STOOD = { col: 24, row: 15 };
 const BARE = { col: 34, row: 15 };
-
-/**
- * Patches of the stage a letterbox bar is held against.
- *
- * Near the stage's own corners and edge midpoints, where `specs/ui.md` leaves the
- * title screen at its plainest. The bar is compared against the NEAREST of them
- * rather than against any one, because the look is the build's and a screen shaded
- * toward its edges has no single background colour, while every plain patch shows
- * the colour the stage was cleared to through that shading.
- */
-const GROUND_POINTS: readonly { x: number; y: number }[] = [
-  { x: 20, y: 20 },
-  { x: STAGE_W - 20, y: 20 },
-  { x: 20, y: STAGE_H - 20 },
-  { x: STAGE_W - 20, y: STAGE_H - 20 },
-  { x: 20, y: STAGE_H / 2 },
-  { x: STAGE_W - 20, y: STAGE_H / 2 },
-];
-
-/**
- * How far a letterbox bar may sit from the nearest sampled patch of the stage's
- * background, in RGB distance: the review item's `25` of `441`.
- *
- * The specification makes the bars the stage's background colour, but a bar holds
- * the raw cleared ground while a patch of stage shows that ground through whatever
- * the build legitimately lays over it — a vignette, a gradient, a faint texture —
- * because the look is the build's. `25` leaves that drift room while staying at
- * half of {@link DISTINCT_MIN}, the scale's own line for something clearly drawn,
- * so a bar carrying anything the game painted still fails.
- */
-const BAR_MATCH_MAX = 25;
-
-/** The middle of each letterbox bar this fit produces, in device pixels. */
-function barPoints(
-  view: Viewport,
-  store: { width: number; height: number },
-): { x: number; y: number }[] {
-  const points: { x: number; y: number }[] = [];
-  if (view.offsetX > 8) {
-    const y = Math.round(store.height / 2);
-    points.push({ x: Math.round(view.offsetX / 2), y });
-    points.push({ x: Math.round(store.width - view.offsetX / 2), y });
-  }
-  if (view.offsetY > 8) {
-    const x = Math.round(store.width / 2);
-    points.push({ x, y: Math.round(view.offsetY / 2) });
-    points.push({ x, y: Math.round(store.height - view.offsetY / 2) });
-  }
-  return points;
-}
 
 let harnesses: Harness[] = [];
 
@@ -232,6 +180,7 @@ it.each(SURFACES)(
     // is under that tile's own logical centre, mapped through the specified fit.
     await openYard(h);
     await standComponent(h, "discharge", 5, STOOD.col, STOOD.row);
+    await captureStill(h, "fit");
     await h.advance(1);
 
     const stood = structureCenter(STOOD.col, STOOD.row);
@@ -248,36 +197,3 @@ it.each(SURFACES)(
     );
   },
 );
-
-it("carries the stage's background out into the letterbox bars", async () => {
-  // 1600 wide against a 1280-wide stage: an 80 CSS pixel bar on each side. The
-  // off-aspect surface is the one worth looking at, and the bars are not visible
-  // on a surface the size of the stage.
-  const h = await surface({ cssWidth: 1600, cssHeight: 720, dpr: 1 });
-  await h.debug.reset();
-  await h.advance(1);
-  await captureStill(h, "fit");
-
-  const store = await h.surface();
-  const view = h.viewport();
-  const bars = barPoints(view, store);
-  assertGreaterThan(
-    bars.length,
-    0,
-    "a window wider than the stage to letterbox it, so there are bars to read " +
-      "(specs/overview.md)",
-  );
-
-  const ground = await Promise.all(
-    GROUND_POINTS.map((point) => sampleColor(h, point.x, point.y)),
-  );
-  for (const bar of bars) {
-    const sampled = toRgb(await h.devicePixel(bar.x, bar.y));
-    assertLessThanOrEqual(
-      Math.min(...ground.map((patch) => colorDistance(sampled, patch))),
-      BAR_MATCH_MAX,
-      `the colour of the letterbox bar at device (${bar.x}, ${bar.y}), which ` +
-        "carries the stage's background colour (specs/overview.md)",
-    );
-  }
-});

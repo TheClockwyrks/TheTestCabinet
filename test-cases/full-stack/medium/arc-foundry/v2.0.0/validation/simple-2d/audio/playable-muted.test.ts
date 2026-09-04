@@ -32,20 +32,18 @@
 // an idle yard.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
-  UNBOUND_KEY,
   captureReplay,
   createHarness,
+  type FoundrySnapshot,
+  type Harness,
   openYard,
   parkUnit,
   pressAction,
   standComponent,
-  structureCenter,
-  type FoundrySnapshot,
-  type Harness,
 } from "../harness";
+import { structureCenter, UNBOUND_KEY } from "../constants";
 
 /** Clear ground, well away from the map's waypoint platforms and its chain. */
 const ANCHOR = { col: 21, row: 17 };

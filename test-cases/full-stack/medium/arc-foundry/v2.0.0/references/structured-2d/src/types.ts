@@ -238,3 +238,24 @@ export interface FxEvent {
   readonly quality?: number;
   readonly big?: boolean;
 }
+
+/**
+ * One ingredient cell of one recipe, as the recipe book drew it.
+ *
+ * `specs/hud.md` leaves the book's layout to the build, so `recipeEntries` reports what
+ * this build chose: which recipe the cell belongs to, which ingredient of it, the
+ * ingredient's own type and quality, the state the yard puts it in, and the rectangle
+ * the cell was drawn at. It is recorded as the book is drawn, because the cell's width
+ * is the width of the text this build laid out.
+ */
+export interface RecipeCell {
+  combo: ComboId;
+  ingredient: number;
+  type: ComponentType;
+  quality: number;
+  state: "selected" | "owned" | "missing";
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}

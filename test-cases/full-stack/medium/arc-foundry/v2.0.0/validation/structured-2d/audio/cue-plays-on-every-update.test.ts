@@ -43,23 +43,20 @@
 // reports one against five.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { CUES } from "../../src/constants";
+import { componentDamage, componentFireRate, CUES } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureReplay,
-  componentDamage,
-  componentFireRate,
   createHarness,
   emptyYard,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
   structureById,
   ticks,
-  watchCues,
-  type Harness,
   type TimedCue,
+  watchCues,
 } from "../harness";
 import { ANCHOR, TARGET } from "./cues";
 

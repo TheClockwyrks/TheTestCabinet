@@ -377,5 +377,20 @@ export interface Clickable {
   // control, so `pressControls()` reports those two and not the inspector's actions
   // drawn under them (specs/instrumentation.md).
   press?: boolean;
+  // Set on one STATUS BAR READ — a read the bar draws that is not a control — so
+  // `statusReadouts()` reports it with the rectangle it was drawn at
+  // (specs/instrumentation.md). A read is never pressed, so it is recorded disabled and
+  // the press loop steps over it.
+  readout?: string;
+  // Set on one INGREDIENT CELL of the recipe book, so `recipeEntries()` reports the
+  // recipe it belongs to, the ingredient's index within that recipe, the ingredient
+  // itself, and the state the cell was drawn in (specs/instrumentation.md).
+  recipe?: {
+    combo: string;
+    ingredient: number;
+    type: string;
+    quality: number;
+    state: string;
+  };
   label?: string;
 }

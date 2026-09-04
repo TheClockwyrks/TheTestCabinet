@@ -19,7 +19,8 @@
 // drew. It is a synchronous read under this engine, because the frame has already
 // run by the time it is taken.
 
-import type { Harness, Point } from "../harness";
+import type { Harness } from "../harness";
+import type { Point } from "../constants";
 
 /** A square lattice of points about `center`, `half` either side, `step` apart. */
 export function lattice(center: Point, half: number, step: number): Point[] {

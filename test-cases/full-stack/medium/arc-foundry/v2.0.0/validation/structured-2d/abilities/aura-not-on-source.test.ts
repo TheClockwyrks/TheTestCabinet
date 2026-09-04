@@ -18,16 +18,15 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureStill,
-  comboDamage,
-  comboDef,
   createHarness,
   emptyYard,
+  type Harness,
   openYard,
   standCombo,
   standComponent,
   structureById,
-  type Harness,
 } from "../harness";
+import { comboDamage, comboDef } from "../constants";
 
 /** Two Regulator footprints, centres sixty apart. */
 const LEFT = { col: 10, row: 10 };

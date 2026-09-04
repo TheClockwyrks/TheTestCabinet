@@ -15,7 +15,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThanOrEqual, assertTrue } from "../assert";
-import { TILE, mapById, tileCenter } from "../constants";
+import { mapById, TILE, tileCenter } from "../constants";
 import {
   captureReplay,
   createHarness,

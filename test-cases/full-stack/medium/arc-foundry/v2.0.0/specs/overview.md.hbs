@@ -36,9 +36,9 @@ game they describe as one cohesive whole.
 ## The runtime
 
 This game stands on no engine, so the runtime under it is yours to write: the frame loop
-and the delta time it measures, the canvas fit, input from both the keyboard and the
-pointer, audio playback and its mute bit, loading the produced asset files, and the debug
-overlay. Where this specification speaks of the runtime it means that layer, and it
+and the delta time it measures, the canvas fit, input from the keyboard, the pointer and
+a touch contact, audio playback and its mute bit, loading the produced asset files, and
+the debug overlay. Where this specification speaks of the runtime it means that layer, and it
 states only what Arc Foundry needs from it. How the layer is structured is yours to
 decide.
 {{else if (eq engine.slug "simple-2d")}}
@@ -262,7 +262,7 @@ map and difficulty are chosen.
 
 {{#if (eq engine.slug "none")}}
 - Write the runtime the game stands on: the frame loop and its delta time, the canvas
-  fit, keyboard and pointer input, audio, asset loading, and the debug overlay.
+  fit, keyboard, pointer and touch input, audio, asset loading, and the debug overlay.
 {{else if (eq engine.slug "simple-2d")}}
 - Build on the {{engine.name}} engine, taking the frame loop, the input actions, the
   pointer, audio, asset loading, and the debug overlay from it.

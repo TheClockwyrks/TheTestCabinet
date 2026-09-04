@@ -19,7 +19,7 @@
 // are one cue on one event; each runs on its own emptied yard.
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
-import { COMPONENT_TYPES, FIRE_CUE, type ComponentType } from "../constants";
+import { COMPONENT_TYPES, type ComponentType, FIRE_CUE } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -36,7 +36,7 @@ const TYPES: readonly ComponentType[] = COMPONENT_TYPES.filter(
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -44,7 +44,6 @@ afterEach(async () => {
 });
 
 it("sounds on the frame each of the two fires, and not before", async () => {
-  await h.armAudio();
   await openYard(h, { wave: 1 });
   await settle(h);
 

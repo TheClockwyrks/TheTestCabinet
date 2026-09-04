@@ -20,16 +20,19 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual, assertLength } from "../assert";
-import { COMBO_DAMAGE_MULT, COMBO_RANGE_BONUS } from "../../src/constants";
 import {
-  captureStill,
+  COMBO_DAMAGE_MULT,
+  COMBO_RANGE_BONUS,
   comboDamage,
   comboDef,
   comboRange,
+} from "../constants";
+import {
+  captureStill,
   createHarness,
+  type Harness,
   openYard,
   standComponent,
-  type Harness,
 } from "../harness";
 import { abilityNames, anchored, rowAbilities, tierOf } from "./towers";
 

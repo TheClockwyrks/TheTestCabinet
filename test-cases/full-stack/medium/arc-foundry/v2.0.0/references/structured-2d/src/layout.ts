@@ -40,6 +40,7 @@ import {
   canUpgradeQuality,
   combineSet,
   comboUpgradeCostFor,
+  difficulty,
   reachableCombosFor,
   selected,
   statsOf,
@@ -124,6 +125,72 @@ const BAR_CTRL_H = 32;
 
 /** The maze-length readout, which is a hover target rather than a control. */
 export const MAZE_READOUT = { x: 700, y: 8, w: 120, h: 40 };
+
+/** The status bar's reads, as `specs/instrumentation.md` names them. */
+export type ReadoutName =
+  "charge" | "integrity" | "wave" | "maze-length" | "paused" | "overload";
+
+/** One read of the bar, with the text it is drawing and the rectangle it drew it at. */
+export interface StatusReadout {
+  readout: ReadoutName;
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * The bar's READS — what it draws that is not a control — with the rectangle each
+ * was drawn at, which `statusReadouts` reports (`specs/instrumentation.md`).
+ *
+ * `specs/hud.md` fixes the reads and their left-to-right order and leaves each one's
+ * rectangle to the build, so this table is that choice written down once and drawn
+ * from. `paused` and `overload` are the two conditional reads, present only on the
+ * frames the bar is actually drawing them.
+ */
+const READOUT_SLOTS: readonly {
+  readout: ReadoutName;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}[] = [
+  { readout: "charge", x: 20, y: 8, w: 146, h: 40 },
+  { readout: "integrity", x: 170, y: 8, w: 200, h: 40 },
+  { readout: "wave", x: 374, y: 8, w: 176, h: 40 },
+  { readout: "maze-length", ...MAZE_READOUT },
+  // The `PAUSED` read replaces the wave slot's progress sub-read while the game is
+  // paused in place, so it sits inside the wave slot rather than beside it.
+  { readout: "paused", x: 464, y: 24, w: 84, h: 24 },
+  { readout: "overload", x: 554, y: 8, w: 130, h: 40 },
+];
+
+/** The two screens the bar is drawn on (`specs/hud.md`). */
+function barIsDrawn(w: FoundryState): boolean {
+  return w.screen === "playing" || w.screen === "paused";
+}
+
+/** The bar's reads, each with the text it is drawing, on the frames it draws them. */
+export function statusReadouts(w: FoundryState): StatusReadout[] {
+  if (!barIsDrawn(w)) return [];
+  const total = difficulty(w).waves;
+  const shown: Record<ReadoutName, string | null> = {
+    charge: `${Math.floor(w.charge)}`,
+    integrity: `${Math.max(0, Math.floor(w.integrity))}`,
+    wave: `${w.wave === 0 ? 1 : w.wave} / ${total}`,
+    "maze-length": `${Math.round(w.mazeLength)}`,
+    paused: w.paused ? "PAUSED" : null,
+    overload: w.finale ? `${Math.round(w.mazeRating)}` : null,
+  };
+  const out: StatusReadout[] = [];
+  for (const slot of READOUT_SLOTS) {
+    const label = shown[slot.readout];
+    if (label === null) continue;
+    out.push({ ...slot, label });
+  }
+  return out;
+}
 
 /** Each status-bar control's slot, in the order the bar draws them. */
 const BAR_SLOTS: readonly {

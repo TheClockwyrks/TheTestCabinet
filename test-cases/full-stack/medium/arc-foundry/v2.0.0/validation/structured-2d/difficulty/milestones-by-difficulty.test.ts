@@ -32,19 +32,18 @@
 
 import { ConstantClock } from "@test-cabinet/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual, assertTrue, fail } from "../assert";
 import {
   DIFFICULTIES,
   type Difficulty as DifficultyDef,
-} from "../../src/constants";
+  milestoneWaves,
+} from "../constants";
 import {
   captureReplay,
   createHarness,
-  milestoneWaves,
+  type Harness,
   openYard,
   startWave,
-  type Harness,
 } from "../harness";
 
 /** 20 Hz: coarse, and the simulation is defined to be indifferent to it. */

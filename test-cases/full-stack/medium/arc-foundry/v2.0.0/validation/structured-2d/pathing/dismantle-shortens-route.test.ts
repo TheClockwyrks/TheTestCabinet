@@ -14,7 +14,6 @@
 // keeps this about the dismantle rather than about the pathfinder.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertCloseTo, assertGreaterThan, assertLength } from "../assert";
 import {
   captureReplay,

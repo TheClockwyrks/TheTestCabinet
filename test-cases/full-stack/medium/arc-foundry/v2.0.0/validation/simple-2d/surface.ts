@@ -12,11 +12,12 @@
 // WHAT IS IMPORTED, AND WHY THAT IS NOT THE SAME THING. The identifier
 // vocabularies below — the screens, the phases, the eight component types, the
 // twelve combination towers, the five targeting priorities, the panel, menu and
-// status actions — come from `src/constants.ts`. That file is the CASE's, seeded
-// into every workspace and left alone by the build, so importing it is reading
-// the case's own statement of its vocabulary rather than reading the build. The
-// build's `src/game.ts` is imported by the harness for one thing only: the game
-// object the engine is constructed over.
+// status actions — come from `./constants`, this project's own transcription of
+// the seeded specification. Nothing here reads the build's own figure module: a
+// vocabulary taken from the tree under test would hold whatever that tree says,
+// and the check would grade nothing. The build's `src/game.ts` is imported
+// by the harness for one thing only: the game object the engine is constructed
+// over.
 //
 // HOW THE SURFACE IS DRIVEN. The engine holds the state by value and hands it out
 // read-only, so the surface holds no state of its own and nothing on it mutates
@@ -42,33 +43,39 @@
 // them and never has them called.
 
 import type { DeepReadonly } from "ts-essentials";
-
 import type {
   ComboId,
   ComponentType,
   DifficultyId,
-  LoadType,
+  IngredientState,
   MapId,
   MenuAction,
   PanelAction,
   PhaseName,
-  ScreenName,
   PressControl as PressAction,
+  ScreenName,
+  SpawnType,
   StatusControl as StatusAction,
+  StatusReadoutName,
   StructureKind,
   TargetingPriority,
-} from "../src/constants";
+  Tier,
+} from "./constants";
 
-export { FOUNDRY_DEBUG_VERSION, DEFAULT_SEED } from "../src/constants";
+export { FOUNDRY_DEBUG_VERSION, DEFAULT_SEED } from "./constants";
 export type {
   ComboId,
   ComponentType,
   DifficultyId,
+  IngredientState,
   MapId,
   MenuAction,
   PanelAction,
+  SpawnType,
   StatusAction,
+  StatusReadoutName,
   StructureKind,
+  Tier,
 };
 
 /** The eight screens the game is a state machine over. */
@@ -79,16 +86,6 @@ export type Phase = PhaseName;
 
 /** The five targeting priorities, in the order the control cycles them. */
 export type Targeting = TargetingPriority;
-
-/** A quality tier, `1` (Scrap) through `5` (Tesla-Prime). */
-export type Tier = 1 | 2 | 3 | 4 | 5;
-
-/**
- * Every argument `spawnUnit` takes: the six roster types and the finale's
- * Overload Dynamo (`OVERLOAD_TYPE`), in the order
- * `specs/instrumentation.md` lists them.
- */
-export type SpawnType = LoadType | "overload";
 
 /** Which read-only overlay `setOverlay` opens or closes. */
 export type OverlayName = "combos" | "damage";
@@ -152,6 +149,52 @@ export interface StatusControl {
   w: number;
   h: number;
   state: boolean | number;
+}
+
+/**
+ * One of the status bar's READS, as `statusReadouts` reports it.
+ *
+ * `specs/hud.md` fixes what the bar shows and the order it shows it in and leaves
+ * every rectangle to the build, and a read is not a control, so `statusControls`
+ * carries none of them. `specs/instrumentation.md` therefore has the build report
+ * each read's own rectangle here, with the same guarantee a control's carries: it
+ * is where the read is drawn, so a pointer standing at its center is over it —
+ * which is what the maze-length hover of `specs/controls.md` acts on.
+ *
+ * `label` is the text as drawn, so a check reads the figure the way a player does.
+ */
+export interface StatusReadout {
+  readout: StatusReadoutName;
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * One ingredient cell the recipe book drew, as `recipeEntries` reports it.
+ *
+ * `combo` is the combination tower whose recipe the cell belongs to, and
+ * `ingredient` is that ingredient's index within the recipe, counted from `0` in
+ * the order `specs/combinations.md` lists it — so a recipe calling for the same
+ * type and quality twice is still two cells a check can tell apart. `type` and
+ * `quality` are the ingredient's own, and `state` is one of the three
+ * `specs/hud.md` fixes.
+ *
+ * The rectangle is where the book drew the cell, so whatever the build draws to
+ * tell the state apart at a glance is inside it.
+ */
+export interface RecipeEntry {
+  combo: ComboId;
+  ingredient: number;
+  type: ComponentType;
+  quality: number;
+  state: IngredientState;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -268,6 +311,8 @@ export interface FoundrySnapshot {
   wave: number;
   totalWaves: number;
   waveActive: boolean;
+  /** The wave's clear-and-pay resolution held by `setWaveHold`. */
+  waveHeld: boolean;
   charge: number;
   integrity: number;
   refinement: number;
@@ -326,6 +371,8 @@ export interface FoundryDebugApi<S = unknown> {
   pressControls(state: DeepReadonly<S>): PressButton[];
   menuButtons(state: DeepReadonly<S>): MenuButton[];
   statusControls(state: DeepReadonly<S>): StatusControl[];
+  statusReadouts(state: DeepReadonly<S>): StatusReadout[];
+  recipeEntries(state: DeepReadonly<S>): RecipeEntry[];
 
   /* The run. */
   reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
@@ -336,6 +383,8 @@ export interface FoundryDebugApi<S = unknown> {
   setMenuIndex(state: DeepReadonly<S>, index: number): S;
   setPaused(state: DeepReadonly<S>, paused: boolean): S;
   setSpeed(state: DeepReadonly<S>, multiplier: number): S;
+  setPhase(state: DeepReadonly<S>, phase: Phase): S;
+  setWaveHold(state: DeepReadonly<S>, held: boolean): S;
   setOverlay(state: DeepReadonly<S>, overlay: OverlayName, open: boolean): S;
 
   /* Resources and progress. */
@@ -349,6 +398,7 @@ export interface FoundryDebugApi<S = unknown> {
   clearStructures(state: DeepReadonly<S>): S;
   setNextRoll(state: DeepReadonly<S>, type: ComponentType, quality: number): S;
   clearNextRoll(state: DeepReadonly<S>): S;
+  clearHeld(state: DeepReadonly<S>): S;
   placeRock(state: DeepReadonly<S>, col: number, row: number): S;
   placeComponent(
     state: DeepReadonly<S>,
@@ -412,6 +462,8 @@ export const READINGS = [
   "pressControls",
   "menuButtons",
   "statusControls",
+  "statusReadouts",
+  "recipeEntries",
 ] as const;
 
 /**
@@ -431,6 +483,8 @@ export const REQUIRED_OPS = [
   "pressControls",
   "menuButtons",
   "statusControls",
+  "statusReadouts",
+  "recipeEntries",
   // The run.
   "reset",
   "setMap",
@@ -440,6 +494,8 @@ export const REQUIRED_OPS = [
   "setMenuIndex",
   "setPaused",
   "setSpeed",
+  "setPhase",
+  "setWaveHold",
   "setOverlay",
   // Resources and progress.
   "setCharge",
@@ -451,6 +507,7 @@ export const REQUIRED_OPS = [
   "clearStructures",
   "setNextRoll",
   "clearNextRoll",
+  "clearHeld",
   "placeRock",
   "placeComponent",
   "placeCombo",

@@ -17,7 +17,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull } from "../assert";
-import { TARGETING_PRIORITIES, keyFor } from "../constants";
+import { keyFor, TARGETING_PRIORITIES } from "../constants";
 import {
   captureStill,
   createHarness,

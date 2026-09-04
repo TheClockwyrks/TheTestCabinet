@@ -14,17 +14,15 @@
 // rolled, each dismantled so the next lands on the same footprint.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { REFINEMENT_ODDS, STAMPS_PER_LEVEL } from "../../src/constants";
+import { REFINEMENT_ODDS, STAMPS_PER_LEVEL, TIERS } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
-  TIERS,
   captureStill,
   createHarness,
+  type Harness,
   lastStructure,
   openYard,
   refillStamps,
-  type Harness,
 } from "../harness";
 
 /** How many rocks are rolled. */

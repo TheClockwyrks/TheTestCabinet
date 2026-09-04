@@ -21,7 +21,7 @@ import { assertEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
-  holdWaveOpen,
+  enterWave,
   openYard,
   standComponent,
   type Harness,
@@ -54,7 +54,7 @@ it("folds a standing pair during a live wave and leaves the phase running", asyn
     INITIATOR.row,
   );
   standComponent(h, "capacitor", 2, PARTNER.col, PARTNER.row);
-  holdWaveOpen(h);
+  enterWave(h);
 
   const before = h.snapshot();
   assertEqual(before.phase, "wave", "the phase the fold is committed in");

@@ -12,7 +12,6 @@
 // So a candidate is kept, and the phase and the wave counter move on that call.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual } from "../assert";
 import {
   captureReplay,

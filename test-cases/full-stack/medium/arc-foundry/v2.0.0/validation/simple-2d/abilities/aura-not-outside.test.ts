@@ -15,16 +15,15 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual } from "../assert";
-import { REGULATOR_AURA } from "../../src/constants";
+import { componentDamage, REGULATOR_AURA } from "../constants";
 import {
   captureStill,
-  componentDamage,
   createHarness,
   distance,
+  type Harness,
   openYard,
   standComponent,
   structureById,
-  type Harness,
 } from "../harness";
 
 /** Centres a hundred apart, past the Scrap Regulator's `90`. */

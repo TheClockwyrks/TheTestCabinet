@@ -21,13 +21,16 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertNotEqual } from "../assert";
 import {
+  BAR,
   captureReplay,
   createHarness,
+  drawnFigure,
+  drew,
+  type Harness,
   openYard,
   releaseUnit,
-  type Harness,
 } from "../harness";
-import { BAR, drawnFigure, drew } from "./reading";
+import { OVERLOAD_TEXT } from "../constants";
 
 /** A burn whose per-second damage no other figure in the bar collides with. */
 const BURN_DPS = 97;
@@ -65,12 +68,12 @@ it("reads OVERLOAD through the finale, with the rating growing", async () => {
   });
 
   assertEqual(
-    drew(seen.early, BAR, "OVERLOAD"),
+    drew(seen.early, BAR, OVERLOAD_TEXT),
     true,
     "whether the bar reads OVERLOAD during the finale",
   );
   assertEqual(
-    drew(seen.late, BAR, "OVERLOAD"),
+    drew(seen.late, BAR, OVERLOAD_TEXT),
     true,
     "whether the bar still reads OVERLOAD later in the finale",
   );

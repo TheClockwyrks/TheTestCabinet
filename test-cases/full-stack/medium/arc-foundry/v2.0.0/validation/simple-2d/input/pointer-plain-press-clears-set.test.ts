@@ -19,7 +19,6 @@
 // honoured either way. What it insists on is that the other two do not survive.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertDeepEqual, assertEqual, assertLength } from "../assert";
 import {
   captureStill,

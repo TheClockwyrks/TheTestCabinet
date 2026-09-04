@@ -21,9 +21,9 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import {
+  mapById,
   MAX_ANCHOR_COL,
   MAX_ANCHOR_ROW,
-  mapById,
   tileCenter,
 } from "../constants";
 import {

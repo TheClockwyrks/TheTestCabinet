@@ -15,7 +15,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { DEFAULT_TARGETING } from "../../src/constants";
+import { DEFAULT_TARGETING } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -26,24 +26,30 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertEqual } from "../assert";
 import {
   captureStill,
+  createHarness,
+  drawnFigure,
+  drew,
+  emptyYard,
+  figures,
+  type Harness,
+  openYard,
+  PANEL,
+  parkUnit,
+  standCombo,
+  standComponent,
+  structureById,
+} from "../harness";
+import {
   comboDamage,
   comboDef,
   comboRange,
   componentDamage,
   componentFireRate,
   componentRange,
-  createHarness,
-  emptyYard,
-  openYard,
-  parkUnit,
-  standCombo,
-  standComponent,
-  structureById,
+  DEFAULT_TARGETING,
+  QUALITY_TIERS,
   structureCenter,
-  type Harness,
-} from "../harness";
-import { DEFAULT_TARGETING, QUALITY_TIERS } from "../../src/constants";
-import { PANEL, drawnFigure, drew, figures } from "./reading";
+} from "../constants";
 
 /** Deep enough that neither structure below can kill what it shoots at. */
 const WAVE = 30;
@@ -139,8 +145,8 @@ it("draws the stats and tallies of a base component and of a tower", async () =>
     "whether the panel names the combination tower",
   );
   // The ability NAMES are the keys of the tower's ability block
-  // (`specs/combinations.md` names each ability; `src/constants.ts` carries each
-  // one's parameters under its own name).
+  // (`specs/combinations.md` names each ability and its parameters, and
+  // `../constants` transcribes them under those names).
   for (const ability of Object.keys(comboDef(COMBO).abilities)) {
     assertEqual(
       drew(combo, PANEL, ability),

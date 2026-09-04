@@ -15,7 +15,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { type Targeting } from "../constants";
+import type { Targeting } from "../constants";
 import {
   captureReplay,
   createHarness,

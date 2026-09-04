@@ -13,7 +13,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
-import { RECTIFIER_BURN_DUR } from "../../src/constants";
+import { RECTIFIER_BURN_DUR } from "../constants";
 import {
   captureReplay,
   createHarness,

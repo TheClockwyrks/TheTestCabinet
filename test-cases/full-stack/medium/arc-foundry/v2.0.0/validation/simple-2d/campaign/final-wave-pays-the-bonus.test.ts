@@ -22,12 +22,11 @@ import { assertEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
-  difficultyById,
+  type Harness,
   openYard,
   releaseUnit,
-  waveBonus,
-  type Harness,
 } from "../harness";
+import { difficultyById, waveBonus } from "../constants";
 
 /** The difficulty whose wave count fixes N. */
 const DIFFICULTY = "medium";

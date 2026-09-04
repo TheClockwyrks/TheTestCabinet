@@ -24,17 +24,20 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { LOAD_TYPES, type LoadType } from "../../src/constants";
+import {
+  FIRING_TYPES,
+  LOAD_TYPES,
+  type LoadType,
+  structureCenter,
+} from "../constants";
 import {
   captureReplay,
   createHarness,
-  FIRING_TYPES,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
-  structureCenter,
   unitById,
-  type Harness,
 } from "../harness";
 
 /**

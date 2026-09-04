@@ -22,11 +22,10 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertEqual, assertLength } from "../assert";
 import {
   captureStill,
-  comboDef,
   createHarness,
+  type Harness,
   openYard,
   standComponent,
-  type Harness,
 } from "../harness";
 import {
   anchored,
@@ -35,6 +34,7 @@ import {
   offeredRecipes,
   tierOf,
 } from "./towers";
+import { comboDef } from "../constants";
 
 const TOWER = comboDef("singularity");
 /** The recipe's four ingredients, the repeated Arc-Node last. */

@@ -23,12 +23,15 @@ import { assertGreaterThan, assertLessThan } from "../assert";
 import {
   captureStill,
   createHarness,
+  DISTINCT,
+  type Harness,
+  lattice,
   openYard,
   parkUnit,
+  rgbDistance,
+  sample,
   unitById,
-  type Harness,
 } from "../harness";
-import { DISTINCT, lattice, rgbDistance, sample } from "./reading";
 
 const WAVE = 30;
 /** Clear of the chain's own drawing, and clear of the yard's edges. */

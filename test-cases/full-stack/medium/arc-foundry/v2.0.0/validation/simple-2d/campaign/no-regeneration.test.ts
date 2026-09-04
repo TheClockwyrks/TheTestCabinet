@@ -21,12 +21,12 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import {
   captureReplay,
-  openYard,
-  refinementCost,
-  standComponent,
   type Harness,
+  openYard,
+  standComponent,
 } from "../harness";
 import { clearWave, createRunHarness, harvestWave, RUN_HZ } from "./runs";
+import { refinementCost } from "../constants";
 
 /** Where the counter is dropped to, well below the `20` a run opens with. */
 const INTEGRITY = 7;

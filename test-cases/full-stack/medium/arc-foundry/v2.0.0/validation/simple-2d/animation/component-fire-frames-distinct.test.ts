@@ -13,8 +13,7 @@
 // difference reads as a discharge, is the aesthetic rating's.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { COMPONENT_TYPES } from "../../src/constants";
+import { COMPONENT_TYPES } from "../constants";
 import { assertDeepEqual } from "../assert";
 import {
   createHarness,

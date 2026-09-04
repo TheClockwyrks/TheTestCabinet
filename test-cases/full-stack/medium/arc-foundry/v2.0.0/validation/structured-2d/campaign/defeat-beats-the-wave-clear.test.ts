@@ -23,11 +23,11 @@ import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
-  openYard,
-  waveBonus,
   type Harness,
+  openYard,
 } from "../harness";
 import { leakOne } from "./runs";
+import { waveBonus } from "../constants";
 
 /** The wave the run is on, so the bonus a wrong build pays is a figure worth reading. */
 const WAVE = 4;

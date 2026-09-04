@@ -15,7 +15,6 @@
 // carries both choices with it or it has not carried the player anywhere.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual } from "../assert";
 import {
   captureStill,

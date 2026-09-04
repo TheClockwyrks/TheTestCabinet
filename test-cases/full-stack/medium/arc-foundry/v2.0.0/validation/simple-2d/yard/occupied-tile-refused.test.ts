@@ -13,16 +13,15 @@
 // that refuses the anchor for some other reason.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
-  tileCenter,
-  type Harness,
 } from "../harness";
+import { tileCenter } from "../constants";
 
 /** The footprint under test, and the tile of it the unit is stood on. */
 const AT = { col: 20, row: 10 };

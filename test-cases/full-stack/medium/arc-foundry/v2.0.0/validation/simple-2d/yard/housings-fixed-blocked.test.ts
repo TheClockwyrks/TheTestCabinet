@@ -13,15 +13,14 @@
 // impassable AND a route around them exists on an empty yard.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,
-  mapById,
-  openYard,
   type Harness,
+  openYard,
 } from "../harness";
+import { mapById } from "../constants";
 
 /** The map whose housings are under test. */
 const MAP = "transformer";

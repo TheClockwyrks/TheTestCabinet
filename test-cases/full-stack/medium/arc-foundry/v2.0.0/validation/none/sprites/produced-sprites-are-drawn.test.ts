@@ -23,12 +23,12 @@ import { assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
+  type Harness,
+  imageDraws,
   openYard,
   standComponent,
-  type Harness,
 } from "../harness";
 import { FOOTPRINT, TILE } from "../constants";
-import { imageDraws } from "./reading";
 
 const ANCHOR = { col: 10, row: 10 };
 const FOOTPRINT_BOX = {

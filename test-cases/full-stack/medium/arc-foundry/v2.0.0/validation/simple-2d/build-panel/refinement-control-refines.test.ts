@@ -25,14 +25,14 @@ import {
   captureStill,
   clickControl,
   createHarness,
+  type Harness,
   openYard,
   pressControl,
-  refinementCost,
   standCombo,
   standComponent,
   structureById,
-  type Harness,
 } from "../harness";
+import { refinementCost } from "../constants";
 
 /** More Charge than any one act here costs, so nothing is refused for its price. */
 const PLENTY = 500;

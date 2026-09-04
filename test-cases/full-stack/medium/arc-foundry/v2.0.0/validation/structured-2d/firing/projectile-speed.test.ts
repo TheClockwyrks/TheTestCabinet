@@ -27,7 +27,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
-import { PROJECTILE_SPEED } from "../../src/constants";
+import { PROJECTILE_SPEED } from "../constants";
 import {
   captureReplay,
   createHarness,

@@ -41,7 +41,6 @@
 // the separation a system playing for even a tenth of a second produces.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import {
   assertEqual,
   assertGreaterThan,
@@ -50,17 +49,17 @@ import {
 import {
   captureReplay,
   createHarness,
-  holdWaveOpen,
+  type Harness,
+  holdWaveClear,
   openYard,
   parkUnit,
   standComponent,
-  structureCenter,
   ticks,
   unitById,
-  type Harness,
 } from "../harness";
 import { serveProducedAssets } from "./produced";
 import { lattice, motion } from "./region";
+import { structureCenter } from "../constants";
 
 /** Clear ground, well away from the map's waypoint platforms and its chain. */
 const ANCHOR = { col: 21, row: 18 };
@@ -110,7 +109,7 @@ async function movingFrames(): Promise<number> {
 
 it("sets the ground moving where a unit died, over and above the shot that killed it", async () => {
   openYard(h, { wave: WAVE });
-  holdWaveOpen(h);
+  holdWaveClear(h);
   await h.advance(1);
   const bare = await movingFrames();
   assertEqual(
