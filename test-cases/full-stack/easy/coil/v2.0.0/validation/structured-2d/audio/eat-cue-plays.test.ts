@@ -36,7 +36,7 @@ import {
   assertLessThanOrEqual,
   assertNull,
 } from "../assert";
-import { CUES } from "../../src/constants";
+import { CUES } from "../constants";
 import {
   ahead,
   arrangeStep,

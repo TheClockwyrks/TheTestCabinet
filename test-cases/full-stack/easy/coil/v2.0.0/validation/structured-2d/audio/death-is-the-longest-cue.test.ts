@@ -24,7 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, fail } from "../assert";
-import { CUES, INTERIOR_MAX_COL } from "../../src/constants";
+import { CUES, INTERIOR_COL_MAX } from "../constants";
 import {
   captureStill,
   chainFrom,
@@ -42,7 +42,7 @@ const FILES = [
 ] as const;
 
 /** The last interior cell of row 8: one step east of it is the wall border. */
-const BRINK: Cell = { col: INTERIOR_MAX_COL, row: 8 };
+const BRINK: Cell = { col: INTERIOR_COL_MAX, row: 8 };
 
 let h: Harness;
 

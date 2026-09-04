@@ -19,11 +19,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
-  INTERIOR_MAX_COL,
-  INTERIOR_MAX_ROW,
-  INTERIOR_MIN_COL,
-  INTERIOR_MIN_ROW,
-} from "../../src/constants";
+  INTERIOR_COL_MAX,
+  INTERIOR_ROW_MAX,
+  INTERIOR_COL_MIN,
+  INTERIOR_ROW_MIN,
+} from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   arrangeFullBoard,
@@ -34,8 +34,8 @@ import {
 
 /** The interior the one-cell border encloses: 28 x 16 cells (specs/board.md). */
 const INTERIOR_CELLS =
-  (INTERIOR_MAX_COL - INTERIOR_MIN_COL + 1) *
-  (INTERIOR_MAX_ROW - INTERIOR_MIN_ROW + 1);
+  (INTERIOR_COL_MAX - INTERIOR_COL_MIN + 1) *
+  (INTERIOR_ROW_MAX - INTERIOR_ROW_MIN + 1);
 
 let h: Harness;
 

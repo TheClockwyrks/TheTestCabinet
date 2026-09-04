@@ -18,7 +18,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
-import { COMBO_WINDOW, TICK_SECONDS } from "../../src/constants";
+import { COMBO_WINDOW, TICK_SECONDS } from "../constants";
 import {
   captureReplay,
   createHarness,

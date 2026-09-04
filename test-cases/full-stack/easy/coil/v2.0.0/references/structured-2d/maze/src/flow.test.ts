@@ -13,9 +13,16 @@ import {
   type ActionName,
   type Cell,
 } from "./constants";
-import { goTo, handleAction, resetSession, startRound } from "./flow";
+import {
+  goTo,
+  handleAction,
+  handlePointer,
+  resetSession,
+  startRound,
+} from "./flow";
 import { CoilState } from "./game";
-import { HOWTO_ITEMS, menuItems } from "./menus";
+import { HOWTO_ITEMS, menuItemRect, menuItems } from "./menus";
+import type { PointerSample } from "@test-cabinet/structured-2d";
 
 function opening(seed = 1): CoilState {
   const state = new CoilState();
@@ -25,6 +32,33 @@ function opening(seed = 1): CoilState {
 
 function press(state: CoilState, ...actions: ActionName[]): CoilState {
   for (const action of actions) handleAction(state, action);
+  return state;
+}
+
+/** `HOW TO PLAY` is the second item of the title menu (specs/ui.md). */
+const HOWTO_INDEX = 1;
+
+/** One pointer sample, as the engine delivers it in the game's own units. */
+function sample(
+  type: PointerSample["type"],
+  x: number,
+  y: number,
+): PointerSample {
+  return {
+    type,
+    x,
+    y,
+    id: 1,
+    primary: true,
+    device: "mouse",
+    button: type === "move" ? null : "primary",
+    buttons: type === "down" ? ["primary"] : [],
+  };
+}
+
+/** Route `samples` onto a live state, exactly as the controller routes a frame's. */
+function drag(state: CoilState, ...samples: PointerSample[]): CoilState {
+  for (const one of samples) handlePointer(state, one);
   return state;
 }
 
@@ -155,5 +189,83 @@ describe("the best score", () => {
     startRound(state);
     expect(state.best).toBe(320);
     expect(state.score).toBe(0);
+  });
+});
+
+describe("the pointer and the touch contact over the menus", () => {
+  /** The middle of item `index`'s region on the screen `state` is on. */
+  function middleOf(state: CoilState, index: number): { x: number; y: number } {
+    const rect = menuItemRect(state.screen, index);
+    if (rect === null) throw new Error(`no item ${index} on ${state.screen}`);
+    return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+  }
+
+  it("selects the item a move arrives over, confirming nothing", () => {
+    const state = opening();
+    const at = middleOf(state, HOWTO_INDEX);
+    drag(state, sample("move", at.x, at.y));
+    expect(state.menuIndex).toBe(HOWTO_INDEX);
+    expect(state.screen).toBe("title");
+  });
+
+  it("confirms the item a press and its release both fall inside", () => {
+    const state = opening();
+    const at = middleOf(state, HOWTO_INDEX);
+    drag(state, sample("down", at.x, at.y), sample("up", at.x, at.y));
+    expect(state.screen).toBe("howto");
+  });
+
+  it("confirms nothing when the two edges fall in different items", () => {
+    const state = opening();
+    const from = middleOf(state, HOWTO_INDEX);
+    const to = middleOf(state, 0);
+    drag(
+      state,
+      sample("down", from.x, from.y),
+      sample("move", to.x, to.y),
+      sample("up", to.x, to.y),
+    );
+    expect(state.screen).toBe("title");
+    expect(state.menuIndex).toBe(0);
+  });
+
+  it("confirms nothing when an edge falls outside every region", () => {
+    const state = opening();
+    const at = middleOf(state, HOWTO_INDEX);
+    drag(state, sample("down", at.x, at.y), sample("up", 0, 0));
+    expect(state.screen).toBe("title");
+  });
+
+  it("is not read on the playing screen, which shows no menu", () => {
+    const state = opening();
+    const at = middleOf(state, HOWTO_INDEX);
+    startRound(state);
+    drag(state, sample("down", at.x, at.y), sample("up", at.x, at.y));
+    expect(state.screen).toBe("playing");
+    expect(state.menuIndex).toBe(0);
+  });
+});
+
+describe("the remembered title selection", () => {
+  it("opens at zero", () => {
+    expect(opening().titleIndex).toBe(0);
+  });
+
+  it("follows the item the title confirmed, whichever input confirmed it", () => {
+    const state = press(opening(), "down", "confirm");
+    expect(state.screen).toBe("howto");
+    expect(state.titleIndex).toBe(HOWTO_INDEX);
+  });
+
+  it("is where the title opens on the way back", () => {
+    const state = press(opening(), "down", "confirm", "back");
+    expect(state.screen).toBe("title");
+    expect(state.menuIndex).toBe(HOWTO_INDEX);
+  });
+
+  it("leaves every other screen opening on its first item", () => {
+    const state = press(opening(), "down", "confirm");
+    goTo(state, "paused");
+    expect(state.menuIndex).toBe(0);
   });
 });

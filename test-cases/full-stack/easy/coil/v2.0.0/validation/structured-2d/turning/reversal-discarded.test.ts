@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import {
   ahead,
   arrangeStep,
@@ -26,6 +26,12 @@ import {
 
 /** Where the chain is posed: a clear run to its right, and its neck to its left. */
 const HEAD: Cell = { col: 10, row: 8 };
+
+/** Ticks of clear travel before the request, so the run is on the recording. */
+const RUN_UP = 3;
+
+/** Ticks run after the tick that resolves it, so its outcome is too. */
+const SETTLE = 3;
 
 let h: Harness;
 
@@ -45,15 +51,19 @@ it("keeps the heading when the request reverses it", async () => {
     "the neck a reversal would enter",
   );
 
-  const after = await captureReplay(h, "reversal", async () => {
+  const run = await captureReplay(h, "reversal", async () => {
+    const before = await h.tick(RUN_UP);
     await h.tap(BINDINGS.left[0]);
-    return h.tick();
+    const stepped = await h.tick();
+    await h.tick(SETTLE);
+    return { before, stepped };
   });
+  const { before, stepped: after } = run;
 
   assertEqual(after.dir, "right", "dir after a reversing request");
   assertDeepEqual(
     after.snake[0],
-    ahead(HEAD, "right"),
+    ahead(before.snake[0], "right"),
     "the head after a reversing request",
   );
   assertEqual(after.screen, "playing", "the round after a reversing request");

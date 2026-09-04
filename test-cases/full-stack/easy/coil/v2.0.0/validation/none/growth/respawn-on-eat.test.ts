@@ -25,6 +25,12 @@ import {
   type Harness,
 } from "../harness";
 
+/** Ticks of clear travel before the head reaches the pellet. */
+const RUN_UP = 3;
+
+/** Ticks run after the eat, so what it left behind is on the recording. */
+const SETTLE = 3;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -36,12 +42,17 @@ afterEach(async () => {
 });
 
 it("puts the next pellet on the board on the tick the last was eaten", async () => {
-  const scene = await arrangeEat(h, { pelletRespawn: true });
+  const scene = await arrangeEat(h, { pelletRespawn: true, runUp: RUN_UP + 1 });
   assertEqual(scene.snapshot.pelletRespawn, true, "the switch the scene posed");
 
-  const after = await captureReplay(h, "respawn", () => h.tick());
+  const after = await captureReplay(h, "respawn", async () => {
+    await h.tick(RUN_UP);
+    const eaten = await h.tick();
+    await h.tick(SETTLE);
+    return eaten;
+  });
 
-  assertEqual(after.ticks, 1, "ticks resolved");
+  assertEqual(after.ticks, RUN_UP + 1, "ticks resolved");
   assertEqual(
     sameCell(after.snake[0], scene.pellet),
     true,

@@ -24,7 +24,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
-import { CELL, SPRITE_PATHS } from "../../src/constants";
+import { CELL, SPRITE_PATHS } from "../constants";
 import { WORKSPACE, type Harness } from "../harness";
 
 /** The head sheet's four frames, as paths under the repository root. */
@@ -38,37 +38,6 @@ export const BODY_FILES: readonly string[] = [
   `assets/${SPRITE_PATHS.corner}`,
   `assets/${SPRITE_PATHS.tail}`,
 ];
-
-/**
- * How much of a sprite must carry paint for it to be a sprite rather than a
- * stray pixel: one hundredth of its area, which is ten pixels of a `32 x 32`.
- *
- * `specs/assets.md` requires each sprite to read as its piece at one cell on a
- * dark field, so a file with a pixel or two set is not the deliverable; it fixes
- * no coverage figure, and this floor sits an order of magnitude below the
- * thinnest outline any of the four pieces could legibly be drawn as.
- */
-export const PAINT_MIN_SHARE = 0.01;
-
-/**
- * How many pixels of two sprites must differ for them to be two sprites: four,
- * which is the smallest square mark a player can see at one cell.
- *
- * `specs/assets.md` gives the head sheet four named poses and the body set three
- * named pieces, so two of them being the same image is one file shipped twice —
- * and one file shipped twice differs by exactly nothing, since a PNG carries its
- * pixels losslessly. What the floor guards is the space just above nothing, and
- * the specification words that guard itself: frame `2` is to be "a visibly open
- * mouth rather than a shifted pixel". Four pixels is a shifted pixel and no more.
- *
- * Deliberately NOT a share of the area. A pose can differ over a genuinely small
- * part of a sprite and still be a different pose — the reference's own opening
- * and closing mouths differ over ten pixels of the thousand a cell holds — so a
- * share large enough to be worth calling measurable would fail builds that did
- * exactly what the specification asked. Whether two poses differ ENOUGH to read
- * is the presentation domain's aesthetic rating, which is a person's to make.
- */
-export const DIFFER_MIN_PIXELS = 4;
 
 /**
  * How far one channel may drift before two pixels count as different.
@@ -169,28 +138,6 @@ export function edgeRows(sprite: Sprite, edge: "left" | "right"): number {
   }
   return rows;
 }
-
-/**
- * How many rows of a sprite's joining edge must carry paint for the join to be a
- * join: four, the smallest square mark a player can see at one cell.
- *
- * `specs/assets.md` fixes no tube width, so nothing here reads how THICK a build
- * drew its snake; what is read is that the edge the sprite joins on is reached at
- * all rather than floating clear of it.
- */
-export const JOIN_MIN_ROWS = 4;
-
-/**
- * How much of the joining edge's coverage the sprite's FREE edge may carry and
- * still read as a free end: half.
- *
- * A tail has one neighbour, so one of its two edges continues the snake and the
- * other terminates it. A build whose two edges carry the same coverage has drawn
- * a piece of body rather than a tail, and the snake reads as running on past the
- * cell where it ends. Half leaves a taper that stops short of the far edge, or
- * one that ends in a blunt tip, comfortably inside.
- */
-export const FREE_MAX_SHARE = 0.5;
 
 /** How much of a sprite carries paint: the share of its pixels that are not clear. */
 export function paintShare(sprite: Sprite): number {

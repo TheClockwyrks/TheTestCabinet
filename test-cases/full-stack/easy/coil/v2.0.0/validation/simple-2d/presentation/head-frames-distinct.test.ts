@@ -26,13 +26,13 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, fail } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import {
-  DIFFER_MIN_PIXELS,
   decodeSprites,
   differingPixels,
   HEAD_FILES,
   showSpriteFiles,
   type Sprite,
 } from "./sprites";
+import { DIFFER_MIN_PIXELS } from "../constants";
 
 let h: Harness;
 

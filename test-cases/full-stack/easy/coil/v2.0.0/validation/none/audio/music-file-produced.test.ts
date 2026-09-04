@@ -26,7 +26,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, fail } from "../assert";
-import { CUES, CUE_FILES, type Cell } from "../constants";
+import { type Cell, CUE_FILES, CUES, SILENCE_FLOOR } from "../constants";
 import {
   captureStill,
   chainFrom,
@@ -34,7 +34,7 @@ import {
   HOME_HEAD,
   type Harness,
 } from "../harness";
-import { decodeSound, SILENCE_FLOOR, showRound } from "./sounds";
+import { decodeSound, showRound } from "./sounds";
 
 /** The path `specs/assets.md` fixes for the music bed. */
 const FILE = CUE_FILES[CUES.music];

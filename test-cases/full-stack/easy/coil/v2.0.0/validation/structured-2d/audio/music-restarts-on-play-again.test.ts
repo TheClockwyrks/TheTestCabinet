@@ -29,7 +29,7 @@ import {
   assertEqual,
   assertGreaterThanOrEqual,
 } from "../assert";
-import { BINDINGS, CUES, START_CELLS } from "../../src/constants";
+import { BINDINGS, CUES, START_CELLS } from "../constants";
 import {
   captureReplay,
   createHarness,

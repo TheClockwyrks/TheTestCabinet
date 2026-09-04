@@ -35,7 +35,7 @@ import {
   assertEqual,
   assertGreaterThanOrEqual,
 } from "../assert";
-import { BINDINGS, CUES, PAUSE_ITEMS, START_CELLS } from "../../src/constants";
+import { BINDINGS, CUES, PAUSE_ITEMS, START_CELLS } from "../constants";
 
 import {
   captureReplay,

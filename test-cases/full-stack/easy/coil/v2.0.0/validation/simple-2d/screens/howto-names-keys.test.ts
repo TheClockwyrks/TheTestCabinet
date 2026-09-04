@@ -18,7 +18,7 @@
 // open it fails `states/howto-reachable` alone rather than this as well.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import { assertEqual, assertMatches } from "../assert";
 import {
   captureStill,

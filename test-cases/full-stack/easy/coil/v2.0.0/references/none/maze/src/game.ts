@@ -18,7 +18,7 @@ import {
   type Cue,
   type Dir,
 } from "./constants";
-import { menuItems } from "./menus";
+import { menuItemAt, menuItems } from "./menus";
 import { Sim } from "./sim";
 
 /** The screen the game is on. */
@@ -81,6 +81,8 @@ export class Game {
   screen: Screen = "title";
   /** The highlighted item of the current screen's menu, counted from 0. */
   menuIndex = 0;
+  /** The title menu's remembered selection, which the title opens on. */
+  titleIndex = 0;
   /** The highest score reached in this session. */
   best = 0;
   /** Ticks resolved since the last reset. */
@@ -95,6 +97,13 @@ export class Game {
   private readonly audio: AudioBus;
   private accumulator = 0;
   private biteRemaining = 0;
+  /**
+   * The item a live pointer press landed on, or `null` while none is down.
+   *
+   * `specs/ui.md` takes both edges of a confirm inside one region, so the press
+   * has to be remembered until the release that answers it.
+   */
+  private pressedItem: number | null = null;
 
   constructor(audio: AudioBus, seed: number = DEFAULT_SEED) {
     this.audio = audio;
@@ -157,6 +166,8 @@ export class Game {
     this.sim.restore(seed);
     this.screen = "title";
     this.menuIndex = 0;
+    this.titleIndex = 0;
+    this.pressedItem = null;
     this.best = 0;
     this.ticks = 0;
     this.simTime = 0;
@@ -183,18 +194,52 @@ export class Game {
     this.audio.startLoop(CUES.music);
   }
 
-  /** Move to `screen` and highlight its first item. */
+  /**
+   * Move to `screen` and highlight the item it opens on.
+   *
+   * The title opens on its remembered selection, so leaving how-to-play lands
+   * back on the entry that opened it and a round left for the title lands back
+   * on the entry that started it (`specs/ui.md`). Every other screen opens on
+   * its first item.
+   */
   goTo(screen: Screen): void {
     if (screen !== "playing" && screen !== "paused") {
       this.audio.stopLoop(CUES.music);
     }
     this.screen = screen;
-    this.menuIndex = 0;
+    this.menuIndex = screen === "title" ? this.titleIndex : 0;
   }
 
   /** Set the screen alone, leaving the highlight and the board as they stand. */
   setScreen(screen: Screen): void {
     this.screen = screen;
+  }
+
+  /**
+   * Route one pointer or touch edge over the current screen's menu
+   * (`specs/ui.md`).
+   *
+   * `x` and `y` are the logical stage units the menus are laid out in. A move,
+   * and a contact landing, select the item they are over; a press and the
+   * release that answers it confirm the item when both fell inside the one
+   * region, so a press slid off its entry confirms nothing. The `playing` screen
+   * shows no menu, so nothing there is read.
+   */
+  handlePointer(kind: "move" | "down" | "up", x: number, y: number): void {
+    if (this.screen === "playing") {
+      this.pressedItem = null;
+      return;
+    }
+    const item = menuItemAt(this.screen, x, y);
+    if (item !== null) this.menuIndex = item;
+    if (kind === "down") {
+      this.pressedItem = item;
+      return;
+    }
+    if (kind !== "up") return;
+    const pressed = this.pressedItem;
+    this.pressedItem = null;
+    if (item !== null && item === pressed) this.accept();
   }
 
   /** Route one press edge to what it does on the screen the game is on. */
@@ -251,6 +296,8 @@ export class Game {
    */
   private accept(): void {
     const index = this.menuIndex;
+    // The title remembers what was confirmed on it, whichever input confirmed it.
+    if (this.screen === "title") this.titleIndex = index;
     switch (this.screen) {
       case "title":
         if (index === 0) this.startRound();

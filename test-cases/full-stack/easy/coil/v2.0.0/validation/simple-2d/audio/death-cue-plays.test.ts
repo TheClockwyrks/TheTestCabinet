@@ -38,7 +38,7 @@ import {
   assertLength,
   assertLessThanOrEqual,
 } from "../assert";
-import { CUES, INTERIOR_MAX_COL } from "../../src/constants";
+import { CUES, INTERIOR_COL_MAX } from "../constants";
 import {
   ahead,
   arrangeStep,
@@ -58,7 +58,7 @@ const LEAD_TICKS = 2;
 const TRAIL_SECONDS = 0.75;
 
 /** The last interior cell of row 8: one step east of it is the wall border. */
-const BRINK: Cell = { col: INTERIOR_MAX_COL, row: 8 };
+const BRINK: Cell = { col: INTERIOR_COL_MAX, row: 8 };
 
 /** Where the head starts, so the wall is the cell it enters after the lead. */
 const HEAD = ahead(BRINK, "left", LEAD_TICKS);

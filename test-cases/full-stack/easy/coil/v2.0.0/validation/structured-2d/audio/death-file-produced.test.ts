@@ -27,7 +27,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, fail } from "../assert";
-import { CUES, INTERIOR_MAX_COL } from "../../src/constants";
+import { CUES, INTERIOR_COL_MAX, SILENCE_FLOOR } from "../constants";
 import {
   captureStill,
   chainFrom,
@@ -35,13 +35,13 @@ import {
   type Cell,
   type Harness,
 } from "../harness";
-import { CUE_FILES, readSound, SILENCE_FLOOR, showRound } from "./sounds";
+import { CUE_FILES, readSound, showRound } from "./sounds";
 
 /** The path `specs/assets.md` fixes for the death cue. */
 const FILE = CUE_FILES[CUES.death];
 
 /** The last interior cell of row 8: one step east of it is the wall border. */
-const BRINK: Cell = { col: INTERIOR_MAX_COL, row: 8 };
+const BRINK: Cell = { col: INTERIOR_COL_MAX, row: 8 };
 
 let h: Harness;
 

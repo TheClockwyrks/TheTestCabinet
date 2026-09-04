@@ -135,6 +135,7 @@ game uses.
 
 - `src/main.ts`, the entry point. It stands the engine up over the page's canvas,
   binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
 - `index.html`, the page and the canvas the engine fits the stage into.
 - `.tcab/`, holding the vendored engine that `package.json` resolves the
   dependency from.
@@ -179,6 +180,7 @@ game uses.
 
 - `src/main.ts`, the entry point. It stands the engine up over the page's canvas,
   binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
 - `index.html`, the page and the canvas the engine fits the stage into.
 - `.tcab/`, holding the vendored engine that `package.json` resolves the
   dependency from.
@@ -191,11 +193,21 @@ along with the updated `package-lock.json`. Its existing entries and scripts sta
 as they are.
 {{/if}}
 
+{{#if (eq engine.slug "none")}}
 ### Every figure comes from this specification
 
 Every number, identifier, key binding, cue name, and piece of screen copy this
 specification fixes is stated here under a name. Anything this specification does
 not name is yours to decide.
+{{else}}
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is exported from `src/constants.ts` under the name this
+specification gives it. Import it and use it. Where this specification states a
+value it also names the constant that holds it, and the constant is
+authoritative. Anything this specification does not name is yours to decide.
+{{/if}}
 
 ### Your own tests
 
@@ -295,6 +307,9 @@ the stage, and where each cell falls, is given in `specs/board.md`.
 - The simulation operates in the integer cell coordinates of `specs/board.md`,
   independent of the rendered scale. Rendering maps a cell to its logical square
   and the runtime maps that to the screen.
+- A pointer or touch position reaches the game in these same logical units, taken
+  through that same fit, so a position the game reads and a menu item's region
+  the game reports lie in one coordinate space.
 
 Every duration in this specification is in seconds, and the simulation consumes
 the delta time the runtime hands each update.

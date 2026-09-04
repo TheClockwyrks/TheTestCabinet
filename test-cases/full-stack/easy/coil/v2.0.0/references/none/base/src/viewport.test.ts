@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { STAGE_H, STAGE_W } from "./constants";
-import { computeFit } from "./viewport";
+import { computeFit, toLogical } from "./viewport";
 
 describe("computeFit", () => {
   it("fills a surface of the stage's own aspect ratio exactly", () => {
@@ -40,5 +40,27 @@ describe("computeFit", () => {
   it("preserves the aspect ratio, scaling both axes by one figure", () => {
     const fit = computeFit(2560, 1440);
     expect(fit.scale).toBeCloseTo(2, 10);
+  });
+});
+
+describe("toLogical", () => {
+  it("inverts the fit, so the stage's own corners map back to themselves", () => {
+    const fit = computeFit(1920, 720);
+    expect(toLogical(fit, 320, 0, 1)).toEqual({ x: 0, y: 0 });
+    expect(toLogical(fit, 320 + STAGE_W, STAGE_H, 1)).toEqual({
+      x: STAGE_W,
+      y: STAGE_H,
+    });
+  });
+
+  it("takes the device pixel ratio out of a client position", () => {
+    // A 1280x720 window at a ratio of 2: the surface is twice the stage.
+    const fit = computeFit(2560, 1440);
+    expect(toLogical(fit, 640, 360, 2)).toEqual({ x: 640, y: 360 });
+  });
+
+  it("puts a point inside a letterbox bar outside the stage", () => {
+    const fit = computeFit(1920, 720);
+    expect(toLogical(fit, 10, 360, 1).x).toBeLessThan(0);
   });
 });

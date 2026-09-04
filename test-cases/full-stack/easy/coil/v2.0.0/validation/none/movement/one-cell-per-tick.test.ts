@@ -26,6 +26,12 @@ import {
 /** Where the chain is posed: mid-board, with a long clear run to its right. */
 const HEAD: Cell = { col: 10, row: 8 };
 
+/** Ticks of clear travel before the tick this point reads. */
+const RUN_UP = 3;
+
+/** Ticks run after it, so what it left behind is on the recording. */
+const SETTLE = 3;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -41,12 +47,18 @@ it("moves the head one cell along dir on one tick", async () => {
   assertDeepEqual(posed.snapshot.snake[0], HEAD, "the posed head");
   assertEqual(posed.snapshot.dir, "right", "the posed direction");
 
-  const after = await captureReplay(h, "move", () => h.tick());
+  const run = await captureReplay(h, "move", async () => {
+    const before = await h.tick(RUN_UP);
+    const stepped = await h.tick();
+    await h.tick(SETTLE);
+    return { before, stepped };
+  });
+  const { before, stepped: after } = run;
 
-  assertEqual(after.ticks, 1, "ticks resolved");
+  assertEqual(after.ticks, RUN_UP + 1, "ticks resolved");
   assertDeepEqual(
     after.snake[0],
-    ahead(HEAD, "right"),
+    ahead(before.snake[0], "right"),
     "the head after a tick",
   );
   // And no further: a build that advanced two cells, or that advanced along some
@@ -54,7 +66,7 @@ it("moves the head one cell along dir on one tick", async () => {
   // moved the head off the grid it counts in is caught by the same reading.
   assertDeepEqual(
     after.snake[0],
-    { col: HEAD.col + 1, row: HEAD.row },
+    { col: before.snake[0].col + 1, row: before.snake[0].row },
     "one cell of travel, on the axis dir names",
   );
 });

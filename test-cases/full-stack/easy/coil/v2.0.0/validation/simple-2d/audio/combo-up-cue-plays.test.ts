@@ -35,7 +35,7 @@ import {
   assertLength,
   assertLessThanOrEqual,
 } from "../assert";
-import { COMBO_WINDOW, CUES } from "../../src/constants";
+import { COMBO_WINDOW, CUES } from "../constants";
 import {
   ahead,
   arrangeStep,

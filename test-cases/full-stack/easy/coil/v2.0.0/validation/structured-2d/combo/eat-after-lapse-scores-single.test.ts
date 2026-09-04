@@ -22,7 +22,7 @@ import {
   COMBO_WINDOW,
   PELLET_POINTS,
   TICK_SECONDS,
-} from "../../src/constants";
+} from "../constants";
 import {
   arrangeEat,
   captureReplay,

@@ -9,23 +9,29 @@ it.
 ## How input reaches the game
 
 {{#if (eq engine.slug "none")}}
-This game stands on no engine, so the keyboard belongs to the runtime layer you
-write. What the game reads from that layer is one press edge per action per
-frame, raised from the keys bound to that action. How the layer produces those
-edges is yours to decide.
+This game stands on no engine, so the keyboard and the pointer belong to the
+runtime layer you write. What the game reads from that layer is one press edge
+per action per frame, raised from the keys bound to that action, and the pointer
+and touch positions `specs/ui.md` puts over the menus. How the layer produces
+those edges and those positions is yours to decide.
 {{else if (eq engine.slug "simple-2d")}}
 The keyboard belongs to the engine, which documents it in the `engine/` directory
-at the root of this repository. The game registers the actions below with the
-engine and reads one press edge per action per frame from it.
+at the root of this repository. The game registers the actions below on the
+`LAYOUT` (`dpad-4`) touch layout and reads one press edge per action per frame
+from it.
 {{else}}
 The keyboard belongs to the engine, which documents it in the `engine/` directory
-at the root of this repository. The game registers the actions below with the
-engine, and the player controller the game mode adds is the one place they are
-read, one press edge per action per frame.
+at the root of this repository. The game registers the actions below on the
+`LAYOUT` (`dpad-4`) touch layout, and the player controller the game mode adds is
+the one place they are read, one press edge per action per frame.
 {{/if}}
 
-Coil is keyboard only, and every action is a press edge. Holding a key does
-nothing beyond the press that began it, and no action repeats while it is held.
+Every action is a press edge. Holding a key does nothing beyond the press that
+began it, and no action repeats while it is held.
+
+The keys below are the whole of how a round is played. The menus take a pointer
+and a touch contact as well, over the hit region each menu item occupies, and
+`specs/ui.md` states what each does there.
 
 ## The actions
 
@@ -73,5 +79,5 @@ requests are discarded.
 
 ## Out of scope
 
-- Touch and gamepad input. The game is played from the keyboard alone.
+- Gamepad input.
 - Rebinding. `BINDINGS` is fixed and the game offers no way to change it.

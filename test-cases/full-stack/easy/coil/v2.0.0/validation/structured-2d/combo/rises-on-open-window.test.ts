@@ -12,7 +12,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { COMBO_WINDOW } from "../../src/constants";
+import { COMBO_WINDOW } from "../constants";
 import {
   arrangeEat,
   captureReplay,
@@ -26,6 +26,12 @@ const COMBO = 2;
 /** Seconds left on the window: part spent, and open. */
 const WINDOW = COMBO_WINDOW / 2;
 
+/** Ticks of clear travel before the head reaches the pellet. */
+const RUN_UP = 3;
+
+/** Ticks run after the eat, so what it left behind is on the recording. */
+const SETTLE = 3;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -37,11 +43,20 @@ afterEach(() => {
 });
 
 it("raises the multiplier by exactly one on an eat inside the window", async () => {
-  const scene = arrangeEat(h, { combo: COMBO, comboWindow: WINDOW });
+  const scene = arrangeEat(h, {
+    combo: COMBO,
+    comboWindow: WINDOW,
+    runUp: RUN_UP + 1,
+  });
   assertEqual(scene.snapshot.combo, COMBO, "the posed multiplier");
-  assertGreaterThan(scene.snapshot.comboWindow, 0, "the window at the eat");
 
-  const after = await captureReplay(h, "rise", () => h.tick());
+  const after = await captureReplay(h, "rise", async () => {
+    const closing = await h.tick(RUN_UP);
+    assertGreaterThan(closing.comboWindow, 0, "the window at the eat");
+    const eaten = await h.tick();
+    await h.tick(SETTLE);
+    return eaten;
+  });
 
   assertEqual(after.combo, COMBO + 1, "the multiplier after the eat");
 });

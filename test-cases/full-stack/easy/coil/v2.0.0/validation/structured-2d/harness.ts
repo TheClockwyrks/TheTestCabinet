@@ -84,6 +84,8 @@ import {
   type GameInstance,
   type GameState,
   type PathSegment,
+  type PointerButton,
+  type PointerDevice,
   type RecordedFrame,
   type Recording,
   type Resource,
@@ -95,15 +97,15 @@ import {
   BOARD_X,
   BOARD_Y,
   CELL,
-  INTERIOR_MAX_COL,
-  INTERIOR_MAX_ROW,
-  INTERIOR_MIN_COL,
-  INTERIOR_MIN_ROW,
+  INTERIOR_COL_MAX,
+  INTERIOR_ROW_MAX,
+  INTERIOR_COL_MIN,
+  INTERIOR_ROW_MIN,
   LAYOUT,
   STAGE_H,
   STAGE_W,
   TICK_SECONDS,
-} from "../src/constants";
+} from "./constants";
 import { BACKGROUND, game as build } from "../src/game";
 import { fail } from "./assert";
 import {
@@ -111,6 +113,7 @@ import {
   type Cell,
   type CoilDebugApi,
   type CoilSnapshot,
+  type MenuRect,
   type Dir,
   type Screen,
 } from "./surface";
@@ -228,10 +231,10 @@ export function cellCenter(col: number, row: number): { x: number; y: number } {
 /** Whether `(col, row)` is an interior cell, which is any cell not a wall cell. */
 export function isInterior(col: number, row: number): boolean {
   return (
-    col >= INTERIOR_MIN_COL &&
-    col <= INTERIOR_MAX_COL &&
-    row >= INTERIOR_MIN_ROW &&
-    row <= INTERIOR_MAX_ROW
+    col >= INTERIOR_COL_MIN &&
+    col <= INTERIOR_COL_MAX &&
+    row >= INTERIOR_ROW_MIN &&
+    row <= INTERIOR_ROW_MAX
   );
 }
 
@@ -278,7 +281,7 @@ export function chainFrom(head: Cell, dir: Dir, length: number): Cell[] {
  */
 export const WALL_CELL: Cell = {
   col: 0,
-  row: Math.floor((INTERIOR_MIN_ROW + INTERIOR_MAX_ROW) / 2),
+  row: Math.floor((INTERIOR_ROW_MIN + INTERIOR_ROW_MAX) / 2),
 };
 
 /**
@@ -295,8 +298,8 @@ export function emptyInteriorCell(
   snapshot: CoilSnapshot,
   exclude: readonly Cell[] = [],
 ): Cell {
-  for (let row = INTERIOR_MIN_ROW; row <= INTERIOR_MAX_ROW; row += 1) {
-    for (let col = INTERIOR_MIN_COL; col <= INTERIOR_MAX_COL; col += 1) {
+  for (let row = INTERIOR_ROW_MIN; row <= INTERIOR_ROW_MAX; row += 1) {
+    for (let col = INTERIOR_COL_MIN; col <= INTERIOR_COL_MAX; col += 1) {
       const cell = { col, row };
       if (holdsCell(snapshot.snake, cell)) continue;
       if (snapshot.pellet !== null && sameCell(snapshot.pellet, cell)) continue;
@@ -322,10 +325,10 @@ export function emptyInteriorCell(
  */
 export function serpentine(): Cell[] {
   const path: Cell[] = [];
-  for (let row = INTERIOR_MIN_ROW; row <= INTERIOR_MAX_ROW; row += 1) {
-    const rightwards = (row - INTERIOR_MIN_ROW) % 2 === 0;
-    for (let i = INTERIOR_MIN_COL; i <= INTERIOR_MAX_COL; i += 1) {
-      const col = rightwards ? i : INTERIOR_MAX_COL - (i - INTERIOR_MIN_COL);
+  for (let row = INTERIOR_ROW_MIN; row <= INTERIOR_ROW_MAX; row += 1) {
+    const rightwards = (row - INTERIOR_ROW_MIN) % 2 === 0;
+    for (let i = INTERIOR_COL_MIN; i <= INTERIOR_COL_MAX; i += 1) {
+      const col = rightwards ? i : INTERIOR_COL_MAX - (i - INTERIOR_COL_MIN);
       path.push({ col, row });
     }
   }
@@ -689,6 +692,22 @@ export interface Harness {
   /** Run exactly one frame and hand back the bitmaps it blitted. */
   frameBlits(): Promise<Blit[]>;
 
+  /**
+   * Move the pointer to a logical point, with no button pressed.
+   *
+   * Every pointer method below dispatches a `PointerEvent`-shaped event at the
+   * target the engine listens on and lets the ENGINE do the rest — the mapping
+   * onto logical units, the contacts, the edges — so what a check drives is the
+   * pipeline a player drives. The position is given in the same logical units
+   * `menuItemRect` reports, and the harness converts it back to the client
+   * position an event carries.
+   */
+  pointerMove(x: number, y: number, options?: PointerOptions): void;
+  /** Press a button at a logical point, bringing the pointer into contact. */
+  pointerDown(x: number, y: number, options?: PointerOptions): void;
+  /** Release a button at a logical point, ending the contact it was holding. */
+  pointerUp(x: number, y: number, options?: PointerOptions): void;
+
   /** How the stage is mapped onto this harness's canvas. */
   viewport(): Viewport;
   /** Where a logical point lands in the canvas's backing store. */
@@ -734,6 +753,123 @@ function toDevice(
   return {
     x: Math.round(view.offsetX + logical.x * view.scale),
     y: Math.round(view.offsetY + logical.y * view.scale),
+  };
+}
+
+/**
+ * Which pointer a dispatched event comes from, and what it is holding.
+ *
+ * The engine reads `pointerType`, `pointerId`, `isPrimary`, `button` and
+ * `buttons` off a pointer event and nothing else (the engine's input
+ * documentation), so these are exactly the facts a check can vary. Every one has
+ * a default describing an ordinary left mouse button, which is what a menu check
+ * wants; `device: "touch"` is what makes the same helper drive a finger.
+ */
+export interface PointerOptions {
+  /** Which kind of device drove it, carried as `pointerType`. */
+  device?: PointerDevice;
+  /** Which pointer, carried as `pointerId`. */
+  id?: number;
+  /** Whether this is the primary pointer. Defaults to true. */
+  primary?: boolean;
+  /** The button a press or a release names. Defaults to the primary one. */
+  button?: PointerButton;
+}
+
+/** The three pointer events the engine listens for. */
+type PointerEventType = "pointerdown" | "pointermove" | "pointerup";
+
+/**
+ * A `PointerEvent`-shaped event, carrying the seven fields the engine reads and
+ * nothing else.
+ *
+ * A shim rather than a real `PointerEvent`, for the same reason {@link KeyEvent}
+ * is a shim: this project runs on a canvas with no document behind it, so there
+ * is no `PointerEvent` constructor to call and no element to dispatch from. The
+ * engine narrows structurally, so an event carrying those fields drives the
+ * pointer exactly as a player's does.
+ */
+class PointerShapedEvent extends Event {
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly pointerId: number;
+  readonly pointerType: string;
+  readonly isPrimary: boolean;
+  readonly button: number;
+  readonly buttons: number;
+
+  constructor(
+    type: PointerEventType,
+    fields: {
+      clientX: number;
+      clientY: number;
+      pointerId: number;
+      pointerType: string;
+      isPrimary: boolean;
+      button: number;
+      buttons: number;
+    },
+  ) {
+    super(type);
+    this.clientX = fields.clientX;
+    this.clientY = fields.clientY;
+    this.pointerId = fields.pointerId;
+    this.pointerType = fields.pointerType;
+    this.isPrimary = fields.isPrimary;
+    this.button = fields.button;
+    this.buttons = fields.buttons;
+  }
+}
+
+/**
+ * The browser's own numbering for `PointerEvent.button`, which the engine reads
+ * a button's name out of. `-1` is the value a move carries: the field saying the
+ * event is about position rather than about a button.
+ */
+const BUTTON_INDEX: Readonly<Record<PointerButton, number>> = {
+  primary: 0,
+  auxiliary: 1,
+  secondary: 2,
+  back: 3,
+  forward: 4,
+};
+
+/** The bit each button occupies in the `PointerEvent.buttons` mask. */
+const BUTTON_BIT: Readonly<Record<PointerButton, number>> = {
+  primary: 1,
+  secondary: 2,
+  auxiliary: 4,
+  back: 8,
+  forward: 16,
+};
+
+/** The `buttons` mask a set of held buttons makes. */
+function buttonMask(held: Iterable<PointerButton>): number {
+  let mask = 0;
+  for (const button of held) mask |= BUTTON_BIT[button];
+  return mask;
+}
+
+/**
+ * The client position a logical point sits at, which is what a dispatched
+ * pointer event carries.
+ *
+ * The inverse of the conversion the engine documents: it takes a client
+ * position, subtracts the surface's origin (`(0, 0)` here, because the harness
+ * declares none), multiplies by the device pixel ratio, and maps it through the
+ * inverse viewport. Going the other way is the viewport map followed by a
+ * division by the ratio, so a check names a point in the units `menuItemRect`
+ * reports and the game reads that same point back.
+ */
+function toClient(
+  view: Viewport,
+  dpr: number,
+  x: number,
+  y: number,
+): { x: number; y: number } {
+  return {
+    x: (view.offsetX + x * view.scale) / dpr,
+    y: (view.offsetY + y * view.scale) / dpr,
   };
 }
 
@@ -938,6 +1074,60 @@ export async function createHarness(
     keys.dispatchEvent(new KeyEvent(type, code));
   };
 
+  /**
+   * What each pointer id is holding, so a move dispatched mid-drag reports the
+   * mask a real one would and a check never has to state it.
+   */
+  const heldButtons = new Map<number, Set<PointerButton>>();
+
+  const heldBy = (id: number): Set<PointerButton> => {
+    const existing = heldButtons.get(id);
+    if (existing !== undefined) return existing;
+    const created = new Set<PointerButton>();
+    heldButtons.set(id, created);
+    return created;
+  };
+
+  const pointerEvent = (
+    type: PointerEventType,
+    x: number,
+    y: number,
+    options: PointerOptions,
+    button: PointerButton | null,
+  ): void => {
+    const id = options.id ?? 0;
+    const at = toClient(engine.viewport(), dpr, x, y);
+    keys.dispatchEvent(
+      new PointerShapedEvent(type, {
+        clientX: at.x,
+        clientY: at.y,
+        pointerId: id,
+        pointerType: options.device ?? "mouse",
+        isPrimary: options.primary ?? true,
+        // A move is about position rather than about a button, which the field
+        // says with -1.
+        button: button === null ? -1 : BUTTON_INDEX[button],
+        buttons: buttonMask(heldBy(id)),
+      }),
+    );
+  };
+
+  const pointerMove = (x: number, y: number, options: PointerOptions): void => {
+    pointerEvent("pointermove", x, y, options, null);
+  };
+
+  const pointerDown = (x: number, y: number, options: PointerOptions): void => {
+    const button = options.button ?? "primary";
+    heldBy(options.id ?? 0).add(button);
+    pointerEvent("pointerdown", x, y, options, button);
+  };
+
+  const pointerUp = (x: number, y: number, options: PointerOptions): void => {
+    const button = options.button ?? "primary";
+    heldBy(options.id ?? 0).delete(button);
+    pointerEvent("pointerup", x, y, options, button);
+  };
+
   const harness: Harness = {
     engine,
     get world() {
@@ -1014,6 +1204,10 @@ export async function createHarness(
       await engine.advance(1);
       return blitsOf(calls);
     },
+
+    pointerMove: (x, y, options = {}) => pointerMove(x, y, options),
+    pointerDown: (x, y, options = {}) => pointerDown(x, y, options),
+    pointerUp: (x, y, options = {}) => pointerUp(x, y, options),
 
     viewport: () => engine.viewport(),
     device: (x, y) => toDevice(engine.world, engine.viewport(), x, y),
@@ -1742,6 +1936,16 @@ export interface StepOptions extends Omit<Scene, "snake" | "dir"> {
   head?: Cell;
   dir?: Dir;
   length?: number;
+  /**
+   * Ticks of clear travel between the posed head and the moment the scenario is
+   * about — the pellet for {@link arrangeEat}, the fatal cell for
+   * {@link arrangeApproach}. One by default, which is the moment itself and no
+   * run-up at all.
+   *
+   * A check whose `replay` output has to show the behaviour ARRIVING poses more
+   * than one and ticks the difference off inside its recording.
+   */
+  runUp?: number;
 }
 
 /**
@@ -1784,7 +1988,7 @@ export interface EatScene extends StepScene {
 export function arrangeEat(h: Harness, options: StepOptions = {}): EatScene {
   const head = options.head ?? HOME_HEAD;
   const dir = options.dir ?? "right";
-  const pellet = ahead(head, dir);
+  const pellet = ahead(head, dir, options.runUp ?? 1);
   const step = arrangeStep(h, {
     pelletRespawn: false,
     ...options,
@@ -1796,15 +2000,15 @@ export function arrangeEat(h: Harness, options: StepOptions = {}): EatScene {
 }
 
 /**
- * Pose a chain whose head is one cell from `target`, facing it, so the next tick
- * enters it.
+ * Pose a chain whose head is `runUp` cells from `target`, facing it, so the tick
+ * after `runUp - 1` ticks of clear travel enters it.
  *
  * `target` is the fatal cell a collision point is about — a wall cell, an
  * obstacle cell, or a segment of the snake's own body — and `dir` is the
  * direction it is approached from, defaulting to `right`. The head is placed one
- * cell short of `target` along that direction and the chain trails back behind
- * it. The pellet is off the board, so the tick that resolves is the collision
- * alone.
+ * `runUp` cells short of `target` along that direction — one by default, which
+ * is the fatal tick itself — and the chain trails back behind it. The pellet is
+ * off the board, so the tick that resolves is the collision alone.
  */
 export function arrangeApproach(
   h: Harness,
@@ -1814,7 +2018,7 @@ export function arrangeApproach(
   const dir = options.dir ?? "right";
   return arrangeStep(h, {
     ...options,
-    head: ahead(target, OPPOSITE[dir]),
+    head: ahead(target, OPPOSITE[dir], options.runUp ?? 1),
     dir,
   });
 }
@@ -1854,6 +2058,142 @@ export async function startRoundWithKeys(h: Harness): Promise<CoilSnapshot> {
   openTitle(h);
   await chooseItem(h, 0);
   return h.snapshot();
+}
+
+/* -------------------------------------------------------------------------- */
+/* The menus, where the build drew them                                       */
+/* -------------------------------------------------------------------------- */
+//
+// `specs/ui.md` gives every menu-bearing screen a pointer and a touch contact as
+// well as the keyboard, and deliberately leaves the LAYOUT to the build: what it
+// fixes is that the build reports each item's hit region through `menuItemRect`
+// (`specs/instrumentation.md`), and that a pointer over that region selects the
+// item. So every helper below asks the build where it put the item and then
+// drives the pointer there. Nothing here knows a menu coordinate, and a build
+// that lays its menus out any way it likes passes.
+//
+// WHAT IS DRIVEN IS THE ENGINE'S OWN PIPELINE. The event is dispatched at the
+// target the engine listens on and the engine maps it, raises the contacts and
+// closes the edges — so what a check reads afterwards is the game's own input
+// handling, which is the half `specs/ui.md` fixes.
+
+/** A logical point on the stage. */
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/**
+ * The hit region of item `index` on the menu the current screen shows.
+ *
+ * `menuItemRect` answers `null` on `"playing"`, which shows no menu, and for an
+ * index the current menu has no item at, so a check that asked for an item it
+ * expects to exist gets a failure naming the reading rather than a `TypeError` on
+ * the next line.
+ */
+export function menuRect(h: Harness, index: number): MenuRect {
+  const rect = h.debug.menuItemRect(index);
+  if (rect === null || rect === undefined) {
+    fail(
+      `menuItemRect(${index}) to report the hit region of item ${index} on the ` +
+        "menu the current screen shows, in logical units " +
+        "(specs/instrumentation.md)",
+      rect,
+    );
+  }
+  return rect;
+}
+
+/** The centre of item `index`'s hit region, in logical units. */
+export function menuItemCenter(h: Harness, index: number): Point {
+  const rect = menuRect(h, index);
+  return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+}
+
+/**
+ * Move the pointer onto item `index` and run the frame that reads it.
+ *
+ * A move alone, with no button: `specs/ui.md` makes a pointer arriving over an
+ * item's region select it, which is the hover a mouse does and the reason this is
+ * separate from a click.
+ */
+export async function hoverMenuItem(h: Harness, index: number): Promise<Point> {
+  const at = menuItemCenter(h, index);
+  h.pointerMove(at.x, at.y);
+  await h.advance(1);
+  return at;
+}
+
+/**
+ * Click item `index`: move onto it, press, release, and run the frame.
+ *
+ * Both edges fall inside the one region, which is what `specs/ui.md` requires of
+ * a confirm, and a frame may carry both.
+ */
+export async function clickMenuItem(h: Harness, index: number): Promise<Point> {
+  const at = menuItemCenter(h, index);
+  h.pointerMove(at.x, at.y);
+  h.pointerDown(at.x, at.y);
+  h.pointerUp(at.x, at.y);
+  await h.advance(1);
+  return at;
+}
+
+/**
+ * Land a touch contact inside item `index`'s region and LEAVE IT DOWN.
+ *
+ * No move in front of the landing, because a finger does not hover — which is why
+ * `specs/ui.md` makes the landing itself select the item. Left down so a check
+ * about selection reads what the landing alone did, with no lift to confirm on.
+ */
+export async function landOnMenuItem(
+  h: Harness,
+  index: number,
+): Promise<Point> {
+  const at = menuItemCenter(h, index);
+  h.pointerDown(at.x, at.y, { device: "touch" });
+  await h.advance(1);
+  return at;
+}
+
+/** Land a touch contact inside item `index`'s region and lift it there. */
+export async function tapMenuItem(h: Harness, index: number): Promise<Point> {
+  const at = await landOnMenuItem(h, index);
+  h.pointerUp(at.x, at.y, { device: "touch" });
+  await h.advance(1);
+  return at;
+}
+
+/**
+ * Press the pointer on item `from`, travel onto item `to`, and release there.
+ *
+ * The ordinary affordance that lets a player slide off a control to cancel: two
+ * edges in different regions confirm nothing (`specs/ui.md`). Driven over
+ * separate frames so the press, the travel and the release are each read.
+ */
+export async function slideOffMenuItems(
+  h: Harness,
+  from: number,
+  to: number,
+  options: PointerOptions = {},
+): Promise<void> {
+  const start = menuItemCenter(h, from);
+  const end = menuItemCenter(h, to);
+  h.pointerDown(start.x, start.y, options);
+  await h.advance(1);
+  h.pointerMove(end.x, end.y, options);
+  await h.advance(1);
+  h.pointerUp(end.x, end.y, options);
+  await h.advance(1);
+}
+
+/** {@link slideOffMenuItems} with a finger: a contact that lifts where it did not land. */
+export function dragOffMenuItems(
+  h: Harness,
+  from: number,
+  to: number,
+): Promise<void> {
+  return slideOffMenuItems(h, from, to, { device: "touch" });
 }
 
 /* -------------------------------------------------------------------------- */

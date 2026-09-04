@@ -14,7 +14,7 @@
 // `states/pause-reachable` alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PAUSE_ITEMS } from "../../src/constants";
+import { PAUSE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   HOME_HEAD,

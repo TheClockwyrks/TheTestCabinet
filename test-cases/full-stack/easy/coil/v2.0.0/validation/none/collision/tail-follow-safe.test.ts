@@ -41,6 +41,9 @@ const CHAIN: Cell[] = [
   { col: 11, row: 8 },
 ];
 
+/** Ticks run after the tick this point reads, so its outcome is on the recording. */
+const SETTLE = 3;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -65,7 +68,11 @@ it("carries the round on when the head takes the cell the tail leaves", async ()
   );
   assertEqual(posed.pellet, null, "the board the tick runs over");
 
-  const after = await captureReplay(h, "tail", () => h.tick());
+  const after = await captureReplay(h, "tail", async () => {
+    const resolved = await h.tick();
+    await h.tick(SETTLE);
+    return resolved;
+  });
 
   assertEqual(
     after.screen,

@@ -16,13 +16,13 @@
 import { afterEach, beforeEach, it } from "vitest";
 import {
   BINDINGS,
-  INTERIOR_MAX_COL,
-  INTERIOR_MAX_ROW,
-  INTERIOR_MIN_COL,
-  INTERIOR_MIN_ROW,
+  INTERIOR_COL_MAX,
+  INTERIOR_ROW_MAX,
+  INTERIOR_COL_MIN,
+  INTERIOR_ROW_MIN,
   START_CELLS,
   START_DIR,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertBetween,
   assertDeepEqual,
@@ -74,14 +74,14 @@ it("opens the round on the starting chain with one valid pellet", async () => {
   }
   assertBetween(
     pellet.col,
-    INTERIOR_MIN_COL,
-    INTERIOR_MAX_COL,
+    INTERIOR_COL_MIN,
+    INTERIOR_COL_MAX,
     "the pellet's column",
   );
   assertBetween(
     pellet.row,
-    INTERIOR_MIN_ROW,
-    INTERIOR_MAX_ROW,
+    INTERIOR_ROW_MIN,
+    INTERIOR_ROW_MAX,
     "the pellet's row",
   );
   assertTrue(

@@ -1,9 +1,11 @@
 // states/opens-on-title — a freshly loaded game is on the title, on its first
 // menu item.
 //
-// specs/ui.md: "the game opens on `title`", and "Arriving at any of these screens
-// sets `menuIndex` to `0`." Both are read off the game as it stands the moment it
-// has initialized, before a key is pressed and before anything is posed.
+// specs/ui.md: "the game opens on `title`", and "arriving at `title` sets
+// [`menuIndex`] to `titleIndex`" — which specs/ui.md's "The remembered title
+// selection" has "opening at `0`". Both are read off the game as it stands the
+// moment it has initialized, before a key is pressed and before anything is
+// posed.
 //
 // WHAT MAKES THIS A READING OF THE LOAD. The harness builds the engine, subscribes
 // to it, and calls `engine.initialize()` — which is the build's own `initialize`,

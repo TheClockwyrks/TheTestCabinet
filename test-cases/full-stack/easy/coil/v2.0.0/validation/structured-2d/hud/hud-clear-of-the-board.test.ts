@@ -25,7 +25,7 @@ import {
   COMBO_WINDOW,
   MODE_LABEL,
   SCORE_LABEL,
-} from "../../src/constants";
+} from "../constants";
 import { assertGreaterThan, assertLessThan } from "../assert";
 import {
   HOME_HEAD,
@@ -53,7 +53,7 @@ afterEach(() => {
 });
 
 it("anchors every HUD readout above the board's first row", async () => {
-  poseScene(h, {
+  const live = poseScene(h, {
     snake: chainFrom(HOME_HEAD, "right", 4),
     dir: "right",
     pellet: null,
@@ -76,7 +76,7 @@ it("anchors every HUD readout above the board's first row", async () => {
       calls,
       new RegExp(`[x×]\\s*${COMBO}`, "i"),
     ),
-    [MODE_LABEL]: runsOf(calls, MODE_LABEL),
+    [MODE_LABEL[live.mode]]: runsOf(calls, MODE_LABEL[live.mode]),
   };
 
   for (const [name, runs] of Object.entries(readouts)) {

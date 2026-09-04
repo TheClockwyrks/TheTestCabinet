@@ -15,7 +15,7 @@
 // wall, so the crossing between rounds is the build's own too.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   WALL_CELL,

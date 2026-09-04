@@ -92,14 +92,26 @@ title = "Board"
 [[review.categories.items]]
 id = "obstacles-layout"
 title = "The board carries the fixed obstacle course"
-description = "After a reset, obstacles is exactly the eighteen cells of OBSTACLE_CELLS, the four bars specs/mode.md fixes, and none of them changes while the round runs."
+description = "After a reset, obstacles is exactly the eighteen cells of OBSTACLE_CELLS, the four bars specs/mode.md fixes."
 domains = ["maze"]
 failure_cap = "passable"
-# Automated validation: reset, read the obstacle list back as a set, compare it
-# against the eighteen cells, then run a stretch of play and read it again. See
+# Automated validation: reset, read the obstacle list back as a set, and compare
+# it against the eighteen cells. See
 # validation/<engine>/board/obstacles-layout.test.ts.
 validation = { script = "board/obstacles-layout.test.ts", outputs = [
   { id = "layout", name = "The fixed obstacle course", kind = "image" },
+] }
+[[review.categories.items]]
+id = "obstacles-stand-still"
+title = "The course never changes while a round runs"
+description = "The obstacle cells are the same eighteen cells after a stretch of live play as they were when the round opened."
+domains = ["maze"]
+failure_cap = "passable"
+# Automated validation: reset, run a stretch of play with eats in it, and read
+# the obstacle list back a second time. See
+# validation/<engine>/board/obstacles-stand-still.test.ts.
+validation = { script = "board/obstacles-stand-still.test.ts", outputs = [
+  { id = "unchanged", name = "The course standing unchanged through a round", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "obstacles-fatal"
@@ -139,34 +151,95 @@ validation = { script = "board/pellet-avoids-obstacles.test.ts", outputs = [
 ] }
 
 # --- Instrumentation ----------------------------------------------------------
-# The two operations this mode adds to the debug surface, each checked by what
-# it does to the board rather than by its presence alone.
+# The two operations this mode adds to the debug surface, each checked by what it
+# does to the board rather than by its presence alone, and each split into one
+# point per behavior it is stated to have.
 [[review.categories]]
 id = "instrumentation"
 title = "Instrumentation"
 [[review.categories.items]]
-id = "clear-obstacles"
+id = "clear-obstacles-empties-the-list"
 title = "clearObstacles empties the course"
-description = "clearObstacles leaves obstacles empty and the cleared cells ordinary: the head crosses one safely and a pellet may spawn on it, while the wall border is untouched."
+description = "clearObstacles leaves obstacles empty, with every cell of the laid course taken off the board at once."
 domains = ["maze"]
 failure_cap = "passable"
-# Automated validation: clear the course, read the obstacle list back, then walk
-# the head through a cell the course held and confirm the round is still
-# playing. See validation/<engine>/instrumentation/clear-obstacles.test.ts.
-validation = { script = "instrumentation/clear-obstacles.test.ts", outputs = [
+# Automated validation: clear the course and read the obstacle list back. See
+# validation/<engine>/instrumentation/clear-obstacles-empties-the-list.test.ts.
+validation = { script = "instrumentation/clear-obstacles-empties-the-list.test.ts", outputs = [
   { id = "cleared", name = "The board with the course cleared", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "add-obstacle"
-title = "addObstacle lays one fatal cell"
-description = "addObstacle places one obstacle at the named cell, which is then fatal to the head and closed to a pellet spawn exactly as a cell of the laid course is."
+id = "cleared-cell-is-safe"
+title = "A cleared cell is safe to cross"
+description = "After clearObstacles the head advances through a cell the course held without ending the round, because the cell has become an ordinary interior cell."
+domains = ["maze"]
+failure_cap = "passable"
+# Automated validation: clear the course, pose the head one cell from a cell the
+# course held, run a tick, and read the screen. See
+# validation/<engine>/instrumentation/cleared-cell-is-safe.test.ts.
+validation = { script = "instrumentation/cleared-cell-is-safe.test.ts", outputs = [
+  { id = "crossed", name = "The head crossing a cleared cell", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cleared-board-keeps-its-border"
+title = "Clearing the course leaves the border fatal"
+description = "clearObstacles takes the course off the board and leaves the wall border where it is, so the head still ends the round on it."
+domains = ["maze"]
+failure_cap = "passable"
+# Automated validation: clear the course, run the head into the wall, and read
+# the screen. See
+# validation/<engine>/instrumentation/cleared-board-keeps-its-border.test.ts.
+validation = { script = "instrumentation/cleared-board-keeps-its-border.test.ts", outputs = [
+  { id = "border", name = "The head ending the round on the border of a cleared board", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cleared-cell-takes-a-pellet"
+title = "A cleared cell is open to a pellet"
+description = "After clearObstacles a cell the course held is back in the valid set a pellet is drawn from, so a long run of respawns eventually places one on it."
+domains = ["maze"]
+failure_cap = "passable"
+# Automated validation: clear the course, pose a chain that leaves only cells
+# the course held free, drive one respawn, and read the cell the pellet landed
+# on. See validation/<engine>/instrumentation/cleared-cell-takes-a-pellet.test.ts.
+validation = { script = "instrumentation/cleared-cell-takes-a-pellet.test.ts", outputs = [
+  { id = "spawned", name = "A pellet placed on a cleared cell", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "add-obstacle-lays-the-cell"
+title = "addObstacle lays one cell"
+description = "addObstacle places one obstacle at the named cell, so obstacles holds exactly that cell and no other."
+domains = ["maze"]
+failure_cap = "passable"
+# Automated validation: clear the course, add one obstacle, and read the
+# obstacle list back. See
+# validation/<engine>/instrumentation/add-obstacle-lays-the-cell.test.ts.
+validation = { script = "instrumentation/add-obstacle-lays-the-cell.test.ts", outputs = [
+  { id = "added", name = "A single added obstacle", kind = "image" },
+] }
+[[review.categories.items]]
+id = "added-obstacle-is-fatal"
+title = "An added obstacle is fatal to the head"
+description = "The head advancing into a cell laid by addObstacle ends the round as a death, exactly as a cell of the laid course does."
 domains = ["maze"]
 failure_cap = "passable"
 # Automated validation: clear the course, add one obstacle ahead of the head,
-# read the obstacle list back, and drive the head into it. See
-# validation/<engine>/instrumentation/add-obstacle.test.ts.
-validation = { script = "instrumentation/add-obstacle.test.ts", outputs = [
-  { id = "added", name = "A single added obstacle, and the head meeting it", kind = "replay" },
+# run one tick, and read the screen. See
+# validation/<engine>/instrumentation/added-obstacle-is-fatal.test.ts.
+validation = { script = "instrumentation/added-obstacle-is-fatal.test.ts", outputs = [
+  { id = "fatal", name = "The head meeting an added obstacle", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "added-obstacle-closes-a-spawn"
+title = "An added obstacle is closed to a pellet"
+description = "A cell laid by addObstacle is out of the valid set a pellet is drawn from, so no respawn ever places a pellet on it."
+domains = ["maze"]
+failure_cap = "passable"
+# Automated validation: clear the course, add obstacles over every free cell but
+# one, drive a run of respawns, and confirm every pellet landed on the one cell
+# left open. See
+# validation/<engine>/instrumentation/added-obstacle-closes-a-spawn.test.ts.
+validation = { script = "instrumentation/added-obstacle-closes-a-spawn.test.ts", outputs = [
+  { id = "closed", name = "Pellets respawning clear of an added obstacle", kind = "replay" },
 ] }
 
 # --- HUD ----------------------------------------------------------------------

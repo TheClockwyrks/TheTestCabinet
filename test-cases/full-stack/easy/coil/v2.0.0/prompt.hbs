@@ -5,120 +5,63 @@ Your project root is `{{workspace}}`. Build the game there.
 ## Your starting point
 
 {{#if (eq engine.slug "none")}}
-A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
-describes it. Its dependencies are installed, so you can build and test right
-away: Vite builds it, Vitest tests it, ESLint lints it, and Prettier formats it.
-That toolchain is the whole of what it supplies.
+A TypeScript project is already in place at `{{workspace}}`, its dependencies
+installed, so you can build and test right away. Its `README.md` describes it.
 
-What is missing is everything under `src/`, and that directory does not exist
-yet. Nothing here supplies a frame loop, a canvas fit, input, audio, an overlay,
-or a line of game code. `index.html` loads `/src/main.ts`, so that module is
+`src/` does not exist yet. `index.html` loads `/src/main.ts`, so that module is
 where your build starts.
 {{else if (eq engine.slug "simple-2d")}}
-A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
-describes it. Its dependencies are installed, so you can build and test right
-away. It is wired up end to end: Vite builds it, Vitest tests it, ESLint lints
-it, Prettier formats it, and `src/main.ts` already stands the engine up over the
-page's canvas and runs the game.
+A TypeScript project is already in place at `{{workspace}}`, its dependencies
+installed, so you can build and test right away. Its `README.md` describes it.
 
-What is missing is the game itself: `src/game.ts`. As seeded it is a stub whose
-`initialize`, `update`, and `render` throw `"not implemented"`, and whose
+What is missing is the game itself, `src/game.ts`. As seeded it is a stub whose
+`initialize`, `update`, and `render` throw `"not implemented"` and whose
 `BACKGROUND` is a placeholder. The stub is written against the `CoilState` and
-`CoilDebugApi` types the specification asks `src/game.ts` to declare, so the
-project does not type-check until those declarations exist.
+`CoilDebugApi` types the specification asks it to declare, so the project does
+not type-check until those declarations exist.
 {{else}}
-A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
-describes it. Its dependencies are installed, so you can build and test right
-away. It is wired up end to end: Vite builds it, Vitest tests it, ESLint lints
-it, Prettier formats it, and `src/main.ts` already stands the engine up over the
-page's canvas and runs the game.
+A TypeScript project is already in place at `{{workspace}}`, its dependencies
+installed, so you can build and test right away. Its `README.md` describes it.
 
-What is missing is the game itself: `src/game.ts`. As seeded it is a stub game
-definition whose instance's `initialize` throws `"not implemented"`, and whose
+What is missing is the game itself, `src/game.ts`. As seeded it is a stub game
+definition whose instance's `initialize` throws `"not implemented"` and whose
 `BACKGROUND` is a placeholder. The stub is written against the `CoilState` and
-`CoilDebugApi` types the specification asks `src/game.ts` to declare, so the
-project does not type-check until those declarations exist.
+`CoilDebugApi` types the specification asks it to declare, so the project does
+not type-check until those declarations exist.
 {{/if}}
 
 {{#if (eq engine.slug "none")}}
 ## The runtime
 
-This build runs on no engine, so the layer beneath the game is yours as well: the
-frame loop and the delta time it hands each update, fitting the fixed logical
-stage onto the canvas, the keyboard input the player drives the game with, image
-loading, the audio, and the on-screen debug overlay. The specification in `specs/`
-states what Coil needs from that layer and fixes nothing else about it.
-{{else if (eq engine.slug "simple-2d")}}
-## The {{engine.name}} engine
-
-This build runs on the **{{engine.name}}** engine, installed as a dependency of
-the project, so import it by its bare package name; there is nothing to add to
-`package.json` for it and nothing to install.
-
-The engine's own documentation is at `{{engine.docs}}`. It is the authoritative
-description of the engine's API; the specification in `specs/` describes the game
-and does not restate the engine. The documentation also carries a complete worked
-example of unit-testing a game built on it.
-
-Build the game on the engine rather than beside it. The engine owns the frame
-loop and the delta time it hands your update, the input actions, the audio cue
-bus, asset loading, and the on-screen debug overlay. It also holds the game's
-state, by value: each frame it hands `update` the current state read-only and
-keeps what `update` returns as the next, so a frame builds the next state from
-the current one rather than writing into it. Register what the game needs with
-the engine and use what it gives back. What remains yours is the game itself: its
-simulation and everything it draws.
+This build runs on no engine, so the layer beneath the game is yours to write as
+well. `specs/overview.md` states what Coil needs from it.
 {{else}}
 ## The {{engine.name}} engine
 
-This build runs on the **{{engine.name}}** engine, installed as a dependency of
-the project, so import it by its bare package name; there is nothing to add to
-`package.json` for it and nothing to install.
+The **{{engine.name}}** engine is installed as a dependency of the project, so
+import it by its bare package name; there is nothing to add to `package.json`
+for it and nothing to install.
 
-The engine's own documentation is at `{{engine.docs}}`. It is the authoritative
-description of the engine's API; the specification in `specs/` describes the game
-and does not restate the engine.
-
-Build the game inside the engine's framework rather than beside it. The engine
-owns the frame loop and the delta time it hands each tick, rendering and the
-camera, the input actions, the audio cue bus, asset loading, and the on-screen
-debug overlay, and the game is written as subclasses of its classes: a game
-instance, a game mode, actors and their components, and the controllers that
-drive them. The engine constructs, ticks, and renders them in a fixed order.
-Register what the game needs with the engine and use what it gives back. What
-remains yours is the game itself: its rules, its state, and everything it draws
-through the engine's pipeline.
+The engine's own documentation is at `{{engine.docs}}`, and it is the
+authoritative description of the engine's API.
+{{#if (eq engine.slug "simple-2d")}}
+It also carries a complete worked example of unit-testing a game built on it.
+{{/if}}
 {{/if}}
 
 ## What to read first
 
 The full specification is in the `specs/` directory at `{{workspace}}`, already
-present in your project. Produce an implementation that matches the specification
-exactly. `specs/overview.md` states what you implement, which files stay as they
-are, the code quality the build is held to, and the commands that run over the
-finished repository.
-
-## The build interface
-
-`npm ci` then `npm run build` must produce the static site, with no other manual
-step, into `dist/` at the project root, with an `index.html` at the root of that
-directory. Serving that directory as-is must run the game, both at the root of a
-static file server and mounted under a sub-path, so every URL the build emits or
-constructs at runtime is page-relative. The scripts that do this are already in
-`package.json`.
-
-## The assets the game plays
-
-Coil ships no art and no sound, and this build makes both: the snake's sprite set
-and the game's cues and music. `specs/assets.md` states what to produce, which
-binary produces each file, where each lands under `assets/`, how it is loaded,
-and the bar each is held to. It also lists what stays drawn in code.
+present in your project. Produce an implementation that matches the
+specification exactly. `specs/overview.md` states what you implement, which
+files stay as they are, the build interface, the code quality the build is held
+to, and the commands that run over the finished repository. `specs/assets.md`
+states the art and the audio this build produces, and `specs/showcase.md` the
+showcase it ships beside its source.
 
 ## Driving the game in a browser
 
-The project's Playwright and its headless Chromium are installed, so you can
-serve the built game and drive it in a real browser, play a round, and check for
-console errors.
+The project's Playwright and its headless Chromium are installed.
 
 When you launch the browser, use the project's own Playwright: import it from
 your project (for example `import { chromium } from "playwright"`) or run the
@@ -127,21 +70,13 @@ it lives in your project's `node_modules` like any other dependency. Launch
 Chromium with the `--no-sandbox` argument, since this container has no Chromium
 sandbox and a default launch fails.
 
-## The showcase
-
-The game ships with its store-page presentation: a `showcase/` directory at the
-project root holding a player-facing description of the game and a short carousel
-of captured media. `specs/showcase.md` defines its contents — the description, the
-`showcase.toml` carousel, and the media it names.
-
 ## Commit your work
 
 Your project root is a git repository, initialized before you started with the
 starter files in its first commit. Your finished implementation is published
 directly from this repository's commits, so work you leave uncommitted is not
 published. When the build is complete, commit everything: run `git add -A` then
-`git commit`, and confirm `git status` reports a clean working tree with nothing
-uncommitted or untracked. A `.gitignore` already excludes `node_modules/`, the
-build output, and coverage reports, so a clean tree means committing your source,
-your tests, your `package-lock.json`, your produced files under `assets/`, your
-`showcase/` directory, and your `README.md`.
+`git commit`. A `.gitignore` already excludes `node_modules/`, the build output,
+and coverage reports, so what is left to commit is your source, your tests, your
+`package-lock.json`, your produced files under `assets/`, your `showcase/`
+directory, and your `README.md`.

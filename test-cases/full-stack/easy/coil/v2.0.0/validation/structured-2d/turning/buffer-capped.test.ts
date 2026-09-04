@@ -19,7 +19,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertLength } from "../assert";
-import { BINDINGS, TURN_QUEUE_MAX } from "../../src/constants";
+import { BINDINGS, TURN_QUEUE_MAX } from "../constants";
 import {
   ahead,
   arrangeStep,

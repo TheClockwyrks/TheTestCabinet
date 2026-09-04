@@ -33,7 +33,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
-import { CUES } from "../../src/constants";
+import { CUES } from "../constants";
 import {
   captureReplay,
   chooseItem,

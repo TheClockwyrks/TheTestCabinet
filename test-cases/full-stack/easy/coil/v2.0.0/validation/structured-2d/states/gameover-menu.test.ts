@@ -6,7 +6,7 @@
 // `controls/menu-highlight-moves` alone. What is pressed here is `confirm`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, OVER_ITEMS } from "../../src/constants";
+import { BINDINGS, OVER_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   HOME_HEAD,

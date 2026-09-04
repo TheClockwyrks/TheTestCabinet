@@ -13,7 +13,7 @@
 // highlight will not move fails `controls/menu-highlight-moves` alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, START_CELLS } from "../../src/constants";
+import { BINDINGS, START_CELLS } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   HOME_HEAD,

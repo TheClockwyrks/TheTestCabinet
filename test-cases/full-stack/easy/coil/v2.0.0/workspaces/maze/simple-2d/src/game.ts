@@ -28,10 +28,9 @@
 // stores whatever `update` returns as the next state; `render` is handed that
 // next state, as the same read-only view, and returns nothing. Nothing ever holds
 // a writable `CoilState`: `update` builds the next state from the current one
-// (spread the parts that change, `map` over the arrays) rather than assigning
-// into it, and a frame that returns `undefined` is refused by the engine. The
-// engine's own documentation, seeded at `engine/`, defines all of this and the
-// scoped APIs each function receives; read it before you start.
+// rather than assigning into it, and a frame that returns `undefined` is refused
+// by the engine. The engine's own documentation, seeded at `engine/`, defines all
+// of this and the scoped APIs each function receives; read it before you start.
 //
 // The engine returns the surface from `engine.debug`, exactly as `initialize`
 // handed it over, which is how the game is driven from code

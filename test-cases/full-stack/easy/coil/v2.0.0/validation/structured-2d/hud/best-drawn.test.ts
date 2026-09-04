@@ -12,7 +12,7 @@
 // this decides is the readout, not the round.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BEST_LABEL } from "../../src/constants";
+import { BEST_LABEL } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

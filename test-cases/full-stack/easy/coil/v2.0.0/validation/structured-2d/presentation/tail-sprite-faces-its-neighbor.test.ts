@@ -34,15 +34,9 @@ import {
   assertLessThanOrEqual,
   fail,
 } from "../assert";
-import { SPRITE_PATHS } from "../../src/constants";
+import { FREE_MAX_SHARE, JOIN_MIN_ROWS, SPRITE_PATHS } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
-import {
-  FREE_MAX_SHARE,
-  JOIN_MIN_ROWS,
-  decodeSprite,
-  edgeRows,
-  showSpriteFiles,
-} from "./sprites";
+import { decodeSprite, edgeRows, showSpriteFiles } from "./sprites";
 
 /** The path `specs/assets.md` fixes for the tail sprite. */
 const FILE = `assets/${SPRITE_PATHS.tail}`;

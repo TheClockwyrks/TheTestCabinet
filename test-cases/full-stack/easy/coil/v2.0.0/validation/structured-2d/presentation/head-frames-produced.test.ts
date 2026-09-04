@@ -21,13 +21,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual, fail } from "../assert";
-import { CELL, HEAD_FRAMES } from "../../src/constants";
+import { CELL, HEAD_FRAMES, PAINT_MIN_SHARE } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import {
   decodeSprites,
   HEAD_FILES,
   isCellSized,
-  PAINT_MIN_SHARE,
   paintShare,
   showSpriteFiles,
 } from "./sprites";

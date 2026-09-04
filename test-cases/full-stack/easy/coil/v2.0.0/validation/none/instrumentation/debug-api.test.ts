@@ -34,6 +34,7 @@ import {
   assertContains,
   assertDeepEqual,
   assertEqual,
+  assertGreaterThan,
   assertLength,
   assertNull,
 } from "../assert";
@@ -173,6 +174,7 @@ it("reports the whole documented snapshot shape, off a driven game", async () =>
   assertEqual(s.version, COIL_DEBUG_VERSION);
   assertContains(SCREENS, s.screen);
   assertEqual(typeof s.menuIndex, "number", "menuIndex");
+  assertEqual(typeof s.titleIndex, "number", "titleIndex");
   assertContains(["classic", "maze"], s.mode);
   assertEqual(typeof s.score, "number", "score");
   assertEqual(typeof s.best, "number", "best");
@@ -267,10 +269,35 @@ it("poses the running game through each of its operations", async () => {
   assertEqual(menu.screen, MENU_SCREENS[0], "setScreen to a menu screen");
   assertEqual(menu.menuIndex, 1, "setMenuIndex");
 
+  // And the reading that reports where the build DREW that item, which
+  // specs/instrumentation.md words as a region in logical units and specs/ui.md
+  // makes the region a pointer selects the item from. What a pointer over it
+  // does is the `pointer` and `touch` points; what is read here is that the
+  // reading answers a region at all, and answers `null` where it says it does.
+  const region = await h.debug.menuItemRect(1);
+  if (region === null) {
+    return failSurface(
+      `window.${HANDLE}.menuItemRect(1) answered null on the ` +
+        `${MENU_SCREENS[0]} screen, whose menu holds that item`,
+    );
+  }
+  for (const side of ["x", "y", "w", "h"] as const) {
+    assertEqual(typeof region[side], "number", `menuItemRect(1).${side}`);
+  }
+  assertGreaterThan(region.w, 0, "the width of the item's hit region");
+  assertGreaterThan(region.h, 0, "the height of the item's hit region");
+
+  await h.debug.setScreen("playing");
+  assertNull(
+    await h.debug.menuItemRect(0),
+    "menuItemRect on playing, which shows no menu",
+  );
+
   // And a reset returns the whole of it to the opening state.
   await debug.reset();
   const opened = await h.snapshot();
   assertEqual(opened.screen, "title", "reset");
+  assertEqual(opened.titleIndex, 0, "reset");
   assertDeepEqual(opened.snake, [...START_CELLS], "reset");
   assertEqual(opened.score, 0, "reset");
 });
