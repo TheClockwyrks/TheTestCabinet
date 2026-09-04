@@ -10,9 +10,11 @@
 // The score is posed AFTER the arrangement, because reaching a live field runs
 // through the title and a `reset` puts both scores back to zero.
 //
-// What differs from a single-ball build is what does NOT happen: nothing freezes.
-// The screen is still `playing` on the frame the score turns over, and the ball
-// that crossed is back on its own home holding while the field runs on.
+// THAT THE FIELD DOES NOT STOP is `gameplay/scoring-p2-continues`'s point, and
+// that the SCORED BALL goes home and holds is `multi-ball/independent-respawn`'s.
+// A build that freezes the other two balls on every point is playing base with
+// three balls rather than multi, which is a different fault from one that never
+// scores at all — so the increment is graded here and the rest beside it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -22,7 +24,6 @@ import {
   createHarness,
   type Harness,
 } from "../harness";
-import { ballAt } from "./harness";
 
 /** Frames recorded after the point resolves, so the clip shows a point SCORED. */
 const AFTERMATH_TICKS = 60; // 0.5 s
@@ -53,8 +54,4 @@ it("gives player two the point when a ball leaves the left goal", async () => {
   assertEqual(point.hit, true);
   assertEqual(point.snapshot.score.p2, 1);
   assertEqual(point.snapshot.score.p1, 0);
-  // The field carries on: the ball that crossed is the only thing the point
-  // changed.
-  assertEqual(point.snapshot.screen, "playing");
-  assertEqual(ballAt(point.snapshot, 0).held, true);
 });

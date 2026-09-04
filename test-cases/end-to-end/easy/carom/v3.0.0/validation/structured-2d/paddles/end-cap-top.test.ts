@@ -16,13 +16,7 @@
 // the lane, so the struck cap is the only body the drop can meet.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BALL_R,
-  FIELD_CY,
-  P1_X0,
-  P1_X1,
-  PADDLE_HALF,
-} from "../constants";
+import { BALL_R, FIELD_CY, P1_X0, P1_X1, PADDLE_HALF } from "../constants";
 import {
   assertCloseTo,
   assertEqual,

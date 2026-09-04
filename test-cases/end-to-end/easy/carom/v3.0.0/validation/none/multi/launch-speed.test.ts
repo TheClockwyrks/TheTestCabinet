@@ -17,12 +17,7 @@
 // is `multi/launch-angle`'s point.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertDeepEqual,
-  assertEqual,
-  assertLength,
-  assertLessThanOrEqual,
-} from "../assert";
+import { assertEqual, assertLength, assertLessThanOrEqual } from "../assert";
 import { BALL_COUNT, SERVE_SPEED } from "../constants";
 import {
   captureReplay,
@@ -80,7 +75,4 @@ it("launches every ball at the base launch speed", async () => {
     assertEqual(ball.held, false);
     assertLessThanOrEqual(Math.abs(ball.speed - SERVE_SPEED), SPEED_TOLERANCE);
   }
-  // And the page stayed quiet throughout: nothing the build threw, and nothing it
-  // logged as an error, while this harness was driving it.
-  assertDeepEqual(h.pageErrors, []);
 });

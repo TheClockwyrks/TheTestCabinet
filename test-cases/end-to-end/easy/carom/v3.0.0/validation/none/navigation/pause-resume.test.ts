@@ -2,7 +2,7 @@
 // match.
 //
 // specs/ui.md: on `paused`, `confirm` on `RESUME` sets `screen = resumeScreen`.
-// The pause menu is posed over a live match with `openPauseMenu`, which sets
+// The pause menu is posed over an EMPTIED field with `reachPaused`, which sets
 // `resumeScreen = playing` and `menuIndex = 0` — what a `pause` edge sets — so
 // the first entry is the one this confirm acts on, and it is confirmed with a
 // real `Enter` pressed through Chromium's own input pipeline.

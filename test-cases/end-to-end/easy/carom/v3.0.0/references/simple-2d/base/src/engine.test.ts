@@ -1175,6 +1175,7 @@ describe("the debug surface", () => {
     "setBallHoldTimer",
     "setAiTracking",
     "setAiMovement",
+    "setMuted",
     "snapshot",
     "menuItemRect",
   ] as const;

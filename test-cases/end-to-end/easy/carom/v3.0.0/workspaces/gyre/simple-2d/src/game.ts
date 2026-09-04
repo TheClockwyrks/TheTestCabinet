@@ -8,8 +8,8 @@
 // FIRST, DECLARE AND EXPORT `CaromState`, exactly as `specs/state.md` fixes it,
 // and `CaromDebugApi`, the debug and automation surface `specs/instrumentation.md`
 // specifies. The stub below is written against both names, so this project does
-// not compile until they exist — the type check failing on a freshly seeded
-// workspace is the starting point, not a broken seed.
+// not compile until they exist — the type check failing on a fresh checkout is
+// the starting point, not a fault in the project.
 //
 // THEN IMPLEMENT the three functions. `initialize` runs once, when the engine is
 // initialized, and returns the state and the debug surface together, as the pair
@@ -21,10 +21,10 @@
 // and stores whatever `update` returns as the next state; `render` is handed
 // that next state, as the same read-only view, and returns nothing. Nothing ever
 // holds a writable `CaromState`: `update` builds the next state from the current
-// one (spread the parts that change, `map` over the arrays) rather than assigning
-// into it, and a frame that returns `undefined` is refused by the engine. The
-// engine's own documentation, seeded at `engine/`, defines all of this and the
-// scoped APIs each function receives; read it before you start.
+// one rather than assigning into it, and a frame that returns `undefined` is
+// refused by the engine. The engine's own documentation, at `engine/`, defines
+// all of this and the scoped APIs each function receives; read it before you
+// start.
 //
 // The engine returns the surface from `engine.debug`, exactly as `initialize`
 // handed it over, which is how the game is driven from code

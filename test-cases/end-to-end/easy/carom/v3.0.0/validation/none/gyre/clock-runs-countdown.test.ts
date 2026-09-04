@@ -3,11 +3,16 @@
 //
 // specs/playfield.md: the obstacle clock advances by the frame's delta time on
 // every frame of a live match, the countdown included, and
-// `theta(t) = OBSTACLE_SPIN_RATE * t`. A match is started from the title with
-// the menu keys alone, so no operation of the surface ever poses the clock or
-// stops it, and both obstacles' rotations are read at two countdown frames a
-// known number of frames apart. The turn between them is the rate times that
-// span, within the same 0.01 radians `obstacles-spin` allows.
+// `theta(t) = OBSTACLE_SPIN_RATE * t`. The countdown is opened through the
+// surface, which touches neither `setObstacleClock` nor
+// `setObstacleClockRunning` — the two operations a check about the clock RUNNING
+// must not touch — and both obstacles' rotations are read at two countdown
+// frames a known number of frames apart. The turn between them is the rate times
+// that span, within the same 0.01 radians `obstacles-spin` allows.
+//
+// The menus are not driven to get here. The screen this reads the clock on is
+// the check's ground rather than its subject, so a build with a broken title
+// menu fails the navigation points and still has this one graded on the clock.
 //
 // THE FIELD IS EMPTIED AND THE TWO OBSTACLES SPAWNED BACK, and that is all this
 // check's world holds. The clock is the subject and the obstacles are what
@@ -23,9 +28,9 @@ import {
   captureReplay,
   clearField,
   createHarness,
+  openCountdown,
   seconds,
   spawnObstacles,
-  startWithKeys,
   type Harness,
 } from "../harness";
 import {
@@ -52,7 +57,7 @@ afterEach(async () => {
 });
 
 it("turns the obstacles while the countdown runs", async () => {
-  await startWithKeys(harness, "versus");
+  await openCountdown(harness, "versus");
   assertEqual((await harness.snapshot()).screen, "countdown");
   await clearField(harness);
   await spawnObstacles(harness, BOTH_OBSTACLES);

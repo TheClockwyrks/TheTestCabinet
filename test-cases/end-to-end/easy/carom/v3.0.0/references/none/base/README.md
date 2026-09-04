@@ -148,6 +148,7 @@ The build exposes the surface `specs/instrumentation.md` specifies on
   serves it on the next frame.
 - `setAiTracking(enabled)` and `setAiMovement(enabled)` — the AI's two faculties,
   gated separately, so a check can watch what it senses while its body is still.
+- `setMuted(muted)` — the mute bit, the same bit the `mute` action toggles.
 - `snapshot()` and `menuItemRect(index)` — the **readings**. The snapshot is a
   JSON-serializable view of every declared field, and `menuItemRect` reports the
   region an item of the menu on screen occupies, in logical units — this build's

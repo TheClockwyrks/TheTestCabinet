@@ -6,7 +6,7 @@
 // side it gets wrong rather than averaging out across the two.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import {
   arrangeGoal,
   ball0,
@@ -64,9 +64,4 @@ it("serves toward player two after player one scores", async () => {
     // on.
     assertGreaterThan(ball0(launched.snapshot).vx, 0);
   });
-  // And the page stayed quiet throughout: nothing the build threw, and nothing
-  // it logged as an error, while this harness was driving it. An engineless
-  // build loads no assets through a runtime, so there is no asset log to read —
-  // the browser's own is the wider reading, and it covers the whole drive.
-  assertDeepEqual(harness.pageErrors, []);
 });

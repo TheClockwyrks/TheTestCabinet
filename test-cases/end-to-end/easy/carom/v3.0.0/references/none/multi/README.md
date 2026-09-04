@@ -165,6 +165,7 @@ whoever is driving the game.
   frame.
 - **The AI** — `setAiTracking(enabled)` and `setAiMovement(enabled)`, its two
   faculties gated one at a time: sensing the ball, and travelling toward it.
+- **Audio** — `setMuted(muted)`, the mute bit the `mute` action toggles.
 - **Readings** — `snapshot()` returns a JSON-serializable view of the whole
   declared state, and `menuItemRect(index)` reports the hit region of one item of
   the menu the current screen shows, in logical units (`null` on the two screens

@@ -1,32 +1,34 @@
-// multi/independent-respawn — a scored ball respawns on its own, and the field
-// never stops for it.
+// multi/independent-respawn — a scored ball goes home and holds.
 //
 // The field is cleared back to the three balls, which is what this point is
 // about and all it is about. Two of them are set bouncing between the top and
 // bottom walls in lanes on the LEFT half of the field, where the third never
 // goes; the third is aimed down the mid-field lane at the right goal. When it
 // crosses, the frame the score turns over is read: the ball that crossed must be
-// back on its own home point and holding, the other two must still be in flight,
-// and the screen must still be `playing` — the whole of what makes multi's
-// scoring different from a single ball's.
+// back on its own home point of BALL_HOMES and holding, which is how this variant
+// gives a ball back rather than ending the rally.
 //
-// Then the sweep runs on until the respawned ball leaves again, which is the hold
-// it took for itself while the other two carried on.
+// The other two are on the field because the scenario needs a live field around
+// the point rather than because this check reads them.
 //
 // The obstacles come off the field with everything else, so the two lanes no
 // longer have to be chosen to miss them and nothing but a wall is left for
 // either ball to meet. The paddles cannot be removed — a paddle is field
 // furniture the game always has — so both are moved out of the lanes, which is
 // the only way a shot reaches a goal edge at all.
+//
+// WHAT THE OTHER TWO WERE DOING is `multi-ball/respawn-leaves-others`'s point,
+// and that the screen stays `playing` is `gameplay/scoring-p1-continues`'s. A
+// build that resets all three on every point is playing a different game from
+// one that scores a ball and never returns it, so the two are graded apart
+// rather than averaged.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
   assertCloseTo,
   assertDeepEqual,
   assertEqual,
-  assertGreaterThan,
   assertLength,
-  assertLessThanOrEqual,
 } from "../assert";
 import { BALL_COUNT, BALL_HOMES, FIELD_CX, FIELD_CY } from "../constants";
 import {
@@ -37,14 +39,7 @@ import {
   startPlaying,
   type MultiHarness,
 } from "../harness";
-import {
-  HOLD_TICKS,
-  HOLD_TOLERANCE_TICKS,
-  ballAt,
-  driveLaunch,
-  isolateBalls,
-  readBalls,
-} from "./harness";
+import { ballAt, isolateBalls, readBalls } from "./harness";
 
 /**
  * The two lanes the balls this point is not about are set bouncing in.
@@ -61,6 +56,9 @@ const LANES = [
 
 /** How fast the scored ball is driven at the goal, in units per second. */
 const GOAL_SPEED = 600;
+
+/** Frames recorded after the point, so the clip shows the ball back on its home. */
+const SETTLE_TICKS = 60; // 0.5 s
 
 let h: MultiHarness;
 
@@ -90,34 +88,17 @@ it("returns the scored ball to its own home while the other two play on", async 
     // doing at that instant is the question, and a frame later they would have
     // moved on whatever the build did.
     const atPoint = scored.snapshot;
-    const relaunch = await driveLaunch(h, 0);
-    return { scored, atPoint, relaunch };
+    await h.advance(SETTLE_TICKS);
+    return { scored, atPoint };
   });
 
   assertEqual(point.scored.hit, true);
   assertDeepEqual(point.scored.snapshot.score, { p1: 1, p2: 0 });
-  // The field is not frozen: there is no post-point countdown to return to.
-  assertEqual(point.scored.snapshot.screen, "playing");
 
-  // The ball that crossed, and only it: back on its OWN home point, holding.
+  // The ball that crossed: back on its OWN home point, holding.
   assertLength(readBalls(point.atPoint), BALL_COUNT);
   const scoredBall = ballAt(point.atPoint, 0);
   assertEqual(scoredBall.held, true);
   assertCloseTo(scoredBall.x, BALL_HOMES[0].x, 0);
   assertCloseTo(scoredBall.y, BALL_HOMES[0].y, 0);
-
-  // The other two carried straight on, still in flight and still moving.
-  for (const index of [1, 2]) {
-    const ball = ballAt(point.atPoint, index);
-    assertEqual(ball.held, false);
-    assertGreaterThan(ball.speed, 1);
-  }
-
-  // And the respawn took a hold of its own before it launched again.
-  assertEqual(point.relaunch.hit, true);
-  assertLessThanOrEqual(
-    Math.abs(point.relaunch.frames - HOLD_TICKS),
-    HOLD_TOLERANCE_TICKS,
-  );
-  assertGreaterThan(ballAt(point.relaunch.snapshot, 0).speed, 1);
 });

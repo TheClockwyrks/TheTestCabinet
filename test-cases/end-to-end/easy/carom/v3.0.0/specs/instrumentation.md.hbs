@@ -132,12 +132,13 @@ The surface takes each paddle from the player on its own side.
   leave that paddle alone.
 
 Each paddle carries `drivenVy` and `vy` as two separate fields, both of which
-`specs/state.md` declares and the snapshot below reports. `setPaddleVy` is the only pose that sets
-`drivenVy`, which `reset` returns to `0` with every other declared field.
-`drivenVy` holds its value across frames whether or not that paddle is driven. A paddle's `vy` is the integrated velocity
-for the frame that `specs/playfield.md` fixes, whoever moved the paddle, so a
-`drivenVy` set while the paddle stands still reaches `vy` on the first frame
-advanced with that side driven.
+`specs/state.md` declares and the snapshot below reports. `setPaddleVy` is the
+only pose that sets `drivenVy`, which `reset` returns to `0` with every other
+declared field. `drivenVy` holds its value across frames whether or not that
+paddle is driven. A paddle's `vy` is the integrated velocity for the frame that
+`specs/playfield.md` fixes, whoever moved the paddle, so a `drivenVy` set while
+the paddle stands still reaches `vy` on the first frame advanced with that side
+driven.
 
 ## The operations
 
@@ -271,17 +272,21 @@ match ends when a real point is driven.
 Each sets its own field alone. Driving the paddles above states how `drivenVy` and
 `vy` differ and what a driven paddle does.
 
+{{#if (eq variant.slug "multi")}}
 ### Balls
 
 | Operation | Effect |
 | --- | --- |
-{{#if (eq variant.slug "multi")}}
 | `setBallPosition(index, x, y)` | Places ball `index`. |
 | `setBallVelocity(index, vx, vy)` | Sets ball `index`'s velocity, in units per second. |
 | `setBallSpin(index, spin)` | Sets ball `index`'s spin, in units per second squared. |
 | `setBallHeld(index, held)` | Sets whether ball `index` waits at its home point rather than flying. |
 | `setBallHoldTimer(index, seconds)` | Sets the seconds remaining of ball `index`'s hold. |
 {{else}}
+### The ball
+
+| Operation | Effect |
+| --- | --- |
 | `setBallPosition(x, y)` | Places the ball. |
 | `setBallVelocity(vx, vy)` | Sets the ball's velocity, in units per second. |
 | `setBallSpin(spin)` | Sets the ball's spin, in units per second squared. |
@@ -316,8 +321,18 @@ returns both to `true`.
 
 They act on the rule `specs/modes/single-player.md` states, on every frame that
 rule runs. With tracking `false` the AI's target is `AI_HOME_Y` with
-`AI_HOME_DEADZONE`, whatever the ball is doing. With movement `false` the AI
+`AI_HOME_DEADZONE`, whatever {{#if (eq variant.slug "multi")}}the balls are{{else}}the ball is{{/if}} doing. With movement `false` the AI
 leaves its paddle where it is, with `vy` of `0`.
+
+### Audio
+
+| Operation | Effect |
+| --- | --- |
+| `setMuted(muted)` | Sets the mute bit to `true` or `false`. It is the bit the `mute` action toggles, so `muted` reports what this set. |
+
+{{#if (eq engine.slug "none")}}Setting the bit does not arm the audio layer: that still waits for the first
+real user gesture, as `specs/audio.md` states.{{else}}The bit is the runtime's, as `specs/audio.md` states, and this sets it through
+the game exactly as the `mute` action does.{{/if}}
 {{#if (eq variant.slug "gyre")}}
 
 ### Obstacles
@@ -419,10 +434,9 @@ current screen shows.
 Every field an operation of this surface sets appears here, so every operation is
 verified by setting a value and reading it back.
 
-Five fields are read rather than posed. `version` is the constant above, `speed`
+Four fields are read rather than posed. `version` is the constant above, `speed`
 is `hypot(vx, vy)`, a paddle's `vy` is the integrated value
-`specs/playfield.md` fixes rather than the value `setPaddleVy` writes, `muted`
-follows the mute bit the `mute` action drives as `specs/audio.md` states, and
+`specs/playfield.md` fixes rather than the value `setPaddleVy` writes, and
 `simTime` is the accumulator every update adds its delta time to, which `reset`
 returns to `0` and no other operation writes.{{#if (eq engine.slug "none")}} `autoStep` is the clock's setting rather
 than a value the game holds, so it is reported here and `reset` leaves it as it
@@ -451,12 +465,21 @@ is emptied by `spawnBall` and written by the game alone, by the rule
 
 ## Diagnostics
 
+{{#if (eq variant.slug "multi")}}
 The runtime's debug overlay shows the values the game registers with it as
 diagnostic sources. Register at least the current `screen` and `mode`, both
 scores, each ball's position, velocity, speed, and spin, and each paddle's center
 and velocity, the same facts `snapshot` reports. Keep each one short enough to
 read on a line, and keep every source a pure read, so watching the overlay leaves
 the simulation as it is.
+{{else}}
+The runtime's debug overlay shows the values the game registers with it as
+diagnostic sources. Register at least the current `screen` and `mode`, both
+scores, the ball's position, velocity, speed, and spin, and each paddle's center
+and velocity, the same facts `snapshot` reports. Keep each one short enough to
+read on a line, and keep every source a pure read, so watching the overlay leaves
+the simulation as it is.
+{{/if}}
 
 {{#if (eq engine.slug "none")}}
 The overlay is part of the runtime layer you write. It draws the registered

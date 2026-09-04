@@ -8,6 +8,11 @@
 // by the binding the case declares, and the result is read back off the game's
 // own state. The still is the frame the press left.
 //
+// The last entry is POSED with `setMenuIndex` rather than walked to with two
+// arrow presses, so the ONE press this check makes is the wrapping one. Walking
+// there would fail this point for a build whose ordinary down edge is broken,
+// and that build's defect belongs to `title-down`.
+//
 // Nothing on the field is posed or removed. The title's world is the one `reset`
 // arranges, and specs/ui.md advances nothing at all on the title, so no ball and
 // no obstacle can move while this check runs.
@@ -34,9 +39,10 @@ afterEach(() => {
 
 it("wraps the title selection from the last item to the first", async () => {
   await openTitle(h);
-  // Down to the last item first, one press per step.
-  for (let i = 1; i < TITLE_ITEMS.length; i += 1) await h.tap("ArrowDown");
-  assertEqual(h.snapshot().menuIndex, TITLE_ITEMS.length - 1);
+  h.debug.setMenuIndex(TITLE_ITEMS.length - 1);
+  const posed = h.snapshot();
+  assertEqual(posed.screen, "title");
+  assertEqual(posed.menuIndex, TITLE_ITEMS.length - 1);
 
   await h.tap("ArrowDown");
   captureStill(h, "menu");

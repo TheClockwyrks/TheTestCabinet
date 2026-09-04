@@ -167,6 +167,9 @@ export interface CaromDebug {
   setAiTracking(enabled: boolean): void;
   setAiMovement(enabled: boolean): void;
 
+  /* Audio. */
+  setMuted(muted: boolean): void;
+
   /* Readings. */
   snapshot(): CaromSnapshot;
   menuItemRect(index: number): MenuRect | null;
@@ -320,6 +323,13 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
 
     setAiMovement(enabled) {
       game.ai.movement = enabled;
+    },
+
+    // ---- Audio -----------------------------------------------------------
+
+    /** The mute bit set on the runtime's bus, which `muted` reports back. */
+    setMuted(muted) {
+      open().audio.setMuted(muted);
     },
 
     // ---- Readings --------------------------------------------------------

@@ -2,25 +2,34 @@
 // paused.
 //
 // specs/playfield.md and specs/ui.md: the obstacle clock is frozen while the
-// game is paused, so both obstacles hold their pose. A match is started from
-// the title with the menu keys alone and paused with a real key, so nothing on
-// the surface poses or holds the clock; each obstacle's center and rotation are
-// then read on the paused frame and again after a long paused stretch, and must
+// game is paused, so both obstacles hold their pose. The countdown is opened
+// through the surface, run for a real quarter second so the clock is genuinely
+// moving, and the pause is then POSED with `openPause` — the three fields
+// specs/ui.md says a `pause` edge sets, and neither `setObstacleClock` nor
+// `setObstacleClockRunning`, which are the two operations a check about the
+// clock freezing on its own must not touch. Each obstacle's center and rotation
+// are read on the paused frame and again after a long paused stretch, and must
 // be unchanged. The margin is a float rounding: a single leaked frame turns an
 // obstacle by over 0.008 radians.
 //
-// The field is the one the build's own match start built, and deliberately so.
-// What is under test is that a PAUSE stops the clock, so the clock has to be
-// running when the pause arrives — which is what the countdown the held ball
-// keeps the game on gives. Emptying the field would end that countdown, and
-// posing the clock would hold it still for reasons that are not the pause's.
+// Neither the menus nor the pause key is driven to get here. Both are other
+// points' subjects — the title menu's the navigation checks', `Escape`'s
+// `controls-versus/escape`'s — and pressing them here would fail this point for
+// a defect that is not the clock's.
+//
+// The field is the one `reset` built, and deliberately so. What is under test is
+// that a PAUSE stops the clock, so the clock has to be running when the pause
+// arrives — which is what the countdown the held ball keeps the game on gives.
+// Emptying the field would end that countdown, and posing the clock would hold
+// it still for reasons that are not the pause's.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
-  startWithKeys,
+  openCountdown,
+  openPause,
   type Harness,
 } from "../harness";
 import { obstaclePose, readObstacles, thetaOf } from "./harness";
@@ -44,9 +53,9 @@ afterEach(() => {
 });
 
 it("holds the obstacles still while paused", async () => {
-  await startWithKeys(harness, "versus");
+  openCountdown(harness, "versus");
   await harness.advance(RUN_TICKS);
-  await harness.tap("Escape");
+  openPause(harness, "countdown");
   assertEqual(harness.snapshot().screen, "paused");
   const paused = readObstacles(harness);
 

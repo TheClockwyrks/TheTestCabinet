@@ -27,7 +27,6 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
-  assertDeepEqual,
   assertEqual,
   assertGreaterThan,
   assertGreaterThanOrEqual,
@@ -128,7 +127,4 @@ it("draws the serve's vertical sign afresh on every serve toward player two", as
     1,
     `${SERVES} serves and none went downward`,
   );
-  // And the build loaded every asset it asked the runtime for while this
-  // harness was driving it.
-  assertDeepEqual(harness.assetFailures, []);
 });

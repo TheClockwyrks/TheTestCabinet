@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Carom (Gyre) \u2014 a neon top-down paddle duel with swaying, spinning obstacles, built on the Structured 2D engine.",
+  "description": "Carom (Gyre) — a neon top-down paddle duel with swaying, spinning obstacles, built on the Structured 2D engine.",
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",

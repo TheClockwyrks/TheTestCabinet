@@ -180,6 +180,9 @@ export interface CaromDebug {
   setAiTracking(enabled: boolean): void;
   setAiMovement(enabled: boolean): void;
 
+  /* Audio. */
+  setMuted(muted: boolean): void;
+
   /* The obstacle clock. */
   setObstacleClock(t: number): void;
   setObstacleClockRunning(running: boolean): void;
@@ -335,6 +338,13 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
 
     setAiMovement(enabled) {
       state().ai.movement = enabled;
+    },
+
+    // ---- Audio -----------------------------------------------------------
+
+    /** The mute bit set on the runtime's bus, which `muted` reports back. */
+    setMuted(muted) {
+      world().audio.setMuted(muted);
     },
 
     // ---- The obstacle clock ---------------------------------------------

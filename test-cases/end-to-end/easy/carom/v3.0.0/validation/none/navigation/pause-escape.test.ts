@@ -6,7 +6,7 @@
 // pause again — so exactly one press is made and the screen it leaves the game on
 // is read back.
 //
-// The pause menu is posed over a live match with `openPauseMenu`, which sets what
+// The pause menu is posed over an EMPTIED field with `reachPaused`, which sets what
 // specs/ui.md says a `pause` edge sets: `resumeScreen = playing` and
 // `menuIndex = 0`. That the ball then carries on from where it hung is
 // `pause/ball-continues`'s point, and the key that OPENS the menu is graded by

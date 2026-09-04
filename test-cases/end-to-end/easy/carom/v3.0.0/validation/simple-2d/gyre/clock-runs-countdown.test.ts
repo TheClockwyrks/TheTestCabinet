@@ -3,18 +3,23 @@
 //
 // specs/playfield.md: the obstacle clock advances by the frame's delta time on
 // every frame of a live match, the countdown included, and
-// `theta(t) = OBSTACLE_SPIN_RATE * t`. A match is started from the title with
-// the menu keys alone, so no operation of the surface poses or holds the clock,
-// and both obstacles' rotations are read at two countdown frames a known number
-// of frames apart. The turn between them is the rate times that span, within the
-// same 0.01 radians `obstacles-spin` allows.
+// `theta(t) = OBSTACLE_SPIN_RATE * t`. The countdown is opened through the
+// surface, which touches neither `setObstacleClock` nor
+// `setObstacleClockRunning` — the two operations a check about the clock RUNNING
+// must not touch — and both obstacles' rotations are read at two countdown
+// frames a known number of frames apart. The turn between them is the rate times
+// that span, within the same 0.01 radians `obstacles-spin` allows.
 //
-// The field is the one the build's own match start built, and deliberately so.
-// The countdown is the screen under test, and what keeps the game on it is the
-// held ball counting its hold down (specs/balls.md); emptying the field would end
-// the countdown on the first frame and leave nothing to measure. So the ball here
-// is part of the scenario rather than a bystander, and nothing is posed to keep it
-// quiet — it waits at its home, as a countdown's ball does.
+// The menus are not driven to get here. The screen this reads the clock on is
+// the check's ground rather than its subject, so a build with a broken title
+// menu fails the navigation points and still has this one graded on the clock.
+//
+// The field is the one `reset` built, and deliberately so. The countdown is the
+// screen under test, and what keeps the game on it is the held ball counting its
+// hold down (specs/balls.md); emptying the field would end the countdown on the
+// first frame and leave nothing to measure. So the ball here is part of the
+// scenario rather than a bystander, and nothing is posed to keep it quiet — it
+// waits at its home, as a countdown's ball does.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { OBSTACLE_SPIN_RATE } from "../constants";
@@ -22,8 +27,8 @@ import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
+  openCountdown,
   seconds,
-  startWithKeys,
   type Harness,
 } from "../harness";
 import { angleDelta, obstaclePose, readObstacles, thetaOf } from "./harness";
@@ -45,7 +50,7 @@ afterEach(() => {
 });
 
 it("turns the obstacles while the countdown runs", async () => {
-  await startWithKeys(harness, "versus");
+  openCountdown(harness, "versus");
   assertEqual(harness.snapshot().screen, "countdown");
   const opening = readObstacles(harness);
 

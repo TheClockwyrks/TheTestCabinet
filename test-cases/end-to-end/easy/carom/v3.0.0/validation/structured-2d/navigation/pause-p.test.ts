@@ -3,9 +3,10 @@
 // One transition of the menu state machine specs/ui.md fixes, in one direction.
 // The match is opened into live play through the debug surface — the title menus
 // are the other navigation checks' own surface to grade, not this one's — and
-// the pause menu over it is POSED: `setScreen("paused")`, then the frame the
-// header's discipline asks for, then `setResumeScreen("playing")` and
-// `setMenuIndex(0)`, which are the fields specs/ui.md says a `pause` edge sets.
+// the pause menu over it is POSED by `openIsolatedPaused`: `setScreen("paused")`,
+// then the frame the header's discipline asks for, then
+// `setResumeScreen("playing")` and `setMenuIndex(0)`, which are the fields
+// specs/ui.md says a `pause` edge sets.
 // Opening it with a press instead would put `KeyP` at BOTH ends of this check,
 // and a failure could no longer say whether the key that pauses or the key that
 // resumes is the broken one. The key that opens the menu is `controls-solo/p`
@@ -31,7 +32,7 @@ import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  openIsolatedPlay,
+  openIsolatedPaused,
   type Harness,
 } from "../harness";
 
@@ -46,13 +47,8 @@ afterEach(() => {
 });
 
 it("resumes the paused match on KeyP", async () => {
-  const live = await openIsolatedPlay(h, { mode: "versus" });
+  const live = await openIsolatedPaused(h, { mode: "versus" });
   assertEqual(live.hit, true);
-
-  h.debug.setScreen("paused");
-  await h.advance(1);
-  h.debug.setResumeScreen("playing");
-  h.debug.setMenuIndex(0);
 
   const paused = h.snapshot();
   assertEqual(paused.screen, "paused");

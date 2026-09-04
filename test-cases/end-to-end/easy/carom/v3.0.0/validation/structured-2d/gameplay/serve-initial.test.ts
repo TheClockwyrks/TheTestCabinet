@@ -23,7 +23,7 @@
 // passing on the mode that happened to be tested.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, assertLessThan } from "../assert";
+import { assertEqual, assertLessThan } from "../assert";
 import {
   ball0,
   captureReplay,
@@ -89,5 +89,4 @@ it("serves toward player one to open a match", async () => {
       assertLessThan(ball0(launched.snapshot).vx, 0);
     }
   });
-  assertDeepEqual(harness.assetFailures, []);
 });

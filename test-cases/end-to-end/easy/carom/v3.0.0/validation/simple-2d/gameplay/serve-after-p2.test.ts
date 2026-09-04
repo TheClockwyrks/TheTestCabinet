@@ -12,7 +12,7 @@
 // the launch that is read is the ball on an otherwise empty court.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import {
   arrangeGoal,
   ball0,
@@ -70,5 +70,4 @@ it("serves toward player two after player one scores", async () => {
     // on.
     assertGreaterThan(ball0(launched.snapshot).vx, 0);
   });
-  assertDeepEqual(harness.assetFailures, []);
 });

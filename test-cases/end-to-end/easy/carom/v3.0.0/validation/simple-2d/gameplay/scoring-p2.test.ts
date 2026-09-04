@@ -7,6 +7,12 @@
 // spawns back the one ball it fires, so both obstacles are gone rather than
 // dodged, and it drives both paddles out of the mid-field lane — the paddles are
 // the one thing on the field a check cannot remove.
+//
+// THE STATE THAT FOLLOWS THE POINT is `gameplay/scoring-p2-countdown`'s: the
+// screen returning to the countdown, and the receiver becoming the side that was
+// scored on. A build that increments and then leaves the ball where it went out
+// is a build that plays one point and stops, which is nothing like a build that
+// never scores at all — so the increment is graded here and the restart there.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -16,7 +22,6 @@ import {
   createHarness,
   driveGoal,
   enterPlaying,
-  receiver0,
   type Harness,
 } from "../harness";
 
@@ -56,10 +61,6 @@ it("gives player two the point when the ball leaves the left goal", async () => 
   });
 
   assertEqual(point.hit, true);
-  // After a point the ball is parked, `receiver` becomes the side scored on,
-  // and the screen returns to the countdown (specs/balls.md).
-  assertEqual(point.snapshot.screen, "countdown");
-  assertEqual(receiver0(harness), "left");
   assertEqual(point.snapshot.score.p2, 1);
   assertEqual(point.snapshot.score.p1, 0);
 });

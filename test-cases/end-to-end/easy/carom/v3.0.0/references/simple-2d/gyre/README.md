@@ -189,6 +189,8 @@ than a pose: it restores every declared field at once.
   takes an index.
 - **The AI** — `setAiTracking` and `setAiMovement`, one per faculty: sensing the
   ball and travelling toward the target are gated separately.
+- **Audio** — `setMuted(state, muted)`, the mute bit the `mute` action toggles.
+  The state carries it and `update` brings the engine's bus into line with it.
 - **The obstacle clock** — this variant's own: `setObstacleClock(state, t)` poses
   it, and `setObstacleClockRunning(state, running)` decides whether it advances
   with the frame.

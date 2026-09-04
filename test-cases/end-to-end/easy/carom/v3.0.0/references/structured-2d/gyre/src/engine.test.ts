@@ -868,6 +868,7 @@ describe("the debug surface", () => {
       "setBallHoldTimer",
       "setAiTracking",
       "setAiMovement",
+      "setMuted",
       "setObstacleClock",
       "setObstacleClockRunning",
       "snapshot",
