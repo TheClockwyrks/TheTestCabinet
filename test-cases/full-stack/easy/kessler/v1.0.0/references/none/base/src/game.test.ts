@@ -80,10 +80,66 @@ describe("the title menu", () => {
     expect(game.snapshot().screen).toBe("howto");
     game.handleAction("confirm");
     expect(game.snapshot().screen).toBe("title");
-    game.handleAction("down");
     game.handleAction("confirm");
     game.handleAction("back");
     expect(game.snapshot().screen).toBe("title");
+  });
+
+  it("returns from the how-to with HOW TO PLAY highlighted", () => {
+    const { game } = makeGame();
+    game.handleAction("down");
+    game.handleAction("confirm");
+    game.handleAction("back");
+    const snap = game.snapshot();
+    expect(snap.screen).toBe("title");
+    expect(snap.menu.index).toBe(1);
+  });
+
+  it("returns from a discarded session with START highlighted", () => {
+    const { game } = makeGame();
+    game.handleAction("confirm");
+    game.handleAction("pause");
+    game.handleAction("down");
+    game.handleAction("confirm");
+    const snap = game.snapshot();
+    expect(snap.screen).toBe("title");
+    expect(snap.menu.index).toBe(0);
+  });
+
+  it("opens the pause menu on RESUME however far the highlight had moved", () => {
+    const { game } = makeGame();
+    game.handleAction("confirm");
+    game.handleAction("pause");
+    game.handleAction("down");
+    expect(game.snapshot().menu.index).toBe(1);
+    game.handleAction("pause");
+    game.handleAction("pause");
+    const snap = game.snapshot();
+    expect(snap.screen).toBe("paused");
+    expect(snap.menu.index).toBe(0);
+  });
+
+  it("answers the pointer and the finger over an entry's region", () => {
+    const { game, cues } = makeGame();
+    const rect = game.menuItemRect(1);
+    expect(rect).not.toBeNull();
+    const at = {
+      x: rect!.x + rect!.width / 2,
+      y: rect!.y + rect!.height / 2,
+    };
+
+    game.handlePointer({ type: "move", x: at.x, y: at.y });
+    expect(game.snapshot().menu.index).toBe(1);
+    expect(game.snapshot().screen).toBe("title");
+    expect(cues).toEqual(["menu-move"]);
+
+    game.handlePointer({ type: "down", x: at.x, y: at.y });
+    game.handlePointer({ type: "up", x: 8, y: 8 });
+    expect(game.snapshot().screen).toBe("title");
+
+    game.handlePointer({ type: "down", x: at.x, y: at.y });
+    game.handlePointer({ type: "up", x: at.x, y: at.y });
+    expect(game.snapshot().screen).toBe("howto");
   });
 });
 
@@ -168,7 +224,7 @@ describe("the wave-clear interstitial", () => {
   it("runs 180 ticks and lays out the next wave", () => {
     const { game } = makeGame();
     game.handleAction("confirm");
-    game.poseScreen("waveclear");
+    game.enterWaveclear();
     for (let i = 0; i < 179; i += 1) game.tick();
     expect(game.snapshot().screen).toBe("waveclear");
     game.tick();
@@ -186,7 +242,7 @@ describe("the wave-clear interstitial", () => {
   it("reads no input", () => {
     const { game } = makeGame();
     game.handleAction("confirm");
-    game.poseScreen("waveclear");
+    game.enterWaveclear();
     game.handleAction("confirm");
     game.handleAction("back");
     game.handleAction("launch");
@@ -205,7 +261,7 @@ describe("the wave-clear interstitial", () => {
       angleDeg: 0,
       spawnTick: 0,
     });
-    game.poseScreen("waveclear");
+    game.enterWaveclear();
     const snap = game.snapshot();
     expect(snap.balls).toEqual([]);
     expect(snap.pods).toEqual([]);

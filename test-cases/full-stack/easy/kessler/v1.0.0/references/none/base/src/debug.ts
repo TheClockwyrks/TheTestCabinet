@@ -19,16 +19,20 @@ import {
   type ScreenName,
 } from "./constants";
 import type { Game, Snapshot } from "./game";
+import type { MenuItemRect } from "./menus";
 import { normalizeDeg, pointAt, polarOf } from "./polar";
 import { launchParkedBall } from "./sim";
 
 /** The reads and poses of the debug surface, minus the runtime's clock pair. */
 export interface KesslerStateOps {
-  reset(options?: { seed?: number }): void;
+  reset(seed?: number): void;
   snapshot(): Snapshot;
+  menuItemRect(index: number): MenuItemRect | null;
   setScreen(name: ScreenName): void;
   setScore(n: number): void;
   setLives(n: number): void;
+  setMenuIndex(n: number): void;
+  setInterstitialTicks(ticks: number): void;
   setWave(n: number): void;
   setPaddleAngle(deg: number): void;
   launchBall(): void;
@@ -81,23 +85,16 @@ function mustRingIndex(ring: unknown): number {
 /** Builds the state operations over `game`. */
 export function createStateOps(game: Game): KesslerStateOps {
   return {
-    reset(options) {
-      let seed: number | undefined;
-      if (options !== undefined && options !== null) {
-        if (typeof options !== "object") {
-          throw new Error(
-            `reset options must be an object; got ${String(options)}`,
-          );
-        }
-        if (options.seed !== undefined) {
-          seed = mustFinite("options.seed", options.seed);
-        }
-      }
-      game.reset(seed);
+    reset(seed) {
+      game.reset(seed === undefined ? undefined : mustWhole("seed", seed, 0));
     },
 
     snapshot() {
       return game.snapshot();
+    },
+
+    menuItemRect(index) {
+      return game.menuItemRect(index);
     },
 
     setScreen(name) {
@@ -113,6 +110,18 @@ export function createStateOps(game: Game): KesslerStateOps {
 
     setLives(n) {
       game.session.lives = mustWhole("setLives n", n, 0);
+    },
+
+    setMenuIndex(n) {
+      game.poseMenuIndex(n);
+    },
+
+    setInterstitialTicks(ticks) {
+      game.interstitialTicks = mustWhole(
+        "setInterstitialTicks ticks",
+        ticks,
+        0,
+      );
     },
 
     setWave(n) {

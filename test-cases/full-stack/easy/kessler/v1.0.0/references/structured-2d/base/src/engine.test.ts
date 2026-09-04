@@ -317,7 +317,7 @@ describe("the fixed timestep", () => {
 describe("determinism through the engine", () => {
   it("reproduces identical snapshots from the same seed and drive", async () => {
     const run = async (harness: Harness) => {
-      harness.debug.reset({ seed: 123 });
+      harness.debug.reset(123);
       await harness.step(1);
       harness.tap("Space");
       await harness.step(2);

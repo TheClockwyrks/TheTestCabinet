@@ -12,13 +12,13 @@ import { isReady, type Assets } from "./assets";
 import {
   GAME_OVER_HEADING,
   GAME_TITLE,
-  PAUSE_MENU,
   POD_KINDS,
   STAGE_SIZE,
-  TITLE_MENU,
   WAVE_BONUS_PER_WAVE,
+  type ScreenName,
 } from "./constants";
 import { roundRect, text } from "./draw";
+import { entryBaseline, menuEntries, menuItemRects } from "./menus";
 import type { Game } from "./game";
 import { drawHud } from "./render";
 import { COLORS } from "./theme";
@@ -69,12 +69,14 @@ function dim(ctx: CanvasRenderingContext2D, alpha: number): void {
  */
 function drawMenu(
   ctx: CanvasRenderingContext2D,
-  entries: readonly string[],
+  screen: ScreenName,
   index: number,
-  top: number,
 ): void {
+  const entries = menuEntries(screen);
+  const rects = menuItemRects(screen);
+  if (entries === null || rects === null) return;
   entries.forEach((entry, i) => {
-    const y = top + i * 56;
+    const y = entryBaseline(rects[i]);
     const highlighted = i === index;
     text(ctx, entry, CX, y, {
       size: 26,
@@ -119,7 +121,7 @@ function drawTitle(ctx: CanvasRenderingContext2D, game: Game): void {
     align: "center",
     spacing: 10,
   });
-  drawMenu(ctx, TITLE_MENU, game.menuIndex, 560);
+  drawMenu(ctx, "title", game.menuIndex);
   text(ctx, "W/S OR ARROWS - SELECT   ·   SPACE/ENTER - CONFIRM", CX, 730, {
     size: 13,
     color: COLORS.textFaint,
@@ -278,7 +280,7 @@ function drawPaused(ctx: CanvasRenderingContext2D, game: Game): void {
     align: "center",
     spacing: 12,
   });
-  drawMenu(ctx, PAUSE_MENU, game.menuIndex, 494);
+  drawMenu(ctx, "paused", game.menuIndex);
   text(ctx, "ESC OR P - RESUME", CX, 626, {
     size: 13,
     color: COLORS.textFaint,

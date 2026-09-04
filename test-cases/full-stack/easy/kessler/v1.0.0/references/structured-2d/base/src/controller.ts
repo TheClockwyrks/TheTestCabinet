@@ -20,9 +20,9 @@
 // the tick it steers.
 
 import { PlayerController } from "@test-cabinet/structured-2d";
-import { handleAction } from "./flow";
+import { handleAction, handlePointer } from "./flow";
 import { kesslerState } from "./state";
-import { pressedActions } from "./input";
+import { pointerMoves, pressedActions } from "./input";
 
 export class KesslerController extends PlayerController {
   override tick(): void {
@@ -37,6 +37,11 @@ export class KesslerController extends PlayerController {
     };
     for (const action of pressedActions(this.input)) {
       handleAction(state, action, onScreen, hooks);
+    }
+    // The menus answer the pointer and touch as well as the keyboard
+    // (specs/controls.md), and each sample is routed in arrival order.
+    for (const move of pointerMoves(this.input)) {
+      handlePointer(state, move, hooks);
     }
   }
 }

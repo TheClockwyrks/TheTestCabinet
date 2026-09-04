@@ -31,6 +31,7 @@ import {
   type ParticleSystem,
   type ScreenName,
 } from "./figures";
+import { menuEntryAt, menuItemRects, TITLE_HOWTO_ENTRY } from "./menus";
 import { seedRngState, stepRng } from "./rng";
 import { launchParkedBall, tickPlaying, type TickIo } from "./sim";
 import {
@@ -94,6 +95,15 @@ export interface KesslerState {
   rngState: number;
   /** Ticks left on the wave-clear interstitial while on `waveclear`. */
   interstitialTicks: number;
+  /**
+   * The menu entry a pointer press is down inside, and the screen it went
+   * down on. A release inside the same entry of the same screen accepts it
+   * (`specs/controls.md`); anything else clears the latch and accepts
+   * nothing. It is derived from the contact alone, so any pose leaves it
+   * consistent: a pose that changes the screen leaves a press that can no
+   * longer match.
+   */
+  pointerPress: { screen: ScreenName; entry: number } | null;
   /** The `waveAdvance` driver switch; on when the game is played. */
   waveAdvance: boolean;
   /** The `podSpawn` driver switch; on when the game is played. */
@@ -139,6 +149,7 @@ export function bootState(
     seed,
     rngState: seedRngState(seed),
     interstitialTicks: 0,
+    pointerPress: null,
     waveAdvance: true,
     podSpawn: true,
     lastFrameDt: 0,
@@ -162,6 +173,10 @@ export function cloneState(view: View): KesslerState {
     seed: view.seed,
     rngState: view.rngState,
     interstitialTicks: view.interstitialTicks,
+    pointerPress:
+      view.pointerPress === null
+        ? null
+        : { screen: view.pointerPress.screen, entry: view.pointerPress.entry },
     waveAdvance: view.waveAdvance,
     podSpawn: view.podSpawn,
     lastFrameDt: view.lastFrameDt,
@@ -189,10 +204,17 @@ function cloneSession(session: DeepReadonly<Session>): Session {
 
 // ---- Screen transitions over the draft -----------------------------------
 
-/** Enters `screen` with its top menu entry highlighted. */
+/**
+ * Enters `screen` from the one the draft is on, highlighting the entry
+ * `specs/screens.md` fixes for that arrival: the entry that led away from the
+ * screen being entered to the screen just left, and entry `0` otherwise. Only
+ * `title` entered from `howto` is anything but `0`.
+ */
 function enter(draft: KesslerState, screen: ScreenName): void {
+  const from = draft.screen;
   draft.screen = screen;
-  draft.menuIndex = 0;
+  draft.menuIndex =
+    screen === "title" && from === "howto" ? TITLE_HOWTO_ENTRY : 0;
 }
 
 /**
@@ -237,25 +259,15 @@ function beginNextWave(draft: KesslerState): void {
 }
 
 /**
- * Enters a screen exactly as the real transition into it does, with the
- * entering menu highlighting its top entry and no cue sounding
- * (`specs/instrumentation.md`'s `setScreen` table).
+ * Sets the screen and changes nothing else (`specs/instrumentation.md`'s
+ * `setScreen`): the score, the lives, the wave, the deflector, the balls, the
+ * rings, the pods, the timed effects, the shield, the interstitial timer, the
+ * menu highlight, and both driver switches all stand exactly as they stood,
+ * and no cue sounds. A caller that wants a screen arranged the way the real
+ * transition into it arranges it makes the calls that arrange it.
  */
 export function poseScreenDraft(draft: KesslerState, name: ScreenName): void {
-  switch (name) {
-    case "playing":
-      startFreshSession(draft);
-      break;
-    case "waveclear":
-      enterWaveclear(draft);
-      break;
-    case "title":
-      discardSession(draft);
-      break;
-    default:
-      enter(draft, name);
-      break;
-  }
+  draft.screen = name;
 }
 
 // ---- Actions (specs/controls.md routes them; specs/screens.md answers) ---
@@ -268,10 +280,7 @@ export function handleActionDraft(
 ): void {
   switch (draft.screen) {
     case "title":
-      menuAction(draft, action, TITLE_MENU.length, io, (index) => {
-        if (index === 0) startFreshSession(draft);
-        else enter(draft, "howto");
-      });
+      menuAction(draft, action, TITLE_MENU.length, io);
       break;
     case "howto":
       if (action === "confirm" || action === "back") enter(draft, "title");
@@ -287,10 +296,7 @@ export function handleActionDraft(
         enter(draft, "playing");
         break;
       }
-      menuAction(draft, action, PAUSE_MENU.length, io, (index) => {
-        if (index === 0) enter(draft, "playing");
-        else discardSession(draft);
-      });
+      menuAction(draft, action, PAUSE_MENU.length, io);
       break;
     case "gameover":
       if (action === "confirm") discardSession(draft);
@@ -304,15 +310,82 @@ function menuAction(
   action: Action,
   entries: number,
   io: FlowIo,
-  accept: (index: number) => void,
 ): void {
   if (action === "up" || action === "down") {
     const delta = action === "down" ? 1 : -1;
     draft.menuIndex = (draft.menuIndex + delta + entries) % entries;
     io.cue("menu-move");
   } else if (action === "confirm") {
+    acceptHighlighted(draft, io);
+  }
+}
+
+/**
+ * Accepts the highlighted entry of the menu the draft is standing on, which
+ * is what `confirm` does and what a pointer press and release inside an
+ * entry's region does (`specs/screens.md`, `specs/controls.md`).
+ */
+function acceptHighlighted(draft: KesslerState, io: FlowIo): void {
+  const index = draft.menuIndex;
+  if (draft.screen === "title") {
     io.cue("menu-select");
-    accept(draft.menuIndex);
+    if (index === 0) startFreshSession(draft);
+    else enter(draft, "howto");
+    return;
+  }
+  if (draft.screen === "paused") {
+    io.cue("menu-select");
+    if (index === 0) enter(draft, "playing");
+    else discardSession(draft);
+  }
+}
+
+// ---- The pointer and the finger on the menus (specs/controls.md) ---------
+
+/** One thing a pointer did, in the stage's own logical units. */
+export interface PointerMove {
+  /** Coming into contact, moving, or leaving contact. */
+  readonly type: "down" | "move" | "up";
+  readonly x: number;
+  readonly y: number;
+}
+
+/**
+ * One pointer sample, routed to the menu the draft is standing on. A pointer
+ * over an entry's region highlights it; a press latches the entry it went
+ * down inside; and a release inside that same entry accepts it. A release
+ * anywhere else, and every sample on a screen with no menu, accepts nothing.
+ */
+export function handlePointerDraft(
+  draft: KesslerState,
+  sample: PointerMove,
+  io: FlowIo,
+): void {
+  if (menuItemRects(draft.screen) === null) {
+    draft.pointerPress = null;
+    return;
+  }
+  const over = menuEntryAt(draft.screen, sample.x, sample.y);
+  if (over !== null && over !== draft.menuIndex) {
+    draft.menuIndex = over;
+    io.cue("menu-move");
+  }
+  if (sample.type === "down") {
+    draft.pointerPress =
+      over === null ? null : { screen: draft.screen, entry: over };
+    return;
+  }
+  if (sample.type === "up") {
+    const press = draft.pointerPress;
+    draft.pointerPress = null;
+    if (
+      press !== null &&
+      press.screen === draft.screen &&
+      press.entry === over
+    ) {
+      draft.menuIndex = press.entry;
+      acceptHighlighted(draft, io);
+    }
   }
 }
 

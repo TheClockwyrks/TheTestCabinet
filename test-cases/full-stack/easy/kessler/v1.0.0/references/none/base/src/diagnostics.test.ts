@@ -2,6 +2,7 @@
 // the snapshot's facts, each a pure read that leaves the game as it is.
 
 import { describe, expect, it } from "vitest";
+import { createStateOps } from "./debug";
 import { Diagnostics, registerGameDiagnostics } from "./diagnostics";
 import { Game } from "./game";
 
@@ -14,7 +15,7 @@ function makePanel() {
     if (!line) throw new Error(`no source labeled ${label}`);
     return line.value;
   };
-  return { game, diagnostics, value };
+  return { game, diagnostics, value, ops: createStateOps(game) };
 }
 
 describe("the diagnostics registry", () => {
@@ -52,8 +53,9 @@ describe("the game's registered sources", () => {
   });
 
   it("reads the live values off the game", () => {
-    const { game, value } = makePanel();
+    const { game, ops, value } = makePanel();
     game.poseScreen("playing");
+    ops.parkBall();
     game.session.score = 4321;
     game.session.lives = 2;
     game.session.wave = 5;
