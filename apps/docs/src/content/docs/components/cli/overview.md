@@ -42,9 +42,11 @@ needs a reachable backend (`TCAB_BACKEND_URL`) and a logged-in account. See
 - `prompt` renders and prints the prompt a run would hand the harness for a
   given variant, without seeding or launching anything.
 - `validate` runs [validation](/components/core/validation/) over a produced
-  implementation. It leaves the directory as it found it, apart from the install
-  and build it runs there and the media it synthesizes under `.tcab/`, so it is
-  safe to point at a case's committed reference implementation.
+  implementation and reports whether the tree satisfied everything the case
+  declares. It leaves the directory as it found it, apart from the install and
+  build it runs there and the media it synthesizes under `.tcab/`, so it is safe
+  to point at a case's committed reference implementation. See [Exit
+  codes](#exit-codes) for what makes it fail.
 - `harnesses` lists the supported agent harnesses and whether each one's
   resolved authentication mode has the credentials it needs.
 - `orchestrators` lists the built-in orchestrators and what each one does.
@@ -143,6 +145,12 @@ none has its reference build served and driven in a browser. Either way both
 panes a reviewer compares come from the same scenario driven the same way, which
 is the only thing that makes the comparison mean anything.
 
+A reference implementation is the case's own answer, so every unit is expected to
+run clean against it. A unit that does not is named as it is found and fails its
+target; the sweep still runs every remaining target first, so one pass reports
+every fault. `publish-reference` shares that rule through the same capture, and a
+target whose baseline it could not produce is never deployed.
+
 The command deploys nothing and writes no lockfile, so it takes no `--env` and
 needs no Cloudflare credentials, only the case's toolchain — and a browser for a
 case decided by browser scripts. It is the command to run while authoring or
@@ -170,6 +178,41 @@ duplicated blocks. `--seed-commit` makes the authored set exact when the
 directory is a seeded run workspace; without it every file in the tree is
 treated as authored, which is the right answer for an ordinary source tree.
 `--json` prints the full analysis document for piping onward.
+
+## Exit codes
+
+`tcab` exits `0` only when the thing it was asked to do succeeded, so a script or
+a CI step reads the status rather than the log. Anything that stopped a command
+from doing its job — an unresolvable case, an unreachable backend, a missing
+browser, a rejected login — exits non-zero with the reason on standard error.
+
+Two commands additionally carry a *verdict*: they ran to completion and the
+answer they arrived at is itself a pass or a fail. Both print a final line naming
+every fault, so the tail of a log says what went wrong.
+
+`validate` exits non-zero when the tree it was pointed at failed the case. Each
+of these is a fault the tree earned:
+
+- The implementation did not load.
+- A required install or build step failed or was never reached, for a case whose
+  validation runs them.
+- A declared check could not be reached. The similarity a reached check records
+  is a signal rather than a threshold, so it never decides the exit code.
+- A declared proof-of-implementation artifact is missing.
+- A gating validator did not run against the build, or decided a verdict against
+  it. A validator recorded
+  [inconclusive](/components/core/validation/#validators) said nothing about the
+  build and leaves its point for a human, and a point an erratum excludes from
+  scoring costs nothing, so neither fails the command.
+- An [adversarial](/testing/adversarial/overview/) submission forfeited its
+  match, which is a failure to present a playable controller. A loss or a draw is
+  a result rather than a fault.
+
+`capture-baselines` exits non-zero when any targeted reference build failed to
+build or left a unit that did not run clean. The sweep finishes every target
+first, so one pass reports every fault, and the final line names the targets that
+failed. `publish-reference` decides a baseline capture by the same rule and skips
+deploying the target whose media it could not produce.
 
 ## Authentication
 

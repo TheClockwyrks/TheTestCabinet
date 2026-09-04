@@ -30,7 +30,8 @@ pub enum Command {
     /// Launch a run: select a test case version, harness, and model.
     Run(RunArgs),
 
-    /// Run validation over a produced implementation.
+    /// Run validation over a produced implementation. Exits `0` only when the tree
+    /// satisfied everything the case declares.
     Validate(ValidateArgs),
 
     /// Create an account on the auth service and log in (open self-registration).

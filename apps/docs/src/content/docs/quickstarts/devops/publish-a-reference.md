@@ -119,9 +119,12 @@ tcab capture-baselines <slug> [<version>] [--variant base] [--engine none] [--dr
 ```
 
 Run it whenever a validator or the reference implementation it runs against
-changes, then commit the result. `publish-reference` re-captures the same media as part of
-its build; `--skip-baselines` deploys without re-capturing when the committed
-media is already current.
+changes, then commit the result. It exits non-zero, naming the targets, when a
+reference build failed or left a unit that did not run clean against it, so commit
+only what a clean sweep wrote. `publish-reference` re-captures the same media as
+part of its build and refuses to deploy a target whose capture failed;
+`--skip-baselines` deploys without re-capturing when the committed media is
+already current.
 
 ## From CI
 

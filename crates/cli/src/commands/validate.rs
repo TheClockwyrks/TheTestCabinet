@@ -1,22 +1,37 @@
 //! `tcab validate` — run validation over a produced implementation.
 
 use std::path::PathBuf;
+use std::process::ExitCode;
 
 use anyhow::Context;
 use test_cabinet_core::{
-    AdversarialOutcome, AdversarialTeam, ArtifactCollection, BrowserRenderer, DispatchValidator,
-    ReferenceRenderer, StepResult, TestCaseCatalog, Validator,
+    AdversarialOutcome, AdversarialTeam, ArtifactCollection, BrowserRenderer, DebugScriptResult,
+    DispatchValidator, ReferenceRenderer, StepResult, TestCaseCatalog, TestType, ValidationSummary,
+    Validator,
 };
 
 use crate::cli::ValidateArgs;
 use crate::commands::engines;
 
 /// Run the core validation pass (load check plus any declared checks) over an
-/// already-produced implementation, summarizing the result.
+/// already-produced implementation, summarizing the result and reporting whether
+/// everything the case declared actually held.
 ///
-/// Validation is a cheap first pass, not a pass/fail gate; the core's
-/// [`Validator`] owns the actual work.
-pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
+/// The core's [`Validator`] owns the work; this command owns the *verdict*. An
+/// operator points `tcab validate` at a tree — most often a case's own reference
+/// implementation while authoring validators — and wants one question answered: did
+/// this tree satisfy everything the case declares? So the process status carries the
+/// answer. The pass completing is not the same as the pass passing: a summary
+/// reporting a failed verdict is a successful run of the validator and a failed
+/// validation, and only the latter decides the exit code. See [`faults`] for exactly
+/// what counts.
+///
+/// The distinction is why this returns an [`ExitCode`] rather than an error. A case
+/// that cannot be resolved, a browser that will not start, an engine slug the case
+/// does not support — those are errors, and they propagate as such. A validation that
+/// ran to completion and found faults is a verdict, and it is reported by returning
+/// [`ExitCode::FAILURE`] after printing the summary line that names them.
+pub async fn execute(args: ValidateArgs) -> anyhow::Result<ExitCode> {
     println!(
         "tcab validate: {} against {}@{} [{}]",
         args.implementation.display(),
@@ -96,15 +111,24 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
         }
     }
     if !summary.debug_scripts.is_empty() {
-        // A script that did not run no longer fails the run — it fails the checklist
-        // point it backs — so report the count rather than a pass/fail gate.
+        // Two counts, because they mean opposite things. A script that did not run
+        // against a build that was supposed to answer it is a contract failure and
+        // fails this command; a script recorded inconclusive decided nothing about the
+        // build at all and leaves its point for a human, so it must not. Printing them
+        // apart is what stops an operator reading a passing exit code beside a
+        // `ran=false` line as a bug.
         let not_run = summary
             .debug_scripts
             .iter()
-            .filter(|script| !script.ran)
+            .filter(|script| !script.ran && !script.precondition_unmet)
+            .count();
+        let inconclusive = summary
+            .debug_scripts
+            .iter()
+            .filter(|script| script.precondition_unmet)
             .count();
         println!(
-            "  debug scripts: {} ({not_run} did not run)",
+            "  debug scripts: {} ({not_run} did not run, {inconclusive} inconclusive)",
             summary.debug_scripts.len(),
         );
         for script in &summary.debug_scripts {
@@ -201,7 +225,162 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
         }
     }
 
-    Ok(())
+    // The verdict, last and on its own line, so an operator scrolled to the bottom of
+    // a long pass and a CI log tail both read the same sentence. The faults are
+    // repeated here in full rather than left to the body above: the body is the
+    // evidence, and this is the finding.
+    let faults = faults(&summary, test_case.test_type);
+    if faults.is_empty() {
+        println!("\nvalidation passed");
+        return Ok(ExitCode::SUCCESS);
+    }
+    eprintln!("\nvalidation failed: {}", faults.join("; "));
+    Ok(ExitCode::FAILURE)
+}
+
+/// Every reason this validation pass is a failure, phrased for the summary line, or
+/// an empty vector when the tree satisfied everything the case declares.
+///
+/// The criteria are read off the fields that carry a pass/fail signal, and each one
+/// is a fault the *tree* earned rather than a fact about the host or the case:
+///
+/// - [`loaded`](ValidationSummary::loaded) is false. The build did not build, serve
+///   and render, which is the clearest negative signal validation produces.
+/// - A required build step failed or was never reached, for a `test_type` whose
+///   validation runs them at all. Only the [build
+///   validator](test_cabinet_core::DispatchValidator) reports the install/build pair;
+///   an adversarial or asset-generation case compiles or regenerates through its own
+///   path and records both steps as `None`, so demanding them there would fail every
+///   such pass.
+/// - A declared check that could not be reached. The similarity a reached check
+///   records is deliberately not a criterion: a
+///   [`Check`](test_cabinet_core::test_case::Check) declares no threshold to compare it
+///   against, so any cutoff here would be one this command invented.
+/// - A declared proof-of-implementation artifact that is missing. A missing proof
+///   never changes a *run's* recorded status, but this command answers a different
+///   question — whether the tree in hand carries everything the case asked for — and a
+///   proof the case declared and the tree does not have is exactly that gap.
+/// - A gating debug script that did not run, and any verdict a script decided
+///   against. These mirror
+///   [`automated_verdicts`](test_cabinet_core::comparison::automated_verdicts), the
+///   scoring rule the run itself is graded by, so the exit code agrees with the score:
+///   a script recorded
+///   [inconclusive](test_cabinet_core::DebugScriptResult::precondition_unmet) said
+///   nothing about the build and is skipped, and a script whose backing point an
+///   erratum excluded from scoring
+///   ([`gates`](test_cabinet_core::DebugScriptResult::gates) is false) costs nothing.
+/// - An adversarial match the submission forfeited. A forfeit is the submission
+///   failing to present a playable controller — it did not build, exported no contract
+///   entry, trapped, exhausted its fuel, or returned an invalid action — so it is a
+///   contract failure wearing a match result's clothes. A loss or a draw is the real
+///   thing: the submission played and was beaten, which validation has no business
+///   calling a fault.
+fn faults(summary: &ValidationSummary, test_type: TestType) -> Vec<String> {
+    let mut faults = Vec::new();
+
+    if !summary.loaded {
+        let detail = summary.detail.as_deref().unwrap_or("no detail recorded");
+        faults.push(format!("the implementation did not load ({detail})"));
+    }
+
+    if reports_build_steps(test_type) {
+        faults.extend(step_fault("install", summary.install.as_ref()));
+        faults.extend(step_fault("build", summary.build.as_ref()));
+    }
+
+    let unreached = named(
+        summary
+            .checks
+            .iter()
+            .filter(|c| !c.reached)
+            .map(|c| &c.view),
+    );
+    if let Some(list) = unreached {
+        faults.push(format!("declared check(s) not reached: {list}"));
+    }
+
+    let missing = named(summary.proofs.iter().filter(|p| !p.present).map(|p| &p.id));
+    if let Some(list) = missing {
+        faults.push(format!("declared proof(s) missing: {list}"));
+    }
+
+    // One pass over the scripts, classifying each exactly once, so a script that did
+    // not run is not also counted through the failing verdict its contract failure
+    // synthesizes.
+    let mut not_run: Vec<String> = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
+    for script in &summary.debug_scripts {
+        if !script.gates || script.precondition_unmet {
+            continue;
+        }
+        if !script.ran {
+            not_run.push(verdict_id(script));
+            continue;
+        }
+        failed.extend(
+            script
+                .verdicts
+                .iter()
+                .filter(|verdict| !verdict.pass)
+                .map(|verdict| verdict.id.clone()),
+        );
+    }
+    if let Some(list) = named(not_run.iter()) {
+        faults.push(format!("validator(s) did not run: {list}"));
+    }
+    if let Some(list) = named(failed.iter()) {
+        faults.push(format!("{} verdict(s) failed: {list}", failed.len()));
+    }
+
+    if summary
+        .adversarial
+        .as_ref()
+        .is_some_and(|match_| match_.outcome == AdversarialOutcome::Forfeit)
+    {
+        faults.push("the submission forfeited its adversarial match".to_string());
+    }
+
+    faults
+}
+
+/// Whether a case of this type has its dependency install and static build reported
+/// as their own steps.
+///
+/// Only the end-to-end shapes build a servable tree through the manifest's `[build]`
+/// pair; every other type reaches its output another way and records both steps as
+/// `None`, which is an absence rather than a failure to reach them.
+fn reports_build_steps(test_type: TestType) -> bool {
+    matches!(
+        test_type,
+        TestType::EndToEnd | TestType::FullStack | TestType::GameJam
+    )
+}
+
+/// The fault a required build step contributes: it ran and failed, or it was never
+/// reached at all. `None` when the step succeeded.
+fn step_fault(label: &str, step: Option<&StepResult>) -> Option<String> {
+    match step {
+        Some(step) if step.succeeded => None,
+        Some(step) => Some(format!("the {label} step failed (`{}`)", step.command)),
+        None => Some(format!("the {label} step was never reached")),
+    }
+}
+
+/// The verdict id a script backs — `<item>.<sub-item>` for a per-sub-item driver, or
+/// the bare item id when the whole item is validated. This is the id the reviewer's
+/// checklist, the run's score and this command's summary line all name the point by.
+fn verdict_id(script: &DebugScriptResult) -> String {
+    match &script.sub_item_id {
+        Some(sub) => format!("{}.{sub}", script.item_id),
+        None => script.item_id.clone(),
+    }
+}
+
+/// Join names into the comma-separated list a fault quotes, or `None` when there are
+/// none — which is what lets a caller decide there is no fault to report at all.
+fn named<'a>(names: impl Iterator<Item = &'a String>) -> Option<String> {
+    let joined = names.cloned().collect::<Vec<_>>().join(", ");
+    (!joined.is_empty()).then_some(joined)
 }
 
 /// Print the outcome of a required build step (install or build), or that it was
@@ -223,3 +402,7 @@ fn catalog_root() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("test-cases"))
 }
+
+#[cfg(test)]
+#[path = "validate.test.rs"]
+mod tests;

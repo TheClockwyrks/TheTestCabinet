@@ -4,7 +4,8 @@
 //! The build/capture path drives a real `sh` and a real browser and is exercised
 //! through `core`'s own `capture_baseline_media` tests; here we pin the pure
 //! selection logic both commands route through — version resolution and variant
-//! targeting — leaving the clap surface to `cli.test.rs`.
+//! targeting — and the two decisions that put the command's verdict in its exit
+//! status, leaving the clap surface to `cli.test.rs`.
 
 use test_cabinet_core::{AssetDimension, AssetKind, EngineSupport, NONE_SLUG, TestType};
 
@@ -247,5 +248,40 @@ fn two_engines_of_one_variant_capture_into_separate_directories() {
     assert_ne!(
         baseline_dir(&case, "none", "base"),
         baseline_dir(&case, "simple-2d", "base"),
+    );
+}
+
+#[test]
+fn a_sweep_with_nothing_unclean_reports_no_fault() {
+    assert_eq!(sweep_summary(&[], 3), None);
+}
+
+#[test]
+fn a_sweep_summary_names_the_targets_that_failed() {
+    // The count alone would send the operator back through a log that is mostly
+    // install and build output to find which reference build to look at.
+    let failed = vec!["base@none".to_string(), "hard@simple-2d".to_string()];
+    assert_eq!(
+        sweep_summary(&failed, 4).as_deref(),
+        Some("2 of 4 reference build(s) failed to capture: base@none, hard@simple-2d"),
+    );
+}
+
+#[test]
+fn a_capture_whose_units_all_ran_clean_reports_no_fault() {
+    assert_eq!(capture_fault(&[]), None);
+}
+
+#[test]
+fn a_capture_fault_names_the_units_that_did_not_run_clean() {
+    // The reference implementation is the case's own answer, so a unit it could not
+    // answer clean is a fault in the case, and the item id is what the author fixes.
+    let unclean = vec!["ball-spin".to_string(), "rail-bounce".to_string()];
+    assert_eq!(
+        capture_fault(&unclean).as_deref(),
+        Some(
+            "2 baseline unit(s) did not run clean against the reference implementation: \
+             ball-spin, rail-bounce"
+        ),
     );
 }

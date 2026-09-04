@@ -209,10 +209,10 @@ one requirement per validator, every assertion traced to the spec, scenarios
 posed through the shared harness and the debug API.
 
 Run each engine's suite against that engine's reference implementation with
-`tcab validate`; a validator that fails there is a broken validator, not a
-failing build. Then confirm each validator discriminates by breaking the rule
-it covers in a scratch copy of the reference and confirming exactly the
-expected check fails. When the suites pass, run
+`tcab validate`, which exits `0` only when every declared point held; a validator
+that fails there is a broken validator, not a failing build. Then confirm each
+validator discriminates by breaking the rule it covers in a scratch copy of the
+reference and confirming exactly the expected check fails. When the suites pass, run
 [`tcab capture-baselines`](/components/cli/overview/#commands) and commit the
 media it writes under `validation-baseline/<engine>/<variant>/`.
 

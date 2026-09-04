@@ -62,12 +62,19 @@ async fn main() -> anyhow::Result<ExitCode> {
 
 /// Route a parsed subcommand to its handler.
 ///
-/// Every handler reports success or an error, and a subcommand that ran is a subcommand that
-/// exits `0`.
+/// A handler reports an error for anything that stopped it from doing its job, and an
+/// error always exits non-zero. Most subcommands have nothing further to say, so
+/// having run is having succeeded and they exit `0`.
+///
+/// A subcommand whose *result* is a verdict returns its own [`ExitCode`] instead.
+/// `validate` is the case: resolving a case, driving a browser and running a build all
+/// succeeding says only that the pass happened, while whether the tree passed is a
+/// separate answer that belongs in the process status so a script or a CI step reads
+/// it without parsing the log.
 async fn dispatch(command: Command) -> anyhow::Result<ExitCode> {
     match command {
+        Command::Validate(args) => return commands::validate::execute(args).await,
         Command::Run(args) => commands::run::execute(args).await?,
-        Command::Validate(args) => commands::validate::execute(args).await?,
         Command::Register(args) => commands::auth::register(args).await?,
         Command::Login(args) => commands::auth::login(args).await?,
         Command::Logout => commands::auth::logout().await?,

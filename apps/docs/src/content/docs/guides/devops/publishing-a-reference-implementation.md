@@ -218,9 +218,16 @@ instead has its reference build served and driven. The path is chosen the same
 way in both places, so the two panes a reviewer compares always come from the
 same scenario driven the same way.
 
-`publish-reference` performs the same capture as part of each build,
-and does it before the deploy so a failed capture never leaves a deployed build
-paired with stale media. When the baselines are known to be current for this
+The reference implementation is the case's own answer, so every unit is expected
+to run clean against it. A unit that does not is named as it is found and fails
+its target, and the command exits non-zero after finishing the rest of the sweep.
+Fix the validator or the reference implementation and re-run; the media a failed
+capture wrote is incomplete and must not be committed.
+
+`publish-reference` performs the same capture as part of each build, and does it
+before the deploy so a failed capture never leaves a deployed build paired with
+stale media. A target whose capture failed is therefore never deployed, and the
+publish exits non-zero naming it. When the baselines are known to be current for this
 build, `--skip-baselines` deploys without re-capturing:
 
 ```sh

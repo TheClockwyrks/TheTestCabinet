@@ -87,10 +87,11 @@ pub async fn execute(args: CaptureBaselinesArgs) -> Result<()> {
 
     let runner = SystemCommandRunner;
 
-    // One variant's failure is reported and counted but does not abort the rest, so
-    // a multi-variant sweep still makes progress; the command exits non-zero if any
-    // failed. This mirrors `publish-reference`, which shares these helpers.
-    let mut failures = 0usize;
+    // One target's failure is reported and counted but does not abort the rest, so a
+    // multi-target sweep still makes progress and the operator sees every fault in one
+    // pass rather than one per re-run. The command exits non-zero if any failed. This
+    // mirrors `publish-reference`, which shares these helpers.
+    let mut failed: Vec<String> = Vec::new();
     for target in &targets {
         let result = async {
             let out = build_reference(&runner, *target, &build.install, &build.build).await?;
@@ -99,38 +100,101 @@ pub async fn execute(args: CaptureBaselinesArgs) -> Result<()> {
         .await;
         if let Err(err) = result {
             eprintln!("  {} — failed: {err:#}", target.label());
-            failures += 1;
+            failed.push(target.label());
         }
     }
 
-    if failures > 0 {
-        bail!(
-            "{failures} of {} reference build(s) failed to capture",
-            targets.len()
-        );
+    if let Some(summary) = sweep_summary(&failed, targets.len()) {
+        bail!(summary);
     }
     Ok(())
 }
 
+/// The one-line verdict a finished sweep reports, or `None` when every target
+/// captured cleanly.
+///
+/// The line names the targets rather than only counting them, because the per-target
+/// detail is scattered through a log that is mostly install and build output. A CI
+/// step's tail, or an operator glancing at the last line, has to be enough to know
+/// which reference build to go and look at.
+fn sweep_summary(failed: &[String], total: usize) -> Option<String> {
+    (!failed.is_empty()).then(|| {
+        format!(
+            "{} of {total} reference build(s) failed to capture: {}",
+            failed.len(),
+            failed.join(", "),
+        )
+    })
+}
+
 /// Capture one variant's baseline media from its built reference implementation at
-/// `out` and report what was written. Shared with `publish-reference`, which does
-/// this same capture inline before deploying.
+/// `out`, report what was written, and fail if any unit did not run clean against it.
+/// Shared with `publish-reference`, which does this same capture inline before
+/// deploying.
+///
+/// The reference implementation is the case's own answer, so a unit that could not be
+/// driven clean against it is a fault in the case or its validators, not a result. It
+/// is reported per unit and then failed as a whole, which is what keeps the two
+/// commands honest about the same thing: `capture-baselines` counts this target as
+/// failed and carries on with the rest of the sweep, and `publish-reference` skips
+/// deploying a build whose baseline media it could not produce, rather than serving a
+/// reviewer a side-by-side with half of it missing.
 pub(super) fn capture_variant_baseline(
     test_case: &TestCaseVersion,
     target: Target<'_>,
     out: &Path,
 ) -> Result<()> {
-    let written = generate_baseline(test_case, target, out)?;
-    if written > 0 {
+    let capture = generate_baseline(test_case, target, out)?;
+    if capture.written > 0 {
         println!(
-            "  {} — wrote {written} baseline media file(s) to {}",
+            "  {} — wrote {} baseline media file(s) to {}",
             target.label(),
+            capture.written,
             baseline_dir(test_case, target.engine, &target.variant.slug).display()
         );
     } else {
         println!("  {} — nothing to capture", target.label());
     }
+    if let Some(unclean) = capture_fault(&capture.unclean) {
+        bail!(unclean);
+    }
     Ok(())
+}
+
+/// What one target's baseline capture produced: how much media it wrote, and which of
+/// its units the reference implementation did not answer clean.
+///
+/// The two travel together because neither alone is the outcome. A capture that wrote
+/// every file it was asked for and left one unit unanswered is a failed capture with
+/// output, and the operator needs the count to know what landed on disk and the ids to
+/// know what to go and fix.
+struct BaselineCapture {
+    /// How many media files were written across every unit.
+    written: usize,
+    /// The review item ids whose script or suite did not run clean against the
+    /// reference implementation, in the order the capture reported them.
+    unclean: Vec<String>,
+}
+
+/// The fault a capture's unclean units amount to, or `None` when every unit ran clean.
+///
+/// `BaselineUnit::ran` is the only pass/fail signal a capture carries, and it means
+/// "the script or suite executed to completion against a conformant build" — the
+/// handle was installed, every call returned, and every declared output was produced.
+/// It is deliberately not a verdict: a baseline decides nothing, because the reference
+/// implementation is the answer rather than a submission, so the capture drops the
+/// verdicts and assertions the same drive would carry on a run. `ran == false` is
+/// therefore exactly the criterion available here, and exactly the right one — the
+/// reference implementation failing its own case's debug-API contract is the fault
+/// worth refusing.
+fn capture_fault(unclean: &[String]) -> Option<String> {
+    (!unclean.is_empty()).then(|| {
+        format!(
+            "{} baseline unit(s) did not run clean against the reference implementation: {}",
+            unclean.len(),
+            unclean.join(", "),
+        )
+    })
 }
 
 /// One thing to publish or capture: a variant's reference implementation **on one
@@ -214,17 +278,24 @@ pub(super) fn baseline_dir(test_case: &TestCaseVersion, engine: &str, variant: &
 
 /// Synthesize this target's committed baseline validation media from its built
 /// reference implementation at `out`, replacing any prior contents of its
-/// `validation-baseline/<engine>/<variant>/` directory. Returns the number of media
-/// files written.
+/// `validation-baseline/<engine>/<variant>/` directory. Returns what was written and
+/// which units did not run clean.
 ///
 /// A case that declares no instrumentation, or a variant with no scripted review
-/// items, has no baseline to produce (writes nothing, returns 0). A case that *does*
-/// declare scripted units but whose reference implementation could not be driven at
-/// all — no browser on the host, or a validator project the runner could not execute
-/// — is an error, because a silently missing baseline leaves every reviewer of every
-/// run on this case with no expected-behavior media to compare against. A unit that
-/// ran and simply wrote nothing is not that: it is reported and the sweep goes on.
-fn generate_baseline(test_case: &TestCaseVersion, target: Target<'_>, out: &Path) -> Result<usize> {
+/// items, has no baseline to produce (writes nothing, reports nothing unclean). A case
+/// that *does* declare scripted units but whose reference implementation could not be
+/// driven at all — no browser on the host, or a validator project the runner could not
+/// execute — is an error, because a silently missing baseline leaves every reviewer of
+/// every run on this case with no expected-behavior media to compare against.
+///
+/// Every unit is driven before anything is decided, so one unclean unit does not hide
+/// the ones behind it: the whole capture is attempted, each fault is printed as it
+/// happens, and the caller fails the target once with all of them named.
+fn generate_baseline(
+    test_case: &TestCaseVersion,
+    target: Target<'_>,
+    out: &Path,
+) -> Result<BaselineCapture> {
     let variant = target.variant;
     let baseline_dir = baseline_dir(test_case, target.engine, &variant.slug);
     // Start clean so a renamed or removed output never lingers as a stale committed
@@ -243,35 +314,42 @@ fn generate_baseline(test_case: &TestCaseVersion, target: Target<'_>, out: &Path
         &baseline_dir,
     ) {
         Some(units) => {
-            // A reference implementation is supposed to be conformant, so a script
-            // that did not run clean against it is worth surfacing — but it does not
-            // abort the capture (the operator sees exactly which item is at fault).
+            // A reference implementation is supposed to be conformant, so a script that
+            // did not run clean against it is a fault in the case: named here as it is
+            // found, so the operator reads every one of them, and collected for the
+            // caller to fail the target on once the whole capture has been attempted.
+            let mut unclean = Vec::new();
             for unit in &units {
                 if !unit.ran {
                     eprintln!(
-                        "    warning: baseline capture for `{}` did not run clean{}",
+                        "    baseline capture for `{}` did not run clean{}",
                         unit.item_id,
                         unit.detail
                             .as_deref()
                             .map(|d| format!(": {d}"))
                             .unwrap_or_default()
                     );
+                    unclean.push(unit.item_id.clone());
                 }
             }
             // Every unit failing to run is a fact about the host or the case rather
             // than about the reference implementation — a browser that is not there, a
             // validator project that would not execute — and it is the shape a broken
             // capture takes on the project path, where the runner reports per unit
-            // instead of declining wholesale. Refuse it for the same reason the
-            // `None` arm below refuses its own version of it.
-            if !units.is_empty() && units.iter().all(|unit| !unit.ran) {
+            // instead of declining wholesale. Say so in its own words rather than
+            // leaving the caller to report a per-unit fault for each, for the same
+            // reason the `None` arm below refuses its own version of it.
+            if !units.is_empty() && units.len() == unclean.len() {
                 bail!(
                     "no validator ran against the reference implementation for `{}`, so it \
-                     has no baseline media (see the warnings above)",
+                     has no baseline media (see the faults above)",
                     target.label()
                 );
             }
-            Ok(units.iter().map(|unit| unit.outputs_present).sum())
+            Ok(BaselineCapture {
+                written: units.iter().map(|unit| unit.outputs_present).sum(),
+                unclean,
+            })
         }
         // `None` is either "nothing to do" (no instrumentation / no scripted units)
         // or "could not drive" (the browser path with no browser). Distinguish: the
@@ -293,7 +371,10 @@ fn generate_baseline(test_case: &TestCaseVersion, target: Target<'_>, out: &Path
                     target.label()
                 );
             }
-            Ok(0)
+            Ok(BaselineCapture {
+                written: 0,
+                unclean: Vec::new(),
+            })
         }
     }
 }
