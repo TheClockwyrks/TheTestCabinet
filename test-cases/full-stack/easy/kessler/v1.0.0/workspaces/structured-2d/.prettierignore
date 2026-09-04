@@ -5,6 +5,8 @@ node_modules/
 /build/
 /out/
 coverage/
+test-results/
+playwright-report/
 package-lock.json
 .tcab/
 assets/
