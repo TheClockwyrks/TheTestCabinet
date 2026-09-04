@@ -11,8 +11,8 @@
 // are stated in cascade/hud.ts.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_SOLVED_LABEL } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { HUD_SOLVED_LABEL } from "../constants";
 import {
   captureStill,
   createHarness,

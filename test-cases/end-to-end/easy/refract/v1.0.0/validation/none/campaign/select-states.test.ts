@@ -107,33 +107,25 @@ interface Region {
  * aliases against a tile's border — two device pixels wide is typical, and a
  * lattice stepping several pixels at a time can land on most of it or almost
  * none of it — which moves the reading by a third either way for a tile whose
- * state lives in its border. Stepping one device pixel at a time makes the
+ * state lives in its border. Every device pixel in the region is what makes the
  * reading the region's true mean, whatever the build draws in it.
+ *
+ * Read as ONE rectangle rather than as a lattice of single-pixel reads, through
+ * {@link Harness.meanColor}. The reading is the same one — the same patch, the
+ * same every-device-pixel mean — but a tile is around ten thousand device
+ * pixels, and taken a point at a time that is ten thousand `getImageData` calls
+ * and forty thousand numbers crossing out of the page, per state, three times
+ * over. None of that cost is the build's: it is the host's, and on a busy host
+ * it was most of what this point spent, which is how a correct build came to
+ * lose the point to a timeout.
  */
 async function meanRegionColor(h: Harness, region: Region): Promise<Rgb> {
-  const { scale } = h.viewport();
-  const step = 1 / scale;
-  const columns = Math.max(2, Math.round((2 * region.hx) / step));
-  const rows = Math.max(2, Math.round((2 * region.hy) / step));
-  const points: { x: number; y: number }[] = [];
-  for (let i = 0; i < columns; i += 1) {
-    for (let j = 0; j < rows; j += 1) {
-      points.push({
-        x: region.cx - region.hx + step * (i + 0.5),
-        y: region.cy - region.hy + step * (j + 0.5),
-      });
-    }
-  }
-  const read = await h.pixels(points);
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  for (const [pr, pg, pb] of read) {
-    r += pr;
-    g += pg;
-    b += pb;
-  }
-  return { r: r / read.length, g: g / read.length, b: b / read.length };
+  return h.meanColor({
+    x0: region.cx - region.hx,
+    y0: region.cy - region.hy,
+    x1: region.cx + region.hx,
+    y1: region.cy + region.hy,
+  });
 }
 
 /**

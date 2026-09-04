@@ -13,8 +13,8 @@
 // that never drew one of its items fails here on the missing item, named.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_ITEMS } from "../../src/constants";
 import { assertEqual, fail } from "../assert";
+import { TITLE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,

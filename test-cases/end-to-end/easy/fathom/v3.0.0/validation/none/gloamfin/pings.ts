@@ -20,11 +20,12 @@
 // second ping while the first was still in flight, where a watch reading presence
 // alone sees no change and reports the violation as no ping at all.
 //
-// WHAT THAT COSTS IN PRECISION. A cast is seen at the first sample after it, so a
-// sighting's time is at most one poll late and a GAP between two sightings at most
-// one poll wrong in either direction. Every check here polls at
-// {@link SWEEP_POLL}, which puts that error two orders of magnitude under the
-// tolerances the points state.
+// WHAT THAT COSTS IN PRECISION: NOTHING, because a sighting's TIME is not the time
+// it was seen. A wavefront reports how far it has flown and `specs/sensing.md`
+// fixes the speed it flies at, so the moment it was CAST is read off the wavefront
+// itself ({@link castAt}) rather than off the sample that caught it. The sample
+// interval decides only whether a ping is seen at all, and which tile its caster
+// held while it was cast; {@link SWEEP_POLL} states the margin it has for both.
 
 import type {
   FathomSnapshot,
@@ -32,23 +33,33 @@ import type {
   PredatorSnapshot,
   PulseSnapshot,
 } from "../harness";
+import { SONAR_WAVE_SPEED } from "../constants";
 import type { Tile } from "../maze";
 
 /**
- * Ticks between two samples of a watch, and so the precision of every time it
- * reports.
+ * Ticks between two samples of a watch.
  *
- * Two ticks is a sixtieth of a second. The tightest window any check here states
- * is a tenth of a second, thirty times that, and the coarsest thing a watch has to
- * separate — two pings a `GLOAMFIN_PING_MIN_GAP` (`3 s`) floor apart — is a
- * hundred and eighty times it. One tick would halve an error that is already
- * negligible and double what the longest watches cost.
+ * A tenth of a second, and NOT the precision of the times a watch reports — those
+ * are read off the wavefront itself (see {@link castAt}) and are exact whatever
+ * this is. What the interval has to be fine enough for is to SEE every ping and
+ * to name the tile it came from: a ping stands in `pulses` for
+ * `GLOAMFIN_PING_RANGE / SONAR_WAVE_SPEED` (nine steps at fourteen a second,
+ * about two thirds of a second), which is six times this, and a Gloamfin covers
+ * under half a tile in it at any speed this specification gives it, so a cast
+ * still falls on one of the two tiles a sighting names.
+ *
+ * WHY IT IS NOT FINER. `specs/instrumentation.md` has `advance` REDRAW, so every
+ * sample costs the build a whole frame of its own rendering — a few milliseconds
+ * on an idle machine and tens of times that on a busy one. A fourteen-second
+ * watch sampled every other tick is eight hundred and forty of those renders,
+ * spent on a measurement that reads none of them, which turns a cadence a build
+ * either keeps or does not into a reading of how busy the host was.
  */
-export const SWEEP_POLL = 2;
+export const SWEEP_POLL = 12;
 
 /** A Gloamfin wavefront, caught at the first sample after it was cast. */
 export interface PingSighting {
-  /** Simulated seconds at that sample, from the snapshot's own `simTime`. */
+  /** The simulated second it was CAST on, read off the wavefront ({@link castAt}). */
   t: number;
   /** `specs/state.md`'s tint for the ping: `"violet"` or `"orange"`. */
   tint: string;
@@ -60,9 +71,9 @@ export interface PingSighting {
    * The tiles the Gloamfin held at this sample and at the one before it.
    *
    * A cast happened somewhere inside that window, so a ping cast "from its own
-   * tile" reports one of these two and nothing else: at `SWEEP_POLL` ticks the
-   * Gloamfin covers under two logical units at any speed this specification gives
-   * it, which can carry it across one tile boundary and no more.
+   * tile" reports one of these two and nothing else: over `SWEEP_POLL` ticks the
+   * Gloamfin covers under half a tile at any speed this specification gives it,
+   * which can carry it across one tile boundary and no more.
    */
   casterTiles: Tile[];
   /** Whether the caster's own body was being drawn at this sample. */
@@ -79,6 +90,29 @@ export interface PingLog {
 /** The Gloamfin wavefronts standing in a snapshot. */
 function gloamfinPulses(snap: FathomSnapshot): PulseSnapshot[] {
   return snap.pulses.filter((pulse) => pulse.source === "gloamfin");
+}
+
+/**
+ * The simulated second a wavefront seen at this sample was CAST on.
+ *
+ * `specs/sensing.md` advances a front at `SONAR_WAVE_SPEED` corridor steps a
+ * second and `specs/state.md` reports in `front` "how far the leading edge has
+ * traveled from that tile, in corridor steps", so the moment it left is this
+ * sample's own `simTime` less that distance over that speed. Exact, and exact
+ * however coarsely the watch samples — which is what lets these watches sample at
+ * a grain the build's own rendering can afford instead of paying a frame every
+ * other tick for a precision the wavefront was carrying all along.
+ *
+ * A build that reports a `front` this cannot use — not a number, or negative — is
+ * read the way a watch that knew only which sample first saw the ping would read
+ * it: the sample's own time, which is at most one sample late. So this is never
+ * less accurate than the reading it replaces, and a `specs/state.md` fault does
+ * not become a cadence fault.
+ */
+function castAt(snap: FathomSnapshot, pulse: PulseSnapshot): number {
+  const flown = pulse.front / SONAR_WAVE_SPEED;
+  if (!Number.isFinite(flown) || flown < 0) return snap.simTime;
+  return snap.simTime - flown;
 }
 
 /** What names one wavefront across the samples of its flight (`specs/state.md`). */
@@ -101,7 +135,7 @@ export function pingLog(index: number): PingLog {
       for (const pulse of pulses) {
         if (standing.has(nameOf(pulse))) continue;
         sightings.push({
-          t: snap.simTime,
+          t: castAt(snap, pulse),
           tint: pulse.tint,
           source: pulse.source,
           origin: { tx: pulse.ox, ty: pulse.oy },
@@ -134,9 +168,16 @@ export function castFromOwnTile(sighting: PingSighting): boolean {
 /**
  * Run `ticks` real ticks, handing every `SWEEP_POLL`th snapshot to `visit`.
  *
- * `advance`, so the whole watch is what a recorded clip shows when the sweep is
- * wrapped in one; a check that wants a stretch off camera calls this outside its
- * capture.
+ * `advance` rather than `skip`, so the whole watch is what a recorded clip shows
+ * when the sweep is wrapped in one; a check that wants a stretch off camera calls
+ * this outside its capture.
+ *
+ * ONE CROSSING, NOT ONE PER SAMPLE. A watch here runs its whole length whatever
+ * it sees — nothing about a cadence is decided early — so the loop belongs on the
+ * page's side of the line rather than the suite's, which is what
+ * {@link Harness.scan} is. The ticks are the same ticks stepped the same way, one
+ * `advance(poll)` per sample; what is dropped is the round trip between them, and
+ * on a loaded host a round trip costs more than the tick it carries.
  */
 export async function sweep(
   h: Harness,
@@ -144,10 +185,7 @@ export async function sweep(
   visit: (snap: FathomSnapshot) => void,
   poll: number = SWEEP_POLL,
 ): Promise<void> {
-  for (let run = 0; run < ticks; run += poll) {
-    await h.advance(Math.min(poll, ticks - run));
-    visit(await h.snapshot());
-  }
+  for (const reading of await h.scan(ticks, poll)) visit(reading.snapshot);
 }
 
 /** The Gloamfin's own entry in a snapshot, by the index the scenario spawned it at. */

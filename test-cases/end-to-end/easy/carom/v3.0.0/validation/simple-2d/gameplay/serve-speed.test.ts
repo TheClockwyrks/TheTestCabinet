@@ -7,7 +7,7 @@
 // is whatever the build's own serve produced.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SERVE_SPEED } from "../../src/constants";
+import { SERVE_SPEED } from "../constants";
 import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
 import { ball0, captureReplay, createHarness, type Harness } from "../harness";
 

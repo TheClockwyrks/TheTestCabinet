@@ -31,7 +31,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual, fail } from "../assert";
-import { FLARE_BLOOM, FLARE_CHARGE, FLARE_INTERVAL } from "../../src/constants";
+import { FLARE_BLOOM, FLARE_CHARGE, FLARE_INTERVAL } from "../constants";
 import {
   captureReplay,
   createHarness,

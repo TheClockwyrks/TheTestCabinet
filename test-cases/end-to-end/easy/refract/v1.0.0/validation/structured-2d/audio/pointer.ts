@@ -27,7 +27,7 @@
 // assumed, so a check that builds its harness at some other ratio is still
 // pointing where it means to.
 
-import { STAGE_W } from "../../src/constants";
+import { STAGE_W } from "../notation";
 import { centerOf, type CellRef, type Harness } from "../harness";
 
 /**

@@ -45,10 +45,29 @@ export default defineConfig({
     // model's build under it.
     maxWorkers: 4,
     minWorkers: 1,
-    // A dive driven out to a game over is tens of thousands of ticks of real
-    // simulation, each of them a crossing into the page; generous here, and still
-    // seconds in practice.
-    testTimeout: 120_000,
-    hookTimeout: 60_000,
+    // WHAT THIS CEILING IS FOR, AND WHAT IT IS NOT FOR. It is here so a build that
+    // hangs — a frame loop that never returns, a surface that never answers — ends
+    // the check rather than the run. It is NOT a budget for the measurement: every
+    // check in this directory decides its verdict on ticks and on the state they
+    // left, all of it deterministic, and none of it faster or slower on the build's
+    // account. What varies is the wall clock the same work takes, and that is a
+    // property of the machine: `specs/instrumentation.md` has `advance` REDRAW, so
+    // a driven tick costs the build a frame of its own rendering — a few
+    // milliseconds on an idle host and, on one running a model's build and whatever
+    // else it is running, tens of times that.
+    //
+    // So it is set well past the slowest check on a busy machine rather than close
+    // to the slowest on an idle one. The suites themselves are what keeps a run
+    // short: each samples at the grain its own stated bound needs, drives its ticks
+    // in one crossing rather than one apiece, and closes a recorded frame only
+    // while a capture is keeping them.
+    testTimeout: 300_000,
+    // The same ceiling as a check, rather than half of it. `beforeEach` here opens
+    // a page of the shared browser, loads the built site into it and waits for the
+    // build to install its surface — real work, and work that competes with
+    // whatever else the host is running. A hook budget sized for a quiet machine
+    // fails a perfectly good build as "hook timed out", which says nothing about
+    // the build at all.
+    hookTimeout: 300_000,
   },
 });

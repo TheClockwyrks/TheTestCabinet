@@ -17,7 +17,7 @@
 // around the field are the field's background color").
 
 import { afterEach, it } from "vitest";
-import { FIELD_H, FIELD_W } from "../../src/constants";
+import { FIELD_H, FIELD_W } from "../constants";
 import {
   assertCloseTo,
   assertDeepEqual,

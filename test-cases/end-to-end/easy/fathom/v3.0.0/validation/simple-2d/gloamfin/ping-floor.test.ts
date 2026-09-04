@@ -33,7 +33,7 @@ import {
   assertLessThanOrEqual,
   assertTrue,
 } from "../assert";
-import { GLOAMFIN_PING_MIN_GAP, TICK_HZ } from "../../src/constants";
+import { GLOAMFIN_PING_MIN_GAP, TICK_HZ } from "../constants";
 import { placeForager, poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,

@@ -46,7 +46,7 @@ import {
   GLOAMFIN_CORNER_SPEED,
   GLOAMFIN_RAMP_TIME,
   TICK_HZ,
-} from "../../src/constants";
+} from "../constants";
 import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,

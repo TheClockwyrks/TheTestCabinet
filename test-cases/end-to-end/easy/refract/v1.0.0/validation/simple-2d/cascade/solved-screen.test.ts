@@ -24,7 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
-import { SOLVED_ITEMS, SOLVED_TITLE_TEXT } from "../../src/constants";
+import { SOLVED_ITEMS, SOLVED_TITLE_TEXT } from "../constants";
 import { GEO_3X3 } from "../fixtures";
 import {
   captureStill,

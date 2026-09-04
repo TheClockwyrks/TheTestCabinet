@@ -9,7 +9,7 @@
 // `hit-top-edge` and `hit-bottom-edge`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_CY } from "../../src/constants";
+import { FIELD_CY } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

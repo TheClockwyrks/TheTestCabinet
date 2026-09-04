@@ -6,7 +6,7 @@
 // build's own win rule, never a fabricated end state.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WIN_LEAD, WIN_SCORE } from "../../src/constants";
+import { WIN_LEAD, WIN_SCORE } from "../constants";
 import { assertEqual, assertNotEqual, assertNull } from "../assert";
 import {
   arrangeGoal,

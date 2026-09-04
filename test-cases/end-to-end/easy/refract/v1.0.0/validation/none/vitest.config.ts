@@ -41,15 +41,57 @@ export default defineConfig({
     // is most of what decides how long the whole run takes. Capped rather than
     // left to the core count because the cost of a page is memory in one shared
     // browser process rather than a core, and the host running this is running a
-    // model's build under it; four holds the whole project to about a minute on a
-    // healthy machine, well inside the cap the runner puts on the suite run.
-    maxWorkers: 4,
+    // model's build under it.
+    //
+    // Eight rather than four, because the number that matters is not how long
+    // this project takes on an idle box — it is how much of the runner's cap on
+    // the WHOLE suite run is left on a busy one. A crossing into a browser costs
+    // 6 ms on an idle host and 90 ms on a loaded one, and a worker waiting on one
+    // holds no core; four workers left the project serialized behind that wait
+    // while the box had cores to spare, and the whole run measured 700 s against
+    // a 20-minute cap. Eight halves that, and a page is still memory rather than
+    // a core.
+    //
+    // And eight rather than sixteen, which was measured too. At load average
+    // ~650 the same suite run took 1 059 s at eight workers with its slowest
+    // FILE at 170 s, and 861 s at sixteen with its slowest file at 316 s —
+    // sixteen buys 19% off the wall clock by making every file compete with
+    // fifteen siblings, and four points crossed the per-test allowance and were
+    // lost. The whole-run cap is the runner's to spend; the per-test one is what
+    // decides a build's score, so the worker count is set to protect the second.
+    maxWorkers: 8,
     minWorkers: 1,
-    // Refract's pointer operations take effect the moment they are called, so
-    // even the whole campaign course or a twenty-five-board cascade sweep is a few
-    // hundred crossings into the page rather than thousands of real-time frames;
-    // a minute is generous against a healthy build and still bounds a hung one.
-    testTimeout: 60_000,
-    hookTimeout: 60_000,
+    // WHAT A TIMEOUT IS FOR, AND WHAT IT MUST NOT DO. Nothing this project
+    // measures is taken from the wall clock: every check drives the game frame by
+    // frame and asserts on what the build's own snapshot reports. The one wall
+    // clock left is this allowance — and an allowance a correct build can cross
+    // is a defect in the check, because it turns "how busy the machine was" into
+    // a lost point on a build that did nothing wrong.
+    //
+    // Sixty seconds was such an allowance. On a host running nine of these
+    // projects at once (load average ~450), an unmodified reference lost
+    // cascade/tier-ladder, cascade/sequence-is-endless,
+    // cascade/boards-meet-the-tier-floor and campaign/select-states to it, at
+    // 66-76 s apiece against quiet times of 6-14 s.
+    //
+    // Five minutes is set against the measured worst case rather than against a
+    // healthy machine, and against the one ceiling this project cannot move: the
+    // runner caps the WHOLE suite run at twenty minutes. At load average ~650 —
+    // half again the worst this case has been run under — the slowest file here
+    // measured 170 s and the whole run 1 059 s of that twenty minutes. Five
+    // minutes is a quarter of the outer cap, so a single file can only cross it
+    // on a host where the whole run was already lost; below that, no correct
+    // build loses a point to the clock. A hung build is still bounded, twice over.
+    testTimeout: 300_000,
+    // A hook reaches the shared browser, takes a page off it, loads the built
+    // site in that page, and waits for the surface and the recorder. The same
+    // reasoning applies, and one thing more: this allowance has to be wider than
+    // every ceiling the project itself sets, or the last of them is decided here
+    // instead. A hook that runs out reports that a hook ran out; the ceilings
+    // report which wait was crossed and whether it was the host or the build that
+    // crossed it, which is the account a reviewer needs. Connecting, loading, the
+    // surface and the recorder are capped at 30, 60, 30 and 30 seconds, so 150
+    // seconds is the most a hook can honestly spend, and this sits at twice that.
+    hookTimeout: 300_000,
   },
 });

@@ -15,8 +15,8 @@
 // press on a later frame is caught too.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_ITEMS } from "../../src/constants";
 import { assertEqual, assertNotNull } from "../assert";
+import { TITLE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,

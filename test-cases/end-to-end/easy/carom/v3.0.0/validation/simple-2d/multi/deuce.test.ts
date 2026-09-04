@@ -10,7 +10,7 @@
 // short and re-aiming the ball once it is in flight again.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WIN_LEAD, WIN_SCORE } from "../../src/constants";
+import { WIN_LEAD, WIN_SCORE } from "../constants";
 import { assertEqual, assertNull } from "../assert";
 import {
   arrangeGoal,

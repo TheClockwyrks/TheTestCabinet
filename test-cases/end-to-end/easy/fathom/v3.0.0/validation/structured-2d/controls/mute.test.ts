@@ -32,8 +32,8 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, fail } from "../assert";
+import { BRIGHT_HOLD } from "../constants";
 import { poseStraightRun } from "../fixtures";
-import { BRIGHT_HOLD } from "../../src/constants";
 import {
   captureStill,
   createHarness,

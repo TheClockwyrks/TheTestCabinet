@@ -26,7 +26,7 @@ import {
   assertLessThan,
   assertLessThanOrEqual,
 } from "../assert";
-import { SERVE_ANGLE } from "../../src/constants";
+import { SERVE_ANGLE } from "../constants";
 import {
   angleDeg,
   ball0,

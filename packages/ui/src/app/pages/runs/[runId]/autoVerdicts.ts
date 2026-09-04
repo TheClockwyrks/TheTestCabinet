@@ -40,8 +40,9 @@ export function autoVerdictMap(run: RunRecord): Map<string, AutoVerdictInfo> {
   const map = new Map<string, AutoVerdictInfo>();
   // The shared failure semantics (`automatedVerdicts`): decided verdicts carry
   // through, a contract failure fails the point it backs, and an inconclusive
-  // (precondition-unmet) script leaves its point undecided — so the pre-fill can
-  // never disagree with the score and rating derived from the same record.
+  // script leaves its point undecided, whichever of the reasons it gives — so the
+  // pre-fill can never disagree with the score and rating derived from the same
+  // record.
   for (const v of automatedVerdicts(run.validation.debugScripts ?? [])) {
     // The reviewer's note is left blank: a verdict's proof is its assertions,
     // shown beside the point, not stuffed into the note field.
@@ -56,8 +57,8 @@ export function autoVerdictMap(run: RunRecord): Map<string, AutoVerdictInfo> {
  *
  * Only declared points are considered (an auto verdict for an item the case no
  * longer declares is not offered), and only ones validation actually decided: a
- * point it left to the reviewer — a subjective item, or a check whose precondition
- * went unmet — has no machine value to restore and is never touched. A note is
+ * point it left to the reviewer — a subjective item, or a check that decided
+ * nothing — has no machine value to restore and is never touched. A note is
  * reviewer prose either way (validation writes none), so it does not count as a
  * difference.
  */

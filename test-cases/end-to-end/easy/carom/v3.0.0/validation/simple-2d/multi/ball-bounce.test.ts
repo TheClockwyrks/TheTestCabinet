@@ -18,7 +18,7 @@
 // single-element list below is what catches it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, FIELD_CY } from "../../src/constants";
+import { CUES, FIELD_CY } from "../constants";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,

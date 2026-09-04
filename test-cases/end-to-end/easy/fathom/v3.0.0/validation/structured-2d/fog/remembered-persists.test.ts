@@ -37,13 +37,13 @@
 // `192` the kindle circle covers at that same `G`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE, VISION_MIN } from "../../src/constants";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThan,
   fail,
 } from "../assert";
+import { TILE, VISION_MIN } from "../constants";
 import { poseMaze } from "../fixtures";
 import {
   captureReplay,

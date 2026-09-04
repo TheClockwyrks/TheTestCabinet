@@ -31,12 +31,12 @@
 // formula exactly as much as one that recomputes it inside the operation.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertLessThanOrEqual, assertNotEqual, fail } from "../assert";
 import {
   BRIGHT_HOLD,
   LANTERN_RANGE_BASE,
   LANTERN_RANGE_GAIN,
-} from "../../src/constants";
-import { assertLessThanOrEqual, assertNotEqual, fail } from "../assert";
+} from "../constants";
 import { poseApart, spawnPredator } from "../fixtures";
 import {
   captureReplay,

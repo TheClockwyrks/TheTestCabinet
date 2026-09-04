@@ -51,13 +51,27 @@ import type { Tile } from "../maze";
  * seconds.
  *
  * Both items state it: "within a tenth of a second". The watch below resolves an
- * event to its own poll, which is {@link WATCH_POLL} ticks — a sixtieth of a
- * second — so all but a sixth of this band is room for the build.
+ * event to its own poll, which is {@link WATCH_POLL} ticks — a thirtieth of a
+ * second — so two thirds of this band is room for the build.
  */
 export const RELEASE_TOLERANCE = 0.1;
 
-/** How often the den is read, in ticks: a sixtieth of a second. */
-export const WATCH_POLL = 2;
+/**
+ * How often the den is read, in ticks: a thirtieth of a second.
+ *
+ * A third of the band {@link RELEASE_TOLERANCE} states, which leaves the rest to
+ * the build. It is not finer because `specs/instrumentation.md` has `advance`
+ * REDRAW, so every sample costs the build a whole frame of its own rendering — a
+ * few milliseconds on an idle machine and tens of times that on a busy one — and
+ * a schedule of three releases `DEN_RELEASE_GAP` (`5 s`) apart is eighteen
+ * seconds of game. Sampled every other tick that is a thousand renders spent on a
+ * measurement that reads none of them, which turns a schedule a build either keeps
+ * or does not into a reading of how busy the host was.
+ */
+export const WATCH_POLL = 4;
+
+/** How many samples one crossing into the page carries. */
+export const WATCH_CHUNK = 30;
 
 /** How long after its due time a release is still waited for, in seconds. */
 export const RELEASE_GRACE = 3;
@@ -167,10 +181,16 @@ export async function watchReleases(
   };
 
   note(last);
+  // A chunk of samples per crossing into the page rather than one apiece: the
+  // ticks are stepped the same way, one `advance(WATCH_POLL)` per sample, and what
+  // is saved is the round trip between them. The watch can run up to a chunk past
+  // the release that satisfies it, which the schedule this reads is indifferent to
+  // — every release is recorded from the samples either way.
   while (releases.length < options.count && last.simTime < deadline) {
-    await h.advance(WATCH_POLL);
-    last = await h.snapshot();
-    note(last);
+    for (const reading of await h.scan(WATCH_POLL * WATCH_CHUNK, WATCH_POLL)) {
+      last = reading.snapshot;
+      note(last);
+    }
   }
   return { releases, missingFlag, last };
 }

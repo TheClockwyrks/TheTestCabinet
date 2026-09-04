@@ -44,15 +44,15 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
-  BRIGHT_HOLD,
-  LANTERN_RANGE_BASE,
-  LANTERN_RANGE_GAIN,
-} from "../../src/constants";
-import {
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
   assertNotEqual,
 } from "../assert";
+import {
+  BRIGHT_HOLD,
+  LANTERN_RANGE_BASE,
+  LANTERN_RANGE_GAIN,
+} from "../constants";
 import { poseApart, spawnPredator } from "../fixtures";
 import {
   captureReplay,

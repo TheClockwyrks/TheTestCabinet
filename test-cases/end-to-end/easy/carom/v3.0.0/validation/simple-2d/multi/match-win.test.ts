@@ -11,7 +11,7 @@
 // parked, so the score that reaches the win is the one this check drove.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WIN_LEAD, WIN_SCORE } from "../../src/constants";
+import { WIN_LEAD, WIN_SCORE } from "../constants";
 import { assertEqual } from "../assert";
 import {
   arrangeGoal,

@@ -8,7 +8,7 @@
 // back off the game's own state. The still is the frame the press left.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, TITLE_ITEMS } from "../../src/constants";
+import { BINDINGS, TITLE_ITEMS } from "../constants";
 import { assertContains, assertEqual } from "../assert";
 import {
   captureStill,

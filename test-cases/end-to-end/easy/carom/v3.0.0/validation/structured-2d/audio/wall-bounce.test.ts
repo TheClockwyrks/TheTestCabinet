@@ -12,7 +12,7 @@
 // wrong one on a wall bounce has broken exactly that.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, FIELD_CX } from "../../src/constants";
+import { CUES, FIELD_CX } from "../constants";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   arrangeLiveBall,

@@ -8,7 +8,7 @@
 // nothing but the spin acts on the velocity.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SPIN_HALFLIFE } from "../../src/constants";
+import { SPIN_HALFLIFE } from "../constants";
 import {
   assertGreaterThan,
   assertLessThan,

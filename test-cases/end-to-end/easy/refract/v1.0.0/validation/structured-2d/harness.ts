@@ -76,10 +76,17 @@ import {
   type Viewport,
   type World,
 } from "@test-cabinet/structured-2d";
-import { BINDINGS, LAYOUT, STAGE_H, STAGE_W } from "../src/constants";
 import { BACKGROUND, game as build } from "../src/game";
 import { assertEqual, assertTruthy, fail } from "./assert";
-import { CHANNELS, cellCenter, parseBoard, type Board } from "./notation";
+import { BINDINGS, LAYOUT } from "./constants";
+import {
+  CHANNELS,
+  STAGE_H,
+  STAGE_W,
+  cellCenter,
+  parseBoard,
+  type Board,
+} from "./notation";
 import { CAMPAIGN_BOARDS } from "./routes";
 import type { Beams } from "./rules";
 import { solve } from "./solver";
@@ -251,8 +258,6 @@ export interface Harness {
     predicate: (snapshot: RefractSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
-  /** Drive the engine's own frame loop for `ms` of real time, then halt it. */
-  runFor(ms: number): Promise<void>;
 
   /** Press a key and leave it down, as a player holding it would. */
   hold(code: string): void;
@@ -562,14 +567,6 @@ export async function createHarness(
         if (predicate(snapshot)) return { hit: true, frames, snapshot };
       }
       return { hit: false, frames, snapshot };
-    },
-
-    async runFor(ms) {
-      const controller = new AbortController();
-      const running = engine.run({ signal: controller.signal });
-      await new Promise((resolve) => setTimeout(resolve, ms));
-      controller.abort();
-      await running;
     },
 
     hold: (code) => dispatch("keydown", code),

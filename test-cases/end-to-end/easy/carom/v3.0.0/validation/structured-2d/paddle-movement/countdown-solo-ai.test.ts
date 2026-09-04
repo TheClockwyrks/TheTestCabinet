@@ -25,7 +25,7 @@ import {
   AI_HOME_Y,
   AI_SPEED,
   PADDLE_MAX_CY,
-} from "../../src/constants";
+} from "../constants";
 import {
   ball0,
   captureReplay,

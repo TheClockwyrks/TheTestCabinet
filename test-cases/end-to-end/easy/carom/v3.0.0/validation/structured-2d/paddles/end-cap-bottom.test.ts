@@ -14,13 +14,7 @@
 // of travel of `cy + PADDLE_HALF + BALL_R`, on the field side of it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BALL_R,
-  FIELD_CY,
-  P1_X0,
-  P1_X1,
-  PADDLE_HALF,
-} from "../../src/constants";
+import { BALL_R, FIELD_CY, P1_X0, P1_X1, PADDLE_HALF } from "../constants";
 import {
   assertCloseTo,
   assertEqual,

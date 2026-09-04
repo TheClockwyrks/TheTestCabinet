@@ -30,7 +30,8 @@ import { existsSync, readdirSync } from "node:fs";
 import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { TestProject } from "vitest/node";
-import { launchChromiumServer } from "./chromium";
+import { connectChromium, launchChromiumServer } from "./chromium";
+import { ABSENCE_LOOKS, PAGE_DEADLINE_MS, waitForSurface } from "./surface";
 
 /** Where `npm run build` may have put the site, in the order the runner looks. */
 const BUILD_OUTPUTS = ["dist", "build", "out"] as const;
@@ -113,6 +114,61 @@ async function serve(root: string): Promise<{ server: Server; url: string }> {
   return { server, url: `http://127.0.0.1:${address.port}/` };
 }
 
+/**
+ * Whether this build installs no surface at all — the one question every check in
+ * the project asks of it, asked once here instead of once per harness.
+ *
+ * WHY THE RUNNER ASKS IT. `harness.ts` gives the surface a whole minute to appear
+ * because that ceiling is a wait on the HOST and must never fail a build for the
+ * load average (`surface.ts` states the reasoning). Paid once per harness, that
+ * same generosity is fatal in the other direction: a hundred and twenty-five
+ * harnesses across four workers is over half an hour of waiting, past the cap on
+ * the whole validator run, and a run stopped at that cap records every point as
+ * `ran=false` — "the validators did not run" rather than "a hundred and six
+ * requirements went unmet". A reviewer is told strictly less by the first.
+ *
+ * So the minute is spent here, where it is spent ONCE, on pages of this probe's
+ * own and {@link ABSENCE_LOOKS} times before the answer is believed. A build that
+ * installs its surface answers the first look the instant its entry module runs
+ * and this costs the run one page load; a build that does not is failed on all
+ * hundred and six points inside a couple of minutes, which is the verdict rather
+ * than the absence of one.
+ *
+ * INCONCLUSIVE IS NOT ABSENT. Anything that goes wrong in the probe itself — a
+ * page that will not open, a browser that will not connect — is reported as `false`
+ * and leaves every harness to make its own full-ceiling reading, exactly as it
+ * did before this existed. The probe can only ever save time; it can never be the
+ * thing that fails a build.
+ */
+async function probeSurfaceAbsent(
+  wsEndpoint: string,
+  url: string,
+): Promise<boolean> {
+  try {
+    const browser = await connectChromium(wsEndpoint);
+    try {
+      for (let look = 0; look < ABSENCE_LOOKS; look += 1) {
+        const page = await browser.newPage();
+        try {
+          // The probe's own page is off Playwright's thirty-second defaults for
+          // the same reason a harness's is: they are deadlines on the host.
+          page.setDefaultTimeout(PAGE_DEADLINE_MS);
+          page.setDefaultNavigationTimeout(PAGE_DEADLINE_MS);
+          await page.goto(url, { waitUntil: "load" });
+          if (await waitForSurface(page)) return false;
+        } finally {
+          await page.close();
+        }
+      }
+      return true;
+    } finally {
+      await browser.close();
+    }
+  } catch {
+    return false;
+  }
+}
+
 export default async function setup(
   project: TestProject,
 ): Promise<() => Promise<void>> {
@@ -126,6 +182,10 @@ export default async function setup(
 
   project.provide("fathomUrl", url);
   project.provide("fathomBrowserWs", browser.wsEndpoint());
+  project.provide(
+    "fathomSurfaceAbsent",
+    await probeSurfaceAbsent(browser.wsEndpoint(), url),
+  );
 
   return async () => {
     await browser.close();

@@ -36,7 +36,7 @@
 // (`specs/instrumentation.md`), so the `simTime` read straight after that call is
 // release time `0` exactly.
 
-import { DEN_ORDER, DEN_RELEASE_GAP } from "../../src/constants";
+import { DEN_ORDER, DEN_RELEASE_GAP } from "../constants";
 import { holdPredators, placeForager, poseMaze } from "../fixtures";
 import { Harness } from "../harness";
 import { FathomSnapshot } from "../surface";

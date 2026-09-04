@@ -10,7 +10,7 @@
 // same run is not — with the run's midpoint on its side of the field's center.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_CX } from "../../src/constants";
+import { FIELD_CX } from "../constants";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

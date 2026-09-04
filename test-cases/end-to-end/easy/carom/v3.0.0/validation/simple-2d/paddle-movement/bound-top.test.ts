@@ -13,7 +13,7 @@
 // posed open would leave the held key dead.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_CY, PADDLE_SPEED, PADDLE_MIN_CY } from "../../src/constants";
+import { FIELD_CY, PADDLE_SPEED, PADDLE_MIN_CY } from "../constants";
 import { assertCloseTo } from "../assert";
 import {
   captureReplay,

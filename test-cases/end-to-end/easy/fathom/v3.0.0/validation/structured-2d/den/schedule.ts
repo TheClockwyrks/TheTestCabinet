@@ -33,8 +33,8 @@
 // forager, taking a life, re-denning the roster and restarting the very clock
 // being read — cannot happen, because nothing on the board travels at all.
 
-import { DEN_ORDER, DEN_RELEASE_GAP } from "../../src/constants";
 import { assertEqual, assertLength } from "../assert";
+import { DEN_ORDER, DEN_RELEASE_GAP } from "../constants";
 import { poseMaze } from "../fixtures";
 import { parkForager } from "../scene";
 import type { Harness } from "../harness";

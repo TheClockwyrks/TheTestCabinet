@@ -13,7 +13,7 @@
 // paddle is sweeping, which the paddle's own reported `vy` gives.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { AI_SPEED, SPIN_FROM_PADDLE } from "../../src/constants";
+import { AI_SPEED, SPIN_FROM_PADDLE } from "../constants";
 import { assertEqual, assertLessThanOrEqual, assertNotEqual } from "../assert";
 import {
   arrangeAiMovingHit,

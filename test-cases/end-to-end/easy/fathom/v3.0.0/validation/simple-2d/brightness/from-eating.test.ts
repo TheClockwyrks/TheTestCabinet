@@ -30,8 +30,8 @@
 // end the measurement.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BRIGHT_PER_EAT } from "../../src/constants";
 import { assertLessThanOrEqual } from "../assert";
+import { BRIGHT_PER_EAT } from "../constants";
 import { poseStraightRun, stockPlankton } from "../fixtures";
 import {
   captureReplay,

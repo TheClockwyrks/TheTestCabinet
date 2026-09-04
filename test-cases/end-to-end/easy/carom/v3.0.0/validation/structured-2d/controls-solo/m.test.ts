@@ -25,7 +25,7 @@ import {
   watchCues,
   type Harness,
 } from "../harness";
-import { FIELD_CX } from "../../src/constants";
+import { FIELD_CX } from "../constants";
 
 let h: Harness;
 

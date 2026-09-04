@@ -15,8 +15,8 @@
 // the labelling.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SET_LABELS } from "../../src/constants";
 import { assertEqual, fail } from "../assert";
+import { SET_LABELS } from "../constants";
 import {
   captureStill,
   createHarness,

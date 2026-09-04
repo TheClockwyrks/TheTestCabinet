@@ -98,8 +98,28 @@ const PING_BUDGET = 6 * TICK_HZ;
  */
 const FLIGHT_BUDGET = 2 * TICK_HZ;
 
+/**
+ * How often the wait for the cast reads the game, in ticks: a thirtieth of a
+ * second.
+ *
+ * The cast is WAITED for rather than timed — nothing below reads the tick it
+ * happened on — so what this has to be fine enough for is only that the reading
+ * taken when it is seen is still a reading of a room the ping has not reached. A
+ * front runs `SONAR_WAVE_SPEED` (`14`) corridor steps a second, half a step in
+ * this, and every tile sampled below stands at least two steps out, so a ping that
+ * revealed as it went would not have touched one of them yet.
+ *
+ * It is not one tick because `specs/instrumentation.md` has `advance` REDRAW, and
+ * this wait can run to the whole `PING_BUDGET`: a thousand renders spent watching
+ * for a cast, on a check that reads none of them.
+ */
+const CAST_POLL = 4;
+
 /** Ticks after the wavefront has gone before the second reading, and the clip's tail. */
 const AFTER_TICKS = 12;
+
+/** How many ticks of the flight one crossing into the page carries. */
+const FLIGHT_CHUNK = 24;
 const TAIL_TICKS = 40;
 
 /**
@@ -204,7 +224,7 @@ it("Its ping reveals nothing", async () => {
   // Wait for the cast off camera, so the clip is the flight rather than the wait.
   const cast = await h.skipUntil(
     (snap) => snap.pulses.some((pulse) => pulse.source === "gloamfin"),
-    { maxTicks: PING_BUDGET, poll: 1 },
+    { maxTicks: PING_BUDGET, poll: CAST_POLL },
   );
   assertEqual(
     cast.hit,
@@ -253,20 +273,32 @@ it("Its ping reveals nothing", async () => {
   const flight = await captureReplay(h, "silent", async () => {
     const drawn: { tick: number; kinds: string[] }[] = [];
     let ticks = 0;
-    for (; ticks < FLIGHT_BUDGET; ticks += 1) {
-      await h.advance(1);
-      const snap = await h.snapshot();
-      // Both amber creatures answer for themselves. A drifter's `lit` says
-      // whether its body is drawn, which its amber mote is drawn under its own
-      // rule and cannot be read for.
-      const shown = [
-        ...snap.predators
-          .filter((predator) => predator.lit)
-          .map((predator) => predator.kind),
-        ...snap.drifters.filter((drifter) => drifter.lit).map(() => "drifter"),
-      ];
-      if (shown.length > 0) drawn.push({ tick: ticks, kinds: shown });
-      if (!snap.pulses.some((pulse) => pulse.source === "gloamfin")) break;
+    let flying = true;
+    // A chunk of ticks per crossing into the page, still one tick a step: the
+    // wavefront is read on every tick of its flight, and what is saved is the
+    // round trip between them.
+    while (flying && ticks < FLIGHT_BUDGET) {
+      const chunk = Math.min(FLIGHT_CHUNK, FLIGHT_BUDGET - ticks);
+      for (const reading of await h.scan(chunk, 1)) {
+        if (!flying) break;
+        const snap = reading.snapshot;
+        // Both amber creatures answer for themselves. A drifter's `lit` says
+        // whether its body is drawn, which its amber mote is drawn under its own
+        // rule and cannot be read for.
+        const shown = [
+          ...snap.predators
+            .filter((predator) => predator.lit)
+            .map((predator) => predator.kind),
+          ...snap.drifters
+            .filter((drifter) => drifter.lit)
+            .map(() => "drifter"),
+        ];
+        if (shown.length > 0) drawn.push({ tick: ticks, kinds: shown });
+        ticks += 1;
+        if (!snap.pulses.some((pulse) => pulse.source === "gloamfin")) {
+          flying = false;
+        }
+      }
     }
     await h.advance(AFTER_TICKS);
     const settled = await h.snapshot();

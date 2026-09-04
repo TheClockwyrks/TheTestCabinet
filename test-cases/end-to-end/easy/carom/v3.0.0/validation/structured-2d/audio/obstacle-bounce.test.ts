@@ -11,7 +11,7 @@
 // and a build that reuses one blip for every bounce fails it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, OBSTACLES, OBSTACLE_CENTERS } from "../../src/constants";
+import { CUES, OBSTACLES, OBSTACLE_CENTERS } from "../constants";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   arrangeObstacleBounce,

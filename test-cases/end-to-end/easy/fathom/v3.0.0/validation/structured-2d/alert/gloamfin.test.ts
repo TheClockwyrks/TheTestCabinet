@@ -32,13 +32,13 @@
 // check down rather than being failed twice for one fault.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ALERT_TIME, GLOAMFIN_HEAR } from "../../src/constants";
 import {
   assertEqual,
   assertLessThanOrEqual,
   assertTrue,
   fail,
 } from "../assert";
+import { ALERT_TIME, GLOAMFIN_HEAR } from "../constants";
 import { poseOccludedPair, spawnPredator } from "../fixtures";
 import {
   captureReplay,

@@ -6,7 +6,7 @@
 // through the real registered actions. Each suite states its own thresholds;
 // nothing here decides a point.
 
-import { CAMPAIGN_LENGTH } from "../../src/constants";
+import { CAMPAIGN_LENGTH } from "../notation";
 import { assertDeepEqual, fail } from "../assert";
 import {
   drawnTextSpans,

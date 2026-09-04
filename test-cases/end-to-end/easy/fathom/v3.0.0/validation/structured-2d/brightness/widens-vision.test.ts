@@ -31,18 +31,13 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
-  BRIGHT_HOLD,
-  TILE,
-  VISION_GAIN,
-  VISION_MIN,
-} from "../../src/constants";
-import {
   assertEqual,
   assertGreaterThan,
   assertLessThan,
   assertLessThanOrEqual,
   assertNotEqual,
 } from "../assert";
+import { BRIGHT_HOLD, TILE, VISION_GAIN, VISION_MIN } from "../constants";
 import { poseStraightRun } from "../fixtures";
 import {
   captureReplay,

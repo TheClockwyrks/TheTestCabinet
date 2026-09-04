@@ -120,6 +120,26 @@ const CHROMIUM_ARGS = [
 ];
 
 /**
+ * How long Chromium is given to come up, in milliseconds.
+ *
+ * Playwright's own default here is thirty seconds, and that is a deadline on the
+ * HOST: starting a browser is process creation, a sandbox and a first paint, all
+ * of which the machine's other work slows down, and none of which is a claim
+ * about the build being validated. This launch happens once in `globalSetup`, so
+ * crossing that default does not cost a point — it fails the whole project before
+ * a single check runs, and every point it decides reads `ran=false`, which is the
+ * least informative outcome a validator has.
+ *
+ * Five minutes, which is the ceiling `vitest.config.ts` gives a check, and which a
+ * browser that starts pays none of because `launchServer` returns the moment it is
+ * up. The one thing it must stay is FINITE, so a host with no usable Chromium at
+ * all still falls through to the next strategy and then to the error below rather
+ * than hanging. (`connectChromium` needs no such constant: `chromium.connect`
+ * defaults to no timeout, and the run's own cap bounds it.)
+ */
+const LAUNCH_TIMEOUT_MS = 300_000;
+
+/**
  * Launch Chromium as a SERVER, so every suite worker can connect to the one
  * browser process this project holds.
  *
@@ -153,6 +173,7 @@ export async function launchChromiumServer(): Promise<BrowserServer> {
     try {
       return await chromium.launchServer({
         args: CHROMIUM_ARGS,
+        timeout: LAUNCH_TIMEOUT_MS,
         ...attempt.options,
       });
     } catch (error) {

@@ -70,12 +70,12 @@ const OFF_CAMERA_TICKS = WATCH_TICKS - RECORDED_TICKS;
 /**
  * How far under `GLOAMFIN_PING_MIN_GAP` a measured gap may fall, in seconds.
  *
- * A twentieth of a second, which is three times the largest error the watch itself
- * can introduce: it samples every two ticks, so each sighting is at most a
- * sixtieth of a second late and a gap at most a thirtieth wrong in either
- * direction. It is a sixtieth of the floor it guards, so a build that cast its
- * guaranteed ping on the search's own schedule — a second and a half early — misses
- * this by thirty times over.
+ * A twentieth of a second, which the watch itself cannot spend: each sighting is
+ * timed from the wavefront's own `front` rather than from the sample that caught
+ * it (`validation/gloamfin/pings.ts`), so a gap carries no grain of the watch's.
+ * It is a sixtieth of the floor it guards, so a build that cast its guaranteed
+ * ping on the search's own schedule — a second and a half early — misses this by
+ * thirty times over.
  */
 const FLOOR_SLACK = 0.05;
 

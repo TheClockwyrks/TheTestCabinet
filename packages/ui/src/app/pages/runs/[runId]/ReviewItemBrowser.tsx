@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type {
   Assertion,
   DebugScriptResult,
+  Inconclusive,
   RunRecord,
 } from "@test-cabinet/run-record";
 import type { ProofMedia, ReferenceShot } from "../../../../client/types";
@@ -27,6 +28,18 @@ import { ValidationReplayPair } from "./ValidationReplayPair";
 import { ValidationMediaPair } from "./ValidationMediaPair";
 import type { ValidatorReviewInput } from "./ValidatorVerdict";
 import styles from "../RunExec.module.scss";
+
+/** What a point left undecided says, per reason the validators gave. A record
+ * written before the reasons were told apart carries none, and reads as the
+ * unmet precondition that was then the only thing this state meant. */
+const INCONCLUSIVE_NOTE: Record<Inconclusive, string> = {
+  preconditionUnmet:
+    "The validator's precondition was not met, so it left this point undecided.",
+  notRun:
+    "The validator could not be run against this build, so it left this point undecided.",
+  timedOut:
+    "The validators ran out of time on the machine that scored this run, so they left this point undecided. Nothing here is a judgement of the build.",
+};
 
 /** Format a point weight as `1 pt` / `2 pts`. */
 function pts(weight: number): string {
@@ -54,7 +67,7 @@ function formatDomainNames(
 // its verdict (the reference implementation beside this run's build), the
 // mechanical assertions the debug script checked, the failure cap and affected
 // domains of a failing scored point, the backing validator script (its detail,
-// path, and ran / did-not-run / precondition-unmet state), and the effective
+// path, and ran / did-not-run / inconclusive state), and the effective
 // verdict readout — the validators' call, or a reviewer's override where one
 // exists, marked as such.
 //
@@ -140,7 +153,7 @@ export function ReviewItemBrowser({
 
   // The validator script backing each verdict id: the script whose own unit id
   // matches, or the one whose verdicts decided it — so a point can show the
-  // script's detail, path, and ran / did-not-run / precondition-unmet state.
+  // script's detail, path, and ran / did-not-run / inconclusive state.
   const scriptByVerdict = useMemo(() => {
     const map = new Map<string, DebugScriptResult>();
     for (const script of run.validation.debugScripts ?? []) {
@@ -497,20 +510,21 @@ export function ReviewItemBrowser({
             title={FAILURE_CAP_META[slotCap].description}
           >
             Failing caps{" "}
-            {formatDomainNames(slotCapDomains, domainNameById) ||
-              "its domains"}{" "}
+            {formatDomainNames(slotCapDomains, domainNameById) || "its domains"}{" "}
             at {FAILURE_CAP_META[slotCap].label}.
           </p>
         )}
 
         {/* The validator script behind this point: its ran / did-not-run /
-            precondition-unmet state, any failure detail, and its path — the
+            inconclusive state, any failure detail, and its path — the
             information the old "Automated validation" table carried. */}
         {slotScript && (
           <div className={styles.scriptNote}>
             <p className={styles.muted}>
               {slotScript.preconditionUnmet
-                ? "The validator's precondition was not met, so it left this point undecided."
+                ? INCONCLUSIVE_NOTE[
+                    slotScript.inconclusive ?? "preconditionUnmet"
+                  ]
                 : slotScript.ran
                   ? "The validator script ran to completion."
                   : "The validator script did not run: a debug-API contract failure, which fails the point it backs."}

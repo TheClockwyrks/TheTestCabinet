@@ -25,7 +25,7 @@
 // which of the two happened, so a reviewer reading seven failed points sees the
 // same one cause named in each.
 
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import type { FathomSnapshot, PulseSnapshot } from "../surface";
 import { type Harness } from "../harness";
 import { fail } from "../assert";

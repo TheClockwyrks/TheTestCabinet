@@ -17,7 +17,7 @@
 // early.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BALL_HOMES } from "../../src/constants";
+import { BALL_HOMES } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import {

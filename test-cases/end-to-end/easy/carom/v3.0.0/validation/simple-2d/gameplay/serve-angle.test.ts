@@ -8,7 +8,7 @@
 // from horizontal has magnitude SERVE_ANGLE exactly; the sign is the build's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SERVE_ANGLE } from "../../src/constants";
+import { SERVE_ANGLE } from "../constants";
 import { assertEqual, assertLessThanOrEqual, assertNotEqual } from "../assert";
 import {
   angleDeg,

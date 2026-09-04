@@ -13,7 +13,7 @@
 // hold lasts is `multi/hold-length`'s point, not this one's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BALL_HOMES } from "../../src/constants";
+import { BALL_HOMES } from "../constants";
 import { assertCloseTo, assertDeepEqual, assertEqual } from "../assert";
 import {
   arrangeGoal,

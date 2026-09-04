@@ -13,7 +13,7 @@
 // `holdTimer - dt <= 0` first holds: HOLD_TIME of frames counting that one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HOLD_TIME } from "../../src/constants";
+import { HOLD_TIME } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

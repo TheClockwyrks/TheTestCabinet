@@ -6,7 +6,7 @@ name: CI
 # (build/tests), the front-end build, the front-end unit tests, the desktop app
 # (whose runner image matches the one release.yml bundles on), the frozen-version
 # gate (which protects already-recorded run results, needs no toolchain, and takes
-# seconds), and the container build-context gate (which protects the image builds
+# seconds), the container build-context gate (which protects the image builds
 # that live in this same CI system) — so a green GitHub run still means the
 # components actually build and pass. Linting and spec checks are left to Azure.
 #

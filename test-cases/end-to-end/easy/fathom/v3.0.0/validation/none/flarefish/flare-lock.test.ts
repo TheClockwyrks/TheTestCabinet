@@ -63,7 +63,7 @@ import {
   BLOOM_MAX,
   CHARGE_MAX,
   FIRST_FLARE_MAX,
-  FLARE_POLL,
+  FLARE_WAIT_POLL,
   NEXT_FLARE_MAX,
 } from "./room";
 import type { Tile } from "../maze";
@@ -193,9 +193,12 @@ it("locks onto a forager inside FLARE_RADIUS through rock and ends the bloom, an
   };
 
   // --- The negative leg: a bloom with the forager just past the radius. -------
+  // A pure wait: nothing below reads WHEN this bloom began, only that it did and
+  // what the hunter's state was while it burned, so it is sampled at the coarse
+  // wait grain rather than at the one a timed beat needs.
   const firstBloom = await h.until(
     (snap) => blooming(snap) || snap.predators[index].state !== "wander",
-    { maxTicks: ticks(FIRST_FLARE_MAX), poll: FLARE_POLL },
+    { maxTicks: ticks(FIRST_FLARE_MAX), poll: FLARE_WAIT_POLL },
   );
   // A fix taken while the forager waits in its pocket is itself the negative
   // leg's verdict, and a harsher one than the leg below: the pocket sits seven
@@ -235,11 +238,11 @@ it("locks onto a forager inside FLARE_RADIUS through rock and ends the bloom, an
   // --- The positive leg: the next bloom, with the forager inside the radius. --
   const quietAgain = await h.until((snap) => !blooming(snap), {
     maxTicks: ticks(BLOOM_MAX),
-    poll: FLARE_POLL,
+    poll: FLARE_WAIT_POLL,
   });
   const secondBloom = await h.until(
     (snap) => blooming(snap) || snap.predators[index].state !== "wander",
-    { maxTicks: ticks(NEXT_FLARE_MAX + CHARGE_MAX), poll: FLARE_POLL },
+    { maxTicks: ticks(NEXT_FLARE_MAX + CHARGE_MAX), poll: FLARE_WAIT_POLL },
   );
   assertEqual(
     secondBloom.snapshot.predators[index].state,

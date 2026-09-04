@@ -33,7 +33,7 @@ import {
   assertLessThanOrEqual,
   fail,
 } from "../assert";
-import { SONAR_WAVE_SPEED, TICK_DT, TILE } from "../../src/constants";
+import { SONAR_WAVE_SPEED, TICK_DT, TILE } from "../constants";
 import { poseStraightRun } from "../fixtures";
 import {
   captureReplay,

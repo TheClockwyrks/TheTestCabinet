@@ -698,6 +698,120 @@ fn a_case_with_no_validator_project_for_the_engine_reports_every_point_as_not_ru
 }
 
 #[test]
+fn a_run_that_outlives_its_cap_leaves_every_point_inconclusive_rather_than_failed() {
+    // The one budget a test can expire in milliseconds is the install's, and it is
+    // bounded by the same `run_bounded` the suite run is, so what it proves about the
+    // cap holds for both: a host too slow to finish inside the budget decides nothing.
+    let root = tempfile::tempdir().expect("a scratch case root");
+    let project = root
+        .path()
+        .join(crate::validator::VALIDATION_SCRIPT_DIR)
+        .join("simple-2d");
+    std::fs::create_dir_all(&project).expect("a scratch validator project");
+    std::fs::write(project.join(VITEST_CONFIG_FILE), "export default {};")
+        .expect("the project's config");
+    let repo = tempfile::tempdir().expect("a scratch tree");
+    let items = vec![
+        item(
+            "serve-speed",
+            "validation/simple-2d/gameplay/serve-speed.test.ts",
+        ),
+        item("no-tunnel", "validation/simple-2d/ball/no-tunnel.test.ts"),
+    ];
+    let test_case = version(root.path().to_path_buf(), items.clone());
+    let artifacts = ArtifactCollection::new(repo.path().to_path_buf());
+
+    let results = run_vitest_suites_bounded(
+        &test_case,
+        &variant(),
+        engine().slug(),
+        &artifacts,
+        "sleep 30",
+        &repo.path().join(crate::validator::VALIDATION_MEDIA_DIR),
+        Caps {
+            suite: Duration::from_millis(300),
+            install: Duration::from_millis(300),
+        },
+    );
+
+    assert_eq!(results.len(), 2, "every declared point is still reported");
+    for result in &results {
+        assert!(!result.ran);
+        assert!(
+            result.verdicts.is_empty(),
+            "an expired budget synthesizes no verdict, so nothing fails the build",
+        );
+        assert!(
+            result.precondition_unmet,
+            "an expired budget is inconclusive about the build",
+        );
+        assert_eq!(
+            result.inconclusive,
+            Some(Inconclusive::TimedOut),
+            "and it says so as a fact about the host, not an unmet precondition",
+        );
+        assert!(
+            result.detail.as_deref().unwrap_or_default().contains("cap"),
+            "the reason is recorded: {:?}",
+            result.detail,
+        );
+    }
+
+    // The scoring rule the reviewer's checklist and the automated score share: an
+    // inconclusive point is not a lost point, it is an unanswered one.
+    let score = crate::comparison::automated_only_score(&items, &results);
+    assert_eq!(
+        (score.earned, score.total),
+        (0.0, 0),
+        "a run stopped at its cap contributes to neither side of the score",
+    );
+}
+
+#[test]
+fn a_suite_that_declined_to_decide_is_held_apart_from_one_the_runner_could_not_execute() {
+    let items = vec![item(
+        "serve-speed",
+        "validation/simple-2d/gameplay/serve-speed.test.ts",
+    )];
+    let suite = suite_for(&items);
+
+    let skipped = suite.result(Some(&SuiteReport {
+        file: "validation/gameplay/serve-speed.test.ts".to_string(),
+        message: None,
+        tests: vec![TestOutcome {
+            label: "the serve leaves at the declared speed".to_string(),
+            status: TestStatus::Skipped,
+            failure: None,
+        }],
+    }));
+    assert_eq!(
+        skipped.inconclusive,
+        Some(Inconclusive::PreconditionUnmet),
+        "a suite that skipped every check declined to decide against this build",
+    );
+
+    let missing = suite.result(None);
+    assert_eq!(
+        missing.inconclusive,
+        Some(Inconclusive::NotRun),
+        "a suite the project does not contain is a fact about the case",
+    );
+}
+
+#[test]
+fn the_cap_is_the_default_until_the_environment_names_a_usable_one() {
+    assert_eq!(timeout_from(None), VITEST_TIMEOUT);
+    assert_eq!(timeout_from(Some(" 90 ")), Duration::from_secs(90));
+    for unusable in ["", "0", "-1", "ninety", "90s", "1.5"] {
+        assert_eq!(
+            timeout_from(Some(unusable)),
+            VITEST_TIMEOUT,
+            "`{unusable}` names no budget, so the default stands",
+        );
+    }
+}
+
+#[test]
 fn a_variant_whose_every_validator_belongs_to_another_engine_runs_nothing() {
     // The project for the run's engine is present, so the runner gets as far as
     // choosing what to run — and finds that nothing this variant declares names a
@@ -782,9 +896,49 @@ fn a_command_that_outlives_its_cap_is_stopped_and_reported_as_timed_out() {
         "the cap returns rather than waiting the command out",
     );
     assert!(
-        error.contains("cap"),
-        "the reason says the cap was reached: {error}",
+        error.reason.contains("cap"),
+        "the reason says the cap was reached: {}",
+        error.reason,
     );
+    assert_eq!(
+        error.inconclusive,
+        Inconclusive::TimedOut,
+        "a cap that expired is a fact about the host, not about the build",
+    );
+}
+
+#[test]
+fn a_stopped_command_takes_the_workers_it_started_with_it() {
+    // The claim the cap makes is that a suite costs the run its budget and nothing
+    // more. A `sh -c` line is a process tree, so killing the shell alone would leave
+    // node and its workers loading the host afterwards; the group kill is what makes
+    // the claim true. The background child here stands in for those workers.
+    let scratch = tempfile::tempdir().expect("a scratch directory");
+    let marker = scratch.path().join("worker-survived");
+    let command = format!(
+        "(sleep 1; touch {}) & wait",
+        marker.to_string_lossy().replace('\'', ""),
+    );
+
+    run_bounded(
+        scratch.path(),
+        &command,
+        Duration::from_millis(200),
+        scratch.path(),
+        "tree",
+        &[],
+    )
+    .expect_err("the command outlives its cap");
+
+    // Past when the survivor would have written, had it survived.
+    let watch = std::time::Instant::now();
+    while watch.elapsed() < Duration::from_secs(3) {
+        assert!(
+            !marker.exists(),
+            "a worker outlived the run that stopped waiting for it",
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
 }
 
 #[test]
@@ -971,7 +1125,8 @@ fn a_tree_a_stage_already_installed_is_not_installed_again() {
     let artifacts = ArtifactCollection::new(repo.path().to_path_buf()).prepared_by(prepared);
 
     // `false` would fail if it were run; the tree is already prepared, so it is not.
-    ensure_dependencies(repo.path(), &artifacts, "npm ci").expect("nothing is installed again");
+    ensure_dependencies(repo.path(), &artifacts, "npm ci", VITEST_INSTALL_TIMEOUT)
+        .expect("nothing is installed again");
 }
 
 #[test]
@@ -979,11 +1134,17 @@ fn a_tree_nothing_prepared_is_installed_by_the_runner() {
     let repo = tempfile::tempdir().expect("a scratch tree");
     let artifacts = ArtifactCollection::new(repo.path().to_path_buf());
 
-    let error = ensure_dependencies(repo.path(), &artifacts, "exit 7")
+    let error = ensure_dependencies(repo.path(), &artifacts, "exit 7", VITEST_INSTALL_TIMEOUT)
         .expect_err("an install that fails leaves the tree unusable");
     assert!(
-        error.contains("exit 7") || error.contains("did not succeed"),
-        "the failure is reported as the install's: {error}",
+        error.reason.contains("exit 7") || error.reason.contains("did not succeed"),
+        "the failure is reported as the install's: {}",
+        error.reason,
+    );
+    assert_eq!(
+        error.inconclusive,
+        Inconclusive::NotRun,
+        "an install the tree refused is a fact about the tree",
     );
 }
 
@@ -1089,7 +1250,7 @@ fn a_suite_that_never_ran_reports_its_declared_outputs_absent() {
         "validation/simple-2d/gameplay/serve-speed.test.ts",
         vec![output("serve", MediaKind::Replay)],
     )];
-    let not_run = suite_for(&items).not_run("no vitest in the tree");
+    let not_run = suite_for(&items).inconclusive("no vitest in the tree", Inconclusive::NotRun);
     assert_eq!(not_run.outputs.len(), 1);
     assert!(!not_run.outputs[0].actual_present);
 

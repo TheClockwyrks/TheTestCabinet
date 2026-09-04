@@ -13,7 +13,7 @@
 // simulation time acts on the spin.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_CX, FIELD_CY, SPIN_HALFLIFE } from "../../src/constants";
+import { FIELD_CX, FIELD_CY, SPIN_HALFLIFE } from "../constants";
 import {
   assertCloseTo,
   assertEqual,

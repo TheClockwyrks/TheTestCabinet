@@ -72,7 +72,12 @@ import {
   requireSceneHeld,
   sceneGuard,
 } from "../scene";
-import { BLOOM_MAX, FIRST_FLARE_MAX, FLARE_POLL } from "./room";
+import {
+  BLOOM_MAX,
+  FIRST_FLARE_MAX,
+  FLARE_POLL,
+  FLARE_WAIT_POLL,
+} from "./room";
 
 /** How many tiles of corridor the chase runs down. */
 const RUN_TILES = 34;
@@ -219,13 +224,16 @@ it("neither charges nor blooms across a chase longer than FLARE_INTERVAL, travel
 
   // A whole flare, waited out in the corridor, so the chase below opens on a timer
   // the specification says is full.
+  // Pure waits: nothing reads WHEN this flare ran, only that it completed, so
+  // they take the coarse wait grain. The give-up and the re-arm below ARE timed
+  // against one another and stay at `FLARE_POLL`.
   const bloom = await h.until((snap) => fish(snap).flaring === true, {
     maxTicks: ticks(FIRST_FLARE_MAX),
-    poll: FLARE_POLL,
+    poll: FLARE_WAIT_POLL,
   });
   const reloaded = await h.until((snap) => fish(snap).flaring !== true, {
     maxTicks: ticks(BLOOM_MAX),
-    poll: FLARE_POLL,
+    poll: FLARE_WAIT_POLL,
   });
   assertEqual(
     bloom.hit && reloaded.hit,

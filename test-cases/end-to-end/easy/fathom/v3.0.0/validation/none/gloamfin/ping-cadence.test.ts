@@ -71,10 +71,11 @@ const OFF_CAMERA_TICKS = WATCH_TICKS - RECORDED_TICKS;
 /**
  * How far a gap may sit from `GLOAMFIN_PING_INTERVAL`, in seconds.
  *
- * A tenth of a second, which is the review item's own bound. The watch samples
- * every two ticks, so a gap it reports is at most a sixtieth of a second wrong in
- * either direction — a thirtieth of this — and what the bound therefore turns on
- * is the build's cadence rather than the watch's grain.
+ * A tenth of a second, which is the review item's own bound. The watch's own
+ * grain contributes nothing to a gap: a sighting is timed from the wavefront's
+ * own `front` rather than from the sample that caught it
+ * (`validation/gloamfin/pings.ts`), so what the bound turns on is the build's
+ * cadence and nothing else.
  */
 const GAP_TOLERANCE = 0.1;
 

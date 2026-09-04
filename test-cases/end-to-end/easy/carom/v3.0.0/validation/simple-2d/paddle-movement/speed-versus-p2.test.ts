@@ -7,7 +7,7 @@
 // posed open would leave the held key dead.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PADDLE_SPEED } from "../../src/constants";
+import { PADDLE_SPEED } from "../constants";
 import {
   assertGreaterThan,
   assertLessThan,

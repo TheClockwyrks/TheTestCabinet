@@ -11,28 +11,42 @@
 // TWO INDEPENDENT WITNESSES. The game's own accumulated `simTime`, which says the
 // build integrated the elapsed seconds it was handed, and the distance the ball
 // covered, which says the SIMULATION ran rather than a counter ticking up.
+//
+// WHAT IS READ, AND WHAT IS NOT. The claim is that the game advances ITSELF while
+// real time passes, not that it keeps pace with a stopwatch, so nothing here
+// compares the game's clock against elapsed real time. The loop is left running
+// until the game's OWN clock has gained {@link MIN_ADVANCE}, under a real-time
+// ceiling far longer than any running build needs; a machine busy enough to
+// starve the frame callback spends more of that ceiling rather than producing a
+// smaller reading, and a build that never advances itself gains exactly nothing
+// and is still the only thing that fails.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { WallClock } from "@test-cabinet/simple-2d";
-import { SERVE_SPEED } from "../../src/constants";
+import { SERVE_SPEED } from "../constants";
 import { assertGreaterThan } from "../assert";
-import { ball0, captureStill, createHarness, type Harness } from "../harness";
+import {
+  ball0,
+  captureStill,
+  createHarness,
+  TICK_HZ,
+  type Harness,
+} from "../harness";
 
-/** The real-time window the loop is left to run for. */
-const RUN_MS = 1000;
 /**
- * The floor the game clock must clear, in seconds. Half the window, deliberately
- * generous: the claim is that the game advances ITSELF, not that it keeps perfect
- * time, and a build that clamps a long frame (ordinary spiral-of-death
- * protection) legally loses some. A build driving its own tick lands near 1.0; a
- * frozen one reports 0.
+ * The floor the game's own clock must clear, in seconds: thirty frames at the
+ * suite's step. Enough that neither a single stray frame nor rounding can reach
+ * it, and small enough that a badly loaded machine still gets a running build
+ * there well inside the watch's ceiling. A frozen build reports 0.
  */
-const MIN_ADVANCE = RUN_MS / 1000 / 2;
+const MIN_ADVANCE = 30 / TICK_HZ;
 /**
- * The floor the ball must travel, in logical px. It leaves at the serve speed, so
- * even a loop managing a fifth of real time carries it this far.
+ * The floor the ball must travel, in logical px. It leaves at the serve speed and
+ * clears both the walls and the far paddle over {@link MIN_ADVANCE} of game time,
+ * so a straight-line flight covers `SERVE_SPEED * MIN_ADVANCE`; the floor takes a
+ * fraction of that, since what it witnesses is that the simulation moved at all.
  */
-const MIN_TRAVEL = (SERVE_SPEED * (RUN_MS / 1000)) / 5;
+const MIN_TRAVEL = (SERVE_SPEED * MIN_ADVANCE) / 2.5;
 
 let harness: Harness;
 
@@ -57,12 +71,14 @@ it("advances on the runtime's frame loop with nothing stepping it", async () => 
   captureStill(harness, "before");
   assertGreaterThan(ball0(before).speed, 1);
 
-  await harness.runFor(RUN_MS);
+  const watched = await harness.runUntil(
+    (s) => s.simTime - before.simTime > MIN_ADVANCE,
+  );
 
-  const after = harness.snapshot();
-  // The pair is the evidence: two frames of the same match, a second apart, with
-  // nothing between them but the runtime's own loop. A build that never advanced
-  // itself produces two identical pictures.
+  const after = watched.snapshot;
+  // The pair is the evidence: two frames of the same match, with nothing between
+  // them but the runtime's own loop. A build that never advanced itself produces
+  // two identical pictures.
   captureStill(harness, "after");
   const advanced = after.simTime - before.simTime;
   const travelled = Math.hypot(

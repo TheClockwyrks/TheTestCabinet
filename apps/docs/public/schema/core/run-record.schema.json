@@ -578,7 +578,7 @@
       "type": "object"
     },
     "DebugScriptResult": {
-      "description": "The outcome of driving one review item's **debug script** against the build's\n[instrumentation](https://…/testing/end-to-end/instrumentation/) — the reporter-side\nautomation a case authors to decide an objective review item without a human.\n\nThe script drives the build's declared debug-API handle (see\n[`crate::test_case::Instrumentation`]) to set up a scenario, step the real\nsimulation forward, and read the outcome back, producing (a) an auto **verdict**\nper verdict id the item covers and (b) the declared media **outputs** — captured\ntwice, once from the model's build (the *actual*) and once from the case's\nreference implementation (the *baseline*), for the reviewer's side-by-side.\n\nA script that could be run but did not complete against a conformant build (a\nmissing handle, a thrown call, a malformed return, or a declared output the build\nnever produced) is recorded with [`ran`](Self::ran) `false`. That **fails the\nchecklist point the script backs** — a failed [`verdicts`](Self::verdicts) entry\nis synthesized for it, pre-filled into the review like any auto verdict and\noverridable by the reviewer — rather than failing the whole run: a build with a\nbroken debug API is still reviewed, and is scored down by exactly the points its\nchecks could not answer. A check the host could not run *at all* decided nothing\nabout the build and is held apart by\n[`precondition_unmet`](Self::precondition_unmet).",
+      "description": "The outcome of driving one review item's **debug script** against the build's\n[instrumentation](https://…/testing/end-to-end/instrumentation/) — the reporter-side\nautomation a case authors to decide an objective review item without a human.\n\nThe script drives the build's declared debug-API handle (see\n[`crate::test_case::Instrumentation`]) to set up a scenario, step the real\nsimulation forward, and read the outcome back, producing (a) an auto **verdict**\nper verdict id the item covers and (b) the declared media **outputs** — captured\ntwice, once from the model's build (the *actual*) and once from the case's\nreference implementation (the *baseline*), for the reviewer's side-by-side.\n\nA script that could be run but did not complete against a conformant build (a\nmissing handle, a thrown call, a malformed return, or a declared output the build\nnever produced) is recorded with [`ran`](Self::ran) `false`. That **fails the\nchecklist point the script backs** — a failed [`verdicts`](Self::verdicts) entry\nis synthesized for it, pre-filled into the review like any auto verdict and\noverridable by the reviewer — rather than failing the whole run: a build with a\nbroken debug API is still reviewed, and is scored down by exactly the points its\nchecks could not answer. A check that decided nothing about the build is held apart\nby [`precondition_unmet`](Self::precondition_unmet), which\n[`inconclusive`](Self::inconclusive) then qualifies.",
       "properties": {
         "categoryTitle": {
           "default": "",
@@ -595,6 +595,18 @@
           "description": "Whether a failed drive of this script **gates** the run. `true` for every\nordinary scripted point; `false` only when the backing review point is excluded\nfrom scoring for the version (an [`Erratum`](crate::test_case::Erratum) with\n[`exclude_from_score`](crate::test_case::Erratum::exclude_from_score) links its\nverdict id). An excluded point is still driven and its media captured, but it\nis not scored, so a `ran == false` on it costs nothing. Defaults to `true` so a\nresult recorded before the field existed still counts.",
           "type": "boolean"
         },
+        "inconclusive": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Inconclusive"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Which inconclusive outcome this is, set exactly when\n[`precondition_unmet`](Self::precondition_unmet) is. `None` on a result\nrecorded before the outcomes were told apart."
+        },
         "itemId": {
           "description": "The id of the [review item](crate::test_case::ReviewItem) this script backs.",
           "type": "string"
@@ -609,7 +621,7 @@
         },
         "preconditionUnmet": {
           "default": false,
-          "description": "Whether a `false` [`ran`](Self::ran) is INCONCLUSIVE about the build rather\nthan a contract failure the build earned.\n\nTwo outcomes set it, and both leave the point unanswered: no failed verdict is\nsynthesized, [scoring](crate::comparison::automated_only_score) skips the point\nentirely, and the reviewer decides it by hand.\n\nThe first is an UNMET PRECONDITION. A check often searches the model's own\nworld for a spot to pose its scenario — a blind corner in an invented maze, a\nlegal build tile. That search can come up empty against a fully conformant\nbuild: every call was answered correctly, there was simply no such spot. A\n[vitest validator](crate::vitest_validator) says the same thing by skipping\nevery check in its suite.\n\nThe second is a check the host could not execute at all, such as a validator\nproject with no vitest to run it or a suite run that exceeded its cap. The\n[`detail`](Self::detail) names the reason. Only ever `true` alongside\n`ran == false`.",
+          "description": "Whether a `false` [`ran`](Self::ran) is INCONCLUSIVE about the build rather\nthan a contract failure the build earned.\n\nAn inconclusive result leaves the point unanswered: no failed verdict is\nsynthesized, [scoring](crate::comparison::automated_only_score) skips the point\nentirely, and the reviewer decides it by hand. Which inconclusive outcome it\nwas is carried by [`inconclusive`](Self::inconclusive), and the\n[`detail`](Self::detail) names the reason in prose. Only ever `true` alongside\n`ran == false`.",
           "type": "boolean"
         },
         "ran": {
@@ -960,6 +972,26 @@
         {
           "const": "gg",
           "description": "gg (`gg`) — The Test Cabinet's own first-party coding harness (backronym\nGameGen). Unlike the eight above it is not a third-party CLI: it is a\nstandalone binary that runs *inside* the run container carrying the LLM\nclient, agent turn loop, tool dispatch, and telemetry emitter, and core\ninvokes it directly (no orchestrator, no `tcab-session` wrapper, no\nmanifest). For Phase 0 it reaches its model **through OpenRouter**\n(`OPENROUTER_API_KEY`), so it belongs to [`HarnessFamily::Openrouter`].\nBecause it is a distinct run mode rather than a ninth catalog entry, it is\nexcluded from [`ALL`](HarnessSlug::ALL); use [`from_wire`](HarnessSlug::from_wire)\nwhen a wire slug must resolve to any variant, gg included.",
+          "type": "string"
+        }
+      ]
+    },
+    "Inconclusive": {
+      "description": "Why a validator's negative answer decided nothing about the build.\n\nEach of these leaves the point unanswered, and they are held apart so a reviewer\nreads the real reason rather than one that sounds like a fact about the build.",
+      "oneOf": [
+        {
+          "const": "preconditionUnmet",
+          "description": "The check ran and declined to decide: it could not pose its scenario in the\nworld this build invented, though every call it made was answered correctly. A\n[vitest validator](crate::vitest_validator) says this by skipping every check\nin its suite.",
+          "type": "string"
+        },
+        {
+          "const": "notRun",
+          "description": "The check could not be executed. A validator project the run's engine has none\nof, a tree with no vitest to run one, a suite the project does not contain, or\na report that would not parse are facts about the case or the produced tree.",
+          "type": "string"
+        },
+        {
+          "const": "timedOut",
+          "description": "The run exceeded its wall-clock cap and was stopped, which is a fact about the\nhost. A machine busy enough to stretch a conforming build's suites past the\nbudget must never turn that build into a failing one, so the points the run\nleft undecided stay undecided rather than failing.",
           "type": "string"
         }
       ]
