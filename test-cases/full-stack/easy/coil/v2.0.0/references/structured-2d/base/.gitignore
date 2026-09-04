@@ -1,11 +1,11 @@
-# Dependencies — reinstalled with `npm ci`; never committed. The engine,
-# `@test-cabinet/structured-2d`, is resolved from the repository's own
-# `packages/structured-2d` through a relative `file:` dependency that npm
-# installs as a symlink, so nothing of it is written here.
+# Dependencies — reinstalled with `npm ci`; never committed.
 node_modules/
 
-# Production build output — produced by `npm run build`. Anchored to this
-# project's root so the patterns name only its own output.
+# Production build output — produced by `npm run build`. Every pattern here is
+# ANCHORED to the repository root on purpose: the engine is vendored into this
+# repository at `.tcab/engine/@test-cabinet/structured-2d/`, prebuilt, and its
+# own `dist/` is committed with the seed. An unanchored `dist/` would match that
+# directory too and leave the build unable to resolve the engine.
 /dist/
 /build/
 /out/
@@ -13,12 +13,17 @@ node_modules/
 # Coverage reports — produced by `npm test`.
 coverage/
 
+# Asset-authoring scratch. Only the finished PNG, `.wav`, and `.mid` files under
+# `assets/` are committed, never the intermediate configuration, action log, or
+# preview files an asset tool leaves beside what it produced.
+assets/**/*.config.json
+assets/**/*.actions.json
+assets/**/*.preview.png
+assets/**/*.preview.gif
+
 # Playwright verification scratch.
 test-results/
 playwright-report/
 
 # Logs.
 *.log
-
-# Scratch that `tcab validate --implementation` writes beside the build.
-.tcab/
