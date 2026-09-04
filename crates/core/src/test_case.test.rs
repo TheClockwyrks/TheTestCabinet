@@ -5,7 +5,7 @@ use std::path::Path;
 
 use super::{
     AssetDimension, AssetKind, BuildCommands, ErratumSeverity, FailureCap, MediaKind, Result,
-    SpecKind, TestCaseCatalog, TestCaseVersion, TestType, is_shippable_package,
+    SHIPPABLE_PACKAGES, SpecKind, TestCaseCatalog, TestCaseVersion, TestType, is_shippable_package,
     shippable_package_description,
 };
 

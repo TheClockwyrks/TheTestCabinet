@@ -52,15 +52,10 @@ TypeScript types + JSON Schema for the run record contract; see
 rules, each mirroring a counterpart in `crates/core/src/review.rs`, plus the
 set-level rollup that lets a figure frozen at one moment and the same figure
 recomputed later be compared; `packages/ui`'s `ratings` module re-exports the
-scoring half alongside its display metadata),
-`packages/browser-driver/` (the Playwright driver the
+scoring half alongside its display metadata)
+and `packages/browser-driver/` (the Playwright driver the
 [validator](apps/docs/src/content/docs/components/core/validation.md) shells out
-to)
-and `packages/headless-webgl2/` (`@test-cabinet/headless-webgl2` — a
-pure-TypeScript WebGL2 implementation for Node, which is how the 3D engines and
-a 3D case's validators render with no browser and no GPU; it reaches a run as a
-**shippable package** a case names in its manifest's `packages` key, vendored
-under `.tcab/packages/`, never by the engine route).
+to).
 
 ## Repository layout, building & testing
 

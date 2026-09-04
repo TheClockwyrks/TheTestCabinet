@@ -12,8 +12,7 @@
 // in-repo relative `file:` path (the harness validates this at resolution but does
 // not write it). A built game then consumes a produced asset that needs a runtime
 // to play it — a particle `system.json`, a voxel rig — as an ordinary installed
-// dependency, and a case's validation suites reach a headless WebGL2 canvas the
-// same way. See:
+// dependency. See:
 //   - containers/README.md#the-shippable-test-cabinet-packages
 //   - apps/docs/.../testing/end-to-end/overview.md (Packages)
 //
@@ -50,8 +49,8 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * Everything staged into the package store. The first three are the packages a test
- * case may request via its manifest `packages` key, and those three MUST also appear
+ * Everything staged into the package store. The first two are the packages a test
+ * case may request via its manifest `packages` key, and those two MUST also appear
  * in SHIPPABLE_PACKAGES in crates/core/src/test_case.rs. The rest are engine
  * runtimes and the shared validator harness: never nameable by a case — so they are
  * staged from here and are deliberately absent from that Rust allowlist.
@@ -63,7 +62,6 @@ import { fileURLToPath } from "node:url";
 const SHIPPABLE = [
   "@test-cabinet/particle-runtime",
   "@test-cabinet/voxel-runtime",
-  "@test-cabinet/headless-webgl2",
   // Engine runtimes — staged, but not `packages` names. See above.
   "@test-cabinet/simple-2d",
   "@test-cabinet/structured-2d",

@@ -21,16 +21,6 @@
 // There is one recording format and it is version 1. When the engine's recorder
 // changes shape, the types here change with it; a player never learns to read a
 // second shape.
-//
-// The format has two drawing SPACES, and this module is the 2D one plus the
-// envelope that tells them apart. A 3D engine writes `space: "3d"` and a 2D
-// engine writes no `space` field at all, so absent means 2D and one player
-// serves every engine's recordings; `parseRecording` reads the field and hands a
-// 3D document to `format3d.ts`, which carries that space's contract for the same
-// reasons this file carries this one's. A document stating anything else is
-// refused by name, exactly as an unknown `format` is.
-
-import { parse3dRecording, type Recording3d } from "./format3d";
 
 /**
  * The format version this console knows how to draw.
@@ -241,13 +231,6 @@ export interface RecordedFrame {
 export interface Recording {
   /** The format version a player checks before drawing anything. */
   readonly format: number;
-  /**
-   * Never present: a 2D recording is the document that states no space.
-   *
-   * Declared so the two spaces form one union a player can narrow — nothing is
-   * written or read at runtime, and a 2D recorder has no such field to write.
-   */
-  readonly space?: undefined;
   /** The logical design width the operations were issued in. */
   readonly width: number;
   /** The logical design height the operations were issued in. */
@@ -267,15 +250,6 @@ export interface Recording {
 }
 
 /**
- * A recording of either drawing space, as one player reads it.
- *
- * The two are told apart by `space`: a 3D document states `"3d"` and a 2D one
- * states nothing, so `recording.space === "3d"` narrows the union to the
- * document a 3D drawer takes and everything else to the 2D one.
- */
-export type AnyRecording = Recording | Recording3d;
-
-/**
  * The outcome of reading a file that claims to be a recording.
  *
  * A refusal carries a sentence written for the reviewer looking at the run, not a
@@ -283,7 +257,7 @@ export type AnyRecording = Recording | Recording3d;
  * do nothing at all with "unexpected token".
  */
 export type RecordingParse =
-  | { readonly ok: true; readonly recording: AnyRecording }
+  | { readonly ok: true; readonly recording: Recording }
   | { readonly ok: false; readonly message: string };
 
 /** Whether a value is a plain JSON object (and so may carry named fields). */
@@ -570,15 +544,7 @@ function frameProblem(
  * showing them a picture assembled from a format we guessed at costs them the
  * verdict they base on it.
  *
- * The space check comes next and is absolute for the same reason. There is one
- * reading path for every engine's recordings, so this is where a document is
- * told which drawing it is: no `space` field is the 2D document this module
- * carries, `"3d"` is the document `format3d.ts` carries, and a third answer is a
- * document no recorder wrote. Half-drawing one — reading a `"4d"` document's
- * frames with the 2D parser because the fields it happens to carry line up —
- * would put a picture in front of a reviewer that nothing produced.
- *
- * Everything after the two checks is a shape check over the fields a player
+ * Everything after the version check is a shape check over the fields a player
  * dispatches on — the shared tables, and each frame's indices into them — so
  * drawing a frame is total: it never has to ask whether the thing it is about to
  * replay is really an operation.
@@ -604,16 +570,6 @@ export function parseRecording(data: unknown): RecordingParse {
     return {
       ok: false,
       message: `This file states recording format ${data.format}, and the only recording format is ${RECORDING_FORMAT}, so it was not produced by an engine recorder.`,
-    };
-  }
-  if (data.space === "3d") return parse3dRecording(data);
-  if (data.space !== undefined) {
-    // A 2D recorder writes no `space` at all, so anything under the name — a
-    // `null`, a number, even the `"2d"` no recorder has ever written — is a
-    // document that means something by it this player does not.
-    return {
-      ok: false,
-      message: `This file states drawing space ${JSON.stringify(data.space)}, and the only spaces this player draws are 2D, which states no space at all, and "3d", so it was not produced by an engine recorder.`,
     };
   }
   if (!isNumber(data.width) || !isNumber(data.height)) {
@@ -718,7 +674,7 @@ export function parseRecording(data: unknown): RecordingParse {
  * adversarial player checks it: a 404's error body is valid JSON, and handing it
  * on unchecked reports a missing file as a damaged replay.
  */
-export async function fetchRecording(url: string): Promise<AnyRecording> {
+export async function fetchRecording(url: string): Promise<Recording> {
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(

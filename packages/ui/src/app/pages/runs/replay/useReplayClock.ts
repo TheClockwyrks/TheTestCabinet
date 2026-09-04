@@ -18,7 +18,7 @@
 // recording is shorter clamps to its last frame; nothing about the clock changes.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AnyRecording } from "./format";
+import type { Recording } from "./format";
 
 /** The playback rates offered, as multiples of the recorded pace. */
 export const REPLAY_SPEEDS = [0.25, 0.5, 1, 2, 4] as const;
@@ -72,17 +72,11 @@ function holdMs(delta: number | undefined): number {
  * The result is worth memoizing on the recordings, but only to save the array: the
  * clock reads the timeline through a ref and keys its position on the frame count,
  * so handing it a freshly built array every render costs nothing but garbage.
- *
- * The drawing space does not enter into it. `count`, `timeMs` and `deltaMs` are
- * the same axis in every recording an engine writes, and a 3D frame is drawn
- * from itself as exactly as a 2D one is — more exactly, in fact, since there is
- * no save stack to inherit — so the clock below paces and seeks both spaces
- * with nothing but this widened type to say so.
  */
 export function timelineFor(
-  recordings: readonly (AnyRecording | null)[],
+  recordings: readonly (Recording | null)[],
 ): readonly number[] {
-  let longest: AnyRecording | null = null;
+  let longest: Recording | null = null;
   for (const recording of recordings) {
     if (recording === null) continue;
     if (longest === null || recording.frames.length > longest.frames.length) {

@@ -1729,11 +1729,9 @@ pub struct ShippablePackage {
 /// may request via the manifest's `packages` key. Each is baked into the host
 /// package store ([`TCAB_PACKAGES_DIR`]) and, at seed time, vendored into the run
 /// repository under [`TCAB_VENDOR_DIR`], which the case's workspace `package.json`
-/// declares as an in-repo relative `file:` dependency (in either
-/// `dependencies` or `devDependencies`), so the workspace can `import` it by its
-/// bare name: a built game plays a produced asset (a particle `system.json`, a
-/// voxel rig) the same way the in-repo viewers do, and a case's validators render
-/// an engine headlessly over a canvas Node itself implements.
+/// declares as an in-repo relative `file:` dependency, so a built game can
+/// `import` it to play a produced asset (a particle `system.json`, a voxel rig)
+/// the same way the in-repo viewers do.
 ///
 /// This list is the allowlist a case's `packages` names are validated against
 /// (see [`is_shippable_package`]), and it also carries each package's UI-only
@@ -1763,13 +1761,6 @@ pub const SHIPPABLE_PACKAGES: &[ShippablePackage] = &[
         description: "The voxel runtime the review UI poses and renders a produced voxel rig \
                       with. A build imports it to load a produced rig and play its authored \
                       animations in-game the same way the gallery's viewer does.",
-    },
-    ShippablePackage {
-        name: "@test-cabinet/headless-webgl2",
-        description: "The in-process WebGL2 canvas a 3D case's validators build an engine over. \
-                      A suite imports it for a canvas whose `webgl2` context is implemented in \
-                      Node itself, so a 3D engine constructs and renders with no browser and no \
-                      GPU — the counterpart of `@napi-rs/canvas` for the 2D engines.",
     },
 ];
 

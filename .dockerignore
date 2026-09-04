@@ -194,14 +194,11 @@
 !/packages/ui
 !/packages/voxel-runtime
 !/packages/particle-runtime
-# These are the odd ones out in this block: the console does not bundle them and
-# the ui library does not import them. They ride along for the BASE image below,
-# whose staging script bakes them into the package store. The engine runtimes sit
-# beside the shippable packages there — an engine runtime is seeded per run rather
-# than named by a case, so each appears in that script's list and in no case
-# manifest — while headless-webgl2 is a shippable package a 3D case names, but one
-# only its validation suites import, never the console.
-!/packages/headless-webgl2
+# The engine runtimes are the odd ones out in this block: the console does not
+# bundle them and the ui library does not import them. They ride along for the
+# BASE image below, whose staging script bakes them into the package store beside
+# the shippable packages — an engine runtime is seeded per run rather than named
+# by a case, so each appears in that script's list and in no case manifest.
 !/packages/simple-2d
 !/packages/structured-2d
 !/packages/simple-3d
@@ -219,7 +216,7 @@
 !/packages/case-harness
 # The run-container BASE image (containers/base/Dockerfile) reuses this same npm
 # slice: its builder stage `npm ci`s the workspace and runs the staging script to
-# bake the shippable @test-cabinet packages — and the engine runtimes —
+# bake the shippable @test-cabinet packages — and the simple-2d engine runtime —
 # into /opt/tcab-packages (see
 # containers/README.md#the-shippable-test-cabinet-packages). The script is the one
 # extra file that build needs beyond the console's slice, so re-include it.
