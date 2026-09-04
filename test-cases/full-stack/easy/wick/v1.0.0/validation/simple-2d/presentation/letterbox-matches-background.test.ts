@@ -34,10 +34,11 @@ import { STAGE_H, STAGE_W } from "../constants";
 import { captureStill, createHarness, isolate, type Harness } from "../harness";
 // The build's own stage background, which `src/main.ts` hands the engine as the
 // color the canvas is cleared to. It is the SUBJECT of this point rather than a
-// threshold, which is why it is read from the build rather than restated in
-// `constants.ts`: the specification fixes that the bars carry it, and leaves
-// which color it is to the build.
-import { BACKGROUND } from "../../src/game";
+// threshold, which is why it is read from the build rather than restated as a
+// figure: the specification fixes that the bars carry it, and leaves which color
+// it is to the build. It reaches this suite from `../constants`, the one place
+// this project reads the build's own modules.
+import { BACKGROUND } from "../constants";
 
 /** A surface 320 CSS pixels wider than the stage's ratio: a bar at each side. */
 const CSS_WIDTH = STAGE_W + 320;
