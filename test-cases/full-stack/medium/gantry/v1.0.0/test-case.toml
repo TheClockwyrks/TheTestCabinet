@@ -7502,7 +7502,7 @@ validation = { script = "collisions/member-strike-precedes-a-load-strike.test.ts
 ] }
 
 # ----------------------------------------------------------------------------
-# Keys, the camera, and the pointer — 108 points
+# Keys, the camera, and the pointer — 113 points
 # ----------------------------------------------------------------------------
 [[review.categories]]
 id = "controls"
@@ -7948,7 +7948,7 @@ validation = { script = "controls/camera-looks-at-the-target.test.ts", outputs =
 [[review.categories.items]]
 id = "camera-persists-across-the-yard-screens"
 title = "The camera pose persists across the build, program and run screens"
-description = "The camera pose persists across the three screens and resets to the start pose when a site is opened."
+description = "The camera pose persists across the build, program and run screens, so leaving the build screen and coming back shows the yard from where it was left."
 domains = ["construction", "presentation"]
 failure_cap = "passable"
 validation = { script = "controls/camera-persists-across-the-yard-screens.test.ts", outputs = [
@@ -8991,15 +8991,28 @@ validation = { script = "controls/confirm-does-nothing-on-a-screen-with-no-menu.
   { id = "no-confirm", name = "The build screen after confirm", kind = "image" },
 ] }
 
-# On the title screen, whose menu has two entries, press ArrowDown three
-# times reading menuIndex each time. — menuIndex reads 1, 0, 1.
+# On the title screen, whose menu has two entries and opens on the first,
+# press ArrowDown and read menuIndex. — menuIndex reads 1.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "menu-down-moves-by-one"
+title = "down moves the menu highlight to the next entry"
+description = "On every menu down moves the highlight by one entry."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "controls/menu-down-moves-by-one.test.ts", outputs = [
+  { id = "state", name = "the title menu after down moved to the next entry", kind = "image" },
+] }
+
+# On the title screen, with the highlight posed on the menu's last entry,
+# press ArrowDown and read menuIndex. — menuIndex reads 0.
 # From specs/ui.md § The screens.
 [[review.categories.items]]
 id = "menu-down-wraps"
-title = "down moves the menu highlight by one and wraps at the end"
-description = "On every menu down moves the highlight by one entry and wraps at both ends."
+title = "down wraps the highlight off the menu's last entry"
+description = "On every menu down at the last entry wraps the highlight to the first."
 domains = ["presentation"]
-failure_cap = "scuffed"
+failure_cap = "great"
 validation = { script = "controls/menu-down-wraps.test.ts", outputs = [
   { id = "state", name = "the title menu after down wrapped off its end", kind = "image" },
 ] }
@@ -9017,14 +9030,27 @@ validation = { script = "controls/menu-left-right-leave-the-highlight.test.ts", 
   { id = "state", name = "the site select's highlight after left and right", kind = "image" },
 ] }
 
+# On the title screen, with the highlight posed on the menu's second entry,
+# press ArrowUp and read menuIndex. — menuIndex reads 0.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "menu-up-moves-by-one"
+title = "up moves the menu highlight to the previous entry"
+description = "On every menu up moves the highlight by one entry."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "controls/menu-up-moves-by-one.test.ts", outputs = [
+  { id = "state", name = "the title menu after up moved to the previous entry", kind = "image" },
+] }
+
 # On the title screen with menuIndex 0, press ArrowUp. — menuIndex reads 1.
 # From specs/ui.md § The screens.
 [[review.categories.items]]
 id = "menu-up-wraps"
-title = "up moves the menu highlight by one and wraps at the start"
-description = "On every menu up moves the highlight by one entry and wraps at both ends."
+title = "up wraps the highlight off the menu's first entry"
+description = "On every menu up at the first entry wraps the highlight to the last."
 domains = ["presentation"]
-failure_cap = "scuffed"
+failure_cap = "great"
 validation = { script = "controls/menu-up-wraps.test.ts", outputs = [
   { id = "state", name = "the title menu after up wrapped off its start", kind = "image" },
 ] }
@@ -9102,7 +9128,7 @@ validation = { script = "controls/pick-null-off-the-build-screen.test.ts", outpu
 ] }
 
 # ----------------------------------------------------------------------------
-# Screens, readouts, and the failure copy — 87 points
+# Screens, readouts, and the failure copy — 107 points
 # ----------------------------------------------------------------------------
 [[review.categories]]
 id = "screens"
@@ -9206,7 +9232,7 @@ validation = { script = "screens/cleared-and-open-persist.test.ts", outputs = [
 [[review.categories.items]]
 id = "cleared-run-moves-to-results"
 title = "A cleared run moves to the results screen"
-description = "A run that ends cleared moves to the results screen, where the run's cost and time are shown beside the site's par figures."
+description = "A run that ends cleared moves to the results screen."
 domains = ["presentation", "choreography"]
 failure_cap = "broken"
 validation = { script = "screens/cleared-run-moves-to-results.test.ts", outputs = [
@@ -9265,17 +9291,76 @@ validation = { script = "screens/howto-covers-speed-loading-and-swinging.test.ts
   { id = "howto-speed", name = "The how-to copy on speed", kind = "image" },
 ] }
 
-# Open howto and read its text draws. — The copy names strut, cable, rail,
-# ring, counterweight and delete.
+# Open howto and read its text draws. — The copy names the strut.
 # From specs/ui.md § The screens.
 [[review.categories.items]]
-id = "howto-covers-the-build-tools"
-title = "The how-to screen explains the build tools and the parts they place"
-description = "The how-to screen's copy names the build tools and the parts they place: the strut, the cable, the rail, the ring, the counterweight, and the delete tool."
+id = "howto-covers-the-strut-tool"
+title = "The how-to screen explains the strut tool"
+description = "The how-to screen's copy names the strut and the tool that places it."
 domains = ["presentation"]
 failure_cap = "scuffed"
-validation = { script = "screens/howto-covers-the-build-tools.test.ts", outputs = [
-  { id = "howto-tools", name = "The how-to copy on the build tools", kind = "image" },
+validation = { script = "screens/howto-covers-the-strut-tool.test.ts", outputs = [
+  { id = "howto-strut", name = "The how-to copy on the strut tool", kind = "image" },
+] }
+
+# Open howto and read its text draws. — The copy names the cable.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "howto-covers-the-cable-tool"
+title = "The how-to screen explains the cable tool"
+description = "The how-to screen's copy names the cable and the tool that places it."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-covers-the-cable-tool.test.ts", outputs = [
+  { id = "howto-cable", name = "The how-to copy on the cable tool", kind = "image" },
+] }
+
+# Open howto and read its text draws. — The copy names the rail.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "howto-covers-the-rail-tool"
+title = "The how-to screen explains the rail tool"
+description = "The how-to screen's copy names the rail and the tool that places it."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-covers-the-rail-tool.test.ts", outputs = [
+  { id = "howto-rail", name = "The how-to copy on the rail tool", kind = "image" },
+] }
+
+# Open howto and read its text draws. — The copy names the ring.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "howto-covers-the-ring-tool"
+title = "The how-to screen explains the ring tool"
+description = "The how-to screen's copy names the ring and the tool that places it."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-covers-the-ring-tool.test.ts", outputs = [
+  { id = "howto-ring", name = "The how-to copy on the ring tool", kind = "image" },
+] }
+
+# Open howto and read its text draws. — The copy names the counterweight.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "howto-covers-the-counterweight-tool"
+title = "The how-to screen explains the counterweight tool"
+description = "The how-to screen's copy names the counterweight and the tool that places it."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-covers-the-counterweight-tool.test.ts", outputs = [
+  { id = "howto-counterweight", name = "The how-to copy on the counterweight tool", kind = "image" },
+] }
+
+# Open howto and read its text draws. — The copy names the delete tool and what it takes away.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "howto-covers-the-delete-tool"
+title = "The how-to screen explains the delete tool"
+description = "The how-to screen's copy names the delete tool and what it takes away and the tool that places it."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-covers-the-delete-tool.test.ts", outputs = [
+  { id = "howto-delete", name = "The how-to copy on the delete tool", kind = "image" },
 ] }
 
 # Open howto and read its text draws. — The copy names the slew ring and says
@@ -9291,30 +9376,126 @@ validation = { script = "screens/howto-covers-the-ring-and-the-arm.test.ts", out
   { id = "howto-ring", name = "The how-to copy on the ring", kind = "image" },
 ] }
 
-# Open howto and read its text draws. — The copy names the tape and all four
-# axes, slew, trolley, hoist and grip, each with what it drives.
+# Open howto and read its text draws. — The copy names the tape.
 # From specs/ui.md § The screens.
 [[review.categories.items]]
-id = "howto-covers-the-tape-and-the-axes"
-title = "The how-to screen explains writing a tape and what each axis does"
-description = "The how-to screen's copy explains writing a tape and what each axis does, naming slew, trolley, hoist and grip."
+id = "howto-covers-the-tape"
+title = "The how-to screen explains writing a tape"
+description = "The how-to screen's copy explains writing a tape, naming it as the tape."
 domains = ["presentation"]
 failure_cap = "scuffed"
-validation = { script = "screens/howto-covers-the-tape-and-the-axes.test.ts", outputs = [
-  { id = "howto-tape", name = "The how-to copy on the tape and the axes", kind = "image" },
+validation = { script = "screens/howto-covers-the-tape.test.ts", outputs = [
+  { id = "howto-tape", name = "The how-to copy on the tape", kind = "image" },
 ] }
 
-# Open howto and read the drawn text for the bindings. — The six tool keys,
-# KeyZ, KeyC, KeyP, KeyB and KeyG are each named.
+# Open howto and read its text draws. — The copy names the slew axis.
 # From specs/ui.md § The screens.
 [[review.categories.items]]
-id = "howto-names-the-bindings"
-title = "The how-to screen names the tool, undo, check, screen-switch and run bindings"
-description = "howto names the tool, undo, check, screen-switch, and run bindings."
+id = "howto-covers-the-slew-axis"
+title = "The how-to screen names the slew axis"
+description = "The how-to screen's copy names the slew axis, one of the four a tape commands."
 domains = ["presentation"]
 failure_cap = "scuffed"
-validation = { script = "screens/howto-names-the-bindings.test.ts", outputs = [
-  { id = "state", name = "The how-to copy naming the bindings", kind = "image" },
+validation = { script = "screens/howto-covers-the-slew-axis.test.ts", outputs = [
+  { id = "howto-slew", name = "The how-to copy on the slew axis", kind = "image" },
+] }
+
+# Open howto and read its text draws. — The copy names the trolley axis.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "howto-covers-the-trolley-axis"
+title = "The how-to screen names the trolley axis"
+description = "The how-to screen's copy names the trolley axis, one of the four a tape commands."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-covers-the-trolley-axis.test.ts", outputs = [
+  { id = "howto-trolley", name = "The how-to copy on the trolley axis", kind = "image" },
+] }
+
+# Open howto and read its text draws. — The copy names the hoist axis.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "howto-covers-the-hoist-axis"
+title = "The how-to screen names the hoist axis"
+description = "The how-to screen's copy names the hoist axis, one of the four a tape commands."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-covers-the-hoist-axis.test.ts", outputs = [
+  { id = "howto-hoist", name = "The how-to copy on the hoist axis", kind = "image" },
+] }
+
+# Open howto and read its text draws. — The copy names the grip axis.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "howto-covers-the-grip-axis"
+title = "The how-to screen names the grip axis"
+description = "The how-to screen's copy names the grip axis, one of the four a tape commands."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-covers-the-grip-axis.test.ts", outputs = [
+  { id = "howto-grip", name = "The how-to copy on the grip axis", kind = "image" },
+] }
+
+# Open howto and read the drawn text for the bindings. — Digit1 through
+# Digit6 are each named.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "howto-names-the-tool-bindings"
+title = "The how-to screen names the tool bindings"
+description = "howto names the six tool bindings, Digit1 through Digit6."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-names-the-tool-bindings.test.ts", outputs = [
+  { id = "tool-keys", name = "The how-to copy naming the tool bindings", kind = "image" },
+] }
+
+# Open howto and read the drawn text for the bindings. — KeyZ is named.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "howto-names-the-undo-binding"
+title = "The how-to screen names the undo binding"
+description = "howto names the undo binding, KeyZ."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-names-the-undo-binding.test.ts", outputs = [
+  { id = "undo-key", name = "The how-to copy naming the undo binding", kind = "image" },
+] }
+
+# Open howto and read the drawn text for the bindings. — KeyC is named.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "howto-names-the-check-binding"
+title = "The how-to screen names the check binding"
+description = "howto names the check binding, KeyC."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-names-the-check-binding.test.ts", outputs = [
+  { id = "check-key", name = "The how-to copy naming the check binding", kind = "image" },
+] }
+
+# Open howto and read the drawn text for the bindings. — KeyP and KeyB are
+# both named.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "howto-names-the-screen-switch-bindings"
+title = "The how-to screen names the screen-switch bindings"
+description = "howto names the two screen-switch bindings, KeyP and KeyB."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-names-the-screen-switch-bindings.test.ts", outputs = [
+  { id = "screen-switch-keys", name = "The how-to copy naming the screen-switch bindings", kind = "image" },
+] }
+
+# Open howto and read the drawn text for the bindings. — KeyG is named.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "howto-names-the-run-binding"
+title = "The how-to screen names the run binding"
+description = "howto names the run binding, KeyG."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-names-the-run-binding.test.ts", outputs = [
+  { id = "run-key", name = "The how-to copy naming the run binding", kind = "image" },
 ] }
 
 # On the program screen press Escape. — screen reads select.
@@ -9488,16 +9669,29 @@ validation = { script = "screens/select-shows-a-cleared-site-as-cleared.test.ts"
 ] }
 
 # setBest(0, 2350, 17.5) and setCleared(0, true), then open select. — Site
-# 1's row shows the cost 2350 and the time 17.5.
+# 1's row shows the cost 2350.
 # From specs/ui.md § The screens.
 [[review.categories.items]]
-id = "select-shows-the-best-score"
-title = "A cleared site shows its best cost and time"
-description = "A cleared site shows its best score, cost and time, beside it."
+id = "select-shows-the-best-cost"
+title = "A cleared site shows its best cost"
+description = "A cleared site shows the cost of its best score beside it."
 domains = ["choreography", "presentation"]
 failure_cap = "passable"
-validation = { script = "screens/select-shows-the-best-score.test.ts", outputs = [
-  { id = "state", name = "The best score beside a cleared site", kind = "image" },
+validation = { script = "screens/select-shows-the-best-cost.test.ts", outputs = [
+  { id = "state", name = "The best cost beside a cleared site", kind = "image" },
+] }
+
+# setBest(0, 2350, 17.5) and setCleared(0, true), then open select. — Site
+# 1's row shows the time 17.5.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "select-shows-the-best-time"
+title = "A cleared site shows its best time"
+description = "A cleared site shows the time of its best score beside it."
+domains = ["choreography", "presentation"]
+failure_cap = "passable"
+validation = { script = "screens/select-shows-the-best-time.test.ts", outputs = [
+  { id = "state", name = "The best time beside a cleared site", kind = "image" },
 ] }
 
 # reset, setCleared(0, true) so site 1 reads cleared, site 2 open and site 3
@@ -9545,18 +9739,69 @@ validation = { script = "screens/site-zero-open-from-the-start.test.ts", outputs
   { id = "state", name = "The site that is open from the start", kind = "image" },
 ] }
 
-# Load the build and read the title screen's text draws. — GANTRY, RIG THE
-# CRANE. RUN THE TAPE., SITES and HOW TO PLAY are all drawn, the two menu
-# entries in that order.
+# Load the build and read the title screen's text draws. — GANTRY is
+# drawn.
 # From specs/ui.md § The screens.
 [[review.categories.items]]
-id = "title-draws-its-copy"
-title = "The title screen draws its title, tagline and menu entries"
-description = "The title screen draws TITLE_TEXT (GANTRY), TAGLINE_TEXT (RIG THE CRANE. RUN THE TAPE.) and both entries of TITLE_ITEMS (SITES, HOW TO PLAY) in order."
+id = "title-draws-the-title"
+title = "The title screen draws its title"
+description = "The title screen draws TITLE_TEXT (GANTRY)."
 domains = ["presentation"]
 failure_cap = "scuffed"
-validation = { script = "screens/title-draws-its-copy.test.ts", outputs = [
-  { id = "title-copy", name = "The title screen's copy", kind = "image" },
+validation = { script = "screens/title-draws-the-title.test.ts", outputs = [
+  { id = "title-text", name = "The title screen's title", kind = "image" },
+] }
+
+# Load the build and read the title screen's text draws. — RIG THE CRANE.
+# RUN THE TAPE. is drawn.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "title-draws-the-tagline"
+title = "The title screen draws its tagline"
+description = "The title screen draws TAGLINE_TEXT (RIG THE CRANE. RUN THE TAPE.)."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/title-draws-the-tagline.test.ts", outputs = [
+  { id = "tagline", name = "The title screen's tagline", kind = "image" },
+] }
+
+# Load the build and read the title screen's text draws. — SITES is drawn.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "title-draws-the-sites-entry"
+title = "The title screen draws its SITES entry"
+description = "The title screen draws the first entry of TITLE_ITEMS, SITES."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/title-draws-the-sites-entry.test.ts", outputs = [
+  { id = "sites-entry", name = "The title screen's SITES entry", kind = "image" },
+] }
+
+# Load the build and read the title screen's text draws. — HOW TO PLAY is
+# drawn.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "title-draws-the-howto-entry"
+title = "The title screen draws its HOW TO PLAY entry"
+description = "The title screen draws the second entry of TITLE_ITEMS, HOW TO PLAY."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/title-draws-the-howto-entry.test.ts", outputs = [
+  { id = "howto-entry", name = "The title screen's HOW TO PLAY entry", kind = "image" },
+] }
+
+# Load the build and read the title screen's text draws in reading order. —
+# SITES is drawn before HOW TO PLAY. A screen that drew neither entry is
+# left to the two items that name them.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "title-draws-its-menu-entries-in-order"
+title = "The title screen draws its menu entries in order"
+description = "The title screen draws the entries of TITLE_ITEMS in the order it lists them, SITES before HOW TO PLAY."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/title-draws-its-menu-entries-in-order.test.ts", outputs = [
+  { id = "menu-order", name = "The title screen's menu entries", kind = "image" },
 ] }
 
 # On the title screen with menuIndex 1 press Enter. — screen reads howto.
@@ -10082,32 +10327,57 @@ validation = { script = "screens/results-menu-index-on-arriving.test.ts", output
   { id = "results-index", name = "The results highlight on arriving", kind = "image" },
 ] }
 
-# Clear site 0, whose par is cost 2400 and time 18, and read the results
-# screen's text draws. — 2400 and 18 are both drawn as the site's par
-# figures.
+# Clear site 0, whose par cost is 2400, and read the results screen's text
+# draws. — 2400 is drawn as the site's par cost.
 # From specs/ui.md § Results.
 [[review.categories.items]]
-id = "results-shows-the-par-figures"
-title = "The results screen shows the site's par cost and par time"
-description = "The results screen shows the site's par cost and par time beside the run's figures."
+id = "results-shows-the-par-cost"
+title = "The results screen shows the site's par cost"
+description = "The results screen shows the site's par cost beside the run's figures."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "screens/results-shows-the-par-figures.test.ts", outputs = [
-  { id = "results-par", name = "the par figures beside the run's", kind = "image" },
+validation = { script = "screens/results-shows-the-par-cost.test.ts", outputs = [
+  { id = "results-par-cost", name = "the site's par cost beside the run's", kind = "image" },
+] }
+
+# Clear site 0, whose par time is 18, and read the results screen's text
+# draws. — 18 is drawn as the site's par time.
+# From specs/ui.md § Results.
+[[review.categories.items]]
+id = "results-shows-the-par-time"
+title = "The results screen shows the site's par time"
+description = "The results screen shows the site's par time beside the run's figures."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/results-shows-the-par-time.test.ts", outputs = [
+  { id = "results-par-time", name = "the site's par time beside the run's", kind = "image" },
 ] }
 
 # Clear site 0 with a crane of a known cost and read the results screen's
-# text draws against snapshot().run.time. — The run's cost and its time are
-# both drawn, matching the crane's cost and the clock the run ended on.
+# text draws against snapshot().structure.cost. — The crane's cost is drawn.
 # From specs/ui.md § Results.
 [[review.categories.items]]
-id = "results-shows-the-run-figures"
-title = "The results screen shows the run's cost and time"
-description = "The results screen shows the cost of the crane the run was made with and the run clock it ended on."
+id = "results-shows-the-run-cost"
+title = "The results screen shows the run's cost"
+description = "The results screen shows the cost of the crane the run was made with."
 domains = ["presentation", "choreography"]
 failure_cap = "scuffed"
-validation = { script = "screens/results-shows-the-run-figures.test.ts", outputs = [
-  { id = "results-figures", name = "the run's cost and time", kind = "image" },
+validation = { script = "screens/results-shows-the-run-cost.test.ts", outputs = [
+  { id = "run-cost", name = "the run's cost", kind = "image" },
+] }
+
+# Clear site 0 on a run whose clock lands on a whole second and read the
+# results screen's text draws against snapshot().run.time. — The clock the
+# run ended on is drawn.
+# From specs/ui.md § Results.
+[[review.categories.items]]
+id = "results-shows-the-run-time"
+title = "The results screen shows the run's time"
+description = "The results screen shows the run clock the run ended on."
+domains = ["presentation", "choreography"]
+failure_cap = "scuffed"
+validation = { script = "screens/results-shows-the-run-time.test.ts", outputs = [
+  { id = "run-time", name = "the run's clock", kind = "image" },
 ] }
 
 # Clear site 0 from a build with the camera moved off its start pose and a
@@ -12167,7 +12437,7 @@ validation = { script = "assets/build-invokes-no-asset-tool.test.ts", outputs = 
 ] }
 
 # ----------------------------------------------------------------------------
-# The 3D scene and legibility — 24 points
+# The 3D scene and legibility — 25 points
 # ----------------------------------------------------------------------------
 [[review.categories]]
 id = "presentation"
@@ -12589,18 +12859,81 @@ validation = { script = "presentation/overlay-off-until-toggled.test.ts", output
   { id = "off", name = "The stage with the overlay hidden", kind = "image" },
 ] }
 
-# Load the game, press Backquote and run a frame, capture; press Backquote
-# again, run a frame, capture. — The first capture differs from the pre-press
-# frame over more than 2 per cent of the stage's pixels, and the second
-# capture matches the pre-press frame within 50 of 441 at every sampled
-# point.
+# Load the game, empty the site, press Backquote and run a frame, capture. —
+# The capture differs from the pre-press frame over more than 2 per cent of
+# the stage's pixels.
 # From specs/instrumentation.md § Diagnostics.
 [[review.categories.items]]
-id = "overlay-toggled-by-backquote"
-title = "The backtick key shows and hides the debug overlay"
-description = "Pressing the backtick key (KeyboardEvent.code Backquote) shows the debug overlay, and pressing it again hides it."
+id = "overlay-shown-by-backquote"
+title = "The backtick key shows the debug overlay"
+description = "Pressing the backtick key (KeyboardEvent.code Backquote) shows the debug overlay."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "presentation/overlay-toggled-by-backquote.test.ts", outputs = [
+validation = { script = "presentation/overlay-shown-by-backquote.test.ts", outputs = [
   { id = "on", name = "The stage with the overlay shown", kind = "image" },
+] }
+
+# Load the game, empty the site, press Backquote and run a frame, press it
+# again and run a frame, capture. — The capture matches the pre-press frame
+# within 50 of 441 at every sampled point. Nothing is asked of the first
+# press: a build that draws no panel passes here and fails
+# overlay-shown-by-backquote.
+# From specs/instrumentation.md § Diagnostics.
+[[review.categories.items]]
+id = "overlay-hidden-by-a-second-backquote"
+title = "A second backtick press hides the debug overlay"
+description = "With the debug overlay shown, pressing the backtick key again hides it, leaving the game's own display."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/overlay-hidden-by-a-second-backquote.test.ts", outputs = [
+  { id = "off-again", name = "The stage after a second backtick press", kind = "image" },
+] }
+
+# ----------------------------------------------------------------------------
+# Showcase — 1 point
+# ----------------------------------------------------------------------------
+# Read off the PRODUCED TREE rather than off the running game. The showcase is
+# the store-page presentation of the finished game: a player-facing description
+# and an ordered carousel of captured media, shipped in a `showcase/` directory
+# at the root of the produced repository, which `specs/showcase.md` defines.
+#
+# It carries a `weight` of 3 rather than the default 1, because it is a
+# deliverable of its own — a whole file of the specification, and the one piece
+# of a run a person meets before they meet the game — where every other point on
+# this checklist is one behavior of the game itself. Its cap is `great` all the
+# same: a build that shipped no showcase plays exactly as well as one that did,
+# so the miss costs the presentation and leaves the standard flow of gameplay
+# untouched. The weight and the cap say different things on purpose — how much
+# of the score the point carries, and how far a failure may drag the ratings.
+#
+# ONE point, and it grades EXISTENCE alone. Whether the description reads like
+# something a player would want to play, whether the carousel opens on the
+# strongest view of a lift, and whether the media is worth looking at is a
+# reviewer's judgement, and belongs to the aesthetic half of the domains rather
+# than to an assertion. The validator's whole verdict is that the two files are
+# there and that the carousel points at a file that is there with them: not a
+# dimension, not a byte of a picture, not a word of the prose.
+#
+# The suite drives nothing. It reads the produced tree with `node:fs`, so one
+# file stands unchanged in all three engine directories and the point means the
+# same thing whichever engine the run selected. What it hands back as evidence
+# is a `.png` copied out of the build's own showcase, so a reviewer sees the
+# picture the build chose to present its game with beside the verdict.
+[[review.categories]]
+id = "showcase"
+title = "Showcase"
+
+# Read showcase/showcase.md and showcase/showcase.toml off the produced tree,
+# and resolve every `file` the carousel names against showcase/. — Both files
+# are present and at least one named file is present beside them.
+# From specs/showcase.md.
+[[review.categories.items]]
+id = "exists"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, and at least one file the carousel names is present in showcase/."
+weight = 3
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "showcase/exists.test.ts", outputs = [
+  { id = "carousel", name = "A screenshot from the build's showcase", kind = "image" },
 ] }

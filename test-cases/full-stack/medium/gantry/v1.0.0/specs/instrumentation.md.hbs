@@ -268,6 +268,10 @@ wrong scale reports the wrong size. `color` is a single representative color for
 the thing; where a thing is drawn in more than one, it is the one that carries
 the most of it. A `text` entry's `name` is the build's own, so what identifies a
 readout is the `text` it drew and not what the build calls it.
+{{#if (eq engine.slug "none")}}
+The one exception is the debug overlay, which is not one of the game's readouts
+at all: Diagnostics below fixes the `name` its lines are reported under.
+{{/if}}
 
 Art direction stays the build's throughout: the reading reports what a build
 chose, and nothing here fixes a palette, a form, or a layout.
@@ -699,6 +703,11 @@ The overlay is part of the runtime layer you write. It draws the registered
 sources, it is shown and hidden by the backtick key (`KeyboardEvent.code`
 `Backquote`), it is off until toggled, and it reads the game without changing
 it. Keep it visually plain and clearly separate from the game's own display.
+
+Each line the overlay draws while it is shown comes back through `drawn()` as a
+`text` entry named `overlay`, carrying that line as its `text`, so a caller
+reads the panel without reading pixels. It is the one `text` entry whose `name`
+this file fixes; every other one is the build's own.
 {{else if (eq engine.slug "simple-3d")}}
 Registering those values is the whole of Gantry's part, through
 `InitApi.diagnostics`. Each source is called with the state current at the read,
