@@ -20,6 +20,13 @@ export interface HowtoPage {
   readonly columns?: readonly string[];
 }
 
+/**
+ * The copy on the how-to's single menu item (specs/ui.md `howto`). The screen
+ * carries one item, index `0`, and the words on it are the build's to choose;
+ * `confirm`, `back`, and taking the item all do the same thing, so it says so.
+ */
+export const HOWTO_ITEM_TEXT = "BACK TO TITLE";
+
 /** The five how-to pages, in order. */
 export const HOWTO_CONTENT: readonly HowtoPage[] = [
   {

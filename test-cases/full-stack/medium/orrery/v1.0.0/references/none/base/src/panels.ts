@@ -14,10 +14,22 @@
 // The fault display names which of the `FAULTS` stopped the run in this
 // build's own words; the parts and motes the fault names are marked on the
 // field itself, in `src/fielddraw.ts`.
+//
+// The panel's own box and its items' regions are `src/regions.ts`'s, because
+// the items are a menu the pointer and touch work like any other (specs/ui.md
+// "Pointer and touch") and `menuItemRect` reports where they sit.
 
 import { SOLVED_TITLE_TEXT, STAGE_CX, STAGE_W } from "./constants";
 import { fillRect, roundRect, strokeRect, text } from "./draw";
 import type { Game } from "./game";
+import {
+  solvedItemRect,
+  SOLVED_PANEL_H,
+  SOLVED_PANEL_W,
+  SOLVED_PANEL_X,
+  SOLVED_PANEL_Y,
+  SOLVED_TEXT_BASELINE,
+} from "./regions";
 import { recordsOf } from "./state";
 import { COLORS } from "./theme";
 import type { FaultKind, Metrics, OrreryState } from "./types";
@@ -41,10 +53,10 @@ export function drawSolvedPanel(
   const { state } = game;
   const metrics = state.sim?.metrics ?? null;
   if (metrics === null) return;
-  const width = 460;
-  const height = 330;
-  const x = STAGE_CX - width / 2;
-  const y = 150;
+  const width = SOLVED_PANEL_W;
+  const height = SOLVED_PANEL_H;
+  const x = SOLVED_PANEL_X;
+  const y = SOLVED_PANEL_Y;
 
   ctx.save();
   ctx.fillStyle = "rgba(8, 11, 22, 0.92)";
@@ -106,20 +118,19 @@ export function drawSolvedPanel(
   }
 
   const items = game.solvedItems();
-  let menu = y + 196;
   items.forEach((item, index) => {
+    const rect = solvedItemRect(index);
     const selected = index === state.menuIndex;
     if (selected) {
-      fillRect(ctx, x + 24, menu - 18, width - 48, 26, COLORS.panel);
+      fillRect(ctx, rect.x, rect.y, rect.w, rect.h, COLORS.panel);
     }
-    text(ctx, item, STAGE_CX, menu, {
+    text(ctx, item, STAGE_CX, rect.y + SOLVED_TEXT_BASELINE, {
       size: 16,
       color: selected ? COLORS.brass : COLORS.textDim,
       bold: selected,
       align: "center",
       spacing: 2,
     });
-    menu += 30;
   });
   text(
     ctx,
