@@ -110,7 +110,7 @@ next, each wrapping past the end to the other, and each move plays the
 
 Both menu-bearing screens are driven by pointer and by touch as well as by the
 keyboard, as `specs/controls.md` fixes, and each reports a hit region for
-every entry it shows through `menuItemRect(index)` of
+every entry it shows through the `menuItemRect` reading of
 `specs/instrumentation.md`.
 
 ### What is highlighted on arrival
