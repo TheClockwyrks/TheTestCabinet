@@ -5,8 +5,8 @@
 // DOM — the engine runs over an `@napi-rs/canvas` canvas, a scripted clock, and
 // a `SurfaceMetrics` of the test's own, so a scenario is stepped with
 // `engine.advance` and read back from the world and the game's debug surface.
-// The engine's documentation, seeded at `engine/`, carries a complete worked
-// example of that shape.
+// The engine's documentation, at `engine/`, carries a complete worked example
+// of that shape.
 //
 // The suite's results and its coverage are read back off two report files this
 // config writes, never off what the command printed, so the recorded figures do
@@ -18,7 +18,8 @@
 //                                   failure with its message
 //   coverage/coverage-summary.json  istanbul's four metrics, whole and per file
 //
-// Neither is a terminal summary: nothing reads what this command prints.
+// Neither figure is read off the terminal; the `text` reporter prints its
+// summary for whoever is watching the command.
 //
 // `reportOnFailure` is what makes a red suite write its coverage at all, which
 // is the suite whose coverage is most worth having.
@@ -41,7 +42,7 @@ export default defineConfig({
     outputFile: { json: "coverage/test-report.json" },
     coverage: {
       provider: "istanbul",
-      reporter: ["json-summary"],
+      reporter: ["text", "json-summary"],
       reportOnFailure: true,
       include: ["src/**/*.ts"],
       exclude: ["src/**/*.test.ts", "src/constants.ts", "src/main.ts"],

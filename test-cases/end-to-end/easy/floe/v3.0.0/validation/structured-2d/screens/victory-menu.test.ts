@@ -30,7 +30,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { ENDING_ITEMS, TOTAL_LEVELS } from "../constants";
+import { ENDING_ITEMS, TITLE_ITEMS, TOTAL_LEVELS } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -44,6 +44,12 @@ const MENU_INDEX = 1;
 
 /** One frame after the press, so the still shows the title rather than the screen. */
 const SETTLE_FRAMES = 1;
+
+/**
+ * The title entry every route back from a run selects: `CROSS`, the entry that
+ * started it (`specs/ui.md`).
+ */
+const CROSS_ITEM = TITLE_ITEMS.indexOf("CROSS");
 
 let h: Harness;
 
@@ -71,10 +77,17 @@ it("returns to the title when MENU is confirmed on the victory screen", async ()
   await h.advance(SETTLE_FRAMES);
   captureStill(h, "title");
 
+  const landed = h.snapshot();
   assertEqual(
-    h.snapshot().screen,
+    landed.screen,
     "title",
     `confirming ${ENDING_ITEMS[MENU_INDEX]} on the victory screen returns to ` +
       `the title (specs/ui.md)`,
+  );
+  assertEqual(
+    landed.menuIndex,
+    CROSS_ITEM,
+    `with ${TITLE_ITEMS[CROSS_ITEM]} selected, the entry that started the ` +
+      `run (specs/ui.md)`,
   );
 });

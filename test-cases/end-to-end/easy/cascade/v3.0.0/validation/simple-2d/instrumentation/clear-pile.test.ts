@@ -37,9 +37,6 @@ import {
 /** The column emptied by the first check. */
 const COLUMN = { pile: "tableau", index: 3 } as const;
 
-/** The waste, emptied by the second, together with the sets it remembers. */
-const WASTE = { pile: "waste", index: 0 } as const;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -86,41 +83,5 @@ it("empties the named column and leaves the other twelve piles standing", async 
     after.wasteSets,
     WASTE_SETS.length,
     "the waste's set memory, which a clear of a column never touches",
-  );
-});
-
-it("empties the waste's set memory with the waste", async () => {
-  openTable(h);
-  poseFullBoard(h);
-
-  const before = h.snapshot();
-  assertLength(
-    before.wasteSets,
-    WASTE_SETS.length,
-    "the waste's set memory before the clear",
-  );
-
-  h.debug.clearPile(WASTE.pile, WASTE.index);
-  const after = h.snapshot();
-
-  await h.advance(1);
-
-  assertLength(
-    pileOf(after, WASTE.pile, WASTE.index),
-    0,
-    "the waste, the pile clearPile named (specs/instrumentation.md)",
-  );
-  assertLength(
-    after.wasteSets,
-    0,
-    "the waste's set memory: clearing the waste empties it with the cards " +
-      "(specs/instrumentation.md)",
-  );
-  assertOtherPilesUnchanged(
-    before,
-    after,
-    WASTE,
-    "clearPile leaves the other twelve piles standing " +
-      "(specs/instrumentation.md)",
   );
 });

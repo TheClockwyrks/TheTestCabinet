@@ -34,12 +34,6 @@ import {
   DOUBLE_CLICK_WINDOW,
   DRAG_THRESHOLD,
   FOUNDATION_X,
-  HOWTO_BACK,
-  HUD_MENU,
-  HUD_NEW_GAME,
-  HUD_SOUND,
-  TITLE_HOW_TO,
-  TITLE_NEW_GAME,
 } from "./constants";
 import { newGame, toTitle } from "./flow";
 import type { CardState, CascadeState, PileKind } from "./game";
@@ -62,6 +56,7 @@ import {
 import { pileArray } from "./piles";
 import { columnAccepts, foundationAccepts } from "./rules";
 import { turnStock } from "./stock";
+import { menuItemAt } from "./menus";
 
 /** A card the pointer resolved to, with the top-left it is drawn at. */
 export interface CardHit {
@@ -207,6 +202,10 @@ export function pointerDown(
   state.pointer.y = y;
   state.pointer.down = true;
   state.lastPress = { x, y, at: state.simTime };
+  // A finger never hovers, so the LANDING is what selects it; a mouse pressed
+  // inside a region has moved onto it already, and selecting again changes
+  // nothing (specs/controls.md).
+  selectItemUnder(state, x, y);
 
   if (state.screen === "won") {
     // A press anywhere, during the cascade or after it, deals a fresh game
@@ -240,6 +239,10 @@ export function pointerMove(
   const dy = y - state.pointer.y;
   state.pointer.x = x;
   state.pointer.y = y;
+  // "A mouse moves onto an item's region, its button up or down" and "a finger
+  // ... travels onto one while down" are the same sample here, and both select
+  // (specs/controls.md).
+  selectItemUnder(state, x, y);
   if (state.drag === null) return;
   // The run keeps the offset it was lifted at, so it travels exactly as far as
   // the pointer does (specs/controls.md).
@@ -248,35 +251,59 @@ export function pointerMove(
   updateDropTarget(state);
 }
 
-/** Activate whatever the press point of a click landed in, on the screen it landed on. */
-function activateClick(
+/**
+ * Activate the item at `menuIndex` on the current screen (specs/screens.md).
+ *
+ * specs/controls.md: "The item every activation acts on is the item at
+ * `menuIndex`, whichever input raised it, and the effect is the one the keyboard
+ * table gives `menu-confirm` on that screen." So a key, a mouse click and a
+ * finger tap all end here.
+ *
+ * The title's two entries also record what they were: specs/screens.md has
+ * `titleIndex` follow the entry last activated there, and both returns to the
+ * title restore `menuIndex` from it ({@link toTitle}).
+ */
+export function activateMenuItem(state: CascadeState, cues: FrameCues): void {
+  const index = state.menuIndex;
+  switch (state.screen) {
+    case "title":
+      if (index === 0) {
+        state.titleIndex = 0;
+        newGame(state, cues);
+      } else if (index === 1) {
+        state.titleIndex = 1;
+        state.screen = "howto";
+        state.menuIndex = 0;
+      }
+      return;
+    case "howto":
+      toTitle(state);
+      return;
+    case "playing":
+      if (index === 0) newGame(state, cues);
+      else if (index === 1) toTitle(state);
+      else if (index === 2) cues.muteToggle = true;
+      return;
+    case "won":
+      return;
+  }
+}
+
+/** The stock, which a click turns when the press landed in its rectangle. */
+function clickOnStock(
   state: CascadeState,
   x: number,
   y: number,
   cues: FrameCues,
 ): void {
-  switch (state.screen) {
-    case "title":
-      if (inRect(TITLE_NEW_GAME, x, y)) newGame(state, cues);
-      else if (inRect(TITLE_HOW_TO, x, y)) state.screen = "howto";
-      return;
-    case "howto":
-      if (inRect(HOWTO_BACK, x, y)) state.screen = "title";
-      return;
-    case "playing":
-      if (inRect(HUD_NEW_GAME, x, y)) {
-        newGame(state, cues);
-      } else if (inRect(HUD_MENU, x, y)) {
-        toTitle(state);
-      } else if (inRect(HUD_SOUND, x, y)) {
-        cues.muteToggle = true;
-      } else if (inRect(dropRect(state, "stock", 0), x, y)) {
-        turnStock(state, cues);
-      }
-      return;
-    case "won":
-      return;
-  }
+  if (state.screen !== "playing") return;
+  if (inRect(dropRect(state, "stock", 0), x, y)) turnStock(state, cues);
+}
+
+/** Select the item whose region holds a point, where one does. */
+function selectItemUnder(state: CascadeState, x: number, y: number): void {
+  const index = menuItemAt(state.screen, x, y);
+  if (index !== null) state.menuIndex = index;
 }
 
 /** A release at a logical stage point. */
@@ -298,6 +325,26 @@ export function pointerUp(
 
   const press = state.lastPress;
   const drag = state.drag;
+
+  // The menu first, and whatever KIND of gesture this was: specs/controls.md has
+  // either kind activate a control "when one control's hit region holds both the
+  // press point and the release point".
+  const pressed =
+    press === null ? null : menuItemAt(state.screen, press.x, press.y);
+  if (pressed !== null && pressed === menuItemAt(state.screen, x, y)) {
+    if (drag !== null) {
+      returnRun(state, drag.cards, {
+        pile: drag.fromPile,
+        index: drag.fromIndex,
+      });
+      state.drag = null;
+    }
+    state.dropTarget = null;
+    state.menuIndex = pressed;
+    activateMenuItem(state, cues);
+    return;
+  }
+
   const click =
     press !== null && Math.hypot(x - press.x, y - press.y) <= DRAG_THRESHOLD;
 
@@ -310,7 +357,7 @@ export function pointerUp(
       state.drag = null;
     }
     state.dropTarget = null;
-    if (press !== null) activateClick(state, press.x, press.y, cues);
+    if (press !== null) clickOnStock(state, press.x, press.y, cues);
     return;
   }
 

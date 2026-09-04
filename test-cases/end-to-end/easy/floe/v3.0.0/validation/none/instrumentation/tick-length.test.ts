@@ -109,7 +109,10 @@ it("spends exactly one one-hundred-and-twentieth of a second per tick", async ()
   const oneTick = await h.snapshot();
   const oneTickX = requireItem(oneTick, vehicle, "one tick of the lane").x;
 
-  await h.advance(TICK_HZ);
+  // ONE call of `advance(120)`, which is what a skip is: the specification's
+  // own claim that "`advance(120)` covers one second of game time" is about the
+  // call rather than about a hundred and twenty of them.
+  await h.skip(1);
   const oneSecond = await h.snapshot();
   const oneSecondX = requireItem(
     oneSecond,

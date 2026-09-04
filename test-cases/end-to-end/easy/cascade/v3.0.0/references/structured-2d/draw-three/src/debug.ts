@@ -62,6 +62,8 @@ import {
 } from "./piles";
 import { pointerDown, pointerMove, pointerUp } from "./pointer";
 import { turnStock } from "./stock";
+import { menuItemRect } from "./menus";
+import type { Rect } from "./layout";
 
 // ---- The snapshot shape (specs/instrumentation.md) -----------------------
 
@@ -111,6 +113,8 @@ export interface SnapshotFlyer {
 export interface CascadeSnapshot {
   version: number;
   screen: Screen;
+  menuIndex: number;
+  titleIndex: number;
   dealMode: string;
   turnCount: number;
   dealModeLabel: string;
@@ -156,7 +160,19 @@ export interface CascadeDebugApi {
   reset(options?: { seed?: number }): void;
   snapshot(): CascadeSnapshot;
 
+  /**
+   * The hit region of item `index` on the menu the current screen shows.
+   *
+   * A READING like `snapshot`: it changes nothing, and it is how this build
+   * reports the layout specs/controls.md leaves to it. `null` on `won`, which
+   * shows no menu, and for an index naming no item of the current screen's menu.
+   */
+  menuItemRect(index: number): Rect | null;
+
   setScreen(screen: Screen): void;
+  /** Set the selected item on the menu the current screen shows. */
+  setMenuIndex(index: number): void;
+  setTitleIndex(index: number): void;
 
   addCard(
     pile: PileKind,
@@ -276,6 +292,8 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
       return {
         version: CASCADE_DEBUG_VERSION,
         screen: state.screen,
+        menuIndex: state.menuIndex,
+        titleIndex: state.titleIndex,
         dealMode: DEAL_MODE,
         turnCount: TURN_COUNT,
         dealModeLabel: DEAL_MODE_LABEL,
@@ -340,8 +358,22 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
       };
     },
 
+    menuItemRect(index) {
+      return menuItemRect(read().screen, index);
+    },
+
     setScreen(screen) {
       read().screen = screen;
+    },
+
+    /** The selected item on the menu the current screen shows. */
+    setMenuIndex(index) {
+      read().menuIndex = index;
+    },
+
+    /** Set the title entry a return to the title restores, and nothing else. */
+    setTitleIndex(index) {
+      read().titleIndex = index;
     },
 
     /**

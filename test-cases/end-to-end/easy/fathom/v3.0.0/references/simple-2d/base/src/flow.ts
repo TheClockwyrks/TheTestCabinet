@@ -181,7 +181,17 @@ function screenHold(screen: Screen): number {
  * because entering it touches a predator.
  */
 export function enterScreen(state: FathomState, screen: Screen): FathomState {
-  return { ...state, screen, screenIn: screenHold(screen) };
+  return {
+    ...state,
+    screen,
+    screenIn: screenHold(screen),
+    // Arriving at the pause menu or the game-over menu selects that menu's first
+    // item, and arriving at the title selects the entry `titleIndex` remembers
+    // (`specs/ui.md`). A gesture half-made on the menu being left cannot carry
+    // across.
+    menuIndex: screen === "title" ? state.titleIndex : 0,
+    pressedItem: null,
+  };
 }
 
 /** The countdown at the top of a maze, which live play resumes through. */
@@ -204,13 +214,19 @@ export function beginLivePlay(state: FathomState): FathomState {
  */
 export function beginDive(state: FathomState): FathomState {
   const fresh = layFreshMaze({ ...state, score: 0, lives: START_LIVES }, 1);
-  return toCountdown({ ...fresh, menuIndex: 0 });
+  return toCountdown(fresh);
 }
 
-/** The title screen, with the run restored to the values a dive begins from. */
+/**
+ * The title screen, with the run restored to the values a dive begins from.
+ *
+ * `titleIndex` is the exception `specs/ui.md` names: it keeps its value across
+ * the return, and `enterScreen` lands the selection on the entry it holds, so
+ * the title comes back on the item the player left it by.
+ */
 export function toTitle(state: FathomState): FathomState {
   const fresh = layFreshMaze({ ...state, score: 0, lives: START_LIVES }, 1);
-  return enterScreen({ ...fresh, menuIndex: 0 }, "title");
+  return enterScreen(fresh, "title");
 }
 
 /** Another attempt at the same maze, at the same depth. */
@@ -223,9 +239,7 @@ export function retryMaze(state: FathomState): FathomState {
  * reserve, in which case the run ends here.
  */
 export function loseLife(state: FathomState): FathomState {
-  if (state.lives <= 0) {
-    return enterScreen({ ...state, menuIndex: 0 }, "gameover");
-  }
+  if (state.lives <= 0) return enterScreen(state, "gameover");
   return retryMaze({ ...state, lives: state.lives - 1 });
 }
 
@@ -268,6 +282,8 @@ export function openingState(
     carry: 0,
     rngState: draws.state,
     menuIndex: 0,
+    titleIndex: 0,
+    pressedItem: null,
     screenIn: 0,
     maze,
     plankton,

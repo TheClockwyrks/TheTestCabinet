@@ -197,7 +197,7 @@ const VANTAGES: readonly { fx: number; fy: number }[] = [
  */
 const SETTLE_TICKS = 2;
 
-/** The output id every point in this category declares for its still. */
+/** The output id most points in this category declare for their still. */
 const OUTPUT = "board";
 
 /** The four ways to stand beside a tile, and the heading that faces it. */
@@ -257,6 +257,7 @@ export async function captureBoard(
   h: Harness,
   board: Board,
   framing: Framing = "board",
+  output: string = OUTPUT,
 ): Promise<void> {
   try {
     await startPlaying(h, { seed: board.seed });
@@ -297,5 +298,5 @@ export async function captureBoard(
       `fathom: could not survey the board for its still: ${String(error)}`,
     );
   }
-  captureStill(h, OUTPUT);
+  captureStill(h, output);
 }

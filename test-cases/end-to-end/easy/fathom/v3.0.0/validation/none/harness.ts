@@ -73,18 +73,33 @@ import {
   gridPoints,
   meanChannel,
   meanOf,
+  mouseGlide,
+  mousePress,
+  mouseRelease,
   ringPoints,
   rgbOf,
   samplePoints,
   sampleRing,
+  touchGlide,
+  touchPress,
+  touchRelease,
   type Harness as BaseHarness,
+  type HarnessOptions,
   type NearSample,
   type Point,
   type Rgb,
+  type TimedCue,
   type UntilResult as BaseUntilResult,
 } from "./case-harness/index";
-import { fail } from "./assert";
-import { STAGE_H, STAGE_W, TICK_HZ, UNBOUND_KEY, type Dir } from "./constants";
+import { assertTruthy, fail } from "./assert";
+import {
+  FATHOM_DEBUG_VERSION,
+  STAGE_H,
+  STAGE_W,
+  TICK_HZ,
+  UNBOUND_KEY,
+  type Dir,
+} from "./constants";
 import { type FixtureBoard, type FixtureOps } from "./fixtures";
 import { tileCenter, type GridFrame, type Tile } from "./maze";
 
@@ -109,7 +124,10 @@ export const REQUIRED_OPS = [
   "advance",
   "reset",
   "snapshot",
+  "menuItemRect",
   "setScreen",
+  "setMenuIndex",
+  "setTitleIndex",
   "setScore",
   "setLives",
   "setDepth",
@@ -137,8 +155,10 @@ export const REQUIRED_OPS = [
   "setInkCooldown",
 ] as const;
 
-/** The version the surface reports (`FATHOM_DEBUG_VERSION`). */
-export const FATHOM_DEBUG_VERSION = 1;
+// The version the surface reports is a figure the specification fixes like every
+// other, so it lives in `constants.ts` with the rest and is re-exported here for
+// the two instrumentation checks that name it off the surface's own description.
+export { FATHOM_DEBUG_VERSION };
 
 /** The seven screens the game is a state machine over (`specs/state.md`). */
 export type Screen =
@@ -149,6 +169,20 @@ export type Screen =
   | "paused"
   | "cleared"
   | "gameover";
+
+/**
+ * A menu item's hit region, as `menuItemRect` reports it
+ * (`specs/instrumentation.md`).
+ *
+ * `x` and `y` are the region's top-left corner and `w` and `h` its size, all in
+ * the logical units `specs/overview.md` fixes the stage in.
+ */
+export interface MenuRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 /** The three hunters. */
 export type PredatorKind = "lanternjaw" | "gloamfin" | "flarefish";
@@ -241,6 +275,19 @@ export interface InkCloudSnapshot {
 export interface FathomSnapshot extends FixtureBoard {
   version: number;
   screen: Screen;
+  /**
+   * The highlighted item on the menu the current screen shows, counted from `0`
+   * over the items `specs/ui.md` lists for that menu.
+   *
+   * `null` on `"howto"`, `"countdown"`, `"playing"` and `"cleared"`, which show
+   * no menu (`specs/state.md`).
+   */
+  menuIndex: number | null;
+  /**
+   * The title menu's remembered selection: the index of the item last confirmed
+   * there, `0` before any of them has been. Never `null` (`specs/state.md`).
+   */
+  titleIndex: number;
   depth: number;
   score: number;
   lives: number;
@@ -302,9 +349,19 @@ export function windowRadius(snapshot: FathomSnapshot): number {
 export interface FathomDebugApi extends FixtureOps {
   setAutoStep(enabled: boolean): Promise<void>;
   advance(ticks: number): Promise<void>;
-  reset(options?: { seed?: number }): Promise<void>;
+  reset(seed?: number): Promise<void>;
   snapshot(): Promise<FathomSnapshot>;
+  /**
+   * The hit region of item `index` on the menu the current screen shows, and
+   * `null` on the four screens that show no menu or for an index that menu does
+   * not hold. A pure reading: it changes nothing.
+   */
+  menuItemRect(index: number): Promise<MenuRect | null>;
   setScreen(s: Screen): Promise<void>;
+  /** Highlights item `index` of the current screen's menu, and nothing else. */
+  setMenuIndex(index: number): Promise<void>;
+  /** Sets the title menu's remembered selection, and nothing else. */
+  setTitleIndex(index: number): Promise<void>;
   setScore(points: number): Promise<void>;
   setLives(n: number): Promise<void>;
   setDepth(d: number): Promise<void>;
@@ -364,6 +421,21 @@ const kit = createCaseHarness<FathomSnapshot, FathomDebugApi>({
   // `UNBOUND_KEY` is bound to nothing (specs/controls.md), so arming changes no
   // game state.
   arm: { kind: "key", code: UNBOUND_KEY },
+  // Fathom's menus take a finger as well as a mouse and the keyboard
+  // (`specs/ui.md`), so the context reports a touchscreen: a contact arrives as
+  // `pointerType: "touch"` and `navigator.maxTouchPoints` is non-zero, which is
+  // the device a build offering touch controls has to believe it is on. The
+  // package defaults it off, and a contact driven on a context without a
+  // touchscreen throws rather than arriving as a mouse.
+  hasTouch: true,
+  // Every text call carries the width it was measured at and the alignment in
+  // force, because four points read a run of text as a PLACE rather than as a
+  // word: `instrumentation/menu-rect` holds a reported region against the point
+  // an item was drawn at, and the `hud/*` points hold each readout inside the
+  // strip `specs/ui.md` gives it. It costs one crossing into the page per frame
+  // read, and the widths are measured in the page against the build's own loaded
+  // fonts, which is the only place they mean anything.
+  measureText: true,
   // One animation frame before a pixel is read. `specs/instrumentation.md` has
   // `advance` redraw the canvas, so on a conforming build the picture is already
   // the one the last tick left — but a build that presents on its own frame
@@ -384,7 +456,6 @@ const kit = createCaseHarness<FathomSnapshot, FathomDebugApi>({
 });
 
 export const {
-  createHarness,
   captureReplay,
   captureStill,
   watchCues,
@@ -396,15 +467,81 @@ export const {
   speedOverTicks,
 } = kit;
 
+/** One step of a {@link Harness.scan}: the clock, what sounded, and the state. */
+export interface ScanReading {
+  /** The harness's own tick counter once the step had run. */
+  tick: number;
+  /** How many sounds the build emitted during it. */
+  sounds: number;
+  /** The state that step left. */
+  snapshot: FathomSnapshot;
+}
+
 /**
  * Everything a check reads off one page running this build.
  *
- * A bound alias of the shared harness's interface, so every
+ * The shared harness's interface bound to this case, so every
  * `import { type Harness } from "../harness"` next door goes on naming a harness
  * whose `snapshot()` is a {@link FathomSnapshot} and whose `debug` is a
- * {@link FathomDebugApi}.
+ * {@link FathomDebugApi} — plus the one reading that is Fathom's own.
  */
-export type Harness = BaseHarness<FathomSnapshot, FathomDebugApi>;
+export interface Harness extends BaseHarness<FathomSnapshot, FathomDebugApi> {
+  /**
+   * Run `ticks` whole ticks in steps of `poll`, and hand back what each step
+   * left: the clock, the sounds the build emitted during it, and the state.
+   *
+   * THE READING THE CADENCE POINTS ARE MADE OF. `specs/progression.md` plays a
+   * cue "on the tick its event happens", and `specs/predators/gloamfin.md` times
+   * a ping's cadence in seconds, so those checks need a SERIES rather than a
+   * final state: what sounded on each step, and what the game looked like when it
+   * did. Neither can be read off a batched `advance`, which reaches the same
+   * state and says nothing about when inside it anything happened.
+   *
+   * The sounds come from a cue sink opened for this scan alone, which the shared
+   * harness stamps with the tick that emitted each one — so a step's own count is
+   * the sounds that arrived while it ran, however many ticks it covered.
+   */
+  scan(ticks: number, poll?: number): Promise<ScanReading[]>;
+}
+
+/**
+ * Open a page on this build, with Fathom's own readings bound onto the harness.
+ *
+ * The shared factory does the work; what is added here is {@link Harness.scan},
+ * which is the case's rather than the package's.
+ */
+export async function createHarness(
+  options?: HarnessOptions,
+): Promise<Harness> {
+  const base = await kit.createHarness(options);
+  // ONE CUE SINK PER PAGE, opened on the first scan and kept. A sink attached by
+  // `watchCues` cannot be detached, and every later tick pushes into every sink
+  // there is, so opening one per call would make a scan in a loop cost more with
+  // each turn of it. What a reading reports is the sounds since the LAST reading,
+  // so a sink that carries earlier scans' cues is read from where this one starts.
+  let played: TimedCue[] | null = null;
+  return Object.assign(base, {
+    async scan(ticks: number, poll = 1): Promise<ScanReading[]> {
+      played ??= kit.watchCues(base);
+      const readings: ScanReading[] = [];
+      let heard = played.length;
+      let covered = 0;
+      const stride = Math.max(1, Math.floor(poll));
+      while (covered < ticks) {
+        const step = Math.min(stride, ticks - covered);
+        const snapshot = await base.step(step);
+        covered += step;
+        readings.push({
+          tick: base.tick(),
+          sounds: played.length - heard,
+          snapshot,
+        });
+        heard = played.length;
+      }
+      return readings;
+    },
+  });
+}
 
 /** What a sweep found: whether the predicate ever held, and where it stopped. */
 export type UntilResult = BaseUntilResult<FathomSnapshot>;
@@ -462,9 +599,155 @@ export async function startPlaying(
   h: Harness,
   seed?: number,
 ): Promise<FathomSnapshot> {
-  await h.debug.reset(seed === undefined ? undefined : { seed });
+  await h.debug.reset(seed);
   await h.debug.setScreen("playing");
   return h.snapshot();
+}
+
+/**
+ * Return the game to its title screen: `reset`, and nothing else.
+ *
+ * `reset` puts every declared field at its title-screen value
+ * (`specs/instrumentation.md`), which includes `menuIndex` and `titleIndex` at
+ * `0`, so a menu check that opens here knows the selection it starts from
+ * without posing one.
+ */
+export async function openTitle(h: Harness, seed?: number): Promise<void> {
+  await h.debug.reset(seed);
+}
+
+/* ---- Menus, driven by a real mouse and a real finger ---------------------- */
+//
+// The menus take a pointer and a touch contact as well as the keyboard
+// (`specs/ui.md`), and WHERE a build lays the items out is the build's own — so a
+// check asks the build where it put an item, through `menuItemRect`
+// (`specs/instrumentation.md`), and drives Chromium's real mouse or a real touch
+// contact at that region. Nothing here poses a pointer through the surface: a
+// pose would tell the build where the pointer is without making its own input
+// layer see a press, a travel and a release the way a hand does, and what those
+// checks are about is precisely that the build reads them.
+//
+// Each part of a gesture runs exactly ONE driven frame, so a caller counting
+// frames can add them up. That comes from the shared harness's drivers, and this
+// file spells no gesture of its own.
+
+/**
+ * Where the build put item `index` of the menu the current screen shows.
+ *
+ * Fails by assertion when the build reports no region for an item its own menu
+ * shows, so the point names that fault rather than dividing by a `null` several
+ * lines later. A check that is ABOUT the reading returning `null` — on the four
+ * screens that show no menu, or past the end of a menu — calls
+ * `h.debug.menuItemRect` directly.
+ */
+export async function menuRect(h: Harness, index: number): Promise<MenuRect> {
+  const rect = await h.debug.menuItemRect(index);
+  assertTruthy(
+    rect,
+    `menuItemRect(${index}) to report the hit region of item ${index} on the ` +
+      "menu the current screen shows (specs/instrumentation.md)",
+  );
+  return rect as MenuRect;
+}
+
+/** The middle of a hit region: where a gesture aimed at that item lands. */
+export function rectCenter(rect: MenuRect): Point {
+  return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+}
+
+/** Move the real mouse onto item `index`, and run the frame that reads it. */
+export async function pointerOntoItem(
+  h: Harness,
+  index: number,
+): Promise<void> {
+  const at = rectCenter(await menuRect(h, index));
+  await mouseGlide(h, at.x, at.y);
+}
+
+/** Press and release the real mouse inside item `index`'s region: two frames. */
+export async function clickItem(h: Harness, index: number): Promise<void> {
+  const at = rectCenter(await menuRect(h, index));
+  await mousePress(h, at.x, at.y);
+  await mouseRelease(h);
+}
+
+/**
+ * Press on one item, travel to another, and release there: three driven frames.
+ *
+ * The two edges fall in different regions, so this confirms nothing — the
+ * affordance that lets a player slide off a control to cancel, which
+ * `specs/ui.md` states and a check reads back as a screen that did not change.
+ */
+export async function dragBetweenItems(
+  h: Harness,
+  from: number,
+  to: number,
+): Promise<void> {
+  const start = rectCenter(await menuRect(h, from));
+  const end = rectCenter(await menuRect(h, to));
+  await mousePress(h, start.x, start.y);
+  await mouseGlide(h, end.x, end.y);
+  await mouseRelease(h);
+}
+
+/**
+ * Land a real touch contact inside item `index`'s region and LEAVE IT DOWN.
+ *
+ * A confirm takes both of its edges inside one region and the lift is the second
+ * of them (`specs/ui.md`), so a gesture that stops at the landing is the one
+ * gesture that isolates what the landing alone did.
+ */
+export async function touchOntoItem(h: Harness, index: number): Promise<void> {
+  const at = rectCenter(await menuRect(h, index));
+  await touchPress(h, at.x, at.y);
+}
+
+/**
+ * Land a real touch contact inside item `index`'s region and lift it there.
+ *
+ * The landing selects the item as well as confirming it, because a finger does
+ * not hover (`specs/ui.md`) — which is the difference between this and
+ * {@link clickItem}, and the reason both exist.
+ */
+export async function tapItem(h: Harness, index: number): Promise<void> {
+  const at = rectCenter(await menuRect(h, index));
+  await touchPress(h, at.x, at.y);
+  await touchRelease(h);
+}
+
+/**
+ * Press and release the real mouse at one point of the stage: two frames.
+ *
+ * For a screen that carries no item regions. `specs/ui.md` gives a gesture
+ * completed on `"howto"` its effect anywhere on the screen rather than over a
+ * region the build laid out, so there is nothing to ask `menuItemRect` for.
+ */
+export async function clickScreenAt(h: Harness, at: Point): Promise<void> {
+  await mousePress(h, at.x, at.y);
+  await mouseRelease(h);
+}
+
+/**
+ * Land and lift a real touch contact at one point of the stage: two frames.
+ *
+ * The counterpart of {@link clickScreenAt} for a finger, and for the same reason.
+ */
+export async function tapScreenAt(h: Harness, at: Point): Promise<void> {
+  await touchPress(h, at.x, at.y);
+  await touchRelease(h);
+}
+
+/** Land a contact on one item, travel to another, and lift there: confirms nothing. */
+export async function touchBetweenItems(
+  h: Harness,
+  from: number,
+  to: number,
+): Promise<void> {
+  const start = rectCenter(await menuRect(h, from));
+  const end = rectCenter(await menuRect(h, to));
+  await touchPress(h, start.x, start.y);
+  await touchGlide(h, end.x, end.y);
+  await touchRelease(h);
 }
 
 /* ---- Reading colors ------------------------------------------------------- */

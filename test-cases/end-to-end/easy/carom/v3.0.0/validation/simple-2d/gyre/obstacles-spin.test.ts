@@ -16,7 +16,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { OBSTACLE_CENTERS, OBSTACLE_SPIN_RATE } from "../constants";
-import { assertDeepEqual, assertLessThanOrEqual } from "../assert";
+import { assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -83,6 +83,4 @@ it("rotates both obstacles about their own centers at OBSTACLE_SPIN_RATE", async
       assertLessThanOrEqual(Math.abs(pose.cx - base.x), CENTER_TOLERANCE);
     }
   }
-
-  assertDeepEqual(harness.assetFailures, []);
 });

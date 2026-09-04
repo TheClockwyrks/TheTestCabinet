@@ -44,6 +44,8 @@ function emptyPiles(): Pick<
 export function openingState(): CascadeState {
   return {
     screen: "title",
+    menuIndex: 0,
+    titleIndex: 0,
     ...emptyPiles(),
 
     drag: null,

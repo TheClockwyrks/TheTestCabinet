@@ -7,7 +7,7 @@
 // grades that pair as a pair; this point is the `pause` action resuming on its
 // own, with nothing else on the frame that could have done it in its place.
 //
-// The pause menu is posed over a live match with `openPauseMenu`, which sets
+// The pause menu is posed over an EMPTIED field with `reachPaused`, which sets
 // what specs/ui.md says a `pause` edge sets: `resumeScreen = playing` and
 // `menuIndex = 0`. The key that OPENS the menu is `controls-solo/p`'s point and
 // `controls-versus/p`'s — pressing `KeyP` to arrive here would grade that key

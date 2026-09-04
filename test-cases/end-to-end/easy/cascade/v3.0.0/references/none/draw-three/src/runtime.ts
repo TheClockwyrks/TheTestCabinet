@@ -32,7 +32,12 @@
 // left.
 
 import { AudioBus, type AudioContextSource, type CueSpec } from "./audio-bus";
-import { KeyWatcher } from "./keyboard";
+import {
+  KeyWatcher,
+  MenuEdges,
+  type MenuAction,
+  type MenuBindings,
+} from "./keyboard";
 import { Diagnostics, OVERLAY_KEY } from "./overlay";
 import {
   asPointerEvent,
@@ -87,6 +92,10 @@ export interface InitApi {
  * read with no drawing taking part in the result.
  */
 export interface UpdateApi {
+  readonly keys: {
+    /** This frame's menu-action press edges, in arrival order. Consumes them. */
+    edges(): MenuAction[];
+  };
   readonly audio: {
     /** Play a declared cue. */
     play(cue: string): void;
@@ -128,6 +137,8 @@ export interface RuntimeOptions<S> {
   height: number;
   /** The game this runtime drives, bound for its lifetime. */
   game: Game<S>;
+  /** Which `KeyboardEvent.code`s raise each of the four menu actions. */
+  menuBindings: MenuBindings;
   /** The CSS color the whole canvas is cleared to before every frame. */
   background: string;
   /** Where size, pixel density and events come from; defaults to the DOM. */
@@ -161,6 +172,10 @@ export interface Runtime<S> {
    * the call returns. The same path a real pointer event takes.
    */
   pointer(phase: PointerPhase, x: number, y: number): void;
+  /** Mute or unmute the runtime's audio bus. */
+  setMuted(muted: boolean): void;
+  /** Whether that bus is muted. */
+  muted(): boolean;
   /** The frame counter, the simulated time, and the most recent delta. */
   frame(): FrameInfo;
   /** The current logical-to-device fit. */
@@ -183,6 +198,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
   const audio = new AudioBus(options.audioContext);
   const diagnostics = new Diagnostics();
   const keys = new KeyWatcher();
+  const menuEdges = new MenuEdges(options.menuBindings);
 
   let live: { value: S } | null = null;
   let viewport = fit();
@@ -256,6 +272,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
   }
 
   const updateApi: UpdateApi = {
+    keys: { edges: () => menuEdges.take() },
     audio: {
       play: (cue) => audio.play(cue),
       setMuted: (muted) => audio.setMuted(muted),
@@ -280,6 +297,9 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
 
     const ctx = openFrame();
     game.update(state.value, updateApi, seconds);
+    // An edge nothing consumed is discarded, so one frame cannot leave a press
+    // to surface later, out of order.
+    menuEdges.clear();
     game.render(state.value, { ctx });
     // Drawn after the game and through the same context, with the transform
     // reset: the panel is chrome over the finished picture, not part of it.
@@ -353,6 +373,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
   }
 
   const onKey = (event: Event): void => {
+    if (menuEdges.handle(event)) return;
     keys.handle(event);
   };
 
@@ -435,6 +456,10 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
     pointer(phase: PointerPhase, x: number, y: number): void {
       deliver({ phase, x, y });
     },
+
+    setMuted: (muted) => audio.setMuted(muted),
+
+    muted: () => audio.muted(),
 
     frame: () => ({ count, time, dt }),
 

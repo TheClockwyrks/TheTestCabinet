@@ -65,25 +65,24 @@ export const HUD_H = 36;
 
 // ---- Controls (specs/controls.md) ----------------------------------------
 
-/** An axis-aligned rectangle, as a hit target. */
-export interface Rect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
+/** The four menu actions specs/controls.md names, as the engine registers them. */
+export const MENU_UP = "menu-up";
+export const MENU_DOWN = "menu-down";
+export const MENU_CONFIRM = "menu-confirm";
+export const MENU_BACK = "menu-back";
 
-/** The two title-screen items. */
-export const TITLE_NEW_GAME: Rect = { x: 480, y: 448, w: 320, h: 52 };
-export const TITLE_HOW_TO: Rect = { x: 480, y: 516, w: 320, h: 52 };
-
-/** The how-to screen's way back. */
-export const HOWTO_BACK: Rect = { x: 480, y: 600, w: 320, h: 52 };
-
-/** The three HUD controls, left to right within the HUD strip. */
-export const HUD_NEW_GAME: Rect = { x: 224, y: 680, w: 180, h: 36 };
-export const HUD_MENU: Rect = { x: 420, y: 680, w: 120, h: 36 };
-export const HUD_SOUND: Rect = { x: 556, y: 680, w: 120, h: 36 };
+/**
+ * The `KeyboardEvent.code` values specs/controls.md binds each action to.
+ *
+ * Codes rather than keys, so the bindings hold on any layout. An action bound to
+ * two codes is one action: either raises it.
+ */
+export const MENU_BINDINGS: Readonly<Record<string, readonly string[]>> = {
+  [MENU_UP]: ["ArrowUp", "KeyW"],
+  [MENU_DOWN]: ["ArrowDown", "KeyS"],
+  [MENU_CONFIRM]: ["Enter", "Space"],
+  [MENU_BACK]: ["Escape"],
+};
 
 /**
  * How far a release may lie from its press and still be a CLICK rather than a

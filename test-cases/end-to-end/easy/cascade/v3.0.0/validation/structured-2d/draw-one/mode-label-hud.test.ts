@@ -47,9 +47,7 @@ import {
   openTable,
   type Harness,
 } from "../harness";
-
-/** specs/stock.md: this variant's `DEAL_MODE_LABEL`, the literal a build draws. */
-const DEAL_MODE_LABEL = "DRAW ONE";
+import { DEAL_MODE_LABEL } from "./constants";
 
 /**
  * `DEAL_MODE_LABEL`'s words, in order, however the build spaces or splits them.

@@ -126,6 +126,9 @@ export function newGame(state: CascadeState): Outcome {
     state: {
       ...dealt.state,
       screen: "playing",
+      // "Every deal that begins play selects the first of them, so
+      // `menuIndex` is `0` when a fresh game starts" (specs/screens.md).
+      menuIndex: 0,
       drag: null,
       dropTarget: null,
       flyers: [],

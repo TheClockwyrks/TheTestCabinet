@@ -166,6 +166,8 @@ export interface Runtime<S> {
   frame(): FrameInfo;
   /** The current logical-to-device fit. */
   viewport(): Viewport;
+  /** Set the audio bus's mute bit, the same bit the `mute` action toggles. */
+  setMuted(muted: boolean): void;
   /** Halt the loop, drop every listener, and release the canvas. */
   destroy(): void;
 }
@@ -435,6 +437,10 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
     frame: () => ({ count, time, dt }),
 
     viewport: () => viewport,
+
+    setMuted(muted: boolean): void {
+      audio.setMuted(muted);
+    },
 
     destroy(): void {
       if (destroyed) return;

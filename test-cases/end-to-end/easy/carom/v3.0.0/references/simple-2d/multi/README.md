@@ -180,6 +180,8 @@ every declared field at once, leaving only the mute bit alone.
 - **The AI.** `setAiTracking(state, enabled)` and `setAiMovement(state, enabled)`
   gate the opponent's two faculties separately: sensing the balls, and travelling
   toward the target.
+- **Audio.** `setMuted(state, muted)` sets the mute bit the `mute` action
+  toggles. The state carries it and `update` brings the engine's bus into line.
 - **Readings.** `snapshot(state)` returns the whole declared state as plain JSON —
   every field an operation sets appears there — and `menuItemRect(state, index)`
   returns the hit region of an item on the menu the current screen shows, or

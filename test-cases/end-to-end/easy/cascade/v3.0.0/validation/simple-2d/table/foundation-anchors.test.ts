@@ -27,7 +27,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { fail } from "../assert";
-import { FOUNDATION_X, TOP_ROW_Y } from "../constants";
+import { FOUNDATION_X, TOP_ROW_GAP_X, TOP_ROW_Y } from "../constants";
 import {
   boxAt,
   captureStill,
@@ -49,9 +49,6 @@ import { CARD_SEARCH_TOLERANCE, cardCorners } from "./geometry";
  * apart, so no card can be read at the wrong one.
  */
 const ANCHOR_TOLERANCE = 2;
-
-/** The column position the top row leaves bare (specs/table.md). */
-const BARE_X = 468;
 
 /** One Ace per foundation, in the suit order a deck is built in. */
 const ACES = ["AS", "AH", "AD", "AC"];
@@ -89,10 +86,10 @@ it("draws each foundation's card at its own anchor and none at 468", async () =>
     }
   }
 
-  const intruder = boxAt(boxes, BARE_X, TOP_ROW_Y, ANCHOR_TOLERANCE);
+  const intruder = boxAt(boxes, TOP_ROW_GAP_X, TOP_ROW_Y, ANCHOR_TOLERANCE);
   if (intruder !== null) {
     fail(
-      `no card-sized box at (${BARE_X}, ${TOP_ROW_Y}): the third column ` +
+      `no card-sized box at (${TOP_ROW_GAP_X}, ${TOP_ROW_Y}): the third column ` +
         `position carries no pile in the top row (specs/table.md)`,
       cardCorners([intruder]),
     );

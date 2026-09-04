@@ -16,7 +16,8 @@
 // the run and fails.
 //
 // The release is carried far past `DRAG_THRESHOLD` (`5`), so it is a drop rather
-// than a click; `handling/drag-threshold` is what grades that boundary.
+// than a click; `handling/short-gesture-is-a-click` and `handling/long-gesture-is-a-drop` grade
+// that boundary.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual } from "../assert";

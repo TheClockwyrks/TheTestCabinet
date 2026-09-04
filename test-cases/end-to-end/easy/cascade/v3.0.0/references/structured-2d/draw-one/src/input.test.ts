@@ -11,17 +11,19 @@ import {
   DOUBLE_CLICK_WINDOW,
   DRAG_THRESHOLD,
   FOUNDATION_X,
-  HUD_MENU,
-  HUD_NEW_GAME,
-  HUD_SOUND,
-  HOWTO_BACK,
   STOCK_X,
   TABLEAU_Y,
-  TITLE_HOW_TO,
-  TITLE_NEW_GAME,
   TOP_ROW_Y,
   WASTE_X,
 } from "./constants";
+import {
+  HOWTO_BACK,
+  HUD_MENU,
+  HUD_NEW_GAME,
+  HUD_SOUND,
+  TITLE_HOW_TO,
+  TITLE_NEW_GAME,
+} from "./menus";
 import {
   createHarness,
   openTable,

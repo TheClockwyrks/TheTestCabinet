@@ -34,7 +34,7 @@
 //
 // WHAT THIS DOES NOT DECIDE. That the `SOUND` control is drawn and labelled, and
 // that clicking it flips the reported bit, are `screens/hud-labels-drawn`'s and
-// `screens/hud-sound-toggles`'s requirements. This point reads what the mute did
+// `screens/hud-sound-mutes`'s requirements. This point reads what the mute did
 // to the sound.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -44,15 +44,16 @@ import {
   assertGreaterThan,
   assertNotNull,
 } from "../assert";
-import { DOUBLE_CLICK_WINDOW, HUD_SOUND } from "../constants";
+import { DOUBLE_CLICK_WINDOW, HUD_SOUND_ITEM } from "../constants";
 import {
   captureStill,
   card,
-  clickControl,
+  clickAt,
   createHarness,
   dropRectIn,
   framesFor,
   grabPoint,
+  menuPoint,
   movePointerTo,
   openTable,
   poseColumn,
@@ -124,13 +125,13 @@ it("sounds nothing at all once the SOUND control has muted the game, through a t
       "rather than off (specs/audio.md)",
   );
 
-  clickControl(h, HUD_SOUND);
+  clickAt(h, menuPoint(h, HUD_SOUND_ITEM).x, menuPoint(h, HUD_SOUND_ITEM).y);
   await h.advance(1);
   assertEqual(
     h.snapshot().muted,
     true,
-    "the mute bit the snapshot reports after one click inside the HUD's SOUND " +
-      "rectangle (specs/audio.md, specs/screens.md)",
+    "the mute bit the snapshot reports after one click inside the region the build " +
+      "reports for its SOUND item (specs/audio.md, specs/screens.md)",
   );
 
   // Everything the bus announces from here on is read, whatever its name.

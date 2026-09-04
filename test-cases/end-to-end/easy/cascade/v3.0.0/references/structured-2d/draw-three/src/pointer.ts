@@ -38,12 +38,6 @@ import {
   DOUBLE_CLICK_SLOP,
   DOUBLE_CLICK_WINDOW,
   DRAG_THRESHOLD,
-  HOWTO_BACK,
-  HUD_MENU,
-  HUD_NEW_GAME,
-  HUD_SOUND,
-  TITLE_HOW_TO,
-  TITLE_NEW_GAME,
 } from "./constants";
 import { newGame, toTitle } from "./flow";
 import type { CascadeState } from "./game";
@@ -56,6 +50,7 @@ import {
 } from "./layout";
 import { accepts } from "./moves";
 import { turnStock } from "./stock";
+import { menuItemAt } from "./menus";
 
 /** The distance between two stage points. */
 function distance(ax: number, ay: number, bx: number, by: number): number {
@@ -115,31 +110,50 @@ function grab(
 }
 
 /**
- * Activate the control whose rectangle contains a click's press point. A control
- * answers only on the screen it belongs to.
+ * Activate the item at `menuIndex` on the current screen (specs/screens.md).
+ *
+ * specs/controls.md: "The item every activation acts on is the item at
+ * `menuIndex`, whichever input raised it, and the effect is the one the keyboard
+ * table gives `menu-confirm` on that screen." So a key, a mouse click and a
+ * finger tap all end here.
+ *
+ * The title's two entries also record what they were: specs/screens.md has
+ * `titleIndex` follow the entry last activated there, and both returns to the
+ * title restore `menuIndex` from it ({@link toTitle}).
  */
-function activateControl(
+export function activateMenuItem(
   state: CascadeState,
-  x: number,
-  y: number,
   events: FrameEvents,
 ): void {
+  const index = state.menuIndex;
   switch (state.screen) {
     case "title":
-      if (rectContains(TITLE_NEW_GAME, x, y)) newGame(state, events);
-      else if (rectContains(TITLE_HOW_TO, x, y)) state.screen = "howto";
+      if (index === 0) {
+        state.titleIndex = 0;
+        newGame(state, events);
+      } else if (index === 1) {
+        state.titleIndex = 1;
+        state.screen = "howto";
+        state.menuIndex = 0;
+      }
       return;
     case "howto":
-      if (rectContains(HOWTO_BACK, x, y)) toTitle(state);
+      toTitle(state);
       return;
     case "playing":
-      if (rectContains(HUD_NEW_GAME, x, y)) newGame(state, events);
-      else if (rectContains(HUD_MENU, x, y)) toTitle(state);
-      else if (rectContains(HUD_SOUND, x, y)) events.toggleMute = true;
+      if (index === 0) newGame(state, events);
+      else if (index === 1) toTitle(state);
+      else if (index === 2) events.toggleMute = true;
       return;
     case "won":
       return;
   }
+}
+
+/** Select the item whose region holds a point, where one does. */
+function selectItemUnder(state: CascadeState, x: number, y: number): void {
+  const index = menuItemAt(state.screen, x, y);
+  if (index !== null) state.menuIndex = index;
 }
 
 /** A press at a logical stage point. */
@@ -154,6 +168,10 @@ export function pointerDown(
   // Every press records its point and the game time it arrived at, and that is
   // the press the next one is measured against.
   state.lastPress = { x, y, at: state.simTime };
+  // A finger never hovers, so the LANDING is what selects it; a mouse pressed
+  // inside a region has moved onto it already, and selecting again changes
+  // nothing (specs/controls.md).
+  selectItemUnder(state, x, y);
 
   if (state.screen === "won") {
     // A press anywhere, during the cascade or after it, deals a fresh game and
@@ -196,6 +214,10 @@ export function pointerMove(
   const dy = y - state.pointer.y;
   state.pointer.x = x;
   state.pointer.y = y;
+  // "A mouse moves onto an item's region, its button up or down" and "a finger
+  // ... travels onto one while down" are the same sample here, and both select
+  // (specs/controls.md).
+  selectItemUnder(state, x, y);
 
   const drag = state.drag;
   if (drag === null) return;
@@ -228,6 +250,24 @@ export function pointerUp(
   // A release that no press opened changes nothing.
   if (!held || press === null) return;
 
+  // The menu first, and whatever KIND of gesture this was: specs/controls.md has
+  // either kind activate a control "when one control's hit region holds both the
+  // press point and the release point".
+  const pressed = menuItemAt(state.screen, press.x, press.y);
+  if (pressed !== null && pressed === menuItemAt(state.screen, x, y)) {
+    if (drag !== null) {
+      returnRun(state, {
+        run: drag.cards,
+        from: { pile: drag.fromPile, index: drag.fromIndex },
+      });
+      state.drag = null;
+    }
+    state.dropTarget = null;
+    state.menuIndex = pressed;
+    activateMenuItem(state, events);
+    return;
+  }
+
   if (distance(x, y, press.x, press.y) <= DRAG_THRESHOLD) {
     resolveClick(state, drag, press.x, press.y, events);
     return;
@@ -251,8 +291,6 @@ function resolveClick(
     state.drag = null;
   }
   state.dropTarget = null;
-
-  activateControl(state, pressX, pressY, events);
 
   if (state.screen !== "playing") return;
   const stock = dropRect(state, "stock", 0);

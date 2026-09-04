@@ -1,90 +1,38 @@
-// instrumentation/surface-present — the debug and automation surface the build
-// installs is there, is whole, and is wired to the running game rather than to a
-// plausible-looking object.
+// instrumentation/surface-present — every operation the specification names is a
+// function on the surface the build installed.
 //
 // THE RULE. `specs/instrumentation.md` makes the surface a deliverable: "the
 // build installs the finished surface on `window.__cascade` as soon as the game
 // has initialized", and "Every scenario driven from code reaches the game through
-// it, so it is present and exactly as specified here". It carries `version`
-// (`CASCADE_DEBUG_VERSION`, `1`) and every operation that file names — which under
-// this engine includes the two clock operations, `setAutoStep` and `advance`,
-// that exist only where nothing outside the build owns the clock. So the first
-// half of this point is reflection: each operation is present, as a function,
-// under the name the specification gives it, and the version reads `1`.
+// it, so it is present and exactly as specified here." Under this engine that
+// includes the two clock operations, `setAutoStep` and `advance`, and the
+// `setMuted` that exists only where nothing outside the build owns the mute bit.
 //
-// THE SECOND HALF IS THE ONE THAT MATTERS. A surface that answers every call and
-// reports a state unconnected to the game passes reflection and then fails every
-// other point in this suite for reasons that name the wrong mechanic. So the
-// surface is driven both ways round: a POSE is read back, and an EVENT is applied
-// by the game's own rules.
+// WHY IT IS `broken`. Every other point in this suite reaches the game through
+// this surface, so a build missing one operation loses the points that operation
+// carries and this one besides — and the failure below names the operation rather
+// than leaving fifty checks to fail on a call that was never there.
 //
-//   - `addCard` puts one named card on a column and `snapshot` reports that card,
-//     on that column, with the face it was given.
-//   - `move` sends an Ace from a column to an empty foundation, which
-//     `specs/foundations.md` accepts, and the card is reported on the foundation
-//     afterwards with the column left empty.
+// IT IS REFLECTION AND NOTHING ELSE. Each name is read with `typeof`, invoking
+// nothing, so a build whose operations throw is still told which ones it has.
+// That the surface is WIRED to the running game is
+// `instrumentation/surface-live`'s, and the version it reports is
+// `instrumentation/surface-version`'s.
 //
-// THE POSED CARD IS THE DISTINGUISHING ONE. It is the seven of hearts posed
-// FACE-DOWN, so each wrong model reads as a different answer: a build whose
-// `addCard` ignores `faceUp` reports it face-up, one that ignores the suit or the
-// rank reports another card, one that adds to the wrong pile reports an empty
-// column, and one whose surface is a fiction reports nothing at all.
-//
-// WHAT THIS DOES NOT DECIDE. Not what any particular operation means — every one
-// of them has its own point in this group — and not the foundation rule the move
-// leans on, which is `foundations/accepts-ace-when-empty`'s. This point decides
-// only that the surface exists, is complete, and reaches the running game.
+// THE LIST IS `REQUIRED_OPS`, which `harness.ts` states in the order
+// `specs/instrumentation.md` names them, so a build missing anything is named for
+// exactly what it is missing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CASCADE_DEBUG_VERSION, RANK_MIN } from "../constants";
-import { assertEqual, assertLength } from "../assert";
+import { assertEqual } from "../assert";
 import {
   captureStill,
-  card,
   createHarness,
   failSurface,
   openTable,
-  pileOf,
-  poseColumn,
   REQUIRED_OPS,
-  topOf,
-  type CardView,
   type Harness,
 } from "../harness";
-
-/** The column the posed card is put on, and the card itself. */
-const POSED_COLUMN = 3;
-
-/**
- * The card posed onto it: the seven of hearts, FACE-DOWN.
- *
- * The distinguishing pose. `addCard` takes a suit, a rank and a face
- * (`specs/instrumentation.md`), and a build that drops any one of the three reads
- * back as a different card — face-up, another suit, another rank — rather than as
- * a single indistinct wrong answer.
- */
-const POSED_CARD = "7H";
-const POSED_FACE_UP = false;
-
-/** The column the Ace is moved from, and the foundation it is moved to. */
-const MOVE_COLUMN = 0;
-const MOVE_FOUNDATION = 0;
-
-/** The Ace that is sent home: an empty foundation accepts an Ace of any suit. */
-const MOVED_CARD = "AS";
-
-/** One card as `"suit-rank-face"`, so a wrong face reads as a wrong card. */
-function print(view: CardView | undefined): string {
-  return view === undefined
-    ? "no card"
-    : `${view.suit}-${view.rank}-${view.faceUp ? "up" : "down"}`;
-}
-
-/** The same, for a card this check named rather than read. */
-function printed(text: string, faceUp: boolean): string {
-  const spec = card(text, faceUp);
-  return `${spec.suit}-${spec.rank}-${faceUp ? "up" : "down"}`;
-}
 
 let h: Harness;
 
@@ -96,21 +44,20 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("carries every documented operation and drives the running game", async () => {
-  // The surface itself first, so a build that installed nothing — or installed
-  // something incomplete — is named for exactly that rather than failing later
-  // on a call it never had.
+it("carries every documented operation as a function", async () => {
+  // The surface itself first, so a build that installed nothing — or something
+  // incomplete — is named for exactly that rather than failing later on a call
+  // it never had.
   if (h.surfaceFault !== null) failSurface(h.surfaceFault);
 
-  // Reflection through reads that invoke nothing, so a build missing one
-  // operation is told which one.
   const probed = await h.probe(REQUIRED_OPS);
-  assertEqual(
-    probed.version,
-    CASCADE_DEBUG_VERSION,
-    `window.__cascade.version, which specs/instrumentation.md fixes as ` +
-      `CASCADE_DEBUG_VERSION (${CASCADE_DEBUG_VERSION})`,
-  );
+
+  await openTable(h);
+  await h.advance(1);
+  // Before the assertions, so a missing operation still leaves the picture of
+  // the table the surface was read off.
+  await captureStill(h, "surface");
+
   for (const op of REQUIRED_OPS) {
     assertEqual(
       probed.ops[op],
@@ -119,56 +66,4 @@ it("carries every documented operation and drives the running game", async () =>
         `requires on the surface`,
     );
   }
-
-  // An empty table, live and at rest: nothing on it but the two cards below.
-  await openTable(h);
-
-  await poseColumn(h, POSED_COLUMN, [card(POSED_CARD, POSED_FACE_UP)]);
-  await poseColumn(h, MOVE_COLUMN, [card(MOVED_CARD)]);
-
-  // Read before a frame runs: the harness holds the game off the wall clock, so
-  // nothing stands between the pose and the reading that checks it.
-  const posed = await h.snapshot();
-
-  const accepted = await h.debug.move(
-    "tableau",
-    MOVE_COLUMN,
-    0,
-    "foundation",
-    MOVE_FOUNDATION,
-  );
-  const applied = await h.snapshot();
-
-  await h.advance(1);
-  // Before the assertions, so a failing check still leaves the picture of the
-  // board the surface drove.
-  await captureStill(h, "live");
-
-  assertEqual(
-    print(topOf(pileOf(posed, "tableau", POSED_COLUMN))),
-    printed(POSED_CARD, POSED_FACE_UP),
-    `the card snapshot() reports on column ${POSED_COLUMN} after ` +
-      `addCard("tableau", ${POSED_COLUMN}, "hearts", 7, ${POSED_FACE_UP}) — ` +
-      `"no card" means the pose never reached the game`,
-  );
-
-  assertEqual(
-    accepted,
-    true,
-    `the verdict move() returned on sending the ${MOVED_CARD} from column ` +
-      `${MOVE_COLUMN} to the empty foundation ${MOVE_FOUNDATION}, which ` +
-      `accepts an Ace of any suit (specs/foundations.md)`,
-  );
-  assertEqual(
-    print(topOf(pileOf(applied, "foundation", MOVE_FOUNDATION))),
-    printed(MOVED_CARD, true),
-    `the card on foundation ${MOVE_FOUNDATION} once the move was accepted — ` +
-      `a pose the game's own rules never acted on leaves it empty`,
-  );
-  assertLength(
-    pileOf(applied, "tableau", MOVE_COLUMN),
-    0,
-    `the cards left in column ${MOVE_COLUMN} once its only card, of rank ` +
-      `${RANK_MIN}, went home`,
-  );
 });

@@ -1,5 +1,5 @@
 // Carom — ui/state-matchover: winning a match opens the match-over screen, which
-// draws its menu and the final score.
+// draws its menu.
 //
 // The match is ended for real, and that is what separates this point from the
 // navigation checks that pose the screen: the score is set one point short of the
@@ -16,20 +16,21 @@
 // takes a paddle.
 //
 // The two entries are the case's own, MATCHOVER_ITEMS from
-// `validation/constants.ts`, and the screen "displays the winning side and the
-// final score" (specs/ui.md): the final score here is 11-0, so the frame's text
-// must carry both figures. Matching is by substring, because a selected entry is
-// commonly drawn with a marker beside it.
+// `validation/constants.ts`. Matching is by substring, because a selected entry
+// is commonly drawn with a marker beside it.//
+// THE FINAL SCORE IS `ui/state-matchover-score`'S POINT. A build that offers the
+// two entries but tells the player nothing about how the match ended is not the
+// same build as one that shows neither, so the two halves are graded apart and
+// capped apart.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { MATCHOVER_ITEMS, WIN_SCORE } from "../constants";
-import { assertDeepEqual, assertEqual, assertMatches } from "../assert";
+import { assertDeepEqual, assertEqual } from "../assert";
 import {
   arrangeGoal,
   arrangeMatchPoint,
   captureStill,
   createHarness,
-  drawnText,
   drewText,
   driveGoal,
   enterPlaying,
@@ -46,7 +47,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("ends the match on the winning point and draws the match-over menu and score", async () => {
+it("ends the match on the winning point and draws the match-over menu", async () => {
   enterPlaying(h, "versus");
   arrangeMatchPoint(h, "left");
   arrangeGoal(h, "right");
@@ -65,7 +66,4 @@ it("ends the match on the winning point and draws the match-over menu and score"
   for (const item of MATCHOVER_ITEMS) {
     assertEqual(drewText(h.calls, item), true);
   }
-  const copy = drawnText(h.calls).join(" ");
-  assertMatches(copy, new RegExp(`\\b${WIN_SCORE}\\b`));
-  assertMatches(copy, /\b0\b/);
 });

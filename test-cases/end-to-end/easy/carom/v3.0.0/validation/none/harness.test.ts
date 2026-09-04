@@ -765,9 +765,12 @@ it("reports the same operations to a check whether or not a capture is running",
     },
     { op: "call", method: "fillRect", args: [0, 0, 4, 4] },
   ]);
-  // The last frame's operations belong to the recording that has just been handed
-  // over, and go with its tables.
-  expect(both.afterwards).toEqual([]);
+  // And they outlive the recording that was running when the frame closed. What
+  // the last frame drew is a fact about the context rather than about a section:
+  // a check that drives its frame INSIDE `captureReplay` and asks afterwards what
+  // that frame drew would otherwise be handed an empty frame purely because its
+  // evidence was being collected, which is a capture deciding a verdict.
+  expect(both.afterwards).toEqual(both.armed);
 });
 
 it("captures an SVG image, and captures it again when it is re-pointed", async () => {
@@ -1775,6 +1778,14 @@ it("bounds the current path, and says so on the frame", async () => {
   // rest of the recording and every frame open pays to re-encode all of them. Past
   // the bound the operation is refused, and the frame that inherited the shortened
   // path says it was shortened.
+  //
+  // THE PATH IS BUILT INSIDE A DRIVEN FRAME, AND READ OFF THE NEXT ONE. What a
+  // frame inherits is what the previous DRIVEN frame left, never what the context
+  // holds at the moment it opens — operations issued outside a frame are the
+  // build's own background render, and a state read live would make the recording
+  // depend on where in the gap a repaint happened to land. So the run of `lineTo`
+  // that crosses the bound belongs to the first frame, and the second frame is the
+  // one that inherits the shortened path.
   const SHADOW_OPS = 1024;
   const recording = await h.page.evaluate(
     ({ design, bound }) => {
@@ -1782,8 +1793,10 @@ it("bounds the current path, and says so on the frame", async () => {
       const ctx = document.querySelector("canvas")!.getContext("2d")!;
       ctx.reset();
       rec.arm(design);
+      rec.begin();
       ctx.beginPath();
       for (let at = 0; at < bound + 200; at += 1) ctx.lineTo(at, at);
+      rec.end(8);
 
       rec.begin();
       ctx.stroke();
@@ -1794,14 +1807,19 @@ it("bounds the current path, and says so on the frame", async () => {
   );
 
   const { states, frames } = scripted(recording);
-  const carried = states[frames[0].state].path.reduce(
+  const carried = states[frames[1].state].path.reduce(
     (sum, segment) => sum + segment.ops.length,
     0,
   );
   // The `beginPath` is kept as an operation of the path, so the bound holds it and
   // the 1023 `lineTo` calls that fit behind it.
   expect(carried).toBe(SHADOW_OPS);
-  expect(frames[0].truncated).toBe(true);
+  expect(frames[1].truncated).toBe(true);
+  // The frame that BUILT the path opened before any of it existed, so it inherited
+  // an empty path and says nothing — the flag is written only where something was
+  // cut down.
+  expect(states[frames[0].state].path).toEqual([]);
+  expect(frames[0].truncated).toBeUndefined();
 });
 
 it("bounds the clip region, and says so on the frame", async () => {
@@ -1809,16 +1827,21 @@ it("bounds the clip region, and says so on the frame", async () => {
   // ever applied and nothing but `reset` empties it. A clip that would take the
   // region past the bound is refused whole rather than kept in part: half a clip
   // path is a region the build never had.
+  //
+  // Cut inside a driven frame and read off the next one, for the reason the path
+  // bound above gives: a frame inherits what the previous DRIVEN frame left.
   const recording = await h.page.evaluate((design) => {
     const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
+    rec.begin();
     for (let at = 0; at < 700; at += 1) {
       ctx.beginPath();
       ctx.rect(0, 0, 64 - at * 0.01, 64);
       ctx.clip();
     }
+    rec.end(8);
 
     rec.begin();
     ctx.fillRect(0, 0, 4, 4);
@@ -1827,7 +1850,7 @@ it("bounds the clip region, and says so on the frame", async () => {
   }, DESIGN);
 
   const { states, frames } = scripted(recording);
-  const carried = states[frames[0].state].clip.reduce(
+  const carried = states[frames[1].state].clip.reduce(
     (sum, segment) => sum + segment.ops.length,
     0,
   );
@@ -1835,7 +1858,10 @@ it("bounds the clip region, and says so on the frame", async () => {
   // itself — so the bound falls part-way through and the rest are refused.
   expect(carried).toBeGreaterThan(0);
   expect(carried).toBeLessThanOrEqual(1024 + 3);
-  expect(frames[0].truncated).toBe(true);
+  expect(frames[1].truncated).toBe(true);
+  // The frame the clips were cut on opened before any of them existed.
+  expect(states[frames[0].state].clip).toEqual([]);
+  expect(frames[0].truncated).toBeUndefined();
 });
 
 it("carries the remainder of an over-long value as one marker", async () => {

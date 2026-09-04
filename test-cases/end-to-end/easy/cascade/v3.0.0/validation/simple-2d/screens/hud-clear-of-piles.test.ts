@@ -34,21 +34,14 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
+import { HUD_H, HUD_ITEMS, HUD_Y, STAGE_W, type Rect } from "../constants";
 import {
-  HUD_H,
-  HUD_MENU,
-  HUD_NEW_GAME,
-  HUD_SOUND,
-  HUD_Y,
-  STAGE_W,
-  type Rect,
-} from "../constants";
-import {
-  cardBoxes,
   captureStill,
+  cardBoxes,
   createHarness,
   drawFrame,
   drawnBoxes,
+  menuRect,
   openTable,
   poseColumn,
   type Harness,
@@ -56,13 +49,6 @@ import {
 
 /** The HUD strip specs/table.md fixes: `STAGE_W` wide at `HUD_Y`, `HUD_H` tall. */
 const STRIP: Rect = { x: 0, y: HUD_Y, w: STAGE_W, h: HUD_H };
-
-/** The three controls the strip carries (specs/screens.md, specs/controls.md). */
-const CONTROLS: readonly { name: string; rect: Rect }[] = [
-  { name: "HUD_NEW_GAME", rect: HUD_NEW_GAME },
-  { name: "HUD_MENU", rect: HUD_MENU },
-  { name: "HUD_SOUND", rect: HUD_SOUND },
-];
 
 /**
  * The column posed: the longest a column of this game ever grows to.
@@ -119,20 +105,25 @@ afterEach(() => {
 });
 
 it("keeps every card out of the strip its three controls sit in", async () => {
-  for (const control of CONTROLS) {
+  openTable(h);
+
+  // The three regions the build itself reports for the HUD's menu, in the order
+  // `HUD_ITEMS` fixes. specs/controls.md: "The HUD's three regions lie inside the
+  // HUD strip specs/table.md fixes, which holds no pile."
+  for (const [index, name] of HUD_ITEMS.entries()) {
+    const rect = menuRect(h, index);
     assertEqual(
-      control.rect.x >= STRIP.x &&
-        control.rect.x + control.rect.w <= STRIP.x + STRIP.w &&
-        control.rect.y >= STRIP.y &&
-        control.rect.y + control.rect.h <= STRIP.y + STRIP.h,
+      rect.x >= STRIP.x &&
+        rect.x + rect.w <= STRIP.x + STRIP.w &&
+        rect.y >= STRIP.y &&
+        rect.y + rect.h <= STRIP.y + STRIP.h,
       true,
-      `${control.name} lying inside the HUD strip, the band ${STRIP.w} wide ` +
-        `at y = ${STRIP.y}, ${STRIP.h} tall (specs/table.md, ` +
-        "specs/controls.md)",
+      `the region the build reports for ${name} lying inside the HUD strip, ` +
+        `the band ${STRIP.w} wide at y = ${STRIP.y}, ${STRIP.h} tall ` +
+        "(specs/table.md, specs/controls.md)",
     );
   }
 
-  openTable(h);
   poseColumn(h, COLUMN, LONG_COLUMN);
   assertLength(
     h.snapshot().tableau[COLUMN],

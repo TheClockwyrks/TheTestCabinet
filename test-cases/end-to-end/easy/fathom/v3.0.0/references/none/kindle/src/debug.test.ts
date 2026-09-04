@@ -180,7 +180,7 @@ describe("the debug surface", () => {
 
     it("reseeds the game's randomness, so a run repeats exactly", () => {
       const run = (): number[] => {
-        api.reset({ seed: 7 });
+        api.reset(7);
         api.setScreen("playing");
         api.advance(TICK_HZ * 6);
         return api.snapshot().predators.flatMap((p) => [p.tx, p.ty]);
@@ -190,7 +190,7 @@ describe("the debug surface", () => {
 
     it("takes a different seed to a different run", () => {
       const run = (seed: number): number[] => {
-        api.reset({ seed });
+        api.reset(seed);
         api.setScreen("playing");
         api.advance(TICK_HZ * 8);
         return api.snapshot().predators.flatMap((p) => [p.tx, p.ty]);

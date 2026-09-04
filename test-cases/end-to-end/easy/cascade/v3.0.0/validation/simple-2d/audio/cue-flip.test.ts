@@ -19,7 +19,7 @@
 //
 // `autoFlip` IS LEFT ON, which is what a player gets and what makes the turn part
 // of the move at all (specs/instrumentation.md). It is the one faculty this
-// requirement exercises; `instrumentation/auto-flip-gate` decides the gate itself.
+// requirement exercises; `instrumentation/auto-flip-gate-off` decides the gate itself.
 //
 // THE GESTURE IS SPLIT ACROSS TWO FRAMES, for the reason `audio/cue-drop` states: a
 // press sharing the release's frame would hide a build that sounded `flip` on the

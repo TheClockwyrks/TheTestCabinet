@@ -130,6 +130,12 @@ import {
   WIN_SCORE,
   type Point,
 } from "./constants";
+// `game` is the build's entry, and `BACKGROUND` is the clear colour it exports
+// beside it. `BACKGROUND` is a value specs/overview.md leaves to the build, read
+// only to locate the colour a bare pixel was cleared to and never compared as a
+// figure: {@link clearColor} rasterizes it so a patch the game never drew over
+// can be told from one it did. Those two names are the whole of what this
+// project takes from the build outside a type.
 import { BACKGROUND, game as build, type CaromState } from "../src/game";
 import { assertEqual, assertNotEqual, assertTruthy, fail } from "./assert";
 import {
@@ -364,19 +370,6 @@ export function holdTimer0(h: Harness): number {
       "specs/state.md",
   );
   return value as number;
-}
-
-/** The driven ball's recent positions, oldest first, as the state holds them. */
-export function trail0(h: Harness): TrailPoint[] {
-  const shapes = h.state as unknown as StateShapes;
-  const value = shapes.ball?.trail ?? shapes.balls?.[0]?.trail;
-  assertEqual(
-    Array.isArray(value),
-    true,
-    "the state must hold the motion trail on the ball as `trail`; see " +
-      "specs/state.md",
-  );
-  return value as TrailPoint[];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -2822,6 +2815,25 @@ export async function pointAtItem(
 ): Promise<Point> {
   const at = menuItemCenter(h, index);
   await h.movePointer(at.x, at.y, options);
+  return at;
+}
+
+/**
+ * Move the pointer onto item `index` and run NO frame, reporting where it went.
+ *
+ * The one pointer drive that delivers no frame of its own, for the one check
+ * that needs a pointer move and a key edge to land in the SAME input read:
+ * specs/ui.md reads the pointer once per frame, in the same read as the keyboard
+ * actions, and applies it after that frame's keyboard edges. Every other drive
+ * runs its own frame, so a caller adds this move to the frame it drives itself.
+ */
+export async function aimPointerAtItem(
+  h: Harness,
+  index: number,
+  options: PointerOptions = {},
+): Promise<Point> {
+  const at = menuItemCenter(h, index);
+  await h.movePointer(at.x, at.y, { ...options, frames: 0 });
   return at;
 }
 

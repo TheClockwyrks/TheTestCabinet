@@ -15,7 +15,7 @@
 // opened elsewhere and corrected itself on its first update fails here.
 //
 // WHAT THIS DOES NOT DECIDE. What the title screen SHOWS, which is
-// `screens/title-shows-title`, `title-shows-tagline`, `title-shows-items` and
+// `screens/title-shows-title`, `title-shows-tagline`, `title-shows-new-game` and
 // `title-shows-mode-label`, and whether its controls answer, which is
 // `screens/title-new-game-enters-play` and `screens/title-how-to-opens`.
 

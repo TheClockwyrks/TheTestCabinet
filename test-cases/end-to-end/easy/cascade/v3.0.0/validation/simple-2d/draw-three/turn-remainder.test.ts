@@ -25,16 +25,7 @@ import {
   poseStock,
   type Harness,
 } from "../harness";
-
-/**
- * The turn count specs/stock.md fixes for this variant, as `TURN_COUNT`.
- *
- * Written out rather than read from the build's own `src/constants.ts` for the
- * reason `draw-three/turn-count` gives: what makes this pose the short stock
- * the rule is about is the specification's three, not the figure a build wrote
- * for itself.
- */
-const TURN_COUNT = 3;
+import { TURN_COUNT } from "./constants";
 
 /**
  * The short stock, bottom card first: one card fewer than a turn takes, face-down

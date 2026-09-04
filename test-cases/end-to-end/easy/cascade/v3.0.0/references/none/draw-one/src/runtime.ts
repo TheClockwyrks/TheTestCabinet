@@ -32,7 +32,12 @@ import {
   type AudioPort,
   type CueSpec,
 } from "./audio-bus";
-import { KeyWatcher } from "./keyboard";
+import {
+  KeyWatcher,
+  MenuKeys,
+  type MenuAction,
+  type MenuBindings,
+} from "./keyboard";
 import { Diagnostics, OVERLAY_KEY } from "./overlay";
 import { Pointer, type PointerPosition, type PointerSample } from "./pointer";
 import {
@@ -90,6 +95,10 @@ export interface UpdateApi {
     /** The pointer's logical position and whether it is pressed, now. */
     current(): PointerPosition;
   };
+  readonly keys: {
+    /** This frame's menu-action press edges, in arrival order. Consumes them. */
+    edges(): MenuAction[];
+  };
   readonly audio: AudioPort;
 }
 
@@ -126,6 +135,8 @@ export interface RuntimeOptions<S> {
   background: string;
   /** Where size, position, pixel density and events come from; defaults to the DOM. */
   surface?: Surface;
+  /** Which `KeyboardEvent.code`s raise each of the four menu actions. */
+  menuBindings: MenuBindings;
   /** Where the audio bus gets its context; defaults to the platform's. */
   audioContext?: AudioContextSource;
 }
@@ -181,6 +192,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
   let viewport = fit();
   let context: CanvasRenderingContext2D | null = null;
   let overlayKey: KeyWatcher | null = null;
+  let menuKeys: MenuKeys | null = null;
 
   let count = 0;
   let time = 0;
@@ -254,6 +266,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
       samples: () => pointer.samples(),
       current: () => pointer.current(),
     },
+    keys: { edges: () => menuKeys?.edges() ?? [] },
     audio,
   };
 
@@ -281,8 +294,10 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
       diagnostics.draw(ctx, { count, dt });
     } finally {
       // A sample nothing consumed is discarded even when the frame threw, so
-      // one bad frame cannot leave a press to surface later, out of order.
+      // one bad frame cannot leave a press to surface later, out of order. The
+      // key edges go the same way, for the same reason.
       pointer.endFrame();
+      menuKeys?.endFrame();
     }
   }
 
@@ -369,6 +384,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
       overlayKey = new KeyWatcher(surface.events(), OVERLAY_KEY, () => {
         diagnostics.toggle();
       });
+      menuKeys = new MenuKeys(surface.events(), options.menuBindings);
       syncCanvas();
       live = { value: game.initialize(initApi) };
       return live.value;
@@ -418,6 +434,8 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
       stopLoop();
       overlayKey?.detach();
       overlayKey = null;
+      menuKeys?.detach();
+      menuKeys = null;
       pointer.detach();
       audio.dispose();
       live = null;

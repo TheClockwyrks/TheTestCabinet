@@ -83,3 +83,28 @@ failure_cap = "passable"
 validation = { script = "standard/amber-any-distance.test.ts", outputs = [
   { id = "amber", name = "A distant amber light still drawn", kind = "image" },
 ] }
+
+# One addition to the case's COMMON `hud` category rather than a category of this
+# variant's own: the category id matches, so this item folds into it and its
+# verdict is recorded as `hud.dive-label` beside the five common HUD points. The
+# dive label is the one element on screen the two dives disagree about, so it is
+# the one HUD point that cannot be stated commonly.
+[[review.categories]]
+id = "hud"
+title = "The HUD"
+[[review.categories.items]]
+id = "dive-label"
+title = "The dive label reads STANDARD"
+description = "While a maze is on screen a small, dim label reading STANDARD is drawn legibly in the top strip, y in [0, 80], as specs/ui.md fixes for this dive."
+domains = ["progression", "presentation"]
+failure_cap = "great"
+# The cap is `great` where the other five HUD points are `passable`, and the
+# difference is real: the score, the lives, the depth and the two gauges each
+# carry a figure a player steers by, while the dive label carries none — it names
+# the dive and nothing more, so a build that omitted it plays exactly as well.
+# Automated validation: open a dive and read the drawn text and where it landed
+# off the recorder, sampling it against the strip behind it. See
+# validation/<engine>/hud/dive-label-standard.test.ts.
+validation = { script = "hud/dive-label-standard.test.ts", outputs = [
+  { id = "hud", name = "The dive label on the HUD", kind = "image" },
+] }

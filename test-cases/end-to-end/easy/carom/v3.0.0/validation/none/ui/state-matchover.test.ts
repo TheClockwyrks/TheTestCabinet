@@ -1,5 +1,5 @@
 // ui/state-matchover — winning a match opens the match-over screen, which
-// offers its menu and shows the final score.
+// offers its menu.
 //
 // The match is ended for real. The score is posed at 10-0 as a precondition and
 // a ball is then driven out of the right goal, so the eleventh point, and the
@@ -13,18 +13,20 @@
 //
 // The two entries are the case's copy (`MATCHOVER_ITEMS`, specs/ui.md), matched
 // by substring because a selected entry is commonly drawn with a marker beside
-// it. The final score is read as the two numbers drawn: `11` somewhere in the
-// frame's text, and `0` as a number of its own. How the screen presents them is
-// the build's.
+// it. How the screen presents them is the build's.
+//
+// THE FINAL SCORE IS `ui/state-matchover-score`'S POINT. A build that offers the
+// two entries but tells the player nothing about how the match ended is not the
+// same build as one that shows neither, so the two halves are graded apart and
+// capped apart.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, assertMatches } from "../assert";
+import { assertDeepEqual, assertEqual } from "../assert";
 import { MATCHOVER_ITEMS, WIN_SCORE } from "../constants";
 import {
   arrangeGoal,
   captureStill,
   createHarness,
-  drawnText,
   driveGoal,
   drewText,
   startPlaying,
@@ -41,7 +43,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("ends the match on the winning point and draws the match-over screen", async () => {
+it("ends the match on the winning point and draws the match-over menu", async () => {
   await startPlaying(h, "versus");
   await h.debug.setScore(WIN_SCORE - 1, 0);
   await arrangeGoal(h, "right");
@@ -59,7 +61,4 @@ it("ends the match on the winning point and draws the match-over screen", async 
   for (const item of MATCHOVER_ITEMS) {
     assertEqual(drewText(calls, item), true);
   }
-  const text = drawnText(calls).join(" ");
-  assertMatches(text, new RegExp(`\\b${WIN_SCORE}\\b`));
-  assertMatches(text, /\b0\b/);
 });

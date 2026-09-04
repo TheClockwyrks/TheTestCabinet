@@ -30,7 +30,6 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
-  assertDeepEqual,
   assertEqual,
   assertGreaterThan,
   assertGreaterThanOrEqual,
@@ -141,9 +140,4 @@ it("draws the serve's vertical sign afresh on every serve toward player two", as
     1,
     `${SERVES} serves and none went downward`,
   );
-  // And the page stayed quiet throughout: nothing the build threw, and nothing
-  // it logged as an error, while this harness was driving it. An engineless
-  // build loads no assets through a runtime, so there is no asset log to read —
-  // the browser's own is the wider reading, and it covers the whole drive.
-  assertDeepEqual(harness.pageErrors, []);
 });

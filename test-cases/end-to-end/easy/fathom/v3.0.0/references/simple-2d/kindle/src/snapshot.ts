@@ -21,6 +21,7 @@ import {
   type PredatorKind,
 } from "./constants";
 import { bodyTile } from "./entities";
+import { menuItems } from "./menu";
 import { detectRange, flareCharging, flaring } from "./predators";
 import {
   drifterLit,
@@ -66,6 +67,10 @@ export interface PredatorSnapshot {
 export interface FathomSnapshot {
   version: number;
   screen: Screen;
+  /** The highlighted item, `null` on the four screens that show no menu. */
+  menuIndex: number | null;
+  /** The title menu's remembered selection, never `null`. */
+  titleIndex: number;
   depth: number;
   score: number;
   lives: number;
@@ -178,6 +183,8 @@ export function snapshotOf(
   return {
     version,
     screen: state.screen,
+    menuIndex: menuItems(state.screen).length > 0 ? state.menuIndex : null,
+    titleIndex: state.titleIndex,
     depth: state.depth,
     score: state.score,
     lives: state.lives,

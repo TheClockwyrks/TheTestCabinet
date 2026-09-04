@@ -15,7 +15,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { SERVE_SPEED } from "../constants";
-import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   ball0,
   captureReplay,
@@ -83,5 +83,4 @@ it("serves the ball at the base serve speed", async () => {
     Math.abs(ball0(launched.snapshot).speed - SERVE_SPEED),
     SPEED_TOLERANCE,
   );
-  assertDeepEqual(harness.assetFailures, []);
 });

@@ -8,12 +8,12 @@
 //
 // THE READING IS TAKEN BEFORE ANY RESET, which is the whole of what makes this
 // item decide anything. `specs/instrumentation.md` has `reset` restore `screen`
-// to `"title"` as well, so a harness that reset on the way in would read `title`
-// off a build that opened on its table and reset correctly — a false pass on the
-// most severely capped item in this group. So the harness is built with
-// `reset: false`: the page it opens is a build that has just started, with
-// nothing held and nothing asked of it, and the clock is stopped before the
-// reading either way, so what is read is the screen the build chose for itself.
+// to `"title"` as well, so a reading taken after the harness's opening reset
+// would report `title` off a build that opened on its table and reset correctly —
+// a false pass on the most severely capped item in this group. So the reading is
+// `Harness.openingScreen`: the state the build stood the game up in, read once
+// before anything reset it, and with the clock already stopped, so what is read
+// is the screen the build chose for itself.
 //
 // Nothing is posed and nothing is cleared, for the same reason. The requirement
 // is the state the build hands over, so touching it before the reading would be
@@ -23,7 +23,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { captureStill, createHarness, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  failSurface,
+  type Harness,
+} from "../harness";
 
 /** One frame, so the canvas carries the screen the assertion read. */
 const SETTLE_FRAMES = 1;
@@ -31,7 +36,7 @@ const SETTLE_FRAMES = 1;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ reset: false });
+  h = await createHarness();
 });
 
 afterEach(async () => {
@@ -39,13 +44,16 @@ afterEach(async () => {
 });
 
 it("is on the title screen when it is handed over", async () => {
-  const opened = await h.snapshot();
+  // A build with no usable surface reported no opening state either, so the
+  // fault is named rather than read as a build that opened on nothing.
+  if (h.surfaceFault !== null) failSurface(h.surfaceFault);
+  const opened = h.openingScreen;
 
   await h.advance(SETTLE_FRAMES);
   await captureStill(h, "title");
 
   assertEqual(
-    opened.screen,
+    opened,
     "title",
     "the screen the game opened on, read before any reset (specs/screens.md)",
   );

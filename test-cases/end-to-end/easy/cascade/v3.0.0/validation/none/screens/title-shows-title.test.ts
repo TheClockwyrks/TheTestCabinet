@@ -11,7 +11,7 @@
 // free to draw the word inside a longer run, and by CASE because the literal the
 // specification fixes is upper case while the casing a font renders is the
 // build's. The tagline and the two menu items are `screens/title-shows-tagline`
-// and `screens/title-shows-items`: three literals, three items, so a build that
+// and `screens/title-shows-new-game`: three literals, three items, so a build that
 // drew one and dropped another grades differently from one that drew all three.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -21,9 +21,9 @@ import {
   captureStill,
   createHarness,
   drewText,
+  openTitle,
   type Harness,
 } from "../harness";
-import { openTitle } from "./screens";
 
 let h: Harness;
 

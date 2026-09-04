@@ -154,7 +154,7 @@ export type VehicleKind = "plow" | "dogsled" | "car";
 /** The three floe kinds the water band carries. */
 export type FloeKind = "pan" | "raft3" | "raft4";
 /** Either band's item kind. */
-export type ItemKind = VehicleKind | FloeKind;
+type ItemKind = VehicleKind | FloeKind;
 /** A lane's direction: `1` rightward, `-1` leftward. */
 export type LaneDir = 1 | -1;
 
@@ -169,7 +169,7 @@ export const ITEM_LEN: Readonly<Record<ItemKind, number>> = {
 };
 
 /** One row of a band table: what the lane carries, which way, how fast, how far apart. */
-export interface LaneSpec {
+interface LaneSpec {
   /** The strait row the lane occupies. */
   readonly row: number;
   /** The single kind every item in the lane is. */
@@ -211,7 +211,7 @@ export const LEVEL_SPEED_STEP = 1.06;
 export const LEVEL_GAP_EVERY = 3;
 
 /** The lane table entry for a strait row, or `null` where the row carries no lane. */
-export function laneSpecFor(row: number): LaneSpec | null {
+function laneSpecFor(row: number): LaneSpec | null {
   return (
     ICE_LANES.find((lane) => lane.row === row) ??
     WATER_LANES.find((lane) => lane.row === row) ??
@@ -360,13 +360,6 @@ export const SPRITE_SHEETS = {
 /** The name of one seeded sheet. */
 export type SheetName = keyof typeof SPRITE_SHEETS;
 
-/** The folder each vehicle kind is drawn from (specs/assets.md). */
-export const VEHICLE_SHEET: Readonly<Record<VehicleKind, SheetName>> = {
-  plow: "plow",
-  dogsled: "dogsled",
-  car: "car",
-};
-
 /**
  * Which frames of `assets/crosser/` cover which facing: a crouch-and-leap pair
  * each, in the order down, up, left, right.
@@ -426,6 +419,15 @@ export const HUD_LEVEL_LABEL = "LEVEL";
  * the build's own, and the game answers to keys. The names below are the
  * specification's own column headings, kept so a check and its counterpart under
  * an engine read the same.
+ *
+ * WHAT READS THIS TABLE, AND WHAT DOES NOT. A suite whose requirement is
+ * somewhere the key merely LEADS to — a screen a confirm opens, a silence a mute
+ * leaves behind — presses `BINDINGS.<action>[0]`, so the route is stated once
+ * here rather than transcribed at each site. The per-key `controls/*` suites do
+ * the opposite and name their key as a literal, because for those the key IS the
+ * requirement: `controls/key-w` decides `KeyW` and nothing else, and reading the
+ * key out of this table would turn "the build answers to this key" into "the
+ * build does what it says it does".
  */
 export const BINDINGS = {
   up: ["ArrowUp", "KeyW"],
@@ -437,9 +439,6 @@ export const BINDINGS = {
   pause: ["KeyP", "Escape"],
   mute: ["KeyM"],
 } as const satisfies Record<string, readonly string[]>;
-
-/** One intent the game answers to. */
-export type ActionName = keyof typeof BINDINGS;
 
 /** The key the read-only debug overlay is shown and hidden by. */
 export const OVERLAY_KEY = "Backquote";
@@ -503,9 +502,6 @@ export const CUES = {
   gameOver: "game-over",
   menu: "menu",
 } as const;
-
-/** One of the ten cue names. */
-export type CueName = (typeof CUES)[keyof typeof CUES];
 
 /* -------------------------------------------------------------------------- */
 /* The debug surface (specs/instrumentation.md)                               */

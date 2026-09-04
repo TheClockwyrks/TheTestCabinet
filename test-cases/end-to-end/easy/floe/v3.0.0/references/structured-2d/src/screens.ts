@@ -14,17 +14,15 @@ import {
   type DrawApi,
 } from "@test-cabinet/structured-2d";
 import {
-  ENDING_ITEMS,
-  PAUSE_ITEMS,
   STAGE_H,
   STAGE_W,
   STRAIT_TOP,
   TAGLINE_TEXT,
-  TITLE_ITEMS,
   TITLE_TEXT,
   TOTAL_LEVELS,
 } from "./constants";
-import { floeState } from "./game";
+import { floeState, type Screen } from "./game";
+import { menuBaseline, menuLayout } from "./menus";
 import { COLOR, LAYER, MONO_FONT, UI_FONT } from "./theme";
 
 /** What the how-to screen covers (specs/ui.md). */
@@ -49,7 +47,7 @@ class ScreensArt extends DrawComponent {
         this.card(ctx, 340, 150, 600, 400);
         this.line(ctx, TITLE_TEXT, 268, 104, COLOR.text);
         this.line(ctx, TAGLINE_TEXT, 316, 26, COLOR.textDim);
-        this.menu(ctx, TITLE_ITEMS, state.menuIndex, 410, 60);
+        this.menu(ctx, "title", state.menuIndex);
         return;
       case "howto":
         this.card(ctx, 180, 130, 920, 490);
@@ -68,7 +66,7 @@ class ScreensArt extends DrawComponent {
       case "paused":
         this.card(ctx, 420, 220, 440, 280);
         this.line(ctx, "PAUSED", 288, 46, COLOR.text);
-        this.menu(ctx, PAUSE_ITEMS, state.menuIndex, 356, 54);
+        this.menu(ctx, "paused", state.menuIndex);
         return;
       case "victory":
         this.card(ctx, 360, 170, 560, 380);
@@ -90,7 +88,7 @@ class ScreensArt extends DrawComponent {
           COLOR.textDim,
           MONO_FONT,
         );
-        this.menu(ctx, ENDING_ITEMS, state.menuIndex, 440, 54);
+        this.menu(ctx, "victory", state.menuIndex);
         return;
       case "gameover":
         this.card(ctx, 360, 170, 560, 380);
@@ -104,7 +102,7 @@ class ScreensArt extends DrawComponent {
           COLOR.textDim,
           MONO_FONT,
         );
-        this.menu(ctx, ENDING_ITEMS, state.menuIndex, 440, 54);
+        this.menu(ctx, "gameover", state.menuIndex);
         return;
     }
   }
@@ -147,20 +145,26 @@ class ScreensArt extends DrawComponent {
     ctx.textAlign = "left";
   }
 
-  /** A vertical menu, the highlighted item drawn distinctly (specs/ui.md). */
+  /**
+   * A vertical menu, the highlighted item drawn distinctly (specs/ui.md).
+   *
+   * The baselines come from `src/menus.ts`, which is also what `menuItemRect`
+   * reports its regions around, so a pointer aimed at a reported region lands on
+   * the entry a player sees there.
+   */
   private menu(
     ctx: CanvasRenderingContext2D,
-    items: readonly string[],
+    screen: Screen,
     selected: number,
-    top: number,
-    step: number,
   ): void {
-    items.forEach((item, index) => {
+    const layout = menuLayout(screen);
+    if (layout === null) return;
+    layout.items.forEach((item, index) => {
       const chosen = index === selected;
       this.line(
         ctx,
         chosen ? `> ${item} <` : item,
-        top + index * step,
+        menuBaseline(layout, index),
         chosen ? 32 : 26,
         chosen ? COLOR.highlight : COLOR.textDim,
       );

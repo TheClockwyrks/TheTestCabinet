@@ -13,7 +13,7 @@
 // face-up card, so exactly one turn is owed and the auto-move is the only thing
 // that could owe it. The gate `specs/instrumentation.md` puts on that turning,
 // `setAutoFlip`, is left ON at its reset default and asserted so, because the
-// gate itself is `instrumentation/auto-flip-gate`'s to grade, not this item's.
+// gate itself is `instrumentation/auto-flip-gate-off`'s to grade, not this item's.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertLength } from "../assert";

@@ -182,7 +182,8 @@ time with `setPaddleCy`, `setPaddleVy` — which sets that side's `drivenVy`,
 held across frames — and `setPaddleDriven`. Each ball takes its `index` first:
 `setBallPosition`, `setBallVelocity`, `setBallSpin`, `setBallHeld`, and
 `setBallHoldTimer`. The AI's two faculties are gated separately with
-`setAiTracking` and `setAiMovement`. The two readings are `snapshot()`, which
+`setAiTracking` and `setAiMovement`, and the mute bit the `mute` action toggles
+is posed with `setMuted(muted)`. The two readings are `snapshot()`, which
 reports every field an operation sets, and `menuItemRect(index)`, which reports
 the hit region of an item on the menu the current screen shows — the build's
 own layout (`src/menus.ts`), so the pointer a caller drives and the item a

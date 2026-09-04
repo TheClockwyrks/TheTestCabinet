@@ -187,6 +187,11 @@ export interface CaromDebugApi {
   setAiTracking(state: State, enabled: boolean): CaromState;
   setAiMovement(state: State, enabled: boolean): CaromState;
 
+  /* Audio. */
+
+  /** Sets the mute bit, the same bit the `mute` action toggles. */
+  setMuted(state: State, muted: boolean): CaromState;
+
   /* The obstacle clock: gyre's alone. */
 
   setObstacleClock(state: State, t: number): CaromState;
@@ -412,6 +417,16 @@ export function setAiMovement(state: State, enabled: boolean): CaromState {
   return { ...state, ai: { ...state.ai, movement: enabled } };
 }
 
+// ---- Audio --------------------------------------------------------------
+
+/**
+ * The mute bit set. The state carries it and `game.update` brings the engine's
+ * bus into line with it on the next frame.
+ */
+export function setMuted(state: State, muted: boolean): CaromState {
+  return { ...state, muted: Boolean(muted) };
+}
+
 // ---- The obstacle clock -------------------------------------------------
 
 /**
@@ -542,6 +557,7 @@ export function createDebugApi(): CaromDebugApi {
     setBallHoldTimer,
     setAiTracking,
     setAiMovement,
+    setMuted,
     setObstacleClock,
     setObstacleClockRunning,
     snapshot,

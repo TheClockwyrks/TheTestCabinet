@@ -2,6 +2,12 @@
 //
 // The mirror of `scoring-p1`: the field is emptied to the one ball, that ball is
 // aimed at the left goal, and the build's own scoring code decides the point.
+//
+// THE STATE THAT FOLLOWS THE POINT is `gameplay/scoring-p2-countdown`'s: the
+// screen returning to the countdown, and the receiver becoming the side that was
+// scored on. A build that increments and then leaves the ball where it went out
+// is a build that plays one point and stops, which is nothing like a build that
+// never scores at all — so the increment is graded here and the restart there.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -52,7 +58,4 @@ it("gives player two the point when the ball leaves the left goal", async () => 
   assertEqual(point.hit, true);
   assertEqual(point.snapshot.score.p2, 1);
   assertEqual(point.snapshot.score.p1, 0);
-  // And the point did not end the match: the screen returns to the countdown
-  // for the next serve (specs/balls.md).
-  assertEqual(point.snapshot.screen, "countdown");
 });

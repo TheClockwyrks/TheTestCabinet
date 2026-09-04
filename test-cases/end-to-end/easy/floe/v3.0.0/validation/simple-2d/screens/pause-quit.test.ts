@@ -25,7 +25,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { PAUSE_ITEMS } from "../constants";
+import { BINDINGS, PAUSE_ITEMS, TITLE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -38,6 +38,12 @@ const QUIT_INDEX = 2;
 
 /** One frame after the press, so the still shows the title rather than the menu. */
 const SETTLE_TICKS = 1;
+
+/**
+ * The title entry every route back from a run selects: `CROSS`, the entry that
+ * started it (`specs/ui.md`).
+ */
+const CROSS_ITEM = TITLE_ITEMS.indexOf("CROSS");
 
 let h: Harness;
 
@@ -62,13 +68,20 @@ it("returns to the title screen when QUIT TO MENU is confirmed", async () => {
     `the pose highlighted ${PAUSE_ITEMS[QUIT_INDEX]}, the third entry`,
   );
 
-  await h.tap("Enter");
+  await h.tap(BINDINGS.confirm[0]);
   await h.advance(SETTLE_TICKS);
   captureStill(h, "title");
 
+  const landed = h.snapshot();
   assertEqual(
-    h.snapshot().screen,
+    landed.screen,
     "title",
     `confirming ${PAUSE_ITEMS[QUIT_INDEX]} returns to the title (specs/ui.md)`,
+  );
+  assertEqual(
+    landed.menuIndex,
+    CROSS_ITEM,
+    `with ${TITLE_ITEMS[CROSS_ITEM]} selected, the entry that started the ` +
+      `run (specs/ui.md)`,
   );
 });

@@ -152,6 +152,7 @@ const SURFACE_MEMBERS = [
   "version",
   "reset",
   "snapshot",
+  "menuItemRect",
   "setScreen",
   "setPhase",
   "setPhaseTimer",
@@ -600,6 +601,131 @@ describe("the screens", () => {
     expect(harness.snapshot().menuIndex).toBe(0);
     await harness.tap("Escape");
     expect(harness.snapshot().screen).toBe("title");
+    // Leaving a screen selects the entry that led to it (specs/ui.md).
+    expect(harness.snapshot().menuIndex).toBe(
+      TITLE_ITEMS.indexOf("HOW TO PLAY"),
+    );
+  });
+
+  it("resumes from the pause menu on the pause action as well as on back", async () => {
+    harness.debug.setScreen("playing");
+    await harness.step(1);
+    await harness.tap("KeyP");
+    expect(harness.snapshot().screen).toBe("paused");
+    await harness.tap("KeyP");
+    expect(harness.snapshot().screen).toBe("playing");
+  });
+
+  it("does nothing on back at the title, the outermost screen", async () => {
+    await harness.tap("Escape");
+    expect(harness.snapshot().screen).toBe("title");
+  });
+
+  it("returns to the title with CROSS selected from every route back", async () => {
+    const cross = TITLE_ITEMS.indexOf("CROSS");
+
+    harness.debug.setScreen("gameover");
+    harness.debug.setMenuIndex(ENDING_ITEMS.indexOf("MENU"));
+    await harness.tap("Enter");
+    expect(harness.snapshot().screen).toBe("title");
+    expect(harness.snapshot().menuIndex).toBe(cross);
+
+    harness.debug.setScreen("victory");
+    await harness.tap("Escape");
+    expect(harness.snapshot().screen).toBe("title");
+    expect(harness.snapshot().menuIndex).toBe(cross);
+
+    harness.debug.setScreen("paused");
+    harness.debug.setMenuIndex(PAUSE_ITEMS.indexOf("QUIT TO MENU"));
+    await harness.tap("Enter");
+    expect(harness.snapshot().screen).toBe("title");
+    expect(harness.snapshot().menuIndex).toBe(cross);
+  });
+
+  it("reports one region per menu entry, inside the stage and apart", () => {
+    for (const screen of ["title", "paused", "victory", "gameover"] as const) {
+      harness.debug.setScreen(screen);
+      const rects: { x: number; y: number; w: number; h: number }[] = [];
+      for (let index = 0; ; index += 1) {
+        const rect = harness.debug.menuItemRect(index);
+        if (rect === null) break;
+        expect(rect.x, screen).toBeGreaterThanOrEqual(0);
+        expect(rect.y, screen).toBeGreaterThanOrEqual(0);
+        expect(rect.x + rect.w, screen).toBeLessThanOrEqual(STAGE_W);
+        expect(rect.y + rect.h, screen).toBeLessThanOrEqual(STAGE_H);
+        rects.push(rect);
+      }
+      expect(rects.length, screen).toBeGreaterThan(1);
+      for (let a = 0; a < rects.length; a += 1) {
+        for (let b = a + 1; b < rects.length; b += 1) {
+          const apart =
+            rects[a].y + rects[a].h <= rects[b].y ||
+            rects[b].y + rects[b].h <= rects[a].y;
+          expect(apart, `${screen} ${String(a)} and ${String(b)}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("has no menu region on a screen with no menu, or outside one", () => {
+    harness.debug.setScreen("howto");
+    expect(harness.debug.menuItemRect(0)).toBeNull();
+    harness.debug.setScreen("playing");
+    expect(harness.debug.menuItemRect(0)).toBeNull();
+    harness.debug.setScreen("title");
+    expect(harness.debug.menuItemRect(TITLE_ITEMS.length)).toBeNull();
+    expect(harness.debug.menuItemRect(-1)).toBeNull();
+  });
+
+  it("drives the title menu with a pointer and with a finger", async () => {
+    const rect = harness.debug.menuItemRect(1);
+    expect(rect).not.toBeNull();
+    const at = {
+      x: (rect?.x ?? 0) + (rect?.w ?? 0) / 2,
+      y: (rect?.y ?? 0) + (rect?.h ?? 0) / 2,
+    };
+
+    harness.point("pointermove", at.x, at.y);
+    await harness.step(1);
+    expect(harness.snapshot().menuIndex).toBe(1);
+    expect(harness.snapshot().screen).toBe("title");
+
+    harness.point("pointerdown", at.x, at.y);
+    harness.point("pointerup", at.x, at.y);
+    await harness.step(1);
+    expect(harness.snapshot().screen).toBe("howto");
+
+    harness.debug.setScreen("title");
+    harness.debug.setMenuIndex(0);
+    harness.point("pointerdown", at.x, at.y, "touch");
+    await harness.step(1);
+    expect(harness.snapshot().menuIndex).toBe(1);
+    expect(harness.snapshot().screen).toBe("title");
+    harness.point("pointerup", at.x, at.y, "touch");
+    await harness.step(1);
+    expect(harness.snapshot().screen).toBe("howto");
+  });
+
+  it("confirms nothing when a gesture ends outside the entry it began in", async () => {
+    const first = harness.debug.menuItemRect(0);
+    const second = harness.debug.menuItemRect(1);
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+    const from = {
+      x: (first?.x ?? 0) + (first?.w ?? 0) / 2,
+      y: (first?.y ?? 0) + (first?.h ?? 0) / 2,
+    };
+    const to = {
+      x: (second?.x ?? 0) + (second?.w ?? 0) / 2,
+      y: (second?.y ?? 0) + (second?.h ?? 0) / 2,
+    };
+
+    harness.point("pointerdown", from.x, from.y);
+    harness.point("pointermove", to.x, to.y);
+    harness.point("pointerup", to.x, to.y);
+    await harness.step(1);
+    expect(harness.snapshot().screen).toBe("title");
+    expect(harness.snapshot().menuIndex).toBe(1);
   });
 
   it("pauses and resumes the crossing exactly as it stood", async () => {

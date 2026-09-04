@@ -575,7 +575,56 @@ describe("the screens", () => {
     h.press("back");
     h.advance(1);
     expect(h.api.snapshot().screen).toBe("title");
-    expect(h.api.snapshot().menuIndex).toBe(0);
+    // Leaving a screen selects the entry that led to it (specs/ui.md), and
+    // `HOW TO PLAY` is `TITLE_ITEMS` index 1.
+    expect(h.api.snapshot().menuIndex).toBe(1);
+  });
+
+  it("resumes from the pause menu on the pause action as well as on back", () => {
+    const h = harness();
+    startCrossing(h);
+    h.press("pause");
+    h.advance(1);
+    expect(h.api.snapshot().screen).toBe("paused");
+    h.press("pause");
+    h.advance(1);
+    expect(h.api.snapshot().screen).toBe("playing");
+  });
+
+  it("does nothing on back at the title, the outermost screen", () => {
+    const h = harness();
+    h.press("back");
+    h.advance(1);
+    expect(h.api.snapshot().screen).toBe("title");
+  });
+
+  it("returns to the title with CROSS selected from every route back to it", () => {
+    // `QUIT TO MENU`, the third entry of the pause menu.
+    const quit = harness();
+    startCrossing(quit);
+    quit.api.setScreen("paused");
+    quit.api.setMenuIndex(2);
+    quit.press("confirm");
+    quit.advance(1);
+    expect(quit.api.snapshot().screen).toBe("title");
+    expect(quit.api.snapshot().menuIndex).toBe(0);
+
+    // `MENU`, the second entry of an ending screen's menu.
+    const menu = harness();
+    menu.api.setScreen("gameover");
+    menu.api.setMenuIndex(1);
+    menu.press("confirm");
+    menu.advance(1);
+    expect(menu.api.snapshot().screen).toBe("title");
+    expect(menu.api.snapshot().menuIndex).toBe(0);
+
+    // Back from an ending screen.
+    const back = harness();
+    back.api.setScreen("victory");
+    back.press("back");
+    back.advance(1);
+    expect(back.api.snapshot().screen).toBe("title");
+    expect(back.api.snapshot().menuIndex).toBe(0);
   });
 
   it("pauses, freezes the strait, and resumes it exactly as it stood", () => {
@@ -742,6 +791,7 @@ describe("the keyboard the runtime hands the game", () => {
             input: {
               value: (name) => keyboard.value(name),
               pressed: (name) => keyboard.pressed(name),
+              pointer: () => [],
             },
             audio: {
               play: () => undefined,

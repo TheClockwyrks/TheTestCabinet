@@ -37,6 +37,7 @@ const OPERATIONS: readonly (keyof FloeDebugApi)[] = [
   "advance",
   "reset",
   "snapshot",
+  "menuItemRect",
   "setScreen",
   "setPhase",
   "setPhaseTimer",

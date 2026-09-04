@@ -239,6 +239,16 @@ export class FloeState extends CrossingState {
 
   /** The actions this frame resolved to, which the next tick consumes. */
   intents: Intents = noIntents();
+
+  /**
+   * Where the pointer or touch press still in progress landed, in logical units,
+   * or `null` while nothing is down.
+   *
+   * A gesture the player is part-way through. It is kept here for the same reason
+   * an unconsumed edge is: a press and the release that ends it can arrive frames
+   * apart, and `specs/ui.md` decides a confirm from BOTH of their positions.
+   */
+  pointerDown: { x: number; y: number } | null = null;
 }
 
 /**

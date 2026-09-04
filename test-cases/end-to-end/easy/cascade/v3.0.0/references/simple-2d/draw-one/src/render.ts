@@ -13,28 +13,30 @@ import {
   DEAL_MODE_LABEL,
   FACE_UP_OFFSET,
   FOUNDATION_X,
-  HOWTO_BACK,
   HOWTO_BACK_LABEL,
   HUD_H,
   HUD_ITEMS,
-  HUD_MENU,
-  HUD_NEW_GAME,
-  HUD_SOUND,
   HUD_Y,
   STAGE_H,
   STAGE_W,
   STOCK_X,
   TABLEAU_Y,
   TAGLINE_TEXT,
-  TITLE_HOW_TO,
   TITLE_ITEMS,
-  TITLE_NEW_GAME,
   TITLE_TEXT,
   TOP_ROW_Y,
   WASTE_X,
   WIN_TEXT,
-  type Rect,
 } from "./constants";
+import {
+  HOWTO_BACK,
+  HUD_MENU,
+  HUD_NEW_GAME,
+  HUD_SOUND,
+  type Rect,
+  TITLE_HOW_TO,
+  TITLE_NEW_GAME,
+} from "./layout";
 import { drawCard, drawEmptySlot, setFont, type Ctx } from "./cards";
 import { columnCardTops, dropRect } from "./layout";
 import { shownWasteCount } from "./piles";
@@ -58,16 +60,25 @@ function centeredText(
   ctx.fillText(text, x, y);
 }
 
-/** A control's panel and its label, the label centered in the rectangle. */
+/**
+ * A control's panel and its label, the label centered in the rectangle.
+ *
+ * THE SELECTED ITEM IS DRAWN DISTINCTLY, which specs/controls.md requires of
+ * every menu: "the selected item is drawn distinctly from the others".
+ * Here that is the border and the label; the panel's fill and the rectangle's
+ * size are left alone, so a label is read against the same ground whichever item
+ * is selected.
+ */
 function drawControl(
   ctx: Ctx,
   rect: Rect,
   label: string,
   panel: string = COLOR.panel,
+  selected = false,
 ): void {
   ctx.fillStyle = panel;
   ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-  ctx.strokeStyle = COLOR.slotEdge;
+  ctx.strokeStyle = selected ? COLOR.highlight : COLOR.slotEdge;
   ctx.lineWidth = 2;
   ctx.strokeRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2);
   centeredText(
@@ -76,7 +87,7 @@ function drawControl(
     rect.x + rect.w / 2,
     rect.y + rect.h / 2,
     Math.min(24, rect.h - 14),
-    COLOR.text,
+    selected ? COLOR.highlight : COLOR.text,
     700,
   );
 }
@@ -187,13 +198,20 @@ function drawHud(ctx: Ctx, state: CascadeState): void {
   ctx.fillStyle = COLOR.hud;
   ctx.fillRect(0, HUD_Y, STAGE_W, HUD_H);
 
-  drawControl(ctx, HUD_NEW_GAME, HUD_ITEMS[0]);
-  drawControl(ctx, HUD_MENU, HUD_ITEMS[1]);
+  drawControl(
+    ctx,
+    HUD_NEW_GAME,
+    HUD_ITEMS[0],
+    COLOR.panel,
+    state.menuIndex === 0,
+  );
+  drawControl(ctx, HUD_MENU, HUD_ITEMS[1], COLOR.panel, state.menuIndex === 1);
   drawControl(
     ctx,
     HUD_SOUND,
     HUD_ITEMS[2],
     state.muted ? COLOR.panelMuted : COLOR.panel,
+    state.menuIndex === 2,
   );
 
   ctx.fillStyle = COLOR.textDim;
@@ -206,17 +224,29 @@ function drawHud(ctx: Ctx, state: CascadeState): void {
 // ---- The screens ---------------------------------------------------------
 
 /** The title screen: the name, the tagline, the deal mode, and both items. */
-function drawTitle(ctx: Ctx): void {
+function drawTitle(ctx: Ctx, state: CascadeState): void {
   centeredText(ctx, TITLE_TEXT, STAGE_W / 2, 190, 108, COLOR.text, 700);
   centeredText(ctx, TAGLINE_TEXT, STAGE_W / 2, 280, 34, COLOR.text);
   centeredText(ctx, DEAL_MODE_LABEL, STAGE_W / 2, 340, 26, COLOR.textDim, 700);
   centeredText(ctx, TITLE_HINT, STAGE_W / 2, 390, 20, COLOR.textDim);
-  drawControl(ctx, TITLE_NEW_GAME, TITLE_ITEMS[0]);
-  drawControl(ctx, TITLE_HOW_TO, TITLE_ITEMS[1]);
+  drawControl(
+    ctx,
+    TITLE_NEW_GAME,
+    TITLE_ITEMS[0],
+    COLOR.panel,
+    state.menuIndex === 0,
+  );
+  drawControl(
+    ctx,
+    TITLE_HOW_TO,
+    TITLE_ITEMS[1],
+    COLOR.panel,
+    state.menuIndex === 1,
+  );
 }
 
 /** The how-to screen: the prose, and the way back. */
-function drawHowTo(ctx: Ctx): void {
+function drawHowTo(ctx: Ctx, state: CascadeState): void {
   centeredText(ctx, "HOW TO PLAY", STAGE_W / 2, 110, 56, COLOR.text, 700);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -226,7 +256,14 @@ function drawHowTo(ctx: Ctx): void {
     if (HOWTO_LINES[i] === "") continue;
     ctx.fillText(HOWTO_LINES[i], STAGE_W / 2, 200 + i * 30);
   }
-  drawControl(ctx, HOWTO_BACK, HOWTO_BACK_LABEL);
+  // The screen's only item, so it is always the selected one.
+  drawControl(
+    ctx,
+    HOWTO_BACK,
+    HOWTO_BACK_LABEL,
+    COLOR.panel,
+    state.menuIndex === 0,
+  );
 }
 
 /** The message the finished cascade leaves over the painted table. */
@@ -262,6 +299,6 @@ export function renderGame(state: CascadeState, ctx: Ctx): void {
     return;
   }
 
-  if (state.screen === "title") drawTitle(ctx);
-  else drawHowTo(ctx);
+  if (state.screen === "title") drawTitle(ctx, state);
+  else drawHowTo(ctx, state);
 }

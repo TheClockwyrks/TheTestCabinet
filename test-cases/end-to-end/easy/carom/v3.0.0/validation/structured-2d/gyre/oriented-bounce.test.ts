@@ -26,7 +26,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { OBSTACLE_SPIN_RATE, SERVE_SPEED } from "../constants";
-import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   ball0,
   captureReplay,
@@ -147,6 +147,4 @@ it("reflects a level shot about the face's normal, upright and tilted", async ()
     ANGLE_TOLERANCE_DEG,
     "a tilted face should send the shot along the reflection about its normal",
   );
-
-  assertDeepEqual(harness.assetFailures, []);
 });

@@ -267,9 +267,9 @@ export interface CaromState {
   /** Accumulated simulation time, in seconds. */
   readonly simTime: number;
   /**
-   * Mirrors the engine's mute bit, refreshed every `update` from
-   * `api.audio.muted()`. The engine owns muting; this is the game's readable
-   * copy of it, and it is what `snapshot()` reports.
+   * The mute bit. `setMuted` poses it through the debug surface, the `mute`
+   * action toggles it, and every `update` brings the engine's own bus into line
+   * with it, so what `snapshot()` reports is what the player hears.
    */
   readonly muted: boolean;
   /** The seed the game's random generator was last seeded from. */
@@ -436,9 +436,6 @@ function menuScreenFor(screen: Screen): MenuScreen | null {
  * takes its first input on the following update.
  */
 function handleInput(state: State, api: UpdateApi): CaromState {
-  // Mute works on every screen, so it is read before the per-screen switch.
-  if (mute(api)) api.audio.setMuted(!api.audio.muted());
-
   switch (state.screen) {
     case "countdown":
     case "playing":
@@ -706,10 +703,16 @@ export const game: Game<CaromState, CaromDebugApi> = {
    * the frame advances.
    */
   update(state: State, api: UpdateApi, dt: number): CaromState {
+    // Mute works on every screen, so its edge is read here rather than inside
+    // the per-screen handling, and exactly once. THE STATE CARRIES THE BIT,
+    // because `setMuted` poses it through the debug surface, which is a pure
+    // state transform and cannot reach the engine's bus; the bus is brought
+    // into line with the state BEFORE the frame advances, so a cue raised by
+    // this frame's own collisions is already silenced.
+    const muted = mute(api) ? !state.muted : state.muted;
+    if (api.audio.muted() !== muted) api.audio.setMuted(muted);
     const advanced = advance(handleInput(state, api), api, dt);
-    // The engine owns the mute bit; this is the game's readable copy of it, so the
-    // HUD hint and `snapshot()` cannot drift from what the player actually hears.
-    return { ...advanced, muted: api.audio.muted() };
+    return { ...advanced, muted };
   },
 
   /** Runs once per frame, after `update`, with the state it returned. Draws. */

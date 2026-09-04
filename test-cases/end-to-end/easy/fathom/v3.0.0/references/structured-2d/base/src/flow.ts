@@ -22,7 +22,7 @@ import { cellIndex } from "./grid";
 import { TRENCH, TRENCH_START } from "./layout";
 import { restAt } from "./movement";
 import { Rng } from "./rng";
-import type { FathomState } from "./game";
+import type { FathomState, Screen } from "./game";
 
 /**
  * How long the dive countdown holds before play begins, and how long the
@@ -140,9 +140,21 @@ export function loadLayout(state: FathomState, rows: readonly string[]): void {
 
 /** The dive countdown, held over the maze before control resumes. */
 export function startCountdown(state: FathomState): void {
-  state.screen = "countdown";
+  openMenu(state, "countdown");
   state.countdown = COUNTDOWN_TIME;
-  state.menuIndex = 0;
+}
+
+/**
+ * Arrive at `screen`, with the item that screen opens on selected.
+ *
+ * The pause menu and the game-over menu open on their first item; the title
+ * opens on the entry `titleIndex` remembers (`specs/ui.md`). A gesture half-made
+ * on the menu being left cannot carry across.
+ */
+export function openMenu(state: FathomState, screen: Screen): void {
+  state.screen = screen;
+  state.menuIndex = screen === "title" ? state.titleIndex : 0;
+  state.pressedItem = null;
 }
 
 /**
@@ -169,10 +181,15 @@ export function beginPlay(state: FathomState): void {
   applyReleaseSchedule(state);
 }
 
-/** Back to the title, with the run's figures back where a dive begins from. */
+/**
+ * Back to the title, with the run's figures back where a dive begins from.
+ *
+ * `titleIndex` is the exception `specs/ui.md` names: it keeps its value across
+ * the return, and the selection lands on the entry it holds, so the title comes
+ * back on the item the player left it by.
+ */
 export function toTitle(state: FathomState): void {
-  state.screen = "title";
-  state.menuIndex = 0;
+  openMenu(state, "title");
   state.score = 0;
   state.lives = START_LIVES;
   state.depth = 1;
@@ -185,8 +202,7 @@ export function toTitle(state: FathomState): void {
  */
 export function loseLife(state: FathomState): void {
   if (state.lives === 0) {
-    state.screen = "gameover";
-    state.menuIndex = 0;
+    openMenu(state, "gameover");
     return;
   }
   state.lives -= 1;

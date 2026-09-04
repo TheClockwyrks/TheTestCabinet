@@ -20,12 +20,6 @@ import {
   DOUBLE_CLICK_SLOP,
   DOUBLE_CLICK_WINDOW,
   DRAG_THRESHOLD,
-  HOWTO_BACK,
-  HUD_MENU,
-  HUD_NEW_GAME,
-  HUD_SOUND,
-  TITLE_HOW_TO,
-  TITLE_NEW_GAME,
   TOP_ROW_Y,
   FOUNDATION_X,
   COLUMN_X,
@@ -52,6 +46,7 @@ import {
   turnStock,
   type RunSource,
 } from "./moves";
+import { itemAt, returnToTitle } from "./menus";
 import type { PointerSample } from "./pointer";
 import type { CascadeState, SourceKind } from "./state";
 import { wasteShownCount } from "./waste";
@@ -136,54 +131,66 @@ export function refreshDropTarget(state: CascadeState): void {
 function dealAndPlay(state: CascadeState): void {
   deal(state);
   state.screen = "playing";
+  // "Every deal that begins play selects the first of them, so `menuIndex` is
+  // `0` when a fresh game starts" (specs/screens.md).
+  state.menuIndex = 0;
 }
 
 /**
- * Activate the control whose rectangle contains a point, and report whether one
- * did. A control answers only on the screen it belongs to.
+ * Activate the item at `menuIndex` on the current screen, as specs/screens.md
+ * states for it.
+ *
+ * ONE FUNCTION, WHATEVER RAISED IT. specs/controls.md: "The item every
+ * activation acts on is the item at `menuIndex`, whichever input raised it, and
+ * the effect is the one the keyboard table gives `menu-confirm` on that
+ * screen." So a key, a mouse click and a finger tap all end here.
+ *
+ * The title's two entries also record what they were: specs/screens.md has
+ * `titleIndex` follow the entry last activated there, and both returns to the
+ * title restore `menuIndex` from it.
  */
-export function activateControl(
-  state: CascadeState,
-  audio: InputAudio,
-  x: number,
-  y: number,
-): boolean {
+export function activateMenuItem(state: CascadeState, audio: InputAudio): void {
+  const index = state.menuIndex;
   if (state.screen === "title") {
-    if (contains(TITLE_NEW_GAME, x, y)) {
+    if (index === 0) {
+      state.titleIndex = 0;
       dealAndPlay(state);
-      return true;
+      return;
     }
-    if (contains(TITLE_HOW_TO, x, y)) {
+    if (index === 1) {
+      state.titleIndex = 1;
       state.screen = "howto";
-      return true;
+      state.menuIndex = 0;
     }
-    return false;
+    return;
   }
   if (state.screen === "howto") {
-    if (contains(HOWTO_BACK, x, y)) {
-      state.screen = "title";
-      return true;
-    }
-    return false;
+    returnToTitle(state);
+    return;
   }
-  if (state.screen === "playing") {
-    if (contains(HUD_NEW_GAME, x, y)) {
-      deal(state);
-      return true;
-    }
-    if (contains(HUD_MENU, x, y)) {
-      state.screen = "title";
-      return true;
-    }
-    if (contains(HUD_SOUND, x, y)) {
-      const next = !audio.muted();
-      audio.setMuted(next);
-      state.muted = next;
-      return true;
-    }
-    return false;
+  if (state.screen !== "playing") return;
+  if (index === 0) {
+    deal(state);
+    // "Every deal that begins play selects the first of them"
+    // (specs/screens.md); a deal that stays on the table is one of them.
+    state.menuIndex = 0;
+    return;
   }
-  return false;
+  if (index === 1) {
+    returnToTitle(state);
+    return;
+  }
+  if (index === 2) {
+    const next = !audio.muted();
+    audio.setMuted(next);
+    state.muted = next;
+  }
+}
+
+/** Select the item whose region holds a point, where one does. */
+function selectItemUnder(state: CascadeState, x: number, y: number): void {
+  const index = itemAt(state.screen, x, y);
+  if (index !== null) state.menuIndex = index;
 }
 
 /** A press: the whole of what a press does, on whichever screen it lands. */
@@ -191,6 +198,11 @@ function press(state: CascadeState, x: number, y: number): void {
   const previous = state.lastPress;
   state.lastPress = { x, y, at: state.simTime };
   state.gestureSpent = false;
+
+  // A finger never hovers, so the LANDING is what selects it; a mouse pressed
+  // inside a region has moved onto it already, and selecting again changes
+  // nothing (specs/controls.md).
+  selectItemUnder(state, x, y);
   // A stray press while something is in hand is not a second gesture; the run
   // goes back and the new press starts clean.
   releaseToSource(state);
@@ -240,6 +252,10 @@ function press(state: CascadeState, x: number, y: number): void {
 
 /** The held run follows the pointer, keeping the offset the press gave it. */
 function travel(state: CascadeState, x: number, y: number): void {
+  // "A mouse moves onto an item's region, its button up or down" and "a finger
+  // ... travels onto one while down" are the same sample here, and both select
+  // (specs/controls.md).
+  selectItemUnder(state, x, y);
   const drag = state.drag;
   if (drag === null) return;
   drag.x = x - drag.grabDx;
@@ -282,6 +298,17 @@ function release(
   }
 
   const from = state.lastPress;
+  // The menu first, and whatever KIND of gesture this was: specs/controls.md
+  // has either kind activate a control "when one control's hit region holds
+  // both the press point and the release point".
+  const pressed = from === null ? null : itemAt(state.screen, from.x, from.y);
+  if (pressed !== null && pressed === itemAt(state.screen, x, y)) {
+    releaseToSource(state);
+    state.menuIndex = pressed;
+    activateMenuItem(state, audio);
+    return;
+  }
+
   const click =
     from === null || distance(x, y, from.x, from.y) <= DRAG_THRESHOLD;
 
@@ -292,7 +319,6 @@ function release(
 
   releaseToSource(state);
   if (from === null) return;
-  if (activateControl(state, audio, from.x, from.y)) return;
   if (
     state.screen === "playing" &&
     contains(dropRect(state, "stock", 0), from.x, from.y)

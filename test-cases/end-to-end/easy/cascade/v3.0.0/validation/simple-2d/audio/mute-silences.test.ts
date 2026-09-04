@@ -33,7 +33,7 @@
 //
 // WHAT THIS DOES NOT DECIDE. That the `SOUND` control is drawn and labelled, and
 // that clicking it flips the reported bit, are `screens/hud-labels-drawn`'s and
-// `screens/hud-sound-toggles`'s requirements. This point reads what the mute did to
+// `screens/hud-sound-mutes`'s requirements. This point reads what the mute did to
 // the sound.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -45,7 +45,7 @@ import {
 } from "../assert";
 import {
   DOUBLE_CLICK_WINDOW,
-  HUD_SOUND,
+  HUD_SOUND_ITEM,
   STOCK_X,
   TOP_ROW_Y,
 } from "../constants";
@@ -54,6 +54,7 @@ import {
   cardCenter,
   createHarness,
   framesFor,
+  menuPoint,
   openTable,
   placeOf,
   poseColumn,
@@ -64,7 +65,7 @@ import {
   watchCues,
   type Harness,
 } from "../harness";
-import { audibleAfter, centerOf, pressFrame, releaseFrame } from "./cues";
+import { audibleAfter, pressFrame, releaseFrame } from "./cues";
 
 /**
  * Frames driven between one gesture and the next.
@@ -91,9 +92,8 @@ const FROM_ROW = 0;
 const TARGET = "6S";
 const TO_COLUMN = 1;
 
-/** A point inside each rectangle the gestures below press (specs/controls.md). */
-const SOUND = centerOf(HUD_SOUND);
-const STOCK_POINT = cardCenter(STOCK_X, TOP_ROW_Y);
+/** A point inside each rectangle the gestures below press (specs/controls.md). */ const STOCK_POINT =
+  cardCenter(STOCK_X, TOP_ROW_Y);
 
 let h: Harness;
 
@@ -118,6 +118,8 @@ it("sounds nothing at all once the SOUND control has muted the game, through a t
       "on rather than off (specs/audio.md)",
   );
 
+  // The middle of the region the build reports for the HUD's SOUND item.
+  const SOUND = menuPoint(h, HUD_SOUND_ITEM);
   await tapPointer(h, SOUND.x, SOUND.y);
   assertEqual(
     h.snapshot().muted,

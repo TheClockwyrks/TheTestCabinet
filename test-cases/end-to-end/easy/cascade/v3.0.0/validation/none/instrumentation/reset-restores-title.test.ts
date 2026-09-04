@@ -37,11 +37,12 @@
 // `muted` IS THE ONE FIELD THAT MUST SURVIVE. "`muted` is left exactly as it
 // stands, because muting is a player preference the runtime owns"
 // (`specs/instrumentation.md`), so the bit is read immediately before the reset
-// and held to that same reading afterwards. The HUD's `SOUND` control is clicked
-// first so the bit under test is more likely to be the interesting one, but the
-// comparison is against what the snapshot ACTUALLY reported a moment earlier —
-// whether that control works is `screens/hud-sound-toggles`'s point, and a build
-// that failed it must not fail this one too.
+// and held to that same reading afterwards. It is posed with `setMuted` first, so
+// the bit under test is more likely to be the interesting one, but the comparison
+// is against what the snapshot ACTUALLY reported a moment earlier — whether the
+// HUD's own `SOUND` control works is `screens/hud-sound-mutes`'s point and
+// `screens/hud-sound-unmutes`'s, and a build that failed those must not fail this
+// one too.
 //
 // NO FRAME RUNS BETWEEN THE RESET AND THE READING, because `simTime` "accumulates
 // every update's delta, whatever the screen" and a check that advanced first
@@ -55,13 +56,11 @@ import {
   assertLength,
   assertNull,
 } from "../assert";
-import { HUD_SOUND } from "../constants";
 import {
   captureStill,
   card,
   cardCenter,
   cards,
-  clickAt,
   columnCardTopLeft,
   createHarness,
   dropRect,
@@ -110,10 +109,9 @@ afterEach(async () => {
 it("restores every declared field to its title value and leaves muted alone", async () => {
   await openTable(h);
 
-  // The runtime's mute bit, reached the only way there is: the HUD's own control
-  // (`specs/instrumentation.md`, What the runtime provides instead).
-  const sound = rectCenter(HUD_SOUND);
-  await clickAt(h, sound.x, sound.y);
+  // The runtime's mute bit, posed directly (`specs/instrumentation.md`, Muting),
+  // so that what the reset is held to is a bit that was really set.
+  await h.debug.setMuted(true);
   await h.advance(1);
 
   // A real win and half a second of its cascade, so cards have been counted out,

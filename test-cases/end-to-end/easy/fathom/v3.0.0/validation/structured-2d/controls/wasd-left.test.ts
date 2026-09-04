@@ -41,7 +41,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
-import { FORAGER_SPEED, TILE } from "../constants";
+import { FORAGER_SPEED, TILE, WASD_KEY } from "../constants";
 import { poseMoveKeyRun } from "../fixtures";
 import {
   captureReplay,
@@ -53,7 +53,7 @@ import {
 import { requireSceneHeld, sceneGuard } from "../scene";
 
 /** The second key specs/movement.md binds the `left` action to. */
-const KEY = "KeyA";
+const KEY = WASD_KEY.left;
 
 /**
  * How long the action is held before the reading, in ticks.

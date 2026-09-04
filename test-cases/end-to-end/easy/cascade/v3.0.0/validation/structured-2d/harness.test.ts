@@ -31,11 +31,11 @@ import {
   DECK_SIZE,
   FACE_UP_OFFSET,
   FOUNDATION_X,
-  HUD_SOUND,
+  HUD_SOUND_ITEM,
   LAUNCH_INTERVAL,
   STOCK_X,
   TABLEAU_Y,
-  TITLE_NEW_GAME,
+  TITLE_NEW_GAME_ITEM,
   TITLE_TEXT,
   TOP_ROW_Y,
   WASTE_X,
@@ -43,21 +43,18 @@ import {
 import { drawingSurfacesAvailable } from "./canvas-shim";
 import {
   ACE,
-  CASCADE_HZ,
-  KING,
-  QUEEN,
   alternatingRun,
   canvasPixels,
   captureReplay,
   captureStill,
   card,
   cardById,
-  cardTopLeft,
   cardsHome,
-  clearCues,
+  cardTopLeft,
+  CASCADE_HZ,
   clearColor,
+  clearCues,
   clickAt,
-  clickControl,
   colorDistance,
   columnCardTopLeft,
   columnFaces,
@@ -77,6 +74,8 @@ import {
   everyCard,
   flyerById,
   grabPoint,
+  KING,
+  menuPoint,
   openTable,
   pileOf,
   pixelsChanged,
@@ -87,13 +86,14 @@ import {
   poseNearlyWon,
   poseStock,
   poseWaste,
-  readDebugSurface,
   pressAt,
+  QUEEN,
+  readDebugSurface,
   rectCenter,
-  shapesAt,
   releaseAt,
   resetTo,
   sampleCard,
+  shapesAt,
   siteOf,
   startCascade,
   toggleOverlay,
@@ -103,11 +103,8 @@ import {
   watchCues,
   type Harness,
 } from "./harness";
-import {
-  CASCADE_DEBUG_VERSION,
-  REQUIRED_OPS,
-  SNAPSHOT_FIELDS,
-} from "./surface";
+import { CASCADE_DEBUG_VERSION } from "./constants";
+import { REQUIRED_OPS, SNAPSHOT_FIELDS } from "./surface";
 
 /** The environment variable the runner names the media directory in. */
 const MEDIA_DIR_ENV = "TCAB_VALIDATION_MEDIA_DIR";
@@ -335,7 +332,11 @@ it("aims a press at the card a check meant, in a column and on the waste", () =>
 it("drives clicks, drops and double clicks through the real input path", () => {
   // A click on a title control activates it, with no frame advanced.
   resetTo(h, 1);
-  clickControl(h, TITLE_NEW_GAME);
+  clickAt(
+    h,
+    menuPoint(h, TITLE_NEW_GAME_ITEM).x,
+    menuPoint(h, TITLE_NEW_GAME_ITEM).y,
+  );
   expect(h.snapshot().screen).toBe("playing");
   expect(cardsHome(h.snapshot()) + h.snapshot().stock.length).toBeGreaterThan(
     0,
@@ -471,7 +472,7 @@ it("hears the cues the build played, on the frame it played them", async () => {
   // The bus is the engine's: a muted cue still announces itself, at zero gain,
   // which is how a check tells a build that reacted from one that never did.
   clearCues(h);
-  clickControl(h, HUD_SOUND);
+  clickAt(h, menuPoint(h, HUD_SOUND_ITEM).x, menuPoint(h, HUD_SOUND_ITEM).y);
   await h.advance(1);
   expect(h.snapshot().muted).toBe(true);
   clearCues(h);

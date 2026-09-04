@@ -28,7 +28,7 @@ A bonus drifter is a harmless amber creature that wanders the corridors and pays
 a bonus when the forager eats it.
 
 While plankton remain in the maze, drifters are admitted at the den gate on a
-cadence of about `DRIFTER_INTERVAL` (`25 s`). The cadence tops the maze up to
+cadence of `DRIFTER_INTERVAL` (`25 s`). The cadence tops the maze up to
 `DRIFTER_MAX` (`2`) drifters at once and stops there, so a maze already holding
 `DRIFTER_MAX` of them admits none until one is eaten.
 

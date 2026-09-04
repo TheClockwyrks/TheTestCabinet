@@ -29,6 +29,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { HOWTO_TOKENS } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -36,14 +37,6 @@ import {
   drewToken,
   type Harness,
 } from "../harness";
-
-/**
- * The four standalone tokens specs/screens.md fixes for the how-to screen.
- *
- * The literals are the specification's own, restated here because they are copy
- * rather than a figure and `constants.ts` carries no constant for them.
- */
-const TOKENS = ["ACE", "KING", "STOCK", "DOUBLE-CLICK"] as const;
 
 let h: Harness;
 
@@ -68,7 +61,7 @@ it("draws each of the four standalone tokens among the how-to screen's text", as
   const calls = await drawFrame(h);
   captureStill(h, "howto");
 
-  for (const token of TOKENS) {
+  for (const token of HOWTO_TOKENS) {
     assertEqual(
       drewToken(calls, token),
       true,

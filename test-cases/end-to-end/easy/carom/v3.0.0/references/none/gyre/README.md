@@ -148,6 +148,7 @@ The build exposes the surface `specs/instrumentation.md` specifies on
   the build's own rule serves the ball on the next frame.
 - `setAiTracking(enabled)` and `setAiMovement(enabled)` — the AI's two faculties,
   gated on their own: sensing the ball, and travelling toward what it senses.
+- `setMuted(muted)` — the mute bit, the same bit the `mute` action toggles.
 - `setObstacleClock(t)` and `setObstacleClockRunning(running)` — the obstacle
   clock. `t = 0` is upright at the base centers; a larger `t` sways and rotates
   them exactly as normal play would at that moment, and stopping the clock holds

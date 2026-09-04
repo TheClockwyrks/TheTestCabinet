@@ -23,26 +23,21 @@
 // twice.
 //
 // WHAT THIS DOES NOT DECIDE. That `NEW GAME` is DRAWN on the title screen, which
-// is `screens/title-shows-items`, nor that the HUD's own `NEW GAME` deals, which
+// is `screens/title-shows-new-game`, nor that the HUD's own `NEW GAME` deals, which
 // is `screens/hud-new-game-deals`: a build whose title control is dead and whose
 // HUD control works fails one point and passes the other.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
-import { DECK_SIZE, TITLE_NEW_GAME } from "../constants";
+import { DECK_SIZE, TITLE_NEW_GAME_ITEM } from "../constants";
 import {
   captureStill,
   createHarness,
+  menuPoint,
   tableCards,
   tapPointer,
   type Harness,
 } from "../harness";
-
-/** A point inside `TITLE_NEW_GAME`: its center (specs/controls.md). */
-const PRESS = {
-  x: TITLE_NEW_GAME.x + TITLE_NEW_GAME.w / 2,
-  y: TITLE_NEW_GAME.y + TITLE_NEW_GAME.h / 2,
-};
 
 let h: Harness;
 
@@ -60,7 +55,7 @@ it("reaches playing with a full deck dealt when NEW GAME is clicked", async () =
   assertEqual(
     h.snapshot().screen,
     "title",
-    "posing: the game is on the title screen, where TITLE_NEW_GAME answers " +
+    "posing: the game is on the title screen, where that item answers " +
       "(specs/controls.md: a control answers only on the screen it belongs to)",
   );
   assertLength(
@@ -70,14 +65,16 @@ it("reaches playing with a full deck dealt when NEW GAME is clicked", async () =
       "can only have come from the deal (specs/instrumentation.md)",
   );
 
-  await tapPointer(h, PRESS.x, PRESS.y);
+  // The middle of the region the build reports for the title's NEW GAME item.
+  const press = menuPoint(h, TITLE_NEW_GAME_ITEM);
+  await tapPointer(h, press.x, press.y);
   captureStill(h, "playing");
 
   const snapshot = h.snapshot();
   assertEqual(
     snapshot.screen,
     "playing",
-    "the screen after a click inside TITLE_NEW_GAME (specs/screens.md)",
+    "the screen after a click inside the region the build reports for it (specs/screens.md)",
   );
   assertLength(
     tableCards(snapshot),

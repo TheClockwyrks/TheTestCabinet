@@ -9,17 +9,19 @@ import {
   DOUBLE_CLICK_WINDOW,
   DRAG_THRESHOLD,
   FOUNDATION_X,
+  STOCK_X,
+  TABLEAU_Y,
+  TOP_ROW_Y,
+  TURN_COUNT,
+} from "./constants";
+import {
   HOWTO_BACK,
   HUD_MENU,
   HUD_NEW_GAME,
   HUD_SOUND,
-  STOCK_X,
-  TABLEAU_Y,
   TITLE_HOW_TO,
   TITLE_NEW_GAME,
-  TOP_ROW_Y,
-  TURN_COUNT,
-} from "./constants";
+} from "./menus";
 import { openingState } from "./flow";
 import { columnCardTops, wasteFanX } from "./layout";
 import { moveTo, pressAt, releaseAt } from "./pointer";

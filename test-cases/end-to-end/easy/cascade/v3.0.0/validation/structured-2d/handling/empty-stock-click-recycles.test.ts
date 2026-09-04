@@ -24,7 +24,7 @@
 // rather than recycled, reads as a different pair of counts.
 //
 // THE CLICK IS AT ZERO DISTANCE from its press, inside `DRAG_THRESHOLD` by any
-// reading; `handling/drag-threshold` is the point that decides the threshold.
+// reading; `handling/short-gesture-is-a-click` is the point that decides the threshold.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertLength } from "../assert";

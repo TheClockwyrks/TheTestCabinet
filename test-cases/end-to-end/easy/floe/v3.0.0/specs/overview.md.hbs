@@ -32,7 +32,7 @@ The specification spans several files under `specs/`.
 | `specs/progression.md` | The run: lives, the crossing timer, the phases, and the eight levels. |
 | `specs/scoring.md` | Every score figure. |
 | `specs/controls.md` | The keys and what each one drives. |
-| `specs/ui.md` | The six screens, the HUD, and the audio cues. |
+| `specs/ui.md` | The six screens, how a player moves between them by keyboard, pointer and touch, the HUD, and the audio cues. |
 | `specs/assets.md` | The sprite art seeded with the project, and how the game draws it. |
 | `specs/state.md` | The state the game holds. |
 | `specs/instrumentation.md` | The debugging and automation surface over that state. |
@@ -44,10 +44,10 @@ Read all of them and build the game they describe as one cohesive whole.
 ## The runtime
 
 This game stands on no engine, so the runtime under it is yours to write: the
-frame loop and the elapsed time it measures, the canvas fit, keyboard input,
-image loading, audio, and the debug overlay. Where this specification speaks of
-the runtime it means that layer, and it states only what Floe needs from it. How
-the layer is structured is yours to decide.
+frame loop and the elapsed time it measures, the canvas fit, keyboard, pointer
+and touch input, image loading, audio, and the debug overlay. Where this
+specification speaks of the runtime it means that layer, and it states only what
+Floe needs from it. How the layer is structured is yours to decide.
 {{else if (eq engine.slug "simple-2d")}}
 ## The runtime
 
@@ -89,9 +89,9 @@ Everything under `src/`. The directory does not exist yet.
 
 `index.html` loads `/src/main.ts` as its entry point, so that module is where
 your build starts. Beyond that the structure is yours: the frame loop and the
-canvas fit, keyboard input, sprite loading, audio, the debug overlay, the
-debugging and automation surface, the figures this specification fixes, and the
-game itself.
+canvas fit, keyboard, pointer and touch input, sprite loading, audio, the debug
+overlay, the debugging and automation surface, the figures this specification
+fixes, and the game itself.
 
 The game's state is yours to shape. `specs/state.md` states what it must carry,
 and `specs/instrumentation.md` states the one contract fixed over it.
@@ -175,8 +175,9 @@ this specification does not name is yours to decide.
 
 Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
 `npm test` runs them in process with Vitest, in Node, with coverage measured over
-`src/`. A test stands the engine up over its own canvas and clock and advances
-the game a counted number of frames, so it needs no browser.
+the code you write under `src/`; the seeded `src/constants.ts` and `src/main.ts`
+are outside the report. A test stands the engine up over its own canvas and clock
+and advances the game a counted number of frames, so it needs no browser.
 {{else}}
 ### What you implement
 
@@ -235,9 +236,10 @@ this specification does not name is yours to decide.
 
 Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
 `npm test` runs them in process with Vitest, in Node, with coverage measured over
-`src/`. A test stands the engine up over a canvas from `@napi-rs/canvas` and a
-surface and clock of its own, then advances the game a counted number of frames
-with `engine.advance`, so it needs no browser.
+the code you write under `src/`; the seeded `src/constants.ts` and `src/main.ts`
+are outside the report. A test stands the engine up over a canvas from
+`@napi-rs/canvas` and a surface and clock of its own, then advances the game a
+counted number of frames with `engine.advance`, so it needs no browser.
 {{/if}}
 
 ### The checks the repository passes
@@ -277,7 +279,8 @@ them.
 
 {{#if (eq engine.slug "none")}}
 - Write the runtime the game stands on: the frame loop and its elapsed time, the
-  canvas fit, keyboard input, image loading, audio, and the debug overlay.
+  canvas fit, keyboard, pointer and touch input, image loading, audio, and the
+  debug overlay.
 {{else if (eq engine.slug "simple-2d")}}
 - Build on the {{engine.name}} engine, taking the frame loop, the input actions,
   audio, asset loading, and the debug overlay from it.
@@ -293,8 +296,8 @@ them.
 - Run in the browser with no backend. Everything needed to play is
   self-contained, and no API key or credential is needed to build, run, or play.
 {{#if (eq engine.slug "none")}}
-- Hold the game's whole state in one value, the one the simulation advances and
-  the debugging surface reads.
+- Report the whole of the state `specs/state.md` lists through the debugging
+  surface's `snapshot`, every field an operation can set included.
 {{else if (eq engine.slug "simple-2d")}}
 - Hold the game's whole state in `FloeState`, as `specs/state.md` declares it.
 {{else}}

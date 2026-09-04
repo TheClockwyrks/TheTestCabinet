@@ -321,6 +321,11 @@ export interface CaromDebugApi<B extends BallOps = SingleBallOps> {
   /** Whether the AI's paddle travels toward that target. */
   setAiMovement(enabled: boolean): void;
 
+  /* Audio. */
+
+  /** Sets the mute bit, the same bit the `mute` action toggles. */
+  setMuted(muted: boolean): void;
+
   /* Obstacles: gyre alone. */
 
   /** `gyre`: sets the obstacle clock to `t` seconds, and nothing else. */
@@ -384,6 +389,7 @@ export const REQUIRED_OPS = [
   "setBallHoldTimer",
   "setAiTracking",
   "setAiMovement",
+  "setMuted",
   "snapshot",
   "menuItemRect",
 ] as const;

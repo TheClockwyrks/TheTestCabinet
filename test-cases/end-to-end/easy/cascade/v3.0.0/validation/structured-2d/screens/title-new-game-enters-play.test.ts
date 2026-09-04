@@ -25,12 +25,13 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { DECK_SIZE, TITLE_NEW_GAME } from "../constants";
+import { DECK_SIZE, TITLE_NEW_GAME_ITEM } from "../constants";
 import {
   captureStill,
-  clickControl,
+  clickAt,
   createHarness,
   everyCard,
+  menuPoint,
   resetTo,
   type Harness,
 } from "../harness";
@@ -64,7 +65,12 @@ it("deals a full deck and enters play when NEW GAME is clicked on the title", as
       "is this control's own deal (specs/instrumentation.md)",
   );
 
-  clickControl(h, TITLE_NEW_GAME);
+  // The middle of the region the build reports for the title's NEW GAME item.
+  clickAt(
+    h,
+    menuPoint(h, TITLE_NEW_GAME_ITEM).x,
+    menuPoint(h, TITLE_NEW_GAME_ITEM).y,
+  );
   await h.advance(1);
   captureStill(h, "playing");
 
@@ -72,7 +78,7 @@ it("deals a full deck and enters play when NEW GAME is clicked on the title", as
   assertEqual(
     started.screen,
     "playing",
-    "the screen a click inside TITLE_NEW_GAME reaches (specs/screens.md)",
+    "the screen a click inside the region the build reports for it reaches (specs/screens.md)",
   );
   assertEqual(
     everyCard(started).length,

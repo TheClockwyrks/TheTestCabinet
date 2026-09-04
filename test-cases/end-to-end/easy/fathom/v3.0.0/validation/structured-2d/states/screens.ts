@@ -33,6 +33,7 @@
 // presses is one `specs/movement.md` binds.
 
 import { assertMatches } from "../assert";
+import { stageCatch } from "../fixtures";
 import { BINDINGS } from "../constants";
 import { callsTo, DIR_KEY, type DrawCall, type Harness } from "../harness";
 import type { FathomSnapshot } from "../surface";
@@ -209,6 +210,13 @@ const MAX_ATTEMPTS = 8;
  * opens live play again and the next attempt runs. Nothing here fabricates a
  * death: every one of them goes through the build's own code.
  *
+ * EVERY ATTEMPT STAGES ITS CATCH ON AN EMPTY BOARD. A catch here is a contact rule
+ * rather than a chase, so the world each attempt runs in holds exactly one hunter
+ * and every other body comes off it: a den emptying behind the staged contact is
+ * a second hunter that could take the life instead. The roster comes back with
+ * each attempt's fresh board, so {@link stageCatch} is called again every time
+ * round.
+ *
  * WHICH predator is deliberately the roster's index `0` rather than a named kind:
  * `specs/gameplay.md` costs a life for contact "whatever that predator's kind and
  * whatever it is doing", and `specs/state.md` fixes index `0` as the first of the
@@ -225,8 +233,10 @@ export async function loseEveryLife(h: Harness): Promise<FathomSnapshot> {
     if (snapshot.screen !== "playing") return snapshot;
 
     const lives = snapshot.lives;
-    h.debug.setPredatorTile(0, snapshot.forager.tx, snapshot.forager.ty);
-    h.debug.setPredatorState(0, "chase");
+    await stageCatch(h, {
+      tx: snapshot.forager.tx,
+      ty: snapshot.forager.ty,
+    });
     const taken = await h.until(
       (s) => s.lives < lives || s.screen === "gameover",
       { maxFrames: CATCH_TICKS, poll: 2 },

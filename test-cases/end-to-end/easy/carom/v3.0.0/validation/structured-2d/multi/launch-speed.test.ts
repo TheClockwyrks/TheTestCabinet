@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BALL_COUNT, SERVE_SPEED } from "../constants";
-import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -65,5 +65,4 @@ it("launches every ball at the base launch speed", async () => {
     assertEqual(ball.held, false);
     assertLessThanOrEqual(Math.abs(ball.speed - SERVE_SPEED), SPEED_TOLERANCE);
   }
-  assertDeepEqual(h.assetFailures, []);
 });

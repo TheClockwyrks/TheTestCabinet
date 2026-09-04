@@ -2,12 +2,20 @@
 // paused.
 //
 // specs/playfield.md and specs/ui.md: the obstacle clock is frozen while the
-// game is paused, so both obstacles hold their pose. A match is started from
-// the title with the menu keys alone and paused with a real key, so no
-// operation of the surface ever poses the clock or stops it; each obstacle's
-// center and rotation are then read on the paused frame and again after a long
-// paused stretch, and must be unchanged. The margin is a float rounding: a
-// single leaked frame turns an obstacle by over 0.008 radians.
+// game is paused, so both obstacles hold their pose. The countdown is opened
+// through the surface, run for a real quarter second so the clock is genuinely
+// moving, and the pause is then POSED — the three fields specs/ui.md says a
+// `pause` edge sets, and neither `setObstacleClock` nor
+// `setObstacleClockRunning`, which are the two operations a check about the
+// clock freezing on its own must not touch. Each obstacle's center and rotation
+// are read on the paused frame and again after a long paused stretch, and must
+// be unchanged. The margin is a float rounding: a single leaked frame turns an
+// obstacle by over 0.008 radians.
+//
+// Neither the menus nor the pause key is driven to get here. Both are other
+// points' subjects — the title menu's the navigation checks', `Escape`'s
+// `controls-versus/escape`'s — and pressing them here would fail this point for
+// a defect that is not the clock's.
 //
 // THE FIELD IS EMPTIED AND THE TWO OBSTACLES SPAWNED BACK, and that is all this
 // check's world holds. What must hold still is the obstacle pose; a ball is
@@ -24,8 +32,8 @@ import {
   captureReplay,
   clearField,
   createHarness,
+  openCountdown,
   spawnObstacles,
-  startWithKeys,
   type Harness,
 } from "../harness";
 import { BOTH_OBSTACLES, obstacleAt, readObstacles } from "./harness";
@@ -49,11 +57,14 @@ afterEach(async () => {
 });
 
 it("holds the obstacles still while paused", async () => {
-  await startWithKeys(harness, "versus");
+  await openCountdown(harness, "versus");
   await clearField(harness);
   await spawnObstacles(harness, BOTH_OBSTACLES);
   await harness.advance(RUN_TICKS);
-  await harness.tap("Escape");
+
+  await harness.debug.setResumeScreen("countdown");
+  await harness.debug.setMenuIndex(0);
+  await harness.debug.setScreen("paused");
   assertEqual((await harness.snapshot()).screen, "paused");
   const paused = await readObstacles(harness);
 

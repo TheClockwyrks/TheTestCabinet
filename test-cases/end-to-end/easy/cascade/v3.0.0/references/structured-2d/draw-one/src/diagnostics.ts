@@ -12,7 +12,7 @@
 // what the game does. Each line is short enough to read at a glance while the
 // game runs.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
 import { DEAL_MODE, DEAL_MODE_LABEL } from "./constants";
 import { cascadeState, type CascadeState } from "./game";
 import { wasteVisibleCount } from "./layout";
@@ -24,7 +24,7 @@ import { wasteVisibleCount } from "./layout";
  */
 export function diagnosticSources(
   read: () => CascadeState,
-): [string, () => unknown][] {
+): [string, () => DiagnosticValue][] {
   return [
     ["screen", () => read().screen],
     ["deal-mode", () => DEAL_MODE],

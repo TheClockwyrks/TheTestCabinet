@@ -49,11 +49,11 @@ import {
   visibilityOf,
   type Harness,
 } from "../harness";
+import { KINDLE_VISION_MIN } from "../constants";
 import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import {
   FOG_MATCH,
   MASKED_MATCH,
-  KINDLE_VISION_MIN,
   fromFog,
   tileColor,
   tileFromForager,

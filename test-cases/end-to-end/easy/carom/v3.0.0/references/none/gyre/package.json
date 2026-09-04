@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Carom \u2014 a neon top-down paddle duel that runs entirely in the browser, on no engine.",
+  "description": "Carom — a neon top-down paddle duel that runs entirely in the browser, on no engine.",
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",

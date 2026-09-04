@@ -32,6 +32,20 @@ import {
 const P1_SCORE = 7;
 const P2_SCORE = 9;
 
+/**
+ * Whether one run of text shows `score` as a figure of its own.
+ *
+ * specs/overview.md fixes that the two scores are drawn and leaves the
+ * scoreboard's presentation to the build, so a figure carrying a label beside it
+ * — `P1 7` — is one of the forms it permits, and the run is SEARCHED for the
+ * figure rather than stripped down to its digits: stripping folds `P1 7` into
+ * `17` and fails a build that labels its scores. Zero padding reads as the same
+ * figure (`07`); a digit standing next to it does not (`17`).
+ */
+function shows(text: string, score: number): boolean {
+  return new RegExp(`(?:^|\\D)0*${score}(?:\\D|$)`).test(text);
+}
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -56,7 +70,7 @@ it("draws player two's score right of the field's center", async () => {
 
   assertDeepEqual(h.snapshot().score, { p1: P1_SCORE, p2: P2_SCORE });
   const runs = drawnTextSpans(h).filter(
-    (span) => Number.parseInt(span.text.replace(/\D/g, ""), 10) === P2_SCORE,
+    (span) => shows(span.text, P2_SCORE) && !shows(span.text, P1_SCORE),
   );
   assertGreaterThan(runs.length, 0);
   assertEqual(

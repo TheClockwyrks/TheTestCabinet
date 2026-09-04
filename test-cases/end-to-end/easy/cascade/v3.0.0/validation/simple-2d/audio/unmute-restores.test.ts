@@ -32,7 +32,7 @@
 //
 // WHAT THIS DOES NOT DECIDE. That the `SOUND` control is drawn and labelled, and
 // that clicking it flips the reported bit, are `screens/hud-labels-drawn`'s and
-// `screens/hud-sound-toggles`'s requirements. This point reads what the unmute gave
+// `screens/hud-sound-mutes`'s requirements. This point reads what the unmute gave
 // back to the sound.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -40,7 +40,7 @@ import { assertEqual, assertGreaterThan } from "../assert";
 import {
   CUES,
   DOUBLE_CLICK_WINDOW,
-  HUD_SOUND,
+  HUD_SOUND_ITEM,
   STOCK_X,
   TOP_ROW_Y,
 } from "../constants";
@@ -49,13 +49,14 @@ import {
   cardCenter,
   createHarness,
   framesFor,
+  menuPoint,
   openTable,
   poseStock,
   tapPointer,
   watchCues,
   type Harness,
 } from "../harness";
-import { audibleOn, centerOf } from "./cues";
+import { audibleOn } from "./cues";
 
 /**
  * Frames driven between one click and the next.
@@ -75,7 +76,6 @@ const GAP = framesFor(DOUBLE_CLICK_WINDOW);
 const STOCK = ["#2C", "#3C", "#4C", "#5C", "#6C", "#7C", "#8C"];
 
 /** A point inside each rectangle the clicks below press (specs/controls.md). */
-const SOUND = centerOf(HUD_SOUND);
 const STOCK_POINT = cardCenter(STOCK_X, TOP_ROW_Y);
 
 let h: Harness;
@@ -93,6 +93,8 @@ it("plays CUES.turn at an audible gain on the frame of a turn made after the SOU
   openTable(h);
   poseStock(h, STOCK);
 
+  // The middle of the region the build reports for the HUD's SOUND item.
+  const SOUND = menuPoint(h, HUD_SOUND_ITEM);
   await tapPointer(h, SOUND.x, SOUND.y);
   assertEqual(
     h.snapshot().muted,

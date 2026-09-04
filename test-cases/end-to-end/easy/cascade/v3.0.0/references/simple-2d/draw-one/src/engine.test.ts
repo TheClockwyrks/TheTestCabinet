@@ -26,7 +26,6 @@ import {
   FOUNDATION_X,
   HOWTO_BACK_LABEL,
   HUD_ITEMS,
-  HUD_SOUND,
   LAUNCH_INTERVAL,
   RANK_MAX,
   STAGE_H,
@@ -36,13 +35,13 @@ import {
   TABLEAU_Y,
   TAGLINE_TEXT,
   TITLE_ITEMS,
-  TITLE_NEW_GAME,
   TITLE_TEXT,
   TOP_ROW_Y,
   TURN_COUNT,
   WASTE_X,
   WIN_TEXT,
 } from "./constants";
+import { HUD_SOUND, TITLE_NEW_GAME } from "./layout";
 import { BACKGROUND, game, type CascadeState } from "./game";
 import type { CascadeDebugApi, CascadeSnapshot } from "./debug";
 

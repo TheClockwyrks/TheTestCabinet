@@ -44,12 +44,14 @@ import {
   beginPlay,
   denPredators,
   loadLayout,
+  openMenu,
   resetState,
   sonarRange,
   startCountdown,
 } from "./flow";
 import type { Cell, Dir } from "./grid";
 import { cellIndex, inGrid } from "./grid";
+import { itemRect, menuItems, type Rect } from "./menu";
 import { bodyCell, restAt } from "./movement";
 import { acquireFix, lightDetectRange } from "./predators";
 import { drifterDrawn, predatorDrawn, refreshLight, trenchFor } from "./sim";
@@ -126,6 +128,10 @@ export interface SnapshotInk {
 export interface FathomSnapshot {
   version: number;
   screen: Screen;
+  /** The highlighted item, `null` on the four screens that show no menu. */
+  menuIndex: number | null;
+  /** The title menu's remembered selection, never `null`. */
+  titleIndex: number;
   depth: number;
   score: number;
   lives: number;
@@ -157,9 +163,12 @@ export interface FathomSnapshot {
  */
 export interface FathomDebugApi {
   version: number;
-  reset(options?: { seed?: number }): void;
+  reset(seed?: number): void;
   snapshot(): FathomSnapshot;
+  menuItemRect(index: number): Rect | null;
   setScreen(s: Screen): void;
+  setMenuIndex(index: number): void;
+  setTitleIndex(index: number): void;
   setScore(points: number): void;
   setLives(n: number): void;
   setDepth(d: number): void;
@@ -244,10 +253,21 @@ function requireSeconds(value: unknown, where: string): number {
   return value;
 }
 
-function requireWhole(value: unknown, least: number, where: string): number {
-  if (!Number.isInteger(value) || (value as number) < least) {
+function requireWhole(
+  value: unknown,
+  least: number,
+  where: string,
+  most?: number,
+): number {
+  const outside =
+    !Number.isInteger(value) ||
+    (value as number) < least ||
+    (most !== undefined && (value as number) > most);
+  if (outside) {
+    const bound =
+      most === undefined ? `of at least ${least}` : `from ${least} to ${most}`;
     throw new Error(
-      `${where}: expected a whole number of at least ${least}, received ${String(value)}`,
+      `${where}: expected a whole number ${bound}, received ${String(value)}`,
     );
   }
   return value as number;
@@ -329,13 +349,24 @@ export function createDebugApi(world: () => World): FathomDebugApi {
      * seeded. `muted` is deliberately untouched: muting is a player preference
      * the runtime owns, and a reset is not a reason to start making noise.
      */
-    reset(options) {
-      resetState(read(), options?.seed ?? DEFAULT_SEED);
+    reset(seed = DEFAULT_SEED) {
+      resetState(read(), seed);
     },
 
     /** A pure read. It never changes anything. */
     snapshot() {
       return snapshotOf(read());
+    },
+
+    /**
+     * Where this build drew item `index` of the menu the current screen shows,
+     * in logical units. A pure read: it changes nothing.
+     *
+     * `null` on the four screens that show no menu, and for an index the current
+     * menu does not hold, which is what `specs/instrumentation.md` fixes.
+     */
+    menuItemRect(index) {
+      return itemRect(read().screen, index);
     },
 
     /**
@@ -359,9 +390,43 @@ export function createDebugApi(world: () => World): FathomDebugApi {
         beginPlay(state);
         return;
       }
-      state.screen = screen;
-      state.menuIndex = 0;
+      openMenu(state, screen);
       if (screen === "cleared") state.clearedTimer = CLEARED_TIME;
+    },
+
+    /**
+     * The highlighted item of whichever menu the current screen shows, and no
+     * other field: the screen, the maze and every body stay exactly as they
+     * stand, and a `confirm` from there takes the item this named.
+     */
+    setMenuIndex(index) {
+      const state = read();
+      const items = menuItems(state.screen);
+      if (items.length === 0) {
+        throw new RangeError(
+          `Fathom: setMenuIndex(index) — the ${state.screen} screen shows no menu`,
+        );
+      }
+      state.menuIndex = requireWhole(
+        index,
+        0,
+        "setMenuIndex(index)",
+        items.length - 1,
+      );
+    },
+
+    /**
+     * The title menu's remembered selection, and nothing else: the screen and
+     * the highlighted item stay as they stand, so the value set here is the one
+     * the next arrival at the title selects.
+     */
+    setTitleIndex(index) {
+      read().titleIndex = requireWhole(
+        index,
+        0,
+        "setTitleIndex(index)",
+        menuItems("title").length - 1,
+      );
     },
 
     /** The running score, which play carries on from. */
@@ -672,6 +737,8 @@ export function snapshotOf(state: FathomState): FathomSnapshot {
   return {
     version: FATHOM_DEBUG_VERSION,
     screen: state.screen,
+    menuIndex: menuItems(state.screen).length > 0 ? state.menuIndex : null,
+    titleIndex: state.titleIndex,
     depth: state.depth,
     score: state.score,
     lives: state.lives,

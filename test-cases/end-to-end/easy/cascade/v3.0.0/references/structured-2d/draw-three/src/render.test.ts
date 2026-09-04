@@ -7,9 +7,6 @@ import {
   FOUNDATION_X,
   HUD_H,
   HUD_ITEMS,
-  HUD_MENU,
-  HUD_NEW_GAME,
-  HUD_SOUND,
   HUD_Y,
   STOCK_X,
   TABLEAU_Y,
@@ -20,8 +17,9 @@ import {
   WASTE_FAN,
   WASTE_X,
   WIN_TEXT,
-  type Rect,
 } from "./constants";
+import { HUD_MENU, HUD_NEW_GAME, HUD_SOUND } from "./menus";
+import type { Rect } from "./layout";
 import {
   colorDistance,
   createHarness,

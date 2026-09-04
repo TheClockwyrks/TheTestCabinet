@@ -7,7 +7,7 @@
 // It is capped at `great` because a missing tagline costs a player nothing at the
 // table: it names the game the build is, and a build without it still deals,
 // plays and wins. The title itself (`screens/title-shows-title`) and the two menu
-// items (`screens/title-shows-items`) are separate items, and cost more.
+// items (`screens/title-shows-new-game`) are separate items, and cost more.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -16,9 +16,9 @@ import {
   captureStill,
   createHarness,
   drewText,
+  openTitle,
   type Harness,
 } from "../harness";
-import { openTitle } from "./screens";
 
 let h: Harness;
 

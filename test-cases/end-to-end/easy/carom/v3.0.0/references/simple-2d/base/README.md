@@ -173,6 +173,8 @@ pose. The operations are:
 - The AI — `setAiTracking(state, enabled)` and `setAiMovement(state, enabled)`,
   the two faculties gated one at a time, so a check can watch a blind opponent
   hold station or a seeing one refuse to move.
+- Audio — `setMuted(state, muted)`, the mute bit the `mute` action toggles. The
+  state carries it and `update` brings the engine's bus into line with it.
 - The readings — `snapshot(state)`, a JSON-serializable view of the whole
   declared state, and `menuItemRect(state, index)`, the hit region of a menu
   item in logical units, which is the same layout `src/render.ts` draws from.

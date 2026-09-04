@@ -17,11 +17,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { TITLE_HOW_TO } from "../constants";
+import { TITLE_HOW_TO_ITEM } from "../constants";
 import {
   captureStill,
-  clickControl,
+  clickAt,
   createHarness,
+  menuPoint,
   resetTo,
   type Harness,
 } from "../harness";
@@ -45,13 +46,18 @@ it("reaches the how-to screen when HOW TO PLAY is clicked on the title", async (
       "control belongs to (specs/controls.md)",
   );
 
-  clickControl(h, TITLE_HOW_TO);
+  // The middle of the region the build reports for the title's HOW TO PLAY item.
+  clickAt(
+    h,
+    menuPoint(h, TITLE_HOW_TO_ITEM).x,
+    menuPoint(h, TITLE_HOW_TO_ITEM).y,
+  );
   await h.advance(1);
   captureStill(h, "howto");
 
   assertEqual(
     h.snapshot().screen,
     "howto",
-    "the screen a click inside TITLE_HOW_TO reaches (specs/screens.md)",
+    "the screen a click inside the region the build reports for it reaches (specs/screens.md)",
   );
 });

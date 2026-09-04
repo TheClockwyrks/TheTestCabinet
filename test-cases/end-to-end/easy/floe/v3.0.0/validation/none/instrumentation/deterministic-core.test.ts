@@ -13,14 +13,16 @@
 // in order, each exactly `TICK_DT`".
 //
 // SO THE SAME SECOND IS SPENT TWICE, ONE HUNDRED AND TWENTY WAYS APART. One run
-// asks for the whole second in a single `advance(120)`; the other asks for it a
-// tick at a time, in a hundred and twenty separate calls made from this process,
-// so real wall-clock time — tens of milliseconds of it, spread across a hundred
-// and twenty round trips into the page, with the build's own animation frames
-// running between them — passes inside the second the second run covers and not
-// inside the first's. A build that integrates against `TICK_DT` reaches the same
-// strait either way; a build that reads a clock of its own, or that advances once
-// per CALL rather than once per tick, ends the two runs a long way apart.
+// asks for the whole second in a single `advance(120)` — which is what
+// `Harness.skip` makes, one call of the build's own clock operation covering the
+// span; the other asks for it a tick at a time, in a hundred and twenty separate
+// `advance(1)` calls made from this process, so real wall-clock time — tens of
+// milliseconds of it, spread across a hundred and twenty round trips into the
+// page, with the build's own animation frames running between them — passes
+// inside the second the second run covers and not inside the first's. A build
+// that integrates against `TICK_DT` reaches the same strait either way; a build
+// that reads a clock of its own, or that advances once per CALL rather than once
+// per tick, ends the two runs a long way apart.
 //
 // THE WITNESSES ARE THE EIGHT ICE LANES, WHICH IS WHAT THE ITEM READS. `simTime`
 // says the ticks were counted; the vehicles say the strait was carried the same
@@ -49,6 +51,9 @@ import {
 
 /** The span of game time each run covers, in whole ticks: exactly one second. */
 const SPAN_TICKS = TICK_HZ;
+
+/** The same span in seconds, which is what the undivided run asks for. */
+const SPAN_SECONDS = 1;
 
 /** The left edge every posed vehicle starts at, in stage units. */
 const START_X = tileLeft(4);
@@ -124,7 +129,9 @@ async function spendTheSecond(
   if (divided) {
     for (let tick = 0; tick < SPAN_TICKS; tick += 1) await harness.advance(1);
   } else {
-    await harness.advance(SPAN_TICKS);
+    // ONE call of `advance(120)`, which is what a skip is: the same ticks, asked
+    // for together rather than one at a time.
+    await harness.skip(SPAN_SECONDS);
   }
   return { before, after: await harness.snapshot() };
 }

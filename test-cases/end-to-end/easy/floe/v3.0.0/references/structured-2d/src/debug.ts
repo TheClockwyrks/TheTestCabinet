@@ -48,6 +48,7 @@ import {
 } from "./entities";
 import { commitStep, settleBear } from "./hunter";
 import { addFloe, addVehicle, laneAt, layoutLevel } from "./lanes";
+import { menuItemRect, type MenuRect } from "./menus";
 import { resetGame } from "./sim";
 import { snapshot, type FloeSnapshotShape } from "./snapshot";
 import { floeState } from "./game";
@@ -68,6 +69,7 @@ export interface FloeDebugApi {
   // The core.
   reset(options?: { seed?: number }): void;
   snapshot(): FloeSnapshotShape;
+  menuItemRect(index: number): MenuRect | null;
 
   // The screen and the run.
   setScreen(screen: Screen): void;
@@ -191,6 +193,19 @@ export function createDebugApi(open: () => World): FloeDebugApi {
 
     snapshot() {
       return snapshot(open());
+    },
+
+    /**
+     * The region item `index` is picked from on the menu the current screen
+     * shows, in logical units, or `null` where the screen shows no menu or the
+     * index names no entry.
+     *
+     * A pure read of the layout this build itself draws, so the menus keep the
+     * arrangement it chose (specs/instrumentation.md). It is deliberately NOT
+     * part of `snapshot`: the regions are geometry rather than run state.
+     */
+    menuItemRect(index) {
+      return menuItemRect(floeState(open()).screen, index);
     },
 
     // ---- The screen and the run ----

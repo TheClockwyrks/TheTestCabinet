@@ -15,9 +15,10 @@ TypeScript, Vite, Vitest, ESLint and Prettier, wired to the commands below.
 
 `index.html` loads `/src/main.ts` as its entry point, so that module is where
 your build starts. Beyond that the structure is yours. You write the runtime a
-browser game needs — the frame loop and the delta time it measures, fitting the
-fixed logical stage onto the canvas, keyboard input, image loading, audio, and
-the diagnostics overlay — and you write the game itself on top of it.
+browser game needs: the frame loop and the delta time it measures, fitting the
+fixed logical stage onto the canvas, keyboard input, pointer and touch input,
+image loading, audio, and the diagnostics overlay. The game itself sits on top
+of that runtime, and you write it too.
 
 Fathom's art is seeded under `assets/`: seven sprite sheets covering the
 forager, the three predators, the bonus drifter, the flare bloom, and the maze
@@ -29,10 +30,10 @@ You also write the `window.__fathom` debugging and automation API that
 `specs/instrumentation.md` specifies. It is a required deliverable: it is how the
 game is driven from code, so it is present and exactly as specified.
 
-Every figure the specification fixes — the stage and tile-grid geometry, the
-speeds, the sensing ranges and durations, the maze rules, the scoring, the key
-bindings, the cue names — is stated in `specs/`, and the value stated there is
-authoritative.
+Every figure the specification fixes is stated in `specs/`, and the value stated
+there is authoritative: the stage and tile-grid geometry, the speeds, the
+sensing ranges and durations, the maze rules, the scoring, the key bindings, and
+the cue names.
 
 Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test` runs
 them in process, in Node, with coverage over `src/`. `@napi-rs/canvas` is
@@ -61,7 +62,7 @@ entries and scripts alone.
 - `npm run format` — Prettier, in check mode.
 - `npm test` — Vitest over `src/**/*.test.ts`, with coverage.
 
-## Before you finish
+## What the finished repository satisfies
 
 - `npm run build` produces `dist/` with `index.html` at its root, and that
   directory runs as-is on any static host.

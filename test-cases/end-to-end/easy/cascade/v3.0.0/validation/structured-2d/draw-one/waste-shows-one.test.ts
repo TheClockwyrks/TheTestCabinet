@@ -42,26 +42,24 @@ import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import { CARD_H, CARD_W, FOUNDATION_X, TOP_ROW_Y, WASTE_X } from "../constants";
 import {
   ACE,
+  captureStill,
+  card,
+  createHarness,
+  drawnShapes,
   EIGHT,
   FIVE,
   FOUR,
   JACK,
   NINE,
-  QUEEN,
-  SEVEN,
-  TWO,
-  captureStill,
-  card,
-  createHarness,
-  drawnShapes,
   openTable,
   poseStock,
+  QUEEN,
+  SEVEN,
   shapesAt,
+  TWO,
   type Harness,
 } from "../harness";
-
-/** specs/stock.md: this variant's `TURN_COUNT`, the cards one turn moves. */
-const TURN_COUNT = 1;
+import { TURN_COUNT } from "./constants";
 
 /** Turns taken before the waste is read, which the review item fixes at three. */
 const TURNS = 3;

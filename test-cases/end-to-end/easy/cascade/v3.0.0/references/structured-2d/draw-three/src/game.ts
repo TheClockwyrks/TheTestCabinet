@@ -41,7 +41,7 @@ import type {
 } from "@test-cabinet/structured-2d";
 import { applyEvents, defineCues, noEvents } from "./audio";
 import { advanceCascade } from "./cascade";
-import { DEFAULT_SEED, LEVELS, TAGS } from "./constants";
+import { DEFAULT_SEED, LEVELS, MENU_BINDINGS, TAGS } from "./constants";
 import { CascadeController } from "./controller";
 import { createDebugApi, type CascadeDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
@@ -112,6 +112,10 @@ export interface FlyerState {
 
 export class CascadeState extends GameState {
   screen: Screen = "title";
+  /** The selected item on the menu the current screen shows. */
+  menuIndex = 0;
+  /** The title menu's remembered selection: the entry last activated there. */
+  titleIndex = 0;
 
   stock: CardState[] = [];
   waste: CardState[] = [];
@@ -175,6 +179,12 @@ export function cascadeState(world: World): CascadeState {
  */
 class CascadeInstance extends GameInstance<CascadeDebugApi> {
   override initialize(api: InitApi): CascadeDebugApi {
+    // The four menu actions specs/controls.md names, each bound to the codes it
+    // fixes. The engine owns the keyboard, so the game registers names and the
+    // player controller reads press edges back through `this.input.pressed`.
+    for (const [name, keys] of Object.entries(MENU_BINDINGS)) {
+      api.input.register(name, { keys: [...keys] });
+    }
     defineCues(api);
     return createDebugApi(() => this.engine.world);
   }

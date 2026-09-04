@@ -222,9 +222,7 @@ export async function readLaunches(
         launched += 1
       ) {
         const ordinal = launched + 1;
-        readings.push(
-          readLaunch(before, after, ordinal, opened + index + 1),
-        );
+        readings.push(readLaunch(before, after, ordinal, opened + index + 1));
       }
       before = after;
       sinceLaunch = 0;

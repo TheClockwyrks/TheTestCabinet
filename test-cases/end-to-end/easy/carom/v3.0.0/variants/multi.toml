@@ -85,18 +85,38 @@ failure_cap = "scuffed"
 validation = { script = "multi/independent-hold.test.ts", outputs = [
   { id = "launch", name = "The three balls launching together", kind = "replay" },
 ] }
+# The respawn is two points, split along what a failure costs. That the SCORED ball
+# goes home and holds is how the game gives the ball back; that the OTHER TWO are
+# left alone is the whole of what this variant is. A build that resets all three on
+# every point plays a different game, and one that scores a ball and never returns it
+# runs out of balls, so the two are graded apart rather than averaged. That the
+# screen stays on `playing` is not a clause here: `gameplay.scoring-p1-continues`
+# and `gameplay.scoring-p2-continues` below already assert it on both goals.
 [[review.categories.items]]
 id = "independent-respawn"
-title = "A scored ball respawns alone"
-description = "On the frame a ball crosses a goal edge, that ball is at its own home point and held, the other two balls keep their velocities, and the screen stays playing."
+title = "A scored ball goes home and holds"
+description = "On the frame a ball crosses a goal edge, that ball is at its own home point of BALL_HOMES and held."
 domains = ["single-player", "versus"]
 failure_cap = "scuffed"
 # Automated validation: set two balls bouncing in lanes the third never crosses,
 # drive the third out the right goal, and read the frame the score turns over — the
-# scored ball home and holding, the other two still in flight, the screen still
-# playing. See validation/<engine>/multi/independent-respawn.test.ts.
+# scored ball home and holding. See
+# validation/<engine>/multi/independent-respawn.test.ts.
 validation = { script = "multi/independent-respawn.test.ts", outputs = [
   { id = "respawn", name = "One ball respawning while the other two play on", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "respawn-leaves-others"
+title = "A scored ball leaves the other two alone"
+description = "On the frame a ball crosses a goal edge, the other two balls are still in flight carrying the velocities they had on the frame before, within 1 percent of speed."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: the same scenario, read from the other two balls: set them
+# bouncing in lanes the third never crosses, drive the third out the right goal, and
+# compare their velocities across the frame the score turned over. See
+# validation/<engine>/multi/respawn-leaves-others.test.ts.
+validation = { script = "multi/respawn-leaves-others.test.ts", outputs = [
+  { id = "others", name = "Two balls playing on through another ball's point", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "ball-collision"
@@ -159,41 +179,86 @@ failure_cap = "passable"
 validation = { script = "multi/launch-speed.test.ts", outputs = [
   { id = "launch", name = "Three balls leaving at the launch speed", kind = "replay" },
 ] }
+# The hold is two points, because the two holds are reached by different code. The
+# opening one is set when a match starts; the relaunch one is set when a ball is
+# taken out of play mid-rally, and a build that never re-arms it leaves the field a
+# ball short for the rest of the match. Graded together, a build that gets the
+# opening hold right and never relaunches scored exactly what a build that got
+# neither scored.
 [[review.categories.items]]
 id = "hold-length"
-title = "Hold length"
-description = "From match start, the balls launch on the first frame at which HOLD_TIME (1.0 s) of game time has elapsed, within one frame, and a scored ball relaunches HOLD_TIME after its point, within one frame."
+title = "Opening hold length"
+description = "From match start, the balls launch on the first frame at which HOLD_TIME (1.0 s) of game time has elapsed, within one frame."
 domains = ["single-player", "versus"]
 failure_cap = "passable"
 # Automated validation: start a match from the title with menu keys and count the
-# frames to the launch, then drive a real point and count the frames from it to the
-# scored ball leaving again. See validation/<engine>/multi/hold-length.test.ts.
+# frames to the launch. See validation/<engine>/multi/hold-length.test.ts.
 validation = { script = "multi/hold-length.test.ts", outputs = [
   { id = "hold", name = "The opening hold running out", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "relaunch-hold"
+title = "Relaunch hold length"
+description = "A ball that has just been scored leaves its home point again on the first frame at which HOLD_TIME (1.0 s) of game time has elapsed since its point, within one frame."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: drive a real point and count the frames from the goal to the
+# scored ball leaving again. See validation/<engine>/multi/relaunch-hold.test.ts.
+validation = { script = "multi/relaunch-hold.test.ts", outputs = [
+  { id = "relaunch", name = "A scored ball's hold running out", kind = "replay" },
+] }
+# Scoring is checked per side, and each side is two points. The increment is what
+# decides a match, so it carries `broken`; that the field DOES NOT stop for it is the
+# rule this variant replaces base's countdown with, and a build that freezes the
+# other two balls on every point is playing base with three balls rather than multi,
+# which is a rule noticeably wrong (`scuffed`) rather than an unplayable game.
+[[review.categories.items]]
 id = "scoring-p1"
 title = "Player one scores past the right goal"
-description = "A ball driven past the right goal edge increments player one's score by 1, leaves player two's unchanged, and leaves the screen on playing."
+description = "A ball driven past the right goal edge increments player one's score by 1 and leaves player two's unchanged."
 domains = ["single-player", "versus"]
 failure_cap = "broken"
 # Automated validation: drive a real ball out the right goal and confirm player one's
-# score increments, player two's does not, and the screen is still playing. See
+# score increments and player two's does not. See
 # validation/<engine>/multi/scoring-p1.test.ts.
 validation = { script = "multi/scoring-p1.test.ts", outputs = [
   { id = "goal", name = "Player one scoring past the right goal", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "scoring-p1-continues"
+title = "The field plays on after player one scores"
+description = "On the frame a ball crosses the right goal edge, screen is still playing: the point opens no countdown."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: drive the same real ball out the right goal and read the
+# screen on the frame the score turned over. See
+# validation/<engine>/multi/scoring-p1-continues.test.ts.
+validation = { script = "multi/scoring-p1-continues.test.ts", outputs = [
+  { id = "playing", name = "The field still live through a point on the right goal", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "scoring-p2"
 title = "Player two scores past the left goal"
-description = "A ball driven past the left goal edge increments player two's score by 1, leaves player one's unchanged, and leaves the screen on playing."
+description = "A ball driven past the left goal edge increments player two's score by 1 and leaves player one's unchanged."
 domains = ["single-player", "versus"]
 failure_cap = "broken"
 # Automated validation: drive a real ball out the left goal and confirm player two's
-# score increments, player one's does not, and the screen is still playing. See
+# score increments and player one's does not. See
 # validation/<engine>/multi/scoring-p2.test.ts.
 validation = { script = "multi/scoring-p2.test.ts", outputs = [
   { id = "goal", name = "Player two scoring past the left goal", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "scoring-p2-continues"
+title = "The field plays on after player two scores"
+description = "On the frame a ball crosses the left goal edge, screen is still playing: the point opens no countdown."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: drive the same real ball out the left goal and read the
+# screen on the frame the score turned over. See
+# validation/<engine>/multi/scoring-p2-continues.test.ts.
+validation = { script = "multi/scoring-p2-continues.test.ts", outputs = [
+  { id = "playing", name = "The field still live through a point on the left goal", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "match-win"

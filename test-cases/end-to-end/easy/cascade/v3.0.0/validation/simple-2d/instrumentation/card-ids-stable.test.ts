@@ -15,7 +15,7 @@
 // caught by the column being empty.
 //
 // WHETHER THE MOVE IS LEGAL is `foundations.accepts-ace`'s point and
-// `instrumentation.move-returns-verdict`'s; what this one reads is the id the card
+// `instrumentation.move-accepts-legal`'s; what this one reads is the id the card
 // carries once the move the game accepted has applied.
 
 import { afterEach, beforeEach, it } from "vitest";

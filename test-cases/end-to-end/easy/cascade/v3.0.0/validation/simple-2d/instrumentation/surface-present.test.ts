@@ -35,37 +35,14 @@
 // point; what is read here is that the surface's `move` reached the game at all.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLength, assertNotNull } from "../assert";
+import { assertEqual, assertNotNull } from "../assert";
 import {
   captureStill,
-  cardSpec,
   createHarness,
   openTable,
-  pileOf,
-  poseColumn,
-  topOf,
-  type CascadeSnapshot,
   type Harness,
-  type PileKind,
 } from "../harness";
-import { CASCADE_DEBUG_VERSION, REQUIRED_OPS } from "../surface";
-
-/** The one card the liveness pose puts on the table, and the column it goes in. */
-const CARD = "AS";
-const COLUMN = 2;
-
-/** The foundation it is then moved to: an empty one, which accepts an Ace. */
-const FOUNDATION = 1;
-
-/** The named pile's top card as a spec, or `null` where it holds none. */
-function topSpec(
-  snapshot: CascadeSnapshot,
-  pile: PileKind,
-  index: number,
-): string | null {
-  const top = topOf(snapshot, pile, index);
-  return top === null ? null : cardSpec(top);
-}
+import { REQUIRED_OPS } from "../surface";
 
 let h: Harness;
 
@@ -90,11 +67,15 @@ it("returns its debug surface beside its state from initialize", () => {
   assertEqual(typeof h.engine.debug, "object");
 });
 
-it("carries the version and every specified operation, as functions", () => {
+it("carries every specified operation, as functions", async () => {
   const api = h.engine.debug as unknown as Record<string, unknown>;
 
-  assertEqual(typeof api.version, "number", "version is a plain number");
-  assertEqual(api.version, CASCADE_DEBUG_VERSION, "CASCADE_DEBUG_VERSION");
+  openTable(h);
+  await h.advance(1);
+  // Before the assertions, so a missing operation still leaves the picture of
+  // the table the surface was read off.
+  captureStill(h, "surface");
+
   for (const op of REQUIRED_OPS) {
     assertEqual(
       typeof api[op],
@@ -102,41 +83,4 @@ it("carries the version and every specified operation, as functions", () => {
       `specs/instrumentation.md names ${op} as an operation of the surface`,
     );
   }
-});
-
-it("is live: a posed card reads back and a posed move applies", async () => {
-  openTable(h);
-  poseColumn(h, COLUMN, [CARD]);
-
-  // The card the pose asked for is on the column the pose named, so the surface
-  // is writing to the game that is actually running.
-  assertEqual(
-    topSpec(h.snapshot(), "tableau", COLUMN),
-    CARD,
-    `addCard must put ${CARD} on tableau ${COLUMN} (specs/instrumentation.md)`,
-  );
-
-  const accepted = h.debug.move("tableau", COLUMN, 0, "foundation", FOUNDATION);
-  const after = h.snapshot();
-
-  // The posed card and the applied move, as the build drew them.
-  await h.advance(1);
-  captureStill(h, "live");
-
-  assertEqual(
-    accepted,
-    true,
-    `move must apply ${CARD} onto empty foundation ${FOUNDATION}, which ` +
-      "accepts an Ace of any suit (specs/foundations.md)",
-  );
-  assertEqual(
-    topSpec(after, "foundation", FOUNDATION),
-    CARD,
-    `foundation ${FOUNDATION} after the move the surface drove`,
-  );
-  assertLength(
-    pileOf(after, "tableau", COLUMN),
-    0,
-    `tableau ${COLUMN}, which the moved card has left`,
-  );
 });

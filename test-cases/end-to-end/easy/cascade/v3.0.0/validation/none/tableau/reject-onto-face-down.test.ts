@@ -28,7 +28,7 @@
 // That is deliberate rather than incidental: `autoFlip` turns a column's newly
 // exposed card AFTER AN ACCEPTED MOVE, and no move here is accepted, so a build
 // that turned this card has broken the rule `tableau/no-early-flip` and
-// `instrumentation/auto-flip-gate` also grade.
+// `instrumentation/auto-flip-gate-off` also grade.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertLength } from "../assert";

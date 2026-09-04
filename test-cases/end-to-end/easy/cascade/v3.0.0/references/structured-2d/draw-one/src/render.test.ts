@@ -12,14 +12,12 @@ import {
   COLUMN_X,
   FOUNDATION_X,
   HUD_H,
-  HUD_MENU,
-  HUD_NEW_GAME,
-  HUD_SOUND,
   HUD_Y,
   STOCK_X,
   TABLEAU_Y,
   TOP_ROW_Y,
 } from "./constants";
+import { HUD_MENU, HUD_NEW_GAME, HUD_SOUND } from "./menus";
 import {
   createHarness,
   openTable,

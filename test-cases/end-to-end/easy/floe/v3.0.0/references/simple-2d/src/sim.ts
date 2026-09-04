@@ -152,6 +152,7 @@ export interface Sim {
   lastFishBay: number | null;
   request: Facing | null;
   pendingTap: Facing | null;
+  pointerDown: { x: number; y: number } | null;
   lunge: MutLunge | null;
 
   sprites: Sprites;
@@ -245,6 +246,10 @@ export function toSim(state: DeepReadonly<FloeState>): Sim {
     lastFishBay: state.lastFishBay,
     request: state.request,
     pendingTap: state.pendingTap,
+    pointerDown:
+      state.pointerDown === null
+        ? null
+        : { x: state.pointerDown.x, y: state.pointerDown.y },
     lunge:
       state.lunge === null
         ? null

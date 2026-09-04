@@ -8,6 +8,12 @@
 // with both paddles held out of it: with the obstacles off the field the flight
 // is a straight line, so the point that lands is the one this check aimed and not
 // a bank that happened to find a goal.
+//
+// THE STATE THAT FOLLOWS THE POINT is `gameplay/scoring-p2-countdown`'s: the
+// screen returning to the countdown, and the receiver becoming the side that was
+// scored on. A build that increments and then leaves the ball where it went out
+// is a build that plays one point and stops, which is nothing like a build that
+// never scores at all — so the increment is graded here and the restart there.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -55,10 +61,6 @@ it("gives player two the point when the ball leaves the left goal", async () => 
   });
 
   assertEqual(point.hit, true);
-  // After a point the ball is parked, `receiver` becomes the side scored on,
-  // and the screen returns to the countdown (specs/balls.md).
-  assertEqual(point.snapshot.screen, "countdown");
-  assertEqual(point.snapshot.receiver, "left");
   assertEqual(point.snapshot.score.p2, 1);
   assertEqual(point.snapshot.score.p1, 0);
 });

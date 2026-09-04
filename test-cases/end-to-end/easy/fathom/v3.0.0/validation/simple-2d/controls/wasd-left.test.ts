@@ -39,6 +39,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
+import { WASD_KEY } from "../constants";
 import { poseMoveKeyRun } from "../fixtures";
 import {
   captureReplay,
@@ -51,7 +52,7 @@ import {
 import { requireSceneHeld, sceneGuard } from "../scene";
 
 /** The second key specs/movement.md binds the `left` action to. */
-const KEY = "KeyA";
+const KEY = WASD_KEY.left;
 
 /**
  * Frames the key is held before the verdict is read.

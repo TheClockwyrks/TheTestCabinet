@@ -41,7 +41,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
-import { FORAGER_SPEED, TILE } from "../constants";
+import { ARROW_KEY, FORAGER_SPEED, TILE } from "../constants";
 import { poseMoveKeyRun } from "../fixtures";
 import {
   captureReplay,
@@ -53,7 +53,7 @@ import {
 import { requireSceneHeld, sceneGuard } from "../scene";
 
 /** The first key specs/movement.md binds the `right` action to. */
-const KEY = "ArrowRight";
+const KEY = ARROW_KEY.right;
 
 /**
  * How long the action is held before the reading, in ticks.

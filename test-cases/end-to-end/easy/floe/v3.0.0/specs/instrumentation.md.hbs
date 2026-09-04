@@ -140,6 +140,14 @@ game at that moment. A pose returns nothing; a reading returns what it read.
 | --- | --- |
 | `reset(options)` | Restores every field of the state to its title-screen value: `screen` `title`, `menuIndex` `0`, `phase` `crossing`, `phaseTimer` `0`, `score` `0`, `lives` `START_LIVES` (`3`), `level` `1`, `reachedLevel` `1`, `timer` at `crossingTimer(1)`, the sixteen lanes laid out as level `1` lays them out, no critter, no bears, five open bays, no bonus catch, `simTime` `0`, and the four world gates back on. `options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the game's randomness. `muted` is left as it stands, because muting is a player preference the runtime owns. |
 | `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
+| `menuItemRect(index)` | A pure read of the hit region of item `index` on the menu the current screen shows, as `{ x, y, w, h }`. It changes nothing. |
+
+`menuItemRect` returns `{ x, y, w, h }` in logical units, with `x` and `y` the
+region's top-left corner and `w` and `h` its size: the region a pointer or a
+touch contact selects that item from, as `specs/ui.md` states. It reports the
+layout the build itself drew, so the menus keep the arrangement the build chose.
+It returns `null` on `howto` and `playing`, which show no menu, and when `index`
+names no item of the menu the current screen shows.
 
 ### The screen and the run
 
@@ -241,7 +249,9 @@ included. The critter and the bonus catch are singletons and carry no id.
 ## Snapshot shape
 
 `snapshot` returns exactly this object. Every field an operation can set is
-present, so every operation is verifiable by setting it and reading it back.
+present, so every operation is verifiable by setting it and reading it back. The
+menu item regions are not part of it; `menuItemRect` is the separate read that
+reports them.
 
 ```js
 {

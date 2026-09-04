@@ -53,6 +53,9 @@ The audio layer carries a mute bit. The `mute` action toggles it, and the toggle
 is read on every screen. The game mirrors that bit every frame into the `muted`
 value `specs/state.md` declares, which a snapshot reports.
 
+While the bit is set the game starts no sound at all: a muted game plays nothing,
+rather than playing at zero volume.
+
 A browser opens an audio context on a real user gesture, so the audio layer arms
 itself on the first such gesture and stays silent until then.
 {{else}}

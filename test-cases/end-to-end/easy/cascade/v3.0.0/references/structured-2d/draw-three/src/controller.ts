@@ -13,18 +13,24 @@
 // at the end of the tick, and the HUD's `SOUND` control reaches the runtime's
 // mute bit through the same batch.
 //
-// Cascade registers no actions, so nothing here reads one. The overlay's toggle
-// key is engine chrome.
+// The four menu actions specs/controls.md names are registered by the game
+// instance and read here, once per tick, in the order that file fixes for a
+// frame carrying more than one. The overlay's toggle key is engine chrome.
 
 import { PlayerController } from "@test-cabinet/structured-2d";
 import { applyEvents, noEvents } from "./audio";
 import { cascadeState } from "./game";
+import { applyMenuActions } from "./navigation";
 import { pointerDown, pointerMove, pointerUp } from "./pointer";
 
 export class CascadeController extends PlayerController {
   override tick(): void {
     const state = cascadeState(this.world);
     const events = noEvents();
+
+    // The frame's menu-action edges, before the pointer, so a frame that carried
+    // both leaves the pointer's own gesture the last word on the table.
+    applyMenuActions(state, this.input, events);
 
     for (const sample of this.input.pointerSamples()) {
       if (sample.type === "down") {

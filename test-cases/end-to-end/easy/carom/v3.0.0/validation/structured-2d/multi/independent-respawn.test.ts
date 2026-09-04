@@ -1,22 +1,24 @@
-// multi/independent-respawn — a scored ball respawns on its own, and the field
-// never stops for it.
+// multi/independent-respawn — a scored ball goes home and holds.
 //
-// All three balls are on the field, because their independence is the point.
-// Two of them are set bouncing between the top and bottom walls in lanes on the
+// All three balls are on the field, because the scenario needs a live field
+// around the point rather than because this check reads the other two. Two of them are set bouncing between the top and bottom walls in lanes on the
 // LEFT half of the field, where the third ball never goes; the third is aimed
 // down the mid-field lane at the right goal. When it crosses, the frame the score
 // turns over is read: the ball that crossed must be back on its own home point
-// and holding, the other two must still be in flight, and the screen must still
-// be `playing` — the whole of what makes multi's scoring different from a single
-// ball's.
+// of BALL_HOMES and holding, which is how this variant gives a ball back rather
+// than ending the rally.
 //
 // Both obstacles are off the field, so the two lanes are genuinely clear and the
 // driven ball's flight to the goal is a straight line. The paddles cannot be
 // removed, so both are held out of the mid-field lane the third ball is driven
 // down.
+
 //
-// The clip then runs on until the respawned ball leaves again; how long that
-// hold lasts is `multi/hold-length`'s point, not this one's.
+// WHAT THE OTHER TWO WERE DOING is `multi-ball/respawn-leaves-others`'s point,
+// and that the screen stays `playing` is `gameplay/scoring-p1-continues`'s. A
+// build that resets all three on every point is playing a different game from
+// one that scores a ball and never returns it, so the two are graded apart
+// rather than averaged.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BALL_COUNT, BALL_HOMES, FIELD_CX } from "../constants";
@@ -29,7 +31,7 @@ import {
   parkPaddles,
   type Harness,
 } from "../harness";
-import { ballAt, driveLaunch, multiOps } from "./harness";
+import { ballAt, multiOps } from "./harness";
 
 /**
  * The two lanes the balls this point is not about are set bouncing in.
@@ -47,6 +49,9 @@ const LANES = [
 
 /** How fast the scoring ball is driven down the clear lane, in units per second. */
 const GOAL_SPEED = 600;
+
+/** Frames recorded after the point, so the clip shows the ball back on its home. */
+const SETTLE_TICKS = 60; // 0.5 s
 
 let h: Harness;
 
@@ -78,31 +83,19 @@ it("returns the scored ball to its own home while the other two play on", async 
       maxFrames: 360,
       poll: 1,
     });
-    // Read HERE, on the frame the point landed: what the other two balls were
-    // doing at that instant is the question, and a frame later they would have
-    // moved on whatever the build did.
-    const atPoint = [0, 1, 2].map((index) => ballAt(scored.snapshot, index));
-    await driveLaunch(h, 0);
+    // Read HERE, on the frame the point landed: where the scored ball was at
+    // that instant is the question, and a frame later it would have moved on
+    // whatever the build did.
+    const atPoint = ballAt(scored.snapshot, 0);
+    await h.advance(SETTLE_TICKS);
     return { scored, atPoint };
   });
 
   assertEqual(point.scored.hit, true);
   assertDeepEqual(point.scored.snapshot.score, { p1: 1, p2: 0 });
-  // The field is not frozen: there is no post-point countdown to return to.
-  assertEqual(point.scored.snapshot.screen, "playing");
 
-  // The ball that crossed, and only it: back on its OWN home point, holding.
-  const [scoredBall, ...others] = point.atPoint;
-  assertEqual(scoredBall.held, true);
-  assertCloseTo(scoredBall.x, BALL_HOMES[0].x, 0);
-  assertCloseTo(scoredBall.y, BALL_HOMES[0].y, 0);
-
-  // The other two carried straight on: still in flight, and, having reached no
-  // wall in the time the point took, on exactly the velocities they were posed.
-  for (const [index, ball] of others.entries()) {
-    assertEqual(ball.held, false);
-    // Unchanged to a float margin: each keeps flying its lane under zero spin.
-    assertCloseTo(ball.vx, 0, 6);
-    assertCloseTo(ball.vy, LANES[index].vy, 6);
-  }
+  // The ball that crossed: back on its OWN home point, holding.
+  assertEqual(point.atPoint.held, true);
+  assertCloseTo(point.atPoint.x, BALL_HOMES[0].x, 0);
+  assertCloseTo(point.atPoint.y, BALL_HOMES[0].y, 0);
 });

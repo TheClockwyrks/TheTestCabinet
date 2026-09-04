@@ -1,33 +1,29 @@
 // screens/hud-menu-returns — the HUD's `MENU` returns to `title`.
 //
-// `specs/screens.md`, the HUD's table: "`MENU` | `HUD_ITEMS[1]` | `HUD_MENU` |
-// Returns to `title`." `specs/controls.md` fixes the rectangle at
-// `{ x: 420, y: 680, w: 120, h: 36 }` and fixes that a control answers a click
-// whose press point lies inside it.
+// `specs/screens.md`, the HUD's table: "`MENU` | `HUD_ITEMS[1]` | Returns to
+// `title`." `specs/controls.md` fixes how it is activated: one region holding
+// both the press point and the release point. WHERE that region is is the
+// build's, so the press is made at the middle of what
+// `menuItemRect(HUD_MENU_ITEM)` answered with.
 //
-// THE PRESS POINT IS THE DISTINGUISHING VALUE. All three HUD rectangles sit side
-// by side in one strip — `HUD_NEW_GAME` ends at `x = 404`, this one runs
-// `420..540`, and `HUD_SOUND` begins at `556` — so the press at this rectangle's
-// centre, `(480, 698)`, is `60` from either neighbor's nearest edge. A build
-// that mapped the strip to the wrong control deals a fresh game or flips `muted`
-// instead of reaching the title, which reads as a different answer rather than as
-// a quiet pass. `screens/hud-new-game-deals` and `screens/hud-sound-toggles` are
-// those two.
+// THE ITEM INDEX IS THE DISTINGUISHING VALUE. The HUD's menu is `NEW GAME`,
+// `MENU`, `SOUND` in that order, so a build that reported the strip's regions in
+// another order deals a fresh game or flips `muted` instead of reaching the
+// title, which reads as a different answer rather than as a quiet pass.
+// `screens/hud-new-game-deals`, `screens/hud-sound-mutes` and
+// `screens/hud-sound-unmutes` are the other three points over the same strip.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { HUD_MENU } from "../constants";
+import { HUD_MENU_ITEM } from "../constants";
 import {
   captureStill,
   clickAt,
   createHarness,
+  menuPoint,
   openTable,
-  rectCenter,
   type Harness,
 } from "../harness";
-
-/** The point pressed and released: the centre of the control's own rectangle. */
-const PRESS = rectCenter(HUD_MENU);
 
 /** One frame, so the canvas carries the screen the assertion read. */
 const SETTLE_FRAMES = 1;
@@ -45,7 +41,8 @@ afterEach(async () => {
 it("returns to the title screen", async () => {
   await openTable(h);
 
-  await clickAt(h, PRESS.x, PRESS.y);
+  const press = await menuPoint(h, HUD_MENU_ITEM);
+  await clickAt(h, press.x, press.y);
   await h.advance(SETTLE_FRAMES);
   await captureStill(h, "title");
 

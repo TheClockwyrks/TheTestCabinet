@@ -87,11 +87,13 @@ reaches the same state every time.
 ## What the runtime provides instead
 
 {{#if (eq engine.slug "none")}}
-The keyboard and the overlay belong to the runtime layer beneath the game, and the
-surface carries no operation for either. That layer delivers the key bindings this
-specification fixes, so a dispatched keyboard event drives the forager, the sonar
-pulse, the ink, the menus, the pause and the mute exactly as a player's key does,
-and it draws and toggles the debug overlay.
+The keyboard, the pointer, touch and the overlay belong to the runtime layer
+beneath the game, and the surface carries no operation for any of them. That layer
+delivers the key bindings this specification fixes, so a dispatched keyboard event
+drives the forager, the sonar pulse, the ink, the menus, the pause and the mute
+exactly as a player's key does; it delivers the pointer and touch events the menus
+read, so a dispatched mouse or touch event works a menu exactly as a player's hand
+does; and it draws and toggles the debug overlay.
 
 The clock is the exception, because nothing outside this build owns it. The
 surface is what takes the game off real time and advances it, through
@@ -158,21 +160,21 @@ first.
 
 {{/if}}
 {{#if (eq engine.slug "simple-2d")}}
-### `reset(state, options)`
+### `reset(state, seed)`
 {{else}}
-### `reset(options)`
+### `reset(seed)`
 {{/if}}
 
 Restores every field of the observable state defined in `specs/state.md` to its
-title-screen value: the title screen with its first menu item highlighted, the
-score at `0`, `START_LIVES` (`3`) lives, depth `1`, brightness `0` with its hold
-spent, a freshly laid out maze with a plankton on every corridor tile, the fog
-fully unrevealed, no drifters, the roster depth `1` gives with every predator on a
-den tile and unreleased, every creature's mind and travel running, both cooldowns
-ready, no pulses and no ink clouds in flight, and `simTime` at `0`.
-`options.seed` seeds the game's random generator, defaulting to `DEFAULT_SEED`
-(`1`).
-`options` is optional and an omitted `seed` takes the default.
+title-screen value: the title screen with `menuIndex` at `0` and `titleIndex` at
+`0`, so its first menu item is highlighted, the score at `0`, `START_LIVES`
+(`3`) lives, depth `1`, brightness `0` with its hold spent, a freshly laid out
+maze with a plankton on every corridor tile, the fog fully unrevealed, no
+drifters, the roster depth `1` gives with every predator on a den tile and
+unreleased, every creature's mind and travel running, both cooldowns ready, no
+pulses and no ink clouds in flight, and `simTime` at `0`.
+`seed` seeds the game's random generator. It is optional, and an omitted `seed`
+takes `DEFAULT_SEED` (`1`).
 {{#if (eq engine.slug "none")}}
 A reset also re-arms manual stepping, leaving the game off the wall clock.
 {{/if}}
@@ -196,12 +198,53 @@ changes nothing.
 ### `setScreen(s)`
 {{/if}}
 
-Sets `screen` to `s`, one of the seven screens `specs/state.md` names, and changes
-no other field. The game carries on under its own rules from there, so each
-screen's own behavior follows: the dive countdown counts down on `"countdown"`,
-the maze is frozen on `"paused"`, and the staggered release schedule
-`specs/predators.md` fixes takes its origin from the moment `screen` becomes
-`"playing"`.
+Sets `screen` to `s`, one of the seven screens `specs/state.md` names. `menuIndex`
+follows the screen onto the value that screen's menu opens on, exactly as an
+arrival there in play does: `titleIndex` on `"title"`, `0` on `"paused"` and
+`"gameover"`, and `null` on the four screens that show no menu. No other field
+changes, `titleIndex` included. The game carries on under its own rules from
+there, so each screen's own behavior follows: the dive countdown counts down on
+`"countdown"`, the maze is frozen on `"paused"`, and the staggered release
+schedule `specs/predators.md` fixes takes its origin from the moment `screen`
+becomes `"playing"`.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setMenuIndex(state, index)`
+{{else}}
+### `setMenuIndex(index)`
+{{/if}}
+
+Sets the highlighted item on whichever menu the current screen shows to `index`,
+counted from `0` over the items `specs/ui.md` lists for that menu. It changes
+nothing else: the screen, the maze and every body stay exactly as they stand,
+and a `confirm` from there takes the item it names. `index` names an item the
+current menu holds, so a call on a screen that shows no menu is invalid.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setTitleIndex(state, index)`
+{{else}}
+### `setTitleIndex(index)`
+{{/if}}
+
+Sets `titleIndex`, the title menu's remembered selection, to `index`, counted
+from `0` over the items `specs/ui.md` lists for the title menu. It changes
+nothing else, the current screen and `menuIndex` included, so the value it sets
+is the one the next arrival at `"title"` selects. `index` names an item the title
+menu holds, and it is valid on every screen, because the remembered selection is
+carried whatever is on screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `menuItemRect(state, index)`
+{{else}}
+### `menuItemRect(index)`
+{{/if}}
+
+A pure reading of where the build laid the menu out, changing nothing. It
+returns `{ x, y, w, h }` in logical units, with `x` and `y` the region's
+top-left corner and `w` and `h` its size: the region a pointer selects item
+`index` from, as `specs/ui.md` states. It returns `null` on `"howto"`,
+`"countdown"`, `"playing"` and `"cleared"`, which show no menu, and when `index`
+names no item of the menu the current screen shows.
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `setScore(state, points)`

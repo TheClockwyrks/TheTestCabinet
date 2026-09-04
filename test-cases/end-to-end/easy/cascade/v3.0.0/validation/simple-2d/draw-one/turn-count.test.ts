@@ -40,6 +40,7 @@ import {
   poseStock,
   type Harness,
 } from "../harness";
+import { TURN_COUNT } from "./constants";
 
 /**
  * The stock the turn is taken from, bottom card first.
@@ -49,9 +50,6 @@ import {
  * because that is how a deal leaves the stock (specs/deal.md).
  */
 const STOCK = ["#2C", "#5D", "#9H", "#JS", "#7D"];
-
-/** The turn count specs/stock.md fixes for this variant, as `TURN_COUNT`. */
-const TURN_COUNT = 1;
 
 let h: Harness;
 

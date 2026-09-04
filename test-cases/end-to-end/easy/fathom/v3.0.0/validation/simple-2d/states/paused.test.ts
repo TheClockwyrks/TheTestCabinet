@@ -1,10 +1,9 @@
 // states/paused — the pause screen freezes the dive.
 //
-// `specs/ui.md` routes the pause control from `"playing"` to `"paused"`, gives
-// that screen as "the pause menu, over a maze that stays visible and frozen
-// behind it", fixes the pause menu as `RESUME`, `RESTART`, `QUIT TO MENU` in that
-// order, routes `RESUME` confirmed back to `"playing"`, and fixes what advances
-// on it: "Nothing. The maze behind the menu is frozen."
+// `specs/ui.md` gives the paused screen as "the pause menu, over a maze that
+// stays visible and frozen behind it", and fixes what advances on it: "Nothing.
+// The maze behind the menu is frozen." This point is that freeze, and the maze
+// still being drawn behind the menu.
 //
 // THE FREEZE IS MADE A REAL READING. Pausing a dive that has only just begun
 // would compare a still forager against a still forager and two ready cooldowns
@@ -27,13 +26,16 @@
 // finds nothing moved reads the clock moving, and a build that ignored `advance`
 // cannot pass by standing still.
 //
-// WHAT THIS DOES NOT DECIDE. Where `RESTART` and `QUIT TO MENU` lead — this reads
-// only that they are drawn, which is what `specs/ui.md` fixes about the menu's
-// contents — and what the pause overlay looks like, which is the aesthetic
-// rating's.
+// WHAT THIS DOES NOT DECIDE. What PAUSES the dive, which is `controls.pause-esc`
+// and `controls.pause-p`; what the menu DRAWS, which is
+// `states.pause-menu-items`; where `RESUME`, `RESTART` and `QUIT TO MENU` lead,
+// which are `states.resume-from-pause` and the two `navigation` points; and what
+// the pause overlay looks like, which is the aesthetic rating's. The screen is
+// reached through `setScreen` for exactly that reason: a longer route only adds
+// failure modes that belong to other points.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BRIGHT_HOLD, PAUSE_ITEMS } from "../constants";
+import { BRIGHT_HOLD } from "../constants";
 import { placeForager, poseApart, spawnPredator } from "../fixtures";
 
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -45,13 +47,7 @@ import {
   ticks,
   type Harness,
 } from "../harness";
-import {
-  CONFIRM_KEY,
-  MOVE_KEY,
-  PAUSE_KEY,
-  assertDrew,
-  frameOps,
-} from "./screens";
+import { MOVE_KEY, assertDrew, frameOps } from "./screens";
 
 /** How far apart the forager's room and the hunter's ring stand, in tiles. */
 const APART_TILES = 12;
@@ -95,7 +91,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("freezes the dive behind its menu, and resumes", async () => {
+it("freezes the dive behind its menu", async () => {
   await startPlaying(h);
   // The forager in its own room and, across solid rock, one hunter loose and
   // patrolling a ring of its own: the only body on the board besides the forager
@@ -109,7 +105,7 @@ it("freezes the dive behind its menu, and resumes", async () => {
   h.debug.setSonarCooldown(POSED_SONAR_COOLDOWN);
   h.debug.setInkCooldown(POSED_INK_COOLDOWN);
 
-  await h.tap(PAUSE_KEY);
+  h.debug.setScreen("paused");
   const paused = h.snapshot();
 
   const ops = await frameOps(h);
@@ -122,21 +118,11 @@ it("freezes the dive behind its menu, and resumes", async () => {
   h.release(MOVE_KEY);
   const after = h.snapshot();
 
-  await h.tap(CONFIRM_KEY); // RESUME, the first item of the pause menu.
-  const resumed = h.snapshot();
-
   assertEqual(
     paused.screen,
     "paused",
-    "the screen the pause control reaches from live play (specs/ui.md)",
+    "the screen this point's freeze is read on (specs/ui.md)",
   );
-  for (const item of PAUSE_ITEMS) {
-    assertDrew(
-      ops,
-      item,
-      `an item of the pause menu, which is ${PAUSE_ITEMS.join(", ")} (specs/ui.md)`,
-    );
-  }
   assertDrew(
     ops,
     `DEPTH ${String(paused.depth)}`,
@@ -185,11 +171,5 @@ it("freezes the dive behind its menu, and resumes", async () => {
     `${String(before.predators[loose].x)},${String(before.predators[loose].y)}`,
     `where the loose ${before.predators[loose].kind} stood across a paused ` +
       "stretch, behind a maze that is frozen (specs/ui.md)",
-  );
-
-  assertEqual(
-    resumed.screen,
-    "playing",
-    "the screen RESUME confirmed from the pause menu returns to (specs/ui.md)",
   );
 });

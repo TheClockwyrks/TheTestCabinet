@@ -83,6 +83,7 @@ import {
 } from "@test-cabinet/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 import {
+  BACKGROUND,
   CARD_H,
   CARD_W,
   COLUMN_BOTTOM_LIMIT,
@@ -102,7 +103,7 @@ import {
   WASTE_X,
   type Rect,
 } from "./constants";
-import { BACKGROUND, game as build, type CascadeState } from "../src/game";
+import { game as build, type CascadeState } from "../src/game";
 import { fail } from "./assert";
 import {
   READINGS,
@@ -113,6 +114,7 @@ import {
   type DragSnapshot,
   type DropTargetSnapshot,
   type FlyerSnapshot,
+  type MenuRect,
   type PileKind,
   type Screen,
   type SourcePile,
@@ -125,6 +127,7 @@ export type {
   DragSnapshot,
   DropTargetSnapshot,
   FlyerSnapshot,
+  MenuRect,
   PileKind,
   Screen,
   SourcePile,
@@ -157,8 +160,10 @@ const game = build as unknown as Game<CascadeState, CascadeSurface>;
 /**
  * A member of a pure surface, as a check calls it.
  *
- * A reading `(state) => CascadeSnapshot` becomes `() => CascadeSnapshot`: the
- * driver hands it `engine.state`. A verdict-returning operation
+ * A reading `(state) => CascadeSnapshot` becomes `() => CascadeSnapshot` and a
+ * reading `(state, index) => MenuRect | null` becomes `(index) => MenuRect |
+ * null`: the driver hands each `engine.state` and passes the rest of the call
+ * through. A verdict-returning operation
  * `(state, ...args) => [S, V]` becomes `(...args) => V`: the driver splits the pair
  * inside the transition, stores the state half and hands back the verdict. A pose
  * `(state, ...args) => S` becomes `(...args) => void`: the driver runs it through
@@ -172,11 +177,13 @@ const game = build as unknown as Game<CascadeState, CascadeSurface>;
  */
 type Driven<S, M> = M extends (state: DeepReadonly<S>) => CascadeSnapshot
   ? () => CascadeSnapshot
-  : M extends (state: DeepReadonly<S>, ...args: infer A) => [S, infer V]
-    ? (...args: A) => V
-    : M extends (state: DeepReadonly<S>, ...args: infer A) => S
-      ? (...args: A) => void
-      : M;
+  : M extends (state: DeepReadonly<S>, ...args: infer A) => MenuRect | null
+    ? (...args: A) => MenuRect | null
+    : M extends (state: DeepReadonly<S>, ...args: infer A) => [S, infer V]
+      ? (...args: A) => V
+      : M extends (state: DeepReadonly<S>, ...args: infer A) => S
+        ? (...args: A) => void
+        : M;
 
 /**
  * The imperative reading of a pure surface: every member of `D`, minus its state
@@ -532,8 +539,10 @@ export interface Harness {
  * `repeat`, structurally, so a plain `Event` carrying them drives it exactly as a
  * browser's does.
  *
- * Cascade binds no key of its own (specs/controls.md), so the only listener this
- * reaches is the engine's own overlay toggle.
+ * Two listeners read what this dispatches: the four menu actions
+ * `specs/controls.md` has the build register with the engine — `menu-up`,
+ * `menu-down`, `menu-confirm` and `menu-back` — which every `navigation/` suite
+ * drives through here, and the engine's own overlay toggle on `Backquote`.
  */
 class KeyEvent extends Event {
   readonly code: string;
@@ -690,7 +699,11 @@ function driveSurface(
       ) => unknown;
 
       if (readings.includes(property)) {
-        return (): unknown => op.call(raw, engine.state);
+        // The remaining arguments are passed through, because a reading may take
+        // some: `menuItemRect(state, index)` asks about one item, and `snapshot`
+        // is simply handed none.
+        return (...args: unknown[]): unknown =>
+          op.call(raw, engine.state, ...args);
       }
 
       if (verdicts.includes(property)) {
@@ -704,7 +717,7 @@ function driveSurface(
             }
             // A build that returned a state alone has posed the board and reported
             // nothing. The verdict is `undefined`, which is exactly what
-            // `instrumentation/move-returns-verdict` is there to read.
+            // `instrumentation/move-accepts-legal` is there to read.
             verdict = undefined;
             return returned as CascadeState;
           });
@@ -1727,6 +1740,46 @@ export function openTable(h: Harness): void {
 }
 
 /**
+ * Pose one of the other three screens, over an empty table.
+ *
+ * {@link openTable}'s siblings, built out of the same three atomic operations in
+ * the same order: `reset()`, `setScreen(...)`, `clearTable()`
+ * (specs/instrumentation.md).
+ *
+ * WHY `setScreen` RATHER THAN THE ROUTE A PLAYER TAKES. A check about what the
+ * how-to screen draws, or about the key that leaves it, must not fail because the
+ * title's `HOW TO PLAY` control is broken — `screens/title-how-to-opens` is the
+ * item that grades that control. So a check poses the screen it is about
+ * directly, and only a check whose subject IS a control presses one.
+ *
+ * WHY THE TABLE IS CLEARED. specs/screens.md lets the table show behind the title
+ * and how-to screens, "dimmed or otherwise quieted", so what sits behind the copy
+ * is the build's. Clearing it is the isolation rule: the world holds only what
+ * the requirement concerns.
+ *
+ * They pose and return; they run no frame.
+ */
+export function openTitle(h: Harness): void {
+  h.debug.reset();
+  h.debug.setScreen("title");
+  h.debug.clearTable();
+}
+
+/** The how-to screen, over an empty table. */
+export function openHowto(h: Harness): void {
+  h.debug.reset();
+  h.debug.setScreen("howto");
+  h.debug.clearTable();
+}
+
+/** The `won` screen, over an empty table, with nothing in flight. */
+export function openWon(h: Harness): void {
+  h.debug.reset();
+  h.debug.setScreen("won");
+  h.debug.clearTable();
+}
+
+/**
  * Pose `specs` onto the named pile, bottom card first, and report their ids.
  *
  * Each card is one `addCard`, which appends, so the LAST spec given ends up the
@@ -2452,4 +2505,185 @@ export function watchCues(h: Harness): TimedCue[] {
     played.push({ cue, t, gain, frame: h.engine.frame().count });
   });
   return played;
+}
+
+/* -------------------------------------------------------------------------- */
+/* The menus                                                                  */
+/* -------------------------------------------------------------------------- */
+//
+// WHERE AN ITEM SITS IS THE BUILD'S, AND IS ASKED FOR RATHER THAN ASSUMED.
+// specs/controls.md leaves each control's hit region to the build — "Each control
+// occupies a rectangular hit region the build lays out" — and
+// specs/instrumentation.md has the build report it through `menuItemRect`. So
+// every gesture below is aimed at the middle of what the build answered with,
+// which is what lets any layout pass and fails only a build that reports a region
+// it does not answer on. NOTHING HERE IMPORTS A CONTROL RECTANGLE, and nothing
+// may: `./constants.ts` fixes the ORDER of a screen's items and no position.
+//
+// EVERY GESTURE GOES THROUGH THE ENGINE'S OWN INPUT, never through the surface's
+// pointer poses. specs/controls.md gives the mouse and the finger DIFFERENT menu
+// rules — a mouse selects the item it moves onto, and a finger, which never
+// hovers, selects the item it lands on — and both of those are about what a FRAME
+// did with a player's samples. The engine is what delivers them, so the engine's
+// path is what the menu points drive.
+
+/**
+ * The region the build reports for item `index` of the menu the current screen
+ * shows.
+ *
+ * Fails the running check when the build answers `null`, because a scenario that
+ * has to drive an item has nothing to say when the build will not say where the
+ * item is. `navigation/menu-item-rect-reported` is the point that grades the read
+ * itself, including the two answers that are legitimately `null`.
+ */
+export function menuRect(h: Harness, index: number): MenuRect {
+  const rect = h.debug.menuItemRect(index);
+  if (rect === null || rect === undefined) {
+    fail(
+      `menuItemRect(${index}) to report a region for item ${index} of the ` +
+        `menu the ${h.snapshot().screen} screen shows ` +
+        "(specs/instrumentation.md)",
+      rect === undefined
+        ? "the surface carries no menuItemRect at all"
+        : "null, so the build reports no region for it",
+    );
+  }
+  return rect;
+}
+
+/** The middle of that region: where a check aims its pointer or its finger. */
+export function menuPoint(h: Harness, index: number): Point {
+  const rect = menuRect(h, index);
+  return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+}
+
+/**
+ * Press a key, run the one frame that delivers it, and release it.
+ *
+ * The frame between the down and the up is what makes this a press the game can
+ * see: the two conformant ways to read an action — latching the edge as it
+ * arrives, and comparing held state at the top of each frame — agree only if the
+ * key is genuinely held while a frame runs, and a down and an up delivered back
+ * to back would be invisible to the second.
+ */
+export async function pressKey(h: Harness, code: string): Promise<void> {
+  h.events.dispatchEvent(new KeyEvent("keydown", code));
+  await h.advance(1);
+  h.events.dispatchEvent(new KeyEvent("keyup", code));
+}
+
+/**
+ * Put a key down and leave it down, as a player holding it would.
+ *
+ * The pair to {@link releaseKey}, and the two ends {@link pressKey} joins with
+ * one frame between them. What a check needs them apart for is
+ * `specs/controls.md`'s "Holding a key moves the selection one step rather than
+ * repeating it": the only way to read that is to run several frames with the key
+ * genuinely down and see whether the selection moved again.
+ */
+export function holdKey(h: Harness, code: string): void {
+  h.events.dispatchEvent(new KeyEvent("keydown", code));
+}
+
+/** Release a key {@link holdKey} left down. */
+export function releaseKey(h: Harness, code: string): void {
+  h.events.dispatchEvent(new KeyEvent("keyup", code));
+}
+
+/**
+ * Press several keys so that all of their edges land on ONE frame, then run it.
+ *
+ * What the two ordering rules at the end of specs/controls.md's keyboard section
+ * are about: "When several edges arrive on one frame, `menu-up` is applied before
+ * `menu-down`, and movement before `menu-confirm`."
+ */
+export async function pressKeysInOneFrame(
+  h: Harness,
+  codes: readonly string[],
+): Promise<void> {
+  for (const code of codes) {
+    h.events.dispatchEvent(new KeyEvent("keydown", code));
+  }
+  await h.advance(1);
+  for (const code of codes) h.events.dispatchEvent(new KeyEvent("keyup", code));
+}
+
+/** Move the pointer onto item `index`, and run the frame that reads it. */
+export async function hoverItem(h: Harness, index: number): Promise<void> {
+  const at = menuPoint(h, index);
+  h.pointer("pointermove", at.x, at.y);
+  await h.advance(1);
+}
+
+/**
+ * Press and release inside item `index`, and run the frame that delivers both.
+ *
+ * Both edges land in one region, which is the gesture specs/controls.md says
+ * activates that item. No move precedes the press, so a build that only ever
+ * selects on a move cannot pass this by hovering first.
+ */
+export async function clickItem(h: Harness, index: number): Promise<void> {
+  const at = menuPoint(h, index);
+  h.pointer("pointerdown", at.x, at.y);
+  h.pointer("pointerup", at.x, at.y);
+  await h.advance(1);
+}
+
+/**
+ * Press inside item `from`, carry the pointer into item `to`, and release it
+ * there.
+ *
+ * The two edges land in different regions, which specs/controls.md says activates
+ * nothing.
+ */
+export async function dragBetweenItems(
+  h: Harness,
+  from: number,
+  to: number,
+): Promise<void> {
+  const start = menuPoint(h, from);
+  const end = menuPoint(h, to);
+  h.pointer("pointerdown", start.x, start.y);
+  h.pointer("pointermove", end.x, end.y);
+  h.pointer("pointerup", end.x, end.y);
+  await h.advance(1);
+}
+
+/**
+ * Land a contact inside item `index` and leave it down, with no move before it.
+ *
+ * The finger's shape, as far as this engine exposes one: the engine resolves a
+ * touch contact into the same press, move and release a mouse raises, so what a
+ * check can drive here is the LANDING with nothing before it — which is the half
+ * of the rule specs/controls.md gives the finger that the mouse does not share.
+ */
+export async function landOnItem(h: Harness, index: number): Promise<void> {
+  const at = menuPoint(h, index);
+  h.pointer("pointerdown", at.x, at.y);
+  await h.advance(1);
+}
+
+/** Land a contact inside item `index` and lift it there. */
+export async function tapItem(h: Harness, index: number): Promise<void> {
+  const at = menuPoint(h, index);
+  h.pointer("pointerdown", at.x, at.y);
+  await h.advance(1);
+  h.pointer("pointerup", at.x, at.y);
+  await h.advance(1);
+}
+
+/** Land a contact inside item `from`, travel it onto item `to`, and lift it. */
+export async function touchBetweenItems(
+  h: Harness,
+  from: number,
+  to: number,
+): Promise<void> {
+  const start = menuPoint(h, from);
+  h.pointer("pointerdown", start.x, start.y);
+  await h.advance(1);
+  const end = menuPoint(h, to);
+  h.pointer("pointermove", end.x, end.y);
+  await h.advance(1);
+  h.pointer("pointerup", end.x, end.y);
+  await h.advance(1);
 }

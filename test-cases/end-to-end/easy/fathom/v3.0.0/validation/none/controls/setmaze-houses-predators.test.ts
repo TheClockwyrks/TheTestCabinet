@@ -46,6 +46,7 @@ import {
   assertGreaterThan,
   fail,
 } from "../assert";
+import { ticksFor } from "../constants";
 import { spawnDrifter, stampLayout } from "../fixtures";
 import { corridorTiles, isCorridor, type Tile } from "../maze";
 import {
@@ -67,13 +68,14 @@ import {
 const BOARD = ["S......"];
 
 /**
- * Ticks recorded after the reading is taken, so the clip shows the posed board
- * standing rather than one frozen frame.
+ * How long the posed board is played on after the reading, in ticks.
  *
- * Half a second. Nothing this point asserts is read from these ticks: every
- * reading is taken either side of the one call, before they run.
+ * One second. Everything this point reads about what the call SET is taken
+ * either side of it, before a tick has run; what the watch adds is that the game
+ * carries on ON the fixture rather than repairing it, stalling on it or returning
+ * to a maze of its own, and a second of live play says that as well as ten do.
  */
-const SETTLE_TICKS = 60;
+const WATCH_TICKS = ticksFor(1);
 
 /** A score no opening dive is on, so "unchanged" is a reading rather than a zero. */
 const POSED_SCORE = 370;
@@ -210,15 +212,15 @@ it("sets the layout a posed board gives and leaves everything else as it stands"
     // is about the state the operation leaves, and a tick of simulation would
     // fold the game's own systems into it.
     const posed = await h.snapshot();
-    // The clip runs on past the reading so the picture shows the posed board
-    // standing rather than a single frozen frame. Nothing below is read from it.
-    await h.advance(SETTLE_TICKS);
-    return posed;
+    // And a second of live play on the fixture, which the clip shows and the
+    // last two readings below are taken from.
+    await h.advance(WATCH_TICKS);
+    return { posed, ended: await h.snapshot() };
   });
 
   // The layout IS set, which is the one thing the operation does.
   assertDeepEqual(
-    after.tiles,
+    after.posed.tiles,
     stamped.rows,
     "the layout the snapshot reports after the pose, against the rows it was " +
       "handed",
@@ -226,77 +228,92 @@ it("sets the layout a posed board gives and leaves everything else as it stands"
 
   // And nothing else moved.
   assertDeepEqual(
-    roster(after),
+    roster(after.posed),
     roster(before),
     "the roster after the pose, in release order, against the roster before it " +
       "— specs/instrumentation.md leaves the roster and every body's tile and " +
       "facing exactly as they stand",
   );
   assertEqual(
-    after.forager.tx,
+    after.posed.forager.tx,
     before.forager.tx,
     "the forager's column after the pose, which setMaze leaves as it stands",
   );
   assertEqual(
-    after.forager.ty,
+    after.posed.forager.ty,
     before.forager.ty,
     "the forager's row after the pose, which setMaze leaves as it stands",
   );
   assertEqual(
-    after.forager.dir,
+    after.posed.forager.dir,
     before.forager.dir,
     "the forager's facing after the pose, which setMaze leaves as it stands",
   );
   assertEqual(
-    after.score,
+    after.posed.score,
     POSED_SCORE,
     "the score after the pose, which setMaze leaves as it stands",
   );
   assertEqual(
-    after.lives,
+    after.posed.lives,
     POSED_LIVES,
     "the lives after the pose, which setMaze leaves as it stands",
   );
   assertEqual(
-    after.depth,
+    after.posed.depth,
     before.depth,
     "the depth after the pose, which setMaze leaves as it stands",
   );
   assertEqual(
-    after.screen,
+    after.posed.screen,
     before.screen,
     "the screen after the pose, which setMaze leaves as it stands",
   );
   assertEqual(
-    after.sonar.cooldown,
+    after.posed.sonar.cooldown,
     before.sonar.cooldown,
     "the sonar cooldown after the pose, which setMaze leaves as it stands",
   );
   assertEqual(
-    after.ink.cooldown,
+    after.posed.ink.cooldown,
     before.ink.cooldown,
     "the ink cooldown after the pose, which setMaze leaves as it stands",
   );
   assertEqual(
-    after.planktonRemaining,
+    after.posed.planktonRemaining,
     before.planktonRemaining,
     "the plankton remaining after the pose, which setMaze leaves as it stands",
   );
   assertDeepEqual(
-    after.plankton,
+    after.posed.plankton,
     before.plankton,
     "the plankton layer after the pose, which setMaze leaves as it stands",
   );
   assertEqual(
-    after.drifters.length,
+    after.posed.drifters.length,
     before.drifters.length,
     "the bonus drifters on the board after the pose, which setMaze leaves as " +
       "they stand",
   );
   assertDeepEqual(
-    after.visibility,
+    after.posed.visibility,
     before.visibility,
     "the revealed-tile memory after the pose, which setMaze leaves exactly as " +
       "it stands",
+  );
+
+  // And the game carried on ON the fixture.
+  assertDeepEqual(
+    after.ended.tiles,
+    stamped.rows,
+    `the layout after ${String(WATCH_TICKS)} ticks of live play on the posed ` +
+      "board — the game accepts a fixture without repairing it, stalling on " +
+      "it, or returning to a maze of its own",
+  );
+  assertEqual(
+    after.ended.screen,
+    "playing",
+    "the dive stayed in live play across the posed layout, which sets the " +
+      "layout and leaves the screen as it stands",
   );
 });

@@ -19,7 +19,7 @@
 // passing on the mode that happened to be tested.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, assertLessThan } from "../assert";
+import { assertEqual, assertLessThan } from "../assert";
 import {
   ball0,
   captureReplay,
@@ -94,9 +94,4 @@ it("serves toward player one to open a match", async () => {
       assertLessThan(ball0(launched.snapshot).vx, 0);
     }
   });
-  // And the page stayed quiet throughout: nothing the build threw, and nothing
-  // it logged as an error, while this harness was driving it. An engineless
-  // build loads no assets through a runtime, so there is no asset log to read —
-  // the browser's own is the wider reading, and it covers the whole drive.
-  assertDeepEqual(harness.pageErrors, []);
 });

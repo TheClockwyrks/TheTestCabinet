@@ -60,6 +60,7 @@ import {
 } from "./entities";
 import { InkField } from "./ink";
 import { Maze, SHIPPED_LAYOUT, SHIPPED_START } from "./maze";
+import { itemAt } from "./menu";
 import {
   acquire,
   armPingTimers,
@@ -91,6 +92,22 @@ export interface FathomState {
   screen: Screen;
   /** Which item of the current screen's menu is highlighted. */
   menu: number;
+  /**
+   * The title menu's remembered selection: the item last confirmed there, `0`
+   * until one has been. Every arrival at the title takes `menu` from it
+   * (`specs/ui.md`), and it survives the return a dive is put back by.
+   */
+  titleIndex: number;
+  /**
+   * The menu item a pointer or a finger is currently pressed on, or `null`.
+   *
+   * A confirm takes both of its edges inside ONE region (`specs/ui.md`), so the
+   * region the press landed in has to outlive the frame it landed on. It is
+   * derived from the gesture in flight and nothing else, and every screen change
+   * drops it, so no pose can leave a press latched over a menu it was not made
+   * on.
+   */
+  pressedItem: number | null;
 
   depth: number;
   score: number;
@@ -147,6 +164,8 @@ export function createState(assets: Assets): FathomState {
     assets,
     screen: "title",
     menu: 0,
+    titleIndex: 0,
+    pressedItem: null,
     depth: 1,
     score: 0,
     lives: START_LIVES,
@@ -388,15 +407,20 @@ export function poseScreen(state: FathomState, screen: Screen): void {
   }
 }
 
-/** Return to the title, which restores what a dive begins from. */
+/**
+ * Return to the title, which restores what a dive begins from.
+ *
+ * `titleIndex` is the exception `specs/ui.md` names: it keeps its value across
+ * the return, and the selection lands on the entry it holds, so the title comes
+ * back on the item the player left it by.
+ */
 export function toTitle(state: FathomState): void {
   state.score = 0;
   state.lives = START_LIVES;
   state.depth = 1;
   loadOwnMaze(state);
   layoutMaze(state, true);
-  state.screen = "title";
-  state.menu = 0;
+  openMenu(state, "title");
   state.countdown = 0;
   state.clearedTimer = 0;
 }
@@ -405,8 +429,7 @@ export function toTitle(state: FathomState): void {
 function loseLife(state: FathomState): void {
   raiseCue(state, "caught");
   if (state.lives <= 0) {
-    state.screen = "gameover";
-    state.menu = 0;
+    openMenu(state, "gameover");
     return;
   }
   state.lives -= 1;
@@ -467,27 +490,37 @@ function readControls(state: FathomState, api: TickApi): void {
       return;
     case "title":
       readMenu(state, api, TITLE_ITEMS.length, (index) => {
+        // Confirming an entry here records it, from the keyboard, a pointer and
+        // a contact alike, and every later arrival at the title lands on it
+        // (`specs/ui.md`).
+        state.titleIndex = index;
         if (index === 0) beginDive(state);
         else openMenu(state, "howto");
       });
       return;
-    case "howto":
-      if (api.input.pressed("confirm") || api.input.pressed("back")) {
-        openMenu(state, "title");
-      }
+    case "howto": {
+      // The screen shows no menu, so besides the two controls that leave it a
+      // gesture completed anywhere on it returns to the title (`specs/ui.md`).
+      // All three are read before any is acted on, so nothing is left armed.
+      const left = api.input.pressed("confirm") || api.input.pressed("back");
+      const tapped = readsScreenGesture(state, api);
+      if (left || tapped) openMenu(state, "title");
       return;
+    }
     case "paused":
-      readMenu(
-        state,
-        api,
-        PAUSE_ITEMS.length,
-        (index) => {
-          if (index === 0) enterPlay(state);
-          else if (index === 1) beginDive(state);
-          else toTitle(state);
-        },
-        () => enterPlay(state),
-      );
+      // `Escape` raises `back` and `pause` on the one frame, and the paused
+      // screen reads both BEFORE the menu's own edges, so a frame carrying
+      // either resumes once and does nothing else (`specs/ui.md`). Both edges
+      // are read so neither is left armed for the frame after.
+      if (readsResume(api)) {
+        enterPlay(state);
+        return;
+      }
+      readMenu(state, api, PAUSE_ITEMS.length, (index) => {
+        if (index === 0) enterPlay(state);
+        else if (index === 1) beginDive(state);
+        else toTitle(state);
+      });
       return;
     case "gameover":
       readMenu(
@@ -507,13 +540,52 @@ function readControls(state: FathomState, api: TickApi): void {
   }
 }
 
-/** Arrive at a screen with a menu, with its first item highlighted. */
+/**
+ * Arrive at a screen with a menu, with the item that screen opens on selected.
+ *
+ * The pause menu and the game-over menu open on their first item; the title
+ * opens on the entry `titleIndex` remembers (`specs/ui.md`). A gesture half-made
+ * on the menu being left cannot carry across.
+ */
 function openMenu(state: FathomState, screen: Screen): void {
   state.screen = screen;
-  state.menu = 0;
+  state.menu = screen === "title" ? state.titleIndex : 0;
+  state.pressedItem = null;
 }
 
-/** The vocabulary every menu shares: move by one, wrap at both ends, confirm. */
+/** What a press on a screen with no item regions is remembered as. */
+const SCREEN_PRESS = 0;
+
+/**
+ * A gesture completed on a screen that shows no menu: a pointer pressed and
+ * released on it, or a contact landed and lifted on it (`specs/ui.md`).
+ *
+ * The screen carries no item regions, so the press is remembered as
+ * `SCREEN_PRESS` rather than as an item, and the release completes the gesture
+ * wherever on the screen it lands.
+ */
+function readsScreenGesture(state: FathomState, api: TickApi): boolean {
+  let tapped = false;
+  for (const sample of api.input.pointer()) {
+    if (sample.type === "down") {
+      state.pressedItem = SCREEN_PRESS;
+      continue;
+    }
+    if (sample.type !== "up") continue;
+    if (state.pressedItem === SCREEN_PRESS) tapped = true;
+    state.pressedItem = null;
+  }
+  return tapped;
+}
+
+/**
+ * The vocabulary every menu shares: the pointer and the finger over the items,
+ * `up` and `down` by one with a wrap at both ends, and `confirm`.
+ *
+ * The pointer is read FIRST, because a gesture selects the item it is over
+ * before it confirms one (`specs/ui.md`) and the confirm it raises acts on the
+ * selection it just made.
+ */
 function readMenu(
   state: FathomState,
   api: TickApi,
@@ -521,6 +593,11 @@ function readMenu(
   confirm: (index: number) => void,
   back?: () => void,
 ): void {
+  const clicked = readMenuPointer(state, api, count);
+  if (clicked !== null) {
+    confirm(clicked);
+    return;
+  }
   if (api.input.pressed("up")) state.menu = (state.menu + count - 1) % count;
   if (api.input.pressed("down")) state.menu = (state.menu + 1) % count;
   if (api.input.pressed("confirm")) {
@@ -528,6 +605,45 @@ function readMenu(
     return;
   }
   if (back !== undefined && api.input.pressed("back")) back();
+}
+
+/**
+ * The pointer and the finger over the current menu: what they selected, and
+ * whether they confirmed anything (`specs/ui.md`).
+ *
+ * A sample that lands on an item selects it, which is what makes a mouse move
+ * select and a contact select on its landing, since a finger never hovers. A
+ * confirm takes both of its edges inside ONE item's region, so the release
+ * confirms only where it lands on the item the press landed on: two edges in
+ * different regions, and an edge outside every region, confirm nothing.
+ *
+ * Returns the item a gesture confirmed, or `null` where none did.
+ */
+function readMenuPointer(
+  state: FathomState,
+  api: TickApi,
+  count: number,
+): number | null {
+  let confirmed: number | null = null;
+  for (const sample of api.input.pointer()) {
+    const over = itemAt(state.screen, sample.x, sample.y);
+    if (over !== null && over < count) state.menu = over;
+    if (sample.type === "down") {
+      state.pressedItem = over;
+      continue;
+    }
+    if (sample.type !== "up") continue;
+    if (over !== null && over === state.pressedItem) confirmed = over;
+    state.pressedItem = null;
+  }
+  return confirmed;
+}
+
+/** Whether this frame carried either of the two controls that resume a pause. */
+function readsResume(api: TickApi): boolean {
+  const pause = api.input.pressed("pause");
+  const back = api.input.pressed("back");
+  return pause || back;
 }
 
 /** Live play reads the four movement actions held, plus four press edges. */

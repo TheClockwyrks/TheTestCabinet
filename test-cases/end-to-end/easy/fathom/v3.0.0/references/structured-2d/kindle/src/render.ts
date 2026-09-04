@@ -48,6 +48,7 @@ import { FLARE_FADE } from "./predators";
 import { COUNTDOWN_STEPS, COUNTDOWN_TIME } from "./flow";
 import type { Dir } from "./grid";
 import { cellIndex, tileCenterX, tileCenterY } from "./grid";
+import { itemBaseline } from "./menu";
 import { bodyCell } from "./movement";
 import { SONAR_CREST_TILES, drifterDrawn, predatorDrawn } from "./sim";
 import type { Frame } from "./sprites";
@@ -864,7 +865,7 @@ function drawTitleScreen(
   ctx.fillStyle = COLOR.textDim;
   ctx.fillText(TAGLINE_TEXT, STAGE_W / 2, 306);
 
-  drawMenu(ctx, TITLE_ITEMS, state.menuIndex, 420, 60);
+  drawMenu(ctx, "title", TITLE_ITEMS, state.menuIndex);
 
   ctx.font = font(16);
   ctx.fillStyle = COLOR.textFaint;
@@ -982,7 +983,7 @@ function drawPaused(state: FathomState, ctx: CanvasRenderingContext2D): void {
   ctx.fillStyle = COLOR.forager;
   ctx.font = font(52, 700);
   ctx.fillText("PAUSED", STAGE_W / 2, STAGE_H / 2 - 66);
-  drawMenu(ctx, PAUSE_ITEMS, state.menuIndex, STAGE_H / 2 + 10, 50);
+  drawMenu(ctx, "paused", PAUSE_ITEMS, state.menuIndex);
 }
 
 function drawCleared(state: FathomState, ctx: CanvasRenderingContext2D): void {
@@ -1023,22 +1024,21 @@ function drawGameOver(state: FathomState, ctx: CanvasRenderingContext2D): void {
   ctx.font = font(20);
   ctx.fillText(`REACHED DEPTH ${state.depth}`, STAGE_W / 2, STAGE_H / 2 + 12);
 
-  drawMenu(ctx, GAMEOVER_ITEMS, state.menuIndex, STAGE_H / 2 + 66, 48);
+  drawMenu(ctx, "gameover", GAMEOVER_ITEMS, state.menuIndex);
 }
 
 /** A vertical menu, its selected item drawn distinctly from the others. */
 function drawMenu(
   ctx: CanvasRenderingContext2D,
+  screen: Screen,
   items: readonly string[],
   selected: number,
-  top: number,
-  gap: number,
 ): void {
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
   ctx.font = font(30);
   items.forEach((item, index) => {
-    const y = top + index * gap;
+    const y = itemBaseline(screen, index);
     if (index === selected) {
       ctx.fillStyle = COLOR.text;
       ctx.fillText(`> ${item} <`, STAGE_W / 2, y);

@@ -35,5 +35,19 @@ export class FloeController extends PlayerController {
     intents.back = intents.back || this.input.pressed("back");
     intents.pause = intents.pause || this.input.pressed("pause");
     intents.mute = intents.mute || this.input.pressed("mute");
+
+    // The pointer is the one input that reaches the game without a registered
+    // action: `specs/controls.md` has a pointer and a touch contact drive the
+    // menus directly. The engine has already mapped every sample into the game's
+    // own logical units, so all this does is carry them across, in order, for the
+    // tick to read (engine/input.md).
+    for (const sample of this.input.pointerSamples()) {
+      intents.pointer.push({
+        kind: sample.type,
+        x: sample.x,
+        y: sample.y,
+        touch: sample.device === "touch",
+      });
+    }
   }
 }

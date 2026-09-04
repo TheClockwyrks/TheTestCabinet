@@ -174,7 +174,6 @@ export function defineValidationConfig(
       passWithNoTests: false,
       coverage: { enabled: false },
       maxWorkers: options.maxWorkers ?? DEFAULT_MAX_WORKERS,
-      minWorkers: 1,
       testTimeout: options.testTimeout ?? DEFAULT_TEST_TIMEOUT_MS,
       hookTimeout: options.hookTimeout ?? DEFAULT_HOOK_TIMEOUT_MS,
     },

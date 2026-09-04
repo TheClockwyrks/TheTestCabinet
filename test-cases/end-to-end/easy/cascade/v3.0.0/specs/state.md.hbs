@@ -15,6 +15,11 @@ Whatever its shape, the state carries the following.
 ## The screen
 
 - The screen the game is showing, one of `title`, `howto`, `playing`, and `won`.
+- The selected item on the menu the current screen shows, reported as
+  `menuIndex`.
+- The title entry last confirmed, reported as `titleIndex`. It is `0` until a
+  title item is activated, and returning to the title selects that entry again,
+  as `specs/screens.md` states.
 
 ## The thirteen piles
 
@@ -119,6 +124,8 @@ export interface FlyerState {
 
 export interface CascadeState {
   readonly screen: Screen;
+  readonly menuIndex: number;
+  readonly titleIndex: number;
 
   readonly stock: readonly CardState[];
   readonly waste: readonly CardState[];
@@ -222,6 +229,8 @@ export interface FlyerState {
 
 export class CascadeState extends GameState {
   screen: Screen = "title";
+  menuIndex = 0;
+  titleIndex = 0;
 
   stock: CardState[] = [];
   waste: CardState[] = [];
@@ -258,6 +267,10 @@ export class CascadeState extends GameState {
 
 - `screen` — the screen currently shown, one of the four `specs/screens.md`
   defines.
+- `menuIndex` — the selected item on the menu the current screen shows, as
+  `specs/controls.md` states.
+- `titleIndex` — the title entry last confirmed. It is `0` until a title item is
+  activated, and `specs/screens.md` states what restores `menuIndex` from it.
 
 ## The thirteen piles
 

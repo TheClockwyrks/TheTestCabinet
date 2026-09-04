@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Carom (Multi-ball) \u2014 a top-down paddle duel played with three independent balls, built on the Structured 2D engine.",
+  "description": "Carom (Multi-ball) — a top-down paddle duel played with three independent balls, built on the Structured 2D engine.",
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",

@@ -19,8 +19,8 @@
 //
 // TYPES, NOT VALUES. What each field HOLDS is decided by the point whose
 // requirement it is — `draw-one/deal-mode-reported` for the deal mode,
-// `instrumentation/poses-read-back` for each posed value,
-// `instrumentation/waste-sets-pose` for the set memory. This point asserts the
+// `instrumentation/screen-reads-back` for each posed value,
+// `instrumentation/waste-set-appends` for the set memory. This point asserts the
 // shape: the field is present, and it is a number where a number is documented,
 // a boolean where a boolean is, an array of cards where a pile is. The two
 // exceptions are `version`, which the specification fixes outright, and the
@@ -43,24 +43,20 @@ import {
 import {
   ACE,
   ALL_SUITS,
+  captureStill,
+  card,
+  colorOf,
   COLUMNS,
+  createHarness,
+  dropRectIn,
   EIGHT,
   FIVE,
   FOUNDATIONS,
   FOUR,
-  KING,
-  NINE,
-  QUEEN,
-  SIX,
-  THREE,
-  TWO,
-  captureStill,
-  card,
-  colorOf,
-  createHarness,
-  dropRectIn,
   grabPoint,
+  KING,
   movePointerTo,
+  NINE,
   openTable,
   poseCard,
   poseColumn,
@@ -68,11 +64,16 @@ import {
   poseStock,
   poseWaste,
   pressAt,
+  QUEEN,
   rectCenter,
+  SIX,
+  THREE,
+  TWO,
   type Harness,
   type SnapshotCard,
 } from "../harness";
-import { CASCADE_DEBUG_VERSION, SNAPSHOT_FIELDS } from "../surface";
+import { CASCADE_DEBUG_VERSION } from "../constants";
+import { SNAPSHOT_FIELDS } from "../surface";
 
 /** The four screen names the documented type of `screen` is (specs/screens.md). */
 const SCREENS: readonly string[] = ["title", "howto", "playing", "won"];

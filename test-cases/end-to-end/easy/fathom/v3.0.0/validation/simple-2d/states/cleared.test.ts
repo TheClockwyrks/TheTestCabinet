@@ -34,7 +34,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
-import { TICK_HZ } from "../constants";
+import { HOLD_MAX, HOLD_MIN, TICK_HZ } from "../constants";
 import { poseMoveKeyRun } from "../fixtures";
 import {
   captureStill,
@@ -45,14 +45,6 @@ import {
   type Harness,
 } from "../harness";
 import { MOVE_KEY, assertDrew, frameOps, watchScreen } from "./screens";
-
-/**
- * The window `specs/ui.md` gives the cleared interstitial, in seconds: "The
- * cleared interstitial holds for at least `1 s` and at most `3 s` before the
- * descent."
- */
-const HOLD_MIN = 1;
-const HOLD_MAX = 3;
 
 /**
  * The frames the forager is given to swim one tile into the last plankton.

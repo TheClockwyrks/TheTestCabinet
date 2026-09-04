@@ -33,7 +33,7 @@
 // would pass whatever `reset` did to the bit, so this one drives the real `SOUND`
 // control first, which is the only route there is since there is no `setMuted`,
 // reads whatever bit that produced, and requires the reset to hand back the same
-// bit. Whether the control works at all is `screens.hud-sound-toggles`'s point, so
+// bit. Whether the control works at all is `screens.hud-sound-mutes`'s point and `screens.hud-sound-unmutes`'s, so
 // what is asserted is the equality and never the value.
 //
 // THE READING IS TAKEN BEFORE THE STILL'S FRAME. `simTime` is `0` immediately after
@@ -49,12 +49,13 @@ import {
   assertNotNull,
   assertNull,
 } from "../assert";
-import { HUD_SOUND } from "../constants";
+import { HUD_SOUND_ITEM } from "../constants";
 import {
   captureStill,
   clickAt,
   createHarness,
   framesFor,
+  menuPoint,
   openTable,
   pileOf,
   poseColumn,
@@ -65,10 +66,6 @@ import {
   type Harness,
 } from "../harness";
 import { EVERY_PILE, pileName } from "./board";
-
-/** Where the `SOUND` control is pressed: the middle of its own rectangle. */
-const SOUND_X = HUD_SOUND.x + HUD_SOUND.w / 2;
-const SOUND_Y = HUD_SOUND.y + HUD_SOUND.h / 2;
 
 /**
  * How long the cascade is left to run before the reset.
@@ -108,7 +105,9 @@ it("restores every title value and leaves muted as it stands", async () => {
   // the only route to the bit: there is no `setMuted` (specs/instrumentation.md).
   // One frame runs after the click so the game's copy and the engine's bus agree.
   openTable(h);
-  clickAt(h, SOUND_X, SOUND_Y);
+  // The middle of the region the build reports for the HUD's SOUND item.
+  const sound = menuPoint(h, HUD_SOUND_ITEM);
+  clickAt(h, sound.x, sound.y);
   await h.advance(1);
   const mutedBefore = h.snapshot().muted;
 

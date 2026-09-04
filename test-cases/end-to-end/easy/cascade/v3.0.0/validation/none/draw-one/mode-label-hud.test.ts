@@ -18,7 +18,7 @@
 // draws the HUD on the `playing` screen, dealt or not, so the scenario is the
 // `playing` screen and nothing else: no cards, no gesture, nothing whose state
 // could decide whether the label appears. Where the strip sits and what else it
-// carries are `screens/hud-clear-of-piles` and `screens/title-shows-items`.
+// carries are `screens/hud-clear-of-piles` and `screens/title-shows-new-game`.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { fail } from "../assert";

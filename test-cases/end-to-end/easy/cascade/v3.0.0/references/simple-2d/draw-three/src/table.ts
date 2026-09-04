@@ -137,6 +137,9 @@ export function newGame(sim: Sim): void {
   sim.cascadeDone = false;
   dealFresh(sim);
   sim.screen = "playing";
+  // "Every deal that begins play selects the first of them, so `menuIndex` is
+  // `0` when a fresh game starts" (specs/screens.md).
+  sim.menuIndex = 0;
 }
 
 // ---- The stock (specs/stock.md) -------------------------------------------

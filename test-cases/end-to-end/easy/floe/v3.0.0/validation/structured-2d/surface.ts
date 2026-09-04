@@ -204,12 +204,33 @@ export interface FloeSnapshot {
  * tile passes that tile's center, `(32c + 16, 80 + 32r + 16)`. A lane item's `x`
  * is its LEFT EDGE, so a caller placing one on a column passes `32c`.
  */
+/**
+ * One menu item's hit region, in logical units: `x`/`y` are its top-left corner
+ * and `w`/`h` its size (specs/instrumentation.md).
+ *
+ * NOT part of the snapshot, and deliberately so: the regions are geometry the
+ * build laid out rather than run state, and `menuItemRect` is the separate read
+ * that reports them.
+ */
+export interface MenuRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface FloeDebugApi {
   version: number;
 
   // The core.
   reset(options?: { seed?: number }): void;
   snapshot(): FloeSnapshot;
+  /**
+   * A pure read of the hit region of item `index` on the menu the current screen
+   * shows, or `null` where that screen shows no menu and where `index` names no
+   * entry of the one it does.
+   */
+  menuItemRect(index: number): MenuRect | null;
 
   // The screen and the run.
   setScreen(screen: Screen): void;
@@ -276,7 +297,7 @@ export interface FloeDebugApi {
  * sweeps the surface (instrumentation/surface-present) calls a reading for its
  * value and a pose for its effect.
  */
-export const READINGS = ["snapshot"] as const;
+export const READINGS = ["snapshot", "menuItemRect"] as const;
 
 /**
  * Every operation the surface must carry under this engine. `setAutoStep` and
@@ -287,6 +308,7 @@ export const READINGS = ["snapshot"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "menuItemRect",
 
   "setScreen",
   "setPhase",

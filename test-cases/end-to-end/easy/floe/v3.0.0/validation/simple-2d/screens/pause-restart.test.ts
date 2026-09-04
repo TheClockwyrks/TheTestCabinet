@@ -30,7 +30,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNotEqual } from "../assert";
-import { BAY_COUNT, PAUSE_ITEMS, START_LIVES } from "../constants";
+import { BAY_COUNT, BINDINGS, PAUSE_ITEMS, START_LIVES } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -92,7 +92,7 @@ it("opens a fresh level-1 run when RESTART is confirmed", async () => {
     "bays already filled",
   );
 
-  await h.tap("Enter");
+  await h.tap(BINDINGS.confirm[0]);
   await h.advance(SETTLE_TICKS);
   captureStill(h, "game");
 

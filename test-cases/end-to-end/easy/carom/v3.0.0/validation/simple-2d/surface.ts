@@ -275,7 +275,10 @@ export interface MultiBallOps<S = unknown> {
  * installed and this one type serves all three. A caller narrows to the shape its
  * variant names before it calls one.
  */
-export interface CaromDebugApi<S = unknown, B extends BallOps<S> = SingleBallOps<S>> {
+export interface CaromDebugApi<
+  S = unknown,
+  B extends BallOps<S> = SingleBallOps<S>,
+> {
   version: number;
 
   /* The world. */
@@ -334,6 +337,11 @@ export interface CaromDebugApi<S = unknown, B extends BallOps<S> = SingleBallOps
   setAiTracking(state: DeepReadonly<S>, enabled: boolean): S;
   /** Whether the AI's paddle travels toward that target. */
   setAiMovement(state: DeepReadonly<S>, enabled: boolean): S;
+
+  /* Audio. */
+
+  /** Sets the mute bit, the same bit the `mute` action toggles. */
+  setMuted(state: DeepReadonly<S>, muted: boolean): S;
 
   /* Obstacles: gyre alone. */
 
@@ -399,6 +407,7 @@ export const REQUIRED_OPS = [
   "setBallHoldTimer",
   "setAiTracking",
   "setAiMovement",
+  "setMuted",
   "snapshot",
   "menuItemRect",
 ] as const;

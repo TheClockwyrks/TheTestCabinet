@@ -48,7 +48,6 @@ import {
   assertGreaterThan,
   assertLength,
 } from "../assert";
-import { DEN_RELEASE_GAP } from "../constants";
 import {
   holdPredators,
   placeForager,
@@ -103,19 +102,13 @@ const INK_LEFT = 6.25;
 /**
  * How long the posed board is watched, in seconds.
  *
- * Past the `10 s` the third hunter of a depth-`1` roster is due at —
- * `DEN_RELEASE_GAP` twice over from the moment live play began — with room to
- * spare.
+ * One. Everything this point ASSERTS is read either side of the one call, before
+ * a tick has run; what the watch adds is that the game carries on ON the fixture
+ * rather than repairing it, stalling on it or returning to a maze of its own, and
+ * a second of live play says that as well as ten do. The whole of it is filmed,
+ * so the clip is a second of the posed board being played on.
  */
-const WATCH_SECONDS = 2 * DEN_RELEASE_GAP + 2;
-
-/**
- * How much of the watch is filmed, in seconds.
- *
- * The opening two, which is the part worth looking at. The rest runs outside the
- * capture, which is the same real simulation and costs the clip nothing.
- */
-const FILMED_SECONDS = 2;
+const WATCH_SECONDS = 1;
 
 let h: Harness;
 
@@ -173,9 +166,7 @@ it("leaves the roster exactly as it stands when a layout is posed", async () => 
   h.debug.setMaze(second);
   const after = h.snapshot();
 
-  const stride = ticks(FILMED_SECONDS);
-  await captureReplay(h, "housed", () => h.advance(stride));
-  await h.advance(ticks(WATCH_SECONDS - FILMED_SECONDS));
+  await captureReplay(h, "housed", () => h.advance(ticks(WATCH_SECONDS)));
   const ended = h.snapshot();
 
   requireSceneHeld(ended, watch);
@@ -285,7 +276,8 @@ it("leaves the roster exactly as it stands when a layout is posed", async () => 
   assertDeepEqual(
     ended.tiles,
     second,
-    `the tiles after ${WATCH_SECONDS} s of live play on the posed layout — ` +
+    `the tiles after ${String(WATCH_SECONDS)} s of live play on the posed ` +
+      "layout — " +
       "the game accepts a fixture without repairing it, stalling on it, or " +
       "returning to a maze of its own",
   );

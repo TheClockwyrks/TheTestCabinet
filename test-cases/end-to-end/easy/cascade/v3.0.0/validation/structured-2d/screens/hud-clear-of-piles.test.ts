@@ -10,10 +10,12 @@
 // THE TWO HALVES ARE THE ONE REQUIREMENT: the HUD and the table do not share
 // ground.
 //
-//   THE CONTROLS. The three rectangles specs/controls.md fixes are read from
-//   this project's own `constants.ts`, which transcribes them, and each must lie
-//   inside the strip. A build that put a control outside the band has moved the
-//   HUD onto the table, whatever its own module says the rectangle is.
+//   THE CONTROLS. specs/controls.md leaves each control's hit region to the
+//   build and has the build report it through `menuItemRect`, so the three
+//   regions are read back from the build and each must lie inside the strip:
+//   "The HUD's three regions lie inside the HUD strip specs/table.md fixes,
+//   which holds no pile." A build that put a control outside the band has moved
+//   the HUD onto the table.
 //
 //   THE CARDS. The longest column the game can ever produce is posed, and every
 //   card-sized box the frame drew must end above the strip. specs/table.md keeps
@@ -44,22 +46,21 @@ import {
   CARD_H,
   CARD_W,
   HUD_H,
-  HUD_MENU,
-  HUD_NEW_GAME,
-  HUD_SOUND,
+  HUD_ITEMS,
   HUD_Y,
   STAGE_W,
   type Rect,
 } from "../constants";
 import {
   alternatingRun,
-  card,
   captureStill,
+  card,
   createHarness,
   down,
   drawnImages,
   drawnShapes,
   KING,
+  menuRect,
   openTable,
   poseColumn,
   type CardSpec,
@@ -103,38 +104,37 @@ afterEach(() => {
 });
 
 it("keeps its three controls in the strip and the longest column out of it", async () => {
-  // The controls, as this build carries them.
-  for (const [name, rect] of [
-    ["HUD_NEW_GAME", HUD_NEW_GAME],
-    ["HUD_MENU", HUD_MENU],
-    ["HUD_SOUND", HUD_SOUND],
-  ] as const) {
+  openTable(h);
+
+  // The three regions the build itself reports for the HUD's menu, in the order
+  // `HUD_ITEMS` fixes.
+  for (const [index, name] of HUD_ITEMS.entries()) {
+    const rect = menuRect(h, index);
     assertGreaterThanOrEqual(
       rect.y,
       STRIP.y,
-      `the top edge of ${name}, which lies in the HUD strip (specs/table.md)`,
+      `the top edge of the region reported for ${name}, which lies in the HUD strip (specs/table.md)`,
     );
     assertLessThanOrEqual(
       rect.y + rect.h,
       STRIP.y + STRIP.h,
-      `the bottom edge of ${name}, which lies in the HUD strip ` +
+      `the bottom edge of the region reported for ${name}, which lies in the HUD strip ` +
         "(specs/table.md)",
     );
     assertGreaterThanOrEqual(
       rect.x,
       STRIP.x,
-      `the left edge of ${name}, which lies in the HUD strip (specs/table.md)`,
+      `the left edge of the region reported for ${name}, which lies in the HUD strip (specs/table.md)`,
     );
     assertLessThanOrEqual(
       rect.x + rect.w,
       STRIP.x + STRIP.w,
-      `the right edge of ${name}, which lies in the HUD strip ` +
+      `the right edge of the region reported for ${name}, which lies in the HUD strip ` +
         "(specs/table.md)",
     );
   }
 
   // The cards, on the longest column the game can produce.
-  openTable(h);
   poseColumn(h, COLUMN, [...BURIED, ...RUN]);
   const posed = h.snapshot();
   assertEqual(

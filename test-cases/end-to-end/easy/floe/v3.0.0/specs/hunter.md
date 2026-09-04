@@ -85,6 +85,9 @@ On settling on a tile, a bear commits to one step along the four grid directions
 3. Where no neighboring tile is open, no step: the bear holds the tile it is on
    and chooses again on the next tick.
 
+Where two or more steps tie under the first clause or under the second, which of
+them the bear takes is yours to choose.
+
 ## Emerging
 
 The hunt has slots. A level below `SECOND_BEAR_LEVEL` (`5`) has one slot, and a

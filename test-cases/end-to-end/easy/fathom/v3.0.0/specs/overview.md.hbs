@@ -13,9 +13,6 @@ uncovered as the forager explores it or pings it, the predators stay hidden
 between glimpses, and each predator hunts by a different sense. One tracks
 light, one tracks sound, and one hunts in the flash of its own flare.
 
-Fathom has its own name, look, sensing systems, and predators, and its assets,
-branding, and design are original to it.
-
 The specification spans several files under `specs/`.
 
 | File | What it fixes |
@@ -42,10 +39,10 @@ Read all of them and build the game they describe as one cohesive whole.
 ## The runtime
 
 This game stands on no engine, so the runtime under it is yours to write: the
-frame loop and the delta time it measures, the canvas fit, keyboard input, image
-loading, audio cues, and the debug overlay. Where this specification speaks of
-the runtime it means that layer, and it states only what Fathom needs from it.
-How the layer is structured is yours to decide.
+frame loop and the delta time it measures, the canvas fit, keyboard input,
+pointer and touch input, image loading, audio cues, and the debug overlay. Where
+this specification speaks of the runtime it means that layer, and it states only
+what Fathom needs from it. How the layer is structured is yours to decide.
 {{else if (eq engine.slug "simple-2d")}}
 ## The runtime
 
@@ -87,9 +84,9 @@ Everything under `src/`. The directory does not exist yet.
 
 `index.html` loads `/src/main.ts` as its entry point, so that module is where
 your build starts. Beyond that the structure is yours: the frame loop and the
-canvas fit, keyboard input, image loading, audio, the diagnostics overlay, the
-debug and automation surface, the figures this specification fixes, and the game
-itself.
+canvas fit, keyboard input, pointer and touch input, image loading, audio, the
+diagnostics overlay, the debug and automation surface, the figures this
+specification fixes, and the game itself.
 
 The game's state is yours to shape. `specs/state.md` states what it must carry,
 and `specs/instrumentation.md` states the contracts fixed over it.
@@ -279,7 +276,8 @@ a game a person would enjoy playing, tense and readable.
 
 {{#if (eq engine.slug "none")}}
 - Write the runtime the game stands on: the frame loop and its delta time, the
-  canvas fit, keyboard input, image loading, audio, and the debug overlay.
+  canvas fit, keyboard input, pointer and touch input, image loading, audio, and
+  the debug overlay.
 {{else if (eq engine.slug "simple-2d")}}
 - Build on the {{engine.name}} engine, taking the frame loop, the input actions,
   audio, asset loading, and the debug overlay from it.
@@ -297,8 +295,8 @@ a game a person would enjoy playing, tense and readable.
   build, nothing is fetched from another origin at runtime, and no API key or
   credential is needed to build, run, or play.
 {{#if (eq engine.slug "none")}}
-- Hold the game's whole state in one value, the one the frame loop advances and
-  the debug surface reads.
+- Carry the state `specs/state.md` declares, reported in full by the debugging
+  surface's readings and restored in full by its `reset`.
 {{else if (eq engine.slug "simple-2d")}}
 - Hold the game's whole state in `FathomState`, as `specs/state.md` declares it.
 {{else}}
@@ -332,6 +330,9 @@ increases downward.
 - Draw in logical units, and take the canvas element's own size from the runtime
   alone.
 - Game logic operates in logical units, independent of the rendered scale.
+- A pointer or touch position reaches the game in these same logical units,
+  taken through that same fit, so a position the game reads and a region the
+  game reports lie in one coordinate space.
 
 Every rate in this specification is per second and every duration is in seconds.
 
@@ -365,7 +366,10 @@ game moves between them.
 
 The look is bioluminescence in the abyss: cold light glowing out of a near-black
 maze. The palette, the glow, the layout of each screen, and every other aspect
-of the look are yours, within the requirements below.
+of the look are yours, within the requirements below. Fathom's name, its look,
+its sensing systems and its predators are its own, so the art, the branding and
+the design the build ships are original to it rather than taken from another
+game.
 
 The creatures, the maze tiles, and the flare bloom are seeded as art under
 `assets/` and are rendered from it. The forager's light, the plankton, the sonar

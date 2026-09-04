@@ -65,7 +65,15 @@ never reads a key event itself.
 | `mute`                           | `M`                | Toggles sound, on any screen.                                                                                                   |
 
 `Esc` drives both: on `playing` it pauses, and on every other screen it goes
-back.
+back. `P` closes the pause menu as well as opening it.
+
+**The menus also take a mouse and a finger**, through the engine's pointer rather
+than through a registered action. Moving the pointer onto an entry selects it;
+pressing and releasing inside one entry confirms it; a touch contact selects the
+entry it lands on and confirms the entry it lifts on, provided the two are the
+same one. `src/menus.ts` is where each entry's region is laid out — the same
+place the renderer takes its baselines from, so the region a pointer hits is the
+entry a player sees.
 
 The **backtick** key (`` ` ``) toggles the engine's debug overlay, which shows
 the screen and phase, the level, lives, score, and timer, the critter's tile,

@@ -226,6 +226,15 @@ it("reports every documented field, with its documented type", async () => {
   assertEqual(snap.version, FATHOM_DEBUG_VERSION, "snapshot().version");
   assertContains(SCREENS, snap.screen, "snapshot().screen");
   assertEqual(snap.screen, "playing", "the screen this scene was read on");
+  // The two menu fields. The scene is read in live play, which shows no menu, so
+  // `menuIndex` is the `null` specs/state.md fixes there and `titleIndex` is a
+  // number whatever the screen.
+  assertEqual(
+    snap.menuIndex,
+    null,
+    "snapshot().menuIndex on a screen that shows no menu (specs/state.md)",
+  );
+  assertNumber(snap, "titleIndex", "snapshot().titleIndex");
   assertNumber(snap, "depth", "snapshot().depth");
   assertGreaterThanOrEqual(
     snap.depth,

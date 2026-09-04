@@ -17,8 +17,8 @@
 import { assertEqual } from "../assert";
 import { TITLE_ITEMS } from "../constants";
 import {
+  openIsolatedPauseMenu,
   openMatchOver,
-  openPauseMenu,
   type Harness,
   type Mode,
   type Side,
@@ -57,13 +57,18 @@ export async function selectTitle(h: Harness, index: number): Promise<void> {
  * Open a `mode` match into live play and raise the pause menu over it, through
  * the surface alone.
  *
- * `openPauseMenu` poses what specs/ui.md says a `pause` edge sets —
+ * `openIsolatedPauseMenu` poses what specs/ui.md says a `pause` edge sets —
  * `resumeScreen` the screen that was paused, `menuIndex` `0` — so a check about
  * what an item of that menu DOES starts from the stated ground without resting
  * on the key that opens it. That key is `pause-escape`'s point, and its alone.
+ *
+ * The field is EMPTIED before the menu is posed. A ball left live behind a build
+ * whose pause does not really stop the world can bank a shot into a goal and
+ * take the screen away from the reading, which would report the pause's defect
+ * against a navigation point.
  */
 export async function reachPaused(h: Harness, mode: Mode): Promise<void> {
-  await openPauseMenu(h, { mode, from: "playing" });
+  await openIsolatedPauseMenu(h, { mode, from: "playing" });
   const paused = await h.snapshot();
   assertEqual(paused.screen, "paused");
   assertEqual(paused.menuIndex, 0);

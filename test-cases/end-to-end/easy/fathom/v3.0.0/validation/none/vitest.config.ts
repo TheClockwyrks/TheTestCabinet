@@ -26,6 +26,16 @@
 
 import { defineValidationConfig } from "./case-harness/vitest-config";
 
+//
+// WHAT ONE FULL RUN COSTS, MEASURED. Against `references/none/base`, on an idle
+// developer machine with cores to spare, the whole of a base run's checklist —
+// 156 suites, every one of the points a base dive is rated on — finished in about
+// a minute of wall clock; the kindle checklist, four suites longer, in the same.
+// A two-core host is the machine the fifteen-minute budget is stated against and
+// is several times slower than that, and a run's build is competing with the
+// suites for those two cores, so the honest reading of the figure is margin
+// rather than a prediction: an order of magnitude of it, against a budget the
+// runner caps at forty-five minutes.
 // NO DIALS, AND THAT IS THE MEASURED CHOICE. This case used to state two of its
 // own — a two-minute check and a one-minute hook — reasoned about a dive driven
 // out to a game over: tens of thousands of ticks of real simulation, each of them

@@ -250,7 +250,7 @@ describe("reset", () => {
   it("replays the same result from the same seed and the same calls", async () => {
     const run = async (seed: number): Promise<number[]> => {
       const harness = await createHarness();
-      harness.debug.reset({ seed });
+      harness.debug.reset(seed);
       harness.debug.setScreen("playing");
       // Six seconds of simulation, in frames of ten ticks each: the run is a
       // wait for the generator to have been drawn from, not for a picture.

@@ -32,6 +32,7 @@
 import { AudioBus, type AudioContextSource, type CueSpec } from "./audio-bus";
 import { Keyboard, asKeyboardEvent } from "./keyboard";
 import { Diagnostics, OVERLAY_KEY } from "./overlay";
+import { Pointer, type PointerSample } from "./pointer";
 import {
   deviceSize,
   domSurface,
@@ -84,6 +85,11 @@ export interface TickApi {
     value(name: string): number;
     /** Whether the action went down since the last tick. Consumes the edge. */
     pressed(name: string): boolean;
+    /**
+     * What the pointer did since the last tick, in arrival order and in logical
+     * units. Reading does not consume the list; it is dropped at the tick's end.
+     */
+    pointer(): readonly PointerSample[];
   };
   readonly audio: {
     /** Play a declared cue. */
@@ -181,6 +187,11 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
   const { canvas, width, height, tickSeconds, game, background } = options;
   const surface = options.surface ?? domSurface(canvas);
   const keyboard = new Keyboard(surface.events());
+  const pointer = new Pointer(
+    surface.events(),
+    () => viewport,
+    () => surface.dpr(),
+  );
   const audio = new AudioBus(options.audioContext);
   const diagnostics = new Diagnostics();
 
@@ -260,6 +271,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
     input: {
       value: (name) => keyboard.value(name),
       pressed: (name) => keyboard.pressed(name),
+      pointer: () => pointer.read(),
     },
     audio: {
       play: (cue) => audio.play(cue),
@@ -293,6 +305,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
       game.tick(state.value, tickApi, tickSeconds);
     } finally {
       keyboard.endTick();
+      pointer.endTick();
     }
   }
 
@@ -430,6 +443,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
       stopLoop();
       surface.events().removeEventListener("keydown", onOverlayKey);
       keyboard.detach();
+      pointer.detach();
       audio.dispose();
       live = null;
     },

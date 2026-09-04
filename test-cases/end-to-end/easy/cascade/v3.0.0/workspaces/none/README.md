@@ -25,9 +25,9 @@ game is driven from code, so it is present and exactly as specified. It carries
 the clock as well, as `setAutoStep` and `advance`, because nothing outside the
 build owns it.
 
-Every figure the specification fixes — the table's geometry, the control
-rectangles, the double-click window, the cascade's cadence and its gravity, the
-screen copy — is stated in `specs/`, and the value stated there is authoritative.
+Every figure the specification fixes — the table's geometry, the key bindings,
+the double-click window, the cascade's cadence and its gravity, the screen copy —
+is stated in `specs/`, and the value stated there is authoritative.
 
 Cascade draws every card, the table, the HUD and every screen in code. There are
 no image assets, and none are seeded.

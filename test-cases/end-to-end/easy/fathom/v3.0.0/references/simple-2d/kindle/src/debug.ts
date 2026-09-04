@@ -53,6 +53,7 @@ import {
   loadLayout,
   predatorCanEnter,
 } from "./maze";
+import { itemRect, menuItems, type Rect } from "./menu";
 import { addedPredator, chaseSpeedOf, denPose, wanderSpeed } from "./predators";
 import { bodyTile } from "./entities";
 import { createDrifter } from "./simulate";
@@ -78,12 +79,12 @@ export type PosedPredatorMode = "den" | "wander" | "chase";
  */
 export interface FathomDebugApi {
   version: number;
-  reset(
-    state: DeepReadonly<FathomState>,
-    options?: { seed?: number },
-  ): FathomState;
+  reset(state: DeepReadonly<FathomState>, seed?: number): FathomState;
   snapshot(state: DeepReadonly<FathomState>): FathomSnapshot;
+  menuItemRect(state: DeepReadonly<FathomState>, index: number): Rect | null;
   setScreen(state: DeepReadonly<FathomState>, s: Screen): FathomState;
+  setMenuIndex(state: DeepReadonly<FathomState>, index: number): FathomState;
+  setTitleIndex(state: DeepReadonly<FathomState>, index: number): FathomState;
   setScore(state: DeepReadonly<FathomState>, points: number): FathomState;
   setLives(state: DeepReadonly<FathomState>, n: number): FathomState;
   setDepth(state: DeepReadonly<FathomState>, d: number): FathomState;
@@ -277,17 +278,24 @@ export function createDebugApi(): FathomDebugApi {
      * rather than a value a dive opens with, and the art is carried through
      * because it is the project's rather than the dive's.
      */
-    reset(state, options) {
-      return openingState(
-        state.sheets,
-        options?.seed ?? DEFAULT_SEED,
-        state.muted,
-      );
+    reset(state, seed = DEFAULT_SEED) {
+      return openingState(state.sheets, seed, state.muted);
     },
 
     /** A pure read. It poses nothing, so it returns no state. */
     snapshot(state) {
       return snapshotOf(state, FATHOM_DEBUG_VERSION);
+    },
+
+    /**
+     * Where this build drew item `index` of the menu the current screen shows,
+     * in logical units. A pure read: it poses nothing, so it returns no state.
+     *
+     * `null` on the four screens that show no menu, and for an index the current
+     * menu does not hold, which is what `specs/instrumentation.md` fixes.
+     */
+    menuItemRect(state, index) {
+      return itemRect(state.screen, index);
     },
 
     /**
@@ -305,6 +313,43 @@ export function createDebugApi(): FathomDebugApi {
         );
       }
       return enterScreen(state, s);
+    },
+
+    /**
+     * The highlighted item of whichever menu the current screen shows, and no
+     * other field: the screen, the maze and every body stay exactly as they
+     * stand, and a `confirm` from there takes the item this named.
+     */
+    setMenuIndex(state, index) {
+      const items = menuItems(state.screen);
+      if (items.length === 0) {
+        throw new RangeError(
+          `Fathom: setMenuIndex — the ${state.screen} screen shows no menu`,
+        );
+      }
+      if (!Number.isInteger(index) || index < 0 || index >= items.length) {
+        throw new RangeError(
+          `Fathom: setMenuIndex index ${index} — expected one of the ` +
+            `${items.length} items the ${state.screen} menu holds`,
+        );
+      }
+      return { ...state, menuIndex: index };
+    },
+
+    /**
+     * The title menu's remembered selection, and nothing else: the screen and
+     * the highlighted item stay as they stand, so the value set here is the one
+     * the next arrival at the title selects.
+     */
+    setTitleIndex(state, index) {
+      const items = menuItems("title");
+      if (!Number.isInteger(index) || index < 0 || index >= items.length) {
+        throw new RangeError(
+          `Fathom: setTitleIndex index ${index} — expected one of the ` +
+            `${items.length} items the title menu holds`,
+        );
+      }
+      return { ...state, titleIndex: index };
     },
 
     /** The running score. Play carries on from that figure. */

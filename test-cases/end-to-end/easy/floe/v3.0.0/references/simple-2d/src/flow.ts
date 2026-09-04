@@ -99,6 +99,7 @@ export function openingState(sprites: Sprites): FloeState {
     lastFishBay: null,
     request: null,
     pendingTap: null,
+    pointerDown: null,
     lunge: null,
 
     sprites,
@@ -147,6 +148,7 @@ export function resetToTitle(sim: Sim, seed: number = DEFAULT_SEED): void {
   sim.rngState = seed;
   sim.request = null;
   sim.pendingTap = null;
+  sim.pointerDown = null;
   sim.lunge = null;
 
   sim.slots = [
@@ -209,10 +211,29 @@ export function menuItems(screen: Screen): readonly string[] | null {
   }
 }
 
-/** Move to `screen`, with its menu's highlight back at the first item. */
-export function goTo(sim: Sim, screen: Screen): void {
+/**
+ * The title entry that opens the how-to screen, which leaving it selects again
+ * (`specs/ui.md`).
+ */
+export const HOWTO_ENTRY = TITLE_ITEMS.indexOf("HOW TO PLAY");
+
+/**
+ * The title entry that starts a run, which every route back from a run selects
+ * again (`specs/ui.md`).
+ */
+export const CROSS_ENTRY = TITLE_ITEMS.indexOf("CROSS");
+
+/**
+ * Move to `screen`, with `selected` highlighted on whatever menu it carries.
+ *
+ * Every route back to a menu selects the entry it left by (`specs/ui.md`), which
+ * is why the entry is the caller's rather than always the first item: leaving the
+ * how-to screen selects `HOW TO PLAY`, and `QUIT TO MENU`, `MENU` and back from
+ * either ending screen all select `CROSS`.
+ */
+export function goTo(sim: Sim, screen: Screen, selected = 0): void {
   sim.screen = screen;
-  sim.menuIndex = 0;
+  sim.menuIndex = selected;
 }
 
 /** Leave the pause screen with the strait and the run exactly as they were. */

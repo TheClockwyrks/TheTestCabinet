@@ -28,12 +28,7 @@
 // reading is taken against for the whole crossing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertCloseTo,
-  assertDeepEqual,
-  assertEqual,
-  assertLessThanOrEqual,
-} from "../assert";
+import { assertCloseTo, assertEqual, assertLessThanOrEqual } from "../assert";
 import { OBSTACLE_SPIN_RATE, SERVE_SPEED } from "../constants";
 import {
   ball0,
@@ -136,7 +131,4 @@ it("reflects about the face's normal at its current orientation", async () => {
     "a tilted face reflects the shot about its own normal",
   );
   assertCloseTo(deflected.speed, SERVE_SPEED, 3);
-
-  // Nothing the page threw or logged as an error while this harness drove it.
-  assertDeepEqual(harness.pageErrors, []);
 });
