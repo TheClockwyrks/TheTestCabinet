@@ -50,7 +50,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
-import { INVULN_TIME } from "../constants";
+import { HULL_LEN, INVULN_TIME } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -64,11 +64,11 @@ import { SHIP_SPOT } from "./scene";
 /**
  * How far out the ship's drawing is read, in logical units.
  *
- * `34`, which `specs/ship.md` makes the hull's length from nose to tail — so the
- * disc holds the whole hull whatever point inside it a build calls the centre,
- * along with any mark a build draws around it to show the grace.
+ * The hull's length nose to tail (`HULL_LEN`), so the disc holds the whole hull
+ * whatever point inside it a build calls the centre, along with any mark a build
+ * draws around it to show the grace.
  */
-const LOOK_R = 34;
+const LOOK_R = HULL_LEN;
 
 /** Ticks between two readings of the grace window: a twenty-fourth of a second. */
 const SAMPLE_EVERY = 5;

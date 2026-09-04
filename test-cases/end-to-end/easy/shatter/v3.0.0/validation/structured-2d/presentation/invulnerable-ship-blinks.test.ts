@@ -59,7 +59,7 @@
 // (`specs/instrumentation.md`), so nothing here depends on a death having happened.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FACE_UP, INVULN_TIME } from "../constants";
+import { FACE_UP, HULL_LEN, INVULN_TIME } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,
@@ -74,11 +74,11 @@ import { SHIP_SPOT } from "./scene";
 /**
  * How far out the ship's drawing is read, in logical units.
  *
- * `34`, which `specs/ship.md` makes the hull's length from nose to tail — so the
- * disc holds the whole hull whatever point inside it a build calls the centre, along
- * with any mark a build draws around it to show the grace.
+ * The hull's length nose to tail (`HULL_LEN`), so the disc holds the whole hull
+ * whatever point inside it a build calls the centre, along with any mark a build
+ * draws around it to show the grace.
  */
-const LOOK_R = 34;
+const LOOK_R = HULL_LEN;
 
 /** Frames between two readings of the grace window. See the header. */
 const SAMPLE_STRIDE = 3;
