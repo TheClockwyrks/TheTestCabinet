@@ -1,0 +1,107 @@
+# Shatter — Collision
+
+This file defines every impact in the game and what it does. The bodies it names
+are defined in `specs/ship.md`, `specs/weapons.md`, `specs/rocks.md`,
+`specs/saucer.md`, and `specs/field.md`.
+
+## Every body is a circle
+
+Whatever a body is drawn as, it collides as a circle of the radius below, centred
+on its position.
+
+| Body | Radius |
+| --- | --- |
+| The ship | `SHIP_R` (`14`) |
+| A bullet | `BULLET_R` (`3`) |
+| A Large rock | `ROCK_RADIUS.large` (`46`) |
+| A Medium rock | `ROCK_RADIUS.medium` (`26`) |
+| A Small rock | `ROCK_RADIUS.small` (`14`) |
+| The saucer | `SAUCER_R` (`18`) |
+| A saucer bullet | `SAUCER_BULLET_R` (`3`) |
+{{#if (eq variant.slug "warhead")}}
+| A torpedo | `TORPEDO_R` (`6`) |
+{{/if}}
+| The star's core | `CORE_R` (`30`) |
+
+Two bodies touch when the shortest wrapped separation between their centres, as
+`specs/field.md` defines it, is at most the sum of their radii. Bodies touching
+across a wrap seam therefore collide.
+
+Collision is swept or continuous. Two bodies whose paths over a tick bring them
+within the sum of their radii at any point of that tick collide on it, however
+fast either was travelling and however far either moved. No body passes through
+another in a tick.
+
+## What each pair does
+
+| Pair | Resolution |
+| --- | --- |
+{{#if (eq variant.slug "warhead")}}| A bullet and a rock | The bullet is removed and the rock's health falls by `1`, as `specs/rocks.md` states. The hit that takes health to `0` destroys the rock, which splits and scores. |
+{{else}}| A bullet and a rock | The bullet is removed and the rock is destroyed, which splits and scores. |
+{{/if}}
+| A bullet and the saucer | Both are removed, and the saucer scores. |
+| A bullet and the core | The bullet is absorbed and removed. Nothing scores. |
+| A rock and the core | The rock is recycled, as `specs/rocks.md` states. Nothing scores. |
+| The ship and a rock | The ship is destroyed and a life is lost. |
+| The ship and the saucer | The ship is destroyed and a life is lost. |
+| The ship and a saucer bullet | The ship is destroyed and a life is lost, and the bullet is removed. |
+| The ship and the core | The slide, below. No life is lost and the ship is not destroyed. |
+| A rock and a rock | Nothing. They pass through each other, both keeping their velocities. |
+| The saucer and a rock | Nothing. They pass through each other. |
+| A saucer bullet and a rock | Nothing. The bullet passes over the rock, which is unharmed. |
+| A saucer bullet and the core | The bullet is absorbed and removed. |
+{{#if (eq variant.slug "warhead")}}
+| A torpedo and a rock | The rock is destroyed outright whatever its size or remaining health, and the torpedo is removed. The rock splits and scores exactly as a gun kill of the same rock would. A torpedo destroys only the rock it strikes. |
+| A torpedo and the saucer | Both are removed, and the saucer scores. |
+| A torpedo and the core | The torpedo is absorbed and removed. Nothing scores. |
+| A torpedo and the ship | Nothing. The torpedo passes through the ship, which is unharmed, and stays in flight. |
+| A torpedo and a saucer bullet | Nothing. |
+{{/if}}
+
+The ship's destruction is subject to the respawn grace `specs/progression.md`
+states: inside that window the three lethal pairs above cost nothing and the ship
+passes through unharmed.
+
+## The slide along the core
+
+The core is solid but never lethal to the ship. On contact:
+
+1. The ship's centre is pushed back out along the direction from the star's centre
+   to the ship, to a distance of `CORE_R + SHIP_R` (`44`) from `(STAR_X, STAR_Y)`.
+2. The component of the ship's velocity heading into the core is removed, and the
+   component along the surface is kept unchanged.
+3. The ship's facing is unchanged, and the player keeps full control throughout.
+
+The ship therefore grazes around the core's surface and slides free.
+{{#if (eq variant.slug "warhead")}}
+
+## The two fragment fans
+
+A destroyed rock leaves two fragments at its position (`specs/rocks.md`). Each
+fragment's velocity is the destroyed rock's velocity on the tick it was destroyed,
+plus a kick that depends on what destroyed it.
+
+| Killed by | The kick each fragment takes |
+| --- | --- |
+| A bullet | `SPLIT_KICK` (`90`) perpendicular to the bullet's travel at the moment it landed, the two fragments kicked to opposite sides |
+| A torpedo | `TORPEDO_SCATTER` (`240`) along the torpedo's direction of travel at the moment it landed, one fragment kicked forward along it and the other back along it |
+
+Each fan is taken from the weapon's own direction of travel at the moment it
+landed, not from the rock's course, so it lies the same way whatever the rock was
+doing. Which way that is differs by weapon. The gun's fan lies across its shot,
+the two fragments thrown to either side of the bullet's line. The torpedo's lies
+along its own, one fragment driven on ahead down the torpedo's line and the other
+driven back up it. Both fragments then obey the well like any rock.
+{{else}}
+
+## The fragment fan
+
+A destroyed rock leaves two fragments at its position (`specs/rocks.md`). Each
+fragment's velocity is the destroyed rock's velocity on the tick it was destroyed,
+plus a kick of `SPLIT_KICK` (`90`) perpendicular to the bullet's travel at the
+moment it landed, the two fragments kicked to opposite sides.
+
+The perpendicular is taken from the bullet's own direction of travel, not from the
+rock's course, so the fan lies across the shot whatever the rock was doing. Both
+fragments then obey the well like any rock.
+{{/if}}

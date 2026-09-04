@@ -1,0 +1,436 @@
+# Shatter — Debug and automation surface
+
+{{#if (eq engine.slug "none")}}
+Shatter carries a debugging and automation surface, `window.__shatter`, so the
+game can be driven and inspected from code without holding a key or waiting on
+real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build installs the finished surface on `window.__shatter` as soon as the game has
+initialized. Every scenario driven from code reaches the game through it, so it is
+present and exactly as specified here.
+
+Each operation is a read of the game's state, a pose of one field of it, or a move
+of the clock. A pose arranges the field, and the game's own stepping, gravity,
+collision, scoring, and wave rules run from there exactly as they do in play, so a
+scenario driven from code behaves exactly like one played by hand.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else if (eq engine.slug "simple-2d")}}
+Shatter carries a debugging and automation surface so the game can be driven and
+inspected from code without holding a key or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build's `initialize` returns the finished surface beside the state it built, as
+the pair `[state, debug]`. The engine returns that same value from `engine.debug`,
+and it is reached that way alone: nothing is installed on the page. Every scenario
+driven from code reaches the game through it, so it is present and exactly as
+specified here.
+
+Each operation is a reading or a pose of `ShatterState`, written in the shape of
+`update`, because the engine holds the state by value and nothing holds a writable
+one. A pose takes the current state, as `DeepReadonly<ShatterState>`, and returns
+the next `ShatterState`; a reading takes the state the same way and returns what
+it read. A caller drives a pose through the engine's `apply`, as
+`engine.apply((s) => debug.setShipPosition(s, 640, 560))`, and a reading against
+the engine's current state, as `debug.snapshot(engine.state)`. A pose arranges the
+field, and the game's own stepping, gravity, collision, scoring, and wave rules
+run from there exactly as they do in play, so a scenario driven from code behaves
+exactly like one played by hand. `src/game.ts` declares and exports its type,
+`ShatterDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else}}
+Shatter carries a debugging and automation surface so the game can be driven and
+inspected from code without holding a key or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+game instance's `initialize` returns the finished surface. The engine holds it and
+returns it from `engine.debug`, and it is reached that way alone: nothing is
+installed on the page. Every scenario driven from code reaches the game through
+it, so it is present and exactly as specified here.
+
+Each operation acts on the live game at the moment it is called. A pose takes only
+the parameters its row names, arranges the running game through the same systems
+play uses, and returns nothing; a reading returns plain data built at the call and
+changes nothing. A pose arranges the field, and the game's own stepping, gravity,
+collision, scoring, and wave rules run from there exactly as they do in play, so a
+scenario driven from code behaves exactly like one played by hand. `src/game.ts`
+declares and exports its type, `ShatterDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{/if}}
+
+## A deterministic core
+
+The surface rests on the simulation being deterministic. `specs/simulation.md`
+fixes the game's timestep at `TICK_HZ` (`120`) and its per-tick order, so an
+interval of game time reaches the same state however it was divided into frames.
+Two more properties make the game driveable from code:
+
+- Render-free core. Game state advances from the elapsed time the game is handed,
+  independent of a canvas, of the frame loop that measured it, and of wall-clock
+  time. The dependency runs one way: the simulation reads nothing from the
+  renderer.
+- Seeded randomness. Every draw `specs/simulation.md` lists runs off a generator
+  seeded from the state's generator field, and the generator keeps its whole state
+  in that field, so reseeding and replaying the same calls reproduces the same
+  result exactly.
+
+Given the same seed and the same sequence of calls and elapsed game time, the game
+reaches the same state every time.
+
+## What the runtime provides instead
+
+{{#if (eq engine.slug "none")}}
+The keyboard and the overlay belong to the runtime layer beneath the game, and the
+surface carries no operation for either. That layer reports which keys are down
+and draws and toggles the debug overlay.
+
+The clock is the exception. The surface is what takes the game off real time and
+advances it, through `setAutoStep` and `advance` below.
+
+Muting is the other. There is no operation that sets it: mute is reached the way a
+player reaches it, through its key in `specs/controls.md`, and the snapshot reports
+the result.
+{{else}}
+The clock, the keyboard, the audio bus, and the overlay belong to the
+{{engine.name}} engine, which documents them in the `engine/` directory at the
+root of this repository, and the surface carries no operation for any of them. The
+engine advances the game frame by frame and can take it off real time, it drives
+the actions the game registers, it owns muting, and it draws and toggles the debug
+overlay.
+
+There is therefore no operation that sets muting: mute is reached the way a player
+reaches it, through its action in `specs/controls.md`, and the snapshot reports the
+result.
+{{/if}}
+
+What the overlay shows is Shatter's, under Diagnostics below.
+
+## Units
+
+Every `x`, `y`, `vx`, and `vy` the surface takes or reports is in the logical units
+of the fixed `1280 x 720` field, and every position is an entity's centre. Angles
+are in radians. Durations are in seconds, with one exception: `fireCooldown` is in
+whole simulation ticks, because `specs/weapons.md` fixes the gun's gate in ticks.
+
+## Identity
+
+{{#if (eq variant.slug "warhead")}}
+Every rock, bullet, saucer bullet, and torpedo carries an `id`: a number, distinct
+among the entities live at any moment, reported by `snapshot` and taken by every
+per-entity operation.
+{{else}}
+Every rock, bullet, and saucer bullet carries an `id`: a number, distinct among the
+entities live at any moment, reported by `snapshot` and taken by every per-entity
+operation.
+{{/if}}
+
+Two rules make an id findable without an assignment scheme:
+
+- An entity added through this surface is appended to its roster, so it is the last
+  entry and its id is read from there.
+- The two fragments a split produces are appended in order, each with a fresh id,
+  and the destroyed rock's id is not reused while any live entity holds it.
+
+The saucer carries an id too, reported as `saucer.id`. No operation takes it, since
+there is one slot to address. It is fresh on every arrival, distinct among every
+live entity, and not reused while any live entity holds it, so one visit is
+distinguishable from the next.
+
+## The operations
+
+The surface carries `version` (`SHATTER_DEBUG_VERSION`, `1`), a plain number, and
+the operations below. Values are plain numbers, strings, and booleans.
+{{#if (eq engine.slug "simple-2d")}}
+
+Each operation takes the current state, `DeepReadonly<ShatterState>`, as its first
+parameter. A pose returns the next `ShatterState`, built from the one it was
+handed, which it leaves as it was; a reading returns what it read. The signatures
+below name the parameters that follow the state, so `setShipPosition(x, y)` below
+is `setShipPosition(state, x, y)` on the surface and `snapshot()` is
+`snapshot(state)`.
+{{else if (eq engine.slug "structured-2d")}}
+
+Each operation takes only the parameters its signature names and acts on the live
+game the moment it is called. A pose returns nothing; a reading returns what it
+read and changes nothing.
+{{/if}}
+
+### The core
+
+| Operation | Effect |
+| --- | --- |
+{{#if (eq engine.slug "none")}}| `reset(options)` | Restores the state to the title-screen values listed below. |
+{{else}}| `reset(options)` | Restores every declared field of the state to its title-screen value, listed below. |
+{{/if}}| `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
+
+`reset` restores `screen` to `"title"`, `menuIndex` to `0`, `score` to `0`,
+`lives` to `START_LIVES` (`3`), `wave` to `0`, and `waveBanner` to `0`. It empties
+the rock, bullet, and saucer-bullet rosters and removes the saucer. It places the
+ship at the safe point `(SAFE_X, SAFE_Y)` = `(640, 560)` at rest facing `FACE_UP`,
+with `invuln` `0`, `fireCooldown` `0`, and its contact gate on. It turns the two
+world gates `waveSpawning` and `saucerSpawning` back on, returns the saucer's
+arrival clock to the start of a game's cadence, and sets `simTime` to `0`.
+{{#if (eq variant.slug "warhead")}}
+It empties the torpedo roster and sets `torpedoCharge` to `1`.
+{{/if}}
+
+`options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the
+game's randomness. `muted` is left exactly as it stands; muting is the runtime's.
+{{#if (eq engine.slug "none")}}
+
+### The clock
+
+| Operation | Effect |
+| --- | --- |
+| `setAutoStep(enabled)` | Takes the game off real time, and gives it back. |
+| `advance(ticks)` | Runs whole simulation ticks immediately. |
+
+`setAutoStep(false)` stops the frame loop advancing the simulation from the wall
+clock, so the game changes only when `advance` says so. `setAutoStep(true)` returns
+it to running itself, which is how the game starts. Drawing is unaffected either
+way: the loop keeps rendering, so the canvas shows the state the
+most recent tick left. It changes no game state.
+
+`advance(ticks)` runs `ticks` whole simulation ticks immediately and in order, each
+worth exactly one `TICK_DT`. `ticks` is a non-negative whole number, and
+`advance(0)` runs nothing at all. Each is a real tick, the same one the frame loop
+runs, followed by a render, so the game's own rules produce the result and the
+canvas reflects it.
+{{/if}}
+
+### The screen and the run
+
+| Operation | Effect |
+| --- | --- |
+| `setScreen(screen)` | Sets the current screen: `"title"`, `"howto"`, `"playing"`, `"paused"`, or `"gameover"`. It spawns nothing and clears nothing. |
+| `setMenuIndex(n)` | Sets the highlighted entry of whatever menu the current screen shows, counted from `0`. |
+| `setScore(n)` | Sets the score. |
+| `setLives(n)` | Sets the ships the player has left, counting the one in play. |
+| `setWave(n)` | Sets the current wave number. It spawns no rocks and clears none. |
+| `setWaveBanner(seconds)` | Sets the seconds left on the `WAVE N` banner; `0` clears it. |
+
+`setScore` grants no extra ship, whatever multiple of `EXTRA_LIFE_STEP` it carries
+the score across.
+
+`setWaveBanner` sets the timer and nothing else. The banner is the whole of the
+arming: the game remembers no pending wave beside it, so a posed banner runs down
+and puts up the wave its number names exactly as one a clear raised does
+(`specs/progression.md`), and posing `0` takes the banner and the wave behind it
+away together. Spawning stays under `setWaveSpawning` below, so a posed banner over
+a shut gate runs out and puts up nothing.
+
+### The world gates
+
+Two faculties belong to the game itself rather than to any one entity. Each has its
+own gate, each gates one faculty and nothing else, each is on by default and
+restored to on by `reset`, and each is reported by `snapshot`.
+
+| Operation | Gates |
+| --- | --- |
+| `setWaveSpawning(enabled)` | The game's own wave loop: noticing that the last rock has been destroyed, raising the `WAVE N` banner, advancing the wave number, and spawning the wave the banner announces. Off, an emptied field stays empty and the wave number holds. A banner already running still runs down. |
+| `setSaucerSpawning(enabled)` | The game's own arrival of a saucer, at `SAUCER_FIRST_DELAY` and at the gaps after it. Off, no saucer appears unless one is added. A saucer already on the field carries on and still leaves on its own clock. |
+
+### The ship
+
+| Operation | Effect |
+| --- | --- |
+| `setShipPosition(x, y)` | Places the ship's centre at a logical field position. |
+| `setShipVelocity(vx, vy)` | Sets the ship's velocity, in logical units per second. |
+| `setShipAngle(radians)` | Sets the ship's facing. It changes no velocity. |
+| `setShipInvuln(seconds)` | Sets the seconds of respawn grace remaining; `0` clears it, so lethal contact resumes. It sets the timer alone, and whether a contact then destroys the ship is decided by the game's own collision rules. |
+| `setFireCooldown(ticks)` | Sets the whole ticks until the gun may fire again. |
+| `setShipCollision(enabled)` | Gates the ship's lethal contact test, which is whether a rock, the saucer, or a saucer bullet reaching it destroys it and costs a life, and nothing else. Off, the ship still flies, still turns, still fires, still slides along the star's core, and no contact costs anything. |
+
+`setShipCollision` leaves the ship-and-core rule alone: the slide is a separate,
+non-lethal interaction and runs whether the gate is on or off.
+
+### The bullets
+
+| Operation | Effect |
+| --- | --- |
+| `addBullet(x, y, vx, vy)` | Adds one of the ship's bullets in flight, its centre at a logical field position, with a full `BULLET_LIFE`. It is appended to `bullets` and takes a fresh id, and it then obeys the well, wraps, and resolves its hits through the game's own rules. |
+| `removeBullet(id)` | Removes the bullet with that id. |
+| `clearBullets()` | Removes every one of the ship's bullets, leaving the rocks, saucer bullets, and the saucer standing. |
+| `addEnemyBullet(x, y, vx, vy)` | Adds one saucer bullet in flight, with a full `SAUCER_BULLET_LIFE`. Appended, fresh id, live in the same way. |
+| `removeEnemyBullet(id)` | Removes the saucer bullet with that id. |
+| `clearEnemyBullets()` | Removes every saucer bullet, leaving the rest standing. |
+
+There is no operation that fires. A caller that wants a round places one; a caller
+checking firing itself drives the fire key and reads the bullets that appear.
+
+### The rocks
+
+| Operation | Effect |
+| --- | --- |
+{{#if (eq variant.slug "warhead")}}| `addRock(size, x, y)` | Adds one rock of `size` (`"large"`, `"medium"`, or `"small"`) with its centre at a logical field position, at rest, at full health for its size, with the collision radius its size fixes. It is appended to `rocks` and takes a fresh id. |
+{{else}}| `addRock(size, x, y)` | Adds one rock of `size` (`"large"`, `"medium"`, or `"small"`) with its centre at a logical field position, at rest, with the collision radius its size fixes. It is appended to `rocks` and takes a fresh id. |
+{{/if}}
+| `setRockVelocity(id, vx, vy)` | Sets that rock's velocity, in logical units per second. |
+{{#if (eq variant.slug "warhead")}}
+| `setRockHealth(id, hp)` | Sets that rock's remaining hits, a whole number from `1` to the full health of its size. |
+{{/if}}
+| `removeRock(id)` | Removes the rock with that id. |
+| `clearRocks()` | Removes every rock, leaving the bullets, saucer bullets, and the saucer standing. It destroys nothing and scores nothing, so a field it emptied has had no rock destroyed on that tick. |
+
+### The saucer
+
+At most one saucer exists at a time, so the saucer is a single slot rather than a
+roster: `snapshot().saucer` is the address, and `removeSaucer()` is both the
+per-entity removal and the clear.
+
+| Operation | Effect |
+| --- | --- |
+| `addSaucer(x, y)` | Brings a saucer onto the field with its centre at a logical field position, travelling right at `SAUCER_SPEED` with no vertical component, its fire clock at `SAUCER_FIRE_INTERVAL`, its weave clock at `SAUCER_WEAVE_INTERVAL`, its own lifetime clock at zero, and all three faculties on. It replaces any saucer already up. |
+| `setSaucerVelocity(vx, vy)` | Sets the saucer's velocity, in logical units per second. |
+| `removeSaucer()` | Clears the saucer from the field. |
+| `setSaucerMind(enabled)` | Gates the saucer's steering decisions alone: the vertical weave it rerolls every `SAUCER_WEAVE_INTERVAL` and the steering that keeps it clear of the star's core. Off, nothing it decides changes its velocity; it still travels and still fires. |
+| `setSaucerGun(enabled)` | Gates the saucer's firing alone: the aimed shot it takes every `SAUCER_FIRE_INTERVAL`. Off, it fires nothing; it still steers and still travels. |
+| `setSaucerTravel(enabled)` | Gates the saucer's locomotion alone: its centre holds where it stands. Its mind and its gun run on, so a held saucer still rerolls its weave and still fires. |
+{{#if (eq variant.slug "warhead")}}
+
+### The torpedoes
+
+| Operation | Effect |
+| --- | --- |
+| `setTorpedoCharge(fraction)` | Sets the stored charge, a number from `0` to `1`. |
+| `addTorpedo(x, y, heading)` | Adds one torpedo in flight, its centre at a logical field position, travelling at `TORPEDO_SPEED` along `heading` in radians, with a full `TORPEDO_LIFE` and its guidance on. Appended to `torpedoes`, fresh id. |
+| `setTorpedoHeading(id, radians)` | Sets that torpedo's heading. Its speed is unchanged, so its velocity turns with it. |
+| `setTorpedoHoming(id, enabled)` | Gates that torpedo's guidance alone: the forward-cone acquisition and the turn onto a target. Off, it holds its heading. Its travel, its lifetime, and its impacts run on. |
+| `removeTorpedo(id)` | Removes the torpedo with that id. |
+| `clearTorpedoes()` | Removes every torpedo, leaving the rest standing. |
+{{/if}}
+
+## Snapshot shape
+
+`snapshot` returns exactly this object. Every field an operation can set is
+present, so every operation is verifiable by setting a value and reading it back.
+
+```js
+{
+  version: 1,
+  screen: "title" | "howto" | "playing" | "paused" | "gameover",
+  menuIndex: <number>,          // the highlighted entry, from 0
+  score: <number>,
+  lives: <number>,              // ships left, INCLUDING the one in play
+  wave: <number>,               // 0 before the first wave
+  waveBanner: <number>,         // seconds left on the WAVE N banner, 0 when none
+  muted: <boolean>,
+  waveSpawning: <boolean>,      // the game's own wave loop runs
+  saucerSpawning: <boolean>,    // the game's own saucer arrival runs
+{{#if (eq engine.slug "none")}}
+  autoStep: <boolean>,          // the frame loop advances the simulation
+{{/if}}
+  ship: {
+    x: <number>, y: <number>,   // the ship's CENTRE
+    vx: <number>, vy: <number>,
+    angle: <number>,            // facing, in radians
+    speed: <number>,            // the magnitude of the velocity
+    thrusting: <boolean>,       // thrust is being applied this tick
+    invuln: <number>,           // seconds of respawn grace left, 0 for none
+    collision: <boolean>,       // the ship's lethal contact test runs
+    fireCooldown: <number>,     // whole ticks until the gun may fire again
+  },
+  // Every one of the ship's bullets in flight, in roster order.
+  bullets: [
+    { id: <number>, x: <number>, y: <number>,
+      vx: <number>, vy: <number>, life: <number> },   // life in seconds
+  ],
+  // Every rock on the field, in roster order.
+  rocks: [
+    { id: <number>, x: <number>, y: <number>,
+      vx: <number>, vy: <number>,
+      size: "large" | "medium" | "small",
+{{#if (eq variant.slug "warhead")}}
+      radius: <number>,
+      health: <number> },       // the hits it has left
+{{else}}
+      radius: <number> },
+{{/if}}
+  ],
+  // The saucer, or null when none is up.
+  saucer: {
+    id: <number>,               // fresh on each arrival; never reused while live
+    x: <number>, y: <number>, vx: <number>, vy: <number>,
+    mind: <boolean>, gun: <boolean>, travel: <boolean>,
+  } | null,
+  // Every saucer bullet in flight, in roster order.
+  enemyBullets: [
+    { id: <number>, x: <number>, y: <number>,
+      vx: <number>, vy: <number>, life: <number> },
+  ],
+{{#if (eq variant.slug "warhead")}}
+  // Every torpedo in flight, in roster order.
+  torpedoes: [
+    { id: <number>, x: <number>, y: <number>,
+      vx: <number>, vy: <number>,
+      heading: <number>,        // radians
+      life: <number>,
+      homing: <boolean> },
+  ],
+  torpedoCharge: <number>,      // 0 to 1
+  torpedoReady: <boolean>,      // true exactly when the charge is 1
+{{/if}}
+  simTime: <number>,            // accumulated simulation time, in seconds
+}
+```
+
+Every field is read straight off the game's state, so what the snapshot reports is
+what the game holds. Some entries need a note:
+
+- Every `(x, y)` the surface reports or accepts is an entity's centre.
+- `lives` counts every ship left including the one being flown, so a fresh game
+  reports `3`. The HUD draws one glyph per ship in reserve, which is `lives - 1`.
+{{#if (eq variant.slug "warhead")}}
+- `ship.speed`, `rocks[].radius`, and `torpedoReady` are built at the call from the
+  fields beside them. No operation sets any of the three.
+{{else}}
+- `ship.speed` and `rocks[].radius` are built at the call from the fields beside
+  them. No operation sets either.
+{{/if}}
+- `muted` is the game's copy of the runtime's mute bit, refreshed in every update.
+  No operation sets it; the mute key does.
+- `waveSpawning`, `saucerSpawning`, `ship.collision`, and the saucer's `mind`,
+  `gun`, and `travel` are the gates and faculties, reported so each operation is
+  verifiable by setting a value and reading it back.
+{{#if (eq variant.slug "warhead")}}
+- Each torpedo's `homing` is its guidance gate, reported on the same terms.
+{{/if}}
+- `simTime` accumulates every tick's `TICK_DT`, whatever the screen.
+
+## Diagnostics
+
+The debug overlay is read-only and shows the values the game registers with it as
+diagnostic sources. Register at least:
+
+- the current `screen`, the score, the lives, and the wave;
+- the ship's position, its velocity, its speed, its facing, and its remaining
+  respawn grace;
+- how many bullets and how many rocks are in play;
+- whether a saucer is up, and its position when one is;
+{{#if (eq variant.slug "warhead")}}
+- the torpedo charge and how many torpedoes are in flight;
+{{/if}}
+- the accumulated simulation time.
+
+Keep each one short enough to read on a line, and keep every source a pure read, so
+watching the overlay leaves the game exactly as it is.
+
+{{#if (eq engine.slug "none")}}
+The overlay is part of the runtime layer you write. It draws the registered
+sources, it is shown and hidden by the backtick key as `specs/controls.md` states,
+it is off when the game starts, and it reads the game without changing it.
+{{else if (eq engine.slug "simple-2d")}}
+Registering those values is the whole of Shatter's part, through
+`InitApi.diagnostics`. Each source is called with the state current at the read, as
+`DeepReadonly<ShatterState>`, and reads off that argument. Drawing the panel,
+toggling it, and keeping it read-only are the engine's.
+{{else}}
+Registering those values is the whole of Shatter's part, through
+`world.diagnostics` in the game mode's `beginPlay`. Each source is a function of no
+arguments, called at each read; read the live state at the call, through the world
+the mode holds, so the panel reports the frame being drawn. Drawing the panel and
+toggling it are the engine's.
+{{/if}}
