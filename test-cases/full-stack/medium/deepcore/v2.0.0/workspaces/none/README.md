@@ -17,7 +17,7 @@ below.
 `index.html` loads `/src/main.ts` as its entry point, so that module is where
 your build starts. Beyond that the structure is yours. You write the runtime a
 browser game needs — the frame loop and the delta time it measures, fitting the
-fixed logical stage onto the canvas, keyboard and mouse input, audio, loading the
+fixed logical stage onto the canvas, keyboard and pointer input, audio, loading the
 assets you produce, and the diagnostics overlay — and you write the game itself
 on top of it.
 
