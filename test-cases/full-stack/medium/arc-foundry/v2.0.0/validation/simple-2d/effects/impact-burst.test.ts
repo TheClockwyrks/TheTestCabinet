@@ -29,7 +29,6 @@
 // left out, because a health bar dropping is not a burst.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import {
   assertEqual,
   assertGreaterThan,
@@ -38,16 +37,16 @@ import {
 import {
   captureReplay,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
-  structureCenter,
   ticks,
   unitById,
-  type Harness,
 } from "../harness";
 import { serveProducedAssets } from "./produced";
 import { lattice, motion } from "./region";
+import { structureCenter } from "../constants";
 
 /** Clear ground, well away from the map's waypoint platforms and its chain. */
 const ANCHOR = { col: 21, row: 17 };

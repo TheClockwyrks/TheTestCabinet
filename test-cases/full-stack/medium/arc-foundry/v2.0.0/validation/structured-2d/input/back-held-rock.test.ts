@@ -18,17 +18,15 @@
 // changes one of the other three.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { STAMPS_PER_LEVEL } from "../../src/constants";
+import { keyFor, STAMPS_PER_LEVEL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  keyFor,
+  type Harness,
   openYard,
   pressAction,
   standComponent,
-  type Harness,
 } from "../harness";
 
 /** Where the selected structure stands: clear of the chain. */

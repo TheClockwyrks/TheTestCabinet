@@ -20,12 +20,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
+import { COLLECTOR_WAYPOINT } from "../constants";
 import { callsTo, captureStill, type Harness } from "../harness";
 import {
-  COLLECTOR,
-  LEAK_FROM,
   createRunHarness,
   harvestWave,
+  LEAK_FROM,
   openFinalWave,
   RUN_HZ,
 } from "./runs";
@@ -72,7 +72,7 @@ it("ends the last wave on the overload screen, with no finale and no rating", as
     // the leak that empties the counter.
     if (!walked && s.units.length > 0) {
       const first = s.units[0]!;
-      await h.debug.setUnitWaypoint(first.id, COLLECTOR);
+      await h.debug.setUnitWaypoint(first.id, COLLECTOR_WAYPOINT);
       await h.debug.setUnitPosition(first.id, LEAK_FROM.x, LEAK_FROM.y);
       await h.debug.setUnitFrozen(first.id, false);
       walked = true;

@@ -32,19 +32,23 @@
 //   its event happens" for a build on this engine, and those points read exactly
 //   that frame.
 
-import { CUES, type ComponentType, type CueName } from "../../src/constants";
+import {
+  type ComponentType,
+  type CueName,
+  CUES,
+  type Point,
+  structureCenter,
+  type Tier,
+} from "../constants";
 import {
   captureReplay,
   emptyYard,
+  type Harness,
   parkUnit,
   standComponent,
-  structureCenter,
   ticks,
-  watchCues,
-  type Harness,
-  type Point,
   type TimedCue,
-  type Tier,
+  watchCues,
 } from "../harness";
 
 /**

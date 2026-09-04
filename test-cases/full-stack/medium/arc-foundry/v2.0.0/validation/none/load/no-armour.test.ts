@@ -27,8 +27,8 @@ import { assertEqual, assertGreaterThan } from "../assert";
 import {
   FIRING_TYPES,
   LOAD_TYPES,
-  structureCenter,
   type LoadType,
+  structureCenter,
 } from "../constants";
 import {
   captureReplay,

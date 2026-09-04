@@ -28,7 +28,7 @@ import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  holdWaveOpen,
+  enterWave,
   openYard,
   standCandidate,
   type Harness,
@@ -98,11 +98,11 @@ it("holds every panel rectangle across four changes of game state", async () => 
   );
 
   // A wave starting.
-  holdWaveOpen(h);
+  enterWave(h);
   assertEqual(
     h.snapshot().phase,
     "wave",
-    "the phase a released unit puts the run into (specs/instrumentation.md)",
+    'the phase setPhase("wave") puts the run into (specs/instrumentation.md)',
   );
   assertDeepEqual(
     panelOf(),

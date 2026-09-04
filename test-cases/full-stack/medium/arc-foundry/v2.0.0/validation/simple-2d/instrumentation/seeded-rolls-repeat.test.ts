@@ -15,8 +15,7 @@
 // sequences are held against each other.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { REFINEMENT_MAX, STAMPS_PER_LEVEL } from "../../src/constants";
+import { REFINEMENT_MAX, STAMPS_PER_LEVEL } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,
@@ -81,7 +80,7 @@ async function rollRun(): Promise<Roll[]> {
     const candidate = lastStructure(s);
     rolled.push({ type: candidate.type, quality: candidate.quality });
   }
-  await clearHand(h);
+  clearHand(h);
   return rolled;
 }
 

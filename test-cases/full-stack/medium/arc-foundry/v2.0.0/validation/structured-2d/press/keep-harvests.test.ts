@@ -17,19 +17,17 @@
 // drop is the sibling point `downgrade-one-tier`.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
-  componentRange,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   standCandidate,
   structureById,
-  structureCenter,
-  type Harness,
 } from "../harness";
+import { componentRange, structureCenter } from "../constants";
 
 /** The roll that is kept, and where it lands. */
 const ROLLS = { type: "capacitor", quality: 3 } as const;

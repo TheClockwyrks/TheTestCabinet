@@ -20,20 +20,20 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
-
 import type { Recording } from "@test-cabinet/simple-2d";
 import { afterEach, beforeEach, expect, it } from "vitest";
-
 import {
+  ALWAYS_DRAWN_READOUTS,
+  DEFAULT_SEED,
+  FOUNDRY_DEBUG_VERSION,
   STAGE_H,
   STAGE_W,
   STAMPS_PER_LEVEL,
   START_CHARGE,
-} from "../src/constants";
+  structureCenter,
+  tileCenter,
+} from "./constants";
 import {
-  DEFAULT_SEED,
-  FOUNDRY_DEBUG_VERSION,
-  REQUIRED_OPS,
   captureReplay,
   captureStill,
   clearColor,
@@ -41,14 +41,16 @@ import {
   colorDistance,
   createHarness,
   emptyYard,
-  holdWaveOpen,
+  type Harness,
   lastStructure,
   menuControl,
+  openHeldWave,
   openRun,
   openYard,
   parkUnit,
   pressAction,
   releaseUnit,
+  REQUIRED_OPS,
   retable,
   sampleColor,
   standBlocker,
@@ -57,11 +59,8 @@ import {
   standComponent,
   statusControl,
   structureById,
-  structureCenter,
-  tileCenter,
   unitById,
   watchCues,
-  type Harness,
 } from "./harness";
 
 /** The environment variable the runner names the media directory in. */
@@ -236,13 +235,56 @@ it("releases one unit, posed one faculty at a time", () => {
   expect(unit.speed).toBeCloseTo(unit.baseSpeed * 0.5, 6);
 });
 
-it("holds a wave open with one unit nothing is shooting at", async () => {
+it("holds a wave open over an empty yard, with nothing parked in it", async () => {
   openYard(h);
-  const bystander = holdWaveOpen(h);
+  openHeldWave(h);
   await h.advance(240);
   const snapshot = h.snapshot();
+  expect(snapshot.phase).toBe("wave");
   expect(snapshot.waveActive).toBe(true);
-  expect(unitById(snapshot, bystander).frozen).toBe(true);
+  expect(snapshot.waveHeld).toBe(true);
+  // The point of the hold: nothing is on the yard keeping the wave alive.
+  expect(snapshot.units).toEqual([]);
+  expect(snapshot.structures).toEqual([]);
+});
+
+it("clears the wave once the hold is released", async () => {
+  openYard(h);
+  openHeldWave(h);
+  await h.advance(2);
+  expect(h.snapshot().waveActive).toBe(true);
+  h.debug.setWaveHold(false);
+  await h.advance(2);
+  const snapshot = h.snapshot();
+  expect(snapshot.waveHeld).toBe(false);
+  expect(snapshot.phase).toBe("build");
+});
+
+it("empties the cursor with clearHeld, spending no stamp", async () => {
+  openYard(h);
+  const before = h.snapshot().stampsLeft;
+  h.debug.placeRock(20, 20);
+  expect(h.snapshot().held.active).toBe(true);
+  h.debug.clearHeld();
+  const after = h.snapshot();
+  expect(after.held).toEqual({ active: false, col: 0, row: 0, legal: false });
+  expect(after.stampsLeft).toBe(before - 1);
+});
+
+it("reports the bar's reads and the book's ingredient cells", async () => {
+  openYard(h);
+  const reads = h.debug.statusReadouts().map((r) => r.readout);
+  expect(reads).toEqual(expect.arrayContaining([...ALWAYS_DRAWN_READOUTS]));
+  expect(h.debug.recipeEntries()).toEqual([]);
+  h.debug.setOverlay("combos", true);
+  const cells = h.debug.recipeEntries();
+  expect(cells.length).toBeGreaterThan(0);
+  expect(new Set(cells.map((c) => c.combo)).size).toBe(12);
+  for (const cell of cells) {
+    expect(cell.state).toBe("missing");
+    expect(cell.w).toBeGreaterThan(0);
+    expect(cell.h).toBeGreaterThan(0);
+  }
 });
 
 /* -------------------------------------------------------------------------- */

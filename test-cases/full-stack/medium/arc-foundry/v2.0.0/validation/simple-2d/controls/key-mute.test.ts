@@ -18,17 +18,16 @@
 // not touch it and the first half may therefore leave it either way round.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  keyFor,
+  type Harness,
   openYard,
   pressAction,
   releaseUnit,
-  type Harness,
 } from "../harness";
+import { keyFor } from "../constants";
 
 let h: Harness;
 

@@ -18,11 +18,12 @@ import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  openYard,
+  figures,
   type Harness,
+  openYard,
+  PANEL,
 } from "../harness";
-import { REFINEMENT_ODDS } from "../../src/constants";
-import { PANEL, figures } from "./reading";
+import { REFINEMENT_ODDS } from "../constants";
 
 const COARSE = 2;
 const REFINED = 5;

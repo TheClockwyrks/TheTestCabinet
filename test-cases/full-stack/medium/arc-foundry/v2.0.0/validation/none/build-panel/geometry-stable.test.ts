@@ -99,7 +99,7 @@ it("holds every panel rectangle across four changes of game state", async () => 
   assertEqual(
     (await h.snapshot()).phase,
     "wave",
-    "the phase a released unit puts the run into (specs/instrumentation.md)",
+    "the phase `setPhase` puts the run into (specs/instrumentation.md)",
   );
   assertDeepEqual(
     await panelOf(),

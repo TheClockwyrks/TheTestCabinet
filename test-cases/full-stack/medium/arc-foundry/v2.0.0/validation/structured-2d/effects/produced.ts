@@ -43,7 +43,6 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-
 import { loadImage } from "@napi-rs/canvas";
 
 /** `assets/` at the root of the produced repository, as `specs/assets.md` fixes it. */

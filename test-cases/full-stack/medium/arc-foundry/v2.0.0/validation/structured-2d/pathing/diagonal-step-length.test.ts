@@ -19,19 +19,20 @@
 // tell them apart at all.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertCloseTo, assertGreaterThan } from "../assert";
 import {
+  captureStill,
+  createHarness,
+  type Harness,
+  openYard,
+} from "../harness";
+import {
+  chain,
+  mapById,
   STEP_DIAGONAL,
   STEP_ORTHOGONAL,
-  captureStill,
-  chain,
-  createHarness,
-  mapById,
-  openYard,
-  type Harness,
   type Tile,
-} from "../harness";
+} from "../constants";
 
 /** The map whose chain crosses the yard on diagonals. */
 const MAP = "switchyard";

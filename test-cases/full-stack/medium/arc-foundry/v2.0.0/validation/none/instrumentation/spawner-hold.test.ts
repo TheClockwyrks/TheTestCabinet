@@ -16,7 +16,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
-import { mapById, tileCenter } from "../constants";
+import { COLLECTOR_WAYPOINT, mapById, tileCenter } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -30,9 +30,6 @@ const WAVE = 6;
 
 /** How long the yard is watched for an arrival the surface never asked for. */
 const HOLD_SECONDS = 10;
-
-/** The checkpoint index of the collector (`specs/instrumentation.md`). */
-const COLLECTOR_INDEX = 7;
 
 /** How long the grounding-out is waited for, in frames of the 120 Hz clock. */
 const LEAK_FRAMES = 600;
@@ -63,7 +60,7 @@ it("releases one unit into a wave that spawns nothing else, and clears", async (
 
     // Then ground the released unit out, which is the ordinary way this wave has
     // to end: it is the only unit the wave ever held.
-    await h.debug.setUnitWaypoint(id, COLLECTOR_INDEX);
+    await h.debug.setUnitWaypoint(id, COLLECTOR_WAYPOINT);
     await h.debug.setUnitPosition(id, sink.x, sink.y);
     const cleared = await h.until((s) => !s.waveActive, {
       maxFrames: LEAK_FRAMES,

@@ -38,21 +38,19 @@
 // cadence, so no second shot lands inside the window.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
-  structureCenter,
   ticks,
-  type Harness,
-  type Point,
 } from "../harness";
 import { serveProducedAssets } from "./produced";
 import { read } from "./region";
+import { type Point, structureCenter } from "../constants";
 
 /** The Capacitor's anchor, on clear ground away from every waypoint platform. */
 const ANCHOR = { col: 20, row: 10 };

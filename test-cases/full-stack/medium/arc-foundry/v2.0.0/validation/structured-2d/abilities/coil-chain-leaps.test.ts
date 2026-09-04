@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { COIL_LEAP_RANGE, COIL_LEAPS } from "../../src/constants";
+import { COIL_LEAP_RANGE, COIL_LEAPS } from "../constants";
 import {
   captureReplay,
   createHarness,

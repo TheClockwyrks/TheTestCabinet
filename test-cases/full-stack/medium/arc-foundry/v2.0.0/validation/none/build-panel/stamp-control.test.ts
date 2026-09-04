@@ -19,13 +19,15 @@ import { assertContains, assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
+  drew,
+  figures,
+  type Harness,
   holdWaveOpen,
   openYard,
+  PANEL,
   pressControl,
-  type Harness,
 } from "../harness";
-import { STAMPS_PER_LEVEL } from "../constants";
-import { PANEL, drew, figures } from "./reading";
+import { STAMP_TEXT, STAMPS_PER_LEVEL } from "../constants";
 
 /** An allowance figure no other read in the panel carries. */
 const LEFT = 3;
@@ -46,7 +48,7 @@ it("draws STAMP with the allowance, and is refused when spent and in a wave", as
   const drawn = await h.frameCalls();
   await captureStill(h, "control");
   assertEqual(
-    drew(drawn, PANEL, "STAMP"),
+    drew(drawn, PANEL, STAMP_TEXT),
     true,
     "whether the panel draws the press control's STAMP",
   );
@@ -74,7 +76,7 @@ it("draws STAMP with the allowance, and is refused when spent and in a wave", as
   assertEqual(
     (await h.snapshot()).phase,
     "wave",
-    "the phase a released unit puts the run into (specs/instrumentation.md)",
+    "the phase `setPhase` puts the run into (specs/instrumentation.md)",
   );
   assertEqual(
     (await pressControl(h, "stamp")).disabled,

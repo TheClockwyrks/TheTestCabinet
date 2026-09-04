@@ -14,16 +14,15 @@
 // dispatched at the engine's own surface. The screen is read back.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual, assertNull } from "../assert";
 import {
   captureStill,
   createHarness,
-  keyFor,
+  type Harness,
   openYard,
   pressAction,
-  type Harness,
 } from "../harness";
+import { keyFor } from "../constants";
 
 let h: Harness;
 

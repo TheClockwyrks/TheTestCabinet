@@ -24,15 +24,14 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotEqual } from "../assert";
-import { DIFFICULTIES, LOAD_ROSTER } from "../../src/constants";
+import { DIFFICULTIES, LOAD_ROSTER, scaledHp } from "../constants";
 import {
   captureStill,
   createHarness,
+  type Harness,
   openYard,
   releaseUnit,
-  scaledHp,
   unitById,
-  type Harness,
 } from "../harness";
 
 /** The wave every unit below is released at. */

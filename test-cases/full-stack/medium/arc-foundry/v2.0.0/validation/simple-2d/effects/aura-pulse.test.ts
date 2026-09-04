@@ -30,20 +30,19 @@
 // Regulator projects.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertGreaterThan } from "../assert";
 import {
   captureReplay,
   createHarness,
   emptyYard,
+  type Harness,
   openYard,
   standComponent,
-  structureCenter,
   ticks,
-  type Harness,
 } from "../harness";
 import { serveProducedAssets } from "./produced";
 import { annulus, motion } from "./region";
+import { structureCenter } from "../constants";
 
 /** Clear ground, well away from the map's waypoint platforms and its chain. */
 const ANCHOR = { col: 24, row: 17 };

@@ -22,8 +22,7 @@
 // bare ground, so the only thing that can move the second one is the surge.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { START_INTEGRITY } from "../../src/constants";
+import { mapById, type Point, START_INTEGRITY, tileCenter } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
@@ -32,14 +31,11 @@ import {
 import {
   captureReplay,
   createHarness,
-  holdWaveOpen,
-  mapById,
+  type Harness,
+  holdWave,
   openYard,
   releaseUnit,
   ticks,
-  tileCenter,
-  type Harness,
-  type Point,
 } from "../harness";
 import { serveProducedAssets } from "./produced";
 import { motion } from "./region";
@@ -87,7 +83,7 @@ afterEach(() => {
 
 it("sets the collector moving when a unit grounds out", async () => {
   openYard(h, { map: "substation", wave: 1 });
-  holdWaveOpen(h);
+  holdWave(h);
   await h.advance(1);
   const bare = await motion(h, POINTS, WINDOW);
 

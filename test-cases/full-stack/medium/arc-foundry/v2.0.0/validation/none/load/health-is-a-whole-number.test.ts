@@ -23,8 +23,8 @@ import { assertEqual } from "../assert";
 import {
   DIFFICULTIES,
   LOAD_ROSTER,
-  scaledHp,
   type LoadType,
+  scaledHp,
 } from "../constants";
 import {
   captureStill,

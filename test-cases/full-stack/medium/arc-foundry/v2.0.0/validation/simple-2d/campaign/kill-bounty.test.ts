@@ -24,11 +24,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { LOAD_ROSTER } from "../../src/constants";
+import { LOAD_ROSTER } from "../constants";
 import {
   captureReplay,
   createHarness,
-  holdWaveOpen,
+  holdWave,
   openYard,
   type Harness,
 } from "../harness";
@@ -46,7 +46,7 @@ afterEach(() => {
 
 it("pays each roster type's bounty on the frame the kill lands", async () => {
   openYard(h, { wave: 1, charge: 0 });
-  holdWaveOpen(h);
+  holdWave(h);
   standGun(h);
 
   const paid = await captureReplay(h, "kill", async () => {

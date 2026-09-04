@@ -31,19 +31,18 @@
 // the end of which the result stands alone again and is not combinable either.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
+  type Harness,
   openYard,
   standComponent,
-  structureCenter,
   ticks,
-  type Harness,
 } from "../harness";
 import { serveProducedAssets } from "./produced";
 import { lattice, motion } from "./region";
+import { structureCenter } from "../constants";
 
 /** The initiating piece, whose footprint the result lands on. */
 const ANCHOR = { col: 24, row: 18 };

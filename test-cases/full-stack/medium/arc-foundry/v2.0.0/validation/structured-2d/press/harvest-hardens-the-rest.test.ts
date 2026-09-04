@@ -14,7 +14,6 @@
 // the hardening is for the rest of the run rather than for the frame.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual, assertNull } from "../assert";
 import {
   captureStill,

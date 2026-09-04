@@ -17,16 +17,16 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import {
   captureReplay,
-  componentRange,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
   structureById,
   ticks,
   unitById,
-  type Harness,
 } from "../harness";
+import { componentRange } from "../constants";
 
 const ANCHOR = { col: 10, row: 10 };
 

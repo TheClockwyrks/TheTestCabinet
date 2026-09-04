@@ -24,7 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual } from "../assert";
-import { COMBOS, COMBO_MAX_LEVEL, comboDamage, comboRange } from "../constants";
+import { COMBO_MAX_LEVEL, comboDamage, comboRange, COMBOS } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -33,7 +33,7 @@ import {
   structureById,
   type Harness,
 } from "../harness";
-import { abilityNames } from "./towers";
+import { abilityNames, rowAbilities } from "./towers";
 
 /**
  * Twelve anchors, four columns by three rows.
@@ -44,12 +44,14 @@ import { abilityNames } from "./towers";
 const COLS = [4, 17, 30, 43];
 const ROWS = [8, 18, 28];
 
-/** The aura each row of `COMBOS` gives, for the three towers that carry one. */
-const AURAS: Record<string, { radius: number; bonus: number }> = {
-  corroder: { radius: 80, bonus: 0.1 },
-  nullcore: { radius: 100, bonus: 0.2 },
-  singularity: { radius: 90, bonus: 0.15 },
-};
+/**
+ * The aura a row names, or the resting reading for a tower that carries none.
+ *
+ * `specs/instrumentation.md` fixes `auraRadius` and `auraBonus` as the aura a
+ * structure projects, and a structure that projects none reports `0` for both
+ * rather than going missing.
+ */
+const NO_AURA = { radius: 0, bonus: 0 } as const;
 
 let h: Harness;
 
@@ -101,10 +103,10 @@ it("reports every tower's reference block, scaled to its level", async () => {
     );
     assertEqual(
       abilityNames(view).join(", "),
-      [...tower.abilities].sort().join(", "),
+      rowAbilities(tower).join(", "),
       `${tower.name}: the abilities its row names`,
     );
-    const aura = AURAS[tower.id] ?? { radius: 0, bonus: 0 };
+    const aura = tower.abilities.aura ?? NO_AURA;
     assertCloseTo(
       view.auraRadius,
       aura.radius,

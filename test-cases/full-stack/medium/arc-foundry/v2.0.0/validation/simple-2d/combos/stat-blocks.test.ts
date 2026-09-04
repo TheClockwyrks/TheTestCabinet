@@ -24,16 +24,14 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual } from "../assert";
-import { COMBOS, COMBO_MAX_LEVEL } from "../../src/constants";
+import { COMBO_MAX_LEVEL, comboDamage, comboRange, COMBOS } from "../constants";
 import {
   captureStill,
-  comboDamage,
-  comboRange,
   createHarness,
+  type Harness,
   openYard,
   standCombo,
   structureById,
-  type Harness,
 } from "../harness";
 import { abilityNames, rowAbilities } from "./towers";
 

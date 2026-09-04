@@ -39,8 +39,8 @@ import {
 } from "../harness";
 
 const TOWER = comboDef("forkarray");
-/** The `multishot(N)` its row names. */
-const N = 3;
+/** The `N` of the `multishot(N)` its row names. */
+const N = TOWER.abilities.multishot!.targets;
 const ANCHOR = { col: 10, row: 10 };
 const CENTER = structureCenter(ANCHOR.col, ANCHOR.row);
 

@@ -22,8 +22,7 @@
 // because they are one cue on one event; each runs on its own emptied yard.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { CUES } from "../../src/constants";
+import { CUES } from "../constants";
 import { assertContains, assertDeepEqual, assertEqual } from "../assert";
 import {
   captureReplay,

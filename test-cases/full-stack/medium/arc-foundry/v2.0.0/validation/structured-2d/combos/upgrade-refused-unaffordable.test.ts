@@ -17,15 +17,14 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import {
   captureStill,
-  comboDef,
-  comboUpgradeCost,
   createHarness,
+  type Harness,
   openYard,
   panelControl,
   standCombo,
   structureById,
-  type Harness,
 } from "../harness";
+import { comboDef, comboUpgradeCost } from "../constants";
 
 const TOWER = comboDef("staticweb");
 const ANCHOR = { col: 10, row: 10 };

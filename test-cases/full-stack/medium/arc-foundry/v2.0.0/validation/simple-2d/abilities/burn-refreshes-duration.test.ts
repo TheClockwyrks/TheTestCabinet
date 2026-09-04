@@ -17,12 +17,12 @@ import { assertBetween, assertCloseTo } from "../assert";
 import {
   captureReplay,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
-  tileCenter,
   unitById,
-  type Harness,
 } from "../harness";
+import { tileCenter } from "../constants";
 
 /** The strong, short burn, and the weak, long one applied over it. */
 const STRONG = { dps: 20, seconds: 0.5 };

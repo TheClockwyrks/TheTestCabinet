@@ -36,19 +36,19 @@ import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
-  REFINEMENT_ODDS,
-  STAGE_H,
-  STAGE_W,
-  STAMPS_PER_LEVEL,
-  START_CHARGE,
-  START_INTEGRITY,
   comboDamage,
   comboRange,
   componentDamage,
   componentRange,
   difficultyById,
   loadDef,
+  REFINEMENT_ODDS,
   scaledHp,
+  STAGE_H,
+  STAGE_W,
+  STAMPS_PER_LEVEL,
+  START_CHARGE,
+  START_INTEGRITY,
   structureCenter,
   tileCenter,
 } from "./constants";
@@ -365,16 +365,19 @@ it("releases a unit heading for the checkpoint the pose named", async () => {
 });
 
 it("holds a wave open, so nothing clears under a check that is reading", async () => {
-  // `spawnUnit` puts the run into a live wave whose schedule is empty, and that
-  // wave clears the moment the last unit is gone — paying the wave-clear bonus
-  // into the Charge a check may be in the middle of measuring.
+  // A wave with nothing left to release and nothing on the yard clears the moment
+  // it is advanced — paying the wave-clear bonus into the Charge a check may be
+  // in the middle of measuring, and opening the next build phase under it. The
+  // sequence poses the phase and holds the resolution, so an EMPTY yard stays
+  // mid-wave: no bystander is parked to keep it there.
   await openYard(h, { wave: 1, charge: 100 });
   await holdWaveOpen(h);
   await h.advanceSeconds(2);
 
   const s = await h.snapshot();
-  expect(s.waveActive).toBe(true);
-  expect(s.units).toHaveLength(1);
+  expect(s.phase).toBe("wave");
+  expect(s.waveHeld).toBe(true);
+  expect(s.units).toHaveLength(0);
   expect(s.charge).toBe(100);
 });
 

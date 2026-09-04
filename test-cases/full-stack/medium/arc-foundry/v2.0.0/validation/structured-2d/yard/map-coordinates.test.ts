@@ -14,8 +14,7 @@
 // somewhere else.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { MAPS } from "../../src/constants";
+import { MAPS } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,

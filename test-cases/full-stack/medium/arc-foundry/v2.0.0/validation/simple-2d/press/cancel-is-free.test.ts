@@ -14,12 +14,11 @@
 // and nothing on the yard.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { STAMPS_PER_LEVEL } from "../../src/constants";
+import { STAMPS_PER_LEVEL } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,
-  clearHand,
+  cancelHeldWithBack,
   createHarness,
   openYard,
   pressAction,
@@ -47,7 +46,7 @@ it("puts a held rock away with the allowance whole and the yard empty", async ()
     "the rock the press armed on the cursor",
   );
 
-  await clearHand(h);
+  await cancelHeldWithBack(h);
   const cancelled = h.snapshot();
   captureStill(h, "cancel");
 

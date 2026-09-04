@@ -15,17 +15,20 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual } from "../assert";
-import { COMBO_DAMAGE_MULT, COMBO_RANGE_BONUS } from "../../src/constants";
 import {
-  captureStill,
+  COMBO_DAMAGE_MULT,
+  COMBO_RANGE_BONUS,
   comboDamage,
   comboDef,
   comboRange,
+} from "../constants";
+import {
+  captureStill,
   createHarness,
+  type Harness,
   openYard,
   standCombo,
   structureById,
-  type Harness,
 } from "../harness";
 
 const TOWER = comboDef("forkarray");

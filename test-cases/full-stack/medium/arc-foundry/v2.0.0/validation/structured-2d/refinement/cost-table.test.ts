@@ -17,13 +17,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { REFINEMENT_COSTS, REFINEMENT_MAX } from "../../src/constants";
+import { REFINEMENT_COSTS, REFINEMENT_MAX, refinementCost } from "../constants";
 import {
   captureStill,
   createHarness,
-  openYard,
-  refinementCost,
   type Harness,
+  openYard,
 } from "../harness";
 
 /** The whole track's price, so every rung is affordable when it is reached. */

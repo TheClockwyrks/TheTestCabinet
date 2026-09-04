@@ -4,7 +4,7 @@
 // ends the list with "the controls, naming each key bound in
 // `specs/controls.md`." `BINDINGS` is that list of keys, and the point of naming
 // them on a screen of its own is that a player reads the controls without leaving
-// it — this game binds seventeen actions, and none of them is discoverable by
+// it — this game binds eighteen actions, and none of them is discoverable by
 // pressing at random.
 //
 // HOW IT IS DECIDED. The how-to screen is opened directly, through the operation

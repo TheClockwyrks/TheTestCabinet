@@ -28,18 +28,18 @@ import {
   DIFFICULTIES,
   type Difficulty as DifficultyDef,
   type DifficultyId,
+  loadDef,
   type MenuAction,
-} from "../../src/constants";
+  scaledHp,
+} from "../constants";
 import {
   captureStill,
   createHarness,
-  loadDef,
+  type Harness,
   openMenu,
   pressMenu,
   releaseUnit,
-  scaledHp,
   unitById,
-  type Harness,
 } from "../harness";
 
 /**

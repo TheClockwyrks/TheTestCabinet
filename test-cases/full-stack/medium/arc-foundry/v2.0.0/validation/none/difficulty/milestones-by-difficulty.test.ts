@@ -32,7 +32,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue, fail } from "../assert";
-import { DIFFICULTIES, milestoneWaves, type DifficultyDef } from "../constants";
+import { DIFFICULTIES, type DifficultyDef, milestoneWaves } from "../constants";
 import {
   captureReplay,
   ConstantClock,

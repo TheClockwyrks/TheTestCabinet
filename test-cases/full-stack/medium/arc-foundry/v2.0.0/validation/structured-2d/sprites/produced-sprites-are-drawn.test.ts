@@ -23,12 +23,12 @@ import { assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
+  type Harness,
+  imageDraws,
   openYard,
   standComponent,
-  type Harness,
 } from "../harness";
-import { FOOTPRINT, TILE } from "../../src/constants";
-import { imageDraws } from "./reading";
+import { FOOTPRINT, TILE } from "../constants";
 import { serveProducedAssets } from "./host";
 
 // The produced files, served to the engine off disk, so the still beside this

@@ -14,7 +14,7 @@ import {
   openYard,
   standComponent,
 } from "../harness";
-import { COMPONENT_TYPES } from "../../src/constants";
+import { COMPONENT_TYPES } from "../constants";
 import { canvasOf, componentBase } from "./png";
 import { serveProducedAssets } from "./host";
 

@@ -20,17 +20,16 @@
 // and off the frame by the copy `specs/ui.md` fixes for them.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { VICTORY_ITEMS } from "../../src/constants";
+import { VICTORY_ITEMS } from "../constants";
 import { assertEqual, assertTruthy } from "../assert";
-import {
-  captureStill,
-  createHarness,
-  menuControl,
-  type Harness,
-} from "../harness";
+import { captureStill, menuControl, type Harness } from "../harness";
 import { drawnNumbers, drewNumber, drewText } from "./reading";
-import { ENDING_WAVES, VICTORY_INTEGRITY, reachVictory } from "./outcomes";
+import {
+  ENDING_WAVES,
+  VICTORY_INTEGRITY,
+  createEndingHarness,
+  reachVictory,
+} from "./outcomes";
 
 /** How far a drawn figure may sit from the reported Maze Rating. */
 const RATING_TOLERANCE = 1;
@@ -38,7 +37,7 @@ const RATING_TOLERANCE = 1;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createEndingHarness();
 });
 
 afterEach(() => {

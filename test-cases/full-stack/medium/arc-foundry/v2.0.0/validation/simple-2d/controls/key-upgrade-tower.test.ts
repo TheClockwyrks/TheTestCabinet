@@ -18,19 +18,17 @@
 // spending the wrong one cannot land on it by accident.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual } from "../assert";
 import {
   captureStill,
-  comboUpgradeCost,
   createHarness,
-  keyFor,
+  type Harness,
   openYard,
   pressAction,
   standCombo,
   structureById,
-  type Harness,
 } from "../harness";
+import { comboUpgradeCost, keyFor } from "../constants";
 
 /** Where the tower stands: clear of the chain and of the yard edges. */
 const ANCHOR = { col: 10, row: 0 };

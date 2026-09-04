@@ -24,11 +24,13 @@ import { assertContains, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
-  openYard,
+  drew,
+  figures,
   type Harness,
+  openYard,
+  type Region,
 } from "../harness";
-import { COMBOS, COMBO_DAMAGE_MULT, STAGE_H, STAGE_W } from "../constants";
-import { drew, figures, type Region } from "./reading";
+import { COMBO_DAMAGE_MULT, COMBOS, STAGE_H, STAGE_W } from "../constants";
 
 /** The overlay covers the stage, so the whole of it is read. */
 const OVERLAY: Region = { x0: 0, y0: 0, x1: STAGE_W, y1: STAGE_H };

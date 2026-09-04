@@ -22,20 +22,17 @@
 // structure fires.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { PROJECTILE_SPEED } from "../../src/constants";
+import { type Point, PROJECTILE_SPEED, structureCenter } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
-  TICK_HZ,
   captureReplay,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
-  structureCenter,
+  TICK_HZ,
   ticks,
-  type Harness,
-  type Point,
 } from "../harness";
 import { serveProducedAssets } from "./produced";
 import { read, scan } from "./region";

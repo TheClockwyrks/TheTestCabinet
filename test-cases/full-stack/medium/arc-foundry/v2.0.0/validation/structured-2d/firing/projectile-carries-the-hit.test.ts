@@ -15,18 +15,17 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
-import { PROJECTILE_HIT_R } from "../../src/constants";
+import { componentDamage, PROJECTILE_HIT_R } from "../constants";
 import {
   captureReplay,
-  componentDamage,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
   structureById,
   ticks,
   unitById,
-  type Harness,
 } from "../harness";
 
 const ANCHOR = { col: 10, row: 10 };

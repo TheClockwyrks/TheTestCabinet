@@ -19,7 +19,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { STAMPS_PER_LEVEL, keyFor } from "../constants";
+import { keyFor, STAMPS_PER_LEVEL } from "../constants";
 import {
   captureStill,
   createHarness,

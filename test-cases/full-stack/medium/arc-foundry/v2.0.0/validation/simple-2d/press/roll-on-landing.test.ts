@@ -12,8 +12,7 @@
 // ground.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { COMPONENT_TYPES } from "../../src/constants";
+import { COMPONENT_TYPES, TIERS } from "../constants";
 import {
   assertBetween,
   assertEqual,
@@ -21,13 +20,12 @@ import {
   assertNull,
 } from "../assert";
 import {
-  TIERS,
   captureStill,
   createHarness,
+  type Harness,
   lastStructure,
   openYard,
   pressAction,
-  type Harness,
 } from "../harness";
 
 /** Where the pointer carries the held rock before it is put down. */

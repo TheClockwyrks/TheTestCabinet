@@ -16,18 +16,17 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo } from "../assert";
-import { CHOKE_SLOW } from "../../src/constants";
+import { CHOKE_SLOW, TIERS } from "../constants";
 import {
   captureReplay,
   createHarness,
   emptyYard,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
   structureById,
-  TIERS,
   unitById,
-  type Harness,
 } from "../harness";
 import { awaitEffect } from "./impact";
 

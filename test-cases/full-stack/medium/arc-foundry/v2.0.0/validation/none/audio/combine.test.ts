@@ -51,7 +51,7 @@ const ANCHORS = [
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -76,7 +76,6 @@ async function fold(
 }
 
 it("sounds when a quality fold and a recipe fold resolve, and not before", async () => {
-  await h.armAudio();
   await openYard(h, { wave: 1 });
   await settle(h);
 

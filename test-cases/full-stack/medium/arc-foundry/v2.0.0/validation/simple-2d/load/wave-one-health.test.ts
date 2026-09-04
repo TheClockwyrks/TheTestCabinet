@@ -21,15 +21,14 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { LOAD_ROSTER } from "../../src/constants";
+import { difficultyById, LOAD_ROSTER } from "../constants";
 import {
   captureStill,
   createHarness,
-  difficultyById,
+  type Harness,
   openYard,
   releaseUnit,
   unitById,
-  type Harness,
 } from "../harness";
 
 /** The difficulty the specification works the example through. */

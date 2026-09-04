@@ -18,17 +18,16 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual } from "../assert";
-import { RECTIFIER_BURN_FRAC } from "../../src/constants";
+import { componentDamage, RECTIFIER_BURN_FRAC } from "../constants";
 import {
   captureReplay,
-  componentDamage,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
   structureById,
   ticks,
-  type Harness,
 } from "../harness";
 
 const ANCHOR = { col: 10, row: 10 };

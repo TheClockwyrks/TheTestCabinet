@@ -1,19 +1,19 @@
 // Arc Foundry — the figures this case's specification fixes. CASE-PROVIDED.
 //
-// Under an engine the same numbers reach a validator from `src/constants.ts`,
-// which is SEEDED into the run: the case hands the build the module and the
-// checks import it back. An engineless run seeds no `src/` at all — the build
-// writes every module it has, including whichever one it chooses to name these
-// figures in — so there is nothing for a check to import, and the values have to
-// live on the validator's side of the line.
+// Every one of this case's three validator projects holds its own transcription of
+// these figures, and NONE of them reads a figure out of the build. Under an engine
+// the same numbers also reach the build from a seeded `src/constants.ts`, and
+// importing that module back would spare a project its numbers — and would make
+// every bound a check asserts a value that travels with the tree under test. The
+// comparison would become "does the build do what the build says it does", which
+// holds for every build, including one whose figure is wrong. An engineless run
+// seeds no `src/` at all, so here there is not even a module to be tempted by.
 //
-// So this file is that side. Every value below is stated by the seeded
-// specification the build was given, under the name that specification uses, and
-// nothing here is read from a build: a check that compared a build's own constant
-// against itself would grade nothing. The pairing is deliberate —
-// `PROJECTILE_SPEED` here is `specs/components.md`'s projectile speed, and a
-// build that flies its shots at some other speed fails the point rather than
-// moving the target.
+// So this file is the validator's side of the line. Every value below is stated by
+// the seeded specification the build was given, under the name that specification
+// uses. The pairing is deliberate — `PROJECTILE_SPEED` here is
+// `specs/components.md`'s projectile speed, and a build that flies its shots at
+// some other speed fails the point rather than moving the target.
 //
 // Every position is in the fixed 1280x720 logical-unit coordinate space of
 // `specs/overview.md` (origin top-left, x right, y down), every rate is per
@@ -77,13 +77,19 @@ export function structureCenter(col: number, row: number): Point {
   return { x: TILE * (col + 1), y: BOARD_Y + TILE * (row + 1) };
 }
 
+/**
+ * The row a waypoint platform's stem turns around: "`(c, r + 1)` when `r < 16`,
+ * otherwise `(c, r - 1)`" (specs/yard.md).
+ */
+export const PLATFORM_STEM_PIVOT_ROW = 16;
+
 /** The four tiles a waypoint platform anchored at `(col, row)` covers. */
 export function platformTiles(col: number, row: number): Tile[] {
   return [
     { col: col - 1, row },
     { col, row },
     { col: col + 1, row },
-    { col, row: row < 16 ? row + 1 : row - 1 },
+    { col, row: row < PLATFORM_STEM_PIVOT_ROW ? row + 1 : row - 1 },
   ];
 }
 
@@ -182,12 +188,15 @@ export function chain(map: MapDef): Tile[] {
   return [map.entry, ...map.waypoints, map.collector];
 }
 
+/** The `waypointIndex` a unit heading for the collector reports. */
+export const COLLECTOR_WAYPOINT = 7;
+
 /**
  * The checkpoint a `waypointIndex` of `1`–`7` names: `1`–`6` are the numbered
  * waypoints and `7` is the collector (`specs/instrumentation.md`).
  */
 export function checkpoint(map: MapDef, waypointIndex: number): Tile {
-  return waypointIndex === 7
+  return waypointIndex === COLLECTOR_WAYPOINT
     ? map.collector
     : map.waypoints[waypointIndex - 1]!;
 }
@@ -501,6 +510,33 @@ export interface Ingredient {
   tier: Tier;
 }
 
+/**
+ * The parameters each ability carries, in the notation `specs/combinations.md`
+ * states them: `splash(radius)`, `chain(leaps, leapRange, falloff)`,
+ * `slow(amount, duration)`, `burn(fraction, duration)`, `crit(chance, multiplier)`,
+ * `multishot(N)` and `aura(radius, bonus)`.
+ */
+export interface ComboAbilities {
+  /** Full damage to every unit within `radius` of the impact point. */
+  readonly splash?: { readonly radius: number };
+  /** `leaps` further hits, each within `leapRange`, each scaled by `falloff`. */
+  readonly chain?: {
+    readonly leaps: number;
+    readonly leapRange: number;
+    readonly falloff: number;
+  };
+  /** A slow of `amount` for `duration` seconds. */
+  readonly slow?: { readonly amount: number; readonly duration: number };
+  /** A burn of `shotDamage * fraction` per second for `duration` seconds. */
+  readonly burn?: { readonly fraction: number; readonly duration: number };
+  /** A `chance` of dealing `multiplier` times the shot's damage. */
+  readonly crit?: { readonly chance: number; readonly multiplier: number };
+  /** Fires at up to `targets` distinct in-range units each cadence. */
+  readonly multishot?: { readonly targets: number };
+  /** Buffs every firing structure within `radius` by `bonus`. */
+  readonly aura?: { readonly radius: number; readonly bonus: number };
+}
+
 export interface ComboDef {
   id: ComboId;
   name: string;
@@ -509,7 +545,7 @@ export interface ComboDef {
   range: number;
   fireRate: number;
   damage: number;
-  abilities: string[];
+  abilities: ComboAbilities;
 }
 
 const ing = (type: ComponentType, tier: Tier): Ingredient => ({ type, tier });
@@ -522,7 +558,10 @@ export const COMBOS: readonly ComboDef[] = [
     range: 108,
     fireRate: 1.0,
     damage: 40,
-    abilities: ["splash", "burn"],
+    abilities: {
+      splash: { radius: 55 },
+      burn: { fraction: 0.4, duration: 2.0 },
+    },
   },
   {
     id: "staticweb",
@@ -531,7 +570,10 @@ export const COMBOS: readonly ComboDef[] = [
     range: 120,
     fireRate: 1.2,
     damage: 34,
-    abilities: ["chain", "slow"],
+    abilities: {
+      chain: { leaps: 3, leapRange: 80, falloff: 0.75 },
+      slow: { amount: 0.25, duration: 1.2 },
+    },
   },
   {
     id: "slagdriver",
@@ -540,7 +582,9 @@ export const COMBOS: readonly ComboDef[] = [
     range: 175,
     fireRate: 0.6,
     damage: 120,
-    abilities: ["crit"],
+    abilities: {
+      crit: { chance: 0.25, multiplier: 2.0 },
+    },
   },
   {
     id: "corroder",
@@ -549,7 +593,11 @@ export const COMBOS: readonly ComboDef[] = [
     range: 110,
     fireRate: 1.1,
     damage: 40,
-    abilities: ["burn", "slow", "aura"],
+    abilities: {
+      burn: { fraction: 0.6, duration: 3.0 },
+      slow: { amount: 0.2, duration: 1.0 },
+      aura: { radius: 80, bonus: 0.1 },
+    },
   },
   {
     id: "ionprism",
@@ -558,7 +606,11 @@ export const COMBOS: readonly ComboDef[] = [
     range: 140,
     fireRate: 0.9,
     damage: 220,
-    abilities: ["splash", "burn", "crit"],
+    abilities: {
+      splash: { radius: 50 },
+      burn: { fraction: 0.5, duration: 2.0 },
+      crit: { chance: 0.2, multiplier: 1.8 },
+    },
   },
   {
     id: "forkarray",
@@ -567,7 +619,9 @@ export const COMBOS: readonly ComboDef[] = [
     range: 118,
     fireRate: 1.8,
     damage: 100,
-    abilities: ["multishot"],
+    abilities: {
+      multishot: { targets: 3 },
+    },
   },
   {
     id: "nullcore",
@@ -576,7 +630,10 @@ export const COMBOS: readonly ComboDef[] = [
     range: 120,
     fireRate: 1.0,
     damage: 420,
-    abilities: ["splash", "aura"],
+    abilities: {
+      splash: { radius: 55 },
+      aura: { radius: 100, bonus: 0.2 },
+    },
   },
   {
     id: "rupturenode",
@@ -585,7 +642,10 @@ export const COMBOS: readonly ComboDef[] = [
     range: 150,
     fireRate: 0.7,
     damage: 1770,
-    abilities: ["splash", "burn"],
+    abilities: {
+      splash: { radius: 60 },
+      burn: { fraction: 0.5, duration: 2.0 },
+    },
   },
   {
     id: "blightcoil",
@@ -594,7 +654,11 @@ export const COMBOS: readonly ComboDef[] = [
     range: 128,
     fireRate: 1.1,
     damage: 375,
-    abilities: ["chain", "burn", "slow"],
+    abilities: {
+      chain: { leaps: 3, leapRange: 80, falloff: 0.7 },
+      burn: { fraction: 0.6, duration: 3.0 },
+      slow: { amount: 0.3, duration: 1.5 },
+    },
   },
   {
     id: "reactorpile",
@@ -603,7 +667,10 @@ export const COMBOS: readonly ComboDef[] = [
     range: 130,
     fireRate: 1.4,
     damage: 420,
-    abilities: ["chain", "multishot"],
+    abilities: {
+      chain: { leaps: 4, leapRange: 85, falloff: 0.75 },
+      multishot: { targets: 2 },
+    },
   },
   {
     id: "auroralance",
@@ -612,7 +679,10 @@ export const COMBOS: readonly ComboDef[] = [
     range: 190,
     fireRate: 0.7,
     damage: 1980,
-    abilities: ["chain", "slow"],
+    abilities: {
+      chain: { leaps: 2, leapRange: 75, falloff: 0.6 },
+      slow: { amount: 0.4, duration: 1.8 },
+    },
   },
   {
     id: "singularity",
@@ -626,7 +696,12 @@ export const COMBOS: readonly ComboDef[] = [
     range: 150,
     fireRate: 1.0,
     damage: 490,
-    abilities: ["splash", "burn", "crit", "aura"],
+    abilities: {
+      splash: { radius: 65 },
+      burn: { fraction: 0.6, duration: 2.5 },
+      crit: { chance: 0.3, multiplier: 2.2 },
+      aura: { radius: 90, bonus: 0.15 },
+    },
   },
 ];
 
@@ -739,6 +814,18 @@ export const TITLE_ITEMS = ["SALVAGE", "HOW TO PLAY"] as const;
 export const PAUSE_ITEMS = ["RESUME", "RESTART", "QUIT TO MENU"] as const;
 export const VICTORY_ITEMS = ["PLAY AGAIN", "MENU"] as const;
 export const OVERLOAD_ITEMS = ["TRY AGAIN", "MENU"] as const;
+
+/** "A clear `PAUSED` read shows while the game is paused in place." */
+export const PAUSED_TEXT = "PAUSED";
+
+/** "An `OVERLOAD` read shows during the finale, with the Maze Rating accruing live." */
+export const OVERLOAD_TEXT = "OVERLOAD";
+
+/** "`WAVE n / N` ... and a `BUILD` read during a build phase." */
+export const BUILD_TEXT = "BUILD";
+
+/** "The press control: `STAMP`, showing that placement is free". */
+export const STAMP_TEXT = "STAMP";
 
 /** The harvest prompt the build panel carries (specs/hud.md). */
 export const HARVEST_PROMPT_FIRST = "KEEP OR COMBINE A ROLL TO START";
@@ -871,6 +958,7 @@ export type Action =
   | "dismantle"
   | "speed"
   | "pause"
+  | "pause-menu"
   | "combos"
   | "damage"
   | "mute"
@@ -880,7 +968,7 @@ export type Action =
   | "confirm"
   | "back";
 
-/** The seventeen actions the game reads, and the keys that fire them. */
+/** The eighteen actions the game reads, and the keys that fire them. */
 export const BINDINGS: Readonly<Record<Action, readonly string[]>> = {
   stamp: ["KeyB"],
   keep: ["KeyK"],
@@ -891,6 +979,7 @@ export const BINDINGS: Readonly<Record<Action, readonly string[]>> = {
   dismantle: ["KeyX"],
   speed: ["KeyF"],
   pause: ["Space"],
+  "pause-menu": ["Escape", "KeyP"],
   combos: ["KeyV"],
   damage: ["KeyL"],
   mute: ["KeyM"],
@@ -908,8 +997,15 @@ export function keyFor(action: Action): string {
   return BINDINGS[action][0]!;
 }
 
-/** The key the diagnostics overlay is shown and hidden by. */
-export const OVERLAY_KEY = "Backquote";
+/**
+ * The key that fires `pause-menu` alone.
+ *
+ * `specs/controls.md` binds the action to `Escape, KeyP` and separates the two:
+ * "`KeyP` fires `pause-menu` alone, so it opens the pause menu whatever is pending
+ * and leaves the held rock, the selection, and the open overlay exactly as they
+ * were", while `Escape` fires `back` first and spends the press on it.
+ */
+export const PAUSE_MENU_KEY = BINDINGS["pause-menu"][1]!;
 
 /**
  * A key no action is bound to.

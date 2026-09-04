@@ -40,7 +40,7 @@ const ANCHORS = [12, 16, 20, 24, 28].map((col) => ({ col, row: 24 }));
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -48,7 +48,6 @@ afterEach(async () => {
 });
 
 it("sounds when the unharvested candidates harden, and not before", async () => {
-  await h.armAudio();
   await openYard(h, { wave: 1 });
   await settle(h);
 

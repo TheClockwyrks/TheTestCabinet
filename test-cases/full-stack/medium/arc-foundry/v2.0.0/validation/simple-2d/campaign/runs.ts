@@ -24,23 +24,25 @@
 // exhausted, and the two counters a campaign check reads are untouched on the way.
 
 import { ConstantClock } from "@test-cabinet/simple-2d";
-
 import { assertEqual, assertTruthy, fail } from "../assert";
-import { type DifficultyId, type LoadType } from "../../src/constants";
 import {
   COLLECTOR_WAYPOINT,
-  createHarness,
   difficultyById,
+  type DifficultyId,
+  type LoadType,
+  structureCenter,
+  tileCenter,
+} from "../constants";
+import {
+  createHarness,
+  type FoundrySnapshot,
+  type Harness,
   openYard,
   parkUnit,
   releaseUnit,
   standComponent,
   startWave,
-  structureCenter,
   TICK_MS,
-  tileCenter,
-  type FoundrySnapshot,
-  type Harness,
   type UnitView,
 } from "../harness";
 

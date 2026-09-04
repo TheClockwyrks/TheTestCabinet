@@ -24,8 +24,7 @@
 // does fix as a number, is decided here.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { DIFFICULTIES } from "../../src/constants";
+import { DIFFICULTIES } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { drewNumber, drewText } from "./reading";

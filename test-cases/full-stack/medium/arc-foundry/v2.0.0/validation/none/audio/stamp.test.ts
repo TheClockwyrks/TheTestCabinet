@@ -36,7 +36,7 @@ const ANCHOR = { col: 24, row: 18 };
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -44,7 +44,6 @@ afterEach(async () => {
 });
 
 it("sounds when the rock lands, and not over the frames before it", async () => {
-  await h.armAudio();
   await openYard(h, { wave: 1 });
   await settle(h);
 

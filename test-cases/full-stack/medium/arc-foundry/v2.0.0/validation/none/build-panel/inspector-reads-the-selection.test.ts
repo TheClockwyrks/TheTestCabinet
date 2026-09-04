@@ -27,26 +27,29 @@ import { assertContains, assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
+  drawnFigure,
+  drew,
   emptyYard,
+  figures,
+  type Harness,
   openYard,
+  PANEL,
   parkUnit,
   standCombo,
   standComponent,
   structureById,
-  type Harness,
 } from "../harness";
 import {
-  QUALITY_TIERS,
   baseStat,
   comboDamage,
   comboDef,
   comboRange,
   componentDamage,
   componentRange,
-  structureCenter,
   DEFAULT_TARGETING,
+  QUALITY_TIERS,
+  structureCenter,
 } from "../constants";
-import { PANEL, drawnFigure, drew, figures } from "./reading";
 
 /** Deep enough that neither structure below can kill what it shoots at. */
 const WAVE = 30;
@@ -141,7 +144,7 @@ it("draws the stats and tallies of a base component and of a tower", async () =>
     true,
     "whether the panel names the combination tower",
   );
-  for (const ability of comboDef(COMBO).abilities) {
+  for (const ability of Object.keys(comboDef(COMBO).abilities)) {
     assertEqual(
       drew(combo, PANEL, ability),
       true,

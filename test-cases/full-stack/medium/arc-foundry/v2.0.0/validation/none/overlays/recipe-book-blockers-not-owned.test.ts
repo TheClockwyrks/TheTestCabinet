@@ -6,33 +6,45 @@
 // an ingredient".
 //
 // So a yard holding a blocker and a Static Web — a tower whose own recipe is
-// three base components — must read exactly like an empty yard in the book. The
-// control is the third pose: a Capacitor at Scrap, one of the Static Web's
-// ingredients, which must move the book. Without it a book that never marked
-// anything owned would pass this point by drawing nothing.
+// three base components — must leave every one of that recipe's ingredients
+// reading MISSING, exactly as an empty yard does. The control is the third pose:
+// a Capacitor at Scrap, one of the Static Web's ingredients, which must turn its
+// cell OWNED. Without it, a book that marked nothing at all would pass this point
+// by never marking anything.
 //
-// The comparison is over the book's own points, found by the double difference
-// `book.ts` describes, so the blocker's and the tower's sprites on the yard are
-// not what is being read.
+// The state is read off `recipeEntries`, which reports the state the build drew
+// each cell in, so what is decided is what the book says about each ingredient
+// rather than whether any pixel of the overlay moved.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan } from "../assert";
+import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
   openYard,
+  recipeCell,
+  recipeCells,
   standBlocker,
   standCombo,
   standComponent,
   type Harness,
 } from "../harness";
-import type { ComponentType, Tier } from "../constants";
-
-import { readBook, movedPoints, type Pose } from "./book";
+import {
+  comboDef,
+  type ComboId,
+  type ComponentType,
+  type Tier,
+} from "../constants";
 
 /** An ingredient of the Static Web (specs/combinations.md). */
+const COMBO: ComboId = "staticweb";
 const TYPE: ComponentType = "capacitor";
 const TIER: Tier = 1;
+
+/** Its index within that recipe, read off the recipe the specification lists. */
+const INGREDIENT = comboDef(COMBO).recipe.findIndex(
+  (part) => part.type === TYPE && part.tier === TIER,
+);
 
 let h: Harness;
 
@@ -46,54 +58,42 @@ afterEach(async () => {
 
 it("counts neither a blocker nor a tower as an ingredient", async () => {
   await openYard(h);
+  await h.debug.setOverlay("combos", true);
 
-  const poses: Pose[] = [
-    {
-      name: "empty",
-      arrange: async (harness) => {
-        await harness.debug.clearStructures();
-      },
-    },
-    {
-      name: "a blocker and a tower",
-      arrange: async (harness) => {
-        await harness.debug.clearStructures();
-        await standBlocker(harness, 10, 10);
-        await standCombo(harness, "staticweb", 14, 10);
-      },
-    },
-    {
-      name: "a Capacitor at Scrap",
-      arrange: async (harness) => {
-        await harness.debug.clearStructures();
-        await standComponent(harness, TYPE, TIER, 10, 10);
-      },
-    },
-  ];
+  // An empty yard: nothing is owned, which is the baseline the other two poses
+  // are read against.
+  for (const cell of await recipeCells(h, COMBO)) {
+    assertEqual(
+      cell.state,
+      "missing",
+      `the state of the ${COMBO}'s ${cell.type} at quality ${cell.quality} ` +
+        "on an empty yard (specs/hud.md)",
+    );
+  }
 
-  const read = await readBook(h, "combos", poses);
+  // A blocker and a combination tower: neither is ever an ingredient, so the
+  // book must read exactly as it did on the empty yard.
+  await standBlocker(h, 10, 10);
+  await standCombo(h, COMBO, 14, 10);
   await captureStill(h, "book");
-  assertGreaterThan(
-    read.points,
-    0,
-    "how many points of the stage the recipe book was found to paint",
-  );
+  for (const cell of await recipeCells(h, COMBO)) {
+    assertEqual(
+      cell.state,
+      "missing",
+      `the state of the ${COMBO}'s ${cell.type} at quality ${cell.quality} ` +
+        "on a yard holding a blocker and a combination tower, neither of " +
+        "which is ever an ingredient (specs/hud.md)",
+    );
+  }
 
-  const [empty, walled, owned] = read.open as [
-    (typeof read.open)[number],
-    (typeof read.open)[number],
-    (typeof read.open)[number],
-  ];
-  assertGreaterThan(
-    movedPoints(empty, owned),
-    0,
-    "how many of the book's points a Capacitor at Scrap moves, which is what " +
-      "an ingredient becoming owned looks like",
-  );
+  // The control: a base structure at an ingredient's type and quality IS owned,
+  // so a book that marks nothing fails here.
+  await h.debug.clearStructures();
+  await standComponent(h, TYPE, TIER, 10, 10);
   assertEqual(
-    movedPoints(empty, walled),
-    0,
-    "how many of the book's points a blocker and a combination tower move, " +
-      "neither of which is ever an ingredient",
+    (await recipeCell(h, COMBO, INGREDIENT)).state,
+    "owned",
+    `the state of the ${COMBO}'s ${TYPE} cell with one standing on the yard ` +
+      "(specs/hud.md)",
   );
 });

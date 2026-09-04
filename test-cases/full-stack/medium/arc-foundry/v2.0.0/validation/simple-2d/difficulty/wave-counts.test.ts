@@ -20,7 +20,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotEqual } from "../assert";
-import { DIFFICULTIES } from "../../src/constants";
+import { DIFFICULTIES } from "../constants";
 import { captureStill, createHarness, openRun, type Harness } from "../harness";
 
 let h: Harness;

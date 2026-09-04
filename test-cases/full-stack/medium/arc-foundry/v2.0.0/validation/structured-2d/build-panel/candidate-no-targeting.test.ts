@@ -23,7 +23,7 @@ import {
   standCandidate,
   type Harness,
 } from "../harness";
-import type { ComponentType, Tier } from "../harness";
+import type { ComponentType, Tier } from "../constants";
 
 /** Firing types across the ladder: the Regulator is its own point. */
 const CANDIDATES: readonly [ComponentType, Tier][] = [

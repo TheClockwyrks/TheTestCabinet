@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { MAPS, MAP_MENU_ACTION, type MapDef } from "../constants";
+import { MAP_MENU_ACTION, type MapDef, MAPS } from "../constants";
 import {
   captureStill,
   createHarness,

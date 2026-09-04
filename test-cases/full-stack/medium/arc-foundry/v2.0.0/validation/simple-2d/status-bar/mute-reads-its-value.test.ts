@@ -16,13 +16,16 @@ import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
+  DISTINCT,
+  type Harness,
+  lattice,
+  maxDistance,
   openYard,
   pressAction,
   pressStatus,
+  sample,
   statusControl,
-  type Harness,
 } from "../harness";
-import { DISTINCT, lattice, maxDistance, sample } from "./reading";
 
 let h: Harness;
 

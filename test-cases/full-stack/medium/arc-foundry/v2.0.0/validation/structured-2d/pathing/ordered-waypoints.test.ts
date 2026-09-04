@@ -13,7 +13,6 @@
 // `specs/pathing.md` ends it, with the unit removed at the collector.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertDeepEqual, assertTrue } from "../assert";
 import {
   captureReplay,

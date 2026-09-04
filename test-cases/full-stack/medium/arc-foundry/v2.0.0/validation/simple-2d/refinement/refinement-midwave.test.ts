@@ -20,11 +20,11 @@ import { assertEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
-  holdWaveOpen,
-  openYard,
-  refinementCost,
   type Harness,
+  openHeldWave,
+  openYard,
 } from "../harness";
+import { refinementCost } from "../constants";
 
 /** The wave the run is posed at, so an unchanged counter is a visible figure. */
 const WAVE = 4;
@@ -44,7 +44,7 @@ afterEach(() => {
 
 it("refines during a live wave, spends the price, and leaves the wave running", async () => {
   openYard(h, { wave: WAVE, charge: BANK, refinement: 0 });
-  holdWaveOpen(h);
+  openHeldWave(h);
 
   const before = h.snapshot();
   assertEqual(before.phase, "wave", "the phase the refinement is bought in");

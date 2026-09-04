@@ -22,8 +22,7 @@
 // still in front of them.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { MAPS } from "../../src/constants";
+import { MAPS } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { drewText } from "./reading";

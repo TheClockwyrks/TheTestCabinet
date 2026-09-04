@@ -19,19 +19,19 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertEqual, assertLength } from "../assert";
 import {
+  DEFAULT_SEED,
   REFINEMENT_MAX,
   REFINEMENT_ODDS,
   STAMPS_PER_LEVEL,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureStill,
-  clearHand,
   createHarness,
-  DEFAULT_SEED,
+  type Harness,
   lastStructure,
   openYard,
+  putAwayHeld,
   refillStamps,
-  type Harness,
 } from "../harness";
 
 /** One anchor per stamp of an allowance, each footprint two tiles clear. */
@@ -79,7 +79,7 @@ it("rolls no Scrap at R8 and reaches every tier the row allows", async () => {
     if (rolled.length >= ROLLS) break;
     for (const id of placed) h.debug.dismantle(id);
   }
-  await clearHand(h);
+  putAwayHeld(h);
   await h.advance(1);
   captureStill(h, "rolls");
 

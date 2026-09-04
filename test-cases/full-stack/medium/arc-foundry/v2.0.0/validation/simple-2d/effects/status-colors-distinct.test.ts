@@ -26,15 +26,13 @@
 // and a green burn do.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertDeepEqual } from "../assert";
 import {
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
-  tileCenter,
-  type Harness,
 } from "../harness";
 import { serveProducedAssets } from "./produced";
 import { evidence } from "./region";
@@ -47,6 +45,7 @@ import {
   readSystem,
   type EffectName,
 } from "./systems";
+import { tileCenter } from "../constants";
 
 /** How far apart, of 441, two colors must be to read as two colors. */
 const APART = 60;

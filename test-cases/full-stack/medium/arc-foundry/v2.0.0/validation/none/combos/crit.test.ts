@@ -41,8 +41,8 @@ import {
 } from "../harness";
 
 const TOWER = comboDef("slagdriver");
-/** The `crit(chance, multiplier)` its row names. */
-const CRIT_MULT = 2.0;
+/** The multiplier of the `crit(chance, multiplier)` its row names. */
+const CRIT_MULT = TOWER.abilities.crit!.multiplier;
 const LEVEL = 3;
 
 /** Four anchors around one point, every one inside the `175 + 12` they reach. */

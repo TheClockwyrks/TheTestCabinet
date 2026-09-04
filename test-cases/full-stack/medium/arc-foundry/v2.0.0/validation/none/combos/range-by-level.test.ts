@@ -18,8 +18,8 @@ import {
   COMBO_LEVELS,
   COMBO_RANGE_BONUS,
   comboDef,
-  comboRange,
   type ComboId,
+  comboRange,
 } from "../constants";
 import {
   captureStill,

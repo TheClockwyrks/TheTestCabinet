@@ -21,8 +21,8 @@ import type {
   MapId,
   MenuAction,
   PanelAction,
-  PressAction,
   Phase,
+  PressAction,
   Screen,
   SpawnType,
   StatusAction,
@@ -55,6 +55,8 @@ export const REQUIRED_OPS = [
   "pressControls",
   "menuButtons",
   "statusControls",
+  "statusReadouts",
+  "recipeEntries",
   // The run.
   "reset",
   "setMap",
@@ -62,6 +64,8 @@ export const REQUIRED_OPS = [
   "startRun",
   "setScreen",
   "setMenuIndex",
+  "setPhase",
+  "setWaveHold",
   "setPaused",
   "setSpeed",
   "setOverlay",
@@ -75,6 +79,7 @@ export const REQUIRED_OPS = [
   "clearStructures",
   "setNextRoll",
   "clearNextRoll",
+  "clearHeld",
   "placeRock",
   "placeComponent",
   "placeCombo",
@@ -105,9 +110,24 @@ export const REQUIRED_OPS = [
   "pointerMove",
   "pointerDown",
   "pointerUp",
+  "touchStart",
+  "touchMove",
+  "touchEnd",
   "keyDown",
   "keyUp",
 ] as const;
+
+/**
+ * The status bar's reads, as `specs/instrumentation.md` names them.
+ *
+ * The four the bar always carries, then the two `specs/hud.md` shows only while
+ * they apply: the `PAUSED` read and the finale's `OVERLOAD` read.
+ */
+export type ReadoutName =
+  "charge" | "integrity" | "wave" | "maze-length" | "paused" | "overload";
+
+/** The three states `specs/hud.md` fixes for a recipe's ingredient. */
+export type IngredientState = "selected" | "owned" | "missing";
 
 /* -------------------------------------------------------------------------- */
 /* The readings                                                               */
@@ -168,6 +188,52 @@ export interface StatusControl {
   w: number;
   h: number;
   state: boolean | number;
+}
+
+/**
+ * One of the status bar's READS — what it draws that is not a control.
+ *
+ * `specs/hud.md` fixes the bar's reads and their left-to-right order and leaves
+ * each one's rectangle to the build, so this is how a check finds a read without
+ * knowing where it was drawn. `charge`, `integrity`, `wave` and `maze-length` are
+ * the four the bar always carries; `paused` and `overload` are the two conditional
+ * reads, present only on the frames the bar is drawing them.
+ *
+ * The rectangle is where the read is drawn, so a pointer standing at its center is
+ * over it — which is what the maze-length hover of `specs/controls.md` acts on.
+ */
+export interface StatusReadout {
+  readout: ReadoutName;
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * One ingredient cell the recipe book drew.
+ *
+ * `specs/hud.md` requires every ingredient of every recipe to be drawn in one of
+ * three states, told apart at a glance, and leaves the book's layout to the build.
+ * So the build reports which cell it drew where and in which state, and a check
+ * decides the state from the report and the "at a glance" half from the pixels
+ * inside the reported rectangle.
+ *
+ * `combo` is the recipe's combination tower and `ingredient` that ingredient's
+ * index within the recipe, counted from `0` in the order `specs/combinations.md`
+ * lists it, so a recipe naming the same type twice is still two cells.
+ */
+export interface RecipeEntry {
+  combo: ComboId;
+  ingredient: number;
+  type: ComponentType;
+  quality: number;
+  state: IngredientState;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -284,6 +350,8 @@ export interface FoundrySnapshot {
   wave: number;
   totalWaves: number;
   waveActive: boolean;
+  /** The wave's clear-and-pay resolution is held by `setWaveHold`. */
+  waveHeld: boolean;
   charge: number;
   integrity: number;
   refinement: number;
@@ -340,6 +408,8 @@ export interface FoundryDebugApi {
   pressControls(): PressButton[];
   menuButtons(): MenuButton[];
   statusControls(): StatusControl[];
+  statusReadouts(): StatusReadout[];
+  recipeEntries(): RecipeEntry[];
 
   /* The run. */
   reset(options?: { seed?: number }): void;
@@ -348,6 +418,8 @@ export interface FoundryDebugApi {
   startRun(): void;
   setScreen(screen: Screen): void;
   setMenuIndex(index: number): void;
+  setPhase(phase: Phase): void;
+  setWaveHold(held: boolean): void;
   setPaused(paused: boolean): void;
   setSpeed(multiplier: number): void;
   setOverlay(overlay: "combos" | "damage", open: boolean): void;
@@ -363,6 +435,7 @@ export interface FoundryDebugApi {
   clearStructures(): void;
   setNextRoll(type: ComponentType, quality: number): void;
   clearNextRoll(): void;
+  clearHeld(): void;
   placeRock(col: number, row: number): void;
   placeComponent(
     type: ComponentType,
@@ -400,6 +473,9 @@ export interface FoundryDebugApi {
   pointerMove(x: number, y: number): void;
   pointerDown(x: number, y: number): void;
   pointerUp(): void;
+  touchStart(x: number, y: number): void;
+  touchMove(x: number, y: number): void;
+  touchEnd(): void;
   keyDown(code: string): void;
   keyUp(code: string): void;
 }

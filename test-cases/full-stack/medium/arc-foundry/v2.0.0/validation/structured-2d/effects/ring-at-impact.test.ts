@@ -35,19 +35,17 @@
 // stand in for the ring.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { ARCNODE_SPLASH } from "../../src/constants";
+import { ARCNODE_SPLASH, structureCenter } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
-  structureCenter,
   ticks,
   unitById,
-  type Harness,
 } from "../harness";
 import { serveProducedAssets } from "./produced";
 import { circle, read, scan } from "./region";

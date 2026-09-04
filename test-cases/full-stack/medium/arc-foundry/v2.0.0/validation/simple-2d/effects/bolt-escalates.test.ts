@@ -32,23 +32,20 @@
 // what is being read.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,
   createHarness,
   emptyYard,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
-  structureCenter,
   ticks,
-  type Harness,
-  type Point,
-  type Tier,
 } from "../harness";
 import { serveProducedAssets } from "./produced";
 import { brightnessOverFrames } from "./region";
+import { type Point, structureCenter, type Tier } from "../constants";
 
 /** Clear ground, well away from the map's waypoint platforms and its chain. */
 const ANCHOR = { col: 21, row: 17 };

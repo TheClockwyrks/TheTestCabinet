@@ -19,15 +19,15 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,
-  componentRange,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
   structureById,
   ticks,
-  type Harness,
 } from "../harness";
+import { componentRange } from "../constants";
 
 const ANCHOR = { col: 10, row: 10 };
 

@@ -12,9 +12,10 @@
 //
 // The root is the workspace, not this directory, so a validator resolves the
 // build's modules by the same relative paths the build itself uses — `src/game.ts`
-// for the game and the debug surface's type, `src/constants.ts` for every figure
-// the specification fixes — and reads a produced asset off `assets/` by the same
-// path `specs/assets.md` fixes for it. It is derived from this file's own URL
+// for the game and the debug surface's type, which is the whole of what this
+// project takes from the build — and reads a produced asset off `assets/` by the
+// same path `specs/assets.md` fixes for it. Every figure a check asserts comes
+// from `constants.ts` beside it instead. It is derived from this file's own URL
 // rather than from the working directory, so the command above works from
 // anywhere.
 //

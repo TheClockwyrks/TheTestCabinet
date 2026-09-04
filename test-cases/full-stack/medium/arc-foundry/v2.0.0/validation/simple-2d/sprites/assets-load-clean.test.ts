@@ -32,22 +32,20 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual } from "../assert";
 import {
   captureReplay,
   clearHand,
   createHarness,
-  holdWaveOpen,
+  type Harness,
+  holdWave,
   openYard,
   pressAction,
   releaseUnit,
   standComponent,
-  structureCenter,
-  type Harness,
 } from "../harness";
-import { ASSET_ROOT, LOAD_TYPES } from "../../src/constants";
+import { ASSET_ROOT, LOAD_TYPES, structureCenter } from "../constants";
 
 /** The repository this project sits in, which is where `assets/` is rooted. */
 const REPOSITORY = fileURLToPath(new URL("../../", import.meta.url));
@@ -84,12 +82,12 @@ it("asks the site for nothing it does not carry, across all three phases", async
     h.pointerMove(rock.x, rock.y);
     await h.advanceSeconds(0.5);
     h.debug.placeRock(20, 20);
-    await clearHand(h);
+    clearHand(h);
     standComponent(h, "capacitor", 4, 10, 10);
     await h.advanceSeconds(1);
 
     // A wave: every Load type the roster carries, walking and being shot at.
-    holdWaveOpen(h);
+    holdWave(h);
     for (const type of LOAD_TYPES) releaseUnit(h, type);
     await h.advanceSeconds(4);
 

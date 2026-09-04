@@ -16,16 +16,14 @@
 // is the sibling point `build-beside-waypoint`.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  mapById,
-  openYard,
-  platformTiles,
   type Harness,
+  openYard,
 } from "../harness";
+import { mapById, platformTiles } from "../constants";
 
 /**
  * The two platforms read, and the anchor taken against each tile of them.

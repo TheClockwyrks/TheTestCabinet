@@ -18,8 +18,7 @@
 // name, so a build that plays some other cue on the right event fails here.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { CUES } from "../../src/constants";
+import { CUES } from "../constants";
 import { assertContains, assertDeepEqual, assertEqual } from "../assert";
 import {
   captureReplay,

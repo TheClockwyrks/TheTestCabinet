@@ -19,8 +19,7 @@
 // whether a player can name the event from the sound, is the aesthetic rating's.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { CUES } from "../../src/constants";
+import { CUES } from "../constants";
 import { assertDeepEqual } from "../assert";
 import {
   createHarness,

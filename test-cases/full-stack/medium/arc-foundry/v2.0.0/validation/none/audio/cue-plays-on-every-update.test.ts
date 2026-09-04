@@ -98,7 +98,7 @@ interface Volley {
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -130,7 +130,6 @@ async function volley(h: Harness, speed: number): Promise<Volley> {
 }
 
 it("sounds on every update an Emitter fires on", async () => {
-  await h.armAudio();
   await openYard(h, { wave: 1 });
   await settle(h);
 

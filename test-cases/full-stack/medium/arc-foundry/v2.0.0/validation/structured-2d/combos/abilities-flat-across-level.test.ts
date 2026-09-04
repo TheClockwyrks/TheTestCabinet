@@ -1,0 +1,59 @@
+// combos/abilities-flat-across-level — every tower reports the same ability block at both ends of the track.
+//
+// specs/combinations.md: "Fire rate and every ability parameter are flat across
+// level, so a tower scales through its damage alone." The level scaling table
+// underneath it moves two figures and no others: damage by
+// `COMBO_DAMAGE_MULT[level]` and range by `COMBO_RANGE_BONUS[level]`.
+//
+// FOUR POINTS READ THAT SENTENCE. A build that scales one ability parameter with
+// the level must not cost itself the same single point as one that scales every
+// parameter and the cadence too, so the cadence, the reported ability block, the
+// slow and burn a struck unit carries, and a multishot's `N` are each decided by
+// name. `combos/flat.ts` holds what they share.
+//
+// WHAT IS DECIDED HERE is what the snapshot reports of each tower: the names of
+// the abilities it carries, its aura radius and its aura bonus, all read at level
+// `0` and again at level `COMBO_MAX_LEVEL`. The parameters only a struck unit
+// carries are the sibling point `status-abilities-flat-across-level`.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual } from "../assert";
+import { COMBO_MAX_LEVEL, COMBOS } from "../constants";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { blocksAtBothEnds } from "./flat";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+it("holds every tower's reported ability block across the whole level track", async () => {
+  const reads = await blocksAtBothEnds(h);
+  captureStill(h, "flat");
+
+  for (const tower of COMBOS) {
+    const [low, high] = reads.get(tower.id)!;
+    assertEqual(
+      high!.abilities,
+      low!.abilities,
+      `${tower.name}: the same abilities at level ${COMBO_MAX_LEVEL}`,
+    );
+    assertCloseTo(
+      high!.auraRadius,
+      low!.auraRadius,
+      6,
+      `${tower.name}: the same aura radius at level ${COMBO_MAX_LEVEL}`,
+    );
+    assertCloseTo(
+      high!.auraBonus,
+      low!.auraBonus,
+      6,
+      `${tower.name}: the same aura bonus at level ${COMBO_MAX_LEVEL}`,
+    );
+  }
+});

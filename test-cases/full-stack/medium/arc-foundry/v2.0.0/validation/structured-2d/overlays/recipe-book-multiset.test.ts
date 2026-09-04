@@ -10,17 +10,18 @@
 // tiers", and `specs/combinations.md` states the counting rule there: "a recipe is
 // satisfied only when the yard holds every ingredient it lists, counted as a
 // multiset". So the requirement is instantiated at the one recipe the twelve
-// provide: a yard holding a single Arc-Node has covered ONE of the Singularity's
-// two Arc-Node ingredients, and standing the second one has to move the book
-// again. A build that counted ownership by type, or that let one structure
-// satisfy every ingredient naming it, marks both on the first Arc-Node and moves
-// nothing on the second.
+// provide: a yard holding a single Arc-Node covers the ONE of the Singularity's
+// two Arc-Node ingredients whose tier it is, and leaves the other missing until a
+// second Arc-Node stands at that tier. A build that counted ownership by type, or
+// that let one structure satisfy every ingredient naming it, marks both on the
+// first Arc-Node.
 //
-// Both tiers appear in that one recipe and nowhere else in the twelve, so each
-// step moves exactly one ingredient of one recipe.
+// The two cells are told apart by the ingredient index `recipeEntries` reports
+// (`specs/instrumentation.md`), so the check names which of the two the build got
+// wrong rather than saying that something on the overlay did or did not move.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan } from "../assert";
+import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -28,13 +29,15 @@ import {
   standComponent,
   type Harness,
 } from "../harness";
-import type { ComponentType, Tier } from "../harness";
-import { readBook, movedPoints, type Pose } from "./book";
+import { cell, openBook } from "./book";
+import type { ComboId, ComponentType, Tier } from "../constants";
 
 /** The Singularity's two Arc-Nodes (specs/combinations.md). */
+const COMBO: ComboId = "singularity";
 const TYPE: ComponentType = "arcnode";
-const FIRST: Tier = 2;
-const SECOND: Tier = 5;
+/** Ingredient `0` is the Arc-Node at tier 5, ingredient `3` the one at tier 2. */
+const HIGH = { ingredient: 0, tier: 5 as Tier };
+const LOW = { ingredient: 3, tier: 2 as Tier };
 
 let h: Harness;
 
@@ -46,55 +49,52 @@ afterEach(() => {
   h.dispose();
 });
 
+/** The state the book reports for each of the two Arc-Node cells. */
+async function states(): Promise<{ high: string; low: string }> {
+  openBook(h);
+  await h.advance(1);
+  const high = cell(h, COMBO, HIGH.ingredient);
+  const low = cell(h, COMBO, LOW.ingredient);
+  assertEqual(
+    `${high.type}@${high.quality} ${low.type}@${low.quality}`,
+    `${TYPE}@${HIGH.tier} ${TYPE}@${LOW.tier}`,
+    `the two ingredients recipeEntries reports at indexes ${HIGH.ingredient} ` +
+      `and ${LOW.ingredient} of the ${COMBO} recipe (specs/combinations.md)`,
+  );
+  return { high: high.state, low: low.state };
+}
+
 it("covers the second Arc-Node only once a second one stands", async () => {
   openYard(h);
+  h.debug.clearStructures();
 
-  const poses: Pose[] = [
-    {
-      name: "neither",
-      arrange: (harness) => {
-        harness.debug.clearStructures();
-      },
-    },
-    {
-      name: "one",
-      arrange: (harness) => {
-        harness.debug.clearStructures();
-        standComponent(harness, TYPE, FIRST, 10, 10);
-      },
-    },
-    {
-      name: "both",
-      arrange: (harness) => {
-        harness.debug.clearStructures();
-        standComponent(harness, TYPE, FIRST, 10, 10);
-        standComponent(harness, TYPE, SECOND, 14, 10);
-      },
-    },
-  ];
+  const neither = await states();
+  assertEqual(
+    `${neither.high}/${neither.low}`,
+    "missing/missing",
+    "the two Arc-Node ingredients' states with neither on the yard",
+  );
 
-  const read = await readBook(h, "combos", poses);
+  h.debug.setOverlay("combos", false);
+  standComponent(h, TYPE, LOW.tier, 10, 10);
+  h.debug.clearSelection();
+  const one = await states();
+  assertEqual(
+    `${one.high}/${one.low}`,
+    "missing/owned",
+    `the two Arc-Node ingredients' states with one Arc-Node at tier ` +
+      `${LOW.tier} standing, which covers that tier's ingredient and not the ` +
+      `tier ${HIGH.tier} one`,
+  );
+
+  h.debug.setOverlay("combos", false);
+  standComponent(h, TYPE, HIGH.tier, 14, 10);
+  h.debug.clearSelection();
+  const both = await states();
   captureStill(h, "multiset");
-  assertGreaterThan(
-    read.points,
-    0,
-    "how many points of the stage the recipe book was found to paint",
-  );
-
-  const [neither, one, both] = read.open as [
-    (typeof read.open)[number],
-    (typeof read.open)[number],
-    (typeof read.open)[number],
-  ];
-  assertGreaterThan(
-    movedPoints(neither, one),
-    0,
-    `how many of the book's points the first Arc-Node at tier ${FIRST} moves`,
-  );
-  assertGreaterThan(
-    movedPoints(one, both),
-    0,
-    `how many of the book's points the second Arc-Node at tier ${SECOND} ` +
-      "moves, which is what the first one may not have covered already",
+  assertEqual(
+    `${both.high}/${both.low}`,
+    "owned/owned",
+    "the two Arc-Node ingredients' states with one of each tier standing",
   );
 });

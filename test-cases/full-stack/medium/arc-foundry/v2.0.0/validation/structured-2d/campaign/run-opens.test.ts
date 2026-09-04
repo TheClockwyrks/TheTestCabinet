@@ -21,17 +21,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import {
+  difficultyById,
   STAMPS_PER_LEVEL,
   START_CHARGE,
   START_INTEGRITY,
-} from "../../src/constants";
-import {
-  captureStill,
-  createHarness,
-  difficultyById,
-  openRun,
-  type Harness,
-} from "../harness";
+} from "../constants";
+import { captureStill, createHarness, type Harness, openRun } from "../harness";
 
 const DIFFICULTY = "medium";
 

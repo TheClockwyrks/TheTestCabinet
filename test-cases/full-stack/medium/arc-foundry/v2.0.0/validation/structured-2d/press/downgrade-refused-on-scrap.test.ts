@@ -13,17 +13,16 @@
 // candidate itself.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual } from "../assert";
 import {
-  TIERS,
   captureStill,
   createHarness,
+  type Harness,
   openYard,
   standCandidate,
   structureById,
-  type Harness,
 } from "../harness";
+import { TIERS } from "../constants";
 
 /** The roll the downgrade is attempted on: the bottom of the ladder. */
 const ROLLS = { type: "coil", quality: TIERS[0]! } as const;

@@ -13,6 +13,7 @@ import {
   type PanelButton,
   type StructureView,
 } from "../harness";
+import { type ComboDef } from "../constants";
 
 /**
  * The structure anchored at that tile, or a failure naming the tile.
@@ -56,6 +57,17 @@ export function abilityNames(view: StructureView): string[] {
     .map((ability) => /^[A-Za-z]+/.exec(String(ability).trim())?.[0] ?? "")
     .map((name) => name.toLowerCase())
     .sort();
+}
+
+/**
+ * The abilities a tower's own row names, sorted the same way.
+ *
+ * `COMBOS` tables each tower's abilities as a record whose keys are the ability
+ * names and whose values are that ability's parameters, so the KEYS are what the
+ * specification names and what {@link abilityNames} is compared against.
+ */
+export function rowAbilities(tower: ComboDef): string[] {
+  return Object.keys(tower.abilities).sort();
 }
 
 /** The recipe rows the inspector is offering: one per reachable recipe. */

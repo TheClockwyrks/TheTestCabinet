@@ -13,17 +13,15 @@
 // read once more, which is the "persists until changed" half of the requirement.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { SPEEDS } from "../../src/constants";
+import { keyFor, SPEEDS } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  keyFor,
+  type Harness,
   openYard,
   pressAction,
   ticks,
-  type Harness,
 } from "../harness";
 
 /** Seconds the multiplier is left alone for, to see whether it holds. */

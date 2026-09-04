@@ -19,17 +19,14 @@
 // the sibling point `no-build-on-waypoint`.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { FOOTPRINT } from "../../src/constants";
+import { FOOTPRINT, mapById, platformTiles } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  lastStructure,
-  mapById,
-  openYard,
-  platformTiles,
   type Harness,
+  lastStructure,
+  openYard,
 } from "../harness";
 
 /** The platform the placements are laid against: mid-yard, above the centre. */

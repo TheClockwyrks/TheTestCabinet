@@ -15,7 +15,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual, assertLength } from "../assert";
-import { REFINEMENT_MAX, REFINEMENT_ODDS } from "../../src/constants";
+import { REFINEMENT_MAX, REFINEMENT_ODDS } from "../constants";
 import {
   captureStill,
   createHarness,

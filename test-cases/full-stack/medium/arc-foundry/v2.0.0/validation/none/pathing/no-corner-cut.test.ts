@@ -24,10 +24,10 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertGreaterThan } from "../assert";
 import {
-  STEP_DIAGONAL,
-  STEP_ORTHOGONAL,
   chain,
   mapById,
+  STEP_DIAGONAL,
+  STEP_ORTHOGONAL,
   type Tile,
 } from "../constants";
 import {

@@ -4,10 +4,10 @@
 // WHAT CAN BE HEARD FROM OUTSIDE AN ENGINELESS BUILD, AND WHAT CANNOT. Under an
 // engine the cue bus is the engine's: the game asks for a cue BY NAME and the bus
 // announces the play. There is no bus here — `specs/ui.md` hands the whole audio
-// layer to the build — so `audio-init.js` is injected before any of the build's
-// script runs and watches the two doors a browser can emit sound through: a Web
-// Audio source node being `start()`ed, whatever kind it is, and an `<audio>`
-// element being played. What is therefore assertable is that a sound was emitted
+// layer to the build — so the shared harness's audio probe is injected before any
+// of the build's script runs and watches the two doors a browser can emit sound
+// through: a Web Audio source node being `start()`ed, whatever kind it is, and an
+// `<audio>` element being played. What is therefore assertable is that a sound was emitted
 // and WHEN. The cue's NAME is not observable, so no check here asserts it; that
 // half is the reviewer's, by ear, and `audio/cue-files-distinct` is what makes it
 // possible for them to tell the eleven apart.
@@ -91,13 +91,15 @@ export async function settle(h: Harness): Promise<void> {
 const SETTLE_TRIES = 60;
 const SETTLE_WAIT_MS = 50;
 
-/** How many sounds the build has emitted since the page loaded. */
+/**
+ * How many sounds the build has emitted since the page loaded.
+ *
+ * The shared harness's own probe, injected before a line of the build ran, is
+ * what counts them; this names it for the suites next door, which read it as the
+ * GROWTH across a control they are about rather than as a total.
+ */
 export async function sounds(h: Harness): Promise<number> {
-  return h.page.evaluate(() =>
-    (
-      window as unknown as { __foundryAudio: { started(): number } }
-    ).__foundryAudio.started(),
-  );
+  return h.sounds();
 }
 
 /** The cues that sounded on one frame of the drive. */

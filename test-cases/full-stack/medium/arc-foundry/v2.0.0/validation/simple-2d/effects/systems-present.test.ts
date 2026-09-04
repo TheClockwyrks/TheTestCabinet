@@ -16,19 +16,18 @@
 // the fourteen points that drive the yard.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertDeepEqual } from "../assert";
 import {
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
-  tileCenter,
-  type Harness,
 } from "../harness";
 import { serveProducedAssets } from "./produced";
 import { evidence } from "./region";
 import { EFFECTS, fileOf, missing, readSystem } from "./systems";
+import { tileCenter } from "../constants";
 
 let h: Harness;
 

@@ -15,16 +15,15 @@
 // `playing` rather than having stepped past the overlay into the pause menu.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual, assertNull } from "../assert";
 import {
   captureStill,
   createHarness,
-  keyFor,
+  type Harness,
   openYard,
   pressAction,
-  type Harness,
 } from "../harness";
+import { keyFor } from "../constants";
 
 let h: Harness;
 

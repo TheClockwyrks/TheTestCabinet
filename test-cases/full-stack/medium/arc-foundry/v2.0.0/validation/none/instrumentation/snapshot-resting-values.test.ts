@@ -56,9 +56,14 @@ it("reports every unused field at its resting value on the title screen", async 
   const s = await h.snapshot();
   assertEqual(s.screen, "title", "snapshot().screen after a reset");
 
-  // Off the yard there is no phase, no wave, and no rating.
+  // Off the yard there is no phase, no wave, no held wave, and no rating.
   assertNull(s.phase, "snapshot().phase off the yard");
   assertEqual(s.wave, 0, "snapshot().wave before wave 1");
+  assertEqual(
+    s.waveHeld,
+    false,
+    "snapshot().waveHeld, which reset releases (specs/instrumentation.md)",
+  );
   assertEqual(s.mazeRating, 0, "snapshot().mazeRating before the finale");
 
   // Nothing is selected and nothing is armed.

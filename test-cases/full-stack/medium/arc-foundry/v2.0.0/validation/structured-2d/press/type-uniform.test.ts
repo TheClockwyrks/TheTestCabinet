@@ -16,12 +16,12 @@
 // clears both by a distance no plausible run of luck closes.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import {
   COMPONENT_TYPES,
   REFINEMENT_MAX,
   STAMPS_PER_LEVEL,
-} from "../../src/constants";
+  TYPE_ROLL_ODDS,
+} from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,
@@ -35,8 +35,14 @@ import {
 /** How many rocks are rolled. */
 const ROLLS = 400;
 
-/** The share of the draws no single type may take. */
-const CEILING = 0.25;
+/**
+ * The share of the draws no single type may take: twice its own uniform share.
+ *
+ * `specs/scrap-press.md` fixes the roll as uniform over the eight base types, so a
+ * type taking more than double its share over four hundred rolls is a bias rather
+ * than the sampling noise a fair roll leaves.
+ */
+const CEILING = TYPE_ROLL_ODDS * 2;
 
 /** The footprint every rock is dropped on. */
 const AT = { col: 20, row: 8 };

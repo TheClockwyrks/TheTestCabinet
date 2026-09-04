@@ -15,8 +15,7 @@
 // opening value is back where a fresh run starts it.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { START_CHARGE, START_INTEGRITY } from "../../src/constants";
+import { START_CHARGE, START_INTEGRITY } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,

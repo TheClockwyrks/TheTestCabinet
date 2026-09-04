@@ -14,7 +14,6 @@
 // pathing requirement rather than a press one.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertCloseTo, assertEqual, assertLength } from "../assert";
 import {
   captureReplay,

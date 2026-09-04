@@ -25,21 +25,19 @@
 // is empty ground until the structure fires.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
-  structureCenter,
   ticks,
-  type Harness,
-  type Point,
 } from "../harness";
 import { serveProducedAssets } from "./produced";
 import { read, scanWhen } from "./region";
+import { type Point, structureCenter } from "../constants";
 
 /** Clear ground, well away from the map's waypoint platforms and its chain. */
 const ANCHOR = { col: 21, row: 17 };

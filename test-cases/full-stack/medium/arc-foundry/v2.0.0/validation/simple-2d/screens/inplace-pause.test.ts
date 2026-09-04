@@ -23,7 +23,6 @@
 // harness's choice and the requirement is about game time.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual, assertLength } from "../assert";
 import {
   captureReplay,
