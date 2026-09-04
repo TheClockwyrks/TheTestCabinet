@@ -32,18 +32,43 @@ function opening(): FacetState {
   return fromCore(createInitialState());
 }
 
-/** A posed board with exactly one productive swap on it. */
+/** A posed board with exactly one productive swap on it, in play. */
 function posed(state: FacetState = opening()): FacetState {
-  return debug.loadBoard(
-    state,
-    quietRowsWith({
-      "1,1": "R0",
-      "2,1": "R0",
-      "3,1": "C0",
-      "3,2": "R0",
-      "4,1": "B0",
-    }),
+  return debug.setScreen(
+    debug.loadBoard(
+      state,
+      quietRowsWith({
+        "1,1": "R0",
+        "2,1": "R0",
+        "3,1": "C0",
+        "3,2": "R0",
+        "4,1": "B0",
+      }),
+    ),
+    "playing",
   );
+}
+
+/**
+ * A round begun the way a caller begins one: the figures a round starts with
+ * written one at a time, a board dealt, and the playing screen shown. The
+ * surface carries no operation that does all of this at once
+ * (specs/instrumentation.md).
+ */
+function started(state: FacetState = opening()): FacetState {
+  let next = debug.setScore(state, 0);
+  next = debug.setLevel(next, 1);
+  next = debug.setLevelScore(next, 0);
+  next = debug.setMoveScore(next, 0);
+  next = debug.setBestMove(next, 0);
+  next = debug.setBestChain(next, 0);
+  next = debug.clearSelection(next);
+  next = debug.clearOffer(next);
+  next = debug.clearRefusal(next);
+  next = debug.clearChain(next);
+  next = debug.dealBoard(next);
+  next = debug.setMenuIndex(next, 0);
+  return debug.setScreen(next, "playing");
 }
 
 describe("the surface", () => {
@@ -125,7 +150,7 @@ describe("snapshot", () => {
     expect(
       debug.snapshot(posed()).board.cells.every((cell) => cell.fell === 0),
     ).toBe(true);
-    const dealt = debug.snapshot(debug.start(opening()));
+    const dealt = debug.snapshot(started());
     expect(dealt.board.cells.every((cell) => cell.fell >= cell.row + 1)).toBe(
       true,
     );
@@ -153,7 +178,9 @@ describe("snapshot", () => {
       "menu-0",
       "menu-1",
     ]);
-    expect(debug.snapshot(debug.openHowTo(opening())).targets).toHaveLength(1);
+    expect(
+      debug.snapshot(debug.setScreen(opening(), "howto")).targets,
+    ).toHaveLength(1);
     expect(debug.snapshot(posed()).targets.map((t) => t.id)).toEqual(["pause"]);
   });
 
@@ -200,9 +227,10 @@ describe("the poses over the screens", () => {
     expect(debug.reset(opening()).rngState).toBe(DEFAULT_SEED);
   });
 
-  it("starts a round on a board dealt through the game's own code", () => {
-    const started = debug.start(debug.reset(opening(), { seed: 3 }));
-    const snapshot = debug.snapshot(started);
+  it("deals a round's board through the game's own code", () => {
+    const snapshot = debug.snapshot(
+      started(debug.reset(opening(), { seed: 3 })),
+    );
 
     expect(snapshot.screen).toBe("playing");
     expect(snapshot.board.cols).toBe(GRID_COLS);
@@ -211,20 +239,24 @@ describe("the poses over the screens", () => {
     expect(snapshot.simTime).toBe(0);
   });
 
-  it("opens how to play, pauses, resumes, and quits", () => {
-    expect(debug.openHowTo(opening()).screen).toBe("howto");
+  it("shows a screen without touching anything else", () => {
+    expect(debug.setScreen(opening(), "howto").screen).toBe("howto");
 
     const playing = posed();
-    const paused = debug.pause(playing);
+    const paused = debug.setScreen(playing, "paused");
     expect(paused.screen).toBe("paused");
     expect(paused.board).toEqual(playing.board);
-    expect(debug.resume(paused).screen).toBe("playing");
+    expect(debug.setScreen(paused, "playing").screen).toBe("playing");
+  });
 
-    const quit = debug.quit(debug.setScore(playing, 700));
-    expect(quit.screen).toBe("title");
-    expect(quit.board).toEqual({ cols: 0, rows: 0, cells: [] });
-    // The round's figures hold what it left them at.
-    expect(quit.score).toBe(700);
+  it("leaves no board in play, and holds the round's figures", () => {
+    const abandoned = debug.clearBoard(debug.setScore(posed(), 700));
+    expect(debug.snapshot(abandoned).board).toEqual({
+      cols: 0,
+      rows: 0,
+      cells: [],
+    });
+    expect(abandoned.score).toBe(700);
   });
 
   it("opens the next level, zeroing what the level was measured by", () => {
@@ -235,7 +267,15 @@ describe("the poses over the screens", () => {
       ),
       620,
     );
-    const next = debug.continueLevel({ ...finished, screen: "levelclear" });
+    const cleared = { ...finished, screen: "levelclear" as const };
+    let next = debug.setLevel(cleared, cleared.level + 1);
+    next = debug.setLevelScore(next, 0);
+    next = debug.setBestChain(next, 0);
+    next = debug.setBestMove(next, 0);
+    next = debug.setMoveScore(next, 0);
+    next = debug.dealBoard(next);
+    next = debug.setMenuIndex(next, 0);
+    next = debug.setScreen(next, "playing");
 
     expect(next.screen).toBe("playing");
     expect(next.menuIndex).toBe(0);

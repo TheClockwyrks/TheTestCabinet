@@ -235,6 +235,29 @@ async function createHarness(): Promise<Harness> {
   };
 }
 
+/**
+ * A round begun the way a caller begins one. The surface carries no operation
+ * that arranges a whole round at once (specs/instrumentation.md), so the
+ * figures a round starts with are written one at a time, a board is dealt, and
+ * the playing screen is shown.
+ */
+function startRound(harness: Harness): void {
+  const d = harness.debug;
+  harness.pose((state) => d.setScore(state, 0));
+  harness.pose((state) => d.setLevel(state, 1));
+  harness.pose((state) => d.setLevelScore(state, 0));
+  harness.pose((state) => d.setMoveScore(state, 0));
+  harness.pose((state) => d.setBestMove(state, 0));
+  harness.pose((state) => d.setBestChain(state, 0));
+  harness.pose((state) => d.clearSelection(state));
+  harness.pose((state) => d.clearOffer(state));
+  harness.pose((state) => d.clearRefusal(state));
+  harness.pose((state) => d.clearChain(state));
+  harness.pose((state) => d.dealBoard(state));
+  harness.pose((state) => d.setMenuIndex(state, 0));
+  harness.pose((state) => d.setScreen(state, "playing"));
+}
+
 afterEach(() => {
   while (restorers.length > 0) restorers.pop()?.();
 });
@@ -332,7 +355,7 @@ describe("the engine stands the game up", () => {
     await harness.engine.advance(1);
     expect(harness.looped).toEqual([MUSIC_TITLE]);
 
-    harness.pose((state) => harness.debug.start(state));
+    startRound(harness);
     await harness.engine.advance(1);
     expect(harness.looped).toEqual([MUSIC_TITLE, MUSIC_PLAY]);
   });
@@ -393,7 +416,7 @@ describe("the keyboard drives the menus", () => {
 
   it("pauses and resumes with the pause key, holding the board", async () => {
     const harness = await createHarness();
-    harness.pose((state) => harness.debug.start(state));
+    startRound(harness);
     const board = harness.debug.snapshot(harness.state).board;
 
     harness.tap("KeyP");
@@ -411,7 +434,7 @@ describe("the keyboard drives the menus", () => {
     // `Escape` is bound to `pause` AND to `back`, and the two act on screens
     // that do not overlap, so one key does the right thing on every screen.
     const harness = await createHarness();
-    harness.pose((state) => harness.debug.start(state));
+    startRound(harness);
 
     harness.tap("Escape");
     await harness.engine.advance(1);
@@ -772,7 +795,7 @@ describe("the simulation is deterministic", () => {
     const harness = await createHarness();
     harness.engine.setClock(new ConstantClock(stepMs));
     harness.pose((state) => harness.debug.reset(state, { seed: 7 }));
-    harness.pose((state) => harness.debug.start(state));
+    startRound(harness);
     harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
     harness.pose((state) => harness.debug.requestSwap(state, 3, 1, 3, 2));
     await harness.engine.advance(frames);
@@ -794,7 +817,7 @@ describe("the simulation is deterministic", () => {
     const deal = async (): Promise<FacetState> => {
       const harness = await createHarness();
       harness.pose((state) => harness.debug.reset(state, { seed: 99 }));
-      harness.pose((state) => harness.debug.start(state));
+      startRound(harness);
       return harness.state as FacetState;
     };
 
@@ -839,7 +862,7 @@ describe("the produced files", () => {
   it("draws a frame of the real board without throwing", async () => {
     serveAssets();
     const harness = await createHarness();
-    harness.pose((state) => harness.debug.start(state));
+    startRound(harness);
     await harness.engine.advance(2);
 
     // The board's own area carries paint, so the stones really drew.

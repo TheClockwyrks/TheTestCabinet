@@ -54,7 +54,10 @@ describe("the pose surface", () => {
 
   it("bundles the core's own poses rather than a second implementation", () => {
     const api = createDebugApi();
-    const posed = api.loadBoard(createInitialState(), quietRows());
+    const posed = api.setScreen(
+      api.loadBoard(createInitialState(), quietRows()),
+      "playing",
+    );
     // A board posed through the surface obeys the same rules as any other: a
     // swap on the quiet board is refused, because nothing it makes matches.
     const refused = api.requestSwap(posed, 0, 0, 1, 0);
@@ -69,15 +72,17 @@ describe("the pose surface", () => {
 describe("the installed surface", () => {
   it("applies every pose to the live state", () => {
     const { api, bench } = surface();
-    api.start();
+    api.setScreen("playing");
     expect(bench.state.screen).toBe("playing");
-    api.pause();
+    api.setScreen("paused");
     expect(bench.state.screen).toBe("paused");
-    api.resume();
-    expect(bench.state.screen).toBe("playing");
-    api.quit();
-    expect(bench.state.screen).toBe("title");
-    api.openHowTo();
+    api.setMenuIndex(1);
+    expect(bench.state.menuIndex).toBe(1);
+    api.dealBoard();
+    expect(bench.state.board.cols).toBe(GRID_COLS);
+    api.clearBoard();
+    expect(bench.state.board.cols).toBe(0);
+    api.setScreen("howto");
     expect(bench.state.screen).toBe("howto");
   });
 
@@ -94,6 +99,7 @@ describe("the installed surface", () => {
 
   it("reads the state without changing it", () => {
     const { api, bench } = surface();
+    api.setScreen("playing");
     api.loadBoard(quietRows());
     const before = JSON.stringify(bench.state);
     const snapshot = api.snapshot();
@@ -115,23 +121,37 @@ describe("the installed surface", () => {
     expect(api.snapshot().levelTarget).toBe(8000);
   });
 
-  it("poses the level's own figures, and opens the next level", () => {
+  it("poses the level's own figures one at a time", () => {
     const { api, bench } = surface();
-    api.start();
+    api.setScreen("playing");
+    api.dealBoard();
     api.setLevel(2);
     api.setBestChain(6);
     api.setBestMove(940);
+    api.setMoveScore(120);
     expect(api.snapshot().bestChain).toBe(6);
     expect(api.snapshot().bestMove).toBe(940);
-    api.continueLevel();
-    expect(bench.state.level).toBe(3);
-    expect(bench.state.bestChain).toBe(0);
-    expect(bench.state.bestMove).toBe(0);
-    expect(bench.state.screen).toBe("playing");
+    expect(api.snapshot().moveScore).toBe(120);
+    expect(bench.state.level).toBe(2);
+  });
+
+  it("settles the chain and drops a standing refusal", () => {
+    const { api, bench } = surface();
+    api.setScreen("playing");
+    api.setScreen("playing");
+    api.loadBoard(quietRows());
+    api.requestSwap(0, 0, 1, 0);
+    expect(bench.state.refusal).not.toBeNull();
+    api.clearRefusal();
+    expect(bench.state.refusal).toBeNull();
+    api.clearChain();
+    expect(bench.state.phase).toBe("idle");
+    expect(bench.state.chainStep).toBe(0);
   });
 
   it("poses the board, one cell of it, the selection, and the offer", () => {
     const { api, bench } = surface();
+    api.setScreen("playing");
     api.loadBoard(quietRows());
     api.setGem(2, 3, "S1b");
     api.setSelection(1, 1);
@@ -157,6 +177,7 @@ describe("the installed surface", () => {
 
   it("puts a requested swap through the acceptance path, refusal and all", () => {
     const { api, bench } = surface();
+    api.setScreen("playing");
     api.loadBoard(quietRows());
     api.requestSwap(0, 0, 4, 4);
     expect(bench.state.refusal).not.toBeNull();
@@ -165,6 +186,7 @@ describe("the installed surface", () => {
 
   it("accepts a productive swap and puts it into motion, unresolved", () => {
     const { api, bench } = surface();
+    api.setScreen("playing");
     api.loadBoard(
       quietRowsWith({ "2,4": "R0", "3,4": "R0", "4,5": "R0", "4,4": "J0" }),
     );
@@ -177,6 +199,7 @@ describe("the installed surface", () => {
 
   it("feeds the pointer through the very path a player's pointer takes", () => {
     const { api, bench } = surface();
+    api.setScreen("playing");
     api.loadBoard(
       quietRowsWith({ "2,4": "R0", "3,4": "R0", "4,5": "R0", "4,4": "J0" }),
     );
@@ -195,6 +218,7 @@ describe("the installed surface", () => {
 
   it("carries the device, and defaults it to the mouse", () => {
     const { api, bench } = surface();
+    api.setScreen("playing");
     api.loadBoard(quietRows());
     const [x, y] = cellCenter({ col: 3, row: 3 });
     api.pointerDown(x, y, "touch");
@@ -208,7 +232,7 @@ describe("the installed surface", () => {
 
   it("takes a screen's pointer target where the snapshot reports it", () => {
     const { api, bench } = surface();
-    api.openHowTo();
+    api.setScreen("howto");
     const [back] = api.snapshot().targets;
     expect(back.id).toBe("back");
     const x = back.x + back.w / 2;
@@ -221,6 +245,7 @@ describe("the installed surface", () => {
 
   it("carries a withdrawn offer back, so the release plays nothing", () => {
     const { api, bench } = surface();
+    api.setScreen("playing");
     api.loadBoard(
       quietRowsWith({ "2,4": "R0", "3,4": "R0", "4,5": "R0", "4,4": "J0" }),
     );
@@ -238,6 +263,7 @@ describe("the installed surface", () => {
 
   it("leaves the board alone on a press far from every cell", () => {
     const { api, bench } = surface();
+    api.setScreen("playing");
     api.loadBoard(quietRows());
     const board = bench.state.board;
     api.pointerDown(10, 10);
@@ -272,7 +298,7 @@ describe("installDebugApi", () => {
       FACET_HANDLE
     ];
     expect(installed.version).toBe(1);
-    installed.start();
+    installed.setScreen("playing");
     expect(bench.state.screen).toBe("playing");
   });
 

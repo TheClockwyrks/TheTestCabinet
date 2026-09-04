@@ -34,32 +34,34 @@
 
 import { FACET_DEBUG_VERSION } from "./constants";
 import {
+  clearBoard,
+  clearChain,
   clearOffer,
+  clearRefusal,
   clearSelection,
-  continueLevel,
+  dealBoard,
   loadBoard,
-  openHowTo,
-  pauseGame,
   poseSwap,
   pointerDown,
   pointerMove,
   pointerUp,
-  quitToTitle,
   reset,
-  resumeGame,
   setBestChain,
   setBestMove,
   setGem,
   setLevel,
   setLevelScore,
+  setMenuIndex,
+  setMoveScore,
   setOffer,
   setScore,
+  setScreen,
   setSelection,
   snapshot,
-  startRound,
   type FacetSnapshot,
   type FacetState,
   type PointerDevice,
+  type Screen,
 } from "./core";
 
 /** The `window` property the installed API is published on. */
@@ -74,12 +76,11 @@ export interface FacetDebugApi {
   version: number;
   reset(state: FacetState, options?: { seed?: number }): FacetState;
   snapshot(state: FacetState): FacetSnapshot;
-  start(state: FacetState): FacetState;
-  openHowTo(state: FacetState): FacetState;
-  pause(state: FacetState): FacetState;
-  resume(state: FacetState): FacetState;
-  quit(state: FacetState): FacetState;
+  setScreen(state: FacetState, screen: Screen): FacetState;
+  setMenuIndex(state: FacetState, index: number): FacetState;
   loadBoard(state: FacetState, rows: readonly string[]): FacetState;
+  dealBoard(state: FacetState): FacetState;
+  clearBoard(state: FacetState): FacetState;
   setGem(
     state: FacetState,
     col: number,
@@ -91,11 +92,13 @@ export interface FacetDebugApi {
   setLevelScore(state: FacetState, points: number): FacetState;
   setBestChain(state: FacetState, chainStep: number): FacetState;
   setBestMove(state: FacetState, points: number): FacetState;
-  continueLevel(state: FacetState): FacetState;
+  setMoveScore(state: FacetState, points: number): FacetState;
   setSelection(state: FacetState, col: number, row: number): FacetState;
   clearSelection(state: FacetState): FacetState;
   setOffer(state: FacetState, col: number, row: number): FacetState;
   clearOffer(state: FacetState): FacetState;
+  clearRefusal(state: FacetState): FacetState;
+  clearChain(state: FacetState): FacetState;
   requestSwap(
     state: FacetState,
     colA: number,
@@ -131,23 +134,24 @@ export function createDebugApi(): FacetDebugApi {
     version: FACET_DEBUG_VERSION,
     reset,
     snapshot,
-    start: startRound,
-    openHowTo,
-    pause: pauseGame,
-    resume: resumeGame,
-    quit: quitToTitle,
+    setScreen,
+    setMenuIndex,
     loadBoard,
+    dealBoard,
+    clearBoard,
     setGem,
     setScore,
     setLevel,
     setLevelScore,
     setBestChain,
     setBestMove,
-    continueLevel,
+    setMoveScore,
     setSelection,
     clearSelection,
     setOffer,
     clearOffer,
+    clearRefusal,
+    clearChain,
     requestSwap: poseSwap,
     pointerDown: (state, x, y, device) =>
       pointerDown(state, x, y, device).state,
@@ -180,23 +184,24 @@ export interface FacetWindowApi {
   advance(seconds: number, frames?: number): void;
   reset(options?: { seed?: number }): void;
   snapshot(): FacetSnapshot;
-  start(): void;
-  openHowTo(): void;
-  pause(): void;
-  resume(): void;
-  quit(): void;
+  setScreen(screen: Screen): void;
+  setMenuIndex(index: number): void;
   loadBoard(rows: readonly string[]): void;
+  dealBoard(): void;
+  clearBoard(): void;
   setGem(col: number, row: number, token: string): void;
   setScore(points: number): void;
   setLevel(level: number): void;
   setLevelScore(points: number): void;
   setBestChain(chainStep: number): void;
   setBestMove(points: number): void;
-  continueLevel(): void;
+  setMoveScore(points: number): void;
   setSelection(col: number, row: number): void;
   clearSelection(): void;
   setOffer(col: number, row: number): void;
   clearOffer(): void;
+  clearRefusal(): void;
+  clearChain(): void;
   requestSwap(colA: number, rowA: number, colB: number, rowB: number): void;
   pointerDown(x: number, y: number, device?: PointerDevice): void;
   pointerMove(x: number, y: number, device?: PointerDevice): void;
@@ -244,28 +249,24 @@ export function createWindowApi(
       return api.snapshot(host.state);
     },
 
-    start() {
-      host.apply((state) => api.start(state));
+    setScreen(screen) {
+      host.apply((state) => api.setScreen(state, screen));
     },
 
-    openHowTo() {
-      host.apply((state) => api.openHowTo(state));
-    },
-
-    pause() {
-      host.apply((state) => api.pause(state));
-    },
-
-    resume() {
-      host.apply((state) => api.resume(state));
-    },
-
-    quit() {
-      host.apply((state) => api.quit(state));
+    setMenuIndex(index) {
+      host.apply((state) => api.setMenuIndex(state, index));
     },
 
     loadBoard(rows) {
       host.apply((state) => api.loadBoard(state, rows));
+    },
+
+    dealBoard() {
+      host.apply((state) => api.dealBoard(state));
+    },
+
+    clearBoard() {
+      host.apply((state) => api.clearBoard(state));
     },
 
     setGem(col, row, token) {
@@ -292,8 +293,8 @@ export function createWindowApi(
       host.apply((state) => api.setBestMove(state, points));
     },
 
-    continueLevel() {
-      host.apply((state) => api.continueLevel(state));
+    setMoveScore(points) {
+      host.apply((state) => api.setMoveScore(state, points));
     },
 
     setSelection(col, row) {
@@ -310,6 +311,14 @@ export function createWindowApi(
 
     clearOffer() {
       host.apply((state) => api.clearOffer(state));
+    },
+
+    clearRefusal() {
+      host.apply((state) => api.clearRefusal(state));
+    },
+
+    clearChain() {
+      host.apply((state) => api.clearChain(state));
     },
 
     requestSwap(colA, rowA, colB, rowB) {

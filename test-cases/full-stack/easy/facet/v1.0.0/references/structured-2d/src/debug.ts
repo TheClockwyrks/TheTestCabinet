@@ -54,33 +54,35 @@ import { FACET_DEBUG_VERSION } from "./constants";
 import { auraCells } from "./effects";
 import { fold, openBatch, showBatch } from "./steps";
 import {
+  clearBoard,
+  clearChain,
   clearOffer,
+  clearRefusal,
   clearSelection,
-  continueLevel,
+  dealBoard,
   loadBoard,
-  openHowTo,
-  pauseGame,
   pointerDown,
   pointerMove,
   pointerUp,
   poseSwap,
   quiet,
-  quitToTitle,
   reset,
-  resumeGame,
   setBestChain,
   setBestMove,
   setGem,
   setLevel,
   setLevelScore,
+  setMenuIndex,
+  setMoveScore,
   setOffer,
   setScore,
+  setScreen,
   setSelection,
   snapshot,
-  startRound,
   type FacetSnapshot,
   type FacetState as CoreState,
   type PointerDevice,
+  type Screen,
 } from "./core";
 import { facetState, type FacetState } from "./game";
 
@@ -94,23 +96,24 @@ export interface FacetDebugApi {
   version: number;
   reset(options?: { seed?: number }): void;
   snapshot(): FacetSnapshot;
-  start(): void;
-  openHowTo(): void;
-  pause(): void;
-  resume(): void;
-  quit(): void;
+  setScreen(screen: Screen): void;
+  setMenuIndex(index: number): void;
   loadBoard(rows: readonly string[]): void;
+  dealBoard(): void;
+  clearBoard(): void;
   setGem(col: number, row: number, token: string): void;
   setScore(points: number): void;
   setLevel(level: number): void;
   setLevelScore(points: number): void;
   setBestChain(chainStep: number): void;
   setBestMove(points: number): void;
-  continueLevel(): void;
+  setMoveScore(points: number): void;
   setSelection(col: number, row: number): void;
   clearSelection(): void;
   setOffer(col: number, row: number): void;
   clearOffer(): void;
+  clearRefusal(): void;
+  clearChain(): void;
   requestSwap(colA: number, rowA: number, colB: number, rowB: number): void;
   pointerDown(x: number, y: number, device?: PointerDevice): void;
   pointerMove(x: number, y: number, device?: PointerDevice): void;
@@ -157,45 +160,39 @@ export function createDebugApi(world: () => World): FacetDebugApi {
       return snapshot(toCore(live()));
     },
 
-    /**
-     * The choice of `PLAY` from the title menu, which is the same choice
-     * `PLAY AGAIN` makes from `gameover`: a fresh round on an opening board
-     * dealt through the game's own code.
-     */
-    start() {
-      pose(startRound);
+    /** The screen shown. Nothing else changes. */
+    setScreen(screen) {
+      pose((state) => setScreen(state, screen));
     },
 
-    /** The choice of `HOW TO PLAY` from the title menu. */
-    openHowTo() {
-      pose(openHowTo);
-    },
-
-    /** The `pause` action from `playing`. Every timer holds where it stands. */
-    pause() {
-      pose(pauseGame);
-    },
-
-    /** The choice of `RESUME` from the pause menu. */
-    resume() {
-      pose(resumeGame);
-    },
-
-    /** The choice of `QUIT`, which the three menus that offer it all make. */
-    quit() {
-      pose(quitToTitle);
+    /** The highlighted item on whichever menu the screen shows, from `0`. */
+    setMenuIndex(index) {
+      pose((state) => setMenuIndex(state, index));
     },
 
     /**
-     * An arbitrary board posed onto the `playing` screen, settled, with
-     * nothing selected and nothing offered. The notation is validated as it is
-     * parsed, and a board posed this way is a board like any other: every gem
-     * of it is standing still where it was written, so every cell reports a
-     * `fell` of `0`, it rests exactly as it was written until a swap is
-     * accepted on it, and the rules govern it unchanged from there.
+     * An arbitrary board posed. The notation is validated as it is parsed, and
+     * a board posed this way is a board like any other: every gem of it is
+     * standing still where it was written, so every cell reports a `fell` of
+     * `0`, it rests exactly as it was written until a swap is accepted on it,
+     * and the rules govern it unchanged from there. The board is the whole of
+     * what it writes.
      */
     loadBoard(rows) {
       pose((state) => loadBoard(state, rows));
+    },
+
+    /**
+     * A fresh opening board dealt through the game's own code, so it holds no
+     * run under R4, carries a legal swap, and comes in from above.
+     */
+    dealBoard() {
+      pose(dealBoard);
+    },
+
+    /** No board in play. Nothing else changes. */
+    clearBoard() {
+      pose(clearBoard);
     },
 
     /** One cell of the board written; everything else stands. */
@@ -228,12 +225,9 @@ export function createDebugApi(world: () => World): FacetDebugApi {
       pose((state) => setBestMove(state, points));
     },
 
-    /**
-     * The choice of `CONTINUE` from the level-clear menu: the next level
-     * opened on a fresh opening board, with `score` carried across.
-     */
-    continueLevel() {
-      pose(continueLevel);
+    /** `moveScore` set. `bestMove` is its own figure. */
+    setMoveScore(points) {
+      pose((state) => setMoveScore(state, points));
     },
 
     /** A cell made the selection. No swap is requested. */
@@ -257,6 +251,16 @@ export function createDebugApi(world: () => World): FacetDebugApi {
     /** Nothing offered. The selection, the board, and the phase stand. */
     clearOffer() {
       pose(clearOffer);
+    },
+
+    /** No refusal standing, whatever time the standing one had left. */
+    clearRefusal() {
+      pose(clearRefusal);
+    },
+
+    /** Resolution settled: the phase back at `idle` with resting timers. */
+    clearChain() {
+      pose(clearChain);
     },
 
     /**

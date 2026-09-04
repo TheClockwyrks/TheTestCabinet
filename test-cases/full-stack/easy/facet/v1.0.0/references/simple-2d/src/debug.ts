@@ -39,30 +39,32 @@
 import { fromCore, toCore } from "./bridge";
 import { FACET_DEBUG_VERSION } from "./constants";
 import {
+  clearBoard,
+  clearChain,
   clearOffer,
+  clearRefusal,
   clearSelection,
-  continueLevel,
+  dealBoard,
   loadBoard,
-  openHowTo,
-  pauseGame,
   pointerDown,
   pointerMove,
   pointerUp,
   poseSwap,
-  quitToTitle,
   reset,
-  resumeGame,
   setBestChain,
   setBestMove,
   setGem,
   setLevel,
   setLevelScore,
+  setMenuIndex,
+  setMoveScore,
   setOffer,
   setScore,
+  setScreen,
   setSelection,
   snapshot,
-  startRound,
   type FacetSnapshot,
+  type Screen,
 } from "./core";
 import type { FacetState, PointerDevice } from "./game";
 import type { DeepReadonly } from "ts-essentials";
@@ -80,23 +82,24 @@ export interface FacetDebugApi {
   version: number;
   reset(state: View, options?: { seed?: number }): FacetState;
   snapshot(state: View): FacetSnapshot;
-  start(state: View): FacetState;
-  openHowTo(state: View): FacetState;
-  pause(state: View): FacetState;
-  resume(state: View): FacetState;
-  quit(state: View): FacetState;
+  setScreen(state: View, screen: Screen): FacetState;
+  setMenuIndex(state: View, index: number): FacetState;
   loadBoard(state: View, rows: readonly string[]): FacetState;
+  dealBoard(state: View): FacetState;
+  clearBoard(state: View): FacetState;
   setGem(state: View, col: number, row: number, token: string): FacetState;
   setScore(state: View, points: number): FacetState;
   setLevel(state: View, level: number): FacetState;
   setLevelScore(state: View, points: number): FacetState;
   setBestChain(state: View, chainStep: number): FacetState;
   setBestMove(state: View, points: number): FacetState;
-  continueLevel(state: View): FacetState;
+  setMoveScore(state: View, points: number): FacetState;
   setSelection(state: View, col: number, row: number): FacetState;
   clearSelection(state: View): FacetState;
   setOffer(state: View, col: number, row: number): FacetState;
   clearOffer(state: View): FacetState;
+  clearRefusal(state: View): FacetState;
+  clearChain(state: View): FacetState;
   requestSwap(
     state: View,
     colA: number,
@@ -125,12 +128,12 @@ export function createDebugApi(): FacetDebugApi {
     version: FACET_DEBUG_VERSION,
     reset: (state, options) => fromCore(reset(toCore(state), options)),
     snapshot: (state) => snapshot(toCore(state)),
-    start: (state) => fromCore(startRound(toCore(state))),
-    openHowTo: (state) => fromCore(openHowTo(toCore(state))),
-    pause: (state) => fromCore(pauseGame(toCore(state))),
-    resume: (state) => fromCore(resumeGame(toCore(state))),
-    quit: (state) => fromCore(quitToTitle(toCore(state))),
+    setScreen: (state, screen) => fromCore(setScreen(toCore(state), screen)),
+    setMenuIndex: (state, index) =>
+      fromCore(setMenuIndex(toCore(state), index)),
     loadBoard: (state, rows) => fromCore(loadBoard(toCore(state), rows)),
+    dealBoard: (state) => fromCore(dealBoard(toCore(state))),
+    clearBoard: (state) => fromCore(clearBoard(toCore(state))),
     setGem: (state, col, row, token) =>
       fromCore(setGem(toCore(state), col, row, token)),
     setScore: (state, points) => fromCore(setScore(toCore(state), points)),
@@ -141,12 +144,15 @@ export function createDebugApi(): FacetDebugApi {
       fromCore(setBestChain(toCore(state), chainStep)),
     setBestMove: (state, points) =>
       fromCore(setBestMove(toCore(state), points)),
-    continueLevel: (state) => fromCore(continueLevel(toCore(state))),
+    setMoveScore: (state, points) =>
+      fromCore(setMoveScore(toCore(state), points)),
     setSelection: (state, col, row) =>
       fromCore(setSelection(toCore(state), col, row)),
     clearSelection: (state) => fromCore(clearSelection(toCore(state))),
     setOffer: (state, col, row) => fromCore(setOffer(toCore(state), col, row)),
     clearOffer: (state) => fromCore(clearOffer(toCore(state))),
+    clearRefusal: (state) => fromCore(clearRefusal(toCore(state))),
+    clearChain: (state) => fromCore(clearChain(toCore(state))),
     requestSwap: (state, colA, rowA, colB, rowB) =>
       fromCore(poseSwap(toCore(state), colA, rowA, colB, rowB)),
     pointerDown: (state, x, y, device = "mouse") =>
