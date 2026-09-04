@@ -55,6 +55,7 @@ import {
 } from "./bullets";
 import { NO_GROUP } from "./drones";
 import { resetToTitle } from "./flow";
+import { menuItemRect, type MenuRect } from "./menus";
 import { MODE } from "./overload";
 import { bulletById, droneById, toSim, type MutDrone, type Sim } from "./sim";
 import { freshDrone } from "./wave";
@@ -162,6 +163,10 @@ export interface SpectraDebugApi {
     options?: { seed?: number },
   ): SpectraState;
   snapshot(state: DeepReadonly<SpectraState>): SpectraSnapshot;
+  menuItemRect(
+    state: DeepReadonly<SpectraState>,
+    index: number,
+  ): MenuRect | null;
 
   setScreen(state: DeepReadonly<SpectraState>, screen: Screen): SpectraState;
   setPhase(state: DeepReadonly<SpectraState>, phase: Phase): SpectraState;
@@ -339,6 +344,17 @@ export function createDebugApi(): SpectraDebugApi {
       })(state),
 
     snapshot: (state) => snapshot(state),
+
+    /**
+     * A pure read of the hit region of item `index` on the menu the current screen
+     * shows, in logical units. It changes nothing.
+     *
+     * Null on the four screens that show no menu, and null for an index the current
+     * menu has no item at (`specs/instrumentation.md`). The region is the one
+     * `src/menus.ts` lays out, which is the one `src/draw.ts` draws the item in and
+     * the one the pointer selects on.
+     */
+    menuItemRect: (state, index) => menuItemRect(state.screen, index),
 
     // ---- The screen and the run ------------------------------------------
 

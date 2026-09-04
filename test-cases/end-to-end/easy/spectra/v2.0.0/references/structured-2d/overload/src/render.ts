@@ -32,11 +32,9 @@ import {
   FIELD_LEFT,
   FIELD_RIGHT,
   FIELD_TOP,
-  GAME_OVER_ITEMS,
   HUD_BOTTOM_TOP,
   HUD_STAGE_LABEL,
   HUD_TOP_H,
-  PAUSE_ITEMS,
   PERFECT_TEXT,
   PLAYER_BULLET_H,
   PLAYER_BULLET_W,
@@ -50,12 +48,12 @@ import {
   STAGE_H,
   STAGE_W,
   TAGLINE_TEXT,
-  TITLE_ITEMS,
   TITLE_TEXT,
   isChallengeStage,
 } from "./constants";
 import { droneEffectiveBand, opposite, shimmering } from "./bands";
 import { droneFootprint } from "./drones";
+import { highlightedItem, itemRect, itemRowY, menuOf } from "./menus";
 import {
   BAND,
   BAND_LIGHT,
@@ -73,6 +71,7 @@ import type {
   BulletState,
   BurstState,
   DroneState,
+  Screen,
   SpectraState,
 } from "./game";
 
@@ -699,17 +698,21 @@ export function renderHud(
 /** A vertical menu, with the highlighted item drawn apart from the others. */
 function menu(
   ctx: CanvasRenderingContext2D,
-  items: readonly string[],
+  screen: Screen,
   index: number,
-  y: number,
-  gap = 46,
 ): void {
-  items.forEach((item, at) => {
-    const chosen = at === index;
-    const row = y + at * gap;
+  const shown = menuOf(screen);
+  if (shown === null) return;
+  const selected = highlightedItem(shown, index);
+  shown.items.forEach((item, at) => {
+    const chosen = at === selected;
+    const row = itemRowY(shown, at);
     if (chosen) {
-      ctx.fillStyle = "rgba(255, 216, 107, 0.16)";
-      ctx.fillRect(CENTER_X - 210, row - 21, 420, 42);
+      const plate = itemRect(shown, at);
+      if (plate !== null) {
+        ctx.fillStyle = "rgba(255, 216, 107, 0.16)";
+        ctx.fillRect(plate.x, plate.y, plate.w, plate.h);
+      }
       text(ctx, `> ${item} <`, CENTER_X, row, FONT.heading, COLOR.gold);
       return;
     }
@@ -730,7 +733,7 @@ function renderTitle(state: SpectraState, ctx: CanvasRenderingContext2D): void {
   bandAccent(ctx, CENTER_X - 250, 190, 26, "cyan", 4);
   bandAccent(ctx, CENTER_X + 250, 190, 26, "magenta", 4);
   text(ctx, TAGLINE_TEXT, CENTER_X, 264, FONT.body, BAND.cyan);
-  menu(ctx, TITLE_ITEMS, state.menuIndex, 390);
+  menu(ctx, "title", state.menuIndex);
   text(
     ctx,
     "ARROWS or AD to move   SPACE to fire   F to flip   X to discharge",
@@ -799,7 +802,7 @@ function renderPaused(
 ): void {
   veil(ctx, 0.66);
   text(ctx, "PAUSED", CENTER_X, 210, FONT.title, COLOR.text);
-  menu(ctx, PAUSE_ITEMS, state.menuIndex, 330);
+  menu(ctx, "paused", state.menuIndex);
 }
 
 /** The interstitial a finished stage opens. */
@@ -851,7 +854,7 @@ function renderGameOver(
     FONT.heading,
     COLOR.dim,
   );
-  menu(ctx, GAME_OVER_ITEMS, state.menuIndex, 400);
+  menu(ctx, "gameOver", state.menuIndex);
 }
 
 /** Whichever screen is up, over the field the rest of the layers drew. */

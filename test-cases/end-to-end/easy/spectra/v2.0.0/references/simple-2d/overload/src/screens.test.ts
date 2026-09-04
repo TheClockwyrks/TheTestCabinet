@@ -97,7 +97,9 @@ describe("the title screen", () => {
     h.tap("Escape");
     await h.frames(1);
     expect(h.snapshot().screen).toBe("title");
-    expect(h.snapshot().menuIndex).toBe(0);
+    // specs/ui.md: an arrival back at the title highlights the entry that led
+    // away from it, which for the how-to-play screen is `HOW TO PLAY`.
+    expect(h.snapshot().menuIndex).toBe(TITLE_ITEMS.indexOf("HOW TO PLAY"));
   });
 });
 

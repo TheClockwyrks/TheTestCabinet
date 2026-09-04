@@ -86,6 +86,7 @@ import {
   STAGE_W,
   START_LIVES,
   SWAY_PERIOD,
+  TITLE_ITEMS,
   diveGapScale,
   droneSpeedScale,
   fluxHold,
@@ -1401,7 +1402,7 @@ describe("the screens", () => {
     expect(h.snapshot().menuIndex).toBe(0);
   });
 
-  it("reaches how-to-play and comes back to the first item", async () => {
+  it("reaches how-to-play and comes back on the entry that led there", async () => {
     h.tap("ArrowDown");
     await h.frames(1);
     h.tap("Enter");
@@ -1410,7 +1411,9 @@ describe("the screens", () => {
     h.tap("Escape");
     await h.frames(1);
     expect(h.snapshot().screen).toBe("title");
-    expect(h.snapshot().menuIndex).toBe(0);
+    // specs/ui.md: an arrival back at the title highlights the entry that led
+    // away from it, which for the how-to-play screen is `HOW TO PLAY`.
+    expect(h.snapshot().menuIndex).toBe(TITLE_ITEMS.indexOf("HOW TO PLAY"));
   });
 
   it("freezes the field while paused and resumes it exactly as it was", async () => {

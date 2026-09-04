@@ -50,7 +50,7 @@ import { createDebugApi, type SpectraDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
 import { registerActions } from "./input";
 import { newFrameEvents } from "./events";
-import { stepFrame } from "./simulate";
+import { forgetPresses, stepFrame } from "./simulate";
 import { Ship, Stage } from "./actors";
 import { COLOR } from "./theme";
 import type { ParticleSimulator } from "@test-cabinet/particle-runtime";
@@ -222,6 +222,8 @@ class SpectraInstance extends GameInstance<SpectraDebugApi> {
   override initialize(api: InitApi): SpectraDebugApi {
     registerActions(api);
     defineCues(api);
+    // A fresh game starts with no press in progress.
+    forgetPresses();
     return createDebugApi(() => this.engine.world);
   }
 }

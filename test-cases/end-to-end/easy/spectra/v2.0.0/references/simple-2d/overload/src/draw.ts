@@ -5,8 +5,9 @@
 // it draws. What each band's accent is, and how a seeded sprite takes its band's
 // colour, live here because the field and the HUD both draw them.
 
+import { highlightedItem, itemBaselineY, menuOf } from "./menus";
 import { BAND_COLOR, BAND_TINT, COLOR, font } from "./theme";
-import type { Art, Band } from "./game";
+import type { Art, Band, Screen } from "./game";
 import type { SpriteName } from "./assets";
 import type { DeepReadonly } from "ts-essentials";
 
@@ -146,15 +147,16 @@ export function scrim(
  */
 export function drawMenu(
   ctx: CanvasRenderingContext2D,
-  items: readonly string[],
+  screen: Screen,
   index: number,
-  y: number,
-  step: number,
   size: number,
 ): void {
-  items.forEach((item, i) => {
-    const chosen = i === index;
-    const at = y + i * step;
+  const menu = menuOf(screen);
+  if (menu === null) return;
+  const selected = highlightedItem(menu, index);
+  menu.items.forEach((item, i) => {
+    const chosen = i === selected;
+    const at = itemBaselineY(menu, i);
     label(
       ctx,
       item,

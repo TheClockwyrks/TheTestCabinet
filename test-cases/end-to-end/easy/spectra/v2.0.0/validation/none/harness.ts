@@ -77,9 +77,9 @@ import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { expect, inject } from "vitest";
 import type { ParticleSystem } from "@test-cabinet/particle-runtime";
-import type { Browser, BrowserContext, Page } from "playwright";
+import type { Browser, BrowserContext, CDPSession, Page } from "playwright";
 import { connectChromium } from "./chromium";
-import { fail } from "./assert";
+import { assertTruthy, fail } from "./assert";
 import {
   BURST_SYSTEM,
   ENEMY_BULLET_SPEED,
@@ -135,6 +135,7 @@ export const REQUIRED_OPS = [
   // The core.
   "reset",
   "snapshot",
+  "menuItemRect",
   // The clock (this engine alone).
   "setAutoStep",
   "advance",
@@ -328,10 +329,26 @@ export interface SpectraSnapshot {
   simTime: number;
 }
 
+/**
+ * A menu item's hit region, in logical units, as `menuItemRect` reports it.
+ *
+ * `x` and `y` are the region's top-left corner and `w` and `h` its size
+ * (`specs/instrumentation.md`). Where a build LAYS its menus out is the build's
+ * own (`specs/ui.md`), so this is the only thing a pointer check knows about the
+ * geometry it drives at.
+ */
+export interface MenuRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /** The operations a check poses the game through. Every one crosses into the page. */
 export interface SpectraDebugApi {
   reset(options?: { seed?: number }): Promise<void>;
   snapshot(): Promise<SpectraSnapshot>;
+  menuItemRect(index: number): Promise<MenuRect | null>;
 
   setAutoStep(enabled: boolean): Promise<void>;
   advance(seconds: number, frames?: number): Promise<void>;
@@ -3976,4 +3993,168 @@ export async function driveBullet(
 /** Show or hide the read-only debug overlay, through its fixed Backquote binding. */
 export async function toggleOverlay(h: Harness): Promise<void> {
   await h.tap(OVERLAY_KEY);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Menus, driven by a real mouse and a real finger                            */
+/* -------------------------------------------------------------------------- */
+//
+// The menus take a pointer and a touch contact as well as the keyboard
+// (`specs/ui.md`), and where a build LAYS the items out is the build's own — so a
+// check asks the build where it put an item, through `menuItemRect`, and then
+// drives Chromium's real mouse or a real touch contact at that region. Nothing
+// here poses a pointer through the surface: a pose would tell the build where the
+// pointer is without making its own input layer see a press, a travel and a
+// release the way a hand does, and what these checks are about is precisely that
+// the build reads them.
+//
+// EACH PART OF A GESTURE RUNS EXACTLY ONE DRIVEN FRAME, so a caller counting
+// frames can add them up, and a build that reads its input once per frame sees
+// every edge.
+
+/** The id every driven contact carries. One finger is all these checks need. */
+const CONTACT_ID = 1;
+
+/** The CDP session driving this page's touch contacts, opened on first use. */
+const touchSessions = new WeakMap<Page, Promise<CDPSession>>();
+
+/** The held session for `page`, opening it on the first contact it drives. */
+function touchSession(page: Page): Promise<CDPSession> {
+  const open = touchSessions.get(page);
+  if (open !== undefined) return open;
+  const opening = page.context().newCDPSession(page);
+  touchSessions.set(page, opening);
+  return opening;
+}
+
+/**
+ * Dispatch one raw touch event through CDP.
+ *
+ * Playwright's own `page.touchscreen` carries `tap` alone, which is a press and a
+ * lift with no frame between them, so a check that needs the contact HELD across
+ * a frame cannot express itself through it. The Chrome DevTools Protocol is the
+ * level that can, and it is what `page.touchscreen.tap` is itself built on.
+ */
+async function dispatchTouch(
+  h: Harness,
+  type: "touchStart" | "touchMove" | "touchEnd",
+  point: { x: number; y: number } | null,
+): Promise<void> {
+  const session = await touchSession(h.page);
+  await session.send("Input.dispatchTouchEvent", {
+    type,
+    touchPoints:
+      point === null ? [] : [{ x: point.x, y: point.y, id: CONTACT_ID }],
+  });
+}
+
+/**
+ * Where the build put item `index` of the menu the current screen shows.
+ *
+ * Fails by assertion when the build reports no region for an item its own menu
+ * shows, so the point names that fault rather than dividing by a `null` several
+ * lines later. A check that is ABOUT the reading returning `null` — on a screen
+ * with no menu, or past the end of one — calls `h.debug.menuItemRect` directly.
+ */
+export async function menuRect(h: Harness, index: number): Promise<MenuRect> {
+  const rect = await h.debug.menuItemRect(index);
+  assertTruthy(
+    rect,
+    `menuItemRect(${index}) must report the hit region of item ${index} on the ` +
+      "menu the current screen shows (specs/instrumentation.md)",
+  );
+  return rect as MenuRect;
+}
+
+/** The middle of a hit region: where a gesture aimed at that item lands. */
+export function rectCenter(rect: MenuRect): { x: number; y: number } {
+  return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+}
+
+/** Move the real mouse onto item `index`, and run the frame that reads it. */
+export async function pointerOntoItem(
+  h: Harness,
+  index: number,
+): Promise<void> {
+  const at = rectCenter(await menuRect(h, index));
+  const css = h.css(at.x, at.y);
+  await h.page.mouse.move(css.x, css.y);
+  await h.advance(1);
+}
+
+/** Press and release the real mouse inside item `index`'s region. */
+export async function clickItem(h: Harness, index: number): Promise<void> {
+  const at = rectCenter(await menuRect(h, index));
+  const css = h.css(at.x, at.y);
+  await h.page.mouse.move(css.x, css.y);
+  await h.advance(1);
+  await h.page.mouse.down();
+  await h.advance(1);
+  await h.page.mouse.up();
+  await h.advance(1);
+}
+
+/**
+ * Press on one item, travel to another, and release there.
+ *
+ * The two edges fall in different regions, so this confirms nothing — the
+ * affordance that lets a player slide off a control to cancel, which
+ * `specs/ui.md` states and a check reads back as a `menuIndex` that moved and a
+ * screen that did not.
+ */
+export async function dragBetweenItems(
+  h: Harness,
+  from: number,
+  to: number,
+): Promise<void> {
+  const start = rectCenter(await menuRect(h, from));
+  const end = rectCenter(await menuRect(h, to));
+  const a = h.css(start.x, start.y);
+  const b = h.css(end.x, end.y);
+  await h.page.mouse.move(a.x, a.y);
+  await h.advance(1);
+  await h.page.mouse.down();
+  await h.advance(1);
+  await h.page.mouse.move(b.x, b.y);
+  await h.advance(1);
+  await h.page.mouse.up();
+  await h.advance(1);
+}
+
+/** Land a real touch contact inside item `index`'s region and leave it down. */
+export async function landOnItem(h: Harness, index: number): Promise<void> {
+  const at = rectCenter(await menuRect(h, index));
+  await dispatchTouch(h, "touchStart", h.css(at.x, at.y));
+  await h.advance(1);
+}
+
+/** Lift the contact `landOnItem` left down. */
+export async function liftContact(h: Harness): Promise<void> {
+  await dispatchTouch(h, "touchEnd", null);
+  await h.advance(1);
+}
+
+/**
+ * Land a real touch contact inside item `index`'s region and lift it there.
+ *
+ * The landing selects the item as well as confirming it, because a finger does
+ * not hover (`specs/ui.md`) — which is the difference between this and
+ * {@link clickItem}, and the reason both exist.
+ */
+export async function tapItem(h: Harness, index: number): Promise<void> {
+  await landOnItem(h, index);
+  await liftContact(h);
+}
+
+/** Land a contact on one item, travel to another, and lift there: confirms nothing. */
+export async function touchBetweenItems(
+  h: Harness,
+  from: number,
+  to: number,
+): Promise<void> {
+  await landOnItem(h, from);
+  const end = rectCenter(await menuRect(h, to));
+  await dispatchTouch(h, "touchMove", h.css(end.x, end.y));
+  await h.advance(1);
+  await liftContact(h);
 }

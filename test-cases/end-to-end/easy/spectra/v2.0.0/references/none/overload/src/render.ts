@@ -26,11 +26,9 @@ import {
   ENEMY_BULLET_W,
   FIELD_BOTTOM,
   FIELD_TOP,
-  GAME_OVER_ITEMS,
   HUD_BOTTOM_TOP,
   HUD_STAGE_LABEL,
   HUD_TOP_H,
-  PAUSE_ITEMS,
   PERFECT_TEXT,
   PLAYER_BULLET_H,
   PLAYER_BULLET_W,
@@ -42,7 +40,6 @@ import {
   STAGE_H,
   STAGE_W,
   TAGLINE_TEXT,
-  TITLE_ITEMS,
   TITLE_TEXT,
   droneSize,
   isChallengeStage,
@@ -50,9 +47,10 @@ import {
 import { BAND_COLOR, BAND_GLOW, COLOR, FONT, font } from "./theme";
 import { STARFIELD } from "./field";
 import { shimmering } from "./drones";
+import { highlightedItem, itemBaselineY, itemRect, menuOf } from "./menus";
 import { dischargeReady } from "./resonance";
 import type { Sprites } from "./assets";
-import type { Band, Drone, SpectraState } from "./types";
+import type { Band, Drone, Screen, SpectraState } from "./types";
 
 /** How to play, in a player's words. */
 const HOWTO_LINES: readonly string[] = [
@@ -551,7 +549,7 @@ function drawScreen(
       if (state.phase === "ready") drawBanner(ctx, READY_TEXT);
       return;
     case "paused":
-      drawMenuScreen(state, ctx, "PAUSED", PAUSE_ITEMS, []);
+      drawMenuScreen(state, ctx, "PAUSED");
       return;
     case "stageCleared":
       drawStageCleared(state, ctx);
@@ -582,7 +580,7 @@ function drawTitle(
   ctx.font = font(FONT.display, 26);
   ctx.fillText(TAGLINE_TEXT, STAGE_W / 2, 250);
   ctx.drawImage(sprites.fighter.cyan, STAGE_W / 2 - 40, 290, 80, 56);
-  drawMenu(ctx, TITLE_ITEMS, state.menuIndex, 420);
+  drawMenu(ctx, "title", state.menuIndex);
   ctx.textAlign = "left";
 }
 
@@ -674,7 +672,7 @@ function drawGameOver(
   ctx.font = font(FONT.numeric, 44);
   ctx.fillText(String(state.score), STAGE_W / 2 - 150, 316);
   ctx.fillText(String(state.stage), STAGE_W / 2 + 150, 316);
-  drawMenu(ctx, GAME_OVER_ITEMS, state.menuIndex, 430);
+  drawMenu(ctx, "gameOver", state.menuIndex);
   ctx.textAlign = "left";
 }
 
@@ -682,15 +680,13 @@ function drawMenuScreen(
   state: SpectraState,
   ctx: CanvasRenderingContext2D,
   heading: string,
-  items: readonly string[],
-  _unused: readonly string[],
 ): void {
   veil(ctx);
   ctx.textAlign = "center";
   ctx.fillStyle = COLOR.text;
   ctx.font = font(FONT.display, 54);
   ctx.fillText(heading, STAGE_W / 2, 210);
-  drawMenu(ctx, items, state.menuIndex, 320);
+  drawMenu(ctx, "paused", state.menuIndex);
   ctx.textAlign = "left";
 }
 
@@ -709,16 +705,21 @@ function drawBanner(ctx: CanvasRenderingContext2D, text: string): void {
  */
 function drawMenu(
   ctx: CanvasRenderingContext2D,
-  items: readonly string[],
+  screen: Screen,
   index: number,
-  top: number,
 ): void {
-  items.forEach((item, at) => {
-    const highlighted = at === index;
-    const y = top + at * 56;
+  const menu = menuOf(screen);
+  if (menu === null) return;
+  const selected = highlightedItem(menu, index);
+  menu.items.forEach((item, at) => {
+    const highlighted = at === selected;
+    const y = itemBaselineY(menu, at);
     if (highlighted) {
-      ctx.fillStyle = BAND_GLOW.cyan;
-      ctx.fillRect(STAGE_W / 2 - 220, y - 24, 440, 48);
+      const plate = itemRect(menu, at);
+      if (plate !== null) {
+        ctx.fillStyle = BAND_GLOW.cyan;
+        ctx.fillRect(plate.x, plate.y, plate.w, plate.h);
+      }
     }
     ctx.fillStyle = highlighted ? BAND_COLOR.cyan : COLOR.textDim;
     ctx.font = font(FONT.display, highlighted ? 34 : 30);

@@ -159,6 +159,21 @@ export interface BurstSnapshot {
   particles: number;
 }
 
+/**
+ * A menu item's hit region, in logical units, as `menuItemRect` returns it.
+ *
+ * `x` and `y` are the region's top-left corner and `w` and `h` its size
+ * (`specs/instrumentation.md`). Where a build LAYS its menus out is the build's
+ * own (`specs/ui.md`), so this is the only thing a pointer check knows about the
+ * geometry it drives at.
+ */
+export interface MenuRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /** The plain, JSON-serializable view `snapshot()` returns. */
 export interface SpectraSnapshot {
   version: number;
@@ -238,6 +253,14 @@ export interface SpectraDebugApi<S = unknown> {
   reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
   /** A pure read of the state. It changes nothing. */
   snapshot(state: DeepReadonly<S>): SpectraSnapshot;
+  /**
+   * A pure read of the hit region of item `index` on the menu the current screen
+   * shows, in logical units. It changes nothing.
+   *
+   * `null` on the four screens that show no menu and for an index the current
+   * menu has no item at (`specs/instrumentation.md`).
+   */
+  menuItemRect(state: DeepReadonly<S>, index: number): MenuRect | null;
 
   // ---- The screen and the run --------------------------------------------
 
@@ -343,7 +366,7 @@ export interface SpectraDebugApi<S = unknown> {
  * state and hand back, and which to run through `engine.apply`; the surface's
  * shape alone cannot say at runtime, so the specification names them.
  */
-export const READINGS = ["snapshot"] as const;
+export const READINGS = ["snapshot", "menuItemRect"] as const;
 
 /**
  * Every operation the surface must carry under EITHER variant, in the order
@@ -358,6 +381,7 @@ export const READINGS = ["snapshot"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "menuItemRect",
 
   "setScreen",
   "setPhase",

@@ -20,8 +20,8 @@
 //
 // WHAT IS NOT ASSERTED. That `Escape` is `back`'s binding is `controls/back-escape`'s.
 // Where the title's highlight rests on arriving back is `specs/ui.md`'s "with the
-// title's highlight at the first item", which `controls/back-escape` reads; this
-// point reads the screen the press arrived at.
+// title's highlight on `HOW TO PLAY`", which `screens/howto-returns-selection`
+// reads; this point reads the screen the press arrived at.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

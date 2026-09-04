@@ -35,7 +35,7 @@ import { openingState } from "./flow";
 import { readInput, registerActions } from "./input";
 import { renderGame } from "./render";
 import { newFrameEvents, toSim } from "./sim";
-import { stepFrame } from "./step";
+import { forgetPresses, stepFrame } from "./step";
 import { COLOR } from "./theme";
 import type { ParticleSimulator } from "@test-cabinet/particle-runtime";
 import type {
@@ -189,6 +189,8 @@ export const game: Game<SpectraState, SpectraDebugApi> = {
     // time the first frame draws.
     const art = await loadArt(api.assets);
 
+    // A fresh game starts with no press in progress.
+    forgetPresses();
     return [openingState(art), createDebugApi()];
   },
 

@@ -30,9 +30,7 @@ import {
   FIELD_TOP,
   FIRE_INTERVAL,
   FLIP_LOCKOUT,
-  GAME_OVER_ITEMS,
   MAX_PLAYER_BULLETS,
-  PAUSE_ITEMS,
   PLAYER_BULLET_HALF,
   PLAYER_BULLET_SPEED,
   READY_HOLD,
@@ -77,6 +75,8 @@ import {
 import { startBurst, stepBursts } from "./bursts";
 import { CUE_SPECS, raise } from "./cues";
 import { registerDiagnostics } from "./diagnostics";
+import { highlightedItem, itemAt, menuItems, menuOf, type Menu } from "./menus";
+import type { PointerPoint } from "./pointer";
 import { renderSpectra } from "./render";
 import { seedRng } from "./rng";
 import { buildStars } from "./starfield";
@@ -87,8 +87,13 @@ import {
   stepDrones,
 } from "./swarm";
 import { buildChallengeWave, buildStandardWave } from "./waves";
-import type { Art, Bullet, Drone, Screen, SpectraState } from "./types";
+import type { Art, Bullet, Drone, SpectraState } from "./types";
 import type { Game, InitApi, RenderApi, UpdateApi } from "./runtime";
+
+export { menuItems };
+
+/** `HOW TO PLAY`'s index on the title menu (specs/ui.md, `TITLE_ITEMS`). */
+const HOW_TO_PLAY_INDEX = TITLE_ITEMS.indexOf("HOW TO PLAY");
 
 /** The centre of the ship's lane, where a run and a respawn place it. */
 export const LANE_CENTER = (SHIP_X_MIN + SHIP_X_MAX) / 2;
@@ -202,11 +207,11 @@ function freshWaveClocks(state: SpectraState): void {
 }
 
 /** Return to the title, with the highlight on the first item. */
-export function toTitle(state: SpectraState): void {
+export function toTitle(state: SpectraState, index = 0): void {
   state.screen = "title";
   state.phase = "live";
   state.phaseTimer = 0;
-  state.menuIndex = 0;
+  state.menuIndex = index;
   state.drones = [];
   state.bullets = [];
   state.bursts = [];
@@ -267,20 +272,6 @@ export function openWave(state: SpectraState): void {
   state.phaseTimer = 0;
   // The first group is released as the wave opens.
   releaseDueGroups(state);
-}
-
-/** The items of whatever vertical menu `screen` shows, or none. */
-export function menuItems(screen: Screen): readonly string[] {
-  switch (screen) {
-    case "title":
-      return TITLE_ITEMS;
-    case "paused":
-      return PAUSE_ITEMS;
-    case "gameOver":
-      return GAME_OVER_ITEMS;
-    default:
-      return [];
-  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -365,10 +356,75 @@ export function flipBand(state: SpectraState): void {
 
 /** Move a menu highlight, wrapping at both ends. */
 function moveMenu(state: SpectraState, step: number): void {
-  const items = menuItems(state.screen);
-  if (items.length === 0) return;
-  state.menuIndex = (state.menuIndex + items.length + step) % items.length;
+  const menu = menuOf(state.screen);
+  if (menu === null) return;
+  const count = menu.items.length;
+  const current = highlightedItem(menu, state.menuIndex);
+  state.menuIndex = (current + count + step) % count;
   raise(state, "menu");
+}
+
+/**
+ * Act on the item confirmed on the menu the current screen shows, whichever
+ * input confirmed it.
+ *
+ * specs/ui.md gives the keyboard, the pointer and a finger the same effect, so
+ * every confirm lands here rather than each input carrying its own copy of what
+ * an entry does.
+ */
+function confirmItem(state: SpectraState, index: number): void {
+  switch (state.screen) {
+    case "title":
+      if (index === 0) startRun(state);
+      else state.screen = "howto";
+      break;
+    case "paused":
+      if (index === 0) state.screen = "inWave";
+      else if (index === 1) startRun(state);
+      else toTitle(state);
+      break;
+    case "gameOver":
+      if (index === 0) startRun(state);
+      else toTitle(state);
+      break;
+    default:
+      break;
+  }
+}
+
+/**
+ * Apply this frame's pointer and touch input to the menu on screen.
+ *
+ * Read once per frame and applied AFTER the keyboard edges (specs/ui.md), so a
+ * frame carrying both a keyboard movement edge and a pointer selection ends on
+ * the item the pointer named.
+ *
+ * A move onto an item selects it, and so does a press landing on one — which is
+ * what makes a finger, which never hovers, select the item it lands on. A
+ * confirm takes BOTH its edges inside one item's region: a press and a release
+ * in different regions, or either of them outside every region, confirms
+ * nothing.
+ */
+function menuPointer(state: SpectraState, api: UpdateApi, menu: Menu): void {
+  const frame = api.pointer.frame();
+
+  const select = (at: PointerPoint): void => {
+    const index = itemAt(menu, at.x, at.y);
+    if (index !== null && index !== state.menuIndex) {
+      state.menuIndex = index;
+      raise(state, "menu");
+    }
+  };
+  if (frame.moved !== null) select(frame.moved);
+  if (frame.pressed !== null) select(frame.pressed);
+
+  const released = frame.released;
+  if (released === null) return;
+  const from = itemAt(menu, released.from.x, released.from.y);
+  const to = itemAt(menu, released.to.x, released.to.y);
+  if (from === null || from !== to) return;
+  state.menuIndex = to;
+  confirmItem(state, to);
 }
 
 /**
@@ -384,18 +440,20 @@ function handleInput(state: SpectraState, api: UpdateApi): Intent {
   // `mute` is read on every screen.
   if (api.input.pressed("mute")) api.audio.toggleMuted();
 
+  const opened = state.screen;
+  const menu = menuOf(opened);
   switch (state.screen) {
     case "title":
       if (api.input.pressed("up")) moveMenu(state, -1);
       else if (api.input.pressed("down")) moveMenu(state, 1);
-      if (api.input.pressed("confirm")) {
-        if (state.menuIndex === 0) startRun(state);
-        else state.screen = "howto";
+      if (api.input.pressed("confirm") && menu !== null) {
+        confirmItem(state, highlightedItem(menu, state.menuIndex));
       }
       break;
 
     case "howto":
-      if (api.input.pressed("back")) toTitle(state);
+      // The title comes back on the entry that led here (specs/ui.md).
+      if (api.input.pressed("back")) toTitle(state, HOW_TO_PLAY_INDEX);
       break;
 
     case "inWave": {
@@ -422,19 +480,16 @@ function handleInput(state: SpectraState, api: UpdateApi): Intent {
       }
       if (api.input.pressed("up")) moveMenu(state, -1);
       else if (api.input.pressed("down")) moveMenu(state, 1);
-      if (api.input.pressed("confirm")) {
-        if (state.menuIndex === 0) state.screen = "inWave";
-        else if (state.menuIndex === 1) startRun(state);
-        else toTitle(state);
+      if (api.input.pressed("confirm") && menu !== null) {
+        confirmItem(state, highlightedItem(menu, state.menuIndex));
       }
       break;
 
     case "gameOver":
       if (api.input.pressed("up")) moveMenu(state, -1);
       else if (api.input.pressed("down")) moveMenu(state, 1);
-      if (api.input.pressed("confirm")) {
-        if (state.menuIndex === 0) startRun(state);
-        else toTitle(state);
+      if (api.input.pressed("confirm") && menu !== null) {
+        confirmItem(state, highlightedItem(menu, state.menuIndex));
       }
       break;
 
@@ -443,6 +498,15 @@ function handleInput(state: SpectraState, api: UpdateApi): Intent {
       // Non-interactive holds: they read `mute` and nothing else.
       break;
   }
+
+  // A frame whose keys left the screen has already had its confirm: the pointer
+  // would be applied to a menu that is no longer on the stage. The press in
+  // progress goes with it, so a gesture cannot span two screens.
+  if (state.screen !== opened) {
+    api.pointer.forget();
+    return intent;
+  }
+  if (menu !== null) menuPointer(state, api, menu);
 
   return intent;
 }

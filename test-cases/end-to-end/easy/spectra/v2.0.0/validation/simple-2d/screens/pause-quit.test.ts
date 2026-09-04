@@ -1,7 +1,7 @@
 // Spectra — screens/pause-quit: QUIT TO MENU returns to the title.
 //
 // THE RULE. `specs/ui.md`, on the `paused` menu's third entry: "`QUIT TO MENU`
-// Returns to `title`, with the title's highlight at the first item." This point
+// Returns to `title`, with the title's highlight on the mode entry." This point
 // decides the screen that entry reaches.
 //
 // EVERY WRONG MODEL READS AS A DIFFERENT SCREEN. A confirm wired to nothing leaves
@@ -18,8 +18,8 @@
 // fixes, and the entry at that index is held against the specification's own copy
 // before the press.
 //
-// WHAT IS NOT ASSERTED. Where the title's highlight rests on arriving, which
-// `controls/back-escape` reads on the route out of the how-to screen; that `Enter`
+// WHAT IS NOT ASSERTED. Where the title's highlight rests on arriving back from the
+// how-to screen, which is `screens/howto-returns-selection`'s; that `Enter`
 // is one of `confirm`'s keys, which is `controls/confirm-enter`'s; what the paused
 // screen draws, which is `screens/pause-menu-items`'s.
 

@@ -125,7 +125,8 @@ per-entity operation. Two rules make an id findable without an assignment scheme
 
 The surface carries `version` (`SPECTRA_DEBUG_VERSION`, `1`), a plain number, and the
 operations below. Values are plain numbers, strings, and booleans, and every `x` and
-`y` the surface takes or reports is an entity's center in the stage's logical units.
+`y` the surface takes or reports for an entity is that entity's center in the stage's
+logical units.
 {{#if (eq engine.slug "simple-2d")}}
 
 Each operation takes the current state, `DeepReadonly<SpectraState>`, as its first
@@ -146,6 +147,7 @@ and changes nothing.
 | --- | --- |
 | `reset(options)` | Restores every declared field of the state to its title-screen value, listed below. |
 | `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
+| `menuItemRect(index)` | A pure read of the hit region of item `index` on the menu the current screen shows. It changes nothing. |
 
 `reset` restores `screen` to `"title"`, `phase` to `"live"`, `phaseTimer` to `0`,
 `menuIndex` to `0`, `score` to `0`, `lives` to `START_LIVES` (`3`), `stage` to `1`,
@@ -163,6 +165,12 @@ ids for the same scenario.
 `options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the game's
 randomness. `muted` is left exactly as it stands, because muting is a player
 preference the runtime owns.
+
+`menuItemRect` returns `{ x, y, w, h }` in logical units, with `x` and `y` the
+region's top-left corner and `w` and `h` its size: the region a pointer or a touch
+contact selects that item from, as `specs/ui.md` states. It returns `null` on the four
+screens that show no menu, `howto`, `stageIntro`, `inWave`, and `stageCleared`, and
+when `index` names no item of the menu the current screen shows.
 
 {{#if (eq engine.slug "none")}}
 ### The clock
@@ -291,7 +299,7 @@ whole roster.
 | Operation | Effect |
 | --- | --- |
 | `addPlayerBullet(x, y, band)` | Adds one of the player's bullets in flight, its center at a logical stage position, traveling straight up at `PLAYER_BULLET_SPEED`, carrying `band`. It is appended to the roster with a fresh id and `friendly` true. |
-| `addEnemyBullet(x, y, band)` | Adds one enemy bullet in flight, its center at a logical stage position, traveling straight down at `ENEMY_BULLET_SPEED` multiplied by `bulletSpeedScale(stage)` — the same figure `snapshot().bulletSpeedScale` reports — carrying `band`. That figure is the stage's formula on EVERY stage, a challenge stage included, whatever speed the flyover itself is running its own fire at. It is appended with a fresh id and `friendly` false. |
+| `addEnemyBullet(x, y, band)` | Adds one enemy bullet in flight, its center at a logical stage position, carrying `band` and traveling straight down at `ENEMY_BULLET_SPEED` multiplied by `bulletSpeedScale(stage)`, the same figure `snapshot().bulletSpeedScale` reports. It is appended with a fresh id and `friendly` false. |
 | `setBulletVelocity(id, vx, vy)` | Sets the bullet's velocity, in logical units per second. |
 | `removeBullet(id)` | Removes the bullet with that id. |
 | `clearPlayerBullets()` | Removes every one of the player's bullets, leaving the enemy bullets, the drones, and the bursts standing. |
@@ -299,6 +307,9 @@ whole roster.
 
 A bullet's band is fixed for its life. Nothing sets it after the fact; a caller that
 wants the other band places another bullet.
+
+A bullet `addEnemyBullet` places takes that figure on a challenge stage too, whatever
+speed the flyover is running its own fire at.
 
 ### The bursts
 

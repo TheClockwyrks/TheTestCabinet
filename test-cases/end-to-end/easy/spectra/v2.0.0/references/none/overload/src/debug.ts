@@ -56,6 +56,7 @@ import {
 } from "./entities";
 import { clampShipX } from "./field";
 import { resetState } from "./game";
+import { menuItemRect, type MenuRect } from "./menus";
 import { dischargeReady } from "./resonance";
 import { poseScore } from "./scoring";
 import { shipAlive } from "./progression";
@@ -174,6 +175,7 @@ export interface SpectraDebugApi {
   // The core.
   reset(options?: { seed?: number }): void;
   snapshot(): SpectraSnapshot;
+  menuItemRect(index: number): MenuRect | null;
 
   // The screen and the run.
   setScreen(screen: Screen): void;
@@ -357,6 +359,19 @@ export function createDebugApi(
 
     snapshot() {
       return snapshotOf(state);
+    },
+
+    /**
+     * A pure read of the hit region of item `index` on the menu the current screen
+     * shows, in logical units. It changes nothing.
+     *
+     * Null on the four screens that show no menu, and null for an index the current
+     * menu has no item at (`specs/instrumentation.md`). The region is the one
+     * `src/menus.ts` lays out, which is the one the renderer draws the item's plate
+     * at and the one the pointer selects on.
+     */
+    menuItemRect(index) {
+      return menuItemRect(state.screen, index);
     },
 
     setScreen(screen) {

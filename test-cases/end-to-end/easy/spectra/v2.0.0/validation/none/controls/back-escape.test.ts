@@ -25,10 +25,10 @@
 // fail this one as well — two points for one fault. Reaching the scenario directly
 // is what `specs/instrumentation.md` gives `setScreen` for.
 //
-// WHAT IS NOT ASSERTED. That the title's highlight comes back to its first item is
-// `screens/howto-returns`' and `screens/title-menu-selection`'s; what the how-to
-// screen draws is `screens/howto-content`'s. This point reads the screen the press
-// arrived at and nothing else.
+// WHAT IS NOT ASSERTED. Where the title's highlight comes back to is
+// `screens/howto-returns-selection`'s; what the how-to screen draws is
+// `screens/howto-content`'s. This point reads the screen the press arrived at and
+// nothing else.
 //
 // THE KEY IS A REAL ONE. `tap` presses the key down, runs exactly one frame with
 // it held, and releases it, all through Chromium's own input pipeline — so what

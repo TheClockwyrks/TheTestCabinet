@@ -42,6 +42,7 @@ import {
   SHIP_SPEED,
   SHIP_Y,
   SUBSTEP_MAX,
+  TITLE_ITEMS,
   isChallengeStage,
 } from "./constants";
 import { bulletBand, droneBand, inverted, isShimmering } from "./bands";
@@ -63,8 +64,12 @@ import {
   waveReaches,
 } from "./discharge";
 import { startBurst, stepBursts } from "./bursts";
+import { highlightedItem, itemAt, menuOf } from "./menus";
 import { stepDiveLaunching, stepSwarm } from "./swarm";
+import type { PointerSample } from "@test-cabinet/simple-2d";
+
 import type { FrameInput } from "./input";
+import type { Screen } from "./game";
 import type { FrameEvents, MutDrone, Sim } from "./sim";
 
 /** The half-extent a contact with this drone is decided by. */
@@ -114,6 +119,9 @@ interface Marks {
   readonly pops: { x: number; y: number; size: number }[];
 }
 
+/** `HOW TO PLAY`'s index on the title menu (`specs/ui.md`, `TITLE_ITEMS`). */
+const HOW_TO_PLAY_INDEX = TITLE_ITEMS.indexOf("HOW TO PLAY");
+
 /** Advance the frame: every clock, every path and every contact in `dt`. */
 export function stepFrame(
   sim: Sim,
@@ -121,6 +129,7 @@ export function stepFrame(
   dt: number,
   events: FrameEvents,
 ): void {
+  const opened = sim.screen;
   const steps = Math.max(1, Math.ceil(dt / SUBSTEP_MAX));
   const h = dt / steps;
   // The edges belong to the frame, not to each of its sub-steps.
@@ -138,6 +147,132 @@ export function stepFrame(
   for (let i = 0; i < steps; i++) {
     stepSub(sim, i === 0 ? input : holdsOnly, h, events);
   }
+  // The pointer and the touch contacts are read once per frame and applied AFTER
+  // the frame's keyboard edges (`specs/ui.md`).
+  stepPointer(sim, input.pointer, opened, events);
+}
+
+/* -------------------------------------------------------------------------- */
+/* The pointer and the finger                                                 */
+/* -------------------------------------------------------------------------- */
+//
+// A press and the release that ends it may be frames apart, so where each press
+// landed is remembered until it comes up. The anchor records the screen as well as
+// the item, so a press that spans a change of screen — the keyboard's or the debug
+// surface's — confirms nothing.
+
+/** Where one press went down: the pointer, the screen, and the item under it. */
+interface PressAnchor {
+  readonly screen: Screen;
+  readonly index: number | null;
+}
+
+const anchors = new Map<number, PressAnchor>();
+
+/** Forget every press in progress. Called as a fresh game is initialized. */
+export function forgetPresses(): void {
+  anchors.clear();
+}
+
+/** Move the selection to `index`, raising the menu cue if it actually moved. */
+function selectItem(sim: Sim, index: number, events: FrameEvents): void {
+  if (sim.menuIndex === index) return;
+  sim.menuIndex = index;
+  events.cues.add("menu");
+}
+
+/**
+ * Apply this frame's pointer samples to the menu on screen.
+ *
+ * A move onto an item selects it, and so does a landing — which is what makes a
+ * finger, which never hovers, select the item it lands on. A confirm takes BOTH
+ * its edges inside one item's region: a press and a release in different regions,
+ * or either of them outside every region, confirms nothing.
+ */
+function stepPointer(
+  sim: Sim,
+  samples: readonly PointerSample[],
+  opened: Screen,
+  events: FrameEvents,
+): void {
+  // A frame whose keys left the screen has already had its confirm, and the menu
+  // the pointer was over is gone; the presses in progress go with it.
+  if (sim.screen !== opened) {
+    anchors.clear();
+    return;
+  }
+  if (samples.length === 0) return;
+
+  for (const sample of samples) {
+    const menu = menuOf(sim.screen);
+    const index = menu === null ? null : itemAt(menu, sample.x, sample.y);
+    if (sample.type === "down") {
+      anchors.set(sample.id, { screen: sim.screen, index });
+      // A finger does not hover, so a landing is what selects under touch.
+      if (sample.device === "touch" && index !== null) {
+        selectItem(sim, index, events);
+      }
+      continue;
+    }
+    if (sample.type === "move") {
+      if (index !== null) selectItem(sim, index, events);
+      continue;
+    }
+    const anchor = anchors.get(sample.id);
+    anchors.delete(sample.id);
+    if (
+      menu === null ||
+      anchor === undefined ||
+      index === null ||
+      anchor.index !== index ||
+      anchor.screen !== sim.screen
+    ) {
+      continue;
+    }
+    selectItem(sim, index, events);
+    confirmItem(sim, index);
+  }
+}
+
+/**
+ * Take item `index` of whichever menu the current screen shows.
+ *
+ * `specs/ui.md` gives the keyboard, the pointer and a finger the same effect, so
+ * every confirm lands here rather than each input carrying its own copy of what an
+ * entry does.
+ */
+function confirmItem(sim: Sim, index: number): void {
+  switch (sim.screen) {
+    case "title":
+      if (index === 0) startRun(sim);
+      else sim.screen = "howto";
+      return;
+    case "paused":
+      if (index === 1) startRun(sim);
+      else if (index === 2) toTitle(sim);
+      else {
+        sim.screen = "inWave";
+        sim.menuIndex = 0;
+      }
+      return;
+    case "gameOver":
+      if (index === 0) startRun(sim);
+      else toTitle(sim);
+      return;
+    default:
+      return;
+  }
+}
+
+/**
+ * Return to the title, with its highlight on the entry that led away from it.
+ *
+ * `specs/ui.md`: the mode entry after a run, `HOW TO PLAY` after the how-to-play
+ * screen.
+ */
+function toTitle(sim: Sim, index = 0): void {
+  sim.screen = "title";
+  sim.menuIndex = index;
 }
 
 /** One sub-step: whichever screen is showing, advanced by `h` seconds. */
@@ -157,10 +292,8 @@ function stepSub(
       stepBursts(sim, h);
       break;
     case "howto":
-      if (input.back) {
-        sim.screen = "title";
-        sim.menuIndex = 0;
-      }
+      // The title comes back on the entry that led here (`specs/ui.md`).
+      if (input.back) toTitle(sim, HOW_TO_PLAY_INDEX);
       stepBursts(sim, h);
       break;
     case "stageIntro":
@@ -201,8 +334,9 @@ function stepTitle(sim: Sim, input: FrameInput, events: FrameEvents): void {
   if (input.menuUp) moveHighlight(sim, -1, events);
   if (input.menuDown) moveHighlight(sim, 1, events);
   if (!input.confirm) return;
-  if (sim.menuIndex === 0) startRun(sim);
-  else sim.screen = "howto";
+  const menu = menuOf(sim.screen);
+  if (menu === null) return;
+  confirmItem(sim, highlightedItem(menu, sim.menuIndex));
 }
 
 /** The pause menu, over the frozen field. */
@@ -216,14 +350,9 @@ function stepPaused(sim: Sim, input: FrameInput, events: FrameEvents): void {
     return;
   }
   if (!input.confirm) return;
-  if (sim.menuIndex === 1) startRun(sim);
-  else if (sim.menuIndex === 2) {
-    sim.screen = "title";
-    sim.menuIndex = 0;
-  } else {
-    sim.screen = "inWave";
-    sim.menuIndex = 0;
-  }
+  const menu = menuOf(sim.screen);
+  if (menu === null) return;
+  confirmItem(sim, highlightedItem(menu, sim.menuIndex));
 }
 
 /** The game-over menu: play again, or the title. */
@@ -231,11 +360,9 @@ function stepGameOver(sim: Sim, input: FrameInput, events: FrameEvents): void {
   if (input.menuUp) moveHighlight(sim, -1, events);
   if (input.menuDown) moveHighlight(sim, 1, events);
   if (!input.confirm) return;
-  if (sim.menuIndex === 0) startRun(sim);
-  else {
-    sim.screen = "title";
-    sim.menuIndex = 0;
-  }
+  const menu = menuOf(sim.screen);
+  if (menu === null) return;
+  confirmItem(sim, highlightedItem(menu, sim.menuIndex));
 }
 
 /** One sub-step of the live wave. */

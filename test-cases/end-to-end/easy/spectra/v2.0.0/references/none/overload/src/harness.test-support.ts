@@ -19,6 +19,8 @@ import type { SpectraState } from "./types";
 import type { CueSpec } from "./audio-bus";
 import type { ParticleSystem } from "@test-cabinet/particle-runtime";
 
+import { IDLE_POINTER, type PointerFrame } from "./pointer";
+
 /** What a driven run of the game exposes to a test. */
 export interface Driver {
   /** The live state, exactly as the runtime would hold it. */
@@ -41,6 +43,13 @@ export interface Driver {
   hold(action: ActionName, down: boolean): void;
   /** Arm one press edge, consumed by the next frame that reads it. */
   press(action: ActionName): void;
+  /**
+   * Stage the pointer report the next frame reads, in logical units.
+   *
+   * The runtime maps real pointer events into this shape once per frame
+   * (`specs/ui.md`), and a frame spends it exactly as it spends a key edge.
+   */
+  pointer(frame: PointerFrame): void;
   /** Whether the bus is muted. */
   muted(): boolean;
   /** Forget every cue played so far. */
@@ -72,6 +81,7 @@ export function driver(
   const bindings = new Map<string, readonly string[]>();
   const cues = new Map<string, CueSpec>();
   let muted = false;
+  let pointerFrame: PointerFrame = IDLE_POINTER;
 
   const initApi: InitApi = {
     input: { register: (name, keys) => void bindings.set(name, keys) },
@@ -88,6 +98,12 @@ export function driver(
         if (!edges.has(name)) return false;
         edges.delete(name);
         return true;
+      },
+    },
+    pointer: {
+      frame: () => pointerFrame,
+      forget: () => {
+        pointerFrame = { ...pointerFrame, released: null };
       },
     },
     audio: {
@@ -107,6 +123,7 @@ export function driver(
     game.update(state, updateApi, seconds);
     // The runtime discards every edge nothing consumed at the end of a frame.
     edges.clear();
+    pointerFrame = IDLE_POINTER;
   };
 
   const debug = createDebugApi(state, {
@@ -132,6 +149,7 @@ export function driver(
       else held.delete(action);
     },
     press: (action) => void edges.add(action),
+    pointer: (next) => void (pointerFrame = next),
     muted: () => muted,
     clearPlayed: () => void played.splice(0, played.length),
   };

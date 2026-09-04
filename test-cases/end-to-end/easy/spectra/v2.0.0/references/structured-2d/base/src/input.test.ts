@@ -76,6 +76,7 @@ describe("reading a frame", () => {
         asked.push(`pressed:${name}`);
         return name === "b";
       },
+      pointerSamples: () => [],
     } as unknown as InputReader;
 
     const input = readInput(reader);
@@ -103,11 +104,15 @@ describe("reading a frame", () => {
     const reader = {
       value: () => 1,
       pressed: () => false,
+      pointerSamples: () => [],
     } as unknown as InputReader;
     expect(readInput(reader).mx).toBe(0);
   });
 
   it("has an idle frame in which the player did nothing", () => {
-    expect(Object.values(IDLE_INPUT).every((value) => !value)).toBe(true);
+    const { pointer, ...actions } = IDLE_INPUT;
+    expect(Object.values(actions).every((value) => !value)).toBe(true);
+    // The pointer is a list rather than a flag, and an idle frame carries none.
+    expect(pointer).toEqual([]);
   });
 });

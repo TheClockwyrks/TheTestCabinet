@@ -501,12 +501,12 @@ description = "What the game looks and sounds like: the screens and their menus,
 # than by arithmetic.
 #
 # A category carries no prose of its own; each item states in `description` the
-# claim its validator checks. The sixteen categories here are COMMON to every run.
+# claim its validator checks. The eighteen categories here are COMMON to every run.
 # Each variant declares ONE category of its own — `sortie` in `variants/base.toml`,
 # `overload` in `variants/overload.toml` — because the two modes genuinely disagree
 # about what a mismatched shot does, and a claim that is true under one and false
 # under the other cannot be stated commonly. A base run's checklist is therefore
-# 272 points and an overload run's is 290: 266 common behaviors of the game, the
+# 279 points and an overload run's is 297: 273 common behaviors of the game, the
 # showcase's three, and the variant's own three or twenty-one. The whole of it is
 # reporter-side material — never seeded into a run, so the model never sees it. Every item
 # restates a requirement the seeded specification already states, in the spec's own
@@ -2627,6 +2627,90 @@ validation = { script = "controls/overlay-backquote.test.ts", outputs = [
   { id = "overlay", name = "The overlay the backtick showed", kind = "image" },
 ] }
 
+# --- Pointer ---------------------------------------------------------------
+# specs/ui.md drives every menu screen with a mouse as well as with the keyboard,
+# over item regions the BUILD lays out and reports through `menuItemRect`. The case
+# fixes no menu geometry, so each point below asks the build where it put the item
+# and drives the real pointer at the middle of that region: any layout passes, and a
+# build that reports a region it does not answer on fails. The three points are the
+# three behaviors specs/ui.md gives the pointer — a move selects, a press and its
+# release inside one item confirms that item, and two edges that fall in different
+# items confirm nothing. Each is graded on the title menu, where the entries confirm
+# to screens a check reads straight off `screen`. The keyboard's own edges are the
+# `controls` category's points, not these. All three are `passable`: the keyboard
+# reaches every menu, so a build with no mouse is playable and merely awkward.
+[[review.categories]]
+id = "pointer"
+title = "Pointer"
+[[review.categories.items]]
+id = "hover-selects"
+title = "Moving the pointer onto an item selects it"
+description = "On the title with menuIndex 0, moving the pointer onto the region menuItemRect reports for HOW TO PLAY sets menuIndex to that item, with screen still title."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/hover-selects.test.ts", outputs = [
+  { id = "menu", name = "The title menu with the hovered item selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "click-confirms"
+title = "A press and release inside one item confirms it"
+description = "On the title with menuIndex 0, pressing and releasing the pointer inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/click-confirms.test.ts", outputs = [
+  { id = "howto", name = "The how-to-play screen a click opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "slide-off-cancels"
+title = "A press and release in different items confirms nothing"
+description = "On the title, pressing the pointer inside HOW TO PLAY's region and releasing it inside the mode entry's leaves screen at title, confirming neither item."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/slide-off-cancels.test.ts", outputs = [
+  { id = "title", name = "The title still showing after the pointer slid off", kind = "image" },
+] }
+
+# --- Touch -----------------------------------------------------------------
+# specs/ui.md gives every menu screen a finger as well as the keyboard and the mouse,
+# and a finger is not a small mouse: it never hovers, so the first the build hears of
+# it is the contact LANDING, and the landing is what selects. Each point below drives
+# one real touch contact at the middle of the region the build reports through
+# `menuItemRect`, so any layout passes and only the handling is graded. The three are
+# the three behaviors specs/ui.md gives a contact: a landing selects, a lift inside
+# the region it landed in confirms that item, and a lift in a different region
+# confirms nothing while the selection follows the finger. The mouse's own edges are
+# the `pointer` category's points, and the keyboard's the `controls` category's.
+[[review.categories]]
+id = "touch"
+title = "Touch"
+[[review.categories.items]]
+id = "landing-selects"
+title = "A touch contact selects the item it lands on"
+description = "On the title with menuIndex 0, a touch contact landing inside the region menuItemRect reports for HOW TO PLAY, and not lifted, sets menuIndex to that item."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "touch/landing-selects.test.ts", outputs = [
+  { id = "selected", name = "The title menu with the item the contact landed on selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tap-confirms"
+title = "A contact that lifts where it landed confirms that item"
+description = "On the title with menuIndex 0, a touch contact landing and lifting inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "touch/tap-confirms.test.ts", outputs = [
+  { id = "howto", name = "The how-to-play screen a tap opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drag-cancels"
+title = "A contact that lifts in another item confirms nothing"
+description = "On the title, a touch contact landing inside HOW TO PLAY's region, travelling onto the mode entry's and lifting there leaves screen at title, confirming neither item."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "touch/drag-cancels.test.ts", outputs = [
+  { id = "title", name = "The title still showing after the contact dragged off", kind = "image" },
+] }
+
 # --- Screens & HUD ---------------------------------------------------------
 # The seven screens of specs/ui.md and the five HUD readouts, graded for reachability,
 # content, navigation and what they report. The HUD points that assert a DIFFERENCE —
@@ -2691,6 +2775,15 @@ domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "screens/howto-returns.test.ts", outputs = [
   { id = "title", name = "The title screen the back action returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-returns-selection"
+title = "Returning from how to play selects HOW TO PLAY"
+description = "Leaving the how-to-play screen with the back action returns to the title with menuIndex on the HOW TO PLAY entry, the entry that led away from the title."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "screens/howto-returns-selection.test.ts", outputs = [
+  { id = "title", name = "The title menu's highlight on arriving back", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "start-enters-stage-intro"

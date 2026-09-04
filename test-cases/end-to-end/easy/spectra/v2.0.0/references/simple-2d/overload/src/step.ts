@@ -27,6 +27,7 @@ import {
   SHIP_X_MIN,
   SUBSTEP_MAX,
   SHIP_Y,
+  TITLE_ITEMS,
 } from "./constants";
 import { opposite, shipAlive } from "./bands";
 import { addPlayerBullet, advanceBullets } from "./bullets";
@@ -40,11 +41,17 @@ import {
   clearStage,
   endReadyHold,
   goTo,
-  menuItems,
   startRun,
 } from "./flow";
 import { heldOnly, type FrameInput } from "./input";
+import { highlightedItem, itemAt, menuOf } from "./menus";
+import type { PointerSample } from "@test-cabinet/simple-2d";
+
+import type { Screen } from "./game";
 import type { FrameEvents, Sim } from "./sim";
+
+/** `HOW TO PLAY`'s index on the title menu (`specs/ui.md`, `TITLE_ITEMS`). */
+const HOW_TO_PLAY_INDEX = TITLE_ITEMS.indexOf("HOW TO PLAY");
 
 /** Where a shot leaves the hull: on the ship's own centre x, above its nose. */
 export const NOSE_Y = SHIP_Y - SHIP_H / 2 - PLAYER_BULLET_H / 2;
@@ -69,20 +76,26 @@ function fireCannon(sim: Sim, firing: boolean, ev: FrameEvents): void {
   ev.cues.add(CUES.fire);
 }
 
-/** Take the highlighted item of whatever menu the current screen shows. */
-function confirmMenuItem(sim: Sim): void {
+/**
+ * Take item `index` of whatever menu the current screen shows.
+ *
+ * `specs/ui.md` gives the keyboard, the pointer and a finger the same effect, so
+ * every confirm lands here rather than each input carrying its own copy of what an
+ * entry does.
+ */
+function confirmMenuItem(sim: Sim, index: number): void {
   switch (sim.screen) {
     case "title":
-      if (sim.menuIndex === 0) startRun(sim);
+      if (index === 0) startRun(sim);
       else goTo(sim, "howto");
       return;
     case "paused":
-      if (sim.menuIndex === 0) resume(sim);
-      else if (sim.menuIndex === 1) startRun(sim);
+      if (index === 0) resume(sim);
+      else if (index === 1) startRun(sim);
       else goTo(sim, "title");
       return;
     case "gameOver":
-      if (sim.menuIndex === 0) startRun(sim);
+      if (index === 0) startRun(sim);
       else goTo(sim, "title");
       return;
     default:
@@ -98,17 +111,20 @@ function resume(sim: Sim): void {
 
 /** Move the highlight of the current screen's menu, if it has one. */
 function stepMenu(sim: Sim, input: FrameInput, ev: FrameEvents): void {
-  const items = menuItems(sim.screen);
-  if (items === null || items.length === 0) return;
+  const menu = menuOf(sim.screen);
+  if (menu === null) return;
+  const count = menu.items.length;
   if (input.menuUp) {
-    sim.menuIndex = (sim.menuIndex - 1 + items.length) % items.length;
+    sim.menuIndex = (highlightedItem(menu, sim.menuIndex) - 1 + count) % count;
     ev.cues.add(CUES.menu);
   }
   if (input.menuDown) {
-    sim.menuIndex = (sim.menuIndex + 1) % items.length;
+    sim.menuIndex = (highlightedItem(menu, sim.menuIndex) + 1) % count;
     ev.cues.add(CUES.menu);
   }
-  if (input.confirm) confirmMenuItem(sim);
+  if (input.confirm) {
+    confirmMenuItem(sim, highlightedItem(menu, sim.menuIndex));
+  }
 }
 
 /** The title screen and the game-over screen, which read a menu and nothing else. */
@@ -118,7 +134,11 @@ function stepMenuScreen(sim: Sim, input: FrameInput, ev: FrameEvents): void {
 
 /** The how-to-play screen, which answers to `back` alone. */
 function stepHowTo(sim: Sim, input: FrameInput): void {
-  if (input.back) goTo(sim, "title");
+  // The title comes back on the entry that led here (`specs/ui.md`).
+  if (input.back) {
+    goTo(sim, "title");
+    sim.menuIndex = HOW_TO_PLAY_INDEX;
+  }
 }
 
 /** The paused screen: the field is frozen and only the menu answers. */
@@ -232,10 +252,93 @@ export function stepFrame(
   dt: number,
   ev: FrameEvents,
 ): void {
+  const opened = sim.screen;
   const steps = Math.max(1, Math.ceil(dt / SUBSTEP_MAX));
   const h = dt / steps;
   const held = heldOnly(input);
   for (let step = 0; step < steps; step++) {
     stepSubstep(sim, step === 0 ? input : held, h, ev);
+  }
+  // The pointer and the touch contacts are read once per frame and applied AFTER
+  // the frame's keyboard edges (`specs/ui.md`).
+  stepPointer(sim, input.pointer, opened, ev);
+}
+
+/* -------------------------------------------------------------------------- */
+/* The pointer and the finger                                                 */
+/* -------------------------------------------------------------------------- */
+//
+// A press and the release that ends it may be frames apart, so where each press
+// landed is remembered until it comes up. The anchor records the screen as well as
+// the item, so a press that spans a change of screen — the keyboard's or the debug
+// surface's — confirms nothing.
+
+/** Where one press went down: the screen it landed on, and the item under it. */
+interface PressAnchor {
+  readonly screen: Screen;
+  readonly index: number | null;
+}
+
+const anchors = new Map<number, PressAnchor>();
+
+/** Forget every press in progress. Called as a fresh game is initialized. */
+export function forgetPresses(): void {
+  anchors.clear();
+}
+
+/** Move the selection to `index`, raising the menu cue if it actually moved. */
+function selectItem(sim: Sim, index: number, ev: FrameEvents): void {
+  if (sim.menuIndex === index) return;
+  sim.menuIndex = index;
+  ev.cues.add(CUES.menu);
+}
+
+/**
+ * Apply this frame's pointer samples to the menu on screen.
+ *
+ * A move onto an item selects it, and so does a landing — which is what makes a
+ * finger, which never hovers, select the item it lands on. A confirm takes BOTH its
+ * edges inside one item's region: a press and a release in different regions, or
+ * either of them outside every region, confirms nothing.
+ */
+function stepPointer(
+  sim: Sim,
+  samples: readonly PointerSample[],
+  opened: Screen,
+  ev: FrameEvents,
+): void {
+  // A frame whose keys left the screen has already had its confirm, and the menu
+  // the pointer was over is gone; the presses in progress go with it.
+  if (sim.screen !== opened) {
+    anchors.clear();
+    return;
+  }
+  for (const sample of samples) {
+    const menu = menuOf(sim.screen);
+    const index = menu === null ? null : itemAt(menu, sample.x, sample.y);
+    if (sample.type === "down") {
+      anchors.set(sample.id, { screen: sim.screen, index });
+      // A finger does not hover, so a landing is what selects under touch.
+      if (sample.device === "touch" && index !== null) {
+        selectItem(sim, index, ev);
+      }
+      continue;
+    }
+    if (sample.type === "move") {
+      if (index !== null) selectItem(sim, index, ev);
+      continue;
+    }
+    const anchor = anchors.get(sample.id);
+    anchors.delete(sample.id);
+    if (
+      anchor === undefined ||
+      index === null ||
+      anchor.index !== index ||
+      anchor.screen !== sim.screen
+    ) {
+      continue;
+    }
+    selectItem(sim, index, ev);
+    confirmMenuItem(sim, index);
   }
 }
