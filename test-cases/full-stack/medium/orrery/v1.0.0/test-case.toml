@@ -617,12 +617,19 @@ domains = ["workshop"]
 failure_cap = "broken"
 validation = { script = "instrumentation/clock-switch-holds-the-simulation.test.ts", outputs = [ { id = "held", name = "The run held off the wall clock", kind = "replay" } ] }
 [[review.categories.items]]
-id = "clock-switch-leaves-drawing-and-input"
-title = "Drawing and input carry on while the simulation is held"
-description = "With the wall clock held off the simulation, by setAutoStep(false) under none and a scripted clock under an engine, the build keeps rendering and keeps reading the keys, so a title-menu key press still moves menuIndex and the canvas still redraws."
+id = "clock-switch-leaves-input"
+title = "Input carries on while the simulation is held"
+description = "With the wall clock held off the simulation, by setAutoStep(false) under none and a scripted clock under an engine, the build keeps reading the keys, so a title-menu key press still moves menuIndex."
+domains = ["workshop"]
+failure_cap = "passable"
+validation = { script = "instrumentation/clock-switch-leaves-input.test.ts", outputs = [ { id = "answering", name = "The menu answering a key with the clock held", kind = "replay" } ] }
+[[review.categories.items]]
+id = "clock-switch-leaves-drawing"
+title = "Drawing carries on while the simulation is held"
+description = "With the wall clock held off the simulation the build keeps rendering, so every frame the held clock is advanced by issues its drawing operations and the picture on the canvas follows the state."
 domains = ["workshop", "presentation"]
 failure_cap = "passable"
-validation = { script = "instrumentation/clock-switch-leaves-drawing-and-input.test.ts", outputs = [ { id = "answering", name = "The menu answering a key with the clock held", kind = "replay" } ] }
+validation = { script = "instrumentation/clock-switch-leaves-drawing.test.ts", outputs = [ { id = "drawing", name = "The canvas redrawn with the clock held", kind = "replay" } ] }
 [[review.categories.items]]
 id = "advance-divides-the-interval"
 title = "advance runs the frames it is told, each worth its share of the interval"
@@ -4906,19 +4913,33 @@ domains = ["workshop"]
 failure_cap = "great"
 validation = { script = "editor/focus-is-field-on-entering-the-editor.test.ts", outputs = [ { id = "fresh", name = "Field focus on a freshly opened challenge", kind = "image" } ] }
 [[review.categories.items]]
-id = "key-w-routes-by-focus"
-title = "KeyW grows the arm under field focus and writes extend under tape focus"
-description = "Under field focus a KeyW press lengthens the selected arm and leaves the cursor's cell exactly as it stands; under tape focus it writes extend and leaves the arm's length exactly as it stands."
+id = "key-w-grows-the-arm-under-field-focus"
+title = "KeyW grows the arm under field focus"
+description = "Under field focus a KeyW press lengthens the selected arm and leaves the cursor's cell exactly as it stands."
 domains = ["workshop"]
 failure_cap = "passable"
-validation = { script = "editor/key-w-routes-by-focus.test.ts", outputs = [ { id = "field", name = "KeyW growing the arm under field focus", kind = "image" }, { id = "tape", name = "KeyW writing extend under tape focus", kind = "image" } ] }
+validation = { script = "editor/key-w-grows-the-arm-under-field-focus.test.ts", outputs = [ { id = "field", name = "KeyW growing the arm under field focus", kind = "image" } ] }
 [[review.categories.items]]
-id = "key-s-routes-by-focus"
-title = "KeyS shrinks the arm under field focus and writes retract under tape focus"
-description = "Under field focus a KeyS press shortens the selected arm and leaves the cursor's cell exactly as it stands; under tape focus it writes retract and leaves the arm's length exactly as it stands."
+id = "key-w-writes-extend-under-tape-focus"
+title = "KeyW writes extend under tape focus"
+description = "Under tape focus a KeyW press writes extend at the cursor and leaves the selected arm's length exactly as it stands."
 domains = ["workshop"]
 failure_cap = "passable"
-validation = { script = "editor/key-s-routes-by-focus.test.ts", outputs = [ { id = "field", name = "KeyS shrinking the arm under field focus", kind = "image" }, { id = "tape", name = "KeyS writing retract under tape focus", kind = "image" } ] }
+validation = { script = "editor/key-w-writes-extend-under-tape-focus.test.ts", outputs = [ { id = "tape", name = "KeyW writing extend under tape focus", kind = "image" } ] }
+[[review.categories.items]]
+id = "key-s-shrinks-the-arm-under-field-focus"
+title = "KeyS shrinks the arm under field focus"
+description = "Under field focus a KeyS press shortens the selected arm and leaves the cursor's cell exactly as it stands."
+domains = ["workshop"]
+failure_cap = "passable"
+validation = { script = "editor/key-s-shrinks-the-arm-under-field-focus.test.ts", outputs = [ { id = "field", name = "KeyS shrinking the arm under field focus", kind = "image" } ] }
+[[review.categories.items]]
+id = "key-s-writes-retract-under-tape-focus"
+title = "KeyS writes retract under tape focus"
+description = "Under tape focus a KeyS press writes retract at the cursor and leaves the selected arm's length exactly as it stands."
+domains = ["workshop"]
+failure_cap = "passable"
+validation = { script = "editor/key-s-writes-retract-under-tape-focus.test.ts", outputs = [ { id = "tape", name = "KeyS writing retract under tape focus", kind = "image" } ] }
 # --- Undo and redo ------------------------------------------------------------
 [[review.categories.items]]
 id = "placing-a-part-pushes-one-entry"
@@ -4998,12 +5019,26 @@ domains = ["workshop"]
 failure_cap = "scuffed"
 validation = { script = "editor/undo-restores-the-machine-before-the-edit.test.ts", outputs = [ { id = "restored", name = "The machine restored by one undo", kind = "replay" } ] }
 [[review.categories.items]]
-id = "undo-restores-poses-paths-and-tapes"
-title = "An undone entry restores poses, paths, and tapes"
-description = "Undoing past a rotation, a track lay, and a tape write restores each part's rotation and length, each track's cells and closed flag, and each arm's tape, because an entry holds the machine's parts with their poses, paths, and tapes."
+id = "undo-restores-poses"
+title = "An undone entry restores each part's pose"
+description = "Undoing a rotation restores each part's rotation and length, because an entry holds the machine's parts with their poses."
 domains = ["workshop"]
 failure_cap = "passable"
-validation = { script = "editor/undo-restores-poses-paths-and-tapes.test.ts", outputs = [ { id = "restored", name = "Poses, paths and tapes restored together", kind = "replay" } ] }
+validation = { script = "editor/undo-restores-poses.test.ts", outputs = [ { id = "restored", name = "The rotation restored by the undo", kind = "replay" } ] }
+[[review.categories.items]]
+id = "undo-restores-track-paths"
+title = "An undone entry restores each track's path"
+description = "Undoing a lay restores each track's cells and its closed flag, because an entry holds the machine's parts with their paths."
+domains = ["workshop"]
+failure_cap = "passable"
+validation = { script = "editor/undo-restores-track-paths.test.ts", outputs = [ { id = "restored", name = "The track's path restored by the undo", kind = "replay" } ] }
+[[review.categories.items]]
+id = "undo-restores-tapes"
+title = "An undone entry restores each arm's tape"
+description = "Undoing a tape write restores each arm's tape, because an entry holds the machine's parts with their tapes."
+domains = ["workshop"]
+failure_cap = "passable"
+validation = { script = "editor/undo-restores-tapes.test.ts", outputs = [ { id = "restored", name = "The tape restored by the undo", kind = "replay" } ] }
 [[review.categories.items]]
 id = "undo-moves-the-edit-onto-the-redo-side"
 title = "undo moves the edit onto the redo side"
