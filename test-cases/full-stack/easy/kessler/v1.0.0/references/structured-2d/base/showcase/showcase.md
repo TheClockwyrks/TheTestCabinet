@@ -6,8 +6,6 @@ slated for demolition, and you are the crew: from a low track just above the
 planet you ride the deflector, batting a demolition ball outward into the
 rings until every derelict is swept from the sky.
 
-![Deep into a wave, three balls up and a widened deflector](field.png)
-
 The deflector is your only tool and your only defense. Where the ball lands on
 its arc steers the bounce — meet it square and the ball flies straight back
 out, catch it on the edge and it whips away at an angle — and every bounce off
