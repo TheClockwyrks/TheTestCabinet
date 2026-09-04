@@ -12,6 +12,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertLength, assertTrue } from "../assert";
 import { captureStill, isolate, openHarness, type Harness } from "../harness";
+import { DEFLECTOR_BALL_CONTACT_RADIUS } from "../constants";
 import { offsetDeg, readBall } from "./reading";
 
 /** Where the deflector is posed — nowhere special, and not the start angle. */
@@ -39,7 +40,12 @@ it("parks the ball at radius 194 at the deflector's center angle", async () => {
   const ball = after.balls[0];
   assertTrue(ball.parked, "the ball is reported with parked true");
   const read = readBall(ball);
-  assertCloseTo(read.r, 194, 2, "the parked ball's center radius");
+  assertCloseTo(
+    read.r,
+    DEFLECTOR_BALL_CONTACT_RADIUS,
+    2,
+    "the parked ball's center radius",
+  );
   assertCloseTo(
     offsetDeg(ANGLE, read.thetaDeg),
     0,

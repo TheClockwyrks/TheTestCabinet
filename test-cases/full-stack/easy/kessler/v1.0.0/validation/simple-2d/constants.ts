@@ -42,7 +42,10 @@ export const SHIELD_CONTACT_RADIUS = 100;
 /** The deflector track annulus. */
 export const DEFLECTOR_TRACK_INNER = 170;
 export const DEFLECTOR_TRACK_OUTER = 186;
-/** Deflector ball contact radius, crossed inward within the span. */
+/**
+ * Deflector ball contact radius, crossed inward within the span. A parked ball
+ * also sits at this radius, at the deflector's center angle.
+ */
 export const DEFLECTOR_BALL_CONTACT_RADIUS = 194;
 /** Deflector pod catch radius, crossed inward within the span. */
 export const DEFLECTOR_POD_CATCH_RADIUS = 196;
