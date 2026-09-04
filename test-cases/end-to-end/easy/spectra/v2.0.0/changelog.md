@@ -171,8 +171,8 @@ build knows what it is held to.
 
 `v1.0.0` graded `80` points on a base run and `84` on an overload run, of which
 `73` and `77` carried a standalone browser script; the rest were left to a
-reviewer to decide by looking. The checklist is now `288` points on a base run and
-`306` on an overload run, across nineteen categories, and every single one of them
+reviewer to decide by looking. The checklist is now `294` points on a base run and
+`312` on an overload run, across nineteen categories, and every single one of them
 is one observable behavior decided by its own Vitest suite under
 `validation/<engine>/<category>/<item>.test.ts`. Under `none` a suite drives the
 built site in headless Chromium through `window.__spectra`, with a page-injected
