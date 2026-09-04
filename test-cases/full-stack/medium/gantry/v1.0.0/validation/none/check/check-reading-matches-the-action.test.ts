@@ -71,6 +71,12 @@ it("answers the reading the check action left on the build screen", async () => 
   // The reading, over the same untouched structure and tape.
   const read = await h.check();
 
+  await h.advance(1);
+  await h.capture(
+    "check-shown",
+    "the check action's result on the build screen",
+  );
+
   assertDeepEqual(
     read.issues,
     shown?.issues,
@@ -97,11 +103,5 @@ it("answers the reading the check action left on the build screen", async () => 
     shown?.members,
     "the reading's member list against the action's: the same ids in " +
       "member-id order, with the same force and utilization",
-  );
-
-  await h.advance(1);
-  await h.capture(
-    "check-shown",
-    "the check action's result on the build screen",
   );
 });

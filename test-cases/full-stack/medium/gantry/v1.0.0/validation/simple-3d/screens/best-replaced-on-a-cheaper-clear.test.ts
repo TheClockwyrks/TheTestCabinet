@@ -104,6 +104,8 @@ it("replaces a costlier record when the clear's cost is lower", async () => {
     MAX_TICKS,
     "the run to end",
   );
+  await h.capture("state", "the results screen the cheaper clear reached");
+
   assertEqual(
     ended.run.phase,
     "cleared",
@@ -131,6 +133,4 @@ it("replaces a costlier record when the clear's cost is lower", async () => {
     TIME_TOL,
     "the recorded best time, which the cheaper clear replaces (specs/ui.md)",
   );
-
-  await h.capture("state", "the results screen the cheaper clear reached");
 });

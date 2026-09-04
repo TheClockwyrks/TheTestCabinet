@@ -123,14 +123,16 @@ it("answers the nearer of two members in range", async () => {
 
   await h.pointerMove(at.x, at.y);
   await h.advance(1);
+  const after = await h.snapshot();
+
+  await h.capture("state", "the build screen with two members in range");
+
   assertEqual(
-    (await h.snapshot()).pick.member,
+    after.pick.member,
     NEAR_ID,
     `the member candidate with member 0 at ${toNear.toFixed(2)} logical ` +
       `pixels and member 1 at ${toFar.toFixed(2)}, both inside ` +
       `MEMBER_PICK_PX (${MEMBER_PICK_PX}): the pick takes the NEAREST ` +
       "(specs/controls.md)",
   );
-
-  await h.capture("state", "the build screen with two members in range");
 });

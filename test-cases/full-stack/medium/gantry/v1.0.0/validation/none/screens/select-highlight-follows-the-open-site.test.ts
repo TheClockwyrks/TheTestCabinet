@@ -45,6 +45,9 @@ it("highlights the open site on arriving at the site list", async () => {
 
   await h.press(BACK);
   const arrived = await h.snapshot();
+  await h.advance(1);
+  await h.capture("select-highlight", "The highlight on the last site shown");
+
   assertEqual(
     arrived.screen,
     "select",
@@ -56,7 +59,4 @@ it("highlights the open site on arriving at the site list", async () => {
     `the highlighted site on arriving at select, which is siteIndex (${SITE}) ` +
       "(specs/ui.md)",
   );
-
-  await h.advance(1);
-  await h.capture("select-highlight", "The highlight on the last site shown");
 });

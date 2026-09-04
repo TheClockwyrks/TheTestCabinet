@@ -133,6 +133,7 @@ export function cloneState(state: OrreryState): Draft {
     screen: state.screen,
     mode: state.mode,
     menuIndex: state.menuIndex,
+    titleIndex: state.titleIndex,
     selectIndex: state.selectIndex,
     howtoPage: state.howtoPage,
 
@@ -157,6 +158,7 @@ export function cloneState(state: OrreryState): Draft {
     sim: copySim(state.sim),
 
     pointer: { ...state.pointer },
+    menuPress: state.menuPress,
     completion: state.completion,
     simTime: state.simTime,
     muted: state.muted,

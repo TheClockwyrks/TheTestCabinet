@@ -5,6 +5,7 @@ import { RESULTS_ITEMS, SITE_COUNT } from "./constants";
 import { point, thaw } from "./convert";
 import * as edits from "./edits";
 import type { GantryState } from "./game";
+import { menuRects } from "./menus";
 import { handleAction, handlePointer, pendingStartIssues } from "./screens";
 import {
   addMoveStep,
@@ -92,10 +93,18 @@ describe("the site select", () => {
     expect(handleAction(s, "confirm").siteIndex).toBe(1);
   });
 
-  it("goes back to the title", () => {
-    const s = handleAction(setScreen(titleState(), "select"), "back");
+  it("goes back to the title with SITES selected", () => {
+    // `specs/ui.md`: navigating back to a menu selects the entry that led away
+    // from it, and select is reached through `SITES`, TITLE_ITEMS index 0.
+    const back = handleAction(setScreen(titleState(), "select"), "back");
+    expect(back.screen).toBe("title");
+    expect(back.menuIndex).toBe(0);
+  });
+
+  it("goes back from how-to with HOW TO PLAY selected", () => {
+    const s = handleAction(setScreen(titleState(), "howto"), "back");
     expect(s.screen).toBe("title");
-    expect(s.menuIndex).toBe(0);
+    expect(s.menuIndex).toBe(1);
   });
 });
 
@@ -298,5 +307,97 @@ describe("a press on the tape editor", () => {
     );
     s.pointer.captured = false;
     expect(handlePointer(s, { kind: "up", x: 20, y: 60 }).consumed).toBe(false);
+  });
+});
+
+// ---- The menus, under a pointer and under a finger --------------------------
+//
+// `specs/ui.md` gives every menu the pointer and touch as well as the key
+// actions, over hit regions this build lays out in `src/menus.ts`. Every check
+// below asks that module where the entry is and aims at the middle of what it
+// answered, so none of them knows a menu coordinate. A contact reaches the game
+// on the engine's own pointer reads (`specs/controls.md`), so a tap is these
+// same two edges at one point.
+
+describe("the menus under a pointer", () => {
+  const at = (state: GantryState, index: number): { x: number; y: number } => {
+    const rect = menuRects(state)[index]!;
+    return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+  };
+
+  /** A stage point inside no entry's region. */
+  const nowhere = (state: GantryState): { x: number; y: number } => {
+    const first = menuRects(state)[0]!;
+    return { x: first.x + first.w + 40, y: first.y - 30 };
+  };
+
+  const pressedAt = (
+    state: GantryState,
+    point: { x: number; y: number },
+  ): GantryState => {
+    state.pointer.pressX = point.x;
+    state.pointer.pressY = point.y;
+    return state;
+  };
+
+  it("moves the highlight onto the entry the pointer is over", () => {
+    const state = titleState();
+    const entry = at(state, 1);
+    const outcome = handlePointer(state, {
+      kind: "move",
+      x: entry.x,
+      y: entry.y,
+    });
+    expect(outcome.consumed).toBe(true);
+    expect(outcome.state.menuIndex).toBe(1);
+    expect(outcome.state.screen).toBe("title");
+  });
+
+  it("leaves the highlight where it is over no entry", () => {
+    const state = titleState();
+    const away = nowhere(state);
+    const outcome = handlePointer(state, {
+      kind: "move",
+      x: away.x,
+      y: away.y,
+    });
+    expect(outcome.state.menuIndex).toBe(0);
+  });
+
+  it("takes the entry a press and its release both fell inside", () => {
+    const state = titleState();
+    const entry = at(state, 1);
+    const outcome = handlePointer(pressedAt(state, entry), {
+      kind: "up",
+      x: entry.x,
+      y: entry.y,
+    });
+    // TITLE_ITEMS index 1 is HOW TO PLAY, which confirm opens.
+    expect(outcome.state.screen).toBe("howto");
+  });
+
+  it("takes nothing when the release fell outside the pressed entry", () => {
+    const state = titleState();
+    const entry = at(state, 1);
+    const away = nowhere(state);
+    const outcome = handlePointer(pressedAt(state, entry), {
+      kind: "up",
+      x: away.x,
+      y: away.y,
+    });
+    expect(outcome.state.screen).toBe("title");
+    expect(outcome.consumed).toBe(true);
+  });
+
+  it("takes nothing when the release fell inside a different entry", () => {
+    const state = setScreen(titleState(), "select");
+    const from = at(state, 0);
+    const to = at(state, 1);
+    const outcome = handlePointer(pressedAt(state, from), {
+      kind: "up",
+      x: to.x,
+      y: to.y,
+    });
+    expect(outcome.state.screen).toBe("select");
   });
 });

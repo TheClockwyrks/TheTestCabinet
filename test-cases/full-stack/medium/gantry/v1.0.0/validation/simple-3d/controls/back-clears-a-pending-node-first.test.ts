@@ -58,6 +58,9 @@ it("clears the pending node and stays on the build screen", async () => {
 
   await h.press(BACK);
   const s = await h.snapshot();
+  await h.advance(1);
+  await h.capture("state", "the build screen with the pending node cleared");
+
   assertNull(
     s.pendingNode,
     "the pending node after `back` on the build screen, which clears it " +
@@ -69,7 +72,4 @@ it("clears the pending node and stays on the build screen", async () => {
     "the screen after that `back`, which resolves against the pending node " +
       "before the screen it would otherwise leave (specs/controls.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "the build screen with the pending node cleared");
 });

@@ -194,7 +194,12 @@ export class StartBlock {
 
 // ---- The menus -------------------------------------------------------------
 
-/** A menu of entries, driven by the key actions alone (`specs/ui.md`). */
+/**
+ * A menu of entries (`specs/ui.md`).
+ *
+ * Each row is built at the hit region `src/menus.ts` lays out for it, so what a
+ * player sees and what a pointer selects are the same rectangles.
+ */
 export class Menu {
   private readonly rows: {
     readonly row: HudGroup;
@@ -204,14 +209,12 @@ export class Menu {
 
   constructor(
     parent: HudGroup,
-    x: number,
-    y: number,
-    width: number,
+    rectOf: (index: number) => Rect,
     capacity: number,
   ) {
     this.rows = Array.from({ length: capacity }, (_row, i) => {
       const row = parent.child();
-      const rect: Rect = { x, y: y + i * 48, w: width, h: 40 };
+      const rect = rectOf(i);
       const chosen = row.child();
       chosen.panel(rect, PANEL_INSET, ACCENT, LAYER.panel + 1);
       chosen.write(rect.x + 14, rect.y + 27, "»", {

@@ -136,6 +136,12 @@ it("lumps the whole trolley at the origin end of the track and none at the far e
   await poseCrane(h, HUNG_TRACK);
 
   const result = await h.check();
+  await h.advance(1);
+  await h.capture(
+    "trolley-at-the-origin",
+    "the hung track, with the trolley standing at its origin",
+  );
+
   assertEqual(
     result.stable,
     true,
@@ -169,12 +175,6 @@ it("lumps the whole trolley at the origin end of the track and none at the far e
     `the vertical pull of the hanger at the track's far end ` +
       `(${FAR.join(", ")}), which carries that node's member halves and no ` +
       "share of the trolley, standing as it does at the far end of the track",
-  );
-
-  await h.advance(1);
-  await h.capture(
-    "trolley-at-the-origin",
-    "the hung track, with the trolley standing at its origin",
   );
 });
 

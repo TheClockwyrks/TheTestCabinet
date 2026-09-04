@@ -14,10 +14,10 @@
 //
 // The scenario places one member on a ready crane and takes the reading with it
 // standing, so the undo has something to reverse and the reading it clears is a
-// reading of the crane the undo is about to discard. Both acts are the player's
-// own: `KeyC` for the `check` action and `KeyZ` for `undo`, which specs/controls.md
-// binds on the build screen, and the `check` READING would set nothing
-// (specs/instrumentation.md).
+// reading of the crane the undo is about to discard. The result is put on screen
+// by `showCheck`, the pose of the `check` action, because the `check` READING
+// would set nothing (specs/instrumentation.md); the undo is the player's own
+// `KeyZ`, since that act is half of what this point decides.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertNotNull, assertNull } from "../assert";
@@ -32,7 +32,6 @@ import {
 
 const SITE = 0;
 
-const CHECK_KEY = BINDINGS.check[0]!;
 const UNDO_KEY = BINDINGS.undo[0]!;
 
 let h: Harness;
@@ -51,7 +50,7 @@ it("clears the shown result when an undo reverses the last edit", async () => {
   await standMinimalCrane(h);
   await h.debug.addMember(0, 0, 0, 0, 0, 2, "strut");
 
-  await h.press(CHECK_KEY);
+  await h.debug.showCheck();
   const before = await h.snapshot();
   assertNotNull(
     before.checkResult,

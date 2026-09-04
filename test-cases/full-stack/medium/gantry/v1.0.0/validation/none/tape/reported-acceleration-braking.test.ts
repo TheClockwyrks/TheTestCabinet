@@ -245,6 +245,8 @@ it("builds the tick's inertial loads from -SLEW_ACCEL on a braking tick", async 
   await h.debug.setAxisRate("slew", BRAKE_FROM);
   const braking: GantrySnapshot = await runTicks(h, 1);
   const now = braking.run.axes.slew;
+  await h.capture("state", "The arm on a braking tick of a slew move");
+
   if (now.command === null || !(now.rate < BRAKE_FROM - 1e-12)) {
     fail(
       `the tick after the slew was posed at ${BRAKE_FROM} degrees a second, ` +
@@ -254,8 +256,6 @@ it("builds the tick's inertial loads from -SLEW_ACCEL on a braking tick", async 
         `${now.command === null ? "no command" : "a live command"}`,
     );
   }
-
-  await h.capture("state", "The arm on a braking tick of a slew move");
 
   const tick = braking;
   assertGreaterThan(

@@ -106,6 +106,11 @@ it("keeps a site's structure to itself and hands it back on the next visit", asy
   await openSite(h, HOME);
   await h.advance(1);
   const home = await h.snapshot();
+  await h.capture(
+    "structure-per-site-persists",
+    "Site 1's crane, still standing on the second visit",
+  );
+
   assertEqual(home.siteIndex, HOME, "the site that was opened again");
   assertLength(
     home.structure.members,
@@ -126,9 +131,4 @@ it("keeps a site's structure to itself and hands it back on the next visit", asy
       `stored member ${index}'s material`,
     );
   }
-
-  await h.capture(
-    "structure-per-site-persists",
-    "Site 1's crane, still standing on the second visit",
-  );
 });

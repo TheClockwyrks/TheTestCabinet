@@ -67,12 +67,14 @@ it("shows a result on the build screen and none on the program screen", async ()
   // On the build screen it runs the check, and the screen shows what it found.
   await h.debug.setScreen("build");
   await h.press(CHECK_KEY);
-  assertNotNull(
-    (await h.snapshot()).checkResult,
-    `the result after ${CHECK_KEY} on the build screen, which runs the static ` +
-      "check (specs/controls.md)",
-  );
+  const after = await h.snapshot();
 
   await h.advance(1);
   await h.capture("state", "the build screen showing what the check found");
+
+  assertNotNull(
+    after.checkResult,
+    `the result after ${CHECK_KEY} on the build screen, which runs the static ` +
+      "check (specs/controls.md)",
+  );
 });

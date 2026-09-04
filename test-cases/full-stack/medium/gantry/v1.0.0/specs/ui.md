@@ -16,18 +16,41 @@ here are the ones `specs/controls.md` binds.
 | `run` | The tape playing out under the simulation. |
 | `results` | A cleared site's score. |
 
-The menus are driven by the key actions alone: the pointer operates the 3D
-scene and the tape editor, never a menu. On every menu `up` and `down` move
-the highlight by one entry and wrap at both ends, `confirm` takes the
-highlighted entry, and `left` and `right` reach the menu but leave the
-highlight where it is. Where `back` leads is stated per screen below.
+On every menu `up` and `down` move the highlight by one entry and wrap at both
+ends, `confirm` takes the highlighted entry, and `left` and `right` reach the
+menu but leave the highlight where it is. Where `back` leads is stated per
+screen below.
+
+Every menu also takes the pointer and a touch contact. Three screens show one:
+`title`, `select`, and `results`. On each of them every entry occupies a
+rectangular hit region on the stage, laid out as the build likes and reported by
+`menuItemRect` (`specs/instrumentation.md`).
+
+| Input | Effect |
+| --- | --- |
+| The pointer moves onto an entry's region | The highlight moves to that entry |
+| The pointer is pressed and released inside one entry's region | The highlight moves to that entry, and that entry is taken |
+| A touch contact lands and lifts inside one entry's region | The highlight moves to that entry, and that entry is taken |
+
+Taking an entry does what `confirm` does with it on that screen. Both edges fall
+inside one region or nothing is taken: a release outside the region its press
+went down in takes no entry, and neither does a release inside a different
+entry's region, though the highlight still follows the pointer wherever it
+travels. A pointer over no entry's region leaves the highlight where it is, and
+a press and release there take nothing. A contact has no hover, so its landing
+is what moves the highlight.
+
+The pointer and a contact drive a menu directly rather than through an action.
+On the four screens showing no menu the pointer operates the 3D scene and the
+tape editor instead (`specs/controls.md`).
 
 ### Title
 
 The game opens on `title`, showing `TITLE_TEXT` (`GANTRY`), `TAGLINE_TEXT`
 (`RIG THE CRANE. RUN THE TAPE.`), and the menu `TITLE_ITEMS` (`SITES`,
-`HOW TO PLAY`), with `menuIndex` `0` on arriving. `SITES` opens `select`,
-`HOW TO PLAY` opens `howto`, and `back` does nothing.
+`HOW TO PLAY`), with `menuIndex` `0` as it opens. `SITES` opens `select`,
+`HOW TO PLAY` opens `howto`, and `back` does nothing. Returning to `title`
+highlights the entry that led away from it, as the two screens below state.
 
 ### How to play
 
@@ -35,8 +58,8 @@ The game opens on `title`, showing `TITLE_TEXT` (`GANTRY`), `TAGLINE_TEXT`
 and the parts they place, the ring and what the arm turns on, writing a tape
 and what each axis does, why speed loads the structure and swings the load,
 and setting a load down inside the tolerances. It names the tool, `undo`,
-`check`, screen-switch, and `run` bindings. `back` returns to `title` with
-`menuIndex` `0`.
+`check`, screen-switch, and `run` bindings. `back` returns to `title` with the
+highlight on `HOW TO PLAY`, the entry that led here, so `menuIndex` reads `1`.
 
 ### Site select
 
@@ -50,7 +73,8 @@ state reads without relying on hue alone.
 
 `confirm` on an open or cleared site enters it, opening the `build` screen
 with that site's stored structure and tape; `confirm` on a locked site does
-nothing; and `back` returns to `title`. On arriving, the highlight sits on the
+nothing; and `back` returns to `title` with the highlight on `SITES`, the entry
+that led here, so `menuIndex` reads `0`. On arriving, the highlight sits on the
 site the yard screens last showed (`siteIndex`, `specs/state.md`), which is the
 site at index `0`, `menuIndex` `0`, before any site has been opened.
 

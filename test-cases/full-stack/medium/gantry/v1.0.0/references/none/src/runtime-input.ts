@@ -52,6 +52,8 @@ export class InputTracker {
   private x = 0;
   private y = 0;
   private pressLive = false;
+  private contactX = 0;
+  private contactY = 0;
 
   /** Take and clear what has arrived since the last call. */
   take(): InputFrame {
@@ -109,5 +111,25 @@ export class InputTracker {
   pointerUp(): void {
     this.pressLive = false;
     this.pointerActs.push({ kind: "up", x: this.x, y: this.y });
+  }
+
+  /**
+   * A touch contact landing. It is not the pointer: the pointer position and
+   * the live press are left exactly as they stand (`specs/controls.md`), and
+   * only where the contact landed is remembered, for the lift.
+   */
+  touchDown(x: number, y: number): void {
+    this.contactX = x;
+    this.contactY = y;
+    this.pointerActs.push({ kind: "touch-down", x, y });
+  }
+
+  /** The contact lifting, at the position it landed at. */
+  touchUp(): void {
+    this.pointerActs.push({
+      kind: "touch-up",
+      x: this.contactX,
+      y: this.contactY,
+    });
   }
 }

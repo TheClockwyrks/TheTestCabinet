@@ -30,7 +30,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNear, assertNotNull } from "../assert";
-import { ARM_MIN_LEN, FRACTION_TOLERANCE } from "../constants";
+import {
+  ARM_MIN_LEN,
+  FRACTION_TOLERANCE,
+  RECORDING_RUN_UP,
+  RECORDING_SETTLE,
+} from "../constants";
 import {
   advanceCycles,
   advanceFraction,
@@ -98,15 +103,23 @@ it("carries on from the cycle and fraction it was holding", async () => {
   );
   assertEqual(held.sim?.cycle, 0, "the paused span completed no cycle");
 
-  await resumeRun(h);
-  const resumed = await h.snapshot();
+  // The recording brackets the resume itself: the run-up is taken on the run while
+  // it is still held, and the resumed span is divided over the settle's frames
+  // rather than driven in one, so a reviewer watches the run stand still and then
+  // carry on. "An interval of game time reaches the same state however it was
+  // divided into frames" (`specs/instrumentation.md`), so neither moves the reading.
+  const resumed = await captureReplay(h, "resumed", async () => {
+    await h.advance(RECORDING_RUN_UP);
+    await resumeRun(h);
+    const running = await h.snapshot();
+    await advanceFraction(h, RESUMED_FOR, RECORDING_SETTLE);
+    return running;
+  });
   assertEqual(
     resumed.sim?.status,
     "running",
     "setPaused(false) moves sim.status from paused back to running",
   );
-
-  await captureReplay(h, "resumed", () => advanceFraction(h, RESUMED_FOR));
 
   const carriedOn = await h.snapshot();
   assertNotNull(carriedOn.sim, "the run is live again after the resume");

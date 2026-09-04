@@ -100,6 +100,11 @@ it("stands the ring on its base corner and uses the eight flange nodes", async (
   await h.advance(1);
 
   const { structure } = await h.snapshot();
+  await h.capture(
+    "ring-occupies-eight-nodes",
+    "The ring's eight flange nodes, each carrying a counterweight",
+  );
+
   for (const node of FLANGE_NODES) {
     assertContains(
       structure.counterweights,
@@ -113,10 +118,5 @@ it("stands the ring on its base corner and uses the eight flange nodes", async (
     FLANGE_NODES.length,
     `the counterweights that landed: the ring's eight flange nodes and not ` +
       `(${OUTSIDE.x}, ${OUTSIDE.y}, ${OUTSIDE.z}), which the ring does not occupy`,
-  );
-
-  await h.capture(
-    "ring-occupies-eight-nodes",
-    "The ring's eight flange nodes, each carrying a counterweight",
   );
 });

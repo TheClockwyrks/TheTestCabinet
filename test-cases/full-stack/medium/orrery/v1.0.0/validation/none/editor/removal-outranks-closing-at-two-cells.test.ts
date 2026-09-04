@@ -23,6 +23,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNotNull } from "../assert";
+import { RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import { at, hexCenter, type Hex } from "../field";
 import { BARE } from "../fixtures";
 import {
@@ -69,15 +70,17 @@ it("removes the end cell instead of closing when the path holds two cells", asyn
   );
 
   const after = await captureReplay(h, "shortened", async () => {
-    await h.advance(1);
+    await h.advance(RECORDING_RUN_UP);
     await pressAt(h, hexCenter(LAST));
     const opened = (await h.snapshot()).editor.drag;
     await h.advance(1);
     await moveTo(h, hexCenter(FIRST));
     await h.advance(1);
-    return { opened, part: partById(await h.snapshot(), track) };
+    const shortened = { opened, part: partById(await h.snapshot(), track) };
+    await releasePointer(h);
+    await h.advance(RECORDING_SETTLE);
+    return shortened;
   });
-  await releasePointer(h);
 
   assertEqual(
     after.opened?.kind,

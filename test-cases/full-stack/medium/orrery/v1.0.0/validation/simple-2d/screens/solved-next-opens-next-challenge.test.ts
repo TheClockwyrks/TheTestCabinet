@@ -32,7 +32,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull } from "../assert";
-import { SOLVED_ITEMS } from "../constants";
+import { RECORDING_RUN_UP, RECORDING_SETTLE, SOLVED_ITEMS } from "../constants";
 import { extra } from "../challenges";
 import { setPart, solution } from "../formats";
 import { ORIGIN } from "../fixtures";
@@ -87,8 +87,9 @@ it("opens the Extras' next challenge in the editor on confirm", async () => {
   );
 
   await captureReplay(h, "next", async () => {
+    await h.advance(RECORDING_RUN_UP);
     await pressAction(h, "confirm");
-    await h.advance(1);
+    await h.advance(RECORDING_SETTLE);
   });
 
   const opened = await h.snapshot();

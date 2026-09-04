@@ -175,6 +175,13 @@ afterEach(async () => {
 });
 
 it("commits a different sound for every cue and for the music bed", async () => {
+  // The picture is taken before the waveforms are compared: what it shows is the
+  // yard the sounds are heard over, which is the same yard whether they differ or
+  // not, so a comparison that fails still leaves it behind.
+  await openSite(h, 0);
+  await h.advance(1);
+  await h.capture("files", "The yard the produced sounds are heard over");
+
   const waves = SOUNDS.map((name) => ({ name, wave: readWave(name) }));
   assertLength(
     waves,
@@ -198,8 +205,4 @@ it("commits a different sound for every cue and for the music bed", async () => 
       `these carry the same audio: ${same.join(", ")}`,
     );
   }
-
-  await openSite(h, 0);
-  await h.advance(1);
-  await h.capture("files", "The yard the produced sounds are heard over");
 });

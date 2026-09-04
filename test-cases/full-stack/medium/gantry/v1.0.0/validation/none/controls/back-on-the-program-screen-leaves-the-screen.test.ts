@@ -61,17 +61,19 @@ it("returns to select from the program screen with a node held pending", async (
   await h.press(BACK);
   await h.advance(1);
 
+  const after = await h.snapshot();
+
+  await h.capture(
+    "state",
+    "the select screen back left the program screen for",
+  );
+
   assertEqual(
-    (await h.snapshot()).screen,
+    after.screen,
     "select",
     `the screen after ${BACK} on the program screen: the pending-node row of ` +
       "the `back` table names the build screen alone, so the last row " +
       "decides and the program screen returns to `select` " +
       "(specs/controls.md § The actions, specs/ui.md § Program)",
-  );
-
-  await h.capture(
-    "state",
-    "the select screen back left the program screen for",
   );
 });

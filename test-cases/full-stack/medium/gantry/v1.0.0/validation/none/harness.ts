@@ -64,6 +64,7 @@ import type {
   LoadClass,
   LoadPose,
   MaterialName,
+  MenuRect,
   Projected,
   Screen,
   TapeAction,
@@ -76,9 +77,6 @@ import type {
 
 /** The page global an engineless build installs its surface on. */
 export const HANDLE = "__gantry";
-
-/** The version the surface reports (`GANTRY_DEBUG_VERSION`). */
-export const GANTRY_DEBUG_VERSION = 1;
 
 /**
  * Every operation `specs/instrumentation.md` requires on the surface under this
@@ -99,6 +97,7 @@ export const REQUIRED_OPS = [
   "snapshot",
   "check",
   "drawn",
+  "menuItemRect",
   "project",
   "reset",
   "setScreen",
@@ -110,6 +109,7 @@ export const REQUIRED_OPS = [
   "setCamera",
   "startRun",
   "abortRun",
+  "showCheck",
   "clearStructure",
   "addMember",
   "removeMember",
@@ -140,6 +140,8 @@ export const REQUIRED_OPS = [
   "pointerMove",
   "pointerDown",
   "pointerUp",
+  "touchDown",
+  "touchUp",
   "keyDown",
   "keyUp",
 ] as const;
@@ -225,6 +227,19 @@ const kit = createCaseHarness<GantrySnapshot, GantryDebugApi>({
   projectRoot: PROJECT_ROOT,
 });
 
+/*
+ * THE STILL AND NOT THE RECORDING, and the same on all three engines. The kit
+ * also carries `captureReplay`, and this file takes only `captureStill` — not
+ * because a recording would be unwelcome here, but because an output is declared
+ * ONCE per point and every engine has to produce it. Under `simple-3d` and
+ * `structured-3d` this case's project runs in Node, where the engine's VP9
+ * recorder and its `emitReplay` browser command are both out of reach (each of
+ * those harness headers says what moving them would cost), so a point that
+ * declared a `replay` would be a point two engines out of three could not answer.
+ * Gantry is stills everywhere, and the ones whose subject is a stretch of motion —
+ * a swing, a cable snapping, a breakage cascading into a collapse — hand a
+ * reviewer one frame of it.
+ */
 export const { captureStill, fitViewport, failSurface, SURFACE_REQUIREMENT } =
   kit;
 
@@ -287,6 +302,12 @@ export interface Harness {
   pointerUp(): Promise<void>;
   /** Down, a tick, up, a tick: the click a player's press makes. */
   click(x: number, y: number): Promise<void>;
+  /** A touch contact landing at a logical stage position. */
+  touchDown(x: number, y: number): Promise<void>;
+  /** The contact lifting, at the position it landed at. */
+  touchUp(): Promise<void>;
+  /** Land a contact, a tick, lift it, a tick: the tap a finger makes. */
+  tap(x: number, y: number): Promise<void>;
 
   /** Where a world position is drawn, in logical stage units. */
   project(x: number, y: number, z: number): Promise<Projected>;
@@ -323,7 +344,6 @@ export interface Harness {
    * a panel that is not drawn draws no text.
    */
   diagnostics(): Promise<string[]>;
-
 
   /** Keep the picture on screen as the review item's `id` output. */
   capture(id: string, name: string): Promise<void>;
@@ -412,15 +432,17 @@ function baseOf(h: Harness): BaseHarness<GantrySnapshot, GantryDebugApi> {
  * page that has had no user gesture, and `specs/assets.md` has the build wait for
  * one too. Every check that reads `cues()` would otherwise have to remember to
  * ask for the gesture, and the check that forgot would report silence from a
- * build that was sounding perfectly. The gesture is one press of `UNBOUND_KEY`,
- * which `specs/controls.md` binds to no action on any screen, so it changes
- * nothing a check could read.
+ * build that was sounding perfectly. It is asked for as an OPTION rather than
+ * called afterwards, because the factory is the only place it can go: the gesture
+ * has to land before the opening `reset`, which is what puts back whatever it
+ * moved. The gesture itself is the one this project configured — one press of
+ * `UNBOUND_KEY`, which `specs/controls.md` binds to no action on any screen, so
+ * it changes nothing a check could read.
  */
 export async function createHarness(
   options?: HarnessOptions,
 ): Promise<Harness> {
-  const base = await kit.createHarness(options);
-  if (base.surfaceFault === null) await base.armAudio();
+  const base = await kit.createHarness({ ...options, armAudio: true });
 
   const debug = base.debug as unknown as GantryDriver;
 
@@ -459,6 +481,22 @@ export async function createHarness(
     pointerMove: (x, y) => base.debug.pointerMove(x, y),
     pointerDown: (x, y) => base.debug.pointerDown(x, y),
     pointerUp: () => base.debug.pointerUp(),
+
+    // A CONTACT, NOT THE POINTER. `specs/instrumentation.md`: "The contact the
+    // touch pair delivers is a contact and not the pointer: it moves no pointer
+    // position and raises no press or release of one." So these are the surface's
+    // own touch operations and never `pointerDown`/`pointerUp` wearing a hat.
+    touchDown: (x, y) => base.debug.touchDown(x, y),
+    touchUp: () => base.debug.touchUp(),
+
+    async tap(x, y) {
+      // The landing, a tick, the lift, a tick: the same bracketing `click` uses,
+      // so a build that reads its input once a frame sees both edges.
+      await base.debug.touchDown(x, y);
+      await base.advance(1);
+      await base.debug.touchUp();
+      await base.advance(1);
+    },
 
     async click(x, y) {
       // The same gesture a player makes, delivered through the same path:
@@ -523,7 +561,10 @@ async function paint(
   const ran = await base.page.evaluate(
     ([global, name]) => {
       const gate = (
-        window as unknown as Record<string, Record<string, () => void> | undefined>
+        window as unknown as Record<
+          string,
+          Record<string, () => void> | undefined
+        >
       )[global];
       if (gate === undefined) return false;
       gate[name]!();
@@ -717,6 +758,109 @@ export const MINIMAL_CRANE: CraneDesign = {
 };
 
 /* -------------------------------------------------------------------------- */
+/* The menus, where the build drew them                                       */
+/* -------------------------------------------------------------------------- */
+//
+// `specs/ui.md` gives every menu the pointer and touch as well as the key
+// actions, and deliberately leaves the LAYOUT to the build: what it fixes is
+// that the build reports each entry's hit region through `menuItemRect`, and
+// what the pointer and a contact do over that region. So every helper below
+// asks the build where it put the entry and then drives a real gesture there.
+// Nothing here knows a menu coordinate, and a build that lays its menus out any
+// way it likes passes.
+
+/** Where the build put entry `index` of the menu the screen showing carries. */
+export async function menuRect(h: Harness, index: number): Promise<MenuRect> {
+  return h.debug.menuItemRect(index);
+}
+
+/** The middle of a hit region: where a gesture aimed at that entry lands. */
+export function rectCenter(rect: MenuRect): { x: number; y: number } {
+  return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+}
+
+/** Move the pointer onto entry `index`, and run the frame that reads it. */
+export async function pointerOntoItem(
+  h: Harness,
+  index: number,
+): Promise<{ x: number; y: number }> {
+  const at = rectCenter(await menuRect(h, index));
+  await h.pointerMove(at.x, at.y);
+  await h.advance(1);
+  return at;
+}
+
+/** Press and release inside entry `index`'s region: the click that takes it. */
+export async function clickItem(
+  h: Harness,
+  index: number,
+): Promise<{ x: number; y: number }> {
+  const at = rectCenter(await menuRect(h, index));
+  await h.click(at.x, at.y);
+  return at;
+}
+
+/** Land a contact inside entry `index`'s region and lift it there. */
+export async function tapItem(
+  h: Harness,
+  index: number,
+): Promise<{ x: number; y: number }> {
+  const at = rectCenter(await menuRect(h, index));
+  await h.tap(at.x, at.y);
+  return at;
+}
+
+/**
+ * Press inside entry `from`'s region, travel to `to`, and release there.
+ *
+ * The slide-off affordance: a press begun on one entry and released elsewhere
+ * takes nothing (`specs/ui.md`). A check reads that nothing was taken and that
+ * the highlight followed the pointer.
+ */
+export async function slideOffItem(
+  h: Harness,
+  from: number,
+  to: { x: number; y: number } | number,
+): Promise<void> {
+  const start = rectCenter(await menuRect(h, from));
+  const end = typeof to === "number" ? rectCenter(await menuRect(h, to)) : to;
+  await h.pointerDown(start.x, start.y);
+  await h.advance(1);
+  await h.pointerMove(end.x, end.y);
+  await h.advance(1);
+  await h.pointerUp();
+  await h.advance(1);
+}
+
+/**
+ * A stage point inside no entry's region of the menu showing.
+ *
+ * Found by walking a coarse grid over the stage and keeping the first point
+ * every reported region misses, so it holds for any layout a build chooses.
+ */
+export async function offEveryMenuItem(
+  h: Harness,
+  count: number,
+): Promise<{ x: number; y: number }> {
+  const rects: MenuRect[] = [];
+  for (let i = 0; i < count; i += 1) rects.push(await menuRect(h, i));
+  const holds = (x: number, y: number): boolean =>
+    !rects.some(
+      (r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h,
+    );
+  for (let y = 8; y < STAGE_H; y += 16) {
+    for (let x = 8; x < STAGE_W; x += 16) {
+      if (holds(x, y)) return { x, y };
+    }
+  }
+  fail(
+    "a stage point inside no menu entry's hit region (specs/ui.md leaves the " +
+      "layout to the build, and a menu cannot cover the whole stage)",
+    "every point of a 16-pixel grid over the stage fell inside a reported region",
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* Compound sequences                                                         */
 /* -------------------------------------------------------------------------- */
 //
@@ -726,17 +870,22 @@ export const MINIMAL_CRANE: CraneDesign = {
 // real simulation" (`specs/instrumentation.md`).
 
 /**
- * Open a site, leaving the build screen showing.
+ * Enter a site, leaving the build screen showing.
  *
- * `openSite` carries the effects `specs/state.md` states for opening a site — the
- * site's own loads and obstacles back in the yard, the undo history emptied, the
- * pending node and the shown check cleared, the camera back at its start pose,
- * the run back to its idle placeholder — and then shows `build`. It reaches any
- * site whether or not it has been unlocked, which is what lets a check about site
- * five's envelope run without playing four sites to reach it.
+ * TWO OPERATIONS, COMPOSED HERE. `openSite` carries the effects
+ * `specs/state.md` states for opening a site — the site's own loads and
+ * obstacles back in the yard, the undo history emptied, the pending node and
+ * the shown check cleared, the camera back at its start pose, the run back to
+ * its idle placeholder — and leaves the screen exactly as it stands.
+ * `setScreen("build")` is the other half, and "the two together are what
+ * entering a site from the select screen does" (`specs/instrumentation.md`).
+ *
+ * It reaches any site whether or not it has been unlocked, which is what lets a
+ * check about site five's envelope run without playing four sites to reach it.
  */
 export async function openSite(h: Harness, index: number): Promise<void> {
   await h.debug.openSite(index);
+  await h.debug.setScreen("build");
 }
 
 /**
@@ -752,7 +901,10 @@ export async function openSite(h: Harness, index: number): Promise<void> {
  * nothing and changes nothing that is built.
  */
 export async function emptyYard(h: Harness): Promise<void> {
-  await poseAll(h, await onEditScreenCalls(h, [["clearLoads"], ["clearObstacles"]]));
+  await poseAll(
+    h,
+    await onEditScreenCalls(h, [["clearLoads"], ["clearObstacles"]]),
+  );
 }
 
 /**
@@ -815,15 +967,12 @@ async function onEditScreenCalls(
   return [["setScreen", "build"], ...calls, ["setScreen", was]];
 }
 
-async function poseAll(
-  h: Harness,
-  calls: readonly PoseCall[],
-): Promise<void> {
+async function poseAll(h: Harness, calls: readonly PoseCall[]): Promise<void> {
   await h.page.evaluate(
     ({ handle, ops }) => {
-      const surface = (window as unknown as Record<string, Record<string, unknown>>)[
-        handle
-      ];
+      const surface = (
+        window as unknown as Record<string, Record<string, unknown>>
+      )[handle];
       for (const [name, ...args] of ops) {
         (surface[name] as (...a: unknown[]) => unknown)(...args);
       }
@@ -1192,7 +1341,8 @@ export function entriesOf(
   name?: string,
 ): DrawnEntry[] {
   return entries.filter(
-    (entry) => entry.kind === kind && (name === undefined || entry.name === name),
+    (entry) =>
+      entry.kind === kind && (name === undefined || entry.name === name),
   );
 }
 
@@ -1238,9 +1388,7 @@ export function colourDistance(
   a: readonly [number, number, number],
   b: readonly [number, number, number],
 ): number {
-  return (
-    Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2])
-  );
+  return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
 }
 
 /**

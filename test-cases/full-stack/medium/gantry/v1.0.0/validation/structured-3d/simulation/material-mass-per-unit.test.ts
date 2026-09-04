@@ -247,23 +247,27 @@ it("weighs a member at its length times its material's mass per unit", async () 
     ["cable", CABLE_MASS_PER_UNIT],
     ["rail", RAIL_MASS_PER_UNIT],
   ];
-  for (const [material, perUnit] of table) {
-    const id = await placeSpan(material);
-    const withSpan = await readMastCable(material);
-    await h.debug.removeMember(id);
-    assertNear(
-      withSpan - bare,
-      (((spanLength * perUnit) / 2) * GRAVITY) / cosine,
-      TOLERANCE,
-      `the mast cable picking up half of a length-${spanLength} ${material}'s ` +
-        `mass — ${spanLength} * ${perUnit} / 2 mass units under GRAVITY — at ` +
-        "the node it hangs (specs/statics.md, specs/structure.md)",
+  try {
+    for (const [material, perUnit] of table) {
+      const id = await placeSpan(material);
+      const withSpan = await readMastCable(material);
+      await h.debug.removeMember(id);
+      assertNear(
+        withSpan - bare,
+        (((spanLength * perUnit) / 2) * GRAVITY) / cosine,
+        TOLERANCE,
+        `the mast cable picking up half of a length-${spanLength} ${material}'s ` +
+          `mass — ${spanLength} * ${perUnit} / 2 mass units under GRAVITY — at ` +
+          "the node it hangs (specs/statics.md, specs/structure.md)",
+      );
+    }
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.advance(1);
+    await h.capture(
+      "material-masses",
+      "The rig whose outboard rail node hangs on one mast cable",
     );
   }
-
-  await h.advance(1);
-  await h.capture(
-    "material-masses",
-    "The rig whose outboard rail node hangs on one mast cable",
-  );
 });

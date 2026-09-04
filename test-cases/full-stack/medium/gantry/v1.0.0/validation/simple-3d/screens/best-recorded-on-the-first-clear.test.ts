@@ -115,6 +115,8 @@ it("records the first clear's own cost and time as the site's best", async () =>
     MAX_TICKS - DRIVEN,
     "the run to end",
   );
+  await h.capture("state", "the results screen the first clear recorded");
+
   assertEqual(
     ended.run.phase,
     "cleared",
@@ -140,6 +142,4 @@ it("records the first clear's own cost and time as the site's best", async () =>
     "the recorded best time, which is the run clock at the tick the run " +
       "ended on (specs/program.md)",
   );
-
-  await h.capture("state", "the results screen the first clear recorded");
 });

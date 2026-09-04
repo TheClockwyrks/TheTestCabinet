@@ -62,36 +62,40 @@ it("hands back readings of plain numbers, strings, booleans and objects", async 
   await startRun(h);
   await runTicks(h, 5);
 
-  for (const [what, reading] of [
-    ["snapshot()", (await h.snapshot()) as unknown],
-    ["check()", (await h.check()) as unknown],
-  ] as const) {
-    const stray = strayLeaf(reading, what);
-    if (stray !== null) {
-      fail(
-        `${what} to come back as plain numbers, strings, booleans and plain ` +
-          "objects (specs/instrumentation.md)",
-        stray,
+  try {
+    for (const [what, reading] of [
+      ["snapshot()", (await h.snapshot()) as unknown],
+      ["check()", (await h.check()) as unknown],
+    ] as const) {
+      const stray = strayLeaf(reading, what);
+      if (stray !== null) {
+        fail(
+          `${what} to come back as plain numbers, strings, booleans and plain ` +
+            "objects (specs/instrumentation.md)",
+          stray,
+        );
+      }
+      const moved = differingPaths(
+        JSON.parse(JSON.stringify(reading)) as unknown,
+        reading,
+        what,
       );
+      if (moved.length > 0) {
+        fail(
+          `${what} to survive a JSON round trip unchanged, everything it hands ` +
+            "back being plain data (specs/instrumentation.md)",
+          `${moved.slice(0, 12).join(", ")} came back different`,
+        );
+      }
     }
-    const moved = differingPaths(
-      JSON.parse(JSON.stringify(reading)) as unknown,
-      reading,
-      what,
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.capture(
+      "plain-readings",
+      "The run the two readings were taken over",
     );
-    if (moved.length > 0) {
-      fail(
-        `${what} to survive a JSON round trip unchanged, everything it hands ` +
-          "back being plain data (specs/instrumentation.md)",
-        `${moved.slice(0, 12).join(", ")} came back different`,
-      );
-    }
   }
-
-  await h.capture(
-    "plain-readings",
-    "The run the two readings were taken over",
-  );
 });
 
 /**

@@ -70,17 +70,19 @@ it("reports no-ring, no-rail, disconnected-members and then empty-program", asyn
     "the two struts standing as the whole of the structure",
   );
 
-  assertDeepEqual(
-    (await h.check()).issues,
-    EXPECTED,
-    "the issues of a ringless, railless crane carrying an adrift member and " +
-      "an empty tape, each once and in the order specs/structure.md lists " +
-      "them (specs/instrumentation.md)",
-  );
+  const checked = await h.check();
 
   await h.advance(1);
   await h.capture(
     "four-issues",
     "the four issues in the order the specification lists them",
+  );
+
+  assertDeepEqual(
+    checked.issues,
+    EXPECTED,
+    "the issues of a ringless, railless crane carrying an adrift member and " +
+      "an empty tape, each once and in the order specs/structure.md lists " +
+      "them (specs/instrumentation.md)",
   );
 });

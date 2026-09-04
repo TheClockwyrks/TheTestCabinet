@@ -49,16 +49,18 @@ it("selects the counterweight tool on the build screen", async () => {
   assertEqual(posed.tool, BEFORE, "the tool selected before the press");
 
   await h.press(KEY);
-  assertEqual(
-    (await h.snapshot()).tool,
-    "counterweight",
-    `the tool after ${KEY}, which is the tool-counterweight action's binding ` +
-      "(specs/controls.md)",
-  );
+  const after = await h.snapshot();
 
   await h.advance(1);
   await h.capture(
     "state",
     "the build screen with the counterweight tool selected",
+  );
+
+  assertEqual(
+    after.tool,
+    "counterweight",
+    `the tool after ${KEY}, which is the tool-counterweight action's binding ` +
+      "(specs/controls.md)",
   );
 });

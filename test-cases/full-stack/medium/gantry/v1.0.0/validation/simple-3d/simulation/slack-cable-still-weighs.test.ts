@@ -128,15 +128,16 @@ it("keeps a slack cable's weight on the structure that carries it", async () => 
   // The crane with a cable on that flange side. It goes slack and carries nothing.
   await poseCrane(h, craneWith("cable"));
   const withCable = await h.check();
+  await h.capture(
+    "slack-cable-still-weighs",
+    "the crane whose flange side is a slack cable",
+  );
+
   assertTrue(withCable.stable, "the crane stands with a cable on that side");
   assertEqual(
     withCable.members.find((one) => one.id === SIDE)?.force,
     0,
     `cable ${SIDE} goes slack and carries zero force (specs/statics.md)`,
-  );
-  await h.capture(
-    "slack-cable-still-weighs",
-    "the crane whose flange side is a slack cable",
   );
 
   // Take the slack cable away. Its stiffness was already out of the system, so

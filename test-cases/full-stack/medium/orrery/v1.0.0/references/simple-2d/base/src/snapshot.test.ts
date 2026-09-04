@@ -126,6 +126,21 @@ describe("the snapshot's derived and posed shapes", () => {
     ]);
   });
 
+  it("reports the remembered title selection, and no armed press", () => {
+    const game = new Session();
+    const api = createStateOps(game);
+    expect(api.snapshot().titleIndex).toBe(0);
+    api.setMenuIndex(2);
+    game.handleAction("confirm");
+    api.setScreen("title");
+    expect(api.snapshot().titleIndex).toBe(2);
+    // The armed press is this build's own, and the shape
+    // specs/instrumentation.md fixes carries no such field, so it is not
+    // reported however it stands.
+    game.state.menuPress = 1;
+    expect(api.snapshot()).not.toHaveProperty("menuPress");
+  });
+
   it("copies a part out rather than handing over the one it holds", () => {
     const game = new Session();
     const api = createStateOps(game);

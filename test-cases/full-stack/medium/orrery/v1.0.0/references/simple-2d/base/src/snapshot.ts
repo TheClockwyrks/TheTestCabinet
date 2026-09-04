@@ -105,6 +105,7 @@ export function snapshotOf(state: OrreryState): Record<string, unknown> {
     screen: state.screen,
     mode: state.mode,
     menuIndex: state.menuIndex,
+    titleIndex: state.titleIndex,
     selectIndex: state.selectIndex,
     howtoPage: state.howtoPage,
     campaign: {

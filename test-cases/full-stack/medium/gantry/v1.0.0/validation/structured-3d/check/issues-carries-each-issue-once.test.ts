@@ -68,16 +68,18 @@ it("reports one disconnected-members entry for three separately adrift members",
     "the three adrift struts standing beside the crane",
   );
 
-  assertDeepEqual(
-    (await h.check()).issues,
-    EXPECTED,
-    "the issues with three separately adrift members: one entry, not three " +
-      "(specs/instrumentation.md)",
-  );
+  const checked = await h.check();
 
   await h.advance(1);
   await h.capture(
     "one-entry",
     "one disconnected-members entry for three adrift members",
+  );
+
+  assertDeepEqual(
+    checked.issues,
+    EXPECTED,
+    "the issues with three separately adrift members: one entry, not three " +
+      "(specs/instrumentation.md)",
   );
 });

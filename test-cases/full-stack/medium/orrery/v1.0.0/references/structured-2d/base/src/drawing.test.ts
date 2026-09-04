@@ -17,7 +17,12 @@ import { installAssets, NO_SPRITES, spritePaths, type Sprites } from "./assets";
 import { STAGE_H, STAGE_W } from "./constants";
 import { createDebugApi } from "./debug";
 import { drawFieldScreen } from "./fielddraw";
+import { advanceFrame, menuItemRect } from "./flow";
 import { Bench, createHarness, type Harness } from "./harness";
+import { drawSolvedPanel } from "./panels";
+import type { MenuItemRect } from "./regions";
+import { drawTitle } from "./screens";
+import type { OrreryState } from "./state";
 
 /**
  * How much of the frame the engine drew is appreciably brighter than the sky.
@@ -36,12 +41,15 @@ function painted(harness: Harness): number {
 /** A real 2D context at the stage's logical size, from `@napi-rs/canvas`. */
 function stage(): {
   ctx: CanvasRenderingContext2D;
+  pixels: () => Uint8ClampedArray;
   lit: () => number;
 } {
   const canvas = createCanvas(STAGE_W, STAGE_H);
   const ctx = canvas.getContext("2d");
   return {
     ctx: ctx as unknown as CanvasRenderingContext2D,
+    pixels: () =>
+      ctx.getImageData(0, 0, STAGE_W, STAGE_H).data as Uint8ClampedArray,
     lit: () => {
       const data = ctx.getImageData(0, 0, STAGE_W, STAGE_H).data;
       let count = 0;
@@ -223,5 +231,87 @@ describe("the field's own drawing (specs/assets.md)", () => {
     drawFieldScreen(painted_.ctx, game.state, stubSprites());
     expect(painted_.lit()).toBeGreaterThan(plain.lit());
     expect(plain.lit()).toBeGreaterThan(1000);
+  });
+});
+
+/** How far outside a region a one-pixel stroke on its edge may land. */
+const EDGE_SLACK = 2;
+
+/**
+ * Draw one menu twice, with the highlight on `from` and then on `to`, and hold
+ * every pixel that changed between the two frames to the two regions
+ * `menuItemRect` reports for those items.
+ */
+function expectHighlightWithin(
+  draw: (ctx: CanvasRenderingContext2D, state: OrreryState) => void,
+  state: OrreryState,
+  from: number,
+  to: number,
+): void {
+  const regions = [menuItemRect(state, from), menuItemRect(state, to)].map(
+    (rect) => {
+      expect(rect).not.toBeNull();
+      return rect as MenuItemRect;
+    },
+  );
+  state.menuIndex = from;
+  const before = stage();
+  draw(before.ctx, state);
+  state.menuIndex = to;
+  const after = stage();
+  draw(after.ctx, state);
+
+  const first = before.pixels();
+  const second = after.pixels();
+  let moved = 0;
+  for (let at = 0; at < first.length; at += 4) {
+    if (
+      first[at] === second[at] &&
+      first[at + 1] === second[at + 1] &&
+      first[at + 2] === second[at + 2]
+    ) {
+      continue;
+    }
+    moved += 1;
+    const pixel = at / 4;
+    const x = pixel % STAGE_W;
+    const y = Math.floor(pixel / STAGE_W);
+    const inside = regions.some(
+      (rect) =>
+        x >= rect.x - EDGE_SLACK &&
+        x < rect.x + rect.w + EDGE_SLACK &&
+        y >= rect.y - EDGE_SLACK &&
+        y < rect.y + rect.h + EDGE_SLACK,
+    );
+    expect(inside, `the pixel at (${x}, ${y}) lies in a reported region`).toBe(
+      true,
+    );
+  }
+  expect(moved).toBeGreaterThan(0);
+}
+
+describe("the menus' highlights (specs/ui.md, specs/instrumentation.md)", () => {
+  it("draws each highlight over the region menuItemRect reports", () => {
+    // The reported region and the drawn item are ONE fact (specs/ui.md
+    // "Pointer and touch"), so moving the highlight from one item to another
+    // changes the stage inside those two regions and nowhere else. Anything
+    // drawn elsewhere would be a highlight the pointer cannot reach.
+    const title = new Bench();
+    expectHighlightWithin(
+      (ctx, state) => drawTitle(ctx, state, NO_SPRITES),
+      title.state,
+      0,
+      2,
+    );
+
+    const solved = new Bench();
+    const api = createDebugApi(() => solved);
+    api.openChallenge("extras", 0);
+    api.placeSet(0, 2, 0, 0);
+    api.startRun();
+    api.setTally(0, 6);
+    advanceFrame(solved, 1);
+    expect(solved.state.sim?.status).toBe("complete");
+    expectHighlightWithin(drawSolvedPanel, solved.state, 0, 1);
   });
 });

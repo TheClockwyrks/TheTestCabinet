@@ -202,6 +202,11 @@ it("holds the pivot and every force where the lattice put them", async () => {
   }
 
   const held = await runTicks(h, HELD - SAMPLED);
+  await h.capture(
+    "elastic-displacement-does-not-feed-back",
+    "the loaded crane after a second of holding still",
+  );
+
   assertEqual(held.run.phase, "running", `the run's phase at tick ${HELD}`);
   assertVec3Near(
     held.run.pivot,
@@ -209,10 +214,6 @@ it("holds the pivot and every force where the lattice put them", async () => {
     1e-9,
     `the pivot at tick ${HELD}: the prescribed trolley point, which the ` +
       "lattice and a slew of 0 put at the track's origin (specs/statics.md)",
-  );
-  await h.capture(
-    "elastic-displacement-does-not-feed-back",
-    "the loaded crane after a second of holding still",
   );
   assertEqual(held.run.tick, HELD, "the ticks the crane was held for");
   assertLength(

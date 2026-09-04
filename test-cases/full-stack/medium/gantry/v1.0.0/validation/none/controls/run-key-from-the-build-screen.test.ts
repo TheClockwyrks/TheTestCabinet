@@ -70,6 +70,11 @@ it("starts the run from the build screen", async () => {
 
   await h.press(RUN_KEY);
   const s = await h.snapshot();
+  await h.capture(
+    "state",
+    "the run the run action started from the build screen",
+  );
+
   assertEqual(
     s.run.phase,
     "running",
@@ -80,10 +85,5 @@ it("starts the run from the build screen", async () => {
     s.screen,
     "run",
     "the screen a started run moves to (specs/program.md)",
-  );
-
-  await h.capture(
-    "state",
-    "the run the run action started from the build screen",
   );
 });

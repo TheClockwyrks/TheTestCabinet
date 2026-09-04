@@ -163,6 +163,8 @@ it("stops the motor loop on the tick a run clears, with an axis still holding a 
   const started = await h.cues();
   const looping = await h.loopingCues();
 
+  await h.capture("cleared", "The results screen after the clear");
+
   assertTrue(
     !looping.includes("motor"),
     `no motor loop live over the ${AFTER_FRAMES} frames after the clear: a run ` +
@@ -174,6 +176,4 @@ it("stops the motor loop on the tick a run clears, with an axis still holding a 
     `no motor sound started over the ${AFTER_FRAMES} frames after the clear ` +
       "(specs/ui.md) — the loop is still being fed",
   );
-
-  await h.capture("cleared", "The results screen after the clear");
 });

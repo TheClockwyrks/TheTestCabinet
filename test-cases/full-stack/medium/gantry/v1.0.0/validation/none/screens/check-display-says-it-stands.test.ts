@@ -11,9 +11,9 @@
 //
 // The crane is the minimal one that stands, posed on an isolated site: no loads,
 // no obstacles, and nothing built but the crane, so the verdict on screen is the
-// verdict of the structure this check posed. The check is run by the `check`
-// action itself (specs/controls.md binds it to `KeyC`), because what this point
-// is about is what the SCREEN shows and not what `check()` answers.
+// verdict of the structure this check posed. The check is put on screen with
+// `showCheck`, which poses the `check` action, because what this point is about
+// is what the SCREEN shows and not what the `check` reading answers.
 //
 // THE COPY IS NOT FIXED BY THE SPECIFICATION — no `STANDS_TEXT` is named — so the
 // screen is read for a verdict rather than for a sentence: a run that says the
@@ -86,7 +86,7 @@ it("says the structure stands when the check finds a sound crane", async () => {
   await standMinimalCrane(h);
 
   const found = await h.check();
-  await h.press("KeyC");
+  await h.debug.showCheck();
   await h.advance(1);
 
   const runs = await frameText(h);

@@ -142,11 +142,12 @@ it("carries a top-flange counterweight across its own ring corner alone", async 
       "the ring",
   );
   const after = await h.check();
-  assertTrue(after.stable, "the crane still stands with the counterweight");
   await h.capture(
     "support-node-load-crosses-the-corner",
     "the crane with a counterweight on the top-flange node (2, 4, 2)",
   );
+
+  assertTrue(after.stable, "the crane still stands with the counterweight");
 
   const forceOf = (result: typeof before, id: number): number => {
     const member = result.members.find((one) => one.id === id);

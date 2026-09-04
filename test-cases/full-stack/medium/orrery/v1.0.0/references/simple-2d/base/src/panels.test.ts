@@ -3,6 +3,13 @@ import { FAULTS, SOLVED_ITEMS } from "./constants";
 import { createStateOps } from "./debug";
 import { installSprites, NO_SPRITES, SpriteStore, sprites } from "./images";
 import { FAULT_BANNERS } from "./panels";
+import {
+  solvedItemRect,
+  SOLVED_PANEL_H,
+  SOLVED_PANEL_W,
+  SOLVED_PANEL_X,
+  SOLVED_PANEL_Y,
+} from "./regions";
 import { recordLine } from "./screens";
 import { Session } from "./session";
 
@@ -76,6 +83,24 @@ describe("the solved panel (specs/ui.md)", () => {
     expect(game.solvedItems()).toEqual(
       SOLVED_ITEMS.filter((item) => item !== "NEXT CHALLENGE"),
     );
+  });
+
+  it("lays its items out inside the panel, in the order it lists them", () => {
+    // The items are a menu a pointer and a touch contact drive, so each has to
+    // sit where the panel is actually drawn (specs/ui.md "Pointer and touch").
+    let last = SOLVED_PANEL_Y;
+    for (let index = 0; index < SOLVED_ITEMS.length; index += 1) {
+      const rect = solvedItemRect(index);
+      expect(rect.x).toBeGreaterThanOrEqual(SOLVED_PANEL_X);
+      expect(rect.x + rect.w).toBeLessThanOrEqual(
+        SOLVED_PANEL_X + SOLVED_PANEL_W,
+      );
+      expect(rect.y).toBeGreaterThan(last);
+      expect(rect.y + rect.h).toBeLessThanOrEqual(
+        SOLVED_PANEL_Y + SOLVED_PANEL_H,
+      );
+      last = rect.y;
+    }
   });
 
   it("offers no NEXT CHALLENGE for a challenge that belongs to no course", () => {

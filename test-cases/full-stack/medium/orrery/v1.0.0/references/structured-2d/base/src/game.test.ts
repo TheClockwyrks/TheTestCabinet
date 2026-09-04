@@ -6,11 +6,15 @@ import {
   advanceFrame,
   enterable,
   handleAction,
+  handlePointer,
   machineReady,
+  menuItemRect,
+  menuOf,
   missingApertures,
   solvedItems,
 } from "./flow";
 import { Bench } from "./harness";
+import type { MenuItemRect } from "./regions";
 
 /** The rules stood up alone, with the cues they raise recorded. */
 function bench(): { game: Bench; api: OrreryDebugApi; played: CueName[] } {
@@ -295,6 +299,210 @@ describe("the solved panel (specs/ui.md)", () => {
     handleAction(game, "up");
     expect(game.state.menuIndex).toBe(2);
     handleAction(game, "down");
+    expect(game.state.menuIndex).toBe(0);
+  });
+});
+
+/** A stage position, as the pointer reports one. */
+interface At {
+  x: number;
+  y: number;
+}
+
+/** The middle of the region the game reports for item `index`. */
+function centerOf(game: Bench, index: number): At {
+  const rect = menuItemRect(game.state, index);
+  expect(rect, `item ${index} has a region`).not.toBeNull();
+  const region = rect as MenuItemRect;
+  return { x: region.x + region.w / 2, y: region.y + region.h / 2 };
+}
+
+/** A press and a release in one place: a click, and a finger's tap. */
+function clickAt(game: Bench, at: At): void {
+  handlePointer(game, { type: "down", x: at.x, y: at.y });
+  handlePointer(game, { type: "up", x: at.x, y: at.y });
+}
+
+/** A press, a travel, and a release: a drag, and a finger's swipe. */
+function dragBetween(game: Bench, from: At, to: At): void {
+  handlePointer(game, { type: "down", x: from.x, y: from.y });
+  handlePointer(game, { type: "move", x: to.x, y: to.y });
+  handlePointer(game, { type: "up", x: to.x, y: to.y });
+}
+
+describe("the menus under the pointer and touch (specs/ui.md)", () => {
+  // A mouse, a pen, and a finger all reach the game on the same three readings
+  // (specs/controls.md), so every gesture below is a touch contact as much as
+  // it is a pointer: the press edge is the landing, the release edge is the
+  // lift, and the moves between are the travel.
+
+  it("moves the highlight onto each region the pointer enters", () => {
+    const { game } = bench();
+    handlePointer(game, { type: "move", ...centerOf(game, 2) });
+    expect(game.state.menuIndex).toBe(2);
+    expect(game.state.screen).toBe("title");
+    handlePointer(game, { type: "move", ...centerOf(game, 0) });
+    expect(game.state.menuIndex).toBe(0);
+    // A move that lands outside every region names no item, so the highlight
+    // stays on the last region the pointer entered.
+    handlePointer(game, { type: "move", x: 8, y: 8 });
+    expect(game.state.menuIndex).toBe(0);
+  });
+
+  it("takes the item both of a gesture's edges landed in", () => {
+    const { game } = bench();
+    clickAt(game, centerOf(game, TITLE_ITEMS.indexOf("EXTRAS")));
+    expect(game.state.menuIndex).toBe(TITLE_ITEMS.indexOf("EXTRAS"));
+    expect(game.state.mode).toBe("extras");
+    expect(game.state.screen).toBe("select");
+  });
+
+  it("takes no item when the two edges fall in different regions", () => {
+    const { game } = bench();
+    dragBetween(game, centerOf(game, 2), centerOf(game, 0));
+    expect(game.state.screen).toBe("title");
+    // The release moved the pointer onto the first item, which selects it.
+    expect(game.state.menuIndex).toBe(0);
+  });
+
+  it("takes no item when either edge falls outside every region", () => {
+    const outside = { x: 8, y: 8 };
+    const arrived = bench();
+    dragBetween(arrived.game, outside, centerOf(arrived.game, 1));
+    expect(arrived.game.state.screen).toBe("title");
+    expect(arrived.game.state.menuIndex).toBe(1);
+
+    const left = bench();
+    dragBetween(left.game, centerOf(left.game, 1), outside);
+    expect(left.game.state.screen).toBe("title");
+    expect(left.game.state.menuIndex).toBe(1);
+  });
+
+  it("takes the how-to's one item, which returns to the title", () => {
+    const { game, api } = bench();
+    api.setScreen("howto");
+    expect(menuItemRect(game.state, 1)).toBeNull();
+    clickAt(game, centerOf(game, 0));
+    expect(game.state.screen).toBe("title");
+  });
+
+  it("takes a select row, and a locked row opens nothing", () => {
+    const { game, api } = bench();
+    api.setScreen("select");
+    clickAt(game, centerOf(game, 4));
+    expect(game.state.selectIndex).toBe(4);
+    expect(game.state.screen).toBe("select");
+    clickAt(game, centerOf(game, 0));
+    expect(game.state.screen).toBe("editor");
+    expect(game.state.challengeRef).toEqual({ mode: "campaign", index: 0 });
+  });
+
+  it("takes an item of the solved panel, and nothing behind it", () => {
+    const { game, api } = bench();
+    api.openChallenge("extras", 0);
+    api.placeSet(0, 0, 0, 0);
+    api.startRun();
+    api.setTally(0, 6);
+    advanceFrame(game, 1);
+    expect(game.state.sim?.status).toBe("complete");
+    const items = solvedItems(game.state);
+
+    // The machine drawn behind the panel takes neither the highlight nor the
+    // take, and the run stands.
+    clickAt(game, { x: 300, y: 500 });
+    expect(game.state.menuIndex).toBe(0);
+    expect(game.state.sim?.status).toBe("complete");
+
+    clickAt(game, centerOf(game, items.indexOf("BACK TO SELECT")));
+    expect(game.state.screen).toBe("select");
+  });
+
+  it("sets the focus from a press the panel took, as from any press", () => {
+    const { game, api } = bench();
+    api.openChallenge("extras", 0);
+    api.placeSet(0, 0, 0, 0);
+    api.startRun();
+    api.setTally(0, 6);
+    advanceFrame(game, 1);
+    api.setFocus("tape");
+    // The focus rule of specs/controls.md answers EVERY press on the editor
+    // screen. What specs/ui.md exempts while the panel is up is the machine
+    // drawn behind it, and the focus is not the machine's: it is where the
+    // editing keys go the moment the panel is gone.
+    handlePointer(game, { type: "down", ...centerOf(game, 0) });
+    expect(game.state.editor.focus).toBe("field");
+    expect(game.state.sim?.status).toBe("complete");
+  });
+
+  it("lays out no region while editing, and none while a run is live", () => {
+    const { game, api } = bench();
+    api.openChallenge("extras", 0);
+    expect(menuOf(game.state)).toBeNull();
+    expect(menuItemRect(game.state, 0)).toBeNull();
+    api.placeSet(0, 0, 0, 0);
+    api.startRun();
+    expect(menuItemRect(game.state, 0)).toBeNull();
+    api.setPaused(true);
+    expect(menuItemRect(game.state, 0)).toBeNull();
+  });
+});
+
+describe("the remembered title selection (specs/ui.md)", () => {
+  it("opens on the first item, and on the entry last taken after that", () => {
+    const { game, api } = bench();
+    expect(game.state.titleIndex).toBe(0);
+    api.setMenuIndex(2);
+    handleAction(game, "confirm");
+    expect(game.state.screen).toBe("howto");
+    expect(game.state.titleIndex).toBe(2);
+    handleAction(game, "back");
+    expect(game.state.screen).toBe("title");
+    expect(game.state.menuIndex).toBe(2);
+  });
+
+  it("records a take from a pointer as it records one from the keyboard", () => {
+    const { game } = bench();
+    clickAt(game, centerOf(game, 1));
+    expect(game.state.titleIndex).toBe(1);
+    handleAction(game, "back");
+    expect(game.state.screen).toBe("title");
+    expect(game.state.menuIndex).toBe(1);
+  });
+
+  it("carries the highlight through the how-to untouched", () => {
+    const { game, api } = bench();
+    api.setMenuIndex(2);
+    api.setScreen("howto");
+    // The how-to draws its one item as the highlighted one outright, so it has
+    // no highlight of its own to write and leaves the posed one standing.
+    expect(game.state.menuIndex).toBe(2);
+    api.setScreen("title");
+    // Nothing was taken on the way out, so the remembered selection is still
+    // `0` — and the arrival at the title is what puts the highlight back on it.
+    expect(game.state.titleIndex).toBe(0);
+    expect(game.state.menuIndex).toBe(0);
+  });
+
+  it("is written by taking an item and by nothing else", () => {
+    const { game, api } = bench();
+    api.setMenuIndex(2);
+    handlePointer(game, { type: "move", ...centerOf(game, 1) });
+    api.setScreen("howto");
+    api.setScreen("title");
+    expect(game.state.titleIndex).toBe(0);
+    expect(game.state.menuIndex).toBe(0);
+  });
+
+  it("stands through a visit elsewhere, and is 0 again after a reset", () => {
+    const { game, api } = bench();
+    api.setMenuIndex(1);
+    handleAction(game, "confirm");
+    api.openChallenge("campaign", 0);
+    api.setScreen("title");
+    expect(game.state.titleIndex).toBe(1);
+    expect(game.state.menuIndex).toBe(1);
+    api.reset();
+    expect(game.state.titleIndex).toBe(0);
     expect(game.state.menuIndex).toBe(0);
   });
 });

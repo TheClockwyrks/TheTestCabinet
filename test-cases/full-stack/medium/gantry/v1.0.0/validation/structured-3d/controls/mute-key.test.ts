@@ -71,13 +71,15 @@ it("flips the mute bit on the title screen and on the run screen", async () => {
   await h.debug.setScreen("run");
   await h.press(MUTE);
   await h.advance(1);
+  const after = await h.snapshot();
+
+  await h.advance(1);
+  await h.capture("state", "the run screen after the mute action toggled back");
+
   assertEqual(
-    (await h.snapshot()).muted,
+    after.muted,
     was,
     `muted after ${MUTE} on the run screen, where the action applies as it ` +
       "does on every screen (specs/ui.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "the run screen after the mute action toggled back");
 });

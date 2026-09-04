@@ -81,7 +81,7 @@ it("puts no verdict on the screen when the check finds a readiness issue", async
   const before = new Set(await frameText(h));
 
   const found = await h.check();
-  await h.press("KeyC");
+  await h.debug.showCheck();
   await h.advance(1);
   const after = await frameText(h);
   await h.capture("check-no-verdict", "The check display with no verdict");

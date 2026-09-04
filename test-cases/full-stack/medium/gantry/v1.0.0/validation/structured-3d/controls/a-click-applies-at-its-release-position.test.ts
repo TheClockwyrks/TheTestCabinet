@@ -118,13 +118,15 @@ it("removes the member the release was over, not the nothing under the press", a
   await h.pointerUp();
   await h.advance(1);
 
+  const after = await h.snapshot();
+
+  await h.capture("state", "the build screen after the click was released");
+
   assertLength(
-    (await h.snapshot()).structure.members,
+    after.structure.members,
     0,
     "the members standing after a delete click released over the one that " +
       "stood: a click is applied at the position it was released from " +
       "(specs/controls.md)",
   );
-
-  await h.capture("state", "the build screen after the click was released");
 });

@@ -186,6 +186,7 @@ and drive it.
 | `src/app-tick.ts` | What a frame does: the controller's half (input) and the mode's half (the fixed tick and the cues it raises) |
 | `src/editor.ts` | Pointer picking on the lattice and the six build tools |
 | `src/screens.ts`, `src/tape.ts` | The seven screens, the navigation, and the tape editor's widgets |
+| `src/menus.ts` | Where the menu entries are laid out, and what a pointer or a contact lands on |
 | `src/scene.ts` | Which actors the world holds, and the one call a frame that hands each of them the state |
 | `src/yard/` | The world pass: the ground, sky and light, the site's fixtures and the build aids, the crane's own geometry, and the produced models |
 | `src/hud/` | The screen pass: every screen's readouts, as text, shapes and direct drawing on the screen layer |
@@ -205,7 +206,8 @@ any frame rate.
 
 The game instance's `initialize` returns the automation surface, and the engine
 hands it back as `engine.debug`. It can pose a site and read it back without a
-real pointer: `openSite`, `addMember`, `setRing`, `addMoveStep` and friends
+real pointer: `openSite` and `setScreen` reach any site's build screen,
+`addMember`, `setRing`, `addMoveStep` and friends
 build a crane and a tape under the same rules a player builds under, `startRun`
 starts the run the `G` key starts, and `snapshot()` reads the whole game back.
 The clock, the keyboard, the pointer, the camera's projection and the overlay

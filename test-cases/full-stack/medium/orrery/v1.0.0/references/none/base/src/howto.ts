@@ -10,6 +10,13 @@
 
 import { CONSTELLATION_TARGET, HOWTO_PAGES } from "./constants";
 
+/**
+ * The copy of the how-to's single menu item (specs/ui.md `howto`). The
+ * specification leaves the wording to the build and fixes only what taking it
+ * does, which is what `back` does: return to the title.
+ */
+export const HOWTO_ITEM_TEXT = "BACK TO TITLE";
+
 /** One page of the how-to. */
 export interface HowtoPage {
   /** The page's heading. */

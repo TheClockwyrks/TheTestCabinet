@@ -81,6 +81,10 @@ it("wraps to the first watch speed and carries the cycle on", async () => {
   for (const [press, index] of EXPECTED.entries()) {
     await h.press(SPEED);
     const s = await h.snapshot();
+    if (index === 0) {
+      await h.capture("wrapped", "The run screen after the wrapping press");
+    }
+
     assertEqual(
       s.run.speedIndex,
       index,
@@ -89,8 +93,5 @@ it("wraps to the first watch speed and carries the cycle on", async () => {
         `first, reading ${RUN_SPEEDS[index]} times real time ` +
         "(specs/ui.md § Run)",
     );
-    if (index === 0) {
-      await h.capture("wrapped", "The run screen after the wrapping press");
-    }
   }
 });

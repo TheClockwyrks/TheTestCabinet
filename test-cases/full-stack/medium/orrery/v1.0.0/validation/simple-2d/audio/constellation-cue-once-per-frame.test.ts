@@ -43,13 +43,14 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
-import { CUES, SPEEDS } from "../constants";
+import { CUES, RECORDING_RUN_UP, RECORDING_SETTLE, SPEEDS } from "../constants";
 import { armPart, risePart, setPart, solution } from "../formats";
 import { BARE } from "../fixtures";
 import {
   captureReplay,
   createHarness,
   openBareRun,
+  pauseRun,
   resumeRun,
   tallyOf,
   watchCues,
@@ -129,9 +130,19 @@ it("sounds no more for a frame that consumed several than for one that consumed 
   );
 
   // Then one frame long enough to cover several more deliveries.
+  // The recording brackets the long frame with the run HELD either side of it: a
+  // paused run "advances no fraction" (`specs/simulation.md`), so the run-up and
+  // the settle cross no boundary and consume no constellation, and what a reviewer
+  // watches is the machine before the frame and the field the frame left.
   const many = await captureReplay(h, "once", async () => {
+    await pauseRun(h);
+    await h.advance(RECORDING_RUN_UP);
+    await resumeRun(h);
     await h.advanceSeconds(LONG_FRAME_CYCLES / SPEEDS[FAST], 1);
-    return h.frame();
+    const long = h.frame();
+    await pauseRun(h);
+    await h.advance(RECORDING_SETTLE);
+    return long;
   });
 
   const afterMany = await h.snapshot();

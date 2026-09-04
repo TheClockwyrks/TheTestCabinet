@@ -35,6 +35,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
+import { RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import { at, hexCenter } from "../field";
 import { BARE, ORIGIN } from "../fixtures";
 import {
@@ -63,10 +64,14 @@ it("places a machine and starts a run from code without sounding a cue", async (
   await h.armAudio();
   await h.advance(2);
 
-  const heard = watchCues(h);
-  const before = await h.sounds();
-
   const silent = await captureReplay(h, "silent", async () => {
+    // The run-up is taken BEFORE the cue window opens, so the frames that make the
+    // recording watchable are not frames this point counts sound over: what the
+    // window holds is the poses and nothing else.
+    await h.advance(RECORDING_RUN_UP);
+    const heard = watchCues(h);
+    const before = await h.sounds();
+
     // Every call from here to the reading is a pose. No frame is advanced.
     await h.debug.loadChallenge(BARE);
     await h.debug.clearMachine();
@@ -93,16 +98,22 @@ it("places a machine and starts a run from code without sounding a cue", async (
     await h.debug.setPaused(true);
     await h.debug.setPaused(false);
 
-    const reading = { sounded: await h.sounds(), stamped: heard.length };
+    const reading = {
+      before,
+      sounded: await h.sounds(),
+      stamped: heard.length,
+    };
 
-    // Only now, past the reading, are the frames run that the cues belong to.
-    await h.advance(3);
+    // Only now, past the reading, are the frames run that the cues belong to — and
+    // they are the recording's settle as well, so what a reviewer watches is the
+    // posed machine and then the run it was left in.
+    await h.advance(RECORDING_SETTLE);
     return reading;
   });
 
   assertEqual(
     silent.sounded,
-    before,
+    silent.before,
     "a machine placed, dragged and run purely from code sounds none of the cues of specs/ui.md",
   );
   assertEqual(
@@ -113,7 +124,7 @@ it("places a machine and starts a run from code without sounding a cue", async (
 
   assertGreaterThan(
     await h.sounds(),
-    before,
+    silent.before,
     "the same reading over the same build moves once frames are advanced: the cues a scenario hears come from the frames advanced after it",
   );
 });

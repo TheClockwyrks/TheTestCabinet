@@ -36,6 +36,7 @@ import {
   assertNotNull,
   assertTrue,
 } from "../assert";
+import { RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import { adjacent, at, hexCenter, type Hex } from "../field";
 import { BARE } from "../fixtures";
 import {
@@ -83,15 +84,17 @@ it("closes the track into a loop when the lay reaches the path's other end", asy
   );
 
   const seen = await captureReplay(h, "loop", async () => {
-    await h.advance(1);
+    await h.advance(RECORDING_RUN_UP);
     await pressAt(h, hexCenter(LAST));
     const opened = (await h.snapshot()).editor.drag;
     await h.advance(1);
     await moveTo(h, hexCenter(FIRST));
     await h.advance(1);
-    return { opened, after: partById(await h.snapshot(), track) };
+    const closed = { opened, after: partById(await h.snapshot(), track) };
+    await releasePointer(h);
+    await h.advance(RECORDING_SETTLE);
+    return closed;
   });
-  await releasePointer(h);
 
   assertEqual(
     seen.opened?.kind,

@@ -2,6 +2,14 @@
 // are moved by (specs/state.md, specs/ui.md, specs/controls.md,
 // specs/simulation.md).
 //
+// Every menu is worked from the keyboard AND from the pointer, and a finger
+// reaches the game as a pointer on the same three readings
+// (specs/controls.md), so the menus need no touch path of their own. A pointer
+// and a touch contact drive them DIRECTLY rather than through an action
+// (specs/ui.md "Pointer and touch"): `driveMenu` moves the highlight and takes
+// the item, and what taking it does is exactly what `confirm` does on that
+// screen, because both call the same take.
+//
 // A `Session` is a DRAFT of the game's state with every transition Orrery has
 // hung off it. The engine holds the state by value, so a frame and a pose both
 // work the same way: clone the current state into a draft, stand a session on
@@ -21,7 +29,11 @@
 
 import { challengeCount, challengesOf } from "./challenges";
 import { CUES, HOWTO_PAGES, SPEEDS, TITLE_ITEMS } from "./constants";
-import { applyEditorAction, applyPointerSample } from "./editor";
+import {
+  applyEditorAction,
+  applyPointerFocus,
+  applyPointerSample,
+} from "./editor";
 import {
   DRAG_ACTIONS,
   type Action,
@@ -33,7 +45,15 @@ import { cloneChallenge } from "./formats";
 import type { PointerSample } from "./input";
 import type { StagePoint } from "./motion";
 import { clearOutbox, raiseCue, raiseEffect } from "./outbox";
-import { enterable, machineReady, solvedItems } from "./progress";
+import {
+  enterable,
+  machineReady,
+  menuItemAt,
+  menuOf,
+  solvedItems,
+  type Menu,
+} from "./progress";
+import type { MenuKind } from "./regions";
 import {
   advanceRun,
   machineSnapshot,
@@ -132,6 +152,9 @@ export class Session implements RunHost {
    */
   enterScreen(name: Screen): void {
     const { state } = this;
+    // A press armed on the menu this screen replaces is aimed at a menu that
+    // is no longer shown, so it takes nothing wherever its release lands.
+    state.menuPress = null;
     if (name === "editor") {
       if (state.challenge === null) {
         throw new Error("setScreen: no challenge is open");
@@ -144,10 +167,21 @@ export class Session implements RunHost {
     state.screen = name;
     switch (name) {
       case "title":
-        state.menuIndex = 0;
+        // The remembered title selection: a return lands on the entry that led
+        // away, and `titleIndex` is `0` until a title item is first taken, so
+        // the first frame of the session opens on the first item (specs/ui.md
+        // "The remembered title selection").
+        state.menuIndex = state.titleIndex;
         state.howtoPage = 0;
         break;
       case "howto":
+        // The highlight is left where it stands. The how-to's one item is
+        // drawn as the highlighted one outright, so the screen has no
+        // highlight of its own to write, and specs/instrumentation.md's
+        // `setScreen` table names `menuIndex` for `title` and for no other
+        // screen — which leaves the `menuIndex` a return to the title lands
+        // on the remembered selection's doing rather than a leftover of the
+        // way out.
         state.howtoPage = 0;
         break;
       case "select":
@@ -202,6 +236,7 @@ export class Session implements RunHost {
   ): void {
     const { state } = this;
     if (state.screen === "editor") this.leaveEditor(false);
+    state.menuPress = null;
     state.challenge = challenge;
     state.challengeRef = ref;
     state.editor = emptyEditor();
@@ -220,6 +255,7 @@ export class Session implements RunHost {
     if (challenge === undefined) return;
     const { state } = this;
     if (state.screen === "editor") this.leaveEditor(true);
+    state.menuPress = null;
     state.mode = mode;
     state.challenge = cloneChallenge(challenge);
     state.challengeRef = { mode, index };
@@ -255,8 +291,16 @@ export class Session implements RunHost {
    * is mirrored into `state.pointer` as the sample lands, so a posed press and
    * a player's press are the same event to the game
    * (specs/instrumentation.md).
+   *
+   * `menuTakes` belongs to the frame that is reading the sample. It is `false`
+   * once one of that frame's keyboard edges has already taken a menu item, and
+   * the sample then moves the highlight and takes nothing, because "a frame
+   * carrying a keyboard `confirm` edge together with a pointer or touch taking
+   * an item takes the keyboard's item alone" (specs/ui.md "Pointer and
+   * touch"). A sample posed through the debug surface arrives outside any
+   * frame, with no keyboard edge before it, so it always takes.
    */
-  handlePointer(sample: PointerSample): void {
+  handlePointer(sample: PointerSample, menuTakes = true): void {
     const { state } = this;
     state.pointer = {
       x: sample.x,
@@ -264,72 +308,187 @@ export class Session implements RunHost {
       down:
         sample.type === "move" ? state.pointer.down : sample.type === "down",
     };
+    if (this.driveMenu(sample, menuTakes)) {
+      // The menu answered the sample — and the focus rule answers it as well,
+      // because it answers every press on the editor screen, the ones the
+      // solved panel's items take included (specs/controls.md "Focus").
+      applyPointerFocus(this, sample);
+      return;
+    }
     applyPointerSample(this, sample);
+  }
+
+  /**
+   * Resolve one sample against the menu the current screen shows, and answer
+   * whether the menu took it (specs/ui.md "Pointer and touch").
+   *
+   * A move or a press ONTO an item's region makes it the highlighted one, and
+   * a press remembers the item it landed in. A release highlights the item it
+   * lands in and takes that item only when the press landed in the same one:
+   * "Two edges that fall in different regions, and an edge that falls outside
+   * every region, take no item."
+   *
+   * A sample that lands outside every region is not the menu's: on a menu
+   * screen nothing else reads it, and on the editor under the solved panel it
+   * falls through to the editor, where the machine behind the panel takes
+   * neither the highlight nor the take and only the focus rule answers.
+   *
+   * `takes` is `false` for the rest of a frame whose keyboard `confirm` has
+   * already taken an item. The highlight still follows the sample; the take is
+   * spent (specs/ui.md "Pointer and touch").
+   */
+  private driveMenu(sample: PointerSample, takes: boolean): boolean {
+    const { state } = this;
+    const menu = menuOf(state);
+    if (menu === null) return false;
+    const at = menuItemAt(menu, sample.x, sample.y);
+    if (sample.type === "down") {
+      // A frame whose take is spent arms nothing, so the release that follows
+      // this press within it has nothing to pair with either.
+      state.menuPress = takes ? at : null;
+      if (at === null) return false;
+      this.highlight(menu.kind, at);
+      return true;
+    }
+    if (sample.type === "move") {
+      if (at === null) return false;
+      this.highlight(menu.kind, at);
+      return true;
+    }
+    // A release, which is where a take is decided. The armed press is spent
+    // whatever it decides, so a gesture never arms the next one.
+    const pressed = state.menuPress;
+    state.menuPress = null;
+    if (at === null) return false;
+    this.highlight(menu.kind, at);
+    if (takes && pressed === at) this.takeMenuItem(menu, at);
+    return true;
+  }
+
+  /**
+   * Move the highlight the screen carries: `state.menuIndex`, except on
+   * `select`, where it is `state.selectIndex` (specs/ui.md).
+   */
+  private highlight(kind: MenuKind, index: number): void {
+    if (kind === "select") this.state.selectIndex = index;
+    else this.state.menuIndex = index;
+  }
+
+  /**
+   * Take one item of a menu, which does exactly what `confirm` does on that
+   * screen — the same take, so a pointer, a touch contact, and the keyboard
+   * cannot drift apart. The item taken is the one the highlight names,
+   * whichever input raised it.
+   */
+  private takeMenuItem(menu: Menu, index: number): void {
+    switch (menu.kind) {
+      case "title":
+        this.takeTitleItem();
+        return;
+      case "howto":
+        this.enterScreen("title");
+        return;
+      case "select":
+        this.takeSelectRow();
+        return;
+      case "solved":
+        this.takeSolvedItem(this.solvedItems()[index]);
+        return;
+    }
   }
 
   /**
    * Resolve one action's press edge against the screen showing it. An action
    * the screen's row omits does nothing (specs/controls.md "What each screen
    * reads").
+   *
+   * Answers whether the edge TOOK a menu item. That is what closes the rest of
+   * the frame to the menus: "a frame carrying a keyboard `confirm` edge
+   * together with a pointer or touch taking an item takes the keyboard's item
+   * alone" (specs/ui.md "Pointer and touch"). Reading the keyboard first is
+   * not enough on its own, because a take changes the screen and the samples
+   * read after it would land on the menu the NEW screen shows.
    */
-  handleAction(action: Action): void {
+  handleAction(action: Action): boolean {
     if (action === "mute") {
       this.io.toggleMuted();
-      return;
+      return false;
     }
     switch (this.actionContext()) {
       case "title":
-        this.titleAction(action);
-        return;
+        return this.titleAction(action);
       case "howto":
-        this.howtoAction(action);
-        return;
+        return this.howtoAction(action);
       case "select":
-        this.selectAction(action);
-        return;
+        return this.selectAction(action);
       case "editor-editing":
         this.editingAction(action);
-        return;
+        return false;
       case "editor-running":
         this.runningAction(action);
-        return;
+        return false;
       case "editor-halted":
-        this.haltedAction(action);
-        return;
+        return this.haltedAction(action);
     }
   }
 
-  private titleAction(action: Action): void {
+  /** Answers whether the edge took the highlighted item. */
+  private titleAction(action: Action): boolean {
     const { state } = this;
     const count = TITLE_ITEMS.length;
     if (action === "up")
       state.menuIndex = (state.menuIndex + count - 1) % count;
     else if (action === "down") state.menuIndex = (state.menuIndex + 1) % count;
     else if (action === "confirm") {
-      const item = TITLE_ITEMS[state.menuIndex];
-      if (item === "CAMPAIGN") {
-        state.mode = "campaign";
-        this.enterScreen("select");
-      } else if (item === "EXTRAS") {
-        state.mode = "extras";
-        this.enterScreen("select");
-      } else {
-        this.enterScreen("howto");
-      }
+      this.takeTitleItem();
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Take the highlighted title item, from the keyboard, a pointer, or a touch
+   * contact alike. Taking one is what records the remembered title selection,
+   * so a later return to the title lands on the entry that led away — and
+   * nothing else writes it (specs/ui.md "The remembered title selection").
+   */
+  private takeTitleItem(): void {
+    const { state } = this;
+    state.titleIndex = state.menuIndex;
+    const item = TITLE_ITEMS[state.menuIndex];
+    if (item === "CAMPAIGN") {
+      state.mode = "campaign";
+      this.enterScreen("select");
+    } else if (item === "EXTRAS") {
+      state.mode = "extras";
+      this.enterScreen("select");
+    } else {
+      this.enterScreen("howto");
     }
   }
 
-  private howtoAction(action: Action): void {
+  /**
+   * Answers whether the edge took the screen's one item. `back` leaves for the
+   * same title and takes nothing: the edge specs/ui.md closes a frame's menus on
+   * is the `confirm` edge, and only that one.
+   */
+  private howtoAction(action: Action): boolean {
     const { state } = this;
     if (action === "left") state.howtoPage = Math.max(0, state.howtoPage - 1);
     else if (action === "right") {
       state.howtoPage = Math.min(HOWTO_PAGES - 1, state.howtoPage + 1);
     } else if (action === "confirm" || action === "back") {
       this.enterScreen("title");
+      return action === "confirm";
     }
+    return false;
   }
 
-  private selectAction(action: Action): void {
+  /**
+   * Answers whether the edge took the highlighted row. A locked row opens
+   * nothing, and taking it is still what the frame's one take was spent on.
+   */
+  private selectAction(action: Action): boolean {
     const { state } = this;
     const count = challengeCount(state.mode);
     if (count > 0 && action === "up") {
@@ -337,11 +496,19 @@ export class Session implements RunHost {
     } else if (count > 0 && action === "down") {
       state.selectIndex = (state.selectIndex + 1) % count;
     } else if (action === "confirm") {
-      if (this.enterable(state.mode, state.selectIndex)) {
-        this.enterFromSelect(state.mode, state.selectIndex);
-      }
+      this.takeSelectRow();
+      return true;
     } else if (action === "back") {
       this.enterScreen("title");
+    }
+    return false;
+  }
+
+  /** Take the highlighted select row: a locked one opens nothing. */
+  private takeSelectRow(): void {
+    const { state } = this;
+    if (this.enterable(state.mode, state.selectIndex)) {
+      this.enterFromSelect(state.mode, state.selectIndex);
     }
   }
 
@@ -397,16 +564,20 @@ export class Session implements RunHost {
     }
   }
 
-  private haltedAction(action: Action): void {
+  /**
+   * Answers whether the edge took an item of the solved panel. Nothing is taken
+   * while the run is faulted rather than complete: that panel shows no menu.
+   */
+  private haltedAction(action: Action): boolean {
     const { state } = this;
     const sim = state.sim;
-    if (sim === null) return;
+    if (sim === null) return false;
     if (action === "back") {
       stopRun(state);
       state.menuIndex = 0;
-      return;
+      return false;
     }
-    if (sim.status !== "complete") return;
+    if (sim.status !== "complete") return false;
     const items = this.solvedItems();
     if (action === "up") {
       state.menuIndex = (state.menuIndex + items.length - 1) % items.length;
@@ -414,7 +585,9 @@ export class Session implements RunHost {
       state.menuIndex = (state.menuIndex + 1) % items.length;
     } else if (action === "confirm") {
       this.takeSolvedItem(items[state.menuIndex]);
+      return true;
     }
+    return false;
   }
 
   /** The solved panel's menu: `NEXT CHALLENGE` only when a next one exists. */

@@ -265,6 +265,11 @@ it("hands an arm node a force that grows with the square of the slew rate", asyn
   let largest = 0;
   for (const id of arm)
     largest = Math.max(largest, Math.abs(changeAt(full, id)));
+  await h.capture(
+    "centripetal",
+    "The jib rig cruising at SLEW_MAX_RATE, its arm carrying the centripetal term",
+  );
+
   assertGreaterThan(
     largest,
     1,
@@ -313,10 +318,5 @@ it("hands an arm node a force that grows with the square of the slew rate", asyn
     "the sideways brace at (6, 6, 0) pulling harder as the arm turns, which is " +
       "the arm being drawn outward from the slew axis rather than inward " +
       "(specs/statics.md)",
-  );
-
-  await h.capture(
-    "centripetal",
-    "The jib rig cruising at SLEW_MAX_RATE, its arm carrying the centripetal term",
   );
 });

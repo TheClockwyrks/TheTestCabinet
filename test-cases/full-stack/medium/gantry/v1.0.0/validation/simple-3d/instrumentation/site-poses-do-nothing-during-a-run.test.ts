@@ -81,21 +81,25 @@ it("leaves the yard and the run's loads alone when a site pose is made mid-run",
     ["addObstacle", () => h.debug.addObstacle(-4, 0, -4, 2, 2, 2)],
   ];
 
-  for (const [name, pose] of poses) {
-    await pose();
-    const after = await h.snapshot();
-    assertEqual(
-      yard(after),
-      before,
-      `the site's loads, its obstacles and the run's load entries across a ` +
-        `${name} made while a run is in progress (specs/instrumentation.md)`,
-    );
-    assertEqual(
-      after.run.phase,
-      "running",
-      `the run across that ${name}: a pose reaches no verdict`,
-    );
+  try {
+    for (const [name, pose] of poses) {
+      await pose();
+      const after = await h.snapshot();
+      assertEqual(
+        yard(after),
+        before,
+        `the site's loads, its obstacles and the run's load entries across a ` +
+          `${name} made while a run is in progress (specs/instrumentation.md)`,
+      );
+      assertEqual(
+        after.run.phase,
+        "running",
+        `the run across that ${name}: a pose reaches no verdict`,
+      );
+    }
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.capture("state", "the yard a mid-run site pose could not touch");
   }
-
-  await h.capture("state", "the yard a mid-run site pose could not touch");
 });

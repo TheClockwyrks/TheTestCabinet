@@ -13,12 +13,21 @@ import {
 import { point } from "./convert";
 import { createDebugSurface } from "./debug";
 import type { GantryState } from "./game";
+import { menuRects } from "./menus";
 import { setScreen, titleState } from "./state";
 
 const debug = createDebugSurface();
 
+/**
+ * Enter a site the way the select screen does: `openSite` carries the opening
+ * `specs/state.md` fixes and leaves the screen alone, so the build screen is
+ * the caller's second call (`specs/instrumentation.md`).
+ */
+const enterSite = (index: number): GantryState =>
+  debug.setScreen(debug.openSite(titleState(), index), "build");
+
 /** Site 0, opened on the build screen. */
-const yard = (): GantryState => debug.openSite(titleState(), 0);
+const yard = (): GantryState => enterSite(0);
 
 describe("the surface itself", () => {
   it("carries the version the constants fix", () => {
@@ -151,18 +160,48 @@ describe("a pose the player's act would be refused", () => {
 });
 
 describe("openSite", () => {
-  it("opens a locked site and shows its build screen", () => {
+  it("opens a locked site and leaves the screen as it stands", () => {
     const s = debug.openSite(titleState(), 4);
     expect(s.siteIndex).toBe(4);
-    expect(s.screen).toBe("build");
+    // The call was made from the title screen, and `openSite` carries the
+    // opening `specs/state.md` fixes and nothing else.
+    expect(s.screen).toBe("title");
     expect(debug.snapshot(s).site.name).toBe(SITE_NAMES[4]);
     expect(debug.snapshot(s).site.budget).toBe(SITES[4].budget);
   });
 });
 
+describe("menuItemRect", () => {
+  it("reports the hit region of an entry of the menu showing", () => {
+    // The reading is the layout `src/menus.ts` draws at, so what it answers is
+    // where the entry actually is (`specs/instrumentation.md`).
+    const s = titleState();
+    expect(debug.menuItemRect(s, 1)).toEqual(menuRects(s)[1]);
+    // A screen showing no menu, and an index the menu has no entry at, are
+    // both outside the domain.
+    expect(() => debug.menuItemRect(s, 2)).toThrow();
+    expect(() => debug.menuItemRect(s, -1)).toThrow();
+    expect(() => debug.menuItemRect(setScreen(s, "howto"), 0)).toThrow();
+  });
+});
+
+describe("showCheck", () => {
+  it("leaves the check the action would show, on the build screen alone", () => {
+    const shown = debug.showCheck(yard());
+    expect(shown.checkResult).not.toBeNull();
+    expect(debug.snapshot(shown).checkResult).toEqual(debug.check(shown));
+    // The `check` action reaches the build screen and nothing else, and so
+    // does this pose (`specs/instrumentation.md`).
+    expect(debug.showCheck(titleState()).checkResult).toBeNull();
+    expect(
+      debug.showCheck(setScreen(yard(), "program")).checkResult,
+    ).toBeNull();
+  });
+});
+
 describe("reset", () => {
   it("restores every field but muted", () => {
-    let s = debug.openSite(titleState(), 2);
+    let s = enterSite(2);
     s = debug.setRing(s, 0, 2, 0);
     s = debug.setTool(s, "delete");
     s = debug.setCleared(s, 0, true);
@@ -242,7 +281,7 @@ describe("the snapshot", () => {
   });
 
   it("reports the open site's own figures and the yard as it stands", () => {
-    const s = debug.openSite(titleState(), 2);
+    const s = enterSite(2);
     const site = debug.snapshot(s).site;
     expect(site.name).toBe(SITE_NAMES[2]);
     expect(site.envelope.min).toEqual(point(-10, 0, -8));
@@ -297,7 +336,7 @@ describe("the snapshot", () => {
 describe("the run in progress", () => {
   /** A run posed as in progress, with two loads standing in the yard. */
   const running = (): GantryState => {
-    const s = debug.openSite(titleState(), 0);
+    const s = enterSite(0);
     s.screen = "run";
     s.run.phase = "running";
     s.run.loads = [{ phase: "waiting", pos: point(10, 2, 0), yaw: 0 }];
@@ -336,14 +375,14 @@ describe("the run in progress", () => {
   });
 
   it("sets the watch speed on the run screen, ended or not", () => {
-    const ended = debug.openSite(titleState(), 0);
+    const ended = enterSite(0);
     ended.screen = "run";
     ended.run.phase = "failed";
     expect(debug.setSpeedIndex(ended, 2).run.speedIndex).toBe(2);
   });
 
   it("refuses a run pose while no run is in progress", () => {
-    const idle = debug.openSite(titleState(), 0);
+    const idle = enterSite(0);
     idle.screen = "run";
     expect(debug.setAxis(idle, "hoist", 9)).toEqual(idle);
     expect(debug.setBob(idle, 1, 1, 1)).toEqual(idle);
@@ -365,7 +404,7 @@ describe("the run in progress", () => {
 
 describe("the site poses", () => {
   it("hold only what a scenario is about", () => {
-    let s = debug.openSite(titleState(), 4);
+    let s = enterSite(4);
     s = debug.clearLoads(s);
     s = debug.clearObstacles(s);
     expect(debug.snapshot(s).site.loads).toEqual([]);
@@ -387,7 +426,7 @@ describe("the site poses", () => {
   });
 
   it("are the site's, so nothing built is disturbed", () => {
-    let s = debug.setRing(debug.openSite(titleState(), 0), 0, 2, 0);
+    let s = debug.setRing(enterSite(0), 0, 2, 0);
     const before = debug.snapshot(s).structure;
     s = debug.addObstacle(s, 0, 0, 0, 4, 4, 4);
     expect(debug.snapshot(s).structure).toEqual(before);

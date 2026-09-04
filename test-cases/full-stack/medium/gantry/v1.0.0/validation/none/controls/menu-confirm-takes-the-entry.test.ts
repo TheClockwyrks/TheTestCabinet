@@ -47,13 +47,15 @@ it("opens the screen the highlighted title entry leads to", async () => {
   assertEqual(posed.menuIndex, ENTRY, "the entry the menu highlights");
 
   await h.press(CONFIRM);
+  const after = await h.snapshot();
+
+  await h.advance(1);
+  await h.capture("state", "the screen the highlighted entry opened");
+
   assertEqual(
-    (await h.snapshot()).screen,
+    after.screen,
     "howto",
     `the screen after ${CONFIRM} with TITLE_ITEMS[${ENTRY}] highlighted, ` +
       "which is where HOW TO PLAY leads (specs/ui.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "the screen the highlighted entry opened");
 });

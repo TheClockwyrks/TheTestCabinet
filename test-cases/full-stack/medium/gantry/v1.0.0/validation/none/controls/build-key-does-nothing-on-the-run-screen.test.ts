@@ -72,13 +72,15 @@ it("stays on the run screen when the build action is pressed", async () => {
   await h.press(BUILD);
   await h.advance(1);
 
+  const after = await h.snapshot();
+
+  await h.capture("state", "the run screen the build action left standing");
+
   assertEqual(
-    (await h.snapshot()).screen,
+    after.screen,
     "run",
     `the screen after ${BUILD} on the run screen, which takes the camera ` +
       "actions, a pointer drag, `speed`, `mute` and `back` alone " +
       "(specs/controls.md § The run screen)",
   );
-
-  await h.capture("state", "the run screen the build action left standing");
 });

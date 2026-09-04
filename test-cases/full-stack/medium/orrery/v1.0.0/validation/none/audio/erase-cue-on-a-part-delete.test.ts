@@ -34,7 +34,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertLength } from "../assert";
-import { CUES } from "../constants";
+import { CUES, RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import { BARE, ORIGIN } from "../fixtures";
 import {
   captureReplay,
@@ -85,18 +85,27 @@ it("sounds erase once, on the frame the part-delete press was answered on", asyn
     "the standing arm sounds nothing while it stands, so nothing sounds before the press",
   );
 
+  // The recording brackets the press rather than the frame it is answered on: the
+  // run-up is taken on the standing arm, which the fence above has just read as
+  // silent, and the settle on the field it left. The frame the press was answered
+  // on and the frames that sounded are read INSIDE, past the run-up and before the
+  // settle, so the reading below is the reading the press itself produced.
+  let pressed = 0;
+  let sounded: number[] = [];
   await captureReplay(h, "erased", async () => {
+    await h.advance(RECORDING_RUN_UP);
     await pressAction(h, "part-delete");
     await h.advance(PRESS_LAG);
+    pressed = h.frame();
+    sounded = soundingFrames(heard, CUES.erase);
+    await h.advance(RECORDING_SETTLE);
   });
-  const pressed = h.frame();
 
   assertLength(
     await partIds(h),
     0,
     "part-delete removed the selected part, which is the event the cue is for",
   );
-  const sounded = soundingFrames(heard, CUES.erase);
   assertLength(
     sounded,
     1,

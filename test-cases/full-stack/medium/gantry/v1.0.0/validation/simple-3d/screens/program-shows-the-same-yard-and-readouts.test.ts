@@ -150,6 +150,11 @@ it("draws the build screen's readouts on the program screen too", async () => {
   assertEqual(after.screen, "program", "the screen the tape editor is on");
 
   const drawn = await readoutText(h);
+  await h.capture(
+    "program-yard",
+    "The yard and readouts under the tape editor",
+  );
+
   for (const [what, holds] of readouts) {
     const same = wanted.filter((text) => holds(text) && drawn.includes(text));
     if (same.length === 0) {
@@ -166,10 +171,5 @@ it("draws the build screen's readouts on the program screen too", async () => {
     JSON.stringify(built.camera),
     "the camera the program screen shows the yard through: it persists across " +
       "the yard screens (specs/state.md)",
-  );
-
-  await h.capture(
-    "program-yard",
-    "The yard and readouts under the tape editor",
   );
 });

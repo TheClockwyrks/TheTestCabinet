@@ -44,16 +44,19 @@ it("plays the place cue when a structure edit places a member", async () => {
   await h.advance(1);
   const played = await h.cues();
 
+  const after = await h.snapshot();
+
+  await h.capture("member", "The member the edit placed");
+
   assertLength(
-    (await h.snapshot()).structure.members,
+    after.structure.members,
     1,
     "the member the edit placed, so a cue has an edit to sound for",
   );
+
   assertContains(
     played,
     "place",
     "the cue a structure edit that places a member plays (specs/ui.md)",
   );
-
-  await h.capture("member", "The member the edit placed");
 });

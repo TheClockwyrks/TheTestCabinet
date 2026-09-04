@@ -33,6 +33,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
+import { RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import { BARE, ORIGIN } from "../fixtures";
 import {
   captureReplay,
@@ -66,11 +67,12 @@ it("raises the depth by one on the release, and one undo takes the part off agai
   const depth = before.editor.undoDepth;
 
   const placed = await captureReplay(h, "undone", async () => {
+    await h.advance(RECORDING_RUN_UP);
     await dragFromTray(h, 0, ORIGIN);
     await h.advance(1);
     const landed = await h.snapshot();
     await pressAction(h, "undo");
-    await h.advance(1);
+    await h.advance(RECORDING_SETTLE);
     return landed;
   });
 

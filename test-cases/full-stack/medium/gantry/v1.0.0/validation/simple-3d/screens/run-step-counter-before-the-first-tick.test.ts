@@ -118,6 +118,8 @@ it("reads step 1 / n before the first tick has taken a step", async () => {
   );
 
   const lines = await readoutLines(h);
+  await h.capture("step-first", "The step counter before the first tick");
+
   if (!readsCounter(lines, 1, TAPE.length)) {
     fail(
       `the step counter to read "1 / ${TAPE.length}" before the first tick ` +
@@ -125,6 +127,4 @@ it("reads step 1 / n before the first tick has taken a step", async () => {
       `the screen's text reads [${lines.map((one) => one.trim()).join(" | ")}]`,
     );
   }
-
-  await h.capture("step-first", "The step counter before the first tick");
 });

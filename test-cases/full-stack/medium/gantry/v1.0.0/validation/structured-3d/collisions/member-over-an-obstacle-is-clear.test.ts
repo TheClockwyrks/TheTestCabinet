@@ -207,6 +207,8 @@ it("raises nothing while the arm sweeps across an obstacle's plan above its top"
     if (swept.run.phase !== "running") break;
     if (swept.run.axes.slew.value >= REACHED) break;
   }
+  await h.capture("over", "The arm standing over the obstacle mid-sweep");
+
   if (swept.run.phase === "running" && swept.run.axes.slew.value < REACHED) {
     fail(
       `the arm to turn from ${START} to ${REACHED} degrees within ${CAP} ` +
@@ -215,8 +217,6 @@ it("raises nothing while the arm sweeps across an obstacle's plan above its top"
       `it stands at ${swept.run.axes.slew.value.toFixed(2)} degrees`,
     );
   }
-
-  await h.capture("over", "The arm standing over the obstacle mid-sweep");
 
   assertTrue(
     crossedThePlan,

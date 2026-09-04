@@ -1,24 +1,23 @@
-// controls/menu-up-wraps — `up` moves the menu highlight by one entry and wraps
-// at the start.
+// controls/menu-up-wraps — `up` wraps the menu highlight off the first entry.
 //
-// `specs/ui.md` § The screens: "On every menu `up` and `down` move the highlight
-// by one entry and wrap at both ends". `specs/controls.md` § The actions binds
-// `up` to `ArrowUp` and gives it "menu navigation".
+// `specs/ui.md` § The screens: "On every menu `up` and `down` move the
+// highlight by one entry and wrap at both ends". `specs/controls.md` § The
+// actions binds `up` to `ArrowUp` and gives it "menu navigation".
 //
-// THE FIRST ENTRY IS WHERE THE WRAP LIVES, and it is where the title menu opens:
-// `specs/ui.md` § Title gives the menu as `TITLE_ITEMS` (`SITES`, `HOW TO PLAY`)
-// "with `menuIndex` `0` on arriving", so one press of `up` is the wrap off the
-// start and reads the last entry, `1`. A build that clamps at `0` — the ordinary
-// way to get this wrong — leaves the highlight where it was, and a build that
-// runs the index below zero leaves it somewhere no entry stands.
+// THE FIRST ENTRY IS WHERE THE WRAP LIVES, and it is where the title menu
+// opens: `specs/ui.md` § Title gives the menu as `TITLE_ITEMS` (`SITES`, `HOW
+// TO PLAY`) "with `menuIndex` `0` on arriving", so one press of `up` is the
+// wrap off the start and reads the last entry, `1`. A build that clamps at `0`
+// — the ordinary way to get this wrong — leaves the highlight where it was, and
+// a build that runs the index below zero leaves it somewhere no entry stands.
 //
-// ONE PRESS, BECAUSE ONE PRESS IS THE REQUIREMENT: `up` moving by one from an
-// interior entry is the same rule read where it cannot fail, and the wrap at the
-// end belongs to `down` (`controls/menu-down-wraps`).
+// THE WRAP ALONE: `up` moving by one from an interior entry is
+// `controls/menu-up-moves-by-one`, and the wrap off the end belongs to `down`
+// (`controls/menu-down-wraps`).
 //
-// Nothing is posed on the way: the harness's opening `reset` leaves "the `title`
-// screen with `menuIndex` `0`" (`specs/instrumentation.md`), which is the state
-// this scenario needs.
+// Nothing is posed on the way: the harness's opening `reset` leaves "the
+// `title` screen with `menuIndex` `0`" (`specs/instrumentation.md`), which is
+// the state this scenario needs.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -50,14 +49,16 @@ it("wraps the title menu's highlight to the last entry", async () => {
 
   await h.press(UP);
 
-  assertEqual(
-    (await h.snapshot()).menuIndex,
-    TITLE_ITEMS.length - 1,
-    `menuIndex after ${UP} on the first entry of a menu of ` +
-      `${TITLE_ITEMS.length}, which moves the highlight by one and wraps at ` +
-      "both ends (specs/ui.md § The screens)",
-  );
+  const after = await h.snapshot();
 
   await h.advance(1);
   await h.capture("state", "the title menu after up wrapped off its start");
+
+  assertEqual(
+    after.menuIndex,
+    TITLE_ITEMS.length - 1,
+    `menuIndex after ${UP} on the first entry of a menu of ` +
+      `${TITLE_ITEMS.length}, which wraps the highlight round to the last ` +
+      "(specs/ui.md § The screens)",
+  );
 });

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { ORRERY_DEBUG_VERSION, TAPE_Y0, TRAY_REGION_W } from "./constants";
+import { challengeCount } from "./challenges";
+import {
+  ORRERY_DEBUG_VERSION,
+  TAPE_Y0,
+  TITLE_ITEMS,
+  TRAY_REGION_W,
+} from "./constants";
 import { createDebugApi, type OrreryDebugApi } from "./debug";
 import { Bench } from "./harness";
 import { hexX, hexY } from "./hex";
@@ -36,6 +42,7 @@ describe("the surface itself (specs/instrumentation.md)", () => {
       "setSolved",
       "setRecord",
       "setLast",
+      "menuItemRect",
       "openChallenge",
       "loadChallenge",
       "referenceSolution",
@@ -230,6 +237,57 @@ describe("navigation and progress (specs/instrumentation.md)", () => {
     expect(() => api.setRecord("extras", -1, "cost", 0)).toThrow(/0 to 9/);
     expect(() => api.setLast("extras", 99)).toThrow(/0 to 9/);
     expect(() => api.openChallenge("extras", 10)).toThrow(/0 to 9/);
+  });
+});
+
+describe("the menu layout (specs/instrumentation.md)", () => {
+  it("reports a region for every item the current screen's menu shows", () => {
+    const { game, api } = bench();
+    for (let index = 0; index < TITLE_ITEMS.length; index += 1) {
+      const rect = api.menuItemRect(index);
+      expect(rect, `title item ${index}`).not.toBeNull();
+      expect(rect?.w).toBeGreaterThan(0);
+      expect(rect?.h).toBeGreaterThan(0);
+    }
+    api.setScreen("howto");
+    expect(api.menuItemRect(0)).not.toBeNull();
+    api.setScreen("select");
+    expect(
+      api.menuItemRect(challengeCount(game.state.mode) - 1),
+    ).not.toBeNull();
+  });
+
+  it("answers null for an index that names no item of that menu", () => {
+    const { api } = bench();
+    expect(api.menuItemRect(TITLE_ITEMS.length)).toBeNull();
+    expect(api.menuItemRect(-1)).toBeNull();
+    expect(api.menuItemRect(1.5)).toBeNull();
+    api.setScreen("howto");
+    expect(api.menuItemRect(1)).toBeNull();
+  });
+
+  it("answers null on the editor, which shows a menu only when solved", () => {
+    const { game, api } = opened();
+    expect(api.menuItemRect(0)).toBeNull();
+    api.placeSet(0, 0, 0, 0);
+    api.startRun();
+    expect(api.menuItemRect(0)).toBeNull();
+    api.setPaused(true);
+    expect(api.menuItemRect(0)).toBeNull();
+    api.setPaused(false);
+    api.setTally(0, 6);
+    advanceFrame(game, 1);
+    expect(game.state.sim?.status).toBe("complete");
+    expect(api.menuItemRect(0)).not.toBeNull();
+  });
+
+  it("changes nothing, as a read of the state, and fails on a non-number", () => {
+    const { api } = bench();
+    const before = api.snapshot();
+    api.menuItemRect(0);
+    api.menuItemRect(TITLE_ITEMS.length);
+    expect(api.snapshot()).toEqual(before);
+    expect(() => api.menuItemRect("0" as unknown as number)).toThrow(/number/);
   });
 });
 
@@ -778,6 +836,7 @@ describe("the snapshot's shape (specs/instrumentation.md)", () => {
         "selectIndex",
         "sim",
         "simTime",
+        "titleIndex",
         "version",
       ].sort(),
     );

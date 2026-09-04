@@ -67,6 +67,12 @@ it("reports a zero pivot on an idle run under a standing crane", async () => {
   await poseCrane(h, RING_AND_TRACK);
 
   const s = await h.snapshot();
+  await h.advance(1);
+  await h.capture(
+    "idle-pivot",
+    "The standing crane the idle pivot was read under",
+  );
+
   assertEqual(
     s.run.phase,
     "idle",
@@ -89,10 +95,4 @@ it("reports a zero pivot on an idle run under a standing crane", async () => {
   assertEqual(s.run.pivot.x, 0, "the idle placeholder's pivot x");
   assertEqual(s.run.pivot.y, 0, "the idle placeholder's pivot y");
   assertEqual(s.run.pivot.z, 0, "the idle placeholder's pivot z");
-
-  await h.advance(1);
-  await h.capture(
-    "idle-pivot",
-    "The standing crane the idle pivot was read under",
-  );
 });

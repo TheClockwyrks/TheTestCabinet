@@ -24,8 +24,11 @@
 // a DOM: the engine's own `SurfaceMetrics` seam supplies the element size, the
 // device pixel ratio and the event target, and `harness.ts` supplies the `webgl2`
 // context, the asset transport and the audio decoder the host does not carry.
-// What that costs is the scene's pixels, which no check in this project reads;
-// what it buys is a run that needs no browser, no server and no wall-clock time.
+// What that costs is the scene's pixels, which no check in this project reads,
+// and the engine's recorder, whose VP9 encoder and `emitReplay` command both want
+// a browser — so every point this case declares is backed by a still rather than a
+// recording, which `harness.ts` states in full. What it buys is a run that needs
+// no browser, no server and no wall-clock time.
 //
 // A missing validator is a broken suite, not a passing one, so `passWithNoTests`
 // is off.

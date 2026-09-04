@@ -104,7 +104,10 @@ export interface SiteState {
 
 /** A structure's readiness issue (specs/structure.md). */
 export type ReadinessIssue =
-  "no-ring" | "no-rail" | "invalid-rail" | "disconnected-members";
+  | "no-ring"
+  | "no-rail"
+  | "invalid-rail"
+  | "disconnected-members";
 
 /** What would refuse a run: a readiness issue, or an empty tape. */
 export type StartIssue = ReadinessIssue | "empty-program";
@@ -249,10 +252,21 @@ export interface PointerState {
 }
 
 export type Screen =
-  "title" | "howto" | "select" | "build" | "program" | "run" | "results";
+  | "title"
+  | "howto"
+  | "select"
+  | "build"
+  | "program"
+  | "run"
+  | "results";
 
 export type Tool =
-  "strut" | "cable" | "rail" | "ring" | "counterweight" | "delete";
+  | "strut"
+  | "cable"
+  | "rail"
+  | "ring"
+  | "counterweight"
+  | "delete";
 
 /**
  * One sound a transition asked for, and where it is heard from.
@@ -424,6 +438,14 @@ export interface PickReport {
   member: number | null;
 }
 
+/** A menu entry's hit region, in logical stage units. */
+export interface MenuRectReport {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /** The fixed shape `snapshot` returns; every field is present on every screen. */
 export interface Snapshot {
   version: number;
@@ -471,6 +493,7 @@ export interface GantryDebugApi {
   snapshot(state: ReadonlyGantryState): Snapshot;
   check(state: ReadonlyGantryState): CheckReport;
   drawn(): DrawnEntry[];
+  menuItemRect(state: ReadonlyGantryState, index: number): MenuRectReport;
 
   // ---- The run and the screens -------------------------------------------
 
@@ -498,6 +521,7 @@ export interface GantryDebugApi {
   ): GantryState;
   startRun(state: ReadonlyGantryState): GantryState;
   abortRun(state: ReadonlyGantryState): GantryState;
+  showCheck(state: ReadonlyGantryState): GantryState;
 
   // ---- The structure ------------------------------------------------------
 

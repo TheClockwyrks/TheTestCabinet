@@ -72,18 +72,19 @@ function main(): void {
     sprites,
     effects,
   });
-  // The surface is installed as soon as the game has initialized, before the
-  // assets are waited on, so a scenario driven from code never waits on a file
-  // (specs/instrumentation.md).
-  installSurface(createSurface(game, runtime));
-
   // Every image is decoded and every sound is bound to its cue before the
-  // first frame draws. Each load is guarded on its own, so a file that is
-  // missing or will not decode simply leaves that sprite undrawn and that cue
-  // silent, and the loop starts either way (specs/assets.md).
+  // first frame draws, so the load is what the game has left to do and the
+  // surface and the loop both wait on it. Each load is guarded on its own, so a
+  // file that is missing or will not decode simply leaves that sprite undrawn
+  // and that cue silent, and the game stands up either way (specs/assets.md).
   void Promise.all([sprites.load(), audio.load(cueUrls())])
     .catch(() => undefined)
     .finally(() => {
+      // The surface is installed as soon as the game has initialized, which is
+      // once those files have settled, so the first frame anything draws — the
+      // loop's or one driven through the surface — is a frame of the finished
+      // game (specs/instrumentation.md).
+      installSurface(createSurface(game, runtime));
       runtime.start();
     });
 }

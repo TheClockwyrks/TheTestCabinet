@@ -17,12 +17,14 @@
 // each taking effect "immediately, when it is called, rather than being sampled
 // once per frame".
 //
-// THE CONFIGURATION. A reset session on the title screen, where the pointer
-// operates nothing — "The pointer operates the editor alone" (`specs/controls.md`)
-// — so what is read back is the mirror and never the consequence of a press. Four
-// positions are reported, one press and one release among them, and each is read
-// both at the call and again after a frame has run, because the field is one the
-// game must "keep honest every frame".
+// THE CONFIGURATION. A reset session on the title screen. The title's menu answers
+// a pointer of its own (`specs/ui.md`, Pointer and touch), and what a press there
+// may also have done is beside the point: `state.pointer` "mirrors the pointer's
+// position and press state every frame" (`specs/controls.md`) whatever the press
+// meant, and nothing but that mirror is read here. Four positions are reported,
+// one press and one release among them, and each is read both at the call and
+// again after a frame has run, because the field is one the game must "keep
+// honest every frame".
 //
 // THE VERDICT. Every reading is the position last reported, in stage units, with
 // `down` true from the press until the release and false on either side of it.

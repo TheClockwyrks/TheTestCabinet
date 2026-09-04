@@ -36,6 +36,7 @@ import {
   currentSite,
   currentTape,
   isYardScreen,
+  menuLength,
   poseCamera,
   raise,
   recordBest,
@@ -121,7 +122,9 @@ export function applyPointerEvent(
       dragging: false,
       captured: false,
     };
-    if (pressed.screen !== "program") return pressed;
+    if (pressed.screen !== "program" && menuLength(pressed) === 0) {
+      return pressed;
+    }
     const outcome = handlePointer(pressed, event);
     if (!outcome.consumed) return outcome.state;
     outcome.state.pointer.captured = true;
@@ -136,6 +139,9 @@ export function applyPointerEvent(
     const dragging = pointer.dragging;
     state.pointer.x = event.x;
     state.pointer.y = event.y;
+    // A menu follows the pointer whether or not a press is live
+    // (`specs/ui.md`), so its moves reach the screen before the drag rules.
+    if (menuLength(state) > 0) return handlePointer(state, event).state;
     if (captured) return handlePointer(state, event).state;
     if (!down) return state;
     if (!dragging) {
@@ -158,7 +164,9 @@ export function applyPointerEvent(
   }
 
   let released = state;
-  if (pointer.captured) {
+  if (menuLength(state) > 0) {
+    released = handlePointer(state, event).state;
+  } else if (pointer.captured) {
     released = handlePointer(state, event).state;
   } else if (pointer.down && !pointer.dragging) {
     released = applyReleaseClick(state);

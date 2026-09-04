@@ -1,25 +1,26 @@
-// controls/menu-down-wraps — `down` moves the menu highlight by one entry and
-// wraps at the end.
+// controls/menu-down-wraps — `down` wraps the menu highlight off the last
+// entry.
 //
-// `specs/ui.md` § The screens: "On every menu `up` and `down` move the highlight
-// by one entry and wrap at both ends". `specs/controls.md` § The actions binds
-// `down` to `ArrowDown` and gives it "menu navigation".
+// `specs/ui.md` § The screens: "On every menu `up` and `down` move the
+// highlight by one entry and wrap at both ends". `specs/controls.md` § The
+// actions binds `down` to `ArrowDown` and gives it "menu navigation".
 //
-// THE TITLE MENU, BECAUSE IT IS TWO ENTRIES. `specs/ui.md` § Title: the menu is
-// `TITLE_ITEMS` (`SITES`, `HOW TO PLAY`), "with `menuIndex` `0` on arriving", and
-// the game opens on `title`. Two entries is the shortest menu the game has, so
-// three presses read `1`, `0`, `1`: the first is the move, the second is the wrap
-// off the end, and the third shows the wrap left the menu somewhere it can go on
-// moving from rather than stuck.
+// THE WRAP ALONE. That `down` moves by one is
+// `controls/menu-down-moves-by-one`; what this one asks is where the highlight
+// goes when there is no next entry, so a build that clamps at the end fails
+// here and passes there.
 //
-// THE WRAP IS THE POINT AND IS WHY THREE PRESSES ARE ONE REQUIREMENT: a build
-// that clamps at the last entry passes the first press and fails the second, and
-// a build that runs the index past the end fails the second as well. Reading only
-// the first press would grade neither.
+// THE HIGHLIGHT IS POSED ON THE LAST ENTRY RATHER THAN WALKED THERE. The title
+// menu is two entries — `specs/ui.md` § Title gives it as `TITLE_ITEMS`
+// (`SITES`, `HOW TO PLAY`) "with `menuIndex` `0` on arriving" — so reaching the
+// end by pressing would make the reading turn on the move as well: two presses
+// read `0` on a wrapping build and `0` on a build whose `down` does nothing,
+// and the two would grade the same. Posed on the last entry, one press
+// separates all three readings — `0` wraps, `1` clamps, and a build that runs
+// the index past the end lands somewhere no entry stands.
 //
-// Nothing is posed on the way: the harness's opening `reset` leaves "the `title`
-// screen with `menuIndex` `0`" (`specs/instrumentation.md`), which is the state
-// this scenario needs.
+// `setMenuIndex` "sets the highlighted entry of the menu on the screen showing"
+// (`specs/instrumentation.md`), and index `1` is inside a two-entry menu.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -29,8 +30,8 @@ import { createHarness, type Harness } from "../harness";
 /** The `down` action's binding, as `specs/controls.md` fixes it. */
 const DOWN = BINDINGS.down[0]!;
 
-/** What the highlight reads after each press of `down` from `0`. */
-const EXPECTED = [1, 0, 1];
+/** The last entry of the title menu, which is where the wrap lives. */
+const LAST = TITLE_ITEMS.length - 1;
 
 let h: Harness;
 
@@ -42,27 +43,30 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("moves the title menu's highlight by one and wraps off the last entry", async () => {
-  const opening = await h.snapshot();
-  assertEqual(opening.screen, "title", "the menu screen the presses land on");
-  assertEqual(opening.menuIndex, 0, "the entry the title menu opens on");
+it("wraps the title menu's highlight off its last entry", async () => {
   assertEqual(
     TITLE_ITEMS.length,
     2,
     "the entries the title menu carries (specs/ui.md § Title)",
   );
 
-  for (const [press, index] of EXPECTED.entries()) {
-    await h.press(DOWN);
-    assertEqual(
-      (await h.snapshot()).menuIndex,
-      index,
-      `menuIndex after press ${press + 1} of ${DOWN} on a menu of ` +
-        `${TITLE_ITEMS.length} entries, which moves the highlight by one and ` +
-        "wraps at both ends (specs/ui.md § The screens)",
-    );
-  }
+  await h.debug.setMenuIndex(LAST);
+  const posed = await h.snapshot();
+  assertEqual(posed.screen, "title", "the menu screen the press lands on");
+  assertEqual(posed.menuIndex, LAST, "the entry the highlight is posed on");
+
+  await h.press(DOWN);
+
+  const after = await h.snapshot();
 
   await h.advance(1);
   await h.capture("state", "the title menu after down wrapped off its end");
+
+  assertEqual(
+    after.menuIndex,
+    0,
+    `menuIndex after ${DOWN} on the last entry of a menu of ` +
+      `${TITLE_ITEMS.length}, which wraps the highlight round to the first ` +
+      "(specs/ui.md § The screens)",
+  );
 });

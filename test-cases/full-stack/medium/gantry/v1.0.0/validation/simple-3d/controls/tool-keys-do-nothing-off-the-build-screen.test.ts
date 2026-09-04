@@ -61,13 +61,15 @@ it("leaves the selected tool alone under a tool key on the program screen", asyn
 
   await h.press(KEY);
 
+  const after = await h.snapshot();
+
+  await h.advance(1);
+  await h.capture("state", "the program screen after a tool key");
+
   assertEqual(
-    (await h.snapshot()).tool,
+    after.tool,
     BEFORE,
     `the selected tool after ${KEY} was pressed on the program screen, where ` +
       "the tool actions do not apply (specs/controls.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "the program screen after a tool key");
 });

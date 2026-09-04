@@ -206,6 +206,8 @@ it("offers REPLAY then SITE SELECT and no NEXT SITE on the last site", async () 
   assertEqual(posed.siteIndex, LAST, "the site the results are showing");
 
   const order = readingOrder(textDraws(await frameOps(h)));
+  await h.capture("state", "The results menu on the last site");
+
   assertTrue(
     order.length > 0,
     "the results screen to draw text at all (specs/ui.md)",
@@ -234,6 +236,4 @@ it("offers REPLAY then SITE SELECT and no NEXT SITE on the last site", async () 
     `"${RESULTS_ITEMS[1]}" to be drawn before "${RESULTS_ITEMS[2]}", the ` +
       "order RESULTS_ITEMS lists them in (specs/ui.md)",
   );
-
-  await h.capture("state", "The results menu on the last site");
 });

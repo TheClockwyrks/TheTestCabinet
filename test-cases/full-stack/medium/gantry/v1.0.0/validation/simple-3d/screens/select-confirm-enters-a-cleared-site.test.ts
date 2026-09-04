@@ -49,6 +49,12 @@ it("opens a cleared site's build screen under confirm", async () => {
 
   await h.press(CONFIRM);
   const entered = await h.snapshot();
+  await h.advance(1);
+  await h.capture(
+    "build-from-cleared",
+    "The build screen entered from a cleared site",
+  );
+
   assertEqual(
     entered.screen,
     "build",
@@ -58,11 +64,5 @@ it("opens a cleared site's build screen under confirm", async () => {
     entered.siteIndex,
     SITE,
     "the site entered by `confirm` on a cleared row (specs/ui.md)",
-  );
-
-  await h.advance(1);
-  await h.capture(
-    "build-from-cleared",
-    "The build screen entered from a cleared site",
   );
 });

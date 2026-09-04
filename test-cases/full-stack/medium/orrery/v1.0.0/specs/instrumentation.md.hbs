@@ -7,8 +7,11 @@ waiting on real time.
 
 You implement it. Every operation this file specifies is a deliverable, and
 the build installs the finished surface on `window.__orrery` as soon as the
-game has initialized. Every scenario driven from code reaches the game
-through it, so it is present and exactly as specified here.
+game has initialized, which is once the produced files of `specs/assets.md`
+have settled: nothing the surface reaches is still loading, so the first
+frame anything draws through it is a frame of the finished game. Every
+scenario driven from code reaches the game through it, so it is present and
+exactly as specified here.
 
 Each operation is a read of the game's state or a pose of one part of it. A
 pose sets one thing, and the game's own editor rules, simulation, sigils, and
@@ -228,7 +231,7 @@ doing.
 
 | Operation | Effect |
 | --- | --- |
-| `reset()` | Restores every declared field of the game's state to its title-screen value: the title screen with its first menu item highlighted, `mode` `campaign`, no challenge open, an empty editor with empty histories, no run, the pointer reported as up, `simTime` `0`, the completion switch on, and all progress cleared, so nothing is solved, every record and stash is empty, only the first campaign challenge is unlocked, and both select screens land on their first row. |
+| `reset()` | Restores every declared field of the game's state to its title-screen value: the title screen with its first menu item highlighted and its remembered selection back at `0`, `mode` `campaign`, no challenge open, an empty editor with empty histories, no run, the pointer reported as up, `simTime` `0`, the completion switch on, and all progress cleared, so nothing is solved, every record and stash is empty, only the first campaign challenge is unlocked, and both select screens land on their first row. |
 | `snapshot()` | A pure read of the state, returned as the plain object under Snapshot shape below. It changes nothing. |
 | `setCompletion(enabled)` | Sets the completion switch above. |
 
@@ -266,12 +269,29 @@ as `specs/editor.md` states, and the challenge is closed, so `challenge` and
 
 | `name` | What the call does |
 | --- | --- |
-| `title` | Shows the title menu, `menuIndex` at `0`. |
+| `title` | Shows the title menu, `menuIndex` at `titleIndex`, exactly as a return from the how-to or a select screen shows it. |
 | `howto` | Shows the how-to, `howtoPage` at `0`. |
 | `select` | Shows the current mode's select screen, `selectIndex` at that mode's `last`. |
 | `editor` | Shows the editor over the open challenge, leaving the machine, both histories, and any live run as they stand. With no challenge open it throws. |
 
 No cue sounds at the call, as the deterministic core above states.
+
+### The menu layout
+
+| Operation | Returns |
+| --- | --- |
+| `menuItemRect(index)` | The hit region of item `index` on the menu the current screen shows. |
+
+`menuItemRect` returns `{ x, y, w, h }` in logical units on the
+`STAGE_W x STAGE_H` stage, with `x` and `y` the region's top-left corner and
+`w` and `h` its size: the region a pointer selects that item from, as
+`specs/ui.md` states. The menu a screen shows is the title menu on `title`,
+the how-to's single item on `howto`, the rows of the current mode's select
+screen on `select`, and the solved panel's items on `editor` while
+`sim.status` is `complete`, each indexed as the screen lists them. It returns
+`null` on `editor` while editing and while a run is `running`, `paused`, or
+`faulted`, none of which shows a menu, and when `index` names no item of the
+menu the current screen shows. Like `snapshot()`, it changes nothing.
 
 ### The challenge
 
@@ -417,6 +437,7 @@ the result from `snapshot()`.
   screen: "title" | "howto" | "select" | "editor",
   mode: "campaign" | "extras",
   menuIndex: <number>,
+  titleIndex: <number>,      // the title menu's remembered selection
   selectIndex: <number>,
   howtoPage: <number>,
   campaign: {

@@ -112,26 +112,30 @@ it("draws the near probe larger than the far one by the orbit distance's ratio",
     return Math.hypot(b.x - a.x, b.y - a.y);
   };
 
-  for (const dist of DISTANCES) {
-    await h.debug.setCamera(CAMERA_START_YAW, CAMERA_START_PITCH, dist);
-    await h.advance(1);
+  try {
+    for (const dist of DISTANCES) {
+      await h.debug.setCamera(CAMERA_START_YAW, CAMERA_START_PITCH, dist);
+      await h.advance(1);
 
-    const near = await spanAt(REACH, `near (distance ${dist})`);
-    const far = await spanAt(-REACH, `far (distance ${dist})`);
+      const near = await spanAt(REACH, `near (distance ${dist})`);
+      const far = await spanAt(-REACH, `far (distance ${dist})`);
 
-    assertNearFraction(
-      near / far,
-      (dist + REACH) / (dist - REACH),
-      TOLERANCE,
-      `the stage length of a ${ACROSS}-unit offset ${REACH} units along the ` +
-        `orbit direction over the same offset ${REACH} units the other way, ` +
-        `at distance ${dist}: the camera stands ${dist} from the target on ` +
-        "the +u side of it (specs/controls.md)",
+      assertNearFraction(
+        near / far,
+        (dist + REACH) / (dist - REACH),
+        TOLERANCE,
+        `the stage length of a ${ACROSS}-unit offset ${REACH} units along the ` +
+          `orbit direction over the same offset ${REACH} units the other way, ` +
+          `at distance ${dist}: the camera stands ${dist} from the target on ` +
+          "the +u side of it (specs/controls.md)",
+      );
+    }
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.capture(
+      "state",
+      "the yard from the closer of the two camera distances",
     );
   }
-
-  await h.capture(
-    "state",
-    "the yard from the closer of the two camera distances",
-  );
 });

@@ -46,9 +46,17 @@ export { actionsForCode, isBoundCode } from "./runtime-input";
 export { RuntimeCore, type RuntimeCoreDeps } from "./runtime-core";
 export { webAudioSink, type AudioSink } from "./runtime-audio";
 
-/** One pointer act, in the stage's logical units (`specs/overview.md`). */
+/**
+ * One pointer act or one touch contact edge, in the stage's logical units
+ * (`specs/overview.md`).
+ *
+ * A contact is not the pointer (`specs/instrumentation.md`): `touch-down` and
+ * `touch-up` move no pointer position and raise no press or release of one, so
+ * a build that tells the two apart reads them apart here. Both kinds ride the
+ * one ordered array so the frame sees them in the order they arrived.
+ */
 export interface StagePointerEvent {
-  kind: "move" | "down" | "up";
+  kind: "move" | "down" | "up" | "touch-down" | "touch-up";
   x: number;
   y: number;
 }
@@ -91,6 +99,10 @@ export interface Runtime {
   feedPointerDown(x: number, y: number): void;
   /** Deliver a release at the position the pointer is at. */
   feedPointerUp(): void;
+  /** Deliver a touch contact landing at a logical stage position. */
+  feedTouchDown(x: number, y: number): void;
+  /** Deliver the contact lifting, at the position it landed at. */
+  feedTouchUp(): void;
 
   /** Play a one-shot cue (`specs/ui.md`). Silent while muted. */
   playCue(cue: CueName): void;
@@ -186,12 +198,18 @@ export function bindKeyboard(
 }
 
 /**
- * Bind the pointer, in logical stage units.
+ * Bind the pointer and the touchscreen, in logical stage units.
  *
  * A press is taken on the canvas and its capture asked for, and the moves and
  * the release are taken from the window, so an orbit drag that leaves the
  * canvas keeps turning the camera and a release out there still ends the press
  * (`specs/controls.md`).
+ *
+ * A contact arrives on the same DOM events and is told apart by `pointerType`:
+ * `specs/controls.md` has the runtime report a contact's landing and lift apart
+ * from the pointer's press and release, so a finger is delivered as a contact
+ * and never as a pointer press. A contact has no hover, so nothing is delivered
+ * for a touch move.
  */
 export function bindPointer(
   canvas: HTMLCanvasElement,
@@ -205,23 +223,43 @@ export function bindPointer(
       event.clientY,
     );
 
+  /** Whether an event came from a finger rather than the pointer. */
+  const isContact = (event: PointerEvent): boolean =>
+    event.pointerType === "touch";
+
+  let contactLive = false;
+
   canvas.addEventListener("pointerdown", (event) => {
     const pointer = event as PointerEvent;
     if (pointer.button !== 0) return;
     pointer.preventDefault();
     canvas.setPointerCapture?.(pointer.pointerId);
     const point = at(pointer);
+    if (isContact(pointer)) {
+      contactLive = true;
+      core.feedTouchDown(point.x, point.y);
+      return;
+    }
     core.feedPointerDown(point.x, point.y);
   });
 
   windowTarget.addEventListener("pointermove", (event) => {
-    const point = at(event as PointerEvent);
+    const pointer = event as PointerEvent;
+    // A contact has no hover, and the lift comes back at the landing.
+    if (isContact(pointer)) return;
+    const point = at(pointer);
     core.feedPointerMove(point.x, point.y);
   });
 
   // A release is delivered at the position the pointer is already at: the
   // move that carried it there has arrived on its own.
-  const release = (): void => {
+  const release = (event: Event): void => {
+    if (isContact(event as PointerEvent)) {
+      if (!contactLive) return;
+      contactLive = false;
+      core.feedTouchUp();
+      return;
+    }
     if (core.pointerPressed()) core.feedPointerUp();
   };
   windowTarget.addEventListener("pointerup", release);

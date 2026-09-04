@@ -80,6 +80,9 @@ it("places a cable between the two clicked nodes and clears the pending node", a
   await h.click(second.x, second.y);
 
   const s = await h.snapshot();
+  await h.advance(1);
+  await h.capture("state", "The cable the two clicks placed");
+
   assertLength(
     s.structure.members,
     1,
@@ -102,7 +105,4 @@ it("places a cable between the two clicked nodes and clears the pending node", a
     "the pending node after the second click, which places the member and " +
       "clears it (specs/controls.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "The cable the two clicks placed");
 });

@@ -39,9 +39,11 @@ $EDITOR apps/docs/astro.config.mjs                        # Changelogs group, ne
 grep -rln "experimental" test-cases/ game-jams/ --include=*.toml
 
 # Publish/republish their reference implementations, then commit the lockfile.
-tcab publish-reference --env prod <slug>
-git add test-cases/reference-builds.lock.json
-git commit -m "chore(references): update reference implementations"
+# The publish exits non-zero if any reference build failed, so chain the commit
+# onto it rather than committing a lockfile a failed sweep only half wrote.
+tcab publish-reference --env prod <slug> && \
+  git add test-cases/reference-builds.lock.json && \
+  git commit -m "chore(references): update reference implementations"
 ```
 
 Verify the release gate — every non-experimental variant declaring a

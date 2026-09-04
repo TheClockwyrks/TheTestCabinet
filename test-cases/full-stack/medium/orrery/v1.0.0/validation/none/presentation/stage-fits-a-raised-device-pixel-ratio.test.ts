@@ -112,6 +112,15 @@ async function shareOfOneMote(harness: Harness, hex: Hex): Promise<number> {
 }
 
 it("draws the whole stage at a raised pixel density, in the same logical units", async () => {
+  await openBareRun(h, { challenge: BARE, paused: true });
+  await h.advance(1);
+
+  // READ AFTER A FRAME HAS DRAWN, because sizing the canvas is part of drawing
+  // one: `specs/overview.md` gives the runtime the fit and the density, and a
+  // runtime that owns the fit sizes its canvas on the frame it fits. Read before
+  // any frame this harness drove, what comes back is whatever the element
+  // happened to carry, which is a fact about when the page got here rather than
+  // about the build.
   const surface = await h.surface();
   assertEqual(
     surface.width,
@@ -124,8 +133,6 @@ it("draws the whole stage at a raised pixel density, in the same logical units",
     `the canvas the build sized carries ${STAGE_H} logical units at ${DPR} device pixels each, so the runtime took the device pixel ratio`,
   );
 
-  await openBareRun(h, { challenge: BARE, paused: true });
-  await h.advance(1);
   const bare: PixelRect[] = [];
   for (const hex of LANDMARKS) bare.push(await square(h, hex));
 

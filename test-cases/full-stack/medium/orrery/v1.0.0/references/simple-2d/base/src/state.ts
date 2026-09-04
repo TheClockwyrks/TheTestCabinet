@@ -73,6 +73,7 @@ export function createState(): W<OrreryState> {
     screen: "title",
     mode: "campaign",
     menuIndex: 0,
+    titleIndex: 0,
     selectIndex: 0,
     howtoPage: 0,
 
@@ -92,6 +93,7 @@ export function createState(): W<OrreryState> {
     sim: null,
 
     pointer: { x: 0, y: 0, down: false },
+    menuPress: null,
     completion: true,
     simTime: 0,
     muted: false,
@@ -120,6 +122,7 @@ export function resetState(state: W<OrreryState>): void {
   state.screen = fresh.screen;
   state.mode = fresh.mode;
   state.menuIndex = fresh.menuIndex;
+  state.titleIndex = fresh.titleIndex;
   state.selectIndex = fresh.selectIndex;
   state.howtoPage = fresh.howtoPage;
 
@@ -139,6 +142,7 @@ export function resetState(state: W<OrreryState>): void {
   state.sim = null;
 
   state.pointer = fresh.pointer;
+  state.menuPress = fresh.menuPress;
   state.completion = fresh.completion;
   state.simTime = fresh.simTime;
 }

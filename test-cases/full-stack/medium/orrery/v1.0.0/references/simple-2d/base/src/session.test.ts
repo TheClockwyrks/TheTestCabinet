@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { CUES, HOWTO_PAGES, TITLE_ITEMS } from "./constants";
 import { createStateOps, type OrreryStateOps } from "./debug";
+import type { PointerSample } from "./input";
 import { clearOutbox, drainCues } from "./outbox";
-import { missingApertures } from "./progress";
+import { menuItemRect, missingApertures } from "./progress";
 import { Session } from "./session";
+import type { OrreryState } from "./types";
 
 /**
  * A session with an empty outbox and the state operations over its draft, plus
@@ -300,3 +302,236 @@ describe("the solved panel (specs/ui.md)", () => {
     expect(game.state.menuIndex).toBe(0);
   });
 });
+
+describe("driving the menus from a pointer and a touch (specs/ui.md)", () => {
+  // A mouse, a pen, and a finger all reach the game as pointers on the same
+  // three readings (specs/controls.md), so every gesture below is both halves
+  // of the table at once: the press edge is a contact landing and the release
+  // edge is its lift.
+
+  it("highlights the item a move lands on, and takes nothing", () => {
+    const { game } = bench();
+    hover(game, item(game.state, 2));
+    expect(game.state.menuIndex).toBe(2);
+    expect(game.state.screen).toBe("title");
+    hover(game, item(game.state, 1));
+    expect(game.state.menuIndex).toBe(1);
+    expect(game.state.screen).toBe("title");
+  });
+
+  it("leaves the highlight where it stands for an edge outside every region", () => {
+    const { game } = bench();
+    hover(game, item(game.state, 1));
+    hover(game, { x: 20, y: 20 });
+    expect(game.state.menuIndex).toBe(1);
+    click(game, { x: 20, y: 20 });
+    expect(game.state.menuIndex).toBe(1);
+    expect(game.state.screen).toBe("title");
+  });
+
+  it("takes no item when either edge falls outside every region", () => {
+    const outside = { x: 20, y: 20 };
+
+    const landed = bench();
+    // The press is outside every region and the release is inside one: the
+    // release still highlights the item it lands in, and takes nothing,
+    // because the two edges did not land in the same region.
+    landed.game.handlePointer({ type: "down", ...outside });
+    landed.game.handlePointer({ type: "up", ...item(landed.game.state, 1) });
+    expect(landed.game.state.menuIndex).toBe(1);
+    expect(landed.game.state.screen).toBe("title");
+
+    const left = bench();
+    left.game.handlePointer({ type: "down", ...item(left.game.state, 1) });
+    left.game.handlePointer({ type: "up", ...outside });
+    expect(left.game.state.menuIndex).toBe(1);
+    expect(left.game.state.screen).toBe("title");
+  });
+
+  it("takes the item a press and its release both land in", () => {
+    const { game } = bench();
+    click(game, item(game.state, 1));
+    expect(game.state.menuIndex).toBe(1);
+    expect(game.state.mode).toBe("extras");
+    expect(game.state.screen).toBe("select");
+  });
+
+  it("takes nothing when the two edges fall in different regions", () => {
+    const { game } = bench();
+    const from = item(game.state, 2);
+    const to = item(game.state, 0);
+    game.handlePointer({ type: "down", ...from });
+    game.handlePointer({ type: "move", ...to });
+    game.handlePointer({ type: "up", ...to });
+    // The release moved the pointer onto the first item, which selects it —
+    // and selects it alone, because the press landed elsewhere.
+    expect(game.state.menuIndex).toBe(0);
+    expect(game.state.screen).toBe("title");
+  });
+
+  it("takes the how-to's one item, which returns to the title", () => {
+    const { game, api } = bench();
+    api.setScreen("howto");
+    expect(menuItemRect(game.state, 1)).toBeNull();
+    click(game, item(game.state, 0));
+    expect(game.state.screen).toBe("title");
+  });
+
+  it("moves the select highlight, and opens only a row that is open", () => {
+    const { game, api } = bench();
+    api.setMode("extras");
+    api.setScreen("select");
+    hover(game, item(game.state, 4));
+    expect(game.state.selectIndex).toBe(4);
+    click(game, item(game.state, 3));
+    expect(game.state.screen).toBe("editor");
+    expect(game.state.challengeRef).toEqual({ mode: "extras", index: 3 });
+
+    const locked = bench();
+    locked.api.setScreen("select");
+    click(locked.game, item(locked.game.state, 6));
+    // The highlight still moved to the row; taking a locked one opens nothing,
+    // exactly as `confirm` on it opens nothing.
+    expect(locked.game.state.selectIndex).toBe(6);
+    expect(locked.game.state.screen).toBe("select");
+  });
+
+  it("takes the solved panel's items, and the machine behind it takes neither", () => {
+    const solved = (): ReturnType<typeof bench> => {
+      const made = bench();
+      made.api.openChallenge("extras", 0);
+      made.api.placeSet(0, 0, 0, 0);
+      made.api.startRun();
+      made.api.setTally(0, 6);
+      made.game.update(1);
+      return made;
+    };
+
+    const back = solved();
+    click(back.game, item(back.game.state, 2));
+    expect(back.game.state.screen).toBe("select");
+
+    const behind = solved();
+    // A press on the tape panel, well clear of the panel's items: the machine
+    // drawn behind takes neither the highlight nor the take, and only the
+    // focus rule of specs/editor.md answers it.
+    click(behind.game, { x: 700, y: 620 });
+    expect(behind.game.state.menuIndex).toBe(0);
+    expect(behind.game.state.sim?.status).toBe("complete");
+    expect(behind.game.state.editor.focus).toBe("tape");
+  });
+
+  it("sets the focus from a press its items took, as from any press", () => {
+    const { game, api } = bench();
+    api.openChallenge("extras", 0);
+    api.placeSet(0, 0, 0, 0);
+    api.startRun();
+    api.setTally(0, 6);
+    game.update(1);
+    api.setFocus("tape");
+    // The focus rule of specs/controls.md answers EVERY press on the editor
+    // screen. What specs/ui.md exempts while the panel is up is the machine
+    // drawn behind it, and the focus is not the machine's: it is where the
+    // editing keys go the moment the panel is gone.
+    game.handlePointer({ type: "down", ...item(game.state, 0) });
+    expect(game.state.editor.focus).toBe("field");
+    expect(game.state.sim?.status).toBe("complete");
+  });
+
+  it("lays out no region while editing, or while a run is live", () => {
+    const { game, api } = bench();
+    api.openChallenge("extras", 0);
+    expect(menuItemRect(game.state, 0)).toBeNull();
+    api.placeSet(0, 0, 0, 0);
+    api.startRun();
+    expect(menuItemRect(game.state, 0)).toBeNull();
+  });
+});
+
+describe("the remembered title selection (specs/ui.md)", () => {
+  it("records the item taken, and lands on it again on every return", () => {
+    const { game, api } = bench();
+    api.setMenuIndex(2);
+    game.handleAction("confirm");
+    expect(game.state.screen).toBe("howto");
+    expect(game.state.titleIndex).toBe(2);
+    game.handleAction("back");
+    expect(game.state.screen).toBe("title");
+    expect(game.state.menuIndex).toBe(2);
+
+    api.setMenuIndex(1);
+    game.handleAction("confirm");
+    expect(game.state.screen).toBe("select");
+    expect(game.state.mode).toBe("extras");
+    expect(game.state.titleIndex).toBe(1);
+    game.handleAction("back");
+    expect(game.state.screen).toBe("title");
+    expect(game.state.menuIndex).toBe(1);
+  });
+
+  it("carries the highlight through the how-to untouched", () => {
+    const { game, api } = bench();
+    api.setMenuIndex(2);
+    api.setScreen("howto");
+    // The how-to draws its one item as the highlighted one outright, so it has
+    // no highlight of its own to write and leaves the posed one standing.
+    expect(game.state.menuIndex).toBe(2);
+    api.setScreen("title");
+    // Nothing was taken on the way out, so the remembered selection is still
+    // `0` — and the arrival at the title is what puts the highlight back on it.
+    expect(game.state.titleIndex).toBe(0);
+    expect(game.state.menuIndex).toBe(0);
+  });
+
+  it("is written by a taken item alone, and by no other move", () => {
+    const { game, api } = bench();
+    game.handleAction("down");
+    hover(game, item(game.state, 2));
+    api.setMenuIndex(1);
+    api.setScreen("howto");
+    api.setScreen("title");
+    // Nothing above TOOK a title item, so the remembered selection still
+    // stands where a fresh session left it — and the arrival reads it.
+    expect(game.state.titleIndex).toBe(0);
+    expect(game.state.menuIndex).toBe(0);
+  });
+
+  it("is recorded by a pointer take exactly as by the keyboard", () => {
+    const { game, api } = bench();
+    click(game, item(game.state, 2));
+    expect(game.state.screen).toBe("howto");
+    expect(game.state.titleIndex).toBe(2);
+    api.setScreen("title");
+    expect(game.state.menuIndex).toBe(2);
+  });
+
+  it("stands through a visit elsewhere, and is 0 again only after a reset", () => {
+    const { game, api } = bench();
+    api.setMenuIndex(1);
+    game.handleAction("confirm");
+    api.openChallenge("campaign", 0);
+    api.setScreen("select");
+    expect(game.state.titleIndex).toBe(1);
+    api.reset();
+    expect(game.state.titleIndex).toBe(0);
+    expect(game.state.menuPress).toBeNull();
+  });
+});
+
+/** The center of the region the current menu's item `index` occupies. */
+function item(state: OrreryState, index: number): { x: number; y: number } {
+  const rect = menuItemRect(state, index);
+  if (rect === null) throw new Error(`no region for menu item ${index}`);
+  return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+}
+
+/** A pointer moved onto a position, with no button down. */
+function hover(game: Session, at: { x: number; y: number }): void {
+  game.handlePointer({ type: "move", ...at } satisfies PointerSample);
+}
+
+/** A press and its release at one position: a click, or a tap. */
+function click(game: Session, at: { x: number; y: number }): void {
+  game.handlePointer({ type: "down", ...at });
+  game.handlePointer({ type: "up", ...at });
+}

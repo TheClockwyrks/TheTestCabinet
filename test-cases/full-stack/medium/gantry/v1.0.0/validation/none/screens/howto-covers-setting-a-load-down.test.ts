@@ -96,6 +96,8 @@ afterEach(async () => {
 
 it("names setting a load down on its pad and square to it", async () => {
   const copy = await howtoCopy(h);
+  await h.capture("howto-release", "The how-to copy on setting a load down");
+
   assertGreaterThan(
     copy.length,
     0,
@@ -108,6 +110,4 @@ it("names setting a load down on its pad and square to it", async () => {
     "what the how-to copy leaves unnamed of setting a load down, the pad it " +
       "goes on, and being square to it (specs/ui.md, specs/rigging.md)",
   );
-
-  await h.capture("howto-release", "The how-to copy on setting a load down");
 });

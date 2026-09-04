@@ -113,6 +113,12 @@ it("shows the same camera pose on the build, program and run screens", async () 
   );
 
   const running = await startRun(h);
+  await h.advance(1);
+  await h.capture(
+    "state",
+    "the run screen at the pose the build screen was left in",
+  );
+
   assertEqual(running.screen, "run", "the screen a started run shows");
   assertEqual(
     running.camera.yaw,
@@ -131,11 +137,5 @@ it("shows the same camera pose on the build, program and run screens", async () 
     DIST,
     "the camera distance on the run screen, which the pose persists across " +
       "(specs/controls.md)",
-  );
-
-  await h.advance(1);
-  await h.capture(
-    "state",
-    "the run screen at the pose the build screen was left in",
   );
 });

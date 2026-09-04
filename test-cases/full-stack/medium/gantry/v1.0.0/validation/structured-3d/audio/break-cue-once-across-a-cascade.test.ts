@@ -201,6 +201,8 @@ afterEach(async () => {
 
 it("sounds break no more on a cascading tick than on a single-pass one", async () => {
   const cascade = await breakUnder(h, CRANE, CASCADE_MASS);
+  await h.capture("one-snap", "The tick whose breakage cascaded");
+
   assertGreaterThan(
     cascade.broken.length,
     1,
@@ -215,7 +217,6 @@ it("sounds break no more on a cascading tick than on a single-pass one", async (
       cascade.broken.join(", ") +
       "] was filled by more than one pass",
   );
-  await h.capture("one-snap", "The tick whose breakage cascaded");
 
   const once = await breakUnder(h, MINIMAL_CRANE, SINGLE_MASS);
   assertEqual(

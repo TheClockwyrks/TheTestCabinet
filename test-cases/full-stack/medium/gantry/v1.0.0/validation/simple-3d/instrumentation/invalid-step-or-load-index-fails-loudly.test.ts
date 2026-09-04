@@ -69,45 +69,49 @@ afterEach(async () => {
 });
 
 it("fails loudly on a step or load index nothing carries, and edits nothing", async () => {
-  await openSite(h, 0);
-  await emptyYard(h);
-  await standMinimalCrane(h);
-  await addOneLoad(
-    h,
-    "crate",
-    40,
-    { x: 6, y: 2, z: 0, yaw: 0 },
-    { x: -6, y: 2, z: 0, yaw: 0 },
-  );
-  await poseTape(h, TAPE);
+  try {
+    await openSite(h, 0);
+    await emptyYard(h);
+    await standMinimalCrane(h);
+    await addOneLoad(
+      h,
+      "crate",
+      40,
+      { x: 6, y: 2, z: 0, yaw: 0 },
+      { x: -6, y: 2, z: 0, yaw: 0 },
+    );
+    await poseTape(h, TAPE);
 
-  const posed = await h.snapshot();
-  assertLength(posed.program, TAPE.length, "the steps the scenario appended");
-  assertLength(posed.site.loads, 1, "the load the scenario stood in the yard");
+    const posed = await h.snapshot();
+    assertLength(posed.program, TAPE.length, "the steps the scenario appended");
+    assertLength(posed.site.loads, 1, "the load the scenario stood in the yard");
 
-  // The tape poses, on the program screen the tape editor lives on.
-  await h.debug.setScreen("program");
-  await refuses("removeStep(3)", () => h.debug.removeStep(TAPE.length));
-  await refuses('addCommand(7, "grip", ...)', () =>
-    h.debug.addCommand(7, "grip", 90, 45),
-  );
-  await h.debug.setScreen("build");
+    // The tape poses, on the program screen the tape editor lives on.
+    await h.debug.setScreen("program");
+    await refuses("removeStep(3)", () => h.debug.removeStep(TAPE.length));
+    await refuses('addCommand(7, "grip", ...)', () =>
+      h.debug.addCommand(7, "grip", 90, 45),
+    );
+    await h.debug.setScreen("build");
 
-  // The site pose, on the build screen, with no run in progress.
-  await refuses("setLoadTarget(2, ...)", () =>
-    h.debug.setLoadTarget(2, 0, 2, 0, 0),
-  );
+    // The site pose, on the build screen, with no run in progress.
+    await refuses("setLoadTarget(2, ...)", () =>
+      h.debug.setLoadTarget(2, 0, 2, 0, 0),
+    );
 
-  // And the run-in-progress pose, inside a run the `run` action started.
-  await startRun(h);
-  await refuses('setLoadPhase(4, "attached")', () =>
-    h.debug.setLoadPhase(4, "attached"),
-  );
-
-  await h.capture(
-    "step-and-load-indices-intact",
-    "The tape and the load the four refused calls left as they were",
-  );
+    // And the run-in-progress pose, inside a run the `run` action started.
+    await startRun(h);
+    await refuses('setLoadPhase(4, "attached")', () =>
+      h.debug.setLoadPhase(4, "attached"),
+    );
+  } finally {
+    // In a `finally`, so a check that fails still leaves the picture that
+    // shows why.
+    await h.capture(
+      "step-and-load-indices-intact",
+      "The tape and the load the four refused calls left as they were",
+    );
+  }
 });
 
 /**

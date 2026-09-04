@@ -44,6 +44,7 @@ import {
   currentSite,
   currentStructure,
   isYardScreen,
+  menuLength,
   recordBest,
   setCamera,
 } from "./state";
@@ -98,7 +99,7 @@ export function applyPointerAct(
     pointer.pressY = act.y;
     pointer.dragging = false;
     press.captured = false;
-    if (state.screen !== "program") return;
+    if (state.screen !== "program" && menuLength(state) === 0) return;
     press.captured = handlePointer(state, act, io);
     return;
   }
@@ -110,6 +111,12 @@ export function applyPointerAct(
     const wasDragging = pointer.dragging;
     pointer.x = act.x;
     pointer.y = act.y;
+    // A menu follows the pointer whether or not a press is live
+    // (`specs/ui.md`), so its moves reach the screen before the drag rules.
+    if (menuLength(state) > 0) {
+      handlePointer(state, act, io);
+      return;
+    }
     if (press.captured) {
       handlePointer(state, act, io);
       return;
@@ -137,7 +144,9 @@ export function applyPointerAct(
   // A release, applied at the position it was released from.
   pointer.x = act.x;
   pointer.y = act.y;
-  if (press.captured) {
+  if (menuLength(state) > 0) {
+    handlePointer(state, act, io);
+  } else if (press.captured) {
     handlePointer(state, act, io);
   } else if (pointer.down && !pointer.dragging && state.screen === "build") {
     const outcome = applyClick(state);

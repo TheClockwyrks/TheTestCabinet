@@ -100,6 +100,8 @@ it("commits a parsable .mid in the directory holding the music bed", async () =>
     at += 8 + size;
   }
 
+  await h.capture("mid", "The committed .mid beside the music bed");
+
   assertGreaterThanOrEqual(
     declared,
     1,
@@ -118,6 +120,4 @@ it("commits a parsable .mid in the directory holding the music bed", async () =>
       `${AUDIO_DIR}/music.mid: format ${format}, ${tracks} MTrk chunk(s), ` +
       `division ${division}, ${bytes.length} bytes`,
   );
-
-  await h.capture("mid", "The committed .mid beside the music bed");
 });

@@ -75,29 +75,33 @@ it("holds every uncommanded axis at its run-start value with no rate", async () 
   ]);
   await startRun(h);
 
-  for (let tick = 1; tick <= TICKS; tick += 1) {
-    const state = await runTicks(h, 1);
-    for (const { axis, value } of IDLE) {
-      const seen = state.run.axes[axis];
-      assertEqual(
-        seen.value,
-        value,
-        `the ${axis}'s value on tick ${tick}, with no command of its own on a ` +
-          "run whose slew is turning (specs/program.md)",
-      );
-      assertEqual(
-        seen.rate,
-        0,
-        `the ${axis}'s rate on tick ${tick}: an axis with no live command ` +
-          "holds its value with zero rate (specs/program.md)",
-      );
-      assertNull(
-        seen.command,
-        `the ${axis}'s command on tick ${tick}, which the tape never gives it ` +
-          "(specs/program.md)",
-      );
+  try {
+    for (let tick = 1; tick <= TICKS; tick += 1) {
+      const state = await runTicks(h, 1);
+      for (const { axis, value } of IDLE) {
+        const seen = state.run.axes[axis];
+        assertEqual(
+          seen.value,
+          value,
+          `the ${axis}'s value on tick ${tick}, with no command of its own on a ` +
+            "run whose slew is turning (specs/program.md)",
+        );
+        assertEqual(
+          seen.rate,
+          0,
+          `the ${axis}'s rate on tick ${tick}: an axis with no live command ` +
+            "holds its value with zero rate (specs/program.md)",
+        );
+        assertNull(
+          seen.command,
+          `the ${axis}'s command on tick ${tick}, which the tape never gives it ` +
+            "(specs/program.md)",
+        );
+      }
     }
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.capture("state", "The three idle axes through the slew's ramp");
   }
-
-  await h.capture("state", "The three idle axes through the slew's ramp");
 });

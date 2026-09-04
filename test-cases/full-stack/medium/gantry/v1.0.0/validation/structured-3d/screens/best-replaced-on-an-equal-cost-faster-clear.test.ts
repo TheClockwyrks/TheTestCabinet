@@ -115,6 +115,8 @@ it("replaces a record of equal cost when the clear's time is lower", async () =>
     MAX_TICKS - DRIVEN,
     "the run to end",
   );
+  await h.capture("state", "the results screen the equal-cost clear reached");
+
   assertEqual(
     ended.run.phase,
     "cleared",
@@ -143,6 +145,4 @@ it("replaces a record of equal cost when the clear's time is lower", async () =>
     COST_TOL,
     "the recorded best cost, unchanged because the two clears cost the same",
   );
-
-  await h.capture("state", "the results screen the equal-cost clear reached");
 });

@@ -59,6 +59,9 @@ it("leaves the next site's authored yard exactly as specs/sites.md writes it", a
   const s = await h.snapshot();
   const authored = SITES[NEIGHBOUR]!;
 
+  await h.advance(1);
+  await h.capture("sites-intact", "The neighboring site's authored yard");
+
   assertEqual(
     s.site.name,
     SITE_NAMES[NEIGHBOUR],
@@ -76,7 +79,4 @@ it("leaves the next site's authored yard exactly as specs/sites.md writes it", a
     `site ${NEIGHBOUR + 1}'s authored obstacles, untouched by the wall posed ` +
       `on site ${POSED + 1} (specs/sites.md, specs/state.md)`,
   );
-
-  await h.advance(1);
-  await h.capture("sites-intact", "The neighboring site's authored yard");
 });

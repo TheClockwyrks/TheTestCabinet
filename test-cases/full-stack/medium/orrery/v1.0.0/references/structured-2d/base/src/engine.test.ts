@@ -19,6 +19,7 @@ import {
   TAGS,
   TITLE_ITEMS,
 } from "./constants";
+import { menuItemRect } from "./flow";
 import { createHarness, type Harness } from "./harness";
 import { hexX, hexY } from "./hex";
 
@@ -304,5 +305,61 @@ describe("the overlay's sources (specs/instrumentation.md)", () => {
     expect(live.get("screen")).toBe("editor");
     expect(live.get("challenge")).toBe("Twin Moons");
     expect(live.get("source")).toBe("extras 2");
+  });
+});
+
+describe("one frame's keyboard edges beside its pointer samples (specs/ui.md)", () => {
+  /** The middle of the region the current menu reports for `index`. */
+  function middleOf(index: number): { x: number; y: number } {
+    const rect = menuItemRect(h.state, index);
+    if (rect === null) throw new Error(`no region for menu item ${index}`);
+    return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+  }
+
+  /** A press and its release at one position: a click, or a tap. */
+  function clickAt(at: { x: number; y: number }): void {
+    h.pointer("pointerdown", at.x, at.y);
+    h.pointer("pointerup", at.x, at.y);
+  }
+
+  it("leaves the highlight on the item the pointer named", async () => {
+    const onExtras = middleOf(1);
+    h.tap("ArrowDown");
+    h.pointer("pointermove", onExtras.x, onExtras.y);
+    await h.step(1);
+    expect(h.state.menuIndex).toBe(1);
+    expect(h.state.screen).toBe("title");
+  });
+
+  it("takes the keyboard's item alone when a click lands on the same frame", async () => {
+    h.debug.setMenuIndex(1);
+    // An ordinary click on a title item, whose region overlaps a row of the
+    // select screen EXTRAS opens: the rows run from y 120 down the stage.
+    const onExtras = middleOf(1);
+    h.tap("Enter");
+    clickAt(onExtras);
+    await h.step(1);
+    expect(h.state.screen).toBe("select");
+    expect(h.state.mode).toBe("extras");
+    // The click moved the highlight down the list it landed on, as any sample
+    // does, and took nothing: no challenge was opened.
+    expect(h.state.challenge).toBeNull();
+    expect(h.state.challengeRef).toBeNull();
+  });
+
+  it("takes that same click one frame later, so the click is a live one", async () => {
+    h.debug.setMenuIndex(1);
+    const onExtras = middleOf(1);
+    h.tap("Enter");
+    await h.step(1);
+    expect(h.state.screen).toBe("select");
+
+    clickAt(onExtras);
+    await h.step(1);
+    expect(h.state.screen).toBe("editor");
+    expect(h.state.challengeRef).toEqual({
+      mode: "extras",
+      index: h.state.selectIndex,
+    });
   });
 });

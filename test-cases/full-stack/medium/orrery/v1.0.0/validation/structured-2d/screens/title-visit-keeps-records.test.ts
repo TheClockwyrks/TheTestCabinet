@@ -40,6 +40,7 @@ import {
   assertGreaterThanOrEqual,
   assertNotNull,
 } from "../assert";
+import { RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -100,7 +101,11 @@ it("carries every challenge's records through a visit to the title", async () =>
     `campaign challenge ${FULL_ROW + 1} carries a record before the visit`,
   );
   assertEqual(full?.cost, COST, "the posed cost is there before the visit");
-  assertEqual(full?.cycles, CYCLES, "the posed cycles are there before the visit");
+  assertEqual(
+    full?.cycles,
+    CYCLES,
+    "the posed cycles are there before the visit",
+  );
   assertEqual(full?.area, AREA, "the posed area is there before the visit");
   assertNotNull(
     posed.campaign.records[PART_ROW] ?? null,
@@ -115,10 +120,13 @@ it("carries every challenge's records through a visit to the title", async () =>
 
   // The first route: out of the editor, over an open challenge.
   const fromEditor = await captureReplay(h, "records-kept", async () => {
+    await h.advance(RECORDING_RUN_UP);
     await openChallenge(h, "campaign", FULL_ROW);
     await h.debug.setScreen("title");
     await h.advance(1);
-    return h.snapshot();
+    const visited = await h.snapshot();
+    await h.advance(RECORDING_SETTLE);
+    return visited;
   });
   assertEqual(
     fromEditor.screen,

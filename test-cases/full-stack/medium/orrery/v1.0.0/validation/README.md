@@ -1,10 +1,13 @@
 # Orrery — the validator projects
 
 Three vitest projects, one per engine, holding the checks that decide Orrery's
-1058 review items. `test-case.toml` points every validated item at a script path
+1065 review items. `test-case.toml` points every validated item at a script path
 like `sigils/bind-joins-two-motes.test.ts`, and the runner resolves that path
 inside **every** engine's project — so one review item is **three files at the
-same relative path**, and the case does not resolve until all three exist.
+same relative path**, and the case does not resolve until all three exist. The
+seven items that narrow their `validation` with `engines = ["none"]` are the
+exception: a scoped item's suite ships in `none/` alone, and the case does not
+resolve while a copy of it is left in a project the item does not cover.
 
 ```
 validation/
@@ -22,12 +25,21 @@ What differs between the three is the harness, never the reasoning. So the three
 same return shapes, and everything else in a project is _byte-identical_ across
 the three:
 
-| Identical in all three                                                                            | Different per engine                                      |
-| ------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `assert.ts`, `constants.ts`, `field.ts`, `parts.ts`, `formats.ts`, `challenges.ts`, `fixtures.ts` | `harness.ts`                                              |
-| `driver.ts`, `snapshot.ts`, `scenario.ts`, `drawing.ts`, `color.ts`, `viewport.ts`, `media.ts`    | `surface.ts`                                              |
-| `assets/*.ts`, `harness.test.ts`, `tsconfig.json`                                                 | `vitest.config.ts`                                        |
-|                                                                                                   | `none/` also: `globalSetup.ts`, `setup.ts`, `chromium.ts` |
+| Identical in all three                                                                         | Different per engine                                      |
+| ---------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `constants.ts`, `field.ts`, `parts.ts`, `formats.ts`, `challenges.ts`, `fixtures.ts`           | `harness.ts`                                              |
+| `driver.ts`, `snapshot.ts`, `scenario.ts`, `drawing.ts`, `color.ts`, `viewport.ts`, `media.ts` | `surface.ts`                                              |
+| `assets/*.ts`, `harness.test.ts`, `tsconfig.json`                                              | `vitest.config.ts`                                        |
+|                                                                                                | `assert.ts`                                               |
+|                                                                                                | `none/` also: `globalSetup.ts`, `setup.ts`, `chromium.ts` |
+
+`assert.ts` is the one entry in the right-hand column that is not a difference in
+reasoning. The assertions are the shared validator harness's vocabulary, and the
+engineless project re-exports it (`export * from "./case-harness/assert"`) because
+`@test-cabinet/case-harness` is staged only into an engineless project; the two
+engine projects write the same 26 names out, byte-identical to each other. A suite
+says `from "../assert"` in all three and gets the same names, the same signatures
+and the same message shape, which is what the rule above is actually about.
 
 If you change a shared file, change it in all three. `harness.test.ts` is the
 same text three times as well, and it is where the property is exercised rather
@@ -132,7 +144,8 @@ how a sprite is identified — never by matching a path.
 **Media** — `captureStill(h, outputId)` and
 `captureReplay(h, outputId, scenario)` for a point whose evidence is the game;
 `writeImageBytes(outputId, png)` for a point about a produced FILE, whose
-evidence is a picture of that file. All three are no-ops outside a run.
+evidence is a picture of that file. All three are no-ops outside a run. A replay
+brackets its behavior with `RECORDING_RUN_UP` and `RECORDING_SETTLE` — see below.
 
 **Produced files** — `assets/files.ts` is the table (every path, canvas and frame
 count, derived from `../constants`); `assets/sprites.ts` decodes and measures
@@ -215,6 +228,40 @@ the build's. Two the run checks need constantly:
   `specs/instrumentation.md` carries `sim.fraction` as a running sum of the
   frames' own delta times, which "agree to within the rounding of that sum rather
   than bit for bit", so a fraction is never read for equality.
+
+## A replay brackets its behavior, never the instant
+
+A `replay` is what a REVIEWER watches, so it is armed once the world is posed and
+disarmed once the behavior has played out, with a short run-up before and a short
+settle after: the reviewer sees the behavior arrive and sees what it left behind.
+An act that closes one frame — a press, a release, a pose read back — records one
+frame if it is wrapped on its own, which is a still filed under a moving name.
+
+Both figures come from `constants.ts`, stated in the `FRAMES_PER_CYCLE` a cycle is
+watchable at, so every recording in the case brackets its moment the same way:
+
+```ts
+await captureReplay(h, "stepped", async () => {
+  await h.advance(RECORDING_RUN_UP);
+  await stepAction(h);
+  await h.advance(RECORDING_SETTLE);
+});
+```
+
+**Neither may change a verdict**, which decides how a suite spends them:
+
+- **A world that does not move through them takes them as frames.** A paused run,
+  a completed one, an editor with no run at all — the frames run and nothing the
+  check reads moves.
+- **A world that WOULD move divides the span it was already driving.** `specs/`
+  fixes no timestep and "an interval of game time reaches the same state however it
+  was divided into frames", so `advanceFraction(h, 1 / 2, RECORDING_RUN_UP)` runs
+  the same half cycle the check always ran, watched rather than jumped.
+- **A run that must not advance is HELD.** `pauseRun` either side of the acting
+  frame buys the run-up and the settle without crossing a boundary.
+- **A reading taken off a frame number moves inside the bracket.** A check that
+  counts the frame a cue sounded on takes that frame past the run-up and reads the
+  cues before the settle, so what it reports is still the act's own doing.
 
 ## Running one engine's suites against its reference
 

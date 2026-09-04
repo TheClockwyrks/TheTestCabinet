@@ -55,30 +55,34 @@ it("fails loudly on a site index outside 0..SITE_COUNT-1, and sets nothing", asy
     ["clearBest(-1)", () => h.debug.clearBest(-1)],
   ];
 
-  for (const [what, call] of strangers) {
-    let threw = false;
-    try {
-      await call();
-    } catch {
-      threw = true;
+  try {
+    for (const [what, call] of strangers) {
+      let threw = false;
+      try {
+        await call();
+      } catch {
+        threw = true;
+      }
+      if (!threw) {
+        fail(
+          `${what} to fail loudly, no site carrying that index ` +
+            `(specs/instrumentation.md; specs/sites.md gives ${SITE_COUNT} ` +
+            "sites)",
+          "the call returned instead",
+        );
+      }
+      const after = await h.snapshot();
+      assertEqual(after.siteIndex, before.siteIndex, `siteIndex across ${what}`);
+      assertDeepEqual(after.cleared, before.cleared, `cleared across ${what}`);
+      assertDeepEqual(after.best, before.best, `best across ${what}`);
     }
-    if (!threw) {
-      fail(
-        `${what} to fail loudly, no site carrying that index ` +
-          `(specs/instrumentation.md; specs/sites.md gives ${SITE_COUNT} ` +
-          "sites)",
-        "the call returned instead",
-      );
-    }
-    const after = await h.snapshot();
-    assertEqual(after.siteIndex, before.siteIndex, `siteIndex across ${what}`);
-    assertDeepEqual(after.cleared, before.cleared, `cleared across ${what}`);
-    assertDeepEqual(after.best, before.best, `best across ${what}`);
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.advance(1);
+    await h.capture(
+      "site-indices-intact",
+      "The open site the five refused calls left standing",
+    );
   }
-
-  await h.advance(1);
-  await h.capture(
-    "site-indices-intact",
-    "The open site the five refused calls left standing",
-  );
 });

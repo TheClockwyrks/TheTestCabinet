@@ -62,6 +62,9 @@ it("turns the camera by the movement after the crossing alone", async () => {
   await h.advance(1);
 
   const { camera } = await h.snapshot();
+  await h.advance(1);
+  await h.capture("state", "the yard after a drag past the slop boundary");
+
   assertClose(
     camera.yaw,
     CAMERA_START_YAW + ORBIT_PER_PX * AFTER_PX,
@@ -70,7 +73,4 @@ it("turns the camera by the movement after the crossing alone", async () => {
       `nothing and whose ${AFTER_PX} pixels after it turn at ORBIT_PER_PX ` +
       `(${ORBIT_PER_PX}) degrees a pixel (specs/controls.md)`,
   );
-
-  await h.advance(1);
-  await h.capture("state", "the yard after a drag past the slop boundary");
 });

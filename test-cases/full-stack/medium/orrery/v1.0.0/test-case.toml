@@ -13,12 +13,12 @@ name = "Orrery"
 
 # The test type. Orrery is FULL-STACK: the build writes the game AND produces the
 # art and sound it ships, during the run, rather than being handed a pre-drawn
-# asset set. The type schedules the run onto the `test-cabinet-full-stack-2d`
-# image, which carries six binaries on `PATH` — `draw`, `draw-sheet`,
-# `particle-2d`, `sfx-synth`, `sfx-sample`, and `music` — and no others;
-# `specs/assets.md` is the production contract that says what each one produces,
-# where the file lands, and the bar it is held to. A root identity field, so it
-# sits above the first table.
+# asset set. The type, with `asset_dimension` left at its `2d` default, schedules
+# the run onto the `test-cabinet-full-stack-2d` image, which carries six binaries
+# on `PATH` — `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and
+# `music` — and no others; `specs/assets.md` is the production contract that says
+# what each one produces, where the file lands, and the bar it is held to. A root
+# identity field, so it sits above the first table.
 type = "full-stack"
 
 # Relative difficulty of this case, surfaced on the site. Orrery is both a great
@@ -433,9 +433,10 @@ source = "specs/modes/extras.md"
 # holding a player-facing description and a short carousel of media captured from
 # the game as it plays. It branches on the engine, because an engineless build
 # records motion as a `.webm` clip while an engine run records it as a replay
-# through the engine's recorder. It earns no review item: the showcase is the
-# build's own presentation of what it made, graded by a reviewer looking at the
-# run's Play page rather than decided by a script.
+# through the engine's recorder. It carries exactly one graded point, the
+# `showcase` category at the end of the checklist below, and that point asks only
+# whether the showcase is THERE. What it says and how well it presents the game
+# are the reviewer's, read off the run's Play page.
 [[spec]]
 source = "specs/showcase.md.hbs"
 
@@ -493,10 +494,13 @@ description = "Everything a player sees and hears. The produced assets first: th
 # Reviewer checklist, in the categories grammar (`[review] format = 2`). Each
 # `[[review.categories]]` is a CATEGORY, a bare name grouping the points a reviewer
 # grades, and each `[[review.categories.items]]` under it is one graded review
-# item, worth one point (the default weight), so a category is worth the number of
-# items it holds and there is no fractional scoring. A category carries no prose of
-# its own; each review item states in `description` the claim checked against the
-# build, and its verdict is recorded under the composite id
+# item, worth one point unless it declares a `weight`, and there is no fractional
+# scoring. One item declares one: `showcase.exists` is worth three, because what is
+# missing when it fails is a whole deliverable rather than one behavior of the
+# game. Every other item rides the default, so every other category is worth the
+# number of items it holds. A category carries no prose of its own; each review
+# item states in `description` the claim checked against the build, and its
+# verdict is recorded under the composite id
 # `<category id>.<item id>`. The checklist is reporter-side material, never seeded
 # into a run, so the model never sees it; each item restates a requirement the
 # seeded specification already states, in the spec's own vocabulary and naming the
@@ -513,6 +517,16 @@ description = "Everything a player sees and hears. The produced assets first: th
 # advance the clock, and read the verdict back off the snapshot. The checklist was
 # authored first so the suites are written TO these claims rather than the claims
 # drifting to fit what a suite happened to check.
+#
+# SEVEN ITEMS NARROW THEIR VALIDATION WITH `engines`, and every one of them names
+# `["none"]`. They are the four debug-overlay points and the three stage-fit
+# points: `specs/instrumentation.md` and `specs/overview.md` hand drawing and
+# toggling the overlay, and fitting the stage to the window, to the runtime, and
+# under an engine that runtime is the engine rather than anything the build wrote.
+# A scoped item's suite ships only in the projects of the engines it names, so
+# those seven files sit in `validation/none/` alone; every other suite stands in all
+# three. `showcase/exists.test.ts` is the one suite that drives nothing at all — it
+# reads the produced tree with `node:fs` and so covers every engine unchanged.
 #
 # EVERY item carries `domains` and `failure_cap`. `domains` names the scoring
 # domains a failure lowers: a rule of the machine lowers `workshop`, a rule of a
@@ -617,12 +631,19 @@ domains = ["workshop"]
 failure_cap = "broken"
 validation = { script = "instrumentation/clock-switch-holds-the-simulation.test.ts", outputs = [ { id = "held", name = "The run held off the wall clock", kind = "replay" } ] }
 [[review.categories.items]]
-id = "clock-switch-leaves-drawing-and-input"
-title = "Drawing and input carry on while the simulation is held"
-description = "With the wall clock held off the simulation, by setAutoStep(false) under none and a scripted clock under an engine, the build keeps rendering and keeps reading the keys, so a title-menu key press still moves menuIndex and the canvas still redraws."
+id = "clock-switch-leaves-input"
+title = "Input carries on while the simulation is held"
+description = "With the wall clock held off the simulation, by setAutoStep(false) under none and a scripted clock under an engine, the build keeps reading the keys, so a title-menu key press still moves menuIndex."
+domains = ["workshop"]
+failure_cap = "passable"
+validation = { script = "instrumentation/clock-switch-leaves-input.test.ts", outputs = [ { id = "answering", name = "The menu answering a key with the clock held", kind = "replay" } ] }
+[[review.categories.items]]
+id = "clock-switch-leaves-drawing"
+title = "Drawing carries on while the simulation is held"
+description = "With the wall clock held off the simulation the build keeps rendering, so every frame the held clock is advanced by issues its drawing operations and the picture on the canvas follows the state."
 domains = ["workshop", "presentation"]
 failure_cap = "passable"
-validation = { script = "instrumentation/clock-switch-leaves-drawing-and-input.test.ts", outputs = [ { id = "answering", name = "The menu answering a key with the clock held", kind = "replay" } ] }
+validation = { script = "instrumentation/clock-switch-leaves-drawing.test.ts", outputs = [ { id = "drawing", name = "The canvas redrawn with the clock held", kind = "replay" } ] }
 [[review.categories.items]]
 id = "advance-divides-the-interval"
 title = "advance runs the frames it is told, each worth its share of the interval"
@@ -780,7 +801,7 @@ validation = { script = "instrumentation/snapshot-muted-mirrors.test.ts", output
 [[review.categories.items]]
 id = "set-screen-title"
 title = "setScreen('title') enters the title screen"
-description = "setScreen(\"title\") shows the title menu with menuIndex 0, exactly as the real transition into it does."
+description = "setScreen(\"title\") shows the title menu with menuIndex at titleIndex, exactly as the real transition into it does, so a session that has taken no title item lands on 0."
 domains = ["campaign", "extras"]
 failure_cap = "passable"
 validation = { script = "instrumentation/set-screen-title.test.ts", outputs = [ { id = "title", name = "The title entered from code", kind = "image" } ] }
@@ -1498,27 +1519,41 @@ description = "Every registered source reads the state current at the read, so p
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "instrumentation/overlay-sources-report-the-live-game.test.ts", outputs = [ { id = "live", name = "The diagnostics following a posed run", kind = "replay" } ] }
+# The four points below are scoped to `none`. `specs/instrumentation.md` gives
+# drawing the panel, toggling it with the backtick key, and keeping it read-only
+# to the engine under `simple-2d` and `structured-2d`, where registering the
+# sources is the whole of Orrery's part; only the engineless build writes the
+# overlay itself. The two points above stay unscoped because registering the
+# sources, and having each report the frame being drawn, is the build's own work
+# under every engine.
 [[review.categories.items]]
 id = "overlay-read-only"
 title = "Reading the diagnostics changes nothing"
 description = "A session that shows the overlay and lets it report across a stretch of advanced frames reaches exactly the state of an identical session that never shows it, so every source is a pure read."
 domains = ["workshop"]
 failure_cap = "passable"
-validation = { script = "instrumentation/overlay-read-only.test.ts", outputs = [ { id = "watched", name = "The watched run beside the unwatched one", kind = "replay" } ] }
+validation = { script = "instrumentation/overlay-read-only.test.ts", engines = ["none"], outputs = [ { id = "watched", name = "The watched run beside the unwatched one", kind = "replay" } ] }
 [[review.categories.items]]
-id = "overlay-toggle"
-title = "The backtick key shows and hides the overlay"
-description = "Pressing the backtick key (KeyboardEvent.code Backquote) draws the debug overlay over the game, and pressing it again removes it."
+id = "overlay-shows-on-the-backtick-key"
+title = "The backtick key shows the overlay"
+description = "Pressing the backtick key (KeyboardEvent.code Backquote) draws the debug overlay over the game."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "instrumentation/overlay-toggle.test.ts", outputs = [ { id = "shown", name = "The overlay shown by the backtick key", kind = "image" } ] }
+validation = { script = "instrumentation/overlay-shows-on-the-backtick-key.test.ts", engines = ["none"], outputs = [ { id = "shown", name = "The overlay shown by the backtick key", kind = "image" } ] }
+[[review.categories.items]]
+id = "overlay-hides-on-a-second-backtick"
+title = "A second backtick press removes the overlay"
+description = "A second press of the backtick key takes the overlay off, leaving the frame drawing exactly what it drew before either press."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/overlay-hides-on-a-second-backtick.test.ts", engines = ["none"], outputs = [ { id = "hidden", name = "The overlay taken off by the second press", kind = "image" } ] }
 [[review.categories.items]]
 id = "overlay-off-at-start"
 title = "The overlay is off when the game starts"
 description = "A freshly started build draws no debug overlay until the backtick key first shows it."
 domains = ["presentation"]
 failure_cap = "great"
-validation = { script = "instrumentation/overlay-off-at-start.test.ts", outputs = [ { id = "fresh", name = "A fresh start with no overlay drawn", kind = "image" } ] }
+validation = { script = "instrumentation/overlay-off-at-start.test.ts", engines = ["none"], outputs = [ { id = "fresh", name = "A fresh start with no overlay drawn", kind = "image" } ] }
 
 # --- Field, motes, and filaments ----------------------------------------------
 # The geometry every pointer position, every collision and every drawn sprite is
@@ -4906,19 +4941,33 @@ domains = ["workshop"]
 failure_cap = "great"
 validation = { script = "editor/focus-is-field-on-entering-the-editor.test.ts", outputs = [ { id = "fresh", name = "Field focus on a freshly opened challenge", kind = "image" } ] }
 [[review.categories.items]]
-id = "key-w-routes-by-focus"
-title = "KeyW grows the arm under field focus and writes extend under tape focus"
-description = "Under field focus a KeyW press lengthens the selected arm and leaves the cursor's cell exactly as it stands; under tape focus it writes extend and leaves the arm's length exactly as it stands."
+id = "key-w-grows-the-arm-under-field-focus"
+title = "KeyW grows the arm under field focus"
+description = "Under field focus a KeyW press lengthens the selected arm and leaves the cursor's cell exactly as it stands."
 domains = ["workshop"]
 failure_cap = "passable"
-validation = { script = "editor/key-w-routes-by-focus.test.ts", outputs = [ { id = "field", name = "KeyW growing the arm under field focus", kind = "image" }, { id = "tape", name = "KeyW writing extend under tape focus", kind = "image" } ] }
+validation = { script = "editor/key-w-grows-the-arm-under-field-focus.test.ts", outputs = [ { id = "field", name = "KeyW growing the arm under field focus", kind = "image" } ] }
 [[review.categories.items]]
-id = "key-s-routes-by-focus"
-title = "KeyS shrinks the arm under field focus and writes retract under tape focus"
-description = "Under field focus a KeyS press shortens the selected arm and leaves the cursor's cell exactly as it stands; under tape focus it writes retract and leaves the arm's length exactly as it stands."
+id = "key-w-writes-extend-under-tape-focus"
+title = "KeyW writes extend under tape focus"
+description = "Under tape focus a KeyW press writes extend at the cursor and leaves the selected arm's length exactly as it stands."
 domains = ["workshop"]
 failure_cap = "passable"
-validation = { script = "editor/key-s-routes-by-focus.test.ts", outputs = [ { id = "field", name = "KeyS shrinking the arm under field focus", kind = "image" }, { id = "tape", name = "KeyS writing retract under tape focus", kind = "image" } ] }
+validation = { script = "editor/key-w-writes-extend-under-tape-focus.test.ts", outputs = [ { id = "tape", name = "KeyW writing extend under tape focus", kind = "image" } ] }
+[[review.categories.items]]
+id = "key-s-shrinks-the-arm-under-field-focus"
+title = "KeyS shrinks the arm under field focus"
+description = "Under field focus a KeyS press shortens the selected arm and leaves the cursor's cell exactly as it stands."
+domains = ["workshop"]
+failure_cap = "passable"
+validation = { script = "editor/key-s-shrinks-the-arm-under-field-focus.test.ts", outputs = [ { id = "field", name = "KeyS shrinking the arm under field focus", kind = "image" } ] }
+[[review.categories.items]]
+id = "key-s-writes-retract-under-tape-focus"
+title = "KeyS writes retract under tape focus"
+description = "Under tape focus a KeyS press writes retract at the cursor and leaves the selected arm's length exactly as it stands."
+domains = ["workshop"]
+failure_cap = "passable"
+validation = { script = "editor/key-s-writes-retract-under-tape-focus.test.ts", outputs = [ { id = "tape", name = "KeyS writing retract under tape focus", kind = "image" } ] }
 # --- Undo and redo ------------------------------------------------------------
 [[review.categories.items]]
 id = "placing-a-part-pushes-one-entry"
@@ -4998,12 +5047,26 @@ domains = ["workshop"]
 failure_cap = "scuffed"
 validation = { script = "editor/undo-restores-the-machine-before-the-edit.test.ts", outputs = [ { id = "restored", name = "The machine restored by one undo", kind = "replay" } ] }
 [[review.categories.items]]
-id = "undo-restores-poses-paths-and-tapes"
-title = "An undone entry restores poses, paths, and tapes"
-description = "Undoing past a rotation, a track lay, and a tape write restores each part's rotation and length, each track's cells and closed flag, and each arm's tape, because an entry holds the machine's parts with their poses, paths, and tapes."
+id = "undo-restores-poses"
+title = "An undone entry restores each part's pose"
+description = "Undoing a rotation restores each part's rotation and length, because an entry holds the machine's parts with their poses."
 domains = ["workshop"]
 failure_cap = "passable"
-validation = { script = "editor/undo-restores-poses-paths-and-tapes.test.ts", outputs = [ { id = "restored", name = "Poses, paths and tapes restored together", kind = "replay" } ] }
+validation = { script = "editor/undo-restores-poses.test.ts", outputs = [ { id = "restored", name = "The rotation restored by the undo", kind = "replay" } ] }
+[[review.categories.items]]
+id = "undo-restores-track-paths"
+title = "An undone entry restores each track's path"
+description = "Undoing a lay restores each track's cells and its closed flag, because an entry holds the machine's parts with their paths."
+domains = ["workshop"]
+failure_cap = "passable"
+validation = { script = "editor/undo-restores-track-paths.test.ts", outputs = [ { id = "restored", name = "The track's path restored by the undo", kind = "replay" } ] }
+[[review.categories.items]]
+id = "undo-restores-tapes"
+title = "An undone entry restores each arm's tape"
+description = "Undoing a tape write restores each arm's tape, because an entry holds the machine's parts with their tapes."
+domains = ["workshop"]
+failure_cap = "passable"
+validation = { script = "editor/undo-restores-tapes.test.ts", outputs = [ { id = "restored", name = "The tape restored by the undo", kind = "replay" } ] }
 [[review.categories.items]]
 id = "undo-moves-the-edit-onto-the-redo-side"
 title = "undo moves the edit onto the redo side"
@@ -6454,13 +6517,13 @@ validation = { script = "screens/title-highlight-distinct.test.ts", outputs = [
   { id = "second-highlighted", name = "The title menu with the second item highlighted", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "menu-index-zero-on-arrival"
-title = "Arriving at the title highlights its first item"
-description = "Entering title sets menuIndex to 0, however far the highlight had moved before the screen was left."
+id = "title-returns-to-the-entry-left-from"
+title = "Returning to the title highlights the entry that led away"
+description = "Taking HOW TO PLAY and leaving the how-to comes back to the title with HOW TO PLAY highlighted, and taking EXTRAS and leaving its select screen comes back with EXTRAS highlighted, rather than either landing on the first entry."
 domains = ["campaign", "extras"]
 failure_cap = "passable"
-validation = { script = "screens/menu-index-zero-on-arrival.test.ts", outputs = [
-  { id = "arrived", name = "The freshly entered title menu with its first item highlighted", kind = "replay" },
+validation = { script = "screens/title-returns-to-the-entry-left-from.test.ts", outputs = [
+  { id = "returned", name = "The title menu re-entered on the entry that led away", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "title-down-moves-highlight"
@@ -6589,13 +6652,13 @@ validation = { script = "screens/title-visit-keeps-stashed-machines.test.ts", ou
   { id = "machine-restored", name = "A machine restored after a visit to the title", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "pointer-drives-no-menu"
-title = "The pointer operates no menu"
-description = "The pointer operates the editor alone, so no press, move, or release anywhere on the title or on a select screen changes menuIndex, selectIndex, or screen."
+id = "pointer-drives-menus"
+title = "The pointer works the title menu"
+description = "Over the regions menuItemRect reports, a pointer moved onto an item's region highlights that item, a press and release inside one region takes it, and a press and a release in different regions take nothing."
 domains = ["campaign", "extras"]
-failure_cap = "great"
-validation = { script = "screens/pointer-drives-no-menu.test.ts", outputs = [
-  { id = "unmoved", name = "A menu unchanged by pointer presses across the stage", kind = "replay" },
+failure_cap = "passable"
+validation = { script = "screens/pointer-drives-menus.test.ts", outputs = [
+  { id = "selected", name = "The title item a click took", kind = "replay" },
 ] }
 # --- howto --------------------------------------------------------------------
 [[review.categories.items]]
@@ -8380,27 +8443,36 @@ domains = ["presentation", "workshop"]
 failure_cap = "passable"
 validation = { script = "presentation/repeating-set-shows-its-repeated-copy.test.ts", outputs = [ { id = "repeat", name = "A repeating set and its translated copy", kind = "image" } ] }
 # The stage, its text, and the two panels drawn over a run.
+#
+# The three fit points below are scoped to `none`. `specs/overview.md` gives the
+# fit — the uniform scale that preserves the aspect ratio, the letterboxed
+# centering, and the device pixel ratio — to the runtime, and under an engine that
+# runtime is the engine: the seeded `src/main.ts` hands it the 1280 x 720 stage
+# and is marked not to be edited, and the seeded `index.html` sizes the canvas by
+# CSS alone. Under `none` the runtime is the layer the build writes, so that is
+# where these three are decided. The bars' color below stays unscoped, because
+# `BACKGROUND` is the build's own under every engine.
 [[review.categories.items]]
 id = "stage-fits-a-wide-window"
 title = "The whole stage fits a window wider than 16:9"
 description = "Over a surface wider than the stage's aspect ratio the complete STAGE_W x STAGE_H (1280 x 720) stage is on screen at that ratio, centered, with even bars to left and right."
 domains = ["presentation", "workshop"]
 failure_cap = "passable"
-validation = { script = "presentation/stage-fits-a-wide-window.test.ts", outputs = [ { id = "wide", name = "The stage fitted in a wide surface", kind = "image" } ] }
+validation = { script = "presentation/stage-fits-a-wide-window.test.ts", engines = ["none"], outputs = [ { id = "wide", name = "The stage fitted in a wide surface", kind = "image" } ] }
 [[review.categories.items]]
 id = "stage-fits-a-tall-window"
 title = "The whole stage fits a window taller than 16:9"
 description = "Over a surface taller than the stage's aspect ratio the complete 1280 x 720 stage is on screen at that ratio, centered, with even bars above and below."
 domains = ["presentation", "workshop"]
 failure_cap = "passable"
-validation = { script = "presentation/stage-fits-a-tall-window.test.ts", outputs = [ { id = "tall", name = "The stage fitted in a tall surface", kind = "image" } ] }
+validation = { script = "presentation/stage-fits-a-tall-window.test.ts", engines = ["none"], outputs = [ { id = "tall", name = "The stage fitted in a tall surface", kind = "image" } ] }
 [[review.categories.items]]
 id = "stage-fits-a-raised-device-pixel-ratio"
 title = "The whole stage fits at a raised pixel density"
 description = "At a raised device pixel ratio the complete 1280 x 720 stage is still on screen at its own aspect ratio, and the game still draws in logical units."
 domains = ["presentation", "workshop"]
 failure_cap = "passable"
-validation = { script = "presentation/stage-fits-a-raised-device-pixel-ratio.test.ts", outputs = [ { id = "dpr", name = "The stage at a raised device pixel ratio", kind = "image" } ] }
+validation = { script = "presentation/stage-fits-a-raised-device-pixel-ratio.test.ts", engines = ["none"], outputs = [ { id = "dpr", name = "The stage at a raised device pixel ratio", kind = "image" } ] }
 [[review.categories.items]]
 id = "letterbox-bars-carry-the-sky"
 title = "The letterbox bars carry the stage's background"
@@ -8464,3 +8536,35 @@ description = "While sim.status is faulted every part in sim.fault.parts is draw
 domains = ["presentation", "workshop"]
 failure_cap = "scuffed"
 validation = { script = "presentation/faulted-parts-drawn-distinct.test.ts", outputs = [ { id = "marked", name = "The faulting arm marked among its neighbors", kind = "image" } ] }
+
+# --- Showcase -----------------------------------------------------------------
+# The presentation the finished build ships beside its source: `specs/showcase.md`
+# asks for a `showcase/` directory holding a description, a carousel, and the
+# media the two name. ONE point, and it asks only whether that showcase EXISTS —
+# the two files, and one carousel entry naming a file that is actually there. Not
+# a dimension, not a byte of a picture, not a word of the prose, and no other item
+# anywhere above says anything about the media.
+#
+# It is worth `weight = 3` rather than the ordinary one, because what is missing
+# when it fails is a whole deliverable rather than one behavior of the game.
+# Whether the description reads like something a player would want to play, and
+# whether the carousel opens on the strongest view of live play, is the reviewer's
+# judgement and reaches the run through the `presentation` domain's aesthetic
+# rating.
+#
+# The check drives nothing: it reads the produced tree with `node:fs`, so the one
+# suite stands unchanged in all three projects and the point means the same thing
+# whichever engine the run selected. There is no `engines` here for that reason.
+# What it hands back is a `.png` copied out of the build's own showcase, so the
+# picture the build chose to present its game with stands beside the verdict.
+[[review.categories]]
+id = "showcase"
+title = "Showcase"
+[[review.categories.items]]
+id = "exists"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, and at least one file the carousel names is present in showcase/."
+weight = 3
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "showcase/exists.test.ts", outputs = [ { id = "carousel", name = "A screenshot from the build's showcase", kind = "image" } ] }

@@ -47,6 +47,12 @@ afterEach(async () => {
 
 it("returns the surface from engine.debug as soon as the game has initialized", async () => {
   const held = h.engine.debug as unknown;
+  await h.advance(1);
+  await h.capture(
+    "surface-handle",
+    "The build carrying its surface where the engine hands it back",
+  );
+
   assertEqual(
     held === null ? "null" : typeof held,
     "object",
@@ -83,10 +89,4 @@ it("returns the surface from engine.debug as soon as the game has initialized", 
       `globalThis.${ENGINELESS_HANDLE} is a ${typeof parked}`,
     );
   }
-
-  await h.advance(1);
-  await h.capture(
-    "surface-handle",
-    "The build carrying its surface where the engine hands it back",
-  );
 });

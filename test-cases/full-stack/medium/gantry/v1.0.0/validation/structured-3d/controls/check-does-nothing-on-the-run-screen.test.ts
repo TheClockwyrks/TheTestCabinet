@@ -79,13 +79,15 @@ it("shows no check result when the check action is pressed on the run screen", a
   await h.press(CHECK);
   await h.advance(1);
 
+  const after = await h.snapshot();
+
+  await h.capture("state", "the run screen the check action left standing");
+
   assertNull(
-    (await h.snapshot()).checkResult,
+    after.checkResult,
     `checkResult after ${CHECK} on the run screen: the \`check\` action runs ` +
       "on the build screen, and the run screen takes the camera actions, a " +
       "pointer drag, `speed`, `mute` and `back` alone " +
       "(specs/controls.md § The run screen)",
   );
-
-  await h.capture("state", "the run screen the check action left standing");
 });

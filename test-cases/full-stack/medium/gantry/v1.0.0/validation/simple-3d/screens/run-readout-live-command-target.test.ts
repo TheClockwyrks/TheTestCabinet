@@ -155,6 +155,8 @@ it("draws the live command's target on that axis's readout", async () => {
   const shown = numbersIn(line).some(
     (figure) => Math.abs(figure - SLEW_TARGET) <= FIGURE_TOL,
   );
+  await h.capture("run-target", "The live command target");
+
   if (!shown) {
     fail(
       `the slew's live command target, ${SLEW_TARGET}, drawn on the slew's ` +
@@ -162,6 +164,4 @@ it("draws the live command's target on that axis's readout", async () => {
       `that line reads "${line.trim()}"`,
     );
   }
-
-  await h.capture("run-target", "The live command target");
 });

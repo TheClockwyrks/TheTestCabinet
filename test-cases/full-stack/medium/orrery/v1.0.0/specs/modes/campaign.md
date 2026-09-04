@@ -93,8 +93,11 @@ rest of the screen as it was. On arriving at the screen the highlight sits on
 the challenge most recently entered or solved, and on challenge `1` before
 any has been entered.
 
-`up` and `down` move the highlight by one row, wrapping at both ends.
-`confirm` on an unlocked or solved challenge opens it in the editor;
-`confirm` on a locked one does nothing. `back` returns to the title.
+`up` and `down` move the highlight by one row, wrapping at both ends. Each row
+is an item of this screen's menu, so a pointer and a touch contact move the
+highlight and take a row as `specs/ui.md` states. `confirm` on an unlocked or
+solved challenge opens it in the editor; `confirm` on a locked one does
+nothing. `back` returns to the title with the item that opened this mode
+highlighted: `CAMPAIGN` here, and `EXTRAS` in extras mode.
 
 Completing a challenge shows the solved panel `specs/ui.md` defines.

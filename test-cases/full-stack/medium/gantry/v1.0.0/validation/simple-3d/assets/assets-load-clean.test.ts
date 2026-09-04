@@ -233,6 +233,8 @@ it("shows every screen and draws every produced file with no asset request faili
 
   const asked = h.assetRequests();
 
+  await h.capture("run", "The play-through with every asset loaded");
+
   assertGreaterThan(
     asked.length,
     0,
@@ -263,6 +265,4 @@ it("shows every screen and draws every produced file with no asset request faili
         .map((one) => `${one.found ? "ok " : "404"} ${one.path}`)
         .join("\n  "),
   );
-
-  await h.capture("run", "The play-through with every asset loaded");
 });

@@ -232,6 +232,8 @@ it("shows every screen and draws every produced file with no asset request faili
   await h.advance(1);
 
   const fetched = h.requests();
+  await h.capture("run", "The play-through with every asset loaded");
+
   assertGreaterThan(
     fetched.length,
     0,
@@ -263,6 +265,4 @@ it("shows every screen and draws every produced file with no asset request faili
     `gantry: the play-through with every asset loaded —\n  ` +
       fetched.map((one) => `${String(one.status)} ${one.url}`).join("\n  "),
   );
-
-  await h.capture("run", "The play-through with every asset loaded");
 });

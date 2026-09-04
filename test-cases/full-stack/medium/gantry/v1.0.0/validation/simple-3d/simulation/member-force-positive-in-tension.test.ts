@@ -183,13 +183,14 @@ it("reports a positive force in a mast cable hanging a rail node", async () => {
   await poseCrane(h, RIG);
 
   const result = await h.check();
-  assertTrue(
-    result.stable,
-    "the rig to stand, so the check reports every member (specs/structure.md)",
-  );
   await h.capture(
     "cable-in-tension",
     "the rig whose mast cable hangs the outboard rail node",
+  );
+
+  assertTrue(
+    result.stable,
+    "the rig to stand, so the check reports every member (specs/structure.md)",
   );
 
   const force = forceOf(result.members, CABLE_OUT);

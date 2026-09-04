@@ -147,6 +147,8 @@ it("raises nothing when a member jumps from one side of an obstacle to the other
   // arm at the build pose, where the node sits inside the box.
   await h.debug.setAxis("slew", BEFORE);
   const before = await runTicks(h, SETTLE);
+  await h.capture("before", "The arm on the near side of the obstacle");
+
   assertEqual(
     before.run.axes.slew.value,
     BEFORE,
@@ -157,7 +159,6 @@ it("raises nothing when a member jumps from one side of an obstacle to the other
     "running",
     `the run at slew ${BEFORE}, where nothing reaches inside the box`,
   );
-  await h.capture("before", "The arm on the near side of the obstacle");
 
   // The bob is stilled under its pivot so the jump's tug on the cable is the
   // smallest it can be: `setBob` "puts the bob where it is asked for", and the

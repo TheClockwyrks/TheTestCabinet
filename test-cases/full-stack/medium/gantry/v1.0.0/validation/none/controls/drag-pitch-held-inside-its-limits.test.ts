@@ -70,6 +70,9 @@ it("stops the pitch at CAMERA_PITCH_MAX however far the drag asks", async () => 
   await h.advance(1);
 
   const { camera } = await h.snapshot();
+  await h.advance(1);
+  await h.capture("state", "the yard with the pitch stopped at its limit");
+
   assertClose(
     camera.pitch,
     CAMERA_PITCH_MAX,
@@ -78,7 +81,4 @@ it("stops the pitch at CAMERA_PITCH_MAX however far the drag asks", async () => 
       "degrees more, which is held inside CAMERA_PITCH_MAX " +
       `(${CAMERA_PITCH_MAX}) (specs/controls.md)`,
   );
-
-  await h.advance(1);
-  await h.capture("state", "the yard with the pitch stopped at its limit");
 });

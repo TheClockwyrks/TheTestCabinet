@@ -194,8 +194,9 @@ pub use toolchain::{
 pub use toolchain_report::{read_coverage_summary, read_test_report};
 pub use toolchain_stage::ToolchainStage;
 pub use validation::{
-    AdversarialOutcome, AdversarialResult, AdversarialTeam, AssetGenResult, CapturedView,
-    CheckResult, ProofResult, StepResult, ValidationSummary, Validator,
+    AdversarialOutcome, AdversarialResult, AdversarialTeam, AssetGenResult, AutoVerdict,
+    CapturedView, CheckResult, DebugScriptResult, ProofResult, StepResult, ValidationSummary,
+    Validator,
 };
 pub use validator::{
     AssetGenValidator, BlenderGenValidator, BuildValidator, DispatchValidator, ScriptedItemDrive,

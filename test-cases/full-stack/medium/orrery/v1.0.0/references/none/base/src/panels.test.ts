@@ -5,6 +5,13 @@ import { createStateOps } from "./debug";
 import { Game } from "./game";
 import { ImageStore, NO_SPRITES } from "./images";
 import { FAULT_BANNERS } from "./panels";
+import {
+  solvedItemRect,
+  SOLVED_PANEL_H,
+  SOLVED_PANEL_W,
+  SOLVED_PANEL_X,
+  SOLVED_PANEL_Y,
+} from "./regions";
 import { recordLine } from "./screens";
 
 describe("the fault display (specs/ui.md)", () => {
@@ -71,6 +78,18 @@ describe("the solved panel (specs/ui.md)", () => {
     expect(game.solvedItems()).toEqual(
       SOLVED_ITEMS.filter((item) => item !== "NEXT CHALLENGE"),
     );
+  });
+
+  it("lays its items out inside the panel, in the order it draws them", () => {
+    let previous = SOLVED_PANEL_Y;
+    for (let index = 0; index < SOLVED_ITEMS.length; index += 1) {
+      const rect = solvedItemRect(index);
+      expect(rect.x).toBeGreaterThan(SOLVED_PANEL_X);
+      expect(rect.x + rect.w).toBeLessThan(SOLVED_PANEL_X + SOLVED_PANEL_W);
+      expect(rect.y).toBeGreaterThan(previous);
+      expect(rect.y + rect.h).toBeLessThan(SOLVED_PANEL_Y + SOLVED_PANEL_H);
+      previous = rect.y;
+    }
   });
 
   it("offers no NEXT CHALLENGE for a challenge that belongs to no course", () => {

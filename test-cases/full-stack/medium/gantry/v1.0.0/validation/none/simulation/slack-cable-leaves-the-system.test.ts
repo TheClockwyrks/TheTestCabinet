@@ -174,11 +174,12 @@ it("reports zero for the diagonal that would have carried compression", async ()
   );
 
   const asCables = await h.check();
-  assertTrue(asCables.stable, "the crane stands with cable diagonals");
   await h.capture(
     "slack-cable-leaves-the-system",
     "the X-braced panel, its compression diagonal a slack cable",
   );
+
+  assertTrue(asCables.stable, "the crane stands with cable diagonals");
 
   const cableDown = asCables.members.find((one) => one.id === cableDownId);
   const cableUp = asCables.members.find((one) => one.id === cableUpId);

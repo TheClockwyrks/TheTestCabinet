@@ -40,7 +40,12 @@ import {
   assertNear,
   assertNotNull,
 } from "../assert";
-import { ARM_MIN_LEN, FRACTION_TOLERANCE } from "../constants";
+import {
+  ARM_MIN_LEN,
+  FRACTION_TOLERANCE,
+  RECORDING_RUN_UP,
+  RECORDING_SETTLE,
+} from "../constants";
 import { at, rotateAbout } from "../field";
 import { armPart, solution } from "../formats";
 import { BARE, ORIGIN } from "../fixtures";
@@ -117,7 +122,11 @@ it("runs one full cycle and leaves the run paused on the next boundary", async (
     "the arm holds exactly one constellation, and nothing else on the field is held",
   );
 
-  await captureReplay(h, "stepped", () => stepAction(h));
+  await captureReplay(h, "stepped", async () => {
+    await h.advance(RECORDING_RUN_UP);
+    await stepAction(h);
+    await h.advance(RECORDING_SETTLE);
+  });
 
   const stepped = await h.snapshot();
   assertEqual(

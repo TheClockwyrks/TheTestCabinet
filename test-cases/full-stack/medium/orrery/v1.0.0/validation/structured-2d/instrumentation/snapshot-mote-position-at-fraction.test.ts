@@ -42,6 +42,8 @@ import {
   FIELD_CY,
   FRACTION_TOLERANCE,
   HEX_PITCH,
+  RECORDING_RUN_UP,
+  RECORDING_SETTLE,
 } from "../constants";
 import { at, hexCenter } from "../field";
 import { BARE, SOUTH } from "../fixtures";
@@ -81,9 +83,17 @@ it("reports the boundary hex and the swept position at the current fraction", as
   await takeGrip(h, arm, 0, carried);
   const resting = await spawnMote(h, SOUTH, "dust");
 
-  await captureReplay(h, "carried", () => advanceFraction(h, 3 / 8));
+  // The recording is the whole cycle rather than the moment inside it: the run-up
+  // carries the mote to the fraction this point reads, the settle carries it on to
+  // the boundary, and the span is the same however it is divided into frames
+  // (`specs/instrumentation.md`).
+  const midway = await captureReplay(h, "carried", async () => {
+    await advanceFraction(h, 3 / 8, RECORDING_RUN_UP);
+    const atFraction = await h.snapshot();
+    await advanceFraction(h, 5 / 8, RECORDING_SETTLE);
+    return atFraction;
+  });
 
-  const midway = await h.snapshot();
   const fraction = midway.sim?.fraction ?? -1;
   assertNear(
     fraction,
@@ -135,7 +145,6 @@ it("reports the boundary hex and the swept position at the current fraction", as
     "a resting mote is drawn on its hex's center",
   );
 
-  await advanceFraction(h, 5 / 8);
   const landed = await h.snapshot();
   const arrived = moteById(landed, carried);
   assertEqual(landed.sim?.cycle, 1, "the cycle reached its boundary");

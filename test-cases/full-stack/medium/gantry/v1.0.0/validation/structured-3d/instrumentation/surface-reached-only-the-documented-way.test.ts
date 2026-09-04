@@ -42,6 +42,12 @@ afterEach(async () => {
 
 it("returns the surface from engine.debug and installs it nowhere else", async () => {
   const held: unknown = h.engine.debug;
+  await h.advance(1);
+  await h.capture(
+    "surface-handle",
+    "The build carrying its surface where the specification puts it",
+  );
+
   assertEqual(
     held === null ? "null" : typeof held,
     "object",
@@ -78,11 +84,5 @@ it("returns the surface from engine.debug and installs it nowhere else", async (
     typeof h.openingSnapshot?.screen,
     "string",
     "the screen that opening reading reported, so it was a real snapshot",
-  );
-
-  await h.advance(1);
-  await h.capture(
-    "surface-handle",
-    "The build carrying its surface where the specification puts it",
   );
 });

@@ -1,9 +1,16 @@
 // Orrery — the title, how-to, and select screens (specs/ui.md).
 //
-// All three are worked from the keyboard alone, so each draws exactly one
-// highlight and says what the keys do. The select screen is shared by the two
-// modes and differs only in the list it shows and the locking it applies, so
-// there is one drawing here and `src/game.ts` decides what may be entered.
+// All three are worked from the keyboard, from a pointer, and from touch, so
+// each draws exactly one highlight and says what the keys do. The select screen
+// is shared by the two modes and differs only in the list it shows and the
+// locking it applies, so there is one drawing here and `src/game.ts` decides
+// what may be entered.
+//
+// Not one item's box is measured here: every highlight below is drawn over the
+// rectangle `src/regions.ts` gives that item, which is the same rectangle
+// `menuItemRect` reports and the same one the pointer is tested against
+// (specs/ui.md "Pointer and touch"). Draw an item anywhere else and the
+// reported region would name a place nothing was drawn.
 //
 // A row's state is readable without relying on hue: every row carries a word —
 // LOCKED, OPEN, or SOLVED — beside its number and name, and a solved row shows
@@ -21,8 +28,16 @@ import {
 } from "./constants";
 import { disc, fillRect, line, sprite, strokeRect, text } from "./draw";
 import type { Game } from "./game";
-import { howtoPage } from "./howto";
+import { HOWTO_ITEM_TEXT, howtoPage } from "./howto";
 import type { Sprites } from "./images";
+import {
+  howtoItemRect,
+  selectRowRect,
+  titleItemRect,
+  MENU_TEXT_BASELINE,
+  SELECT_TEXT_BASELINE,
+  type MenuItemRect,
+} from "./regions";
 import { recordsOf, solvedOf } from "./state";
 import { MOTE_SPRITE_PATHS, MOTE_SPRITE_SIZE } from "./constants";
 import { COLORS, MOTE_COLORS } from "./theme";
@@ -49,19 +64,7 @@ export function drawTitle(
   });
   fillRect(ctx, STAGE_CX - 160, 276, 320, 1, COLORS.panelEdge);
   TITLE_ITEMS.forEach((item, index) => {
-    const selected = index === state.menuIndex;
-    const y = 356 + index * 46;
-    if (selected) {
-      fillRect(ctx, STAGE_CX - 150, y - 24, 300, 34, COLORS.panel);
-      strokeRect(ctx, STAGE_CX - 150, y - 24, 300, 34, COLORS.brass);
-    }
-    text(ctx, item, STAGE_CX, y, {
-      size: 22,
-      color: selected ? COLORS.brass : COLORS.textDim,
-      bold: selected,
-      align: "center",
-      spacing: 5,
-    });
+    drawMenuItem(ctx, item, titleItemRect(index), index === state.menuIndex);
   });
   drawOrrery(ctx, state.simTime, sprites);
   text(ctx, "ARROWS choose · ENTER takes · M mutes", STAGE_CX, STAGE_H - 24, {
@@ -194,6 +197,13 @@ export function drawHowto(
       page_ === state.howtoPage ? COLORS.brass : COLORS.panelEdge,
     );
   }
+  // The one item this screen shows (specs/ui.md `howto`), drawn as the title
+  // menu draws the item at `menuIndex`. It is the screen's ONLY item, so it is
+  // the highlighted one outright rather than by comparison: the how-to leaves
+  // `menuIndex` exactly where the screen it was entered from left it, and
+  // specs/instrumentation.md's `setScreen` table writes `menuIndex` on the way
+  // into `title` and on no other screen.
+  drawMenuItem(ctx, HOWTO_ITEM_TEXT, howtoItemRect(), true);
   text(
     ctx,
     "LEFT and RIGHT turn the page · ENTER or ESC returns to the title",
@@ -201,6 +211,30 @@ export function drawHowto(
     STAGE_H - 30,
     { size: 12, color: COLORS.textFaint, align: "center" },
   );
+}
+
+/**
+ * One item of the title menu or of the how-to, over the region `regions.ts`
+ * laid out for it: a box while it is the highlighted one, and its copy on the
+ * region's own baseline either way.
+ */
+function drawMenuItem(
+  ctx: CanvasRenderingContext2D,
+  item: string,
+  rect: MenuItemRect,
+  selected: boolean,
+): void {
+  if (selected) {
+    fillRect(ctx, rect.x, rect.y, rect.w, rect.h, COLORS.panel);
+    strokeRect(ctx, rect.x, rect.y, rect.w, rect.h, COLORS.brass);
+  }
+  text(ctx, item, STAGE_CX, rect.y + MENU_TEXT_BASELINE, {
+    size: 22,
+    color: selected ? COLORS.brass : COLORS.textDim,
+    bold: selected,
+    align: "center",
+    spacing: 5,
+  });
 }
 
 /** The select screen: the current mode's challenges, and what each row is. */
@@ -227,19 +261,18 @@ export function drawSelect(ctx: CanvasRenderingContext2D, game: Game): void {
     { size: 13, color: COLORS.textDim, align: "center" },
   );
 
-  const x0 = 200;
-  const width = STAGE_W - 400;
-  const rowHeight = list.length > 12 ? 34 : 40;
-  const top = 140;
   list.forEach((challenge, index) => {
-    const y = top + index * rowHeight;
+    const rect = selectRowRect(index, list.length);
+    const x0 = rect.x;
+    const width = rect.w;
+    const y = rect.y + SELECT_TEXT_BASELINE;
     const highlighted = index === state.selectIndex;
     const isSolved = solved.includes(index);
     const enterable = game.enterable(state.mode, index);
     const stateWord = !enterable ? "LOCKED" : isSolved ? "SOLVED" : "OPEN";
     if (highlighted) {
-      fillRect(ctx, x0, y - 20, width, rowHeight - 4, COLORS.panel);
-      strokeRect(ctx, x0, y - 20, width, rowHeight - 4, COLORS.brass);
+      fillRect(ctx, rect.x, rect.y, rect.w, rect.h, COLORS.panel);
+      strokeRect(ctx, rect.x, rect.y, rect.w, rect.h, COLORS.brass);
     }
     const dim = !enterable;
     text(ctx, String(index + 1).padStart(2, " "), x0 + 16, y, {

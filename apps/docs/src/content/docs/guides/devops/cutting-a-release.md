@@ -114,9 +114,12 @@ baselines regenerated or reviewers see a side-by-side against media captured fro
 an older script.
 
 ```sh
-tcab publish-reference --env prod <slug>          # per case; commits nothing itself
-git add test-cases/reference-builds.lock.json
-git commit -m "chore(references): update reference implementations"
+# Per case; commits nothing itself. The publish exits non-zero if any reference
+# build failed to build, capture its baselines, or deploy, so the commit is
+# chained onto it rather than run over a lockfile a failed sweep half wrote.
+tcab publish-reference --env prod <slug> && \
+  git add test-cases/reference-builds.lock.json && \
+  git commit -m "chore(references): update reference implementations"
 ```
 
 Then verify the gate mechanically, rather than from memory — every

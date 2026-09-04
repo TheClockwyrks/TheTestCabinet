@@ -159,6 +159,8 @@ it("draws no target beside an axis carrying no live command", async () => {
   }
 
   const draws = await readoutText(h);
+  await h.capture("axis-readout", "The axis readouts with one command live");
+
   for (const axis of QUIET) {
     const value = state.run.axes[axis].value;
     const line = axisLine(draws, axis);
@@ -175,6 +177,4 @@ it("draws no target beside an axis carrying no live command", async () => {
       );
     }
   }
-
-  await h.capture("axis-readout", "The axis readouts with one command live");
 });
