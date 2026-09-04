@@ -496,7 +496,7 @@ description = "What the game looks and sounds like: the eight screens and their 
 # case controls. `outputs` is declared ONCE here and serves all three engines: the
 # extension an output is served under follows its `kind`. A `replay` output is a
 # draw-command recording, armed around the section the item is about and never
-# around the arrangement that got there; the ten of them are exactly the items
+# around the arrangement that got there; the eleven of them are exactly the items
 # whose motion is worth scrubbing. An `image` output is a single captured frame,
 # and an item declares two where the evidence is a before-and-after pair. Both are
 # evidence beside the verdict rather than any part of it: an item passes or fails
@@ -562,14 +562,62 @@ failure_cap = "broken"
 validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [
   { id = "posed", name = "The posed floor the snapshot reports", kind = "image" },
 ] }
+# The six poses-read-back items are one group of state each, so a build whose
+# only broken pose is setUnitSlow loses one point rather than the whole group.
+# Mute is in none of them: there is no setMuted.
 [[review.categories.items]]
-id = "poses-read-back"
-title = "Every pose is reported by the snapshot"
-description = "Each pose operation's value is read back: screen, phase, menu index, mode, difficulty, money, lives, score, wave, build timer, wave pending, speed, selection, shop hover, the armed type, the preview's tile and rotation, a tower's heat, level, freshness, tripped flag, trip timer and both faculty gates, a unit's position, hp, max hp, slow, slow timer and its gate, the pointer's position and press state, and the world gate. Mute is not in the list: there is no setMuted."
+id = "poses-read-back-the-run"
+title = "The run poses are reported by the snapshot"
+description = "setScreen, setPhase, setMenuIndex, setMode and setDifficulty each read back on the snapshot as screen, phase, menuIndex, mode and difficulty."
 domains = ["heat", "defense", "run", "presentation"]
 failure_cap = "broken"
-validation = { script = "instrumentation/poses-read-back.test.ts", outputs = [
-  { id = "posed", name = "The floor every pose built", kind = "image" },
+validation = { script = "instrumentation/poses-read-back-the-run.test.ts", outputs = [
+  { id = "posed", name = "The run the poses arranged", kind = "image" },
+] }
+[[review.categories.items]]
+id = "poses-read-back-the-figures"
+title = "The run's figure poses are reported by the snapshot"
+description = "setMoney, setLives, setScore, setWave, setBuildTimer, setWavePending and setSpeed each read back on the snapshot as money, lives, score, wave, buildTimer, wavePending and speed."
+domains = ["heat", "defense", "run", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/poses-read-back-the-figures.test.ts", outputs = [
+  { id = "posed", name = "The figures the poses set on the panel", kind = "image" },
+] }
+[[review.categories.items]]
+id = "poses-read-back-the-build"
+title = "The building poses are reported by the snapshot"
+description = "setSelected, setHoverShop, setArmed, setPreview and setPreviewRotation each read back on the snapshot as selected, hoverShop, build.type, build.col and build.row, and build.rotation."
+domains = ["heat", "defense", "run", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/poses-read-back-the-build.test.ts", outputs = [
+  { id = "posed", name = "The held preview and selection the poses made", kind = "image" },
+] }
+[[review.categories.items]]
+id = "poses-read-back-a-tower"
+title = "The tower poses are reported by the snapshot"
+description = "setTowerHeat, setTowerLevel, setTowerFresh, setTowerTripped, setTowerTripTimer, setTowerFiring and setTowerThermal each read back on the posed tower as heat, level, fresh, tripped, tripTimer, firingEnabled and thermalEnabled."
+domains = ["heat", "defense", "run", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/poses-read-back-a-tower.test.ts", outputs = [
+  { id = "posed", name = "The tower the poses arranged", kind = "image" },
+] }
+[[review.categories.items]]
+id = "poses-read-back-a-unit"
+title = "The surge poses are reported by the snapshot"
+description = "setUnitPosition, setUnitHp, setUnitMaxHp, setUnitSlow, setUnitSlowTimer and setUnitMotion each read back on the posed unit as x and y, hp, maxHp, slowFactor, slowTimer and motion."
+domains = ["heat", "defense", "run", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/poses-read-back-a-unit.test.ts", outputs = [
+  { id = "posed", name = "The unit the poses arranged", kind = "image" },
+] }
+[[review.categories.items]]
+id = "poses-read-back-the-pointer-and-the-gate"
+title = "The pointer poses and the world gate are reported by the snapshot"
+description = "pointerMove, pointerDown and pointerUp read back as pointer.x, pointer.y and pointer.down, and setWaveSpawning reads back as waveSpawning."
+domains = ["heat", "defense", "run", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/poses-read-back-the-pointer-and-the-gate.test.ts", outputs = [
+  { id = "posed", name = "The pressed pointer the poses reported", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "derived-fields-follow"
@@ -592,7 +640,7 @@ validation = { script = "instrumentation/reset-restores-title.test.ts", outputs 
 [[review.categories.items]]
 id = "reset-seeds-randomness"
 title = "reset seeds the game's randomness"
-description = "Two waves released after reset({ seed: 7 }) draw the identical sequence of vents, and a wave after reset({ seed: 8 }) draws a different one."
+description = "Two waves released after reset(7) draw the identical sequence of vents, and a wave after reset(8) draws a different one."
 domains = ["run"]
 failure_cap = "passable"
 validation = { script = "instrumentation/reset-seeds-randomness.test.ts", outputs = [
@@ -794,11 +842,20 @@ validation = { script = "floor/stage-fit.test.ts", outputs = [
 [[review.categories.items]]
 id = "panel-strip"
 title = "The build panel occupies the right strip"
-description = "The panel is drawn across x in [986, 1280] for the full height, and no tower, unit or floor chrome is drawn there."
+description = "The panel's readouts are drawn across x in [986, 1280] for the full height of the stage and not on the floor to the left of it."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "floor/panel-strip.test.ts", outputs = [
   { id = "panel", name = "The build panel in its right-hand strip", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-floor-in-the-strip"
+title = "Nothing of the floor is drawn in the strip"
+description = "No tower, unit or floor chrome is drawn in x [986, 1280], including with a tower and a unit posed hard against the strip's edge."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "floor/no-floor-in-the-strip.test.ts", outputs = [
+  { id = "strip", name = "The strip with the floor crowded against it", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "casing-band"
@@ -823,7 +880,7 @@ id = "grid-visible"
 title = "The tile grid is always visible"
 description = "The floor carries a grid a player can read tiles from, drawn over the floor at all times including with no tower placed."
 domains = ["presentation"]
-failure_cap = "great"
+failure_cap = "scuffed"
 validation = { script = "floor/grid-visible.test.ts", outputs = [
   { id = "grid", name = "The tile grid on the floor", kind = "image" },
 ] }
@@ -1095,13 +1152,22 @@ validation = { script = "heat/plateau-holds.test.ts", outputs = [
   { id = "plateau", name = "A gun sitting in its plateau", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "readouts-derived"
-title = "The reported multiplier and damage follow the heat"
-description = "At five heats the snapshot's heatMult equals heatMultiplier(heat, redline) and its damage equals baseDamage(level) * heatMult."
+id = "heat-mult-reported"
+title = "The reported multiplier follows the heat"
+description = "At five heats the snapshot's heatMult equals heatMultiplier(heat, redline)."
 domains = ["heat"]
 failure_cap = "passable"
-validation = { script = "heat/readouts-derived.test.ts", outputs = [
-  { id = "readouts", name = "The inspector's multiplier and damage at heat", kind = "image" },
+validation = { script = "heat/heat-mult-reported.test.ts", outputs = [
+  { id = "multiplier", name = "The inspector's multiplier at heat", kind = "image" },
+] }
+[[review.categories.items]]
+id = "damage-reported"
+title = "The reported damage follows the multiplier"
+description = "At five heats the snapshot's damage equals baseDamage(level) * heatMult."
+domains = ["heat"]
+failure_cap = "passable"
+validation = { script = "heat/damage-reported.test.ts", outputs = [
+  { id = "damage", name = "The inspector's damage at heat", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "firing-adds-heat"
@@ -1572,13 +1638,22 @@ validation = { script = "towers/lance-stats.test.ts", outputs = [
   { id = "lance", name = "The Lance's stats in the inspector", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "mover-stats"
-title = "The Forge and the Sink carry their stats"
-description = "Both cost 20 and are 2x2, both report an empty radiator-face list at every rotation, and the Forge's level-I setpoint is 72 against the Sink's level-I per-edge output of 16."
+id = "forge-stats"
+title = "The Forge carries its stats"
+description = "Cost 20, size 2, an empty radiator-face list at every rotation, and a level-I setpoint of 72."
 domains = ["defense"]
 failure_cap = "passable"
-validation = { script = "towers/mover-stats.test.ts", outputs = [
-  { id = "movers", name = "The Forge and the Sink in the inspector", kind = "image" },
+validation = { script = "towers/forge-stats.test.ts", outputs = [
+  { id = "forge", name = "The Forge's stats in the inspector", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sink-stats"
+title = "The Sink carries its stats"
+description = "Cost 20, size 2, an empty radiator-face list at every rotation, and a level-I per-edge output of 16."
+domains = ["defense"]
+failure_cap = "passable"
+validation = { script = "towers/sink-stats.test.ts", outputs = [
+  { id = "sink", name = "The Sink's stats in the inspector", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "footprint-2x2"
@@ -2051,15 +2126,45 @@ failure_cap = "broken"
 validation = { script = "building/upgrade-raises-the-level.test.ts", outputs = [
   { id = "level", name = "The tower at its new level", kind = "image" },
 ] }
+# specs/towers.md states the four upgrade figures as four rows of one table, and
+# each is independently breakable, so each is its own point. They transcribe a
+# table, so each caps at `passable` under the first standing rule above.
 [[review.categories.items]]
-id = "upgrade-changes-the-stats"
-title = "An upgrade runs stronger and hotter"
-description = "Level II multiplies base damage by 1.6, adds 1.0 tile of range, multiplies fire rate by 1.15 and heatPerShot by 1.3, and level III applies each again."
+id = "upgrade-raises-the-damage"
+title = "An upgrade raises the base damage"
+description = "Level II multiplies base damage by UPGRADE_DAMAGE (1.6) and level III applies it again, for 1.6^2 times the level-I figure."
 domains = ["defense"]
-failure_cap = "broken"
-validation = { script = "building/upgrade-changes-the-stats.test.ts", outputs = [
+failure_cap = "passable"
+validation = { script = "building/upgrade-raises-the-damage.test.ts", outputs = [
   { id = "before", name = "The tower before the upgrade", kind = "image" },
-  { id = "after", name = "The same tower stronger and hotter", kind = "image" },
+  { id = "after", name = "The same tower hitting harder", kind = "image" },
+] }
+[[review.categories.items]]
+id = "upgrade-extends-the-range"
+title = "An upgrade extends the range"
+description = "Level II adds UPGRADE_RANGE (1.0) tile of range and level III adds it again, for 2.0 tiles over the level-I figure."
+domains = ["defense"]
+failure_cap = "passable"
+validation = { script = "building/upgrade-extends-the-range.test.ts", outputs = [
+  { id = "ring", name = "The range ring the upgrade widened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "upgrade-quickens-the-fire-rate"
+title = "An upgrade quickens the fire rate"
+description = "Level II multiplies the fire rate by UPGRADE_FIRE_RATE (1.15) and level III applies it again, for 1.15^2 times the level-I figure."
+domains = ["defense"]
+failure_cap = "passable"
+validation = { script = "building/upgrade-quickens-the-fire-rate.test.ts", outputs = [
+  { id = "rate", name = "The upgraded gun firing faster", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "upgrade-raises-the-heat-per-shot"
+title = "An upgrade raises the heat each shot adds"
+description = "Level II multiplies heatPerShot by UPGRADE_HEAT (1.3) and level III applies it again, for 1.3^2 times the level-I figure."
+domains = ["heat", "defense"]
+failure_cap = "passable"
+validation = { script = "building/upgrade-raises-the-heat-per-shot.test.ts", outputs = [
+  { id = "heat", name = "The heat one shot adds at level III", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "upgrade-leaves-the-geometry"
@@ -2154,11 +2259,20 @@ validation = { script = "building/sell-reopens-and-repaths.test.ts", outputs = [
 [[review.categories.items]]
 id = "sell-clears-the-selection"
 title = "Selling the selected tower deselects"
-description = "Selling the tower that was selected leaves selected null, and selling a different tower leaves the selection where it was."
+description = "Selling the tower that was selected leaves selected null."
 domains = ["defense"]
 failure_cap = "passable"
 validation = { script = "building/sell-clears-the-selection.test.ts", outputs = [
   { id = "deselected", name = "The panel with the selection gone", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sell-another-keeps-the-selection"
+title = "Selling another tower leaves the selection alone"
+description = "Selling a tower that is not the selected one leaves selected on the tower it was on."
+domains = ["defense"]
+failure_cap = "passable"
+validation = { script = "building/sell-another-keeps-the-selection.test.ts", outputs = [
+  { id = "kept", name = "The inspector still open on the tower that stayed", kind = "image" },
 ] }
 
 # --- The surge -----------------------------------------------------------------
@@ -2867,14 +2981,27 @@ failure_cap = "scuffed"
 validation = { script = "modes/sudden-death-ends-on-one-leak.test.ts", outputs = [
   { id = "gameover", name = "One leak ending a Sudden Death run", kind = "image" },
 ] }
+# The two end screens are two screens, so PLAY AGAIN from each is its own point:
+# a build that replays correctly from victory and wrongly from game over must not
+# grade as one that gets neither. Restart from the pause menu is
+# screens.pause-restart's requirement, not either of these.
 [[review.categories.items]]
-id = "replay-keeps-the-mode"
-title = "Play Again replays the same mode and difficulty"
-description = "Confirming PLAY AGAIN on either end screen opens a fresh run on the mode and difficulty the run was on, with that pair's starting money and lives. Restart from the pause menu is screens.pause-restart's requirement, not this one's."
+id = "replay-keeps-the-mode-from-victory"
+title = "Play Again on victory replays the same mode and difficulty"
+description = "Confirming PLAY AGAIN on the victory screen opens a fresh run on the mode and difficulty the run was on, with that pair's starting money and lives."
 domains = ["run"]
 failure_cap = "scuffed"
-validation = { script = "modes/replay-keeps-the-mode.test.ts", outputs = [
-  { id = "replay", name = "The replayed run on the same mode and difficulty", kind = "image" },
+validation = { script = "modes/replay-keeps-the-mode-from-victory.test.ts", outputs = [
+  { id = "replay", name = "The replayed run a victory started", kind = "image" },
+] }
+[[review.categories.items]]
+id = "replay-keeps-the-mode-from-gameover"
+title = "Play Again on game over replays the same mode and difficulty"
+description = "Confirming PLAY AGAIN on the game-over screen opens a fresh run on the mode and difficulty the run was on, with that pair's starting money and lives."
+domains = ["run"]
+failure_cap = "scuffed"
+validation = { script = "modes/replay-keeps-the-mode-from-gameover.test.ts", outputs = [
+  { id = "replay", name = "The replayed run a loss started", kind = "image" },
 ] }
 
 # --- Controls ------------------------------------------------------------------
@@ -3074,6 +3201,24 @@ domains = ["defense"]
 failure_cap = "passable"
 validation = { script = "controls/pointer-deselects-on-empty-floor.test.ts", outputs = [
   { id = "deselected", name = "The panel after a tap on empty floor", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-reaches-a-menu-row"
+title = "Moving the pointer onto a menu row highlights it"
+description = "A pointer move into the rectangle the build reported for the second row of the title menu sets menuIndex to 1 and takes nothing, and a move back off every row leaves the highlight on that row."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "controls/pointer-reaches-a-menu-row.test.ts", outputs = [
+  { id = "highlighted", name = "The row the pointer reached", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-takes-a-menu-row"
+title = "Tapping a menu row takes it"
+description = "A press and release inside the rectangle the build reported for a menu row highlights that row and takes it, exactly as confirm on it does, on the title screen and on the mode screen."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "controls/pointer-takes-a-menu-row.test.ts", outputs = [
+  { id = "taken", name = "The screen the tapped row led to", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "pointer-hovers-the-shop"
@@ -3288,6 +3433,93 @@ failure_cap = "passable"
 validation = { script = "screens/back-from-howto.test.ts", outputs = [
   { id = "back", name = "The title screen, returned to from the how-to", kind = "image" },
 ] }
+# The three screens a player could otherwise only leave with a key each carry a
+# BACK row, so a touchscreen player is never stranded on one (specs/screens.md).
+[[review.categories.items]]
+id = "mode-select-back-row"
+title = "BACK on mode select returns to the title"
+description = "Confirming the BACK row of MODE_ITEMS, the sixth, moves the screen to title."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/mode-select-back-row.test.ts", outputs = [
+  { id = "title", name = "The title screen, returned to from the BACK row", kind = "image" },
+] }
+[[review.categories.items]]
+id = "difficulty-back-row"
+title = "BACK on difficulty select returns to mode select"
+description = "Confirming the BACK row of DIFFICULTY_ITEMS, the fourth, moves the screen to modeselect and starts no run."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/difficulty-back-row.test.ts", outputs = [
+  { id = "modeselect", name = "Mode select, returned to from the BACK row", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-back-row"
+title = "BACK on the how-to screen returns to the title"
+description = "The how-to screen draws the one row of HOWTO_ITEMS, BACK, and confirming it moves the screen to title."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/howto-back-row.test.ts", outputs = [
+  { id = "title", name = "The title screen, returned to from the how-to BACK row", kind = "image" },
+] }
+# What is highlighted on arrival. Only the arrivals whose row differs from the
+# row the previous screen was left on are decided here; each is one arrival.
+[[review.categories.items]]
+id = "title-returns-with-howto-selected"
+title = "Leaving the how-to screen returns to the title on HOW TO PLAY"
+description = "Returning to title from howto leaves menuIndex 1, the HOW TO PLAY row that led away from it."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/title-returns-with-howto-selected.test.ts", outputs = [
+  { id = "returned", name = "The title screen with HOW TO PLAY highlighted", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mode-select-returns-with-containment"
+title = "Leaving difficulty select returns to mode select on CONTAINMENT"
+description = "Returning to modeselect from difficultyselect leaves menuIndex 0, the CONTAINMENT row that led away from it, from a difficulty screen left on HARD."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/mode-select-returns-with-containment.test.ts", outputs = [
+  { id = "returned", name = "Mode select with CONTAINMENT highlighted", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-opens-on-resume"
+title = "The pause screen opens on RESUME"
+description = "menuIndex is 0 on the RESUME row the moment the pause screen opens, whatever row the last menu was left on."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/pause-opens-on-resume.test.ts", outputs = [
+  { id = "paused", name = "The pause menu opened on RESUME", kind = "image" },
+] }
+[[review.categories.items]]
+id = "esc-resumes"
+title = "Escape resumes from the pause screen"
+description = "Escape on the pause screen returns the screen to playing with the tower and surge rosters exactly as they were left, which is case 4 of the back order in specs/controls.md."
+domains = ["run", "presentation"]
+failure_cap = "passable"
+validation = { script = "screens/esc-resumes.test.ts", outputs = [
+  { id = "resumed", name = "The match Escape resumed", kind = "image" },
+] }
+# The menu rows are laid out by the build, so the build reports where it drew
+# them and a validator drives the pointer at what it reported.
+[[review.categories.items]]
+id = "menu-rows-reported"
+title = "Every menu row reports its hit region"
+description = "On title, modeselect, difficultyselect, howto, paused, victory and gameover the snapshot's menu holds one rectangle per row of that screen's menu, in row order from index 0, and it is empty while the screen is playing."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/menu-rows-reported.test.ts", outputs = [
+  { id = "rows", name = "The rows the build reported it drew", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-rows-are-touch-targets"
+title = "Every menu row is big enough to tap"
+description = "Each reported row rectangle is at least MIN_TOUCH_TARGET (32) by 32 logical units, and no two rows of one menu overlap."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/menu-rows-are-touch-targets.test.ts", outputs = [
+  { id = "rows", name = "The reported row rectangles over the menu", kind = "image" },
+] }
 [[review.categories.items]]
 id = "menu-wraps-down"
 title = "The highlight wraps past the last row"
@@ -3369,23 +3601,62 @@ failure_cap = "scuffed"
 validation = { script = "screens/gameover-screen.test.ts", outputs = [
   { id = "gameover", name = "The game-over screen and what it reports", kind = "image" },
 ] }
+# `victory` and `gameover` are two screens, so each of the three things an end
+# screen does is decided per screen: a build that opens victory on PLAY AGAIN and
+# game over on MENU must not grade as one that opens neither correctly.
 [[review.categories.items]]
-id = "play-again-focused"
-title = "PLAY AGAIN is focused when an end screen opens"
-description = "menuIndex is 0 on the PLAY AGAIN row the moment either end screen opens."
+id = "play-again-focused-on-victory"
+title = "PLAY AGAIN is focused when the victory screen opens"
+description = "menuIndex is 0 on the PLAY AGAIN row the moment a won run opens the victory screen, whatever row the pause menu was last left on."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "screens/play-again-focused.test.ts", outputs = [
-  { id = "focused", name = "PLAY AGAIN focused as the end screen opened", kind = "image" },
+validation = { script = "screens/play-again-focused-on-victory.test.ts", outputs = [
+  { id = "focused", name = "PLAY AGAIN focused as the victory screen opened", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "end-menu-returns-to-title"
-title = "MENU returns to the title"
-description = "Confirming MENU from either end screen returns the screen to title."
+id = "play-again-focused-on-gameover"
+title = "PLAY AGAIN is focused when the game-over screen opens"
+description = "menuIndex is 0 on the PLAY AGAIN row the moment a lost run opens the game-over screen, whatever row the pause menu was last left on."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "screens/end-menu-returns-to-title.test.ts", outputs = [
-  { id = "title", name = "The title screen, returned to from an end screen", kind = "image" },
+validation = { script = "screens/play-again-focused-on-gameover.test.ts", outputs = [
+  { id = "focused", name = "PLAY AGAIN focused as the game-over screen opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "end-menu-returns-to-title-from-victory"
+title = "MENU on the victory screen returns to the title"
+description = "Confirming MENU on the victory screen returns the screen to title."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/end-menu-returns-to-title-from-victory.test.ts", outputs = [
+  { id = "title", name = "The title screen, returned to from victory", kind = "image" },
+] }
+[[review.categories.items]]
+id = "end-menu-returns-to-title-from-gameover"
+title = "MENU on the game-over screen returns to the title"
+description = "Confirming MENU on the game-over screen returns the screen to title."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/end-menu-returns-to-title-from-gameover.test.ts", outputs = [
+  { id = "title", name = "The title screen, returned to from game over", kind = "image" },
+] }
+[[review.categories.items]]
+id = "back-from-victory"
+title = "Back on the victory screen returns to the title"
+description = "Escape on the victory screen moves the screen to title, which is case 4 of the back order in specs/controls.md."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/back-from-victory.test.ts", outputs = [
+  { id = "title", name = "The title screen, escaped to from victory", kind = "image" },
+] }
+[[review.categories.items]]
+id = "back-from-gameover"
+title = "Back on the game-over screen returns to the title"
+description = "Escape on the game-over screen moves the screen to title, which is case 4 of the back order in specs/controls.md."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/back-from-gameover.test.ts", outputs = [
+  { id = "title", name = "The title screen, escaped to from game over", kind = "image" },
 ] }
 
 # --- The build panel -----------------------------------------------------------
@@ -3436,7 +3707,7 @@ id = "onslaught-readout"
 title = "The Hundred reads its onslaught"
 description = "In The Hundred the wave readout reads the onslaught rather than a wave over a total."
 domains = ["presentation"]
-failure_cap = "great"
+failure_cap = "passable"
 validation = { script = "hud/onslaught-readout.test.ts", outputs = [
   { id = "onslaught", name = "The Hundred's onslaught readout", kind = "image" },
 ] }
@@ -3481,7 +3752,7 @@ id = "inspector-damage-and-multiplier"
 title = "The inspector shows the damage and its multiplier"
 description = "The damage read shows the tower's live per-shot damage beside its live heat multiplier, and the multiplier stops climbing at the redline."
 domains = ["heat"]
-failure_cap = "broken"
+failure_cap = "passable"
 validation = { script = "hud/inspector-damage-and-multiplier.test.ts", outputs = [
   { id = "damage", name = "The damage read beside its multiplier", kind = "image" },
 ] }
@@ -3576,7 +3847,7 @@ validation = { script = "hud/touch-targets.test.ts", outputs = [
 # draw -- a reactor-plate texture, lane markings, a vignette or a scanline are
 # ordinary art direction the appearance rule leaves to the build. What such an item
 # would have protected is already carried positively by floor.panel-strip,
-# hud.touch-targets, towers-read-apart-from-the-floor,
+# floor.no-floor-in-the-strip, hud.touch-targets, towers-read-apart-from-the-floor,
 # surge-reads-apart-from-the-floor and floor.grid-visible.
 [[review.categories]]
 id = "presentation"
@@ -3674,13 +3945,22 @@ validation = { script = "presentation/valid-and-invalid-previews-read-apart.test
   { id = "invalid", name = "The same footprint reading refused", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "range-ring-drawn"
-title = "A range ring is drawn"
-description = "The held preview and a selected tower each draw a ring at the tower's range from its footprint centre."
+id = "range-ring-on-the-preview"
+title = "The held preview draws its range ring"
+description = "A held preview draws a ring at the armed type's range from the footprint's centre."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "presentation/range-ring-drawn.test.ts", outputs = [
+validation = { script = "presentation/range-ring-on-the-preview.test.ts", outputs = [
   { id = "ring", name = "The range ring on a held preview", kind = "image" },
+] }
+[[review.categories.items]]
+id = "range-ring-on-a-selection"
+title = "A selected tower draws its range ring"
+description = "A selected placed tower draws a ring at its own range from its footprint's centre."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/range-ring-on-a-selection.test.ts", outputs = [
+  { id = "ring", name = "The range ring on a selected tower", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "build-zone-drawn"
@@ -3774,7 +4054,7 @@ id = "sell-cue"
 title = "Selling a tower plays its cue"
 description = "KeyS on a selected tower emits the sell cue on the frame the sale resolves."
 domains = ["presentation"]
-failure_cap = "great"
+failure_cap = "passable"
 validation = { script = "audio/sell-cue.test.ts", outputs = [
   { id = "sell", name = "The sale the cue answers", kind = "image" },
 ] }
@@ -3808,9 +4088,9 @@ validation = { script = "audio/game-over-cue.test.ts", outputs = [
 [[review.categories.items]]
 id = "menu-cue"
 title = "Moving a menu plays its cue"
-description = "Moving the highlight on a menu emits the menu cue."
+description = "Moving the highlight on a menu emits the menu cue, whether the highlight was moved by a key or by the pointer reaching a row."
 domains = ["presentation"]
-failure_cap = "great"
+failure_cap = "passable"
 validation = { script = "audio/menu-cue.test.ts", outputs = [
   { id = "menu", name = "The menu move the cue answers", kind = "image" },
 ] }
@@ -3831,4 +4111,46 @@ domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "audio/no-autoplay.test.ts", outputs = [
   { id = "silent", name = "The title screen before any interaction", kind = "image" },
+] }
+
+# --- Showcase (read off the produced tree, not off the running game) -----------
+# The showcase is the store-page presentation of the finished game: a
+# player-facing description and an ordered carousel of captured media, shipped in
+# a `showcase/` directory at the root of the produced repository, which
+# `specs/showcase.md` defines. It is worth THREE points rather than one, because
+# it is a deliverable of its own -- a whole file of the specification, and the one
+# piece of a run a person meets before they meet the game -- where every other
+# point on this checklist is one behavior of the game itself.
+#
+# Its cap is `great` all the same: a build that shipped no showcase plays exactly
+# as well as one that did, so the miss costs the presentation and leaves the
+# standard flow of gameplay untouched. The weight and the cap say different things
+# on purpose -- how much of the score the point carries, and how far a failure may
+# drag the ratings down.
+#
+# ONE point, and it grades EXISTENCE alone. Whether the description reads like
+# something a player would want to play, whether the carousel opens on the
+# strongest view of live play, and whether the media is worth looking at is a
+# reviewer's judgement, and belongs to the AESTHETIC half of the domains rather
+# than to an assertion. The validator's whole verdict is that the two files are
+# there and that the carousel points at a file that is there with them: not a
+# dimension, not a byte of a picture, not a word of the prose.
+#
+# The script drives nothing. It reads the produced tree with `node:fs`, so one
+# suite stands unchanged in all three engine directories and the point means the
+# same thing whichever engine the run selected. What it hands back as evidence is
+# a `.png` copied out of the build's own showcase, so a reviewer sees the picture
+# the build chose to present its game with beside the verdict.
+[[review.categories]]
+id = "showcase"
+title = "Showcase"
+[[review.categories.items]]
+id = "exists"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, and at least one file the carousel names is present in showcase/."
+weight = 3
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "showcase/exists.test.ts", outputs = [
+  { id = "carousel", name = "A screenshot from the build's showcase", kind = "image" },
 ] }
