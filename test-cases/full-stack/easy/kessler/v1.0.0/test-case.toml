@@ -395,8 +395,8 @@ description = "Everything a player sees and hears. The produced assets first: th
 # Reviewer checklist, in the categories grammar (`[review] format = 2`). Each
 # `[[review.categories]]` is a CATEGORY, a bare name grouping the points a reviewer
 # grades, and each `[[review.categories.items]]` under it is one graded review item,
-# worth one point (the default weight), so a category is worth the number of items
-# it holds and there is no fractional scoring. A category carries no prose of its
+# worth one point unless it declares a `weight` of its own; the single showcase
+# item is the only one that does, at 3. A category carries no prose of its
 # own; each review item states in `description` the claim checked against the build,
 # and its verdict is recorded under the composite id `<category id>.<item id>`. The
 # checklist is reporter-side material, never seeded into a run, so the model never
@@ -406,7 +406,11 @@ description = "Everything a player sees and hears. The produced assets first: th
 # `validation/<engine>/<category>/<item id>.test.ts` suite — one Vitest project per
 # engine, the same relative path under each — and the media the suite writes; the
 # suites were captured against the three reference implementations under
-# `references/<engine>/base/`. The checklist was authored first so the suites are
+# `references/<engine>/base/`. A handful of items add `engines = ["none"]` to that
+# table, which scopes the item to the engines where the behavior is the build's own
+# work: the debug overlay and its backtick toggle, the press-edge contract, and the
+# stage fit are the engine's under `simple-2d` and `structured-2d`, and grading them
+# there would hand every build the point. The checklist was authored first so the suites are
 # written TO these claims rather than the claims drifting to fit what a suite
 # happened to check. Every item is cut to that standard: ONE observable behavior, posed
 # through the instrumentation surface and read back, so a build fails exactly the
@@ -442,7 +446,7 @@ format = 2
 # --- Instrumentation ----------------------------------------------------------
 # The surface every other point is driven through, and a deliverable of the case
 # in its own right. Each control operation is posed and read back one at a time,
-# the two driver switches are checked alone, and the four overlay points close
+# the two driver switches are checked alone, and the overlay points close
 # the category, so a surface that is missing, hollow, or wired to nothing fails
 # here by name rather than only as every other suite failing to run.
 [[review.categories]]
@@ -450,17 +454,25 @@ id = "instrumentation"
 title = "Instrumentation"
 
 [[review.categories.items]]
-id = "debug-api"
+id = "debug-api-present"
 title = "The debug and automation surface is present"
-description = "Every operation specs/instrumentation.md names for this mode is present as a function on the surface — window.__kessler in an engineless build, the surface initialize returns and engine.debug hands back in an engine build — and the surface is live: a pose changes the running game and snapshot reads the change back."
+description = "Every operation specs/instrumentation.md names for this mode is present as a function on the surface: window.__kessler in an engineless build, the surface initialize returns and engine.debug hands back in an engine build."
 domains = ["gameplay", "presentation"]
 failure_cap = "broken"
-validation = { script = "instrumentation/debug-api.test.ts", outputs = [ { id = "surface", name = "The Driven Surface", kind = "image" } ] }
+validation = { script = "instrumentation/debug-api-present.test.ts", outputs = [ { id = "surface", name = "The Surface As Installed", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "debug-api-live"
+title = "The debug and automation surface is live"
+description = "The surface drives the running game: a pose changes it and snapshot reads the change back."
+domains = ["gameplay", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/debug-api-live.test.ts", outputs = [ { id = "driven", name = "The Driven Surface", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "snapshot-shape"
 title = "Snapshot reports the full documented shape"
-description = "On a posed session holding balls, targets on every ring, a falling pod, a running effect timer, and the shield, snapshot returns every field specs/instrumentation.md documents with its documented type, including the nested paddle, balls, rings, pods, effects, and menu objects, with values matching what was posed."
+description = "On a posed session holding balls, targets on every ring, a falling pod, a running effect timer, and the shield, snapshot returns every field specs/instrumentation.md documents with its documented type, including seed, interstitialTicks, and the nested paddle, balls, rings, pods, effects, and menu objects, with values matching what was posed."
 domains = ["gameplay"]
 failure_cap = "broken"
 validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [ { id = "posed", name = "The Posed Session", kind = "image" } ] }
@@ -476,7 +488,7 @@ validation = { script = "instrumentation/snapshot-fixed-shape.test.ts", outputs 
 [[review.categories.items]]
 id = "reset-restores"
 title = "reset restores the boot state"
-description = "From a thoroughly disturbed session, reset() returns the game to its boot state: the title screen with menu.index 0, score 0, 3 lives, wave 1, ticks 0, the deflector at angle 90 with span 48, every slot filled at full hit points with every ring angle at 0 and the wave-1 speeds, no balls, no pods, no timed effect, no shield, and both driver switches on."
+description = "From a thoroughly disturbed session, reset() returns the game to its boot state: the title screen with menu.index 0, score 0, 3 lives, wave 1, ticks 0, the deflector at angle 90 with span 48, every slot filled at full hit points with every ring angle at 0 and the wave-1 speeds, no balls, no pods, no timed effect, no shield, the interstitial timer at 0, and both driver switches on."
 domains = ["gameplay"]
 failure_cap = "passable"
 validation = { script = "instrumentation/reset-restores.test.ts", outputs = [ { id = "reset", name = "The Boot State After Reset", kind = "image" } ] }
@@ -484,26 +496,26 @@ validation = { script = "instrumentation/reset-restores.test.ts", outputs = [ { 
 [[review.categories.items]]
 id = "seeded-replay-deterministic"
 title = "A seeded session replays to identical snapshots"
-description = "Two sessions given reset({ seed }) with the same seed, the same sequence of operations, and the same elapsed ticks report identical snapshots, including the same pods of the same kinds in the same order."
+description = "Two sessions given reset(seed) with the same seed, the same sequence of operations, and the same elapsed ticks report identical snapshots, including the same pods of the same kinds in the same order."
 domains = ["gameplay"]
 failure_cap = "passable"
 validation = { script = "instrumentation/seeded-replay-deterministic.test.ts", outputs = [ { id = "seeded", name = "A Seeded Session", kind = "replay" } ] }
 
 [[review.categories.items]]
-id = "set-screen-playing"
-title = "setScreen('playing') starts a fresh session"
-description = "setScreen('playing') starts a fresh session exactly as confirming START does: score 0, 3 lives, wave 1, every slot filled, ring angles at 0, the wave-1 figures in force, and a ball parked on the deflector."
+id = "set-screen-sets-the-screen"
+title = "setScreen sets the screen it names"
+description = "setScreen(name) sets screen to name for each of the six values specs/screens.md names, and the snapshot reads each one back."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-screen-playing.test.ts", outputs = [ { id = "fresh", name = "The Fresh Session", kind = "image" } ] }
+validation = { script = "instrumentation/set-screen-sets-the-screen.test.ts", outputs = [ { id = "screens", name = "The Six Posed Screens", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "set-screen-waveclear"
-title = "setScreen('waveclear') enters a fresh interstitial"
-description = "setScreen('waveclear') enters the interstitial exactly as the clearing event does: balls, pods, timed effects, and the shield are removed, the score stays as it stands, and a fresh interstitial begins for the wave the counter holds and runs out into the next wave exactly as a played one does."
+id = "set-screen-leaves-the-rest"
+title = "setScreen changes nothing but the screen"
+description = "setScreen(name) leaves the score, the lives, the wave, the deflector, the balls, the rings, the pods, the timed effects, the shield, the interstitial timer, the menu highlight, and both driver switches exactly as they stood."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-screen-waveclear.test.ts", outputs = [ { id = "interstitial", name = "The Posed Interstitial Running Out", kind = "replay" } ] }
+validation = { script = "instrumentation/set-screen-leaves-the-rest.test.ts", outputs = [ { id = "held", name = "The Scene Held Across setScreen", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "set-score"
@@ -520,6 +532,46 @@ description = "setLives(n) sets the lives to n, the snapshot reads n back, and p
 domains = ["gameplay"]
 failure_cap = "passable"
 validation = { script = "instrumentation/set-lives.test.ts", outputs = [ { id = "last-life", name = "The Posed Last Life Spent", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "set-menu-index"
+title = "setMenuIndex poses the menu highlight"
+description = "setMenuIndex(n) sets the highlighted menu entry to n on a menu-bearing screen, the snapshot reads n back, and no cue sounds at the call."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-menu-index.test.ts", outputs = [ { id = "posed-highlight", name = "The posed menu highlight", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-menu-index-off-menu"
+title = "setMenuIndex does nothing off a menu"
+description = "setMenuIndex(n) on a screen carrying no menu changes nothing, and menu.index still rests at 0."
+domains = ["gameplay"]
+failure_cap = "great"
+validation = { script = "instrumentation/set-menu-index-off-menu.test.ts", outputs = [ { id = "unchanged", name = "A screen with no menu, unchanged by the call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-interstitial-ticks"
+title = "setInterstitialTicks poses the interstitial timer"
+description = "setInterstitialTicks(ticks) sets the interstitial timer to ticks and the snapshot reads it back, and a posed timer runs the interstitial out from exactly that figure."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-interstitial-ticks.test.ts", outputs = [ { id = "posed-timer", name = "The interstitial run out from a posed timer", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "menu-item-rect-reports-regions"
+title = "menuItemRect reports each entry's hit region"
+description = "menuItemRect(index) returns the hit region of entry index on each menu-bearing screen as x, y, width and height in the stage's logical units, with a region reported for every entry the screen shows and no two regions of one menu overlapping."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/menu-item-rect-reports-regions.test.ts", outputs = [ { id = "regions", name = "The reported menu hit regions over the menu", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "menu-item-rect-null-off-menu"
+title = "menuItemRect answers null where there is no entry"
+description = "menuItemRect(index) returns null on a screen carrying no menu and for an index outside the current menu's entries."
+domains = ["gameplay"]
+failure_cap = "great"
+validation = { script = "instrumentation/menu-item-rect-null-off-menu.test.ts", outputs = [ { id = "no-menu", name = "A screen with no menu reporting no region", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "set-wave-figures"
@@ -618,36 +670,68 @@ failure_cap = "passable"
 validation = { script = "instrumentation/spawn-pod.test.ts", outputs = [ { id = "falling", name = "Posed pods falling radially inward", kind = "replay" } ] }
 
 [[review.categories.items]]
-id = "set-effect-ticks"
-title = "setEffectTicks puts an effect in force and ends it"
-description = "setEffectTicks(kind, ticks) with ticks above 0 puts widen, narrow, or pierce in force exactly as catching its pod would — the same span change and the same mutual cancel between widen and narrow, the timer at exactly ticks, and the 25-point catch score not added — and setEffectTicks(kind, 0) ends the effect and restores the baseline exactly as its expiry does."
+id = "set-effect-ticks-arms"
+title = "setEffectTicks puts an effect in force"
+description = "setEffectTicks(kind, ticks) with ticks above 0 puts widen, narrow, or pierce in force exactly as catching its pod would, with the same span change, the same mutual cancel between widen and narrow, the timer at exactly ticks, and the 25-point catch score not added."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-effect-ticks.test.ts", outputs = [ { id = "posed", name = "The posed effect timers and their span changes", kind = "replay" } ] }
+validation = { script = "instrumentation/set-effect-ticks-arms.test.ts", outputs = [ { id = "armed", name = "The posed effect timers and their span changes", kind = "replay" } ] }
 
 [[review.categories.items]]
-id = "set-shield"
-title = "setShield raises and removes the shield"
-description = "setShield(true) raises the shield ring exactly as catching a shield pod does and setShield(false) removes it; neither scores, and a shield raised this way is consumed by its first reflection exactly as specs/pods.md states."
+id = "set-effect-ticks-clears"
+title = "setEffectTicks(kind, 0) ends an effect"
+description = "setEffectTicks(kind, 0) ends the effect and restores the baseline exactly as its expiry does."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-shield.test.ts", outputs = [ { id = "consumed", name = "The posed shield spent by its first reflection", kind = "replay" } ] }
+validation = { script = "instrumentation/set-effect-ticks-clears.test.ts", outputs = [ { id = "cleared", name = "The baseline restored by a zeroed timer", kind = "replay" } ] }
 
 [[review.categories.items]]
-id = "wave-advance-switch"
-title = "The waveAdvance switch holds the clearing event"
-description = "With setWaveAdvance(false), a ball-caused destruction that leaves zero live targets fires no clearing event: play carries on in playing over an empty field and destructions keep scoring, and turning the switch back on resumes the clearing from the next qualifying destruction with no catching up."
+id = "set-shield-raises"
+title = "setShield(true) raises the shield"
+description = "setShield(true) raises the shield ring exactly as catching a shield pod does, without scoring, and the shield raised this way is consumed by its first reflection exactly as specs/pods.md states."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "instrumentation/wave-advance-switch.test.ts", outputs = [ { id = "held", name = "An emptying destruction held out of the clearing", kind = "replay" } ] }
+validation = { script = "instrumentation/set-shield-raises.test.ts", outputs = [ { id = "consumed", name = "The posed shield spent by its first reflection", kind = "replay" } ] }
 
 [[review.categories.items]]
-id = "pod-spawn-switch"
-title = "The podSpawn switch holds the pod draw"
-description = "With setPodSpawn(false) a destruction makes no pod draw and does not consume the generator, so no pod spawns and the seeded sequence resumes exactly where it stood when the switch comes back on."
+id = "set-shield-removes"
+title = "setShield(false) removes the shield"
+description = "setShield(false) removes a raised shield without scoring, and a ball then crosses the shield radius unreflected."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "instrumentation/pod-spawn-switch.test.ts", outputs = [ { id = "resumed", name = "The seeded pod draw resuming where it stood", kind = "replay" } ] }
+validation = { script = "instrumentation/set-shield-removes.test.ts", outputs = [ { id = "removed", name = "A ball crossing where the shield stood", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "wave-advance-switch-holds"
+title = "waveAdvance off holds the clearing event"
+description = "With setWaveAdvance(false), a ball-caused destruction that leaves zero live targets fires no clearing event: play carries on in playing over an empty field and destructions keep scoring."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/wave-advance-switch-holds.test.ts", outputs = [ { id = "held", name = "An emptying destruction held out of the clearing", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "wave-advance-switch-resumes"
+title = "waveAdvance back on resumes the clearing event"
+description = "Turning setWaveAdvance back on resumes the clearing from the next qualifying destruction, with no catching up for the ones it missed."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/wave-advance-switch-resumes.test.ts", outputs = [ { id = "resumed", name = "The clearing fired by the next destruction", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "pod-spawn-switch-holds"
+title = "podSpawn off holds the pod draw"
+description = "With setPodSpawn(false) a destruction makes no pod draw and does not consume the generator, so no pod spawns and the seeded sequence stays where it stands."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/pod-spawn-switch-holds.test.ts", outputs = [ { id = "held", name = "A destruction shedding no pod", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "pod-spawn-switch-resumes"
+title = "podSpawn back on resumes the seeded stream"
+description = "Turning setPodSpawn back on resumes the draw from the next destruction, taking the seeded sequence up exactly where it stood."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/pod-spawn-switch-resumes.test.ts", outputs = [ { id = "resumed", name = "The seeded pod draw resuming where it stood", kind = "replay" } ] }
 
 [[review.categories.items]]
 id = "overlay-sources"
@@ -658,12 +742,20 @@ failure_cap = "passable"
 validation = { script = "instrumentation/overlay-sources.test.ts", outputs = [ { id = "sources", name = "The overlay reporting the registered diagnostics", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "overlay-toggle"
-title = "Backquote shows and hides the overlay"
-description = "Pressing the backtick key (KeyboardEvent.code Backquote) shows the debug overlay, and pressing it again hides it."
+id = "overlay-shows"
+title = "Backquote shows the overlay"
+description = "Pressing the backtick key (KeyboardEvent.code Backquote) shows the debug overlay."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "instrumentation/overlay-toggle.test.ts", outputs = [ { id = "shown", name = "The overlay shown by the backtick key", kind = "image" } ] }
+validation = { script = "instrumentation/overlay-shows.test.ts", engines = ["none"], outputs = [ { id = "shown", name = "The overlay shown by the backtick key", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "overlay-hides"
+title = "Backquote hides the overlay again"
+description = "Pressing the backtick key while the debug overlay is shown hides it."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/overlay-hides.test.ts", engines = ["none"], outputs = [ { id = "hidden", name = "The overlay hidden by a second press", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "overlay-off-at-start"
@@ -671,7 +763,7 @@ title = "The overlay is off when the game starts"
 description = "A freshly started build draws no debug overlay until the backtick key first shows it."
 domains = ["presentation"]
 failure_cap = "great"
-validation = { script = "instrumentation/overlay-off-at-start.test.ts", outputs = [ { id = "fresh", name = "A fresh boot with no overlay drawn", kind = "image" } ] }
+validation = { script = "instrumentation/overlay-off-at-start.test.ts", engines = ["none"], outputs = [ { id = "fresh", name = "A fresh boot with no overlay drawn", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "overlay-read-only"
@@ -805,12 +897,20 @@ failure_cap = "passable"
 validation = { script = "paddle/angle-wraps.test.ts", outputs = [ { id = "wrap-up", name = "Wrap Across 360", kind = "replay" }, { id = "wrap-down", name = "Wrap Across 0", kind = "replay" } ] }
 
 [[review.categories.items]]
-id = "starts-at-90"
+id = "starts-at-angle-90"
 title = "A session starts the deflector at angle 90"
-description = "A freshly started session holds the deflector at center angle 90 with the baseline span of 48 degrees."
+description = "A freshly started session holds the deflector at center angle 90."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "paddle/starts-at-90.test.ts", outputs = [ { id = "session-start", name = "Session Start", kind = "image" } ] }
+validation = { script = "paddle/starts-at-angle-90.test.ts", outputs = [ { id = "session-start", name = "Session Start", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "starts-at-baseline-span"
+title = "A session starts the deflector at its baseline span"
+description = "A freshly started session holds the deflector at the baseline span of 48 degrees."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "paddle/starts-at-baseline-span.test.ts", outputs = [ { id = "session-span", name = "The baseline span at session start", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "both-held-no-motion"
@@ -845,12 +945,20 @@ failure_cap = "passable"
 validation = { script = "paddle/span-boundary-inclusive.test.ts", outputs = [ { id = "edge-high", name = "Rising Edge Bounce", kind = "replay" }, { id = "edge-low", name = "Falling Edge Bounce", kind = "replay" } ] }
 
 [[review.categories.items]]
-id = "inside-not-saved"
-title = "A ball already inside the contact radius is never saved"
-description = "A ball posed inside radius 194 within the span never bounces off the deflector, however it moves, because the deflector's one ball contact is the crossing from above 194 and no other deflector contact exists."
+id = "inside-inward-not-saved"
+title = "A ball inside the contact radius moving inward is not saved"
+description = "A ball posed inside radius 194 within the span and moving inward never bounces off the deflector, because the deflector's one ball contact is the crossing from above 194."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "paddle/inside-not-saved.test.ts", outputs = [ { id = "inside-inward", name = "Inward From Inside", kind = "replay" }, { id = "inside-outward", name = "Outward From Inside", kind = "replay" } ] }
+validation = { script = "paddle/inside-inward-not-saved.test.ts", outputs = [ { id = "inside-inward", name = "Inward From Inside", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "inside-outward-crosses-untouched"
+title = "A ball inside the contact radius moving outward crosses untouched"
+description = "A ball posed inside radius 194 within the span and moving outward crosses 194 untouched, because no outward deflector contact exists."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "paddle/inside-outward-crosses-untouched.test.ts", outputs = [ { id = "inside-outward", name = "Outward From Inside", kind = "replay" } ] }
 
 [[review.categories.items]]
 id = "parked-no-collide"
@@ -1098,8 +1206,40 @@ id = "key-p-pauses"
 title = "KeyP pauses a live session"
 description = "KeyP on the playing screen moves the game to the paused screen, so a player reaches the pause menu with either key."
 domains = ["gameplay"]
-failure_cap = "passable"
+failure_cap = "great"
 validation = { script = "controls/key-p-pauses.test.ts", outputs = [ { id = "paused", name = "The session paused with KeyP", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "pointer-selects-entry"
+title = "A pointer moved onto an entry selects it"
+description = "A pointer moved onto a menu entry's hit region, as menuItemRect reports it, moves the highlight to that entry."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "controls/pointer-selects-entry.test.ts", outputs = [ { id = "selected", name = "The entry the pointer highlighted", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "pointer-confirms-entry"
+title = "A pointer press and release accepts an entry"
+description = "A pointer pressed and released inside one entry's hit region accepts that entry, exactly as confirm accepts it."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "controls/pointer-confirms-entry.test.ts", outputs = [ { id = "confirmed", name = "The screen the pointer confirmed into", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "pointer-release-outside-inert"
+title = "A release outside the region accepts nothing"
+description = "A pointer press whose release falls outside the region it began in accepts nothing, and the screen stands where it stood."
+domains = ["gameplay"]
+failure_cap = "great"
+validation = { script = "controls/pointer-release-outside-inert.test.ts", outputs = [ { id = "inert", name = "The menu unchanged by a press released outside it", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "touch-selects-and-confirms"
+title = "A touch contact selects and confirms an entry"
+description = "A touch contact that lands inside an entry's hit region and lifts inside the same region highlights that entry and then accepts it."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "controls/touch-selects-and-confirms.test.ts", outputs = [ { id = "touched", name = "The entry a touch contact accepted", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "release-stops-rotation"
@@ -1110,12 +1250,20 @@ failure_cap = "scuffed"
 validation = { script = "controls/release-stops-rotation.test.ts", outputs = [ { id = "held", name = "The deflector still after the key's release", kind = "replay" } ] }
 
 [[review.categories.items]]
-id = "edge-once-per-press"
-title = "An edge action fires once per press"
-description = "An action read as a press edge answers once for the press however long the key is held: holding Space over many ticks launches the parked ball once, and a repeat key event arms no further edge."
+id = "edge-once-per-hold"
+title = "An edge action fires once for one held press"
+description = "An action read as a press edge answers once for the press however long the key is held, so holding Space over many ticks launches the parked ball exactly once."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "controls/edge-once-per-press.test.ts", outputs = [ { id = "once", name = "One launch for one held press", kind = "replay" } ] }
+validation = { script = "controls/edge-once-per-hold.test.ts", engines = ["none"], outputs = [ { id = "once", name = "One launch for one held press", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "repeat-arms-no-edge"
+title = "A repeat key event arms no edge"
+description = "A key event whose repeat flag is set arms no further press edge, so an auto-repeating key launches nothing more."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "controls/repeat-arms-no-edge.test.ts", engines = ["none"], outputs = [ { id = "repeat", name = "An auto-repeating key launching nothing further", kind = "replay" } ] }
 
 [[review.categories.items]]
 id = "omitted-action-inert"
@@ -1170,11 +1318,19 @@ failure_cap = "passable"
 validation = { script = "targets/ring1-destroyed-in-one-hit.test.ts", outputs = [ { id = "hit", name = "One hit destroying a ring 1 target", kind = "replay" } ] }
 [[review.categories.items]]
 id = "ring2-survives-first-hit"
-title = "A ring 2 target takes two hits"
-description = "A ring 2 target holds 2 hit points: the first hit leaves it live at 1 hit point, and the second brings it to zero and removes it."
+title = "A ring 2 target survives its first hit"
+description = "A ring 2 target holds 2 hit points, so its first hit leaves it live at 1 hit point."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "targets/ring2-survives-first-hit.test.ts", outputs = [ { id = "hits", name = "Two hits felling a ring 2 target", kind = "replay" } ] }
+validation = { script = "targets/ring2-survives-first-hit.test.ts", outputs = [ { id = "first-hit", name = "A ring 2 target after one hit", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "ring2-falls-to-second-hit"
+title = "A ring 2 target falls to its second hit"
+description = "A second hit brings a ring 2 target to zero hit points and removes it from its slot."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "targets/ring2-falls-to-second-hit.test.ts", outputs = [ { id = "second-hit", name = "The second hit felling a ring 2 target", kind = "replay" } ] }
 [[review.categories.items]]
 id = "ring3-destroyed-in-one-hit"
 title = "A ring 3 target falls to one hit"
@@ -1182,13 +1338,6 @@ description = "A ring 3 target holds 1 hit point, so a single hit brings it to z
 domains = ["gameplay"]
 failure_cap = "passable"
 validation = { script = "targets/ring3-destroyed-in-one-hit.test.ts", outputs = [ { id = "hit", name = "One hit destroying a ring 3 target", kind = "replay" } ] }
-[[review.categories.items]]
-id = "damaged-ring2-distinct"
-title = "A damaged ring 2 target reads at a glance"
-description = "A ring 2 target that has taken a hit is drawn visibly distinct from an undamaged one, so a player reads its state at a glance."
-domains = ["presentation"]
-failure_cap = "great"
-validation = { script = "targets/damaged-ring2-distinct.test.ts", outputs = [ { id = "fresh", name = "An undamaged ring 2 target", kind = "image" }, { id = "damaged", name = "A ring 2 target after a hit", kind = "image" } ] }
 [[review.categories.items]]
 id = "face-hit-from-outside"
 title = "A face hit lands crossing inward onto a ring"
@@ -1303,12 +1452,20 @@ domains = ["gameplay"]
 failure_cap = "passable"
 validation = { script = "orbits/rings-start-at-zero.test.ts", outputs = [ { id = "fresh", name = "A fresh session's rings at angle 0", kind = "image" } ] }
 [[review.categories.items]]
-id = "contacts-use-posed-angles"
-title = "Contacts are decided against this tick's pose"
-description = "Both crossing events are decided against the target arcs as this tick's ring advance posed them, so a hit at an arc boundary resolves against the angle the ring holds after step 2, not the angle it held last tick."
+id = "advanced-arc-grants-the-hit"
+title = "An advanced arc grants the hit it now covers"
+description = "Both crossing events are decided against the target arcs as this tick's ring advance posed them, so a crossing at an arc boundary the advance moved onto scores against the angle the ring holds after step 2."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "orbits/contacts-use-posed-angles.test.ts", outputs = [ { id = "posed-hit", name = "The hit the advanced arc grants", kind = "replay" }, { id = "posed-miss", name = "The miss the advanced arc decides", kind = "replay" } ] }
+validation = { script = "orbits/advanced-arc-grants-the-hit.test.ts", outputs = [ { id = "posed-hit", name = "The hit the advanced arc grants", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "stale-arc-grants-no-hit"
+title = "The angle the ring held last tick grants nothing"
+description = "A crossing that the arc covered before this tick's ring advance, and no longer covers after it, scores nothing."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "orbits/stale-arc-grants-no-hit.test.ts", outputs = [ { id = "posed-miss", name = "The miss the advanced arc decides", kind = "replay" } ] }
 [[review.categories.items]]
 id = "sweep-edge-hit"
 title = "A rotating ring sweeps an edge hit"
@@ -1353,26 +1510,58 @@ domains = ["gameplay"]
 failure_cap = "passable"
 validation = { script = "pierce/covers-launched-balls.test.ts", outputs = [ { id = "launched", name = "A ball launched mid-effect piercing a target", kind = "replay" } ] }
 [[review.categories.items]]
-id = "other-surfaces-still-reflect"
-title = "Pierce changes target contacts alone"
-description = "The deflector, the shield ring, and the containment field reflect a piercing ball exactly as they reflect any other, so pierce changes what happens at targets and nothing else."
+id = "deflector-still-reflects-pierce"
+title = "The deflector still bounces a piercing ball"
+description = "The deflector bounces a piercing ball back out exactly as it bounces any other, so pierce changes what happens at targets and nothing at the deflector."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "pierce/other-surfaces-still-reflect.test.ts", outputs = [ { id = "deflector", name = "The deflector bouncing a piercing ball", kind = "replay" }, { id = "shield", name = "The shield reflecting a piercing ball", kind = "replay" }, { id = "containment", name = "The containment field reflecting a piercing ball", kind = "replay" } ] }
+validation = { script = "pierce/deflector-still-reflects.test.ts", outputs = [ { id = "deflector", name = "The deflector bouncing a piercing ball", kind = "replay" } ] }
+
 [[review.categories.items]]
-id = "expires-after-360"
-title = "Pierce ends when its 360 ticks run out"
-description = "Pierce runs a 360-tick timer, and when it reaches 0 every ball returns to ordinary contacts, so a later hit on a full-hit-point ring 2 target leaves it live at 1 hit point."
+id = "shield-still-reflects-pierce"
+title = "The shield ring still reflects a piercing ball"
+description = "The shield ring reflects a piercing ball exactly as it reflects any other, and is consumed by that reflection as usual."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "pierce/expires-after-360.test.ts", outputs = [ { id = "catch", name = "A pierce catch arming the 360-tick timer", kind = "replay" }, { id = "expired", name = "An ordinary hit after the timer ran out", kind = "replay" } ] }
+validation = { script = "pierce/shield-still-reflects.test.ts", outputs = [ { id = "shield", name = "The shield reflecting a piercing ball", kind = "replay" } ] }
+
 [[review.categories.items]]
-id = "destruction-resolves-fully"
-title = "A pierce destruction resolves as any other"
-description = "A piercing ball's destruction otherwise resolves exactly as an ordinary one: the target is removed, the salvage pod draw runs, and a destruction that leaves zero live targets clears the wave."
+id = "containment-still-reflects-pierce"
+title = "The containment field still reflects a piercing ball"
+description = "The containment field reflects a piercing ball exactly as it reflects any other."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "pierce/destruction-resolves-fully.test.ts", outputs = [ { id = "shed", name = "The piercing destruction shedding its drawn pod", kind = "replay" }, { id = "clear", name = "A piercing destruction clearing the wave", kind = "replay" } ] }
+validation = { script = "pierce/containment-still-reflects.test.ts", outputs = [ { id = "containment", name = "The containment field reflecting a piercing ball", kind = "replay" } ] }
+[[review.categories.items]]
+id = "pierce-arms-360-ticks"
+title = "A pierce catch arms a 360-tick timer"
+description = "Catching a pierce pod sets pierceTicks to 360, and the timer falls to 0 over exactly that many ticks."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "pierce/arms-360-ticks.test.ts", outputs = [ { id = "catch", name = "A pierce catch arming the 360-tick timer", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "pierce-contacts-ordinary-after-expiry"
+title = "Contacts are ordinary once pierce has run out"
+description = "Once pierceTicks reaches 0 every ball returns to ordinary target contacts, so a later hit on a full-hit-point ring 2 target leaves it live at 1 hit point."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "pierce/contacts-ordinary-after-expiry.test.ts", outputs = [ { id = "expired", name = "An ordinary hit after the timer ran out", kind = "replay" } ] }
+[[review.categories.items]]
+id = "pierce-destruction-sheds-its-pod"
+title = "A pierce destruction runs its salvage pod draw"
+description = "A piercing ball's destruction runs the salvage pod draw exactly as an ordinary destruction does."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "pierce/destruction-sheds-its-pod.test.ts", outputs = [ { id = "shed", name = "The piercing destruction shedding its drawn pod", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "pierce-destruction-clears-the-wave"
+title = "A pierce destruction that empties the rings clears the wave"
+description = "A piercing ball's destruction that leaves zero live targets fires the clearing event exactly as an ordinary one does."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "pierce/destruction-clears-the-wave.test.ts", outputs = [ { id = "clear", name = "A piercing destruction clearing the wave", kind = "replay" } ] }
 
 # --- Salvage pods -------------------------------------------------------------
 # The seeded draw, the pod in flight, and the two ways a flight ends. The draw
@@ -1384,7 +1573,7 @@ title = "Salvage Pods"
 [[review.categories.items]]
 id = "seeded-stream-reproducible"
 title = "The pod sequence is seeded and reproducible"
-description = "Two sessions from reset({ seed }) with the same seed and the same destructions in the same order shed the same pods, of the same kinds, in the same order."
+description = "Two sessions from reset(seed) with the same seed and the same destructions in the same order shed the same pods, of the same kinds, in the same order."
 domains = ["gameplay"]
 failure_cap = "passable"
 validation = { script = "pods/seeded-stream-reproducible.test.ts", outputs = [ { id = "seeded-run", name = "Seeded run", kind = "replay" } ] }
@@ -1412,7 +1601,7 @@ validation = { script = "pods/kind-table.test.ts", outputs = [ { id = "band-draw
 [[review.categories.items]]
 id = "default-seed-one"
 title = "A fresh session seeds with DEFAULT_SEED"
-description = "A fresh session seeds the stream with DEFAULT_SEED (1), so its pod sequence matches a reset({ seed: 1 }) session played the same way."
+description = "A fresh session seeds the stream with DEFAULT_SEED (1), so its pod sequence matches a reset(1) session played the same way."
 domains = ["gameplay"]
 failure_cap = "passable"
 validation = { script = "pods/default-seed-one.test.ts", outputs = [ { id = "default-run", name = "Default-seed run", kind = "replay" } ] }
@@ -1465,14 +1654,6 @@ description = "In flight a pod passes through the shield ring, every target, and
 domains = ["gameplay"]
 failure_cap = "passable"
 validation = { script = "pods/passes-through-everything.test.ts", outputs = [ { id = "through-flight", name = "Through flight", kind = "replay" } ] }
-[[review.categories.items]]
-id = "pod-spawn-switch"
-title = "The podSpawn switch stops the draw"
-description = "With setPodSpawn(false) a destruction makes no draw and the stream is not consumed, so no pod spawns and the seeded sequence stays where it stands; turned back on, draws resume from the next destruction with no catching up."
-domains = ["gameplay"]
-failure_cap = "passable"
-validation = { script = "pods/pod-spawn-switch.test.ts", outputs = [ { id = "resumed-draw", name = "Resumed draw", kind = "replay" } ] }
-
 # --- Effects ------------------------------------------------------------------
 # What each caught kind does and for how long: the two span figures and their
 # 600-tick timers, the mutual cancel and the restart, multiball's two launches
@@ -1495,12 +1676,36 @@ domains = ["gameplay"]
 failure_cap = "passable"
 validation = { script = "effects/narrow-span-30.test.ts", outputs = [ { id = "narrow-catch", name = "Narrow catch", kind = "replay" } ] }
 [[review.categories.items]]
-id = "timers-fall-one-per-tick"
-title = "Effect timers fall one per tick"
-description = "A timed effect's whole-tick timer starts at its duration and falls by one on every tick the simulation advances, read back in effects.widenTicks, narrowTicks, and pierceTicks."
+id = "widen-timer-falls-one-per-tick"
+title = "The widen timer falls one per tick"
+description = "effects.widenTicks starts at the kind's duration and falls by one on every tick the simulation advances."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "effects/timers-fall-one-per-tick.test.ts", outputs = [ { id = "timer-countdown", name = "Timer countdown", kind = "replay" } ] }
+validation = { script = "effects/widen-timer-falls-one-per-tick.test.ts", outputs = [ { id = "widen-countdown", name = "The widen timer counting down", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "narrow-timer-falls-one-per-tick"
+title = "The narrow timer falls one per tick"
+description = "effects.narrowTicks starts at the kind's duration and falls by one on every tick the simulation advances."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "effects/narrow-timer-falls-one-per-tick.test.ts", outputs = [ { id = "narrow-countdown", name = "The narrow timer counting down", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "pierce-timer-falls-one-per-tick"
+title = "The pierce timer falls one per tick"
+description = "effects.pierceTicks starts at the kind's duration and falls by one on every tick the simulation advances."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "effects/pierce-timer-falls-one-per-tick.test.ts", outputs = [ { id = "pierce-countdown", name = "The pierce timer counting down", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "catch-starts-timer-at-duration"
+title = "A catch starts its timer at the kind's duration"
+description = "Catching a kind not already in force starts its timer at exactly the duration specs/pods.md fixes for that kind."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "effects/catch-starts-timer-at-duration.test.ts", outputs = [ { id = "armed", name = "A catch arming its timer at full duration", kind = "replay" } ] }
 [[review.categories.items]]
 id = "widen-expires-at-600"
 title = "Widen ends when its 600 ticks run out"
@@ -1516,12 +1721,20 @@ domains = ["gameplay"]
 failure_cap = "passable"
 validation = { script = "effects/narrow-expires-at-600.test.ts", outputs = [ { id = "narrow-expiry", name = "Narrow expiry", kind = "replay" } ] }
 [[review.categories.items]]
-id = "catch-restarts-timer"
-title = "Catching a kind in force restarts its timer"
-description = "Catching a kind already in force restarts that kind's timer at its full duration rather than stacking or ignoring the catch."
+id = "widen-catch-restarts-timer"
+title = "Catching widen while widen runs restarts its timer"
+description = "Catching a widen pod while widen is already in force restarts widenTicks at its full duration rather than stacking or ignoring the catch."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "effects/catch-restarts-timer.test.ts", outputs = [ { id = "timer-restart", name = "Timer restart", kind = "replay" } ] }
+validation = { script = "effects/widen-catch-restarts-timer.test.ts", outputs = [ { id = "widen-restart", name = "The widen timer restarted", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "pierce-catch-restarts-timer"
+title = "Catching pierce while pierce runs restarts its timer"
+description = "Catching a pierce pod while pierce is already in force restarts pierceTicks at its full duration rather than stacking or ignoring the catch."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "effects/pierce-catch-restarts-timer.test.ts", outputs = [ { id = "pierce-restart", name = "The pierce timer restarted", kind = "replay" } ] }
 [[review.categories.items]]
 id = "widen-narrow-replace"
 title = "Widen and narrow replace each other"
@@ -1530,12 +1743,20 @@ domains = ["gameplay"]
 failure_cap = "passable"
 validation = { script = "effects/widen-narrow-replace.test.ts", outputs = [ { id = "span-swap", name = "Span swap", kind = "replay" } ] }
 [[review.categories.items]]
-id = "pierce-runs-alongside-span"
-title = "Pierce runs alongside a span effect"
-description = "Pierce is independent of both span effects, so catching a span kind during pierce leaves pierceTicks running, and catching pierce leaves the span effect in force."
+id = "span-catch-leaves-pierce-running"
+title = "Catching a span kind leaves pierce running"
+description = "Catching widen or narrow while pierce is in force leaves pierceTicks running untouched."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "effects/pierce-runs-alongside-span.test.ts", outputs = [ { id = "pierce-alongside", name = "Pierce alongside widen", kind = "replay" } ] }
+validation = { script = "effects/span-catch-leaves-pierce-running.test.ts", outputs = [ { id = "pierce-kept", name = "Pierce still running after a widen catch", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "pierce-catch-leaves-span-in-force"
+title = "Catching pierce leaves a span effect in force"
+description = "Catching a pierce pod while widen or narrow is in force leaves that span effect and its timer untouched."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "effects/pierce-catch-leaves-span-in-force.test.ts", outputs = [ { id = "span-kept", name = "Widen still in force after a pierce catch", kind = "replay" } ] }
 [[review.categories.items]]
 id = "multiball-launches-two"
 title = "Multiball launches up to two balls"
@@ -1544,12 +1765,28 @@ domains = ["gameplay"]
 failure_cap = "scuffed"
 validation = { script = "effects/multiball-launches-two.test.ts", outputs = [ { id = "multiball-pair", name = "Multiball pair", kind = "replay" } ] }
 [[review.categories.items]]
-id = "multiball-angles"
-title = "The two balls head 20 degrees off radial"
-description = "One multiball ball heads 20 degrees to the +theta side of the outward radial and the other 20 degrees to the -theta side, and the +theta ball launches first, so it stands earlier in spawn order."
+id = "multiball-plus-theta"
+title = "One multiball ball heads 20 degrees to +theta"
+description = "One of the two multiball balls heads 20 degrees to the +theta side of the outward radial."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "effects/multiball-angles.test.ts", outputs = [ { id = "multiball-headings", name = "Multiball headings", kind = "replay" } ] }
+validation = { script = "effects/multiball-plus-theta.test.ts", outputs = [ { id = "plus-theta", name = "The +theta multiball heading", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "multiball-minus-theta"
+title = "The other multiball ball heads 20 degrees to -theta"
+description = "The other of the two multiball balls heads 20 degrees to the -theta side of the outward radial."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "effects/multiball-minus-theta.test.ts", outputs = [ { id = "minus-theta", name = "The -theta multiball heading", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "multiball-spawn-order"
+title = "The +theta ball launches first"
+description = "The +theta ball launches first, so it stands earlier than the -theta ball in spawn order."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "effects/multiball-spawn-order.test.ts", outputs = [ { id = "order", name = "The two multiball balls in spawn order", kind = "replay" } ] }
 [[review.categories.items]]
 id = "multiball-respects-cap"
 title = "Multiball launches what the cap admits"
@@ -1649,14 +1886,6 @@ description = "A life loss that brings lives to 0 moves the game to the gameover
 domains = ["gameplay"]
 failure_cap = "scuffed"
 validation = { script = "lives/gameover-at-zero.test.ts", outputs = [ { id = "game-over", name = "The last life's loss ending the session", kind = "replay" } ] }
-[[review.categories.items]]
-id = "clear-balls-costs-nothing"
-title = "clearBalls never costs a life"
-description = "clearBalls() removes every ball, parked included, with nothing burning up: no life is lost and the field stands without a ball until one is spawned or parked."
-domains = ["gameplay"]
-failure_cap = "passable"
-validation = { script = "lives/clear-balls-costs-nothing.test.ts", outputs = [ { id = "cleared", name = "The field standing empty after clearBalls", kind = "image" } ] }
-
 # --- Waves --------------------------------------------------------------------
 # The clearing event and what follows it: only a ball-caused destruction
 # triggers it, the switch that holds it, the instant emptying, the 180-tick
@@ -1679,13 +1908,6 @@ description = "A field emptied by clearTargets() is not a clearing: the screen s
 domains = ["gameplay"]
 failure_cap = "passable"
 validation = { script = "waves/clear-targets-never-clears.test.ts", outputs = [ { id = "empty-field", name = "Play over the emptied field", kind = "replay" } ] }
-[[review.categories.items]]
-id = "wave-advance-switch"
-title = "The waveAdvance switch holds the event"
-description = "With setWaveAdvance(false) a ball-caused destruction that leaves zero live targets does not fire the clearing event: play carries on in playing and destructions keep scoring."
-domains = ["gameplay"]
-failure_cap = "passable"
-validation = { script = "waves/wave-advance-switch.test.ts", outputs = [ { id = "held-clearing", name = "Destruction with waveAdvance off", kind = "replay" } ] }
 [[review.categories.items]]
 id = "clearing-empties-play"
 title = "The event removes everything in flight"
@@ -1794,12 +2016,20 @@ domains = ["gameplay"]
 failure_cap = "passable"
 validation = { script = "scoring/destroy-awards-one-row.test.ts", outputs = [ { id = "first-hit", name = "Surviving first hit", kind = "replay" }, { id = "second-hit", name = "Destroying second hit", kind = "replay" } ] }
 [[review.categories.items]]
-id = "edge-hit-awards-like-face"
-title = "An edge hit awards exactly what a face hit does"
-description = "An edge hit awards like a face hit: 50 while the target survives, its ring's destroy figure when it destroys."
+id = "edge-hit-scores-50-on-survival"
+title = "A surviving edge hit awards 50"
+description = "An edge hit that leaves its target live awards 50, exactly as a face hit does."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "scoring/edge-hit-awards-like-face.test.ts", outputs = [ { id = "edge-hit", name = "Surviving edge hit", kind = "replay" }, { id = "edge-destroy", name = "Destroying edge hit", kind = "replay" } ] }
+validation = { script = "scoring/edge-hit-scores-50-on-survival.test.ts", outputs = [ { id = "edge-hit", name = "Surviving edge hit", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "edge-destroy-awards-the-ring-figure"
+title = "A destroying edge hit awards the ring's figure"
+description = "An edge hit that destroys its target awards that ring's destroy figure, exactly as a face hit does."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "scoring/edge-destroy-awards-the-ring-figure.test.ts", outputs = [ { id = "edge-destroy", name = "Destroying edge hit", kind = "replay" } ] }
 [[review.categories.items]]
 id = "pierce-awards-destroy-only"
 title = "A piercing contact awards the destroy figure alone"
@@ -1897,7 +2127,7 @@ id = "pause-via-pause-action"
 title = "pause pauses a live session"
 description = "pause on the playing screen sets screen to paused, so the pause menu is reached with KeyP as well as with Escape."
 domains = ["gameplay"]
-failure_cap = "passable"
+failure_cap = "great"
 validation = { script = "screens/pause-via-pause-action.test.ts", outputs = [ { id = "paused-via-key-p", name = "The pause menu KeyP raised over the field", kind = "image" } ] }
 [[review.categories.items]]
 id = "resume-via-confirm"
@@ -1911,14 +2141,14 @@ id = "resume-via-back"
 title = "back resumes from the pause menu"
 description = "back on the paused screen does exactly what RESUME does: screen returns to playing."
 domains = ["gameplay"]
-failure_cap = "passable"
+failure_cap = "great"
 validation = { script = "screens/resume-via-back.test.ts", outputs = [ { id = "resumed-via-back", name = "The playing screen back resumed to", kind = "image" } ] }
 [[review.categories.items]]
 id = "resume-via-pause-action"
 title = "pause resumes from the pause menu"
 description = "pause on the paused screen does exactly what RESUME does: screen returns to playing."
 domains = ["gameplay"]
-failure_cap = "passable"
+failure_cap = "great"
 validation = { script = "screens/resume-via-pause-action.test.ts", outputs = [ { id = "resumed-via-key-p", name = "The playing screen KeyP resumed to", kind = "image" } ] }
 [[review.categories.items]]
 id = "quit-returns-to-title"
@@ -1970,12 +2200,36 @@ domains = ["gameplay"]
 failure_cap = "passable"
 validation = { script = "screens/menu-wraps-at-top.test.ts", outputs = [ { id = "wrapped", name = "The highlight wrapped past the top to the last entry", kind = "image" } ] }
 [[review.categories.items]]
-id = "menu-index-resets-on-entry"
-title = "Arriving at a menu highlights its first entry"
-description = "Entering a menu-bearing screen sets menu.index to 0, however far the highlight had moved on the last menu."
+id = "title-from-howto-highlights-howto"
+title = "Returning from How To Play highlights it"
+description = "Returning to title from howto highlights entry 1, HOW TO PLAY, the entry that led there."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "screens/menu-index-resets-on-entry.test.ts", outputs = [ { id = "entered", name = "The freshly entered menu with its top entry highlighted", kind = "image" } ] }
+validation = { script = "screens/title-from-howto-highlights-howto.test.ts", outputs = [ { id = "returned", name = "The title menu with HOW TO PLAY highlighted", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "title-from-quit-highlights-start"
+title = "Quitting a session highlights START"
+description = "Arriving at title from a session left through QUIT highlights entry 0, START, the entry that began that session."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "screens/title-from-quit-highlights-start.test.ts", outputs = [ { id = "quit", name = "The title menu with START highlighted", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "title-from-gameover-highlights-start"
+title = "Leaving game over highlights START"
+description = "Arriving at title from gameover highlights entry 0, START."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "screens/title-from-gameover-highlights-start.test.ts", outputs = [ { id = "gameover", name = "The title menu after game over", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "pause-highlights-resume"
+title = "Pausing highlights RESUME"
+description = "Every entry into paused highlights entry 0, RESUME, however far the highlight had moved the last time the pause menu was open."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "screens/pause-highlights-resume.test.ts", outputs = [ { id = "paused", name = "The pause menu with RESUME highlighted", kind = "image" } ] }
 [[review.categories.items]]
 id = "title-copy"
 title = "The title screen draws its copy"
@@ -2135,7 +2389,7 @@ validation = { script = "hud/shield-indicated.test.ts", outputs = [ { id = "shie
 [[review.categories.items]]
 id = "hud-clear-of-field"
 title = "The HUD stays clear of the field"
-description = "Every HUD readout is drawn near the top of the stage and clear of the containment field, so nothing the HUD draws crosses the field of play."
+description = "Every HUD readout is drawn clear of the containment field, so nothing the HUD draws crosses the field of play."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "hud/hud-clear-of-field.test.ts", outputs = [ { id = "hud", name = "The full HUD over the field", kind = "image" } ] }
@@ -2156,12 +2410,28 @@ domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "visibility/deflector-apart-from-field.test.ts", outputs = [ { id = "scene", name = "The empty posed field the deflector was sampled against", kind = "image" } ] }
 [[review.categories.items]]
-id = "ball-separates-from-field"
-title = "The ball separates from the field anywhere"
-description = "A ball stands apart from what lies behind it at any position on the stage: over open field, over a ring, and near the planet alike."
+id = "ball-separates-over-open-field"
+title = "The ball separates from open field"
+description = "A ball posed over open field stands apart from what lies behind it."
 domains = ["presentation"]
 failure_cap = "scuffed"
-validation = { script = "visibility/ball-separates-from-field.test.ts", outputs = [ { id = "open-field", name = "The ball posed over open field", kind = "image" }, { id = "over-ring", name = "The ball posed over a live ring target", kind = "image" }, { id = "near-planet", name = "The ball posed near the planet", kind = "image" } ] }
+validation = { script = "visibility/ball-separates-over-open-field.test.ts", outputs = [ { id = "open-field", name = "The ball posed over open field", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "ball-separates-over-a-target"
+title = "The ball separates from a live target"
+description = "A ball posed over a live ring target stands apart from what lies behind it."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "visibility/ball-separates-over-a-target.test.ts", outputs = [ { id = "over-ring", name = "The ball posed over a live ring target", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "ball-separates-near-the-planet"
+title = "The ball separates from the planet"
+description = "A ball posed near the planet stands apart from what lies behind it."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "visibility/ball-separates-near-the-planet.test.ts", outputs = [ { id = "near-planet", name = "The ball posed near the planet", kind = "image" } ] }
 [[review.categories.items]]
 id = "targets-apart-from-field"
 title = "A live target stands apart from the field"
@@ -2212,12 +2482,52 @@ domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "visibility/parked-ball-drawn.test.ts", outputs = [ { id = "scene", name = "The parked ball at the serve point beside a free ball", kind = "image" } ] }
 [[review.categories.items]]
-id = "screen-text-legible"
-title = "Every piece of screen text is legible"
-description = "Every piece of text a screen shows is legible against whatever sits behind it at the 1000 x 1000 stage size."
+id = "text-legible-title"
+title = "The title screen's text is legible"
+description = "Every piece of text the title screen shows is legible against whatever sits behind it at the 1000 x 1000 stage size."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "visibility/screen-text-legible.test.ts", outputs = [ { id = "title", name = "The title screen whose text was read", kind = "image" }, { id = "howto", name = "The howto screen whose text was read", kind = "image" }, { id = "playing", name = "The playing screen whose HUD text was read", kind = "image" }, { id = "waveclear", name = "The waveclear banner whose text was read", kind = "image" }, { id = "paused", name = "The pause menu whose text was read", kind = "image" }, { id = "gameover", name = "The gameover screen whose text was read", kind = "image" } ] }
+validation = { script = "visibility/text-legible-title.test.ts", outputs = [ { id = "title", name = "The title screen whose text was read", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "text-legible-howto"
+title = "The howto screen's text is legible"
+description = "Every piece of text the howto screen shows is legible against whatever sits behind it at the 1000 x 1000 stage size."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "visibility/text-legible-howto.test.ts", outputs = [ { id = "howto", name = "The howto screen whose text was read", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "text-legible-playing"
+title = "The playing screen's text is legible"
+description = "Every piece of text the playing screen shows is legible against whatever sits behind it at the 1000 x 1000 stage size."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "visibility/text-legible-playing.test.ts", outputs = [ { id = "playing", name = "The playing screen whose text was read", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "text-legible-waveclear"
+title = "The waveclear screen's text is legible"
+description = "Every piece of text the waveclear screen shows is legible against whatever sits behind it at the 1000 x 1000 stage size."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "visibility/text-legible-waveclear.test.ts", outputs = [ { id = "waveclear", name = "The waveclear screen whose text was read", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "text-legible-paused"
+title = "The paused screen's text is legible"
+description = "Every piece of text the paused screen shows is legible against whatever sits behind it at the 1000 x 1000 stage size."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "visibility/text-legible-paused.test.ts", outputs = [ { id = "paused", name = "The paused screen whose text was read", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "text-legible-gameover"
+title = "The gameover screen's text is legible"
+description = "Every piece of text the gameover screen shows is legible against whatever sits behind it at the 1000 x 1000 stage size."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "visibility/text-legible-gameover.test.ts", outputs = [ { id = "gameover", name = "The gameover screen whose text was read", kind = "image" } ] }
 
 # --- Presentation -------------------------------------------------------------
 # Whether the build draws what it produced: the stage fit, the sprites painted
@@ -2233,7 +2543,7 @@ title = "Window fit"
 description = "Over surfaces wider than the stage, taller than it, and at a raised device pixel ratio, the complete 1000 x 1000 stage is on screen with its aspect ratio preserved, filling the window's short side with even letterboxing."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "presentation/stage-fits-window.test.ts", outputs = [ { id = "fit", name = "Stage fit", kind = "image" } ] }
+validation = { script = "presentation/stage-fits-window.test.ts", engines = ["none"], outputs = [ { id = "fit", name = "Stage fit", kind = "image" } ] }
 [[review.categories.items]]
 id = "letterbox-matches-background"
 title = "The letterbox bars match the stage"
@@ -2298,19 +2608,43 @@ domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/burst-at-destruction.test.ts", outputs = [ { id = "burst", name = "Destruction burst", kind = "replay" } ] }
 [[review.categories.items]]
-id = "spark-at-reflections"
-title = "The spark plays at a reflection"
-description = "The impact spark system plays at the contact point of a deflector bounce, a containment reflection, and a shield reflection."
+id = "spark-at-deflector-bounce"
+title = "The spark plays at a deflector bounce"
+description = "The impact spark system plays at the contact point of a deflector bounce."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "presentation/spark-at-reflections.test.ts", outputs = [ { id = "spark-paddle", name = "Deflector spark", kind = "replay" }, { id = "spark-field", name = "Containment spark", kind = "replay" }, { id = "spark-shield", name = "Shield spark", kind = "replay" } ] }
+validation = { script = "presentation/spark-at-deflector-bounce.test.ts", outputs = [ { id = "spark-paddle", name = "Deflector spark", kind = "replay" } ] }
+
 [[review.categories.items]]
-id = "burnup-at-burn-up"
-title = "The burn-up plays at a burn-up"
-description = "The burn-up system plays at a ball, and at a pod, whose center radius reaches 78 against the planet."
+id = "spark-at-containment-reflection"
+title = "The spark plays at a containment reflection"
+description = "The impact spark system plays at the contact point of a containment field reflection."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "presentation/burnup-at-burn-up.test.ts", outputs = [ { id = "burnup-ball", name = "Ball burn-up", kind = "replay" }, { id = "burnup-pod", name = "Pod burn-up", kind = "replay" } ] }
+validation = { script = "presentation/spark-at-containment-reflection.test.ts", outputs = [ { id = "spark-field", name = "Containment spark", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "spark-at-shield-reflection"
+title = "The spark plays at a shield reflection"
+description = "The impact spark system plays at the contact point of a shield ring reflection."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/spark-at-shield-reflection.test.ts", outputs = [ { id = "spark-shield", name = "Shield spark", kind = "replay" } ] }
+[[review.categories.items]]
+id = "burnup-at-ball"
+title = "The burn-up plays at a burning ball"
+description = "The burn-up system plays at a ball whose center radius reaches 78 against the planet."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/burnup-at-ball.test.ts", outputs = [ { id = "burnup-ball", name = "Ball burn-up", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "burnup-at-pod"
+title = "The burn-up plays at a burning pod"
+description = "The burn-up system plays at a pod whose center radius reaches 78 against the planet."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/burnup-at-pod.test.ts", outputs = [ { id = "burnup-pod", name = "Pod burn-up", kind = "replay" } ] }
 
 # --- Audio --------------------------------------------------------------------
 # Each cue confirmed to be asked for on the tick its event resolves, and each
@@ -2440,12 +2774,20 @@ domains = ["presentation"]
 failure_cap = "great"
 validation = { script = "audio/no-bed-on-gameover.test.ts", outputs = [ { id = "gameover", name = "The game-over screen over silence", kind = "image" } ] }
 [[review.categories.items]]
-id = "quit-swaps-beds"
-title = "Quitting swaps the beds"
-description = "confirm on QUIT stops the play bed, and the title bed resumes on the title screen."
+id = "quit-stops-play-bed"
+title = "Quitting stops the play bed"
+description = "confirm on QUIT stops the play bed."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "audio/quit-swaps-beds.test.ts", outputs = [ { id = "quit", name = "QUIT confirmed, the beds swapped", kind = "replay" } ] }
+validation = { script = "audio/quit-stops-play-bed.test.ts", outputs = [ { id = "stopped", name = "The play bed stopped by QUIT", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "quit-resumes-title-bed"
+title = "Quitting resumes the title bed"
+description = "confirm on QUIT brings the title bed back under the title screen."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/quit-resumes-title-bed.test.ts", outputs = [ { id = "resumed", name = "The title bed resumed after QUIT", kind = "replay" } ] }
 
 # --- Produced Assets ----------------------------------------------------------
 # The production contract of specs/assets.md, row by row: the files exist on
@@ -2519,26 +2861,50 @@ domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/cue-files-produced.test.ts", outputs = [ { id = "cues", name = "The thirteen cue files as read", kind = "image" } ] }
 [[review.categories.items]]
-id = "beds-produced"
-title = "Both music beds ship produced tracks"
-description = "assets/audio/music-title.wav and assets/audio/music-play.wav both exist, decode as WAVs, and carry audible signal rather than silence."
+id = "title-bed-produced"
+title = "The title bed ships a produced track"
+description = "assets/audio/music-title.wav exists, decodes as a WAV, and carries audible signal rather than silence."
 domains = ["presentation"]
 failure_cap = "scuffed"
-validation = { script = "assets/beds-produced.test.ts", outputs = [ { id = "title-bed", name = "The produced title bed's waveform", kind = "image" }, { id = "play-bed", name = "The produced play bed's waveform", kind = "image" } ] }
+validation = { script = "assets/title-bed-produced.test.ts", outputs = [ { id = "title-bed", name = "The produced title bed's waveform", kind = "image" } ] }
+
 [[review.categories.items]]
-id = "beds-at-least-12s"
-title = "Each bed runs at least twelve seconds"
-description = "Each of the two beds runs at least 12 seconds."
+id = "play-bed-produced"
+title = "The play bed ships a produced track"
+description = "assets/audio/music-play.wav exists, decodes as a WAV, and carries audible signal rather than silence."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "assets/play-bed-produced.test.ts", outputs = [ { id = "play-bed", name = "The produced play bed's waveform", kind = "image" } ] }
+[[review.categories.items]]
+id = "title-bed-at-least-12s"
+title = "The title bed runs at least twelve seconds"
+description = "The title bed runs at least 12 seconds."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "assets/beds-at-least-12s.test.ts", outputs = [ { id = "title-length", name = "The title bed against the 12 s floor", kind = "image" }, { id = "play-length", name = "The play bed against the 12 s floor", kind = "image" } ] }
+validation = { script = "assets/title-bed-at-least-12s.test.ts", outputs = [ { id = "title-length", name = "The title bed against the 12 s floor", kind = "image" } ] }
+
 [[review.categories.items]]
-id = "beds-loop-seamlessly"
-title = "Each bed loops without an audible seam"
-description = "Each bed's end runs into its start with no click, no gap, and no jump in level, so the loop carries no audible seam."
+id = "play-bed-at-least-12s"
+title = "The play bed runs at least twelve seconds"
+description = "The play bed runs at least 12 seconds."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "assets/beds-loop-seamlessly.test.ts", outputs = [ { id = "title-seam", name = "The title bed's loop junction", kind = "image" }, { id = "play-seam", name = "The play bed's loop junction", kind = "image" } ] }
+validation = { script = "assets/play-bed-at-least-12s.test.ts", outputs = [ { id = "play-length", name = "The play bed against the 12 s floor", kind = "image" } ] }
+[[review.categories.items]]
+id = "title-bed-loops-seamlessly"
+title = "The title bed loops without an audible seam"
+description = "The title bed's end runs into its start with no click, no gap, and no jump in level."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "assets/title-bed-loops-seamlessly.test.ts", outputs = [ { id = "title-seam", name = "The title bed's loop junction", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "play-bed-loops-seamlessly"
+title = "The play bed loops without an audible seam"
+description = "The play bed's end runs into its start with no click, no gap, and no jump in level."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "assets/play-bed-loops-seamlessly.test.ts", outputs = [ { id = "play-seam", name = "The play bed's loop junction", kind = "image" } ] }
 [[review.categories.items]]
 id = "sprites-on-transparent-ground"
 title = "The sprites are authored on transparency"
@@ -2558,7 +2924,7 @@ id = "build-self-contained"
 title = "The build invokes no asset tool"
 description = "npm ci followed by npm run build completes without invoking a generation tool, and the built dist/ fetches nothing from outside itself."
 domains = ["gameplay", "presentation"]
-failure_cap = "scuffed"
+failure_cap = "broken"
 validation = { script = "assets/build-self-contained.test.ts", outputs = [ { id = "built-game", name = "The committed build running", kind = "image" } ] }
 [[review.categories.items]]
 id = "asset-urls-page-relative"
@@ -2574,3 +2940,37 @@ description = "With a produced file unavailable at load, the game still initiali
 domains = ["gameplay", "presentation"]
 failure_cap = "passable"
 validation = { script = "assets/missing-asset-leaves-game-running.test.ts", outputs = [ { id = "degraded", name = "The game running without its planet sprite", kind = "image" } ] }
+
+# --- Showcase -----------------------------------------------------------------
+# ONE point, and it grades EXISTENCE alone. Whether the description reads like
+# something a player would want to play, whether the carousel opens on the
+# strongest view of live play, and whether the media is worth looking at is a
+# reviewer's judgement, and belongs to the AESTHETIC half of the presentation
+# domain rather than to an assertion. The validator's whole verdict is that the
+# two files are there and that the carousel points at a file that is there with
+# them: not a dimension, not a byte of a picture, not a word of the prose, and
+# not how many entries the carousel holds.
+#
+# It carries a `weight` of 3 against the default 1 every other item carries,
+# because the showcase is a deliverable of the build in its own right rather
+# than one rule of the simulation, and one ordinary point would price it below
+# a single contact radius. `great` is its cap: a build that ships no showcase
+# is still played exactly as intended.
+#
+# The script drives nothing. It reads the produced tree with `node:fs`, so one
+# suite stands unchanged in all three engine directories and the point means
+# the same thing whichever engine the run selected. What it hands back as
+# evidence is a `.png` copied out of the build's own showcase, so a reviewer
+# sees the picture the build chose to present its game with beside the verdict.
+[[review.categories]]
+id = "showcase"
+title = "Showcase"
+
+[[review.categories.items]]
+id = "exists"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, and every file the carousel names is present in showcase/."
+weight = 3
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "showcase/exists.test.ts", outputs = [ { id = "carousel", name = "A screenshot from the build's showcase", kind = "image" } ] }
