@@ -119,6 +119,26 @@ export interface ArcState {
   readonly life: number;
 }
 
+/**
+ * Where one pointer's current press began.
+ *
+ * Bookkeeping for the rule `specs/ui.md` fixes: a confirm takes BOTH of its
+ * edges inside one item's region, so the release has to know where the press
+ * landed, and a press and its release may be frames apart. It is not part of the
+ * declared state — nothing poses it, nothing reads it back, and it is rebuilt
+ * from the pointer stream alone — and it lives here rather than in a
+ * module-level variable because this build carries no state outside the value
+ * the engine holds.
+ */
+export interface PressAnchor {
+  /** The pointer the press came from, so several contacts are told apart. */
+  readonly id: number;
+  /** The screen the press landed on. */
+  readonly screen: Screen;
+  /** The menu item it landed in, or `-1` for a press outside every region. */
+  readonly index: number;
+}
+
 export interface CursorState {
   readonly x: number;
   readonly y: number;
@@ -156,6 +176,9 @@ export interface WirewormState {
   readonly simTime: number;
   readonly muted: boolean;
   readonly rngState: number;
+
+  /** The presses in flight. Derived bookkeeping; see {@link PressAnchor}. */
+  readonly presses: readonly PressAnchor[];
 
   /**
    * The seeded sprite art, loaded once by `initialize` and never changed after.

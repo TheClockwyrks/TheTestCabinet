@@ -21,7 +21,7 @@
 // exactly once, on the frame the level turns over.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED, CUES, TILE } from "../../src/constants";
+import { BOLT_SPEED, CUES, TILE } from "../constants";
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
 import {
   captureStill,

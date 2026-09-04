@@ -7,7 +7,7 @@
 // and count a check asserts is stated in that check, derived from the figure
 // specs/foes.md fixes for it.
 
-import { tileCX, tileCY } from "../../src/constants";
+import { tileCX, tileCY } from "../constants";
 import {
   chargeAt,
   lastFoe,

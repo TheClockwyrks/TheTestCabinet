@@ -25,7 +25,7 @@
 // band, ten rows below the tile this reads.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../../src/constants";
+import { TILE } from "../constants";
 import { assertEqual, fail } from "../assert";
 import {
   captureStill,

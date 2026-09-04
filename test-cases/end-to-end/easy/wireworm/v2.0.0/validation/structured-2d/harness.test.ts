@@ -33,7 +33,7 @@ import {
   TITLE_TEXT,
   tileCX,
   tileCY,
-} from "../src/constants";
+} from "./constants";
 import {
   arcJoins,
   BAND_CX,

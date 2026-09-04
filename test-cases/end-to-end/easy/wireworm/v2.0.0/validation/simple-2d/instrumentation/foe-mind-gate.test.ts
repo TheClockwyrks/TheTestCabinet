@@ -28,7 +28,7 @@
 // `foes.glitch-darts`'s point — is not.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GLITCH_H_SPEED, GLITCH_V_SPEED, TILE } from "../../src/constants";
+import { GLITCH_H_SPEED, GLITCH_V_SPEED, TILE } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,

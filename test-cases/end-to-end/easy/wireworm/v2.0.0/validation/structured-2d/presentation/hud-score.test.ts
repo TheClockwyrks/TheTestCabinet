@@ -24,7 +24,7 @@
 // The board beneath is empty and quiet, so nothing on it can reach the bar.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_H } from "../../src/constants";
+import { HUD_H } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

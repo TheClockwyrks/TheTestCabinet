@@ -26,7 +26,7 @@
 // behind, so the worm holds its tiles rather than walking during the shot.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ARC_LIFE } from "../../src/constants";
+import { ARC_LIFE } from "../constants";
 import { assertLength, assertNull } from "../assert";
 import {
   captureReplay,

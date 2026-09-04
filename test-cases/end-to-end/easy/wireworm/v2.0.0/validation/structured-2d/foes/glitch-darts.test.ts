@@ -23,7 +23,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLength, assertLessThanOrEqual, fail } from "../assert";
-import { GLITCH_DART_INTERVAL, GLITCH_H_SPEED } from "../../src/constants";
+import { GLITCH_DART_INTERVAL, GLITCH_H_SPEED } from "../constants";
 import {
   captureReplay,
   createHarness,

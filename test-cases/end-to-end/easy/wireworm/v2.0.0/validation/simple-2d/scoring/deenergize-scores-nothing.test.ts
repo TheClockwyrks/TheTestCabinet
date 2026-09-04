@@ -20,7 +20,7 @@
 // slipping through the zero.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED, TILE } from "../../src/constants";
+import { BOLT_SPEED, TILE } from "../constants";
 import { assertEqual, assertNotEqual } from "../assert";
 import {
   captureStill,

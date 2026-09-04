@@ -29,7 +29,7 @@ import {
   SCATTER_MAX_FRACTION,
   SCATTER_MIN_FRACTION,
   SCATTER_TOP_ROW,
-} from "../../src/constants";
+} from "../constants";
 import { assertBetween } from "../assert";
 import {
   captureStill,

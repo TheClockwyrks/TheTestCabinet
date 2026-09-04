@@ -18,12 +18,7 @@
 // spot decides the scenario and nothing else has to move.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  CURSOR_X_MIN,
-  CURSOR_Y_MIN,
-  START_LIVES,
-  TILE,
-} from "../../src/constants";
+import { CURSOR_X_MIN, CURSOR_Y_MIN, START_LIVES, TILE } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   BAND_CX,

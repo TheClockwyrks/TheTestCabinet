@@ -37,7 +37,7 @@
 // rather than twice.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BANNER_TIME, BOLT_SPEED, TILE } from "../../src/constants";
+import { BANNER_TIME, BOLT_SPEED, TILE } from "../constants";
 import { assertDeepEqual, assertLength } from "../assert";
 import {
   captureStill,

@@ -16,10 +16,7 @@
 // price of turning the gate on, not part of the requirement.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  DROPPER_FROM_LEVEL,
-  DROPPER_SPARSE_THRESHOLD,
-} from "../../src/constants";
+import { DROPPER_FROM_LEVEL, DROPPER_SPARSE_THRESHOLD } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

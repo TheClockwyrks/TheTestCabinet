@@ -19,7 +19,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDefined, assertEqual } from "../assert";
-import { BOLT_SPEED, FOE_HALF } from "../../src/constants";
+import { BOLT_SPEED, FOE_HALF } from "../constants";
 import {
   captureStill,
   createHarness,

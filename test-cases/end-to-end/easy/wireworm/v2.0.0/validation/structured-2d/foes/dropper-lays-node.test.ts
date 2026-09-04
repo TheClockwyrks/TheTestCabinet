@@ -16,7 +16,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { SCATTER_BOTTOM_ROW, SCATTER_TOP_ROW } from "../../src/constants";
+import { SCATTER_BOTTOM_ROW, SCATTER_TOP_ROW } from "../constants";
 import {
   captureStill,
   createHarness,

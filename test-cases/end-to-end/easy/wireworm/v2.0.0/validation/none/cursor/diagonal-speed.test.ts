@@ -73,7 +73,12 @@ it("moves the cursor CURSOR_SPEED / sqrt(2) horizontally under a diagonal hold",
   await h.debug.setCursor(BAND_CX, BAND_CY);
 
   const before = (await h.snapshot()).cursor.x;
-  await h.holdFor(KEYS, HOLD_FRAMES);
+  // Both keys down, the window driven, both released. Spelled out rather than
+  // through `holdFor`, which holds ONE key: what this point is about is the two
+  // held TOGETHER, so neither may go down or come up on its own frame.
+  for (const code of KEYS) await h.hold(code);
+  await h.advance(HOLD_FRAMES);
+  for (const code of KEYS) await h.release(code);
   await captureStill(h, "diagonal");
 
   const travelled = Math.abs((await h.snapshot()).cursor.x - before);

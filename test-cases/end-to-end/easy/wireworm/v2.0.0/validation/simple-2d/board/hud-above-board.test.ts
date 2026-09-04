@@ -48,7 +48,7 @@ import {
   HUD_LEVEL_LABEL,
   tileCX,
   tileCY,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertGreaterThan,
   assertGreaterThanOrEqual,

@@ -18,7 +18,7 @@
 // can happen, so a `victory` screen can only have come from the clear.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOTAL_LEVELS } from "../../src/constants";
+import { TOTAL_LEVELS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

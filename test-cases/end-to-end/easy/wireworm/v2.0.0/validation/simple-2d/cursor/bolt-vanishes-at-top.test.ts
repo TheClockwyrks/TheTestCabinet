@@ -20,7 +20,7 @@
 // read at the end.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOARD_Y, BOLT_SPEED } from "../../src/constants";
+import { BOARD_Y, BOLT_SPEED } from "../constants";
 import { assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   captureStill,

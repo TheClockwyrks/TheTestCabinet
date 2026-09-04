@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThanOrEqual } from "../assert";
-import { GLITCH_V_SPEED } from "../../src/constants";
+import { GLITCH_V_SPEED } from "../constants";
 import {
   captureReplay,
   createHarness,

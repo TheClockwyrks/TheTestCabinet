@@ -8,7 +8,7 @@
 // 10 or 100.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOARD_H, BOLT_SPEED, SCORE_INERT_NODE } from "../../src/constants";
+import { BOARD_H, BOLT_SPEED, SCORE_INERT_NODE } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

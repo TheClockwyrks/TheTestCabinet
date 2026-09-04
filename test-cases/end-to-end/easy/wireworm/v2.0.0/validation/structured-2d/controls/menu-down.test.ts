@@ -37,7 +37,7 @@
 // behind the menu can move the screen out from under the reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PAUSE_ITEMS } from "../../src/constants";
+import { PAUSE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

@@ -31,7 +31,7 @@
 // only thing that can move it is the key this point is about.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CURSOR_SPEED, CURSOR_Y_MAX, CURSOR_Y_MIN } from "../../src/constants";
+import { CURSOR_SPEED, CURSOR_Y_MAX, CURSOR_Y_MIN } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   BAND_CX,

@@ -14,7 +14,7 @@
 // is the only thing in the scenario.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOARD_H, BOLT_SPEED, SCORE_CORRUPTOR } from "../../src/constants";
+import { BOARD_H, BOLT_SPEED, SCORE_CORRUPTOR } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

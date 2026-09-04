@@ -21,7 +21,7 @@
 // board is the one under test.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CHARGE_MAX, wormStepInterval } from "../../src/constants";
+import { CHARGE_MAX, wormStepInterval } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

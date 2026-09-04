@@ -16,7 +16,7 @@
 // no body to follow, so nothing but the head's own step can reach the field.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { wormStepInterval } from "../../src/constants";
+import { wormStepInterval } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

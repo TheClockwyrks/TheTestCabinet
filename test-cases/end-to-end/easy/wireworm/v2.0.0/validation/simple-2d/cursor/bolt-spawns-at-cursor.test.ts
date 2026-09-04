@@ -26,7 +26,7 @@
 // the frame produced was put.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE, tileCX } from "../../src/constants";
+import { TILE, tileCX } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

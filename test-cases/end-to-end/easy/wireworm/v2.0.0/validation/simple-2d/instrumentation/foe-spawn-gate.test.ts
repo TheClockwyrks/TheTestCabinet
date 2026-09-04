@@ -33,7 +33,7 @@
 // gate off and the second fails the sweep with it on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BANNER_TIME } from "../../src/constants";
+import { BANNER_TIME } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

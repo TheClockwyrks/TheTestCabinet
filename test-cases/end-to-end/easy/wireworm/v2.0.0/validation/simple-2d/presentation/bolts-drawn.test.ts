@@ -25,7 +25,7 @@
 // would not be in flight to be drawn.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE, tileCX } from "../../src/constants";
+import { TILE, tileCX } from "../constants";
 import { assertGreaterThan, fail } from "../assert";
 import {
   boltOf,

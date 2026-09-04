@@ -13,7 +13,7 @@
 // here, and a build that ends the run one level early never reaches this at all.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOTAL_LEVELS } from "../../src/constants";
+import { TOTAL_LEVELS } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { clearLastSegment } from "./clear";

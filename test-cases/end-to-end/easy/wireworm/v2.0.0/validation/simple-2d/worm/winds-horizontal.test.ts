@@ -20,7 +20,7 @@
 // both headings on the way.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WORM_STEP_L1 } from "../../src/constants";
+import { WORM_STEP_L1 } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureReplay,
@@ -80,6 +80,13 @@ it("advances the head one tile per step along its heading", async () => {
         }),
       );
     }
+    // A settle, inside the bracket: two further steps' worth of frames, so a
+    // reviewer watching this replay sees the worm travel ON rather than the
+    // recording cutting to black on the frame the last step landed. Half an
+    // interval past the second of them, which is the furthest point from a
+    // step boundary. Every reading above was taken before it, so no verdict
+    // moves.
+    await h.advance(ticksFor(WORM_STEP_L1 * 2.5));
   });
 
   for (let step = 1; step <= STEPS; step += 1) {

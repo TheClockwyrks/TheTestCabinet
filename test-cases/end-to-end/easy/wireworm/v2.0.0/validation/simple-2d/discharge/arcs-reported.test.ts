@@ -37,7 +37,7 @@ import {
   BOLT_SPEED,
   CHARGE_MAX,
   DISCHARGE_RADIUS,
-} from "../../src/constants";
+} from "../constants";
 import { assertDeepEqual, assertLength, assertTrue } from "../assert";
 import {
   arcKeys,

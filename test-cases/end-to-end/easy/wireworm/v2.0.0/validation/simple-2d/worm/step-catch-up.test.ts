@@ -34,6 +34,23 @@
 // THE WORLD IS ONE HEAD ON A CLEAR ROW. `startPlaying` leaves the board empty and
 // the world gates shut, and the worm is a single segment four tiles clear of
 // anything, so nothing can block a step and no body follows.
+//
+// AND THE RECORDING BRACKETS THE PAIR RATHER THAN BEING THE PAIR. Two frames are
+// not something a reviewer can watch — a player opened on them shows a still —
+// so the same clock carries a run-up before the long frame and a settle after the
+// short one, of frames far too short to fall due: ten and then twenty frames of
+// `QUIET_INTERVALS`, three tenths of one interval all told. The two readings are
+// still taken on the same two frames, so the verdict is untouched; what changes
+// is that the reviewer sees the board at rest, then the head jump three tiles,
+// then take its fourth, then run on.
+//
+// THE RUN-UP'S TIME ENTERS THE LONG FRAME, so the margins are restated with it
+// included. The accumulator holds `0.1` of an interval when the long frame opens,
+// so that frame reaches `3.6`: still three steps, and four tenths clear of the
+// fourth. It leaves `0.6` standing, so the short frame reaches `1.15` and takes
+// the fourth step, while a build that dropped the remainder reaches `0.55` and
+// cannot. The settle then adds `0.2` to the `0.15` left over, which is well short
+// of a fifth step, so nothing lands inside it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import type { Clock } from "@test-cabinet/simple-2d";
@@ -69,6 +86,21 @@ const LONG_INTERVALS = COVERED_STEPS + 0.5;
  * interval that separates a build carrying the remainder from one that dropped it.
  */
 const SHORT_INTERVALS = 0.55;
+
+/**
+ * One frame of the run-up and the settle, in step intervals.
+ *
+ * A hundredth of an interval, so the thirty of them this check runs come to three
+ * tenths of one and no step can fall due inside either bracket: every step the
+ * check reads is one of the two frames it is about.
+ */
+const QUIET_INTERVALS = 0.01;
+
+/** Frames of run-up: the board at rest, before the long frame lands. */
+const RUN_UP_FRAMES = 10;
+
+/** Frames of settle: what the two frames left behind. */
+const SETTLE_FRAMES = 20;
 
 /** A clock whose next delta the check sets, so one frame can be any length. */
 class ScriptedClock implements Clock {
@@ -107,12 +139,17 @@ it("runs the three steps one long frame covered and carries the remainder", asyn
     h,
     "catch-up",
     async (): Promise<{ long: WirewormSnapshot; short: WirewormSnapshot }> => {
+      clock.stepMs = interval * QUIET_INTERVALS * 1000;
+      await h.advance(RUN_UP_FRAMES);
       clock.stepMs = interval * LONG_INTERVALS * 1000;
       await h.advance(1);
       const long = h.snapshot();
       clock.stepMs = interval * SHORT_INTERVALS * 1000;
       await h.advance(1);
-      return { long, short: h.snapshot() };
+      const short = h.snapshot();
+      clock.stepMs = interval * QUIET_INTERVALS * 1000;
+      await h.advance(SETTLE_FRAMES);
+      return { long, short };
     },
   );
 

@@ -24,7 +24,7 @@
 // so nothing but the clock can decide when the head arrives.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WORM_STEP_L1 } from "../../src/constants";
+import { WORM_STEP_L1 } from "../constants";
 import { assertBetween, assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,

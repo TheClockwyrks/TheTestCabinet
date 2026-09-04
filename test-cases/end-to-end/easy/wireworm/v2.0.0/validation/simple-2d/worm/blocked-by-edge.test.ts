@@ -23,7 +23,7 @@
 // top`'s, and a drop into row `6` is unambiguous here.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLS, WORM_STEP_L1 } from "../../src/constants";
+import { COLS, WORM_STEP_L1 } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,

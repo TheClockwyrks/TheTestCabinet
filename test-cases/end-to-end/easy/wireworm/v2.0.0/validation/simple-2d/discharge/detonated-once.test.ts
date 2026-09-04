@@ -30,7 +30,7 @@
 // an empty arc list has no duplicates and would decide nothing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOARD_H, BOLT_SPEED, DISCHARGE_RADIUS } from "../../src/constants";
+import { BOARD_H, BOLT_SPEED, DISCHARGE_RADIUS } from "../constants";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import {
   arcKeys,

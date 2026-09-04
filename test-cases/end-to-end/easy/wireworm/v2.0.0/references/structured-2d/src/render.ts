@@ -28,18 +28,15 @@ import {
   COLS,
   CORRUPTOR_FPS,
   CURSOR_HALF,
-  ENDING_ITEMS,
   HUD_H,
   HUD_LEVEL_LABEL,
   GLITCH_FPS,
   NODE_PULSE_FPS,
-  PAUSE_ITEMS,
   ROWS,
   SPRITE_SIZE,
   STAGE_H,
   STAGE_W,
   TAGLINE_TEXT,
-  TITLE_ITEMS,
   TITLE_TEXT,
   TOTAL_LEVELS,
   WORM_BODY_FPS,
@@ -50,6 +47,15 @@ import {
   tileTop,
 } from "./constants";
 import type { Screen, Tile, WirewormState } from "./game";
+import {
+  GAMEOVER_MENU,
+  PAUSE_MENU,
+  TITLE_MENU,
+  VICTORY_MENU,
+  itemCenterY,
+  itemRect,
+  type MenuLayout,
+} from "./menus";
 import { random } from "./rng";
 import { art, type Frame } from "./sprites";
 import { CHARGE_GLOW, COLOR, digits, font, withAlpha } from "./theme";
@@ -429,24 +435,28 @@ function scrim(ctx: Ctx): void {
 }
 
 /** A vertical menu, its highlighted item drawn distinctly from the others. */
-function renderMenu(
-  ctx: Ctx,
-  items: readonly string[],
-  selected: number,
-  top: number,
-): void {
-  items.forEach((item, index) => {
-    const y = top + index * 46;
+/**
+ * A vertical menu, laid out where `src/menus.ts` says it is.
+ *
+ * The layout is read rather than restated, so the plate a player sees under the
+ * highlighted row is exactly the hit region `menuItemRect` reports for it
+ * (`specs/ui.md`).
+ */
+function renderMenu(ctx: Ctx, menu: MenuLayout, selected: number): void {
+  menu.items.forEach((item, index) => {
+    const rect = itemRect(menu, index);
+    if (rect === null) return;
+    const y = itemCenterY(menu, index);
     const on = index === selected;
     if (on) {
       ctx.fillStyle = withAlpha(COLOR.accent, 0.16);
-      ctx.fillRect(STAGE_W / 2 - 190, y - 22, 380, 44);
-      text(ctx, "▶", STAGE_W / 2 - 160, y, font(20), COLOR.accent);
+      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      text(ctx, "▶", rect.x + 30, y, font(20), COLOR.accent);
     }
     text(
       ctx,
       item,
-      STAGE_W / 2,
+      menu.centerX,
       y,
       font(on ? 28 : 24),
       on ? COLOR.text : COLOR.textDim,
@@ -500,7 +510,7 @@ export function renderUi(state: WirewormState, ctx: Ctx): void {
     case "paused":
       scrim(ctx);
       text(ctx, "PAUSED", STAGE_W / 2, 240, font(52), COLOR.text);
-      renderMenu(ctx, PAUSE_ITEMS, state.menuIndex, 340);
+      renderMenu(ctx, PAUSE_MENU, state.menuIndex);
       return;
     case "victory":
       scrim(ctx);
@@ -529,7 +539,7 @@ export function renderUi(state: WirewormState, ctx: Ctx): void {
         font(22),
         COLOR.textDim,
       );
-      renderMenu(ctx, ENDING_ITEMS, state.menuIndex, 440);
+      renderMenu(ctx, VICTORY_MENU, state.menuIndex);
       return;
     case "gameover":
       scrim(ctx);
@@ -550,7 +560,7 @@ export function renderUi(state: WirewormState, ctx: Ctx): void {
         font(24),
         COLOR.text,
       );
-      renderMenu(ctx, ENDING_ITEMS, state.menuIndex, 420);
+      renderMenu(ctx, GAMEOVER_MENU, state.menuIndex);
       return;
   }
 }
@@ -558,7 +568,7 @@ export function renderUi(state: WirewormState, ctx: Ctx): void {
 function renderTitle(state: WirewormState, ctx: Ctx): void {
   text(ctx, TITLE_TEXT, STAGE_W / 2, 210, font(96), COLOR.accent);
   text(ctx, TAGLINE_TEXT, STAGE_W / 2, 286, font(26), COLOR.textDim);
-  renderMenu(ctx, TITLE_ITEMS, state.menuIndex, 420);
+  renderMenu(ctx, TITLE_MENU, state.menuIndex);
   text(
     ctx,
     "ARROWS or WASD to move    SPACE to fire",

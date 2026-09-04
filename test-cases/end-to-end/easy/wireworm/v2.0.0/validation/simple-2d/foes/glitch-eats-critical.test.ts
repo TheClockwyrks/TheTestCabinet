@@ -24,7 +24,7 @@
 // it was placed on (specs/foes.md) and nothing in the scenario moves.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CHARGE_MAX, DISCHARGE_RADIUS } from "../../src/constants";
+import { CHARGE_MAX, DISCHARGE_RADIUS } from "../constants";
 import { assertEqual, assertLength, assertNull } from "../assert";
 import {
   captureStill,

@@ -25,7 +25,7 @@
 // nowhere draws the same picture twice.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ENDING_ITEMS, TOTAL_LEVELS } from "../../src/constants";
+import { ENDING_ITEMS, TOTAL_LEVELS } from "../constants";
 import { assertEqual, assertGreaterThan, assertMatches } from "../assert";
 import {
   canvasPixels,

@@ -27,7 +27,7 @@
 // presentation/worm-mirrored decides.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE, tileCX, tileCY } from "../../src/constants";
+import { TILE, tileCX, tileCY } from "../constants";
 import { assertLength, assertTrue } from "../assert";
 import {
   captureStill,

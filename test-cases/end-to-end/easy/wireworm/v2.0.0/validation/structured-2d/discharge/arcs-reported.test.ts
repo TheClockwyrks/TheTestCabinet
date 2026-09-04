@@ -28,7 +28,7 @@
 // appearance, and presentation.arcs-drawn is the only point that touches it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ARC_LIFE } from "../../src/constants";
+import { ARC_LIFE } from "../constants";
 import { assertLength, assertNull, assertTrue } from "../assert";
 import {
   arcJoins,

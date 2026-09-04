@@ -168,10 +168,17 @@ export function clearLevel(state: WirewormState, cues: FrameCues): void {
   state.phaseTimer = BANNER_TIME;
 }
 
-/** Back to the title, with its highlight at the first item. */
-export function toTitle(state: WirewormState): void {
+/**
+ * Back to the title, with its highlight on the entry the caller left from
+ * (`specs/ui.md`).
+ *
+ * `index` defaults to `DESCEND`, which is what `QUIT TO MENU` and `MENU` return
+ * to: both leave a run, and `DESCEND` is the entry that started it. Leaving the
+ * how-to screen names that screen's own entry instead.
+ */
+export function toTitle(state: WirewormState, index = 0): void {
   state.screen = "title";
-  state.menuIndex = 0;
+  state.menuIndex = index;
 }
 
 /**
@@ -201,5 +208,6 @@ export function resetState(state: WirewormState, seed = DEFAULT_SEED): void {
   state.dropperTimer = 0;
   state.nextId = 1;
   state.simTime = 0;
+  state.presses = [];
   seedRandom(state, seed);
 }

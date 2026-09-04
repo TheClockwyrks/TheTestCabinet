@@ -38,7 +38,7 @@
 // travel that runs meanwhile carries it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GLITCH_V_SPEED } from "../../src/constants";
+import { GLITCH_V_SPEED } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

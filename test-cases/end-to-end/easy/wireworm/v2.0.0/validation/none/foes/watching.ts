@@ -15,9 +15,10 @@
 import {
   chargeAt,
   foesOfKind,
+  framesFor,
   type FoeKind,
   type Harness,
-  type SkipResult,
+  type UntilResult,
   type WirewormSnapshot,
 } from "../harness";
 
@@ -114,9 +115,9 @@ export async function watchRoster(
   };
 
   sample(0);
-  for (let elapsed = 0; elapsed < seconds;) {
+  for (let elapsed = 0; elapsed < seconds; ) {
     const step = Math.min(pollSeconds, seconds - elapsed);
-    await h.skip(step);
+    await h.skip(framesFor(step));
     elapsed += step;
     if (each !== undefined) await each();
     snapshot = await h.snapshot();
@@ -137,9 +138,9 @@ export function untilFoeOfKind(
   kind: FoeKind,
   maxSeconds: number,
   pollSeconds: number,
-): Promise<SkipResult> {
+): Promise<UntilResult> {
   return h.skipUntil((snapshot) => foesOfKind(snapshot, kind).length > 0, {
-    maxSeconds,
-    pollSeconds,
+    maxFrames: framesFor(maxSeconds),
+    poll: framesFor(pollSeconds),
   });
 }

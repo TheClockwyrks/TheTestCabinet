@@ -15,10 +15,10 @@
 // points exist to draw.
 //
 // THIS POINT IS ABOUT THE KEY, not about the screen it opens. What the pause
-// screen SHOWS is `screens.pause-screen`'s reading, that the board behind it stops
-// is `screens.pause-freezes`'s, and what its three items do belongs to the three
-// `screens.pause-*` points. So the one thing read here is where the game stands
-// after the press.
+// screen SHOWS is `screens.pause-screen`'s reading, that the board behind it
+// stops is the four `screens.pause-freezes-*` points', and what its three items
+// do belongs to the three `screens.pause-*` points. So the one thing read here
+// is where the game stands after the press.
 //
 // THE PRESS IS ONE FRAME LONG. `Harness.tap` puts the key down, runs exactly one
 // frame, and lifts it, which is the shape a press edge is seen in however the

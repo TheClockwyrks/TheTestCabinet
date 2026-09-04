@@ -24,7 +24,7 @@
 // read; this point poses two and reads the inert one's own survival.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOARD_H, BOLT_SPEED, CHARGE_MAX } from "../../src/constants";
+import { BOARD_H, BOLT_SPEED, CHARGE_MAX } from "../constants";
 import { assertEqual, assertNull, assertTrue } from "../assert";
 import {
   captureStill,

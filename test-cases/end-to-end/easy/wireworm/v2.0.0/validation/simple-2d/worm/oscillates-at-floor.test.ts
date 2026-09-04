@@ -22,7 +22,7 @@
 // graded by `worm.blocked-by-edge`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLS, ROWS, WORM_STEP_L1 } from "../../src/constants";
+import { COLS, ROWS, WORM_STEP_L1 } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureReplay,
@@ -57,12 +57,19 @@ it("flips the vertical heading up and rises a row rather than leaving the board"
   startPlaying(h);
   const id = poseWorm(h, HEAD_C, HEAD_R, 1, 1, 1);
 
-  const swept = await captureReplay(h, "floor", () =>
-    h.until((s) => !segmentAt(s, HEAD_C, HEAD_R), {
+  const swept = await captureReplay(h, "floor", async () => {
+    const left = await h.until((s) => !segmentAt(s, HEAD_C, HEAD_R), {
       maxFrames: STEP_TIMEOUT,
       poll: 1,
-    }),
-  );
+    });
+    // A settle, inside the bracket. What this point CLAIMS is that the worm
+    // turns rather than leaving the board, and a recording that stopped on the
+    // frame the head left its tile shows the leaving and not the turn. Two
+    // further steps' worth of frames carry it visibly up the board. The reading
+    // is taken above, before the settle, so no verdict moves.
+    await h.advance(ticksFor(WORM_STEP_L1 * 2.5));
+    return left;
+  });
 
   assertEqual(
     swept.hit,

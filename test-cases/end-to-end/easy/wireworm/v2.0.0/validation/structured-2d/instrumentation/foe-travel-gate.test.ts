@@ -31,7 +31,7 @@
 // nowhere near the tolerance below, which is float noise and nothing else.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GLITCH_H_SPEED, GLITCH_V_SPEED } from "../../src/constants";
+import { GLITCH_H_SPEED, GLITCH_V_SPEED } from "../constants";
 import { assertCloseTo, assertDefined } from "../assert";
 import {
   captureStill,

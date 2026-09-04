@@ -26,6 +26,7 @@ import { FOLDERS, type Sprites } from "./assets";
 import { STAGE_H, STAGE_W } from "./constants";
 import { createDebugApi, type WirewormDebugApi } from "./debug";
 import { advance, createGame, createInitialState } from "./game";
+import { IDLE_POINTER, type PointerFrame } from "./pointer";
 import { createRuntime, type Runtime, type UpdateApi } from "./runtime";
 import { COLOR } from "./theme";
 import type { CueSink, WirewormState, Worm } from "./types";
@@ -170,6 +171,7 @@ export function createRig(sprites: Sprites): Rig {
     surface: {
       cssWidth: () => STAGE_W,
       cssHeight: () => STAGE_H,
+      origin: () => ({ x: 0, y: 0 }),
       dpr: () => 1,
       events: () => keys,
     },
@@ -310,12 +312,15 @@ export interface StubApi extends UpdateApi {
   release(): void;
   /** Arm an edge for exactly the next read. */
   tap(...actions: string[]): void;
+  /** Hand the next frame this pointer report, in logical stage units. */
+  point(frame: PointerFrame): void;
 }
 
 /** An `UpdateApi` a test drives directly, over a cue log of its own. */
 export function stubApi(cues: CueSink): StubApi {
   const heldActions = new Set<string>();
   const edges = new Set<string>();
+  let pointerFrame: PointerFrame = IDLE_POINTER;
   let muted = false;
   return {
     input: {
@@ -324,6 +329,12 @@ export function stubApi(cues: CueSink): StubApi {
         if (!edges.has(name)) return false;
         edges.delete(name);
         return true;
+      },
+    },
+    pointer: {
+      frame: () => pointerFrame,
+      forget: () => {
+        pointerFrame = IDLE_POINTER;
       },
     },
     audio: {
@@ -339,6 +350,9 @@ export function stubApi(cues: CueSink): StubApi {
     release: () => heldActions.clear(),
     tap: (...actions) => {
       for (const action of actions) edges.add(action);
+    },
+    point: (frame) => {
+      pointerFrame = frame;
     },
   };
 }

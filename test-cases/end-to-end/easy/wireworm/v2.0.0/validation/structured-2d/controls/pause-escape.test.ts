@@ -18,9 +18,10 @@
 //
 // WHAT THIS DOES NOT DECIDE. What the paused screen SHOWS — its three items over
 // the board — which is screens/pause-screen's; that the board FREEZES behind it,
-// which is screens/pause-freezes'; and what `RESUME`, `RESTART` and `QUIT TO
-// MENU` then do, which are screens/pause-resume's, screens/pause-restart's and
-// screens/pause-quit's. This point asks only that the key moves the game there.
+// which is the four screens/pause-freezes-* points'; and what `RESUME`,
+// `RESTART` and `QUIT TO MENU` then do, which are screens/pause-resume's,
+// screens/pause-restart's and screens/pause-quit's. This point asks only that
+// the key moves the game there.
 //
 // THE KEY IS HELD FOR ONE FRAME rather than tapped between frames. The engine
 // reports an action's press edge and its held value, and a build may read either

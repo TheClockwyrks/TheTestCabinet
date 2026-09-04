@@ -41,7 +41,7 @@ import {
   TILE,
   tileCX,
   tileCY,
-} from "../../src/constants";
+} from "../constants";
 import { assertTrue, fail } from "../assert";
 import {
   captureStill,

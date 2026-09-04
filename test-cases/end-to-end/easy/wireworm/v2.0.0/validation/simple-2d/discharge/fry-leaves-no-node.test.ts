@@ -34,7 +34,7 @@
 // destroys a segment in reach at all is `fries-segments-in-reach`'s requirement.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOARD_H, BOLT_SPEED, CHARGE_MAX } from "../../src/constants";
+import { BOARD_H, BOLT_SPEED, CHARGE_MAX } from "../constants";
 import { assertEqual, assertNull, assertTrue } from "../assert";
 import {
   captureStill,

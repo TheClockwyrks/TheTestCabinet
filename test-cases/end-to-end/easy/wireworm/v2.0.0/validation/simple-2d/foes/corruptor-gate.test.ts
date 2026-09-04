@@ -14,10 +14,7 @@
 // counts corruptors alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  CORRUPTOR_FROM_LEVEL,
-  CORRUPTOR_MAX_INTERVAL,
-} from "../../src/constants";
+import { CORRUPTOR_FROM_LEVEL, CORRUPTOR_MAX_INTERVAL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

@@ -22,7 +22,7 @@
 // highlighted entry is commonly drawn with a marker beside it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ENDING_ITEMS } from "../../src/constants";
+import { ENDING_ITEMS } from "../constants";
 import { assertEqual, assertMatches } from "../assert";
 import {
   captureStill,

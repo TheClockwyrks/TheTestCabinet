@@ -55,6 +55,7 @@ function stand(size = { w: 640, h: 360, dpr: 1 }): {
   const surface: Surface = {
     cssWidth: () => size.w,
     cssHeight: () => size.h,
+    origin: () => ({ x: 0, y: 0 }),
     dpr: () => size.dpr,
     events: () => keys,
   };
@@ -241,6 +242,7 @@ describe("the runtime", () => {
       surface: {
         cssWidth: () => 640,
         cssHeight: () => 360,
+        origin: () => ({ x: 0, y: 0 }),
         dpr: () => 1,
         events: () => keys,
       },
@@ -287,6 +289,7 @@ describe("the runtime", () => {
       surface: {
         cssWidth: () => 640,
         cssHeight: () => 360,
+        origin: () => ({ x: 0, y: 0 }),
         dpr: () => 1,
         events: () => new EventTarget(),
       },

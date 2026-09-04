@@ -15,7 +15,11 @@
 //     both are read, and the screen uses the one that applies.
 
 import { ACTIONS, BINDINGS, LAYOUT, type ActionName } from "./constants";
-import type { InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type {
+  InitApi,
+  PointerSample,
+  UpdateApi,
+} from "@test-cabinet/simple-2d";
 
 /** Everything a frame's input amounts to, resolved once per update. */
 export interface FrameInput {
@@ -32,6 +36,14 @@ export interface FrameInput {
   readonly back: boolean;
   readonly pause: boolean;
   readonly mute: boolean;
+  /**
+   * Every pointer sample the frame delivered, in arrival order.
+   *
+   * The menus take a mouse and a finger as well as the keyboard
+   * (`specs/ui.md`), and they are read in this same once-per-frame read rather
+   * than through an action.
+   */
+  readonly pointer: readonly PointerSample[];
 }
 
 /**
@@ -92,5 +104,6 @@ export function readInput(api: UpdateApi): FrameInput {
     back,
     pause,
     mute,
+    pointer: api.input.pointerSamples(),
   };
 }

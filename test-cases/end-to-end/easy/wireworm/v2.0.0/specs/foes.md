@@ -59,9 +59,10 @@ further glitch after another such interval.
 At most `GLITCH_MAX_ON_BOARD` (`2`) glitches are on the board at once. While two
 are on it, no further glitch enters.
 
-A glitch enters at the left or right edge of the board with its center on the
-board, on a row from `8` to `15`, and its horizontal direction pointing inward
-from that edge.
+A glitch enters with its center on the center of the edge column of the edge it
+entered at, at `x` of `16` entering from the left and `1264` entering from the
+right, and on the center of a row drawn from the run's seeded generator between
+`8` and `15` inclusive. Its horizontal direction points inward from that edge.
 
 ## The dropper
 
@@ -100,8 +101,8 @@ every `DROPPER_CHECK_INTERVAL` (`2.5` s) of active play. When that count is belo
 `DROPPER_SPARSE_THRESHOLD` (`8`), one dropper enters; when it is `8` or above,
 none does.
 
-A dropper enters at row `0`, its center on the center of a column drawn from the
-run's seeded generator, falling.
+A dropper enters with its center on the center of row `0`, at `y` of `96`, and on
+the center of a column drawn from the run's seeded generator, falling.
 
 ## The corruptor
 
@@ -133,6 +134,7 @@ the run's seeded generator between `CORRUPTOR_MIN_INTERVAL` (`14.0` s) and
 `CORRUPTOR_MAX_INTERVAL` (`22.0` s), timed from the moment the level's play
 becomes active, and each further corruptor after another such interval.
 
-A corruptor enters at the left or right edge of the board with its center on the
-board, on a row from `1` to `6`, and its direction pointing inward from that
-edge.
+A corruptor enters with its center on the center of the edge column of the edge
+it entered at, at `x` of `16` entering from the left and `1264` entering from the
+right, and on the center of a row drawn from the run's seeded generator between
+`1` and `6` inclusive. Its direction points inward from that edge.

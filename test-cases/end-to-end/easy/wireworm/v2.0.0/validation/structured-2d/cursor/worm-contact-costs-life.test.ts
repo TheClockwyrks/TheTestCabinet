@@ -24,7 +24,7 @@
 // charged two lives reads 1, and one that noticed nothing reads 3.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CURSOR_Y_MAX, START_LIVES, tileCX } from "../../src/constants";
+import { CURSOR_Y_MAX, START_LIVES, tileCX } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

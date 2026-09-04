@@ -31,12 +31,7 @@
 // `(-123, 45)` is no foe's resting velocity.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  tileCX,
-  tileCY,
-  wormLength,
-  wormStepInterval,
-} from "../../src/constants";
+import { tileCX, tileCY, wormLength, wormStepInterval } from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureStill,

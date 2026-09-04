@@ -5,7 +5,7 @@
 // phase becomes `active` and the level's worm enters afresh AT THE LEVEL'S OWN
 // LENGTH. specs/worm.md fixes that length as
 // `WORM_BASE_LENGTH + WORM_LENGTH_PER_LEVEL * (level - 1)`, which is what
-// `wormLength` in `src/constants.ts` computes.
+// `wormLength` in `../constants` computes.
 //
 // THE LEVEL IS NOT 1, DELIBERATELY. At level `1` the level's own length is the
 // base length, so a build that always enters a ten-segment worm would answer
@@ -22,7 +22,7 @@
 // else arrives and nothing can cost a life while the timer runs.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { RESPAWN_TIME, wormLength } from "../../src/constants";
+import { RESPAWN_TIME, wormLength } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,

@@ -24,7 +24,7 @@ import {
   ROWS,
   SCATTER_BOTTOM_ROW,
   SCATTER_TOP_ROW,
-} from "../../src/constants";
+} from "../constants";
 import { assertBetween, assertGreaterThan } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { SEEDS, openRun } from "./scatter";

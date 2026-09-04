@@ -13,7 +13,7 @@
 // requirement, not this one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CURSOR_X_MAX } from "../../src/constants";
+import { CURSOR_X_MAX } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   BAND_CY,

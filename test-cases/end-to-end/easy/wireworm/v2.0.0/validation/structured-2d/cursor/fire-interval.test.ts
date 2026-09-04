@@ -20,7 +20,7 @@
 // from whatever the cooldown happened to hold.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIRE_INTERVAL } from "../../src/constants";
+import { FIRE_INTERVAL } from "../constants";
 import { assertLength, assertLessThanOrEqual } from "../assert";
 import {
   BAND_CX,

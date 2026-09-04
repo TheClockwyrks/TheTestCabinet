@@ -24,7 +24,7 @@
 // been opened, so the only thing that can sound is the menu.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES } from "../../src/constants";
+import { CUES } from "../constants";
 import {
   assertDeepEqual,
   assertEqual,

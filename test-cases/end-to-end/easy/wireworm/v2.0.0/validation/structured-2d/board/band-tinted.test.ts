@@ -45,7 +45,7 @@ import {
   STAGE_H,
   TILE,
   tileCX,
-} from "../../src/constants";
+} from "../constants";
 import { assertGreaterThan } from "../assert";
 import {
   captureStill,

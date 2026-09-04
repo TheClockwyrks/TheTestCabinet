@@ -1,17 +1,16 @@
 // Wireworm — screens/howto-back: `back` on the how-to screen returns to the
-// title, with the title's highlight at the first item.
+// title.
 //
 // One transition of the menu state machine `specs/ui.md` fixes: on `howto`,
-// "`back` returns to `title`, with the title's highlight at the first item". The
-// screen is POSED with the surface's own `setScreen` rather than reached through
-// the title menu, so what this decides is the return alone: whether confirming
-// HOW TO PLAY opens the screen is `screens/title-howto`'s to decide, and a build
-// that cannot open the how-to screen and one that cannot leave it grade
-// differently.
+// "`back` returns to `title`". The screen is POSED with the surface's own
+// `setScreen` rather than reached through the title menu, so what this decides
+// is the return alone: whether confirming HOW TO PLAY opens the screen is
+// `screens/title-howto`'s to decide, and a build that cannot open the how-to
+// screen and one that cannot leave it grade differently.
 //
-// The highlight is posed AWAY from the first item before the press, so "with the
-// title's highlight at the first item" is a reading of what the return did
-// rather than of what `reset` had already left behind.
+// WHICH ENTRY THE RETURN SELECTS is `screens/howto-back-selects-howto`'s point,
+// not this one: a build that returns to the wrong entry still returns, and the
+// two have to grade apart.
 //
 // The press is the `back` action's own bound key — `Escape`, which also drives
 // `pause`, so the build has to resolve it as the back on a screen showing no
@@ -19,7 +18,7 @@
 // the engine listens on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_ITEMS } from "../../src/constants";
+import { TITLE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,
@@ -39,7 +38,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("returns from the how-to screen to the title at its first item", async () => {
+it("returns to the title from the how-to screen", async () => {
   resetTo(h);
   h.debug.setMenuIndex(TITLE_ITEMS.length - 1);
   h.debug.setScreen("howto");
@@ -58,10 +57,5 @@ it("returns from the how-to screen to the title at its first item", async () => 
     returned.screen,
     "title",
     "back on the how-to screen returns to the title (specs/ui.md)",
-  );
-  assertEqual(
-    returned.menuIndex,
-    0,
-    "the title's highlight is back at its first item (specs/ui.md)",
   );
 });

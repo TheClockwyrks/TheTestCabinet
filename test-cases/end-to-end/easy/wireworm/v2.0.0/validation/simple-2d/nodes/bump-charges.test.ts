@@ -21,7 +21,7 @@
 // node's charge alone, and a build that mishandles the turn is docked there.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { wormStepInterval } from "../../src/constants";
+import { wormStepInterval } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

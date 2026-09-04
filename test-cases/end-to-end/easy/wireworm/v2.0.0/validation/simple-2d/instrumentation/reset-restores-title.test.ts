@@ -29,7 +29,7 @@
 // the snapshot is read first and the frame is run after it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_TOP_ROW, START_LIVES, tileCY } from "../../src/constants";
+import { BAND_TOP_ROW, START_LIVES, tileCY } from "../constants";
 import { assertCloseTo, assertEqual, assertLength } from "../assert";
 import {
   BAND_CX,

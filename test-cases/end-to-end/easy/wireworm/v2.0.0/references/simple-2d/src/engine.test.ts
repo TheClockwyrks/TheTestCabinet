@@ -51,6 +51,7 @@ import {
   STAGE_H,
   STAGE_W,
   START_LIVES,
+  TITLE_ITEMS,
   TOTAL_LEVELS,
   WIREWORM_DEBUG_VERSION,
   tileCX,
@@ -1064,7 +1065,8 @@ describe("the screens", () => {
     h.tap("Escape");
     await h.frames(1);
     expect(h.snapshot().screen).toBe("title");
-    expect(h.snapshot().menuIndex).toBe(0);
+    // The return selects the entry it left from (specs/ui.md).
+    expect(h.snapshot().menuIndex).toBe(TITLE_ITEMS.indexOf("HOW TO PLAY"));
   });
 
   it("plays again and returns to the menu from an end screen", async () => {

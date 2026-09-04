@@ -18,7 +18,7 @@
 // tile.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ARC_LIFE } from "../../src/constants";
+import { ARC_LIFE } from "../constants";
 import { assertNull } from "../assert";
 import {
   captureReplay,

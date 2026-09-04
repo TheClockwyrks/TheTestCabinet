@@ -27,12 +27,7 @@
 // An entity that vanished would fail this point for the wrong reason.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BOARD_Y,
-  BOLT_SPEED,
-  tileCY,
-  wormStepInterval,
-} from "../../src/constants";
+import { BOARD_Y, BOLT_SPEED, tileCY, wormStepInterval } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

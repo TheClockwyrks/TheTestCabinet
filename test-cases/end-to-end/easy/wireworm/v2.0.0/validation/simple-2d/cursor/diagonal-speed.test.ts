@@ -24,7 +24,7 @@
 // horizontal clamp `cursor.clamped-right` grades never enters this reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CURSOR_SPEED } from "../../src/constants";
+import { CURSOR_SPEED } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   BAND_CX,

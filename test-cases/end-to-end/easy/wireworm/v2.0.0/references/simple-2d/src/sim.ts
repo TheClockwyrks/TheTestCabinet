@@ -20,7 +20,14 @@
 // in and the state handed back.
 
 import type { CueName } from "./constants";
-import type { FoeKind, Phase, Screen, Sprites, WirewormState } from "./game";
+import type {
+  FoeKind,
+  Phase,
+  PressAnchor,
+  Screen,
+  Sprites,
+  WirewormState,
+} from "./game";
 import type { DeepReadonly } from "ts-essentials";
 
 /**
@@ -129,6 +136,8 @@ export interface Sim {
   muted: boolean;
   rngState: number;
 
+  presses: PressAnchor[];
+
   sprites: Sprites;
 }
 
@@ -197,6 +206,12 @@ export function toSim(state: DeepReadonly<WirewormState>): Sim {
     simTime: state.simTime,
     muted: state.muted,
     rngState: state.rngState,
+
+    presses: state.presses.map((press) => ({
+      id: press.id,
+      screen: press.screen,
+      index: press.index,
+    })),
 
     // Loaded once and never written, so the frames themselves are shared.
     sprites: state.sprites as Sprites,

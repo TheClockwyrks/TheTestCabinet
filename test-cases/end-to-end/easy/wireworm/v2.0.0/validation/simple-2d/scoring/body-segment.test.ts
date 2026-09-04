@@ -24,7 +24,7 @@
 // is `nodes.shot-leaves-node`'s. This point reads the score alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED, SCORE_BODY, TILE } from "../../src/constants";
+import { BOLT_SPEED, SCORE_BODY, TILE } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

@@ -10,46 +10,33 @@
 //   npx vitest run                                       # the build's own tests
 //   npx vitest run --config validation/vitest.config.ts  # the case's validators
 //
-// The root is the workspace, not this directory, so a validator addresses the
+// Everything but the dial below is the shared validator harness's, because
+// everything but the dial is what makes a staged validator project one shape the
+// runner can drive: the project's name, the suites it collects, the scaffolding
+// it loads, and the refusal to pass a run that collected nothing.
+//
+// THE ROOT IS THE WORKSPACE, NOT THIS DIRECTORY, so a validator addresses the
 // build's output by the same relative path the build itself produced it at, and
 // reads the seeded sprite art off the workspace's own `assets/` tree. It is
-// derived from this file's own URL rather than from the working directory, so the
-// command above works from anywhere.
+// computed HERE, from this file's own URL, rather than inside the package: the
+// package is staged one directory deeper than this file, so anything derived from
+// its own location would name the wrong tree.
 //
-// WHY THIS PROJECT NEEDS SCAFFOLDING THE ENGINE-BACKED ONES DO NOT. An engineless
-// build is a static site with nothing to import, so every check drives it in a
-// real browser. `globalSetup` starts the one server and the one Chromium the
-// whole project shares, before any suite runs; `setupFiles` gives each suite
-// worker the teardown that returns its page when the file is done. The
-// environment stays `node` — the suites drive a browser, they do not run in one.
+// Imported from its own module rather than through the package's barrel, for the
+// reason `globalSetup.ts` gives.
+//
+// THE ONE DIAL WIREWORM NAMES IS THE WORKER COUNT, and it is a ceiling on PAGES
+// rather than on cores. Each suite file holds a page of the one shared browser
+// while it runs, and this project is two hundred and twenty-seven files of them; a
+// page costs memory in a single browser process, on a host that is also running a
+// model's build. Four is what this project's suites were measured at. Every other
+// ceiling — the per-check allowance and the hook allowance — is left to the
+// package, whose figures were set against the worst load these projects have been
+// measured under rather than against a quiet box.
 
-import { defineConfig } from "vitest/config";
+import { defineValidationConfig } from "./case-harness/vitest-config";
 
-export default defineConfig({
+export default defineValidationConfig({
   root: new URL("..", import.meta.url).pathname,
-  test: {
-    name: "validation",
-    include: ["validation/**/*.test.ts"],
-    environment: "node",
-    globalSetup: ["validation/globalSetup.ts"],
-    setupFiles: ["validation/setup.ts"],
-    // A missing validator is a broken suite, not a passing one.
-    passWithNoTests: false,
-    coverage: { enabled: false },
-    // Each suite file holds a page of the shared browser while it runs, so the
-    // ceiling on files in flight is the ceiling on pages — and a suite spends
-    // almost all of its time waiting on a crossing into one, so overlapping them
-    // is most of what decides how long the whole run takes. Capped rather than
-    // left to the core count because the cost of a page is memory in one shared
-    // browser process rather than a core, and the host running this is running a
-    // model's build under it.
-    maxWorkers: 4,
-    minWorkers: 1,
-    // Every scenario is posed rather than played into, so a suite is a few
-    // hundred crossings into the page rather than thousands of real-time frames;
-    // the ceiling is for the handful that run a minute of game time, and it still
-    // bounds a hung one.
-    testTimeout: 90_000,
-    hookTimeout: 90_000,
-  },
+  maxWorkers: 4,
 });

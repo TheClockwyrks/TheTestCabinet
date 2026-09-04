@@ -53,7 +53,7 @@ import {
   START_LIVES,
   tileCX,
   tileCY,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertCloseTo,
   assertEqual,

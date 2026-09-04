@@ -27,7 +27,7 @@ import {
   SCORE_LEVEL_CLEAR,
   SCORE_VICTORY,
   TOTAL_LEVELS,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

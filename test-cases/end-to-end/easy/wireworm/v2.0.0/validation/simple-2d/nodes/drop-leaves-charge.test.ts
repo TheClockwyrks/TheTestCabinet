@@ -29,7 +29,7 @@
 // alone, so a build that stops short of the tile is docked there and not twice.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { wormStepInterval } from "../../src/constants";
+import { wormStepInterval } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

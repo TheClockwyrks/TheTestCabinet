@@ -29,7 +29,7 @@
 // one frame, is told apart from one that stays muted across the run.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED, FIRE_INTERVAL, TILE } from "../../src/constants";
+import { BOLT_SPEED, FIRE_INTERVAL, TILE } from "../constants";
 import { assertEqual, assertNotEqual } from "../assert";
 import {
   captureStill,

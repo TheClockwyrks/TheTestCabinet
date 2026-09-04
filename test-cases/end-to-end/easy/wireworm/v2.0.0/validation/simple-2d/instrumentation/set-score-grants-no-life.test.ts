@@ -24,7 +24,7 @@
 // the next update is caught as surely as one that paid it at the call.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BONUS_LIFE_EVERY, START_LIVES } from "../../src/constants";
+import { BONUS_LIFE_EVERY, START_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

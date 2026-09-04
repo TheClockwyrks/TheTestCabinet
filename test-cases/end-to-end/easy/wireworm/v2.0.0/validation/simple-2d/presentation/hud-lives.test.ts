@@ -32,7 +32,7 @@
 // can carry a standalone `2` and be read as the lives.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_H, STAGE_W } from "../../src/constants";
+import { HUD_H, STAGE_W } from "../constants";
 import { assertEqual, fail } from "../assert";
 import {
   captureStill,

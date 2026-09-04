@@ -30,7 +30,7 @@
 // reads as a different number rather than as these.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_H, HUD_LEVEL_LABEL, TOTAL_LEVELS } from "../../src/constants";
+import { HUD_H, HUD_LEVEL_LABEL, TOTAL_LEVELS } from "../constants";
 import { assertEqual, assertGreaterThan, fail } from "../assert";
 import {
   captureStill,
