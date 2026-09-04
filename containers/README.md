@@ -321,6 +321,13 @@ names the ones it needs with the manifest's
 [`packages`](../apps/docs/src/content/docs/testing/end-to-end/overview.md#packages)
 key, and the run consumes them as ordinary installed dependencies.
 
+A case built on a 3D [engine](../engines/README.md) names one more,
+[`@test-cabinet/headless-webgl2`](../packages/headless-webgl2): the canvas its
+validation suites construct the engine over, whose WebGL2 context is implemented
+in Node itself so a suite renders the build with no browser and no GPU. It is
+named, staged, vendored, and imported by exactly the same route, as a dev
+dependency of the shipped workspace.
+
 Because these packages are private (never npm-published) and must match the format
 the validator and review UI play, they are **staged from this repo into a host
 package store** rather than fetched from a registry. The store lives at

@@ -1,0 +1,28 @@
+{
+  "name": "@test-cabinet/headless-webgl2",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "A pure-TypeScript, in-process WebGL2 implementation for Node: createCanvas yields a canvas whose webgl2 context is a real one — buffers, vertex arrays, textures, shaders compiled by its own GLSL ES 3.00 subset front end, a software rasterizer with genuine depth testing and blending, and a readPixels that returns the framebuffer's actual bytes, rows bottom-up — so the 3D engines and their validators construct and render headlessly with no browser, no GPU, no native module, and no runtime dependency, deterministically enough that two runs of the same operation stream produce the same picture byte for byte. A call outside its implemented subset throws an error naming the method rather than silently doing nothing, so a renderer that strays is told at once instead of reading back a dishonest picture.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "vitest": "^3"
+  }
+}

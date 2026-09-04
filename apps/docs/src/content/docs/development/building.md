@@ -94,6 +94,25 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
   collision, around a 2D game written in TypeScript. It is staged and vendored
   the same way as `packages/simple-2d`, and its package version is the engine
   version recorded on the run.
+- `packages/simple-3d`: `@test-cabinet/simple-3d`. The Simple 3D
+  [engine](/components/core/engines/), providing the frame loop, input actions,
+  audio, assets, diagnostics, and the WebGL2 scene context a produced 3D game
+  draws through, leaving that game to write its own simulation and its own
+  drawing. It is staged and vendored the same way as `packages/simple-2d`, and
+  its package version is the engine version recorded on the run.
+- `packages/structured-3d`: `@test-cabinet/structured-3d`. The Structured 3D
+  [engine](/components/core/engines/), providing a gameplay framework of worlds,
+  levels, game modes, actors, and controllers, with engine-owned WebGL2
+  rendering and volumetric collision, around a 3D game written in TypeScript. It
+  is staged and vendored the same way, and its package version is the engine
+  version recorded on the run.
+- `packages/headless-webgl2`: `@test-cabinet/headless-webgl2`. A pure-TypeScript
+  WebGL2 implementation for Node, whose canvas serves a context that rasterizes
+  in software and reads real pixels back, so the 3D engines and the validators
+  of a case built on them construct and render with no browser and no GPU. It is
+  one of the [shippable packages](/testing/end-to-end/overview/#packages) a case
+  names in its manifest, vendored into the run repository under
+  `.tcab/packages/`.
 - `packages/gg-sandbox`: the TypeScript and JavaScript arm of gg's
   responses-as-code sandbox.
 - `apps/desktop`: `@test-cabinet/desktop`. The React + Vite UI the Tauri
@@ -110,9 +129,9 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
 A [reference implementation](/guides/devops/publishing-a-reference-implementation/)
 under a case version's `references/` is its own npm project rather than a member
 of the workspace, so it is installed from its own directory. An engine-backed one
-resolves its engine from `packages/simple-2d` or `packages/structured-2d` through
-a relative `file:` dependency that npm installs as a symlink, so the reference
-builds and tests against the engine's current source.
+resolves its engine from `packages/<slug>` through a relative `file:` dependency
+that npm installs as a symlink, so the reference builds and tests against the
+engine's current source.
 
 That symlink points at the package directory, and what the reference imports is
 the package's `dist/`, so the root workspace must be installed and built first:

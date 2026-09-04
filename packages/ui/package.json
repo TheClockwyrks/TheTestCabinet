@@ -49,7 +49,9 @@
   "devDependencies": {
     "@napi-rs/canvas": "^1",
     "@test-cabinet/simple-2d": "*",
+    "@test-cabinet/simple-3d": "*",
     "@test-cabinet/structured-2d": "*",
+    "@test-cabinet/structured-3d": "*",
     "@testing-library/dom": "^10",
     "@testing-library/jest-dom": "^6",
     "@testing-library/react": "^16",

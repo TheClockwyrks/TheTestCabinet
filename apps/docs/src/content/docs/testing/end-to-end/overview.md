@@ -215,6 +215,12 @@ and a voxel or mesh rig is posed at runtime. A case that hands a game such an
 asset names the in-repo library that already plays it, so the game plays a
 produced asset the same way the review UI does.
 
+A case built on a 3D engine names `@test-cabinet/headless-webgl2` the same way,
+for the canvas its validation suites construct the engine over. That canvas
+serves a WebGL2 context implemented in Node itself, so a suite renders the build
+with no browser and no GPU, and the workspace declares it as a dev dependency
+because only the suites import it.
+
 Declare them with the manifest's `packages` key, naming each package by its npm
 name:
 

@@ -51,7 +51,21 @@ the game, so a case that measures those measures them directly.
 | [Examples](/engines/simple-3d/examples/overview/) | Complete games written against the engine, read as working reference. |
 | [Validators](/engines/simple-3d/validators/overview/) | How a test case checks a build through the engine. |
 
-## What dimensionality changes
+The game owns its simulation and its drawing, supplied as a
+[`Game<S, D>`](/engines/simple-3d/apis/game/): an `initialize` that builds the
+state and the debug surface and returns them as `[state, debug]`, an `update`
+that takes the current state and a delta in seconds and returns the next
+state, and a `render` that draws that state through the engine-owned
+`SceneContext` — a write-only 3D surface whose every draw call names its full
+world transform, and whose only retained state is the camera, the lights, and
+the render mode. The game keeps its camera in its own state as a plain
+`CameraState` and applies it from `render`, so the camera it renders with is
+the one it picks against. The engine holds the state by value and hands every
+reader a read-only view, so rendering cannot change the state and nothing but
+a transition advances it. The declarations the engine works from are made
+during initialization: action bindings, cue definitions, the assets the state
+holds, the diagnostic sources the overlay reads, and the debug surface a
+caller drives the build through.
 
 The spatial model is 3D. The game draws by building a three.js scene and
 posing a camera rather than by issuing 2D context calls, and the engine

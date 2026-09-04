@@ -1611,12 +1611,18 @@ fn every_shippable_package_carries_a_ui_description() {
     // Every shippable package a case may declare has a non-empty UI-only
     // description (the single source of truth the Inputs surfaces read), and an
     // unknown name resolves to `None`.
-    assert!(is_shippable_package("@test-cabinet/particle-runtime"));
-    assert!(
-        shippable_package_description("@test-cabinet/particle-runtime")
-            .is_some_and(|d| !d.is_empty()),
-        "particle-runtime should carry a non-empty description"
-    );
+    for package in SHIPPABLE_PACKAGES {
+        assert!(
+            is_shippable_package(package.name),
+            "`{}` is in the list, so it must be recognised as shippable",
+            package.name
+        );
+        assert!(
+            shippable_package_description(package.name).is_some_and(|d| !d.is_empty()),
+            "`{}` should carry a non-empty description",
+            package.name
+        );
+    }
     assert!(!is_shippable_package("@test-cabinet/not-a-real-package"));
     assert!(shippable_package_description("@test-cabinet/not-a-real-package").is_none());
 }
