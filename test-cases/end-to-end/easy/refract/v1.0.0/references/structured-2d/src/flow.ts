@@ -3,10 +3,11 @@
 //
 // The framework's states are live objects, so every transition here MUTATES
 // the `RefractState` it is handed — the world's one instance — writing the
-// fields it changes in place and leaving the rest alone. Each transition is
-// shared by the menus in `src/controller.ts` and the debug surface in
-// `src/debug.ts`, so choosing a mode from the title and posing it through
-// `startMode` are the same code path (specs/instrumentation.md).
+// fields it changes in place and leaving the rest alone. Every transition
+// belongs to the game itself, driven by the menus in `src/controller.ts`. The
+// debug surface in `src/debug.ts` runs none of them: each of its poses writes
+// one field (specs/instrumentation.md), so a scenario either takes a
+// transition the way a player does or sets the field it wants.
 //
 // The mode-specific facts live where the specs put them: Campaign's course,
 // unlocking, and select highlight follow `specs/modes/campaign.md`, and
@@ -115,9 +116,8 @@ export function restartCascade(state: RefractState): void {
 }
 
 /**
- * A mode chosen from the title menu, and the identical pose the debug
- * surface's `startMode` applies. Campaign opens on its select grid with the
- * session's progress as it stands; Cascade begins a fresh sequence from
+ * A mode chosen from the title menu. Campaign opens on its select grid with
+ * the session's progress as it stands; Cascade begins a fresh sequence from
  * tier 1 (specs/modes/cascade.md, The sequence).
  */
 export function startMode(state: RefractState, mode: Mode): void {
