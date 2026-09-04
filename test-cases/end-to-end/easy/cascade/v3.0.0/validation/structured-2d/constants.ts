@@ -6,9 +6,13 @@
 // specification fixes", and to export each one "under the name this specification
 // gives it". So under an engine there IS a module beside the game carrying a
 // `CARD_W`, a `LAUNCH_INTERVAL` and a `TURN_COUNT` — and every one of them is the
-// BUILD's claim about itself, written by the thing this project grades. No
-// workspace seeds it, no contract pins it, and nothing outside these checks reads
-// it back against the specification.
+// BUILD's claim about itself, written by the thing this project grades. The
+// engine workspaces do SEED that module — it arrives headed "Supplied with the
+// project. Do not edit." — but seeding it is the last thing that touches it: no
+// contract pins it, nothing re-checks that the copy in a produced tree is still
+// the seeded one, and nothing outside these checks reads it back against the
+// specification. A build that edited a figure there would be graded against its
+// own edit.
 //
 // A CHECK THAT IMPORTED ITS FIGURE FROM THERE WOULD GRADE NOTHING. The comparison
 // would reduce to "does the build do what the build says it does", which is true
