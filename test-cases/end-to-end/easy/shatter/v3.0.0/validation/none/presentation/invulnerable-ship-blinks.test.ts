@@ -80,15 +80,19 @@ const WINDOW_TICKS = ticksFor(INVULN_TIME);
 const AFTER_TICKS = ticksFor(0.25);
 
 /**
- * How far a sample's colour must move to count as changed, of the 441 an RGB distance
- * can span.
+ * How far a sample's colour must move to count as changed, of the 441 an RGB
+ * distance can span.
  *
- * Nothing on this field moves between two readings — the ship is at rest, the star
- * does not pull it, and no other body is posed — so the only thing under this bound
- * is the last bit of a channel. Far below the contrast of any mark a build would draw
- * to say "protected".
+ * Forty, two thirds of the sixty `presentation/ship-is-drawn-and-distinct` calls
+ * "drawn apart from the field". `specs/overview.md` asks that the appearance change
+ * VISIBLY, so the bar is what a player would see at a sample rather than what a
+ * measurement can detect: a hull dimmed, recoloured or outlined differently moves
+ * its samples by well over a hundred, and a build's own anti-aliasing between two
+ * frames of one picture moves them by a handful. The same forty the `simple-2d` and
+ * `structured-2d` projects hold this item to, so one build is graded the same
+ * whichever engine its run draws.
  */
-const SAMPLE_DELTA = 16;
+const POINT_CHANGE = 40;
 
 /**
  * How many of the {@link DISC_SAMPLES} readings must move for the ship to read
@@ -100,7 +104,8 @@ const SAMPLE_DELTA = 16;
  * build blinking by colour or by alpha clears it many times over. It is deliberately
  * low, because `specs/overview.md` fixes no size for whatever a build draws — only
  * that the player sees it — while a ship drawn identically throughout moves nothing
- * at all.
+ * at all. The same twelve, with the same `>=`, that `simple-2d` and `structured-2d`
+ * hold this item to.
  */
 const MIN_CHANGED = 12;
 
@@ -108,9 +113,11 @@ const MIN_CHANGED = 12;
  * How many samples may still differ once the grace has run out.
  *
  * The settled ship is drawn from the same state as the steady one — same position,
- * same facing, same velocity, no grace — so a conformant build reads zero here and
- * the allowance is for the last bit of a channel alone. Four: a third of the floor
- * above, so the two halves of the rule can never both hold of one reading.
+ * same facing, same velocity, no grace — so a conformant build reads zero here; it
+ * is an allowance for a build's own anti-aliasing rather than for a residue, since
+ * a ship still being drawn as protected moves samples by the dozen. Four: a third
+ * of the floor above, so the two halves of the rule can never both hold of one
+ * reading.
  */
 const MAX_SETTLED = 4;
 
@@ -137,7 +144,7 @@ it("draws the ship differently somewhere inside its grace and as before once it 
   for (let ticks = 0; ticks < WINDOW_TICKS; ticks += SAMPLE_EVERY) {
     await harness.advance(Math.min(SAMPLE_EVERY, WINDOW_TICKS - ticks));
     const inside = await readDisc(harness, SHIP_SPOT, LOOK_R);
-    const changed = changedSamples(steady, inside, SAMPLE_DELTA);
+    const changed = changedSamples(steady, inside, POINT_CHANGE);
     if (changed > mostChanged) {
       mostChanged = changed;
       // The picture kept is the instant of the window that differed MOST, which is
@@ -154,12 +161,12 @@ it("draws the ship differently somewhere inside its grace and as before once it 
   assertGreaterThanOrEqual(
     mostChanged,
     MIN_CHANGED,
-    `of ${DISC_SAMPLES} samples over the ship's whole drawn extent (a disc of ${LOOK_R}), the most that read differently from the ship with no grace at any instant of the ${INVULN_TIME}-second window (specs/overview.md)`,
+    `of ${DISC_SAMPLES} samples over the ship's whole drawn extent (a disc of ${LOOK_R}), the most that read more than ${POINT_CHANGE} of 441 from the ship with no grace at any instant of the ${INVULN_TIME}-second window (specs/overview.md)`,
   );
 
   assertLessThanOrEqual(
-    changedSamples(steady, settled, SAMPLE_DELTA),
+    changedSamples(steady, settled, POINT_CHANGE),
     MAX_SETTLED,
-    `of ${DISC_SAMPLES} samples over the ship's whole drawn extent (a disc of ${LOOK_R}), how many still read differently from the ship with no grace once the grace had run out (specs/overview.md)`,
+    `of ${DISC_SAMPLES} samples over the ship's whole drawn extent (a disc of ${LOOK_R}), how many still read more than ${POINT_CHANGE} of 441 from the ship with no grace once the grace had run out (specs/overview.md)`,
   );
 });

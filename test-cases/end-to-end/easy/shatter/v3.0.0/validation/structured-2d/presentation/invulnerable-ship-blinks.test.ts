@@ -60,7 +60,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { FACE_UP, HULL_LEN, INVULN_TIME } from "../constants";
-import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
+import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -104,7 +104,9 @@ const POINT_CHANGE = 40;
  * presence to: about what a bare one-unit outline marks out of this many samples. It
  * is deliberately low, because `specs/overview.md` fixes no size for whatever a build
  * draws — only that the player sees it — and a ring, a shimmer or a dimmed hull each
- * clear it several times over.
+ * clear it several times over. The bar is `>=`, as `ship-is-drawn-and-distinct` holds
+ * the same twelve of this many samples, and as the `none` project holds this item —
+ * so twelve moved points is the same verdict whichever engine a run draws.
  */
 const MIN_MOVED = 12;
 
@@ -162,7 +164,7 @@ it("draws the ship differently at some instant of its grace and as it was once t
   const settled = movedFrom();
   if (!captured) captureStill(h, "grace");
 
-  assertGreaterThan(
+  assertGreaterThanOrEqual(
     mostMoved,
     MIN_MOVED,
     `of ${String(DISC_SAMPLES)} points over the ship, how many were drawn ` +
