@@ -1,10 +1,13 @@
 # Orrery — the validator projects
 
 Three vitest projects, one per engine, holding the checks that decide Orrery's
-1058 review items. `test-case.toml` points every validated item at a script path
+1065 review items. `test-case.toml` points every validated item at a script path
 like `sigils/bind-joins-two-motes.test.ts`, and the runner resolves that path
 inside **every** engine's project — so one review item is **three files at the
-same relative path**, and the case does not resolve until all three exist.
+same relative path**, and the case does not resolve until all three exist. The
+seven items that narrow their `validation` with `engines = ["none"]` are the
+exception: a scoped item's suite ships in `none/` alone, and the case does not
+resolve while a copy of it is left in a project the item does not cover.
 
 ```
 validation/

@@ -518,6 +518,16 @@ description = "Everything a player sees and hears. The produced assets first: th
 # authored first so the suites are written TO these claims rather than the claims
 # drifting to fit what a suite happened to check.
 #
+# SEVEN ITEMS NARROW THEIR VALIDATION WITH `engines`, and every one of them names
+# `["none"]`. They are the four debug-overlay points and the three stage-fit
+# points: `specs/instrumentation.md` and `specs/overview.md` hand drawing and
+# toggling the overlay, and fitting the stage to the window, to the runtime, and
+# under an engine that runtime is the engine rather than anything the build wrote.
+# A scoped item's suite ships only in the projects of the engines it names, so
+# those seven files sit in `validation/none/` alone; every other suite stands in all
+# three. `showcase/exists.test.ts` is the one suite that drives nothing at all — it
+# reads the produced tree with `node:fs` and so covers every engine unchanged.
+#
 # EVERY item carries `domains` and `failure_cap`. `domains` names the scoring
 # domains a failure lowers: a rule of the machine lowers `workshop`, a rule of a
 # course lowers that mode, an item about what is drawn, produced or heard lowers

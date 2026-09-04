@@ -173,21 +173,28 @@ production pass, never part of the build.
 
 ## Validation
 
-This case is on the engine format, so it is validator-rated: each of the `1058`
-review items across `15` categories is one observable behavior, cut so a
+This case is on the engine format, so it is validator-rated: each of the `1065`
+review items across `16` categories is one observable behavior, cut so a
 validator can decide it by posing the scenario through the instrumentation
 surface and reading it back, and each carries the scoring domains its failure
-lowers and the failure cap it applies.
+lowers and the failure cap it applies. Every item is worth one point but
+`showcase.exists`, which declares `weight = 3` because what is missing when it
+fails is a whole deliverable, so the checklist is `1065` items and `1067`
+points.
 
 `validation/` holds one Vitest project per engine — `validation/none/`,
 `validation/simple-2d/` and `validation/structured-2d/` — with a suite per
 review item at the `<category>/<id>.test.ts` path the item's `validation` key
 declares. The `none` suites drive the built site in Chromium through
 `window.__orrery`; the two engine projects run in process against the vendored
-engine and reach the surface through `engine.debug`. No item narrows its
-validation with `engines`, so a suite deciding one item is the same text in all
-three projects: only `harness.ts`, `surface.ts` and the Vitest configuration
-differ per engine. All `1058` pass against all three references.
+engine and reach the surface through `engine.debug`. Seven items narrow their
+validation with `engines = ["none"]` — the four debug-overlay points and the
+three stage-fit points, all of which `specs/instrumentation.md` and
+`specs/overview.md` hand to the runtime, which under an engine is the engine —
+and their suites ship in `validation/none/` alone. Every other suite is the same
+text in all three projects: only `harness.ts`, `surface.ts` and the Vitest
+configuration differ per engine. All `1065` pass against the references that
+cover them.
 `validation/README.md` documents the harness vocabulary and how to stage a
 project beside a reference to run it by hand.
 
