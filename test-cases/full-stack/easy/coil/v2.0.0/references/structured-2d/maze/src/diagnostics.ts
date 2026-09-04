@@ -14,7 +14,7 @@
 
 import { COMBO_WINDOW } from "./constants";
 import { coilState, type CoilState } from "./game";
-import type { World } from "@test-cabinet/structured-2d";
+import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
 
 function cell(
   value: { readonly col: number; readonly row: number } | null,
@@ -29,7 +29,7 @@ function cell(
  */
 export function diagnosticSources(
   read: () => CoilState,
-): [string, () => unknown][] {
+): [string, () => DiagnosticValue][] {
   return [
     ["screen", () => read().screen],
     ["score", () => read().score],

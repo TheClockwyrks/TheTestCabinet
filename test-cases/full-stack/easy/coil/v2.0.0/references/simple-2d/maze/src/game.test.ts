@@ -51,10 +51,18 @@ function stubApi(bus: Bus, pressed: readonly ActionName[] = []): UpdateApi {
       value: (name) => (armed.has(name) ? 1 : 0),
       // Consumed on read, exactly as the engine's edges are.
       pressed: (name) => armed.delete(name),
-      pointer: () => ({ x: 0, y: 0, down: false }),
+      pointer: () => ({
+        x: 0,
+        y: 0,
+        down: false,
+        device: "mouse",
+        buttons: [],
+      }),
       pointerPressed: () => false,
       pointerReleased: () => false,
       pointerSamples: () => [],
+      pointerContacts: () => [],
+      wheel: () => ({ x: 0, y: 0 }),
     },
     audio: {
       play: (cue) => bus.played.push(cue),
