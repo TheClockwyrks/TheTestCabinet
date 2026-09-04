@@ -105,7 +105,7 @@ rising: it counts the ticks the game ran rather than the play it ran.
 | --- | --- |
 | `RESUME` | Returns to `playing` with the field and the run exactly as they stood. |
 | `RESTART` | Opens a new game, as `specs/progression.md` states, and moves to `playing`. |
-| `QUIT TO MENU` | Returns to `title`, with the title's highlight at the first entry. |
+| `QUIT TO MENU` | Returns to `title`, with the title's highlight on `PLAY`, the entry that led away into the match. |
 
 Leaving this screen and pausing again each do what `RESUME` does, so `Escape` and
 `P` alike resume the game from here.
@@ -122,7 +122,7 @@ game reached.
 | Entry | Does |
 | --- | --- |
 | `PLAY AGAIN` | Opens a new game and moves to `playing`. |
-| `MENU` | Returns to `title`, with the title's highlight at the first entry. |
+| `MENU` | Returns to `title`, with the title's highlight on `PLAY`, the entry that led away into the match. |
 
 Leaving the screen does what `MENU` does.
 

@@ -365,6 +365,9 @@ of the entity rather than a corner of anything drawn for it.
 - Draw in logical units, and take the canvas element's own size from the runtime
   alone.
 - Game logic operates in logical units, independent of the rendered scale.
+- A pointer or touch position reaches the game in these same logical units, taken
+  through that same fit, so a position the game reads and a region the game
+  reports lie in one coordinate space.
 
 Every rate in this specification is per second and every duration is in seconds,
 with two exceptions stated in whole simulation ticks: the gun's fire gate and the

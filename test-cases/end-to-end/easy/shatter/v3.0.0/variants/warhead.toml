@@ -238,13 +238,13 @@ validation = { script = "armor/recycling-preserves-health.test.ts", outputs = [
   { id = "recycle", name = "The recycled Large still carrying its damage", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "recycling-resets-speed-not-health"
-title = "Recycling resets the speed and not the health"
-description = "The same recycled rock re-enters at a speed inside [60, 110] while still reporting health 1."
+id = "recycling-resets-speed-when-damaged"
+title = "A damaged rock still gets a fresh drift speed"
+description = "A Large chipped to health 1 and slung into the star at 150 units per second re-enters at a speed inside [60, 110], so the recycle path draws a fresh speed for a damaged rock as it does for a whole one. That the health survives is recycling-preserves-health's to decide, and the reset itself is rocks/recycle-resets-speed's; this item decides only that damage does not divert the recycle path."
 domains = ["arcade"]
 failure_cap = "passable"
-validation = { script = "armor/recycling-resets-speed-not-health.test.ts", outputs = [
-  { id = "recycle", name = "The recycled Large, fresh drift speed and old damage", kind = "image" },
+validation = { script = "armor/recycling-resets-speed-when-damaged.test.ts", outputs = [
+  { id = "recycle", name = "The recycled Large back at a Large's drift speed", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "set-rock-health-reads-back"

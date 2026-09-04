@@ -23,8 +23,9 @@
 // draw in the game from `reset`, so eight games are eight independent draws of
 // the entry edge and each has to land in a band. Which edges came up is not
 // asserted: how a legal random choice distributes is not something the
-// specification fixes, and `enters-at-a-random-row` is the item that decides the
-// other half of the entry draw is drawn at all.
+// specification fixes, and `entry-row-inside-the-range` and
+// `enters-at-a-random-row` are the items that decide the other half of the entry
+// draw.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThanOrEqual } from "../assert";

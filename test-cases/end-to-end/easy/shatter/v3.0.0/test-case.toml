@@ -710,49 +710,166 @@ validation = { script = "field/star-fixed-at-centre.test.ts", outputs = [
   { id = "star", name = "The star still centred a minute into play", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "wrap-ship"
-title = "The ship wraps at every edge"
-description = "A ship driven off each of the four edges re-enters at the opposite one, its centre wrapping modulo the field size."
+id = "wrap-ship-right"
+title = "The ship wraps at the right edge"
+description = "A ship driven off the right edge re-enters at the left one, its centre wrapping modulo the field size. This seam alone; the other edges the ship crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
 domains = ["flight"]
 failure_cap = "broken"
-validation = { script = "field/wrap-ship.test.ts", outputs = [
-  { id = "wrap", name = "The ship crossing a seam and re-entering opposite", kind = "replay" },
+validation = { script = "field/wrap-ship-right.test.ts", outputs = [
+  { id = "wrap", name = "The ship crossing the right seam and re-entering at the left", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "wrap-bullet"
-title = "A bullet wraps at every edge"
-description = "A bullet posed to leave each of the four edges re-enters at the opposite one."
+id = "wrap-ship-left"
+title = "The ship wraps at the left edge"
+description = "A ship driven off the left edge re-enters at the right one, its centre wrapping modulo the field size. This seam alone; the other edges the ship crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
 domains = ["flight"]
 failure_cap = "broken"
-validation = { script = "field/wrap-bullet.test.ts", outputs = [
-  { id = "wrap", name = "A bullet re-entering at the opposite edge", kind = "image" },
+validation = { script = "field/wrap-ship-left.test.ts", outputs = [
+  { id = "wrap", name = "The ship crossing the left seam and re-entering at the right", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "wrap-rock"
-title = "A rock wraps at every edge"
-description = "A rock posed to leave each of the four edges re-enters at the opposite one."
+id = "wrap-ship-top"
+title = "The ship wraps at the top edge"
+description = "A ship driven off the top edge re-enters at the bottom one, its centre wrapping modulo the field size. This seam alone; the other edges the ship crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "field/wrap-ship-top.test.ts", outputs = [
+  { id = "wrap", name = "The ship crossing the top seam and re-entering at the bottom", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wrap-ship-bottom"
+title = "The ship wraps at the bottom edge"
+description = "A ship driven off the bottom edge re-enters at the top one, its centre wrapping modulo the field size. This seam alone; the other edges the ship crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "field/wrap-ship-bottom.test.ts", outputs = [
+  { id = "wrap", name = "The ship crossing the bottom seam and re-entering at the top", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wrap-bullet-right"
+title = "A bullet wraps at the right edge"
+description = "A bullet posed to leave the right edge re-enters at the left one, its centre wrapping modulo the field size. This seam alone; the other edges a bullet crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "field/wrap-bullet-right.test.ts", outputs = [
+  { id = "wrap", name = "A bullet re-entering at the left edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-bullet-left"
+title = "A bullet wraps at the left edge"
+description = "A bullet posed to leave the left edge re-enters at the right one, its centre wrapping modulo the field size. This seam alone; the other edges a bullet crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "field/wrap-bullet-left.test.ts", outputs = [
+  { id = "wrap", name = "A bullet re-entering at the right edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-bullet-top"
+title = "A bullet wraps at the top edge"
+description = "A bullet posed to leave the top edge re-enters at the bottom one, its centre wrapping modulo the field size. This seam alone; the other edges a bullet crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "field/wrap-bullet-top.test.ts", outputs = [
+  { id = "wrap", name = "A bullet re-entering at the bottom edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-bullet-bottom"
+title = "A bullet wraps at the bottom edge"
+description = "A bullet posed to leave the bottom edge re-enters at the top one, its centre wrapping modulo the field size. This seam alone; the other edges a bullet crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["flight"]
+failure_cap = "broken"
+validation = { script = "field/wrap-bullet-bottom.test.ts", outputs = [
+  { id = "wrap", name = "A bullet re-entering at the top edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-rock-right"
+title = "A rock wraps at the right edge"
+description = "A rock posed to leave the right edge re-enters at the left one, its centre wrapping modulo the field size. This seam alone; the other edges a rock crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
 domains = ["arcade"]
 failure_cap = "broken"
-validation = { script = "field/wrap-rock.test.ts", outputs = [
-  { id = "wrap", name = "A rock re-entering at the opposite edge", kind = "image" },
+validation = { script = "field/wrap-rock-right.test.ts", outputs = [
+  { id = "wrap", name = "A rock re-entering at the left edge", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "wrap-saucer"
-title = "The saucer wraps top and bottom"
-description = "A saucer driven off the top edge re-enters at the bottom, and the reverse."
+id = "wrap-rock-left"
+title = "A rock wraps at the left edge"
+description = "A rock posed to leave the left edge re-enters at the right one, its centre wrapping modulo the field size. This seam alone; the other edges a rock crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "field/wrap-rock-left.test.ts", outputs = [
+  { id = "wrap", name = "A rock re-entering at the right edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-rock-top"
+title = "A rock wraps at the top edge"
+description = "A rock posed to leave the top edge re-enters at the bottom one, its centre wrapping modulo the field size. This seam alone; the other edges a rock crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "field/wrap-rock-top.test.ts", outputs = [
+  { id = "wrap", name = "A rock re-entering at the bottom edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-rock-bottom"
+title = "A rock wraps at the bottom edge"
+description = "A rock posed to leave the bottom edge re-enters at the top one, its centre wrapping modulo the field size. This seam alone; the other edges a rock crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "field/wrap-rock-bottom.test.ts", outputs = [
+  { id = "wrap", name = "A rock re-entering at the top edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-saucer-top"
+title = "The saucer wraps at the top edge"
+description = "A saucer driven off the top edge re-enters at the bottom one, its centre wrapping modulo the field size. This seam alone; the other edges the saucer crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
 domains = ["arcade"]
 failure_cap = "scuffed"
-validation = { script = "field/wrap-saucer.test.ts", outputs = [
-  { id = "wrap", name = "The saucer re-entering at the opposite edge", kind = "image" },
+validation = { script = "field/wrap-saucer-top.test.ts", outputs = [
+  { id = "wrap", name = "The saucer re-entering at the bottom edge", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "wrap-enemy-bullet"
-title = "An enemy bullet wraps at every edge"
-description = "An enemy bullet posed to leave each of the four edges re-enters at the opposite one."
+id = "wrap-saucer-bottom"
+title = "The saucer wraps at the bottom edge"
+description = "A saucer driven off the bottom edge re-enters at the top one, its centre wrapping modulo the field size. This seam alone; the other edges the saucer crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "field/wrap-saucer-bottom.test.ts", outputs = [
+  { id = "wrap", name = "The saucer re-entering at the top edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-enemy-bullet-right"
+title = "An enemy bullet wraps at the right edge"
+description = "An enemy bullet posed to leave the right edge re-enters at the left one, its centre wrapping modulo the field size. This seam alone; the other edges an enemy bullet crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
 domains = ["arcade"]
 failure_cap = "passable"
-validation = { script = "field/wrap-enemy-bullet.test.ts", outputs = [
-  { id = "wrap", name = "An enemy bullet re-entering at the opposite edge", kind = "image" },
+validation = { script = "field/wrap-enemy-bullet-right.test.ts", outputs = [
+  { id = "wrap", name = "An enemy bullet re-entering at the left edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-enemy-bullet-left"
+title = "An enemy bullet wraps at the left edge"
+description = "An enemy bullet posed to leave the left edge re-enters at the right one, its centre wrapping modulo the field size. This seam alone; the other edges an enemy bullet crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "field/wrap-enemy-bullet-left.test.ts", outputs = [
+  { id = "wrap", name = "An enemy bullet re-entering at the right edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-enemy-bullet-top"
+title = "An enemy bullet wraps at the top edge"
+description = "An enemy bullet posed to leave the top edge re-enters at the bottom one, its centre wrapping modulo the field size. This seam alone; the other edges an enemy bullet crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "field/wrap-enemy-bullet-top.test.ts", outputs = [
+  { id = "wrap", name = "An enemy bullet re-entering at the bottom edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wrap-enemy-bullet-bottom"
+title = "An enemy bullet wraps at the bottom edge"
+description = "An enemy bullet posed to leave the bottom edge re-enters at the top one, its centre wrapping modulo the field size. This seam alone; the other edges an enemy bullet crosses are separate items, so a build that wraps one way and not the mirror of it is told apart from one that wraps neither."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "field/wrap-enemy-bullet-bottom.test.ts", outputs = [
+  { id = "wrap", name = "An enemy bullet re-entering at the top edge", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "wrap-carries-velocity"
@@ -1398,9 +1515,18 @@ validation = { script = "saucer/enters-at-an-edge.test.ts", outputs = [
   { id = "entry", name = "A saucer entering at the field's edge", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "entry-row-inside-the-range"
+title = "The entry row lies inside the stated range"
+description = "Every entry row across sixteen arrivals under four seeds lies inside [SAUCER_R, FIELD_H - SAUCER_R], the range specs/saucer.md draws it from, so a build entering half a craft off the field fails. The bound alone; the spread is a separate item."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "saucer/entry-row-inside-the-range.test.ts", outputs = [
+  { id = "entry", name = "One of the sixteen arrivals the rows were read from", kind = "image" },
+] }
+[[review.categories.items]]
 id = "enters-at-a-random-row"
 title = "A saucer enters at a row drawn across the field"
-description = "Every entry row across sixteen arrivals under four seeds lies inside [SAUCER_R, FIELD_H - SAUCER_R] — the range specs/saucer.md fixes — and the sixteen span more than half of it, which a uniform draw clears with room and a build entering on one fixed lane does not. The threshold is derived from the stated range, not from an observed spread."
+description = "Across sixteen arrivals under four seeds the entry rows span more than half of [SAUCER_R, FIELD_H - SAUCER_R], which a uniform draw clears with room and a build entering on one fixed lane does not. The threshold is derived from the stated range, not from an observed spread. The spread alone; the range bound is a separate item."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "saucer/enters-at-a-random-row.test.ts", outputs = [
@@ -2250,6 +2376,15 @@ validation = { script = "screens/quit-returns-to-the-title.test.ts", outputs = [
   { id = "title", name = "The title screen QUIT TO MENU returned to", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "quit-returns-to-the-play-entry"
+title = "The return from a quit lands on the entry that started the match"
+description = "Confirming entry 2 on the pause menu gives menuIndex 0, PLAY, the title entry specs/ui.md names as the one that led away into the match. That the screen is title is quit-returns-to-the-title's point."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/quit-returns-to-the-play-entry.test.ts", outputs = [
+  { id = "title", name = "The title screen with the highlight back on PLAY", kind = "image" },
+] }
+[[review.categories.items]]
 id = "game-over-on-the-last-life"
 title = "Losing the last ship shows game over"
 description = "The screen is gameover the tick after the last ship is destroyed."
@@ -2293,6 +2428,15 @@ domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "screens/game-over-menu-returns-to-the-title.test.ts", outputs = [
   { id = "title", name = "The title screen MENU returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-menu-returns-to-the-play-entry"
+title = "The return from the game-over menu lands on the entry that started the match"
+description = "Confirming entry 1 on the game-over screen gives menuIndex 0, PLAY, the title entry specs/ui.md names as the one that led away into the match. That the screen is title is game-over-menu-returns-to-the-title's point."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/game-over-menu-returns-to-the-play-entry.test.ts", outputs = [
+  { id = "title", name = "The title screen with the highlight back on PLAY", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "gameover-returns"

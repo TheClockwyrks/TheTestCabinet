@@ -26,7 +26,8 @@
 // opened and held quiet, and the arrivals it makes are the reading. See `visits.ts`.
 //
 // WHAT THIS DOES NOT DECIDE. The row it enters on
-// (`saucer/enters-at-a-random-row`), the speed it crosses at
+// (`saucer/entry-row-inside-the-range`, `saucer/enters-at-a-random-row`), the
+// speed it crosses at
 // (`saucer/crosses-at-cruise`), or when it comes
 // (`saucer/first-arrives-at-18s`, `saucer/subsequent-gap`).
 

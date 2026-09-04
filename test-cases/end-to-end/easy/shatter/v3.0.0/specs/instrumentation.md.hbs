@@ -201,7 +201,9 @@ own layout rather than anything this specification fixes.
 clock, so the game changes only when `advance` says so. `setAutoStep(true)` returns
 it to running itself, which is how the game starts. Drawing is unaffected either
 way: the loop keeps rendering, so the canvas shows the state the
-most recent tick left. It changes no game state.
+most recent tick left. It changes no game state. `reset` leaves this setting
+exactly as it stands: the clock is the runtime's rather than a game value, so a
+reset taken under a held clock leaves the clock held.
 
 `advance(ticks)` runs `ticks` whole simulation ticks immediately and in order, each
 worth exactly one `TICK_DT`. `ticks` is a non-negative whole number, and
@@ -401,6 +403,10 @@ what the game holds. Some entries need a note:
 {{/if}}
 - `muted` is the game's copy of the runtime's mute bit, refreshed in every update.
   No operation sets it; the mute key does.
+{{#if (eq engine.slug "none")}}
+- `autoStep` is the clock's own setting rather than a value the game holds, so it
+  is reported here and `reset` leaves it as it is.
+{{/if}}
 - `waveSpawning`, `saucerSpawning`, `ship.collision`, and the saucer's `mind`,
   `gun`, and `travel` are the gates and faculties, reported so each operation is
   verifiable by setting a value and reading it back.
