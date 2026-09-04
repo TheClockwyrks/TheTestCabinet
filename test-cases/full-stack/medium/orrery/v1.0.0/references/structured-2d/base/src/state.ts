@@ -89,6 +89,7 @@ export class OrreryState extends GameState {
   screen: Screen = "title";
   mode: Mode = "campaign";
   menuIndex = 0;
+  titleIndex = 0;
   selectIndex = 0;
   howtoPage = 0;
 
@@ -108,6 +109,17 @@ export class OrreryState extends GameState {
   sim: SimState | null = null;
 
   pointer: PointerState = { x: 0, y: 0, down: false };
+  /**
+   * The menu item a live press landed in, and `null` when the press landed
+   * outside every item or none is live (specs/ui.md "Pointer and touch").
+   *
+   * "Taking an item takes both of its edges inside that item's region", and
+   * the press position is gone by the time the release arrives — `pointer`
+   * carries where the pointer IS, not where it went down — so the index the
+   * press landed in is carried here, in the one state, rather than in a
+   * module-level variable, a closure, or a field of the controller.
+   */
+  menuPress: number | null = null;
   completion = true;
   simTime = 0;
   muted = false;
@@ -136,6 +148,7 @@ export function resetState(state: OrreryState): void {
   state.screen = "title";
   state.mode = "campaign";
   state.menuIndex = 0;
+  state.titleIndex = 0;
   state.selectIndex = 0;
   state.howtoPage = 0;
 
@@ -155,6 +168,7 @@ export function resetState(state: OrreryState): void {
   state.sim = null;
 
   state.pointer = { x: 0, y: 0, down: false };
+  state.menuPress = null;
   state.completion = true;
   state.simTime = 0;
 }

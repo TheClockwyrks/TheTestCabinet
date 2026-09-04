@@ -20,13 +20,17 @@
 // game, and the read-only view is what makes it so.
 //
 // THE ORDER WITHIN A FRAME is input, then time, then sound, then drawing.
-// Every pointer sample is resolved in the order it arrived, because
-// specs/controls.md decides a lay by the positions the pointer passed through
-// rather than by where it finished; each press edge is then routed against the
-// action context AS IT STANDS AT THAT EDGE, so a press that changes the screen
-// leaves the next press to the new one. The cues and effects those transitions
-// raised are taken from the outbox afterwards and played once each, which is
-// what `specs/ui.md` means by "played on the frame its event happens".
+// Within the input, "a frame's keyboard edges are read first and the pointer
+// and the touch contacts after them" (specs/ui.md "Pointer and touch"), so a
+// frame carrying both leaves the highlight on the item the pointer named and
+// takes the keyboard's item rather than the pointer's. Each press edge is
+// routed against the action context AS IT STANDS AT THAT EDGE, so a press that
+// changes the screen leaves the next press to the new one; each pointer sample
+// is then resolved in the order it arrived, because specs/controls.md decides a
+// lay by the positions the pointer passed through rather than by where it
+// finished. The cues and effects those transitions raised are taken from the
+// outbox afterwards and played once each, which is what `specs/ui.md` means by
+// "played on the frame its event happens".
 
 import type {
   Game,
@@ -152,11 +156,22 @@ export const game: Game<OrreryState, OrreryDebugApi> = {
   ): OrreryState {
     const session = new Session(cloneState(state), frameIo(api));
 
-    for (const sample of pointerSamples(api)) session.handlePointer(sample);
+    // The keyboard edges are read first and the samples after them, and the
+    // order alone does not settle the frame: a `confirm` that takes a menu
+    // item changes the screen, and the samples read after it would land on
+    // the menu the NEW screen shows and take a second item there. So the
+    // frame carries the take forward and the samples that follow it only move
+    // the highlight — "a frame carrying a keyboard `confirm` edge together
+    // with a pointer or touch taking an item takes the keyboard's item alone"
+    // (specs/ui.md "Pointer and touch").
+    let took = false;
     for (const action of pressedActions(api)) {
       if (SCREEN_ACTIONS[session.actionContext()].includes(action)) {
-        session.handleAction(action);
+        if (session.handleAction(action)) took = true;
       }
+    }
+    for (const sample of pointerSamples(api)) {
+      session.handlePointer(sample, !took);
     }
 
     session.update(dt);

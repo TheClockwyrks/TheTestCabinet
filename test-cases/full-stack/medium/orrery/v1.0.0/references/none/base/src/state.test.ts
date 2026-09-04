@@ -23,6 +23,9 @@ describe("the state at rest (specs/state.md)", () => {
     const state = createState();
     expect(state.screen).toBe("title");
     expect(state.mode).toBe("campaign");
+    expect(state.menuIndex).toBe(0);
+    expect(state.titleIndex).toBe(0);
+    expect(state.menuPress).toBeNull();
     expect(state.unlockedCount).toBe(1);
     expect(state.challenge).toBeNull();
     expect(state.challengeRef).toBeNull();
@@ -91,6 +94,8 @@ describe("a reset (specs/instrumentation.md)", () => {
     state.screen = "editor";
     state.mode = "extras";
     state.menuIndex = 2;
+    state.titleIndex = 2;
+    state.menuPress = 1;
     state.selectIndex = 5;
     state.howtoPage = 3;
     state.unlockedCount = 4;
@@ -104,6 +109,8 @@ describe("a reset (specs/instrumentation.md)", () => {
     expect(state.screen).toBe("title");
     expect(state.mode).toBe("campaign");
     expect(state.menuIndex).toBe(0);
+    expect(state.titleIndex).toBe(0);
+    expect(state.menuPress).toBeNull();
     expect(state.selectIndex).toBe(0);
     expect(state.howtoPage).toBe(0);
     expect(state.unlockedCount).toBe(1);

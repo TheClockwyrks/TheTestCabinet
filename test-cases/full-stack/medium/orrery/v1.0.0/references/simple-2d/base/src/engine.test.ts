@@ -46,6 +46,7 @@ import {
   type OrreryState,
 } from "./game";
 import { hexX, hexY } from "./hex";
+import { menuItemRect } from "./progress";
 
 const FRAME_MS = 1000 / 60;
 
@@ -481,5 +482,53 @@ describe("drawing through the engine's context", () => {
     h.pose((s) => h.debug.openChallenge(s, "extras", 0));
     await h.engine.advance(1);
     expect(litPixels(h.ctx)).toBeGreaterThan(0);
+  });
+});
+
+describe("one frame's keyboard edges beside its pointer samples", () => {
+  /** The middle of the region the current menu reports for `index`. */
+  function middleOf(index: number): { x: number; y: number } {
+    const rect = menuItemRect(h.state as OrreryState, index);
+    if (rect === null) throw new Error(`no region for menu item ${index}`);
+    return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+  }
+
+  it("leaves the highlight on the item the pointer named", async () => {
+    const onExtras = middleOf(1);
+    h.tap("ArrowDown");
+    h.move(onExtras.x, onExtras.y);
+    await h.engine.advance(1);
+    expect(h.snap().menuIndex).toBe(1);
+    expect(h.snap().screen).toBe("title");
+  });
+
+  it("takes the keyboard's item alone when a click lands on the same frame", async () => {
+    h.pose((s) => h.debug.setMenuIndex(s, 1));
+    // An ordinary click on a title item, whose region overlaps a row of the
+    // select screen EXTRAS opens: the rows run from y 120 down the stage.
+    const onExtras = middleOf(1);
+    h.tap("Enter");
+    h.press(onExtras.x, onExtras.y);
+    h.release(onExtras.x, onExtras.y);
+    await h.engine.advance(1);
+    expect(h.snap().screen).toBe("select");
+    expect(h.snap().mode).toBe("extras");
+    // The click moved the highlight down the list it landed on, as any sample
+    // does, and took nothing: no challenge was opened.
+    expect(h.snap().challenge).toBeNull();
+  });
+
+  it("takes that same click one frame later, so the click is a live one", async () => {
+    h.pose((s) => h.debug.setMenuIndex(s, 1));
+    const onExtras = middleOf(1);
+    h.tap("Enter");
+    await h.engine.advance(1);
+    expect(h.snap().screen).toBe("select");
+
+    h.press(onExtras.x, onExtras.y);
+    h.release(onExtras.x, onExtras.y);
+    await h.engine.advance(1);
+    expect(h.snap().screen).toBe("editor");
+    expect(h.snap().challenge).not.toBeNull();
   });
 });

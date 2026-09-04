@@ -141,8 +141,9 @@ bash scripts/gen-audio.sh      # the six cues and the bed (sfx-sample, sfx-synth
 
 ## Controls
 
-The editor is worked with the pointer and the keyboard together; every other
-screen is worked from the keyboard alone.
+The editor is worked with the pointer and the keyboard together, and every
+menu is worked from the keyboard, from a pointer, and from touch alike: a
+mouse, a pen and a finger all reach the game the same way.
 
 ### Everywhere
 
@@ -159,6 +160,10 @@ screen is worked from the keyboard alone.
 | `←` `→` | Turns the how-to's pages. |
 | `Enter` | Takes the highlighted item. |
 | `Esc` | Leaves the screen. |
+
+Moving the pointer onto an item highlights it, and pressing and releasing on
+the one item takes it; a tap does the same. The title menu remembers the entry
+you left it by, so coming back lands on it.
 
 ### The editor, while you are building
 

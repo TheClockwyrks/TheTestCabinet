@@ -90,13 +90,30 @@ export function applyPointerSample(
 ): void {
   const state = host.state;
   if (state.screen !== "editor") return;
-  if (sample.type === "down") {
-    state.editor.focus = insideTapePanel(sample.x, sample.y) ? "tape" : "field";
-  }
+  applyPointerFocus(host, sample);
   if (state.sim !== null || state.challenge === null) return;
   if (sample.type === "down") pressAt(host, sample.x, sample.y);
   else if (sample.type === "move") moveTo(host, sample.x, sample.y);
   else release(host);
+}
+
+/**
+ * The focus rule on its own: "A press inside the tape panel's extent ... sets
+ * focus to `tape`; a press anywhere else on the editor screen sets it to
+ * `field`" (specs/controls.md "Focus").
+ *
+ * It is lifted out of the sample because a press the solved panel's menu takes
+ * answers it too. What specs/ui.md exempts while that panel is up is one thing
+ * — "the machine drawn behind the panel takes neither" — and the focus is not
+ * the machine's: it is where the editing keys go once the panel is gone.
+ */
+export function applyPointerFocus(
+  host: EditorHost,
+  sample: PointerSample,
+): void {
+  const state = host.state;
+  if (state.screen !== "editor" || sample.type !== "down") return;
+  state.editor.focus = insideTapePanel(sample.x, sample.y) ? "tape" : "field";
 }
 
 /** A press, answered by the region it landed in. */
