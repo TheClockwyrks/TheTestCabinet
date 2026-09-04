@@ -3,8 +3,8 @@
 //
 // WHAT THE SPECIFICATION ASKS FOR. specs/rules.md gives an opening board two
 // properties, and this is the first: "it holds no run under R4". specs/
-// instrumentation.md repeats it of `start`, which deals the board "through the
-// game's own code, so it holds no run under R4". A deal is drawn uniformly from
+// instrumentation.md repeats it of `dealBoard`, which deals the board "through
+// the game's own code, drawing from `rngState`, so it holds no run under R4". A deal is drawn uniformly from
 // `GEM_KINDS`, so a run turns up on a raw 8x8 draw often; a build has to look at
 // what it drew and do something about it, and the ones that do not are the ones
 // this point catches. A round that opens on a standing run either resolves it
@@ -20,8 +20,9 @@
 //
 // WHY SEVERAL SEEDS. One deal proves nothing: a build that never checks its deal
 // still passes on whichever seed happens to draw clean. specs/instrumentation.md
-// makes a round from a known deal `reset` carrying a seed followed by `start`, so
-// the sweep below deals a fresh round from each of a dozen seeds. The seeds
+// makes a round from a known deal `reset` carrying a seed followed by a
+// `dealBoard`, which is what the harness's `startRound` runs, so the sweep below
+// deals a fresh round from each of a dozen seeds. The seeds
 // themselves are arbitrary and nothing is asserted about any particular one — it
 // is the property that must hold of every board the build deals.
 

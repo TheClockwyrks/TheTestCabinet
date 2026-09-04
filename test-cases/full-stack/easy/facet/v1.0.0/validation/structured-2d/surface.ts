@@ -174,19 +174,17 @@ export interface FacetDebugApi {
   /** A pure read of the state. */
   snapshot(): FacetSnapshot;
 
-  /** Poses the choice of `PLAY`, which `PLAY AGAIN` also makes. */
-  start(): void;
-  /** Poses the choice of `HOW TO PLAY`. */
-  openHowTo(): void;
-  /** Poses the `pause` action from `playing`. */
-  pause(): void;
-  /** Poses the choice of `RESUME`. */
-  resume(): void;
-  /** Poses the choice of `QUIT`, which both menus offer. */
-  quit(): void;
+  /** Shows one screen. Nothing else changes. */
+  setScreen(screen: Screen): void;
+  /** Highlights the menu item at `index` on whichever menu the screen shows. */
+  setMenuIndex(index: number): void;
 
   /** Poses an arbitrary board, in the notation specs/board.md defines. */
   loadBoard(rows: readonly string[]): void;
+  /** Deals a fresh opening board through the game's own code, from `rngState`. */
+  dealBoard(): void;
+  /** Leaves no board in play. */
+  clearBoard(): void;
   /** Writes one cell of the board from a single cell token. */
   setGem(col: number, row: number, token: string): void;
 
@@ -195,15 +193,17 @@ export interface FacetDebugApi {
   setLevelScore(points: number): void;
   setBestChain(chainStep: number): void;
   setBestMove(points: number): void;
-
-  /** Poses the choice of `CONTINUE` from the level-clear menu. */
-  continueLevel(): void;
+  setMoveScore(points: number): void;
 
   setSelection(col: number, row: number): void;
   clearSelection(): void;
   /** Offers the selected gem into `(col, row)`. No swap is requested. */
   setOffer(col: number, row: number): void;
   clearOffer(): void;
+  /** Leaves no refusal standing. */
+  clearRefusal(): void;
+  /** Settles resolution: `phase` `idle`, the board as the dropped step found it. */
+  clearChain(): void;
 
   /** Requests a swap through the same acceptance path a player's swap takes. */
   requestSwap(colA: number, rowA: number, colB: number, rowB: number): void;
@@ -231,29 +231,35 @@ export const READINGS = ["snapshot"] as const;
 /**
  * Every operation the surface must carry under this engine.
  *
- * Twenty-three, not twenty-five: `setAutoStep` and `advance` exist under `none`
+ * Twenty-four, not twenty-six: `setAutoStep` and `advance` exist under `none`
  * alone, because here the clock is the engine's.
+ *
+ * EVERY ONE OF THEM WRITES ONE ELEMENT OF THE STATE or reads it. Reaching a
+ * screen, opening a round, and quitting to the title are sequences of these, and
+ * those sequences live in `harness.ts` where all three projects' suites share
+ * them.
  */
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
-  "start",
-  "openHowTo",
-  "pause",
-  "resume",
-  "quit",
+  "setScreen",
+  "setMenuIndex",
   "loadBoard",
+  "dealBoard",
+  "clearBoard",
   "setGem",
   "setScore",
   "setLevel",
   "setLevelScore",
   "setBestChain",
   "setBestMove",
-  "continueLevel",
+  "setMoveScore",
   "setSelection",
   "clearSelection",
   "setOffer",
   "clearOffer",
+  "clearRefusal",
+  "clearChain",
   "requestSwap",
   "pointerDown",
   "pointerMove",

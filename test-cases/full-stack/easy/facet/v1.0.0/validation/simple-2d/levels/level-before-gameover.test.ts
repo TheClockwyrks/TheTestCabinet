@@ -37,16 +37,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { GRID_COLS, GRID_ROWS } from "../constants";
 import {
   deadBoard,
   hasAnyRun,
   legalSwapExists,
-  parseRows,
   quietRowsWithEscape,
   swapIsLegal,
-  tokenAt,
-  type BoardRows,
   type CellRef,
   type PlacedToken,
 } from "../board";
@@ -56,6 +52,7 @@ import {
   createHarness,
   loadBoard,
   swapAndStep,
+  writeBoard,
   type Harness,
 } from "../harness";
 
@@ -82,18 +79,6 @@ afterEach(() => {
   h.dispose();
 });
 
-/** Write every cell of a board in the notation onto the live board, `setGem` by `setGem`. */
-function writeBoard(rows: BoardRows): void {
-  // Parsed on this side first, so a typo in the fixture fails here rather than
-  // crossing into the build one cell at a time.
-  parseRows(rows);
-  for (let row = 0; row < GRID_ROWS; row += 1) {
-    for (let col = 0; col < GRID_COLS; col += 1) {
-      h.debug.setGem(col, row, tokenAt(rows, col, row));
-    }
-  }
-}
-
 it("clears the level rather than ending the round on a dead board", async () => {
   const posed = quietRowsWithEscape(RUN_CELLS);
   const dead = deadBoard();
@@ -114,7 +99,7 @@ it("clears the level rather than ending the round on a dead board", async () => 
     // Both conditions are now standing at once: nothing on the board can be
     // played, and the level's target has been met — the target the round itself
     // reports, read here rather than reckoned.
-    writeBoard(dead);
+    writeBoard(h, dead);
     const standing = h.snapshot();
     assertEqual(standing.level, 1, "the level the round is on");
     assertGreaterThan(standing.levelTarget, 0, "the target the round reports");

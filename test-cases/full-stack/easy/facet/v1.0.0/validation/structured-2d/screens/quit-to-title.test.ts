@@ -48,18 +48,20 @@ import {
   assertNotNull,
   assertTrue,
 } from "../assert";
-import { GRID_COLS, GRID_ROWS } from "../constants";
+import {
+  GAMEOVER_ITEMS,
+  GRID_COLS,
+  GRID_ROWS,
+  PAUSED_ITEMS,
+} from "../constants";
 import {
   assertBoardEquals,
   deadBoard,
   legalSwaps,
   maximalRuns,
-  parseRows,
   quietRowsWith,
   quietRowsWithEscape,
   swapIsLegal,
-  tokenAt,
-  type BoardRows,
   type CellRef,
   type PlacedToken,
 } from "../board";
@@ -68,7 +70,10 @@ import {
   captureStill,
   createHarness,
   loadBoard,
+  pauseGame,
   swapAndStep,
+  takeMenuItem,
+  writeBoard,
   type Harness,
 } from "../harness";
 import type { FacetSnapshot } from "../surface";
@@ -88,6 +93,12 @@ const SWAP_B: CellRef = { col: 6, row: 4 };
 const SELECTED: CellRef = { col: 2, row: 3 };
 const OFFERED: CellRef = { col: 2, row: 2 };
 
+/** Where `QUIT` sits on the pause menu, from specs/ui.md's `PAUSED_ITEMS`. */
+const PAUSED_QUIT_INDEX = PAUSED_ITEMS.indexOf("QUIT");
+
+/** Where `QUIT` sits on the game-over menu, from specs/ui.md's `GAMEOVER_ITEMS`. */
+const GAMEOVER_QUIT_INDEX = GAMEOVER_ITEMS.indexOf("QUIT");
+
 let h: Harness;
 
 /** Every resting value specs/instrumentation.md fixes for the state QUIT leaves. */
@@ -106,18 +117,6 @@ function assertRestingTitle(state: FacetSnapshot, which: string): void {
   assertEqual(state.refusal, null, `${which}: refusal`);
 }
 
-/** Write a whole board onto the live one, `setGem` by `setGem`. */
-function writeBoard(rows: BoardRows): void {
-  // Parsed on this side first, so a typo in the fixture fails here rather than
-  // crossing into the build one cell at a time.
-  parseRows(rows);
-  for (let row = 0; row < GRID_ROWS; row += 1) {
-    for (let col = 0; col < GRID_COLS; col += 1) {
-      h.debug.setGem(col, row, tokenAt(rows, col, row));
-    }
-  }
-}
-
 /** Drive a round to its end, and read the game-over it settles into. */
 async function driveToGameOver(): Promise<FacetSnapshot> {
   const posed = quietRowsWith(TRIGGER);
@@ -129,7 +128,7 @@ async function driveToGameOver(): Promise<FacetSnapshot> {
   const dead = deadBoard();
   assertLength(maximalRuns(dead), 0, "maximal runs on the dead board");
   assertLength(legalSwaps(dead), 0, "legal swaps on the dead board");
-  writeBoard(dead);
+  writeBoard(h, dead);
   assertBoardEquals(h.board(), dead, "the board the step is read against");
 
   return advanceStep(h);
@@ -168,15 +167,15 @@ it("returns to the title with nothing of the round left, from the pause menu and
     "cells of the board in play",
   );
 
-  h.debug.pause();
+  pauseGame(h);
   assertEqual(h.snapshot().screen, "paused", "the screen QUIT is taken from");
-  // The highlight is moved off the first item where the build's menu answers to
-  // it, so `menuIndex` reading 0 on the title is the quit setting it rather than
-  // it never having moved. Nothing is asserted of the move: which item the
-  // highlight lands on is the menus' own point, not this one.
-  await h.tapAction("down");
 
-  h.debug.quit();
+  // QUIT is really CHOSEN, which is what the item says: the highlight is posed
+  // onto it — `setMenuIndex` takes no item — and `confirm` is what takes it,
+  // through the key specs/controls.md binds and the build's own input path. It
+  // is posed onto the SECOND item, so `menuIndex` reading 0 on the title below
+  // is the quit setting it rather than it never having moved.
+  await takeMenuItem(h, PAUSED_QUIT_INDEX);
   await h.advance(1);
   captureStill(h, "title");
   assertRestingTitle(h.snapshot(), "quitting from the pause menu");
@@ -189,8 +188,6 @@ it("returns to the title with nothing of the round left, from the pause menu and
     GRID_COLS * GRID_ROWS,
     "cells of the board in play",
   );
-  await h.tapAction("down");
-
-  h.debug.quit();
+  await takeMenuItem(h, GAMEOVER_QUIT_INDEX);
   assertRestingTitle(h.snapshot(), "quitting from the game-over menu");
 });

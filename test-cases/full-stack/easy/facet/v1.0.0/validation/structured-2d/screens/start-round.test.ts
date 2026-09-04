@@ -20,8 +20,8 @@
 // would still pass. So a round is then really played — a swap accepted, a chain
 // resolved, and the round driven to its end — and the figures it left are posed
 // higher still through the operations specs/instrumentation.md gives for exactly
-// that, so every zero asserted on the second round is known to be `start`
-// clearing something rather than a field that was never touched. Every field is
+// that, so every zero asserted on the second round is known to be the fresh
+// round clearing something rather than a field that was never touched. Every field is
 // asserted the same way both times, by the same helper, because "fresh" has to
 // mean the same thing on the second round as on the first.
 //
@@ -55,16 +55,18 @@ import {
   assertLength,
   assertTrue,
 } from "../assert";
-import { GRID_COLS, GRID_ROWS } from "../constants";
+import {
+  GAMEOVER_ITEMS,
+  GRID_COLS,
+  GRID_ROWS,
+  TITLE_ITEMS,
+} from "../constants";
 import {
   deadBoard,
   legalSwaps,
   maximalRuns,
-  parseRows,
   quietRowsWith,
   swapIsLegal,
-  tokenAt,
-  type BoardRows,
   type CellRef,
   type PlacedToken,
 } from "../board";
@@ -74,6 +76,8 @@ import {
   createHarness,
   loadBoard,
   swapAndStep,
+  takeMenuItem,
+  writeBoard,
   type Harness,
 } from "../harness";
 import type { FacetSnapshot } from "../surface";
@@ -104,6 +108,12 @@ const PLAYED_BEST_CHAIN = 6;
 const PLAYED_BEST_MOVE = 890;
 const PLAYED_SELECTION: CellRef = { col: 2, row: 3 };
 const PLAYED_OFFER: CellRef = { col: 3, row: 3 };
+
+/** Where `PLAY` sits on the title menu, from specs/ui.md's `TITLE_ITEMS`. */
+const PLAY_INDEX = TITLE_ITEMS.indexOf("PLAY");
+
+/** Where `PLAY AGAIN` sits on the game-over menu, from specs/ui.md's `GAMEOVER_ITEMS`. */
+const PLAY_AGAIN_INDEX = GAMEOVER_ITEMS.indexOf("PLAY AGAIN");
 
 let h: Harness;
 
@@ -137,18 +147,6 @@ function assertFreshRound(round: FacetSnapshot, which: string): void {
   );
 }
 
-/** Write a whole board onto the live one, `setGem` by `setGem`. */
-function writeBoard(rows: BoardRows): void {
-  // Parsed on this side first, so a typo in the fixture fails here rather than
-  // crossing into the build one cell at a time.
-  parseRows(rows);
-  for (let row = 0; row < GRID_ROWS; row += 1) {
-    for (let col = 0; col < GRID_COLS; col += 1) {
-      h.debug.setGem(col, row, tokenAt(rows, col, row));
-    }
-  }
-}
-
 beforeEach(async () => {
   h = await createHarness();
 });
@@ -159,11 +157,14 @@ afterEach(() => {
 
 it("opens a fresh round from the title, and another one from the end of a played round", async () => {
   h.debug.reset();
-  assertEqual(h.snapshot().screen, "title", "the screen `start` is taken from");
+  assertEqual(h.snapshot().screen, "title", "the screen PLAY is taken from");
 
-  // The first round: nothing has been played, so this is the opening state
-  // specs/instrumentation.md lists, read straight off the pose.
-  h.debug.start();
+  // The first round. PLAY is really CHOSEN, which is what the item says: the
+  // highlight is posed onto it — `setMenuIndex` takes no item, so a build whose
+  // `up` and `down` never worked is still asked this question — and `confirm`
+  // is what takes it, through the key specs/controls.md binds and the build's
+  // own input path.
+  await takeMenuItem(h, PLAY_INDEX);
   const first = h.snapshot();
   captureStill(h, "round");
   assertFreshRound(first, "the first round");
@@ -186,13 +187,13 @@ it("opens a fresh round from the title, and another one from the end of a played
   const dead = deadBoard();
   assertLength(maximalRuns(dead), 0, "maximal runs on the dead board");
   assertLength(legalSwaps(dead), 0, "legal swaps on the dead board");
-  writeBoard(dead);
+  writeBoard(h, dead);
   const over = await advanceStep(h);
   assertEqual(over.screen, "gameover", "the screen the settled round reaches");
 
   // The figures the played round leaves, posed higher than the round earned
-  // them and read back, so every zero asserted below is `start` clearing
-  // something that was standing.
+  // them and read back, so every zero asserted below is the fresh round
+  // clearing something that was standing.
   h.debug.setScore(PLAYED_SCORE);
   h.debug.setLevel(PLAYED_LEVEL);
   h.debug.setLevelScore(PLAYED_LEVEL_SCORE);
@@ -214,15 +215,9 @@ it("opens a fresh round from the title, and another one from the end of a played
   assertDeepEqual(played.selection, PLAYED_SELECTION, "the gem it left held");
   assertDeepEqual(played.offer, PLAYED_OFFER, "the cell it left offered");
 
-  // With the highlight moved off the first item, so `menuIndex` reading 0 in
-  // the round below is the round setting it rather than it never having moved.
-  // Nothing is asserted of that move: which item the highlight lands on is the
-  // menus' own point, so a build whose menu does not answer is asked this
-  // question unchanged rather than failed for it here.
-  await h.tapAction("down");
-
   // And the round `PLAY AGAIN` opens is as fresh as the first: every figure of
-  // the round that was just played is gone.
-  h.debug.start();
+  // the round that was just played is gone. Taken the same way, from the
+  // game-over menu's own entry for it.
+  await takeMenuItem(h, PLAY_AGAIN_INDEX);
   assertFreshRound(h.snapshot(), "the round after a played round");
 });

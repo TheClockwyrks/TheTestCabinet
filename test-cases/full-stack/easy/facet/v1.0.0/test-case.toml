@@ -468,8 +468,9 @@ format = 2
 # category, it is unreadable on all twenty. What `debug-api` decides is
 # presence and shape only — reflection can report a `typeof` and nothing more —
 # and what each operation DOES is the subject of the item that owns that
-# behavior (`loadBoard` is `board/load-board`, `requestSwap` is the `moves`
-# items, `continueLevel` is the `levels` items, and so on).
+# behavior (`loadBoard` is the two `board/load-board-*` items, `requestSwap`
+# is the `moves` items, `setScreen` and `dealBoard` are the `screens` and
+# `levels` items, and so on).
 #
 # The clock is checked here too, as two separate points, because the two claims
 # come apart. `delta-time-independent` asks that one interval of game time reach
@@ -623,24 +624,41 @@ validation = { script = "instrumentation/advances-in-real-time.test.ts", outputs
 [[review.categories]]
 id = "board"
 title = "The Board"
+# TWO ITEMS, because `loadBoard` makes two claims and a build can hold one
+# without the other. What it WRITES is the board; what it LEAVES is everything
+# else. A build that writes the cells correctly and quietly settles the chain
+# with them rewrites the world under every scenario that poses a board over a
+# move already in motion, and it would grade identically to a correct build if
+# the two claims shared a point.
 [[review.categories.items]]
-id = "load-board"
+id = "load-board-carries-the-tokens"
 title = "loadBoard poses the written board exactly"
-description = "loadBoard(rows) moves to playing with phase idle, chainStep, swapTimer and stepTimer 0, no selection, no offer and no refusal, and every one of the 64 cells carries exactly the kind, cut and strain its token named and a fell of 0, a prism reporting kind null."
+description = "loadBoard(rows) writes a board of GRID_COLS by GRID_ROWS in which every one of the 64 cells carries exactly the kind, cut and strain its token named and a fell of 0, a prism reporting kind null."
 domains = ["gameplay"]
 failure_cap = "broken"
 # Automated validation: pose a board using all seven kind letters, X, both cut
 # letters and all four strain digits, compare the reported cells token by token,
-# assert every cell reports a `fell` of 0 — the notation carries no `fell` and
-# every gem it writes is standing still where it was written — and assert the
-# screen, phase, timers, selection, offer and refusal are as the operation
-# states. The clearing half is posed from a dirty game — mid-step, with a
-# selection and an offer standing and a refusal raised — because every one of
-# those fields already rests at its stated value on a title screen, so a pose
-# from rest could not decide them. See
-# validation/<engine>/board/load-board.test.ts.
-validation = { script = "board/load-board.test.ts", outputs = [
+# and assert every cell reports a `fell` of 0 — the notation carries no `fell`
+# and every gem it writes is standing still where it was written. See
+# validation/<engine>/board/load-board-carries-the-tokens.test.ts.
+validation = { script = "board/load-board-carries-the-tokens.test.ts", outputs = [
   { id = "posed", name = "The posed board", kind = "image" },
+] }
+[[review.categories.items]]
+id = "load-board-leaves-the-rest"
+title = "The board is the whole of what loadBoard writes"
+description = "loadBoard(rows) leaves the screen, menuIndex, the phase and its timers, the selection, the offer, the refusal and every figure of the round standing exactly where they were."
+domains = ["gameplay"]
+failure_cap = "broken"
+# Automated validation: pose the board from a game that CONTRADICTS a reset on
+# every field at once — mid-step with a chain running, a selection and an offer
+# standing, a refusal raised and the round's figures posed off their resting
+# values — then write a board over it and assert each of those fields is
+# unchanged. Every one of them already rests at its stated value on a title
+# screen, so a pose from rest could decide none of them. See
+# validation/<engine>/board/load-board-leaves-the-rest.test.ts.
+validation = { script = "board/load-board-leaves-the-rest.test.ts", outputs = [
+  { id = "standing", name = "A board written under a move in motion", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "board-rests"

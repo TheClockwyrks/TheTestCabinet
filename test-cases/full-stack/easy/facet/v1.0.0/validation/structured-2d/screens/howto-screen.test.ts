@@ -50,8 +50,13 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, fail } from "../assert";
-import { ACTIONS, BINDINGS, type ActionName } from "../constants";
-import { captureStill, createHarness, type Harness } from "../harness";
+import { type ActionName, ACTIONS, BINDINGS, TITLE_ITEMS } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  takeMenuItem,
+  type Harness,
+} from "../harness";
 
 /**
  * How each `KeyboardEvent.code` specs/controls.md binds may be written on a
@@ -81,6 +86,9 @@ const SPELLINGS: Readonly<Record<string, readonly string[]>> = {
  * which is what stops it answering inside `open` or `happens`.
  */
 const POINTER_WORDS: readonly string[] = ["mouse", "pen", "finger", "touch"];
+
+/** Where `HOW TO PLAY` sits on the title menu, from specs/ui.md's `TITLE_ITEMS`. */
+const HOW_TO_PLAY_INDEX = TITLE_ITEMS.indexOf("HOW TO PLAY");
 
 let h: Harness;
 
@@ -141,7 +149,11 @@ it("opens the how-to screen, which names the pointer and the key of every action
   }));
 
   h.debug.reset();
-  h.debug.openHowTo();
+
+  // HOW TO PLAY is really CHOSEN, which is what the item says: the highlight is
+  // posed onto it — `setMenuIndex` takes no item — and `confirm` is what takes
+  // it, through the key specs/controls.md binds and the build's own input path.
+  await takeMenuItem(h, HOW_TO_PLAY_INDEX);
 
   const opened = h.snapshot();
   assertEqual(opened.screen, "howto", "the screen HOW TO PLAY reaches");

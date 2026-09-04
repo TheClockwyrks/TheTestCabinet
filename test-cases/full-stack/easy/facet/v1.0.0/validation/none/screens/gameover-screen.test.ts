@@ -38,22 +38,14 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertTrue, fail } from "../assert";
-import {
-  GAMEOVER_ITEMS,
-  GAMEOVER_TITLE_TEXT,
-  GRID_COLS,
-  GRID_ROWS,
-} from "../constants";
+import { GAMEOVER_ITEMS, GAMEOVER_TITLE_TEXT } from "../constants";
 import {
   assertBoardEquals,
   deadBoard,
   legalSwaps,
   maximalRuns,
-  parseRows,
   quietRowsWith,
   swapIsLegal,
-  tokenAt,
-  type BoardRows,
   type CellRef,
   type PlacedToken,
 } from "../board";
@@ -64,6 +56,7 @@ import {
   loadBoard,
   showsText,
   swapAndStep,
+  writeBoard,
   type Harness,
 } from "../harness";
 
@@ -96,18 +89,6 @@ function requireCopy(drawn: readonly string[], wanted: string): void {
   }
 }
 
-/** Write a whole board onto the live one, `setGem` by `setGem`. */
-async function writeBoard(rows: BoardRows): Promise<void> {
-  // Parsed on this side first, so a typo in the fixture fails here rather than
-  // crossing into the build one cell at a time.
-  parseRows(rows);
-  for (let row = 0; row < GRID_ROWS; row += 1) {
-    for (let col = 0; col < GRID_COLS; col += 1) {
-      await h.debug.setGem(col, row, tokenAt(rows, col, row));
-    }
-  }
-}
-
 beforeEach(async () => {
   h = await createHarness();
 });
@@ -137,7 +118,7 @@ it("ends the round on the game-over screen, showing its copy, its score and its 
   const dead = deadBoard();
   assertLength(maximalRuns(dead), 0, "maximal runs on the dead board");
   assertLength(legalSwaps(dead), 0, "legal swaps on the dead board");
-  await writeBoard(dead);
+  await writeBoard(h, dead);
   assertBoardEquals(
     await h.board(),
     dead,

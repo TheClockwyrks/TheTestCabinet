@@ -31,7 +31,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotEqual } from "../assert";
 import { BINDINGS } from "../constants";
-import { captureStill, createHarness, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  openHowTo,
+  type Harness,
+} from "../harness";
 
 let h: Harness;
 
@@ -48,7 +53,7 @@ afterEach(async () => {
 
 it(`leaves the how-to screen when ${BACK_KEY} is pressed on it`, async () => {
   await h.debug.reset();
-  await h.debug.openHowTo();
+  await openHowTo(h);
 
   const before = await h.snapshot();
   assertEqual(before.screen, "howto", "the screen the key is pressed on");

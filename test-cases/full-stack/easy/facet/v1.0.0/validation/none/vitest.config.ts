@@ -38,15 +38,32 @@ export default defineConfig({
     // Each suite file holds a page of the shared browser while it runs, so the
     // ceiling on files in flight is the ceiling on pages — and a suite spends
     // almost all of its time waiting on a crossing into one, so overlapping them
-    // is most of what decides how long the whole run takes. Capped rather than
-    // left to the core count because the cost of a page is memory in one shared
-    // browser process rather than a core, and the host running this is running a
-    // model's build under it.
-    maxWorkers: 4,
+    // is most of what decides how long the whole run takes. EIGHT rather than
+    // four: a crossing into a browser costs 6 ms on an idle host and 90 ms on a
+    // loaded one, and a worker waiting on one holds no core, so four left a
+    // project serialized behind that wait while the box had cores to spare. A
+    // page is memory in one shared browser process rather than a core, which is
+    // what makes eight of them affordable on a host that is also running a
+    // model's build.
+    maxWorkers: 8,
     minWorkers: 1,
-    // A chain driven to the cap is a thousand frames of real resolution, each of
-    // them a crossing into the page; generous here, and still seconds in practice.
-    testTimeout: 120_000,
-    hookTimeout: 60_000,
+    // AN ALLOWANCE A CORRECT BUILD CAN CROSS IS A DEFECT IN THE CHECK. Nothing
+    // these checks measure comes off the wall clock — every one drives the build
+    // frame by frame and asserts on what its own snapshot reports — so the only
+    // thing a short allowance can decide is how busy the machine was. Sixty
+    // seconds was measured doing exactly that on a loaded host: an unmodified
+    // reference lost four points to it, at 66-76 s apiece against quiet times of
+    // 6-14 s. Five minutes is set against that worst case, and it is a ninth of
+    // the forty-five minutes the runner caps the WHOLE suite run at, so a single
+    // file can only cross it on a host where the whole run was already lost. A
+    // hung build is still bounded, twice over.
+    testTimeout: 300_000,
+    // The same reasoning, and one thing more: a hook opens a page, loads the
+    // built site in it, and waits for the surface and the recorder, so this has
+    // to be wider than every ceiling the harness itself sets. A hook that runs
+    // out reports that a hook ran out; the harness's own waits report WHICH wait
+    // was crossed and whether the host or the build crossed it, which is the
+    // account a reviewer needs.
+    hookTimeout: 300_000,
   },
 });

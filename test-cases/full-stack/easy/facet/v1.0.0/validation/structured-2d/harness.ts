@@ -52,8 +52,10 @@
 //
 // EVERY FIGURE COMES FROM `./constants`, NEVER FROM `../src/constants`. The build
 // is held to the specification, not to its own numbers; see that file's header.
-// The only things imported from the build are `game` and `BACKGROUND`, which are
-// its two named deliverables in `src/game.ts`.
+// The only things imported from the build are `game` and `BACKGROUND`, its two
+// named deliverables in `src/game.ts`, and they are taken BY NAME, one binding at
+// a time: a two-name list is a list a reader can count, where a namespace binding
+// would name the same module and hand this file everything in it.
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -83,7 +85,7 @@ import {
   type Viewport,
   type World,
 } from "@test-cabinet/structured-2d";
-import * as buildModule from "../src/game";
+import { BACKGROUND as buildBackground, game as buildGame } from "../src/game";
 import { fail } from "./assert";
 import {
   cellCenter,
@@ -115,7 +117,7 @@ import {
   type PointerDevice,
 } from "./constants";
 import { setAssetTransport } from "./dom-shim";
-import type { FacetDebugApi, FacetSnapshot } from "./surface";
+import type { FacetDebugApi, FacetSnapshot, Screen } from "./surface";
 
 export { ConstantClock, JitterClock, SequenceClock };
 export type { Clock, Viewport, World };
@@ -168,21 +170,6 @@ export type FacetState = GameState & {
 };
 
 /**
- * The build's module, read defensively.
- *
- * A NAMESPACE import rather than named imports, because a named import of an
- * export a build never wrote is a module-resolution error that fails every suite
- * in this project at load time with a bundler's message. Read this way, a missing
- * `BACKGROUND` falls back to a color the harness owns (the background is the
- * build's look, and no check asserts it), and a missing `game` fails at the one
- * place it can be reported honestly — the engine's own construction.
- */
-const module_ = buildModule as unknown as {
-  game?: unknown;
-  BACKGROUND?: unknown;
-};
-
-/**
  * The build's game, typed against the surface the CASE specifies.
  *
  * The build declares its own type for the surface its instance's `initialize`
@@ -192,13 +179,19 @@ const module_ = buildModule as unknown as {
  * it. A surface that departs from the specification is caught where a check
  * reaches for the missing member, not by the build's own compiler.
  */
-const game = module_.game as GameDefinition<FacetSurface>;
+const game = buildGame as unknown as GameDefinition<FacetSurface>;
 
-/** The build's exported stage background (specs/overview.md). */
+/**
+ * The build's exported stage background (specs/overview.md).
+ *
+ * Guarded rather than taken as read: `BACKGROUND` is handed to the engine as the
+ * color the canvas is cleared to, and a build that exported something other than
+ * a color string would stand the game up on it. Nothing asserts this value, so a
+ * build that got it wrong is failed by the checks that are about the picture and
+ * not by every check in the project.
+ */
 const BACKGROUND =
-  typeof module_.BACKGROUND === "string"
-    ? module_.BACKGROUND
-    : BACKGROUND_FALLBACK;
+  typeof buildBackground === "string" ? buildBackground : BACKGROUND_FALLBACK;
 
 /* -------------------------------------------------------------------------- */
 /* Reading one frame's render                                                 */
@@ -1529,24 +1522,240 @@ export function framesPast(seconds: number): number {
 // real simulation run. They fix only the arrangement: which board, which cells.
 // Every threshold a check asserts is stated in the check itself, derived from the
 // figure or rule specs/ states for it.
-
-/** Pose the choice of `PLAY` and read back. Advances no frame. */
-export function startRound(h: Harness): FacetSnapshot {
-  h.debug.start();
-  return h.snapshot();
-}
+//
+// COMPOUND SEQUENCES LIVE HERE, NOT ON THE SURFACE. Every operation
+// specs/instrumentation.md puts on the debug surface writes ONE element of the
+// state, reads it, or moves the clock. Beginning a round, opening the next
+// level, quitting to the title and reaching a screen are each several of those
+// in a row, and the surface carries no operation for any of them — so those
+// sequences are written once, here, where the suites of all three engine
+// projects share one copy. What each one arranges is specs/rules.md's and
+// specs/ui.md's account of the same transition, field by field.
+//
+// THE ITEMS THAT DECIDE THOSE TRANSITIONS DO NOT REACH FOR THESE HELPERS.
+// Whether `PLAY` really opens a round, `CONTINUE` really opens the next level
+// and `QUIT` really returns to the title is what `screens/start-round`,
+// `levels/continue-opens-next-level` and `screens/quit-to-title` decide, by
+// working the menu the way a player does and reading what the build did. Every
+// other check reaches its scenario through here instead, so a build with a
+// broken title menu fails those items rather than every item in the project.
 
 /**
- * Pose a written board and read it back. No frame is advanced: `loadBoard` takes
- * effect at the call.
+ * Write a board onto the game and change NOTHING else.
+ *
+ * One crossing, and the atomic operation specs/instrumentation.md states:
+ * `loadBoard(rows)` writes the board's dimensions and its cells, and "the
+ * screen, `menuIndex`, the phase and its timers, the selection, the offer, the
+ * refusal, and every figure of the round stand where they were". What a check
+ * reaches for when it must put a board under a move already in motion —
+ * replacing the gems a running step will read next without disturbing the step.
  *
  * The rows are parsed on this side FIRST, so a fixture typo fails the FIXTURE
  * with the token it could not read rather than crossing into the build and
  * failing it for a mistake the check made.
+ *
+ * {@link loadBoard} is the one to reach for otherwise: it poses the board on a
+ * settled `playing` screen, which is the situation nearly every scenario wants.
+ */
+export function writeBoard(h: Harness, rows: BoardRows): FacetSnapshot {
+  parseRows(rows);
+  h.debug.loadBoard(rows);
+  return h.snapshot();
+}
+
+/**
+ * Pose a written board on a settled `playing` screen, and read it back.
+ *
+ * THE SEQUENCE, not one operation: the board is written, resolution is settled,
+ * the selection, the offer and the refusal are put away, the menu highlight goes
+ * back to its resting `0` and the screen becomes `playing`. That is the world
+ * nearly every scenario in this project wants to stand on — a board, in play,
+ * with nothing of an earlier scenario standing on it.
+ *
+ * No frame is advanced. Every operation in it takes effect at its call, so the
+ * arrangement is complete in the state this reads back.
+ *
+ * A check that wants ONLY the cells written, leaving the screen and the move in
+ * motion alone, calls {@link writeBoard}.
  */
 export function loadBoard(h: Harness, rows: BoardRows): FacetSnapshot {
   parseRows(rows);
+  h.debug.clearChain();
+  h.debug.clearSelection();
+  h.debug.clearOffer();
+  h.debug.clearRefusal();
   h.debug.loadBoard(rows);
+  h.debug.setMenuIndex(0);
+  h.debug.setScreen("playing");
+  return h.snapshot();
+}
+
+/**
+ * Begin a fresh round, exactly as choosing `PLAY` from the title does.
+ *
+ * Every figure specs/rules.md returns to its opening value when a round starts,
+ * written one at a time, and then the opening board dealt through the game's own
+ * code from `rngState` — which is the one part of it that cannot be decomposed,
+ * since what makes a dealt board an opening board is R4 and the generator rather
+ * than any cell a check could write.
+ *
+ * `PLAY AGAIN` on the game-over menu opens the same round; specs/ui.md gives the
+ * two menu items the same effect.
+ */
+export function startRound(h: Harness): FacetSnapshot {
+  h.debug.setScore(0);
+  h.debug.setLevel(1);
+  h.debug.setLevelScore(0);
+  h.debug.setMoveScore(0);
+  h.debug.setBestMove(0);
+  h.debug.setBestChain(0);
+  h.debug.clearSelection();
+  h.debug.clearOffer();
+  h.debug.clearRefusal();
+  h.debug.clearChain();
+  h.debug.dealBoard();
+  h.debug.setMenuIndex(0);
+  h.debug.setScreen("playing");
+  return h.snapshot();
+}
+
+/**
+ * Open the next level, exactly as choosing `CONTINUE` from the level-clear menu
+ * does.
+ *
+ * {@link startRound} with two differences, and both are specs/rules.md's:
+ * `score` CARRIES — it is the round's total and a level boundary does not touch
+ * it — and `level` goes up by one from wherever the round had reached rather
+ * than back to `1`. The level's target follows from `level`, so nothing here
+ * writes it.
+ */
+export function openNextLevel(h: Harness): FacetSnapshot {
+  const before = h.snapshot();
+  h.debug.setLevel(before.level + 1);
+  h.debug.setLevelScore(0);
+  h.debug.setMoveScore(0);
+  h.debug.setBestMove(0);
+  h.debug.setBestChain(0);
+  h.debug.clearSelection();
+  h.debug.clearOffer();
+  h.debug.clearRefusal();
+  h.debug.clearChain();
+  h.debug.dealBoard();
+  h.debug.setMenuIndex(0);
+  h.debug.setScreen("playing");
+  return h.snapshot();
+}
+
+/**
+ * Abandon the round and return to the title, exactly as choosing `QUIT` from
+ * either menu that offers it does.
+ *
+ * specs/ui.md: "Sets `screen = title` and `menuIndex = 0`, abandoning the
+ * round." The round is abandoned by taking the board out of play and putting
+ * away everything that stood on it; `score` and `level` are left where the round
+ * left them, since the title screen reports neither and the next round's
+ * {@link startRound} writes both.
+ */
+export function quitToTitle(h: Harness): FacetSnapshot {
+  h.debug.clearSelection();
+  h.debug.clearOffer();
+  h.debug.clearRefusal();
+  h.debug.clearChain();
+  h.debug.clearBoard();
+  h.debug.setMenuIndex(0);
+  h.debug.setScreen("title");
+  return h.snapshot();
+}
+
+/**
+ * Open the instructions, exactly as choosing `HOW TO PLAY` from the title does.
+ *
+ * specs/ui.md: "Sets `screen = howto`", and `menuIndex` is `0` on entering every
+ * screen but the title entered from here.
+ */
+export function openHowTo(h: Harness): FacetSnapshot {
+  h.debug.setMenuIndex(0);
+  h.debug.setScreen("howto");
+  return h.snapshot();
+}
+
+/**
+ * Pause the round, exactly as the `pause` action from `playing` does.
+ *
+ * The board is left exactly as it stands — specs/ui.md shows it behind the menu,
+ * quieted — and only the screen and the menu highlight move.
+ */
+export function pauseGame(h: Harness): FacetSnapshot {
+  h.debug.setMenuIndex(0);
+  h.debug.setScreen("paused");
+  return h.snapshot();
+}
+
+/**
+ * Return to the round, exactly as choosing `RESUME` from the pause menu does.
+ *
+ * specs/ui.md: "Sets `screen = playing`, with the board exactly as it was left."
+ * The highlight goes back to the `0` specs/ui.md rests it at on `playing`.
+ */
+export function resumeGame(h: Harness): FacetSnapshot {
+  h.debug.setMenuIndex(0);
+  h.debug.setScreen("playing");
+  return h.snapshot();
+}
+
+/**
+ * Stand the game on `screen`, with whatever that screen needs behind it.
+ *
+ * REACHED DIRECTLY, through the atomic poses, rather than by playing the game
+ * into it. specs/instrumentation.md's `setScreen` shows a screen and changes
+ * nothing else, and "the screen behaves from there exactly as it does when a
+ * player reaches it" — so a check whose requirement is ABOUT a screen stands on
+ * it in two crossings instead of driving a chain to its end through the level
+ * and end conditions, which are other items' requirements and other items'
+ * failure modes.
+ *
+ * The four screens specs/ui.md draws a board behind get one: a quiet filler
+ * carrying no run and one legal swap, so the board behind the menu is a board a
+ * round could really be standing on.
+ */
+export function reachScreen(h: Harness, screen: Screen): FacetSnapshot {
+  h.debug.reset();
+  if (screen !== "title" && screen !== "howto") {
+    loadBoard(h, quietRowsWithEscape([]));
+  }
+  if (screen !== "title") {
+    h.debug.setMenuIndex(0);
+    h.debug.setScreen(screen);
+  }
+  const reading = h.snapshot();
+  if (reading.screen !== screen) {
+    fail(`the ${screen} screen these poses ask for`, reading.screen);
+  }
+  return reading;
+}
+
+/**
+ * Take the item at `index` on whichever menu the current screen shows, the way a
+ * player takes it.
+ *
+ * TWO HALVES, AND ONLY ONE OF THEM IS DRIVEN. The highlight is POSED —
+ * `setMenuIndex` "highlights the menu item at `index` … and no item is taken" —
+ * so a build whose `up` and `down` never worked is still asked this question,
+ * and which item the highlight lands on stays the menu items' own point. What is
+ * really driven is the `confirm` that takes it, through the key
+ * specs/controls.md binds and the build's own input path.
+ *
+ * This is what the items whose requirement IS the choice reach for: "Choosing
+ * PLAY", "Choosing QUIT", "Choosing CONTINUE", "Choosing RESUME". Every other
+ * check stands on the screen it needs through {@link reachScreen} and never
+ * presses a menu at all.
+ */
+export async function takeMenuItem(
+  h: Harness,
+  index: number,
+): Promise<FacetSnapshot> {
+  h.debug.setMenuIndex(index);
+  await h.tapAction("confirm");
   return h.snapshot();
 }
 

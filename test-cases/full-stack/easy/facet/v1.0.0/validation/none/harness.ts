@@ -99,6 +99,7 @@ import {
   REQUIRED_OPS,
   type FacetSnapshot,
   type FacetWindowApi,
+  type Screen,
 } from "./surface";
 
 export { TICK_HZ, TICK_MS, MAX_REPLAY_FRAMES } from "./constants";
@@ -2353,27 +2354,249 @@ export function framesPast(seconds: number): number {
 // Each of these poses a situation through `window.__facet` and then lets the real
 // game run. Every figure they encode is the case's, and the same helpers under the
 // same names stand in the two engine-backed projects next door.
-
-/** Choose `PLAY` from the title menu, and read the round it opened. */
-export async function startRound(h: Harness): Promise<FacetSnapshot> {
-  await h.debug.start();
-  return h.snapshot();
-}
+//
+// COMPOUND SEQUENCES LIVE HERE, NOT ON THE SURFACE. Every operation
+// specs/instrumentation.md puts on the debug surface writes ONE element of the
+// state, reads it, or moves the clock. Beginning a round, opening the next
+// level, quitting to the title and reaching a screen are each several of those
+// in a row, and the surface carries no operation for any of them — so those
+// sequences are written once, here, where the suites of all three engine
+// projects share one copy. What each one arranges is specs/rules.md's and
+// specs/ui.md's account of the same transition, field by field.
+//
+// THE ITEMS THAT DECIDE THOSE TRANSITIONS DO NOT REACH FOR THESE HELPERS.
+// Whether `PLAY` really opens a round, `CONTINUE` really opens the next level
+// and `QUIT` really returns to the title is what `screens/start-round`,
+// `levels/continue-opens-next-level` and `screens/quit-to-title` decide, by
+// working the menu the way a player does and reading what the build did. Every
+// other check reaches its scenario through here instead, so a build with a
+// broken title menu fails those items rather than every item in the project.
 
 /**
- * Pose a written board and read it back. No frame is advanced: `loadBoard` takes
- * effect at the call.
+ * Write a board onto the game and change NOTHING else.
+ *
+ * One crossing, and the atomic operation specs/instrumentation.md states:
+ * `loadBoard(rows)` writes the board's dimensions and its cells, and "the
+ * screen, `menuIndex`, the phase and its timers, the selection, the offer, the
+ * refusal, and every figure of the round stand where they were". What a check
+ * reaches for when it must put a board under a move already in motion —
+ * replacing the gems a running step will read next without disturbing the step.
  *
  * The rows are parsed on this side FIRST, so a fixture typo fails the FIXTURE
  * with the token it could not read rather than crossing into the build and
  * failing it for a mistake the check made.
+ *
+ * {@link loadBoard} is the one to reach for otherwise: it poses the board on a
+ * settled `playing` screen, which is the situation nearly every scenario wants.
+ */
+export async function writeBoard(
+  h: Harness,
+  rows: BoardRows,
+): Promise<FacetSnapshot> {
+  parseRows(rows);
+  await h.debug.loadBoard(rows);
+  return h.snapshot();
+}
+
+/**
+ * Pose a written board on a settled `playing` screen, and read it back.
+ *
+ * THE SEQUENCE, not one operation: the board is written, resolution is settled,
+ * the selection, the offer and the refusal are put away, the menu highlight goes
+ * back to its resting `0` and the screen becomes `playing`. That is the world
+ * nearly every scenario in this project wants to stand on — a board, in play,
+ * with nothing of an earlier scenario standing on it.
+ *
+ * No frame is advanced. Every operation in it takes effect at its call, so the
+ * arrangement is complete in the state this reads back.
+ *
+ * A check that wants ONLY the cells written, leaving the screen and the move in
+ * motion alone, calls {@link writeBoard}.
  */
 export async function loadBoard(
   h: Harness,
   rows: BoardRows,
 ): Promise<FacetSnapshot> {
   parseRows(rows);
+  await h.debug.clearChain();
+  await h.debug.clearSelection();
+  await h.debug.clearOffer();
+  await h.debug.clearRefusal();
   await h.debug.loadBoard(rows);
+  await h.debug.setMenuIndex(0);
+  await h.debug.setScreen("playing");
+  return h.snapshot();
+}
+
+/**
+ * Begin a fresh round, exactly as choosing `PLAY` from the title does.
+ *
+ * Every figure specs/rules.md returns to its opening value when a round starts,
+ * written one at a time, and then the opening board dealt through the game's own
+ * code from `rngState` — which is the one part of it that cannot be decomposed,
+ * since what makes a dealt board an opening board is R4 and the generator rather
+ * than any cell a check could write.
+ *
+ * `PLAY AGAIN` on the game-over menu opens the same round; specs/ui.md gives the
+ * two menu items the same effect.
+ */
+export async function startRound(h: Harness): Promise<FacetSnapshot> {
+  await h.debug.setScore(0);
+  await h.debug.setLevel(1);
+  await h.debug.setLevelScore(0);
+  await h.debug.setMoveScore(0);
+  await h.debug.setBestMove(0);
+  await h.debug.setBestChain(0);
+  await h.debug.clearSelection();
+  await h.debug.clearOffer();
+  await h.debug.clearRefusal();
+  await h.debug.clearChain();
+  await h.debug.dealBoard();
+  await h.debug.setMenuIndex(0);
+  await h.debug.setScreen("playing");
+  return h.snapshot();
+}
+
+/**
+ * Open the next level, exactly as choosing `CONTINUE` from the level-clear menu
+ * does.
+ *
+ * {@link startRound} with two differences, and both are specs/rules.md's:
+ * `score` CARRIES — it is the round's total and a level boundary does not touch
+ * it — and `level` goes up by one from wherever the round had reached rather
+ * than back to `1`. The level's target follows from `level`, so nothing here
+ * writes it.
+ */
+export async function openNextLevel(h: Harness): Promise<FacetSnapshot> {
+  const before = await h.snapshot();
+  await h.debug.setLevel(before.level + 1);
+  await h.debug.setLevelScore(0);
+  await h.debug.setMoveScore(0);
+  await h.debug.setBestMove(0);
+  await h.debug.setBestChain(0);
+  await h.debug.clearSelection();
+  await h.debug.clearOffer();
+  await h.debug.clearRefusal();
+  await h.debug.clearChain();
+  await h.debug.dealBoard();
+  await h.debug.setMenuIndex(0);
+  await h.debug.setScreen("playing");
+  return h.snapshot();
+}
+
+/**
+ * Abandon the round and return to the title, exactly as choosing `QUIT` from
+ * either menu that offers it does.
+ *
+ * specs/ui.md: "Sets `screen = title` and `menuIndex = 0`, abandoning the
+ * round." The round is abandoned by taking the board out of play and putting
+ * away everything that stood on it; `score` and `level` are left where the round
+ * left them, since the title screen reports neither and the next round's
+ * {@link startRound} writes both.
+ */
+export async function quitToTitle(h: Harness): Promise<FacetSnapshot> {
+  await h.debug.clearSelection();
+  await h.debug.clearOffer();
+  await h.debug.clearRefusal();
+  await h.debug.clearChain();
+  await h.debug.clearBoard();
+  await h.debug.setMenuIndex(0);
+  await h.debug.setScreen("title");
+  return h.snapshot();
+}
+
+/**
+ * Open the instructions, exactly as choosing `HOW TO PLAY` from the title does.
+ *
+ * specs/ui.md: "Sets `screen = howto`", and `menuIndex` is `0` on entering every
+ * screen but the title entered from here.
+ */
+export async function openHowTo(h: Harness): Promise<FacetSnapshot> {
+  await h.debug.setMenuIndex(0);
+  await h.debug.setScreen("howto");
+  return h.snapshot();
+}
+
+/**
+ * Pause the round, exactly as the `pause` action from `playing` does.
+ *
+ * The board is left exactly as it stands — specs/ui.md shows it behind the menu,
+ * quieted — and only the screen and the menu highlight move.
+ */
+export async function pauseGame(h: Harness): Promise<FacetSnapshot> {
+  await h.debug.setMenuIndex(0);
+  await h.debug.setScreen("paused");
+  return h.snapshot();
+}
+
+/**
+ * Return to the round, exactly as choosing `RESUME` from the pause menu does.
+ *
+ * specs/ui.md: "Sets `screen = playing`, with the board exactly as it was left."
+ * The highlight goes back to the `0` specs/ui.md rests it at on `playing`.
+ */
+export async function resumeGame(h: Harness): Promise<FacetSnapshot> {
+  await h.debug.setMenuIndex(0);
+  await h.debug.setScreen("playing");
+  return h.snapshot();
+}
+
+/**
+ * Stand the game on `screen`, with whatever that screen needs behind it.
+ *
+ * REACHED DIRECTLY, through the atomic poses, rather than by playing the game
+ * into it. specs/instrumentation.md's `setScreen` shows a screen and changes
+ * nothing else, and "the screen behaves from there exactly as it does when a
+ * player reaches it" — so a check whose requirement is ABOUT a screen stands on
+ * it in two crossings instead of driving a chain to its end through the level
+ * and end conditions, which are other items' requirements and other items'
+ * failure modes.
+ *
+ * The four screens specs/ui.md draws a board behind get one: a quiet filler
+ * carrying no run and one legal swap, so the board behind the menu is a board a
+ * round could really be standing on.
+ */
+export async function reachScreen(
+  h: Harness,
+  screen: Screen,
+): Promise<FacetSnapshot> {
+  await h.debug.reset();
+  if (screen !== "title" && screen !== "howto") {
+    await loadBoard(h, quietRowsWithEscape([]));
+  }
+  if (screen !== "title") {
+    await h.debug.setMenuIndex(0);
+    await h.debug.setScreen(screen);
+  }
+  const reading = await h.snapshot();
+  if (reading.screen !== screen) {
+    fail(`the ${screen} screen these poses ask for`, reading.screen);
+  }
+  return reading;
+}
+
+/**
+ * Take the item at `index` on whichever menu the current screen shows, the way a
+ * player takes it.
+ *
+ * TWO HALVES, AND ONLY ONE OF THEM IS DRIVEN. The highlight is POSED —
+ * `setMenuIndex` "highlights the menu item at `index` … and no item is taken" —
+ * so a build whose `up` and `down` never worked is still asked this question,
+ * and which item the highlight lands on stays the menu items' own point. What is
+ * really driven is the `confirm` that takes it, through the key
+ * specs/controls.md binds and the build's own input path.
+ *
+ * This is what the items whose requirement IS the choice reach for: "Choosing
+ * PLAY", "Choosing QUIT", "Choosing CONTINUE", "Choosing RESUME". Every other
+ * check stands on the screen it needs through {@link reachScreen} and never
+ * presses a menu at all.
+ */
+export async function takeMenuItem(
+  h: Harness,
+  index: number,
+): Promise<FacetSnapshot> {
+  await h.debug.setMenuIndex(index);
+  await h.tapAction("confirm");
   return h.snapshot();
 }
 

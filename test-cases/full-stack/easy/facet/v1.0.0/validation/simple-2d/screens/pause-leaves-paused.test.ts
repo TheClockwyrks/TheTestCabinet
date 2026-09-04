@@ -40,6 +40,7 @@ import { assertBoardEquals } from "../board";
 import {
   captureStill,
   createHarness,
+  pauseGame,
   poseBoardWithEscape,
   type Harness,
 } from "../harness";
@@ -74,7 +75,7 @@ it("returns to playing with the board and every timer as the pause left them", a
   );
   const heldBoard = h.board();
 
-  h.debug.pause();
+  pauseGame(h);
   const paused = h.snapshot();
   assertEqual(
     paused.screen,

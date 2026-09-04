@@ -44,6 +44,7 @@ import {
   assertLength,
   assertTrue,
 } from "../assert";
+import { PAUSED_ITEMS } from "../constants";
 import {
   assertBoardEquals,
   maximalRuns,
@@ -57,7 +58,9 @@ import {
   createHarness,
   framesPast,
   loadBoard,
+  pauseGame,
   swapAndStep,
+  takeMenuItem,
   type Harness,
 } from "../harness";
 
@@ -93,6 +96,9 @@ const FRAMES_BEFORE_PAUSE = 6;
 /** How many of the paused step's own holds the game is left standing for. */
 const HOLDS_PAUSED = 4;
 
+/** Where `RESUME` sits on the pause menu, from specs/ui.md's `PAUSED_ITEMS`. */
+const RESUME_INDEX = PAUSED_ITEMS.indexOf("RESUME");
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -127,12 +133,15 @@ it("returns to playing with the board, the chain and both timers where the pause
 
   // Paused, and left paused for four of that step's own holds, so a build that
   // rebuilt the position on resuming has had every chance to lose it.
-  h.debug.pause();
+  pauseGame(h);
   assertEqual(h.snapshot().screen, "paused", "the screen RESUME is taken from");
   await h.advance(HOLDS_PAUSED * framesPast(held.stepHold));
 
   await captureReplay(h, "resumed", async () => {
-    h.debug.resume();
+    // RESUME is really CHOSEN, which is what the item says: the highlight is
+    // posed onto it — `setMenuIndex` takes no item — and `confirm` is what takes
+    // it, through the key specs/controls.md binds and the build's own input path.
+    await takeMenuItem(h, RESUME_INDEX);
 
     const resumed = h.snapshot();
     assertEqual(resumed.screen, "playing", "the screen RESUME returns to");

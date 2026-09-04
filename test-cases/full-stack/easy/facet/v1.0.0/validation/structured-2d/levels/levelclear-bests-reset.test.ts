@@ -3,9 +3,9 @@
 //
 // specs/rules.md: "`bestMove` and `bestChain` return to `0` when a level is
 // opened and when a round starts, so each level is measured on its own", and
-// specs/instrumentation.md says the same of the choice that opens it:
-// `continueLevel` returns "`levelScore`, `bestMove`, `bestChain` and `moveScore`"
-// to `0`. Three figures, one moment.
+// specs/ui.md names the choice that opens it: the level-clear menu's `CONTINUE`
+// "opens the next level, as `specs/rules.md` describes". Three figures, one
+// moment.
 //
 // REACHING THE SCREEN WITH THE FIGURES ACTUALLY CARRYING SOMETHING IS THE POINT.
 // A check that opened a level from a standing start would read three zeros
@@ -32,6 +32,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
+import { LEVELCLEAR_ITEMS } from "../constants";
 import {
   hasAnyRun,
   quietRowsWithEscape,
@@ -45,6 +46,7 @@ import {
   loadBoard,
   resolveChain,
   swapAndStep,
+  takeMenuItem,
   type Harness,
 } from "../harness";
 
@@ -70,6 +72,9 @@ const RUN_SWAP: { a: CellRef; b: CellRef } = {
  * unambiguously a zeroing rather than a coincidence.
  */
 const POSED_BEST_MOVE = 12_345;
+
+/** Where `CONTINUE` sits on the level-clear menu, from specs/ui.md's `LEVELCLEAR_ITEMS`. */
+const CONTINUE_INDEX = LEVELCLEAR_ITEMS.indexOf("CONTINUE");
 
 let h: Harness;
 
@@ -114,7 +119,10 @@ it("returns moveScore, bestMove and bestChain to zero on the next level", async 
   assertGreaterThan(won.bestChain, 0, "the longest chain the level reached");
   assertEqual(won.bestMove, POSED_BEST_MOVE, "the best move posed over it");
 
-  h.debug.continueLevel();
+  // CONTINUE is really CHOSEN, which is what the item says: the highlight is
+  // posed onto it — `setMenuIndex` takes no item — and `confirm` is what takes
+  // it, through the key specs/controls.md binds and the build's own input path.
+  await takeMenuItem(h, CONTINUE_INDEX);
 
   // The frame that draws the new level, and the picture of the readouts it opens
   // with.

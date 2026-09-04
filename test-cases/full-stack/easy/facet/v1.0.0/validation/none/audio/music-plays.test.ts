@@ -51,11 +51,11 @@
 // asserting anything about the pause here would be asserting something the
 // harness did not see.
 //
-// WHY THE ROUND IS BEGUN BY A POSE. specs/instrumentation.md gives `start` as
-// the pose of choosing `PLAY`, and the piece a screen carries is chosen by the
-// SCREEN rather than by the key that reached it — so posing the transition asks
-// the question the specification asks, and keeps every cue off the frames the
-// further piece is read on. A `confirm` on the title menu would additionally
+// WHY THE ROUND IS BEGUN BY A POSE. The harness's `startRound` is the sequence
+// of single-field poses that opens a round, and the piece a screen carries is
+// chosen by the SCREEN rather than by the key that reached it — so posing the
+// transition asks the question the specification asks, and keeps every cue off
+// the frames the further piece is read on. A `confirm` on the title menu would additionally
 // raise whatever a build plays for a menu choice.
 //
 // THE WAIT IS REAL TIME AS WELL AS FRAMES. specs/assets.md has the produced

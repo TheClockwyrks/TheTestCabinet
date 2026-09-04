@@ -94,8 +94,9 @@ afterEach(() => {
 
 it("deals the same opening board from the same seed, in a fresh instance", async () => {
   requireSurface();
-  // A round from a known deal is "a `reset` carrying a seed followed by" a
-  // `start`, exactly as specs/instrumentation.md describes it.
+  // A round from a known deal is a `reset` carrying a seed followed by the deal
+  // itself, which is what the harness's `startRound` runs: `dealBoard` "deals a
+  // fresh opening board through the game's own code, drawing from `rngState`".
   h.debug.reset({ seed: SEED });
   const opened = startRound(h);
 

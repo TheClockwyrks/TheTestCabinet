@@ -163,23 +163,24 @@ export interface FacetDebugApi<S = unknown> {
   version: number;
   reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
   snapshot(state: DeepReadonly<S>): FacetSnapshot;
-  start(state: DeepReadonly<S>): S;
-  openHowTo(state: DeepReadonly<S>): S;
-  pause(state: DeepReadonly<S>): S;
-  resume(state: DeepReadonly<S>): S;
-  quit(state: DeepReadonly<S>): S;
+  setScreen(state: DeepReadonly<S>, screen: Screen): S;
+  setMenuIndex(state: DeepReadonly<S>, index: number): S;
   loadBoard(state: DeepReadonly<S>, rows: readonly string[]): S;
+  dealBoard(state: DeepReadonly<S>): S;
+  clearBoard(state: DeepReadonly<S>): S;
   setGem(state: DeepReadonly<S>, col: number, row: number, token: string): S;
   setScore(state: DeepReadonly<S>, points: number): S;
   setLevel(state: DeepReadonly<S>, level: number): S;
   setLevelScore(state: DeepReadonly<S>, points: number): S;
   setBestChain(state: DeepReadonly<S>, chainStep: number): S;
   setBestMove(state: DeepReadonly<S>, points: number): S;
-  continueLevel(state: DeepReadonly<S>): S;
+  setMoveScore(state: DeepReadonly<S>, points: number): S;
   setSelection(state: DeepReadonly<S>, col: number, row: number): S;
   clearSelection(state: DeepReadonly<S>): S;
   setOffer(state: DeepReadonly<S>, col: number, row: number): S;
   clearOffer(state: DeepReadonly<S>): S;
+  clearRefusal(state: DeepReadonly<S>): S;
+  clearChain(state: DeepReadonly<S>): S;
   requestSwap(
     state: DeepReadonly<S>,
     colA: number,
@@ -214,29 +215,35 @@ export const READINGS = ["snapshot"] as const;
 /**
  * Every operation the surface must carry under this engine.
  *
- * Twenty-three: the twenty-five of specs/instrumentation.md less `setAutoStep`
+ * Twenty-four: the twenty-six of specs/instrumentation.md less `setAutoStep`
  * and `advance`, which are the runtime's here and are not on the surface at all.
+ *
+ * EVERY ONE OF THEM WRITES ONE ELEMENT OF THE STATE or reads it. Reaching a
+ * screen, opening a round, and quitting to the title are sequences of these, and
+ * those sequences live in `harness.ts` where all three projects' suites share
+ * them.
  */
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
-  "start",
-  "openHowTo",
-  "pause",
-  "resume",
-  "quit",
+  "setScreen",
+  "setMenuIndex",
   "loadBoard",
+  "dealBoard",
+  "clearBoard",
   "setGem",
   "setScore",
   "setLevel",
   "setLevelScore",
   "setBestChain",
   "setBestMove",
-  "continueLevel",
+  "setMoveScore",
   "setSelection",
   "clearSelection",
   "setOffer",
   "clearOffer",
+  "clearRefusal",
+  "clearChain",
   "requestSwap",
   "pointerDown",
   "pointerMove",

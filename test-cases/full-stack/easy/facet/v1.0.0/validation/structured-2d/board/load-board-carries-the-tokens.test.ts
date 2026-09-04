@@ -1,5 +1,5 @@
-// Facet — board/load-board: `loadBoard` poses the board that was written, cell
-// for cell, and leaves the game in the state the operation names.
+// Facet — board/load-board-carries-the-tokens: `loadBoard` poses the board that
+// was written, cell for cell.
 //
 // WHY THIS ONE IS LOAD-BEARING. Almost every automated item in this project
 // arranges its scenario with this single operation. A build whose `loadBoard`
@@ -26,45 +26,24 @@
 // before, or that gave a posed board the fall a dealt one gets, hands every check
 // that reads the fall a board nobody wrote.
 //
-// THE STATE IS POSED FROM ONE THAT CONTRADICTS IT. specs/instrumentation.md
-// requires the operation to leave `phase` `idle`, `chainStep`, `swapTimer` and
-// `stepTimer` at `0`, no selection, no offer and no refusal — and every one of
-// those already holds on a title screen, so posing from rest would read nothing.
-// The second check below therefore sets a move running, gives it a selection, an
-// offer and a standing refusal, and poses the board over THAT, where each of the
-// seven fields has something to clear.
-//
-// THE POSE IS READ AT THE CALL. specs/instrumentation.md says `loadBoard` takes
+// THE POSE IS READ AT THE CALL, and through `writeBoard`, which is the operation
+// itself with nothing around it. specs/instrumentation.md says `loadBoard` takes
 // effect when it is called, so every reading below is the one it returned, with
 // no frame advanced. What the board does over game time afterwards is
-// `board/board-rests`, and to keep the two apart this fixture carries no maximal
-// run at all: every row and every column steps one kind at a time, and a prism
-// joins no run under R4, so there is nothing on it a chain could read even if the
-// build read it.
+// `board/board-rests`, and what the operation leaves ALONE is
+// `board/load-board-leaves-the-rest`. To keep those apart this fixture carries no
+// maximal run at all: every row and every column steps one kind at a time, and a
+// prism joins no run under R4, so there is nothing on it a chain could read even
+// if the build read it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertBoardEquals,
-  parseRows,
-  quietRowsWithEscape,
-  renderBoard,
-  tokenAt,
-  type PlacedToken,
-} from "../board";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertLength,
-  assertNotNull,
-  assertNull,
-  fail,
-} from "../assert";
+import { assertBoardEquals, parseRows, renderBoard, tokenAt } from "../board";
+import { assertEqual, assertLength, fail } from "../assert";
 import { GRID_COLS, GRID_ROWS } from "../constants";
 import {
   captureStill,
   createHarness,
-  loadBoard,
-  swapAndStep,
+  writeBoard,
   type Harness,
 } from "../harness";
 
@@ -89,26 +68,6 @@ const POSED = [
   "X0 X1 X2 X3 R0 A0 C0 J0",
 ];
 
-/**
- * Three rubies one swap short of a run, on the quiet filler.
- *
- * Exchanging `(3,3)` with `(3,4)` carries the third ruby into row `4` and R3
- * accepts, which is how the state this point poses over gets a chain to be
- * running in the first place.
- */
-const CHARGED_CELLS: readonly PlacedToken[] = [
-  { col: 2, row: 4, token: "R0" },
-  { col: 4, row: 4, token: "R0" },
-  { col: 3, row: 3, token: "R0" },
-];
-
-/** The board that chain is started on. */
-const CHARGED = quietRowsWithEscape(CHARGED_CELLS);
-
-/** The cell held, and the neighbor it is offered into, when the board is posed. */
-const HELD = { col: 2, row: 6 };
-const OFFERED = { col: 3, row: 6 };
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -119,66 +78,21 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("moves to playing from the screen the game was on", async () => {
-  // The harness opens on the title screen with no board in play, so the move to
-  // `playing` is something this call did rather than something already true.
-  const title = h.snapshot();
-  assertEqual(title.screen, "title", "the screen before the board is posed");
-
-  const posed = loadBoard(h, POSED);
-  assertEqual(posed.screen, "playing", "screen");
-
-  // And a board really is in play: the snapshot's resting value for `board` is
-  // an empty grid, so the dimensions and the count are what tell a posed board
-  // apart from none at all.
-  assertEqual(posed.board.cols, GRID_COLS, "board.cols");
-  assertEqual(posed.board.rows, GRID_ROWS, "board.rows");
-  assertLength(posed.board.cells, GRID_COLS * GRID_ROWS, "board.cells");
-});
-
-it("leaves no move, no selection, no offer and no refusal behind it", async () => {
-  // Arrange the contradiction. A swap is accepted and carried through its own
-  // animation, so `phase` is `resolving` with `chainStep` at 1 and `stepTimer`
-  // carrying the game time the step has already run; a cell is selected and a
-  // neighbor offered into; and a swap R1 refuses — the two cells are four apart
-  // — leaves a refusal standing. Every field the operation is required to clear
-  // now holds something to clear.
-  loadBoard(h, CHARGED);
-  await swapAndStep(h, { col: 3, row: 3 }, { col: 3, row: 4 });
-  h.debug.setSelection(HELD.col, HELD.row);
-  h.debug.setOffer(OFFERED.col, OFFERED.row);
-  h.debug.requestSwap(0, 0, 4, 0);
-
-  const busy = h.snapshot();
-  assertEqual(busy.phase, "resolving", "phase before the board is posed");
-  assertGreaterThan(busy.chainStep, 0, "chainStep before the board is posed");
-  assertGreaterThan(busy.stepTimer, 0, "stepTimer before the board is posed");
-  assertNotNull(busy.selection, "selection before the board is posed");
-  assertNotNull(busy.offer, "offer before the board is posed");
-  assertNotNull(busy.refusal, "refusal before the board is posed");
-
-  // Every field specs/instrumentation.md names for `loadBoard`. `chainStep`,
-  // `swapTimer` and `stepTimer` are the three that say no move is in motion;
-  // `selection`, `offer` and `refusal` are the three that say the operation
-  // posed a board and left nothing of the situation it interrupted.
-  const posed = loadBoard(h, POSED);
-  assertEqual(posed.phase, "idle", "phase");
-  assertEqual(posed.chainStep, 0, "chainStep");
-  assertEqual(posed.swapTimer, 0, "swapTimer");
-  assertEqual(posed.stepTimer, 0, "stepTimer");
-  assertNull(posed.selection, "selection");
-  assertNull(posed.offer, "offer");
-  assertNull(posed.refusal, "refusal");
-});
-
 it("carries the kind, the cut and the strain every one of the 64 tokens named", async () => {
-  const posed = loadBoard(h, POSED);
+  const posed = writeBoard(h, POSED);
 
   // One frame, so the picture kept below is the posed board rather than the
   // title screen the frame before it left on the canvas. The reading asserted is
   // the one `loadBoard` returned, taken before this frame ran.
   await h.advance(1);
   captureStill(h, "posed");
+
+  // A board really is in play, and it is the whole board specs/board.md fixes:
+  // the snapshot's resting value for `board` is an empty grid, so the
+  // dimensions and the count are what tell a posed board apart from none at all.
+  assertEqual(posed.board.cols, GRID_COLS, "board.cols");
+  assertEqual(posed.board.rows, GRID_ROWS, "board.rows");
+  assertLength(posed.board.cells, GRID_COLS * GRID_ROWS, "board.cells");
 
   // The whole board at once, which is what makes a wrong cell legible: the two
   // boards are rendered back into the notation and the first cell that differs

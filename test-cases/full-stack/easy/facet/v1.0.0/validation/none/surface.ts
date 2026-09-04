@@ -165,19 +165,17 @@ export interface FacetWindowApi {
   /** A pure read of the state. */
   snapshot(): FacetSnapshot;
 
-  /** Poses the choice of `PLAY`, which is what `PLAY AGAIN` also chooses. */
-  start(): void;
-  /** Poses the choice of `HOW TO PLAY`. */
-  openHowTo(): void;
-  /** Poses the `pause` action from `playing`. */
-  pause(): void;
-  /** Poses the choice of `RESUME`. */
-  resume(): void;
-  /** Poses the choice of `QUIT`. */
-  quit(): void;
+  /** Shows one screen. Nothing else changes. */
+  setScreen(screen: Screen): void;
+  /** Highlights the menu item at `index` on whichever menu the screen shows. */
+  setMenuIndex(index: number): void;
 
   /** Poses an arbitrary board, written in `specs/board.md`'s notation. */
   loadBoard(rows: readonly string[]): void;
+  /** Deals a fresh opening board through the game's own code, from `rngState`. */
+  dealBoard(): void;
+  /** Leaves no board in play. */
+  clearBoard(): void;
   /** Writes one cell of the board. */
   setGem(col: number, row: number, token: string): void;
 
@@ -186,15 +184,17 @@ export interface FacetWindowApi {
   setLevelScore(points: number): void;
   setBestChain(chainStep: number): void;
   setBestMove(points: number): void;
-
-  /** Poses the choice of `CONTINUE` from the level-clear menu. */
-  continueLevel(): void;
+  setMoveScore(points: number): void;
 
   setSelection(col: number, row: number): void;
   clearSelection(): void;
   /** Offers the selected gem into `(col, row)`. No swap is requested. */
   setOffer(col: number, row: number): void;
   clearOffer(): void;
+  /** Leaves no refusal standing. */
+  clearRefusal(): void;
+  /** Settles resolution: `phase` `idle`, the board as the dropped step found it. */
+  clearChain(): void;
 
   /** Requests a swap through the same acceptance path a player's swap takes. */
   requestSwap(colA: number, rowA: number, colB: number, rowB: number): void;
@@ -214,32 +214,38 @@ export interface FacetWindowApi {
  * Every operation `specs/instrumentation.md` requires on the surface under this
  * engine.
  *
- * Twenty-five names: the twenty-three every engine's surface carries, plus the
- * two clock operations that exist only here because nothing outside an
- * engineless build owns its loop.
+ * Twenty-six names, in the order the specification introduces them: the
+ * twenty-four every engine's surface carries, plus the two clock operations that
+ * exist only here because nothing outside an engineless build owns its loop.
+ *
+ * EVERY ONE OF THEM WRITES ONE ELEMENT OF THE STATE, reads it, or moves the
+ * clock. Reaching a screen, opening a round, and quitting to the title are
+ * sequences of these, and those sequences live in `harness.ts` where all three
+ * projects' suites share them.
  */
 export const REQUIRED_OPS = [
   "setAutoStep",
   "advance",
   "reset",
   "snapshot",
-  "start",
-  "openHowTo",
-  "pause",
-  "resume",
-  "quit",
+  "setScreen",
+  "setMenuIndex",
   "loadBoard",
+  "dealBoard",
+  "clearBoard",
   "setGem",
   "setScore",
   "setLevel",
   "setLevelScore",
   "setBestChain",
   "setBestMove",
-  "continueLevel",
+  "setMoveScore",
   "setSelection",
   "clearSelection",
   "setOffer",
   "clearOffer",
+  "clearRefusal",
+  "clearChain",
   "requestSwap",
   "pointerDown",
   "pointerMove",

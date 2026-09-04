@@ -32,6 +32,7 @@ import {
   assertLength,
   assertTrue,
 } from "../assert";
+import { LEVELCLEAR_ITEMS } from "../constants";
 import {
   hasAnyRun,
   quietRowsWithEscape,
@@ -45,6 +46,7 @@ import {
   loadBoard,
   resolveChain,
   swapAndStep,
+  takeMenuItem,
   type Harness,
 } from "../harness";
 
@@ -60,6 +62,9 @@ const RUN_SWAP: { a: CellRef; b: CellRef } = {
   a: { col: 3, row: 3 },
   b: { col: 3, row: 4 },
 };
+
+/** Where `QUIT` sits on the level-clear menu, from specs/ui.md's `LEVELCLEAR_ITEMS`. */
+const LEVELCLEAR_QUIT_INDEX = LEVELCLEAR_ITEMS.indexOf("QUIT");
 
 let h: Harness;
 
@@ -95,7 +100,10 @@ it("returns to the title with no board in play", async () => {
     "the screen QUIT is offered from",
   );
 
-  h.debug.quit();
+  // QUIT is really CHOSEN, which is what the item says: the highlight is
+  // posed onto it — `setMenuIndex` takes no item — and `confirm` is what takes
+  // it, through the key specs/controls.md binds and the build's own input path.
+  await takeMenuItem(h, LEVELCLEAR_QUIT_INDEX);
 
   // The frame the title is drawn on, and the picture of it.
   await h.advance(1);

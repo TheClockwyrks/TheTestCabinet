@@ -41,11 +41,11 @@
 // set without it, and fails. What is asserted is that a bed running before the
 // pause is still running after it.
 //
-// WHY THE ROUND IS BEGUN BY A POSE. specs/instrumentation.md gives `start` as
-// the pose of choosing `PLAY`, and the piece a screen carries is chosen by the
-// SCREEN rather than by the key that reached it — so posing the transition asks
-// the question the specification asks, and keeps every cue off the frames the
-// further piece is read on. A `confirm` on the title menu would additionally
+// WHY THE ROUND IS BEGUN BY A POSE. The harness's `startRound` is the sequence
+// of single-field poses that opens a round, and the piece a screen carries is
+// chosen by the SCREEN rather than by the key that reached it — so posing the
+// transition asks the question the specification asks, and keeps every cue off
+// the frames the further piece is read on. A `confirm` on the title menu would additionally
 // raise whatever a build plays for a menu choice.
 //
 // THE WAIT IS REAL TIME AS WELL AS FRAMES. specs/assets.md has the produced
@@ -59,6 +59,7 @@ import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,
+  pauseGame,
   startRound,
   watchLoops,
   type Harness,
@@ -170,8 +171,12 @@ it("loops a piece on the title screen, starts a further one at the round, and ke
 
   // And it is still running once the round is held: specs/ui.md gives the play
   // bed `paused` as well as `playing`.
-  h.debug.pause();
-  assertEqual(h.snapshot().screen, "paused", "the screen pause poses");
+  pauseGame(h);
+  assertEqual(
+    h.snapshot().screen,
+    "paused",
+    "the screen the pause poses reach",
+  );
   await letTheScreenSettle();
 
   assertTrue(
