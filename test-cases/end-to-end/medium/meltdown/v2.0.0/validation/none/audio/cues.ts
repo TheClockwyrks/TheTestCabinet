@@ -6,9 +6,9 @@
 // BY NAME and the bus announces the play, so a check reads the name, the frame
 // and the gain. There is no bus here to ask — `specs/audio.md` hands the whole
 // audio layer to the build, which "synthesize[s]" its cues "with the Web Audio
-// API" itself — so what is observed is the SOUND. `audio-init.js` is injected
-// before a line of the build's own script runs and wraps the two doors a browser
-// can emit sound through: a Web Audio source node being `start()`ed, whatever
+// API" itself — so what is observed is the SOUND. The shared harness's
+// `audio-init.js` probe is injected before a line of the build's own script runs
+// and wraps the two doors a browser can emit sound through: a Web Audio source node being `start()`ed, whatever
 // kind it is, and an `<audio>` element being played. The harness brackets every
 // driven frame around that count, so a sound is attributed to the frame that
 // produced it ({@link watchCues}).

@@ -24,8 +24,8 @@
 //     writes its whole audio layer and there is no bus to ask, so a cue's NAME
 //     is unobservable from out here. NO CHECK IN THIS PROJECT MAY ASSERT ONE,
 //     and listing them would only invite it. What is observable is that a sound
-//     was emitted and on which frame; `audio-init.js` says why that is the
-//     honest reading.
+//     was emitted and on which frame; `case-harness/page/audio-init.js` says
+//     why that is the honest reading.
 //   - NO TOLERANCES. Every bound a check asserts is stated in that check, next
 //     to the figure the specification fixes for it.
 

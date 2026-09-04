@@ -15,8 +15,9 @@
 // drove.
 //
 // WHAT "EMITS NOTHING" IS TAKEN TO MEAN, AND THE SPECIFICATION SAYS IT.
-// `audio-init.js` wraps the two doors a browser can make a sound through — a Web
-// Audio source node being `start()`ed, whatever kind, and an `<audio>` element
+// The shared harness's `audio-init.js` probe wraps the two doors a browser can
+// make a sound through — a Web Audio source node being `start()`ed, whatever
+// kind, and an `<audio>` element
 // being played — and counts what goes through them. `specs/audio.md` fixes that
 // reading for this engine: "until then it starts no audio source and plays no clip,
 // whatever a source would have sounded like." So a build that created a suspended
