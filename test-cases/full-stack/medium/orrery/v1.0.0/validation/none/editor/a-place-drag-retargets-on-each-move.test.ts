@@ -31,6 +31,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNotNull } from "../assert";
+import { RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import { at, hexCenter, traySlot, type Hex } from "../field";
 import { BARE } from "../fixtures";
 import {
@@ -67,6 +68,7 @@ it("reports a different hex for each move rather than holding the one the press 
   let live = 0;
 
   await captureReplay(h, "track", async () => {
+    await h.advance(RECORDING_RUN_UP);
     await pressAt(h, centerOf(traySlot(ARM_SLOT)));
     for (const hex of PATH) {
       await moveTo(h, hexCenter(hex));
@@ -81,6 +83,7 @@ it("reports a different hex for each move rather than holding the one the press 
       );
     }
     await releasePointer(h);
+    await h.advance(RECORDING_SETTLE);
   });
 
   assertEqual(

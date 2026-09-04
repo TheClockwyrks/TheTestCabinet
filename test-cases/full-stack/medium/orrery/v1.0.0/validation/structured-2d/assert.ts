@@ -1,5 +1,5 @@
-// Orrery — the suite's assertions. CASE-PROVIDED, and the SAME FILE in all three
-// engine projects.
+// Orrery — the suite's assertions. CASE-PROVIDED, and the same vocabulary the
+// shared harness carries.
 //
 // Every check in every one of Orrery's validator projects asserts through these
 // helpers rather than through vitest's `expect`, because of where a failure ends
@@ -16,17 +16,18 @@
 // second the value it measured. Keep new helpers to that shape: one `Expected:`
 // line, one `Actual:` line, no file paths and no prose around them.
 //
-// WHY THIS IS A COPY RATHER THAN A RE-EXPORT OF `@test-cabinet/case-harness`.
-// The shared harness carries this same vocabulary, and the engineless project
-// could reach it as `./case-harness/assert` — but the two ENGINE projects cannot:
-// that package is staged only into an engineless project. Orrery's rule is that a
-// suite deciding one review item is the SAME TEXT under all three engines, so
+// WHY THIS IS A COPY AND `validation/none/assert.ts` IS NOT. The vocabulary is
+// the shared validator harness's (`@test-cabinet/case-harness`), and the
+// engineless project re-exports it — but that package is staged only into an
+// engineless project, so an ENGINE project cannot reach it. Orrery's rule is that
+// a suite deciding one review item is the SAME TEXT under all three engines, so
 // `../assert` has to resolve to the same names, the same signatures and the same
-// message shape whichever project a suite is sitting in. So this file is
-// byte-identical in `validation/none/`, `validation/simple-2d/` and
-// `validation/structured-2d/`, and it is deliberately the shared harness's
-// vocabulary rather than a second one: a message thrown here is the message the
-// runner already knows how to render.
+// message shape whichever project a suite is sitting in. This file is that
+// vocabulary written out: byte-identical in `validation/simple-2d/` and
+// `validation/structured-2d/`, and the same 26 names the engineless project's
+// one-line re-export answers to. A message thrown here is the message the runner
+// already knows how to render, which is the whole point of not inventing a
+// second one.
 //
 // Every helper takes an optional trailing `context`: what a check that runs the
 // same comparison many times over says to tell one failure from another

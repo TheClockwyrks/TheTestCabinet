@@ -29,7 +29,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull } from "../assert";
-import { ARM_MAX_LEN } from "../constants";
+import { ARM_MAX_LEN, RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import { armPart, solution } from "../formats";
 import { BARE, ORIGIN } from "../fixtures";
 import {
@@ -64,6 +64,7 @@ it("raises the undo depth by one, and one undo restores the previous length", as
   );
 
   const readings = await captureReplay(h, "undone", async () => {
+    await h.advance(RECORDING_RUN_UP);
     const posed = await h.snapshot();
     await h.debug.setFocus("field");
     await h.debug.setSelected(solePartOfKind(posed, "arm")?.id ?? -1);
@@ -74,6 +75,7 @@ it("raises the undo depth by one, and one undo restores the previous length", as
     await pressAction(h, "undo");
     const undone = await h.snapshot();
 
+    await h.advance(RECORDING_SETTLE);
     return { posed, grown, undone };
   });
 

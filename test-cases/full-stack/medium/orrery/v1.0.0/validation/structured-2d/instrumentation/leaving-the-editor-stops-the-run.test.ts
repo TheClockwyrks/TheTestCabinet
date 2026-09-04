@@ -29,6 +29,7 @@ import {
   assertNotNull,
   assertNull,
 } from "../assert";
+import { RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import { at } from "../field";
 import {
   advanceCycles,
@@ -85,8 +86,9 @@ it("stops the run, and returns the machine as it was placed", async () => {
   );
 
   await captureReplay(h, "stopped", async () => {
+    await h.advance(RECORDING_RUN_UP);
     await h.debug.setScreen("title");
-    await h.advance(2);
+    await h.advance(RECORDING_SETTLE);
   });
 
   const left = await h.snapshot();

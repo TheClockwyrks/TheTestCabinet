@@ -17,6 +17,8 @@ export default tseslint.config(
       "build/",
       "out/",
       "coverage/",
+      "playwright-report/",
+      "test-results/",
       "assets/",
       ".tcab/",
       "engine/",

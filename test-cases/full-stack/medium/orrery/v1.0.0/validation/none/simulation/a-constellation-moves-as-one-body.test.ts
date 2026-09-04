@@ -53,6 +53,8 @@ import {
   FIELD_CY,
   FRACTION_TOLERANCE,
   HEX_PITCH,
+  RECORDING_RUN_UP,
+  RECORDING_SETTLE,
 } from "../constants";
 import { at, hexCenter, rotate, rotateAbout, type Hex } from "../field";
 import { armPart, solution } from "../formats";
@@ -109,10 +111,14 @@ it("carries every mote and every filament of a four-mote body through one sweep"
   );
   await takeGrip(h, arm, 0, ids[0] ?? -1);
 
+  // Each half of the sweep is divided over the recording's own frames rather than
+  // driven in one, so a reviewer watches the body turn rather than seeing it in two
+  // places. "An interval of game time reaches the same state however it was divided
+  // into frames" (`specs/instrumentation.md`), so both readings are the readings.
   const seen = await captureReplay(h, "rigid", async () => {
-    await advanceFraction(h, 1 / 2);
+    await advanceFraction(h, 1 / 2, RECORDING_RUN_UP);
     const midway = await h.snapshot();
-    await advanceFraction(h, 1 / 2);
+    await advanceFraction(h, 1 / 2, RECORDING_SETTLE);
     return { midway, boundary: await h.snapshot() };
   });
 

@@ -63,6 +63,8 @@ import {
   setTapeCell,
 } from "./machineops";
 import { dropMote } from "./motes";
+import { menuItemRect } from "./progress";
+import type { MenuItemRect } from "./regions";
 import { armSpokes, gripperHex, isArmKind, mountedTrack } from "./parts";
 import { Session } from "./session";
 import { startRun, stopRun } from "./sim";
@@ -119,6 +121,8 @@ export interface OrreryStateOps {
     value: number,
   ): void;
   setLast(mode: Mode, index: number): void;
+
+  menuItemRect(index: number): MenuItemRect | null;
 
   openChallenge(mode: Mode, index: number): void;
   loadChallenge(challenge: unknown): void;
@@ -316,6 +320,18 @@ export function createStateOps(session: Session): OrreryStateOps {
     setLast(mode, index) {
       const course = requireOneOf("setLast", "mode", mode, MODES);
       setLastOf(state(), course, challengeIndex("setLast", course, index));
+    },
+
+    // ----- The menu layout -------------------------------------------------
+    menuItemRect(index) {
+      // A read, like `snapshot`: it changes nothing. An index the current
+      // menu carries no item at is ANSWERED rather than refused — `null` is
+      // the answer specs/instrumentation.md gives for one — so only an
+      // argument that is no number at all fails loudly here.
+      return menuItemRect(
+        state(),
+        requireNumber("menuItemRect", "index", index),
+      );
     },
 
     // ----- The challenge --------------------------------------------------
@@ -803,13 +819,14 @@ type Reading<F> = F extends (...args: infer A) => infer R
   ? (state: OrreryState, ...args: A) => R
   : never;
 
-/** The three operations that read rather than pose. */
-type ReadingName = "snapshot" | "readSolution" | "referenceSolution";
+/** The four operations that read rather than pose. */
+type ReadingName =
+  "snapshot" | "menuItemRect" | "readSolution" | "referenceSolution";
 
 /**
  * The surface `initialize` returns beside the state, and `engine.debug` hands
  * back unchanged. Derived from `OrreryStateOps` so the two can never drift:
- * every operation there is a pose here unless it is one of the three readings.
+ * every operation there is a pose here unless it is one of the four readings.
  */
 export type OrreryDebugApi = {
   /** `ORRERY_DEBUG_VERSION` (`1`), a plain number. */
@@ -863,6 +880,9 @@ export function createDebugApi(): OrreryDebugApi {
     setSolved: transition((ops) => ops.setSolved),
     setRecord: transition((ops) => ops.setRecord),
     setLast: transition((ops) => ops.setLast),
+
+    // The menu layout
+    menuItemRect: reading((ops) => ops.menuItemRect),
 
     // The challenge
     openChallenge: transition((ops) => ops.openChallenge),

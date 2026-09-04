@@ -26,6 +26,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull, assertNull } from "../assert";
+import { RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import { at, hexCenter } from "../field";
 import { BARE, ORIGIN } from "../fixtures";
 import {
@@ -62,12 +63,14 @@ it("reports muted true mid-drag and leaves the drag live", async () => {
   await h.advance(1);
 
   const dragged = await captureReplay(h, "dragging", async () => {
+    await h.advance(RECORDING_RUN_UP);
     await pressAt(h, hexCenter(ORIGIN));
     await moveTo(h, hexCenter(OVER));
     const before = await h.snapshot();
     const after = await pressAction(h, "mute");
     await releasePointer(h);
     const released = await h.snapshot();
+    await h.advance(RECORDING_SETTLE);
     return { before, after, released };
   });
 

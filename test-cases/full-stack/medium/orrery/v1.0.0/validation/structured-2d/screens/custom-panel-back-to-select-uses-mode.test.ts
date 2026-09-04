@@ -33,6 +33,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull } from "../assert";
+import { RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import { setPart, solution } from "../formats";
 import { BARE, ORIGIN, TARGET } from "../fixtures";
 import {
@@ -98,8 +99,9 @@ it("goes to the current mode's select screen from a loaded challenge's panel", a
   );
 
   await captureReplay(h, "select", async () => {
+    await h.advance(RECORDING_RUN_UP);
     await pressAction(h, "confirm");
-    await h.advance(1);
+    await h.advance(RECORDING_SETTLE);
   });
 
   const left = await h.snapshot();

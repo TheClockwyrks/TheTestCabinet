@@ -126,6 +126,23 @@ describe("the snapshot's derived and posed shapes", () => {
     ]);
   });
 
+  it("reports the title menu's remembered selection, whatever the screen", () => {
+    const game = new Game();
+    const api = createStateOps(game);
+    expect(snapshotOf(game.state).titleIndex).toBe(0);
+    api.setMenuIndex(1);
+    game.handleAction("confirm");
+    expect(snapshotOf(game.state).titleIndex).toBe(1);
+    api.openChallenge("extras", 0);
+    expect(snapshotOf(game.state).titleIndex).toBe(1);
+  });
+
+  it("keeps the armed menu press out of the shape, which is fixed", () => {
+    const game = new Game();
+    game.state.menuPress = 2;
+    expect(snapshotOf(game.state)).not.toHaveProperty("menuPress");
+  });
+
   it("copies a part out rather than handing over the one it holds", () => {
     const game = new Game();
     const api = createStateOps(game);

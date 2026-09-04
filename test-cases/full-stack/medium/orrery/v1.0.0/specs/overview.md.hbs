@@ -63,8 +63,8 @@ from it. How the layer is structured is yours to decide.
 The game is built on the {{engine.name}} engine, which documents itself in
 the `engine/` directory at the root of this repository. It owns the frame
 loop and the delta time the game is given, the input actions the menus and
-editor verbs are driven by, the pointer the editor is operated with, audio
-cues, asset loading, the canvas fit, and the debug overlay. Read its
+editor verbs are driven by, the pointer the editor and the menus are operated
+with, audio cues, asset loading, the canvas fit, and the debug overlay. Read its
 documentation before you start. This specification states only what is
 specific to Orrery.
 
@@ -81,9 +81,10 @@ classes, a game instance, a game mode, actors and their components, and the
 controllers that drive them, and the engine constructs, ticks, and renders
 them in a fixed order. It owns the frame loop and the delta time the game is
 given, rendering and the camera, the canvas fit, the input actions the menus
-and editor verbs are driven by, the pointer the editor is operated with,
-audio cues, asset loading, and the debug overlay. Read its documentation
-before you start. This specification states only what is specific to Orrery.
+and editor verbs are driven by, the pointer the editor and the menus are
+operated with, audio cues, asset loading, and the debug overlay. Read its
+documentation before you start. This specification states only what is
+specific to Orrery.
 
 The logical design field handed to the engine is the stage, and the game
 leaves the camera at rest, so world units and the stage's logical units

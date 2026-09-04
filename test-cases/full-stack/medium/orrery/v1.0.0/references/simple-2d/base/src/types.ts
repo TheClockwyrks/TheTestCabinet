@@ -414,6 +414,14 @@ export interface OrreryState {
   readonly screen: Screen;
   readonly mode: Mode;
   readonly menuIndex: number;
+  /**
+   * The title menu's remembered selection: the index of the last title item
+   * TAKEN, which arriving at `title` puts the highlight back on, so a return
+   * lands on the entry that led away (specs/ui.md "The remembered title
+   * selection"). `0` until the first one is taken, and `0` again after a
+   * `reset`.
+   */
+  readonly titleIndex: number;
   readonly selectIndex: number;
   readonly howtoPage: number;
 
@@ -433,6 +441,18 @@ export interface OrreryState {
   readonly sim: SimState | null;
 
   readonly pointer: PointerState;
+  /**
+   * The menu item a live press landed in, and `null` when none did.
+   *
+   * A take needs BOTH its edges inside one item's region (specs/ui.md "Pointer
+   * and touch"), and `pointer` cannot answer that: it carries where the
+   * pointer is now, and the press position is gone at the first move. So the
+   * one fact a split gesture turns on is carried here, beside the reading it
+   * belongs to. It is never reported by the snapshot — the shape
+   * specs/instrumentation.md fixes carries no such field — and a `reset`
+   * clears it with the rest.
+   */
+  readonly menuPress: number | null;
   /** Whether a satisfied boundary completes the run (specs/instrumentation.md). */
   readonly completion: boolean;
   /** Accumulated simulation time, in seconds; every update adds its `dt`. */

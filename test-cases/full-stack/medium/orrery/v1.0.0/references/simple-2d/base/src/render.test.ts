@@ -3,18 +3,24 @@ import { describe, expect, it } from "vitest";
 import { STAGE_H, STAGE_W } from "./constants";
 import { createStateOps } from "./debug";
 import { installSprites, NO_SPRITES, type Sprites } from "./images";
+import { menuItemRect } from "./progress";
 import { render } from "./render";
+import type { MenuItemRect } from "./regions";
 import { Session } from "./session";
+import type { OrreryState } from "./types";
 
 /** A real 2D context at the stage's logical size, from `@napi-rs/canvas`. */
 function stage(): {
   ctx: CanvasRenderingContext2D;
   painted: () => number;
+  pixels: () => Uint8ClampedArray;
 } {
   const canvas = createCanvas(STAGE_W, STAGE_H);
   const ctx = canvas.getContext("2d");
   return {
     ctx: ctx as unknown as CanvasRenderingContext2D,
+    pixels: () =>
+      ctx.getImageData(0, 0, STAGE_W, STAGE_H).data as Uint8ClampedArray,
     painted: () => {
       const data = ctx.getImageData(0, 0, STAGE_W, STAGE_H).data;
       let lit = 0;
@@ -209,6 +215,24 @@ describe("the frame (specs/ui.md)", () => {
     api.pointerUp();
   });
 
+  it("draws each menu's highlight over the region menuItemRect reports", () => {
+    // The reported region and the drawn item are ONE fact (specs/ui.md
+    // "Pointer and touch"), so moving the highlight from one item to another
+    // changes the stage inside those two regions and nowhere else. Anything
+    // drawn elsewhere would be a highlight the pointer cannot reach.
+    expectHighlightWithin(new Session().state, 0, 2);
+
+    const solved = new Session();
+    const api = createStateOps(solved);
+    api.openChallenge("extras", 0);
+    api.placeSet(0, 2, 0, 0);
+    api.startRun();
+    api.setTally(0, 6);
+    solved.update(1);
+    expect(solved.state.sim?.status).toBe("complete");
+    expectHighlightWithin(solved.state, 0, 1);
+  });
+
   it("draws a live drag's ghost", () => {
     const game = new Session();
     const api = createStateOps(game);
@@ -222,3 +246,59 @@ describe("the frame (specs/ui.md)", () => {
     api.pointerUp();
   });
 });
+
+/** How far outside a region a one-pixel stroke on its edge may land. */
+const EDGE_SLACK = 2;
+
+/**
+ * Draw one menu with the highlight on `from` and again with it on `to`, and
+ * hold every pixel that changed between the two frames to the two regions
+ * `menuItemRect` reports for those items.
+ */
+function expectHighlightWithin(
+  state: OrreryState,
+  from: number,
+  to: number,
+): void {
+  const draft = state as { menuIndex: number };
+  const regions = [menuItemRect(state, from), menuItemRect(state, to)].map(
+    (rect) => {
+      expect(rect).not.toBeNull();
+      return rect as MenuItemRect;
+    },
+  );
+  draft.menuIndex = from;
+  const before = stage();
+  render(before.ctx, state);
+  draft.menuIndex = to;
+  const after = stage();
+  render(after.ctx, state);
+
+  const first = before.pixels();
+  const second = after.pixels();
+  let moved = 0;
+  for (let at = 0; at < first.length; at += 4) {
+    if (
+      first[at] === second[at] &&
+      first[at + 1] === second[at + 1] &&
+      first[at + 2] === second[at + 2]
+    ) {
+      continue;
+    }
+    moved += 1;
+    const pixel = at / 4;
+    const x = pixel % STAGE_W;
+    const y = Math.floor(pixel / STAGE_W);
+    const inside = regions.some(
+      (rect) =>
+        x >= rect.x - EDGE_SLACK &&
+        x < rect.x + rect.w + EDGE_SLACK &&
+        y >= rect.y - EDGE_SLACK &&
+        y < rect.y + rect.h + EDGE_SLACK,
+    );
+    expect(inside, `the pixel at (${x}, ${y}) lies in a reported region`).toBe(
+      true,
+    );
+  }
+  expect(moved).toBeGreaterThan(0);
+}

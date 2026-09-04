@@ -42,6 +42,7 @@ import {
   assertNotNull,
   assertNull,
 } from "../assert";
+import { RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import { extra } from "../challenges";
 import { at } from "../field";
 import { armPart, setPart, solution, trackPart } from "../formats";
@@ -106,9 +107,12 @@ it("stops the run and returns to editing with the machine intact", async () => {
   );
 
   const kept = await captureReplay(h, "editing", async () => {
+    await h.advance(RECORDING_RUN_UP);
     await backAction(h);
     await h.advance(1);
-    return readMachine(h);
+    const editing = await readMachine(h);
+    await h.advance(RECORDING_SETTLE);
+    return editing;
   });
 
   const editing = await h.snapshot();

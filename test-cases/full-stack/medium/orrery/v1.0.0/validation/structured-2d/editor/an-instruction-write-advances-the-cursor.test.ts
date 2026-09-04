@@ -26,6 +26,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNotNull } from "../assert";
+import { RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import type { InstructionName } from "../constants";
 import { armPart, solution } from "../formats";
 import { BARE } from "../fixtures";
@@ -80,9 +81,11 @@ it("moves the cursor one cell right per write, filling three consecutive cells",
   await h.debug.setCursor(arm, 0);
 
   const written = await captureReplay(h, "advanced", async () => {
+    await h.advance(RECORDING_RUN_UP);
     const first = await pressAction(h, "ins-grab");
     const second = await pressAction(h, "ins-drop");
     const third = await pressAction(h, "ins-rotate-cw");
+    await h.advance(RECORDING_SETTLE);
     return [first, second, third];
   });
 

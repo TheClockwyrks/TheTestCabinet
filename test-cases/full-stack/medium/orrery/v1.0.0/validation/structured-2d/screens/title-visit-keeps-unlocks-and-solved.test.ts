@@ -38,6 +38,7 @@ import {
   assertEqual,
   assertGreaterThanOrEqual,
 } from "../assert";
+import { RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -75,7 +76,9 @@ it("carries the unlocked count and both solved sets through a visit to the title
   );
   assertGreaterThanOrEqual(
     fresh.extras.count,
-    EXTRAS_SOLVED.length === 0 ? 0 : (EXTRAS_SOLVED[EXTRAS_SOLVED.length - 1] ?? 0) + 1,
+    EXTRAS_SOLVED.length === 0
+      ? 0
+      : (EXTRAS_SOLVED[EXTRAS_SOLVED.length - 1] ?? 0) + 1,
     "the Extras shelf is long enough to hold the rows this point poses solved",
   );
 
@@ -107,10 +110,13 @@ it("carries the unlocked count and both solved sets through a visit to the title
 
   // The first route: out of the editor, over an open challenge.
   const fromEditor = await captureReplay(h, "progress-kept", async () => {
+    await h.advance(RECORDING_RUN_UP);
     await openChallenge(h, "campaign", 0);
     await h.debug.setScreen("title");
     await h.advance(1);
-    return h.snapshot();
+    const visited = await h.snapshot();
+    await h.advance(RECORDING_SETTLE);
+    return visited;
   });
   assertEqual(
     fromEditor.screen,

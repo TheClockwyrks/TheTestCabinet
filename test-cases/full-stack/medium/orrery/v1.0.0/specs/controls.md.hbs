@@ -1,13 +1,13 @@
 # Orrery — Controls
 
 This file defines how a player operates the game: the pointer that places and
-drags on the field, the keyboard actions everything else runs on, and the
-focus rule that routes the editing keys. What each verb does in the editor is
-in `specs/editor.md`, and the menus and screens the navigation actions drive
-are in `specs/ui.md`. Every figure below carries the name this specification
-gives it.
+drags on the field and works the menus, the keyboard actions everything else
+runs on, and the focus rule that routes the editing keys. What each verb does
+in the editor is in `specs/editor.md`, and the menus and screens the
+navigation actions drive are in `specs/ui.md`. Every figure below carries the
+name this specification gives it.
 
-## The pointer
+## The pointer and touch
 
 {{#if (eq engine.slug "none")}}
 This game stands on no engine, so the pointer belongs to the runtime layer you
@@ -34,7 +34,16 @@ own, in the order the positions arrive, so a drag's ghost and a track being
 laid follow the pointer hex by hex. What a press, a move, and a release do in
 each region of the editor is defined in `specs/editor.md`; hexes are targeted
 by the rule in `specs/field.md`, and tray slots and tape cells by the
-rectangles `specs/editor.md` fixes. The pointer operates the editor alone.
+rectangles `specs/editor.md` fixes. On the editor screen the pointer works the
+field, the tray, and the tape and nothing beside them; on `title`, `howto`,
+and `select`, and over the solved panel, it works the menus, as `specs/ui.md`
+states.
+
+A mouse, a pen, and a finger all reach the game as pointers on those same
+three readings, so everything this file says of the pointer holds for a touch
+contact: the contact landing is the press edge, its lift is the release edge,
+and its travel is the positions between. Nothing in the game asks which device
+drove them.
 
 `state.pointer` mirrors the pointer's position and press state every frame, as
 `specs/state.md` describes.
@@ -53,10 +62,25 @@ its own, and the game reads the ones the current focus names.
 
 ## Actions and bindings
 
-`ACTIONS` holds every action the game registers, and `BINDINGS` maps each to
-the `KeyboardEvent.code` values that fire it. Each action is read as a press
-edge, once per press, on the screens the table under What each screen reads
-names.
+{{#if (eq engine.slug "none")}}
+`LAYOUT` names the control scheme the game is built for: `dpad-4`, a four-way
+pad whose own vocabulary is the four movement actions `up`, `down`, `left`,
+and `right`. It names a scheme and nothing more, so what the runtime layer you
+write puts on screen for it, if anything, is yours to decide.
+{{else}}
+`LAYOUT` names the touch layout the game is built on, which the engine
+documents in the `engine/` directory at the root of this repository: `dpad-4`,
+a four-way pad whose own vocabulary is the four movement actions `up`, `down`,
+`left`, and `right`. Choosing it tags the actions the game registers rather
+than drawing controls.
+{{/if}}
+
+`ACTIONS` holds every action the game registers, in this order: the layout's
+four movement actions, the menu actions `confirm`, `back`, and `mute`, and
+Orrery's own verbs beyond them. `pause` is not among them; `back` leaves a run
+rather than pausing it. `BINDINGS` maps each action to the
+`KeyboardEvent.code` values that fire it. Each action is read as a press edge,
+once per press, on the screens the table under What each screen reads names.
 
 ### Navigation
 
@@ -117,17 +141,18 @@ the cursor visible, are in `specs/editor.md`.
 
 | Screen | Live |
 | --- | --- |
-| `title` | `up` and `down` move the highlight; `confirm` takes it; `mute`. |
-| `howto` | `left` and `right` turn the page; `confirm` and `back` return to `title`; `mute`. |
-| `select` | `up` and `down` move the highlight; `confirm` opens the highlighted challenge when the mode's progression allows; `back` returns to `title`; `mute`. |
+| `title` | `up` and `down` move the highlight; `confirm` takes it; the pointer and touch move and take it, as `specs/ui.md` states; `mute`. |
+| `howto` | `left` and `right` turn the page; `confirm` and `back` return to `title`; the pointer and touch take the screen's one menu item; `mute`. |
+| `select` | `up` and `down` move the highlight; `confirm` opens the highlighted challenge when the mode's progression allows; the pointer and touch move and take a row, as `specs/ui.md` states; `back` returns to `title`; `mute`. |
 | `editor`, while editing | The pointer; the field-focus actions under `field` focus; the tape-focus actions and `up`, `down`, `left`, and `right` under `tape` focus; `undo`; `redo`; `play`; `step`; `back`; `mute`. |
 | `editor`, `running` or `paused` | `play`, `step`, `speed-up`, `speed-down`, `back`, `mute`. |
-| `editor`, `faulted` or `complete` | `back` and `mute`, and `up`, `down`, and `confirm` while the solved panel of `specs/ui.md` is up. |
+| `editor`, `faulted` or `complete` | `back` and `mute`, and `up`, `down`, `confirm`, and the pointer and touch over the panel's items, while the solved panel of `specs/ui.md` is up. |
 
 An action a row omits does nothing on that screen.
 
 ## Out of scope
 
-- Gamepad input. The editor is driven by the pointer and the keyboard.
+- Gamepad input. The game is driven by the pointer, by touch, and by the
+  keyboard.
 - Rebinding. The bindings are fixed and the game offers no way to change
   them.

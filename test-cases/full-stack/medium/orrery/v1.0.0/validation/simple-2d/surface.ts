@@ -24,9 +24,9 @@
 import type { DeepReadonly } from "ts-essentials";
 import { READINGS, STATE_OPS, type OrreryDriver } from "./driver";
 
-/** The three operations that read rather than pose. */
+/** The four operations that read rather than pose. */
 type ReadingName = (typeof READINGS)[number] &
-  ("snapshot" | "readSolution" | "referenceSolution");
+  ("snapshot" | "menuItemRect" | "readSolution" | "referenceSolution");
 
 /** The two operations no engine build carries, which this engine's does not. */
 type ClockName = "setAutoStep" | "advance";

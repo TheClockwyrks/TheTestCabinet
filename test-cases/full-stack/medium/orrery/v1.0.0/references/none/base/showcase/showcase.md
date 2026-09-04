@@ -7,7 +7,7 @@ reagents up out of the field and sets swallow the finished constellations;
 between them stand brass arms, engraved sigils, and whatever route you can
 find.
 
-![The finished machine, its tapes written and ready to run](machine.png)
+![The title screen, and the two ways in](title.png)
 
 You start on an empty field. Parts come out of the tray on the left and are
 dragged onto a hex — arms one to three hexes long, some with two, three or six

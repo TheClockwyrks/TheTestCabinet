@@ -47,6 +47,7 @@ import {
 } from "./machineops";
 import { dropMote } from "./motes";
 import { armSpokes, gripperHex, isArmKind, mountedTrack } from "./parts";
+import type { MenuItemRect } from "./regions";
 import { snapshotOf } from "./snapshot";
 import { startRun, stopRun } from "./sim";
 import { clearSolved, markSolved, recordsOf, setLastOf } from "./state";
@@ -100,6 +101,8 @@ export interface OrreryStateOps {
     value: number,
   ): void;
   setLast(mode: Mode, index: number): void;
+
+  menuItemRect(index: number): MenuItemRect | null;
 
   openChallenge(mode: Mode, index: number): void;
   loadChallenge(challenge: unknown): void;
@@ -293,6 +296,15 @@ export function createStateOps(game: Game): OrreryStateOps {
     setLast(mode, index) {
       const course = requireOneOf("setLast", "mode", mode, MODES);
       setLastOf(state(), course, challengeIndex("setLast", course, index));
+    },
+
+    // ----- The menu layout ------------------------------------------------
+    menuItemRect(index) {
+      // A pure read, like `snapshot`: it changes nothing. An index the menu
+      // the current screen shows carries no item at is answered `null` rather
+      // than refused, and so is every index on a screen showing no menu; only
+      // an argument that is no number at all fails loudly.
+      return game.menuItemRect(requireNumber("menuItemRect", "index", index));
     },
 
     // ----- The challenge --------------------------------------------------

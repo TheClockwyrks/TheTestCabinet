@@ -145,6 +145,7 @@ it("reports every documented field, at its documented type, as posed", async () 
   assertContains(MODES, s.mode, "mode is one of the two mode names");
   assertEqual(s.mode, "extras", "mode reports the mode posed");
   assertEqual(typeof s.menuIndex, "number", "menuIndex is a number");
+  assertEqual(typeof s.titleIndex, "number", "titleIndex is a number");
   assertEqual(typeof s.selectIndex, "number", "selectIndex is a number");
   assertEqual(s.howtoPage, 0, "howtoPage is 0 away from the how-to");
   assertEqual(typeof s.completion, "boolean", "completion is a boolean");

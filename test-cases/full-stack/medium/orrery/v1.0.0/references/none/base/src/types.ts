@@ -317,6 +317,8 @@ export interface OrreryState {
   screen: Screen;
   mode: Mode;
   menuIndex: number;
+  /** The title menu's remembered selection: the entry last taken there. */
+  titleIndex: number;
   selectIndex: number;
   howtoPage: number;
 
@@ -336,6 +338,17 @@ export interface OrreryState {
   sim: SimState | null;
 
   pointer: PointerState;
+  /**
+   * The menu item a live press landed in, and `null` when the press landed
+   * outside every item or none is live (specs/ui.md "Pointer and touch").
+   *
+   * "Taking an item takes both of its edges inside that item's region", and
+   * the press position is gone by the time the release arrives — `pointer`
+   * carries where the pointer IS, not where it went down — so the index the
+   * press landed in is carried here, in the one value, rather than in a
+   * module-level variable or a closure.
+   */
+  menuPress: number | null;
   /** Whether a satisfied boundary completes the run (specs/instrumentation.md). */
   completion: boolean;
   /** Whether the frame loop advances the simulation from the wall clock. */

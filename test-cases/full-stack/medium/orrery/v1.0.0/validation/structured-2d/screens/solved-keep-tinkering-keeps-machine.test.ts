@@ -51,7 +51,7 @@ import {
   assertNotEqual,
   assertNotNull,
 } from "../assert";
-import { SOLVED_ITEMS } from "../constants";
+import { RECORDING_RUN_UP, RECORDING_SETTLE, SOLVED_ITEMS } from "../constants";
 import { extra } from "../challenges";
 import { at } from "../field";
 import { armPart, setPart, solution, trackPart } from "../formats";
@@ -142,9 +142,12 @@ it("hands back every part, pose, length, path and tape exactly as it was placed"
   );
 
   const kept = await captureReplay(h, "intact", async () => {
+    await h.advance(RECORDING_RUN_UP);
     await pressAction(h, "confirm");
     await h.advance(1);
-    return readMachine(h);
+    const editing = await readMachine(h);
+    await h.advance(RECORDING_SETTLE);
+    return editing;
   });
 
   const editing = await h.snapshot();

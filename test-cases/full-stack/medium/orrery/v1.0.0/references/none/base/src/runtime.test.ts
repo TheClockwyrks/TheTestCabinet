@@ -9,6 +9,7 @@ import { Game } from "./game";
 import { Keyboard } from "./keyboard";
 import { Pointer } from "./pointer";
 import { Runtime } from "./runtime";
+import type { MenuItemRect } from "./regions";
 import type { Surface } from "./viewport";
 
 /** A runtime over a real 2D context, with a canvas of a fixed size. */
@@ -165,5 +166,72 @@ describe("the frame loop (specs/overview.md, specs/instrumentation.md)", () => {
     runtime.start();
     expect(scheduled).toBe(3);
     expect(game.state.simTime).toBeGreaterThan(0);
+  });
+});
+
+describe("one frame's keyboard edges beside its pointer samples (specs/ui.md)", () => {
+  /** A pointer event at a stage position, which is a client position here. */
+  function point(type: string, x: number, y: number): Event {
+    return Object.assign(new Event(type), {
+      clientX: x,
+      clientY: y,
+      pointerId: 1,
+    });
+  }
+
+  /** The middle of the region the current menu reports for `index`. */
+  function middleOf(game: Game, index: number): { x: number; y: number } {
+    const rect = game.menuItemRect(index);
+    expect(rect, `item ${index} has a region`).not.toBeNull();
+    const region = rect as MenuItemRect;
+    return { x: region.x + region.w / 2, y: region.y + region.h / 2 };
+  }
+
+  it("leaves the highlight on the item the pointer named, not the keyboard", () => {
+    const { runtime, game, keys, pointerTarget } = bench();
+    const onExtras = middleOf(game, 1);
+    keys.dispatchEvent(key("keydown", "ArrowDown"));
+    pointerTarget.dispatchEvent(point("pointermove", onExtras.x, onExtras.y));
+    runtime.frame(1 / 60);
+    expect(game.state.menuIndex).toBe(1);
+    expect(game.state.screen).toBe("title");
+  });
+
+  it("takes the keyboard's item alone when a click lands on the same frame", () => {
+    const { runtime, game, keys, pointerTarget } = bench();
+    createStateOps(game).setMenuIndex(1);
+    // The title item the pointer clicks is an ordinary one, and its region
+    // overlaps a row of the select screen that EXTRAS opens: the rows run from
+    // y 120 down the stage, and this click lies inside one of them.
+    const onExtras = middleOf(game, 1);
+    keys.dispatchEvent(key("keydown", "Enter"));
+    pointerTarget.dispatchEvent(point("pointerdown", onExtras.x, onExtras.y));
+    pointerTarget.dispatchEvent(point("pointerup", onExtras.x, onExtras.y));
+    runtime.frame(1 / 60);
+
+    expect(game.state.screen).toBe("select");
+    expect(game.state.mode).toBe("extras");
+    // The click moved the highlight down the list it landed on, as any sample
+    // does, and took nothing: no challenge was opened.
+    expect(game.state.challenge).toBeNull();
+    expect(game.state.challengeRef).toBeNull();
+  });
+
+  it("takes that same click on the frame after it, so the click is a live one", () => {
+    const { runtime, game, keys, pointerTarget } = bench();
+    createStateOps(game).setMenuIndex(1);
+    const onExtras = middleOf(game, 1);
+    keys.dispatchEvent(key("keydown", "Enter"));
+    runtime.frame(1 / 60);
+    expect(game.state.screen).toBe("select");
+
+    pointerTarget.dispatchEvent(point("pointerdown", onExtras.x, onExtras.y));
+    pointerTarget.dispatchEvent(point("pointerup", onExtras.x, onExtras.y));
+    runtime.frame(1 / 60);
+    expect(game.state.screen).toBe("editor");
+    expect(game.state.challengeRef).toEqual({
+      mode: "extras",
+      index: game.state.selectIndex,
+    });
   });
 });

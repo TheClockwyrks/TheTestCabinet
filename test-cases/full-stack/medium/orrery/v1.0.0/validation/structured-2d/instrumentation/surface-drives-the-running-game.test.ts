@@ -10,59 +10,59 @@
 // a pose does to a LIVE run is fixed under The machine: "While a run is live, a
 // part one of them adds enters the run at its rest pose holding nothing."
 //
-// WHY THE CANVAS IS READ AND NOT ONLY THE SNAPSHOT. A surface that posed a copy of
-// the game — a state built beside the one the loop is drawing, or a snapshot
-// synthesized from the arguments it was handed — would answer every reading
-// perfectly and change nothing a player could see. So the verdict is the two
-// together: the picture on the canvas over the arm's anchor hex and over the mote's
-// hex both change, and the snapshot reports the part and the mote that changed
-// them.
+// WHY THE FRAME'S OWN OPERATIONS ARE READ AND NOT ONLY THE SNAPSHOT. A surface that
+// posed a copy of the game — a state built beside the one the loop is drawing, or a
+// snapshot synthesized from the arguments it was handed — would answer every
+// reading perfectly and hand the loop nothing to draw. So the verdict is the two
+// together: the frame after the two poses issues a hub draw on the arm's anchor hex
+// and a mote draw on the mote's hex, neither of which the frame before them issued,
+// and the snapshot reports the part and the mote that put them there.
 //
 // THE POSE is `openBareRun`'s empty world on `BARE` — no part, no mote, no fixture
-// — so the two hexes read below hold nothing at all before the two poses and
-// exactly one thing each after them. `EAST` is three hexes from `ORIGIN`, well
-// clear of the arm's own footprint, so neither reading can be moved by the other's
-// subject.
+// — so the two hexes read below are drawn on by nothing at all before the two poses
+// and by exactly one sprite each after them. `EAST` is three hexes from `ORIGIN`,
+// well clear of the arm's own footprint, so neither reading can be moved by the
+// other's subject.
+//
+// EACH READING IS FENCED BY THE SPRITE'S OWN CANVAS — `HUB_SPRITE_SIZE` (`40`) and
+// `MOTE_SPRITE_SIZE` (`44`), which `specs/assets.md` authors each sprite at and
+// draws "at that size in logical units, centered on the thing it depicts, so
+// nothing is scaled at draw time". The gripper the arm also puts on the field is on
+// a canvas of its own, so it is never mistaken for the hub.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertLength,
-  assertNotNull,
-} from "../assert";
-import { HEX_PITCH } from "../constants";
-import { hexCenter } from "../field";
+import { assertEqual, assertLength, assertNotNull } from "../assert";
+import { HUB_SPRITE_SIZE, MOTE_SPRITE_SIZE } from "../constants";
+import { hexCenter, type Hex } from "../field";
 import { BARE, EAST, ORIGIN } from "../fixtures";
 import {
   captureStill,
   createHarness,
-  differingShare,
+  imagesNear,
   moteAt,
   openBareRun,
   partById,
   placePart,
   poseOf,
   spawnMote,
+  type DrawCall,
   type Harness,
+  type ImageDraw,
 } from "../harness";
 
-/** A square over one hex, in logical units, addressed at its top-left corner. */
-function overHex(hex: { q: number; r: number }): {
-  x: number;
-  y: number;
-  size: number;
-} {
-  const centre = hexCenter(hex);
-  return {
-    x: centre.x - HEX_PITCH / 2,
-    y: centre.y - HEX_PITCH / 2,
-    size: HEX_PITCH,
-  };
-}
+/** How near a sprite's centre must land to count as drawn on a hex. */
+const ON_POINT = 6;
 
-const ARM_SQUARE = overHex(ORIGIN);
-const MOTE_SQUARE = overHex(EAST);
+/** The sprites a frame drew on a hex, at the canvas the sprite is authored on. */
+function spritesOn(
+  calls: readonly DrawCall[],
+  hex: Hex,
+  size: number,
+): ImageDraw[] {
+  return imagesNear(calls, hexCenter(hex), ON_POINT).filter(
+    (draw) => draw.image.width === size && draw.image.height === size,
+  );
+}
 
 let h: Harness;
 
@@ -77,17 +77,16 @@ afterEach(async () => {
 it("poses the game that is being drawn, and reads the same change back", async () => {
   await openBareRun(h, { challenge: BARE });
   await h.advance(1);
-  const emptyArmHex = await h.pixelRect(
-    ARM_SQUARE.x,
-    ARM_SQUARE.y,
-    ARM_SQUARE.size,
-    ARM_SQUARE.size,
+  const empty = await h.lastCalls();
+  assertLength(
+    spritesOn(empty, ORIGIN, HUB_SPRITE_SIZE),
+    0,
+    "the empty world draws no hub on the hex the arm is about to stand on",
   );
-  const emptyMoteHex = await h.pixelRect(
-    MOTE_SQUARE.x,
-    MOTE_SQUARE.y,
-    MOTE_SQUARE.size,
-    MOTE_SQUARE.size,
+  assertLength(
+    spritesOn(empty, EAST, MOTE_SPRITE_SIZE),
+    0,
+    "and no mote on the hex the mote is about to rest on",
   );
 
   const arm = await placePart(h, "arm", ORIGIN, 0);
@@ -121,26 +120,15 @@ it("poses the game that is being drawn, and reads the same change back", async (
     "and the next snapshot reports it resting on the hex it was given",
   );
 
-  const drawnArmHex = await h.pixelRect(
-    ARM_SQUARE.x,
-    ARM_SQUARE.y,
-    ARM_SQUARE.size,
-    ARM_SQUARE.size,
-  );
-  const drawnMoteHex = await h.pixelRect(
-    MOTE_SQUARE.x,
-    MOTE_SQUARE.y,
-    MOTE_SQUARE.size,
-    MOTE_SQUARE.size,
-  );
-  assertGreaterThan(
-    differingShare(drawnArmHex, emptyArmHex),
-    0,
+  const drawn = await h.lastCalls();
+  assertLength(
+    spritesOn(drawn, ORIGIN, HUB_SPRITE_SIZE),
+    1,
     "the posed part appears on the field the game is drawing, not only in a reading",
   );
-  assertGreaterThan(
-    differingShare(drawnMoteHex, emptyMoteHex),
-    0,
+  assertLength(
+    spritesOn(drawn, EAST, MOTE_SPRITE_SIZE),
+    1,
     "and so does the posed mote",
   );
 });

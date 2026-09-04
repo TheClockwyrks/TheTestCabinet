@@ -22,7 +22,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
-import { TITLE_ITEMS } from "../constants";
+import { RECORDING_RUN_UP, RECORDING_SETTLE, TITLE_ITEMS } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -72,9 +72,12 @@ it("sets the mode to extras when EXTRAS is taken", async () => {
     `the highlight stands on the EXTRAS entry of TITLE_ITEMS (index ${EXTRAS_ITEM})`,
   );
 
-  const after = await captureReplay(h, "extras-mode", () =>
-    pressAction(h, "confirm"),
-  );
+  const after = await captureReplay(h, "extras-mode", async () => {
+    await h.advance(RECORDING_RUN_UP);
+    const taken = await pressAction(h, "confirm");
+    await h.advance(RECORDING_SETTLE);
+    return taken;
+  });
 
   assertEqual(
     after.mode,
