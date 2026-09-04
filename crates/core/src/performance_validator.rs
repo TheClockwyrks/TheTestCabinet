@@ -426,8 +426,11 @@ fn score_case(
         first_mismatch_tick: score.first_mismatch_tick,
         detail,
         // Recorded whether or not the run passed: for a passing run this is what
-        // playback verifies itself against, and for a wrong or over-ceiling one it
-        // shows exactly what the engine produced at each snapshot.
+        // playback verifies itself against (the console's player compares the frames
+        // it draws to these at the graded ticks inside the played window), and for a
+        // wrong or over-ceiling one it shows exactly what the engine produced at each
+        // snapshot. These are checksums the host derived from the returned state, not
+        // ones the engine merely reported — see `lattice_host::score_against`.
         snapshots: run
             .snapshots
             .iter()

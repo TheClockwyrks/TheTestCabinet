@@ -1,8 +1,8 @@
 {
   "version": 1,
   "grid": {
-    "width": 17,
-    "height": 5
+    "width": 16,
+    "height": 6
   },
   "ticks": 900,
   "snapshots": [
@@ -14,7 +14,7 @@
     {
       "type": "source",
       "x": 0,
-      "y": 2,
+      "y": 3,
       "dir": "E",
       "item": "iron-ore",
       "lane": "both",
@@ -23,71 +23,93 @@
     {
       "type": "belt",
       "x": 1,
-      "y": 2,
+      "y": 3,
       "dir": "E",
       "tier": "fast"
     },
     {
       "type": "belt",
       "x": 2,
-      "y": 2,
+      "y": 3,
       "dir": "E",
       "tier": "fast"
     },
     {
       "type": "inserter",
       "x": 3,
-      "y": 2,
+      "y": 3,
       "dir": "E"
     },
     {
-      "type": "assembler",
+      "type": "furnace",
       "x": 4,
-      "y": 1,
+      "y": 2,
       "recipe": "iron-plate"
     },
     {
+      "type": "source",
+      "x": 5,
+      "y": 0,
+      "dir": "S",
+      "item": "coal",
+      "lane": "both",
+      "period": 2
+    },
+    {
       "type": "inserter",
-      "x": 7,
-      "y": 2,
+      "x": 5,
+      "y": 1,
+      "dir": "S"
+    },
+    {
+      "type": "inserter",
+      "x": 6,
+      "y": 3,
       "dir": "E"
     },
     {
       "type": "belt",
+      "x": 7,
+      "y": 3,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
       "x": 8,
-      "y": 2,
+      "y": 3,
       "dir": "E",
       "tier": "fast"
     },
     {
       "type": "belt",
       "x": 9,
-      "y": 2,
+      "y": 3,
       "dir": "E",
       "tier": "fast"
     },
     {
       "type": "inserter",
       "x": 10,
-      "y": 2,
+      "y": 3,
       "dir": "E"
     },
     {
       "type": "assembler",
       "x": 11,
-      "y": 1,
+      "y": 2,
       "recipe": "iron-gear"
     },
     {
       "type": "inserter",
       "x": 14,
-      "y": 2,
+      "y": 3,
       "dir": "E"
     },
     {
       "type": "sink",
       "x": 15,
-      "y": 2,
+      "y": 3,
       "dir": "W"
     }
   ]

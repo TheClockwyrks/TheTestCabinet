@@ -1,0 +1,382 @@
+:root {
+  --bg: #0b1120;
+  --panel: #111a2e;
+  --panel-2: #16233d;
+  --line: #24344f;
+  --text: #e2e8f0;
+  --muted: #8aa0c0;
+  --accent: #38bdf8;
+  --accent-ink: #04202f;
+  --danger: #f87171;
+  --ok: #4ade80;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font:
+    13px/1.4 ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* --- Toolbar --- */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 8px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+}
+
+.group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.group.status {
+  gap: 14px;
+  color: var(--muted);
+}
+
+.status .ok {
+  color: var(--ok);
+}
+.status .invalid {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.export {
+  margin-left: auto;
+}
+
+.inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}
+
+/* --- Body layout --- */
+.body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 220px 1fr 240px;
+  min-height: 0;
+}
+
+.palette,
+.inspector {
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  padding: 14px;
+  overflow-y: auto;
+}
+
+.inspector {
+  border-right: none;
+  border-left: 1px solid var(--line);
+}
+
+.palette h2,
+.inspector h2 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+/* --- Stage / board --- */
+.stage {
+  overflow: auto;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      #0a0f1c,
+      #0a0f1c 1px,
+      transparent 1px,
+      transparent 32px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      #0a0f1c,
+      #0a0f1c 1px,
+      transparent 1px,
+      transparent 32px
+    ),
+    #0d1424;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 20px;
+}
+
+.board {
+  position: relative;
+  flex: 0 0 auto;
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.sim-canvas,
+.overlay-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  image-rendering: pixelated;
+}
+
+.overlay-canvas {
+  cursor: crosshair;
+  touch-action: none;
+}
+
+/* --- Palette --- */
+.kind-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.kind {
+  padding: 8px 6px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.kind:hover {
+  border-color: var(--accent);
+}
+.kind.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.field {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.field-label {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+
+.facing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dir {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.hint {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+kbd {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+/* --- Inspector --- */
+.inspect-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.badge {
+  background: var(--accent);
+  color: var(--accent-ink);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.coord {
+  color: var(--muted);
+}
+
+/* --- Controls --- */
+button {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+}
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+button.danger {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--danger) 22%, transparent);
+  color: var(--danger);
+}
+button.danger:hover {
+  border-color: var(--danger);
+}
+
+.inspector .danger {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.speeds {
+  display: inline-flex;
+  gap: 3px;
+}
+.speed {
+  padding: 4px 8px;
+}
+.speed.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+input,
+select {
+  width: 100%;
+  padding: 5px 7px;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+}
+.inline input {
+  width: 64px;
+}
+
+/* --- Scenario file controls --- */
+.file select {
+  max-width: 320px;
+}
+.file button {
+  white-space: nowrap;
+}
+.file .editing {
+  color: var(--muted);
+  font-size: 12px;
+}
+.status .notice {
+  color: var(--accent);
+}
+.inline.bad {
+  color: var(--danger);
+}
+.inline.bad input {
+  border-color: var(--danger);
+}
+
+/* --- Grid presets --- */
+.presets {
+  display: inline-flex;
+  gap: 4px;
+}
+.preset {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.preset.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+/* --- Recipe info --- */
+.recipe-info {
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.recipe-line {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+.recipe-line:last-child {
+  margin-bottom: 0;
+}
+.recipe-tag {
+  flex: 0 0 58px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.recipe-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.recipe-item {
+  color: var(--text);
+}
+.recipe-count {
+  color: var(--accent);
+  font-weight: 600;
+}
+.recipe-craft {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: italic;
+}

@@ -1,7 +1,7 @@
 [
   {
     "tick": 100,
-    "checksum": "fnv1a64:a55d043fbd598528",
+    "checksum": "fnv1a64:fce012e52d4ab83a",
     "entities": [
       {
         "source": {
@@ -95,12 +95,24 @@
         }
       },
       {
-        "assembler": {
+        "furnace": {
           "inputs": {
+            "coal": 3,
             "iron-ore": 3
           },
           "output": {},
           "craft_left": 11
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 1
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 2
         }
       },
       {
@@ -120,7 +132,7 @@
   },
   {
     "tick": 200,
-    "checksum": "fnv1a64:d819d108d44c42f6",
+    "checksum": "fnv1a64:80427b88e7b60604",
     "entities": [
       {
         "source": {
@@ -215,12 +227,24 @@
         }
       },
       {
-        "assembler": {
+        "furnace": {
           "inputs": {
+            "coal": 6,
             "iron-ore": 5
           },
           "output": {},
           "craft_left": 7
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 2
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 4
         }
       },
       {
@@ -240,7 +264,7 @@
   },
   {
     "tick": 300,
-    "checksum": "fnv1a64:02ee767d072b2817",
+    "checksum": "fnv1a64:75156b01d58158ff",
     "entities": [
       {
         "source": {
@@ -334,12 +358,24 @@
         }
       },
       {
-        "assembler": {
+        "furnace": {
           "inputs": {
+            "coal": 8,
             "iron-ore": 8
           },
           "output": {},
           "craft_left": 3
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
         }
       },
       {

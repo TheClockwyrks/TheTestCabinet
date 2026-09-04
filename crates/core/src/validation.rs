@@ -631,9 +631,15 @@ pub struct PerformanceCaseResult {
     ///
     /// Recorded so [browser playback](crate::validation) can *prove* what it is
     /// drawing: playback loads the run's **own** engine module and steps it, and at
-    /// each scheduled snapshot tick can compare the module's checksum against the one
-    /// recorded here — a cheap assertion that the wasm it is animating is the engine
-    /// the run graded, not a stand-in.
+    /// each graded tick inside the played window it compares the module's checksum
+    /// against the one recorded here, warning when they differ — a cheap assertion
+    /// that the wasm it is animating is the engine the run graded, not a stand-in.
+    ///
+    /// The checksums are worth comparing against because the grader *derived* them
+    /// from state rather than accepting them as reported: the host re-serializes each
+    /// returned snapshot to canonical bytes and rejects a checksum that is not its
+    /// own state's. A run recorded before that gate existed carries checksums that
+    /// were taken on trust.
     ///
     /// `#[serde(default)]` because run records written before this field existed
     /// must still load.

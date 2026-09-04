@@ -38,6 +38,19 @@ if (typeof window !== "undefined" && !window.matchMedia) {
   };
 }
 
+// jsdom implements no ResizeObserver, and components that size themselves to their
+// container (the chart primitive, the Lattice player's fit-to-window zoom) construct
+// one in an effect — which would throw during render rather than degrade. Stub it as
+// an observer that never fires: jsdom reports every box as zero anyway, so there is no
+// measurement to deliver, and each consumer already renders sensibly without one.
+if (!("ResizeObserver" in globalThis)) {
+  (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  };
+}
+
 // jsdom has no canvas backend, so HTMLCanvasElement.getContext throws a "Not
 // implemented" error — and jsdom logs that to its virtual console (→ test stderr)
 // even when the caller catches it (as `supportsWebGL` does). None of these tests

@@ -37,7 +37,9 @@ operator steps: deploy, commit and push the lockfile, and re-ingest.
 ## Reference forms
 
 `publish-reference` targets the variants that declare a
-`reference_implementation`, and a reference takes one of two forms.
+`reference_implementation`, and such a reference takes one of two publishable
+forms. A third form is published by nothing at all, and so takes none of the
+operator steps above; see [Bundled references](#bundled-references).
 
 ### Buildable references
 
@@ -56,6 +58,36 @@ frame, and its reference is a
 [`draw.sh`](/testing/asset-generation/manifests/overview/) of drawing-binary
 calls that `publish-reference` runs, uploading the produced frames to the public
 snapshot bucket. See [Asset-generation references](#asset-generation-references).
+
+### Bundled references
+
+The [performance](/testing/performance/overview/) type's Reference tab is real,
+but nothing publishes it. Its reference is the case's scored factories played
+through the reference engine, and both the engine and the scenarios ship inside
+the UI bundle; see
+[The Reference tab](/testing/performance/lattice/architecture/#the-reference-tab).
+There is no deploy, no lockfile entry, and no re-ingest: the tab appears wherever
+the console does, including the static site, as soon as the build ships. Refresh
+it the way you refresh any vendored asset, by regenerating it in the case bundle,
+re-running `node scripts/vendor-lattice-assets.mjs`, and committing the result.
+
+A bundled reference cannot outrun its case. The release gate below exists because
+a deployed reference is live on the internet the moment it is published, whatever
+the catalog says, so publishing one for a case nobody can see would leak an answer
+key early. A bundled reference has no such window: it renders only on the
+case-detail page, so it is visible exactly when the case is. An experimental case
+is hidden from the catalog and refuses to resolve, so it never accumulates a
+published run, so it never enters the public snapshot, which emits only versions
+that have one, and a case absent from the snapshot has no page for the tab to sit
+on. A bundled reference satisfies the gate structurally rather than being waived
+from it.
+
+One thing does ship ahead of the case. The vendored scenarios are statically
+imported, so the bundler emits them into every build, including the public site's,
+whether or not the catalog carries the case, and they are fetchable by URL. That
+is deliberate and harmless here, because the same files are already in the public
+repository, as is the engine that plays them. Weigh it before vendoring anything
+into the bundle that must stay unpublished.
 
 ### Release gate
 

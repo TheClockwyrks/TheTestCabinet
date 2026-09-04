@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["vite/client"],
+    // The renderer + engine are reused straight from the console's Lattice player
+    // (`@test-cabinet/ui`'s internal `pages/runs/lattice`). Those modules are pure
+    // (no wider-app imports), so aliasing to them keeps this tool standalone without
+    // pulling the console in. Mirrors the Vite alias in `vite.config.ts`.
+    "paths": {
+      "@lattice/*": ["../../packages/ui/src/app/pages/runs/lattice/*"]
+    }
+  },
+  "include": ["src", "vite.config.ts", "scenario-api.ts", "vitest.config.ts"]
+}

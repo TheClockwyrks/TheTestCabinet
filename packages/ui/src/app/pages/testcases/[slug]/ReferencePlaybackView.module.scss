@@ -1,0 +1,49 @@
+@use "../../../styles/tokens" as t;
+
+// The performance Reference tab's body: the case's scored factories, each launchable
+// into the shared full-viewport player. A list of launchable rows rather than a grid
+// of embedded canvases — stepping a factory builds thousands of frames in memory, so
+// exactly one plays at a time, and only on request.
+//
+// Prose-free by design: the tab is the reference, so a row carries only the factory's
+// name and its launch. That leaves each row a single line, which is why there is no
+// meta column and the rows never need to stack.
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+// The factory's name, with its launch held to the right of it.
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: t.$space-md;
+  padding: t.$space-sm t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+}
+
+.name {
+  font-weight: 600;
+  min-width: 0;
+}
+
+.launch {
+  padding: t.$space-xs t.$space-md;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover {
+    background: t.$color-surface-2;
+  }
+}

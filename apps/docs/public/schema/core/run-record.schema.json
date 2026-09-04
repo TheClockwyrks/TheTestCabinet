@@ -1492,7 +1492,7 @@
         },
         "snapshots": {
           "default": [],
-          "description": "The per-snapshot checksums the submission actually produced, in schedule\norder. Empty when the engine could not be run at all.\n\nRecorded so [browser playback](crate::validation) can *prove* what it is\ndrawing: playback loads the run's **own** engine module and steps it, and at\neach scheduled snapshot tick can compare the module's checksum against the one\nrecorded here — a cheap assertion that the wasm it is animating is the engine\nthe run graded, not a stand-in.\n\n`#[serde(default)]` because run records written before this field existed\nmust still load.",
+          "description": "The per-snapshot checksums the submission actually produced, in schedule\norder. Empty when the engine could not be run at all.\n\nRecorded so [browser playback](crate::validation) can *prove* what it is\ndrawing: playback loads the run's **own** engine module and steps it, and at\neach graded tick inside the played window it compares the module's checksum\nagainst the one recorded here, warning when they differ — a cheap assertion\nthat the wasm it is animating is the engine the run graded, not a stand-in.\n\nThe checksums are worth comparing against because the grader *derived* them\nfrom state rather than accepting them as reported: the host re-serializes each\nreturned snapshot to canonical bytes and rejects a checksum that is not its\nown state's. A run recorded before that gate existed carries checksums that\nwere taken on trust.\n\n`#[serde(default)]` because run records written before this field existed\nmust still load.",
           "items": {
             "$ref": "#/$defs/PerformanceSnapshotCheck"
           },

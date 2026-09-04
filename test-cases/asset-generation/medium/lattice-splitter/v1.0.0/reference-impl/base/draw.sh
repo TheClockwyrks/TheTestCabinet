@@ -4,19 +4,32 @@
 # Draws the eight-frame East-flowing splitter sheet with `draw-sheet`, one
 # operation at a time, exactly as a model would. Run from a seeded asset
 # workspace (see `tcab publish-reference`): `draw.config.json`, the empty
-# per-frame action logs, and the blank previews are already in place, so this
-# script only draws.
+# per-frame action logs, the blank previews, and an empty `layers.json` are
+# already in place, so this script only draws.
 #
 # Nothing here restates the canvas size or the frame count — both come from the
 # seeded config, so this script cannot drift from the case manifest.
 #
-# The sprite is built in two passes per frame, which is also how the brief
-# describes the device: first the belt is laid down across the *whole* frame as
-# two stacked transport-belt cells, then the machine housing is painted on top
-# of its middle. Everything the housing covers is genuinely hidden underneath
-# it, so items really do disappear at the inputs and reappear at the outputs,
-# and the belt mouths that stay visible at the left and right edges are, pixel
-# for pixel, a Lattice transport belt.
+# The sprite is built in TWO LAYERS, which is how the brief describes the device
+# and what lets the renderer pass items *under* the machine instead of fading
+# them out:
+#
+#   1. The belt bed — the base. A continuous transport-belt surface laid straight
+#      into every frame across the *whole* width of both lanes, unbroken from the
+#      West edge to the East edge, INCLUDING the stretch beneath the machine. This
+#      is the surface items ride, so it has to run whole under the mechanism.
+#   2. The mechanism — a sheet-wide `mechanism` layer composited on top of the
+#      belt bed, carrying the housing, its output arrow, and (on a second
+#      `shuttle` layer above it) the one moving part. The layer OCCLUDES the belt
+#      beneath it in the flat sprite, but because it is a genuine separate layer
+#      with the belt whole underneath, the game renderer draws items BETWEEN the
+#      belt bed and this layer — an item slides from an input, under the
+#      mechanism, and out an output without the belt ever breaking.
+#
+# The belt mouths that stay visible at the left and right edges are, pixel for
+# pixel, a Lattice transport belt; the flat composited preview looks just as it
+# would if the housing were painted on — the difference is structural, and it is
+# the whole point.
 
 set -eu
 
@@ -189,158 +202,184 @@ belt_cell() {
 	done
 }
 
-# One horizontal band of the housing's east face, in frame $1: rows $2..$2+$3-1
-# stepped $4 px east of the flat face. Fills the step in the housing mid tone,
-# shades its outer column, and closes the silhouette with the dark outline.
-# Rows deep enough into the arrow get the amber edge instead of the shade.
+# One horizontal band of the housing's east face, on the `mechanism` layer: rows
+# $1..$1+$2-1 stepped $3 px east of the flat face. Fills the step in the housing
+# mid tone, shades its outer column, and closes the silhouette with the dark
+# outline. Rows deep enough into the arrow get the amber edge instead of the
+# shade. Painted with `--layer mechanism` (no `--frame`): the housing is static,
+# so it is drawn once and composited over every frame.
 arrow_band() {
-	frame=$1
-	y=$2
-	h=$3
-	step=$4
+	y=$1
+	h=$2
+	step=$3
 
 	if [ "$step" -gt 0 ]; then
-		draw-sheet fill-rect --frame "$frame" --x "$((HOUSE_E))" --y "$y" \
+		draw-sheet fill-rect --layer mechanism --x "$((HOUSE_E))" --y "$y" \
 			--width "$step" --height "$h" --color "$HOUSE_MID"
 	fi
 	edge=$HOUSE_DARK
 	if [ "$step" -ge "$ARROW_AMBER" ]; then
 		edge=$AMBER
 	fi
-	draw-sheet fill-rect --frame "$frame" --x "$((HOUSE_E - 1 + step))" --y "$y" \
+	draw-sheet fill-rect --layer mechanism --x "$((HOUSE_E - 1 + step))" --y "$y" \
 		--width 1 --height "$h" --color "$edge"
-	draw-sheet fill-rect --frame "$frame" --x "$((HOUSE_E + step))" --y "$y" \
+	draw-sheet fill-rect --layer mechanism --x "$((HOUSE_E + step))" --y "$y" \
 		--width 1 --height "$h" --color "$OUTLINE"
 }
 
 # The same band mirrored about the frame's centre line, so the arrow is
 # symmetric and comes to its point exactly on the divider between the two lanes.
-# $2 is the distance of the band's first row from the *nearer* end of the frame.
+# $1 is the distance of the band's first row from the *nearer* end of the frame.
 arrow_step() {
-	frame=$1
-	k=$2
-	h=$3
-	step=$4
-	arrow_band "$frame" "$k" "$h" "$step"
-	arrow_band "$frame" "$((2 * CELL - k - h))" "$h" "$step"
+	k=$1
+	h=$2
+	step=$3
+	arrow_band "$k" "$h" "$step"
+	arrow_band "$((2 * CELL - k - h))" "$h" "$step"
 }
 
-# A bolt on the lid at ($2, $3) of frame $1: a dark head with a lit top-left
-# corner, two pixels square.
+# A bolt on the lid at ($1, $2) of the `mechanism` layer: a dark head with a lit
+# top-left corner, two pixels square.
 bolt() {
-	draw-sheet fill-rect --frame "$1" --x "$2" --y "$3" \
+	draw-sheet fill-rect --layer mechanism --x "$1" --y "$2" \
 		--width 2 --height 2 --color "$OUTLINE"
-	draw-sheet set-pixel --frame "$1" --x "$2" --y "$3" --color "$HOUSE_LIGHT"
+	draw-sheet set-pixel --layer mechanism --x "$1" --y "$2" --color "$HOUSE_LIGHT"
 }
 
-frame=0
-while [ "$frame" -lt "$FRAMES" ]; do
-	# How far the whole belt pattern has advanced east in this frame.
-	offset=$((frame * STEP))
-
-	# --- The belt, laid across the whole frame -----------------------------
-	#
-	# Two stacked transport-belt cells at the same offset: the top lane's
-	# input and output, and the bottom lane's. Most of this is about to be
-	# covered by the housing, which is the point — the belt runs *under* the
-	# machine, and only the four mouths stay visible.
-	belt_cell "$frame" "$offset" 0
-	belt_cell "$frame" "$offset" "$CELL"
-
-	# --- The housing: a closed lid over the middle of both cells -----------
-	#
-	# One unbroken mass from the top of the frame to the bottom, so the two
-	# tile cells are visibly bracketed into a single machine. Nothing of the
-	# belt survives underneath it: the balancing mechanism is hidden.
-	draw-sheet fill-rect --frame "$frame" --x "$LID_X" --y 0 \
+# The whole static mechanism, painted ONCE onto the `mechanism` layer: the closed
+# lid over the middle of both cells, its bevels, the east-facing output arrow, the
+# intake seam, the balancer beam, and the lid's machine detail. None of it changes
+# frame to frame, so it is a single sheet-wide paint rather than eight identical
+# per-frame ones — and it composites above the belt bed, occluding the belt it
+# covers while the belt runs on whole underneath.
+draw_mechanism() {
+	# The lid: one unbroken mass from the top of the frame to the bottom, so the
+	# two tile cells are visibly bracketed into a single machine.
+	draw-sheet fill-rect --layer mechanism --x "$LID_X" --y 0 \
 		--width "$LID_W" --height "$((2 * CELL))" --color "$HOUSE_MID"
 
 	# Depth on the lid: the light bevel along its top and west edges, the dark
 	# tone along the bottom. (Its east edge is the arrow, shaded below.)
-	draw-sheet fill-rect --frame "$frame" --x "$LID_X" --y 0 \
+	draw-sheet fill-rect --layer mechanism --x "$LID_X" --y 0 \
 		--width 1 --height "$((2 * CELL))" --color "$HOUSE_LIGHT"
-	draw-sheet fill-rect --frame "$frame" --x "$LID_X" --y 0 \
+	draw-sheet fill-rect --layer mechanism --x "$LID_X" --y 0 \
 		--width "$LID_W" --height 1 --color "$HOUSE_LIGHT"
-	draw-sheet fill-rect --frame "$frame" --x "$LID_X" --y "$((2 * CELL - 1))" \
+	draw-sheet fill-rect --layer mechanism --x "$LID_X" --y "$((2 * CELL - 1))" \
 		--width "$LID_W" --height 1 --color "$HOUSE_DARK"
 
-	# The arrow, tabulated as bands of rows and how far east each steps the
-	# face, mirrored top to bottom about the centre line. Seventeen flat rows
-	# of shoulder, then one column of step every two rows — a clean 1-in-2
-	# rake — and a single row at full depth for the point. The band heights sum
-	# to the half-height, so the two halves meet exactly on the divider.
-	arrow_step "$frame" 0 17 0
-	arrow_step "$frame" 17 2 1
-	arrow_step "$frame" 19 2 2
-	arrow_step "$frame" 21 2 3
-	arrow_step "$frame" 23 2 4
-	arrow_step "$frame" 25 2 5
-	arrow_step "$frame" 27 2 6
-	arrow_step "$frame" 29 2 7
-	arrow_step "$frame" 31 1 8
+	# The arrow, tabulated as bands of rows and how far east each steps the face,
+	# mirrored top to bottom about the centre line. Seventeen flat rows of
+	# shoulder, then one column of step every two rows — a clean 1-in-2 rake — and
+	# a single row at full depth for the point. The band heights sum to the
+	# half-height, so the two halves meet exactly on the divider.
+	arrow_step 0 17 0
+	arrow_step 17 2 1
+	arrow_step 19 2 2
+	arrow_step 21 2 3
+	arrow_step 23 2 4
+	arrow_step 25 2 5
+	arrow_step 27 2 6
+	arrow_step 29 2 7
+	arrow_step 31 1 8
 
 	# The intake seam: the dark edge where the belt disappears under the lid.
-	draw-sheet fill-rect --frame "$frame" --x "$HOUSE_X" --y 0 \
+	draw-sheet fill-rect --layer mechanism --x "$HOUSE_X" --y 0 \
 		--width 1 --height "$((2 * CELL))" --color "$OUTLINE"
 
 	# The balancer beam: a recessed track in the housing-dark tone, running the
-	# full height across both lanes, closed off from the lid by the outline.
-	draw-sheet fill-rect --frame "$frame" --x "$BEAM_X" --y 0 \
+	# full height across both lanes, closed off from the lid by the outline. This
+	# is the track the shuttle rides.
+	draw-sheet fill-rect --layer mechanism --x "$BEAM_X" --y 0 \
 		--width "$BEAM_W" --height "$((2 * CELL))" --color "$HOUSE_DARK"
-	draw-sheet fill-rect --frame "$frame" --x "$((BEAM_X + BEAM_W))" --y 0 \
+	draw-sheet fill-rect --layer mechanism --x "$((BEAM_X + BEAM_W))" --y 0 \
 		--width 1 --height "$((2 * CELL))" --color "$OUTLINE"
 
-	# Machine details on the lid: a faint inspection seam across each end, and
-	# a bolt at each of its four corners.
-	draw-sheet fill-rect --frame "$frame" --x "$((LID_X + 1))" --y 5 \
+	# Machine details on the lid: a faint inspection seam across each end, and a
+	# bolt at each of its four corners.
+	draw-sheet fill-rect --layer mechanism --x "$((LID_X + 1))" --y 5 \
 		--width "$((LID_W - 1))" --height 1 --color "$HOUSE_DARK"
-	draw-sheet fill-rect --frame "$frame" --x "$((LID_X + 1))" --y "$((2 * CELL - 6))" \
+	draw-sheet fill-rect --layer mechanism --x "$((LID_X + 1))" --y "$((2 * CELL - 6))" \
 		--width "$((LID_W - 1))" --height 1 --color "$HOUSE_DARK"
-	bolt "$frame" "$((LID_X + 2))" 2
-	bolt "$frame" "$((HOUSE_E - 3))" 2
-	bolt "$frame" "$((LID_X + 2))" "$((2 * CELL - 4))"
-	bolt "$frame" "$((HOUSE_E - 3))" "$((2 * CELL - 4))"
+	bolt "$((LID_X + 2))" 2
+	bolt "$((HOUSE_E - 3))" 2
+	bolt "$((LID_X + 2))" "$((2 * CELL - 4))"
+	bolt "$((HOUSE_E - 3))" "$((2 * CELL - 4))"
 
-	# A long recessed inspection hatch down the middle of the lid — dark along
-	# its top and west edges, lit along its bottom and east ones, so it reads as
-	# sunk into the plate. It deliberately straddles the frame's centre line,
-	# reaching well into both tile cells: a single panel that belongs to neither
-	# lane is the clearest statement that this is one machine over both of them.
-	draw-sheet stroke-rect --frame "$frame" --x "$((LID_X + 2))" --y 20 \
+	# A long recessed inspection hatch down the middle of the lid — dark along its
+	# top and west edges, lit along its bottom and east ones, so it reads as sunk
+	# into the plate. It deliberately straddles the frame's centre line, reaching
+	# well into both tile cells: a single panel that belongs to neither lane is the
+	# clearest statement that this is one machine over both of them.
+	draw-sheet stroke-rect --layer mechanism --x "$((LID_X + 2))" --y 20 \
 		--width 5 --height 24 --color "$HOUSE_DARK"
-	draw-sheet fill-rect --frame "$frame" --x "$((LID_X + 3))" --y 43 \
+	draw-sheet fill-rect --layer mechanism --x "$((LID_X + 3))" --y 43 \
 		--width 4 --height 1 --color "$HOUSE_LIGHT"
-	draw-sheet fill-rect --frame "$frame" --x "$((LID_X + 6))" --y 21 \
+	draw-sheet fill-rect --layer mechanism --x "$((LID_X + 6))" --y 21 \
 		--width 1 --height 22 --color "$HOUSE_LIGHT"
+}
 
-	# --- The shuttle: the one moving part of the machine -------------------
-	#
-	# It parks at the top lane in frame 0, reaches the bottom lane by frame 4
-	# and climbs back, so frame 7 hands to frame 0 with no jump. The eight
-	# stops are all distinct — the descent and the climb are eased slightly
-	# differently, which is what keeps the sweep from landing twice on the same
-	# row and collapsing into a jitter between a handful of spots.
-	case $frame in
-	0) shuttle=2 ;;
-	1) shuttle=14 ;;
-	2) shuttle=28 ;;
-	3) shuttle=43 ;;
-	4) shuttle=55 ;;
-	5) shuttle=47 ;;
-	6) shuttle=32 ;;
-	7) shuttle=16 ;;
-	*) shuttle=2 ;;
-	esac
-
-	# A compact block riding the beam: dark-outlined so it reads against the
-	# housing, housing-light bodied, with the amber accent across its middle —
-	# the same amber as the movers, marking what moves.
-	draw-sheet fill-rect --frame "$frame" --x "$HOUSE_X" --y "$shuttle" \
+# The shuttle — the one moving part — painted ONCE onto its own `shuttle` layer at
+# its home (top) position, then swept down and back by keyframing the layer's Y.
+# A compact block riding the beam: dark-outlined so it reads against the housing,
+# housing-light bodied, with the amber accent across its middle — the same amber
+# as the movers, marking what moves. It sits on the `shuttle` layer (above
+# `mechanism`), so like the housing it composites over the belt and over items.
+SHUTTLE_HOME=2
+draw_shuttle() {
+	draw-sheet fill-rect --layer shuttle --x "$HOUSE_X" --y "$SHUTTLE_HOME" \
 		--width "$SHUTTLE_W" --height "$SHUTTLE_H" --color "$OUTLINE"
-	draw-sheet fill-rect --frame "$frame" --x "$((HOUSE_X + 1))" --y "$((shuttle + 1))" \
+	draw-sheet fill-rect --layer shuttle --x "$((HOUSE_X + 1))" --y "$((SHUTTLE_HOME + 1))" \
 		--width "$((SHUTTLE_W - 2))" --height "$((SHUTTLE_H - 2))" --color "$HOUSE_LIGHT"
-	draw-sheet fill-rect --frame "$frame" --x "$((HOUSE_X + 1))" --y "$((shuttle + 3))" \
+	draw-sheet fill-rect --layer shuttle --x "$((HOUSE_X + 1))" --y "$((SHUTTLE_HOME + 3))" \
 		--width "$((SHUTTLE_W - 2))" --height 1 --color "$AMBER"
+}
 
+# One Y keyframe for the shuttle layer: place the shuttle's top at canvas row $2
+# on frame $1. The layer's Y is its top edge on the canvas, and the shuttle was
+# painted at row SHUTTLE_HOME, so the key value is the desired row minus that
+# home. `constant` interp is used because every frame carries its own key — the
+# eight stops are the authored animation, not points to tween between.
+shuttle_to() {
+	draw-sheet animate-layer --layer shuttle --property y \
+		--frame "$1" --value "$(($2 - SHUTTLE_HOME))" --interp constant
+}
+
+# ── Pass 1: the belt bed (the base surface items ride) ─────────────────────────
+#
+# Two stacked transport-belt cells per frame at that frame's scroll offset: the
+# top lane's input+output and the bottom lane's, laid across the whole frame.
+# Most of this is about to be occluded by the mechanism layer, which is the
+# point — the belt runs whole *under* the machine, and only the four mouths stay
+# visible in the flat sprite.
+frame=0
+while [ "$frame" -lt "$FRAMES" ]; do
+	offset=$((frame * STEP))
+	belt_cell "$frame" "$offset" 0
+	belt_cell "$frame" "$offset" "$CELL"
 	frame=$((frame + 1))
 done
+
+# ── Pass 2: the mechanism layers, over the belt bed ────────────────────────────
+#
+# Register the two sheet-wide layers above the belt log (z 0 then z 1, so the
+# shuttle rides above the housing), then paint them. `mechanism` is static;
+# `shuttle` is painted once and animated.
+draw-sheet register-layer --name mechanism --x 0 --y 0 --width 32 --height 64 --z 0
+draw-sheet register-layer --name shuttle --x 0 --y 0 --width 32 --height 64 --z 1
+
+draw_mechanism
+draw_shuttle
+
+# The shuttle parks at the top lane in frame 0, reaches the bottom lane by frame 4
+# and climbs back, so frame 7 hands to frame 0 with no jump. The eight stops are
+# all distinct — the descent and the climb are eased slightly differently, which
+# is what keeps the sweep from landing twice on the same row and collapsing into a
+# jitter between a handful of spots.
+shuttle_to 0 2
+shuttle_to 1 14
+shuttle_to 2 28
+shuttle_to 3 43
+shuttle_to 4 55
+shuttle_to 5 47
+shuttle_to 6 32
+shuttle_to 7 16

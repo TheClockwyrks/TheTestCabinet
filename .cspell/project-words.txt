@@ -129,6 +129,7 @@ Aegis
 Aetherfall
 aimable
 alikes
+amortised
 anglerfish
 arcnode
 argenite
@@ -214,6 +215,9 @@ corroder
 corruptors
 counterline
 counterplay
+craftable
+crafter
+crafters
 crenellated
 criss
 criticals
@@ -599,6 +603,7 @@ undrawn
 undrillable
 undrilled
 unflawed
+unfuelled
 unfun
 unheld
 unhighlighted
@@ -632,6 +637,7 @@ untargetable
 untargeted
 unthinned
 untimed
+unzipper
 varint
 verdite
 vhera

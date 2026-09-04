@@ -290,7 +290,7 @@
   },
   {
     "name": "4. Two belts, both lanes, two outputs",
-    "blurb": "Two full input belts into two outputs. Every output lane carries a balanced mix of its two same-side inputs, and no item ever crosses lanes.",
+    "blurb": "Two full input belts into two outputs. Item-agnostic: each lane is balanced across the two outputs' SAME-side lanes by count (not sorted by type), so over time both outputs carry all four items — a given tick may hand one output a row of one item and the other a row of another. No item ever crosses lanes, and the two lanes are never balanced against each other.",
     "scenario": {
       "version": 1,
       "grid": {
@@ -654,6 +654,94 @@
           "type": "sink",
           "x": 8,
           "y": 5,
+          "dir": "W"
+        }
+      ]
+    }
+  },
+  {
+    "name": "7. Inserter: closer-lane priority",
+    "blurb": "A belt carries a DIFFERENT item on each lane — iron-ore on the lane CLOSER to the inserter (its own side) and copper-ore on the farther lane. The inserter grabs the closer item, iron-ore, into the top sink and lets the farther copper-ore flow past to the end sink; it reaches across to the farther lane only when the closer one's head is empty.",
+    "scenario": {
+      "version": 1,
+      "grid": {
+        "width": 8,
+        "height": 9
+      },
+      "ticks": 100000,
+      "snapshots": [
+        100000
+      ],
+      "entities": [
+        {
+          "type": "source",
+          "x": 0,
+          "y": 5,
+          "dir": "E",
+          "item": "iron-ore",
+          "lane": "left",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "sink",
+          "x": 5,
+          "y": 5,
+          "dir": "W"
+        },
+        {
+          "type": "source",
+          "x": 2,
+          "y": 7,
+          "dir": "N",
+          "item": "copper-ore",
+          "lane": "both",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 6,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 3,
+          "y": 4,
+          "dir": "N"
+        },
+        {
+          "type": "sink",
+          "x": 3,
+          "y": 3,
           "dir": "W"
         }
       ]

@@ -392,3 +392,9 @@ __pycache__/
 # largest counterexample on the other side — 33 blobs, ~117 MB of guest
 # components, SDK jars and library archives. They are all generated now, which is
 # why this note names fewer things than it once did.)
+
+# Local reference-sprite preview renders: the asset cases' reference draw scripts
+# (reference-impl/base/draw.sh) rendered to per-frame PNGs/GIFs by
+# scripts/preview-asset-reference.mjs, for eyeballing sprites while iterating.
+# Regenerable output, not source — kept on disk to review, never committed.
+/reference-previews/

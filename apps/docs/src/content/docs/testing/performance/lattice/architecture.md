@@ -75,9 +75,10 @@ the task, and doing so with far less work than a naive engine is the
 ## Prototypes and recipes
 
 The fixed constants of the world live in a prototype table that ships with the
-case in its specs and is baked into `lattice-core`: the uniform belt `SPEED`, the
-single inserter `SWING` tied to that speed, the item definitions and their stable
-index order, and the recipe table of inputs, output, and `CRAFT` cost.
+case in its specs and is baked into `lattice-core`: the per-tier belt `SPEED`,
+the single inserter `SWING` tied to the reference (`fast`) speed, the item
+definitions and their stable index order, and the recipe table of inputs, output,
+and `CRAFT` cost.
 
 A scenario refers to prototypes by name, for example `"tier": "fast"` and
 `"recipe": "iron-gear"`, and never redefines them. That keeps a scenario small
@@ -235,6 +236,25 @@ desync-detection model applied as the correctness gate. The compact checksum is
 what the validator compares, and the full canonical state is what makes a
 divergence diagnosable.
 
+### The compared checksum is derived from the returned state
+
+A submission returns JSON, and its `checksum` is a plain field in it: nothing in
+the wire format binds that string to the `entities` beside it. The host does not
+take it on trust. For each returned snapshot it re-serializes the entities the
+submission returned to canonical bytes, hashes those itself, and requires the
+result to equal both the checksum the submission reported and the reference's
+(`lattice-host`'s `score_against`). A snapshot whose reported checksum is not its
+own state's is a wrong answer, as is one naming an item the prototype table does
+not define. The re-derivation runs host-side and unmetered, so it costs a
+submission no fuel.
+
+That is what makes the state, rather than a claim about it, the graded key, and
+it is the property [browser playback](#browser-playback) depends on: the factory
+a reviewer watches is drawn from those same `entities`. Without it, an engine
+that reported the oracle's checksums beside state it never computed would grade
+as correct and then animate a factory that visibly disagreed with the
+[Reference tab](#the-reference-tab), which is exactly what once happened.
+
 ## The efficiency spread
 
 Correctness has one answer, and the cost of reaching it spans orders of
@@ -272,7 +292,9 @@ submission actually computed. The engine exports a tick-at-a-time playback ABI
 `lattice-sdk` macro wires up alongside the scored `simulate` entry, and a thin
 canvas layer drives it to draw the belts, lanes, items, and machines. As with
 [Foray's replay](/testing/adversarial/foray/architecture/#browser-playback), the
-renderer holds no rules of its own.
+renderer holds no rules of its own. The reference engine compiles to that same
+ABI, which is what the case's own [Reference tab](#the-reference-tab) plays; a
+run's playback drives the submission's module.
 
 The submission's engine is arbitrary code, and its `playback_load` runs a whole
 window of ticks up front, so it may trap, spin, or grow memory until it exhausts
@@ -285,11 +307,70 @@ full-length trace is far too large to hold. A module that fails to start leaves
 playback unavailable, since there is no reference fallback to show a factory the
 submission never ran.
 
+The scored boards are larger than a browser viewport at any legible scale: the
+medium factory is 48×32 cells and the large one 72×40, at one 32px sprite per
+cell. The player therefore fits the whole board to the window by default and
+offers a zoom ladder, with `Ctrl`/`Cmd` and the wheel zooming about the cursor,
+for looking closer. A factory is read as a whole — which lanes are starved, where
+items pile up, and which branch of the bus has stalled are all properties of the
+layout at large, invisible when a viewer can only see a screenful at a time.
+
 Playback makes a run legible rather than scoring it, and the decisive signal
 stays correctness plus the fuel number. It honours the held-out split: a run
 publishes a scored scenario for playback only for a case whose answer was
 correct, including a correct-but-over-ceiling case, so a wrong run's held-out
 input is never revealed.
+
+### The drift gate
+
+Playback re-steps the run's own module, so at a tick the run graded, the frame
+the module emits must carry the checksum the run
+[recorded](/components/core/run-records/). The player compares the two and shows
+a standing warning when they disagree, because the factory on screen is then not
+the one the verdict covers. The gate compares the checksums the two paths report
+and re-derives nothing — the renderer holds no rules — which is why it is paired
+with the host's
+[derived checksum](#the-compared-checksum-is-derived-from-the-returned-state):
+the host ties a run's recorded checksum to real state, and the drift gate ties
+the frames on screen to that recorded checksum.
+
+The gate can only check ticks inside the played window, so the scenario generator
+schedules graded snapshots inside it (`PLAYBACK_WINDOW_TICKS`, at the window's
+midpoint and its final tick) alongside the quarter, half, and end checkpoints.
+Before that, a scored scenario's earliest graded tick was 12,500 and the window
+ended at 2,500: the graded stretch and the watchable stretch were disjoint, every
+frame a viewer could see was ungraded, and the gate had nothing to compare.
+
+### The Reference tab
+
+A run's playback answers what this model's engine computed. The case's Reference
+tab answers the question underneath it — what the factory is supposed to look
+like — by playing the three scored scenarios through the reference engine. It is
+the performance-case analogue of an [end-to-end](/testing/end-to-end/overview/)
+case's reference build and an [asset](/testing/asset-generation/overview/) case's
+published reference frames: a performance case produces neither a site nor an
+image but an engine, so its reference is what the authoritative engine does.
+
+Both halves ship with the UI bundle — `lattice-core.wasm`, already vendored for
+the renderer, and the scenarios — vendored by
+`scripts/vendor-lattice-assets.mjs` from the case's replay bundle. They cannot
+come from a run's artifacts, because the tab is reachable with no run at all and
+on the static site, which has no backend to ask. That is also why the tab is
+offered off the case rather than off a per-variant signal, the way the other two
+references are.
+
+The scenarios are the scored layouts verbatim, the same grid and the same
+entities, with one change: the timeline is cut to the same dense window the SDK
+bounds a submission's playback to, so the reference and a run's factory are
+watched over identical ticks and read side by side. The reference driver, unlike
+the SDK's, has no window of its own — it emits a full canonical state every tick
+— so the cut is made in the committed scenario by the bundle's
+`gen-reference.mjs`.
+
+This does publish the held-out inputs on the case page. That is a deliberate
+call: the inputs were already published per correct run, and the answer key (the
+`.out` oracles and the fuel a run burned) is not in them, so what a reader gets
+is the factory, not the grade.
 
 ### Interpolated playback
 
@@ -321,20 +402,30 @@ brief, under the `lattice-*` slug:
 
 | Entity | Case | Frames |
 | --- | --- | --- |
-| Transport belt (scrolling surface) | `lattice-belt` | 8-frame loop |
+| Transport belt (scrolling surface) | `lattice-belt` | 48: three tiers × (8-frame straight loop + 8-frame curve) |
 | Splitter (2-tile balancer) | `lattice-splitter` | 8-frame loop |
-| Inserter (swing arm) | `lattice-inserter` | 12-frame swing cycle |
-| Assembler (3×3 machine) | `lattice-assembler` | 8-frame craft loop |
+| Inserter (swing arm) | `lattice-inserter` | 36: three tiers × 12-frame swing cycle |
+| Assembler (3×3 machine) | `lattice-assembler` | 24: three tiers × 8-frame craft loop |
 | Source fixture (emitter) | `lattice-source` | 6-frame emit pulse |
 | Sink fixture (drain) | `lattice-sink` | 6-frame consume pulse |
-| Belt items (icon set) | `lattice-items` | 8 item icons |
+| Belt items (icon set) | `lattice-items` | 17 item icons (8 base materials + 9 machine icons) |
 
-The sprites are drawn at 32 px per tile, so a one-tile entity is a 32×32 frame,
-the 3×3 assembler is 96×96, and a sub-tile belt item is 16×16. They share one
-projection: a high-angle pseudo-3D view with a single overhead light, in which
-the ground-level entities sit nearly flat in the ground plane while the machines
-read as raised blocks with real height, drawn with a lit top face, beveled sides,
-and a grounding contact shadow.
+The belt, inserter, and assembler are drawn across three upgrade tiers laid end
+to end. The atlas, `sheet.json`, records each tier's frames and its own playback
+rate, and the renderer plays the tier a belt's scenario `tier`
+(`slow`/`fast`/`express`) selects, so the tread scrolls faster the higher the
+tier. The inserter and assembler have tiered art but no engine tier yet, so the
+renderer draws tier 1 until one is resolved. The item icons cover the eight base
+materials the engine carries plus nine machine icons (belt, assembler, and
+inserter in three tiers each) seeded ahead of the recipes that will craft them.
+
+The sprites are drawn at 32 px per tile, so a one-tile entity is a 32×32 frame
+and the 3×3 assembler is 96×96. A belt item is a 32×32 icon too, which the
+renderer draws at a sub-tile half-cell so four ride a tile without swamping it.
+They share one projection: a high-angle pseudo-3D view with a single overhead
+light, in which the ground-level entities sit nearly flat in the ground plane
+while the machines read as raised blocks with real height, drawn with a lit top
+face, beveled sides, and a grounding contact shadow.
 
 Facing follows from that projection. Flat ground entities are drawn in a single
 canonical orientation, with the flow running east, and the renderer rotates them

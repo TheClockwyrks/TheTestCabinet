@@ -235,6 +235,19 @@ pub async fn upload_performance_to_backend(
             .publish_run_asset(&record.id, scenario_json, bytes)
             .await?;
     }
+
+    // The run's own engine module, so the console's browser playback can load and
+    // step it — the same wasm that graded every case. It is published under its
+    // run-level `module_wasm` filename (`engine.wasm`) and served exactly like a
+    // scenario; without this upload the console's module URL 404s and playback
+    // cannot start. A missing module (the build emitted none) is simply skipped.
+    if let Some(module_wasm) = performance.module_wasm.as_deref()
+        && let Ok(bytes) = std::fs::read(impl_dir.join(module_wasm))
+    {
+        client
+            .publish_run_asset(&record.id, module_wasm, bytes)
+            .await?;
+    }
     Ok(())
 }
 

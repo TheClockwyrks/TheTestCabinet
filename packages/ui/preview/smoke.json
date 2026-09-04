@@ -296,15 +296,15 @@
     }
   },
   {
-    "id": "assembler-single",
-    "name": "Assembler crafts; inserters feed and unload it",
-    "blurb": "Belt → inserter → assembler (iron-ore → iron-plate) → inserter → sink. Confirms an assembler crafts, an inserter feeds its input, and another inserter unloads its output.",
-    "expected": "the sink consumes iron-plate (crafted from iron-ore)",
+    "id": "furnace-single",
+    "name": "Furnace smelts ore + coal into a plate",
+    "blurb": "A furnace is fed iron-ore (from a belt to the west) and coal (from a source to the north), smelts them into iron-plate, and an inserter unloads it to a sink. Confirms a furnace smelts, needs BOTH its ore and its coal fuel, and is unloaded like an assembler.",
+    "expected": "the sink consumes iron-plate (smelted from iron-ore, burning coal)",
     "ticks": 300,
     "scenario": {
       "version": 1,
       "grid": {
-        "width": 10,
+        "width": 9,
         "height": 5
       },
       "ticks": 300,
@@ -317,7 +317,7 @@
         {
           "type": "source",
           "x": 0,
-          "y": 2,
+          "y": 3,
           "dir": "E",
           "item": "iron-ore",
           "lane": "both",
@@ -326,39 +326,54 @@
         {
           "type": "belt",
           "x": 1,
-          "y": 2,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 2,
-          "y": 2,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "inserter",
           "x": 3,
-          "y": 2,
+          "y": 3,
           "dir": "E"
         },
         {
-          "type": "assembler",
+          "type": "furnace",
           "x": 4,
-          "y": 1,
+          "y": 2,
           "recipe": "iron-plate"
         },
         {
+          "type": "source",
+          "x": 5,
+          "y": 0,
+          "dir": "S",
+          "item": "coal",
+          "lane": "both",
+          "period": 3
+        },
+        {
           "type": "inserter",
-          "x": 7,
-          "y": 2,
+          "x": 5,
+          "y": 1,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 6,
+          "y": 3,
           "dir": "E"
         },
         {
           "type": "sink",
-          "x": 8,
-          "y": 2,
+          "x": 7,
+          "y": 3,
           "dir": "W"
         }
       ]
@@ -536,15 +551,15 @@
   },
   {
     "id": "craft-chain",
-    "name": "Two-stage crafting (plate → gear)",
-    "blurb": "iron-ore is smelted to iron-plate by one assembler, then two plates are crafted into an iron-gear by a second, the stages linked by an inserter and a belt. Confirms one assembler's output feeds the next machine's input.",
-    "expected": "the sink consumes iron-gear (crafted from iron-plate, itself crafted from iron-ore)",
+    "name": "Two-stage make (furnace smelt → assembler craft)",
+    "blurb": "iron-ore is smelted to iron-plate in a coal-fired furnace, then two plates are crafted into an iron-gear by an assembler, the stages linked by an inserter and a belt. Confirms a furnace's output feeds the next machine's input.",
+    "expected": "the sink consumes iron-gear (crafted from iron-plate, smelted from iron-ore + coal)",
     "ticks": 900,
     "scenario": {
       "version": 1,
       "grid": {
-        "width": 17,
-        "height": 5
+        "width": 16,
+        "height": 6
       },
       "ticks": 900,
       "snapshots": [
@@ -556,7 +571,7 @@
         {
           "type": "source",
           "x": 0,
-          "y": 2,
+          "y": 3,
           "dir": "E",
           "item": "iron-ore",
           "lane": "both",
@@ -565,71 +580,93 @@
         {
           "type": "belt",
           "x": 1,
-          "y": 2,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 2,
-          "y": 2,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "inserter",
           "x": 3,
-          "y": 2,
+          "y": 3,
           "dir": "E"
         },
         {
-          "type": "assembler",
+          "type": "furnace",
           "x": 4,
-          "y": 1,
+          "y": 2,
           "recipe": "iron-plate"
         },
         {
+          "type": "source",
+          "x": 5,
+          "y": 0,
+          "dir": "S",
+          "item": "coal",
+          "lane": "both",
+          "period": 2
+        },
+        {
           "type": "inserter",
-          "x": 7,
-          "y": 2,
+          "x": 5,
+          "y": 1,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 6,
+          "y": 3,
           "dir": "E"
         },
         {
           "type": "belt",
+          "x": 7,
+          "y": 3,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
           "x": 8,
-          "y": 2,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 9,
-          "y": 2,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "inserter",
           "x": 10,
-          "y": 2,
+          "y": 3,
           "dir": "E"
         },
         {
           "type": "assembler",
           "x": 11,
-          "y": 1,
+          "y": 2,
           "recipe": "iron-gear"
         },
         {
           "type": "inserter",
           "x": 14,
-          "y": 2,
+          "y": 3,
           "dir": "E"
         },
         {
           "type": "sink",
           "x": 15,
-          "y": 2,
+          "y": 3,
           "dir": "W"
         }
       ]

@@ -31,6 +31,7 @@ const splitter = (x, y) => ({ type: "splitter", x, y, dir: "E" });
 const sink = (x, y) => ({ type: "sink", x, y, dir: "W" });
 const inserter = (x, y, dir) => ({ type: "inserter", x, y, dir });
 const assembler = (x, y, recipe) => ({ type: "assembler", x, y, recipe }); // 3x3 anchored top-left
+const furnace = (x, y, recipe) => ({ type: "furnace", x, y, recipe }); // 2x2 coal-fired smelter, anchored top-left
 
 // A handful of checkpoints across the run (not just the final tick), so the oracle
 // comparison catches a divergence partway through, not only the end state.
@@ -125,20 +126,24 @@ const SMOKE = [
     ]),
   },
   {
-    id: "assembler-single",
-    name: "Assembler crafts; inserters feed and unload it",
+    id: "furnace-single",
+    name: "Furnace smelts ore + coal into a plate",
     blurb:
-      "Belt → inserter → assembler (iron-ore → iron-plate) → inserter → sink. Confirms an assembler crafts, an inserter feeds its input, and another inserter unloads its output.",
-    expected: "the sink consumes iron-plate (crafted from iron-ore)",
+      "A furnace is fed iron-ore (from a belt to the west) and coal (from a source to the north), smelts them into iron-plate, and an inserter unloads it to a sink. Confirms a furnace smelts, needs BOTH its ore and its coal fuel, and is unloaded like an assembler.",
+    expected: "the sink consumes iron-plate (smelted from iron-ore, burning coal)",
     ticks: 300,
-    scenario: scene(10, 5, 300, [
-      src(0, 2, "E", "iron-ore", "both", 3),
-      belt(1, 2, "E"),
-      belt(2, 2, "E"),
-      inserter(3, 2, "E"), // feeds the assembler input
-      assembler(4, 1, "iron-plate"), // covers (4,1)-(6,3)
-      inserter(7, 2, "E"), // unloads the assembler output
-      sink(8, 2),
+    scenario: scene(9, 5, 300, [
+      // iron-ore feed from the west
+      src(0, 3, "E", "iron-ore", "both", 3),
+      belt(1, 3, "E"),
+      belt(2, 3, "E"),
+      inserter(3, 3, "E"), // feeds ore to the furnace at (4,3)
+      furnace(4, 2, "iron-plate"), // covers (4,2)-(5,3)
+      // coal fuel from the north, picked straight off the source
+      src(5, 0, "S", "coal", "both", 3),
+      inserter(5, 1, "S"), // feeds coal to the furnace at (5,2)
+      inserter(6, 3, "E"), // unloads the plate from (5,3)
+      sink(7, 3),
     ]),
   },
   {
@@ -185,27 +190,30 @@ const SMOKE = [
   },
   {
     id: "craft-chain",
-    name: "Two-stage crafting (plate → gear)",
+    name: "Two-stage make (furnace smelt → assembler craft)",
     blurb:
-      "iron-ore is smelted to iron-plate by one assembler, then two plates are crafted into an iron-gear by a second, the stages linked by an inserter and a belt. Confirms one assembler's output feeds the next machine's input.",
-    expected: "the sink consumes iron-gear (crafted from iron-plate, itself crafted from iron-ore)",
+      "iron-ore is smelted to iron-plate in a coal-fired furnace, then two plates are crafted into an iron-gear by an assembler, the stages linked by an inserter and a belt. Confirms a furnace's output feeds the next machine's input.",
+    expected: "the sink consumes iron-gear (crafted from iron-plate, smelted from iron-ore + coal)",
     ticks: 900,
-    scenario: scene(17, 5, 900, [
-      // stage 1: iron-ore -> iron-plate
-      src(0, 2, "E", "iron-ore", "both", 2),
-      belt(1, 2, "E"),
-      belt(2, 2, "E"),
-      inserter(3, 2, "E"), // feeds ore to the plate assembler at (4,2)
-      assembler(4, 1, "iron-plate"), // covers (4,1)-(6,3)
-      inserter(7, 2, "E"), // unloads plate from (6,2) onto the link belt
+    scenario: scene(16, 6, 900, [
+      // stage 1: iron-ore + coal -> iron-plate, in a furnace
+      src(0, 3, "E", "iron-ore", "both", 2),
+      belt(1, 3, "E"),
+      belt(2, 3, "E"),
+      inserter(3, 3, "E"), // feeds ore to the furnace at (4,3)
+      furnace(4, 2, "iron-plate"), // covers (4,2)-(5,3)
+      src(5, 0, "S", "coal", "both", 2),
+      inserter(5, 1, "S"), // feeds coal to the furnace at (5,2)
+      inserter(6, 3, "E"), // unloads plate from (5,3) onto the link belt
       // link belt carrying plate to stage 2
-      belt(8, 2, "E"),
-      belt(9, 2, "E"),
-      // stage 2: iron-plate ×2 -> iron-gear
-      inserter(10, 2, "E"), // feeds plate to the gear assembler at (11,2)
-      assembler(11, 1, "iron-gear"), // covers (11,1)-(13,3)
-      inserter(14, 2, "E"), // unloads gear from (13,2) into the sink
-      sink(15, 2),
+      belt(7, 3, "E"),
+      belt(8, 3, "E"),
+      belt(9, 3, "E"),
+      // stage 2: iron-plate ×2 -> iron-gear, in an assembler
+      inserter(10, 3, "E"), // feeds plate to the gear assembler at (11,3)
+      assembler(11, 2, "iron-gear"), // covers (11,2)-(13,4)
+      inserter(14, 3, "E"), // unloads gear from (13,3) into the sink
+      sink(15, 3),
     ]),
   },
 ];

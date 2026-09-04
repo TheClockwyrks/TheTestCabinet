@@ -343,7 +343,7 @@
   },
   {
     "tick": 30000,
-    "checksum": "fnv1a64:c5f82abd12c870d0",
+    "checksum": "fnv1a64:cf002d90f565bfb0",
     "entities": [
       {
         "source": {
@@ -495,7 +495,7 @@
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
               "item": "iron-gear"
             }
           ],
