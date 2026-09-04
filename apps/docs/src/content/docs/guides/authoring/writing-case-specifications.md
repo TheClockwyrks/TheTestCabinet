@@ -128,10 +128,12 @@ case picks the figure.
 ### Every review item carries a validator
 
 Every review item declares a
-[validation script](/testing/end-to-end/manifests/#automated-validation), for
-every engine the case supports. The checklist is decided by the validators and
-the reviewer overrides a verdict only as the exception; behavior is never
-something a reviewer is asked to decide.
+[validation script](/testing/end-to-end/manifests/#automated-validation). The
+script covers every engine the case supports unless the item's validation names
+`engines`, which scopes the item to the engines where the behavior is the
+build's own work rather than the engine's. The checklist is decided by the
+validators and the reviewer overrides a verdict only as the exception; behavior
+is never something a reviewer is asked to decide.
 
 ### One observable behavior per item
 
@@ -276,8 +278,7 @@ When you finish revising a case's specs or prompt, confirm each of the following
   and on `P` and resumes on either.
 - Navigating back to a menu selects the entry that led away from it.
 - Every review item asserts one observable behavior and carries a validation
-  script for every supported engine, with every threshold derived from the
-  spec.
+  script for each engine it covers, with every threshold derived from the spec.
 - A required showcase carries one review item whose validator checks only that
   the showcase exists, weighted above the default, with no other item asserting
   anything about the media.

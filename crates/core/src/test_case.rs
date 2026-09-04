@@ -1348,10 +1348,21 @@ struct ManifestReviewValidation {
     /// `validation/<item>.mjs`) for an engineless case, or relative to the engine's
     /// validator project (for example `gameplay/serve-speed.test.ts`) for a case
     /// that names one `[workspaces]` directory per engine and ships one validator
-    /// project per engine, where the same point is decided by the same-named suite
-    /// in each.
+    /// project per engine, where the same-named suite decides the point in the
+    /// project of every engine [`Self::engines`] covers, and ships in no other.
     /// Reporter-side — never seeded into a run.
     script: PathBuf,
+    /// The engines this validator decides its point on, by slug. Empty (the
+    /// default) leaves it active on every engine the case supports, which is what a
+    /// case that draws no distinction between them means. A non-empty list names a
+    /// subset: the point is meaningful under the engines it names and is dropped
+    /// from the checklist of a run on any other, so the same surface may be the
+    /// model's own code under one engine and the engine's under another. Each entry
+    /// must name an engine the case supports and none may repeat. Legal only on a
+    /// case that names one `[workspaces]` directory per engine — a case with a
+    /// single `workspace` has no engine to scope to.
+    #[serde(default)]
+    engines: Vec<String>,
     /// The media outputs the script produces, each captured from both the model's
     /// build and the reference implementation for the reviewer's side-by-side.
     /// Declared as an inline array of `{ id, name, kind }` tables.
@@ -3498,19 +3509,34 @@ pub struct ReviewValidation {
     /// Absolute host path to the debug-driver script, for a case that has one —
     /// an engineless case, whose single script is driven in a browser.
     ///
-    /// `None` for a case that declares its validators **per engine**: the same
-    /// point is decided by the same-named suite in each engine's validator
-    /// project, so which file on the host decides it is a property of the run's
-    /// engine rather than of the case, and the validator resolves it from
-    /// [`Self::script_rel`] against the project it staged.
+    /// `None` for a case that declares its validators **per engine**: the
+    /// same-named suite decides the point in the validator project of every engine
+    /// [`Self::engines`] covers, so which file on the host decides it is a property
+    /// of the run's engine rather than of the case, and the validator resolves it
+    /// from [`Self::script_rel`] against the project it staged.
     pub script: Option<PathBuf>,
     /// The script path as the case declared it, kept for display in the run's
     /// script list: version-folder-relative for an engineless case (for example
     /// `validation/ball-spin.mjs`), and relative to the engine's validator project
     /// for a per-engine case (for example `gameplay/serve-speed.test.ts`).
     pub script_rel: String,
+    /// The engines this validator is active on, in declared order. Empty when the
+    /// case declares no restriction, which is every engine it supports.
+    pub engines: Vec<String>,
     /// The media outputs the script produces, in declared order.
     pub outputs: Vec<ReviewOutput>,
+}
+
+impl ReviewValidation {
+    /// Whether this validator decides its point on a run built on `engine`.
+    ///
+    /// A point this returns `false` for is not part of that run's checklist at all:
+    /// it is not driven, no verdict is recorded against it, it is not shown to the
+    /// reviewer, and it carries no weight in the score (see
+    /// [`TestCaseVersion::review_items_for_engine`]).
+    pub fn covers(&self, engine: &str) -> bool {
+        self.engines.is_empty() || self.engines.iter().any(|slug| slug == engine)
+    }
 }
 
 /// A resolved media output of a [`ReviewValidation`] script.
@@ -4481,6 +4507,44 @@ impl TestCaseVersion {
     pub fn review_items_for(&self, variant: &Variant) -> Vec<ReviewItem> {
         let mut items = merge_review_items(&self.common_review_items, &variant.review_items);
         apply_score_exclusions(&mut items, &self.excluded_verdict_ids(variant));
+        items
+    }
+
+    /// The reviewer checklist for a run of `variant` built on `engine`:
+    /// [`Self::review_items_for`] with every point whose validator does not cover
+    /// the run's engine removed (see [`ReviewValidation::covers`]).
+    ///
+    /// Three things are dropped. A whole item whose own `validation` does not cover
+    /// `engine`. A sub-item whose `validation` does not cover `engine`, from its
+    /// parent. And a parent that declared sub-items and has none left once its own
+    /// are filtered, which would otherwise be a category with nothing under it.
+    ///
+    /// A dropped point is not part of the run at all: it is not driven, no verdict
+    /// is recorded against it, it is not shown to the reviewer, and it contributes
+    /// no weight to the score. That is what keeps a
+    /// [validator-rated](Self::validator_rated) case coherent — every graded point a
+    /// run carries is still decided by a validator, even when a point the case
+    /// declares is meaningless under the engine the run was built on. Use
+    /// [`Self::review_items_for`] instead wherever the question is what the case
+    /// declares rather than what one run answers for: a catalog listing, a case page.
+    pub fn review_items_for_engine(&self, variant: &Variant, engine: &str) -> Vec<ReviewItem> {
+        let mut items = self.review_items_for(variant);
+        items.retain_mut(|item| {
+            if item
+                .validation
+                .as_ref()
+                .is_some_and(|validation| !validation.covers(engine))
+            {
+                return false;
+            }
+            let declared_sub_items = !item.sub_items.is_empty();
+            item.sub_items.retain(|sub| {
+                sub.validation
+                    .as_ref()
+                    .is_none_or(|validation| validation.covers(engine))
+            });
+            !declared_sub_items || !item.sub_items.is_empty()
+        });
         items
     }
 
@@ -6808,14 +6872,52 @@ impl TestCaseCatalog {
                          pass/fail verdict to decide"
                     )));
                 }
+                // Which engines this validator decides its point on. Empty is the
+                // whole supported set: a case that draws no distinction between its
+                // engines validates the point on all of them. A named subset is a
+                // point that means something under one engine and nothing under
+                // another — a surface the model writes itself in an engineless build
+                // and the engine draws for it otherwise — so the point leaves the
+                // checklist of a run on any engine it does not name. Scoping needs
+                // engines to scope to, so it is refused by name on a case that
+                // names one `workspace` and no engine.
+                let engines = if v.engines.is_empty() {
+                    Vec::new()
+                } else {
+                    if !per_engine {
+                        return Err(invalid(format!(
+                            "{label} scopes its `validation` to engines, but only a case on the \
+                             engine format (`[workspaces]` / `engines`) has engines to scope to; \
+                             drop `engines` so the validator decides its point on the case's one \
+                             build"
+                        )));
+                    }
+                    let mut seen = std::collections::BTreeSet::new();
+                    for slug in &v.engines {
+                        if !engine_slugs.contains(slug) {
+                            return Err(invalid(format!(
+                                "{label} scopes its `validation` to engine `{slug}`, which this \
+                                 case does not support; name engines it supports ({})",
+                                engine_slugs.join(", ")
+                            )));
+                        }
+                        if !seen.insert(slug.clone()) {
+                            return Err(invalid(format!(
+                                "{label} names engine `{slug}` twice in its `validation` \
+                                 `engines`; each engine a validator covers is named once"
+                            )));
+                        }
+                    }
+                    v.engines.clone()
+                };
                 // Where the declared script lives depends on how the case is
                 // authored, because what it declares does. An engineless case names
                 // one script under the version folder and a browser drives it. A
                 // per-engine case names a suite inside a validator project, and it
-                // ships one project per engine, so the same declaration must resolve
-                // in EVERY engine's project — a point decided under one engine and
-                // left to the reviewer under another would be the same case graded
-                // two ways.
+                // ships one project per engine, so the declaration must resolve in
+                // the project of every engine the validator covers, and in no other:
+                // a suite sitting in an engine the validator does not name is a file
+                // nothing will ever run.
                 let script = if per_engine {
                     if escapes_folder(&v.script) {
                         return Err(invalid(format!(
@@ -6836,11 +6938,24 @@ impl TestCaseCatalog {
                                 dir = crate::validator::VALIDATION_SCRIPT_DIR
                             )));
                         }
-                        if !project.join(&v.script).is_file() {
+                        let covered = engines.is_empty() || engines.contains(engine);
+                        let present = project.join(&v.script).is_file();
+                        if covered && !present {
                             return Err(invalid(format!(
                                 "{label} validation script `{}` is not a file in engine \
                                  `{engine}`'s validator project (`{dir}/{engine}/`)",
                                 v.script.display(),
+                                dir = crate::validator::VALIDATION_SCRIPT_DIR
+                            )));
+                        }
+                        if !covered && present {
+                            return Err(invalid(format!(
+                                "{label} validation script `{}` is a file in engine \
+                                 `{engine}`'s validator project (`{dir}/{engine}/`), which its \
+                                 `engines` does not name; a scoped validator ships only in the \
+                                 projects of the engines it covers ({})",
+                                v.script.display(),
+                                engines.join(", "),
                                 dir = crate::validator::VALIDATION_SCRIPT_DIR
                             )));
                         }
@@ -6909,6 +7024,7 @@ impl TestCaseCatalog {
                 Ok(ReviewValidation {
                     script,
                     script_rel: v.script.to_string_lossy().replace('\\', "/"),
+                    engines,
                     outputs,
                 })
             };

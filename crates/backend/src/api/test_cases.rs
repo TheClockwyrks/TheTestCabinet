@@ -863,6 +863,7 @@ fn review_validation_out(validation: &crate::store::StoredReviewValidation) -> R
     ReviewValidationOut {
         script: validation.script.clone(),
         per_engine: validation.per_engine,
+        engines: validation.engines.clone(),
         outputs: validation
             .outputs
             .iter()
@@ -1610,10 +1611,17 @@ struct InstrumentationOut {
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 struct ReviewValidationOut {
     script: String,
-    /// Whether `script` names a suite inside each engine's validator project rather
-    /// than one file under the version folder.
+    /// Whether `script` names a suite inside a validator project — one per engine,
+    /// and it ships in the project of every engine
+    /// [`ReviewValidationOut::engines`] covers — rather than one file under the
+    /// version folder.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     per_engine: bool,
+    /// The engines this validator decides its point on, by slug, in declared order.
+    /// Omitted when the case declares no restriction, which leaves the point active
+    /// on every engine the case supports.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    engines: Vec<String>,
     outputs: Vec<ReviewOutputOut>,
 }
 

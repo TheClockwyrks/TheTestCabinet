@@ -1017,6 +1017,110 @@ async fn case_metadata_inlines_specs_and_description() {
 }
 
 #[tokio::test]
+async fn case_metadata_carries_a_point_s_validator_engine_scoping() {
+    // The published case metadata is the static gallery's whole picture of a case,
+    // and the gallery renders a run's checklist from it. A point whose validator
+    // names engines is not on the checklist of a run built on any other, so the
+    // scoping has to travel with the point — otherwise a visitor is shown a point
+    // the run was never graded on.
+    let mut m = manifest();
+    m.common_review_items = vec![crate::store::StoredReviewItem {
+        id: "overlay".to_string(),
+        title: "Debug overlay".to_string(),
+        text: "The overlay draws over the field.".to_string(),
+        reference: None,
+        proof: None,
+        sequences: vec![],
+        frames: vec![],
+        weight: 1,
+        graded: false,
+        domain: None,
+        failure_cap: None,
+        domains: vec![],
+        sub_items: vec![crate::store::StoredSubReviewItem {
+            id: "toggle".to_string(),
+            title: "It toggles".to_string(),
+            description: None,
+            weight: 1,
+            reference: None,
+            proof: None,
+            validation: Some(crate::store::StoredReviewValidation {
+                script: "hud/toggle.test.ts".to_string(),
+                per_engine: true,
+                engines: vec!["none".to_string()],
+                outputs: vec![],
+            }),
+            failure_cap: None,
+            domains: vec![],
+        }],
+        validation: Some(crate::store::StoredReviewValidation {
+            script: "hud/overlay.test.ts".to_string(),
+            per_engine: true,
+            engines: vec!["none".to_string(), "simple-2d".to_string()],
+            outputs: vec![],
+        }),
+    }];
+
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    let item = &parsed["commonReviewItems"][0];
+    assert_eq!(item["validation"]["engines"][0], "none");
+    assert_eq!(item["validation"]["engines"][1], "simple-2d");
+    assert_eq!(item["subItems"][0]["validation"]["engines"][0], "none");
+    // Only the scoping travels: the script and its outputs are the driver's, and
+    // the public snapshot has no business publishing them.
+    assert!(item["validation"].get("script").is_none());
+    assert!(item["validation"].get("outputs").is_none());
+}
+
+#[tokio::test]
+async fn case_metadata_omits_the_validator_of_a_human_judged_point() {
+    // A point with no validator carries no `validation` at all, so a client cannot
+    // mistake "no validator" for "a validator that covers nothing".
+    let mut m = manifest();
+    m.common_review_items = vec![crate::store::StoredReviewItem {
+        id: "feel".to_string(),
+        title: "It feels good".to_string(),
+        text: "The paddle feels responsive.".to_string(),
+        reference: None,
+        proof: None,
+        sequences: vec![],
+        frames: vec![],
+        weight: 1,
+        graded: false,
+        domain: None,
+        failure_cap: None,
+        domains: vec![],
+        sub_items: vec![],
+        validation: None,
+    }];
+
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    assert!(parsed["commonReviewItems"][0].get("validation").is_none());
+}
+
+#[tokio::test]
 async fn case_metadata_renders_template_specs_per_variant() {
     // A common `.hbs` spec (`template = true`) that branches on the variant slug,
     // seeded into two variants. The snapshot must render it FOR EACH variant, so the
@@ -3117,6 +3221,7 @@ fn validator_manifest() -> StoredManifest {
         validation: Some(StoredReviewValidation {
             script: format!("gameplay/{id}"),
             per_engine: true,
+            engines: vec![],
             outputs: vec![],
         }),
         failure_cap: Some(cap),
@@ -3223,6 +3328,149 @@ fn run_summary_score_folds_reviewer_overrides_on_a_validator_rated_version() {
     assert_eq!(score.earned, 1.0);
     assert_eq!(score.total, 2);
     assert_eq!(score.reviews, 2);
+}
+
+#[test]
+fn the_engine_aware_checklist_drops_the_points_a_run_s_engine_does_not_carry() {
+    use crate::store::{StoredReviewItem, StoredReviewValidation, StoredSubReviewItem};
+    let validation = |engines: &[&str]| {
+        Some(StoredReviewValidation {
+            script: "gameplay/point.test.ts".to_string(),
+            per_engine: true,
+            engines: engines.iter().map(|slug| (*slug).to_string()).collect(),
+            outputs: vec![],
+        })
+    };
+    let sub = |id: &str, engines: &[&str]| StoredSubReviewItem {
+        id: id.to_string(),
+        title: id.to_string(),
+        description: None,
+        weight: 1,
+        reference: None,
+        proof: None,
+        validation: validation(engines),
+        failure_cap: None,
+        domains: vec![],
+    };
+    let item =
+        |id: &str, engines: Option<&[&str]>, subs: Vec<StoredSubReviewItem>| StoredReviewItem {
+            id: id.to_string(),
+            title: id.to_string(),
+            text: format!("The build satisfies {id}."),
+            reference: None,
+            proof: None,
+            sequences: vec![],
+            frames: vec![],
+            weight: 1,
+            graded: false,
+            domain: None,
+            failure_cap: None,
+            domains: vec![],
+            sub_items: subs,
+            validation: engines.and_then(validation),
+        };
+    let mut manifest = validator_manifest();
+    manifest.common_review_items = vec![
+        // Decided on every engine the case supports.
+        item("serve", Some(&[]), vec![]),
+        // Decided only on an engineless build: under an engine the overlay is the
+        // engine's own, so validating it would test the engine rather than the model.
+        item("overlay", Some(&["none"]), vec![]),
+        // A category keeping one point and losing the other.
+        item(
+            "spin",
+            None,
+            vec![sub("stationary", &[]), sub("hud", &["none"])],
+        ),
+        // A category whose every point is scoped away goes with them.
+        item("debug", None, vec![sub("panel", &["none"])]),
+    ];
+
+    // The engine the scoped points are declared on carries all four.
+    let engineless = review_items_for_engine(&manifest, "base", "none");
+    assert_eq!(
+        engineless.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(),
+        ["serve", "overlay", "spin", "debug"]
+    );
+    assert_eq!(engineless[2].sub_items.len(), 2);
+
+    // Another engine carries neither the scoped item, the scoped sub-item, nor the
+    // category left empty by the filter.
+    let engined = review_items_for_engine(&manifest, "base", "simple-2d");
+    assert_eq!(
+        engined.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(),
+        ["serve", "spin"]
+    );
+    assert_eq!(
+        engined[1]
+            .sub_items
+            .iter()
+            .map(|s| s.id.as_str())
+            .collect::<Vec<_>>(),
+        ["stationary"]
+    );
+
+    // The engine-independent form is unchanged: it describes the case, not one run
+    // of it, so a catalog listing or a case page still shows every declared point.
+    assert_eq!(review_items_for(&manifest, "base").len(), 4);
+}
+
+#[test]
+fn a_validator_rated_run_is_scored_only_over_the_points_its_engine_carries() {
+    // A point the run's engine does not carry contributes no weight: the denominator
+    // is the checklist that engine actually decides, so a run is never marked down
+    // for a validator that could not have run against it.
+    // `validator_manifest`'s second point, `hud`, restricted to the engineless build.
+    let mut manifest = validator_manifest();
+    manifest.common_review_items[1]
+        .validation
+        .as_mut()
+        .unwrap()
+        .engines = vec!["none".to_string()];
+
+    // On `none` both points count, and the failing `hud` costs the run half of them.
+    let engineless = validator_run(
+        "r1",
+        "2026-06-17T21:40:00Z",
+        &[("serve", true), ("hud", false)],
+    );
+    let score = run_summary_score(&manifest, &engineless.record, &engineless.reviews).unwrap();
+    assert_eq!(score.earned, 1.0);
+    assert_eq!(score.total, 2);
+
+    // On `simple-2d` the run never carried `hud` at all: one point, earned.
+    let mut engined = validator_run("r2", "2026-06-17T21:41:00Z", &[("serve", true)]);
+    engined.record.subject.engine_slug = "simple-2d".to_string();
+    let score = run_summary_score(&manifest, &engined.record, &engined.reviews).unwrap();
+    assert_eq!(score.earned, 1.0);
+    assert_eq!(score.total, 1);
+}
+
+#[test]
+fn a_stored_validator_s_engine_scoping_reaches_the_core_type() {
+    // The snapshot reconstructs the core `ReviewValidation` from the stored one so
+    // the scoring path sees the same checklist the driver did; the scoping has to
+    // come back with it or `covers` would admit every engine.
+    let stored = crate::store::StoredReviewValidation {
+        script: "hud/debug-overlay.test.ts".to_string(),
+        per_engine: true,
+        engines: vec!["none".to_string()],
+        outputs: vec![],
+    };
+
+    let core = core_review_validation(&stored);
+
+    assert_eq!(core.engines, ["none"]);
+    assert!(core.covers("none"));
+    assert!(!core.covers("simple-2d"));
+
+    // An unscoped stored validator comes back covering everything.
+    let unscoped = core_review_validation(&crate::store::StoredReviewValidation {
+        engines: vec![],
+        ..stored
+    });
+    assert!(unscoped.engines.is_empty());
+    assert!(unscoped.covers("simple-2d"));
 }
 
 /// A run-wide-aesthetic review carrying the given verdict `overrides`, for the

@@ -223,7 +223,7 @@ pub(crate) fn run_vitest_suites(
     install_command: &str,
     media_dir: &Path,
 ) -> Vec<DebugScriptResult> {
-    let items = test_case.review_items_for(variant);
+    let items = test_case.review_items_for_engine(variant, engine);
     let units = drive_units(&items);
     if units.is_empty() {
         return Vec::new();

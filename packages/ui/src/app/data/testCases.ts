@@ -10,6 +10,7 @@ import type {
   CatalogShowcase,
   Erratum,
   ReferenceSheet,
+  ReviewItemValidation,
   WorkspaceFileRef,
 } from "../../client";
 import type { FailureCap } from "../../ratings";
@@ -109,6 +110,12 @@ export interface ReviewItemSummary {
    * checklist only when an erratum's `excludeFromScore` links its verdict id (still
    * checked and shown, just not scored). Absent/true otherwise. */
   scored?: boolean;
+  /** The engine scoping of this point's validator: the engines it decides the
+   * point on. A run built on any other engine does not carry the point at all, so
+   * a run-scoped surface filters this checklist through `reviewItemsForEngine`.
+   * Null when the point is human-judged, or its validator names no engines and so
+   * decides it on every engine the case supports. */
+  validation?: ReviewItemValidation | null;
   /** Name-only sub-items this item is graded by, each an independently scored
    * pass/fail point keyed by the composite `<item id>.<sub id>`. Empty for an
    * item graded as a whole. */
@@ -141,6 +148,9 @@ export interface ReviewSubItemSummary {
    * effective checklist only when an erratum's `excludeFromScore` links its composite
    * verdict id (or excludes its whole category). Absent/true otherwise. */
   scored?: boolean;
+  /** The engine scoping of this point's validator (see
+   * {@link ReviewItemSummary.validation}). */
+  validation?: ReviewItemValidation | null;
 }
 
 /** A scoring domain a case declares. A reviewer rates each independently; a run's

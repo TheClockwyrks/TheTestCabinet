@@ -759,6 +759,7 @@ fn stored_validation(validation: &test_cabinet_core::ReviewValidation) -> Stored
     StoredReviewValidation {
         script: validation.script_rel.clone(),
         per_engine: validation.script.is_none(),
+        engines: validation.engines.clone(),
         outputs: validation
             .outputs
             .iter()

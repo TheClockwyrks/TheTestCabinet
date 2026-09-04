@@ -30,7 +30,7 @@ constraints that govern the task. The matching
   follow.
 - [Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/)
   states the design rules for a playable case's debug API and its validator
-  suite, on every engine.
+  suites, engine by engine.
 - [Authoring a Case Showcase](/guides/authoring/authoring-a-case-showcase/)
   states what a variant's showcase media must show and how to capture real
   gameplay from its reference implementation.

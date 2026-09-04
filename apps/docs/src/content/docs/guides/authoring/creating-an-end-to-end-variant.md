@@ -159,11 +159,10 @@ variants = [
 ```
 
 In a case that names [engines](/testing/end-to-end/manifests/#the-starter-project)
-a `script` path is relative to the engine's validator project, and the case ships
-that suite under `validation/<engine>/` for every engine it supports. Resolution
-holds the declaration against each of them, so one declaration decides the point
-the same way whichever engine ran. See
-[The Suite](/engines/simple-2d/validators/the-suite/).
+a `script` path is relative to the engine's validator project, and the suite is
+shipped under `validation/<engine>/` for each engine the validation covers. A
+validation covers every engine the case supports unless its `engines` key names
+fewer. See [The Suite](/engines/simple-2d/validators/the-suite/).
 
 Rules enforced at resolution:
 

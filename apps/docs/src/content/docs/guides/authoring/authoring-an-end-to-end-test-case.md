@@ -182,13 +182,15 @@ Author `test-case.toml` per the [schema](/testing/end-to-end/manifests/).
   (`[review]` with `format = 2` and `[[review.categories]]`) groups each graded
   point under a named category; the top-level `[[review_item]]` arrays are the
   alternative. Each point is one observable behavior, stated in the spec exactly
-  or by explicit bounds, and carries a `validation` script for every engine the
-  case supports under `validation/<engine>/`. A case on the engine format is
+  or by explicit bounds, and carries a `validation` script under
+  `validation/<engine>/` for each engine it covers, which is every engine the
+  case supports unless the validation's `engines` key names fewer. A case on the
+  engine format is
   [validator-rated](/testing/end-to-end/evaluation/#rating-channels), so each
   point also declares the `domains` its failure lowers and a `failure_cap`, the
   best functional rating those domains keep while it fails: `broken` for a
-  gameplay-critical requirement, otherwise `scuffed`, `passable`, or `great`.
-  A point may pair an expected `reference` view with a submitted `proof`.
+  gameplay-critical requirement, otherwise `scuffed`, `passable`, or `great`. A
+  point may pair an expected `reference` view with a submitted `proof`.
   Checklist entries are reporter-side and stay out of the seeded set.
 - `[[domain]]` entries are the scoring domains. The validators rate each on the
   functional scale through the failure caps, and the run's functional rating is
@@ -197,9 +199,11 @@ Author `test-case.toml` per the [schema](/testing/end-to-end/manifests/).
 
 ### 7. Author the validators and capture baselines
 
-Every graded point carries a `validation` script for every supported engine,
-shipped under `validation/<engine>/` with the script path relative to that
-directory. Design the suites per
+Every graded point carries a `validation` script, shipped under
+`validation/<engine>/` with the script path relative to that directory, for each
+engine it covers. Give a point an `engines` list to scope it to the engines
+where the behavior is the model's own work; omitting the key covers every
+supported engine. Design the suites per
 [Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/):
 one requirement per validator, every assertion traced to the spec, scenarios
 posed through the shared harness and the debug API.

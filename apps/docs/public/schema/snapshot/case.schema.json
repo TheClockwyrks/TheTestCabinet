@@ -313,6 +313,17 @@
         "title": {
           "type": "string"
         },
+        "validation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CaseReviewValidationOut"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The point's automated-validation driver, when it declares one. Absent for a\nhuman-judged point. Carried so a run-scoped surface can drop a point the\nrun's engine does not carry (see [`CaseReviewValidationOut::engines`])."
+        },
         "weight": {
           "format": "uint32",
           "minimum": 0,
@@ -330,6 +341,20 @@
         "subItems",
         "domains"
       ],
+      "type": "object"
+    },
+    "CaseReviewValidationOut": {
+      "description": "The part of a checklist point's automated-validation driver the case metadata\nexposes: which engines the validator decides the point on. The script itself and\nits media outputs are the driver's business and are not published here.",
+      "properties": {
+        "engines": {
+          "description": "The engines this validator decides its point on, by slug, in declared order.\nEmpty leaves the point on every engine the case supports; a non-empty list is\nthe subset that carries it, and a run on any other engine has no such point.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["engines"],
       "type": "object"
     },
     "CaseSeededInputOut": {
@@ -430,6 +455,17 @@
         },
         "title": {
           "type": "string"
+        },
+        "validation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CaseReviewValidationOut"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The point's automated-validation driver, when it declares one (see\n[`CaseReviewItemOut::validation`])."
         },
         "weight": {
           "description": "How many points this point is worth. A category's weight is the sum of its\nitems' weights.",

@@ -178,11 +178,12 @@ surface and reading it back, and each carries the scoring domains its failure
 lowers and the failure cap it applies.
 
 `validation/` holds one Vitest project per engine — `validation/none/`,
-`validation/simple-2d/` and `validation/structured-2d/` — with a suite per review
-item at the `<category>/<id>.test.ts` path the item's `validation` key declares.
-The `none` suites drive the built site in Chromium through `window.__orrery`; the
-two engine projects run in process against the vendored engine and reach the
-surface through `engine.debug`. A suite deciding one item is the same text in all
+`validation/simple-2d/` and `validation/structured-2d/` — with a suite per
+review item at the `<category>/<id>.test.ts` path the item's `validation` key
+declares. The `none` suites drive the built site in Chromium through
+`window.__orrery`; the two engine projects run in process against the vendored
+engine and reach the surface through `engine.debug`. No item narrows its
+validation with `engines`, so a suite deciding one item is the same text in all
 three projects: only `harness.ts`, `surface.ts` and the Vitest configuration
 differ per engine. All `1058` pass against all three references.
 `validation/README.md` documents the harness vocabulary and how to stage a

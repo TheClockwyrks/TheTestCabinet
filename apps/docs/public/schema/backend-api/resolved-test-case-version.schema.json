@@ -691,6 +691,13 @@
     "ReviewValidationOut": {
       "description": "A review item's automated-validation driver in the §1.2 wire shape: the\nversion-folder-relative debug `script` key the driver fetches (like an asset) and\nits declared media `outputs`.",
       "properties": {
+        "engines": {
+          "description": "The engines this validator decides its point on, by slug, in declared order.\nOmitted when the case declares no restriction, which leaves the point active\non every engine the case supports.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "outputs": {
           "items": {
             "$ref": "#/$defs/ReviewOutputOut"
@@ -698,7 +705,7 @@
           "type": "array"
         },
         "perEngine": {
-          "description": "Whether `script` names a suite inside each engine's validator project rather\nthan one file under the version folder.",
+          "description": "Whether `script` names a suite inside a validator project — one per engine,\nand it ships in the project of every engine\n[`ReviewValidationOut::engines`] covers — rather than one file under the\nversion folder.",
           "type": "boolean"
         },
         "script": {

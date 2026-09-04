@@ -71,11 +71,11 @@ contract it fixes. One directory cannot stand for two engines. A `[workspaces]`
 table names one directory per engine, and declaring it is the only way a case
 may name an engine at all; a manifest keeping its single `workspace` key runs
 engineless, which is what every other version is. The same rule reaches the
-validators: a review
-item names its suite relative to the engine's validator project
-(`gameplay/serve-speed.test.ts`), and the case ships that suite in
-`validation/none/` and `validation/simple-2d/` alike, so a point is decided the
-same way whichever engine ran.
+validators: a review item names its suite relative to the engine's validator
+project (`gameplay/serve-speed.test.ts`), and a validation covering both engines
+ships that suite in `validation/none/` and `validation/simple-2d/` alike. A
+validation names `engines` to cover fewer, and no point of this version does, so
+every point is decided the same way whichever engine ran.
 
 Because both projects deliver the same game, the review items, the domains and
 the checks that decide them are the same across engines, and a score recorded
@@ -97,14 +97,15 @@ results are carried on the run.
 ## Every review point is decided by a validator
 
 Every one of this version's review points names a **validator**: a TypeScript
-test file under `validation/<engine>/`, one suite per engine for the same
-scenario. Under `simple-2d` the suite runs by Vitest **in process**: it imports
-the runtime and the build's own modules, stands the runtime up over an
-`@napi-rs/canvas` canvas with a clock of its own, and steps it an exact number of
-frames, reading behavior from the game's state, audio from the runtime's
-`cue:played` event, and drawing from either pixel readback or a recording wrapper
-around the 2D context. Under `none` the same scenario drives the built site in
-headless Chromium through `window.__carom`, taking the game off real time with
+test file under `validation/<engine>/`. No point narrows its validation with
+`engines`, so each ships one suite per engine for the same scenario. Under
+`simple-2d` the suite runs by Vitest **in process**: it imports the runtime and
+the build's own modules, stands the runtime up over an `@napi-rs/canvas` canvas
+with a clock of its own, and steps it an exact number of frames, reading
+behavior from the game's state, audio from the runtime's `cue:played` event, and
+drawing from either pixel readback or a recording wrapper around the 2D context.
+Under `none` the same scenario drives the built site in headless Chromium
+through `window.__carom`, taking the game off real time with
 `setAutoStep(false)` and stepping it with `advance`.
 
 Either way a scenario asks for a number of frames and gets exactly that number, at

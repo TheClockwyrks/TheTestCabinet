@@ -133,6 +133,7 @@ fn validation(script_rel: &str) -> ReviewValidation {
     ReviewValidation {
         script: Some(PathBuf::from(script_rel)),
         script_rel: script_rel.to_string(),
+        engines: Vec::new(),
         outputs: Vec::new(),
     }
 }
@@ -1505,4 +1506,43 @@ fn a_holding_directory_an_earlier_run_left_behind_is_cleared() {
     assert_eq!(held, stale);
     assert!(held.join("mine.ts").is_file(), "what the tree carries now");
     assert!(!held.join("stale.ts").exists(), "and nothing older");
+}
+
+#[test]
+fn a_point_scoped_away_from_the_run_s_engine_names_no_suite() {
+    // A validator restricted to the engineless build decides nothing on an
+    // engine-backed run: the point leaves the checklist, so no filter names its
+    // suite and no result is reported for it.
+    let mut overlay = item("debug-overlay", "hud/overlay.test.ts");
+    overlay.validation = Some(ReviewValidation {
+        engines: vec![crate::engine::NONE_SLUG.to_string()],
+        ..validation("hud/overlay.test.ts")
+    });
+    let test_case = version(
+        PathBuf::new(),
+        vec![
+            item("serve-initial", "gameplay/serve-initial.test.ts"),
+            overlay,
+        ],
+    );
+
+    let filters_for = |engine: &str| {
+        let items = test_case.review_items_for_engine(&variant(), engine);
+        let units = drive_units(&items);
+        let suites: Vec<Suite> = units.iter().map(|unit| Suite::of(unit, engine)).collect();
+        suite_filters(&suites)
+    };
+
+    assert_eq!(
+        filters_for(crate::engine::NONE_SLUG),
+        vec![
+            "validation/gameplay/serve-initial.test.ts".to_string(),
+            "validation/hud/overlay.test.ts".to_string(),
+        ],
+    );
+    assert_eq!(
+        filters_for("simple-2d"),
+        vec!["validation/gameplay/serve-initial.test.ts".to_string()],
+        "the engine-backed run never names the suite that decides a point it does not carry",
+    );
 }

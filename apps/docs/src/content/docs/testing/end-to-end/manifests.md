@@ -416,9 +416,10 @@ does.
 
 A per-engine case declares its [validators](/components/core/validation/) per
 engine: a review item's `validation.script` is relative to the engine's validator
-project, and the case ships that suite under `validation/<engine>/` for every
-engine it supports. Resolution holds the declaration against each of them, so a
-point cannot be decided under one engine and left to the reviewer under another.
+project, and every engine the case supports has a project of its own under
+`validation/<engine>/`. A validation covers every supported engine unless its
+`engines` key names fewer, and resolution holds the declared script against the
+project of each engine it covers.
 
 The spelling also decides who rates the run. A version on the per-engine
 spelling, other than a game jam, is validator-rated: its validators decide the
@@ -731,6 +732,29 @@ validation = { script = "validation/scoring-point.mjs", outputs = [
   test, both required; the optional `assert` records the checks that decide the
   verdict. A debug script is reporter-side and never seeded. Each script may
   drive at most one verdict unit across the whole checklist.
+- `engines` names the engines the validator decides its point on, in declared
+  order. Omitting the key, or giving an empty list, covers every engine the case
+  supports. Each entry must name a supported engine, a repeated slug is
+  rejected, and the key is legal only on a case that declares engines. A point
+  whose validator does not cover the run's engine is left out of that run's
+  checklist: it is not driven, no verdict is recorded against it, the reviewer
+  is not shown it, and it adds no weight to the run's score. Scope a point this
+  way when the behavior is the model's own work under one engine and the
+  engine's work under another.
+
+  ```toml
+  [[review_item]]
+  id = "debug-overlay"
+  title = "The debug overlay"
+  text = "The overlay draws the ball's velocity over the field."
+  weight = 1
+  domains = ["hud"]
+  failure_cap = "scuffed"
+  validation = { script = "hud/debug-overlay.test.ts", engines = ["none"], outputs = [
+    { id = "overlay", name = "The debug overlay over the field", kind = "image" },
+  ] }
+  ```
+
 - `outputs` declares the media the script captures, each an `{ id, name, kind }`.
   `name` defaults to a humanized `id`. At least one output is required and output
   ids must be unique within the script. Each output is served under the flat name

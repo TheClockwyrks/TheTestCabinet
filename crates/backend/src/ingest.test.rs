@@ -1036,3 +1036,39 @@ fn a_partial_scan_leaves_the_group_set_alone() {
     assert!(report.test_case_groups_changed);
     assert_eq!(stored_group_slugs(&store), Vec::<String>::new());
 }
+
+#[test]
+fn a_scoped_validator_carries_its_engines_into_the_stored_manifest() {
+    // The engines a validator decides its point on are resolved from the case
+    // manifest and must reach the store, since the backend resolves a run's effective
+    // checklist from the stored definition rather than from the checkout.
+    let resolved = test_cabinet_core::ReviewValidation {
+        script: None,
+        script_rel: "hud/debug-overlay.test.ts".to_string(),
+        engines: vec!["none".to_string()],
+        outputs: vec![],
+    };
+
+    let stored = stored_validation(&resolved);
+
+    assert_eq!(stored.script, "hud/debug-overlay.test.ts");
+    assert!(stored.per_engine);
+    assert_eq!(stored.engines, ["none"]);
+}
+
+#[test]
+fn an_unscoped_validator_stores_no_engine_restriction() {
+    let resolved = test_cabinet_core::ReviewValidation {
+        script: Some(std::path::PathBuf::from("/host/validation/ball-spin.mjs")),
+        script_rel: "validation/ball-spin.mjs".to_string(),
+        engines: vec![],
+        outputs: vec![],
+    };
+
+    let stored = stored_validation(&resolved);
+
+    assert!(
+        stored.engines.is_empty(),
+        "an unscoped validator stores the empty list, which means every supported engine"
+    );
+}

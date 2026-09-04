@@ -149,8 +149,9 @@ so nothing of either is committed under a reference.
 - The validator suites under `validation/none/`, `validation/simple-2d/`, and
   `validation/structured-2d/`, one file per checklist item at the path the
   manifest names. Until they exist the version does not resolve, because
-  resolution requires every declared script to be a file in every engine's
-  validator project.
+  resolution requires every declared script to be a file in the validator
+  project of each engine its validation covers, and no item here narrows itself
+  with `engines`.
 - Baselines from `tcab capture-baselines` once the suites exist, committed under
   `validation-baseline/<engine>/base/`.
 - Curated showcase media captured from the reference builds, and a `showcase` key

@@ -155,9 +155,13 @@ impl Validator for BuildValidator {
                 &build_commands.install,
                 &repo.join(VALIDATION_MEDIA_DIR),
             ),
-            ScriptedValidation::Browser => {
-                self.run_debug_scripts(test_case, variant, repo, &output_dir)
-            }
+            ScriptedValidation::Browser => self.run_debug_scripts(
+                test_case,
+                variant,
+                engine_slug(artifacts),
+                repo,
+                &output_dir,
+            ),
         };
         Ok(ValidationSummary {
             loaded: true,
@@ -343,6 +347,7 @@ impl BuildValidator {
         &self,
         test_case: &TestCaseVersion,
         variant: &Variant,
+        engine: &str,
         repo: &Path,
         output_dir: &Path,
     ) -> Vec<DebugScriptResult> {
@@ -357,7 +362,8 @@ impl BuildValidator {
         // *actual* media into the run's `.tcab/validation/` tree. `None` means there
         // is nothing to do (no scripted items) or nothing can be done (no browser) —
         // either way no results and no gate.
-        let Some(drives) = drive_scripted_items(test_case, variant, &server.url(), &media_dir)
+        let Some(drives) =
+            drive_scripted_items(test_case, variant, engine, &server.url(), &media_dir)
         else {
             return Vec::new();
         };
@@ -396,6 +402,17 @@ impl BuildValidator {
     }
 }
 
+/// The slug of the [engine](crate::engine) a collected tree was built on, which is
+/// [`crate::engine::NONE_SLUG`] for a tree seeded with no runtime. It selects both
+/// the validation path and the run's checklist (see
+/// [`TestCaseVersion::review_items_for_engine`]).
+pub(crate) fn engine_slug(artifacts: &ArtifactCollection) -> &str {
+    artifacts
+        .engine
+        .as_ref()
+        .map_or(crate::engine::NONE_SLUG, |engine| engine.slug())
+}
+
 /// Which path decides a case's scripted review points for a given collected tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ScriptedValidation {
@@ -423,10 +440,7 @@ pub(crate) fn scripted_validation(
     test_case: &TestCaseVersion,
     artifacts: &ArtifactCollection,
 ) -> ScriptedValidation {
-    let slug = artifacts
-        .engine
-        .as_ref()
-        .map_or(crate::engine::NONE_SLUG, |engine| engine.slug());
+    let slug = engine_slug(artifacts);
     if crate::vitest_validator::has_project(test_case, slug) {
         ScriptedValidation::Vitest(slug.to_string())
     } else {
@@ -577,9 +591,13 @@ pub(crate) struct DriveUnit<'a> {
 /// with sub-items contributes one unit per validated sub-item keyed by
 /// `<item>.<sub>`. Item-level validation and sub-items are mutually exclusive, so at
 /// most one branch fires per item. Both validation paths — the browser drive and the
-/// [vitest runner](crate::vitest_validator) — read their work list from here, so the
-/// set of points an engine-backed run decides is exactly the set a no-engine run
-/// would.
+/// [vitest runner](crate::vitest_validator) — read their work list from here, so one
+/// checklist flattens into the same units whichever path decides them.
+///
+/// `items` is already the run's own checklist
+/// ([`TestCaseVersion::review_items_for_engine`]): a point whose validator does not
+/// cover the run's engine is gone before this sees it, so every unit here belongs to
+/// the run and nothing filters twice.
 pub(crate) fn drive_units(items: &[ReviewItem]) -> Vec<DriveUnit<'_>> {
     items
         .iter()
@@ -620,7 +638,9 @@ pub(crate) fn drive_units(items: &[ReviewItem]) -> Vec<DriveUnit<'_>> {
 /// A unit is a verdict-bearing point: a whole review item that carries validation (it
 /// has no sub-items), or a sub-item that does. Each unit has its own script, its own
 /// verdict, and its own proof media keyed by the verdict id, so a reviewer can verify
-/// each sub-item independently.
+/// each sub-item independently. The units come from the checklist `engine` gives the
+/// run ([`TestCaseVersion::review_items_for_engine`]), so a point whose validator
+/// does not cover the engine the build was made on is never driven.
 ///
 /// This is the shared engine behind both automated-validation media flows: the
 /// per-run [`BuildValidator`] drives the *model's* build to synthesize the *actual*
@@ -638,11 +658,12 @@ pub(crate) fn drive_units(items: &[ReviewItem]) -> Vec<DriveUnit<'_>> {
 pub fn drive_scripted_items(
     test_case: &TestCaseVersion,
     variant: &Variant,
+    engine: &str,
     url: &str,
     media_dir: &Path,
 ) -> Option<Vec<ScriptedItemDrive>> {
     let instrumentation = test_case.instrumentation.as_ref()?;
-    let items = test_case.review_items_for(variant);
+    let items = test_case.review_items_for_engine(variant, engine);
     let units = drive_units(&items);
     if units.is_empty() {
         return None;
@@ -772,7 +793,7 @@ pub fn capture_baseline_media(
         return capture_baseline_suites(test_case, variant, engine, reference_dir, baseline_dir);
     }
     let server = StaticServer::start(build_dir.to_path_buf()).ok()?;
-    let drives = drive_scripted_items(test_case, variant, &server.url(), baseline_dir)?;
+    let drives = drive_scripted_items(test_case, variant, engine, &server.url(), baseline_dir)?;
     Some(
         drives
             .into_iter()

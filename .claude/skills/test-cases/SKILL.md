@@ -37,8 +37,10 @@ presence and distinguishability only.
 
 ### Every Review Item Is Validated
 
-Every review item carries a validation script for every engine the case
-supports. The checklist is decided by the validators, and a reviewer overriding
+Every review item carries a validation script. It covers every engine the case
+supports unless the validation's `engines` key names fewer, which scopes an item
+to the engines where the behavior is the model's own work rather than the
+engine's. The checklist is decided by the validators, and a reviewer overriding
 a verdict is the exception. Reviewers rate visuals, polish, and feel through the
 scoring domains; behavior is never left to a reviewer to decide.
 

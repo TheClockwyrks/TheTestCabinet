@@ -814,11 +814,17 @@ pub struct StoredReviewValidation {
     /// [`Self::per_engine`] is set.
     pub script: String,
     /// Whether the case declares this validator **per engine**, so `script` names a
-    /// suite inside every engine's validator project rather than one file under the
+    /// suite inside a validator project — one per engine, and it ships in the project
+    /// of every engine [`Self::engines`] covers — rather than one file under the
     /// version folder. Defaulted for manifests stored before the field existed, all
     /// of which name one file.
     #[serde(default)]
     pub per_engine: bool,
+    /// The engines this validator decides its point on, by slug, in declared order.
+    /// Empty leaves it active on every engine the case supports, which is what a
+    /// manifest stored before the field existed means.
+    #[serde(default)]
+    pub engines: Vec<String>,
     /// The media outputs the script produces, in declared order.
     #[serde(default)]
     pub outputs: Vec<StoredReviewOutput>,

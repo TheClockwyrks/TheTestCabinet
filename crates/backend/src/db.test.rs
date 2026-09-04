@@ -7208,6 +7208,7 @@ fn validator_manifest() -> crate::store::StoredManifest {
         validation: Some(StoredReviewValidation {
             script: format!("gameplay/{id}"),
             per_engine: true,
+            engines: vec![],
             outputs: vec![],
         }),
         failure_cap: Some(cap),

@@ -130,6 +130,7 @@ impl BackendClient for StubBackend {
                     // Store-relative until materialization roots it on disk.
                     script: Some(std::path::PathBuf::from("validation/ball-spin.mjs")),
                     script_rel: "validation/ball-spin.mjs".to_string(),
+                    engines: Vec::new(),
                     outputs: vec![crate::test_case::ReviewOutput {
                         id: "spin".to_string(),
                         name: "Spin".to_string(),

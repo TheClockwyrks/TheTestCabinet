@@ -53,6 +53,7 @@ fn validated_item(id: &str, script_rel: &str) -> crate::test_case::ReviewItem {
         validation: Some(crate::test_case::ReviewValidation {
             script: None,
             script_rel: script_rel.to_string(),
+            engines: Vec::new(),
             outputs: Vec::new(),
         }),
     }

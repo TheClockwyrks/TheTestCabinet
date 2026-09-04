@@ -133,6 +133,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             validation: Some(StoredReviewValidation {
                 script: "validation/ball-spin.mjs".to_string(),
                 per_engine: false,
+                engines: vec![],
                 outputs: vec![StoredReviewOutput {
                     id: "spin".to_string(),
                     name: "Spin".to_string(),
@@ -1078,4 +1079,45 @@ fn a_test_case_groups_slot_in_another_record_format_is_an_internal_error() {
         store.read_test_case_groups().unwrap_err(),
         BackendError::Internal(_)
     ));
+}
+
+#[test]
+fn a_validator_scoped_to_engines_round_trips_through_the_stored_manifest() {
+    // The engines a validator decides its point on are part of the definition the
+    // backend serves: the run-scoped checklist is resolved from the stored manifest,
+    // so a scoping lost at write time would silently re-admit a point the case
+    // excluded from that engine.
+    let (_dir, store) = temp_store();
+    let mut manifest = sample_manifest("pong", "v1.0.0");
+    manifest.common_review_items[0]
+        .validation
+        .as_mut()
+        .unwrap()
+        .engines = vec!["none".to_string(), "simple-2d".to_string()];
+
+    store.write_manifest(&manifest).unwrap();
+    let read = store.read_manifest("pong", "v1.0.0").unwrap();
+
+    assert_eq!(read, manifest);
+    assert_eq!(
+        read.common_review_items[0]
+            .validation
+            .as_ref()
+            .unwrap()
+            .engines,
+        ["none", "simple-2d"]
+    );
+}
+
+#[test]
+fn a_manifest_stored_before_validator_engine_scoping_reads_as_unrestricted() {
+    // The field is additive (no `STORE_FORMAT` bump): every manifest written before
+    // it existed named a validator active on every engine the case supports, which is
+    // exactly what the empty list means.
+    let stored: StoredReviewValidation = serde_json::from_str(
+        r#"{"script":"validation/ball-spin.mjs","per_engine":false,"outputs":[]}"#,
+    )
+    .unwrap();
+
+    assert!(stored.engines.is_empty());
 }
