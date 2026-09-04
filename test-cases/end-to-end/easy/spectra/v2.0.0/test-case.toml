@@ -506,7 +506,7 @@ description = "What the game looks and sounds like: the screens and their menus,
 # `overload` in `variants/overload.toml` — because the two modes genuinely disagree
 # about what a mismatched shot does, and a claim that is true under one and false
 # under the other cannot be stated commonly. A base run's checklist is therefore
-# 282 points and an overload run's is 300: 276 common behaviors of the game, the
+# 288 points and an overload run's is 306: 282 common behaviors of the game, the
 # showcase's three, and the variant's own three or twenty-one. The whole of it is
 # reporter-side material — never seeded into a run, so the model never sees it.
 # Every item restates a requirement the seeded specification already states, in
@@ -1929,8 +1929,9 @@ validation = { script = "stages/clears-on-last-drone.test.ts", outputs = [
 # The other half of that fix, and the reason it is a point in its own right:
 # specs/stages.md states that a stage clears on the MOMENT its last drone is
 # destroyed, so a wave that never held a drone is playing rather than cleared. That
-# stated rule is what makes the shared harness's empty posed wave safe for all 266
-# common points, so a build that breaks it breaks the whole checklist's premise.
+# stated rule is what makes the shared harness's empty posed wave safe for every
+# common point that poses a field, so a build that breaks it breaks the whole
+# checklist's premise.
 [[review.categories.items]]
 id = "empty-wave-does-not-clear"
 title = "An empty wave is playing, not cleared"
@@ -2683,6 +2684,15 @@ validation = { script = "pointer/title-hover-selects.test.ts", outputs = [
   { id = "menu", name = "The title menu with the hovered item selected", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "pause-hover-selects"
+title = "Moving the pointer onto a pause-menu item selects it"
+description = "On the paused screen with menuIndex 0 on RESUME, moving the pointer onto the region menuItemRect reports for QUIT TO MENU sets menuIndex to that item, with screen still paused."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/pause-hover-selects.test.ts", outputs = [
+  { id = "menu", name = "The pause menu with the hovered item selected", kind = "image" },
+] }
+[[review.categories.items]]
 id = "title-click-confirms"
 title = "A press and release inside one item confirms it"
 description = "On the title with menuIndex 0, pressing and releasing the pointer inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
@@ -2692,6 +2702,15 @@ validation = { script = "pointer/title-click-confirms.test.ts", outputs = [
   { id = "howto", name = "The how-to-play screen a click opened", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "pause-click-confirms"
+title = "A press and release inside one pause-menu item confirms it"
+description = "On the paused screen with menuIndex 0 on RESUME, pressing and releasing the pointer inside the region menuItemRect reports for QUIT TO MENU sets screen to title."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/pause-click-confirms.test.ts", outputs = [
+  { id = "title", name = "The title a click on QUIT TO MENU returned to", kind = "image" },
+] }
+[[review.categories.items]]
 id = "title-slide-off-cancels"
 title = "A press and release in different items confirms nothing"
 description = "On the title with menuIndex 0 on the mode entry, pressing the pointer inside the mode entry's region, travelling onto the region menuItemRect reports for HOW TO PLAY while held and releasing there leaves screen at title and menuIndex on HOW TO PLAY, confirming neither item."
@@ -2699,6 +2718,15 @@ domains = ["arcade", "presentation"]
 failure_cap = "passable"
 validation = { script = "pointer/title-slide-off-cancels.test.ts", outputs = [
   { id = "title", name = "The title still showing, its highlight on the item the pointer ended over", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-slide-off-cancels"
+title = "A press and release in different pause-menu items confirms nothing"
+description = "On the paused screen with menuIndex 0 on RESUME, pressing the pointer inside RESUME's region and releasing it inside QUIT TO MENU's leaves screen at paused with menuIndex on QUIT TO MENU, confirming neither item."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/pause-slide-off-cancels.test.ts", outputs = [
+  { id = "paused", name = "The pause menu still showing, its highlight on the item the pointer ended over", kind = "image" },
 ] }
 
 # --- Touch -----------------------------------------------------------------
@@ -2747,6 +2775,15 @@ validation = { script = "touch/title-landing-selects.test.ts", outputs = [
   { id = "selected", name = "The title menu with the item the contact landed on selected", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "pause-landing-selects"
+title = "A touch contact selects the pause-menu item it lands on"
+description = "On the paused screen with menuIndex 0 on RESUME, a touch contact landing inside the region menuItemRect reports for QUIT TO MENU, and not lifted, sets menuIndex to that item, with screen still paused."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "touch/pause-landing-selects.test.ts", outputs = [
+  { id = "selected", name = "The pause menu with the item the contact landed on selected", kind = "image" },
+] }
+[[review.categories.items]]
 id = "title-tap-confirms"
 title = "A contact that lifts where it landed confirms that item"
 description = "On the title with menuIndex 0, a touch contact landing and lifting inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
@@ -2756,6 +2793,15 @@ validation = { script = "touch/title-tap-confirms.test.ts", outputs = [
   { id = "howto", name = "The how-to-play screen a tap opened", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "pause-tap-confirms"
+title = "A contact that lifts where it landed confirms that pause-menu item"
+description = "On the paused screen with menuIndex 0 on RESUME, a touch contact landing and lifting inside the region menuItemRect reports for QUIT TO MENU sets screen to title."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "touch/pause-tap-confirms.test.ts", outputs = [
+  { id = "title", name = "The title a tap on QUIT TO MENU returned to", kind = "image" },
+] }
+[[review.categories.items]]
 id = "title-drag-cancels"
 title = "A contact that lifts in another item confirms nothing"
 description = "On the title with menuIndex 0 on the mode entry, a touch contact landing inside the mode entry's region, travelling onto the region menuItemRect reports for HOW TO PLAY while held and lifting there leaves screen at title and menuIndex on HOW TO PLAY, confirming neither item."
@@ -2763,6 +2809,15 @@ domains = ["arcade", "presentation"]
 failure_cap = "passable"
 validation = { script = "touch/title-drag-cancels.test.ts", outputs = [
   { id = "title", name = "The title still showing, its highlight on the item the contact ended over", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-drag-cancels"
+title = "A contact that lifts in another pause-menu item confirms nothing"
+description = "On the paused screen with menuIndex 0 on RESUME, a touch contact landing inside RESUME's region and lifting inside QUIT TO MENU's leaves screen at paused with menuIndex on QUIT TO MENU, confirming neither item."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "touch/pause-drag-cancels.test.ts", outputs = [
+  { id = "paused", name = "The pause menu still showing, its highlight on the item the contact ended over", kind = "image" },
 ] }
 
 # --- Screens & HUD ---------------------------------------------------------

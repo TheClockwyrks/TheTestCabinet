@@ -1656,6 +1656,29 @@ export function startPosed(h: Harness): void {
 }
 
 /**
+ * Pose a live run PAUSED, with `index` highlighted on the pause menu.
+ *
+ * The ground the pause menu's pointer and touch points stand on, and the pose
+ * `screens/pause-quit` already uses: {@link startPosed} opens a live, empty, quiet
+ * wave, and the screen and the highlight are then PLACED rather than walked to.
+ * `specs/instrumentation.md` provides `setScreen` and `setMenuIndex` for exactly
+ * that, so no menu key is pressed on the way in and the menu keys cannot fail the
+ * points that stand here — a build whose `pause` binding or whose menu arrows are
+ * broken still has its pointer and its touch graded on this screen, and
+ * `controls/pause-escape`, `controls/pause-p` and the `controls` menu-arrow
+ * points still decide the keys.
+ *
+ * One frame is run after the pose, so the screen the gesture then arrives on is
+ * the paused screen the build's own code drew.
+ */
+export async function posePausedMenu(h: Harness, index: number): Promise<void> {
+  startPosed(h);
+  h.debug.setScreen("paused");
+  h.debug.setMenuIndex(index);
+  await h.advance(1);
+}
+
+/**
  * Let the GAME build and enter stage `n`'s own wave, and run the one frame that
  * does it.
  *
