@@ -209,10 +209,10 @@ first.
 {{/if}}
 
 Restores every field the snapshot reports to its opening value: the `title`
-screen with `menuIndex` at `0`, the score and the best score at `0`, the combo
-multiplier at `1` with its window closed, `ticks` and `simTime` at `0`, the snake
-back to the starting chain of `specs/board.md` facing `right`, an empty turn
-buffer, no live pellet,
+screen with `menuIndex` and `titleIndex` at `0`, the score and the best score at
+`0`, the combo multiplier at `1` with its window closed, `ticks` and `simTime` at
+`0`, the snake back to the starting chain of `specs/board.md` facing `right`, an
+empty turn buffer, no live pellet,
 {{#if (eq variant.slug "maze")}}
 the obstacle course back to `OBSTACLE_CELLS`,
 {{else}}
@@ -239,13 +239,32 @@ restores.
 A pure reading of `state`, returned as the plain object under Snapshot shape
 below. It returns no state, because it poses nothing.
 
-### `setScreen(state, screen)`
+### `menuItemRect(state, index)`
 {{else}}
 ### `snapshot()`
 
 A pure read of the state, returned as the plain object under Snapshot shape
 below. It changes nothing.
 
+### `menuItemRect(index)`
+{{/if}}
+
+A pure reading of the hit region item `index` occupies on the menu the current
+screen shows, returned as `{ x, y, w, h }` in the logical units of
+`specs/overview.md`: `x` and `y` are the region's top-left corner, `w` and `h`
+its size. It is the region a pointer selects that item from, as `specs/ui.md`
+states. It reports position alone, and what a pointer or a touch contact does
+over that region stays in the game's own input handling. It changes nothing.
+
+`index` is a whole number of at least `0`. The reading answers `null` rather than
+failing on `"playing"`, which shows no menu, and whenever `index` names no item
+of the menu the current screen shows: a caller asks where an item is before it
+knows what the current menu holds, so `null` is this reading's answer for an item
+that is not there.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setScreen(state, screen)`
+{{else}}
 ### `setScreen(screen)`
 {{/if}}
 
@@ -450,6 +469,7 @@ way.
   version: 1,
   screen: "title" | "howto" | "playing" | "paused" | "gameover" | "cleared",
   menuIndex: <number>,   // the highlighted item, 0 on a screen with no menu
+  titleIndex: <number>,  // the title menu's remembered selection
   mode: {{#if (eq variant.slug "maze")}}"maze"{{else}}"classic"{{/if}},
   score: <number>,
   best: <number>,        // the best score of the session
