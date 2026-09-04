@@ -91,6 +91,9 @@ export interface SnapshotSaucer {
   mind: boolean;
   gun: boolean;
   travel: boolean;
+  fireClock: number;
+  weaveClock: number;
+  age: number;
 }
 
 export interface SnapshotTorpedo {
@@ -115,6 +118,8 @@ export interface ShatterSnapshot {
   muted: boolean;
   waveSpawning: boolean;
   saucerSpawning: boolean;
+  saucerClock: number;
+  saucerDue: number;
   ship: SnapshotShip;
   bullets: SnapshotBullet[];
   rocks: SnapshotRock[];
@@ -267,6 +272,8 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
         muted: world().audio.muted(),
         waveSpawning: state.waveSpawning,
         saucerSpawning: state.saucerSpawning,
+        saucerClock: state.saucerClock,
+        saucerDue: state.saucerDue,
         ship: {
           x: ship.x,
           y: ship.y,
@@ -293,6 +300,9 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
                 mind: saucer.mind,
                 gun: saucer.gun,
                 travel: saucer.travel,
+                fireClock: saucer.fireClock,
+                weaveClock: saucer.weaveClock,
+                age: saucer.age,
               },
         enemyBullets: state.enemyBullets.map(readBullet),
         torpedoes: state.torpedoes.map(readTorpedo),

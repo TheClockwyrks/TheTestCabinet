@@ -113,6 +113,8 @@ it("reports every documented field, with its documented type", async () => {
     "lives",
     "wave",
     "waveBanner",
+    "saucerClock",
+    "saucerDue",
     "simTime",
   ] as const) {
     assertEqual(typeof snapshot[field], "number", `${field} is a number`);
@@ -189,7 +191,16 @@ it("reports every documented field, with its documented type", async () => {
 
   // The saucer, up, with its centre, its velocity and its three faculties.
   const saucer = requireSaucer(snapshot, "the posed saucer");
-  for (const field of ["id", "x", "y", "vx", "vy"] as const) {
+  for (const field of [
+    "id",
+    "x",
+    "y",
+    "vx",
+    "vy",
+    "fireClock",
+    "weaveClock",
+    "age",
+  ] as const) {
     assertEqual(typeof saucer[field], "number", `saucer.${field} is a number`);
   }
   for (const field of ["mind", "gun", "travel"] as const) {

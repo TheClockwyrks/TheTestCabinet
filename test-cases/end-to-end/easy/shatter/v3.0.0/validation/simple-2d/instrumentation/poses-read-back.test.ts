@@ -29,7 +29,7 @@
 // the snapshot is that it reports the bit.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG } from "../constants";
+import { DEG, SAUCER_FIRE_INTERVAL, SAUCER_WEAVE_INTERVAL } from "../constants";
 import { assertCloseTo, assertEqual, assertLength } from "../assert";
 import {
   captureStill,
@@ -188,6 +188,28 @@ it("reports every value the surface poses", () => {
   assertEqual(saucer.mind, true, "addSaucer brings its mind on");
   assertEqual(saucer.gun, true, "addSaucer brings its gun on");
   assertEqual(saucer.travel, true, "addSaucer brings its travel on");
+
+  // The three clocks `addSaucer` fixes on arrival, read before a tick has run:
+  // all three move once the game is stepped, so a reading taken after an advance
+  // would grade the tick rather than the arrival (specs/instrumentation.md).
+  assertCloseTo(
+    saucer.fireClock,
+    SAUCER_FIRE_INTERVAL,
+    READ_BACK_DIGITS,
+    "addSaucer brings it on with a full fire clock",
+  );
+  assertCloseTo(
+    saucer.weaveClock,
+    SAUCER_WEAVE_INTERVAL,
+    READ_BACK_DIGITS,
+    "addSaucer brings it on with a full weave clock",
+  );
+  assertCloseTo(
+    saucer.age,
+    0,
+    READ_BACK_DIGITS,
+    "addSaucer brings it on with its lifetime clock at zero",
+  );
 
   // The mute bit is reported, and no operation sets it.
   assertEqual(typeof s.muted, "boolean", "muted");

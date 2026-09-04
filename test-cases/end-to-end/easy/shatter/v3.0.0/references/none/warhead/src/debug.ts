@@ -116,6 +116,9 @@ export interface SaucerSnapshot {
   mind: boolean;
   gun: boolean;
   travel: boolean;
+  fireClock: number;
+  weaveClock: number;
+  age: number;
 }
 
 /** A torpedo, as `snapshot` reports it. */
@@ -145,6 +148,8 @@ export interface ShatterSnapshot {
   muted: boolean;
   waveSpawning: boolean;
   saucerSpawning: boolean;
+  saucerClock: number;
+  saucerDue: number;
   /** Whether the frame loop advances the simulation. */
   autoStep: boolean;
   ship: ShipSnapshot;
@@ -271,6 +276,8 @@ export function createDebugApi(
         muted: state.muted,
         waveSpawning: state.waveSpawning,
         saucerSpawning: state.saucerSpawning,
+        saucerClock: state.saucerClock,
+        saucerDue: state.saucerDue,
         autoStep: clock.autoStep(),
         ship: {
           x: ship.x,
@@ -314,6 +321,9 @@ export function createDebugApi(
                 mind: state.saucer.mind,
                 gun: state.saucer.gun,
                 travel: state.saucer.travel,
+                fireClock: state.saucer.fireTimer,
+                weaveClock: state.saucer.weaveTimer,
+                age: state.saucer.age,
               },
         enemyBullets: state.enemyBullets.map((bullet) => ({
           id: bullet.id,

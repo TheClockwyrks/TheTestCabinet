@@ -36,6 +36,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan } from "../assert";
+import { STAR_DRAW_R } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -43,7 +44,7 @@ import {
   type Harness,
 } from "../harness";
 import { textRuns, type TextRun } from "./ink";
-import { HUD_REGION, STAR, STAR_DRAW_R } from "./scene";
+import { HUD_REGION, STAR } from "./scene";
 
 /**
  * The score the HUD is posed to carry.

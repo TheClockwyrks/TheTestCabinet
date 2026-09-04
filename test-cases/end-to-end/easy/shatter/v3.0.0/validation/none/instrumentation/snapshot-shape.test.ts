@@ -136,6 +136,8 @@ it("reports the whole documented snapshot shape over a populated field", async (
     "lives",
     "wave",
     "waveBanner",
+    "saucerClock",
+    "saucerDue",
     "simTime",
   ] as const) {
     assertEqual(typeof s[field], "number", field);
@@ -201,7 +203,16 @@ it("reports the whole documented snapshot shape over a populated field", async (
 
   // The saucer slot, which is an object while one is up.
   const saucer = requireSaucer(s, "the posed saucer");
-  for (const field of ["id", "x", "y", "vx", "vy"] as const) {
+  for (const field of [
+    "id",
+    "x",
+    "y",
+    "vx",
+    "vy",
+    "fireClock",
+    "weaveClock",
+    "age",
+  ] as const) {
     assertEqual(typeof saucer[field], "number", `saucer.${field}`);
   }
   for (const field of ["mind", "gun", "travel"] as const) {

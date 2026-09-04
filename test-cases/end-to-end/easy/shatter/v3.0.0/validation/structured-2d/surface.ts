@@ -132,6 +132,12 @@ export interface SaucerSnapshot {
   mind: boolean;
   gun: boolean;
   travel: boolean;
+  /** Seconds until its next aimed shot; `SAUCER_FIRE_INTERVAL` on arrival. */
+  fireClock: number;
+  /** Seconds until it rerolls its weave; `SAUCER_WEAVE_INTERVAL` on arrival. */
+  weaveClock: number;
+  /** Seconds it has been on the field; `0` on arrival. */
+  age: number;
 }
 
 /** One torpedo in flight. `warhead` only. */
@@ -152,7 +158,9 @@ export interface TorpedoSnapshot {
  * The plain, JSON-serializable view `snapshot()` returns.
  *
  * Every field an operation can set is present, so every operation is verifiable
- * by setting a value and reading it back. Three entries are built at the call
+ * by setting a value and reading it back — except `tickClock`, `nextId` and
+ * `rngState`, the bookkeeping `reset` restores and `specs/instrumentation.md`
+ * deliberately keeps out of the snapshot. Three entries are built at the call
  * rather than read off a field: `ship.speed` and `rocks[].radius` under both
  * variants, and `torpedoReady` under `warhead`.
  */
@@ -174,6 +182,10 @@ export interface ShatterSnapshot {
   waveSpawning: boolean;
   /** The game's own saucer arrival runs. */
   saucerSpawning: boolean;
+  /** Seconds the current arrival cadence has run. */
+  saucerClock: number;
+  /** What `saucerClock` must reach for the next saucer to arrive, in seconds. */
+  saucerDue: number;
   ship: ShipSnapshot;
   /** Every one of the ship's bullets in flight, in roster order. */
   bullets: BulletSnapshot[];
@@ -355,6 +367,8 @@ export const REQUIRED_SNAPSHOT_FIELDS = [
   "muted",
   "waveSpawning",
   "saucerSpawning",
+  "saucerClock",
+  "saucerDue",
   "ship",
   "bullets",
   "rocks",

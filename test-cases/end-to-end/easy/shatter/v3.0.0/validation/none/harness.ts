@@ -278,6 +278,12 @@ export interface SaucerView {
   gun: boolean;
   /** Its locomotion. */
   travel: boolean;
+  /** Seconds until its next aimed shot; `SAUCER_FIRE_INTERVAL` on arrival. */
+  fireClock: number;
+  /** Seconds until it rerolls its weave; `SAUCER_WEAVE_INTERVAL` on arrival. */
+  weaveClock: number;
+  /** Seconds it has been on the field; `0` on arrival. */
+  age: number;
 }
 
 /** One torpedo, as a `warhead` snapshot reports it. */
@@ -298,7 +304,9 @@ export interface TorpedoView {
  * The state a snapshot reports, exactly as `specs/instrumentation.md` shapes it.
  *
  * Every field an operation can set is here, which is what makes every pose
- * verifiable by set-then-read. `muted` is the exception in the other direction: no
+ * verifiable by set-then-read — except `tickClock`, `nextId` and `rngState`, the
+ * bookkeeping `reset` restores and `specs/instrumentation.md` deliberately keeps
+ * out of the snapshot. `muted` is the exception in the other direction: no
  * operation sets it, and it is the game's copy of the runtime's own mute bit,
  * reached the way a player reaches it through `KeyM`.
  *
@@ -324,6 +332,10 @@ export interface ShatterSnapshot {
   waveSpawning: boolean;
   /** Whether the game's own saucer arrival runs. */
   saucerSpawning: boolean;
+  /** Seconds the current arrival cadence has run. */
+  saucerClock: number;
+  /** What `saucerClock` must reach for the next saucer to arrive, in seconds. */
+  saucerDue: number;
   /** `none` only: whether the frame loop advances the simulation. */
   autoStep: boolean;
   ship: ShipView;

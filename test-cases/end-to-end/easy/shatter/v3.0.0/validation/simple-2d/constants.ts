@@ -53,6 +53,15 @@ export const STAR_Y = 360;
 export const CORE_R = 30;
 /** The radius the decorative halo fades out over. */
 export const HALO_R = 120;
+/**
+ * How far out the star may be drawn, in logical units.
+ *
+ * `specs/field.md`: "nothing of the star is drawn beyond `1.5 x HALO_R` (`HALO_R`
+ * is `120`, so nothing beyond `180`)". It is the only extent the specification
+ * fixes about the middle of the field, so it is also the figure the HUD's "clear
+ * of the field's centre" is read against.
+ */
+export const STAR_DRAW_R = 1.5 * HALO_R;
 
 /* ---- The simulation (specs/simulation.md) --------------------------------- */
 
@@ -221,6 +230,8 @@ export const WAVE_MIN_STAR_DIST = 200;
 export const START_LIVES = 3;
 /** One extra ship is granted each time the score crosses a multiple of this. */
 export const EXTRA_LIFE_STEP = 10_000;
+/** The least time an extra ship must be announced on the field for. */
+export const EXTRA_LIFE_SHOW_MIN = 0.5;
 
 /** Destroying a Large. */
 export const SCORE_LARGE = 20;

@@ -318,6 +318,10 @@ per-entity removal and the clear.
 
 `snapshot` returns exactly this object. Every field an operation can set is
 present, so every operation is verifiable by setting a value and reading it back.
+The three exceptions are `tickClock`, `nextId`, and `rngState`, which `reset`
+restores and nothing else touches: they are the game's own bookkeeping, and what
+they do is already observable through the ids fresh entities take and through two
+games seeded alike running identically.
 
 ```js
 {
@@ -331,6 +335,8 @@ present, so every operation is verifiable by setting a value and reading it back
   muted: <boolean>,
   waveSpawning: <boolean>,      // the game's own wave loop runs
   saucerSpawning: <boolean>,    // the game's own saucer arrival runs
+  saucerClock: <number>,        // seconds the current arrival cadence has run
+  saucerDue: <number>,          // seconds saucerClock must reach for the next one
 {{#if (eq engine.slug "none")}}
   autoStep: <boolean>,          // the frame loop advances the simulation
 {{/if}}
@@ -366,6 +372,9 @@ present, so every operation is verifiable by setting a value and reading it back
     id: <number>,               // fresh on each arrival; never reused while live
     x: <number>, y: <number>, vx: <number>, vy: <number>,
     mind: <boolean>, gun: <boolean>, travel: <boolean>,
+    fireClock: <number>,        // seconds until its next shot
+    weaveClock: <number>,       // seconds until it rerolls its weave
+    age: <number>,              // seconds it has been on the field
   } | null,
   // Every saucer bullet in flight, in roster order.
   enemyBullets: [
@@ -410,6 +419,11 @@ what the game holds. Some entries need a note:
 - `waveSpawning`, `saucerSpawning`, `ship.collision`, and the saucer's `mind`,
   `gun`, and `travel` are the gates and faculties, reported so each operation is
   verifiable by setting a value and reading it back.
+- The saucer's `fireClock`, `weaveClock`, and `age` are the three clocks it
+  carries, in seconds, and `saucerClock` and `saucerDue` are the arrival cadence's,
+  reported on the same terms: `addSaucer` fixes the first three at
+  `SAUCER_FIRE_INTERVAL`, `SAUCER_WEAVE_INTERVAL`, and `0`, and `reset` returns the
+  last two to the start of a game's cadence.
 {{#if (eq variant.slug "warhead")}}
 - Each torpedo's `homing` is its guidance gate, reported on the same terms.
 {{/if}}

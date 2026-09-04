@@ -133,6 +133,12 @@ export interface SaucerSnapshot {
   gun: boolean;
   /** Its locomotion runs. */
   travel: boolean;
+  /** Seconds until its next aimed shot; `SAUCER_FIRE_INTERVAL` on arrival. */
+  fireClock: number;
+  /** Seconds until it rerolls its weave; `SAUCER_WEAVE_INTERVAL` on arrival. */
+  weaveClock: number;
+  /** Seconds it has been on the field; `0` on arrival. */
+  age: number;
 }
 
 /** One torpedo in flight, as a `warhead` snapshot reports it. */
@@ -173,6 +179,10 @@ export interface ShatterSnapshot {
   waveSpawning: boolean;
   /** The game's own saucer arrival runs. */
   saucerSpawning: boolean;
+  /** Seconds the current arrival cadence has run. */
+  saucerClock: number;
+  /** What `saucerClock` must reach for the next saucer to arrive, in seconds. */
+  saucerDue: number;
   ship: ShipSnapshot;
   /** Every one of the ship's bullets in flight, in roster order. */
   bullets: BulletSnapshot[];
@@ -406,6 +416,8 @@ export const SNAPSHOT_FIELDS: Readonly<Record<string, string>> = {
   muted: "boolean",
   waveSpawning: "boolean",
   saucerSpawning: "boolean",
+  saucerClock: "number",
+  saucerDue: "number",
   ship: "object",
   bullets: "object",
   rocks: "object",
@@ -459,6 +471,9 @@ export const SAUCER_FIELDS: Readonly<Record<string, string>> = {
   mind: "boolean",
   gun: "boolean",
   travel: "boolean",
+  fireClock: "number",
+  weaveClock: "number",
+  age: "number",
 };
 
 /** Every field a torpedo's entry reports under `warhead`, with its type. */

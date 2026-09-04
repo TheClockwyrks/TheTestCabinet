@@ -127,6 +127,8 @@ describe("the debug surface", () => {
         "muted",
         "rocks",
         "saucer",
+        "saucerClock",
+        "saucerDue",
         "saucerSpawning",
         "score",
         "screen",
