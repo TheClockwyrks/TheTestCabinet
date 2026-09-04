@@ -142,7 +142,8 @@ distinguishable from the next.
 ## The operations
 
 The surface carries `version` (`SHATTER_DEBUG_VERSION`, `1`), a plain number, and
-the operations below. Values are plain numbers, strings, and booleans.
+the operations below. Values are plain numbers, strings, booleans, and the two
+records the readings below return.
 {{#if (eq engine.slug "simple-2d")}}
 
 Each operation takes the current state, `DeepReadonly<ShatterState>`, as its first
@@ -165,6 +166,7 @@ read and changes nothing.
 {{#if (eq engine.slug "none")}}| `reset(options)` | Restores the state to the title-screen values listed below. |
 {{else}}| `reset(options)` | Restores every declared field of the state to its title-screen value, listed below. |
 {{/if}}| `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
+| `menuItemRect(index)` | The hit region of the entry at `index` on the menu the current screen shows. It changes nothing. |
 
 `reset` restores `screen` to `"title"`, `menuIndex` to `0`, `score` to `0`,
 `lives` to `START_LIVES` (`3`), `wave` to `0`, and `waveBanner` to `0`. It empties
@@ -179,6 +181,13 @@ It empties the torpedo roster and sets `torpedoCharge` to `1`.
 
 `options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the
 game's randomness. `muted` is left exactly as it stands; muting is the runtime's.
+
+`menuItemRect` returns `{ x, y, w, h }` in logical units, with `x` and `y` the
+region's top-left corner and `w` and `h` its size: the region a pointer selects
+that entry from, as `specs/ui.md` states. It returns `null` on `howto` and
+`playing`, which show no menu, and when `index` names no entry of the menu the
+current screen shows. It is a pure read, and where the regions are is the build's
+own layout rather than anything this specification fixes.
 {{#if (eq engine.slug "none")}}
 
 ### The clock

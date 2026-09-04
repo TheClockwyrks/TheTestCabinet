@@ -35,6 +35,7 @@ import {
   type Screen,
 } from "./constants";
 import { makeBullet, makeEnemyBullet, makeRock, makeSaucer } from "./entities";
+import { menuItemRect, type Rect } from "./menus";
 import { seed } from "./rng";
 import type { ShatterState } from "./types";
 import { toTitle } from "./world";
@@ -139,6 +140,7 @@ export interface ShatterDebugApi {
 
   reset(options?: { seed?: number }): void;
   snapshot(): ShatterSnapshot;
+  menuItemRect(index: number): Rect | null;
 
   setAutoStep(enabled: boolean): void;
   advance(ticks: number): void;
@@ -215,6 +217,12 @@ export function createDebugApi(
     },
 
     /** A pure read. It changes nothing. */
+    // Where the build laid the entry out, which `specs/ui.md` leaves to the
+    // build and a pointer check has to be told (`specs/instrumentation.md`).
+    menuItemRect(index: number) {
+      return menuItemRect(state.screen, index);
+    },
+
     snapshot() {
       const ship = state.ship;
       return {

@@ -137,6 +137,22 @@ export interface TrailState {
   readonly points: readonly { readonly dx: number; readonly dy: number }[];
 }
 
+/**
+ * One pointer or touch contact currently pressed, and where it came down.
+ *
+ * `entry` is the menu entry the press landed in, or `-1` for a press that began
+ * outside every region — which can never confirm, since `specs/ui.md` gives a
+ * confirm both of its edges inside one region.
+ */
+export interface PointerPress {
+  /** The pointer this press belongs to. Each touch contact has its own. */
+  readonly id: number;
+  /** The entry the press came down on, or `-1` for none. */
+  readonly entry: number;
+  /** The screen it came down on; a press does not survive a screen change. */
+  readonly screen: Screen;
+}
+
 export interface ShatterState {
   readonly screen: Screen;
   readonly menuIndex: number;
@@ -169,6 +185,14 @@ export interface ShatterState {
   readonly trails: readonly TrailState[];
   /** Beside the declared state: seconds left on the extra-ship announcement. */
   readonly extraLifeFlash: number;
+  /**
+   * Beside the declared state: every pointer and touch contact currently
+   * pressed, and the menu entry each came down on. `specs/ui.md` gives a confirm
+   * two edges that may arrive frames apart, so the entry a press landed in is
+   * remembered until its release arrives, per pointer id so a second finger
+   * cannot take the first one's press away.
+   */
+  readonly pointerPresses: readonly PointerPress[];
 }
 
 // ---- The game ------------------------------------------------------------

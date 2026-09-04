@@ -42,8 +42,10 @@ export interface Surface {
   cssHeight(): number;
   /** Device pixels per CSS pixel. */
   dpr(): number;
-  /** The target key events are listened for on. */
+  /** The target key and pointer events are listened for on. */
   events(): EventTarget;
+  /** The drawing surface's top-left corner, in CSS pixels of the page. */
+  clientOrigin(): { x: number; y: number };
 }
 
 /** A device pixel ratio worth multiplying by; anything else collapses to `1`. */
@@ -54,6 +56,32 @@ function normalizeDpr(dpr: number): number {
 /** A non-negative, finite dimension; anything else collapses to `0`. */
 function normalizeSize(size: number): number {
   return Number.isFinite(size) && size > 0 ? size : 0;
+}
+
+/**
+ * Where a point in the page's CSS pixels lands in the logical field.
+ *
+ * The inverse of the fit: a logical `(x, y)` is drawn at
+ * `(offsetX + x * scale, offsetY + y * scale)` in the backing store, and a
+ * pointer reports its position in CSS pixels from the page's own origin. So the
+ * point is taken to the canvas's corner, scaled into device pixels, and run back
+ * through the fit. A degenerate fit — a canvas the page has not laid out yet —
+ * has no inverse, and answers the field's centre, which belongs to no menu
+ * entry.
+ */
+export function fieldPoint(
+  view: Viewport,
+  origin: { x: number; y: number },
+  dpr: number,
+  clientX: number,
+  clientY: number,
+): { x: number; y: number } {
+  if (view.scale <= 0) return { x: view.width / 2, y: view.height / 2 };
+  const ratio = normalizeDpr(dpr);
+  return {
+    x: ((clientX - origin.x) * ratio - view.offsetX) / view.scale,
+    y: ((clientY - origin.y) * ratio - view.offsetY) / view.scale,
+  };
 }
 
 /** The backing-store size, in whole device pixels, of a CSS dimension. */
@@ -115,5 +143,9 @@ export function domSurface(canvas: HTMLCanvasElement): Surface {
     cssHeight: () => canvas.clientHeight,
     dpr: () => window.devicePixelRatio,
     events: () => document,
+    clientOrigin: () => {
+      const box = canvas.getBoundingClientRect();
+      return { x: box.left, y: box.top };
+    },
   };
 }

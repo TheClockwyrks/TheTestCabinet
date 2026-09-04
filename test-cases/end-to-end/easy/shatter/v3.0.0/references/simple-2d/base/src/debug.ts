@@ -35,6 +35,7 @@ import {
 } from "./constants";
 import { addBullet, addEnemyBullet } from "./bullets";
 import { resetToTitle } from "./flow";
+import { menuItemRect, type Rect } from "./menus";
 import { addRock, rockRadius } from "./rocks";
 import { addSaucer } from "./saucer";
 import { rockById, toSim, type MutBullet, type Sim } from "./sim";
@@ -112,6 +113,7 @@ export interface ShatterDebugApi {
     options?: { seed?: number },
   ): ShatterState;
   snapshot(state: DeepReadonly<ShatterState>): ShatterSnapshot;
+  menuItemRect(state: DeepReadonly<ShatterState>, index: number): Rect | null;
 
   setScreen(state: DeepReadonly<ShatterState>, screen: Screen): ShatterState;
   setMenuIndex(state: DeepReadonly<ShatterState>, n: number): ShatterState;
@@ -259,6 +261,10 @@ export function createDebugApi(): ShatterDebugApi {
       pose(state, (sim) => {
         resetToTitle(sim, options?.seed ?? DEFAULT_SEED);
       }),
+
+    // Where the build laid the entry out, which `specs/ui.md` leaves to the
+    // build and a pointer check has to be told (`specs/instrumentation.md`).
+    menuItemRect: (state, index) => menuItemRect(state.screen, index),
 
     snapshot: (state) => {
       const saucer = state.saucer;

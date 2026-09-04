@@ -41,6 +41,7 @@ import {
   addSaucerTo,
 } from "./entities";
 import { resetState } from "./flow";
+import { menuItemRect, type Rect } from "./menus";
 import {
   shatterState,
   type BulletState,
@@ -123,6 +124,7 @@ export interface ShatterDebugApi {
 
   reset(options?: { seed?: number }): void;
   snapshot(): ShatterSnapshot;
+  menuItemRect(index: number): Rect | null;
 
   setScreen(screen: Screen): void;
   setMenuIndex(index: number): void;
@@ -186,6 +188,12 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
 
     reset(options) {
       resetState(read(), options?.seed ?? DEFAULT_SEED);
+    },
+
+    // Where the build laid the entry out, which `specs/ui.md` leaves to the
+    // build and a pointer check has to be told (`specs/instrumentation.md`).
+    menuItemRect(index) {
+      return menuItemRect(read().screen, index);
     },
 
     snapshot() {

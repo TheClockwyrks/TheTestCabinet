@@ -34,6 +34,7 @@ import { defineCues } from "./audio";
 import { resolveCollisions } from "./collision";
 import { registerDiagnostics } from "./diagnostics";
 import { registerActions } from "./input";
+import { resolvePointer } from "./menu-pointer";
 import { renderGame } from "./render";
 import type { Game, InitApi, RenderApi, UpdateApi } from "./runtime";
 import { integrateRocks } from "./rocks";
@@ -162,10 +163,41 @@ function highlighted(state: ShatterState, count: number): number {
 }
 
 /**
+ * What confirming the entry at `index` does on the screen showing it.
+ *
+ * The one route a confirmed entry takes, whether a key edge raised it or a mouse
+ * or a contact did (`specs/ui.md`: "The entry every confirm acts on is the
+ * highlighted one, whichever input raised it").
+ */
+function confirmEntry(state: ShatterState, index: number): void {
+  switch (state.screen) {
+    case "title":
+      if (index === 0) startNewGame(state);
+      // The title's highlight is left exactly as it was, so leaving `howto`
+      // comes back to the entry that opened it (`specs/ui.md`).
+      else state.screen = "howto";
+      return;
+    case "paused":
+      if (index === 0) state.screen = "playing";
+      else if (index === 1) startNewGame(state);
+      else toTitle(state);
+      return;
+    case "gameover":
+      if (index === 0) startNewGame(state);
+      else toTitle(state);
+      return;
+    default:
+      return;
+  }
+}
+
+/**
  * The actions the current screen answers to.
  *
  * Mute is read first and on every screen, because `specs/controls.md` binds it
- * from any screen. Everything below it is the screen's own.
+ * from any screen. Everything below it is the screen's own. The mouse and the
+ * touch contacts are applied last, after the frame's key edges, which is where
+ * `specs/ui.md` puts them.
  */
 function handleScreenInput(state: ShatterState, api: UpdateApi): void {
   if (api.input.pressed("mute")) api.audio.setMuted(!api.audio.muted());
@@ -173,14 +205,13 @@ function handleScreenInput(state: ShatterState, api: UpdateApi): void {
   switch (state.screen) {
     case "title": {
       menuNavigation(state, api, TITLE_ITEMS.length);
-      if (!api.input.pressed("confirm")) return;
-      if (highlighted(state, TITLE_ITEMS.length) === 0) startNewGame(state);
-      else {
-        // The title's highlight is left exactly as it was, so leaving `howto`
-        // comes back to the entry that opened it (`specs/ui.md`).
-        state.screen = "howto";
+      // A frame carrying a key confirm and a pointer confirm takes the key's
+      // entry alone (`specs/ui.md`), so the samples go unread on that frame.
+      if (api.input.pressed("confirm")) {
+        confirmEntry(state, highlighted(state, TITLE_ITEMS.length));
+        return;
       }
-      return;
+      break;
     }
     case "howto": {
       // Confirming leaves this screen as leaving it does, and neither touches the
@@ -207,12 +238,11 @@ function handleScreenInput(state: ShatterState, api: UpdateApi): void {
         return;
       }
       menuNavigation(state, api, PAUSE_ITEMS.length);
-      if (!api.input.pressed("confirm")) return;
-      const entry = highlighted(state, PAUSE_ITEMS.length);
-      if (entry === 0) state.screen = "playing";
-      else if (entry === 1) startNewGame(state);
-      else toTitle(state);
-      return;
+      if (api.input.pressed("confirm")) {
+        confirmEntry(state, highlighted(state, PAUSE_ITEMS.length));
+        return;
+      }
+      break;
     }
     case "gameover": {
       // Leaving this screen does what MENU does (`specs/ui.md`).
@@ -221,12 +251,15 @@ function handleScreenInput(state: ShatterState, api: UpdateApi): void {
         return;
       }
       menuNavigation(state, api, GAMEOVER_ITEMS.length);
-      if (!api.input.pressed("confirm")) return;
-      if (highlighted(state, GAMEOVER_ITEMS.length) === 0) startNewGame(state);
-      else toTitle(state);
-      return;
+      if (api.input.pressed("confirm")) {
+        confirmEntry(state, highlighted(state, GAMEOVER_ITEMS.length));
+        return;
+      }
+      break;
     }
   }
+
+  resolvePointer(state, api.input.pointerSamples(), confirmEntry);
 }
 
 /** Shatter, as the runtime drives it. */

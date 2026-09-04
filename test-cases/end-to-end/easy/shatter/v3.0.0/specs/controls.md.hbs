@@ -1,9 +1,10 @@
 # Shatter — Controls
 
-Shatter is played on the keyboard alone. This file defines every action the game
-answers to and the keys bound to it. What the ship does when it turns, thrusts,
-and fires is in `specs/ship.md` and `specs/weapons.md`, and the screens the menu
-actions move between are in `specs/ui.md`.
+Shatter is flown from the keyboard, and its menus take a mouse and touch as well.
+This file defines every action the game answers to and the keys bound to it. What
+the ship does when it turns, thrusts, and fires is in `specs/ship.md` and
+`specs/weapons.md`, and the screens the menu actions move between are in
+`specs/ui.md`.
 
 {{#if (eq engine.slug "none")}}
 ## How input reaches the game
@@ -114,6 +115,19 @@ wrap at both ends, so moving down from the last entry highlights the first and
 moving up from the first highlights the last. The highlight is therefore always on
 one of the menu's own entries. Confirming takes the highlighted entry, and
 `specs/ui.md` states each screen's entries and where each leads.
+
+{{#if (eq engine.slug "none")}}
+A mouse and a touch contact drive the menus too, through the same runtime layer
+that reports the keys. `specs/ui.md` states what a move, a press, a release, a
+landing and a lift each do, and `specs/instrumentation.md` states the reading
+through which the build reports an entry's hit region.
+{{else}}
+A mouse and a touch contact drive the menus too, directly rather than through a
+registered action, so no action of the table above is raised by either.
+`specs/ui.md` states what a move, a press, a release, a landing and a lift each do,
+and `specs/instrumentation.md` states the reading through which the build reports
+an entry's hit region.
+{{/if}}
 
 ## The debug overlay
 

@@ -25,6 +25,7 @@ import { resolveCollisions } from "./collision";
 import { wrapX, wrapY } from "./field";
 import { goTo, menuItems, startRun } from "./flow";
 import { gravityAt } from "./gravity";
+import { resolvePointer } from "./pointer";
 import { spinRocks } from "./rocks";
 import {
   keepSaucerClearOfCore,
@@ -99,10 +100,17 @@ function stepMenu(sim: Sim, input: FrameInput): void {
       sim.menuIndex = (sim.menuIndex + 1) % items.length;
     }
     if (input.confirm) {
+      // A frame carrying a key confirm and a pointer confirm takes the key's
+      // entry alone (`specs/ui.md`), so the samples are left unread here.
       confirmMenuItem(sim);
       return;
     }
   }
+
+  // The mouse and the contacts are applied AFTER the frame's key edges
+  // (`specs/ui.md`), so a frame carrying a key move and a pointer selection ends
+  // on the entry the pointer named.
+  resolvePointer(sim, input.pointer, confirmMenuItem);
 
   // `howto` shows no menu, so confirming leaves it as `back` does
   // (`specs/ui.md`); every screen that does show one took its confirm above.

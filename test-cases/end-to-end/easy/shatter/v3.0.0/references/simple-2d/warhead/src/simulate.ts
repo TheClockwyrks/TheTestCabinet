@@ -53,6 +53,7 @@ function holdsOnly(input: FrameInput): FrameInput {
     back: false,
     pause: false,
     mute: false,
+    pointer: [],
   };
 }
 

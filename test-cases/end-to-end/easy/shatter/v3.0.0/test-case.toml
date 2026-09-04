@@ -2322,6 +2322,76 @@ validation = { script = "screens/menu-selection-stays-in-range.test.ts", outputs
   { id = "menu", name = "The selection held inside the menu's entries", kind = "image" },
 ] }
 
+# --- The menus under a mouse and under a finger ------------------------------
+# `specs/ui.md` has every menu take a pointer and touch as well as the keyboard,
+# over the hit regions the build reports through `menuItemRect`
+# (specs/instrumentation.md). Every item below drives a REAL device at the middle
+# of the region the build named, so where a build lays its menu out is its own
+# business and what it does when a device arrives there is not. Selecting and
+# confirming are separate items in each direction, because a build commonly wires
+# one and not the other, and the two cancel items are the edge `specs/ui.md`
+# states outright: a confirm takes both of its edges inside one region.
+[[review.categories]]
+id = "pointer"
+title = "The menus under a mouse"
+[[review.categories.items]]
+id = "pointer-hover-selects"
+title = "The mouse highlights the entry it moves onto"
+description = "With the title's highlight posed on entry 0, moving the mouse to the middle of the region menuItemRect reports for entry 1 gives menuIndex 1, with the screen still title."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "pointer/hover-selects.test.ts", outputs = [
+  { id = "menu", name = "The entry the mouse moved onto", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-click-confirms"
+title = "A click confirms the entry it is made in"
+description = "A press and a release both inside entry 1's region on the title confirm HOW TO PLAY, giving screen howto."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "pointer/click-confirms.test.ts", outputs = [
+  { id = "confirmed", name = "The screen the click reached", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-slide-off-cancels"
+title = "A press and a release in different regions confirm nothing"
+description = "A press inside entry 1's region released inside entry 0's leaves screen title, since a confirm takes both of its edges inside one region."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/slide-off-cancels.test.ts", outputs = [
+  { id = "cancelled", name = "The title still showing after the slide-off", kind = "image" },
+] }
+[[review.categories]]
+id = "touch"
+title = "The menus under a finger"
+[[review.categories.items]]
+id = "touch-landing-selects"
+title = "A contact landing on an entry highlights it"
+description = "With the title's highlight posed on entry 0, a touch contact landing in entry 1's region gives menuIndex 1, with the screen still title."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "touch/landing-selects.test.ts", outputs = [
+  { id = "menu", name = "The entry the contact landed on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "touch-tap-confirms"
+title = "A tap confirms the entry it lands and lifts in"
+description = "A contact landing and lifting inside entry 1's region on the title confirms HOW TO PLAY, giving screen howto."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "touch/tap-confirms.test.ts", outputs = [
+  { id = "confirmed", name = "The screen the tap reached", kind = "image" },
+] }
+[[review.categories.items]]
+id = "touch-drag-cancels"
+title = "A contact lifted on a different entry confirms nothing"
+description = "A contact landing in entry 1's region and lifting in entry 0's leaves screen title, since a confirm takes both of its edges inside one region."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "touch/drag-cancels.test.ts", outputs = [
+  { id = "cancelled", name = "The title still showing after the slide-off", kind = "image" },
+] }
+
 # --- Look and readouts -------------------------------------------------------
 # Every item here checks that a thing is PRESENT and TOLD APART from what is
 # behind or beside it, against a stated RGB distance out of 441, and never a hex value: no palette and no typeface is seeded
