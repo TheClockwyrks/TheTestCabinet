@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween } from "../assert";
-import { LAVA_CONTACT_DPS, RADIATOR_TIERS } from "../../src/constants";
+import { LAVA_CONTACT_DPS, RADIATOR_TIERS } from "../constants";
 import {
   captureReplay,
   createHarness,

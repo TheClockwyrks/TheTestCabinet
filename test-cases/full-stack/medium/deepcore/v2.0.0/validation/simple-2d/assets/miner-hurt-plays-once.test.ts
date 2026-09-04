@@ -25,7 +25,7 @@
 // the hurt runs from a single blow rather than being re-armed every frame.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HURT_TIME } from "../../src/constants";
+import { HURT_TIME } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,

@@ -7,7 +7,7 @@
 // the miner in that sky: the thrust burn, or the air burn, arrives alone rather
 // than mixed with a life-support trickle the sibling check owns.
 
-import { SURFACE_Y, TILE } from "../../src/constants";
+import { SURFACE_Y, TILE } from "../constants";
 import { minerXOn, placeAt, type Harness } from "../harness";
 
 /**

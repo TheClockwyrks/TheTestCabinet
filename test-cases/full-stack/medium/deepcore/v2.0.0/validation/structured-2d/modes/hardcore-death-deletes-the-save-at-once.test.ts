@@ -32,11 +32,7 @@ import {
   pinMiner,
   type Harness,
 } from "../harness";
-import {
-  bankSave,
-  openAtCamp,
-  waitForGameOver,
-} from "../save/expedition";
+import { bankSave, openAtCamp, waitForGameOver } from "../save/expedition";
 
 /**
  * Frames between the hull standing at `0` and the reading.
@@ -45,6 +41,17 @@ import {
  * in its own frame is not held to an ordering the specification leaves open.
  */
 const AT_ONCE_FRAMES = 2;
+
+/**
+ * The frames the recording runs before the first input and after the last.
+ *
+ * These bound the CLIP a reviewer watches, not the check: nothing below is
+ * asserted against them. A bracket that opened on the input and closed on the
+ * result would hand a reviewer a flicker a few frames long, so the recorder is
+ * armed with the world at rest and runs on once the behavior has settled.
+ */
+const RUN_UP = 20;
+const SETTLE = 30;
 
 let h: Harness;
 
@@ -64,10 +71,13 @@ it("deletes the save on the frame the Hardcore death lands", async () => {
   const banked = h.snapshot();
 
   const run = await captureReplay(h, "gone", async () => {
+    await h.advance(RUN_UP);
     h.debug.setHull(0);
     await h.advance(AT_ONCE_FRAMES);
     const struck = h.snapshot();
-    return { struck, over: await waitForGameOver(h) };
+    const over = await waitForGameOver(h);
+    await h.advance(SETTLE);
+    return { struck, over };
   });
 
   assertEqual(banked.hasSave, true, "the save this check deletes was banked");

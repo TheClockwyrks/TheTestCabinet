@@ -19,7 +19,7 @@
 // The drill is held throughout, because a cut is not what is being read.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { METERS_PER_ROW, TILE } from "../../src/constants";
+import { METERS_PER_ROW, TILE } from "../constants";
 import { assertBetween, assertCloseTo } from "../assert";
 import {
   captureStill,

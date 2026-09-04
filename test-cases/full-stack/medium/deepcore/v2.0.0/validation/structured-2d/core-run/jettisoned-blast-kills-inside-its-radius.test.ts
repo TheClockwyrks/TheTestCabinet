@@ -19,7 +19,7 @@
 // it at when the Sample goes off.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_BLAST_TILES } from "../../src/constants";
+import { CORE_BLAST_TILES } from "../constants";
 import { assertEqual, assertLessThan, assertNotNull } from "../assert";
 import {
   captureReplay,

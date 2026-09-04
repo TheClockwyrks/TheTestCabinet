@@ -12,7 +12,7 @@
 // as its own arithmetic before reading the build.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_COL, TILE, VIEW_H } from "../../src/constants";
+import { CORE_COL, TILE, VIEW_H } from "../constants";
 import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

@@ -37,12 +37,11 @@
 /* The vocabularies the operations take                                       */
 /* -------------------------------------------------------------------------- */
 //
-// Read back off `src/constants.ts`, which is the CASE's own module: the case
-// seeds it into the workspace and every build receives it unchanged, so the
-// vocabulary a check names and the vocabulary the build was given are the same
-// list by construction. Nothing of the BUILD's is imported here — `src/game.ts`
-// and whatever module a build writes its surface in are both out of reach of this
-// file.
+// Read off `constants.ts`, this project's own transcription of the seeded
+// specification, so the vocabulary a check names is the vocabulary the SPECS
+// state rather than the one a build's tree happens to hold. Nothing of the
+// BUILD's is imported here — `src/constants.ts`, `src/game.ts`, and whatever
+// module a build writes its surface in are all out of reach of this file.
 
 import type {
   BandName,
@@ -60,7 +59,7 @@ import type {
   TileKind,
   TrackName,
   WorldSize,
-} from "../src/constants";
+} from "./constants";
 
 /** One of the four depth bands. */
 export type Band = BandName;
@@ -118,6 +117,55 @@ export interface BuildingBox {
   w: number;
   h: number;
 }
+
+/**
+ * A hit region on the stage, in the stage's LOGICAL units, as `menuItemRect` and
+ * `controlRect` report one.
+ *
+ * `x` and `y` are the region's top-left corner and `w` and `h` its size: the
+ * region a pointer or a touch contact drives that item or that control from.
+ * `specs/overview.md` hands the layout to the build, so this is how a build
+ * reports where it put each one and a check aims at what the build drew rather
+ * than at a coordinate the specification never stated.
+ */
+export interface HitRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * The on-screen controls `controlRect` reports, by the names
+ * `specs/instrumentation.md` gives them.
+ *
+ * Each is the named counterpart of one of the controls under The controls, or
+ * one of the three the status bar carries.
+ */
+export type ControlName =
+  | "drop-ore"
+  | "use-item"
+  | "jettison"
+  | "sell"
+  | "buy-fuel"
+  | "fill-fuel"
+  | "buy-repair"
+  | "repair-full"
+  | "buy-upgrade"
+  | "buy-item"
+  | "fabricate"
+  | "launch"
+  | "dismiss-notice"
+  | "inventory"
+  | "pause"
+  | "mute";
+
+/**
+ * What a control acts on: an ore, a field supply, an upgrade track, or nothing.
+ *
+ * A control that acts on nothing further takes `null`.
+ */
+export type ControlSubject = Ore | ItemId | UpgradeTrack | null;
 
 /** A cell address, as `findTile` and `coreGround` report one. */
 export interface CellRef {
@@ -243,6 +291,11 @@ export interface DeepcoreSnapshot {
   muted: boolean;
   /** Accumulated game time, in seconds, on every screen. */
   simTime: number;
+  /**
+   * The expedition's own clock, in seconds: the elapsed time the summary
+   * reports. It rests at `0` until an expedition begins.
+   */
+  elapsedSeconds: number;
   hasSave: boolean;
   credits: number;
   creditsEarned: number;
@@ -299,6 +352,22 @@ export interface DeepcoreDebugApi {
   /** The nearest cell of that kind to the miner, or `null` where the mine holds none. */
   findTile(kind: TileKind): CellRef | null;
   buildings(): BuildingBox[];
+  /**
+   * The hit region of item `index` on the menu the current screen shows.
+   *
+   * `null` on `in-mine`, which shows no menu, and where `index` names no item of
+   * the menu the current screen shows.
+   */
+  menuItemRect(index: number): HitRect | null;
+  /**
+   * The hit region of the on-screen control `control`, for the ore, upgrade
+   * track, or field supply `subject` where the control takes one and `null`
+   * where it acts on nothing further.
+   *
+   * `null` while the control is not drawn, including while the panel that
+   * carries it is closed.
+   */
+  controlRect(control: ControlName, subject: ControlSubject): HitRect | null;
 
   /* ---- Restoring the world ---- */
 
@@ -311,8 +380,6 @@ export interface DeepcoreDebugApi {
   generateMine(): void;
   /** Open every playable cell below `row 0` and above the Core chamber. */
   clearMine(): void;
-  /** Take every ground item off the mine, detonating nothing. */
-  clearGroundItems(): void;
   /** Empty the cargo bay, selling nothing. */
   clearCargo(): void;
   /** Set the held count of all six field supplies to `0`, using nothing. */
@@ -351,8 +418,15 @@ export interface DeepcoreDebugApi {
   setMenuIndex(index: number): void;
   setMode(mode: Mode): void;
   /**
-   * The size and with it `coreRow`, and the mine the new depth leaves: emptied
-   * to that depth exactly as `clearMine` leaves it. It generates nothing.
+   * The size and with it `coreRow`, RESIZING the mine onto the new depth rather
+   * than emptying or regenerating it, exactly as `specs/instrumentation.md`'s
+   * "Resizing the mine" states it cell by cell: every cell the two depths share
+   * comes through untouched with its own kind, band, ore, material, and health;
+   * a row past the new Core chamber is gone with its row, and a buried material
+   * node with it; a row the old depth did not reach opens as an empty mine holds
+   * it at that depth; the row at the new `coreRow` becomes the Core chamber. It
+   * generates nothing, so a caller that wants terrain at a new depth follows it
+   * with `generateMine`.
    */
   setWorldSize(size: WorldSize): void;
   setCredits(value: number): void;
@@ -372,6 +446,11 @@ export interface DeepcoreDebugApi {
   setNoticeFired(hazard: Hazard, fired: boolean): void;
   /** The carried lead, within `[-CAM_LEAD_MAX, CAM_LEAD_MAX]`. */
   setCameraLead(lead: number): void;
+  /**
+   * The expedition's elapsed time, in seconds, at least `0` — the clock the
+   * summary reports. It advances nothing else.
+   */
+  setElapsed(seconds: number): void;
   clearSave(): void;
 
   /* ---- The controls: the named counterparts of the on-screen ones ---- */
@@ -405,6 +484,8 @@ export const READINGS = [
   "tileAt",
   "findTile",
   "buildings",
+  "menuItemRect",
+  "controlRect",
 ] as const satisfies readonly (keyof DeepcoreDebugApi)[];
 
 /**
@@ -425,11 +506,12 @@ export const REQUIRED_OPS = [
   "tileAt",
   "findTile",
   "buildings",
+  "menuItemRect",
+  "controlRect",
   // Restoring the world
   "reset",
   "generateMine",
   "clearMine",
-  "clearGroundItems",
   "clearCargo",
   "clearItems",
   // Posing the mine
@@ -462,6 +544,7 @@ export const REQUIRED_OPS = [
   "setRocketInstalled",
   "setNoticeFired",
   "setCameraLead",
+  "setElapsed",
   "clearSave",
   // The controls
   "dropOre",

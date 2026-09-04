@@ -24,7 +24,7 @@ import {
   PLAYABLE_COL_MIN,
   SURFACE_Y,
   TILE,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,

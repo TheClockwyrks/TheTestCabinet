@@ -1,21 +1,15 @@
-// audio/mute-toggle — both mute controls toggle the audio.
+// audio/mute-toggle — the mute action silences the audio.
 //
-// `specs/controls.md`: the `mute` action toggles all audio. `specs/ui.md`: the
-// status bar carries a mute control, and every status-bar control is clickable. So
-// both routes are driven over one scene and each must flip the bit
-// `specs/instrumentation.md` has the snapshot mirroring from the runtime.
+// `specs/controls.md`: the `mute` action toggles all audio, and
+// `specs/instrumentation.md` has the snapshot mirror the bit the runtime holds.
 //
-// WHAT SILENCE ITSELF IS NOT. `audio-init.js` sees a source being started, not
-// whether anything came out of it. Muting through a master gain and muting by
-// declining to start a source are both ordinary implementations and
-// `specs/assets.md` requires neither, so a check that demanded no source start
-// while muted would fail half the conformant builds. The bit is therefore what is
-// decided here, and a reviewer decides by ear that the game actually goes quiet.
+// TWO ROUTES, TWO POINTS. `specs/ui.md` also puts a mute control on the status
+// bar, and a build that binds the key and never wires the bar control must grade
+// differently from one that wires neither. The bar's route is
+// `audio/mute-control-toggles`.
 //
-// The bar's control carries no fixed copy — `specs/ui.md` fixes only that it is ON
-// the bar — so it is found by sweeping the band, which is what
-// `panels/mouse.ts` exists for. A cut is driven while muted for the evidence the
-// review item asks for.
+// THE EVIDENCE IS A CUT DRIVEN WHILE MUTED, which is the clip the review item
+// asks for: the game still reacts and the cell still breaks, with the audio off.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -33,7 +27,6 @@ import {
   standOn,
   type Harness,
 } from "../harness";
-import { sweepStatusBar } from "../panels/mouse";
 import { armAudio } from "./probe";
 
 const ROW = 200;
@@ -49,7 +42,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("toggles the mute bit from the key and from the status bar", async () => {
+it("mutes on the key, and the game plays on with the audio off", async () => {
   const armed = await armAudio(h);
   await openScene(h);
   await layCamp(h);
@@ -57,19 +50,8 @@ it("toggles the mute bit from the key and from the status bar", async () => {
 
   const opened = (await h.snapshot()).muted;
   await h.tap(ACTION_KEY.mute);
-  const afterKey = (await h.snapshot()).muted;
+  const muted = (await h.snapshot()).muted;
 
-  const clicked = await sweepStatusBar(
-    h,
-    async () => (await h.snapshot()).muted !== afterKey,
-    async () => {
-      await h.debug.setPanel(null);
-      await h.debug.setScreen("in-mine");
-    },
-  );
-  const afterClick = (await h.snapshot()).muted;
-
-  await h.debug.setMuted(true);
   await layFloor(h, ROW);
   await standOn(h, COL, ROW);
   await pinMiner(h);
@@ -79,8 +61,10 @@ it("toggles the mute bit from the key and from the status bar", async () => {
 
   assertEqual(armed, true, "specs/assets.md");
   assertEqual(opened, false, "specs/instrumentation.md");
-  assertEqual(afterKey, true, "specs/controls.md");
-  assertEqual(clicked, true, "specs/ui.md");
-  assertEqual(afterClick, false, "specs/ui.md");
+  assertEqual(
+    muted,
+    true,
+    "specs/controls.md: the mute action toggles all audio",
+  );
   assertEqual(cut.broke, true, "specs/mining.md");
 });

@@ -19,7 +19,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
-import { IMPACT_SAFE_SPEED, TILE } from "../../src/constants";
+import { IMPACT_SAFE_SPEED, TILE } from "../constants";
 import {
   captureReplay,
   createHarness,

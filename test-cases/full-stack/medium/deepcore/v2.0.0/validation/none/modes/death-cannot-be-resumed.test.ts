@@ -35,6 +35,19 @@ import { openAtCamp } from "../save/expedition";
 const DEATH_CEILING = 8;
 const SECOND_FRAMES = 8;
 
+/**
+ * The frames the replay is padded with, so the refused pause is something a
+ * reviewer can WATCH.
+ *
+ * Each pass of the loop is one tap and eight frames, and the loop stops the
+ * moment the Game Over screen arrives, so the recording was a sixth of a second.
+ * The recorder is armed on the living miner for `RUN_UP` and held on the screen
+ * the death reached for `SETTLE`. Neither changes what is read: the screens are
+ * sampled where they were before, and the miner's body and drill are both gated.
+ */
+const RUN_UP = 24;
+const SETTLE = 40;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -51,6 +64,7 @@ it("never reaches the pause menu once the death has been taken", async () => {
   await pinDrill(h);
 
   const seen = await captureReplay(h, "over", async () => {
+    await h.advance(RUN_UP);
     await h.debug.setHull(0);
     await h.advance(1);
 
@@ -62,7 +76,9 @@ it("never reaches the pause menu once the death has been taken", async () => {
       await h.advanceSeconds(1, SECOND_FRAMES);
       screens.push((await h.snapshot()).screen);
     }
-    return { screens, ended: await h.snapshot() };
+    const ended = await h.snapshot();
+    await h.advance(SETTLE);
+    return { screens, ended };
   });
 
   for (const screen of seen.screens) {

@@ -110,6 +110,7 @@ import {
 } from "@test-cabinet/structured-2d";
 import {
   ACTIONS,
+  BACKGROUND,
   BANDS,
   CAVE_MOUTH_COL,
   CORE_COL,
@@ -127,9 +128,9 @@ import {
   SURFACE_Y,
   TILE,
   WORLD_SIZE_SCALE,
-} from "../src/constants";
-import type { ActionName, Mineral } from "../src/constants";
-import { BACKGROUND, game as build } from "../src/game";
+} from "./constants";
+import type { ActionName, Mineral } from "./constants";
+import { game as build } from "../src/game";
 import { fail } from "./assert";
 import type {
   Band,
@@ -1568,9 +1569,15 @@ export interface SceneOptions {
   /** The generator's seed. Defaults to `DEFAULT_SEED`. */
   seed?: number;
   /**
-   * The world size. `setWorldSize` already empties the mine to the new depth, so
-   * naming one leaves the same cleared grid a scene opens with at the default
-   * size; the explicit clear below says so rather than leaning on it.
+   * The world size.
+   *
+   * `setWorldSize` RESIZES the mine onto the new depth rather than emptying it
+   * (`specs/instrumentation.md`, "Resizing the mine"): shared cells come through
+   * untouched, rows past the new Core chamber go with their rows, and rows the
+   * old depth did not reach open as an empty mine holds them. A `reset` has just
+   * left the grid empty, so the explicit `clearMine` below is what guarantees the
+   * scene opens on an empty mine at the size that was named, whichever direction
+   * the resize went.
    */
   size?: WorldSize;
   /** The expedition's mode. Defaults to `standard`, as a `reset` leaves it. */
@@ -1870,9 +1877,9 @@ export function stageTiers(
 /**
  * One key per action, for the sequences that press one.
  *
- * The FIRST code `src/constants.ts` binds to each action, because an action bound
- * to several is satisfied by any of them and a scenario needs one. A check about
- * the bindings presses each of them itself.
+ * The FIRST code `specs/controls.md` binds to each action, because an action
+ * bound to several is satisfied by any of them and a scenario needs one. A check
+ * about the bindings presses each of them itself.
  */
 export const ACTION_KEY = Object.fromEntries(
   Object.entries(ACTIONS).map(([action, codes]) => [action, codes[0]]),

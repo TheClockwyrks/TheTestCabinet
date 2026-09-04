@@ -15,7 +15,7 @@
 // side in one band's rock.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PLAYABLE_COL_MIN } from "../../src/constants";
+import { MINERAL_SPRITES, PLAYABLE_COL_MIN } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,
@@ -30,7 +30,6 @@ import {
   type Harness,
 } from "../harness";
 import { allDistinct, readPicture, type Picture } from "./produced";
-import { MINERAL_SPRITES } from "./spec";
 
 /** Where the run of overlays in the still is posed. */
 const ROW = 200;

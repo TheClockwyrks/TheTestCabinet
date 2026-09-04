@@ -25,12 +25,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BAND_HEALTH, CORE_COL, coreRowFor, WORLD_COLS } from "../constants";
-import {
-  assertEqual,
-  assertNotNull,
-  assertNull,
-  fail,
-} from "../assert";
+import { assertEqual, assertNotNull, assertNull, fail } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -85,11 +80,7 @@ it("reaches rows past the old depth after the size is taken deeper", async () =>
   }
 
   assertEqual(deep.worldSize, TO, "specs/instrumentation.md: the size is set");
-  assertEqual(
-    deep.coreRow,
-    coreRowFor(TO),
-    `specs/world.md: coreRow at ${TO}`,
-  );
+  assertEqual(deep.coreRow, coreRowFor(TO), `specs/world.md: coreRow at ${TO}`);
 
   // A row the old depth did not reach is now an ordinary in-grid open tunnel:
   // it carries a band, which is what a cell outside the grid does not.
@@ -100,7 +91,10 @@ it("reaches rows past the old depth after the size is taken deeper", async () =>
     "specs/instrumentation.md: a row the old depth did not reach opens as an empty mine's",
   );
   assertNotNull(opened.band, `the band tileAt(${COL}, ${DEEP_ROW}) reports`);
-  assertNull(opened.health, "specs/instrumentation.md: a tunnel is not minable");
+  assertNull(
+    opened.health,
+    "specs/instrumentation.md: a tunnel is not minable",
+  );
 
   // And it takes a pose, which is the whole of what the extended grid is for.
   await h.debug.setTile(COL, DEEP_ROW, "rock");

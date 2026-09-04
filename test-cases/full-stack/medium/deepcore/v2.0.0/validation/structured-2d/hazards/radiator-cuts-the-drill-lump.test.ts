@@ -12,7 +12,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual } from "../assert";
-import { LAVA_DRILL_DEEPSTONE, RADIATOR_TIERS } from "../../src/constants";
+import { LAVA_DRILL_DEEPSTONE, RADIATOR_TIERS } from "../constants";
 import {
   captureReplay,
   createHarness,

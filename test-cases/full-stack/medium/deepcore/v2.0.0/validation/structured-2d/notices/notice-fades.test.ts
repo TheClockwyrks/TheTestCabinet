@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull } from "../assert";
-import { NOTICE_DELAY, NOTICE_FADE } from "../../src/constants";
+import { NOTICE_DELAY, NOTICE_FADE } from "../constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import {
   detonateGas,

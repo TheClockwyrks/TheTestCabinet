@@ -17,7 +17,7 @@
 // key cuts nothing, and nothing else in the world.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURFACE_Y, TILE, VIEW_H } from "../../src/constants";
+import { SURFACE_Y, TILE, VIEW_H } from "../constants";
 import { assertBetween, assertLessThan } from "../assert";
 import {
   ACTION_KEY,

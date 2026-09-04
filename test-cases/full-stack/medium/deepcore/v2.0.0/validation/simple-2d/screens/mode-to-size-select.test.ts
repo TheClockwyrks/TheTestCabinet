@@ -26,7 +26,7 @@ import {
   MODE_ITEMS,
   SIZE_ITEMS,
   WORLD_SIZES,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   ACTION_KEY,

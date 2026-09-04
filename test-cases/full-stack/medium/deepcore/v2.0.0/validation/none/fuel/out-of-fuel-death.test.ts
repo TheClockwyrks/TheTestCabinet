@@ -2,7 +2,7 @@
 //
 // specs/character.md: fuel reaching `0` while the miner is below the surface
 // ground line strands it — the jetpack is dead and there is no way up — and that
-// is a death. specs/gameplay.md has a Game Over screen summarize the expedition,
+// is a death. specs/expedition.md has a Game Over screen summarize the expedition,
 // with how the miner died among what it reports, and
 // specs/instrumentation.md names that reading `summary.deathCause`.
 //
@@ -64,9 +64,9 @@ it("ends the expedition at Game Over when the tank empties underground", async (
   );
 
   assertEqual(dead.hit, true, "specs/character.md");
-  assertEqual(dead.snapshot.screen, "game-over", "specs/gameplay.md");
+  assertEqual(dead.snapshot.screen, "game-over", "specs/expedition.md");
   assertEqual(dead.snapshot.miner.fuel, 0, "specs/character.md");
-  assertNotNull(dead.snapshot.summary, "specs/gameplay.md");
+  assertNotNull(dead.snapshot.summary, "specs/expedition.md");
   assertEqual(
     dead.snapshot.summary?.deathCause,
     "fuel-out",

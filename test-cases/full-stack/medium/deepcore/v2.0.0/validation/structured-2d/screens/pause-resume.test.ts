@@ -15,7 +15,7 @@
 // reach, the drill gated so no held key can cut, and nothing else in the world.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GRAVITY, PAUSE_ITEMS } from "../../src/constants";
+import { GRAVITY, PAUSE_ITEMS } from "../constants";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import {
   ACTION_KEY,

@@ -1,6 +1,6 @@
 // economy/fill-pays-only-for-what-is-missing — fill-to-full charges the shortfall.
 //
-// `specs/gameplay.md` fixes fill-to-full as paying `FUEL_PRICE` for each unit the
+// `specs/expedition.md` fixes fill-to-full as paying `FUEL_PRICE` for each unit the
 // tank is short and no more, so a tank at 40 of 100 costs 60 Credits. The
 // balance is posed far above that shortfall, so what the check reads is the
 // price of the missing fuel rather than the ceiling the Credits impose — the
@@ -40,10 +40,10 @@ it("fills the tank and charges FUEL_PRICE for each missing unit only", async () 
 
   const after = await h.snapshot();
   const missing = FUEL_TANK_MAX[0] - FUEL_BEFORE;
-  assertCloseTo(after.miner.fuel, FUEL_TANK_MAX[0], 6, "specs/gameplay.md");
+  assertCloseTo(after.miner.fuel, FUEL_TANK_MAX[0], 6, "specs/expedition.md");
   assertEqual(
     after.credits,
     CREDITS_BEFORE - missing * FUEL_PRICE,
-    "specs/gameplay.md",
+    "specs/expedition.md",
   );
 });

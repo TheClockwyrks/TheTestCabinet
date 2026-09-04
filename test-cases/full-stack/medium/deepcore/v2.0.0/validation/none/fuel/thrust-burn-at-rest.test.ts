@@ -58,7 +58,7 @@ it("spends THRUST_BURN_MAX a second while thrusting from a stop", async () => {
   await pinDrill(h);
 
   const before = await h.snapshot();
-  assertEqual(before.worldSize, "standard", "specs/gameplay.md");
+  assertEqual(before.worldSize, "standard", "specs/expedition.md");
   assertEqual(before.miner.vy, 0, "specs/instrumentation.md");
 
   const after = await captureReplay(h, "liftoff", async () => {

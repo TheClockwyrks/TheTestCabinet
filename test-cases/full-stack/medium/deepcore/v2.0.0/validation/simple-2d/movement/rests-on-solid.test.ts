@@ -20,7 +20,7 @@
 // belongs to the hazard checks; the drill is gated, so nothing was cut on the way.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FALL_TERMINAL_EMPTY, TILE } from "../../src/constants";
+import { FALL_TERMINAL_EMPTY, TILE } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

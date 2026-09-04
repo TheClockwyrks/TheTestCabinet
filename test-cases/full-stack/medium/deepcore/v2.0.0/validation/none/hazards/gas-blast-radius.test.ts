@@ -36,8 +36,28 @@ import { armHull, bandRow, HAZARD_COL } from "./scene";
 /** The tier whose hull survives a rockbed detonation with room to read it. */
 const HULL_TIER = 5;
 
-/** Frames the blast is given to resolve. */
-const SETTLE_FRAMES = 4;
+/**
+ * Frames the blast is given to resolve before its hull cost is read.
+ *
+ * Four was enough to decide the point and far too short to WATCH: two blasts of
+ * four frames apiece is a tenth of a second at the rate this suite steps, which
+ * hands a reviewer a flicker. Raised to a stretch that covers the detonation and
+ * whatever a build plays over it, which is what the replay this item declares is
+ * for. Nothing here rests on the number: the hull is read after the blast has
+ * resolved either way, and `specs/hazards.md` bills it once.
+ */
+const SETTLE_FRAMES = 30;
+
+/**
+ * Frames each pose is left standing before its pocket is lit, and after the
+ * second blast has settled.
+ *
+ * The run-up is what makes the blast in the replay an EVENT — a reviewer sees the
+ * miner standing beside an intact pocket, then the detonation — rather than a
+ * first frame that is already an explosion.
+ */
+const RUN_UP = 24;
+const TAIL = 30;
 
 let h: Harness;
 
@@ -68,6 +88,9 @@ async function blastAt(floorRow: number, offset: number) {
     row: posed.miner.row,
   };
   await h.debug.setTile(pocket.col, pocket.row, "gas");
+  // The posed pocket left standing, so the recording opens on the world the
+  // blast is about rather than on the blast.
+  await h.advance(RUN_UP);
 
   const centre = minerCenter(posed.miner);
   const at = cellCenter(pocket.col, pocket.row);
@@ -93,6 +116,7 @@ it("costs hull inside the radius and nothing at all beyond it", async () => {
   const readings = await captureReplay(h, "radius", async () => {
     const near = await blastAt(row, 1);
     const far = await blastAt(row + 6, PLASTIC_RADIUS);
+    await h.advance(TAIL);
     return { near, far };
   });
 

@@ -118,9 +118,10 @@ import {
   SURFACE_Y,
   TILE,
   WORLD_SIZE_SCALE,
-} from "../src/constants";
-import type { ActionName, Mineral } from "../src/constants";
-import { BACKGROUND, game as build, type DeepcoreState } from "../src/game";
+} from "./constants";
+import type { ActionName, Mineral } from "./constants";
+import { BACKGROUND } from "./constants";
+import { game as build, type DeepcoreState } from "../src/game";
 import { fail } from "./assert";
 import { READINGS } from "./surface";
 import type {
@@ -1552,9 +1553,11 @@ export interface SceneOptions {
   /** The generator's seed. Defaults to `DEFAULT_SEED`. */
   seed?: number;
   /**
-   * The world size. `setWorldSize` already empties the mine to the new depth, so
-   * naming one leaves the same cleared grid a scene opens with at the default
-   * size; the explicit clear below says so rather than leaning on it.
+   * The world size. `setWorldSize` RESIZES the grid onto the new depth rather
+   * than emptying it — every cell the two depths share comes through untouched
+   * (`specs/instrumentation.md`, Resizing the mine) — so the scene clears the
+   * mine after moving the floor, which is what leaves a scene opened at a named
+   * size the same empty grid one opened at the default size gets.
    */
   size?: WorldSize;
   /** The expedition's mode. Defaults to `standard`, as a `reset` leaves it. */
@@ -1854,7 +1857,7 @@ export function stageTiers(
 /**
  * One key per action, for the sequences that press one.
  *
- * The FIRST code `src/constants.ts` binds to each action, because an action bound
+ * The FIRST code `specs/controls.md` binds to each action, because an action bound
  * to several is satisfied by any of them and a scenario needs one. A check about
  * the bindings presses each of them itself.
  */

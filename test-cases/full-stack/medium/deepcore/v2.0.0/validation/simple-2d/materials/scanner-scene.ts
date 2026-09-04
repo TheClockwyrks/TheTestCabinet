@@ -13,7 +13,7 @@
 // the same snapshot is what makes the reading the specification's rule rather
 // than an assumption about where the box's centre falls.
 
-import { SCANNER_TIERS } from "../../src/constants";
+import { SCANNER_TIERS } from "../constants";
 import { fail } from "../assert";
 import {
   openScene,
@@ -30,7 +30,7 @@ import {
  * The range `specs/upgrades.md` gives a scanner tier, in tiles.
  *
  * The table there has three rows and only the last two carry a number: tier 1 is
- * "no scanner at all", which `src/constants.ts` spells as a `null` entry. A point
+ * "no scanner at all", which `../constants` spells as a `null` entry. A point
  * about a RANGE names one of the two tiers that has one, so a `null` here is the
  * check asking for a range that does not exist rather than a fact about a build.
  */

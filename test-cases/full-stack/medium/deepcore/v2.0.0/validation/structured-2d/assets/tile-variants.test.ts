@@ -24,7 +24,7 @@
 // point is not fixed, so the directory is read for every name of a band's shape.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PLAYABLE_COL_MIN, TILE_VARIANTS } from "../../src/constants";
+import { PLAYABLE_COL_MIN, TILE_VARIANTS } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   BAND_ORDER,

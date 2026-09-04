@@ -45,7 +45,7 @@ import {
   STAGE_H,
   STAGE_W,
   TILE,
-} from "../src/constants";
+} from "./constants";
 import { REQUIRED_OPS } from "./surface";
 import {
   ACTION_KEY,

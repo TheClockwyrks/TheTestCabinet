@@ -18,7 +18,7 @@
 // read stays where it was computed.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HULL_TIERS, PLAYABLE_COL_MIN, TILE } from "../../src/constants";
+import { HULL_TIERS, PLAYABLE_COL_MIN, TILE } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,

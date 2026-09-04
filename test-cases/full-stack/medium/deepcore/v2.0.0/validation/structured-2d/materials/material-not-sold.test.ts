@@ -1,7 +1,7 @@
 // materials/material-not-sold — the Ore Market does not take the satchel.
 //
 // `specs/mining.md` says exotic materials "are never sold", and
-// `specs/gameplay.md` fixes what a sale does take: "Selling the cargo at each
+// `specs/expedition.md` fixes what a sale does take: "Selling the cargo at each
 // ore's value, which empties the bay." So the satchel is posed alongside a bay
 // with ore in it, the sale is driven, and the satchel is read back unchanged
 // while the bay empties.
@@ -58,6 +58,6 @@ it("leaves the satchel untouched while the sale empties the bay", async () => {
   assertEqual(after.satchel.cryenite, CRYENITE, "specs/mining.md");
   assertEqual(after.satchel.coreSample, false, "specs/instrumentation.md");
   // The sale did happen, so the reading above is a satchel a sale passed over.
-  assertEqual(after.cargo.slotsUsed, 0, "specs/gameplay.md");
-  assertGreaterThan(after.credits, 0, "specs/gameplay.md");
+  assertEqual(after.cargo.slotsUsed, 0, "specs/expedition.md");
+  assertGreaterThan(after.credits, 0, "specs/expedition.md");
 });

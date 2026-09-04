@@ -20,11 +20,7 @@
 // itself reports has moved between them.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  HULL_TIERS,
-  PLAYABLE_COL_MAX,
-  PLAYABLE_COL_MIN,
-} from "../../src/constants";
+import { HULL_TIERS, PLAYABLE_COL_MAX, PLAYABLE_COL_MIN } from "../constants";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import {
   captureStill,

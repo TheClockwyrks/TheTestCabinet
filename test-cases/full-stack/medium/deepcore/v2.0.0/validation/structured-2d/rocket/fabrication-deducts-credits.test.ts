@@ -16,7 +16,7 @@
 // own validator.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCKET_COMPONENTS, ROCKET_TOTAL_CREDITS } from "../../src/constants";
+import { ROCKET_COMPONENTS, ROCKET_TOTAL_CREDITS } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { openPadScene } from "./pad-scene";

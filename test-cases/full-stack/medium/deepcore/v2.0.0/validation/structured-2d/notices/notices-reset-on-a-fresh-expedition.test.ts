@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull } from "../assert";
-import { SIZE_ITEMS } from "../../src/constants";
+import { SIZE_ITEMS } from "../constants";
 import {
   ACTION_KEY,
   captureStill,

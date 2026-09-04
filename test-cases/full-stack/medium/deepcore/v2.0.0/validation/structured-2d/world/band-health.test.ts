@@ -15,11 +15,7 @@
 // equal to `maxHealth`, since an untouched cell is a whole one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BAND_HEALTH,
-  PLAYABLE_COL_MAX,
-  PLAYABLE_COL_MIN,
-} from "../../src/constants";
+import { BAND_HEALTH, PLAYABLE_COL_MAX, PLAYABLE_COL_MIN } from "../constants";
 import { assertEqual, fail } from "../assert";
 import {
   BAND_ORDER,

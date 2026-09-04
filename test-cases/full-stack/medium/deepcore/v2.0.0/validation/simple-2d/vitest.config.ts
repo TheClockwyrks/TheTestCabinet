@@ -11,11 +11,11 @@
 //   npx vitest run --config validation/vitest.config.ts  # the case's validators
 //
 // The root is the workspace, not this directory, so a validator addresses the
-// build by the same relative paths the build itself uses — `src/constants.ts`,
-// `src/game.ts`, and the produced files under `assets/`, which several of the
-// produced-asset suites read straight off disk. It is derived from this file's
-// own URL rather than from the working directory, so the command above works
-// from anywhere.
+// build by the same relative paths the build itself uses — `src/game.ts`, which
+// only `harness.ts` and `constants.ts` reach, and the produced files under
+// `assets/`, which several of the produced-asset suites read straight off disk. It
+// is derived from this file's own URL rather than from the working directory, so
+// the command above works from anywhere.
 //
 // The environment is `node`. The engine takes every measurement from the
 // `SurfaceMetrics` the harness supplies, so these suites need no DOM; the pixel

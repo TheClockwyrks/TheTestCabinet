@@ -1,16 +1,20 @@
-// cargo/refuel-does-not-empty-the-bay — the Fuel Depot leaves the cargo alone.
+// cargo/refuel-does-not-empty-the-bay — buying fuel leaves the cargo alone.
 //
 // specs/mining.md: "the bay is emptied by selling. Refueling and repairing do not
-// empty it." specs/gameplay.md keeps the two apart the same way: the Ore Market
+// empty it." specs/expedition.md keeps the two apart the same way: the Ore Market
 // is the one source of Credits and the one place the bay is emptied, while the
 // Fuel Depot is a sink that buys fuel and hull repair.
 //
-// So the miner arrives at the Fuel Depot with a haul and a part-empty tank and
-// hull, and every one of that panel's four controls is run: the fixed fuel
-// increment, the fixed repair increment, and the two fill-to-full ones. The
-// reading is the bay afterwards, unchanged down to the kilogram — and, so the
-// check is not passing on a depot that did nothing, that the tank and the hull
-// really did rise and the balance really did fall.
+// TWO TRANSACTIONS, TWO POINTS. Buying fuel and buying repair are separate
+// purchases at separate controls, so a build whose refuel keeps the haul and
+// whose repair throws it away must grade differently from one that throws it away
+// either way. The other half is `cargo/repair-does-not-empty-the-bay`.
+//
+// So the miner arrives at the Fuel Depot with a haul and a part-empty tank, and the
+// panel's two fuel controls are run: the fixed increment and the fill to full.
+// The reading is the bay afterwards, unchanged down to the kilogram — and, so the
+// check is not passing on a depot that did nothing, that the tank really did rise
+// and the balance really did fall.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
@@ -28,7 +32,7 @@ import {
   type Ore,
 } from "../harness";
 
-/** The bay posed: a haul worth carrying through a refuelling stop. */
+/** The bay posed: a haul worth carrying through a stop at the depot. */
 const HAUL: Partial<Record<Ore, number>> = { cobaltine: 4, halcite: 2 };
 
 /** The weight that haul carries, as specs/mining.md weighs it. */
@@ -71,17 +75,14 @@ it("leaves the bay exactly as it was through a refuelling stop", async () => {
   assertEqual(before.cargo.loadKg, LOAD_KG, "specs/mining.md");
 
   h.debug.buyFuel();
-  h.debug.buyRepair();
   h.debug.fillFuel();
-  h.debug.repairFull();
   await h.advance(1);
   captureStill(h, "bay");
 
   const after = h.snapshot();
   // The depot did its work, so the bay below survived a stop rather than a no-op.
-  assertGreaterThan(after.miner.fuel, before.miner.fuel, "specs/gameplay.md");
-  assertGreaterThan(after.miner.hull, before.miner.hull, "specs/gameplay.md");
-  assertLessThan(after.credits, CREDITS, "specs/gameplay.md");
+  assertGreaterThan(after.miner.fuel, before.miner.fuel, "specs/expedition.md");
+  assertLessThan(after.credits, CREDITS, "specs/expedition.md");
 
   // And the bay is untouched.
   assertEqual(after.cargo.slotsUsed, before.cargo.slotsUsed, "specs/mining.md");
@@ -89,5 +90,5 @@ it("leaves the bay exactly as it was through a refuelling stop", async () => {
   for (const [ore, count] of Object.entries(HAUL)) {
     assertEqual(after.cargo.ore[ore as Ore], count, `${ore} (specs/mining.md)`);
   }
-  assertEqual(after.creditsEarned, 0, "specs/gameplay.md");
+  assertEqual(after.creditsEarned, 0, "specs/expedition.md");
 });

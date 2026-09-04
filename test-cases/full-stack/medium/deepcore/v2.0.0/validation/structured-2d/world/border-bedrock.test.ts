@@ -17,7 +17,7 @@
 // unplayable.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PLAYABLE_COL_MAX, WORLD_COLS, WORLD_SIZES } from "../../src/constants";
+import { PLAYABLE_COL_MAX, WORLD_COLS, WORLD_SIZES } from "../constants";
 import { assertDeepEqual, assertGreaterThan } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { generatedMine, kindAt, look } from "../generation/mine-scan";

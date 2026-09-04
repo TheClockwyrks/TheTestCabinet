@@ -19,8 +19,8 @@ import {
   MINER_W,
   PLAYABLE_COL_MIN,
   TILE,
-} from "../../src/constants";
-import type { MinerState } from "../../src/constants";
+} from "../constants";
+import type { MinerState } from "../constants";
 import {
   ACTION_KEY,
   layCamp,

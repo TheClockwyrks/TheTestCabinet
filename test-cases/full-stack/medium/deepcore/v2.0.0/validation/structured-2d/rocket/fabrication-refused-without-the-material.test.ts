@@ -13,7 +13,7 @@
 // Nothing may move: not the checklist, and not the balance.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCKET_COMPONENTS } from "../../src/constants";
+import { ROCKET_COMPONENTS } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { openPadScene } from "./pad-scene";

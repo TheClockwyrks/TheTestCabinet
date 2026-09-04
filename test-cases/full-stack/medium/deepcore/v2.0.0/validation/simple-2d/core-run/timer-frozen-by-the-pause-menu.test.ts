@@ -17,7 +17,7 @@
 // it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_TIMER } from "../../src/constants";
+import { CORE_TIMER } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import { elapse, openCampScene } from "./core-scene";

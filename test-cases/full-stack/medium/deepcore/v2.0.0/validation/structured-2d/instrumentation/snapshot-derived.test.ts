@@ -27,7 +27,7 @@
 // to `1`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_HEALTH, METERS_PER_ROW, TILE } from "../../src/constants";
+import { BAND_HEALTH, METERS_PER_ROW, TILE } from "../constants";
 import { assertCloseTo, assertEqual, assertNotNull } from "../assert";
 import {
   ACTION_KEY,

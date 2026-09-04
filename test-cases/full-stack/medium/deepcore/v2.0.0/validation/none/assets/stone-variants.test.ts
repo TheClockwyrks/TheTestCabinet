@@ -1,8 +1,8 @@
 // assets/stone-variants — unbreakable stone has more than one stamp.
 //
-// `specs/assets.md`: "Unbreakable stone, at least two variants, reading as a
-// smooth, cold, harder material against the grainy band rock, with a distinct
-// silhouette rather than a re-tinted dirt tile", produced at
+// `specs/assets.md`: "Unbreakable stone, at least `STONE_VARIANTS` (`2`)
+// variants, reading as a smooth, cold, harder material against the grainy band
+// rock, with a distinct silhouette rather than a re-tinted dirt tile", produced at
 // `assets/tiles/stone-<n>.png`. So the variants are counted at that path and each
 // must be a different drawing from the rest — two files holding one picture are
 // one variant, whatever they are named.
@@ -21,7 +21,7 @@ import {
   readPicture,
   type Picture,
 } from "./produced";
-import { STONE_VARIANTS } from "./spec";
+import { STONE_VARIANTS } from "../constants";
 
 /** `assets/tiles/stone-<n>.png`, whatever the build numbered them from. */
 const VARIANT = /^stone-\d+\.png$/;

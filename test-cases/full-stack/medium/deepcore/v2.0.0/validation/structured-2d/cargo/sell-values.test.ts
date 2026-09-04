@@ -62,8 +62,8 @@ it("pays the sum of the stated values of the units held", async () => {
   await h.advance(1);
 
   const before = h.snapshot();
-  assertEqual(before.credits, 0, "specs/gameplay.md");
-  assertEqual(before.creditsEarned, 0, "specs/gameplay.md");
+  assertEqual(before.credits, 0, "specs/expedition.md");
+  assertEqual(before.creditsEarned, 0, "specs/expedition.md");
 
   h.debug.sell();
   await h.advance(1);
@@ -71,5 +71,5 @@ it("pays the sum of the stated values of the units held", async () => {
 
   const after = h.snapshot();
   assertEqual(after.credits, VALUE, "specs/mining.md");
-  assertEqual(after.creditsEarned, VALUE, "specs/gameplay.md");
+  assertEqual(after.creditsEarned, VALUE, "specs/expedition.md");
 });

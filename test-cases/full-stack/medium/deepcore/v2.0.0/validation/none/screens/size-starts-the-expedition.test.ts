@@ -2,7 +2,7 @@
 // once.
 //
 // specs/ui.md: on `size-select`, "a size begins the expedition in the mode chosen
-// at `mode-select`". specs/gameplay.md: "Starting it is a two-step choice: the
+// at `mode-select`". specs/expedition.md: "Starting it is a two-step choice: the
 // mode, then the world size. Choosing a size begins the expedition at once", with
 // the miner "standing on the camp ground at `SPAWN_COL`" and "the mine generated
 // fresh from the current seed at the chosen size".
@@ -106,12 +106,12 @@ it("begins the expedition at the chosen size, in the mode chosen before it", asy
     assertLessThanOrEqual(
       started.miner.row,
       SURFACE_ROW,
-      "specs/gameplay.md: the miner starts standing on the camp ground",
+      "specs/expedition.md: the miner starts standing on the camp ground",
     );
     assertEqual(
       started.miner.grounded,
       true,
-      "specs/gameplay.md: the miner starts standing rather than falling",
+      "specs/expedition.md: the miner starts standing rather than falling",
     );
 
     let solid = 0;
@@ -121,7 +121,7 @@ it("begins the expedition at the chosen size, in the mode chosen before it", asy
     assertGreaterThanOrEqual(
       solid,
       SOLID_MIN,
-      `specs/gameplay.md: the mine is generated fresh at ${size} rather than left empty`,
+      `specs/expedition.md: the mine is generated fresh at ${size} rather than left empty`,
     );
   }
 });

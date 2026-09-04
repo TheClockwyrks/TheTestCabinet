@@ -14,7 +14,7 @@
 // the difference. No clock moves under a read, so identical means exactly that.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SCANNER_TIERS } from "../../src/constants";
+import { SCANNER_TIERS } from "../constants";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import {
   captureStill,

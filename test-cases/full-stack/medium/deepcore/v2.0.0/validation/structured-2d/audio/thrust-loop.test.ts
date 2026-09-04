@@ -16,7 +16,7 @@
 // sound is the jetpack.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, PLAYABLE_COL_MIN, TILE } from "../../src/constants";
+import { CUES, PLAYABLE_COL_MIN, TILE } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   ACTION_KEY,

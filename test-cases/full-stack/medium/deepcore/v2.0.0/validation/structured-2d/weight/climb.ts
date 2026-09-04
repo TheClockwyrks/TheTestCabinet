@@ -7,7 +7,7 @@
 // tier's two empty-load figures `specs/upgrades.md` prints. Stated once here
 // rather than re-derived in each check, so the target cannot drift file by file.
 
-import { CLIMB_CAP_FLOOR } from "../../src/constants";
+import { CLIMB_CAP_FLOOR } from "../constants";
 
 /** The net upward acceleration thrust produces at load fraction `load`. */
 export function climbAccelAt(emptyAccel: number, load: number): number {

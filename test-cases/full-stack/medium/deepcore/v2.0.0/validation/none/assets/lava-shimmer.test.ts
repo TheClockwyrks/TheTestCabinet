@@ -1,12 +1,14 @@
 // assets/lava-shimmer — lava is a produced cycle that actually churns.
 //
-// `specs/assets.md`: "The lava shimmer: a looping cycle for a lava cell's molten
-// interior, so lava glows and churns rather than sitting flat", produced under
-// `assets/hazards/lava/frameNN.png`. Two halves, and both are read:
+// `specs/assets.md`: "The lava shimmer: a looping cycle of at least `LAVA_FRAMES`
+// (`2`) frames for a lava cell's molten interior, so lava glows and churns rather
+// than sitting flat", produced under `assets/hazards/lava/frameNN.png`. Two
+// halves, and both are read:
 //
-//   1. THE CYCLE EXISTS. At least two frames at that path, carrying at least two
-//      different DRAWINGS — a "cycle" of one picture repeated is the flat lava the
-//      requirement is written against. A frame that equals an earlier one is not
+//   1. THE CYCLE EXISTS. `LAVA_FRAMES` frames at that path, carrying at least
+//      `DRAWINGS_MIN` different DRAWINGS — a "cycle" of one picture repeated is
+//      the flat lava the requirement is written against. A frame that equals an
+//      earlier one is not
 //      that: a shimmer that swells and settles comes back on itself, and a build
 //      is graded on the drawings it made rather than on the order it plays them.
 //   2. THE CELL CHURNS. One lava cell is posed on screen and the pixels over it
@@ -21,7 +23,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
-import { PLAYABLE_COL_MIN, TILE } from "../constants";
+import {
+  DRAWINGS_MIN,
+  LAVA_FRAMES,
+  PLAYABLE_COL_MIN,
+  TILE,
+} from "../constants";
 import {
   captureReplay,
   cellCenter,
@@ -41,7 +48,6 @@ import {
   readPicture,
   type Picture,
 } from "./produced";
-import { LAVA_FRAMES } from "./spec";
 
 /** A deepstone row, the shallowest band `specs/world.md` puts lava in. */
 const ROW = 300;
@@ -108,7 +114,7 @@ it("produces a lava cycle and churns the cell it draws", async () => {
   );
   assertGreaterThanOrEqual(
     distinctCount(pictures),
-    LAVA_FRAMES,
+    DRAWINGS_MIN,
     "different drawings among assets/hazards/lava/ (specs/assets.md)",
   );
   assertGreaterThan(moved, 0, "specs/assets.md");

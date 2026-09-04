@@ -15,7 +15,7 @@
 // it comes to rest is the floor under the opening rather than the lip of it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../../src/constants";
+import { TILE } from "../constants";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import {
   ACTION_KEY,

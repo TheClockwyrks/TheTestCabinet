@@ -1,6 +1,6 @@
 // hud/credits-readout — the bar states the Credits balance.
 //
-// `specs/ui.md`: the status bar shows the Credits. `specs/gameplay.md` makes them
+// `specs/ui.md`: the status bar shows the Credits. `specs/expedition.md` makes them
 // the one currency, so the figure on the bar is what a player checks a sale
 // against. A balance is a number, so it is drawn as a number, and the frame's own
 // text runs anchored inside the band are read back and searched for it.

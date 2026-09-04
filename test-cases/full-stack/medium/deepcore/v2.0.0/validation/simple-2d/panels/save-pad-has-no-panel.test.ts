@@ -1,7 +1,7 @@
 // panels/save-pad-has-no-panel — the Save Pad saves and opens nothing.
 //
 // `specs/ui.md`: the Save Pad has no panel and activating it saves directly.
-// `specs/gameplay.md`: activating the pad writes the save on the spot. So the
+// `specs/expedition.md`: activating the pad writes the save on the spot. So the
 // reading is both halves of the one sentence — the save exists afterwards, and
 // `panel` never left `null`.
 //
@@ -9,7 +9,7 @@
 // test is about what a save DOES; a host that refuses storage is `specs/modes.md`'s
 // own requirement and its own point. The slot is cleared first, so `hasSave`
 // turning true is this activation's doing rather than something the host arrived
-// with. No Core Sample is live, because `specs/gameplay.md` refuses a save while
+// with. No Core Sample is live, because `specs/expedition.md` refuses a save while
 // one is, and that refusal is its own point elsewhere.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -46,6 +46,6 @@ it("saves at the pad without opening a panel", async () => {
   const after = h.snapshot();
   captureStill(h, "pad");
 
-  assertEqual(after.hasSave, true, "specs/gameplay.md");
+  assertEqual(after.hasSave, true, "specs/expedition.md");
   assertEqual(after.panel, null, "specs/ui.md");
 });

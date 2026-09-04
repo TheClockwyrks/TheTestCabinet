@@ -14,7 +14,7 @@
 // mine, and the band its row falls in.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GEMSTONE_IDS, MATERIAL_BAND } from "../../src/constants";
+import { GEMSTONE_IDS, MATERIAL_BAND } from "../constants";
 import { assertDeepEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

@@ -11,7 +11,7 @@
 // same slots used, the same load, and no unit of the ore that was left behind.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARGO_TIERS } from "../../src/constants";
+import { CARGO_TIERS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,

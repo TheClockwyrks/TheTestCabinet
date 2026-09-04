@@ -19,7 +19,7 @@
 // is held so it neither sinks into the cut nor walks out of it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_HEALTH, CUES, PLAYABLE_COL_MIN } from "../../src/constants";
+import { BAND_HEALTH, CUES, PLAYABLE_COL_MIN } from "../constants";
 import { assertEqual } from "../assert";
 import {
   ACTION_KEY,

@@ -91,6 +91,56 @@ export interface TileRead {
   maxHealth: number | null;
 }
 
+/**
+ * A hit region in the stage's logical units, as `menuItemRect` and `controlRect`
+ * report one.
+ *
+ * `x` and `y` are the region's top-left corner and `w` and `h` its size: the
+ * region a pointer or a touch contact drives that item or that control from
+ * (`specs/instrumentation.md`, Readings). The layout is the build's, so this is
+ * the only thing that says where the build put one.
+ */
+export interface HitRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * The on-screen controls `controlRect` reports a region for, by the names
+ * `specs/instrumentation.md` fixes.
+ *
+ * Thirteen are the named counterparts of the operations under The controls, and
+ * the last three are the ones the status bar carries.
+ */
+export type ControlName =
+  | "drop-ore"
+  | "use-item"
+  | "jettison"
+  | "sell"
+  | "buy-fuel"
+  | "fill-fuel"
+  | "buy-repair"
+  | "repair-full"
+  | "buy-upgrade"
+  | "buy-item"
+  | "fabricate"
+  | "launch"
+  | "dismiss-notice"
+  | "inventory"
+  | "pause"
+  | "mute";
+
+/**
+ * What a control acts on, where it acts on something further.
+ *
+ * `"drop-ore"` takes an ore or gemstone id, `"use-item"` and `"buy-item"` a field
+ * supply's id, and `"buy-upgrade"` an upgrade track's name. Every other control
+ * takes `null`.
+ */
+export type ControlSubject = Ore | ItemId | UpgradeTrack;
+
 /** One surface building's footprint in world units, as `buildings()` reports it. */
 export interface BuildingBox {
   id: string;
@@ -225,6 +275,8 @@ export interface DeepcoreSnapshot {
   muted: boolean;
   /** Accumulated game time, in seconds, on every screen. */
   simTime: number;
+  /** The expedition's own clock, in seconds. Rests at `0` until one begins. */
+  elapsedSeconds: number;
   hasSave: boolean;
   credits: number;
   creditsEarned: number;
@@ -271,6 +323,24 @@ export interface DeepcoreDebugApi {
   /** The nearest cell of that kind to the miner, or `null` where the mine holds none. */
   findTile(kind: TileKind): Promise<CellRef | null>;
   buildings(): Promise<BuildingBox[]>;
+  /**
+   * The hit region of item `index` on the menu the current screen shows.
+   *
+   * `null` on `in-mine`, which shows no menu, and where `index` names no item of
+   * the menu the current screen shows.
+   */
+  menuItemRect(index: number): Promise<HitRect | null>;
+  /**
+   * The hit region of one on-screen control, for the ore, upgrade track, or
+   * field supply it acts on where it takes one, and `null` where it does not.
+   *
+   * `null` while the control is not drawn, including while the panel that
+   * carries it is closed.
+   */
+  controlRect(
+    control: ControlName,
+    subject: ControlSubject | null,
+  ): Promise<HitRect | null>;
 
   /* ---- The clock. Engineless builds alone: nothing else owns the loop. ---- */
 
@@ -286,7 +356,6 @@ export interface DeepcoreDebugApi {
 
   keyDown(code: string): Promise<void>;
   keyUp(code: string): Promise<void>;
-  press(code: string): Promise<void>;
 
   /* ---- Restoring the world ---- */
 
@@ -300,8 +369,6 @@ export interface DeepcoreDebugApi {
   generateMine(): Promise<void>;
   /** Open every playable cell below `row 0` and above the Core chamber. */
   clearMine(): Promise<void>;
-  /** Take every ground item off the mine, detonating nothing. */
-  clearGroundItems(): Promise<void>;
   /** Empty the cargo bay, selling nothing. */
   clearCargo(): Promise<void>;
   /** Set the held count of all six field supplies to `0`, using nothing. */
@@ -340,8 +407,19 @@ export interface DeepcoreDebugApi {
   setMenuIndex(index: number): Promise<void>;
   setMode(mode: Mode): Promise<void>;
   /**
-   * The size and with it `coreRow`, and the mine the new depth leaves: emptied
-   * to that depth exactly as `clearMine` leaves it. It generates nothing.
+   * The size and with it `coreRow`, resizing the mine onto the new depth rather
+   * than emptying or regenerating it (`specs/instrumentation.md`, Resizing the
+   * mine).
+   *
+   * Every cell the two depths share comes through untouched, with its own kind,
+   * band, ore, material, and remaining health, and a buried material node above
+   * the new Core chamber is kept with it. Rows past the new Core chamber are gone
+   * with their rows; rows the old depth did not reach open as an empty mine holds
+   * them at that depth, bedrock across columns `0` and `31` and open tunnel
+   * across the playable columns, carrying the band the new depth gives the row;
+   * the row at the new `coreRow` becomes the Core chamber, bedrock across the row
+   * with the Core at `CORE_COL`; and the row that was the old Core chamber, where
+   * the size gets deeper, opens as an ordinary row. It generates nothing.
    */
   setWorldSize(size: WorldSize): Promise<void>;
   setCredits(value: number): Promise<void>;
@@ -361,6 +439,11 @@ export interface DeepcoreDebugApi {
   setNoticeFired(hazard: Hazard, fired: boolean): Promise<void>;
   /** The carried lead, within `[-CAM_LEAD_MAX, CAM_LEAD_MAX]`. */
   setCameraLead(lead: number): Promise<void>;
+  /**
+   * The expedition's elapsed time, at least `0`: the clock `elapsedSeconds`
+   * reports and the summary shows. It moves no other clock and advances nothing.
+   */
+  setElapsed(seconds: number): Promise<void>;
   clearSave(): Promise<void>;
   /** The audio mute toggle. Engineless builds alone. */
   setMuted(muted: boolean): Promise<void>;
@@ -398,18 +481,18 @@ export const REQUIRED_OPS = [
   "tileAt",
   "findTile",
   "buildings",
+  "menuItemRect",
+  "controlRect",
   // The clock
   "setAutoStep",
   "advance",
   // Input
   "keyDown",
   "keyUp",
-  "press",
   // Restoring the world
   "reset",
   "generateMine",
   "clearMine",
-  "clearGroundItems",
   "clearCargo",
   "clearItems",
   // Posing the mine
@@ -442,6 +525,7 @@ export const REQUIRED_OPS = [
   "setRocketInstalled",
   "setNoticeFired",
   "setCameraLead",
+  "setElapsed",
   "clearSave",
   "setMuted",
   // The controls

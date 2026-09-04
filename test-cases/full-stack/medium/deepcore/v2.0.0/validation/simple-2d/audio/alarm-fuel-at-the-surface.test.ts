@@ -17,7 +17,7 @@
 // no key is down, and the miner's travel is held so it neither falls nor lands.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, FUEL_TIERS, LOW_FUEL_FRACTION } from "../../src/constants";
+import { CUES, FUEL_TIERS, LOW_FUEL_FRACTION } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,

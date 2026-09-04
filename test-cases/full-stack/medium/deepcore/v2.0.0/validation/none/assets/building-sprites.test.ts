@@ -16,7 +16,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { allDistinct, readPicture, type Picture } from "./produced";
-import { BUILDING_SPRITES, SURFACE_SPRITES } from "./spec";
+import { BUILDING_SPRITES, SURFACE_SPRITES } from "../constants";
 
 let h: Harness;
 

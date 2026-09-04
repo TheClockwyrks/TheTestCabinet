@@ -14,9 +14,9 @@
 // and the corner the four cells share is where the nub belongs.
 //
 // THE READING, AND WHY IT IS SHAPE RATHER THAN SIZE. The specification fixes no
-// lip width and no corner radius, so nothing here may assume one. What separates
-// a bulge from a hollow is CURVATURE, which is read as a chord test the build
-// calibrates itself:
+// lip width and no corner radius, so nothing here may assume one and NO reach
+// below is compared against a figure. What separates a bulge from a hollow is
+// CURVATURE, which is read as a chord test the build calibrates itself:
 //
 //   1. From the shared corner, the dirt is followed along each of the two edges
 //      that run into the open passage, until it gives way to the tunnel fill.
@@ -48,12 +48,8 @@
 // rock and the tunnel fill from produced tiles.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertBetween,
-  assertGreaterThan,
-  assertGreaterThanOrEqual,
-} from "../assert";
-import { TILE } from "../../src/constants";
+import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
+import { TILE } from "../constants";
 import {
   DISTINCT_MIN,
   captureStill,
@@ -80,12 +76,6 @@ const SCAN_TO = 40;
  * boundary actually meets the edge.
  */
 const SCAN_OFF = 1;
-
-/** The least dirt an L-bend must keep along each edge for a nub to be there. */
-const NUB_MIN = 3;
-
-/** The most dirt a corner feature may run to before it is a wall, not a nub. */
-const NUB_MAX = 30;
 
 /**
  * How far past the flat chord the dirt must reach along the diagonal for the
@@ -179,18 +169,19 @@ it("keeps a convex nub of dirt at the inside of an L-bend", async () => {
     "the band's unmined rock drawn clearly apart from the carved tunnel's fill, in RGB distance",
   );
 
-  // There is dirt at the bend at all, and it is a corner feature rather than a
-  // wall of dirt across the passage.
-  assertBetween(
+  // There is dirt at the bend at all. The reach itself is NOT bounded here:
+  // specs/assets.md fixes no lip width and no corner radius, so any reach a build
+  // gives its lip is conformant, and the shape test below is what decides the
+  // requirement. What a reach of zero would mean is that the two ends of the
+  // chord do not exist, which leaves the ratio nothing to be a ratio of.
+  assertGreaterThan(
     alongTop,
-    NUB_MIN,
-    NUB_MAX,
+    0,
     "dirt kept along the bend's top edge, out from the corner the rock pokes into",
   );
-  assertBetween(
+  assertGreaterThan(
     alongRight,
-    NUB_MIN,
-    NUB_MAX,
+    0,
     "dirt kept along the bend's right edge, out from the corner the rock pokes into",
   );
 

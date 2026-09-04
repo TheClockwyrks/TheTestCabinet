@@ -18,7 +18,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual } from "../assert";
-import { HULL_TIERS } from "../../src/constants";
+import { gasDamageAt, HULL_TIERS } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -27,7 +27,6 @@ import {
 } from "../harness";
 import {
   AFTERMATH_FRAMES,
-  gasDamageAt,
   openBlastScene,
   readCells,
   ROCKBED_ROW,

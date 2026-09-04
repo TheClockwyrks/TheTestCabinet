@@ -7,7 +7,8 @@
 // tier `1` on every upgrade track, a full fuel tank and a full hull, `0` Credits,
 // an empty cargo bay, an empty satchel, no field supplies, no rocket component
 // installed, no live Core Sample, no ground item, neither hazard notice fired,
-// the camera lead at `0`, both faculties running, and `simTime` at `0`."
+// the camera lead at `0`, both faculties running, and `simTime` and
+// `elapsedSeconds` at `0`."
 //
 // And two exceptions, each for a stated reason: "`muted` is untouched, because
 // muting is a player preference rather than a value an expedition opens with",
@@ -127,6 +128,7 @@ it("restores the whole title-screen state, and leaves muted alone", async () => 
   assertEqual(s.mode, "standard", "mode");
   assertEqual(s.worldSize, DEFAULT_WORLD_SIZE, "worldSize");
   assertEqual(s.simTime, 0, "simTime");
+  assertEqual(s.elapsedSeconds, 0, "elapsedSeconds");
   assertNull(s.summary, "summary");
 
   // The mine, as `clearMine` leaves one.
@@ -138,7 +140,7 @@ it("restores the whole title-screen state, and leaves muted alone", async () => 
   assertEqual((await h.tileAt(COL, 1)).kind, "tunnel", `the cell (${COL}, 1)`);
 
   // The miner, on the camp ground at the spawn, facing east, at rest. The COLUMN
-  // rather than an exact `x`: `specs/gameplay.md` puts the miner at `SPAWN_COL`
+  // rather than an exact `x`: `specs/expedition.md` puts the miner at `SPAWN_COL`
   // and leaves where within that column to the build.
   assertEqual(s.miner.col, SPAWN_COL, "the miner's spawn column");
   assertBetween(

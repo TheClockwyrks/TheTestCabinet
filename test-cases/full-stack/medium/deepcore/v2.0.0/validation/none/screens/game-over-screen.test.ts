@@ -6,7 +6,7 @@
 // surface ground line (`fuel-out`), the hull standing at `0`
 // (`hull-destroyed`), or the Core Sample's timer expiring while it is carried
 // (`core-detonation`). specs/ui.md: the `game-over` screen shows "The expedition
-// summary, after a death", and specs/gameplay.md fixes the summary as `null`
+// summary, after a death", and specs/expedition.md fixes the summary as `null`
 // until the expedition ends.
 //
 // SO ALL THREE CAUSES ARE DRIVEN, each in a fresh expedition, and each is read
@@ -64,7 +64,7 @@ it("ends at the Game Over screen with a summary, whichever death it was", async 
     assertEqual(
       over.summary?.deathCause,
       cause,
-      `specs/gameplay.md: the summary names how the miner died`,
+      `specs/expedition.md: the summary names how the miner died`,
     );
   }
 });

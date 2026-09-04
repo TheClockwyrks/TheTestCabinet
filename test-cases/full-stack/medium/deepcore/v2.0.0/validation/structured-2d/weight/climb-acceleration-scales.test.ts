@@ -19,7 +19,7 @@
 // the game reports rather than from the one that was asked for.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { JETPACK_TIERS, SURFACE_Y, TILE } from "../../src/constants";
+import { JETPACK_TIERS, SURFACE_Y, TILE } from "../constants";
 import { assertBetween, assertLessThan } from "../assert";
 import {
   ACTION_KEY,

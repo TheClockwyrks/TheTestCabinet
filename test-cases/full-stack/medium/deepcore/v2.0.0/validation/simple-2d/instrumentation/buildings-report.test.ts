@@ -19,7 +19,7 @@
 // cave mouth — is fixed by `specs/world.md` and read by the camp's own points.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BUILDINGS } from "../../src/constants";
+import { BUILDINGS } from "../constants";
 import {
   assertDeepEqual,
   assertEqual,

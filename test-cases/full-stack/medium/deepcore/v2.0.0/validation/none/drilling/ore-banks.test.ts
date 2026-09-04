@@ -49,7 +49,7 @@ it("banks one unit of the ore the broken cell held", async () => {
   await pinMiner(h);
 
   const opening = await h.snapshot();
-  assertEqual(opening.cargo.slotsUsed, 0, "specs/gameplay.md");
+  assertEqual(opening.cargo.slotsUsed, 0, "specs/expedition.md");
   assertEqual(opening.cargo.slotCap, CARGO_CAPACITY[0], "specs/upgrades.md");
   assertEqual((await h.tileAt(COL, ROW)).ore, ORE, "specs/instrumentation.md");
 

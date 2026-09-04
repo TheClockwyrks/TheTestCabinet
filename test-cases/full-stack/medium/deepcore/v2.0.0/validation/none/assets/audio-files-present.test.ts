@@ -17,7 +17,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { readSound } from "./produced";
-import { AUDIO_FILES } from "./spec";
+import { AUDIO_FILES } from "../constants";
 
 /** The shortest a produced cue can be and still be a sound, in seconds. */
 const SHORTEST = 0.01;

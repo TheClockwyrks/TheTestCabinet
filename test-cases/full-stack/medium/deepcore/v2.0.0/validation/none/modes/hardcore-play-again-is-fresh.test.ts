@@ -3,7 +3,7 @@
 //
 // specs/modes.md, Hardcore: "The Game Over screen offers `PLAY AGAIN`, which
 // starts a completely fresh Hardcore expedition at the same world size."
-// specs/gameplay.md says what a fresh expedition is: "The miner starts standing on
+// specs/expedition.md says what a fresh expedition is: "The miner starts standing on
 // the camp ground at `SPAWN_COL`, at tier `1` on every upgrade track, with a full
 // fuel tank and a full hull, `0` Credits, an empty cargo bay, an empty satchel, no
 // field supplies, and no rocket component installed. The mine is generated fresh
@@ -124,19 +124,19 @@ it("starts a fresh Hardcore expedition at the same size on PLAY AGAIN", async ()
   assertEqual(
     fresh.credits,
     0,
-    "specs/gameplay.md: a fresh expedition starts with 0 Credits",
+    "specs/expedition.md: a fresh expedition starts with 0 Credits",
   );
   for (const track of UPGRADE_TRACKS) {
     assertEqual(
       fresh.tiers[track],
       1,
-      `specs/gameplay.md: a fresh expedition starts at tier 1 on ${track}`,
+      `specs/expedition.md: a fresh expedition starts at tier 1 on ${track}`,
     );
   }
   assertDeepEqual(
     fresh.rocket.installed,
     [],
-    "specs/gameplay.md: a fresh expedition starts with no rocket component installed",
+    "specs/expedition.md: a fresh expedition starts with no rocket component installed",
   );
   assertEqual(
     fresh.rocket.nextComponent,
@@ -147,32 +147,32 @@ it("starts a fresh Hardcore expedition at the same size on PLAY AGAIN", async ()
     assertEqual(
       fresh.items[item],
       0,
-      `specs/gameplay.md: a fresh expedition holds no ${item}`,
+      `specs/expedition.md: a fresh expedition holds no ${item}`,
     );
   }
   assertDeepEqual(
     fresh.cargo.ore,
     {},
-    "specs/gameplay.md: a fresh expedition starts with an empty cargo bay",
+    "specs/expedition.md: a fresh expedition starts with an empty cargo bay",
   );
   assertEqual(
     fresh.satchel.resonite,
     0,
-    "specs/gameplay.md: a fresh expedition starts with an empty satchel",
+    "specs/expedition.md: a fresh expedition starts with an empty satchel",
   );
   assertEqual(
     fresh.satchel.cryenite,
     0,
-    "specs/gameplay.md: a fresh expedition starts with an empty satchel",
+    "specs/expedition.md: a fresh expedition starts with an empty satchel",
   );
   assertEqual(
     fresh.miner.fuel,
     fresh.miner.maxFuel,
-    "specs/gameplay.md: a fresh expedition starts with a full fuel tank",
+    "specs/expedition.md: a fresh expedition starts with a full fuel tank",
   );
   assertEqual(
     fresh.miner.hull,
     fresh.miner.maxHull,
-    "specs/gameplay.md: a fresh expedition starts with a full hull",
+    "specs/expedition.md: a fresh expedition starts with a full hull",
   );
 });

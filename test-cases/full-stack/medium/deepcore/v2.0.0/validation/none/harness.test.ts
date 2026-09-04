@@ -754,16 +754,10 @@ it("attributes a sound to the frame of the drive that emitted it", async () => {
   // so the probe has nothing to see until that is done. Waiting on the probe
   // itself rather than on a duration is what keeps this off the wall clock.
   await h.armAudio();
-  await h.page
-    .waitForFunction(
-      () =>
-        (
-          window as unknown as { __deepcoreAudio: { started(): number } }
-        ).__deepcoreAudio.started() > 0,
-      undefined,
-      { timeout: 30_000 },
-    )
-    .catch(() => undefined);
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline && (await h.sounds()) === 0) {
+    await h.page.waitForTimeout(50);
+  }
 
   await openScene(h);
   await layOre(h, COL, ROW, "ferron");

@@ -21,7 +21,7 @@
 // inside the window.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WALK_SPEED } from "../../src/constants";
+import { WALK_SPEED } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   ACTION_KEY,

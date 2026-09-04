@@ -32,11 +32,7 @@ import {
   pinMiner,
   type Harness,
 } from "../harness";
-import {
-  bankSave,
-  openAtCamp,
-  waitForGameOver,
-} from "../save/expedition";
+import { bankSave, openAtCamp, waitForGameOver } from "../save/expedition";
 
 /**
  * Frames between the hull standing at `0` and the reading.
@@ -45,6 +41,21 @@ import {
  * in its own frame is not held to an ordering the specification leaves open.
  */
 const AT_ONCE_FRAMES = 2;
+
+/**
+ * The frames the replay is padded with, so the death is something a reviewer can
+ * WATCH.
+ *
+ * The reading itself is two frames and the sweep to the Game Over screen is a
+ * few more, which is a sixth of a second at the rate this suite steps. The
+ * recorder is armed on the living miner for `RUN_UP` and held on the Game Over
+ * screen for `SETTLE`, so the section shows the expedition alive, the hull
+ * emptying, and what it left behind. Neither touches what is read: `struck` is
+ * taken at `AT_ONCE_FRAMES` exactly, which is the point the requirement is about,
+ * and the miner's body and drill are both gated.
+ */
+const RUN_UP = 24;
+const SETTLE = 40;
 
 let h: Harness;
 
@@ -64,10 +75,13 @@ it("deletes the save on the frame the Hardcore death lands", async () => {
   const banked = await h.snapshot();
 
   const run = await captureReplay(h, "gone", async () => {
+    await h.advance(RUN_UP);
     await h.debug.setHull(0);
     await h.advance(AT_ONCE_FRAMES);
     const struck = await h.snapshot();
-    return { struck, over: await waitForGameOver(h) };
+    const over = await waitForGameOver(h);
+    await h.advance(SETTLE);
+    return { struck, over };
   });
 
   assertEqual(banked.hasSave, true, "the save this check deletes was banked");

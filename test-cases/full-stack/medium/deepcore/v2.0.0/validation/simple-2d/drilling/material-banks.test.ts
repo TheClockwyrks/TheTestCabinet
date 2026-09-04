@@ -11,7 +11,7 @@
 // carry. The miner's body is held still, so the cut is the drill's alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_HEALTH, MATERIAL_BAND } from "../../src/constants";
+import { BAND_HEALTH, MATERIAL_BAND } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,
@@ -54,7 +54,7 @@ it("banks the node's material into the satchel and clears the cell", async () =>
   assertEqual(opening.kind, "material", "specs/instrumentation.md");
   assertEqual(opening.material, MATERIAL, "specs/instrumentation.md");
   assertEqual(opening.health, BAND_HEALTH[BAND], "specs/world.md");
-  assertEqual(h.snapshot().satchel[MATERIAL], 0, "specs/gameplay.md");
+  assertEqual(h.snapshot().satchel[MATERIAL], 0, "specs/expedition.md");
 
   const cut = await captureReplay(h, "node", () =>
     driveCut(h, "down", { col: COL, row }),

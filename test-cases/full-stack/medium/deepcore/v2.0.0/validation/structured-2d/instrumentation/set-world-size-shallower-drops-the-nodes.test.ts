@@ -22,7 +22,7 @@
 // cuts nothing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SCANNER_TIERS } from "../../src/constants";
+import { SCANNER_TIERS } from "../constants";
 import { assertEqual, assertNull, fail } from "../assert";
 import {
   captureStill,

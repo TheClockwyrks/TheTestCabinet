@@ -13,7 +13,7 @@
 // The verdict is the height reached: at or below where it started.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { JETPACK_TIERS } from "../../src/constants";
+import { JETPACK_TIERS } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   ACTION_KEY,

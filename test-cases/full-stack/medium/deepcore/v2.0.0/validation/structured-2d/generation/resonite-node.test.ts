@@ -19,7 +19,7 @@ import {
   PLAYABLE_COL_MIN,
   WORLD_SIZES,
   type WorldSize,
-} from "../../src/constants";
+} from "../constants";
 import { assertBetween, assertEqual, assertLength } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { bandOf, generatedMine, look } from "./mine-scan";

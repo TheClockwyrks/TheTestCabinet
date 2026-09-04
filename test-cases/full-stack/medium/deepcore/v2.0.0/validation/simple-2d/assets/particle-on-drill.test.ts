@@ -17,7 +17,7 @@
 // because a system this engine's loader was refused is one the build cannot play.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_HEALTH, PLAYABLE_COL_MIN, TILE } from "../../src/constants";
+import { BAND_HEALTH, PLAYABLE_COL_MIN, TILE } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   ACTION_KEY,

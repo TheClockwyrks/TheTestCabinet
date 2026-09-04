@@ -15,7 +15,7 @@
 // reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, PLAYABLE_COL_MIN } from "../../src/constants";
+import { CUES, PLAYABLE_COL_MIN } from "../constants";
 import { assertEqual, assertLessThan } from "../assert";
 import {
   captureReplay,

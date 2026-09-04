@@ -20,7 +20,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { ITEM_IDS } from "../../src/constants";
+import { ITEM_IDS } from "../constants";
 import {
   captureReplay,
   createHarness,

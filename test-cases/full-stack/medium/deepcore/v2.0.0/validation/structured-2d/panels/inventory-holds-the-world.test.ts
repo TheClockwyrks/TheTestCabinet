@@ -13,7 +13,7 @@
 // the requirement is what the overlay HOLDS rather than what opens it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_TIMER, PLAYABLE_COL_MIN, TILE } from "../../src/constants";
+import { CORE_TIMER, PLAYABLE_COL_MIN, TILE } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   captureReplay,

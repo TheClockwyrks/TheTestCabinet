@@ -96,7 +96,7 @@ it("cuts with the new drill damage on the very next cut", async () => {
   assertEqual(
     (await h.snapshot()).tiers.drill,
     1,
-    "specs/gameplay.md, the starting tier",
+    "specs/expedition.md, the starting tier",
   );
 
   await h.debug.setCredits(UPGRADE_PRICES[2]);

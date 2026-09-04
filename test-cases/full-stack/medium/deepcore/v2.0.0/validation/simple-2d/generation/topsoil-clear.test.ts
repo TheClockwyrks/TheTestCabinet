@@ -16,7 +16,7 @@
 // at each of them and the rule is every mine's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WORLD_SIZES } from "../../src/constants";
+import { WORLD_SIZES } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { generatedMine, look, tallyBand } from "./mine-scan";

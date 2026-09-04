@@ -27,23 +27,18 @@ import {
   FALL_TERMINAL_EMPTY,
   FALL_TERMINAL_LOADED,
   IMPACT_SAFE_SPEED,
-} from "../../src/constants";
+  impactDamageAt,
+} from "../constants";
 import {
   captureReplay,
   createHarness,
+  type Harness,
   loadFraction,
   loadToFraction,
   openScene,
   pinDrill,
-  type Harness,
 } from "../harness";
-import {
-  armHull,
-  bandRow,
-  driveLanding,
-  HAZARD_COL,
-  impactDamageAt,
-} from "./scene";
+import { armHull, bandRow, driveLanding, HAZARD_COL } from "./scene";
 
 /** The tier whose hull outlasts the heaviest landing. */
 const HULL_TIER = 5;
@@ -56,6 +51,18 @@ const TOLERANCE = 3;
 
 /** The posed arrival speed of the first, empty landing. */
 const BRISK_SPEED = 800;
+
+/**
+ * Frames the recording holds either side of each landing.
+ *
+ * A landing posed `HEIGHT` above the floor at these speeds resolves in about two
+ * frames, so the bare drops are six frames of recording — a flicker rather than
+ * three impacts a reviewer can watch. Each drop gets a moment of the miner standing
+ * on the floor before it and the aftermath of the hit after it, which is where the
+ * hull loss and the hurt state are seen.
+ */
+const RUN_UP_FRAMES = 8;
+const SETTLE_FRAMES = 10;
 
 let h: Harness;
 
@@ -78,8 +85,10 @@ it("deals the impact rule's hull at every landing speed", async () => {
 
   const landings = await captureReplay(h, "slam", async () => {
     // Two empty landings, the second at the empty terminal speed.
+    await h.advance(RUN_UP_FRAMES);
     armHull(h, HULL_TIER);
     const brisk = await driveLanding(h, HAZARD_COL, row, HEIGHT, BRISK_SPEED);
+    await h.advance(SETTLE_FRAMES);
     armHull(h, HULL_TIER);
     const terminal = await driveLanding(
       h,
@@ -88,6 +97,7 @@ it("deals the impact rule's hull at every landing speed", async () => {
       HEIGHT,
       FALL_TERMINAL_EMPTY,
     );
+    await h.advance(SETTLE_FRAMES);
 
     // And one at the loaded terminal speed, which needs the load that raises it.
     const loaded = loadToFraction(h, 1);
@@ -99,6 +109,7 @@ it("deals the impact rule's hull at every landing speed", async () => {
       HEIGHT,
       FALL_TERMINAL_LOADED,
     );
+    await h.advance(SETTLE_FRAMES);
     return { brisk, terminal, heavy, loaded };
   });
 

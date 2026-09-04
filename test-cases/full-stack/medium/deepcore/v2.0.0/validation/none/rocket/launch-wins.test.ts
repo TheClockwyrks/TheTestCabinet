@@ -12,7 +12,7 @@
 // output is for.
 //
 // The summary is read at the end, because the Victory screen is the summary:
-// `specs/gameplay.md` says it reports the mode and the number of components
+// `specs/expedition.md` says it reports the mode and the number of components
 // installed, and `specs/modes.md` reserves a death cause for a death — so a
 // victory carries none.
 

@@ -26,7 +26,7 @@
 // holds its position while everything else about the miner carries on, damage
 // included.
 
-import { HULL_TIERS } from "../../src/constants";
+import { HULL_TIERS } from "../constants";
 import {
   driveCut,
   minerXOn,

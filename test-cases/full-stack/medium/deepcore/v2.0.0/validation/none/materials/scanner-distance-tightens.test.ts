@@ -34,6 +34,21 @@ const NODE_ROW = 40;
 /** The rows the miner is read from: closing in, then falling back. */
 const STATIONS = [12, 20, 30, 36, 22];
 
+/**
+ * The frames the replay is padded with, so the reading closing is something a
+ * reviewer can WATCH.
+ *
+ * Each station is one posed move and one settling frame, so the five of them
+ * recorded back to back are five frames — a twenty-fourth of a second at the rate
+ * this suite steps. The recorder is armed on the posed node for `RUN_UP`, each
+ * station is held for `BETWEEN` after its reading is taken, and the last one is
+ * held for `SETTLE`. The miner's travel is gated by `openScanner`, so the extra
+ * frames move nothing and every reading is the one the station was posed at.
+ */
+const RUN_UP = 20;
+const BETWEEN = 15;
+const SETTLE = 30;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -51,6 +66,7 @@ it("reports the cell separation, falling on approach and rising on retreat", asy
 
   const readings = await captureReplay(h, "closing", async () => {
     const seen: number[] = [];
+    await h.advance(RUN_UP);
     for (const row of STATIONS) {
       await standOn(h, MINER_COL, row);
       const at = await settled(h);
@@ -64,7 +80,9 @@ it("reports the cell separation, falling on approach and rising on retreat", asy
         `specs/mining.md, from row ${row}`,
       );
       seen.push(at.scanner.distanceTiles ?? Number.NaN);
+      await h.advance(BETWEEN);
     }
+    await h.advance(SETTLE);
     return seen;
   });
 

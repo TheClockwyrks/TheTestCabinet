@@ -15,7 +15,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { EMERGENCY_FUEL } from "../../src/constants";
+import { EMERGENCY_FUEL } from "../constants";
 import {
   captureStill,
   createHarness,

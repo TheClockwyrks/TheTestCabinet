@@ -17,7 +17,7 @@
 // this check needs, with none of the blast that a run-out timer would add.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_COL } from "../../src/constants";
+import { CORE_COL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,

@@ -20,7 +20,7 @@
 //    included. The drill is gated in both, since neither exercises it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CAM_STILL_SPEED, VIEW_H } from "../../src/constants";
+import { CAM_STILL_SPEED, VIEW_H } from "../constants";
 import { assertCloseTo } from "../assert";
 import {
   captureReplay,

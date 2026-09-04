@@ -23,7 +23,7 @@
 // draws, so the pooled figure is a measurement rather than a sample.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DENSITY_TOLERANCE, ORE_DENSITY } from "../../src/constants";
+import { DENSITY_TOLERANCE, ORE_DENSITY } from "../constants";
 import { assertBetween } from "../assert";
 import {
   BAND_ORDER,

@@ -15,7 +15,7 @@
 // Afterwards the satchel must be empty and the timer gone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_TIMER } from "../../src/constants";
+import { CORE_TIMER } from "../constants";
 import { assertEqual, assertNull } from "../assert";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import { openCampScene, runUntilOver } from "./core-scene";

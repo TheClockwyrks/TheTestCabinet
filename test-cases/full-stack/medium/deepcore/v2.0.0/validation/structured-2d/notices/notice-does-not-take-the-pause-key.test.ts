@@ -23,7 +23,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull } from "../assert";
-import { NOTICE_DELAY } from "../../src/constants";
+import { NOTICE_DELAY } from "../constants";
 import {
   ACTION_KEY,
   captureReplay,

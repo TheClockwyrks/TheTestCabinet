@@ -17,7 +17,7 @@
 // the surface inside the span, and the drill gated so the held key cannot cut.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CAM_LEAD_MAX, CAM_STILL_SPEED } from "../../src/constants";
+import { CAM_LEAD_MAX, CAM_STILL_SPEED } from "../constants";
 import { assertBetween, assertLessThan } from "../assert";
 import {
   ACTION_KEY,

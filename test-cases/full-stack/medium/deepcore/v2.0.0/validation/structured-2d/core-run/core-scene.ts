@@ -23,7 +23,7 @@
 // that is `h.advanceSeconds(s, frames)`, which swaps a coarser clock in for the
 // span and puts the harness's own back afterwards.
 
-import { CORE_COL, TILE } from "../../src/constants";
+import { CORE_COL, TILE } from "../constants";
 import {
   ACTION_KEY,
   cellCenter,

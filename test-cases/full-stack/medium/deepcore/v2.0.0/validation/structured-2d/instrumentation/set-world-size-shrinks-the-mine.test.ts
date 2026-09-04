@@ -18,7 +18,7 @@
 // come through the resize is its own point, and so are the material nodes.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_COL } from "../../src/constants";
+import { CORE_COL } from "../constants";
 import { assertEqual, assertNotNull, assertNull, fail } from "../assert";
 import {
   captureStill,
@@ -61,17 +61,32 @@ it("drops the rows past the new Core chamber when the size is taken shallower", 
   captureStill(h, "shallower");
   const shallow = h.snapshot();
 
-  assertEqual(deep.coreRow, coreRowFor(FROM), `specs/world.md: coreRow at ${FROM}`);
+  assertEqual(
+    deep.coreRow,
+    coreRowFor(FROM),
+    `specs/world.md: coreRow at ${FROM}`,
+  );
   if (DEEP_ROW <= coreRowFor(TO) || DEEP_ROW >= coreRowFor(FROM)) {
-    fail(`a row between the ${TO} and ${FROM} Core chambers`, `row ${DEEP_ROW}`);
+    fail(
+      `a row between the ${TO} and ${FROM} Core chambers`,
+      `row ${DEEP_ROW}`,
+    );
   }
   assertNotNull(
     generated.band,
     `the band tileAt(${COL}, ${DEEP_ROW}) reported while the mine was ${FROM}`,
   );
 
-  assertEqual(shallow.worldSize, TO, "specs/instrumentation.md: the size is set");
-  assertEqual(shallow.coreRow, coreRowFor(TO), `specs/world.md: coreRow at ${TO}`);
+  assertEqual(
+    shallow.worldSize,
+    TO,
+    "specs/instrumentation.md: the size is set",
+  );
+  assertEqual(
+    shallow.coreRow,
+    coreRowFor(TO),
+    `specs/world.md: coreRow at ${TO}`,
+  );
 
   // The row the new depth does not reach reads the way any cell outside the grid
   // reads, rather than still answering with the terrain it held.

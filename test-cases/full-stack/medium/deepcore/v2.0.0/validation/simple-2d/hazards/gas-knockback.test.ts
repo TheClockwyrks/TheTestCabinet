@@ -19,7 +19,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual, assertLessThan } from "../assert";
-import { GAS_KNOCKBACK } from "../../src/constants";
+import { GAS_KNOCKBACK } from "../constants";
 import {
   captureReplay,
   createHarness,

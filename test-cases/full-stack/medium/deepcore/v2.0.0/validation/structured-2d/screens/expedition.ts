@@ -17,7 +17,7 @@
 // until it wraps — rather than by asking for a list the snapshot does not carry.
 
 import { assertEqual } from "../assert";
-import { SPAWN_COL } from "../../src/constants";
+import { ROCKET_COMPONENTS, SPAWN_COL } from "../constants";
 import {
   ACTION_KEY,
   layCamp,
@@ -74,7 +74,7 @@ export function bankSave(h: Harness): void {
   assertEqual(
     h.snapshot().hasSave,
     true,
-    "specs/gameplay.md: activating the Save Pad writes the save on the spot",
+    "specs/expedition.md: activating the Save Pad writes the save on the spot",
   );
 }
 
@@ -161,4 +161,53 @@ export async function waitForGameOver(h: Harness): Promise<DeepcoreSnapshot> {
     `specs/modes.md: a death ends the expedition at the Game Over screen, within ${DEATH_CEILING}s`,
   );
   return snapshot;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Driving a victory                                                          */
+/* -------------------------------------------------------------------------- */
+
+/** Seconds of game time the lift-off is given to reach the Victory screen. */
+const LAUNCH_CEILING = 12;
+
+/**
+ * Win the expedition, and run the game on until it has reached the Victory
+ * screen.
+ *
+ * NOTHING HERE POSES THE OUTCOME. The five components are installed through
+ * `setRocketInstalled`, which specs/instrumentation.md says costs no Credits and
+ * consumes no material, the launch is the control that stands for the Launch
+ * Pad's, and the game's own lift-off is what carries the expedition to the
+ * screen — specs/rocket.md: "Launching is the only way to win", and it "takes the
+ * game to the Victory screen".
+ *
+ * The miner's body and drill are both gated, because a launch exercises neither.
+ *
+ * The wait afterwards is a sweep rather than a single frame. How long a build
+ * plays the lift-off out before it shows the screen is the build's, so this runs
+ * the game on in whole seconds until the screen changes, up to a generous
+ * ceiling, and says so where it never arrives.
+ */
+export async function driveVictory(
+  h: Harness,
+  options: ExpeditionOptions = {},
+): Promise<DeepcoreSnapshot> {
+  openScene(h, options);
+  pinMiner(h);
+  pinDrill(h);
+  h.debug.setRocketInstalled(ROCKET_COMPONENTS.length);
+  h.debug.launch();
+
+  let won = h.snapshot();
+  for (let second = 0; second < LAUNCH_CEILING; second += 1) {
+    if (won.screen === "victory") return won;
+    await h.advanceSeconds(1, 8);
+    won = h.snapshot();
+  }
+  assertEqual(
+    won.screen,
+    "victory",
+    `specs/rocket.md: a launch takes the game to the Victory screen, within ${LAUNCH_CEILING}s`,
+  );
+  return won;
 }

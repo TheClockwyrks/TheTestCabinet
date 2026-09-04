@@ -14,7 +14,7 @@
 // that installed the right count in the wrong sequence fails.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCKET_COMPONENT_IDS } from "../../src/constants";
+import { ROCKET_COMPONENT_IDS } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { openPadScene } from "./pad-scene";

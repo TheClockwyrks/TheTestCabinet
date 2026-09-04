@@ -21,19 +21,14 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual } from "../assert";
-import { HULL_TIERS } from "../../src/constants";
+import { gasDamageAt, HULL_TIERS } from "../constants";
 import {
   captureReplay,
   createHarness,
   depthFraction,
   type Harness,
 } from "../harness";
-import {
-  AFTERMATH_FRAMES,
-  gasDamageAt,
-  openBlastScene,
-  ROCKBED_ROW,
-} from "./blast-scene";
+import { AFTERMATH_FRAMES, openBlastScene, ROCKBED_ROW } from "./blast-scene";
 
 /** Enough hull to survive a rockbed detonation with room to spare. */
 const HULL_TIER = 2;

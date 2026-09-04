@@ -22,7 +22,7 @@
 // machine is wrong fails its own points rather than quietly passing this one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import type { MinerState } from "../../src/constants";
+import type { MinerState } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { boxChanged, sampleBox } from "./drawn";
