@@ -7681,7 +7681,7 @@ id = "program-key"
 title = "program is bound to KeyP and switches to the program screen"
 description = "The program action is bound to KeyP and moves from the build screen to the program screen."
 domains = ["choreography"]
-failure_cap = "scuffed"
+failure_cap = "broken"
 validation = { script = "controls/program-key.test.ts", outputs = [
   { id = "state", name = "the program screen the program action opened", kind = "image" },
 ] }
@@ -7787,7 +7787,7 @@ id = "tool-key-rail"
 title = "The rail tool is selected by Digit3"
 description = "The action tool-rail is bound to Digit3 and selects the rail tool on the build screen."
 domains = ["construction"]
-failure_cap = "scuffed"
+failure_cap = "broken"
 validation = { script = "controls/tool-key-rail.test.ts", outputs = [
   { id = "state", name = "the build screen with the rail tool selected", kind = "image" },
 ] }
@@ -7800,7 +7800,7 @@ id = "tool-key-ring"
 title = "The ring tool is selected by Digit4"
 description = "The action tool-ring is bound to Digit4 and selects the ring tool on the build screen."
 domains = ["construction"]
-failure_cap = "scuffed"
+failure_cap = "broken"
 validation = { script = "controls/tool-key-ring.test.ts", outputs = [
   { id = "state", name = "the build screen with the ring tool selected", kind = "image" },
 ] }
