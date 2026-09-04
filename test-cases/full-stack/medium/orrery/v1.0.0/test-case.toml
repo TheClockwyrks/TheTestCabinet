@@ -13,12 +13,12 @@ name = "Orrery"
 
 # The test type. Orrery is FULL-STACK: the build writes the game AND produces the
 # art and sound it ships, during the run, rather than being handed a pre-drawn
-# asset set. The type schedules the run onto the `test-cabinet-full-stack-2d`
-# image, which carries six binaries on `PATH` — `draw`, `draw-sheet`,
-# `particle-2d`, `sfx-synth`, `sfx-sample`, and `music` — and no others;
-# `specs/assets.md` is the production contract that says what each one produces,
-# where the file lands, and the bar it is held to. A root identity field, so it
-# sits above the first table.
+# asset set. The type, with `asset_dimension` left at its `2d` default, schedules
+# the run onto the `test-cabinet-full-stack-2d` image, which carries six binaries
+# on `PATH` — `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and
+# `music` — and no others; `specs/assets.md` is the production contract that says
+# what each one produces, where the file lands, and the bar it is held to. A root
+# identity field, so it sits above the first table.
 type = "full-stack"
 
 # Relative difficulty of this case, surfaced on the site. Orrery is both a great
