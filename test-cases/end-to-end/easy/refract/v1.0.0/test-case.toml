@@ -1585,6 +1585,15 @@ validation = { script = "cascade/restart.test.ts", outputs = [
   { id = "restarted", name = "The sequence restarted at tier 1", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "solved-back"
+title = "back on the cascade solved screen returns to the title"
+description = "back on the solved screen goes to title with CASCADE, the entry that led away, highlighted at menuIndex 1."
+domains = ["cascade"]
+failure_cap = "passable"
+validation = { script = "cascade/solved-back.test.ts", outputs = [
+  { id = "title", name = "The title reached from the solved screen", kind = "image" },
+] }
+[[review.categories.items]]
 id = "hud-solved-count"
 title = "The boards-solved count is on screen while playing"
 description = "During playing after two solves, a frame draws HUD_SOLVED_LABEL (SOLVED) with the digit 2 adjacent, clear of the board's extent. The count is the run's one measure, so a missing count is scuffed rather than cosmetic."
