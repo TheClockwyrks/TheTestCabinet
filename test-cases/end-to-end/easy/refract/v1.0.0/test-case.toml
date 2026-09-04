@@ -499,7 +499,7 @@ validation = { script = "instrumentation/surface-present.test.ts", outputs = [
 [[review.categories.items]]
 id = "snapshot-shape"
 title = "Snapshot reports the full documented shape"
-description = "On a posed board carrying all three channels and a crystal, with a partial beam drawn, the snapshot reports version REFRACT_DEBUG_VERSION (2) and every field specs/instrumentation.md lists with its documented type — screen, mode, menuIndex, selectIndex, the four progress fields, the board, one beams entry per channel present, solved, tracing, pointer, muted, and simTime — with each node's x and y on the cell center formula in specs/board.md and spent, complete, and solved derived exactly as specs/beams.md states."
+description = "On a posed board carrying all three channels and a crystal, with a partial beam drawn, the snapshot reports version REFRACT_DEBUG_VERSION (2) and every field specs/instrumentation.md lists with its documented type — screen, mode, menuIndex, selectIndex, the four progress fields, the board, one beams entry per channel present, solved, tracing, pointer, muted, simTime, and rngState — with each node's x and y on the cell center formula in specs/board.md and spent, complete, and solved derived exactly as specs/beams.md states."
 domains = ["campaign", "cascade", "tracing", "presentation"]
 failure_cap = "broken"
 # Automated validation: pose a board exercising every branch of the shape (three
@@ -1199,7 +1199,7 @@ validation = { script = "campaign/select-locked-refused.test.ts", outputs = [
 [[review.categories.items]]
 id = "select-back"
 title = "Back leaves the select screen"
-description = "back on the select screen returns to title."
+description = "back on the select screen returns to title with CAMPAIGN, the entry that led away, highlighted at menuIndex 0."
 domains = ["campaign"]
 failure_cap = "great"
 validation = { script = "campaign/select-back.test.ts", outputs = [
