@@ -305,6 +305,35 @@ describe("regionAt", () => {
   });
 });
 
+// ---- The pointer reaching a menu row -----------------------------------
+
+describe("moving the pointer onto a menu row", () => {
+  it("highlights it and raises the menu cue, without taking it", () => {
+    const state = createState();
+    applyPointerSample(state, { type: "move", x: 490, y: 460 }, h);
+    expect(state.menuIndex).toBe(1);
+    expect(state.screen).toBe("title");
+    expect(h.cues).toEqual(["menu"]);
+  });
+
+  it("raises nothing when it reaches the row already highlighted", () => {
+    const state = createState();
+    state.menuIndex = 1;
+    applyPointerSample(state, { type: "move", x: 490, y: 460 }, h);
+    expect(state.menuIndex).toBe(1);
+    expect(h.cues).toEqual([]);
+  });
+
+  it("leaves the highlight where it last landed when it moves off", () => {
+    const state = createState();
+    applyPointerSample(state, { type: "move", x: 490, y: 460 }, h);
+    applyPointerSample(state, { type: "move", x: 40, y: 40 }, h);
+    expect(state.menuIndex).toBe(1);
+    expect(state.screen).toBe("title");
+    expect(h.cues).toEqual(["menu"]);
+  });
+});
+
 // ---- One press, one interaction ---------------------------------------
 
 describe("a press and a release", () => {

@@ -5,6 +5,7 @@ import {
   DIFFICULTY_ITEMS,
   DIFFICULTY_TABLE,
   ENDING_ITEMS,
+  HOWTO_ITEMS,
   MODE_ITEMS,
   PAUSE_ITEMS,
   START_LIVES,
@@ -31,7 +32,7 @@ describe("the menus", () => {
     expect(menuRows("paused")).toBe(PAUSE_ITEMS.length);
     expect(menuRows("victory")).toBe(ENDING_ITEMS.length);
     expect(menuRows("gameover")).toBe(ENDING_ITEMS.length);
-    expect(menuRows("howto")).toBe(0);
+    expect(menuRows("howto")).toBe(HOWTO_ITEMS.length);
     expect(menuRows("playing")).toBe(0);
   });
 
@@ -172,8 +173,10 @@ describe("where each row leads", () => {
 
   it("opens Containment at the difficulty confirmed, with that row's figures", async () => {
     const harness = await createHarness();
-    for (const [index, difficulty] of DIFFICULTY_ITEMS.entries()) {
-      const key = (["easy", "medium", "hard"] as const)[index];
+    for (const [index, key] of (
+      ["easy", "medium", "hard"] as const
+    ).entries()) {
+      const difficulty = DIFFICULTY_ITEMS[index];
       harness.debug.reset();
       harness.debug.setScreen("difficultyselect");
       harness.debug.setMenuIndex(index);
@@ -204,7 +207,84 @@ describe("where each row leads", () => {
     harness.debug.setScreen("howto");
     harness.tap("Escape");
     await harness.engine.advance(1);
-    expect(harness.debug.snapshot().screen).toBe("title");
+    const back = harness.debug.snapshot();
+    expect(back.screen).toBe("title");
+    // Returning highlights the row that led away (specs/screens.md).
+    expect(back.menuIndex).toBe(TITLE_ITEMS.indexOf("HOW TO PLAY"));
+    harness.dispose();
+  });
+
+  it("takes each BACK row to the screen behind it, starting nothing", async () => {
+    const harness = await createHarness();
+    for (const [screen, items, behind] of [
+      ["modeselect", MODE_ITEMS, "title"],
+      ["difficultyselect", DIFFICULTY_ITEMS, "modeselect"],
+      ["howto", HOWTO_ITEMS, "title"],
+    ] as const) {
+      harness.debug.reset();
+      harness.debug.setScreen(screen);
+      harness.debug.setMenuIndex(items.indexOf("BACK"));
+      harness.tap("Enter");
+      await harness.engine.advance(1);
+      const snapshot = harness.debug.snapshot();
+      expect(snapshot.screen).toBe(behind);
+      expect(snapshot.towers).toEqual([]);
+    }
+    harness.dispose();
+  });
+
+  it("reports one rectangle per row of every menu, in row order", async () => {
+    const harness = await createHarness();
+    for (const [screen, items] of [
+      ["title", TITLE_ITEMS],
+      ["modeselect", MODE_ITEMS],
+      ["difficultyselect", DIFFICULTY_ITEMS],
+      ["howto", HOWTO_ITEMS],
+      ["paused", PAUSE_ITEMS],
+      ["victory", ENDING_ITEMS],
+      ["gameover", ENDING_ITEMS],
+    ] as const) {
+      harness.debug.setScreen(screen);
+      const rows = harness.debug.snapshot().menu;
+      expect(rows).toHaveLength(items.length);
+      expect(rows.map((row) => row.index)).toEqual(
+        items.map((_item, index) => index),
+      );
+    }
+    harness.debug.setScreen("playing");
+    expect(harness.debug.snapshot().menu).toEqual([]);
+    harness.dispose();
+  });
+});
+
+describe("the pointer on a menu", () => {
+  it("highlights the row it reaches and cues, without taking it", async () => {
+    const harness = await createHarness();
+    harness.debug.setScreen("title");
+    harness.debug.setMenuIndex(0);
+    harness.cues.length = 0;
+    const [x, y] = rowCentre(harness, 1);
+    harness.pointer("pointermove", x, y);
+    await harness.engine.advance(1);
+    const snapshot = harness.debug.snapshot();
+    expect(snapshot.menuIndex).toBe(1);
+    expect(snapshot.screen).toBe("title");
+    expect(harness.cues.filter((c) => c.cue === "menu")).toHaveLength(1);
+    harness.dispose();
+  });
+
+  it("leaves the highlight where it last landed when it moves off", async () => {
+    const harness = await createHarness();
+    harness.debug.setScreen("title");
+    harness.debug.setMenuIndex(0);
+    harness.cues.length = 0;
+    const [x, y] = rowCentre(harness, 1);
+    harness.pointer("pointermove", x, y);
+    await harness.engine.advance(1);
+    harness.pointer("pointermove", 4, 4);
+    await harness.engine.advance(1);
+    expect(harness.debug.snapshot().menuIndex).toBe(1);
+    expect(harness.cues.filter((c) => c.cue === "menu")).toHaveLength(1);
     harness.dispose();
   });
 });

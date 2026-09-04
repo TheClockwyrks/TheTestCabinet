@@ -11,10 +11,16 @@
 import { describe, expect, it } from "vitest";
 import {
   BOTTLENECK_ZONE,
+  DIFFICULTY_ITEMS,
   DIFFICULTY_TABLE,
+  ENDING_ITEMS,
+  HOWTO_ITEMS,
   MELTDOWN_DEBUG_VERSION,
+  MODE_ITEMS,
+  PAUSE_ITEMS,
   START_LIVES,
   TILE,
+  TITLE_ITEMS,
   TOWER_TYPES,
   heatMultiplier,
   tileCX,
@@ -156,9 +162,9 @@ describe("reset", () => {
 
   it("seeds every draw, so the same seed replays the same vents", () => {
     const { api, state } = surface();
-    api.reset({ seed: 99 });
+    api.reset(99);
     const first = state.rng.seed;
-    api.reset({ seed: 99 });
+    api.reset(99);
     expect(state.rng.seed).toBe(first);
     api.reset();
     expect(state.rng.seed).toBe(1);
@@ -767,6 +773,33 @@ describe("the pointer", () => {
   });
 });
 
+describe("the reported menu", () => {
+  it("reports one rectangle per row, in row order, on every menu screen", () => {
+    const { api } = surface();
+    for (const [screen, items] of [
+      ["title", TITLE_ITEMS],
+      ["modeselect", MODE_ITEMS],
+      ["difficultyselect", DIFFICULTY_ITEMS],
+      ["howto", HOWTO_ITEMS],
+      ["paused", PAUSE_ITEMS],
+      ["victory", ENDING_ITEMS],
+      ["gameover", ENDING_ITEMS],
+    ] as const) {
+      api.setScreen(screen);
+      const rows = api.snapshot().menu;
+      expect(rows).toHaveLength(items.length);
+      expect(rows.map((row) => row.index)).toEqual(
+        items.map((_item, index) => index),
+      );
+    }
+  });
+
+  it("reports none at all while the screen is playing", () => {
+    const { api } = playing();
+    expect(api.snapshot().menu).toEqual([]);
+  });
+});
+
 describe("the snapshot shape", () => {
   it("carries exactly the fields the specification lists", () => {
     const { api } = surface();
@@ -781,6 +814,7 @@ describe("the snapshot shape", () => {
         "hoverShop",
         "interest",
         "lives",
+        "menu",
         "menuIndex",
         "mode",
         "money",

@@ -27,6 +27,7 @@ import {
   HUD_LIVES_LABEL,
   HUD_MONEY_LABEL,
   HUD_WAVE_LABEL,
+  HOWTO_ITEMS,
   FORGE_SETPOINT,
   HUNDRED_HP_SCALE,
   HUNDRED_UNITS,
@@ -869,12 +870,22 @@ export function drawScreen(state: MeltdownState, ctx: Ctx): void {
       drawBackdrop(ctx);
       label(ctx, "SELECT A MODE", 110, 140, FONT.heading, css(RGB.text));
       drawMenu(state, ctx, MODE_ITEMS);
-      const mode = MODE_ITEMS[state.menuIndex];
+      // The last row is `BACK`, which names no mode and draws no description
+      // (specs/screens.md).
       const key = MODES[state.menuIndex];
-      label(ctx, mode, 610, 200, FONT.heading, css(RGB.select));
-      MODE_BLURB[key].forEach((line, index) => {
-        label(ctx, line, 610, 250 + index * 26, FONT.body, css(RGB.text));
-      });
+      if (key !== undefined) {
+        label(
+          ctx,
+          MODE_ITEMS[state.menuIndex],
+          610,
+          200,
+          FONT.heading,
+          css(RGB.select),
+        );
+        MODE_BLURB[key].forEach((line, index) => {
+          label(ctx, line, 610, 250 + index * 26, FONT.body, css(RGB.text));
+        });
+      }
       label(
         ctx,
         "ENTER TO CHOOSE   ESC TO GO BACK",
@@ -897,7 +908,10 @@ export function drawScreen(state: MeltdownState, ctx: Ctx): void {
         "center",
       );
       drawMenu(state, ctx, DIFFICULTY_ITEMS, (index, rect) => {
-        const row = DIFFICULTY_TABLE[DIFFICULTIES[index]];
+        // `BACK` names no difficulty and draws no figures (specs/screens.md).
+        const difficulty = DIFFICULTIES[index];
+        if (difficulty === undefined) return;
+        const row = DIFFICULTY_TABLE[difficulty];
         label(
           ctx,
           `${row.money} MONEY   ${row.waves} WAVES`,
@@ -922,15 +936,7 @@ export function drawScreen(state: MeltdownState, ctx: Ctx): void {
           css(line.startsWith("  ") ? RGB.text : RGB.select),
         );
       });
-      label(
-        ctx,
-        "ESC TO GO BACK",
-        STAGE_W - 70,
-        STAGE_H - 24,
-        FONT.small,
-        css(RGB.textDim),
-        "right",
-      );
+      drawMenu(state, ctx, HOWTO_ITEMS);
       return;
     case "paused":
       // The floor is still drawn behind the menu.

@@ -17,6 +17,7 @@ import {
   DIFFICULTIES,
   DIFFICULTY_ITEMS,
   ENDING_ITEMS,
+  HOWTO_ITEMS,
   MODES,
   MODE_ITEMS,
   PAUSE_ITEMS,
@@ -37,12 +38,13 @@ export function menuRows(screen: Screen): number {
       return MODE_ITEMS.length;
     case "difficultyselect":
       return DIFFICULTY_ITEMS.length;
+    case "howto":
+      return HOWTO_ITEMS.length;
     case "paused":
       return PAUSE_ITEMS.length;
     case "victory":
     case "gameover":
       return ENDING_ITEMS.length;
-    case "howto":
     case "playing":
       return 0;
   }
@@ -126,12 +128,16 @@ export function resetState(state: MeltdownState, seed: number): void {
 }
 
 /** A reset with the seed the caller named, or `DEFAULT_SEED`. */
-export function resetWith(
-  state: MeltdownState,
-  options?: { seed?: number },
-): void {
-  resetState(state, options?.seed ?? DEFAULT_SEED);
+export function resetWith(state: MeltdownState, seed?: number): void {
+  resetState(state, seed ?? DEFAULT_SEED);
 }
+
+/**
+ * The row the title is highlighted on when the how-to screen is left, which
+ * `specs/screens.md` fixes at `HOW TO PLAY`: returning to a screen highlights
+ * the row that led away from it.
+ */
+const TITLE_HOWTO_ROW = TITLE_ITEMS.indexOf("HOW TO PLAY");
 
 /** Take the highlighted row of the menu the current screen shows. */
 export function confirmMenu(state: MeltdownState): void {
@@ -142,6 +148,11 @@ export function confirmMenu(state: MeltdownState): void {
       state.menuIndex = 0;
       return;
     case "modeselect": {
+      // The last row is `BACK`, which names no mode and starts nothing.
+      if (index >= MODES.length) {
+        leaveScreen(state);
+        return;
+      }
       const mode: ModeName = MODES[index] ?? "containment";
       if (mode === "containment") {
         state.screen = "difficultyselect";
@@ -152,6 +163,11 @@ export function confirmMenu(state: MeltdownState): void {
       return;
     }
     case "difficultyselect":
+      // The last row is `BACK`, which names no difficulty and starts nothing.
+      if (index >= DIFFICULTIES.length) {
+        leaveScreen(state);
+        return;
+      }
       startRun(state, "containment", DIFFICULTIES[index] ?? "medium");
       return;
     case "paused":
@@ -171,6 +187,8 @@ export function confirmMenu(state: MeltdownState): void {
       }
       return;
     case "howto":
+      leaveScreen(state);
+      return;
     case "playing":
       return;
   }
@@ -186,9 +204,12 @@ export function leaveScreen(state: MeltdownState): void {
     case "title":
       return;
     case "modeselect":
-    case "howto":
       state.screen = "title";
       state.menuIndex = 0;
+      return;
+    case "howto":
+      state.screen = "title";
+      state.menuIndex = TITLE_HOWTO_ROW;
       return;
     case "difficultyselect":
       state.screen = "modeselect";

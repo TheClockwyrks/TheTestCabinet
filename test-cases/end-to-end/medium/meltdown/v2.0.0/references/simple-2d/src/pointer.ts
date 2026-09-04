@@ -64,18 +64,37 @@ export function pointerDown(
   return quiet(moved);
 }
 
-/** A move: the preview follows the pointer and the shop hover follows it too. */
+/**
+ * A move: the highlight follows the pointer onto a menu row, and the preview and
+ * the shop hover follow it too.
+ *
+ * specs/controls.md: moving onto a row of the menu the current screen shows
+ * makes that row the highlighted row and raises the `menu` cue on the frame the
+ * highlight changes. Moving off every row leaves the highlight where it last
+ * landed, and reaching the row already highlighted raises nothing — so the cue
+ * is reported exactly when the index moved. Reaching a row takes it no further:
+ * a row is taken on the release below.
+ */
 export function pointerMove(
   state: MeltdownState,
   x: number,
   y: number,
 ): PointerResult {
-  const moved = carry(
+  const carried = carry(
     { ...state, pointer: { x, y, down: state.pointer.down } },
     x,
     y,
   );
-  return quiet(moved);
+  const row = menuRowAt(carried, x, y);
+  const moved = row === null ? carried : highlight(carried, row);
+  return {
+    state: moved,
+    events: {
+      place: false,
+      sell: false,
+      menu: moved.menuIndex !== state.menuIndex,
+    },
+  };
 }
 
 /** The preview and the hover, which every press and move updates alike. */
