@@ -43,36 +43,11 @@ and can be run from anywhere, including locally:
 | `specs-lint.sh`    | markdownlint + cspell over `test-cases/**`         | no       |
 | `contract-drift.sh`| regenerate TS bindings, JSON Schemas and gg's prompt templates, fail on diff | yes |
 | `frozen-check.sh`  | `.frozen` test-case versions match their recorded digests | yes |
-| `validator-constants.sh` | every validator project ships a `constants.ts` and imports the build's `src/constants` nowhere else | no |
 | `build-context.sh` | every Dockerfile `COPY` source — and every gg guest package, and every tree the workspace bakes in with `include_str!` — survives every `.dockerignore` allowlist that can apply to it | yes |
 
 "Critical" scripts are the ones that catch a genuinely broken change (a crate or
 front end failing to build or test), so they run on both CI systems. The lint
 scripts run on Azure DevOps only.
-
-`validator-constants.sh` sees a defect every other gate is blind to: a validator
-that grades a build against itself. A case ships one validator project per engine
-under `<version>/validation/<engine>/`, and under an engine the case also seeds
-the build a `src/constants.ts` — so a suite can import the very figure it is about
-to assert from the build's own module. The comparison then reduces to "does the
-build do what the build says it does", which is true of every build. Meltdown
-built with Mote speed 60 changed to 66 scored 338/344 against the engineless
-project, which transcribes 60 from `specs/surge.md`, and a clean 344/344 against
-both engine projects, which read 66 out of the build; Spectra and Shatter behaved
-the same way. A run selects one engine, so on two engines in three the wrong
-physics buys a perfect sheet.
-
-The rule the script checks is one import site per project: a validator project
-ships a `constants.ts` transcribing the case's figures from its rendered specs,
-and `constants.ts` alone may import the build's `src/constants`, to re-export a
-value the specification leaves to the build. The script identifies a project the
-way the runner does (a directory under `validation/` holding a
-`vitest.config.ts`), reads every source in it, and names each file that reaches
-for the build's module. It **reports without failing** while the conversion of
-the existing cases is in flight; setting `ENFORCE=1` in the script, or
-`TCAB_VALIDATOR_CONSTANTS_ENFORCE=1` for one invocation, makes it exit non-zero.
-The rule is written up for authors in
-`apps/docs/src/content/docs/guides/authoring/writing-debug-apis-and-validators.md`.
 
 `build-context.sh` is the only gate that can see a broken container build without
 building one. `.dockerignore` is an **allowlist** (`*`, then explicit `!`

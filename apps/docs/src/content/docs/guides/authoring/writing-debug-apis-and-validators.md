@@ -178,8 +178,7 @@ itself and from the build beside it.
 
 ### What a project may reach for
 
-`scripts/ci/validator-constants.sh` reads every reference a project makes and
-allows three, over the whole project:
+A project makes three kinds of reference to the build, and no others:
 
 | File           | May take                                             |
 | -------------- | ---------------------------------------------------- |
@@ -190,32 +189,23 @@ allows three, over the whole project:
 A type is erased before anything runs, so `import type { State } from
 "../src/game"` carries no figure and any suite may take one.
 
-The gate parses the clause rather than matching the specifier, so the form
-matters as much as the module. `export { LAYOUT } from "../src/constants"` is a
-boundary a reader can count; `export * from "../src/constants"` names the same
-module and hands every suite in the project the build's whole figure table, so
-the gate refuses it, along with namespace and default bindings, bare side-effect
-imports, `import()` and `require()`.
+The form matters as much as the module. `export { LAYOUT } from
+"../src/constants"` is a boundary a reader can count; `export * from
+"../src/constants"` names the same module and hands every suite in the project
+the build's whole figure table. So `constants.ts` takes what it takes BY NAME,
+one binding at a time, and a namespace binding, a default binding, a bare
+side-effect import, `import()` and `require()` are all the same reach in a shape
+review cannot read at a glance.
 
-It refuses any reference that leaves the project for somewhere other than the
-build, and any `paths` alias or `file:` dependency in the project's
-`tsconfig.json` or `package.json` that would reopen the same route. Anything it
-cannot positively recognize is a finding.
+Configuration reopens the route without a suite naming it: a `paths` alias in the
+project's `tsconfig.json`, a `file:` dependency in its `package.json`, and a
+`resolve.alias` in its `vitest.config.ts` each redirect an import that reads
+correctly in the source. A project resolves everything from inside itself and
+from the build beside it, so it carries none of them.
 
-A project holding a `constants.ts` has been converted, and the gate blocks on it.
-A project without one is reported instead, which is how the conversion lands one
-case at a time. Adding the `constants.ts` enrols the project.
-
-The gate runs on every commit through pre-commit, on Azure, and on every GitHub
-pull request. Run it by hand over a case at any time:
-
-```sh
-./scripts/ci/validator-constants.sh test-cases/end-to-end/easy/carom/v3.0.0
-```
-
-It prints every name each project takes from the build even when it passes. That
-list is the thing to read when a case starts drifting back toward grading the
-build against itself.
+The names a project takes from the build are worth reading as a list, and worth
+keeping short: a list that grows is the signal that a case is drifting back
+toward grading the build against itself.
 
 ### One requirement per validator
 

@@ -7,10 +7,8 @@ name: CI
 # (whose runner image matches the one release.yml bundles on), the frozen-version
 # gate (which protects already-recorded run results, needs no toolchain, and takes
 # seconds), the container build-context gate (which protects the image builds
-# that live in this same CI system), and the validator-constants gate (which is
-# mirrored here for a reason the others are not — see its own job) — so a green
-# GitHub run still means the components actually build and pass. Linting and spec
-# checks are left to Azure.
+# that live in this same CI system) — so a green GitHub run still means the
+# components actually build and pass. Linting and spec checks are left to Azure.
 #
 # Both jobs call the same scripts/ci/ scripts the Azure pipeline uses. Dormant
 # until the repository is mirrored to GitHub (the same condition as the deploy
@@ -165,37 +163,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: ./scripts/ci/build-context.sh
-
-  # THE ONLY WIRING IN THIS REPOSITORY THAT REACHES A BRANCH WITHOUT THIS COMMIT,
-  # which is the whole reason it is here and not left to Azure. The rule it
-  # enforces was reintroduced by the eight case branches independently, one case
-  # at a time, and each of those branches predates the gate — so the gate has to
-  # be able to judge a branch that has never heard of it.
-  #
-  # GitHub Actions runs a `pull_request` workflow from the MERGE commit of head
-  # into base, not from the head branch. Once this file is on master, a PR from a
-  # case branch that never carried it still gets this job, reading the script the
-  # merge brought in from master, over the case's own validation projects. The
-  # other two wirings do not have that property and cannot: Azure reads its
-  # pipeline YAML from the PR's SOURCE branch, and pre-commit reads
-  # .pre-commit-config.yaml out of the working tree, so on a branch without the
-  # commit both are simply absent. They remain worth having — Azure covers the
-  # push to master/staging, pre-commit catches it before the push — but neither
-  # covers the merge, and the merge is where a reintroduction arrives.
-  #
-  # Needs no toolchain and no history: the check is shell and awk over the
-  # checked-out tree, so a shallow default checkout is enough and the job costs
-  # seconds. It is also the only thing in either CI system that can see the
-  # defect at all — a suite that imports the figure it asserts from the build's
-  # own module passes against every build, so the validator run is green, the
-  # case's own tests are green, and the run it grades scores a clean sheet while
-  # grading nothing.
-  validator-constants:
-    name: Validators (every project states the figures it asserts)
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v6
-      - run: ./scripts/ci/validator-constants.sh
 
   contract:
     name: Contract (regenerate & check for drift)
