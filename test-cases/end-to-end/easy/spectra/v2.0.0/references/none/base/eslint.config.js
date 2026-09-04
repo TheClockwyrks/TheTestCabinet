@@ -18,6 +18,8 @@ export default tseslint.config(
       "out/",
       "coverage/",
       "showcase/",
+      "specs/",
+      "assets/",
       ".tcab/",
     ],
   },
