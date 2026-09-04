@@ -29,8 +29,15 @@ import {
   type Harness,
 } from "../harness";
 
-/** Where the head is posed: row 8, the row specs/mode.md keeps clear. */
-const HEAD: Cell = { col: 10, row: 8 };
+/**
+ * Where the head is posed: row 8, the row specs/mode.md keeps clear.
+ *
+ * To the RIGHT of the starting chain, which a reset lays across columns 13 to 15
+ * of that row (specs/board.md). `addObstacle` takes an interior cell "holding no
+ * snake segment", and the scene lays its cell before it poses the chain, so the
+ * run-up has to leave the chain a reset put there alone.
+ */
+const HEAD: Cell = { col: 16, row: 8 };
 
 /** Ticks of clear travel before the head reaches the cell. */
 const RUN_UP = 3;
