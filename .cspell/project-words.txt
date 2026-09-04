@@ -139,6 +139,7 @@ automatable
 automove
 autoplay
 autorepeat
+autorepeats
 autotile
 autotiled
 autotiles
