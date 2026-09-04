@@ -238,11 +238,14 @@ npx tsc --noEmit -p validation/tsconfig.json    # from a build's root
 
 ### Three captures move between runs
 
-`tcab capture-baselines` writes `1710` files across the six engine/variant
-targets: `1599` stills and `111` recorded replays. Seventeen of the stills are
-taken off a clock rather than off a posed frame, so two runs of the command over
-unchanged code write different bytes for them, and the committed baseline for
-each is one sample rather than a fixed picture. They are three outputs:
+`tcab capture-baselines` writes `1716` files across the six engine/variant
+targets: `1605` stills and `111` recorded replays. Six of those stills are not
+rendered at all: `showcase.exists__carousel` is a `.png` the point copies out of
+the build's own showcase, so the baseline for it is the reference's own picture.
+Seventeen of the stills are taken off a clock rather than off a posed frame, so
+two runs of the command over unchanged code write different bytes for them, and
+the committed baseline for each is one sample rather than a fixed picture. They
+are three outputs:
 
 | Output                                         | Targets | Why it moves                                                                                                                                      |
 | ---------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -263,7 +266,7 @@ picture on every host and any movement in it is the build's.
 The churn is bounded and it is all there is. Captures of the same code differ
 inside those seventeen files and in nothing else, and a delta within a file is no
 more than 2291 pixels of the 921600 in a frame, inside the panel's text band or on
-one moving entity. The other 1582 stills and all 111 replays are byte-identical
+one moving entity. The other 1588 stills and all 111 replays are byte-identical
 from one capture to the next.
 
 So a recapture that leaves only those seventeen files dirty has changed nothing
@@ -277,9 +280,11 @@ discharge and the inversion), `swarm` (the entrances, the formation, the dives
 and the three drones), `arcade` (the ship, the stages, the lives, the scoring and
 the screens) and `presentation` (the screens, the HUD, the art and the audio) —
 and its overall functional rating is the worst of the four. The checklist is
-`269` points on a base run and `287` on an overload run: fifteen categories common
+`272` points on a base run and `290` on an overload run: sixteen categories common
 to both, plus one category the variant declares. Each point names the domains its
-failure lowers and how far it lowers them.
+failure lowers and how far it lowers them. Every point is worth one except
+`showcase.exists`, which is worth three: the showcase is a deliverable of its own
+rather than a behavior of the game.
 
 ## Versioning
 
