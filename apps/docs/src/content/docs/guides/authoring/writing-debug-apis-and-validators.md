@@ -320,6 +320,33 @@ A suite leaning on pixels is usually reading a spec that pinned appearance, whic
 [Appearance is loose and reviewed](/guides/authoring/writing-case-specifications/#appearance-is-loose-and-reviewed)
 leaves to the reviewer.
 
+### Under `none`, nothing is on the canvas until a frame is driven
+
+An engineless harness hands over a page whose build has installed its debug
+surface. It has not necessarily drawn anything yet: the build owns its own frame
+loop, and whether that loop has run a frame by the time the harness returns
+depends on how the host was scheduled that second. A build that sizes its canvas
+as part of drawing — which is what a runtime that owns the fit does — therefore
+leaves the element at the `300 x 150` an HTML canvas carries until its first
+frame lands.
+
+So a check drives a frame before it reads anything the drawing produced. That
+covers `surface()`, which reads the backing store the build sized, and every
+pixel read, which addresses that backing store. A check that reads either before
+driving a frame reads whatever the page happened to have reached, and passes or
+fails on the load average rather than on the build. It is one of the two shapes a
+[flaky validator](/guides/authoring/writing-case-specifications/#behavior-is-exact-and-validated)
+takes here, and the fix is to drive the frame the reading is about first.
+
+The other shape is a build still decoding its produced files. A case whose
+[instrumentation spec](/guides/authoring/writing-case-specifications/#keeping-evaluation-out-of-the-seeded-set)
+lets the surface go up before those files have settled has a window in which a
+driven frame draws the build's fallback instead of its art, and every check that
+reads the picture is a coin flip inside it. The spec closes the window rather
+than the suite working around it: the surface goes up once the game has
+initialized, and a game that must have every asset decoded before its first frame
+draws has not initialized until they are.
+
 ### A replay covers the behavior it backs
 
 A `replay` output brackets the stretch of the scenario its check is about. The
@@ -427,6 +454,9 @@ When designing or revising a case's debug API and validators:
 - Each validator poses a world holding only what its requirement concerns, and
   the debug API carries the operations that remove the rest and gate the
   faculties its requirement does not exercise.
+- An engineless check drives a frame before it reads the canvas the build sized
+  or any pixel of it, and the case's instrumentation spec puts the debug surface
+  up only once the build's produced files have settled.
 - Every validator reaches a pass or a fail, and a debug API that cannot be
   driven fails the item rather than leaving it undecided.
 - Each check reads state, events, or draw calls where they answer its claim, and

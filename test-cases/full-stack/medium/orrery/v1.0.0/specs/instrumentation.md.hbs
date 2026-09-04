@@ -7,8 +7,11 @@ waiting on real time.
 
 You implement it. Every operation this file specifies is a deliverable, and
 the build installs the finished surface on `window.__orrery` as soon as the
-game has initialized. Every scenario driven from code reaches the game
-through it, so it is present and exactly as specified here.
+game has initialized, which is once the produced files of `specs/assets.md`
+have settled: nothing the surface reaches is still loading, so the first
+frame anything draws through it is a frame of the finished game. Every
+scenario driven from code reaches the game through it, so it is present and
+exactly as specified here.
 
 Each operation is a read of the game's state or a pose of one part of it. A
 pose sets one thing, and the game's own editor rules, simulation, sigils, and
