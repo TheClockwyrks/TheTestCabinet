@@ -8,97 +8,20 @@ Your project root is `{{workspace}}`. Build the game there.
 {{#if (eq engine.slug "none")}}
 A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
 describes it. Its dependencies are installed, so you can build and test right
-away: Vite builds it, Vitest tests it, ESLint lints it, and Prettier formats it.
-That toolchain, `index.html`, and the sprite art under `assets/` are the whole of
-what it supplies.
-
-What is missing is everything under `src/`, and that directory does not exist
-yet. Nothing here supplies a frame loop, a canvas fit, input, image loading,
-audio, an overlay, or a line of game code. `index.html` loads `/src/main.ts`, so
-that module is where your build starts.
+away.
 {{else if (eq engine.slug "simple-2d")}}
 A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
 describes it. Its dependencies are installed, so you can build and test right
-away. It is wired up end to end: Vite builds it, Vitest tests it, ESLint lints
-it, Prettier formats it, and `src/main.ts` already stands the engine up over the
-page's canvas and runs the game. The sprite art the game draws from is under
-`assets/`.
-
-What is missing is the game itself: `src/game.ts`. As seeded it is a stub whose
-`initialize`, `update`, and `render` throw `"not implemented"`, and whose
-`BACKGROUND` is a placeholder. The stub is written against the `FloeState` and
-`FloeDebugApi` types the specification asks `src/game.ts` to declare, so the
-project does not type-check until those declarations exist. That first `tsc`
-failure on a fresh checkout is expected; declaring the types clears it.
+away. The seeded `src/game.ts` is a stub written against the `FloeState` and
+`FloeDebugApi` types the specification asks that module to declare, so the first
+`tsc` on a fresh checkout fails until those declarations exist. That failure is
+expected.
 {{else}}
 A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
 describes it. Its dependencies are installed, so you can build and test right
-away. It is wired up end to end: Vite builds it, Vitest tests it, ESLint lints
-it, Prettier formats it, and `src/main.ts` already stands the engine up over the
-page's canvas and runs the game. The sprite art the game draws from is under
-`assets/`.
-
-What is missing is the game itself: `src/game.ts` does not exist yet.
-`src/main.ts` imports `game` and `BACKGROUND` from it, so the project does not
-type-check until the module exists. That first `tsc` failure on a fresh checkout
-is expected; creating the module clears it.
-{{/if}}
-
-{{#if (eq engine.slug "none")}}
-## The runtime
-
-This build runs on no engine, so the layer beneath the game is yours as well: the
-frame loop and the elapsed time it measures, fitting the fixed logical stage onto
-the canvas, the keyboard input the player drives the critter and the menus with,
-image loading, the audio, and the on-screen debug overlay. The specification in
-`specs/` states what Floe needs from that layer and fixes nothing else about it.
-
-The simulation runs on a fixed step, and the accumulator that turns a frame's
-elapsed time into whole ticks is part of what you write. `specs/overview.md`
-states the rule.
-{{else if (eq engine.slug "simple-2d")}}
-## The {{engine.name}} engine
-
-This build runs on the **{{engine.name}}** engine, installed as a dependency of
-the project, so import it by its bare package name; there is nothing to add to
-`package.json` for it and nothing to install.
-
-The engine's own documentation is at `{{engine.docs}}`. It is the authoritative
-description of the engine's API; the specification in `specs/` describes the game
-and does not restate the engine. The documentation also carries a complete worked
-example of unit-testing a game built on it.
-
-Build the game on the engine rather than beside it. The engine owns the frame
-loop and the delta time it hands your update, the canvas fit, the input actions,
-the audio, asset loading, and the on-screen debug overlay. It also holds the
-game's state, by value: each frame it hands `update` the current state read-only
-and keeps what `update` returns as the next, so a frame builds the next state
-from the current one rather than writing into it. Register what the game needs
-with the engine and use what it gives back. What remains yours is the game
-itself: the strait and its sixteen lanes, the critter's hop, the bear that hunts
-it, the bays, the run, and everything it draws.
-{{else}}
-## The {{engine.name}} engine
-
-This build runs on the **{{engine.name}}** engine, installed as a dependency of
-the project, so import it by its bare package name; there is nothing to add to
-`package.json` for it and nothing to install.
-
-The engine's own documentation is at `{{engine.docs}}`. It is the authoritative
-description of the engine's API; the specification in `specs/` describes the game
-and does not restate the engine. The documentation also carries a complete worked
-example of unit-testing a game built on it.
-
-Build the game inside the engine's framework rather than beside it. The engine
-owns the frame loop and the delta time it hands each tick, rendering and the
-camera, the canvas fit, the input actions, the audio, asset loading, and the
-on-screen debug overlay. Your game is a `GameDefinition` the engine drives: the
-one level the whole session runs in, the game mode that holds the screens and the
-rules, the actors and components that populate the strait, and the controller the
-critter is driven through. Register what the game needs with the engine and use
-what it gives back. What remains yours is the game itself: the strait and its
-sixteen lanes, the critter's hop, the bear that hunts it, the bays, the run, and
-what its components draw.
+away. `src/main.ts` imports `game` and `BACKGROUND` from `src/game.ts`, which
+does not exist yet, so the first `tsc` on a fresh checkout fails until that
+module does. That failure is expected.
 {{/if}}
 
 ## What to read first
@@ -110,24 +33,11 @@ are, the code quality the build is held to, and the commands that run over the
 finished repository. It also lists the other files of the specification and what
 each one fixes.
 
-## The art
-
-The game's art is seeded under `{{workspace}}/assets/`: the critter, the bear,
-the three vehicles that slide along the ice lanes, and the two floes that drift
-along the water lanes. `specs/assets.md` is the contract for every folder's frame
-layout and how the game draws it, and for the short list of things the game draws
-in code instead.
-
 ## The build interface
 
-`npm ci` then `npm run build` must produce the static site, with no other manual
-step, into `dist/` at the project root, with an `index.html` at the root of that
-directory. Serving that directory as-is at the root of any static file server, or
-under a sub-path of one, must run the game; it is deployed to static hosting
-exactly that way, which is why every URL the running game requests resolves
-relative to the page. The scripts that do this are already in `package.json`. Add
-a dependency only if you genuinely need one, and run `npm install` afterward so
-the committed `package-lock.json` matches.
+`npm ci` then `npm run build` produces the static site into `dist/` at the
+project root, with no other manual step. `specs/overview.md` fixes the rest of
+the interface.
 
 ## Driving the game in a browser
 
@@ -150,10 +60,7 @@ sandbox and a default launch fails.
 
 ## The showcase
 
-The game ships with its store-page presentation: a `showcase/` directory at the
-project root holding a player-facing description of the game and a short carousel
-of captured media. `specs/showcase.md` defines its contents — the description,
-the `showcase.toml` carousel, and how the media are captured.
+`specs/showcase.md` defines a showcase the finished game ships.
 
 ## Commit your work
 

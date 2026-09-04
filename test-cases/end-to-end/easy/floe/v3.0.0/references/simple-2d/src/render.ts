@@ -27,13 +27,11 @@ import {
   BAY_COUNT,
   CAR_W,
   DOGSLED_W,
-  ENDING_ITEMS,
   HUD_H,
   HUD_LEVEL_LABEL,
   ICE_BOTTOM,
   ICE_TOP,
   PAN_W,
-  PAUSE_ITEMS,
   PLOW_W,
   ROW_BAYS,
   ROW_CAP,
@@ -44,7 +42,6 @@ import {
   STAGE_W,
   TAGLINE_TEXT,
   TILE,
-  TITLE_ITEMS,
   TITLE_TEXT,
   TOTAL_LEVELS,
   WATER_BOTTOM,
@@ -62,8 +59,9 @@ import {
 import { swimming } from "./hunter";
 import { ANIM_FPS, COLOR, FONT, font } from "./theme";
 import { bayCenterX } from "./strait";
+import { menuBaseline, menuLayout } from "./menus";
 import { toSim, type MutFloe, type MutVehicle, type Sim } from "./sim";
-import type { Facing, FloeState } from "./game";
+import type { Facing, FloeState, Screen } from "./game";
 import type { DeepReadonly } from "ts-essentials";
 
 /** The how-to screen's lines: the six things `specs/ui.md` asks it to name. */
@@ -473,26 +471,34 @@ function centered(
   ctx.fillText(text, STAGE_W / 2, y);
 }
 
-/** A screen's menu, the highlighted item drawn distinctly from the others. */
+/**
+ * A screen's menu, the highlighted item drawn distinctly from the others.
+ *
+ * The baselines come from `src/menus.ts`, which is also what `menuItemRect`
+ * reports its regions around, so a pointer aimed at a reported region lands on
+ * the entry a player sees there.
+ */
 function drawMenu(
   ctx: CanvasRenderingContext2D,
-  items: readonly string[],
+  screen: Screen,
   index: number,
-  top: number,
 ): void {
-  items.forEach((item, at) => {
+  const layout = menuLayout(screen);
+  if (layout === null) return;
+  layout.items.forEach((item, at) => {
     const chosen = at === index;
+    const baseline = menuBaseline(layout, at);
     // The item's own text is drawn as its own text, and the highlight is the
     // colour it is drawn in plus a marker beside it, so nothing is appended to
     // the copy `specs/ui.md` fixes.
     if (chosen) {
       ctx.fillStyle = COLOR.accent;
-      ctx.fillRect(STAGE_W / 2 - 210, top + at * 44 - 16, 12, 16);
+      ctx.fillRect(STAGE_W / 2 - 210, baseline - 16, 12, 16);
     }
     centered(
       ctx,
       item,
-      top + at * 44,
+      baseline,
       FONT.menu,
       chosen ? COLOR.accent : COLOR.menuIdle,
     );
@@ -510,7 +516,7 @@ function drawTitle(ctx: CanvasRenderingContext2D, sim: Sim): void {
   panel(ctx, 240, 130, 800, 440);
   centered(ctx, TITLE_TEXT, 290, FONT.title, COLOR.text);
   centered(ctx, TAGLINE_TEXT, 340, FONT.tagline, COLOR.textDim);
-  drawMenu(ctx, TITLE_ITEMS, sim.menuIndex, 440);
+  drawMenu(ctx, "title", sim.menuIndex);
   centered(
     ctx,
     "ARROWS OR W A S D TO MOVE   ENTER TO CHOOSE",
@@ -538,7 +544,7 @@ function drawPaused(ctx: CanvasRenderingContext2D, sim: Sim): void {
   scrim(ctx, COLOR.scrimPause);
   panel(ctx, 380, 200, 520, 320);
   centered(ctx, "PAUSED", 270, FONT.heading, COLOR.text);
-  drawMenu(ctx, PAUSE_ITEMS, sim.menuIndex, 350);
+  drawMenu(ctx, "paused", sim.menuIndex);
   centered(ctx, "ESC RESUMES", 490, FONT.body, COLOR.textDim);
 }
 
@@ -581,7 +587,7 @@ function drawEnding(
       COLOR.text,
     );
   }
-  drawMenu(ctx, ENDING_ITEMS, sim.menuIndex, 450);
+  drawMenu(ctx, won ? "victory" : "gameover", sim.menuIndex);
 }
 
 /** Draw the whole frame the update left behind. */

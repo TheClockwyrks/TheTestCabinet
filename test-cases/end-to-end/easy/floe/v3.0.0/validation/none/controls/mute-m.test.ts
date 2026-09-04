@@ -41,6 +41,9 @@ import {
   type Harness,
 } from "../harness";
 
+/** The key this point decides, named literally: it is the whole of the point. */
+const KEY = "KeyM";
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -60,10 +63,10 @@ it("turns muting on with KeyM and off again with a second press", async () => {
 
   // Down, one tick, up: one press edge, which is how `specs/controls.md` reads
   // mute, so exactly one toggle can follow from it.
-  await h.tap("KeyM");
+  await h.tap(KEY);
   const afterFirst = (await h.snapshot()).muted;
 
-  await h.tap("KeyM");
+  await h.tap(KEY);
   const afterSecond = (await h.snapshot()).muted;
   await captureStill(h, "muted");
 

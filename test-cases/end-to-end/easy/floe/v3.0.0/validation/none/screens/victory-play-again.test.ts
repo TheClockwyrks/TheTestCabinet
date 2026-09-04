@@ -31,6 +31,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNotEqual } from "../assert";
 import {
   BAY_COUNT,
+  BINDINGS,
   ENDING_ITEMS,
   START_LIVES,
   TOTAL_LEVELS,
@@ -89,7 +90,7 @@ it("opens a fresh level-1 run when PLAY AGAIN is confirmed on the victory screen
     "and five filled bays",
   );
 
-  await h.tap("Enter");
+  await h.tap(BINDINGS.confirm[0]);
   await h.advance(SETTLE_TICKS);
   await captureStill(h, "after");
 

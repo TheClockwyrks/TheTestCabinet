@@ -57,8 +57,9 @@ rebuild from the declared ones: the declared fields are the whole of the
 authoritative state, and the surface's `reset()` restores exactly those.
 
 Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test`
-runs them in process, with coverage over `src/`. The engine's documentation
-carries a complete worked example of testing a game this way.
+runs them in process, with coverage over the code you write under `src/`; the
+seeded `src/constants.ts` and `src/main.ts` are outside the report. The engine's
+documentation carries a complete worked example of testing a game this way.
 
 ## What you must not edit
 

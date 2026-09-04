@@ -5,8 +5,9 @@
 // bus announces the play, so a check reads the name. There is no bus here:
 // `specs/ui.md` hands the whole audio layer to the build and asks only that it
 // synthesize the cues with the Web Audio API. So what is observed is the SOUND —
-// `audio-init.js` watches the two doors a browser can emit audio through, and the
-// harness attributes each emission to the driven call that produced it. The cue's
+// the shared harness's audio probe watches the two doors a browser can emit
+// audio through, and attributes each emission to the driven tick that produced
+// it (`watchCues` in `../harness` says the whole of it). The cue's
 // NAME is therefore not observable, and no check in this project asserts one;
 // whether the ten are told apart by ear is the reviewer's. Nor is "exactly once"
 // countable, because one cue may lawfully be several sources — a blip made of a

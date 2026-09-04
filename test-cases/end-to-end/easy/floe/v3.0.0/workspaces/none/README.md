@@ -16,28 +16,27 @@ the sprite art under `assets/`.
 
 `index.html` loads `/src/main.ts` as its entry point, so that module is where
 your build starts. Beyond that the structure is yours. You write the runtime a
-browser game needs — the frame loop and the delta time it measures, fitting the
-fixed logical stage onto the canvas, keyboard input, audio, and the diagnostics
-overlay — and you write the game itself on top of it.
+browser game needs: the frame loop and the delta time it measures, fitting the
+fixed logical stage onto the canvas, keyboard, pointer and touch input, audio,
+and the diagnostics overlay. You write the game itself on top of it.
 
 **Floe runs on a fixed step.** The simulation advances in whole ticks of
 `TICK_DT` (1/120 s), and a frame runs as many of them as its elapsed time
 completes, carrying the remainder into the next frame. Every rate the
 specification states is integrated against that tick rather than against the
-frame's own delta; `specs/overview.md` states the rule, and the accumulator that
-implements it is yours to write.
+frame's own delta; `specs/overview.md` states the rule.
 
 You also write the `window.__floe` debugging and automation API that
 `specs/instrumentation.md` specifies. It is a required deliverable: it is how the
 game is driven from code, so it is present and exactly as specified. Under `none`
-it is also where the two clock operations live — `setAutoStep` and `advance` —
+it is also where the two clock operations live, `setAutoStep` and `advance`,
 because nothing outside your build owns the clock.
 
-Every figure the specification fixes — the stage and strait geometry, the tile
-pitch and the tile-to-stage map, the five bands and the five bays, the hop
-cooldown, every lane's kind and speed and gap, the bear's speeds and emergence
-conditions, the run and its timer, every score figure, the screen copy — is
-stated in `specs/`, and the value stated there is authoritative.
+Every figure the specification fixes is stated in `specs/`, and the value stated
+there is authoritative: the stage and strait geometry, the tile pitch and the
+tile-to-stage map, the five bands and the five bays, the hop cooldown, every
+lane's kind and speed and gap, the bear's speeds and emergence conditions, the
+run and its timer, every score figure, the screen copy.
 
 Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test` runs
 them in process, in Node, with coverage over `src/`. `@napi-rs/canvas` is

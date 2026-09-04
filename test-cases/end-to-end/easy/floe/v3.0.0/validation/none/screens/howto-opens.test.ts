@@ -23,7 +23,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { TITLE_ITEMS } from "../constants";
+import { BINDINGS, TITLE_ITEMS } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 
 /** The title entry this transition belongs to: `HOW TO PLAY`, the second. */
@@ -58,7 +58,7 @@ it("opens the how-to screen when HOW TO PLAY is confirmed", async () => {
     `the pose highlighted ${TITLE_ITEMS[HOWTO_INDEX]}, the second title item`,
   );
 
-  await h.tap("Enter");
+  await h.tap(BINDINGS.confirm[0]);
   await h.advance(SETTLE_TICKS);
   await captureStill(h, "howto");
 

@@ -17,8 +17,8 @@ which is installed as an ordinary dependency and documents itself under
 workspace fails `npm run typecheck` on the missing module. Create the file.
 
 Start by declaring and exporting `FloeState`, exactly as `specs/state.md` fixes
-it — a class extending the engine's `GameState` — and `FloeDebugApi`, the debug
-and automation surface `specs/instrumentation.md` specifies.
+it: a class extending the engine's `GameState`. Export `FloeDebugApi` too, the
+debug and automation surface `specs/instrumentation.md` specifies.
 
 `src/game.ts` then exports `game`, a `GameDefinition<FloeDebugApi>`: the game
 instance class, a level registry holding the single level the game runs in
@@ -69,13 +69,14 @@ specification says it is. Fields you add hold data you can rebuild from what
 indistinguishable from one freshly started.
 
 Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test`
-runs them in process, with coverage over `src/`. A test stands the engine up
-over a canvas from `@napi-rs/canvas`, with a `SurfaceMetrics` and a scripted
-clock of the test's own, then advances the game a counted number of frames with
-`engine.advance`, so it needs no browser. A test that draws the critter also
-needs the seeded sprite art, which the engine's loader reaches for with browser
-globals a Node process does not have. The engine's documentation defines every
-other piece of that recipe.
+runs them in process, with coverage over the code you write under `src/`; the
+seeded `src/constants.ts` and `src/main.ts` are outside the report. A test stands
+the engine up over a canvas from `@napi-rs/canvas`, with a `SurfaceMetrics` and a
+scripted clock of the test's own, then advances the game a counted number of
+frames with `engine.advance`, so it needs no browser. A test that draws the
+critter also needs the seeded sprite art, which the engine's loader reaches for
+with browser globals a Node process does not have. The engine's documentation
+defines every other piece of that recipe.
 
 ## What you must not edit
 

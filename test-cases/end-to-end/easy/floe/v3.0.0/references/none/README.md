@@ -72,7 +72,16 @@ key on every layout.
 
 `Esc` drives **two** things — pause and back — and the game reads whichever the
 screen in front of the player calls for: it pauses a crossing, and steps back
-from the how-to, pause and end screens. A menu selection wraps at both ends.
+from the how-to, pause and end screens. `P` closes the pause menu as well as
+opening it. A menu selection wraps at both ends.
+
+**The menus also take a mouse and a finger.** Moving the pointer onto an entry
+selects it; pressing and releasing inside one entry confirms it; a touch contact
+selects the entry it lands on and confirms the entry it lifts on, provided the
+two are the same one. `src/pointer.ts` is the layer that delivers those events
+and `src/menus.ts` is where each entry's region is laid out — the same place the
+renderer takes its baselines from, so the region a pointer hits is the entry a
+player sees.
 
 The four movement keys are read as **held** on the playing screen, so a held
 direction hops repeatedly; everywhere else they are read as press edges, so one
@@ -98,6 +107,13 @@ files:
 - **`src/keyboard.ts`** — intents over `KeyboardEvent.code` bindings, with edge
   detection: an edge is armed when an intent leaves rest, consumed by the first
   reader, and discarded at the end of the tick it was armed in.
+- **`src/pointer.ts`** — the mouse and the finger: each event mapped from CSS
+  pixels into the stage's own units through the frame's fit, and paired into the
+  two edges a menu is decided from — a position the player is indicating, and a
+  gesture that ended carrying both of its ends.
+- **`src/menus.ts`** — where each menu's entries sit and the region each is
+  picked from, read by the renderer, by the rules, and by `menuItemRect` on the
+  debug surface, so the three cannot disagree.
 - **`src/images.ts`** — the seeded sprite art, gathered through the bundler's own
   glob so every frame's URL resolves against the page rather than the origin
   root, and the produced site runs at any base path.
@@ -219,6 +235,8 @@ src/
   runtime.ts          The frame loop, the fixed-tick accumulator, the wiring
   viewport.ts         The canvas fit: uniform scale, letterbox, pixel ratio
   keyboard.ts         Intents over key codes, with edge detection
+  pointer.ts          The mouse and the finger, in stage units
+  menus.ts            Where each menu sits, and the region each entry is picked from
   images.ts           Loading the seeded frames, page-relative
   audio-bus.ts        Web Audio cues and the first-gesture unlock
   overlay.ts          The debug panel and the backtick key

@@ -350,8 +350,9 @@ source = "specs/scoring.md"
 [[spec]]
 source = "specs/controls.md.hbs"
 
-# The six screens, the five HUD readouts, and the ten audio cues. It branches on
-# the engine for where cues are defined and played and who owns the mute bit.
+# The six screens, how a player moves between them by keyboard, pointer and
+# touch, the five HUD readouts, and the ten audio cues. It branches on the engine
+# for where cues are defined and played and who owns the mute bit.
 [[spec]]
 source = "specs/ui.md.hbs"
 
@@ -400,10 +401,12 @@ source = "specs/showcase.md.hbs"
 # is expected to look different, and a screenshot diff would score the build that
 # copied the mockup best rather than the build that designed the best strait. What
 # the specification does fix about appearance is stated as legibility a player
-# depends on (the five bands told apart, deep water distinct from a floe, a
-# submerged bear still trackable, a vehicle reading as covering every tile it
-# spans), and the `strait` and `presentation` items below decide exactly that,
-# from the pixels the build renders and against thresholds each item states —
+# depends on (the five bands told apart, open water distinct from a floe on the
+# same row, an open bay distinct from the shore beside it and a filled bay from an
+# open one, the critter and a bear apart from what they stand on, a submerged bear
+# still trackable, and a vehicle apart from the ice under it and covering every
+# tile it spans), and the `strait` and `presentation` items below decide exactly
+# that, from the pixels the build renders and against thresholds each item states —
 # while how GOOD the strait looks is rated through the run-wide aesthetic rating,
 # not scored here. The seeded sprite art is the one thing a picture IS seeded for,
 # and it is seeded as art to draw with rather than as a target to match.
@@ -449,11 +452,13 @@ description = "What the game looks and sounds like: the seeded sprite art and ho
 # Reviewer checklist, in the categories grammar (`[review] format = 2`). Each
 # `[[review.categories]]` is a CATEGORY — a bare name grouping the items — and
 # each item entry under it is one graded review item, worth one point (the default
-# weight), so a category is worth the number of items it holds. A category carries
-# no prose of its own; each item states in `description` the claim its validator
-# checks. The checklist is common to every run: there is one variant and the three
-# engines produce the same game, so nothing here is conditional. It is
-# reporter-side material — never seeded into a run, so the model never sees it.
+# weight), so a category is worth the number of items it holds. One item departs
+# from that — `showcase.exists` declares `weight = 3`, for the reason its own
+# category comment gives — and it is the only `weight` in this file. A category
+# carries no prose of its own; each item states in `description` the claim its
+# validator checks. The checklist is common to every run: there is one variant
+# and the three engines produce the same game, so nothing here is conditional. It
+# is reporter-side material — never seeded into a run, so the model never sees it.
 # Every item restates a requirement the seeded specification already states, in
 # the spec's own vocabulary and naming the spec's own constants, and every
 # threshold a validator asserts is derived from a figure or rule in the specs plus
@@ -534,6 +539,21 @@ format = 2
 # screen is the failure mode worth naming, and it also shows up as every other
 # suite failing to run.
 #
+# THE STATE IS GRADED ONE FAMILY AT A TIME. `state-run`, `state-critter`,
+# `state-bears`, `state-lanes`, `state-bays` and `state-gates` are six items over
+# the same seam the six `clear*` items below use, so a failed grade names WHICH
+# family of state is dead rather than reporting that the snapshot is wrong
+# somewhere. Each of the six carries both halves of the same claim — the family's
+# fields are present with the type the snapshot shape documents, and every pose of
+# that family reads back through them — because the two are one observable per
+# family: a field the snapshot omits cannot read back, and a field that reads back
+# is present with its type. Between them the six cover the whole shape, so nothing
+# is graded twice and nothing is left ungraded. Two fields carry no pose and are
+# only ever read: `muted`, because there is no `setMuted` and the mute action is
+# how muting is reached, and `simTime`. The auto-step bit is in neither half: the
+# clock operations pose no state, so nothing is set to read back, and
+# `advances-in-real-time` decides `setAutoStep` by its effect instead.
+#
 # Seven of them are the four WORLD GATES and the three per-bear FACULTY gates. A
 # validator poses a world holding only what its requirement concerns, and Floe's
 # own figures put a bear on the strait 0.6 s after the critter has climbed three
@@ -566,22 +586,94 @@ validation = { script = "instrumentation/surface-present.test.ts", outputs = [
   { id = "state", name = "The game driven from the surface alone", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "snapshot-shape"
-title = "Snapshot reports the full documented shape"
-description = "On a posed strait carrying a critter, two bears, a vehicle in every ice lane, a floe in every water lane, one filled bay and a posed bonus catch, every field listed in the snapshot shape is present with its documented type."
+id = "state-run"
+title = "The run's own state reads back"
+description = "screen, phase, phaseTimer, menuIndex, score, lives, level, reachedLevel and timer each read back through snapshot as the value setScreen, setPhase, setPhaseTimer, setMenuIndex, setScore, setLives, setLevel, setReachedLevel and setTimer posed, and version, timerMax, muted and simTime are present with the documented type beside them."
 domains = ["hunter", "crossing", "run", "presentation"]
 failure_cap = "broken"
-validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [
-  { id = "posed", name = "The posed strait the snapshot reports", kind = "image" },
+validation = { script = "instrumentation/state-run.test.ts", outputs = [
+  { id = "read-back", name = "The run's fields, posed and read back", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "poses-read-back"
-title = "Every pose is reported by the snapshot"
-description = "Each pose operation's value is read back by snapshot: screen, phase, phase timer, menu index, score, lives, level, reached level, timer, the critter's tile, centre, facing, hop cooldown and best row, a bear's tile, centre, committed step, target and three faculties, a vehicle's and a floe's position, a lane's speed and direction, a bay's filled flag, the fish's bay, and the four world gates. Mute is not in the list: there is no setMuted. The auto-step bit is not in it either: the clock operations pose no state, so nothing is set to read back (section 2)."
+id = "state-critter"
+title = "The critter's state reads back"
+description = "With a critter on the strait, its tile, centre, facing, hop cooldown and best row read back as addCritter, setCritterTile, setCritterX, setCritterFacing, setHopCooldown and setBestRow posed them, and present and footing are present with the documented type beside them."
 domains = ["hunter", "crossing", "run", "presentation"]
 failure_cap = "broken"
-validation = { script = "instrumentation/poses-read-back.test.ts", outputs = [
-  { id = "read-back", name = "The strait every pose built", kind = "image" },
+validation = { script = "instrumentation/state-critter.test.ts", outputs = [
+  { id = "read-back", name = "The critter's fields, posed and read back", kind = "image" },
+] }
+[[review.categories.items]]
+id = "state-bears"
+title = "Every bear's state reads back"
+description = "With two bears on the strait, each bear's tile, centre, committed step, target and three faculties read back as addBear, setBearTile, setBearPosition, setBearStep, setBearTarget, setBearSense, setBearRouting and setBearTravel posed them, and id, facing and swimming are present with the documented type beside them."
+domains = ["hunter"]
+failure_cap = "broken"
+validation = { script = "instrumentation/state-bears.test.ts", outputs = [
+  { id = "read-back", name = "Two bears' fields, posed and read back", kind = "image" },
+] }
+[[review.categories.items]]
+id = "state-lanes"
+title = "The lanes and their items read back"
+description = "With a vehicle in every ice lane and a floe in every water lane, each item's position reads back as addVehicle, setVehicleX, addFloe and setFloeX posed it and each lane's speed and direction as setLaneSpeed and setLaneDirection posed them, and every roster entry's id, row, kind and len is present with the documented type beside them."
+domains = ["hunter", "crossing", "run", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/state-lanes.test.ts", outputs = [
+  { id = "read-back", name = "The sixteen lanes and their items, posed and read back", kind = "image" },
+] }
+[[review.categories.items]]
+id = "state-bays"
+title = "The bays and the bonus catch read back"
+description = "bays reports five booleans reading back as setBay posed each of them, and fishBay reads back as setFishBay posed it and as null after clearFish."
+domains = ["crossing", "run"]
+failure_cap = "broken"
+validation = { script = "instrumentation/state-bays.test.ts", outputs = [
+  { id = "read-back", name = "The bays and the bonus catch, posed and read back", kind = "image" },
+] }
+[[review.categories.items]]
+id = "state-gates"
+title = "The four world gates read back"
+description = "bearEmergence, catchTest, fishCadence and timerRunning each read back through snapshot as setBearEmergence, setCatchTest, setFishCadence and setTimerRunning posed them, in both directions."
+domains = ["hunter", "crossing", "run", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/state-gates.test.ts", outputs = [
+  { id = "read-back", name = "The four gates, posed and read back", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-item-rect"
+title = "menuItemRect reports each menu item's region"
+description = "On title, paused, victory and gameover, menuItemRect(i) returns an { x, y, w, h } of real extent inside the 1280x720 stage for every index of that screen's menu, with no two items of one menu sharing a point."
+domains = ["run"]
+failure_cap = "scuffed"
+# `menuItemRect` sits in the core operation table beside `reset` and `snapshot`,
+# and it is the read the six `pointer` and `touch` points below pose through, so a
+# surface that lacks it or reports a region it does not answer on takes those six
+# with it. It lowers `run` alone: the menus are the run's, and every suite that
+# drives one is a `run` suite. The regions are deliberately NOT in `snapshot`, so
+# this is the one read with no field of the shape behind it.
+#
+# `scuffed` RATHER THAN `broken`, at the cap of the points it gates. What the
+# miss costs a PLAYER is a menu no mouse and no finger can work, and that is the
+# same cost the `pointer` and `touch` categories price at `scuffed`: the
+# keyboard's play is left intact and an ordinary path is made unusable. A read
+# that gates six `scuffed` points cannot cost more than all six of them.
+validation = { script = "instrumentation/menu-item-rect.test.ts", outputs = [
+  { id = "regions", name = "The regions the build reports for each menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-item-rect-absent"
+title = "menuItemRect reports no region where there is none"
+description = "menuItemRect returns null on howto and on playing, which show no menu, and for an index outside the menu the current screen shows, at either end of the range."
+domains = ["run"]
+failure_cap = "passable"
+# The negative half of the same read, and its own point because the two fail
+# independently: a build can lay all four menus out correctly and still hand back
+# a rectangle for `menuItemRect(-1)` or on `howto`. It caps one step softer than
+# its positive twin, this checklist's standing rule for a negative — a region
+# reported where there is no item is a pointer that selects something absent
+# rather than a menu that cannot be worked at all.
+validation = { script = "instrumentation/menu-item-rect-absent.test.ts", outputs = [
+  { id = "no-menu", name = "The how-to screen, which shows no menu", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "reset-restores-title"
@@ -785,6 +877,16 @@ failure_cap = "passable"
 # The overlay is a read-only view of the game, so the snapshot before and after
 # toggling it must be identical: an overlay that changes what it reports is
 # reporting something else.
+#
+# THIS POINT IS THE BUILD'S ON ALL THREE ENGINES, which is why it declares no
+# `engines`. Under `none` the whole overlay is the runtime layer the build writes.
+# Under either engine the panel and its toggle are the engine's, but WHAT IT SAYS
+# is the build's alone: `specs/instrumentation.md` requires the game to register
+# the screen, the phase, the level, the lives, the score, the timer, the critter,
+# each bear, the roster counts and the bays as diagnostic sources, and requires
+# every source to be a pure read. A build that registers the wrong facts, or a
+# source that mutates as it reads, fails this point under an engine exactly as it
+# does under `none`.
 validation = { script = "instrumentation/overlay.test.ts", outputs = [
   { id = "overlay", name = "The debug overlay over a posed strait", kind = "image" },
 ] }
@@ -803,6 +905,11 @@ validation = { script = "instrumentation/overlay.test.ts", outputs = [
 # The bays are fixed as exact column PAIRS — (3,4), (11,12), (19,20), (27,28),
 # (35,36) — so `bay-columns` and `far-shore-solid` between them close every column
 # of row 1: ten accept a hop up and thirty refuse one.
+#
+# `bays-read-apart` and `filled-bay-reads-filled` are likewise two items, because
+# they come from two separate rows of specs/overview.md's legibility table and
+# fail independently: telling an opening in the shore from the shore is one
+# reading, and telling a filled opening from an open one is another.
 [[review.categories]]
 id = "strait"
 title = "The strait"
@@ -812,6 +919,15 @@ title = "The whole stage stays visible and centred"
 description = "The entire 1280x720 stage, the full HUD bar, the whole strait and all four edges, is visible, fitted and centred at three window sizes and two pixel densities, including on load before any input."
 domains = ["presentation"]
 failure_cap = "scuffed"
+# THIS POINT IS THE BUILD'S ON ALL THREE ENGINES, which is why it declares no
+# `engines`. Under `none` the fit is the runtime layer the build writes. Under
+# either engine the fit itself is the engine's, and what stays the build's is the
+# obligation `specs/overview.md` puts beside it: "Draw in logical units, and take
+# the canvas element's own size from the runtime alone." A build that draws in
+# device pixels, fits the stage a second time itself, or anchors to a corner of
+# the canvas moves what lands on the surface away from the map, and this point is
+# what catches it — which is why the check reads the four extreme tiles, where a
+# wrong fit shows, rather than the middle, where it hides.
 validation = { script = "strait/stage-fit.test.ts", outputs = [
   { id = "fit", name = "The whole stage fitted and centred", kind = "image" },
 ] }
@@ -882,6 +998,12 @@ failure_cap = "passable"
 # Read over ten seconds of LIVE lanes rather than on a fresh layout, because the
 # failure worth catching is a lane whose items wrap through the median rather than
 # one laid out onto it.
+#
+# STILL TWO READINGS BEHIND ONE POINT, like `presentation.hud-lives`: that a
+# freshly laid-out median carries nothing and that it stays clear under live
+# lanes are two observable behaviors sharing one item. Splitting them is a
+# manifest change this pass did not carry, so the gap is recorded rather than
+# left to be read as closed.
 validation = { script = "strait/median-carries-nothing.test.ts", outputs = [
   { id = "median", name = "The median shelf beside ten seconds of live lanes", kind = "replay" },
 ] }
@@ -890,18 +1012,43 @@ id = "bands-read-apart"
 title = "The five bands read distinct"
 description = "The near shore, the ice band, the median, the water band and the far shore render in tints each separated from the others by at least 40 of 441 RGB distance, sampled across the full width of each."
 domains = ["presentation"]
-failure_cap = "great"
+failure_cap = "scuffed"
+# `scuffed` rather than `great`. Bands a player cannot tell apart do not stop the
+# game running, but the whole of play is reading which strip is safe and which is
+# not, so a build that renders them alike makes ordinary play unpleasant — which
+# is the second clause of `scuffed`. It joins every other legibility point on this
+# checklist — `bays-read-apart` and `filled-bay-reads-filled` here,
+# `submerged-bear-visible`, `critter-reads-apart`, `bear-reads-apart`,
+# `water-reads-apart`, `vehicles-read-apart` and `text-legible` under
+# `presentation` — all of which are `scuffed` for the same reason.
 validation = { script = "strait/bands-read-apart.test.ts", outputs = [
   { id = "scene", name = "The five bands sampled across the full width", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "bays-read-apart"
 title = "An open bay reads distinct from the shore"
-description = "An open bay renders in a tint at least 60 of 441 from the solid far shore beside it, and a filled bay renders differently from an open one."
+description = "An open bay renders in a tint at least 60 of 441 from the solid far shore beside it, sampled well inside each."
 domains = ["presentation"]
-failure_cap = "great"
+failure_cap = "scuffed"
+# `scuffed` for the same reason as `bands-read-apart`: a bay a player cannot pick
+# out of the shore leaves them hopping at the shore to find one, which is normal
+# play made unpleasant rather than a flow left unaffected.
 validation = { script = "strait/bays-read-apart.test.ts", outputs = [
-  { id = "scene", name = "An open bay beside the shore and a filled one", kind = "image" },
+  { id = "scene", name = "An open bay beside the solid shore", kind = "image" },
+] }
+[[review.categories.items]]
+id = "filled-bay-reads-filled"
+title = "A filled bay reads distinct from an open one"
+description = "A filled bay renders apart from the same bay left open, read well inside the mouth: a tint at least 20 of 441 away under none and under simple-2d, and at least a twentieth of the bay's own pixels changed under structured-2d."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# The other half of the same row of specs/overview.md's legibility table, and its
+# own item because the two fail independently: a build can cut its bays out of the
+# shore clearly and then mark a filled one with nothing at all. This is the half
+# that costs the player more — a filled bay that still looks open is a hop the
+# rules refuse, so the miss reads as the game ignoring an input.
+validation = { script = "strait/filled-bay-reads-filled.test.ts", outputs = [
+  { id = "scene", name = "A filled bay beside an open one", kind = "image" },
 ] }
 
 # --- Hopping ------------------------------------------------------------------
@@ -921,6 +1068,13 @@ validation = { script = "strait/bays-read-apart.test.ts", outputs = [
 # centre is what the floe-carry rule and the footing derivation both read, and a
 # build that translates by 32 instead of snapping to the target tile's centre
 # leaves the critter between columns in a way a column reading would not catch.
+#
+# THE FACING IS FOUR ITEMS, ONE PER DIRECTION, for the reason `controls.arrow-*`
+# is four: a build whose facing follows three hops and not the fourth must grade
+# differently from one whose facing never moves, and a single item covering all
+# four can only fail once. The reported facing is what
+# `presentation.sprite-crosser-facing-*` then draws from, and those are four items
+# for the same reason.
 [[review.categories]]
 id = "hopping"
 title = "Hopping"
@@ -1024,18 +1178,56 @@ validation = { script = "hopping/refuse-vehicle.test.ts", outputs = [
   { id = "refuse", name = "A hop refused by a parked vehicle", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "facing-follows-hop"
-title = "The critter faces the way it last hopped"
-description = "After hopping up, down, left and right in turn, the reported facing is up, down, left and right in turn."
+id = "faces-up"
+title = "A hop up leaves the critter facing up"
+description = "After an accepted hop up, the reported facing is up."
 domains = ["presentation"]
 failure_cap = "great"
-validation = { script = "hopping/facing-follows-hop.test.ts", outputs = [
-  { id = "facing", name = "The critter facing each way it hopped", kind = "replay" },
+validation = { script = "hopping/faces-up.test.ts", outputs = [
+  { id = "facing", name = "The critter facing up after hopping up", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "faces-down"
+title = "A hop down leaves the critter facing down"
+description = "After an accepted hop down, the reported facing is down."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "hopping/faces-down.test.ts", outputs = [
+  { id = "facing", name = "The critter facing down after hopping down", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "faces-left"
+title = "A hop left leaves the critter facing left"
+description = "After an accepted hop left, the reported facing is left."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "hopping/faces-left.test.ts", outputs = [
+  { id = "facing", name = "The critter facing left after hopping left", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "faces-right"
+title = "A hop right leaves the critter facing right"
+description = "After an accepted hop right, the reported facing is right."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "hopping/faces-right.test.ts", outputs = [
+  { id = "facing", name = "The critter facing right after hopping right", kind = "replay" },
 ] }
 
 # --- The ice band -------------------------------------------------------------
 # The eight ice lanes: what they carry, how they move, how they scale with the
 # level, and what their traffic does to a critter standing under it.
+#
+# `lane-directions` and `lane-speeds` EACH CARRY TWO CLAUSES ON PURPOSE, and the
+# departure is worth naming because `strait.tile-map` and
+# `strait.tiles-drawn-on-the-map` split the same shape of pair into two items. The
+# difference is what the second clause is for. There the reported centre and the
+# drawn position are two things a player can lose separately, so they are two
+# points. Here the reported figure is not a thing a player has at all: the second
+# clause — a vehicle's `x` really moving that way, really covering `speed * 32`
+# units in a second — is what proves the first is not a lie, and a build whose
+# lanes report the table and then sit still has failed one requirement, not two.
+# Splitting them would hand that build a point for the report.
 #
 # `crush-kills` and `crush-only-on-arrival` are the paired item this category turns
 # on. The rule is that a vehicle whose OWN MOTION brings the critter's centre under
@@ -1170,6 +1362,10 @@ validation = { script = "ice/crush-only-on-arrival.test.ts", outputs = [
 # The eight water lanes, in the same shape as the ice band, plus the three things
 # the water itself does that the ice does not: it drowns a critter standing on it,
 # it carries one standing on a floe, and it sweeps one off the edge of the world.
+#
+# `lane-directions` and `lane-speeds` here carry two clauses each for the reason
+# the ice band's do: the realized drift is what proves the reported figure is not
+# a lie, so the report and the motion are one requirement rather than two.
 #
 # The three carry items are separate because they fail separately. `floe-is-footing`
 # is whether standing on a floe is safe at all, `floe-carries` is whether the drift
@@ -1413,6 +1609,21 @@ domains = ["crossing", "run"]
 failure_cap = "scuffed"
 validation = { script = "bays/bays-reset-on-level.test.ts", outputs = [
   { id = "reset", name = "The five open bays a new level opens with", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "fish-cleared-on-level"
+title = "A new level opens with no bonus catch out"
+description = "With the bonus catch posed in a bay other than the one the completing hop fills, the hop that fills the level's last open bay and the CLEAR_PAUSE that follows leave fishBay null on the new level."
+domains = ["run"]
+failure_cap = "passable"
+# `bays-reset-on-level` covers the five bays and nothing else, and
+# specs/progression.md lays the new level out "with all five bays open and no
+# bonus catch out" — two clauses, so two items. The catch is posed into a bay the
+# completing hop does not fill, because a hop into the catch's own bay takes it by
+# `fish-cleared-when-bay-filled` and the reading would then belong to that point
+# rather than this one. The cadence stays off throughout.
+validation = { script = "bays/fish-cleared-on-level.test.ts", outputs = [
+  { id = "reset", name = "The new level opening with no bonus catch out", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "fish-appears-in-open-bay"
@@ -1931,6 +2142,19 @@ validation = { script = "progression/level-advances.test.ts", outputs = [
   { id = "advance", name = "The level the cleared one opened", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "reached-level-follows-level"
+title = "The level reached climbs with the level"
+description = "At level 3 with reachedLevel at 3, the advance that opens level 4 leaves reachedLevel at 4 as well."
+domains = ["run"]
+failure_cap = "passable"
+# `game-over-reports-level` poses `reachedLevel` and reads the screen; this is the
+# item that decides the field itself ever moves. A build that never raises it
+# reports level 1 on every game-over screen it draws and still passes that point,
+# because a posed value is a precondition.
+validation = { script = "progression/reached-level-follows-level.test.ts", outputs = [
+  { id = "advance", name = "The level reached, across a real advance", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "victory-on-level-8"
 title = "Clearing level 8 wins"
 description = "At level TOTAL_LEVELS (8) with four bays filled, the hop that fills the fifth moves the screen to victory."
@@ -2100,6 +2324,45 @@ failure_cap = "passable"
 validation = { script = "scoring/refused-hop-scores-nothing.test.ts", outputs = [
   { id = "score", name = "Four refused hops, none of them scoring", kind = "replay" },
 ] }
+# The third of specs/scoring.md's three refusals — "A hop that is refused, a hop to
+# a row already reached this crossing, and a life lost all add nothing" — and the
+# only one nothing else on the checklist decided.
+#
+# THREE ITEMS, ONE PER DEATH, for the reason `progression.drown-costs-life` and
+# its two neighbours are three: specs/progression.md gives the crossing three
+# distinct ways to end badly, they run through different code, and a build that
+# pays for the rows a respawn walks back after a drowning alone must grade apart
+# from one that pays after all three. Each poses its own death and records its
+# own replay, so what a reviewer is handed is the death the point is about rather
+# than the last of three written over one output. The reasoning and the two
+# readings they share sit in `scoring/death.ts` beside them.
+[[review.categories.items]]
+id = "death-scores-nothing-drown"
+title = "A life lost to open water scores nothing"
+description = "A fall into open water leaves the score exactly as it was, on the tick the life was lost and again once the death pause and the respawn have run out."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "scoring/death-scores-nothing-drown.test.ts", outputs = [
+  { id = "score", name = "A drowning, scoring nothing", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "death-scores-nothing-crush"
+title = "A life lost to a vehicle scores nothing"
+description = "A vehicle arriving on the critter leaves the score exactly as it was, on the tick the life was lost and again once the death pause and the respawn have run out."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "scoring/death-scores-nothing-crush.test.ts", outputs = [
+  { id = "score", name = "A crush, scoring nothing", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "death-scores-nothing-catch"
+title = "A life lost to the bear scores nothing"
+description = "A bear reaching the critter leaves the score exactly as it was, on the tick the life was lost and again once the death pause and the respawn have run out."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "scoring/death-scores-nothing-catch.test.ts", outputs = [
+  { id = "score", name = "A catch, scoring nothing", kind = "replay" },
+] }
 
 # --- Controls -----------------------------------------------------------------
 # That each bound key drives the action it is bound to. Eight of these are the
@@ -2109,8 +2372,20 @@ validation = { script = "scoring/refused-hop-scores-nothing.test.ts", outputs = 
 # anyone who tries them.
 #
 # `Escape` deliberately drives both `pause` and `back`, and only the pause half has
-# an item here. `back` is bound to `Escape` alone, so an item for it would be
-# `screens.howto-returns` a second time under another name.
+# an item here. Where `back` goes is a screen's business rather than a key's, so
+# the items that decide it are the `screens` ones, one per screen it can be pressed
+# on: `howto-returns`, `pause-resumes-escape`, `victory-back` and `gameover-back`.
+#
+# FOUR ITEMS GRADE HOW A KEY IS READ RATHER THAN WHAT IT DRIVES.
+# `held-menu-move-fires-once` and `held-confirm-fires-once` are
+# specs/controls.md's "How each one is read" — movement held on `playing` and read
+# as a press edge everywhere else, confirm read as a press edge everywhere — and
+# without them a build that treats every key as held passes every other point in
+# this category with menus nobody can use, because `hopping.held-repeats` grades
+# the held half on `playing` alone. `up-beats-down` and `movement-beats-confirm`
+# are specs/ui.md's order for edges that share a tick. All four are the build's
+# input read rather than any one binding, which is why they sit here rather than
+# under `screens`.
 #
 # `unbound-key-does-nothing` is the control sample for the whole category: it
 # drives a key bound to no action over a strait posed with no lane items and reads
@@ -2210,6 +2485,47 @@ validation = { script = "controls/menu-down.test.ts", outputs = [
   { id = "menu", name = "The pause menu after the down action", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "menu-wraps-to-last"
+title = "The up action wraps from the first item to the last"
+description = "On the pause menu with the first item highlighted, the up action highlights the last of PAUSE_ITEMS."
+domains = ["run"]
+failure_cap = "passable"
+# `passable` rather than `scuffed`, derived rather than inherited: a menu that
+# stops at its ends is still fully navigable, because every entry is reachable the
+# long way round, so nothing is unplayable and no path is closed. That is exactly
+# the `passable` line — it affects the game without making it unplayable or
+# changing how it plays. `menu-up` and `menu-down` sit a step higher because a
+# direction that does nothing at all leaves entries a player cannot reach.
+validation = { script = "controls/menu-wraps-to-last.test.ts", outputs = [
+  { id = "menu", name = "The pause menu wrapped to its last item", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-wraps-to-first"
+title = "The down action wraps from the last item to the first"
+description = "On the pause menu with the last item highlighted, the down action highlights the first of PAUSE_ITEMS."
+domains = ["run"]
+failure_cap = "passable"
+# Split per direction for the reason `menu-up` and `menu-down` are, and capped for
+# the reason `menu-wraps-to-last` gives: a build can wrap one end and stop at the
+# other, and the two must grade apart.
+validation = { script = "controls/menu-wraps-to-first.test.ts", outputs = [
+  { id = "menu", name = "The pause menu wrapped to its first item", kind = "image" },
+] }
+[[review.categories.items]]
+id = "held-menu-move-fires-once"
+title = "A held direction moves a menu selection one item"
+description = "On the pause menu with the first item highlighted, holding a movement key down for one second of game time leaves menuIndex exactly one item along."
+domains = ["run"]
+failure_cap = "scuffed"
+# The menu half of specs/controls.md's "How each one is read": the four movement
+# actions are read as HELD on `playing` and as PRESS EDGES on every other screen.
+# `hopping.held-repeats` grades the held half and grades it on `playing` alone, so
+# without this item a build that treats every key as held passes the whole
+# checklist with menus whose highlight flies off the moment a key is touched.
+validation = { script = "controls/held-menu-move-fires-once.test.ts", outputs = [
+  { id = "menu", name = "The pause menu after a direction held for a second", kind = "image" },
+] }
+[[review.categories.items]]
 id = "confirm-enter"
 title = "Enter confirms the highlighted item"
 description = "On the title menu with CROSS highlighted, Enter opens a live crossing."
@@ -2226,6 +2542,49 @@ domains = ["run"]
 failure_cap = "passable"
 validation = { script = "controls/confirm-space.test.ts", outputs = [
   { id = "confirm", name = "The crossing Space opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "held-confirm-fires-once"
+title = "A held Confirm key confirms once"
+description = "On the title with HOW TO PLAY highlighted, holding Enter down for one second of game time opens howto on the tick the key goes down and leaves the screen on howto for every tick of the hold."
+domains = ["run"]
+failure_cap = "scuffed"
+# The confirm half of specs/controls.md's "How each one is read": confirm, back,
+# pause and mute are press edges everywhere, "so each fires once per press however
+# long the key is held". The reading is the screen across the WHOLE hold rather
+# than at its end, because a confirm that repeats leaves `howto` again — the how-to
+# screen's own Confirm returns to the title — so a build that repeats shows it
+# somewhere in the second whatever it lands on.
+validation = { script = "controls/held-confirm-fires-once.test.ts", outputs = [
+  { id = "confirm", name = "The how-to screen through a second of held Enter", kind = "image" },
+] }
+[[review.categories.items]]
+id = "up-beats-down"
+title = "An up edge and a down edge on one tick move up"
+description = "On the pause menu with the second item highlighted, a tick carrying both an up edge and a down edge leaves menuIndex on the first item."
+domains = ["run"]
+failure_cap = "great"
+# specs/ui.md fixes the order outright: "up is applied before down and movement
+# before confirm". A tick is 1/120 s, so a player driving a menu never puts two
+# edges inside one, which is why this and `movement-beats-confirm` cap at `great`:
+# the standard flow of play is untouched by the ordering, and what the rule buys
+# is a build that resolves the tie the same way every time instead of by whichever
+# branch its input read happens to run last.
+validation = { script = "controls/up-beats-down.test.ts", outputs = [
+  { id = "menu", name = "The pause menu after an up edge and a down edge in one tick", kind = "image" },
+] }
+[[review.categories.items]]
+id = "movement-beats-confirm"
+title = "A movement edge and a confirm edge on one tick move only"
+description = "On the title with CROSS highlighted, a tick carrying both a down edge and a confirm edge leaves menuIndex on HOW TO PLAY and the screen still title, confirming nothing."
+domains = ["run"]
+failure_cap = "great"
+# The second half of the same ordering rule, and its own item because a build can
+# order the two movement edges correctly and still confirm inside the tick it
+# moved. Read on the title, where a confirm that should not have happened is loud:
+# CROSS opens a live crossing.
+validation = { script = "controls/movement-beats-confirm.test.ts", outputs = [
+  { id = "title", name = "The title still showing after a move and a confirm in one tick", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "pause-p"
@@ -2250,7 +2609,12 @@ id = "mute-m"
 title = "M toggles mute both ways"
 description = "KeyM during a live crossing turns muted on, and a second press turns it off."
 domains = ["presentation"]
-failure_cap = "great"
+failure_cap = "scuffed"
+# `scuffed`, matching `audio.mute-silences`. The two are the two halves of one
+# path — the key that reaches mute, and the silence mute produces — and both cost
+# the player the same thing: a game they cannot turn the sound off in. Grading one
+# `great` and the other `scuffed` said they cost different amounts, which was
+# never argued anywhere.
 validation = { script = "controls/mute-m.test.ts", outputs = [
   { id = "muted", name = "Mute turned on with M, then off again", kind = "image" },
 ] }
@@ -2262,6 +2626,16 @@ domains = ["presentation"]
 failure_cap = "great"
 # The snapshot is read across both toggles because the overlay is read-only: an
 # overlay that changes what the game reports is not an overlay.
+#
+# THIS POINT IS THE BUILD'S ON ALL THREE ENGINES, which is why it declares no
+# `engines`. Under `none` the key and the panel are both the runtime layer the
+# build writes. Under either engine the engine handles `Backquote` itself and
+# draws the panel, and two things are still the build's: it must leave `Backquote`
+# alone — a build that bound it to an action of its own, or that swallowed the
+# event before the engine's listener saw it, breaks the toggle — and its
+# registered diagnostic sources must be pure reads, since the engine calls every
+# one of them on every frame the panel is up. The engine's half cannot be
+# separated from the build's from outside, which is why it is asserted here too.
 validation = { script = "controls/overlay-backquote.test.ts", outputs = [
   { id = "overlay", name = "The overlay shown with Backquote, then hidden", kind = "image" },
 ] }
@@ -2288,10 +2662,29 @@ validation = { script = "controls/unbound-key-does-nothing.test.ts", outputs = [
 # from one with all four broken. Each of the four reaches its own end screen
 # through `setScreen`, so none passes through the other's screen on the way.
 #
-# `pause-freezes` and `pause-resume` assert the suspension specs/progression.md
-# owns: no lane item, critter, bear, bonus catch or timer advances while the screen
-# is `paused`, and leaving it resumes from exactly that state. `simTime` is the one
-# quantity that keeps accumulating, so neither item reads it.
+# THE SUSPENSION specs/progression.md OWNS IS FIVE ITEMS, because `pause-freezes`
+# and `pause-resume` decide less of it than their titles suggest. The first reads
+# positions — every lane item's x, the critter's centre, each bear's centre — and
+# the second reads the fields it lists back after RESUME, and both run on the
+# empty, quiet strait every suite poses, with the four world gates shut. So neither
+# of them can see the three things a build most easily gets wrong behind a pause
+# menu, and each of those is its own item: `pause-holds-timer` (the crossing clock,
+# whose `pause-resume` reading holds for any build at all while the timer gate is
+# shut, since the clock was never going to move), `pause-holds-fish` (the bonus
+# catch's bay and its linger), and `pause-holds-phase-timer` (a hold running out
+# while the game is paused). The first two turn ONE world gate back on, the one
+# their requirement IS, which is what puts them in the closed list of items that do.
+# `simTime` is the one quantity that keeps accumulating while `paused` shows, so no
+# item in the set reads it.
+#
+# EVERY ROUTE BACK TO `title` NAMES THE ENTRY IT LANDS ON, because specs/ui.md
+# fixes both halves and a build can reach the right screen on the wrong entry.
+# `howto-returns` and `howto-confirm-returns` land on HOW TO PLAY, the entry the
+# how-to screen was opened from; `pause-quit`, `victory-menu`, `gameover-menu`,
+# `victory-back` and `gameover-back` land on CROSS, the entry that started the run.
+# The screen and the selection are one claim per route rather than two items,
+# because a return that lands on the wrong entry is the same miss as a return that
+# lands on the wrong screen: the player is not where the route said they would be.
 [[review.categories]]
 id = "screens"
 title = "Screens"
@@ -2318,7 +2711,13 @@ id = "title-highlight"
 title = "The highlighted menu item reads as highlighted"
 description = "The highlighted title item is drawn differently from the item that is not highlighted, by at least 40 of 441 RGB distance over its glyph pixels."
 domains = ["presentation"]
-failure_cap = "great"
+failure_cap = "scuffed"
+# `scuffed`, not `great`. Selecting a menu item is the standard flow — it is how a
+# run is started, how a pause is left, and how a finished run is replayed — and a
+# highlight nobody can see leaves the player confirming blind on every menu in the
+# game. `title-contents`, the weaker claim that the entries are drawn at all, is
+# already `scuffed`, so grading this one `great` said the entries mattered more
+# than knowing which of them is about to be confirmed.
 validation = { script = "screens/title-highlight.test.ts", outputs = [
   { id = "title", name = "The highlighted title item beside the plain one", kind = "image" },
 ] }
@@ -2343,11 +2742,25 @@ validation = { script = "screens/howto-contents.test.ts", outputs = [
 [[review.categories.items]]
 id = "howto-returns"
 title = "Back returns from the how-to screen"
-description = "The back action on the how-to screen returns to title."
+description = "The back action on the how-to screen returns to title with menuIndex 1, HOW TO PLAY, the TITLE_ITEMS entry the how-to screen was opened from."
 domains = ["run"]
 failure_cap = "passable"
 validation = { script = "screens/howto-returns.test.ts", outputs = [
   { id = "title", name = "The title screen the back action returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-confirm-returns"
+title = "Confirm returns from the how-to screen"
+description = "The confirm action on the how-to screen returns to title with menuIndex 1, HOW TO PLAY."
+domains = ["run"]
+failure_cap = "passable"
+# specs/ui.md gives the `howto` screen two ways out and this is the second, its own
+# item for the reason `confirm-space` is its own item beside `confirm-enter`: a
+# second way to do something a player already has one way to do, so the cap is
+# `passable`, and a build that wires one and not the other must grade apart from
+# one that wires neither.
+validation = { script = "screens/howto-confirm-returns.test.ts", outputs = [
+  { id = "title", name = "The title screen the confirm action returned to", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "cross-starts-run"
@@ -2377,6 +2790,48 @@ validation = { script = "screens/pause-freezes.test.ts", outputs = [
   { id = "pause", name = "Three seconds of a frozen strait", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "pause-holds-timer"
+title = "The crossing timer does not drain while paused"
+description = "With setTimerRunning ON and the timer posed at 20 s, three seconds of paused leave timer at 20, and returning to playing sets it draining again."
+domains = ["run"]
+failure_cap = "scuffed"
+# This is the one item in the pause set that turns a world gate back on, and it has
+# to: with `setTimerRunning` shut, as every other suite leaves it,
+# `pause-resume`'s reading that the timer came back as it was holds for any build
+# whatever, because the timer was never going to move. The drain is the faculty
+# this item's requirement IS, so it runs with the gate open and says so. Capped
+# `scuffed` because a timer that drains behind a pause menu spends the player's
+# crossing while they are not playing, which makes pausing a path they have to
+# avoid.
+validation = { script = "screens/pause-holds-timer.test.ts", outputs = [
+  { id = "pause", name = "The crossing clock across three paused seconds", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "pause-holds-fish"
+title = "The bonus catch holds its bay and its cadence while paused"
+description = "With setFishCadence ON and a bonus catch out, three seconds of paused leave fishBay the bay it was in, and its linger runs out only once play resumes."
+domains = ["run"]
+failure_cap = "passable"
+# The second item that turns a gate back on, and for the same reason: the catch's
+# cadence is the faculty the requirement is about. `pause-freezes` reads positions
+# and `pause-resume` reads the fields it lists, and neither of them can see a
+# linger clock running out behind the pause menu.
+validation = { script = "screens/pause-holds-fish.test.ts", outputs = [
+  { id = "fish", name = "The bonus catch across three paused seconds", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-holds-phase-timer"
+title = "A running hold does not advance while paused"
+description = "With the phase posed at dying and phaseTimer at 0.6 s, three seconds of paused leave phaseTimer at 0.6 and the phase still dying, and the hold runs out only once play resumes."
+domains = ["run"]
+failure_cap = "passable"
+# specs/progression.md's "no hold advances" clause, which neither `pause-freezes`
+# nor `pause-resume` reads. A build that lets the hold run pauses through its own
+# death pause and comes back to a respawn it never saw.
+validation = { script = "screens/pause-holds-phase-timer.test.ts", outputs = [
+  { id = "pause", name = "A death pause held across three paused seconds", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "pause-resume"
 title = "Resume returns to the crossing as it stood"
 description = "Confirming RESUME returns to playing with the score, lives, level, timer, bays, critter tile and bear roster exactly as they were."
@@ -2384,6 +2839,33 @@ domains = ["run"]
 failure_cap = "scuffed"
 validation = { script = "screens/pause-resume.test.ts", outputs = [
   { id = "resume", name = "The crossing RESUME returned to", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "pause-resumes-escape"
+title = "Escape resumes from the pause menu"
+description = "Escape on the paused screen returns to playing with the score, lives, level, timer, bays, critter tile and bear roster exactly as they were."
+domains = ["run"]
+failure_cap = "passable"
+# `controls.pause-escape` decides only the opening direction, and specs/ui.md gives
+# `paused` a Back row of its own that closes the menu again. Capped `passable`
+# rather than `scuffed`, and for the same reason `confirm-space` and `key-w` are:
+# it is a second way to reach something the player already has a first way to
+# reach, since RESUME is on the menu in front of them.
+validation = { script = "screens/pause-resumes-escape.test.ts", outputs = [
+  { id = "resume", name = "The crossing Escape resumed", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "pause-resumes-p"
+title = "P resumes from the pause menu"
+description = "KeyP on the paused screen returns to playing with the score, lives, level, timer, bays, critter tile and bear roster exactly as they were."
+domains = ["run"]
+failure_cap = "passable"
+# The other half of specs/ui.md's Pause row on `paused`, and its own item because
+# a build can wire the Escape half and not the `P` half — `controls.pause-p` and
+# `controls.pause-escape` decide the two keys on the way IN and say nothing about
+# the way out.
+validation = { script = "screens/pause-resumes-p.test.ts", outputs = [
+  { id = "resume", name = "The crossing P resumed", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "pause-restart"
@@ -2397,7 +2879,7 @@ validation = { script = "screens/pause-restart.test.ts", outputs = [
 [[review.categories.items]]
 id = "pause-quit"
 title = "Quit to menu returns to the title"
-description = "Confirming QUIT TO MENU returns to title."
+description = "Confirming QUIT TO MENU returns to title with menuIndex 0, CROSS, the TITLE_ITEMS entry that started the run."
 domains = ["run"]
 failure_cap = "passable"
 validation = { script = "screens/pause-quit.test.ts", outputs = [
@@ -2433,7 +2915,7 @@ validation = { script = "screens/victory-play-again.test.ts", outputs = [
 [[review.categories.items]]
 id = "victory-menu"
 title = "MENU on the victory screen returns to the title"
-description = "On the victory screen with MENU highlighted, confirming returns to title."
+description = "On the victory screen with MENU highlighted, confirming returns to title with menuIndex 0, CROSS, the TITLE_ITEMS entry that started the run."
 domains = ["run"]
 failure_cap = "passable"
 # One of four end-screen items rather than one. PLAY AGAIN and MENU are two
@@ -2442,6 +2924,20 @@ failure_cap = "passable"
 # none passes through the other's on the way.
 validation = { script = "screens/victory-menu.test.ts", outputs = [
   { id = "title", name = "The title screen MENU returned to from victory", kind = "image" },
+] }
+[[review.categories.items]]
+id = "victory-back"
+title = "Back on the victory screen returns to the title"
+description = "The back action on the victory screen returns to title with menuIndex 0, CROSS, whichever ENDING_ITEMS entry was highlighted."
+domains = ["run"]
+failure_cap = "passable"
+# All four of the existing end-screen items go through Confirm, so specs/ui.md's
+# Back row on `victory` and `gameover` was stated and graded nowhere. Two items
+# rather than one for the reason the other four are four: a build can wire Back on
+# one end screen and not the other. Each starts on its own screen through
+# `setScreen`, so neither passes through the other's on the way.
+validation = { script = "screens/victory-back.test.ts", outputs = [
+  { id = "title", name = "The title screen the back action returned to from victory", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "gameover-play-again"
@@ -2455,31 +2951,225 @@ validation = { script = "screens/gameover-play-again.test.ts", outputs = [
 [[review.categories.items]]
 id = "gameover-menu"
 title = "MENU on the game-over screen returns to the title"
-description = "On the game-over screen with MENU highlighted, confirming returns to title."
+description = "On the game-over screen with MENU highlighted, confirming returns to title with menuIndex 0, CROSS, the TITLE_ITEMS entry that started the run."
 domains = ["run"]
 failure_cap = "passable"
 validation = { script = "screens/gameover-menu.test.ts", outputs = [
   { id = "title", name = "The title screen MENU returned to from game over", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-back"
+title = "Back on the game-over screen returns to the title"
+description = "The back action on the game-over screen returns to title with menuIndex 0, CROSS, whichever ENDING_ITEMS entry was highlighted."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "screens/gameover-back.test.ts", outputs = [
+  { id = "title", name = "The title screen the back action returned to from game over", kind = "image" },
+] }
+
+# --- Pointer ------------------------------------------------------------------
+# specs/ui.md drives all four of this game's menus with a mouse as well as with
+# the keyboard, over item regions the BUILD lays out and reports through
+# `menuItemRect`. This case fixes no menu geometry, so each point below asks the
+# build where it put the item and drives a real pointer at the middle of the
+# region it named: any layout passes, and a build that reports a region it does
+# not answer on fails. The three points are the three things specs/ui.md gives a
+# pointer — a move selects, a press and its release inside one region confirm that
+# item, and two edges falling in different regions confirm nothing.
+#
+# THE THREE EFFECTS ARE GRADED ON `title`, because it is the menu where a
+# confirm that should not have happened is loud (CROSS opens a live crossing) and
+# one that should have is silent (the title stays). The keyboard's own edges are
+# the `controls` and `screens` points, not these.
+#
+# AND A SECOND MENU IS GRADED FOR TWO OF THEM. specs/ui.md drives all four menus
+# this way, so a checklist that read only `title` would score a build that
+# hit-tests the title's regions and no other's at full marks. `paused` is the
+# second menu these two add — it is drawn over a live crossing and reached from a
+# different screen — and it carries one select and one confirm, the two effects
+# whose absence closes the path. `touch` adds the same pair on an end screen, so
+# between the two categories every menu but `victory` is driven by a real device,
+# and `victory` shows `ENDING_ITEMS`, the menu the ending points drive.
+#
+# THREE OF specs/ui.md's MENU RULES CARRY NO POINT YET, and are recorded here so
+# the next pass does not read this category as closed: that Back on `title` does
+# nothing, that an edge falling outside every region confirms no item, and that a
+# press and the release that follows it may arrive on one tick and that tick
+# confirms. The third needs a gesture the shared harness does not offer — it
+# drives one tick per edge — so it waits on that; the first two are ordinary
+# points this pass did not carry.
+#
+# THE TWO POSITIVE POINTS CAP `scuffed` AND THE NEGATIVE ONE `passable`, which is
+# this checklist's standing rule that a negative caps one step softer than its
+# positive twin. A menu no mouse can reach leaves the keyboard's play intact and
+# makes an ordinary path unusable, which is `scuffed`; a menu that confirms a
+# press the player slid off is annoying rather than closed.
+[[review.categories]]
+id = "pointer"
+title = "Pointer"
+[[review.categories.items]]
+id = "hover-selects"
+title = "Moving the pointer onto an item selects it"
+description = "On the title with menuIndex 0, moving the pointer onto the region menuItemRect reports for HOW TO PLAY sets menuIndex to 1, with screen still title."
+domains = ["run"]
+failure_cap = "scuffed"
+validation = { script = "pointer/hover-selects.test.ts", outputs = [
+  { id = "menu", name = "The title menu with the hovered item selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "click-confirms"
+title = "A press and release inside one item confirms it"
+description = "On the title with menuIndex 0, pressing and releasing the pointer inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["run"]
+failure_cap = "scuffed"
+validation = { script = "pointer/click-confirms.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen opened by a click", kind = "image" },
+] }
+[[review.categories.items]]
+id = "slide-off-cancels"
+title = "A press and release in different items confirms nothing"
+description = "On the title, pressing the pointer inside HOW TO PLAY's region and releasing it inside CROSS's leaves screen at title, confirming neither item."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "pointer/slide-off-cancels.test.ts", outputs = [
+  { id = "title", name = "The title still showing after the pointer slid off", kind = "image" },
+] }
+[[review.categories.items]]
+id = "paused-hover-selects"
+title = "Moving the pointer onto a pause-menu item selects it"
+description = "On the pause menu with menuIndex 0, moving the pointer onto the region menuItemRect reports for RESTART sets menuIndex to 1, with screen still paused."
+domains = ["run"]
+failure_cap = "scuffed"
+# The second menu, and its own point rather than a second reading inside
+# `hover-selects`: the pause menu is drawn over a live crossing and reached from a
+# different screen, so a build that hit-tests the title's regions and not this
+# menu's fails here and passes there.
+validation = { script = "pointer/paused-hover-selects.test.ts", outputs = [
+  { id = "menu", name = "The pause menu with the hovered item selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "paused-click-confirms"
+title = "A press and release inside a pause-menu item confirms it"
+description = "On the pause menu with menuIndex 0, pressing and releasing the pointer inside the region menuItemRect reports for QUIT TO MENU sets screen to title."
+domains = ["run"]
+failure_cap = "scuffed"
+# QUIT TO MENU is the entry aimed at because the three outcomes are told apart by
+# one reading: a confirm that never happened leaves the pause menu standing, and a
+# confirm that reached the wrong entry resumes the crossing or starts a fresh run.
+validation = { script = "pointer/paused-click-confirms.test.ts", outputs = [
+  { id = "title", name = "The title screen a click on QUIT TO MENU returned to", kind = "image" },
+] }
+
+# --- Touch --------------------------------------------------------------------
+# specs/ui.md gives the same four menus a finger, and a finger is not a small
+# mouse: it never hovers, so the first the build hears of it is the contact
+# LANDING, and the landing is what selects. Each point below drives one real touch
+# contact at the middle of the region the build reports through `menuItemRect`, so
+# any layout passes and only the handling is graded. The three are the three
+# things specs/ui.md gives a contact: a landing selects, a lift inside the region
+# it landed in confirms that item, and a lift in a different region confirms
+# nothing while the selection follows the finger.
+#
+# The caps follow the `pointer` category's, and for the same reason: a menu no
+# finger can reach is an ordinary path closed, and a contact that confirms after
+# sliding off is a nuisance.
+#
+# THE THREE EFFECTS ARE GRADED ON `title` and a select and a confirm are graded
+# again on `gameover`, which is this category's half of the second-menu coverage
+# the `pointer` comment sets out: `pointer` adds its pair on `paused`, `touch`
+# adds its pair on an end screen.
+[[review.categories]]
+id = "touch"
+title = "Touch"
+[[review.categories.items]]
+id = "landing-selects"
+title = "A touch contact selects the item it lands on"
+description = "On the title with menuIndex 0, a touch contact landing inside the region menuItemRect reports for HOW TO PLAY, and not lifted, sets menuIndex to 1 with screen still title."
+domains = ["run"]
+failure_cap = "scuffed"
+# The contact is left DOWN, so no lift can confirm and the reading is the
+# selection alone. `tap-confirms` is the point that adds the lift.
+validation = { script = "touch/landing-selects.test.ts", outputs = [
+  { id = "selected", name = "The title menu with the item the contact landed on selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tap-confirms"
+title = "A contact that lifts where it landed confirms that item"
+description = "On the title with menuIndex 0, a touch contact landing and lifting inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["run"]
+failure_cap = "scuffed"
+validation = { script = "touch/tap-confirms.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen opened by a tap", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drag-cancels"
+title = "A contact that lifts on a different item confirms nothing"
+description = "On the title, a touch contact landing inside CROSS's region, travelling onto HOW TO PLAY's and lifting there leaves screen at title, with menuIndex 1."
+domains = ["run"]
+failure_cap = "passable"
+# The selection is read as well as the screen: it must have followed the finger,
+# which is what says the contact was read at all rather than dropped.
+validation = { script = "touch/drag-cancels.test.ts", outputs = [
+  { id = "title", name = "The title still showing after the contact slid off", kind = "image" },
+] }
+[[review.categories.items]]
+id = "ending-landing-selects"
+title = "A touch contact selects the end-screen item it lands on"
+description = "On the game-over screen with menuIndex 0, a touch contact landing inside the region menuItemRect reports for MENU, and not lifted, sets menuIndex to 1 with screen still gameover."
+domains = ["run"]
+failure_cap = "scuffed"
+# The second menu a finger is graded on, and its own point rather than a second
+# reading inside `landing-selects`: an end screen carries a different menu,
+# reached at the end of a run rather than before one. The contact is left DOWN, so
+# the reading is the selection alone.
+validation = { script = "touch/ending-landing-selects.test.ts", outputs = [
+  { id = "selected", name = "The game-over menu with the item the contact landed on selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "ending-tap-confirms"
+title = "A contact that lifts where it landed confirms an end-screen item"
+description = "On the game-over screen with menuIndex 0, a touch contact landing and lifting inside the region menuItemRect reports for MENU sets screen to title."
+domains = ["run"]
+failure_cap = "scuffed"
+# MENU is the entry aimed at because the entry beside it starts a fresh run and
+# opens playing, so a confirm that never happened and a confirm that reached the
+# wrong entry are both told apart from the right one by a single reading.
+validation = { script = "touch/ending-tap-confirms.test.ts", outputs = [
+  { id = "title", name = "The title screen a tap on MENU returned to", kind = "image" },
 ] }
 
 # --- Presentation -------------------------------------------------------------
 # That the game draws from the seeded sprites, in colors a player can tell apart,
 # with the HUD it must show.
 #
-# ELEVEN of these items assert a SEEDED FRAME: the critter, the bear in three
-# states, and the six lane-item kinds are each drawn from art this case ships, and
-# each is its own item because a build can wire six of the seven folders and draw
-# the seventh in code. `sprite-raft3` and `sprite-raft4` additionally assert the
-# SUB-RECT — the left 96x32 of `assets/raft/0.png` against the whole of
-# `assets/raft/1.png` — which is why specs/assets.md states how a frame is drawn
-# and not merely which frame.
+# THE SPRITE ITEMS ASSERT A SEEDED FRAME: the critter, the bear in three states,
+# and the six lane-item kinds are each drawn from art this case ships, and each is
+# its own item because a build can wire six of the seven folders and draw the
+# seventh in code. The two sets specs/assets.md tabulates PER FACING are four items
+# apiece — `sprite-crosser-facing-*` and `sprite-bear-run-*` — for the reason
+# `controls.arrow-*` is four: a build that draws three headings from the right pair
+# and the fourth from whatever it had must grade differently from one that draws
+# every heading from one frame, and a single item covering all four can only fail
+# once. `sprite-raft3` and `sprite-raft4` additionally assert the SUB-RECT — the
+# left 96x32 of `assets/raft/0.png` against the whole of `assets/raft/1.png` —
+# which is why specs/assets.md states how a frame is drawn and not merely which
+# frame.
 #
-# THE FIVE LEGIBILITY ITEMS ASSERT A DISTANCE, NEVER A COLOR. Floe fixes no
-# palette, so each of these reads the pixels the build rendered and holds them
-# against an RGB distance out of 441 that the item states. `submerged-bear-visible`
-# is the one that matters most: a bear over open water is drawn as a silhouette and
-# a wake rather than a full sprite, and a build that draws nothing at all leaves the
-# hunt invisible exactly where it is most dangerous.
+# THE LEGIBILITY ITEMS ASSERT A DISTANCE, NEVER A COLOR. Floe fixes no palette, so
+# each of these reads the pixels the build rendered and holds them against an RGB
+# distance out of 441 that the item states, sampled well inside a shape because an
+# edge is anti-aliased. Between them and the `strait` category's three they reach
+# every row of specs/overview.md's legibility table, though not every clause of
+# one: that a plow, a dogsled and a car read apart FROM ONE ANOTHER is left to the
+# reviewer, since the three sprite items already fix which frame each is drawn
+# from and a distance between two seeded sprites would grade the art this case
+# ships. `submerged-bear-visible` is the one that matters most: a bear over open
+# water is drawn as a silhouette and a wake rather than a full sprite, and a
+# build that draws nothing at all leaves the hunt invisible exactly where it is
+# most dangerous. All of them lower `presentation` and nothing else: `hunter` is
+# declared as a domain of behavior — a bear that emerges, routes, swims, catches
+# and doubles — so a build that hunts flawlessly and draws the wrong frame has a
+# drawing fault, not a hunting one.
 #
 # `hud-timer` poses the timer at two values with `setTimerRunning` OFF throughout,
 # so it reads the readout following the field rather than the drain, and stays
@@ -2497,28 +3187,82 @@ validation = { script = "presentation/sprite-crosser.test.ts", outputs = [
   { id = "scene", name = "The critter drawn from its seeded frames", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "sprite-crosser-facing"
-title = "The critter's frame matches its facing"
-description = "With the critter facing each of the four directions in turn, the frame drawn is from that facing's pair as specs/assets.md tabulates them."
+id = "sprite-crosser-facing-up"
+title = "A critter facing up is drawn from its up pair"
+description = "With the critter facing up, the frame drawn is 2 or 3 of assets/crosser/, the up pair specs/assets.md tabulates."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "presentation/sprite-crosser-facing.test.ts", outputs = [
-  { id = "scene", name = "The critter's frame in each of the four facings", kind = "image" },
+validation = { script = "presentation/sprite-crosser-facing-up.test.ts", outputs = [
+  { id = "scene", name = "The critter's frame facing up", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "sprite-bear-run"
-title = "A bear on ice is drawn from its run frames"
-description = "A bear travelling on the median in each of the four directions is drawn from that direction's run pair (frames 0 to 7)."
+id = "sprite-crosser-facing-down"
+title = "A critter facing down is drawn from its down pair"
+description = "With the critter facing down, the frame drawn is 0 or 1 of assets/crosser/, the down pair specs/assets.md tabulates."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/sprite-crosser-facing-down.test.ts", outputs = [
+  { id = "scene", name = "The critter's frame facing down", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sprite-crosser-facing-left"
+title = "A critter facing left is drawn from its left pair"
+description = "With the critter facing left, the frame drawn is 4 or 5 of assets/crosser/, the left pair specs/assets.md tabulates."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/sprite-crosser-facing-left.test.ts", outputs = [
+  { id = "scene", name = "The critter's frame facing left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sprite-crosser-facing-right"
+title = "A critter facing right is drawn from its right pair"
+description = "With the critter facing right, the frame drawn is 6 or 7 of assets/crosser/, the right pair specs/assets.md tabulates."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/sprite-crosser-facing-right.test.ts", outputs = [
+  { id = "scene", name = "The critter's frame facing right", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sprite-bear-run-up"
+title = "A bear running up is drawn from its up run pair"
+description = "A bear travelling up the median is drawn from frame 2 or 3 of assets/bear/, the up run pair."
 domains = ["presentation"]
 failure_cap = "scuffed"
-validation = { script = "presentation/sprite-bear-run.test.ts", outputs = [
-  { id = "scene", name = "A bear's run frames in each of the four headings", kind = "image" },
+validation = { script = "presentation/sprite-bear-run-up.test.ts", outputs = [
+  { id = "scene", name = "A bear's run frame travelling up", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sprite-bear-run-down"
+title = "A bear running down is drawn from its down run pair"
+description = "A bear travelling down the median is drawn from frame 0 or 1 of assets/bear/, the down run pair."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/sprite-bear-run-down.test.ts", outputs = [
+  { id = "scene", name = "A bear's run frame travelling down", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sprite-bear-run-left"
+title = "A bear running left is drawn from its left run pair"
+description = "A bear travelling left along the median is drawn from frame 4 or 5 of assets/bear/, the left run pair."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/sprite-bear-run-left.test.ts", outputs = [
+  { id = "scene", name = "A bear's run frame travelling left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sprite-bear-run-right"
+title = "A bear running right is drawn from its right run pair"
+description = "A bear travelling right along the median is drawn from frame 6 or 7 of assets/bear/, the right run pair."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/sprite-bear-run-right.test.ts", outputs = [
+  { id = "scene", name = "A bear's run frame travelling right", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "sprite-bear-swim"
 title = "A submerged bear is drawn from its swim frames"
 description = "A bear whose entering tile is open water is drawn from the swim set for its heading (frames 8 to 15)."
-domains = ["presentation", "hunter"]
+domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/sprite-bear-swim.test.ts", outputs = [
   { id = "swim", name = "A bear's swim frames over open water", kind = "replay" },
@@ -2602,7 +3346,7 @@ validation = { script = "presentation/mirror-leftward-vehicle.test.ts", outputs 
 id = "submerged-bear-visible"
 title = "A submerged bear stays trackable"
 description = "Where a swimming bear stands, the pixels drawn are at least 60 of 441 from the water around it, so it is never invisible."
-domains = ["presentation", "hunter"]
+domains = ["presentation"]
 failure_cap = "scuffed"
 # The legibility requirement the case cares most about. A submerged bear is drawn
 # as something other than a full sprite, and a build that draws nothing at all
@@ -2630,6 +3374,38 @@ validation = { script = "presentation/bear-reads-apart.test.ts", outputs = [
   { id = "scene", name = "A bear on each band it can travel on", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "water-reads-apart"
+title = "Open water reads apart from a floe"
+description = "A water tile no floe covers renders at least 60 of 441 from a floe on the same row, both sampled well inside the tile."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# specs/overview.md's "Deep water" row: "A water tile carrying no floe reads as
+# water a player must not stand on, distinct from a floe on the same row." It is
+# the reading the whole water band is played by — every hop across it is a bet on
+# which tiles carry a floe — and a build whose water and floes render alike drowns
+# the player over and over, which is normal play made unpleasant rather than an
+# optional path lost. Read on ONE row so the comparison is between two things a
+# player is choosing between, and sampled well inside each tile because an edge is
+# anti-aliased.
+validation = { script = "presentation/water-reads-apart.test.ts", outputs = [
+  { id = "scene", name = "Open water beside a floe on the same row", kind = "image" },
+] }
+[[review.categories.items]]
+id = "vehicles-read-apart"
+title = "A vehicle reads apart from the ice under it"
+description = "A plow, a dogsled and a car each render at least 60 of 441 from the ice band around them, sampled well inside each."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# specs/overview.md's "The vehicles" row, the half the sprite items do not decide.
+# `sprite-plow`, `sprite-dogsled` and `sprite-car` assert which frame is drawn and
+# how wide, and `ice.covers-every-tile` asserts what the span refuses, but neither
+# says the drawn result can be told from the ice it is sliding over — and traffic a
+# player cannot see is the same miss as water a player cannot see, so it carries
+# the same cap and the same threshold.
+validation = { script = "presentation/vehicles-read-apart.test.ts", outputs = [
+  { id = "scene", name = "The three vehicle kinds against the ice band", kind = "image" },
+] }
+[[review.categories.items]]
 id = "hud-score"
 title = "The HUD shows the score"
 description = "The score is drawn inside the HUD bar and the digits change when the score changes."
@@ -2644,6 +3420,11 @@ title = "The HUD counts the run's lives"
 description = "The lives readout counts the critter currently crossing, so a fresh run reads three and it reads two after the first death."
 domains = ["presentation", "run"]
 failure_cap = "scuffed"
+# STILL TWO READINGS BEHIND ONE POINT. The script carries two checks — that a
+# fresh run reads three, and that a death takes the readout to two — and by this
+# checklist's own rule they are two observable behaviors and belong to two
+# items. Splitting them is a manifest change this pass did not carry, so the
+# gap is recorded here rather than left to be read as closed.
 validation = { script = "presentation/hud-lives.test.ts", outputs = [
   { id = "hud", name = "The lives readout, before and after a death", kind = "image" },
 ] }
@@ -2691,6 +3472,16 @@ validation = { script = "presentation/text-legible.test.ts", outputs = [
 # That each of the ten cues plays on its event, and that mute silences them. All
 # ten cues specs/ui.md names carry an item, because a cue that is defined and never
 # played is the failure this category exists to catch.
+#
+# ALL TEN CUE ITEMS CAP AT `passable`, ON ONE JUDGEMENT APPLIED TO ALL OF THEM. A
+# cue is feedback: the splash is how a player learns they drowned, the menu cue is
+# how they learn the highlight moved, and the bonus-life cue is how they learn they
+# were paid. One missing cue takes that feedback away and leaves the game entirely
+# playable, which is `passable` exactly. Nothing distinguishes one cue from another
+# here — a silent bonus life and a silent catch cost the same thing — so nothing
+# distinguishes their caps either. `mute-silences` is the one item in this category
+# that sits a step lower, because a game whose sound cannot be turned off is one a
+# player has to leave the room to escape, and `controls.mute-m` matches it.
 #
 # `controls.menu-up` and `controls.menu-down` decide the selection alone and say
 # nothing about a cue; `cue-menu` here decides the sound. An item asserting both
@@ -2761,7 +3552,7 @@ id = "cue-bonus-life"
 title = "A bonus life plays its cue"
 description = "A score crossing a BONUS_LIFE_EVERY boundary plays the bonusLife cue."
 domains = ["presentation"]
-failure_cap = "great"
+failure_cap = "passable"
 validation = { script = "audio/cue-bonus-life.test.ts", outputs = [
   { id = "bonus", name = "The award that crossed ten thousand", kind = "replay" },
 ] }
@@ -2788,7 +3579,7 @@ id = "cue-menu"
 title = "A menu move plays its cue"
 description = "Moving the title menu's selection plays the menu cue exactly once per move."
 domains = ["presentation"]
-failure_cap = "great"
+failure_cap = "passable"
 # The sound alone. `controls.menu-up` and `controls.menu-down` decide the
 # selection, and an item asserting both would be two behaviors in one point — and
 # would lower `run` for a fault that belongs to `presentation`.
@@ -2803,4 +3594,48 @@ domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "audio/mute-silences.test.ts", outputs = [
   { id = "muted", name = "A hop and a bay fill with mute on", kind = "image" },
+] }
+
+# --- Showcase -----------------------------------------------------------------
+# specs/showcase.md asks the finished game to ship its own store-page
+# presentation: a description written for a player, a carousel manifest, and the
+# media both of them name, all directly in `showcase/` at the root of the produced
+# repository. It is a deliverable of the build like the game itself, so it carries
+# a point.
+#
+# ONE point, and it grades EXISTENCE alone. Whether the description reads like
+# something a player would want to play, whether the carousel opens on the
+# strongest view of live play, and whether the media is worth looking at is a
+# reviewer's judgement and belongs to the run-wide AESTHETIC rating rather than to
+# an assertion. The validator's whole verdict is that the two files are there and
+# that the carousel points at a file that is there with them: not a dimension, not
+# a byte of a picture, not a word of the prose. No other item on this checklist
+# says anything about the media either.
+#
+# `weight = 3`, and it is the only weight declared in this file. The showcase is a
+# whole deliverable beside the game — three to five paragraphs of player-facing
+# prose and two to four captured pieces of media — so a build that ships none of
+# it should lose more than it loses for one missing audio cue. The cap is `great`
+# rather than the weight's opposite: a missing showcase leaves the standard flow
+# of gameplay entirely unaffected, because it is not part of the game a player
+# plays. The weight and the cap are saying different things on purpose — how much
+# the point is worth, and how far its failure drags the functional rating down.
+#
+# The script drives nothing. It reads the produced tree with `node:fs`, so one
+# suite stands unchanged in all three engine directories and the point means the
+# same thing whichever engine the run selected. What it hands back as evidence is
+# a `.png` copied out of the build's own showcase, so a reviewer sees the picture
+# the build chose to present its game with beside the verdict.
+[[review.categories]]
+id = "showcase"
+title = "Showcase"
+[[review.categories.items]]
+id = "exists"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, and at least one file the carousel names is present in showcase/."
+weight = 3
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "showcase/exists.test.ts", outputs = [
+  { id = "carousel", name = "A screenshot from the build's showcase", kind = "image" },
 ] }

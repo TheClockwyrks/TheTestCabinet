@@ -34,8 +34,10 @@ export default defineConfig({
     // CPU. The runtime advances and draws each frame in this process, so a suite
     // is compute rather than a wait — left to fan out across every core, the
     // project contends with ITSELF and the same suites take several times as long
-    // as they do in isolation. Four is the figure the engineless project runs at,
-    // and it leaves the host something for the model's build underneath.
+    // as they do in isolation. What the ceiling bounds here is CORES, not the
+    // pages the engineless project's eight bound, which is why this figure does
+    // not follow that one: four leaves a two-core host room for the work under
+    // it rather than oversubscribing it.
     maxWorkers: 4,
     minWorkers: 1,
     // A CEILING FOR A HUNG SUITE, NOT AN ALLOWANCE FOR A SLOW ONE. Every

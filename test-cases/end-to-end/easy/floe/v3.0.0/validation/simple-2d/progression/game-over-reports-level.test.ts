@@ -16,7 +16,7 @@
 // for.
 //
 // THE SCREEN IS READ, NOT THE SNAPSHOT. That `setReachedLevel` reads back is
-// `instrumentation/poses-read-back`'s requirement; this point is about what the
+// `instrumentation/state-run`'s requirement; this point is about what the
 // player is SHOWN, so it reads the runs of text the frame actually drew.
 //
 // ONLY WHAT WAS DRAWN OVER THE STRAIT COUNTS. specs/strait.md divides the stage into

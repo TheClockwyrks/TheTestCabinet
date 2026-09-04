@@ -224,6 +224,17 @@ export interface FloeState {
    * so a press inside the cooldown is ignored exactly once rather than saved up.
    */
   readonly pendingTap: Facing | null;
+  /**
+   * Where the pointer or touch press still in progress landed, in logical units,
+   * or `null` while nothing is down.
+   *
+   * A gesture the player is part-way through, held for the same reason
+   * {@link FloeState.pendingTap} is: a press and the release that ends it can
+   * arrive frames apart, and `specs/ui.md` decides a confirm from BOTH of their
+   * positions. It is input rather than a fact about the crossing, so nothing
+   * outside `src/screens.ts` reads it and `reset` clears it.
+   */
+  readonly pointerDown: { readonly x: number; readonly y: number } | null;
   /** The lunge left where a bear caught the critter. */
   readonly lunge: LungeState | null;
 

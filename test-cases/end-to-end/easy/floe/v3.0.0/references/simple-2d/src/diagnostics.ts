@@ -65,7 +65,9 @@ export function registerDiagnostics(
     (state) => `${state.vehicles.length} vehicles  ${state.floes.length} floes`,
   );
   api.diagnostics.register("bays", (state) => {
-    const marks = state.bays.map((filled) => (filled ? "#" : ".")).join("");
+    const marks = state.bays
+      .map((filled: boolean) => (filled ? "#" : "."))
+      .join("");
     const fish =
       state.fishBay === null ? "no fish" : `fish in ${state.fishBay}`;
     return `${marks}  ${fish}`;

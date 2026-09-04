@@ -10,54 +10,38 @@
 //   npx vitest run                                       # the build's own tests
 //   npx vitest run --config validation/vitest.config.ts  # the case's validators
 //
-// The root is the workspace, not this directory, so a validator addresses the
-// build by the same relative paths the build itself uses. It is derived from this
-// file's own URL rather than from the working directory, so the command above
-// works from anywhere.
+// Everything but the root below is the shared validator harness's, because
+// everything but the root is what makes a staged validator project one shape the
+// runner can drive: the project's name, the suites it collects, the scaffolding
+// it loads, and the refusal to pass a run that collected nothing.
 //
-// WHY THIS PROJECT NEEDS SCAFFOLDING THE ENGINE-BACKED ONES DO NOT. An engineless
-// build is a static site with nothing to import, so every check drives it in a
-// real browser through `window.__floe`. `globalSetup` starts the one server and
-// the one Chromium the whole project shares, before any suite runs; `setupFiles`
-// gives each suite worker the teardown that returns its page when the file is
-// done. The environment stays `node` — the suites drive a browser, they do not
-// run in one.
+// THE ROOT IS THE WORKSPACE, NOT THIS DIRECTORY, so a validator addresses the
+// build's output by the same relative path the build itself produced it at. It is
+// computed HERE, from this file's own URL, rather than inside the package: the
+// package is staged one directory deeper than this file, so anything derived from
+// its own location would name the wrong tree.
+//
+// Imported from its own module rather than through the package's barrel, for the
+// reason `globalSetup.ts` gives.
+//
+// FLOE NAMES NO DIAL, AND THAT IS THE DECISION RATHER THAN THE ABSENCE OF ONE.
+// The package's five-minute per-check allowance and its matching hook allowance
+// are the two figures this project used to state for itself, at exactly those
+// values, so nothing moves by taking them. Its EIGHT workers are the one figure
+// that changes, and upward: a suite file here spends almost all of its time
+// waiting on a crossing into a page rather than on a core, so what the ceiling
+// bounds is pages held open in one shared browser process rather than cores.
+//
+// AND EIGHT IS THE MEASURED FIGURE, not the inherited one. The two hundred and
+// fifty-eight files of this project were run against the `none` reference on a
+// host pinned to TWO CORES, which is what the runner validates on: eight workers
+// finished in 2 min 43 s and four in 3 min 19 s, both with every point passing.
+// Four was this case's own guess and it costs half a minute; the guide's budget
+// is fifteen minutes on that host, so the whole run sits at a fifth of it either
+// way and the choice is made on the measurement rather than on the margin.
 
-import { defineConfig } from "vitest/config";
+import { defineValidationConfig } from "./case-harness/vitest-config";
 
-export default defineConfig({
+export default defineValidationConfig({
   root: new URL("..", import.meta.url).pathname,
-  test: {
-    name: "validation",
-    include: ["validation/**/*.test.ts"],
-    environment: "node",
-    globalSetup: ["validation/globalSetup.ts"],
-    setupFiles: ["validation/setup.ts"],
-    // A missing validator is a broken suite, not a passing one.
-    passWithNoTests: false,
-    coverage: { enabled: false },
-    // Each suite file holds a page of the shared browser while it runs, so the
-    // ceiling on files in flight is the ceiling on pages — and a suite spends
-    // most of its time waiting on crossings into one, so overlapping them is
-    // most of what decides how long the whole run takes. Capped rather than left
-    // to the core count because the cost of a page is memory in one shared
-    // browser process rather than a core, and the host running this is running a
-    // model's build under it.
-    maxWorkers: 4,
-    minWorkers: 1,
-    // A CEILING FOR A HUNG SUITE, NOT AN ALLOWANCE FOR A SLOW ONE. Every
-    // measurement in this project is taken in the game's own ticks and decides
-    // the same thing however long the host took to run them; the only thing this
-    // figure can decide is whether a BUSY MACHINE fails a build that is right.
-    // The suites here are seconds of work — measured on a twenty-core host under
-    // a load average of four hundred and sixty, the slowest of them was under a
-    // minute — so five minutes is several times over the worst a loaded host has
-    // been seen to produce, and it costs a conforming build nothing.
-    testTimeout: 300_000,
-    // The same figure for the hooks, which is where the harness is built. Left
-    // unset it would be vitest's ten seconds, and building a harness on a loaded
-    // host has been measured well past that — a hook that expires reports the
-    // check as broken rather than reporting anything about the build.
-    hookTimeout: 300_000,
-  },
 });

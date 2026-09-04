@@ -22,6 +22,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { BINDINGS, TITLE_ITEMS } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 
 /**
@@ -29,6 +30,12 @@ import { captureStill, createHarness, type Harness } from "../harness";
  * to. Nothing is measured across it.
  */
 const SETTLE_TICKS = 1;
+
+/**
+ * The title entry the how-to screen is opened from, and returns to
+ * (`specs/ui.md`).
+ */
+const HOWTO_ITEM = TITLE_ITEMS.indexOf("HOW TO PLAY");
 
 let h: Harness;
 
@@ -50,13 +57,20 @@ it("returns to the title when Escape is pressed on the how-to screen", async () 
     "the pose opened the how-to screen",
   );
 
-  await h.tap("Escape");
+  await h.tap(BINDINGS.back[0]);
   await h.advance(SETTLE_TICKS);
   captureStill(h, "title");
 
+  const landed = h.snapshot();
   assertEqual(
-    h.snapshot().screen,
+    landed.screen,
     "title",
     "the back action on the how-to screen returns to the title (specs/ui.md)",
+  );
+  assertEqual(
+    landed.menuIndex,
+    HOWTO_ITEM,
+    `with ${TITLE_ITEMS[HOWTO_ITEM]} selected, the entry that opened it ` +
+      `(specs/ui.md)`,
   );
 });

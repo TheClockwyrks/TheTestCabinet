@@ -16,7 +16,7 @@
 // which field the build reached for.
 //
 // THE SCREEN IS READ, NOT THE SNAPSHOT. That `setReachedLevel` reads back is
-// `instrumentation/poses-read-back`'s requirement; this point is about what the
+// `instrumentation/state-run`'s requirement; this point is about what the
 // player is SHOWN, so it reads the runs of text the frame actually drew. The recorded
 // calls are emptied first and exactly one frame is run, so what is read is one
 // picture rather than every picture drawn since the harness opened.

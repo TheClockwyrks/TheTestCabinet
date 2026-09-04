@@ -66,6 +66,36 @@ export class KeyEvent extends Event {
   }
 }
 
+/**
+ * A pointer-shaped event, which is all the engine's pointer listeners read
+ * (engine/input.md).
+ *
+ * The surface below reports the design size at a ratio of `1` and names no
+ * origin, so a client position is a logical position directly.
+ */
+export class PointerDriveEvent extends Event {
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly pointerId = 1;
+  readonly pointerType: string;
+  readonly isPrimary = true;
+  readonly button = 0;
+  readonly buttons: number;
+
+  constructor(
+    type: "pointerdown" | "pointermove" | "pointerup",
+    x: number,
+    y: number,
+    pointerType: "mouse" | "touch" = "mouse",
+  ) {
+    super(type);
+    this.clientX = x;
+    this.clientY = y;
+    this.pointerType = pointerType;
+    this.buttons = type === "pointerup" ? 0 : 1;
+  }
+}
+
 /** One `cue:played` the engine emitted. */
 export interface CuePlay {
   cue: string;
@@ -88,6 +118,13 @@ export interface Harness {
   down(code: string): void;
   up(code: string): void;
   tap(code: string): Promise<void>;
+  /** Drive one pointer or touch event at the surface, in logical units. */
+  point(
+    type: "pointerdown" | "pointermove" | "pointerup",
+    x: number,
+    y: number,
+    device?: "mouse" | "touch",
+  ): void;
   /** Run `ticks` whole simulation ticks. */
   step(ticks: number): Promise<void>;
   /** Run ticks until `ready` holds, or give up after `limit` of them. */
@@ -191,6 +228,9 @@ export async function createHarness(): Promise<Harness> {
       await engine.advance(1);
       events.dispatchEvent(new KeyEvent("keyup", code));
       await engine.advance(1);
+    },
+    point: (type, x, y, device = "mouse") => {
+      events.dispatchEvent(new PointerDriveEvent(type, x, y, device));
     },
     step: (ticks) => engine.advance(ticks),
     pace: (perFrame) => {

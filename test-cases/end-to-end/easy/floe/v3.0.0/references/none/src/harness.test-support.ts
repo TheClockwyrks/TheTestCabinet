@@ -19,6 +19,7 @@ import {
   type Intents,
 } from "./game";
 import type { CueName } from "./constants";
+import type { PointerEdge } from "./pointer";
 import type { Facing, FloeState } from "./types";
 
 /** A cue bus that records rather than sounds. */
@@ -48,6 +49,9 @@ export function recordingBus(): RecordingBus {
   };
 }
 
+/** One of the eight keyboard edges a tick can carry. */
+export type KeyEdge = keyof Omit<Intents, "held" | "pointer">;
+
 /** One game, its surface, its cue bus, and a keyboard the test holds. */
 export interface Harness {
   /** The live state every pose acts on. */
@@ -59,7 +63,9 @@ export interface Harness {
   /** Hold a direction down, as a player would. */
   hold(facing: Facing | null): void;
   /** Arm one edge, consumed by the next tick that runs. */
-  press(edge: keyof Omit<Intents, "held">): void;
+  press(edge: KeyEdge): void;
+  /** Queue a pointer or touch edge, consumed by the next tick that runs. */
+  point(...edges: readonly PointerEdge[]): void;
   /** Run `ticks` whole ticks. */
   advance(ticks: number): void;
   /** Run the ticks covering `seconds` of game time, rounded up to a whole tick. */
@@ -71,13 +77,15 @@ export function harness(): Harness {
   const state = createState();
   const bus = recordingBus();
   let held: Facing | null = null;
-  let edges = new Set<keyof Omit<Intents, "held">>();
+  let edges = new Set<KeyEdge>();
+  let pointer: PointerEdge[] = [];
 
   const advance = (ticks: number): void => {
     for (let i = 0; i < ticks; i += 1) {
-      const intents: Intents = { ...NO_INTENTS, held };
+      const intents: Intents = { ...NO_INTENTS, held, pointer };
       for (const edge of edges) intents[edge] = true;
       edges = new Set();
+      pointer = [];
       stepGame(state, intents, TICK_DT, bus);
     }
   };
@@ -96,6 +104,9 @@ export function harness(): Harness {
     },
     press: (edge) => {
       edges.add(edge);
+    },
+    point: (...raised) => {
+      pointer.push(...raised);
     },
     advance,
     seconds: (value) => advance(Math.ceil(value / TICK_DT)),
