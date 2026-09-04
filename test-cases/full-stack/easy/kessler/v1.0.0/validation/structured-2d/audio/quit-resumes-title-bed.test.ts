@@ -13,7 +13,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
-import { BINDINGS, BED_PATHS, PAUSE_ITEMS } from "../constants";
+import { BINDINGS, PAUSE_ITEMS } from "../constants";
 import {
   advanceTicks,
   captureReplay,
@@ -23,6 +23,7 @@ import {
   tap,
   type Harness,
 } from "../harness";
+import { BED_TITLE } from "./beds";
 
 /** The key that carries `confirm` alone — `Space` also carries `launch`. */
 const CONFIRM = BINDINGS.confirm[1];
@@ -55,8 +56,5 @@ it("has the title bed looping again on the title screen", async () => {
   });
 
   assertEqual(h.snapshot().screen, "title", "the screen the quit returned to");
-  assertTrue(
-    h.looping(BED_PATHS.title),
-    "the title bed sounding again on the title",
-  );
+  assertTrue(h.looping(BED_TITLE), "the title bed sounding again on the title");
 });

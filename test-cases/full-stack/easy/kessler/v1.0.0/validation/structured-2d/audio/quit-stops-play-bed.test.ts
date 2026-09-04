@@ -13,7 +13,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { BINDINGS, BED_PATHS, PAUSE_ITEMS } from "../constants";
+import { BINDINGS, PAUSE_ITEMS } from "../constants";
 import {
   advanceTicks,
   captureReplay,
@@ -23,6 +23,7 @@ import {
   tap,
   type Harness,
 } from "../harness";
+import { BED_PLAY } from "./beds";
 
 /** The key that carries `confirm` alone — `Space` also carries `launch`. */
 const CONFIRM = BINDINGS.confirm[1];
@@ -56,7 +57,7 @@ it("leaves the play bed silent after the quit", async () => {
 
   assertEqual(h.snapshot().screen, "title", "the screen the quit returned to");
   assertEqual(
-    h.looping(BED_PATHS.play),
+    h.looping(BED_PLAY),
     false,
     "the play bed sounding after the quit",
   );
