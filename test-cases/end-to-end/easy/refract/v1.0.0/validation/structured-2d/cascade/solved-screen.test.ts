@@ -42,7 +42,7 @@
 // both toward each other.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SOLVED_ITEMS, SOLVED_TITLE_TEXT } from "../../src/constants";
+import { SOLVED_ITEMS, SOLVED_TITLE_TEXT } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

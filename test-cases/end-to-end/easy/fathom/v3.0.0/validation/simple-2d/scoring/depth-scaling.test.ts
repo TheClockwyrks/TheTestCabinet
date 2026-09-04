@@ -37,18 +37,18 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
-  DEN_ORDER,
-  ROSTER_ADD_ORDER,
-  SONAR_RANGE_BASE,
-  SONAR_RANGE_MIN,
-} from "../../src/constants";
-import {
   assertDeepEqual,
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
   assertNotNull,
 } from "../assert";
+import {
+  DEN_ORDER,
+  ROSTER_ADD_ORDER,
+  SONAR_RANGE_BASE,
+  SONAR_RANGE_MIN,
+} from "../constants";
 import { poseApart } from "../fixtures";
 import {
   captureReplay,

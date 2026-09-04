@@ -1,0 +1,163 @@
+# Draw One — the gentler deal. The stock turns ONE card at a time, so every card
+# in it is reachable and the game is markedly more winnable. Everything else about
+# the game is the case's common text: the same table, the same rules, the same
+# pointer, the same victory cascade.
+#
+# Every path here resolves against the version folder, exactly like the case
+# manifest.
+slug = "draw-one"
+name = "Draw One"
+description = "The stock turns one card at a time, so every card in it is reachable."
+
+# This variant declares NO `spec` of its own, and that is deliberate.
+#
+# The deal mode is not a spec set; it is a branch inside two COMMON specs.
+# `specs/stock.md.hbs` renders this variant's turn count, deal-mode id and label,
+# and `specs/table.md.hbs` renders what the waste shows. Both are declared in
+# `test-case.toml` and seeded for every run, rendered for the selected variant
+# before they land, so a run receives one self-contained spec set describing one
+# game and no seeded text mentions the sibling variant.
+#
+# The waste's SET MEMORY is common text, not a Draw One affordance and not a Draw
+# Three one: a turn of one is a set of one, so the same rule states both deals. The
+# snapshot shape does not branch either — `wasteSets` and `wasteVisibleCount` are
+# reported by both variants — which is what lets one validator suite read both.
+
+# What the game looks like played correctly, shown before anyone runs it: one
+# whole game of Draw One, dealt from a chosen seed and played to the victory
+# cascade with the REAL MOUSE against `references/none/draw-one`, and three
+# frames taken out of that same take. `showcase/draw-one/showcase.toml` lists
+# the media in carousel order and `showcase/draw-one/showcase.md` carries the
+# player-facing description.
+#
+# Every outcome on screen arose from the game's own rules under real pointer
+# input. The debug surface is reached for exactly twice over: `reset({ seed })`
+# once, before the first gesture, which is what chooses the deal, and
+# `snapshot()`, which is READ — after each gesture, to check that the game did
+# what the plan expected, so that a divergence fails the capture rather than
+# reaching the clip. Nothing is posed; posing an outcome through the surface
+# would be fabrication. `showcase/capture/README.md` records how each committed
+# file was produced and how to produce it again.
+showcase = "showcase/draw-one"
+
+# The authored, *correct* build of this variant, one directory per supported
+# engine, because the build a reference demonstrates differs under each. This table
+# must name EXACTLY the engines the case supports (the resolver checks both
+# directions): `references/none/draw-one` carries its own runtime layer (frame
+# loop, canvas fit, pointer input, audio, overlay, and the `window.__cascade`
+# surface), `references/simple-2d/draw-one` hands all of that to the engine package
+# resolved from the repository's `packages/simple-2d` and ships the game as
+# `src/game.ts` beside the seeded entry point, and
+# `references/structured-2d/draw-one` writes the game inside the gameplay framework
+# resolved from `packages/structured-2d`. The game any of them implements is
+# identical, which is what makes a run on one engine comparable with a run on
+# another. No reference directory is ever seeded into a run: each is the authored
+# answer, built with the case's own `[build]` commands, held to the same four
+# toolchain gates a run is, and driven by `tcab capture-baselines` to synthesize
+# the baseline half of the validation media for its engine.
+[reference_implementation]
+none = "references/none/draw-one"
+"simple-2d" = "references/simple-2d/draw-one"
+"structured-2d" = "references/structured-2d/draw-one"
+
+# This variant needs a starter project of its own under each engine that seeds one,
+# because `src/constants.ts` differs: TURN_COUNT is 1, DEAL_MODE is "draw-one" and
+# DEAL_MODE_LABEL is "DRAW ONE". There is no WASTE_FAN here at all; a Draw One
+# waste shows one card and fans nothing.
+#
+# The table REPLACES the case's `[workspaces]` rather than layering on it, so it
+# names one directory per engine exactly as the case's does. Both variants declare
+# theirs explicitly, so neither depends on which set the case manifest happens to
+# name as the default.
+#
+# The engineless project is the case's own, shared with both variants. It holds no
+# game code for a variant to differ in — only the configuration the build is
+# written against — and what this variant changes about the game is carried by the
+# specs, which are rendered per variant before they land.
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/draw-one/simple-2d"
+"structured-2d" = "workspaces/draw-one/structured-2d"
+
+# --- The Stock and the Waste (Draw One) --------------------------------------
+# Six additive points, contributed to the case's COMMON `stock` category: a variant
+# may reuse a common category's id to add its own items to it (see
+# `merge_review_items` in the core), so the console groups these with the common
+# stock points rather than in a category of their own. The `format` is inherited
+# from the case manifest (`[review] format = 2`); a variant only adds
+# `[[review.categories]]`. Neither variant replaces the validator behind a common
+# item. Scripts live at `draw-one/<item>.test.ts` within each engine's validator
+# project, so all three engines ship them.
+#
+# These are the points a common validator cannot decide. A common scenario that has
+# to size itself to the deal mode reads `snapshot().turnCount` rather than
+# hard-coding a figure, and `deal-mode-reported` below is what pins that figure to
+# the specification — which is exactly why it exists.
+#
+# `set-falls-back` is the fold-in fix's point on this side: a turn of one is a set
+# of one, so the rule holds here without changing what this deal shows, and the
+# point asserts it by identity as well as by count so a build cannot pass it with a
+# counter that only remembers the last turn.
+#
+# The deal-mode LABEL is graded in two places by two points. A build correct on the
+# title screen and wrong in the HUD misses one requirement, not both. The common
+# items `screens.title-shows-mode-label` and `screens.hud-shows-mode-label` hold
+# each drawn label against the `dealModeLabel` the build itself reports, so the
+# common pair decides consistency and this pair decides the literal.
+[[review.categories]]
+id = "stock"
+title = "The Stock and the Waste"
+[[review.categories.items]]
+id = "turn-count"
+title = "A turn moves exactly one card"
+description = "The stock loses one card and the waste gains one."
+domains = ["rules"]
+failure_cap = "broken"
+validation = { script = "draw-one/turn-count.test.ts", outputs = [
+  { id = "turn", name = "The stock turning its single card", kind = "image" },
+] }
+[[review.categories.items]]
+id = "deal-mode-reported"
+title = "The build reports its deal mode"
+description = "dealMode is \"draw-one\" and turnCount is 1."
+domains = ["rules"]
+failure_cap = "scuffed"
+validation = { script = "draw-one/deal-mode-reported.test.ts", outputs = [
+  { id = "mode", name = "The table the deal mode was read from", kind = "image" },
+] }
+[[review.categories.items]]
+id = "waste-shows-one"
+title = "The waste shows a single card"
+description = "After three turns wasteVisibleCount is 1 and the two earlier cards are drawn squared beneath the top card at the waste anchor."
+domains = ["rules"]
+failure_cap = "scuffed"
+validation = { script = "draw-one/waste-shows-one.test.ts", outputs = [
+  { id = "waste", name = "The waste showing one card over the squared pair", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-falls-back"
+title = "The waste falls back to the earlier turn"
+description = "With two turns made and the newer card played home, the waste shows the card the earlier turn left, by identity as well as by count."
+domains = ["rules"]
+failure_cap = "scuffed"
+validation = { script = "draw-one/set-falls-back.test.ts", outputs = [
+  { id = "waste", name = "The card the earlier turn left, showing again", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mode-label-title"
+title = "The title screen's label reads DRAW ONE"
+description = "The title screen draws the literal DRAW ONE, this variant's DEAL_MODE_LABEL."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "draw-one/mode-label-title.test.ts", outputs = [
+  { id = "title", name = "The title screen's DRAW ONE label", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mode-label-hud"
+title = "The HUD's label reads DRAW ONE"
+description = "The HUD draws the literal DRAW ONE during play."
+domains = ["rules"]
+failure_cap = "passable"
+validation = { script = "draw-one/mode-label-hud.test.ts", outputs = [
+  { id = "hud", name = "The HUD's DRAW ONE label", kind = "image" },
+] }

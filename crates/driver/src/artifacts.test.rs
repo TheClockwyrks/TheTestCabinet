@@ -461,6 +461,7 @@ fn record_with_debug_scripts(outputs: Vec<DebugScriptOutput>) -> RunRecord {
         gates: true,
         ran: true,
         precondition_unmet: false,
+        inconclusive: None,
         detail: None,
         verdicts: vec![],
         outputs,
@@ -541,6 +542,7 @@ async fn uploads_a_sub_item_output_under_its_composite_verdict_name() {
         gates: true,
         ran: true,
         precondition_unmet: false,
+        inconclusive: None,
         detail: None,
         verdicts: vec![],
         outputs: vec![DebugScriptOutput {

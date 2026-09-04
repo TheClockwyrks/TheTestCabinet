@@ -5363,6 +5363,7 @@ fn auto_validated_record(id: &str) -> RunRecord {
         gates: true,
         ran: true,
         precondition_unmet: false,
+        inconclusive: None,
         detail: None,
         verdicts: vec![AutoVerdict {
             id: "a".to_string(),
@@ -7301,6 +7302,7 @@ fn validator_record(id: &str, verdicts: &[(&str, bool)]) -> RunRecord {
             gates: true,
             ran: true,
             precondition_unmet: false,
+            inconclusive: None,
             detail: None,
             verdicts: vec![AutoVerdict {
                 id: point.to_string(),

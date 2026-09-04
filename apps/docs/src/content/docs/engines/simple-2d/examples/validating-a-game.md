@@ -107,6 +107,7 @@ src/
 validation/
   vitest.config.ts
   tsconfig.json
+  constants.ts
   harness.ts
   simulation.test.ts
   audio.test.ts
@@ -184,6 +185,31 @@ The canvas and the runner are devDependencies of the seeded workspace.
 }
 ```
 
+## The figures
+
+The project states the figures its checks name in `constants.ts`, transcribed
+from the case's specification. Every suite and the harness import them from
+there.
+
+```ts
+// validation/constants.ts — transcribed from the specification
+export const FIELD_WIDTH = 640;
+export const FIELD_HEIGHT = 360;
+export const BACKGROUND = "#101018";
+export const BALL_RADIUS = 8;
+export const BALL_COLOR = "#f45b69";
+export const PADDLE_X = 24;
+export const PADDLE_WIDTH = 12;
+export const PADDLE_HEIGHT = 60;
+export const PADDLE_COLOR = "#e8e8e8";
+```
+
+The build is seeded a `src/constants.ts` holding the same figures under the same
+names. A check that imported `BALL_RADIUS` from it would compare the build with
+its own table, which every build matches, so the figure a check grades by is
+transcribed on this side of the line instead; see
+[Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/).
+
 ## The harness
 
 Every validator builds its engine through one helper. It creates a canvas with
@@ -206,18 +232,8 @@ import {
   type SurfaceMetrics,
   type Viewport,
 } from "@test-cabinet/simple-2d";
+import { BACKGROUND, FIELD_HEIGHT, FIELD_WIDTH } from "./constants";
 import { game, type Debug, type Snapshot, type State } from "../src/game";
-
-// The figures the case's specification fixes.
-export const FIELD_WIDTH = 640;
-export const FIELD_HEIGHT = 360;
-export const BACKGROUND = "#101018";
-export const BALL_RADIUS = 8;
-export const BALL_COLOR = "#f45b69";
-export const PADDLE_X = 24;
-export const PADDLE_WIDTH = 12;
-export const PADDLE_HEIGHT = 60;
-export const PADDLE_COLOR = "#e8e8e8";
 
 export type DrawCall =
   | { kind: "call"; method: string; args: unknown[] }
@@ -409,7 +425,8 @@ through the surface, advances, and reads a snapshot back.
 // validation/simulation.test.ts
 import { ConstantClock } from "@test-cabinet/simple-2d";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { BALL_RADIUS, FIELD_WIDTH, createHarness, type Harness } from "./harness";
+import { BALL_RADIUS, FIELD_WIDTH } from "./constants";
+import { createHarness, type Harness } from "./harness";
 
 let harness: Harness;
 
@@ -528,7 +545,8 @@ afterEach(() => {
 
 it("registers the diagnostics the case names", () => {
   const { engine } = harness;
-  harness.setBall({ x: 320, y: 180, vx: 0, vy: 0 });
+  harness.setBallPosition(320, 180);
+  harness.setBallVelocity(0, 0);
   harness.setPaddle(120);
 
   expect(engine.diagnostics()).toEqual([
@@ -569,11 +587,8 @@ import {
   PADDLE_HEIGHT,
   PADDLE_WIDTH,
   PADDLE_X,
-  callsTo,
-  createHarness,
-  setsOf,
-  type Harness,
-} from "./harness";
+} from "./constants";
+import { callsTo, createHarness, setsOf, type Harness } from "./harness";
 
 let harness: Harness;
 
@@ -645,7 +660,8 @@ specification states.
 // validation/input.test.ts
 import { ConstantClock } from "@test-cabinet/simple-2d";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { PADDLE_HEIGHT, createHarness, type Harness } from "./harness";
+import { PADDLE_HEIGHT } from "./constants";
+import { createHarness, type Harness } from "./harness";
 
 let harness: Harness;
 

@@ -53,6 +53,7 @@ export * from "./browser";
 export * from "./chromium";
 export * from "./clock";
 export * from "./harness";
+export * from "./host";
 export * from "./setup";
 export * from "./surface";
 

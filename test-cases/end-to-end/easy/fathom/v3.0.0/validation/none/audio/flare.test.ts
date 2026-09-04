@@ -36,11 +36,17 @@ import { poseApart, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
+  type FathomSnapshot,
   type Harness,
   startPlaying,
 } from "../harness";
 import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
-import { soundsBeforeEvent, soundsOnEvent, watchForEvent } from "./cues";
+import {
+  LEAD_POLL,
+  soundsBeforeEvent,
+  soundsOnEvent,
+  watchForEvent,
+} from "./cues";
 
 /**
  * How far the hunter's sealed ring sits from the forager's room, in tiles.
@@ -96,11 +102,21 @@ it("sounds on the tick a Flarefish's bloom begins, and not on its charge-up", as
   const guard = await sceneGuard(h);
 
   const watch = await captureReplay(h, "flare", async () => {
+    const charging = (s: FathomSnapshot): boolean =>
+      s.predators[flarefish]?.flareCharging === true;
     const seen = await watchForEvent(
       h,
       (s) => s.predators[flarefish]?.flaring === true,
       FLARE_TICKS,
-      { mark: (s) => s.predators[flarefish]?.flareCharging === true },
+      {
+        mark: charging,
+        // The seven seconds of wandering in front of the charge-up are covered a
+        // step at a time rather than a tick at a time; from the charge-up on —
+        // which is the whole of what this point's near miss is about — every tick
+        // is stepped on its own. `validation/audio/cues.ts` states what the lead
+        // reads and what it does not.
+        lead: { poll: LEAD_POLL, until: charging },
+      },
     );
     // Past the reading, so the clip shows the bloom burning. Nothing after this
     // line can reach an assertion.
@@ -120,9 +136,10 @@ it("sounds on the tick a Flarefish's bloom begins, and not on its charge-up", as
   assertEqual(
     soundsBeforeEvent(watch),
     0,
-    `sounds the build emitted over the ${String(watch.at - 1)} ticks before the ` +
-      `bloom — which include tick ${String(watch.marked)}, where the charge-up ` +
-      "began — on a board where nothing else is happening (specs/progression.md)",
+    `sounds the build emitted over every step before the one the bloom began ` +
+      `on, which is the first ${String(watch.at - 1)} ticks of the watch and ` +
+      `includes tick ${String(watch.marked)}, where the charge-up began — on a ` +
+      "board where nothing else is happening (specs/progression.md)",
   );
   assertGreaterThanOrEqual(
     soundsOnEvent(watch),

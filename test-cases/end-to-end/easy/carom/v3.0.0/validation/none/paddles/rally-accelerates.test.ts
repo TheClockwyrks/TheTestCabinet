@@ -11,6 +11,11 @@
 // The paddles are left with the player, and in a Versus match with no key held
 // they stand where they were put, so the only thing changing the ball's speed
 // is the paddle-hit rule under measurement.
+//
+// HOW LONG THE RALLY IS. Exactly the hits that happen below the ceiling, and no
+// more: the length follows from `RALLY_LAUNCH_SPEED`, `SPEED_MULT` and
+// `SPEED_CAP` rather than being picked, and every hit past it belongs to the
+// sibling check.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
@@ -20,17 +25,38 @@ import {
   captureReplay,
   createHarness,
   driveRallySpeeds,
+  RALLY_HITS_TO_CAP,
   type Harness,
 } from "../harness";
 
-/** Enough hits for the ratio to be read many times over below the ceiling. */
-const MIN_HITS = 12;
+/**
+ * The hits the rally drives: every one the multiplier decides on its own.
+ *
+ * One short of the climb to the ceiling, so the last of them leaves the ball
+ * still clear of `SPEED_CAP` and every ratio read below is one this item is
+ * about. A hit past it is the sibling `rally-caps` check's subject rather than
+ * this one's, and a rally that runs into the plateau costs legs of real physics
+ * to decide nothing this check has not already decided.
+ */
+const HITS_BELOW_CAP = RALLY_HITS_TO_CAP - 1;
 /**
  * One percent on the ratio, rounding room on `SPEED_MULT`, and half a unit per
  * second on a decrease.
  */
 const RATIO_TOLERANCE = 0.01;
 const DECREASE_TOLERANCE = 0.5;
+
+/**
+ * The hits at the head of the rally kept as the review item's replay.
+ *
+ * A recorder armed over a section is charged for every frame the section drives,
+ * and a whole rally is thousands of them; what a reviewer watches to see the ball
+ * speeding up hit by hit is a handful of legs, not the climb entire. The first
+ * three are the ones where the change is most legible, because the ball is
+ * slowest and the legs longest, and they are frames of the same drive the
+ * assertions below read.
+ */
+const RECORDED_HITS = 3;
 
 let harness: Harness;
 
@@ -45,11 +71,13 @@ afterEach(async () => {
 it("multiplies the ball's speed on every hit below the ceiling", async () => {
   await arrangeRally(harness);
 
-  const speeds = await captureReplay(harness, "acceleration", () =>
-    driveRallySpeeds(harness),
+  const opening = await captureReplay(harness, "acceleration", () =>
+    driveRallySpeeds(harness, RECORDED_HITS),
   );
+  const rest = await driveRallySpeeds(harness, HITS_BELOW_CAP - RECORDED_HITS);
+  const speeds = [...opening, ...rest];
 
-  assertGreaterThanOrEqual(speeds.length, MIN_HITS);
+  assertGreaterThanOrEqual(speeds.length, HITS_BELOW_CAP);
 
   for (let i = 1; i < speeds.length; i += 1) {
     assertGreaterThanOrEqual(speeds[i], speeds[i - 1] - DECREASE_TOLERANCE);

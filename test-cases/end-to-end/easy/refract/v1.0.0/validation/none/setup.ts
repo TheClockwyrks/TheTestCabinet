@@ -9,11 +9,25 @@
 // because there is no other moment to do it in — a worker has no lifecycle hook
 // of its own, and a harness cannot know it built the last one.
 //
-// The teardown is REGISTERED by a call rather than by importing this module's
-// contents, because the shared harness's barrel re-exports it: a module that
-// registered an `afterAll` merely by being loaded would register one on every
-// suite that imports anything at all.
+// IT IS ALSO WHERE THE RUNNING CHECK IS MADE REACHABLE FROM THE HARNESS, so that
+// a browser that never came up, a page that was never opened, or a build the
+// project's own server would not hand over leaves a check UNDECIDED rather than
+// failing the build for it. The shared harness's `host.ts` says why at length: a
+// score is a property of the build, and none of those three things is anything a
+// build has any influence over. The hook has to be registered from here because
+// `createHarness` is called from `beforeEach` hooks that take no arguments, and
+// vitest runs a `setupFiles` hook ahead of a file's own.
+//
+// THE SLUG IS PASSED BECAUSE THE PACKAGE IS SHARED. Unlike the per-case copy this
+// grew out of, the harness does not know at import time whose validators it is
+// running, and the account a reviewer reads has to name the case. This call is
+// the one moment the case is certainly present.
+//
+// Both halves are REGISTERED by a call rather than by importing this module's
+// contents, because the shared harness's barrel re-exports them: a module that
+// registered an `afterAll` or a `beforeEach` merely by being loaded would register
+// one on every suite that imports anything at all.
 
-import { registerWorkerTeardown } from "./case-harness/setup";
+import { registerCaseSetup } from "./case-harness/setup";
 
-registerWorkerTeardown();
+registerCaseSetup({ slug: "refract" });

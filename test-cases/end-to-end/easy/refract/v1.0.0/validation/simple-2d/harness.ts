@@ -69,12 +69,14 @@ import {
   type Viewport,
 } from "@test-cabinet/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
-import { BINDINGS, LAYOUT, STAGE_H, STAGE_W } from "../src/constants";
 import { BACKGROUND, game as build, type RefractState } from "../src/game";
 import { assertEqual, fail } from "./assert";
+import { BINDINGS, LAYOUT } from "./constants";
 import {
   CHANNELS,
   NODE_R,
+  STAGE_H,
+  STAGE_W,
   cellX,
   cellY,
   parseBoard,
@@ -254,8 +256,6 @@ export interface Harness {
     predicate: (snapshot: RefractSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
-  /** Drive the runtime's own frame loop for `ms` of real time, then halt it. */
-  runFor(ms: number): Promise<void>;
 
   /** Press a key and leave it down, as a player holding it would. */
   hold(code: string): void;
@@ -669,14 +669,6 @@ export async function createHarness(
         if (predicate(snapshot)) return { hit: true, frames, snapshot };
       }
       return { hit: false, frames, snapshot };
-    },
-
-    async runFor(ms) {
-      const controller = new AbortController();
-      const running = engine.run({ signal: controller.signal });
-      await new Promise((resolve) => setTimeout(resolve, ms));
-      controller.abort();
-      await running;
     },
 
     hold: (code) => dispatch("keydown", code),
@@ -1113,7 +1105,7 @@ export function traceRoute(h: Harness, route: RoutePairs): void {
   h.debug.trace(toCells(route));
 }
 
-/** The registered actions, as `src/constants.ts` names them. */
+/** The registered actions, as the build's own `BINDINGS` table names them. */
 export type ActionName = keyof typeof BINDINGS;
 
 /**
@@ -1124,7 +1116,7 @@ export type ActionName = keyof typeof BINDINGS;
 export async function tapAction(h: Harness, action: ActionName): Promise<void> {
   const code = BINDINGS[action][0];
   if (code === undefined) {
-    return fail(`a key bound to the ${action} action in src/constants.ts`, []);
+    return fail(`a key bound to the ${action} action in BINDINGS`, []);
   }
   await h.tap(code);
 }

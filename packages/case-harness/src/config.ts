@@ -15,13 +15,13 @@
 //     build. They stay overridable for a case that must coexist with something
 //     already standing at the name, but the default is shared on purpose.
 //
-//   - The vitest provided-context keys are FIXED at `tcabUrl` / `tcabBrowserWs`
-//     and are not configurable at all. The `declare module "vitest"` block below
-//     is a GLOBAL augmentation: two cases type-checked together that each
-//     declared their own key would collide, which is exactly what the per-case
-//     keys were trying to avoid. One shared pair avoids it properly — but it only
-//     works if the key is a constant, because a configurable key could not be
-//     declared here.
+//   - The vitest provided-context keys are FIXED at `tcabUrl`, `tcabBrowserWs`
+//     and `tcabSurfaceAbsent`, and are not configurable at all. The
+//     `declare module "vitest"` block below is a GLOBAL augmentation: two cases
+//     type-checked together that each declared their own key would collide, which
+//     is exactly what the per-case keys were trying to avoid. One shared set
+//     avoids it properly — but it only works if the key is a constant, because a
+//     configurable key could not be declared here.
 
 // A type-only import, purely so `vitest` is part of the program: a
 // `declare module` augmentation of a package the file never otherwise mentions
@@ -36,6 +36,19 @@ declare module "vitest" {
     tcabUrl: string;
     /** The one Chromium every suite worker connects to. */
     tcabBrowserWs: string;
+    /**
+     * Whether this build installs no surface AT ALL, as the run settled it once
+     * in `globalSetup` rather than once per harness.
+     *
+     * `false` is the inconclusive answer as well as the negative one, and that is
+     * deliberate: a project whose `globalSetup` was given no handle to look for,
+     * and a probe that could not open a page, both report `false`, which leaves
+     * every harness to make its own full-ceiling reading exactly as it did before
+     * the probe existed. The flag can only ever save time; it can never be the
+     * thing that fails a build. See `global-setup.ts`'s `probeSurfaceAbsent` and
+     * `surface.ts`'s `readSurfaceFault`.
+     */
+    tcabSurfaceAbsent: boolean;
   }
 }
 
@@ -44,6 +57,9 @@ export const PROVIDE_URL_KEY = "tcabUrl";
 
 /** The provided-context key the shared browser's endpoint arrives under. */
 export const PROVIDE_WS_KEY = "tcabBrowserWs";
+
+/** The provided-context key the run-wide "no surface at all" answer arrives under. */
+export const PROVIDE_SURFACE_ABSENT_KEY = "tcabSurfaceAbsent";
 
 /** The page global the injected draw-command recorder installs itself on. */
 export const RECORDER_GLOBAL = "__tcabRec";
@@ -82,11 +98,27 @@ export const DEFAULT_SPEC_PATH = "specs/instrumentation.md";
 /**
  * How long the surface probe waits for `window.<handle>` to appear.
  *
- * A default rather than a constant because the four cases disagree — Refract and
- * Carom allow 5s, Fathom and Volute 15s — and the wait is what separates "the
- * build installs no surface" from "the build was still loading". Shortening a
- * case's wait can turn a passing build into a faulted one, so a case that has
- * chosen its own figure passes it.
+ * A DEFAULT rather than a constant because the cases disagree, and what they
+ * disagree about is how much work a build does before it can install anything.
+ * Refract allows 30s; Gantry, whose build loads a produced asset set before its
+ * surface goes up, allows 90s; Carom, Fathom, Volute, Wick and Orrery each state
+ * this same figure in their own config. The wait is what separates "the build
+ * installs no surface" from "the build was still loading", so shortening a case's
+ * wait can turn a passing build into a faulted one, and a case that has chosen
+ * its own figure passes it.
+ *
+ * FIFTEEN SECONDS IS A CEILING ON THE HOST, NOT A MEASUREMENT OF A BUILD. It ends
+ * the instant the global appears, so a conformant build pays none of it however
+ * high it is set — and `surface.ts` takes one look that does not wait at all
+ * before it reaches for the ceiling, so on the common path a build that installed
+ * its surface from its entry module never touches this number. What it bounds is
+ * the cost of a build that will never answer, which is why it is set well past
+ * what a loaded machine costs rather than close to what an idle one does: a build
+ * failed for crossing it has been failed for the load average.
+ *
+ * WHO PAYS IT is `surface.ts`'s subject, not this file's: the full ceiling is
+ * spent at most once per worker, and once for the whole run where a project's
+ * `globalSetup` was given the handle to probe with.
  */
 export const DEFAULT_SURFACE_TIMEOUT_MS = 15_000;
 

@@ -27,7 +27,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@napi-rs/canvas": "^0.1",
+    "@napi-rs/canvas": "^1",
     "jsdom": "^25",
     "typescript": "^5",
     "vitest": "^3"

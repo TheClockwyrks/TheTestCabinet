@@ -41,15 +41,25 @@ export interface ValidationConfigOptions {
   /**
    * How long one check may take.
    *
-   * The one dial the four cases genuinely disagree on, because what a check costs
-   * is the case's: a case whose pointer operations take effect the moment they
-   * are called spends a few hundred crossings on its longest scenario, while one
+   * A dial the cases may genuinely disagree on, because what a check costs is the
+   * case's: a case whose pointer operations take effect the moment they are
+   * called spends a few hundred crossings on its longest scenario, while one
    * whose scenario walks a level to its clear spends thousands of real simulated
    * ticks. Generous against a healthy build either way, and still bounds a hung
-   * one.
+   * one. A case that leaves it alone gets {@link DEFAULT_TEST_TIMEOUT_MS}, which
+   * is set against the worst load these projects have been measured under rather
+   * than against a quiet box; raise it only for a case that is genuinely costlier
+   * than that, and do not lower it to make a fast case look fast.
    */
   readonly testTimeout?: number;
-  /** How long a `beforeEach`/`afterEach` may take. */
+  /**
+   * How long a `beforeEach`/`afterEach` may take.
+   *
+   * Wider than every ceiling the harness itself sets, for the reason
+   * {@link DEFAULT_HOOK_TIMEOUT_MS} gives: whichever allowance runs out first is
+   * the one that writes the account a reviewer reads, and "a hook expired" says
+   * far less than "the surface never appeared" or "the browser was unreachable".
+   */
   readonly hookTimeout?: number;
   /**
    * How many suite files may be in flight at once.
@@ -64,14 +74,72 @@ export interface ValidationConfigOptions {
   readonly maxWorkers?: number;
 }
 
-/** A check that takes longer than this has hung rather than run slowly. */
-const DEFAULT_TEST_TIMEOUT_MS = 120_000;
+/**
+ * How long one check may take, for a case that names no ceiling of its own.
+ *
+ * WHAT A TIMEOUT IS FOR, AND WHAT IT MUST NOT DO. Nothing these projects measure
+ * is taken from the wall clock: every check drives the build frame by frame and
+ * asserts on what the build's own snapshot reports. The one wall clock left is
+ * this allowance — and an allowance a correct build can cross is a defect in the
+ * check, because it turns "how busy the machine was" into a lost point on a build
+ * that did nothing wrong.
+ *
+ * Sixty seconds was such an allowance. On a host running nine of these projects
+ * at once (load average ~450), an unmodified reference lost four points to it —
+ * `cascade/tier-ladder`, `cascade/sequence-is-endless`,
+ * `cascade/boards-meet-the-tier-floor` and `campaign/select-states` — at 66-76 s
+ * apiece against quiet times of 6-14 s. Nothing about those checks is unusual;
+ * any case's longest scenario is one busy host away from the same fate.
+ *
+ * Five minutes is set against that measured worst case rather than against a
+ * healthy machine, and against the one ceiling a validator project cannot move:
+ * the runner caps the WHOLE suite run at forty-five minutes (`VITEST_TIMEOUT`,
+ * `crates/core/src/vitest_validator.rs`). At load average ~650 — half again the
+ * worst these projects have been run under — the slowest file measured 170 s and
+ * the whole run 1 059 s of those 2 700. Five minutes is a NINTH of the outer cap,
+ * so a single file can only cross it on a host where the whole run was already
+ * lost; below that, no correct build loses a point to the clock. A hung build is
+ * still bounded, twice over.
+ */
+const DEFAULT_TEST_TIMEOUT_MS = 300_000;
 
-/** The ceiling on a suite's own setup and teardown. */
-const DEFAULT_HOOK_TIMEOUT_MS = 60_000;
+/**
+ * The ceiling on a suite's own setup and teardown.
+ *
+ * A hook reaches the shared browser, takes a page off it, loads the built site in
+ * that page, and waits for the surface and the recorder. The reasoning above
+ * applies, and one thing more: this allowance has to be wider than every ceiling
+ * the harness itself sets, or the last of them is decided here instead. A hook
+ * that runs out reports that a hook ran out; the harness's own ceilings report
+ * which wait was crossed and whether it was the host or the build that crossed it
+ * — `connectChromium` names an unreachable browser, `loadBuild` names a build the
+ * server would not hand over, and `readSurfaceFault` names a build that installed
+ * no surface — which is the account a reviewer needs. Those ceilings sum to well
+ * under half of this, whatever a case raises its surface probe to, so a hook that
+ * reaches five minutes has met something none of them describe.
+ */
+const DEFAULT_HOOK_TIMEOUT_MS = 300_000;
 
-/** How many pages of the one shared browser a project holds open at once. */
-const DEFAULT_MAX_WORKERS = 4;
+/**
+ * How many pages of the one shared browser a project holds open at once.
+ *
+ * Eight rather than four, because the number that matters is not how long a
+ * project takes on an idle box — it is how much of the runner's cap on the WHOLE
+ * suite run is left on a busy one. A crossing into a browser costs 6 ms on an idle
+ * host and 90 ms on a loaded one, and a worker waiting on one holds no core; four
+ * workers left a project serialized behind that wait while the box had cores to
+ * spare, and the whole run measured 700 s of the runner's 2 700 s cap. Eight
+ * halves that, and a page is still memory rather than a core.
+ *
+ * And eight rather than sixteen, which was measured too. At load average ~650 the
+ * same suite run took 1 059 s at eight workers with its slowest FILE at 170 s, and
+ * 861 s at sixteen with its slowest file at 316 s — sixteen buys 19% off the wall
+ * clock by making every file compete with fifteen siblings, and four points
+ * crossed the per-test allowance and were lost. The whole-run cap is the runner's
+ * to spend; the per-test one is what decides a build's score, so the worker count
+ * is set to protect the second.
+ */
+const DEFAULT_MAX_WORKERS = 8;
 
 /**
  * The vitest project a case's `validation/<engine>/vitest.config.ts` exports:
@@ -80,9 +148,11 @@ const DEFAULT_MAX_WORKERS = 4;
  * import { defineValidationConfig } from "./case-harness/vitest-config";
  * export default defineValidationConfig({
  *   root: new URL("..", import.meta.url).pathname,
- *   testTimeout: 60_000,
  * });
  * ```
+ *
+ * The dials are for a case that is genuinely unlike the others; the defaults
+ * below are the measured ones and a case that says nothing gets them.
  *
  * Everything but the dials is fixed, because everything but the dials is what
  * makes a staged validator project one shape the runner can drive: the project's

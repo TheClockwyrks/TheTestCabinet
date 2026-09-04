@@ -1490,6 +1490,7 @@ fn validation_run(id: &str, item_id: &str, image_present: bool, video_present: b
         gates: true,
         ran: true,
         precondition_unmet: false,
+        inconclusive: None,
         detail: None,
         verdicts: vec![],
         outputs: vec![
@@ -1597,6 +1598,7 @@ async fn per_run_validation_media_for_a_sub_item_is_keyed_by_the_composite_verdi
         gates: true,
         ran: true,
         precondition_unmet: false,
+        inconclusive: None,
         detail: None,
         verdicts: vec![],
         outputs: vec![DebugScriptOutput {
@@ -3255,6 +3257,7 @@ fn validator_run(id: &str, published_at: &str, verdicts: &[(&str, bool)]) -> Sto
             gates: true,
             ran: true,
             precondition_unmet: false,
+            inconclusive: None,
             detail: None,
             verdicts: vec![AutoVerdict {
                 id: point.to_string(),

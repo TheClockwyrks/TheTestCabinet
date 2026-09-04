@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
-import { describe, expect, it, vi } from "vitest";
-import type { RunRecord } from "@test-cabinet/run-record";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { DebugScriptResult, RunRecord } from "@test-cabinet/run-record";
 import { RunVerdictPage } from "./RunVerdictPage";
 
 // The read-only Verdict tab as a PUBLIC visitor sees it — the static gallery,
@@ -75,9 +75,7 @@ vi.mock("../../../data/useRunVariant", () => ({
   useReviewModel: () => ({
     status: "ready",
     validatorRated: true,
-    domains: [
-      { id: "single-player", name: "Single player", description: "" },
-    ],
+    domains: [{ id: "single-player", name: "Single player", description: "" }],
     items: [
       {
         id: "rules",
@@ -106,6 +104,58 @@ vi.mock("../../../data/useRunVariant", () => ({
   useRunVariant: () => ({ variant: undefined, status: "ready" }),
 }));
 
+// The validators' results the fixture run carries: one whole-item driver that
+// passed the serve and failed the AI point. A test about how an outcome READS
+// replaces them before rendering.
+function decided(): DebugScriptResult[] {
+  return [
+    {
+      itemId: "rules",
+      subItemId: null,
+      title: "Rules",
+      categoryTitle: "Rules",
+      script: "validation/rules.mjs",
+      gates: true,
+      ran: true,
+      preconditionUnmet: false,
+      inconclusive: null,
+      verdicts: [
+        { id: "rules.serve", pass: true, assertions: [] },
+        { id: "rules.ai", pass: false, assertions: [] },
+      ],
+      outputs: [],
+    },
+  ] as unknown as DebugScriptResult[];
+}
+
+/** The same case's validators, each having decided nothing for `reason`. A
+ * validator drives one verdict unit, so an undecided point is one whose own
+ * per-sub-item driver reported back without a verdict. */
+function undecided(
+  reason: DebugScriptResult["inconclusive"],
+): DebugScriptResult[] {
+  return ["serve", "ai"].map(
+    (subItemId) =>
+      ({
+        ...decided()[0]!,
+        subItemId,
+        ran: false,
+        preconditionUnmet: true,
+        inconclusive: reason,
+        detail:
+          reason === "timedOut"
+            ? "the validators exceeded the 2700 second cap and were stopped"
+            : null,
+        verdicts: [],
+      }) as unknown as DebugScriptResult,
+  );
+}
+
+let scripts = decided();
+beforeEach(() => {
+  scripts = decided();
+});
+
 // A published, completed, validator-rated run whose validators passed the serve
 // and failed the AI point.
 function run(): RunRecord {
@@ -124,23 +174,7 @@ function run(): RunRecord {
     validation: {
       loaded: true,
       proofs: [],
-      debugScripts: [
-        {
-          itemId: "rules",
-          subItemId: null,
-          title: "Rules",
-          categoryTitle: "Rules",
-          script: "validation/rules.mjs",
-          gates: true,
-          ran: true,
-          preconditionUnmet: false,
-          verdicts: [
-            { id: "rules.serve", pass: true, assertions: [] },
-            { id: "rules.ai", pass: false, assertions: [] },
-          ],
-          outputs: [],
-        },
-      ],
+      debugScripts: scripts,
     },
   } as unknown as RunRecord;
 }
@@ -210,5 +244,37 @@ describe("RunVerdictPage read-only on a validator-rated run", () => {
       screen.getByText(/The validator script ran to completion/),
     ).toBeTruthy();
     expect(screen.getByText("validation/rules.mjs")).toBeTruthy();
+  });
+
+  it("says a run stopped at its time budget judged nothing about the build", () => {
+    scripts = undecided("timedOut");
+
+    render(
+      <MemoryRouter>
+        <RunVerdictPage />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Ball serves" }));
+
+    // The reason is the host's clock, and it is not dressed up as a fact about
+    // the build's world.
+    expect(screen.getByText(/ran out of time/)).toBeTruthy();
+    expect(screen.queryByText(/precondition was not met/)).toBeNull();
+    expect(screen.queryByText(/contract failure/)).toBeNull();
+  });
+
+  it("still reads an older record's inconclusive point as an unmet precondition", () => {
+    // A record written before the outcomes were told apart carries no reason,
+    // which is exactly what this state used to mean.
+    scripts = undecided(null);
+
+    render(
+      <MemoryRouter>
+        <RunVerdictPage />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Ball serves" }));
+
+    expect(screen.getByText(/precondition was not met/)).toBeTruthy();
   });
 });

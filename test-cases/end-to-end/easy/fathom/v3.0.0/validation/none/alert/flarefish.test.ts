@@ -116,8 +116,18 @@ const FLARE_WAIT_TICKS = ticks(
   2 * FLARE_INTERVAL + FLARE_CHARGE + FLARE_BLOOM + 1,
 );
 
-/** How often the flare wait reads, in ticks. */
-const FLARE_POLL = 6;
+/**
+ * How often the flare wait reads, in ticks: a fifth of a second.
+ *
+ * A wait for the flare to arrive at all, and nothing below reads when it did —
+ * the window this point times is read one tick at a time. What this has to be
+ * fine enough for is only to land inside the `FLARE_CHARGE` (`0.5 s`) charge-up,
+ * which is two and a half times it. It is not finer because
+ * `specs/instrumentation.md` has `advance` redraw, so a sample costs the build a
+ * whole frame of its own rendering, and this wait can run to fifteen seconds of
+ * game.
+ */
+const FLARE_POLL = 24;
 
 /**
  * The item's tolerance on where the window's edges fall, in seconds.
@@ -329,6 +339,8 @@ it("The Flarefish fires the alert on a fresh fix", async () => {
   const posed = await h.snapshot();
   const flareGap = gapAt(posed, index);
 
+  // A pure wait for the flare to arrive at all: the lock below is what this half
+  // times, and it is read one tick at a time.
   const charging = await h.skipUntil(
     (s) => s.predators[index].flareCharging === true,
     { maxTicks: FLARE_WAIT_TICKS, poll: FLARE_POLL },

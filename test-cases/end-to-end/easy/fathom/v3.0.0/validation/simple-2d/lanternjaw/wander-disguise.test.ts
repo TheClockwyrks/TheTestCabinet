@@ -26,13 +26,13 @@
 // down rather than failing it twice.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLessThan, assertLessThanOrEqual } from "../assert";
 import {
   BRIGHT_HOLD,
   DRIFTER_SPEED,
   FORAGER_SPEED,
   PREDATOR_SPEED,
-} from "../../src/constants";
-import { assertEqual, assertLessThan, assertLessThanOrEqual } from "../assert";
+} from "../constants";
 import { poseSightLine, spawnPredator } from "../fixtures";
 import {
   captureReplay,

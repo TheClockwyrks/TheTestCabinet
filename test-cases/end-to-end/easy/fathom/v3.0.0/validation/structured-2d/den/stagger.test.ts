@@ -30,7 +30,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertLessThanOrEqual } from "../assert";
-import { DEN_ORDER, DEN_RELEASE_GAP } from "../../src/constants";
+import { DEN_ORDER, DEN_RELEASE_GAP } from "../constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import { requireSceneHeld, sceneGuard } from "../scene";
 import {

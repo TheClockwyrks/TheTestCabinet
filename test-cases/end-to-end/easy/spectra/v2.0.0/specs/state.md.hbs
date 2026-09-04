@@ -1,0 +1,465 @@
+# Spectra — Game state
+
+{{#if (eq engine.slug "none")}}
+The build owns the shape of the game's state entirely.
+
+The one contract fixed over the state is the debugging and automation surface
+specified for this build. Every operation that surface carries is a read or a pose
+of the running game, so the state holds what those operations read, honors what they
+write, and returns to its title-screen values when the surface's `reset` is called.
+Beyond satisfying that surface, how the state is organized is yours to decide.
+
+Whatever its shape, the state carries the following.
+
+## The screen and the run
+
+- The screen the game is showing, one of `title`, `howto`, `stageIntro`, `inWave`,
+  `paused`, `stageCleared`, and `gameOver`.
+- The sub-phase of the `inWave` screen, `live` or `ready`, and the seconds left in
+  whichever hold the current screen or phase is running.
+- The item highlighted on whichever vertical menu the current screen shows, counted
+  from `0`.
+- The score, the lives remaining, and the stage being played.
+- Whether the run's one extra life has already been paid.
+- How many of the current challenge stage's drones have been destroyed.
+
+## The band systems
+
+- The resonance meter, from `0` to `RESONANCE_MAX`.
+- The seconds of spectral inversion remaining, `0` for none.
+
+## The field
+
+- The ship: the center `x` of its lane position, its band, the seconds of fire
+  lockout left, the seconds until it may fire again, and whether its contact test is
+  running.
+- The live discharge wave: whether one is running, and its current radius.
+- Every drone on the field, each with a distinct id, its kind, its center, its
+  stored band, its phase, the seconds it has been in that phase, the center of its
+  formation slot, the entry group it arrives with, a Flux's band clock, whether a
+  Prism's shell stands, how many shots it has taken during its current dive, and the
+  three faculty gates the debug surface poses.
+{{#if (eq variant.slug "overload")}}
+  Each drone also carries its charge, a whole number from `0` to `OVERLOAD_AT`.
+{{/if}}
+- Every bullet in flight, each with a distinct id, its center, its velocity, its
+  band, and whether it is the player's.
+- Every drone-burst playing, each with a distinct id, its center, the footprint it
+  is played at, the seconds it has been playing, and its own particle simulation.
+
+## The wave's own schedules
+
+- Whether the wave's entry of drones is running, and whether the assault's dive
+  launching is running. Both are on when a run begins.
+- The wave's entry clock, which its entry groups are released against; its sway
+  clock, which the formation's sway is drawn against; and its dive clock together
+  with the gap the next dive launch waits for.
+
+## The rest
+
+- The simulation time, in seconds, as `specs/simulation.md` defines it.
+- Whether sound is muted, refreshed from the runtime's mute bit in every update.
+- The state of the seeded random generator, which the wave's layout, the choice of
+  which drone dives next, the gap before the next dive, a Flux's starting phase, and
+  each burst's scatter are all drawn from.
+- Whatever the game needs to hand a fresh id to the next drone, bullet, or burst it
+  creates, so no two entities live at one moment share an id.
+
+A drone's effective band, whether a Flux is shimmering, whether a discharge is
+ready, whether the stage is a challenge stage, whether the ship is alive, and the
+four stage-scaled figures are all derived by the formulas the other specs give,
+rather than stored.
+{{else if (eq engine.slug "simple-2d")}}
+`src/game.ts` declares and exports the state the game is written against. This
+section is that declaration: write it into `src/game.ts` exactly as it stands here.
+The state is a value the engine holds and every frame replaces, so every field and
+every array is declared `readonly`: a frame builds the next state from the current
+one rather than writing into it, and every reader is handed the state as
+`DeepReadonly<SpectraState>` in any case.
+
+`ParticleSimulator` comes from `@test-cabinet/particle-runtime`, the runtime
+`specs/assets.md` states the drone-burst is played with.
+
+```ts
+export type Screen =
+  | "title"
+  | "howto"
+  | "stageIntro"
+  | "inWave"
+  | "paused"
+  | "stageCleared"
+  | "gameOver";
+
+export type Phase = "live" | "ready";
+
+export type Band = "cyan" | "magenta";
+
+export type DroneKind = "shard" | "flux" | "prism";
+
+export type DronePhase = "entering" | "formation" | "diving" | "returning";
+
+export interface ShipState {
+  readonly x: number;
+  readonly band: Band;
+  readonly lockout: number;
+  readonly cooldown: number;
+  readonly contact: boolean;
+}
+
+export interface DischargeState {
+  readonly active: boolean;
+  readonly radius: number;
+}
+
+export interface DroneState {
+  readonly id: number;
+  readonly kind: DroneKind;
+  readonly x: number;
+  readonly y: number;
+  readonly band: Band;
+  readonly phase: DronePhase;
+  readonly phaseClock: number;
+  readonly slotX: number;
+  readonly slotY: number;
+  readonly entryGroup: number;
+  readonly bandClock: number;
+  readonly shellAlive: boolean;
+  readonly shotsFired: number;
+  readonly travel: boolean;
+  readonly oscillation: boolean;
+  readonly fire: boolean;
+{{#if (eq variant.slug "overload")}}
+  readonly charge: number;
+{{/if}}
+}
+
+export interface BulletState {
+  readonly id: number;
+  readonly x: number;
+  readonly y: number;
+  readonly vx: number;
+  readonly vy: number;
+  readonly band: Band;
+  readonly friendly: boolean;
+}
+
+export interface BurstState {
+  readonly id: number;
+  readonly x: number;
+  readonly y: number;
+  readonly size: number;
+  readonly elapsed: number;
+  readonly sim: ParticleSimulator;
+}
+
+export interface SpectraState {
+  readonly screen: Screen;
+  readonly phase: Phase;
+  readonly phaseTimer: number;
+  readonly menuIndex: number;
+
+  readonly score: number;
+  readonly lives: number;
+  readonly stage: number;
+  readonly extraLifeAwarded: boolean;
+  readonly challengeHits: number;
+
+  readonly resonance: number;
+  readonly inversion: number;
+
+  readonly ship: ShipState;
+  readonly discharge: DischargeState;
+
+  readonly drones: readonly DroneState[];
+  readonly bullets: readonly BulletState[];
+  readonly bursts: readonly BurstState[];
+
+  readonly waveEntry: boolean;
+  readonly diveLaunching: boolean;
+  readonly entryClock: number;
+  readonly swayClock: number;
+  readonly diveClock: number;
+  readonly diveTarget: number;
+
+  readonly nextId: number;
+  readonly simTime: number;
+  readonly muted: boolean;
+  readonly rngState: number;
+}
+```
+{{else}}
+`src/game.ts` declares and exports the state the game is written against. This
+section is that declaration: write it into `src/game.ts` exactly as it stands here.
+The state is the world's game state: a class extending the engine's `GameState`,
+named by the game mode as its `gameStateClass`, so the engine builds one instance of
+it when the world opens and `engine.world.state` is that instance. Wherever this
+specification writes `state.foo`, it means a field of that instance.
+
+The game runs in one world for the whole session. The game definition registers the
+single level `LEVELS` names, the game never opens another, and every screen is a
+value of `screen`, so the state below is built once and lives until the page closes.
+The actors the field carries are tagged with the names in `TAGS`, one per actor
+kind, so the ship, the drones, the two bullet kinds, and the bursts are each found
+by tag.
+
+The framework's states are live objects: a tick writes the fields it advances in
+place, and each field initializer below is that field's title-screen value, the same
+value the debug surface's `reset` restores.
+
+`GameState` comes from the engine's package, `ParticleSimulator` from
+`@test-cabinet/particle-runtime`, and `DEFAULT_SEED`, `DIVE_FIRST_DELAY`, and
+`START_LIVES` from `src/constants.ts`.
+
+```ts
+export type Screen =
+  | "title"
+  | "howto"
+  | "stageIntro"
+  | "inWave"
+  | "paused"
+  | "stageCleared"
+  | "gameOver";
+
+export type Phase = "live" | "ready";
+
+export type Band = "cyan" | "magenta";
+
+export type DroneKind = "shard" | "flux" | "prism";
+
+export type DronePhase = "entering" | "formation" | "diving" | "returning";
+
+export interface ShipState {
+  x: number;
+  band: Band;
+  lockout: number;
+  cooldown: number;
+  contact: boolean;
+}
+
+export interface DischargeState {
+  active: boolean;
+  radius: number;
+}
+
+export interface DroneState {
+  id: number;
+  kind: DroneKind;
+  x: number;
+  y: number;
+  band: Band;
+  phase: DronePhase;
+  phaseClock: number;
+  slotX: number;
+  slotY: number;
+  entryGroup: number;
+  bandClock: number;
+  shellAlive: boolean;
+  shotsFired: number;
+  travel: boolean;
+  oscillation: boolean;
+  fire: boolean;
+{{#if (eq variant.slug "overload")}}
+  charge: number;
+{{/if}}
+}
+
+export interface BulletState {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  band: Band;
+  friendly: boolean;
+}
+
+export interface BurstState {
+  id: number;
+  x: number;
+  y: number;
+  size: number;
+  elapsed: number;
+  sim: ParticleSimulator;
+}
+
+export class SpectraState extends GameState {
+  screen: Screen = "title";
+  phase: Phase = "live";
+  phaseTimer = 0;
+  menuIndex = 0;
+
+  score = 0;
+  lives = START_LIVES;
+  stage = 1;
+  extraLifeAwarded = false;
+  challengeHits = 0;
+
+  resonance = 0;
+  inversion = 0;
+
+  ship: ShipState = {
+    x: 640,
+    band: "cyan",
+    lockout: 0,
+    cooldown: 0,
+    contact: true,
+  };
+  discharge: DischargeState = { active: false, radius: 0 };
+
+  drones: DroneState[] = [];
+  bullets: BulletState[] = [];
+  bursts: BurstState[] = [];
+
+  waveEntry = true;
+  diveLaunching = true;
+  entryClock = 0;
+  swayClock = 0;
+  diveClock = 0;
+  diveTarget = DIVE_FIRST_DELAY;
+
+  nextId = 1;
+  simTime = 0;
+  muted = false;
+  rngState = DEFAULT_SEED;
+}
+```
+{{/if}}
+{{#if (ne engine.slug "none")}}
+
+## The screen and the run
+
+- `screen` — the screen currently shown, one of the seven `specs/ui.md` defines.
+- `phase` — the sub-phase of the `inWave` screen, as `specs/progression.md` defines
+  it. It holds `live` on every other screen.
+- `phaseTimer` — the seconds left in whichever hold the current screen or phase is
+  running, counting down against each update's delta and resting at `0`.
+- `menuIndex` — the highlighted item on whichever vertical menu `screen` is showing,
+  counted from `0`. It rests at `0` on `inWave`.
+- `score`, `lives`, `stage` — the run's figures.
+- `extraLifeAwarded` — whether the run's one extra life has been paid, as
+  `specs/progression.md` states.
+- `challengeHits` — how many of the current challenge stage's drones the run has
+  destroyed. It returns to `0` when a challenge stage's wave is built.
+
+## The band systems
+
+- `resonance` — the meter, from `0` to `RESONANCE_MAX`.
+- `inversion` — the seconds of spectral inversion left, `0` for none.
+
+## `ShipState` and `DischargeState`
+
+- The ship carries `x`, the center of its lane position; `band`, the band it holds;
+  `lockout`, the seconds of post-flip fire lockout left; `cooldown`, the seconds
+  until it may fire again; and `contact`, whether its contact test runs, which the
+  debug surface poses.
+- The discharge carries `active`, whether a wave is running, and `radius`, that
+  wave's current radius in logical units. Both rest at `false` and `0`.
+
+## `DroneState`
+
+One drone on the field.
+
+- `id` — distinct among every entity live at that moment, and kept for as long as
+  the drone exists.
+- `kind` — `"shard"`, `"flux"`, or `"prism"`.
+- `x`, `y` — the drone's center.
+- `band` — its stored band. On a Prism this is the shell's band, and the core's is
+  the opposite.
+- `phase` — one of the four phases `specs/swarm.md` defines.
+- `phaseClock` — the seconds the drone has been in its current phase. It returns to
+  `0` whenever the phase changes, however the change came about, so the path a
+  phase runs starts from its beginning.
+- `slotX`, `slotY` — the center of the drone's resting formation slot. A challenge
+  drone never settles, and its slot holds the point it entered at.
+- `entryGroup` — the entry group the drone arrives with, counted from `0`, as
+  `specs/swarm.md` states.
+- `bandClock` — a Flux's position inside its current band window, in seconds. It
+  rests at `0` on the other two kinds.
+- `shellAlive` — whether a Prism's outer shell stands. It is `true` on the other two
+  kinds.
+- `shotsFired` — how many shots the drone has taken during its current dive. It
+  returns to `0` with `phaseClock`.
+- `travel`, `oscillation`, `fire` — the three faculty gates the debug surface poses.
+  Each is `true` for a drone the game itself brought in.
+{{#if (eq variant.slug "overload")}}
+- `charge` — the drone's charge, a whole number from `0` to `OVERLOAD_AT`, as
+  `specs/mode.md` states.
+{{/if}}
+
+`drones` lists every drone on the field, and a drone added through the debug surface
+is appended to it.
+
+## `BulletState` and `BurstState`
+
+- A bullet carries an `id`, distinct among every entity live at that moment; its
+  center; `vx` and `vy`, its velocity in logical units per second; `band`, the band
+  it was fired with and keeps for its life; and `friendly`, `true` for one of the
+  player's and `false` for an enemy bullet. One roster holds both.
+- A burst carries an `id`, its center, `size`, the footprint it is played at,
+  `elapsed`, the seconds it has been playing, and `sim`, its own particle
+  simulation. The live particle count the debug surface reports is read from `sim`.
+
+## The wave's own schedules
+
+- `waveEntry` — whether the wave's own release of entry groups runs, which the debug
+  surface poses.
+- `diveLaunching` — whether the assault's own dive launching runs, which the debug
+  surface poses.
+- `entryClock` — the seconds since the wave opened, which its entry groups are
+  released against. It advances only while `waveEntry` is on.
+- `swayClock` — the seconds the wave has been played, which the formation's sway is
+  drawn against, as `specs/field.md` states. It returns to `0` when a wave is built.
+- `diveClock` — the seconds since the wave's last dive launch, which the debug
+  surface poses. It advances only while `diveLaunching` is on.
+- `diveTarget` — the value `diveClock` must reach for the next launch. A wave is
+  built with it at `DIVE_FIRST_DELAY`, and each launch draws a fresh one between
+  `DIVE_GAP_MIN` and `DIVE_GAP_MAX` multiplied by `diveGapScale(stage)`.
+
+## The rest
+
+- `nextId` — the id the next drone, bullet, or burst takes, so no two entities live
+  at one moment share one.
+- `simTime` — accumulated simulation time, in seconds, as `specs/simulation.md`
+  states.
+- `muted` — the game's readable copy of the runtime's mute bit, refreshed in every
+  update. The runtime owns muting, and this field is what the debug surface reports.
+- `rngState` — the state of the game's seeded random generator. The wave's layout,
+  the choice of which drone dives next, the gap before the next dive, a Flux's
+  starting phase, and each burst's scatter are all drawn from it.
+
+A drone's effective band, whether a Flux is shimmering, whether a discharge is
+ready, whether the stage is a challenge stage, whether the ship is alive, and the
+four stage-scaled figures are all derived by the formulas the other specs give,
+rather than stored.
+
+## The contract
+
+The declaration above is what the debug surface reads and poses.
+
+- Keep every field under its declared name, type, and meaning.
+{{#if (eq engine.slug "simple-2d")}}
+- `initialize` builds the whole state in one go, so every field is present by the
+  time a frame can observe it, and none of them is optional.
+- The state handed to `update` is the whole of the game, and the state `update`
+  returns is the whole of the next frame. Every value the game carries from one frame
+  to the next lives in it; nothing is kept in a module-level variable or a closure.
+- The state is handed over read-only, as `DeepReadonly<SpectraState>`, to `update`,
+  to `render`, to every diagnostic source, and to every operation of the debug
+  surface. `update` and the surface's poses return a new `SpectraState` built from
+  the one they received; `render`, the sources, and `snapshot` return no state.
+{{else}}
+- The engine builds the state when the world opens, through the mode's
+  `gameStateClass`, so every field is present by the time a frame can observe it, and
+  none of them is optional.
+- The state is the whole of the authoritative game. Every value the game carries from
+  one frame to the next lives in it; nothing is kept in a module-level variable or a
+  closure, and any field an actor, component, or controller holds of its own is
+  derived data rebuilt from the declared ones.
+- The state is written only through the paths play runs on: the player controller
+  resolves the frame's input into it, the game mode's tick advances it, and the debug
+  surface's poses arrange it at the call. Rendering reads it and writes nothing.
+{{/if}}
+- Fields you add hold derived data you can rebuild from the declared ones. A `reset`
+  restores the declared fields to their title-screen values, so those fields are the
+  whole of the authoritative state.
+{{/if}}

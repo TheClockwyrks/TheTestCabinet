@@ -48,7 +48,7 @@ import {
   assertGreaterThanOrEqual,
   assertLessThan,
 } from "../assert";
-import { BRIGHT_HOLD, FLARE_RADIUS, TILE } from "../../src/constants";
+import { BRIGHT_HOLD, FLARE_RADIUS, TILE } from "../constants";
 import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,

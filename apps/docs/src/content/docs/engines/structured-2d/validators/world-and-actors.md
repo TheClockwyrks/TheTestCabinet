@@ -14,7 +14,7 @@ the match phase. `setPhase` writes the phase onto the game state, so the two
 always agree and a check reads either one.
 
 ```ts
-import { LEVELS } from "../../src/constants";
+import { LEVELS } from "../constants";
 import { createHarness } from "../harness";
 
 it("the title level waits before a match starts", async () => {
@@ -46,7 +46,7 @@ copy the caller owns.
 
 ```ts
 import { Pawn } from "@test-cabinet/structured-2d";
-import { FIELD_W, TAGS } from "../../src/constants";
+import { FIELD_W, TAGS } from "../constants";
 
 const paddles = world.byTag(TAGS.paddle);
 expect(paddles).toHaveLength(2);
@@ -59,11 +59,12 @@ expect(world.find(Pawn)).not.toBeNull();
 ```
 
 A build names its own actor classes, so a check that named one would be checking
-a name the case never fixed. The case fixes the tag vocabulary in `constants.ts`
-instead, and a build applies those tags through the `tags` of an `ActorSpec` or
-a `SpawnSpec`. `ofType` and `find` stay useful for the framework classes every
-build shares, `Pawn` above all, which is how a check reaches the thing a
-controller possesses without knowing what the build called it.
+a name the case never fixed. The case fixes the tag vocabulary instead, which
+the project's own `constants.ts` states and a build applies through the `tags`
+of an `ActorSpec` or a `SpawnSpec`. `ofType` and `find` stay useful for the
+framework classes every build shares, `Pawn` above all, which is how a check
+reaches the thing a controller possesses without knowing what the build called
+it.
 
 ## Player states and scores
 
@@ -94,7 +95,7 @@ controller that drives it.
 
 ```ts
 import { AIController } from "@test-cabinet/structured-2d";
-import { PADDLE_SPEED } from "../../src/constants";
+import { PADDLE_SPEED } from "../constants";
 
 class Scripted extends AIController {
   drive = 0;

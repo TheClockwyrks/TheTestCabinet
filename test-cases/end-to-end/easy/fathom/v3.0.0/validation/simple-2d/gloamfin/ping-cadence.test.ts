@@ -31,7 +31,7 @@ import {
   assertLessThanOrEqual,
   assertTrue,
 } from "../assert";
-import { GLOAMFIN_PING_INTERVAL, TICK_HZ } from "../../src/constants";
+import { GLOAMFIN_PING_INTERVAL, TICK_HZ } from "../constants";
 import { poseApart, spawnPredator } from "../fixtures";
 import {
   captureReplay,

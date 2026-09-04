@@ -46,17 +46,17 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
-  FLARE_BLOOM,
-  FLARE_CHARGE,
-  FLARE_INTERVAL,
-  FLARE_RADIUS,
-} from "../../src/constants";
-import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
   fail,
 } from "../assert";
+import {
+  FLARE_BLOOM,
+  FLARE_CHARGE,
+  FLARE_INTERVAL,
+  FLARE_RADIUS,
+} from "../constants";
 import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,

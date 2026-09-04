@@ -1,0 +1,2806 @@
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# engines a run may select, how the produced implementation is built and checked,
+# and what a reviewer grades. The testing harness reads this file to resolve a
+# `TestCaseVersion`.
+
+# The case's stable identity: the definition-store key, recorded in every run.
+slug = "floe"
+
+# Human-readable display name for this test case.
+name = "Floe"
+
+# Relative difficulty of this case, surfaced on the site. Floe is a great deal of
+# *work* — sixteen lanes of moving traffic, a pursuing hunter with real routing
+# across both bands, five bays, a timer, an eight-level run, six screens, and
+# under `none` the whole runtime layer beneath all of it — but none of it is hard
+# to reason about: the strait is a 40x20 grid of 32-unit tiles, every rate is a
+# constant, and there is no physics and no opponent to tune. Difficulty rates how
+# demanding the *thinking* is rather than how long the build takes;
+# `max_runtime_hours` below is where the size of the job is accounted for. So
+# easy.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["arcade", "2d", "crossing"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline as
+# plain text (not a file) so it renders safely inside the card's link and stays
+# deliberately brief; the longer `description` below is shown on the detail page.
+# Like `description`, this is NOT seeded into a run.
+summary = """
+A single-screen crossing game where a small critter hops across lanes of sliding \
+ice and drifting floes to reach the far-shore bays, hunted the whole way by a polar \
+bear that dodges the same traffic and swims out after it."""
+
+# Site-facing prose describing the case, relative to this version folder. This is
+# NOT seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+
+# Required per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version. The site aggregates every
+# version's entry, newest first, into the case's changelog. Like `description`, it
+# is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. It is rendered per
+# run (with the seeded specs and the selected engine) and handed to the model as
+# the build instruction. It injects absolute in-container paths through template
+# variables rather than hardcoding them.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. It exists so a stuck or runaway session cannot run unbounded, not to
+# make the job tight. Floe asks for a fixed-step simulation, sixteen populated
+# lanes that wrap without breaking their spacing, a hunter that routes around
+# moving traffic and swims, five bays with a bonus catch on its own cadence, a
+# timer, an eight-level run with a victory and a loss, six screens, ten audio
+# cues, the seeded sprite art drawn correctly, and — under `none` — the frame
+# loop, the canvas fit, the keyboard, the audio and the debug overlay beneath all
+# of that. v2.0.0 gave it five hours and it stays at five.
+max_runtime_hours = 5
+
+# Init command, run in the run container once the workspace, the assets and the
+# specs are seeded and before the harness starts. It installs the seeded project's
+# dependencies — the TypeScript toolchain the `[toolchain]` commands invoke, the
+# headless canvas the model's own vitest tests can draw through, and, on an engine
+# run, the vendored engine — and downloads the Playwright Chromium build (the base
+# image ships the OS libraries Chromium links against, but not the browser
+# binary), so the model can build the game and look at it in a browser without any
+# further setup.
+init = "npm install && npx playwright install chromium"
+
+# Provided art, seeded into the run root under `assets/`. Each entry is a
+# directory, seeded recursively and landing at the same path in the run, so
+# `assets/bear/` reaches the run as `assets/bear/`. Floe ships a fixed set of
+# pre-drawn 32-unit sprite frames and the build renders the game FROM THEM rather
+# than drawing shapes in code or bringing art of its own; `specs/assets.md` is the
+# contract for what each folder holds, how many frames it has, and which frame is
+# drawn for which state. Nothing else about the look is fixed — the bands, the
+# HUD, the screens and the palette are the build's own design.
+#
+# `assets` is a root key, so it must precede the first table header.
+assets = [
+  "assets/crosser",  # the critter, eight frames: two per facing
+  "assets/bear",     # the hunter, eighteen frames: run, swim and lunge
+  "assets/plow",     # the three-tile ice vehicle
+  "assets/dogsled",  # the two-tile ice vehicle
+  "assets/car",      # the other two-tile ice vehicle
+  "assets/pan",      # the one-tile floe
+  "assets/raft",     # the three- and four-tile floes, two sheets
+]
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Floe declares exactly ONE, so every run of this case is the same game on the
+# same strait.
+#
+# The eight levels are not variants. They are the run's own progression, reached
+# by playing, exactly as Carom's Solo and Versus are modes inside every variant
+# rather than variants of their own. A variant is a difference in the *game a run
+# is asked to build*; a level is a difference in what the finished game does with
+# the player who reaches it. Nothing in the seeded spec set branches on the
+# variant at all — the only axis the specs branch on is `engine.slug`, which
+# changes what the build is handed rather than what it is asked to make.
+#
+# This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The engines a run of this case may select. An engine is the runtime the produced
+# game is built on — the frame loop and the delta time it hands the game, the
+# input actions a player drives it with, the audio bus, asset loading, and the
+# on-screen diagnostics; one of them also owns rendering and the gameplay
+# framework the game is written inside. It is a *run dimension*, chosen per run
+# alongside the model, the harness, and the variant, and recorded on the run; it
+# is not a property of the game.
+#
+# Floe supports three, and the game is the same under all of them. What differs is
+# how much of the build is handed over:
+#   - `none`          supplies no runtime and no `src/` at all, so the build
+#                     writes the frame loop, the fixed-tick accumulator, the
+#                     canvas fit, the keyboard, the audio, the overlay and the
+#                     `window.__floe` surface itself.
+#   - `simple-2d`     vendors the runtime as a package and seeds the modules
+#                     around it (`src/constants.ts`, `src/main.ts`, and the
+#                     `src/game.ts` stub the build replaces, debug surface
+#                     included).
+#   - `structured-2d` vendors its framework engine the same way and seeds
+#                     `src/constants.ts` and `src/main.ts`; the build writes its
+#                     game module — the game definition, its mode, its live state
+#                     and its actors — and the debug surface its instance's
+#                     `initialize` returns.
+# The game they describe is the same one, so the review items are the same for
+# every engine and a score recorded under one is comparable with a score recorded
+# under another; the specs and the validators branch where the deliverable
+# differs.
+#
+# `none` supplies no package and therefore carries no version, so it is named in
+# the bare `engines` list; `simple-2d` and `structured-2d` each carry a range and
+# are named in `[[engine]]` tables. A range is pinned because a specification is
+# written against a runtime contract: `min_version` is the 1.0.0 API the specs and
+# the validators are written against, and there is deliberately no `max_version`,
+# so a later 1.x or 2.x from the host package store is accepted as it lands.
+# Widening or moving a range means a new case version, so the pin is the statement
+# that THIS spec set matches THIS contract.
+#
+# What this declaration deliberately does NOT do is describe an engine. An engine
+# ships its own documentation from its own package, and seeding puts it in the run
+# for the model to read, so the specs seeded from this folder never restate an
+# engine's API and never fall out of date when it changes. Where a spec speaks of
+# the runtime it does so only to state what is specific to *this game* under it —
+# which surfaces the build still supplies, Floe's action list, and Floe's cue
+# names — never to teach the runtime.
+#
+# `engines` is a root key, so it must precede the first table header.
+engines = ["none"]
+
+# ---- Tables begin here. No root key may follow. ----------------------------
+#
+# `variants`, `assets`, `init`, `max_runtime_hours` and `engines` above are ROOT
+# keys. Written after a header such as `[instrumentation]` they would parse as
+# `instrumentation.variants` and `instrumentation.assets`, and the case would then
+# declare no variants and no assets at all and be rejected at resolution.
+
+[[engine]]
+slug = "simple-2d"
+min_version = "1.0.0"
+
+[[engine]]
+slug = "structured-2d"
+min_version = "1.0.0"
+
+# The starter project seeded into the root of every run before the specs, one per
+# engine. All three carry the same Vite/TypeScript/ESLint/Prettier/Vitest
+# configuration the `[toolchain]` commands below run against, an `index.html`
+# holding the canvas, and a `vite.config.ts` that serves the seeded `assets/` tree
+# in development and copies it into `dist/` at build. What differs is how much of
+# the build is supplied with them.
+#
+#   - `none`          supplies the configuration and nothing else. There is no
+#                     `src/`: the build writes its own frame loop and fixed-tick
+#                     accumulator, canvas fit, keyboard input, audio, diagnostics
+#                     overlay and `window.__floe` surface, and every figure the
+#                     specification fixes, from the specs alone.
+#   - `simple-2d`     declares the engine in its `package.json`, which is vendored
+#                     in at seed time so the build imports it by its bare package
+#                     name, and seeds the case-owned modules around the game:
+#                     `src/constants.ts` (every figure this specification fixes,
+#                     which a validator imports; the look is NOT among them),
+#                     `src/main.ts` (the browser entry), and a `src/game.ts` stub
+#                     written against types it does not declare, so the project
+#                     does not type-check until the build declares them.
+#   - `structured-2d` declares that engine in its `package.json` the same way and
+#                     seeds the same two case-owned modules — and NO `src/game.ts`
+#                     at all. `src/main.ts` imports it, so the first `tsc` on a
+#                     freshly seeded workspace fails on the missing module. That
+#                     failure is the starting point, and `src/main.ts` says so.
+#
+# The seeded files land at the run root (`workspaces/none/package.json` seeds to
+# `package.json`).
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/simple-2d"
+"structured-2d" = "workspaces/structured-2d"
+
+# How validation (and the per-run static deploy) turns a produced implementation
+# into a served site. These run verbatim from the build's repository root:
+# dependencies are installed, then the static build is produced into `dist/`,
+# `build/`, or `out/`. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`, so the validated build installs exactly what the deploy
+# will. Both commands are required; there are no defaults, so every case states
+# exactly how its implementation is built.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# The TypeScript toolchain run over the produced implementation once `[build]`'s
+# install has completed. An end-to-end build is written in TypeScript, and the
+# seeded workspace ships the configuration each of these commands reads
+# (`tsconfig.json`, `eslint.config.js`, `.prettierrc.json`, `vitest.config.ts`), so
+# what is checked here is the code the model wrote against configuration the case
+# fixed. The commands run host-side over the collected tree after the run's
+# container is gone, so a slow suite costs the run none of its runtime budget.
+#
+# `typecheck` GATES: a non-zero exit rates the run `broken`, because code that does
+# not compile is not reviewable. The other three are recorded and gate nothing —
+# `test` additionally records the count and coverage the build's own suite reports,
+# which is how a build that ships tests is told apart from one that ships none.
+# Each is spelled `npx` rather than `npm run <script>` so the check is the case's
+# own statement of what is run and does not depend on the model leaving the seeded
+# scripts intact. These four are exactly the commands `specs/overview.md` tells the
+# build will be run over the finished repository.
+[toolchain]
+typecheck = "npx tsc --noEmit"
+lint = "npx eslint ."
+format = "npx prettier --check ."
+test = "npx vitest run --coverage"
+
+# Instrumentation: the debug-and-automation surface a build carries, named once
+# here. It is reporter-side and never seeded; the seeded specification documents
+# the surface independently, as an ordinary debugging feature the game needs (see
+# specs/instrumentation.md). It is required because the review items below declare
+# `validation` scripts, and the surface is what every one of them poses its
+# scenario through.
+#
+# The handle names the ENGINELESS contract. An engineless build writes the surface
+# itself and installs it on `window.__floe` once the game has initialized, so the
+# handle is what a person opening the console of such a build finds. An engine run
+# has NO global at all: the build writes the surface, its `initialize` returns it —
+# beside the state as `[state, debug]` under `simple-2d`, alone under
+# `structured-2d` — and a caller reads it back off `engine.debug`. Because
+# `simple-2d` holds the state by value and hands every reader a read-only view, its
+# surface is written in the shape of `update` — a pose takes the current state and
+# returns the next, applied through `engine.apply`, and a reading takes the state
+# and returns what it read, called with `engine.state`. `structured-2d` holds the
+# world live, so its poses take only their own arguments and act on it at the call,
+# and its readings return plain data. One handle, three ways to reach the same
+# operations.
+#
+# `tick_hz` states the game's own fixed rate, `TICK_HZ` (120) from
+# `specs/overview.md` and asserted by `instrumentation.tick-length`. The engineless
+# surface steps in whole simulation TICKS — `advance(ticks)`, one tick of `TICK_DT`
+# each — and the contract is that a case which steps in ticks declares the rate the
+# stepped ticks are worth, which is what lets a runtime relate them back to real
+# time. Under an engine the validators still supply their own `ConstantClock` and
+# call `engine.advance(n)`, so the declaration changes nothing they do; it states
+# the rate of the step the debug surface itself takes.
+[instrumentation]
+handle = "__floe"
+tick_hz = 120
+
+# The specs. Every one of these is a COMMON spec, seeded for EVERY run of this
+# case, at the `dest` path within the run workspace. The single variant declares
+# none of its own: there is one game here, so there is one spec set.
+#
+# The specification is decomposed by concern into fifteen files, each named so its
+# contents are predictable and each owning its rules outright — a rule lives in
+# exactly one file, and a file that needs a fact from a sibling names that sibling
+# in plain text rather than linking to it.
+#
+# Every `.hbs` source is rendered before it lands, and ONE axis is branched on:
+# `engine.slug`, which selects what the build is handed and what it must write.
+# Nothing branches on the variant. A spec's `dest` defaults to its `source` with a
+# trailing `.hbs` stripped, so an `.md.hbs` source seeds to the same `.md` path and
+# a plain `.md` source is seeded verbatim.
+
+# The game, the project, and the model the whole simulation runs on: the premise,
+# the hard requirements, the free choices, the fixed 1280x720 stage and its
+# uniform fit, the centre convention for the critter and the bears against the
+# left-edge convention for a lane item, the fixed timestep, and the legibility
+# table that says what a player must be able to tell apart without fixing a single
+# color. It branches on the engine for what the runtime supplies, which modules
+# are seeded, where the figures come from, and how the fixed tick is driven.
+[[spec]]
+source = "specs/overview.md.hbs"
+
+# The geometry of the strait: the HUD bar above it, the 40x20 grid of 32-unit
+# tiles, SOLE OWNERSHIP of the tile-to-stage map every position in the game
+# derives from, the five bands and their rows, the critter's start column, and the
+# five bays' exact column pairs. Seeded verbatim: nothing in it differs by engine.
+[[spec]]
+source = "specs/strait.md"
+
+# How the critter moves: one tile per press, the cooldown and the auto-repeat, the
+# absolute-tile rule that holds however fast the floe under it is drifting, and
+# sole ownership of every rule that refuses a hop. Seeded verbatim.
+[[spec]]
+source = "specs/hopping.md"
+
+# The ice band: eight lanes of sliding vehicles, their kinds and lengths, the
+# even-spacing population model and the wrap that keeps it uniform, the per-level
+# scaling, and the covering rule a hop and a bear's route both read. Seeded
+# verbatim.
+[[spec]]
+source = "specs/ice.md"
+
+# The water band: eight lanes of drifting floes in the same shape as the ice band,
+# plus what the water itself does — deep water that costs a life, a floe that
+# carries its rider, and an edge that sweeps one away. Seeded verbatim.
+[[spec]]
+source = "specs/water.md"
+
+# The five goal bays and the bonus catch: what fills a bay, that a level clears on
+# the HOP that fills the last one rather than on the count reaching five, and the
+# bonus catch's own cadence. Seeded verbatim.
+[[spec]]
+source = "specs/bays.md"
+
+# The signature system: the bear. What it is, how it glides, how fast it travels
+# on ice and in the water, when it emerges, how it routes toward the critter
+# around moving traffic and what it does when no route exists, what resets it, and
+# what happens when it arrives. Seeded verbatim.
+[[spec]]
+source = "specs/hunter.md"
+
+# The run: lives and what costs one, the crossing timer, the three sub-phases and
+# their pauses, the respawn, the eight-level progression with its victory and its
+# loss, the bonus life, and what the paused screen suspends. Seeded verbatim.
+[[spec]]
+source = "specs/progression.md"
+
+# Every score figure in one place, with the worked total for a completing hop.
+# Seeded verbatim.
+[[spec]]
+source = "specs/scoring.md"
+
+# The keys: every action the game answers to and what is bound to it, menu
+# navigation, pause, mute and the overlay toggle. It branches on the engine
+# because an engine run registers named actions and reads them back, while an
+# engineless build listens to the keyboard itself and reads `KeyboardEvent.code`.
+[[spec]]
+source = "specs/controls.md.hbs"
+
+# The six screens, the five HUD readouts, and the ten audio cues. It branches on
+# the engine for where cues are defined and played and who owns the mute bit.
+[[spec]]
+source = "specs/ui.md.hbs"
+
+# The seeded sprite art: the seven folders, their frame counts and sizes, which
+# frame is drawn for which state, and HOW a frame is drawn — the extent a lane
+# item's frame covers and the sub-rect each raft is taken from, neither of which
+# is derivable from the folder table. It branches on the engine for how a frame is
+# loaded.
+[[spec]]
+source = "specs/assets.md.hbs"
+
+# The shape of the game's state. Under `simple-2d` this is the exact `FloeState`
+# declaration the build writes into `src/game.ts`, stated by the case rather than
+# by the seeded stub; under `structured-2d` it is the equivalent live class
+# extending the engine's `GameState`; under `none` the build owns the shape and
+# the file lists only what the state must carry, because the rest of the
+# specification is written against those facts.
+[[spec]]
+source = "specs/state.md.hbs"
+
+# The debugging and automation surface every build must expose: a deterministic,
+# render-free core; an API to drive and inspect the game from code through its own
+# real input path, including the four world gates and the three per-bear gates;
+# the snapshot shape; and a read-only debug overlay. Framed as an ordinary
+# developer affordance of the game. It branches on the engine for how the surface
+# is reached, the shape its operations take, and the two clock operations only an
+# engineless build owns.
+[[spec]]
+source = "specs/instrumentation.md.hbs"
+
+# The showcase the finished game ships beside its source: a player-facing
+# description and a short ordered carousel of captured media under `showcase/`,
+# framed as the game's store-page presentation. It branches on the engine for how
+# motion is captured (a gzipped recording from the engine's own draw-command
+# recorder on an engine run, a clip under `none`); it seeds to
+# `specs/showcase.md`.
+[[spec]]
+source = "specs/showcase.md.hbs"
+
+# No `[[reference]]`, no `[[check]]`, and no `[[proof]]`.
+#
+# Floe deliberately fixes no palette, no typeface, no HUD layout and no
+# background: the look of the strait is the build's own design, and
+# `specs/overview.md` says so in as many words. A reference view is a picture a
+# build is compared AGAINST, so there is no honest one to seed here — every build
+# is expected to look different, and a screenshot diff would score the build that
+# copied the mockup best rather than the build that designed the best strait. What
+# the specification does fix about appearance is stated as legibility a player
+# depends on (the five bands told apart, deep water distinct from a floe, a
+# submerged bear still trackable, a vehicle reading as covering every tile it
+# spans), and the `strait` and `presentation` items below decide exactly that,
+# from the pixels the build renders and against thresholds each item states —
+# while how GOOD the strait looks is rated through the run-wide aesthetic rating,
+# not scored here. The seeded sprite art is the one thing a picture IS seeded for,
+# and it is seeded as art to draw with rather than as a target to match.
+#
+# `[[proof]]` is likewise empty: no proof media is asked of the build. Every piece
+# of media a reviewer sees beside a verdict is captured by this case's own
+# validation suites, from scenarios the case controls. The showcase spec above
+# does ask for media, but as the game's own store-page presentation rather than as
+# evidence any point is judged on. The automated load check still runs.
+
+# Scoring domains. This case is on the engine format, so it is validator-rated:
+# each domain's FUNCTIONAL rating is decided by the validators behind the item
+# checklist below (every item names the domains its failure lowers and how far —
+# see `domains` / `failure_cap` there), and the run's overall functional rating is
+# the WORST across the domains — an immaculate crossing cannot mask a bear that
+# never emerges. The reviewer's judgement lives in the separate AESTHETIC rating:
+# the look, the polish, and the feel — the designed strait, the legible HUD, the
+# weight of a hop — everything this case fixes no picture of.
+#
+# Four domains: the signature system on its own, the crossing it hunts you
+# through, the run that frames it, and the presentation this case hands entirely
+# to the build. A build can plausibly get any one of them right and another wrong.
+[[domain]]
+id = "hunter"
+name = "The Hunter"
+description = "The signature: a bear emerging at the near shore and gliding continuously after the critter across the whole strait, routing around the sliding hazards and being reset by one that arrives on it, swimming out over the open water, catching a critter that hesitates, resetting between crossings, and speeding up and doubling with the level."
+
+[[domain]]
+id = "crossing"
+name = "The Crossing"
+description = "The crossing core: the one-tile hop and every rule that refuses it, the eight lanes of sliding vehicles, the eight lanes of drifting floes with their carry, fall-in and off-edge deaths, and the five far-shore bays."
+
+[[domain]]
+id = "run"
+name = "The Run"
+description = "The frame around the crossing: three lives and what costs one, the crossing timer, the death pause and the respawn, the eight-level progression with its victory and its loss, every score figure, and the six screens and their menus."
+
+[[domain]]
+id = "presentation"
+name = "Presentation"
+description = "What the game looks and sounds like: the seeded sprite art and how it is drawn, the HUD, whether the bands and the actors on them are told apart, and the ten audio cues."
+
+# Reviewer checklist, in the categories grammar (`[review] format = 2`). Each
+# `[[review.categories]]` is a CATEGORY — a bare name grouping the items — and
+# each item entry under it is one graded review item, worth one point (the default
+# weight), so a category is worth the number of items it holds. A category carries
+# no prose of its own; each item states in `description` the claim its validator
+# checks. The checklist is common to every run: there is one variant and the three
+# engines produce the same game, so nothing here is conditional. It is
+# reporter-side material — never seeded into a run, so the model never sees it.
+# Every item restates a requirement the seeded specification already states, in
+# the spec's own vocabulary and naming the spec's own constants, and every
+# threshold a validator asserts is derived from a figure or rule in the specs plus
+# a numeric tolerance stated in the item.
+#
+# EVERY item on this checklist carries a validation script, and every item is one
+# observable behavior, so a build fails exactly the rule it breaks (a bear that
+# will not enter a covered tile and a bear that will not enter the far shore are
+# two items, not one). Each script is a vitest suite under
+# `validation/<engine>/<category>/<item id>.test.ts`. The `<engine>` level is the
+# ENGINE the suite is written against — a validator speaks one engine's
+# vocabulary, so this case, which supports three, ships one directory per engine.
+# `validation/none/` drives the build in Chromium through `window.__floe`, with a
+# page-injected draw-command recorder and an injected audio shim; `validation/
+# simple-2d/` and `validation/structured-2d/` each run in process against their
+# vendored engine, posing scenarios through the surface `engine.debug` returns,
+# reading state back from the snapshot, audio from the engine's `cue:played`
+# event, and drawing from the canvas pixels or the engine's own draw-command
+# recorder. The three are the same scenarios; only how they reach the build
+# differs. The directory for the run's engine is what gets staged into the built
+# workspace at `validation/`.
+#
+# EVERY suite poses its scenario on an EMPTY, QUIET strait. The shared harness's
+# `startCrossing` resets, sets the level, and only THEN clears the two lane
+# rosters, the bears, the bays and the fish — the order is load-bearing, because
+# `setLevel` re-lays the sixteen lanes by design, so clearing first and setting the
+# level second would put the traffic straight back. It then turns all four world
+# gates off, so no bear emerges into a scenario about a floe, no bonus catch adds
+# 200 to a scenario about a bay, no crossing timer expires under a scenario that
+# runs thirty seconds, and no incidental catch ends one. Exactly the items whose
+# requirement IS one of those faculties turn the one they need back on, and those
+# items say so.
+#
+# THE MEDIA an item declares is produced by its own suite, from the scenario the
+# case controls. Floe is a game of motion, so the split leans on `replay` — a
+# draw-command recording, armed around the section the item is about and never
+# around the arrangement that got there — and uses `image` for a layout, a screen,
+# a readout, or a value read at rest. There is no `kind = "video"` anywhere. Each
+# item's `outputs` is declared ONCE, here, and serves all three engines: the
+# extension an output is served under is fixed by its `kind`, so a kind
+# substituted per engine would serve one file under a name resolution fixed for
+# another. Both are evidence beside the verdict rather than any part of it: an
+# item passes or fails on its assertions alone.
+#
+# Nothing on this checklist asks a reviewer to judge how a screen looks.
+# Appearance is rated through the run-wide aesthetic rating; the rendering items
+# here assert only what the specification fixes about what is drawn — the tile
+# geometry, the seeded frame a thing is drawn from, a legibility floor stated as an
+# RGB distance out of 441 — and capture the frame as evidence. Not one item names
+# a color.
+#
+# EVERY item also carries `domains` and `failure_cap`, because this case is
+# validator-rated: an item's validator, not a reviewer, decides the functional
+# rating. `domains` names the scoring domains a failure lowers — a hunter item
+# lowers only `hunter`, a scoring item only `run`, and an instrumentation item,
+# which every suite in every domain drives through, lowers all four. `failure_cap`
+# is the highest functional rating those domains may reach while the item fails;
+# each domain gets the LOWEST cap among its failing items, and a domain with no
+# failing item is flawless. Two rules are applied consistently, because both are
+# places a reviewer would otherwise argue. First, a WRONG-BUT-PLAYABLE RATE is
+# `passable`, not `broken`: a lane at the wrong speed, a bear a little fast, a
+# timer a little short — the game is still the game, and `broken` is reserved for a
+# miss that makes it unplayable (no hop, no lanes, a bay that cannot be filled, a
+# bear that never appears). Second, a NEGATIVE RULE CAPS ONE STEP SOFTER THAN ITS
+# POSITIVE TWIN: `ice.crush-kills` is `broken` and `ice.crush-only-on-arrival` is
+# `passable`, because a build that kills too eagerly is playable and annoying while
+# one that never kills is not a game. No item caps at `flawless`: a failure always
+# costs.
+[review]
+format = 2
+
+# --- Instrumentation ----------------------------------------------------------
+# The debug surface is a deliverable of the build, not a courtesy: it is how the
+# game is driven and inspected from code, and every other suite on this checklist
+# poses its scenario through it. These items check that it is really there, really
+# wired to the running game, really deterministic, and that each pose reads back —
+# a surface that reports a plausible-looking object unconnected to what is on
+# screen is the failure mode worth naming, and it also shows up as every other
+# suite failing to run.
+#
+# Seven of them are the four WORLD GATES and the three per-bear FACULTY gates. A
+# validator poses a world holding only what its requirement concerns, and Floe's
+# own figures put a bear on the strait 0.6 s after the critter has climbed three
+# rows, a bonus catch in a bay every 8 s, and the crossing timer at zero after 30
+# s, so without the gates a posed scenario would be joined by a hunt, a bonus and a
+# death it never asked for. `setBearEmergence`, `setCatchTest`, `setFishCadence`
+# and `setTimerRunning` each gate ONE faculty of the run and nothing else, default
+# to on, and are restored to on by `reset`; `setBearSense`, `setBearRouting` and
+# `setBearTravel` do the same per bear, because a check on where a bear routes and
+# a check on how fast it travels are different questions and a switch that turns a
+# whole creature off cannot express either. Each is verifiable by set-then-read,
+# and each has an item here because a gate the suite leans on has to be known to
+# work before anything leaning on it means anything.
+#
+# The two CLOCK operations sit deliberately outside the set-then-read rule.
+# `setAutoStep` and `advance` pose no game state — they move time — so there is no
+# field for the snapshot to report and `autoStep` is not a snapshot field. They are
+# decided by their effect instead: `advances-in-real-time` decides `setAutoStep`,
+# and `deterministic-core` and `tick-length` decide `advance`.
+[[review.categories]]
+id = "instrumentation"
+title = "Instrumentation"
+[[review.categories.items]]
+id = "surface-present"
+title = "The debug surface is present and complete"
+description = "Every operation specs/instrumentation.md names is a function on the surface, version is FLOE_DEBUG_VERSION (1), and the surface is live: a posed critter reads back on its tile and a posed bear given one step arrives on the next tile."
+domains = ["hunter", "crossing", "run", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/surface-present.test.ts", outputs = [
+  { id = "state", name = "The game driven from the surface alone", kind = "image" },
+] }
+[[review.categories.items]]
+id = "snapshot-shape"
+title = "Snapshot reports the full documented shape"
+description = "On a posed strait carrying a critter, two bears, a vehicle in every ice lane, a floe in every water lane, one filled bay and a posed bonus catch, every field listed in the snapshot shape is present with its documented type."
+domains = ["hunter", "crossing", "run", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [
+  { id = "posed", name = "The posed strait the snapshot reports", kind = "image" },
+] }
+[[review.categories.items]]
+id = "poses-read-back"
+title = "Every pose is reported by the snapshot"
+description = "Each pose operation's value is read back by snapshot: screen, phase, phase timer, menu index, score, lives, level, reached level, timer, the critter's tile, centre, facing, hop cooldown and best row, a bear's tile, centre, committed step, target and three faculties, a vehicle's and a floe's position, a lane's speed and direction, a bay's filled flag, the fish's bay, and the four world gates. Mute is not in the list: there is no setMuted. The auto-step bit is not in it either: the clock operations pose no state, so nothing is set to read back (section 2)."
+domains = ["hunter", "crossing", "run", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/poses-read-back.test.ts", outputs = [
+  { id = "read-back", name = "The strait every pose built", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reset-restores-title"
+title = "reset returns the game to its title values"
+description = "After a run has been posed with a score, lives, a level, a critter, bears, lane items, filled bays and a fish, reset() restores every declared field to the title value the spec lists, and leaves muted untouched."
+domains = ["hunter", "crossing", "run", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/reset-restores-title.test.ts", outputs = [
+  { id = "title", name = "The title values reset restored", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reset-seeds-randomness"
+title = "reset seeds the game's randomness"
+description = "Two runs started after reset({ seed: 7 }) lay the sixteen lanes at identical phases and put the first bonus catch in the same bay; a run after reset({ seed: 8 }) differs in at least one of them."
+domains = ["hunter", "crossing", "run", "presentation"]
+failure_cap = "passable"
+# Seeded randomness is what makes a lane layout reproducible without fixing it, so
+# the assertion is that two runs of ONE seed agree and two runs of DIFFERENT seeds
+# do not. Asserting a particular layout would fix the generator rather than the
+# seeding.
+validation = { script = "instrumentation/reset-seeds-randomness.test.ts", outputs = [
+  { id = "seeded", name = "Two runs of one seed, laid the same", kind = "image" },
+] }
+[[review.categories.items]]
+id = "deterministic-core"
+title = "The simulation advances on stepped time alone"
+description = "One second of game time covered as one call of 120 ticks and as 120 calls of one tick adds 1.0 to simTime either way and leaves every vehicle within a tenth of a unit of the same x, so the simulation reads nothing from the renderer."
+domains = ["hunter", "crossing", "run", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/deterministic-core.test.ts", outputs = [
+  { id = "after", name = "The strait after one second of stepped time", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tick-length"
+title = "A tick is a fixed 1/120 of a second"
+description = "TICK_HZ (120) ticks of game time raise simTime by exactly 1.0 s, and a lane at 2.0 tiles/s advances exactly 64 units over them."
+domains = ["hunter", "crossing", "run", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/tick-length.test.ts", outputs = [
+  { id = "after", name = "A lane after exactly 120 ticks", kind = "image" },
+] }
+[[review.categories.items]]
+id = "advances-in-real-time"
+title = "The game advances itself in real time"
+description = "On a real wall clock, with nothing stepping the game from outside — setAutoStep(true) under none, the engine's own clock rather than a ConstantClock under an engine — simTime rises and a released lane item's x changes over a stretch of real time. This is the item that decides setAutoStep, and the only item in the suite that does not step the game itself."
+domains = ["hunter", "crossing", "run", "presentation"]
+failure_cap = "broken"
+# Every other item on this checklist steps the game explicitly, so a build whose
+# frame loop never runs — completely unplayable — would pass them all. This is the
+# one item that lets the game run on a real wall clock with nothing stepping it,
+# which is why it is capped `broken` and why it declares a before-and-after pair
+# rather than a single frame.
+validation = { script = "instrumentation/advances-in-real-time.test.ts", outputs = [
+  { id = "before", name = "The strait before real time passes", kind = "image" },
+  { id = "after", name = "The strait after real time passes", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-vehicles"
+title = "clearVehicles empties the ice band alone"
+description = "clearVehicles() removes every vehicle and leaves the floes, the bears, the critter, the bays and the fish standing."
+domains = ["hunter", "crossing", "run", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/clear-vehicles.test.ts", outputs = [
+  { id = "cleared", name = "The ice band emptied, the rest standing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-floes"
+title = "clearFloes empties the water band alone"
+description = "clearFloes() removes every floe and leaves the vehicles, the bears, the critter, the bays and the fish standing."
+domains = ["hunter", "crossing", "run", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/clear-floes.test.ts", outputs = [
+  { id = "cleared", name = "The water band emptied, the rest standing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-bears"
+title = "clearBears empties the hunt alone"
+description = "clearBears() removes every bear and leaves the lane items, the critter, the bays and the fish standing."
+domains = ["hunter"]
+failure_cap = "broken"
+validation = { script = "instrumentation/clear-bears.test.ts", outputs = [
+  { id = "cleared", name = "The hunt emptied, the rest standing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "remove-critter"
+title = "removeCritter takes the critter off the strait"
+description = "removeCritter() reports critter.present false and leaves the lane items, the bears, the bays and the fish standing, and a vehicle released across the critter's old tile costs no life over three seconds."
+domains = ["hunter", "crossing", "run", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/remove-critter.test.ts", outputs = [
+  { id = "cleared", name = "The strait with no critter on it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-bays"
+title = "clearBays opens all five bays"
+description = "clearBays() reports five open bays, scores nothing, and clears no level."
+domains = ["crossing", "run"]
+failure_cap = "passable"
+validation = { script = "instrumentation/clear-bays.test.ts", outputs = [
+  { id = "open", name = "All five bays opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-fish"
+title = "clearFish takes the bonus catch off"
+description = "clearFish() reports fishBay null and leaves every bay exactly as it was."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "instrumentation/clear-fish.test.ts", outputs = [
+  { id = "cleared", name = "The bays with the bonus catch taken off", kind = "image" },
+] }
+[[review.categories.items]]
+id = "entity-ids"
+title = "Every entity carries a distinct, stable id"
+description = "Each bear, vehicle and floe added takes an id distinct from every other live entity's, appears last in its roster, and keeps that id across a second of game time including a lane wrap."
+domains = ["hunter", "crossing", "run", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/entity-ids.test.ts", outputs = [
+  { id = "roster", name = "The roster carrying its ids", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bear-sense-gate"
+title = "Sense off freezes a bear's target"
+description = "A bear with setBearSense(id, false) keeps the target it was posed with while the critter is moved four tiles away; a second bear with sense on reports the critter's new tile."
+domains = ["hunter"]
+failure_cap = "passable"
+validation = { script = "instrumentation/bear-sense-gate.test.ts", outputs = [
+  { id = "gate", name = "A bear with its sense off beside one with it on", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bear-routing-gate"
+title = "Routing off stops a bear choosing"
+description = "A bear with setBearRouting(id, false) finishes the step it is on and then holds that tile over three seconds, while its target still follows the critter; a second bear with routing on keeps stepping."
+domains = ["hunter"]
+failure_cap = "passable"
+validation = { script = "instrumentation/bear-routing-gate.test.ts", outputs = [
+  { id = "gate", name = "A bear with its routing off beside one with it on", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bear-travel-gate"
+title = "Travel off holds a bear still"
+description = "A bear with setBearTravel(id, false) reports the same centre after a second of game time, while its routing still reports a committed step toward the critter."
+domains = ["hunter"]
+failure_cap = "passable"
+validation = { script = "instrumentation/bear-travel-gate.test.ts", outputs = [
+  { id = "gate", name = "A bear held still with its routing running", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bear-emergence-gate"
+title = "Emergence off keeps the hunt away"
+description = "With setBearEmergence(false) and the critter posed ten rows off the near shore, no bear joins the roster over sixty seconds; with it on, one does."
+domains = ["hunter"]
+failure_cap = "passable"
+validation = { script = "instrumentation/bear-emergence-gate.test.ts", outputs = [
+  { id = "gate", name = "The near shore with emergence off, then on", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "catch-test-gate"
+title = "Catch off costs no life"
+description = "With setCatchTest(false) a bear posed on the critter's centre leaves lives unchanged and the phase still crossing over a second; with it on, the same scenario costs a life."
+domains = ["hunter", "run"]
+failure_cap = "passable"
+validation = { script = "instrumentation/catch-test-gate.test.ts", outputs = [
+  { id = "gate", name = "A bear on the critter with the catch test off, then on", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "fish-cadence-gate"
+title = "Cadence off keeps the bonus catch away"
+description = "With setFishCadence(false) fishBay is null over sixty seconds of a live crossing; with it on, a bay holds one."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "instrumentation/fish-cadence-gate.test.ts", outputs = [
+  { id = "gate", name = "The bays with the cadence off, then on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "timer-running-gate"
+title = "Timer off holds the crossing clock"
+description = "With setTimerRunning(false) timer holds its value over ten seconds; with it on, it falls by ten."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "instrumentation/timer-running-gate.test.ts", outputs = [
+  { id = "gate", name = "The crossing clock held, then draining", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-score-grants-no-life"
+title = "Posing the score grants no bonus life"
+description = "setScore across a BONUS_LIFE_EVERY (10,000) boundary leaves lives exactly as it was: the award belongs to the scoring path, and a pose is a precondition."
+domains = ["run"]
+failure_cap = "passable"
+# A pose is a precondition, not an event: the bonus life belongs to the scoring
+# path. Without this item a suite could not pose a score near a boundary without
+# changing the lives it was about to read.
+validation = { script = "instrumentation/set-score-grants-no-life.test.ts", outputs = [
+  { id = "after", name = "The lives after a posed score crosses ten thousand", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overlay"
+title = "The debug overlay reports the game"
+description = "Toggling the overlay over a posed strait draws the facts specs/instrumentation.md lists, and the snapshot is identical before and after."
+domains = ["presentation"]
+failure_cap = "passable"
+# The overlay is a read-only view of the game, so the snapshot before and after
+# toggling it must be identical: an overlay that changes what it reports is
+# reporting something else.
+validation = { script = "instrumentation/overlay.test.ts", outputs = [
+  { id = "overlay", name = "The debug overlay over a posed strait", kind = "image" },
+] }
+
+# --- The strait ---------------------------------------------------------------
+# The stage, the grid, the five bands and the five bays, held against the figures
+# specs/strait.md fixes. The tile-to-stage map is stated in that one file and
+# nowhere else, so these items assert the formula rather than any drawn artwork.
+#
+# `tile-map` and `tiles-drawn-on-the-map` are two items over one scenario on
+# purpose. Reporting the right centre and drawing at it fail independently: a build
+# that reports correctly and draws a few units off is entirely playable, which is
+# why the drawn half is `presentation` and `scuffed` while the reported half is
+# `crossing` and `broken`.
+#
+# The bays are fixed as exact column PAIRS — (3,4), (11,12), (19,20), (27,28),
+# (35,36) — so `bay-columns` and `far-shore-solid` between them close every column
+# of row 1: ten accept a hop up and thirty refuse one.
+[[review.categories]]
+id = "strait"
+title = "The strait"
+[[review.categories.items]]
+id = "stage-fit"
+title = "The whole stage stays visible and centred"
+description = "The entire 1280x720 stage, the full HUD bar, the whole strait and all four edges, is visible, fitted and centred at three window sizes and two pixel densities, including on load before any input."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "strait/stage-fit.test.ts", outputs = [
+  { id = "fit", name = "The whole stage fitted and centred", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-above-strait"
+title = "The HUD sits above the strait"
+description = "The HUD readouts are drawn within y in [0, 80] and no critter, bear, vehicle or floe is drawn there."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "strait/hud-above-strait.test.ts", outputs = [
+  { id = "hud", name = "The HUD bar above the strait", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tile-map"
+title = "Tiles sit where the map says"
+description = "A critter posed on each of eight spread tiles reports its centre at (32c + 16, 80 + 32r + 16) exactly."
+domains = ["crossing"]
+failure_cap = "broken"
+validation = { script = "strait/tile-map.test.ts", outputs = [
+  { id = "tiles", name = "The critter on the eight measured tiles", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tiles-drawn-on-the-map"
+title = "The critter is drawn where the map puts it"
+description = "On those same eight tiles the critter is drawn within half a tile of the centre the map gives. Reporting the right centre and drawing at it fail independently, so they are two items: a build that reports correctly and draws a few units off is entirely playable, which is why this half is presentation and scuffed rather than crossing and broken."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# The reported centre and the drawn position fail independently, so they are two
+# items over one scenario. This is the drawn half: a build that reports correctly
+# and draws a few units off is entirely playable, hence `presentation` and
+# `scuffed` rather than `crossing` and `broken`.
+validation = { script = "strait/tiles-drawn-on-the-map.test.ts", outputs = [
+  { id = "tiles", name = "The critter drawn on the eight measured tiles", kind = "image" },
+] }
+[[review.categories.items]]
+id = "band-rows"
+title = "The five bands occupy their rows"
+description = "The critter posed on row 19, on each ice row, on row 10 and on each water row reports footing solid, solid, solid and water respectively on an emptied strait, so the band boundaries are exactly where specs/strait.md puts them."
+domains = ["crossing"]
+failure_cap = "broken"
+validation = { script = "strait/band-rows.test.ts", outputs = [
+  { id = "bands", name = "The critter's footing read across the five bands", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bay-columns"
+title = "Five bays at the stated columns"
+description = "A hop up from row 2 is accepted at exactly columns 3, 4, 11, 12, 19, 20, 27, 28, 35 and 36 with the bays open."
+domains = ["crossing"]
+failure_cap = "scuffed"
+validation = { script = "strait/bay-columns.test.ts", outputs = [
+  { id = "bays", name = "A hop up accepted at each bay column", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "far-shore-solid"
+title = "The shore between the bays is solid"
+description = "A hop up from row 2 is refused at every other column of row 1, and the critter does not move and loses no life."
+domains = ["crossing"]
+failure_cap = "scuffed"
+validation = { script = "strait/far-shore-solid.test.ts", outputs = [
+  { id = "refuse", name = "A hop up refused by the solid shore", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "median-carries-nothing"
+title = "The median shelf is clear footing"
+description = "The median (row 10) carries no vehicle and no floe on a freshly laid-out level, and a critter standing on it reports footing solid over ten seconds of live lanes."
+domains = ["crossing"]
+failure_cap = "passable"
+# Read over ten seconds of LIVE lanes rather than on a fresh layout, because the
+# failure worth catching is a lane whose items wrap through the median rather than
+# one laid out onto it.
+validation = { script = "strait/median-carries-nothing.test.ts", outputs = [
+  { id = "median", name = "The median shelf beside ten seconds of live lanes", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bands-read-apart"
+title = "The five bands read distinct"
+description = "The near shore, the ice band, the median, the water band and the far shore render in tints each separated from the others by at least 40 of 441 RGB distance, sampled across the full width of each."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "strait/bands-read-apart.test.ts", outputs = [
+  { id = "scene", name = "The five bands sampled across the full width", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bays-read-apart"
+title = "An open bay reads distinct from the shore"
+description = "An open bay renders in a tint at least 60 of 441 from the solid far shore beside it, and a filled bay renders differently from an open one."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "strait/bays-read-apart.test.ts", outputs = [
+  { id = "scene", name = "An open bay beside the shore and a filled one", kind = "image" },
+] }
+
+# --- Hopping ------------------------------------------------------------------
+# That the critter hops one absolute tile at its cadence, and that every hop the
+# rules refuse is refused. There are five refusals and each is its own item,
+# because a build can plausibly enforce the grid edge and forget the filled bay.
+#
+# There is deliberately no `hop-up` / `hop-down` / `hop-left` / `hop-right` here.
+# A validator has exactly one way to drive an input under each engine — a real key
+# edge under `none`, a KeyboardEvent-shaped event at the engine's own target
+# otherwise — and under `none` there are no named actions at all, so "the up action
+# hops one tile up" and "ArrowUp hops the critter one row up" resolve to the same
+# test. `controls.arrow-*` (broken) and `controls.key-*` (passable) decide it per
+# direction and per binding; this category keeps only the properties they do not.
+#
+# `absolute-over-floe` asserts the CENTRE rather than the column, because the
+# centre is what the floe-carry rule and the footing derivation both read, and a
+# build that translates by 32 instead of snapping to the target tile's centre
+# leaves the critter between columns in a way a column reading would not catch.
+[[review.categories]]
+id = "hopping"
+title = "Hopping"
+[[review.categories.items]]
+id = "one-tile-per-press"
+title = "One press moves exactly one tile"
+description = "A single press and release moves the critter exactly one tile, whatever the pressed key is held for afterwards within the cooldown."
+domains = ["crossing"]
+failure_cap = "broken"
+validation = { script = "hopping/one-tile-per-press.test.ts", outputs = [
+  { id = "hop", name = "One press, one tile", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cooldown-blocks"
+title = "A press inside the cooldown moves nothing"
+description = "A second press 0.06 s after a hop leaves the critter on the tile the first hop reached."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "hopping/cooldown-blocks.test.ts", outputs = [
+  { id = "hop", name = "A second press inside the cooldown", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cooldown-releases"
+title = "A press at the cooldown moves a tile"
+description = "A second press HOP_COOLDOWN (0.12 s) after a hop moves the critter one further tile."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "hopping/cooldown-releases.test.ts", outputs = [
+  { id = "hop", name = "A second press at the cooldown", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "held-repeats"
+title = "A held direction auto-repeats at the cooldown"
+description = "Holding a direction for one second of game time moves the critter floor(1 / HOP_COOLDOWN) + 1 (9) tiles, within one."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "hopping/held-repeats.test.ts", outputs = [
+  { id = "hop", name = "A direction held for one second", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "absolute-over-floe"
+title = "A hop is one absolute tile while riding"
+description = "A critter riding a rightward floe and hopping up has its centre set exactly to the target tile's centre, (tileCX(col), tileCY(row)), one row up and in the column its centre was in when the hop was taken, rather than translated by 32 and left between columns or offset by the floe's motion."
+domains = ["crossing"]
+failure_cap = "scuffed"
+validation = { script = "hopping/absolute-over-floe.test.ts", outputs = [
+  { id = "hop", name = "A hop up taken from a moving floe", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "refuse-left-edge"
+title = "A hop off the left edge is refused"
+description = "A hop left from column 0 leaves the critter on column 0 and costs no life."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "hopping/refuse-left-edge.test.ts", outputs = [
+  { id = "refuse", name = "A hop left refused at column 0", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "refuse-right-edge"
+title = "A hop off the right edge is refused"
+description = "A hop right from column 39 leaves the critter on column 39 and costs no life."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "hopping/refuse-right-edge.test.ts", outputs = [
+  { id = "refuse", name = "A hop right refused at column 39", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "refuse-below-near-shore"
+title = "A hop below the near shore is refused"
+description = "A hop down from row 19 leaves the critter on row 19 and costs no life."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "hopping/refuse-below-near-shore.test.ts", outputs = [
+  { id = "refuse", name = "A hop down refused at the near shore", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "refuse-far-shore"
+title = "A hop into the solid far shore is refused"
+description = "A hop up from row 2 at a column outside every bay pair leaves the critter on row 2 and costs no life."
+domains = ["crossing"]
+failure_cap = "scuffed"
+validation = { script = "hopping/refuse-far-shore.test.ts", outputs = [
+  { id = "refuse", name = "A hop up refused by the solid far shore", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "refuse-filled-bay"
+title = "A hop into a filled bay is refused"
+description = "A hop up from row 2 under a bay posed filled leaves the critter on row 2 and costs no life; the same hop with the bay open is accepted."
+domains = ["crossing"]
+failure_cap = "scuffed"
+validation = { script = "hopping/refuse-filled-bay.test.ts", outputs = [
+  { id = "refuse", name = "A hop up refused by a filled bay, then accepted", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "refuse-vehicle"
+title = "A hop into a vehicle is refused"
+description = "A hop onto a tile a parked vehicle covers leaves the critter where it was and costs no life."
+domains = ["crossing"]
+failure_cap = "broken"
+validation = { script = "hopping/refuse-vehicle.test.ts", outputs = [
+  { id = "refuse", name = "A hop refused by a parked vehicle", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "facing-follows-hop"
+title = "The critter faces the way it last hopped"
+description = "After hopping up, down, left and right in turn, the reported facing is up, down, left and right in turn."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "hopping/facing-follows-hop.test.ts", outputs = [
+  { id = "facing", name = "The critter facing each way it hopped", kind = "replay" },
+] }
+
+# --- The ice band -------------------------------------------------------------
+# The eight ice lanes: what they carry, how they move, how they scale with the
+# level, and what their traffic does to a critter standing under it.
+#
+# `crush-kills` and `crush-only-on-arrival` are the paired item this category turns
+# on. The rule is that a vehicle whose OWN MOTION brings the critter's centre under
+# it crushes; a critter posed under a parked vehicle is not crushed until the lane
+# is released. A build that kills on overlap rather than on arrival passes the
+# first and fails the second, which is exactly the distinction worth grading, and
+# the negative half caps one step softer than the positive.
+[[review.categories]]
+id = "ice"
+title = "The ice band"
+[[review.categories.items]]
+id = "lane-rows"
+title = "Eight ice lanes at rows 11 to 18"
+description = "A freshly laid-out level reports exactly eight ice lanes, one per row from 11 to 18."
+domains = ["crossing"]
+failure_cap = "broken"
+validation = { script = "ice/lane-rows.test.ts", outputs = [
+  { id = "scene", name = "The eight ice lanes on a fresh level", kind = "image" },
+] }
+[[review.categories.items]]
+id = "lane-kinds"
+title = "Each ice lane carries its stated vehicle"
+description = "Every vehicle in each row is the kind the lane table gives that row."
+domains = ["crossing"]
+failure_cap = "scuffed"
+validation = { script = "ice/lane-kinds.test.ts", outputs = [
+  { id = "scene", name = "Each ice lane carrying its own vehicle", kind = "image" },
+] }
+[[review.categories.items]]
+id = "lane-lengths"
+title = "Each vehicle spans its stated tiles"
+description = "A plow reports len 3, a dogsled 2 and a car 2, on every lane that carries one."
+domains = ["crossing"]
+failure_cap = "scuffed"
+validation = { script = "ice/lane-lengths.test.ts", outputs = [
+  { id = "scene", name = "The three vehicle kinds at their stated spans", kind = "image" },
+] }
+[[review.categories.items]]
+id = "lane-directions"
+title = "Each ice lane runs its stated way"
+description = "Every lane's dir is the table's, and a vehicle's x moves that way over a second."
+domains = ["crossing"]
+failure_cap = "scuffed"
+validation = { script = "ice/lane-directions.test.ts", outputs = [
+  { id = "slide", name = "Each ice lane running its stated way", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "lane-speeds"
+title = "Each ice lane runs at its stated speed"
+description = "Every lane's reported speed is the table's level-1 figure, and a vehicle covers speed * 32 units over one second of game time, within 2%."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "ice/lane-speeds.test.ts", outputs = [
+  { id = "slide", name = "A second of ice traffic, measured", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "lane-gaps"
+title = "Consecutive vehicles leave the stated gap"
+description = "In each lane, the clear ice between one vehicle's right edge and the next vehicle's left edge is the table's gap in tiles, within a tenth of a tile."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "ice/lane-gaps.test.ts", outputs = [
+  { id = "scene", name = "The clear ice between consecutive vehicles", kind = "image" },
+] }
+[[review.categories.items]]
+id = "lane-wraps"
+title = "A lane's spacing survives the edge"
+description = "Over ten seconds of game time, every ice lane's gaps stay at their stated value, so a vehicle leaving one edge re-enters at the other without breaking the pattern."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "ice/lane-wraps.test.ts", outputs = [
+  { id = "wrap", name = "Ten seconds of ice lanes crossing the edge", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "speed-scales-with-level"
+title = "Ice speeds climb 6% a level"
+description = "At levels 1, 4 and 8 every ice lane's speed is its level-1 figure times 1.06^(level - 1), within 1%."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "ice/speed-scales-with-level.test.ts", outputs = [
+  { id = "scene", name = "The ice lanes at levels 1, 4 and 8", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gap-widens-with-level"
+title = "Ice gaps widen every third level"
+description = "At levels 1, 4 and 7 every ice lane's gap is its base gap plus floor((level - 1) / 3) tiles, within a tenth of a tile."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "ice/gap-widens-with-level.test.ts", outputs = [
+  { id = "scene", name = "The ice gaps at levels 1, 4 and 7", kind = "image" },
+] }
+[[review.categories.items]]
+id = "phases-staggered"
+title = "The lanes do not line up into a wall"
+description = "On a freshly laid-out level, no column is covered by a vehicle in all eight ice rows at once."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "ice/phases-staggered.test.ts", outputs = [
+  { id = "scene", name = "The eight ice lanes on a fresh level", kind = "image" },
+] }
+[[review.categories.items]]
+id = "covers-every-tile"
+title = "Every tile a vehicle spans is closed"
+description = "A hop into each of the three tiles a parked plow spans, including its middle tile, is refused."
+domains = ["crossing"]
+failure_cap = "scuffed"
+validation = { script = "ice/covers-every-tile.test.ts", outputs = [
+  { id = "refuse", name = "A hop refused by each tile a plow spans", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "crush-kills"
+title = "A vehicle arriving on the critter kills"
+description = "A vehicle released so that its span reaches the critter's centre costs a life on the tick it arrives."
+domains = ["crossing", "run"]
+failure_cap = "broken"
+validation = { script = "ice/crush-kills.test.ts", outputs = [
+  { id = "crush", name = "A vehicle arriving on the critter", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "crush-only-on-arrival"
+title = "A parked vehicle over the critter kills nothing"
+description = "A critter posed under a vehicle whose lane speed is 0 loses no life over three seconds; releasing the lane then costs one."
+domains = ["crossing"]
+failure_cap = "passable"
+# The negative half of `crush-kills`, capped one step softer: a build that kills
+# too eagerly is playable and annoying, while one that never kills is not a game.
+validation = { script = "ice/crush-only-on-arrival.test.ts", outputs = [
+  { id = "crush", name = "A parked vehicle over the critter, then released", kind = "replay" },
+] }
+
+# --- The water band -----------------------------------------------------------
+# The eight water lanes, in the same shape as the ice band, plus the three things
+# the water itself does that the ice does not: it drowns a critter standing on it,
+# it carries one standing on a floe, and it sweeps one off the edge of the world.
+#
+# The three carry items are separate because they fail separately. `floe-is-footing`
+# is whether standing on a floe is safe at all, `floe-carries` is whether the drift
+# moves the rider at the lane's own rate, and `carry-crosses-tiles` is whether the
+# reported column follows the drifting centre by `colAt(x)` — a build can carry the
+# critter perfectly and still report the column it started in.
+[[review.categories]]
+id = "water"
+title = "The water band"
+[[review.categories.items]]
+id = "lane-rows"
+title = "Eight water lanes at rows 2 to 9"
+description = "A freshly laid-out level reports exactly eight water lanes, one per row from 2 to 9."
+domains = ["crossing"]
+failure_cap = "broken"
+validation = { script = "water/lane-rows.test.ts", outputs = [
+  { id = "scene", name = "The eight water lanes on a fresh level", kind = "image" },
+] }
+[[review.categories.items]]
+id = "lane-kinds"
+title = "Each water lane carries its stated floe"
+description = "Every floe in each row is the kind the lane table gives that row."
+domains = ["crossing"]
+failure_cap = "scuffed"
+validation = { script = "water/lane-kinds.test.ts", outputs = [
+  { id = "scene", name = "Each water lane carrying its own floe", kind = "image" },
+] }
+[[review.categories.items]]
+id = "lane-lengths"
+title = "Each floe spans its stated tiles"
+description = "A pan reports len 1, a raft3 3 and a raft4 4, on every lane that carries one."
+domains = ["crossing"]
+failure_cap = "scuffed"
+validation = { script = "water/lane-lengths.test.ts", outputs = [
+  { id = "scene", name = "The three floe kinds at their stated spans", kind = "image" },
+] }
+[[review.categories.items]]
+id = "lane-directions"
+title = "Each water lane drifts its stated way"
+description = "Every lane's dir is the table's, and a floe's x moves that way over a second."
+domains = ["crossing"]
+failure_cap = "scuffed"
+validation = { script = "water/lane-directions.test.ts", outputs = [
+  { id = "drift", name = "Each water lane drifting its stated way", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "lane-speeds"
+title = "Each water lane drifts at its stated speed"
+description = "Every lane's reported speed is the table's level-1 figure, and a floe covers speed * 32 units over one second of game time, within 2%."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "water/lane-speeds.test.ts", outputs = [
+  { id = "drift", name = "A second of drift, measured", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "lane-gaps"
+title = "Consecutive floes leave the stated open water"
+description = "In each lane, the open water between one floe's right edge and the next floe's left edge is the table's gap in tiles, within a tenth of a tile."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "water/lane-gaps.test.ts", outputs = [
+  { id = "scene", name = "The open water between consecutive floes", kind = "image" },
+] }
+[[review.categories.items]]
+id = "lane-wraps"
+title = "A water lane's spacing survives the edge"
+description = "Over ten seconds of game time, every water lane's gaps stay at their stated value."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "water/lane-wraps.test.ts", outputs = [
+  { id = "wrap", name = "Ten seconds of water lanes crossing the edge", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "speed-scales-with-level"
+title = "Water speeds climb 6% a level"
+description = "At levels 1, 4 and 8 every water lane's speed is its level-1 figure times 1.06^(level - 1), within 1%."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "water/speed-scales-with-level.test.ts", outputs = [
+  { id = "scene", name = "The water lanes at levels 1, 4 and 8", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gap-widens-with-level"
+title = "Water gaps widen every third level"
+description = "At levels 1, 4 and 7 every water lane's gap is its base gap plus floor((level - 1) / 3) tiles, within a tenth of a tile."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "water/gap-widens-with-level.test.ts", outputs = [
+  { id = "scene", name = "The water gaps at levels 1, 4 and 7", kind = "image" },
+] }
+[[review.categories.items]]
+id = "phases-staggered"
+title = "The floes do not line up into columns"
+description = "On a freshly laid-out level, no column carries a floe in all eight water rows at once."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "water/phases-staggered.test.ts", outputs = [
+  { id = "scene", name = "The eight water lanes on a fresh level", kind = "image" },
+] }
+[[review.categories.items]]
+id = "open-water-drowns"
+title = "Open water costs a life"
+description = "A critter posed on a water row whose centre no floe covers reports footing water and loses a life on the next tick."
+domains = ["crossing", "run"]
+failure_cap = "broken"
+validation = { script = "water/open-water-drowns.test.ts", outputs = [
+  { id = "drown", name = "The critter standing on open water", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "floe-is-footing"
+title = "A floe is safe footing"
+description = "A critter posed on a parked floe reports footing floe and loses no life over three seconds."
+domains = ["crossing"]
+failure_cap = "broken"
+validation = { script = "water/floe-is-footing.test.ts", outputs = [
+  { id = "ride", name = "The critter riding a parked floe", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "raft-spans-are-solid"
+title = "Every tile of a raft is footing"
+description = "A critter posed on each of the four tiles of a parked raft4 reports footing floe."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "water/raft-spans-are-solid.test.ts", outputs = [
+  { id = "ride", name = "The critter on each tile of a raft", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "floe-carries"
+title = "A floe carries its rider"
+description = "A critter riding a floe in a lane running at speed s and direction d has its centre x change by d * s * 32 units over one second of game time, within 2%."
+domains = ["crossing"]
+failure_cap = "broken"
+validation = { script = "water/floe-carries.test.ts", outputs = [
+  { id = "carry", name = "A second of a floe carrying its rider", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "carry-crosses-tiles"
+title = "The drift moves the critter's column"
+description = "A critter carried far enough reports a column that follows its centre by colAt(x), changing as it crosses each tile boundary."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "water/carry-crosses-tiles.test.ts", outputs = [
+  { id = "carry", name = "The critter's column following its drift", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "off-edge-left"
+title = "Riding off the left edge costs a life"
+description = "A critter carried until its centre leaves x = 0 loses a life."
+domains = ["crossing", "run"]
+failure_cap = "scuffed"
+validation = { script = "water/off-edge-left.test.ts", outputs = [
+  { id = "sweep", name = "The critter carried off the left edge", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "off-edge-right"
+title = "Riding off the right edge costs a life"
+description = "A critter carried until its centre leaves x = 1280 loses a life."
+domains = ["crossing", "run"]
+failure_cap = "scuffed"
+validation = { script = "water/off-edge-right.test.ts", outputs = [
+  { id = "sweep", name = "The critter carried off the right edge", kind = "replay" },
+] }
+
+# --- The bays -----------------------------------------------------------------
+# That a bay fills, stays filled, clears a level on the last one, and that the
+# bonus catch keeps its own cadence.
+#
+# `all-five-clears` and `posed-full-does-not-clear` are the paired item here, and
+# the pair is what makes the whole checklist's empty-strait posing safe: a level
+# clears on the HOP that fills the last open bay, not on the count reaching five,
+# so a strait posed with five filled bays and no hop keeps playing. Every suite in
+# every category relies on that, so it is asserted rather than assumed.
+#
+# The five fish items turn `setFishCadence` back on, because the cadence is their
+# requirement. Every other suite leaves it off.
+[[review.categories]]
+id = "bays"
+title = "The bays"
+[[review.categories.items]]
+id = "five-bays"
+title = "Five bays, all open at a level's start"
+description = "A freshly laid-out level reports exactly five bays and all five open."
+domains = ["crossing"]
+failure_cap = "broken"
+validation = { script = "bays/five-bays.test.ts", outputs = [
+  { id = "scene", name = "Five open bays on a fresh level", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fill-on-entry"
+title = "A hop into an open bay fills it"
+description = "A hop up from row 2 into an open bay reports that bay filled and no other."
+domains = ["crossing"]
+failure_cap = "broken"
+validation = { script = "bays/fill-on-entry.test.ts", outputs = [
+  { id = "fill", name = "A hop up into an open bay", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "fill-starts-fresh-crossing"
+title = "A filled bay begins a new crossing"
+description = "After BAYFILL_PAUSE the critter is back on the near shore at START_COL with the timer at timerMax."
+domains = ["crossing", "run"]
+failure_cap = "broken"
+validation = { script = "bays/fill-starts-fresh-crossing.test.ts", outputs = [
+  { id = "fill", name = "The fresh crossing a filled bay began", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "filled-stays-filled"
+title = "A filled bay stays filled"
+description = "A bay filled by a hop is still filled after a second crossing fills a different bay."
+domains = ["crossing"]
+failure_cap = "scuffed"
+validation = { script = "bays/filled-stays-filled.test.ts", outputs = [
+  { id = "fill", name = "A second bay filled beside the first", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "all-five-clears"
+title = "The fifth bay clears the level"
+description = "With four bays posed filled, the hop that fills the fifth moves the phase to clearing."
+domains = ["crossing", "run"]
+failure_cap = "broken"
+validation = { script = "bays/all-five-clears.test.ts", outputs = [
+  { id = "clear", name = "The hop that fills the fifth bay", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "posed-full-does-not-clear"
+title = "Five posed bays clear nothing"
+description = "Five bays posed filled with no hop leaves the phase crossing and the level unchanged over five seconds."
+domains = ["crossing", "run"]
+failure_cap = "passable"
+# Every suite on this checklist poses bays rather than hopping into them, so this
+# item is what makes that safe: a level clears on the HOP that fills the last open
+# bay, not on the count reaching five.
+validation = { script = "bays/posed-full-does-not-clear.test.ts", outputs = [
+  { id = "posed", name = "Five posed bays, still crossing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bays-reset-on-level"
+title = "A new level opens with five open bays"
+description = "After a level advance every bay is open again."
+domains = ["crossing", "run"]
+failure_cap = "scuffed"
+validation = { script = "bays/bays-reset-on-level.test.ts", outputs = [
+  { id = "reset", name = "The five open bays a new level opens with", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "fish-appears-in-open-bay"
+title = "The bonus catch appears in an open bay"
+description = "With the cadence on and one bay posed filled, the first fish that appears is in a bay that is open."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "bays/fish-appears-in-open-bay.test.ts", outputs = [
+  { id = "fish", name = "The first bonus catch, in an open bay", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fish-lingers"
+title = "The bonus catch lingers five seconds"
+description = "A fish stays in the bay it appeared in for FISH_LINGER (5 s), within a tenth of a second."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "bays/fish-lingers.test.ts", outputs = [
+  { id = "fish", name = "The bonus catch through its linger", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fish-interval"
+title = "The next bonus catch arrives about eight seconds on"
+description = "With the cadence on, the interval between a fish lingering out and the next appearing is FISH_INTERVAL (8 s), within a tenth of a second."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "bays/fish-interval.test.ts", outputs = [
+  { id = "fish", name = "The gap between one bonus catch and the next", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fish-moves-on"
+title = "The next bonus catch is elsewhere"
+description = "The fish that follows a fish that has lingered out appears in a different open bay."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "bays/fish-moves-on.test.ts", outputs = [
+  { id = "fish", name = "The bonus catch that followed, in another bay", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fish-is-alone"
+title = "At most one bonus catch is out"
+description = "Over sixty seconds of a live crossing with the cadence on, fishBay is never two bays at once and the count of fish on the strait never exceeds one."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "bays/fish-is-alone.test.ts", outputs = [
+  { id = "fish", name = "A minute of cadence, one catch at a time", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fish-cleared-when-bay-filled"
+title = "Filling the fish's bay takes it"
+description = "A hop into the bay holding the fish reports fishBay null afterwards."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "bays/fish-cleared-when-bay-filled.test.ts", outputs = [
+  { id = "fill", name = "The hop that takes the bonus catch", kind = "replay" },
+] }
+
+# --- The hunter ---------------------------------------------------------------
+# The signature system, and the largest category on the checklist. The bear has to
+# emerge on the right conditions, glide rather than hop, turn only where the grid
+# lets it, travel at two different speeds depending on what is under it, route
+# toward the critter around traffic that is itself moving, survive being routed
+# into a corner, be removed by a vehicle that arrives on it, come back, catch what
+# it reaches, and double at level 5 without ever tripling.
+#
+# THE THREE ROUTING BRANCHES EACH CARRY AN ITEM. `routes-around-hazard`,
+# `avoids-imminent-tile` and `pursues` decide the normal step;
+# `no-route-steps-closer` decides the fallback where no open route exists and the
+# bear must still take whichever open neighbor most shortens the tile distance;
+# and `boxed-in-stands-still` decides the fallback where no neighbor is open at
+# all. A build that implements only the happy path passes the first three and fails
+# the last two, which is the grading this category exists to produce.
+#
+# THE PER-BEAR GATES ARE HOW ISOLATION IS REACHED. A speed item runs with routing
+# off and one step committed, so the reading is a rate and not a route; a routing
+# item runs with travel off, so the committed step is read with nothing moving; an
+# obstacle item runs with all three off. `poseBear` takes them as an argument.
+#
+# `removed-on-death` and `removed-on-bay-fill` pose their bears with `addBear` and
+# leave emergence OFF, because the removal at a crossing's end is not the emergence
+# faculty; only the eight items whose requirement is emergence turn it on.
+[[review.categories]]
+id = "hunter"
+title = "The hunter"
+[[review.categories.items]]
+id = "emerges-after-advance"
+title = "A bear emerges once the critter has advanced"
+description = "With emergence on and the critter posed BEAR_EMERGE_ADVANCE (3) rows above the near shore, a bear joins the roster once BEAR_EMERGE_DELAY (0.6 s) of the crossing has passed."
+domains = ["hunter"]
+failure_cap = "broken"
+validation = { script = "hunter/emerges-after-advance.test.ts", outputs = [
+  { id = "emerge", name = "The bear that emerged behind the advanced critter", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "no-emergence-on-near-shore"
+title = "A critter on the near shore is not hunted"
+description = "With emergence on and the critter left on row 19, no bear joins the roster over thirty seconds of game time."
+domains = ["hunter"]
+failure_cap = "scuffed"
+# The `only` in the emergence rule, given its own item beside
+# `emerges-after-advance`: a critter that has not left the near shore is not hunted
+# at all, and a build that emerges a bear immediately fails here while passing
+# there.
+validation = { script = "hunter/no-emergence-on-near-shore.test.ts", outputs = [
+  { id = "wait", name = "Thirty seconds of a near shore with no bear", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "emerges-at-near-shore"
+title = "A bear emerges on the near shore"
+description = "The bear that emerges reports row 19 on the tick it joins the roster."
+domains = ["hunter"]
+failure_cap = "scuffed"
+validation = { script = "hunter/emerges-at-near-shore.test.ts", outputs = [
+  { id = "emerge", name = "The bear on the tick it joined the roster", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "glides-continuously"
+title = "A bear glides rather than hops"
+description = "A bear given one step reports a centre strictly between the two tile centres on at least four consecutive ticks, so it moves continuously rather than jumping tile to tile."
+domains = ["hunter"]
+failure_cap = "broken"
+validation = { script = "hunter/glides-continuously.test.ts", outputs = [
+  { id = "glide", name = "A bear between two tile centres", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "turns-at-tile-centres"
+title = "A bear turns only on a tile centre"
+description = "Over four seconds of pursuit, every tick on which the bear's travelling axis changes is a tick on which its centre is exactly a tile centre."
+domains = ["hunter"]
+failure_cap = "scuffed"
+validation = { script = "hunter/turns-at-tile-centres.test.ts", outputs = [
+  { id = "turn", name = "Four seconds of pursuit and every turn in it", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "one-axis-at-a-time"
+title = "A bear travels one grid axis at a time"
+description = "Over four seconds of pursuit, no tick changes both the bear's centre x and its centre y."
+domains = ["hunter"]
+failure_cap = "scuffed"
+validation = { script = "hunter/one-axis-at-a-time.test.ts", outputs = [
+  { id = "glide", name = "Four seconds of single-axis travel", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "ice-speed"
+title = "A bear covers three tiles a second on ice"
+description = "A bear stepped repeatedly across the median at level 1 covers BEAR_ICE_SPEED * 32 (96) units per second of game time, within 2%."
+domains = ["hunter"]
+failure_cap = "passable"
+validation = { script = "hunter/ice-speed.test.ts", outputs = [
+  { id = "glide", name = "A bear crossing the median, measured", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "swim-speed"
+title = "A bear covers two tiles a second swimming"
+description = "A bear stepped repeatedly across an emptied water row at level 1 covers BEAR_SWIM_SPEED * 32 (64) units per second, within 2%."
+domains = ["hunter"]
+failure_cap = "passable"
+validation = { script = "hunter/swim-speed.test.ts", outputs = [
+  { id = "swim", name = "A bear crossing open water, measured", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "floe-speed"
+title = "A bear on a floe travels at its ice speed"
+description = "A bear stepped across a water row whose tiles a parked raft covers travels at the ice speed rather than the swim speed."
+domains = ["hunter"]
+failure_cap = "passable"
+# A floe is ice footing, so a bear crossing a raft travels at its ICE speed rather
+# than its swim speed. The item is posed with a parked raft so the reading is a
+# rate and not a drift.
+validation = { script = "hunter/floe-speed.test.ts", outputs = [
+  { id = "swim", name = "A bear crossing a raft, measured", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "speed-scales-with-level"
+title = "A bear speeds up 6% a level"
+description = "At levels 1, 4 and 8 both the ice speed and the swim speed are their level-1 figures times 1.06^(level - 1), within 2%."
+domains = ["hunter"]
+failure_cap = "passable"
+validation = { script = "hunter/speed-scales-with-level.test.ts", outputs = [
+  { id = "glide", name = "A bear's two speeds at levels 1, 4 and 8", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "pursues"
+title = "A bear closes on the critter"
+description = "On an emptied strait, a bear posed twelve tiles from the critter has its Manhattan tile distance to it strictly smaller after three seconds of game time."
+domains = ["hunter"]
+failure_cap = "broken"
+validation = { script = "hunter/pursues.test.ts", outputs = [
+  { id = "pursue", name = "A bear closing twelve tiles of distance", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "sense-follows-critter"
+title = "A bear hunts the critter's tile"
+description = "A bear's reported target is the critter's tile, and it follows the critter to the new tile within a tick of each hop."
+domains = ["hunter"]
+failure_cap = "broken"
+validation = { script = "hunter/sense-follows-critter.test.ts", outputs = [
+  { id = "pursue", name = "A bear's target following each hop", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "routes-around-hazard"
+title = "A bear routes around a wall of traffic"
+description = "With a full row of parked vehicles between it and the critter save one gap, the bear commits no step into a covered tile over six seconds and reaches the critter's row through the gap."
+domains = ["hunter"]
+failure_cap = "scuffed"
+validation = { script = "hunter/routes-around-hazard.test.ts", outputs = [
+  { id = "route", name = "A bear routing through the one gap", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "refuses-vehicle-tile"
+title = "A vehicle's tile is closed to a bear"
+description = "A step sent into a tile a parked vehicle covers leaves the bear on the tile it was on, still on the roster and unharmed."
+domains = ["hunter"]
+failure_cap = "scuffed"
+validation = { script = "hunter/refuses-vehicle-tile.test.ts", outputs = [
+  { id = "refuse", name = "A step into a parked vehicle, refused", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "avoids-imminent-tile"
+title = "A bear keeps out of a tile about to be swept"
+description = "A bear does not commit a step into a tile a moving vehicle will cover within BEAR_AVOID_LEAD (0.35 s), read over ten committed steps beside a running lane."
+domains = ["hunter"]
+failure_cap = "passable"
+validation = { script = "hunter/avoids-imminent-tile.test.ts", outputs = [
+  { id = "route", name = "Ten steps taken beside a running lane", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "no-route-steps-closer"
+title = "With no open route a bear still steps closer"
+description = "With a full row of parked vehicles sealing the target's row so no open route to it exists, the bear commits a step into whichever open neighboring tile most shortens its tile distance to the target, rather than standing still."
+domains = ["hunter"]
+failure_cap = "passable"
+# The first of the routing rule's two fallbacks. A build that implements only the
+# happy path stands still here, which is the second fallback's behavior in a
+# situation that does not call for it.
+validation = { script = "hunter/no-route-steps-closer.test.ts", outputs = [
+  { id = "route", name = "A bear stepping closer with no route open", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "boxed-in-stands-still"
+title = "A boxed-in bear stands still"
+description = "A bear ringed on all four sides by parked vehicles commits no step and holds its centre over three seconds."
+domains = ["hunter"]
+failure_cap = "passable"
+# The second fallback. It is also the only item that proves a boxed-in bear does
+# not thrash, escape through a covered tile, or throw.
+validation = { script = "hunter/boxed-in-stands-still.test.ts", outputs = [
+  { id = "route", name = "A bear ringed on all four sides", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "reset-on-leaving-tile"
+title = "Traffic arriving on the tile it is leaving removes it"
+description = "A vehicle released so its span reaches the tile a mid-glide bear is leaving takes that bear off the roster."
+domains = ["hunter"]
+failure_cap = "scuffed"
+validation = { script = "hunter/reset-on-leaving-tile.test.ts", outputs = [
+  { id = "reset", name = "Traffic arriving on the tile a bear was leaving", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "reset-on-entering-tile"
+title = "Traffic arriving on the tile it is entering removes it"
+description = "A vehicle released so its span reaches the tile a mid-glide bear is entering takes that bear off the roster."
+domains = ["hunter"]
+failure_cap = "scuffed"
+validation = { script = "hunter/reset-on-entering-tile.test.ts", outputs = [
+  { id = "reset", name = "Traffic arriving on the tile a bear was entering", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "re-emerges-after-reset"
+title = "A reset bear comes back"
+description = "With emergence on, a bear removed by a vehicle is replaced by a bear on the near shore once BEAR_EMERGE_DELAY has passed."
+domains = ["hunter"]
+failure_cap = "scuffed"
+validation = { script = "hunter/re-emerges-after-reset.test.ts", outputs = [
+  { id = "reset", name = "The bear that replaced the one traffic took", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "catches"
+title = "A bear that reaches the critter catches it"
+description = "With the catch test on, a bear posed BEAR_CATCH_DIST (18) units minus one from the critter's centre costs a life on the next tick."
+domains = ["hunter", "run"]
+failure_cap = "broken"
+validation = { script = "hunter/catches.test.ts", outputs = [
+  { id = "catch", name = "The bear catching the critter", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "no-catch-beyond-range"
+title = "A bear just out of reach catches nothing"
+description = "With the catch test on, a bear posed BEAR_CATCH_DIST + 1 (19) units from the critter's centre with its travel off costs no life over three seconds."
+domains = ["hunter"]
+failure_cap = "passable"
+validation = { script = "hunter/no-catch-beyond-range.test.ts", outputs = [
+  { id = "near", name = "A bear held just out of reach", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "never-enters-far-shore"
+title = "The far shore is closed to a bear"
+description = "A bear on row 2 sent up is refused and stays on row 2; the same holds for a bear sent up from row 1 toward row 0."
+domains = ["hunter"]
+failure_cap = "scuffed"
+validation = { script = "hunter/never-enters-far-shore.test.ts", outputs = [
+  { id = "refuse", name = "A bear refused by the far shore", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "swims-flag"
+title = "A bear over open water reports swimming"
+description = "A bear whose entering tile is a water tile no floe covers reports swimming true; over ice, over the median and on a floe it reports false."
+domains = ["hunter"]
+failure_cap = "passable"
+validation = { script = "hunter/swims-flag.test.ts", outputs = [
+  { id = "swim", name = "A bear over water, ice, the median and a floe", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "removed-on-death"
+title = "A death clears the hunt"
+description = "A life lost with two bears on the strait leaves the roster empty on the tick the phase becomes dying."
+domains = ["hunter"]
+failure_cap = "scuffed"
+# Posed with `addBear` and emergence left OFF: the removal at a crossing's end is
+# not the emergence faculty, so this item stays outside the list of items that turn
+# a world gate on.
+validation = { script = "hunter/removed-on-death.test.ts", outputs = [
+  { id = "reset", name = "The roster emptied by a death", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "removed-on-bay-fill"
+title = "A completed crossing clears the hunt"
+description = "A hop into an open bay with two bears on the strait leaves the roster empty."
+domains = ["hunter"]
+failure_cap = "scuffed"
+# Posed the same way and for the same reason as `removed-on-death`.
+validation = { script = "hunter/removed-on-bay-fill.test.ts", outputs = [
+  { id = "reset", name = "The roster emptied by a completed crossing", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "second-bear-from-level-5"
+title = "A second bear hunts from level 5"
+description = "At level SECOND_BEAR_LEVEL (5) with emergence on, two bears join the roster, the second once the critter has advanced BEAR_EMERGE_ADVANCE + BEAR_SECOND_ADVANCE (6) rows and BEAR_EMERGE_DELAY + BEAR_SECOND_DELAY (2.0 s) have passed."
+domains = ["hunter"]
+failure_cap = "scuffed"
+validation = { script = "hunter/second-bear-from-level-5.test.ts", outputs = [
+  { id = "two", name = "Two bears hunting at level 5", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "no-second-bear-below-level-5"
+title = "One bear hunts below level 5"
+description = "At level 4 with emergence on and the critter advanced twelve rows, the roster never holds more than one bear over sixty seconds."
+domains = ["hunter"]
+failure_cap = "passable"
+validation = { script = "hunter/no-second-bear-below-level-5.test.ts", outputs = [
+  { id = "one", name = "A minute of level 4, one bear throughout", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "at-most-two-bears"
+title = "Never more than two bears hunt"
+description = "At level 8 with emergence on and the critter advanced twelve rows, the roster never holds more than MAX_BEARS (2) bears over sixty seconds."
+domains = ["hunter"]
+failure_cap = "passable"
+validation = { script = "hunter/at-most-two-bears.test.ts", outputs = [
+  { id = "two", name = "A minute of level 8, never a third bear", kind = "replay" },
+] }
+
+# --- The run ------------------------------------------------------------------
+# The run: the lives, what costs one, the crossing timer, the death pause, the
+# respawn, the level advance, and the two ways a run ends.
+#
+# The five deaths each have their own item — catch, crush, drown, off-edge and
+# timer — because a build can wire four of them to the phase change and miss the
+# fifth, and each names the domain the miss belongs to. `death-pause` then asserts
+# the DURATION alone, posing the cheapest death to reach, because that the other
+# four reach `dying` at all is each of their own items' requirement.
+#
+# `game-over-at-zero` and `posed-zero-lives-does-not-end` are the paired item.
+# `setLives(0)` is a PRECONDITION, not an ending: it leaves the game playing and
+# the next death ends it. A build that ends the run the moment the counter hits
+# zero fails the second, and a suite that could not pose zero lives without ending
+# the run could not stage the first at all.
+[[review.categories]]
+id = "progression"
+title = "The run"
+[[review.categories.items]]
+id = "three-lives"
+title = "A run starts with three lives"
+description = "A run opened from the title menu reports START_LIVES (3) lives."
+domains = ["run"]
+failure_cap = "scuffed"
+validation = { script = "progression/three-lives.test.ts", outputs = [
+  { id = "start", name = "The three lives a fresh run opens with", kind = "image" },
+] }
+[[review.categories.items]]
+id = "catch-costs-life"
+title = "Being caught costs a life"
+description = "A catch drops lives by exactly one and moves the phase to dying."
+domains = ["run", "hunter"]
+failure_cap = "broken"
+validation = { script = "progression/catch-costs-life.test.ts", outputs = [
+  { id = "death", name = "The life a catch cost", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "crush-costs-life"
+title = "Being crushed costs a life"
+description = "A vehicle arriving on the critter drops lives by exactly one and moves the phase to dying."
+domains = ["run", "crossing"]
+failure_cap = "broken"
+validation = { script = "progression/crush-costs-life.test.ts", outputs = [
+  { id = "death", name = "The life a crush cost", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "drown-costs-life"
+title = "Falling in costs a life"
+description = "Standing on open water drops lives by exactly one and moves the phase to dying."
+domains = ["run", "crossing"]
+failure_cap = "broken"
+validation = { script = "progression/drown-costs-life.test.ts", outputs = [
+  { id = "death", name = "The life falling in cost", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "off-edge-costs-life"
+title = "Being swept off costs a life"
+description = "Riding a floe past the edge drops lives by exactly one and moves the phase to dying."
+domains = ["run", "crossing"]
+failure_cap = "scuffed"
+validation = { script = "progression/off-edge-costs-life.test.ts", outputs = [
+  { id = "death", name = "The life being swept off cost", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "timer-costs-life"
+title = "The crossing timer costs a life"
+description = "With the timer running and posed at 0.5 s, timer reaches 0 and the phase becomes dying on that same tick, with lives down one."
+domains = ["run"]
+failure_cap = "scuffed"
+validation = { script = "progression/timer-costs-life.test.ts", outputs = [
+  { id = "expire", name = "The crossing timer running out", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "timer-length-level-1"
+title = "A level-1 crossing gets thirty seconds"
+description = "A run opened at level 1 reports timerMax and timer at TIMER_BASE (30)."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "progression/timer-length-level-1.test.ts", outputs = [
+  { id = "start", name = "A level-1 crossing at its full thirty seconds", kind = "image" },
+] }
+[[review.categories.items]]
+id = "timer-shortens"
+title = "The crossing timer shortens with the level"
+description = "At each level 1 through 8, timerMax is max(TIMER_MIN, TIMER_BASE - (level - 1) * TIMER_PER_LEVEL), so level 8 reads 16."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "progression/timer-shortens.test.ts", outputs = [
+  { id = "levels", name = "The crossing timer across all eight levels", kind = "image" },
+] }
+[[review.categories.items]]
+id = "timer-resets-on-bay"
+title = "A filled bay resets the timer"
+description = "After a bay is filled, the fresh crossing's timer is back at timerMax."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "progression/timer-resets-on-bay.test.ts", outputs = [
+  { id = "reset", name = "The full timer the fresh crossing opened with", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "death-pause"
+title = "A death pauses before the respawn"
+description = "A drowning holds the phase at dying for DEATH_PAUSE (0.9 s), within a tenth of a second, before a critter is back on the strait. That the other four deaths reach dying at all is each of their own items' requirement, so this one asserts the duration and poses the cheapest death to reach."
+domains = ["run"]
+failure_cap = "scuffed"
+# This item asserts the DURATION alone and poses the cheapest death to reach.
+# That each of the five deaths reaches `dying` at all is each of their own items'
+# requirement.
+validation = { script = "progression/death-pause.test.ts", outputs = [
+  { id = "pause", name = "The death pause, from the death to the respawn", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "critter-out-of-play"
+title = "The critter is out of play through the pause"
+description = "Through the death pause critter.present is false and a second hazard driven onto its old tile costs no further life."
+domains = ["run"]
+failure_cap = "scuffed"
+validation = { script = "progression/critter-out-of-play.test.ts", outputs = [
+  { id = "pause", name = "The strait through the pause, with no critter on it", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "strait-runs-during-death"
+title = "The strait keeps moving through the pause"
+description = "The lanes' items keep advancing at their speeds through the death pause."
+domains = ["run", "presentation"]
+failure_cap = "great"
+validation = { script = "progression/strait-runs-during-death.test.ts", outputs = [
+  { id = "pause", name = "The lanes running on through the death pause", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "respawn-on-near-shore"
+title = "The fresh critter starts on the near shore"
+description = "After the death pause the critter is on row 19 at START_COL (20), facing up, with bestRow back at 19."
+domains = ["run"]
+failure_cap = "broken"
+validation = { script = "progression/respawn-on-near-shore.test.ts", outputs = [
+  { id = "respawn", name = "The fresh critter on the near shore", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bays-survive-death"
+title = "A death leaves the bays filled"
+description = "With two bays posed filled, a death and its respawn leave exactly those two filled."
+domains = ["run", "crossing"]
+failure_cap = "scuffed"
+validation = { script = "progression/bays-survive-death.test.ts", outputs = [
+  { id = "respawn", name = "The two filled bays across a death", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "level-advances"
+title = "Clearing a level opens the next"
+description = "After the fifth bay is filled and CLEAR_PAUSE (1.6 s) has passed, level is one higher and the phase is back to crossing."
+domains = ["run"]
+failure_cap = "broken"
+validation = { script = "progression/level-advances.test.ts", outputs = [
+  { id = "advance", name = "The level the cleared one opened", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "victory-on-level-8"
+title = "Clearing level 8 wins"
+description = "At level TOTAL_LEVELS (8) with four bays filled, the hop that fills the fifth moves the screen to victory."
+domains = ["run"]
+failure_cap = "broken"
+validation = { script = "progression/victory-on-level-8.test.ts", outputs = [
+  { id = "victory", name = "The hop that won the run", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "game-over-at-zero"
+title = "The death that empties the lives ends the run"
+description = "With lives posed at 1, a death moves the screen to gameover after the death pause."
+domains = ["run"]
+failure_cap = "broken"
+validation = { script = "progression/game-over-at-zero.test.ts", outputs = [
+  { id = "gameover", name = "The death that emptied the lives", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "posed-zero-lives-does-not-end"
+title = "Zero lives posed ends nothing"
+description = "lives posed at 0 with no death leaves the screen playing and the phase crossing over five seconds."
+domains = ["run"]
+failure_cap = "passable"
+# `setLives(0)` is a precondition rather than an ending, which is what lets
+# `game-over-at-zero` be staged at all. A build that ends the run the moment the
+# counter hits zero fails here.
+validation = { script = "progression/posed-zero-lives-does-not-end.test.ts", outputs = [
+  { id = "posed", name = "Zero lives posed, still crossing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-reports-level"
+title = "The end screen names the level reached"
+description = "With reachedLevel at 6, the game-over screen reports 6."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "progression/game-over-reports-level.test.ts", outputs = [
+  { id = "gameover", name = "The game-over screen naming the level reached", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bonus-life-at-10000"
+title = "A bonus life at every ten thousand"
+description = "With the score posed just below BONUS_LIFE_EVERY (10,000), a real award that crosses it raises lives by one."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "progression/bonus-life-at-10000.test.ts", outputs = [
+  { id = "bonus", name = "The life awarded at ten thousand", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bonus-life-per-boundary"
+title = "A big gain awards a life per boundary"
+description = "A single real award crossing two BONUS_LIFE_EVERY boundaries raises lives by two."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "progression/bonus-life-per-boundary.test.ts", outputs = [
+  { id = "bonus", name = "The two lives one award paid", kind = "replay" },
+] }
+
+# --- Scoring ------------------------------------------------------------------
+# That every scoring event pays exactly its figure, and that nothing pays twice.
+#
+# Four of these items read a TIME BONUS, and all four keep `setTimerRunning` off
+# and pose the timer with `setTimer` instead. The whole-second count the award
+# reads is then the one the item chose rather than one the drain moved between the
+# pose and the hop — an item that let the timer run would be asserting an award
+# against a figure it could not pin down.
+#
+# `bay-award` and `time-bonus` are two items over the same hop for the same reason:
+# with the timer posed at 0 the hop pays SCORE_BAY + SCORE_ROW and nothing else, so
+# the bay's own award is isolated; the difference the same hop pays with 7.4 s on
+# the clock is then the time bonus alone.
+[[review.categories]]
+id = "scoring"
+title = "Scoring"
+[[review.categories.items]]
+id = "row-advance"
+title = "A newly reached row scores ten"
+description = "A hop to a row above every row this crossing has reached adds SCORE_ROW (10)."
+domains = ["run"]
+failure_cap = "scuffed"
+validation = { script = "scoring/row-advance.test.ts", outputs = [
+  { id = "score", name = "The ten a newly reached row paid", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "no-rescore-on-retread"
+title = "A row already reached scores nothing"
+description = "Hopping down one row and back up to a row already reached adds nothing."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "scoring/no-rescore-on-retread.test.ts", outputs = [
+  { id = "score", name = "A retread row paying nothing", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bay-award"
+title = "Filling a bay scores fifty"
+description = "With the timer at 0 and the timer gate off, a hop into an open bay adds SCORE_BAY + SCORE_ROW (60), so the bay's own award is 50."
+domains = ["run"]
+failure_cap = "scuffed"
+# Posed with the timer at 0 and `setTimerRunning` off, so the hop pays
+# SCORE_BAY + SCORE_ROW and nothing else and the bay's own award is isolated.
+# `time-bonus` then reads the difference the same hop pays with time on the clock.
+validation = { script = "scoring/bay-award.test.ts", outputs = [
+  { id = "score", name = "The sixty a bay with no time left paid", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "time-bonus"
+title = "Two points a whole second left"
+description = "With the timer posed at 7.4 s, the same hop adds SCORE_TIME_BONUS * 7 (14) more than it does with the timer at 0."
+domains = ["run"]
+failure_cap = "passable"
+# The timer is posed rather than run, so the whole-second count the award reads is
+# the one this item chose rather than one the drain moved between the pose and the
+# hop.
+validation = { script = "scoring/time-bonus.test.ts", outputs = [
+  { id = "score", name = "The same hop with seven whole seconds left", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "last-hop-total"
+title = "The completing hop pays all three"
+description = "With the timer posed at 12.0 s, the hop that completes a crossing adds exactly 10 + 50 + 2 * 12 (84)."
+domains = ["run"]
+failure_cap = "scuffed"
+validation = { script = "scoring/last-hop-total.test.ts", outputs = [
+  { id = "score", name = "The eighty-four the completing hop paid", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "level-clear"
+title = "Clearing a level scores a hundred a level"
+description = "At level 3 with four bays filled and the timer at 0, filling the fifth adds SCORE_LEVEL * 3 (300) on top of the completing hop."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "scoring/level-clear.test.ts", outputs = [
+  { id = "score", name = "The three hundred clearing level 3 paid", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "victory-bonus"
+title = "Victory pays two-fifty a life"
+description = "Winning with 3 lives adds SCORE_VICTORY_LIFE * 3 (750) on top of the level-clear award."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "scoring/victory-bonus.test.ts", outputs = [
+  { id = "score", name = "The seven-fifty three surviving lives paid", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bonus-catch"
+title = "The bonus catch pays two hundred"
+description = "With the fish posed in a bay and the timer at 0, the hop that fills that bay adds SCORE_BONUS_CATCH (200) more than the same hop into a bay with no fish."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "scoring/bonus-catch.test.ts", outputs = [
+  { id = "score", name = "The two hundred the bonus catch paid", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "no-bonus-catch-elsewhere"
+title = "Another bay pays no bonus"
+description = "With the fish posed in bay 0 and the timer at 0, a hop into bay 3 adds exactly the completing hop's own total."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "scoring/no-bonus-catch-elsewhere.test.ts", outputs = [
+  { id = "score", name = "A hop into another bay, paying no bonus", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "refused-hop-scores-nothing"
+title = "A refused hop scores nothing"
+description = "A hop refused by the far shore, by a filled bay, by a vehicle and by an edge each add nothing to the score."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "scoring/refused-hop-scores-nothing.test.ts", outputs = [
+  { id = "score", name = "Four refused hops, none of them scoring", kind = "replay" },
+] }
+
+# --- Controls -----------------------------------------------------------------
+# That each bound key drives the action it is bound to. Eight of these are the
+# four directions under both of their bindings, and that split is what the arrow
+# keys being `broken` and the WASD keys being `passable` expresses: a build with no
+# arrow keys cannot be played, while one that binds only the arrows is playable by
+# anyone who tries them.
+#
+# `Escape` deliberately drives both `pause` and `back`, and only the pause half has
+# an item here. `back` is bound to `Escape` alone, so an item for it would be
+# `screens.howto-returns` a second time under another name.
+#
+# `unbound-key-does-nothing` is the control sample for the whole category: it
+# drives a key bound to no action over a strait posed with no lane items and reads
+# every snapshot field but `simTime` back unchanged, which is what tells a build
+# that routed its bindings apart from one that answers to everything.
+[[review.categories]]
+id = "controls"
+title = "Controls"
+[[review.categories.items]]
+id = "arrow-up"
+title = "ArrowUp hops the critter up"
+description = "Driving the ArrowUp key alone moves the critter one row up."
+domains = ["crossing"]
+failure_cap = "broken"
+validation = { script = "controls/arrow-up.test.ts", outputs = [
+  { id = "hop", name = "ArrowUp hopping the critter up", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "arrow-down"
+title = "ArrowDown hops the critter down"
+description = "The ArrowDown key alone moves the critter one row down."
+domains = ["crossing"]
+failure_cap = "broken"
+validation = { script = "controls/arrow-down.test.ts", outputs = [
+  { id = "hop", name = "ArrowDown hopping the critter down", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "arrow-left"
+title = "ArrowLeft hops the critter left"
+description = "The ArrowLeft key alone moves the critter one column left."
+domains = ["crossing"]
+failure_cap = "broken"
+validation = { script = "controls/arrow-left.test.ts", outputs = [
+  { id = "hop", name = "ArrowLeft hopping the critter left", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "arrow-right"
+title = "ArrowRight hops the critter right"
+description = "The ArrowRight key alone moves the critter one column right."
+domains = ["crossing"]
+failure_cap = "broken"
+validation = { script = "controls/arrow-right.test.ts", outputs = [
+  { id = "hop", name = "ArrowRight hopping the critter right", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "key-w"
+title = "W hops the critter up"
+description = "The KeyW key alone moves the critter one row up."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "controls/key-w.test.ts", outputs = [
+  { id = "hop", name = "W hopping the critter up", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "key-s"
+title = "S hops the critter down"
+description = "The KeyS key alone moves the critter one row down."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "controls/key-s.test.ts", outputs = [
+  { id = "hop", name = "S hopping the critter down", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "key-a"
+title = "A hops the critter left"
+description = "The KeyA key alone moves the critter one column left."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "controls/key-a.test.ts", outputs = [
+  { id = "hop", name = "A hopping the critter left", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "key-d"
+title = "D hops the critter right"
+description = "The KeyD key alone moves the critter one column right."
+domains = ["crossing"]
+failure_cap = "passable"
+validation = { script = "controls/key-d.test.ts", outputs = [
+  { id = "hop", name = "D hopping the critter right", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "menu-up"
+title = "The up action moves a menu selection up"
+description = "On the pause menu with the second item highlighted, the up action highlights the first."
+domains = ["run"]
+failure_cap = "scuffed"
+validation = { script = "controls/menu-up.test.ts", outputs = [
+  { id = "menu", name = "The pause menu after the up action", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-down"
+title = "The down action moves a menu selection down"
+description = "On the pause menu with the first item highlighted, the down action highlights the second."
+domains = ["run"]
+failure_cap = "scuffed"
+validation = { script = "controls/menu-down.test.ts", outputs = [
+  { id = "menu", name = "The pause menu after the down action", kind = "image" },
+] }
+[[review.categories.items]]
+id = "confirm-enter"
+title = "Enter confirms the highlighted item"
+description = "On the title menu with CROSS highlighted, Enter opens a live crossing."
+domains = ["run"]
+failure_cap = "broken"
+validation = { script = "controls/confirm-enter.test.ts", outputs = [
+  { id = "confirm", name = "The crossing Enter opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "confirm-space"
+title = "Space confirms the highlighted item"
+description = "The same with Space."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "controls/confirm-space.test.ts", outputs = [
+  { id = "confirm", name = "The crossing Space opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-p"
+title = "P pauses a live crossing"
+description = "KeyP during a crossing moves the screen to paused."
+domains = ["run"]
+failure_cap = "scuffed"
+validation = { script = "controls/pause-p.test.ts", outputs = [
+  { id = "pause", name = "A crossing paused with P", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "pause-escape"
+title = "Escape pauses a live crossing"
+description = "Escape during a crossing moves the screen to paused."
+domains = ["run"]
+failure_cap = "scuffed"
+validation = { script = "controls/pause-escape.test.ts", outputs = [
+  { id = "pause", name = "A crossing paused with Escape", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "mute-m"
+title = "M toggles mute both ways"
+description = "KeyM during a live crossing turns muted on, and a second press turns it off."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "controls/mute-m.test.ts", outputs = [
+  { id = "muted", name = "Mute turned on with M, then off again", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overlay-backquote"
+title = "Backquote toggles the debug overlay"
+description = "Backquote shows the overlay and a second press hides it, and the snapshot is identical across both."
+domains = ["presentation"]
+failure_cap = "great"
+# The snapshot is read across both toggles because the overlay is read-only: an
+# overlay that changes what the game reports is not an overlay.
+validation = { script = "controls/overlay-backquote.test.ts", outputs = [
+  { id = "overlay", name = "The overlay shown with Backquote, then hidden", kind = "image" },
+] }
+[[review.categories.items]]
+id = "unbound-key-does-nothing"
+title = "An unbound key changes nothing"
+description = "A key bound to no action, driven during a live crossing on a strait posed with no lane items, leaves every snapshot field but simTime exactly as it was."
+domains = ["run"]
+failure_cap = "great"
+# The control sample for the whole category. `simTime` is excluded because it
+# accumulates on every tick whatever the screen, so a build that answers to nothing
+# still moves it.
+validation = { script = "controls/unbound-key-does-nothing.test.ts", outputs = [
+  { id = "after", name = "The crossing after an unbound key", kind = "image" },
+] }
+
+# --- Screens ------------------------------------------------------------------
+# That the six screens are reachable, correct and navigable.
+#
+# The four end-screen entries are four items rather than one, and four rather than
+# two. PLAY AGAIN and MENU are two transitions, and the victory screen and the
+# game-over screen are two screens whose entries a build can get right on one and
+# wrong on the other; a build whose victory MENU is broken must grade differently
+# from one with all four broken. Each of the four reaches its own end screen
+# through `setScreen`, so none passes through the other's screen on the way.
+#
+# `pause-freezes` and `pause-resume` assert the suspension specs/progression.md
+# owns: no lane item, critter, bear, bonus catch or timer advances while the screen
+# is `paused`, and leaving it resumes from exactly that state. `simTime` is the one
+# quantity that keeps accumulating, so neither item reads it.
+[[review.categories]]
+id = "screens"
+title = "Screens"
+[[review.categories.items]]
+id = "title-opens"
+title = "The game opens on the title screen"
+description = "A freshly initialized build reports the title screen with menuIndex 0."
+domains = ["run"]
+failure_cap = "broken"
+validation = { script = "screens/title-opens.test.ts", outputs = [
+  { id = "title", name = "The title screen a fresh build opens on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-contents"
+title = "The title screen shows the title and its menu"
+description = "The title screen draws TITLE_TEXT (FLOE), TAGLINE_TEXT (DON'T LOOK BACK) and both entries of TITLE_ITEMS."
+domains = ["run", "presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/title-contents.test.ts", outputs = [
+  { id = "title", name = "The title, the tagline and both menu items", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-highlight"
+title = "The highlighted menu item reads as highlighted"
+description = "The highlighted title item is drawn differently from the item that is not highlighted, by at least 40 of 441 RGB distance over its glyph pixels."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "screens/title-highlight.test.ts", outputs = [
+  { id = "title", name = "The highlighted title item beside the plain one", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-opens"
+title = "Confirming HOW TO PLAY opens the how-to screen"
+description = "Confirming the second title item moves the screen to howto."
+domains = ["run"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-opens.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen HOW TO PLAY opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-contents"
+title = "The how-to screen covers the game"
+description = "The how-to screen names the goal of filling the bays, the hopping controls, the hunting bear, the sliding hazards, the drifting floes and the timer."
+domains = ["run", "presentation"]
+failure_cap = "passable"
+validation = { script = "screens/howto-contents.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen and what it covers", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-returns"
+title = "Back returns from the how-to screen"
+description = "The back action on the how-to screen returns to title."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "screens/howto-returns.test.ts", outputs = [
+  { id = "title", name = "The title screen the back action returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cross-starts-run"
+title = "Confirming CROSS opens a live crossing"
+description = "Confirming the first title item opens playing at level 1, three lives, a full timer, five open bays and the critter on the near shore."
+domains = ["run"]
+failure_cap = "broken"
+validation = { script = "screens/cross-starts-run.test.ts", outputs = [
+  { id = "game", name = "The live crossing CROSS opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-menu"
+title = "The pause menu offers three items"
+description = "Pausing shows all three entries of PAUSE_ITEMS."
+domains = ["run"]
+failure_cap = "scuffed"
+validation = { script = "screens/pause-menu.test.ts", outputs = [
+  { id = "pause", name = "The pause menu and its three items", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-freezes"
+title = "The strait freezes while paused"
+description = "Every lane item holds its x and the critter and bears hold their centres over three seconds of paused."
+domains = ["run"]
+failure_cap = "scuffed"
+validation = { script = "screens/pause-freezes.test.ts", outputs = [
+  { id = "pause", name = "Three seconds of a frozen strait", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "pause-resume"
+title = "Resume returns to the crossing as it stood"
+description = "Confirming RESUME returns to playing with the score, lives, level, timer, bays, critter tile and bear roster exactly as they were."
+domains = ["run"]
+failure_cap = "scuffed"
+validation = { script = "screens/pause-resume.test.ts", outputs = [
+  { id = "resume", name = "The crossing RESUME returned to", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "pause-restart"
+title = "Restart opens a fresh run"
+description = "Confirming RESTART opens playing at level 1 with three lives, score 0 and five open bays."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "screens/pause-restart.test.ts", outputs = [
+  { id = "game", name = "The fresh run RESTART opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-quit"
+title = "Quit to menu returns to the title"
+description = "Confirming QUIT TO MENU returns to title."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "screens/pause-quit.test.ts", outputs = [
+  { id = "title", name = "The title screen QUIT TO MENU returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "victory-screen"
+title = "The victory screen reports the run"
+description = "The victory screen shows the final score, the levels cleared (8) and the lives remaining, with both entries of ENDING_ITEMS."
+domains = ["run", "presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/victory-screen.test.ts", outputs = [
+  { id = "victory", name = "The victory screen and what it reports", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-screen"
+title = "The game-over screen reports the run"
+description = "The game-over screen shows the final score and the level reached, with both entries of ENDING_ITEMS."
+domains = ["run", "presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/gameover-screen.test.ts", outputs = [
+  { id = "gameover", name = "The game-over screen and what it reports", kind = "image" },
+] }
+[[review.categories.items]]
+id = "victory-play-again"
+title = "PLAY AGAIN on the victory screen opens a fresh run"
+description = "On the victory screen with PLAY AGAIN highlighted, confirming opens playing at level 1 with three lives, score 0 and five open bays."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "screens/victory-play-again.test.ts", outputs = [
+  { id = "after", name = "The fresh run PLAY AGAIN opened from victory", kind = "image" },
+] }
+[[review.categories.items]]
+id = "victory-menu"
+title = "MENU on the victory screen returns to the title"
+description = "On the victory screen with MENU highlighted, confirming returns to title."
+domains = ["run"]
+failure_cap = "passable"
+# One of four end-screen items rather than one. PLAY AGAIN and MENU are two
+# transitions and the two end screens are two screens, and a build can get any one
+# of the four wrong on its own. Each reaches its own screen through `setScreen`, so
+# none passes through the other's on the way.
+validation = { script = "screens/victory-menu.test.ts", outputs = [
+  { id = "title", name = "The title screen MENU returned to from victory", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-play-again"
+title = "PLAY AGAIN on the game-over screen opens a fresh run"
+description = "On the game-over screen with PLAY AGAIN highlighted, confirming opens playing at level 1 with three lives, score 0 and five open bays."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "screens/gameover-play-again.test.ts", outputs = [
+  { id = "after", name = "The fresh run PLAY AGAIN opened from game over", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-menu"
+title = "MENU on the game-over screen returns to the title"
+description = "On the game-over screen with MENU highlighted, confirming returns to title."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "screens/gameover-menu.test.ts", outputs = [
+  { id = "title", name = "The title screen MENU returned to from game over", kind = "image" },
+] }
+
+# --- Presentation -------------------------------------------------------------
+# That the game draws from the seeded sprites, in colors a player can tell apart,
+# with the HUD it must show.
+#
+# ELEVEN of these items assert a SEEDED FRAME: the critter, the bear in three
+# states, and the six lane-item kinds are each drawn from art this case ships, and
+# each is its own item because a build can wire six of the seven folders and draw
+# the seventh in code. `sprite-raft3` and `sprite-raft4` additionally assert the
+# SUB-RECT — the left 96x32 of `assets/raft/0.png` against the whole of
+# `assets/raft/1.png` — which is why specs/assets.md states how a frame is drawn
+# and not merely which frame.
+#
+# THE FIVE LEGIBILITY ITEMS ASSERT A DISTANCE, NEVER A COLOR. Floe fixes no
+# palette, so each of these reads the pixels the build rendered and holds them
+# against an RGB distance out of 441 that the item states. `submerged-bear-visible`
+# is the one that matters most: a bear over open water is drawn as a silhouette and
+# a wake rather than a full sprite, and a build that draws nothing at all leaves the
+# hunt invisible exactly where it is most dangerous.
+#
+# `hud-timer` poses the timer at two values with `setTimerRunning` OFF throughout,
+# so it reads the readout following the field rather than the drain, and stays
+# outside the closed list of items that turn a world gate on.
+[[review.categories]]
+id = "presentation"
+title = "Presentation"
+[[review.categories.items]]
+id = "sprite-crosser"
+title = "The critter is drawn from its seeded frames"
+description = "The image the critter is drawn from is a frame of assets/crosser/, matched pixel for pixel against the seeded PNGs."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/sprite-crosser.test.ts", outputs = [
+  { id = "scene", name = "The critter drawn from its seeded frames", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sprite-crosser-facing"
+title = "The critter's frame matches its facing"
+description = "With the critter facing each of the four directions in turn, the frame drawn is from that facing's pair as specs/assets.md tabulates them."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/sprite-crosser-facing.test.ts", outputs = [
+  { id = "scene", name = "The critter's frame in each of the four facings", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sprite-bear-run"
+title = "A bear on ice is drawn from its run frames"
+description = "A bear travelling on the median in each of the four directions is drawn from that direction's run pair (frames 0 to 7)."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/sprite-bear-run.test.ts", outputs = [
+  { id = "scene", name = "A bear's run frames in each of the four headings", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sprite-bear-swim"
+title = "A submerged bear is drawn from its swim frames"
+description = "A bear whose entering tile is open water is drawn from the swim set for its heading (frames 8 to 15)."
+domains = ["presentation", "hunter"]
+failure_cap = "scuffed"
+validation = { script = "presentation/sprite-bear-swim.test.ts", outputs = [
+  { id = "swim", name = "A bear's swim frames over open water", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "sprite-bear-lunge"
+title = "A catching bear is drawn from its lunge frames"
+description = "The bear that catches the critter is drawn from frames 16 or 17 on the tick it catches."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/sprite-bear-lunge.test.ts", outputs = [
+  { id = "catch", name = "The lunge frame on the tick of the catch", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "sprite-plow"
+title = "The plow is drawn from its seeded frame"
+description = "A plow is drawn from assets/plow/0.png at 96 units wide over the three tiles it spans."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/sprite-plow.test.ts", outputs = [
+  { id = "scene", name = "A plow drawn across the three tiles it spans", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sprite-dogsled"
+title = "The dogsled is drawn from its seeded frame"
+description = "A dogsled is drawn from assets/dogsled/0.png at 64 units wide."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/sprite-dogsled.test.ts", outputs = [
+  { id = "scene", name = "A dogsled drawn across the two tiles it spans", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sprite-car"
+title = "The car is drawn from its seeded frame"
+description = "A car is drawn from assets/car/0.png at 64 units wide."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/sprite-car.test.ts", outputs = [
+  { id = "scene", name = "A car drawn across the two tiles it spans", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sprite-pan"
+title = "The small floe is drawn from its seeded frame"
+description = "A one-tile floe is drawn from assets/pan/0.png at 32 units wide."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/sprite-pan.test.ts", outputs = [
+  { id = "scene", name = "A pan drawn on the one tile it spans", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sprite-raft3"
+title = "The three-tile raft is drawn from its seeded frame"
+description = "A three-tile floe is drawn from the left 96 x 32 of assets/raft/0.png, over the three tiles it spans."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# The sub-rect is asserted, not just the file: a three-tile raft is the left 96x32
+# of `assets/raft/0.png`, and specs/assets.md states that because it is not
+# derivable from the folder table.
+validation = { script = "presentation/sprite-raft3.test.ts", outputs = [
+  { id = "scene", name = "A three-tile raft drawn from the left of its sheet", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sprite-raft4"
+title = "The four-tile raft is drawn from its seeded frame"
+description = "A four-tile floe is drawn from the whole of assets/raft/1.png, over the four tiles it spans."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/sprite-raft4.test.ts", outputs = [
+  { id = "scene", name = "A four-tile raft drawn from its whole sheet", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mirror-leftward-vehicle"
+title = "A leftward vehicle is drawn mirrored"
+description = "The same vehicle kind drawn in a leftward lane and in a rightward lane is drawn with opposite horizontal orientation."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/mirror-leftward-vehicle.test.ts", outputs = [
+  { id = "scene", name = "One vehicle kind in a leftward and a rightward lane", kind = "image" },
+] }
+[[review.categories.items]]
+id = "submerged-bear-visible"
+title = "A submerged bear stays trackable"
+description = "Where a swimming bear stands, the pixels drawn are at least 60 of 441 from the water around it, so it is never invisible."
+domains = ["presentation", "hunter"]
+failure_cap = "scuffed"
+# The legibility requirement the case cares most about. A submerged bear is drawn
+# as something other than a full sprite, and a build that draws nothing at all
+# leaves the hunt invisible exactly where it is most dangerous. The threshold is an
+# RGB distance, never a color.
+validation = { script = "presentation/submerged-bear-visible.test.ts", outputs = [
+  { id = "swim", name = "A submerged bear against the water around it", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "critter-reads-apart"
+title = "The critter reads apart from its footing"
+description = "The critter's drawn pixels are at least 60 of 441 from the band under it, on the near shore, on the ice band, on the median and on a floe."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/critter-reads-apart.test.ts", outputs = [
+  { id = "scene", name = "The critter on each footing it can stand on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bear-reads-apart"
+title = "A bear reads apart from its footing"
+description = "A bear's drawn pixels are at least 60 of 441 from the band under it, on the near shore, on the ice band and on the median."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/bear-reads-apart.test.ts", outputs = [
+  { id = "scene", name = "A bear on each band it can travel on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-score"
+title = "The HUD shows the score"
+description = "The score is drawn inside the HUD bar and the digits change when the score changes."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/hud-score.test.ts", outputs = [
+  { id = "hud", name = "The score readout, before and after a change", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-lives"
+title = "The HUD counts the run's lives"
+description = "The lives readout counts the critter currently crossing, so a fresh run reads three and it reads two after the first death."
+domains = ["presentation", "run"]
+failure_cap = "scuffed"
+validation = { script = "presentation/hud-lives.test.ts", outputs = [
+  { id = "hud", name = "The lives readout, before and after a death", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-level"
+title = "The HUD shows the level out of eight"
+description = "The level readout carries HUD_LEVEL_LABEL (LEVEL), the current level and the total 8."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/hud-level.test.ts", outputs = [
+  { id = "hud", name = "The level readout and its total", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-timer"
+title = "The HUD shows the crossing timer"
+description = "The timer readout is drawn inside the HUD bar and follows timer: it reads one figure with the timer posed at one value and a different figure with it posed at another. timerRunning stays off throughout, so the item stays outside the closed gate table."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# `setTimerRunning` stays off throughout and the timer is posed at two values, so
+# this item reads the readout following the field rather than following the drain —
+# which is why it is not in the closed list of items that turn a world gate on.
+validation = { script = "presentation/hud-timer.test.ts", outputs = [
+  { id = "hud", name = "The timer readout at two posed values", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-bays"
+title = "The HUD marks the filled bays"
+description = "The HUD's bay readout, the fifth readout specs/ui.md fixes, marks each bay at that bay's own position: the mark for a bay changes when that bay is posed filled, and the mark for a bay that stays open does not."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/hud-bays.test.ts", outputs = [
+  { id = "hud", name = "The bay readout with one bay filled", kind = "image" },
+] }
+[[review.categories.items]]
+id = "text-legible"
+title = "Every readout and screen text is legible"
+description = "Every HUD readout and every screen's text is drawn at least 60 of 441 from the background behind it."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/text-legible.test.ts", outputs = [
+  { id = "text", name = "Every readout and screen text against its background", kind = "image" },
+] }
+
+# --- Audio --------------------------------------------------------------------
+# That each of the ten cues plays on its event, and that mute silences them. All
+# ten cues specs/ui.md names carry an item, because a cue that is defined and never
+# played is the failure this category exists to catch.
+#
+# `controls.menu-up` and `controls.menu-down` decide the selection alone and say
+# nothing about a cue; `cue-menu` here decides the sound. An item asserting both
+# the highlight and the sound would be two behaviors in one point, and a silent
+# menu would lower `run` rather than the `presentation` domain that owns the cues.
+[[review.categories]]
+id = "audio"
+title = "Audio"
+[[review.categories.items]]
+id = "cue-hop"
+title = "A hop plays its cue"
+description = "An accepted hop plays the hop cue exactly once; a refused hop plays it none."
+domains = ["presentation"]
+failure_cap = "passable"
+# Both halves are read from one scenario: an accepted hop plays the cue exactly
+# once and a refused hop plays it none, which is what separates a build that cues
+# the input from one that cues the movement.
+validation = { script = "audio/cue-hop.test.ts", outputs = [
+  { id = "hop", name = "An accepted hop beside a refused one", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cue-splash"
+title = "Falling in plays its cue"
+description = "Standing on open water plays the splash cue."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/cue-splash.test.ts", outputs = [
+  { id = "splash", name = "The critter falling in", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cue-crush"
+title = "Being crushed plays its cue"
+description = "A vehicle arriving on the critter plays the crush cue."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/cue-crush.test.ts", outputs = [
+  { id = "crush", name = "The vehicle arriving on the critter", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cue-caught"
+title = "Being caught plays its cue"
+description = "A bear catching the critter plays the caught cue."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/cue-caught.test.ts", outputs = [
+  { id = "caught", name = "The bear catching the critter", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cue-bay"
+title = "Filling a bay plays its cue"
+description = "A hop into an open bay plays the bay cue."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/cue-bay.test.ts", outputs = [
+  { id = "bay", name = "The hop that filled the bay", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cue-level-clear"
+title = "Clearing a level plays its cue"
+description = "Filling the fifth bay below level 8 plays the levelClear cue."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/cue-level-clear.test.ts", outputs = [
+  { id = "clear", name = "The fifth bay filled below level 8", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cue-bonus-life"
+title = "A bonus life plays its cue"
+description = "A score crossing a BONUS_LIFE_EVERY boundary plays the bonusLife cue."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "audio/cue-bonus-life.test.ts", outputs = [
+  { id = "bonus", name = "The award that crossed ten thousand", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cue-victory"
+title = "Victory plays its sting"
+description = "Clearing level 8 plays the victory cue."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/cue-victory.test.ts", outputs = [
+  { id = "victory", name = "Level 8 cleared", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cue-game-over"
+title = "Game over plays its sting"
+description = "The death that empties the lives plays the gameOver cue."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/cue-game-over.test.ts", outputs = [
+  { id = "gameover", name = "The death that emptied the lives", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cue-menu"
+title = "A menu move plays its cue"
+description = "Moving the title menu's selection plays the menu cue exactly once per move."
+domains = ["presentation"]
+failure_cap = "great"
+# The sound alone. `controls.menu-up` and `controls.menu-down` decide the
+# selection, and an item asserting both would be two behaviors in one point — and
+# would lower `run` for a fault that belongs to `presentation`.
+validation = { script = "audio/cue-menu.test.ts", outputs = [
+  { id = "menu", name = "The title menu's selection moving", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mute-silences"
+title = "Mute silences the cues"
+description = "With muted on, an accepted hop and a filled bay produce no audible output, and the game keeps running."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "audio/mute-silences.test.ts", outputs = [
+  { id = "muted", name = "A hop and a bay fill with mute on", kind = "image" },
+] }

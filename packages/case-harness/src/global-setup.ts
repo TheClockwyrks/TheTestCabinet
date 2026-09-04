@@ -24,6 +24,15 @@
 // files with no routing: whatever is asked for is read off disk, and anything
 // missing is a 404 the suite will see as a page error.
 //
+// THE ONE QUESTION THIS ALSO ANSWERS. Everything above is scaffolding, but there
+// is a single reading about the BUILD that is far cheaper here than in a worker:
+// whether it installs a debug surface at all. Every harness has to know, and the
+// ceiling it waits under is deliberately generous, so a surfaceless build would
+// have a whole project's worth of harnesses each waiting it out — which is how a
+// run stops being "a hundred and six requirements went unmet" and starts being
+// "the validators did not run". So `probeSurfaceAbsent` buys the answer once,
+// here, on pages of its own, and hands it to the workers with the addresses.
+//
 // WHERE THE BUILD ROOT COMES FROM, AND WHY IT IS NOT THIS FILE'S URL. Each of the
 // four cases this was extracted from derived it as `resolve(dirname(import.meta.url), "..")`
 // — correct while the file sat at the top of the staged project, and wrong the
@@ -40,8 +49,14 @@ import { readFile } from "node:fs/promises";
 import { existsSync, readdirSync } from "node:fs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import type { TestProject } from "vitest/node";
-import { launchChromiumServer } from "./chromium";
-import { PROVIDE_URL_KEY, PROVIDE_WS_KEY } from "./config";
+import { connectChromium, launchChromiumServer } from "./chromium";
+import {
+  DEFAULT_SURFACE_TIMEOUT_MS,
+  PROVIDE_SURFACE_ABSENT_KEY,
+  PROVIDE_URL_KEY,
+  PROVIDE_WS_KEY,
+} from "./config";
+import { ABSENCE_LOOKS, waitForSurface } from "./surface";
 
 /** Where `npm run build` may have put the site, in the order the runner looks. */
 export const BUILD_OUTPUTS = ["dist", "build", "out"] as const;
@@ -144,6 +159,93 @@ async function serve(
 export interface GlobalSetupOptions {
   /** The case's slug, which prefixes every message this prints. */
   readonly slug: string;
+  /**
+   * The page global an engineless build installs its debug surface on — the same
+   * string the case's `CaseConfig.handle` carries.
+   *
+   * OPTIONAL, AND WHAT IT BUYS IS TIME RATHER THAN A VERDICT. Given it, this
+   * setup runs {@link probeSurfaceAbsent} and the workers are handed a run-wide
+   * answer. Omitted, the answer provided is `false` and every harness makes its
+   * own full-ceiling reading, exactly as it did before the probe existed — which
+   * is also what the package's own suite does, since its fixture build is not a
+   * case and has no handle of its own.
+   *
+   * It is stated here rather than read off the case's config because this module
+   * is loaded by vite's config path, before the test runtime exists: importing a
+   * case's `harness.ts` to reach its config would drag the whole harness into the
+   * one bundle whose failure mode is "the project would not load at all".
+   */
+  readonly handle?: string;
+  /**
+   * The ceiling one look of the probe waits under, matching the case's
+   * `CaseConfig.surfaceTimeoutMs`.
+   *
+   * A probe that waited LESS than a harness does could call a slow build
+   * surfaceless and have every harness agree with it without checking, so a case
+   * that raised its own ceiling must raise this one with it. Defaults to
+   * {@link DEFAULT_SURFACE_TIMEOUT_MS}, which is what a case that states no
+   * ceiling of its own gets in the worker too.
+   */
+  readonly surfaceTimeoutMs?: number;
+}
+
+/**
+ * Whether this build installs no surface at all — the one question every check in
+ * a project asks of it, asked once here instead of once per harness.
+ *
+ * WHY THE RUNNER ASKS IT. A harness gives the surface the case's whole ceiling
+ * because that ceiling is a wait on the HOST and must never fail a build for the
+ * load average (`surface.ts` states the reasoning). Paid once per harness, that
+ * same generosity is fatal in the other direction: Carom's project is 147 suite
+ * files and more harnesses than that, so 15s apiece over eight workers is some
+ * five minutes of pure waiting, and Gantry's 90s ceiling would be nearly half an
+ * hour. There is a cap on the whole validator run, and a run stopped at it records
+ * every point as `ran=false` — "the validators did not run" rather than "a hundred
+ * and six requirements went unmet". A reviewer is told strictly less by the first.
+ *
+ * So the ceiling is spent here, where it is spent ONCE, on pages of this probe's
+ * own and {@link ABSENCE_LOOKS} times before the answer is believed. A build that
+ * installs its surface answers the first look the instant its entry module runs
+ * and this costs the run one page load; a build that does not is failed on every
+ * point inside a couple of minutes, which is a verdict rather than the absence of
+ * one.
+ *
+ * INCONCLUSIVE IS NOT ABSENT. Anything that goes wrong in the probe itself — no
+ * handle to look for, a browser that will not connect, a page that will not open
+ * — is reported as `false` and leaves every harness to make its own full-ceiling
+ * reading. The probe can only ever save time; it can never be the thing that
+ * fails a build.
+ */
+async function probeSurfaceAbsent(
+  wsEndpoint: string,
+  url: string,
+  options: GlobalSetupOptions,
+): Promise<boolean> {
+  const handle = options.handle;
+  if (handle === undefined) return false;
+  const timeoutMs = options.surfaceTimeoutMs ?? DEFAULT_SURFACE_TIMEOUT_MS;
+  try {
+    const browser = await connectChromium(wsEndpoint, { slug: options.slug });
+    try {
+      for (let look = 0; look < ABSENCE_LOOKS; look += 1) {
+        const page = await browser.newPage();
+        try {
+          // A navigation that does not complete is inconclusive rather than
+          // absent: it throws out of here and the whole probe answers `false`.
+          // A run-wide claim must not rest on a page that never arrived.
+          await page.goto(url, { waitUntil: "load" });
+          if (await waitForSurface(page, handle, timeoutMs)) return false;
+        } finally {
+          await page.close();
+        }
+      }
+      return true;
+    } finally {
+      await browser.close();
+    }
+  } catch {
+    return false;
+  }
 }
 
 /** What a case's `globalSetup.ts` default-exports. */
@@ -157,8 +259,12 @@ export type GlobalSetup = (
  * ```ts
  * // validation/none/globalSetup.ts
  * import { makeGlobalSetup } from "./case-harness/global-setup";
- * export default makeGlobalSetup({ slug: "refract" });
+ * export default makeGlobalSetup({ slug: "refract", handle: "__refract" });
  * ```
+ *
+ * The handle is stated again here rather than imported from the case's
+ * `harness.ts` for the reason the whole file exists in isolation: see
+ * {@link GlobalSetupOptions.handle}.
  *
  * Imported from its own module rather than through the package's barrel, because
  * this file is loaded by vite's config path before the test runtime exists and
@@ -181,6 +287,12 @@ export function makeGlobalSetup(options: GlobalSetupOptions): GlobalSetup {
 
     project.provide(PROVIDE_URL_KEY, url);
     project.provide(PROVIDE_WS_KEY, browser.wsEndpoint());
+    // Always provided, even when it was never probed for, so a worker reading it
+    // gets a boolean rather than `undefined` from a project that did not ask.
+    project.provide(
+      PROVIDE_SURFACE_ABSENT_KEY,
+      await probeSurfaceAbsent(browser.wsEndpoint(), url, options),
+    );
 
     return async () => {
       await browser.close();

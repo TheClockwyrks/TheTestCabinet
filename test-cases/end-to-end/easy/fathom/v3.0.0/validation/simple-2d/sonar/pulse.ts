@@ -24,7 +24,7 @@
 // `SONAR_COOLDOWN`"), and one that read nothing does not. Each refusal names the
 // point that owns what actually went wrong, and neither is a verdict.
 
-import { BINDINGS, BRIGHT_HOLD } from "../../src/constants";
+import { BINDINGS, BRIGHT_HOLD } from "../constants";
 import { FathomSnapshot, PulseSnapshot } from "../surface";
 import { poseBrightness, visibilityOf, type Harness } from "../harness";
 import { fail } from "../assert";

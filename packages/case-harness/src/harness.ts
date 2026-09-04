@@ -44,12 +44,14 @@ import { inject } from "vitest";
 import type { Page } from "playwright";
 import { ConstantClock, type Clock } from "./clock";
 import {
+  PROVIDE_SURFACE_ABSENT_KEY,
   PROVIDE_URL_KEY,
   resolveConfig,
   type CaseConfig,
   type ResolvedConfig,
 } from "./config";
 import { contextFor, openPages } from "./browser";
+import { hostFault } from "./host";
 import {
   makeFailSurface,
   readSurfaceFault,
@@ -129,6 +131,34 @@ export interface UntilResult<S> {
   /** The same count, for a suite that counts in ticks. */
   ticks: number;
   snapshot: S;
+}
+
+/**
+ * How long a free-running watch may last, and how often it reads.
+ *
+ * Both are ceilings on the HOST rather than measurements of the build: what
+ * {@link Harness.runUntil} reports is how far the BUILD's own clock got, so a
+ * machine that starves the frame callback makes the wait longer rather than
+ * making the reading smaller.
+ */
+export interface RunUntilOptions {
+  /**
+   * The real time the build's own loop is given. Defaults to
+   * {@link RUN_UNTIL_TIMEOUT_MS}.
+   */
+  timeoutMs?: number;
+  /** The real interval between readings. Defaults to {@link RUN_UNTIL_POLL_MS}. */
+  pollMs?: number;
+}
+
+/** What a free-running watch found. */
+export interface RunUntilResult<S> {
+  /** Whether the predicate ever held before the deadline. */
+  hit: boolean;
+  /** The reading that ended the watch. */
+  snapshot: S;
+  /** The real time the loop was left running, in milliseconds. */
+  elapsedMs: number;
 }
 
 /**
@@ -273,6 +303,29 @@ export interface Harness<S, D> {
   ): Promise<S[]>;
   /** Hand the game back to its own frame loop for `ms` of real time, then take it back. */
   runFor(ms: number): Promise<void>;
+  /**
+   * Hand the game back to its own frame loop, let REAL time pass until
+   * `predicate` holds of a fresh reading, then take the loop back.
+   *
+   * NOT A THIRD SPELLING OF {@link until}, AND NOT {@link runFor} WITH A
+   * PREDICATE. `until` DRIVES the game — it runs frames itself and samples
+   * between them — and `runFor` hands the loop back for a fixed stretch of wall
+   * clock and asks nothing. This does neither: nothing here steps the game, the
+   * build's own loop is what moves it, and the only thing this does while it runs
+   * is read. That is what makes it the one operation a check ABOUT the loop
+   * running can use — a check that drove the frames itself would witness this
+   * harness advancing the game, not the build.
+   *
+   * What bounds the wait is the build's own clock reaching the predicate, not a
+   * fixed stretch of wall clock, so a busy host makes the watch take longer
+   * rather than making the reading smaller. {@link RunUntilOptions.timeoutMs} is
+   * only the point at which the watch gives up, and reaching it means the loop
+   * never ran — which is the failure such a check is looking for.
+   */
+  runUntil(
+    predicate: (snapshot: S) => boolean,
+    options?: RunUntilOptions,
+  ): Promise<RunUntilResult<S>>;
 
   /** Press a key and leave it down, as a player holding it would. */
   hold(code: string): Promise<void>;
@@ -390,6 +443,87 @@ const harnessCues = new WeakMap<object, TimedCue[][]>();
 
 /** How far a sweep runs when the caller names no bound. */
 const DEFAULT_MAX_FRAMES = 600;
+
+/**
+ * How long {@link Harness.runUntil} leaves the build's own loop running before it
+ * gives up on the predicate.
+ *
+ * The deadline is the ONLY wall clock a free-running watch answers to, and it is
+ * a ceiling rather than a measurement: what a watch reports is how far the
+ * build's own clock got, so the deadline only has to be long enough that a
+ * machine which starves the loop still lets a running build reach its floor.
+ * Thirty seconds is two orders of magnitude more real time than a healthy loop
+ * needs for the quarter second of game time the checks that use it ask for, and
+ * it sits well inside the five-minute test budget `vitest-config.ts` states, so a
+ * build that genuinely never runs its loop is reported here — where this package
+ * can say which wait was crossed — rather than as a check that timed out.
+ */
+export const RUN_UNTIL_TIMEOUT_MS = 30_000;
+
+/**
+ * How often a free-running watch reads the build's clock, in real milliseconds.
+ *
+ * Fifty, because the reading is a crossing into the browser and a crossing costs
+ * 6 ms on an idle host and 90 ms on a loaded one: poll much faster and the watch
+ * spends its budget on the READING rather than on the loop it is watching, on
+ * exactly the busy host where the loop needs the room. Nothing rests on the
+ * granularity — the watch reports the build's own clock, not the moment this
+ * noticed it.
+ */
+export const RUN_UNTIL_POLL_MS = 50;
+
+/**
+ * How long the recorder's 2D context is waited for before a harness gives up on
+ * it.
+ *
+ * Nothing about a verdict rests on this: the wait only decides whether a replay
+ * has frames in it, so it is bounded well below the surface probe's ceiling
+ * (`DEFAULT_SURFACE_TIMEOUT_MS`, which a case may raise further) rather than
+ * paid at the surface's length on every harness of a build that draws nothing.
+ * A build takes its context on the frame it first draws at the latest, which on
+ * any host that got the page loaded at all is inside five seconds; a build that
+ * has not drawn by then is failed by the checks that read its pixels, on its own
+ * account, and losing its replay costs it nothing further.
+ */
+export const RECORDER_READY_TIMEOUT_MS = 5_000;
+
+/**
+ * How often the recorder wait asks the page, in milliseconds.
+ *
+ * A fixed interval rather than Playwright's default, which schedules
+ * `waitForFunction` on the PAGE's own `requestAnimationFrame`: a page whose
+ * frames are starved is exactly the page this wait is asking about, and one
+ * polled on its frames would be seen late — or, for a build that never schedules
+ * a frame, never looked at again. The same reasoning `surface.ts` gives for
+ * `SURFACE_POLL_MS`, and the same tenth of a second; kept as its own constant
+ * rather than borrowed, because the two waits are independent and neither has to
+ * move when the other does.
+ */
+const READY_POLL_MS = 100;
+
+/**
+ * The ceiling on every operation PLAYWRIGHT itself times against the page.
+ *
+ * WHY THIS CONSTANT EXISTS. Playwright leaves a deadline on anything it has to
+ * wait for — a navigation, a screenshot, a keyboard event delivered to a busy
+ * renderer — and that deadline defaults to thirty seconds. Nothing here asked for
+ * it, so nothing here reasoned about it, and it is the same mistake the surface
+ * probe's own ceiling was written to avoid: every one of those waits is a wait on
+ * the HOST, and none of them is a claim about the build. A build whose canvas the
+ * compositor was slow to hand back is a build failed for the load average. This
+ * is the `host.ts` principle applied to the one clock this package did not set.
+ *
+ * A MINUTE. Each of these waits ends the instant the page answers, so a healthy
+ * build pays none of it however high it is set; what the number has to be is
+ * large enough that a loaded host cannot cross it and small enough to sit inside
+ * the hook and test budgets `vitest-config.ts` states (five minutes each), so a
+ * page that genuinely never answers still fails here, where this package can say
+ * what happened, rather than on the runner. A project holds several pages of one
+ * browser open at once on a machine that is also running a model's build, and a
+ * crossing into one costs 6 ms idle and 90 ms loaded; a minute is nearly three
+ * orders of magnitude above the loaded figure.
+ */
+export const PAGE_DEADLINE_MS = 60_000;
 
 /**
  * How many frames run between the arming gesture and the opening `reset`.
@@ -555,6 +689,45 @@ function measureKey(font: string, text: string): string {
 }
 
 /**
+ * Put the built site in `page`, and say whether `load` had fired by the time the
+ * page was handed back.
+ *
+ * The `load` EVENT is not something a case requires of a build, so it is not
+ * something a validator project fails a build for missing. What it is, is the
+ * moment after which a conformant build has certainly installed its surface —
+ * which is what a case does require, and what {@link readSurfaceFault} reads. So
+ * a navigation that runs out of {@link PAGE_DEADLINE_MS} hands over to that
+ * reading rather than throwing: a build that wedged its own main thread installs
+ * nothing and is failed there on its own account, and a host that was merely slow
+ * gets the surface ceiling on top of the one it already had.
+ *
+ * WHY THE ANSWER IS RETURNED RATHER THAN DISCARDED. The two outcomes read the
+ * same from the surface probe and are not the same story: "the surface was still
+ * absent 15s after the page loaded" is a claim about the BUILD, while "…after the
+ * page was requested, which had still not fired `load` 60s in" is a page that
+ * never got as far as being asked. A reading that described the second as the
+ * first would send a reviewer looking for a fault that is not there, so the fact
+ * travels with the page.
+ *
+ * A navigation that fails any OTHER way never reached the build at all. The
+ * server being asked is the project's own, on loopback, reading files off the
+ * same disk the build was produced on; nothing a build does decides whether it
+ * answers, so a check that meets one decides nothing and says so.
+ */
+async function loadBuild(page: Page): Promise<boolean> {
+  try {
+    await page.goto(inject(PROVIDE_URL_KEY), { waitUntil: "load" });
+    return true;
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") return false;
+    const detail = error instanceof Error ? error.message : String(error);
+    hostFault(
+      `the built site could not be fetched from this project's own server (${detail.split("\n")[0]})`,
+    );
+  }
+}
+
+/**
  * Bind {@link Harness} to one case, and hand back the `createHarness` its suites
  * call.
  *
@@ -593,8 +766,20 @@ export function createHarnessFactory<S, D extends object>(
       x: view.cssOffsetX + x * view.cssScale,
       y: view.cssOffsetY + y * view.cssScale,
     });
-    const context = await contextFor({ cssWidth, cssHeight, dpr }, resolved);
-    const page = await context.newPage();
+    // Reaching the browser and taking a page off it is the project's
+    // scaffolding rather than anything the build participates in, so a failure
+    // here leaves the check undecided instead of failing a build that was never
+    // asked anything. `host.ts` says why that is its own outcome.
+    let page: Page;
+    try {
+      const context = await contextFor({ cssWidth, cssHeight, dpr }, resolved);
+      page = await context.newPage();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      hostFault(
+        `no page could be opened on the browser this project started (${detail.split("\n")[0]})`,
+      );
+    }
     openPages.add(page);
 
     // Whatever this page throws or logs as an error while THIS harness drives
@@ -608,13 +793,31 @@ export function createHarnessFactory<S, D extends object>(
       if (message.type() === "error") pageErrors.push(message.text());
     });
 
-    await page.goto(inject(PROVIDE_URL_KEY), { waitUntil: "load" });
+    // Off Playwright's own thirty-second defaults before anything is asked of
+    // the page: those are deadlines on the HOST, and this package sets its own.
+    // See {@link PAGE_DEADLINE_MS} — every wait they govern (the navigation
+    // below, each screenshot, each keyboard event delivered to a busy renderer)
+    // ends the instant the page answers, so nothing a healthy build does pays
+    // for the higher ceiling.
+    page.setDefaultTimeout(PAGE_DEADLINE_MS);
+    page.setDefaultNavigationTimeout(PAGE_DEADLINE_MS);
+
+    const loaded = await loadBuild(page);
 
     const surfaceFault = await readSurfaceFault(
       page,
       resolved.handle,
       resolved.requiredOps,
       resolved.surfaceTimeoutMs,
+      // Which of two sentences the fault is — see {@link loadBuild}. Passed
+      // rather than defaulted, because this is the one caller that knows.
+      loaded,
+      // The answer `global-setup.ts` already bought for the whole run, on pages
+      // of its own and for the whole of the ceiling. Injected here rather than
+      // read in `surface.ts`, which may not import the test runtime. Without
+      // this the probe's cost is paid once and its saving never taken: every
+      // harness of a surface-less build would spend the ceiling again.
+      inject(PROVIDE_SURFACE_ABSENT_KEY),
     );
     const refuse = (): never => failSurface(surfaceFault ?? "");
 
@@ -716,6 +919,13 @@ export function createHarnessFactory<S, D extends object>(
       // while it initializes, so the surface can be installed and answering
       // before any context exists to record — and a `captureReplay` armed in
       // that window arms nothing and writes no evidence for a section that drew.
+      //
+      // ITS OWN CEILING, NOT THE SURFACE'S. What expiring here costs is a REPLAY,
+      // never a verdict, so it is bounded well below the probe that decides
+      // whether the build is conformant at all: reusing the surface ceiling would
+      // charge every harness of a build that draws nothing fifteen seconds (or
+      // whatever a case raised its probe to) for evidence that was never coming.
+      // See {@link RECORDER_READY_TIMEOUT_MS}.
       await page
         .waitForFunction(
           (rec) =>
@@ -723,7 +933,7 @@ export function createHarnessFactory<S, D extends object>(
               rec
             ]!.ready(),
           resolved.recorderGlobal,
-          { timeout: resolved.surfaceTimeoutMs },
+          { timeout: RECORDER_READY_TIMEOUT_MS, polling: READY_POLL_MS },
         )
         .catch(() => undefined);
     }
@@ -1005,6 +1215,66 @@ export function createHarnessFactory<S, D extends object>(
           },
           [resolved.handle, resolved.recorderGlobal] as const,
         );
+      },
+
+      async runUntil(predicate, runOptions = {}) {
+        if (surfaceFault !== null) refuse();
+        const timeoutMs = runOptions.timeoutMs ?? RUN_UNTIL_TIMEOUT_MS;
+        const pollMs = Math.max(1, runOptions.pollMs ?? RUN_UNTIL_POLL_MS);
+        // The one thing here that depends on real elapsed time, so the one thing
+        // a browser's own idea of which page matters can distort. Chromium slows
+        // the timers and all but stops the animation frame of a page it believes
+        // nobody is looking at, and a project holds several pages open at once so
+        // its suites can overlap — so a build running perfectly well would read
+        // as one that froze. The launch already turns that throttling off
+        // (`CHROMIUM_ARGS`); bringing the page forward as well means the one
+        // measurement that cannot survive it does not rest on a flag alone.
+        await page.bringToFront().catch(() => undefined);
+        await page.evaluate(
+          ([handle, rec]) => {
+            (window as unknown as Record<string, { setMode(m: string): void }>)[
+              rec
+            ]!.setMode("raf");
+            (
+              window as unknown as Record<
+                string,
+                { setAutoStep(on: boolean): void }
+              >
+            )[handle]!.setAutoStep(true);
+          },
+          [resolved.handle, resolved.recorderGlobal] as const,
+        );
+        const started = Date.now();
+        let snapshot = await readSnapshot();
+        let hit = predicate(snapshot);
+        while (!hit && Date.now() - started < timeoutMs) {
+          await page.waitForTimeout(pollMs);
+          // A reading only: `snapshot` poses nothing, so the loop under watch is
+          // the only thing moving the game while this waits.
+          snapshot = await readSnapshot();
+          hit = predicate(snapshot);
+        }
+        const elapsedMs = Date.now() - started;
+        await page.evaluate(
+          ([handle, rec]) => {
+            (
+              window as unknown as Record<
+                string,
+                { setAutoStep(on: boolean): void }
+              >
+            )[handle]!.setAutoStep(false);
+            (window as unknown as Record<string, { setMode(m: string): void }>)[
+              rec
+            ]!.setMode("manual");
+          },
+          [resolved.handle, resolved.recorderGlobal] as const,
+        );
+        // The loop is handed back whatever the answer, INCLUDING when the
+        // predicate never held: a watch that gave up still leaves the harness the
+        // way it found it, so the check that follows drives frames rather than
+        // racing the build's own loop, and the failure is reported by the caller
+        // reading `hit` rather than by everything after it behaving strangely.
+        return { hit, snapshot, elapsedMs };
       },
 
       hold: (code) => page.keyboard.down(code),

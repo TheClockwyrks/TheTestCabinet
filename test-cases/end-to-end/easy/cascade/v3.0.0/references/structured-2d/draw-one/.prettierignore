@@ -1,0 +1,8 @@
+# Everything that is not authored source: installed packages, build output, and
+# coverage reports.
+node_modules/
+dist/
+build/
+out/
+coverage/
+package-lock.json

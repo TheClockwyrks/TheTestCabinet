@@ -1,0 +1,406 @@
+# Meltdown — Game state
+
+{{#if (eq engine.slug "none")}}
+The build owns the shape of the game's state entirely.
+
+The one contract fixed over the state is the debugging and automation surface
+specified for this build. Every operation that surface carries is a read or a
+pose of the running game, so the state holds what those operations read, honors
+what they write, and returns to its title-screen values when the surface's
+`reset` is called. Beyond satisfying that surface, how the state is organized is
+yours to decide.
+
+Whatever its shape, the state carries the following.
+
+## The screen and the run
+
+- The screen the game is showing, one of `title`, `modeselect`,
+  `difficultyselect`, `howto`, `playing`, `paused`, `victory`, and `gameover`.
+- The sub-phase of the `playing` screen, one of `opening`, `building`, and
+  `wave`.
+- The row highlighted on whichever menu the current screen shows, counted from
+  `0`.
+- The mode and the difficulty the run is being played on.
+- The money, the lives remaining, the score, and the current wave number.
+- The seconds left on the build timer, and the units of the current wave still to
+  be released.
+- The wave spawner's own release clock.
+- The game speed, `1` or `2`.
+
+## The floor
+
+- Every tower standing on the floor, each with a distinct id, its type, its
+  footprint's top-left tile, its placement rotation, its level, its heat, whether
+  it is tripped and the seconds left on that cooldown, its own fire accumulator,
+  the id of the unit it is firing on, whether it is firing this frame, its kill
+  and damage tallies, everything spent on it, whether it is still fresh, and the
+  two faculty gates the debug surface poses.
+- Every surge unit on the floor, each with a distinct id, its type, its centre,
+  its hp and maximum hp, its live slow factor and the seconds that slow has left,
+  the vent it entered at, and the motion gate the debug surface poses.
+- The tower selected, or none; the shop entry hovered, or none; and the held
+  build preview with its type, its footprint's top-left tile, and its rotation,
+  or none.
+
+## The rest
+
+- Whether the run's own release of surge is running, which the debug surface
+  poses. It is on when a run begins.
+- The pointer's position in logical stage units and whether it is pressed,
+  refreshed in every update.
+- Whether sound is muted, refreshed from the runtime's mute bit in every update.
+- The simulation time, in seconds, which every update adds the game time it
+  advanced by, whatever the screen.
+- The state of the seeded random generator, which the vent each unit enters at is
+  drawn from.
+- Whatever the game needs to hand a fresh id to the next tower or unit it
+  creates, so no two entities live at one moment share an id.
+
+Everything the mode and difficulty derive, the routes across the floor, and the
+rectangles the build panel laid its controls out on are all rebuilt from the
+above rather than stored as authority.
+{{else if (eq engine.slug "simple-2d")}}
+`src/game.ts` declares and exports the state the game is written against. This
+section is that declaration: write it into `src/game.ts` exactly as it stands
+here. The state is a value the engine holds and every frame replaces, so every
+field and every array is declared `readonly`: a frame builds the next state from
+the current one rather than writing into it, and every reader is handed the state
+as `DeepReadonly<MeltdownState>` in any case.
+
+`TowerType`, `SurgeType`, `ModeName`, `DifficultyName`, and `VentName` come from
+`src/constants.ts`.
+
+```ts
+export type Screen =
+  | "title"
+  | "modeselect"
+  | "difficultyselect"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "victory"
+  | "gameover";
+
+export type Phase = "opening" | "building" | "wave";
+
+export interface TowerState {
+  readonly id: number;
+  readonly type: TowerType;
+  readonly col: number;
+  readonly row: number;
+  readonly rotation: number;
+  readonly level: number;
+  readonly heat: number;
+  readonly tripped: boolean;
+  readonly tripTimer: number;
+  readonly fireClock: number;
+  readonly targeting: number | null;
+  readonly firing: boolean;
+  readonly kills: number;
+  readonly damageDealt: number;
+  readonly spent: number;
+  readonly fresh: boolean;
+  readonly firingEnabled: boolean;
+  readonly thermalEnabled: boolean;
+}
+
+export interface UnitState {
+  readonly id: number;
+  readonly type: SurgeType;
+  readonly x: number;
+  readonly y: number;
+  readonly hp: number;
+  readonly maxHp: number;
+  readonly slowFactor: number;
+  readonly slowTimer: number;
+  readonly vent: VentName;
+  readonly motion: boolean;
+}
+
+export interface BuildState {
+  readonly type: TowerType;
+  readonly col: number;
+  readonly row: number;
+  readonly rotation: number;
+}
+
+export interface PointerState {
+  readonly x: number;
+  readonly y: number;
+  readonly down: boolean;
+}
+
+export interface MeltdownState {
+  readonly screen: Screen;
+  readonly phase: Phase;
+  readonly menuIndex: number;
+
+  readonly mode: ModeName;
+  readonly difficulty: DifficultyName;
+  readonly money: number;
+  readonly lives: number;
+  readonly score: number;
+  readonly wave: number;
+
+  readonly buildTimer: number;
+  readonly wavePending: number;
+  readonly spawnClock: number;
+  readonly speed: number;
+
+  readonly towers: readonly TowerState[];
+  readonly surge: readonly UnitState[];
+
+  readonly selected: number | null;
+  readonly hoverShop: TowerType | null;
+  readonly build: BuildState | null;
+
+  readonly waveSpawning: boolean;
+  readonly pointer: PointerState;
+  readonly muted: boolean;
+
+  readonly nextId: number;
+  readonly simTime: number;
+  readonly rngState: number;
+}
+```
+{{else}}
+`src/game.ts` declares and exports the state the game is written against. This
+section is that declaration: write it into `src/game.ts` exactly as it stands
+here. The state is the world's game state: a class extending the engine's
+`GameState`, named by the game mode as its `gameStateClass`, so the engine builds
+one instance of it when the world opens and `engine.world.state` is that
+instance. Wherever this specification writes `state.foo`, it means a field of
+that instance.
+
+The game runs in one world for the whole session. The game definition registers a
+single level, under its name in `LEVELS`, the game never opens another, and every
+screen is a value of `screen`, so the state below is built once and lives until
+the page closes. Every tower, surge unit, build preview, and panel actor on that
+level carries its tag from `TAGS`, so the floor's actors are found with
+`world.byTag` under the names this specification uses. The framework's states are
+live objects: a tick writes the fields it advances in place, and each field initializer below is that field's title-screen value, the
+same value the debug surface's `reset` restores.
+
+`GameState` comes from the engine's package, and `TowerType`, `SurgeType`,
+`ModeName`, `DifficultyName`, `VentName`, `DIFFICULTY_TABLE`, `START_LIVES`, and
+`DEFAULT_SEED` from `src/constants.ts`.
+
+```ts
+export type Screen =
+  | "title"
+  | "modeselect"
+  | "difficultyselect"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "victory"
+  | "gameover";
+
+export type Phase = "opening" | "building" | "wave";
+
+export interface TowerState {
+  id: number;
+  type: TowerType;
+  col: number;
+  row: number;
+  rotation: number;
+  level: number;
+  heat: number;
+  tripped: boolean;
+  tripTimer: number;
+  fireClock: number;
+  targeting: number | null;
+  firing: boolean;
+  kills: number;
+  damageDealt: number;
+  spent: number;
+  fresh: boolean;
+  firingEnabled: boolean;
+  thermalEnabled: boolean;
+}
+
+export interface UnitState {
+  id: number;
+  type: SurgeType;
+  x: number;
+  y: number;
+  hp: number;
+  maxHp: number;
+  slowFactor: number;
+  slowTimer: number;
+  vent: VentName;
+  motion: boolean;
+}
+
+export interface BuildState {
+  type: TowerType;
+  col: number;
+  row: number;
+  rotation: number;
+}
+
+export interface PointerState {
+  x: number;
+  y: number;
+  down: boolean;
+}
+
+export class MeltdownState extends GameState {
+  screen: Screen = "title";
+  phase: Phase = "opening";
+  menuIndex = 0;
+
+  mode: ModeName = "containment";
+  difficulty: DifficultyName = "medium";
+  money = DIFFICULTY_TABLE.medium.money;
+  lives = START_LIVES;
+  score = 0;
+  wave = 1;
+
+  buildTimer = 0;
+  wavePending = 0;
+  spawnClock = 0;
+  speed = 1;
+
+  towers: TowerState[] = [];
+  surge: UnitState[] = [];
+
+  selected: number | null = null;
+  hoverShop: TowerType | null = null;
+  build: BuildState | null = null;
+
+  waveSpawning = true;
+  pointer: PointerState = { x: 0, y: 0, down: false };
+  muted = false;
+
+  nextId = 1;
+  simTime = 0;
+  rngState = DEFAULT_SEED;
+}
+```
+{{/if}}
+{{#if (ne engine.slug "none")}}
+
+## The screen and the run
+
+- `screen` — the screen currently shown, one of the eight `specs/screens.md`
+  defines.
+- `phase` — the sub-phase of the `playing` screen, as `specs/waves.md` defines
+  it. It holds `opening` on every other screen.
+- `menuIndex` — the highlighted row on whichever menu `screen` is showing,
+  counted from `0`. It rests at `0` on `playing`.
+- `mode`, `difficulty` — the pair the run is being played on. Every derived
+  figure of `specs/modes.md` follows them.
+- `money`, `lives`, `score`, `wave` — the run's figures.
+- `buildTimer` — the seconds left in the current build phase, counting down
+  against the game time each frame advances by, and resting at `0` in the
+  `opening` phase.
+- `wavePending` — how many units of the current wave are still to be released.
+- `spawnClock` — the wave spawner's own release accumulator, in seconds.
+- `speed` — the game-speed toggle, `1` or `2`.
+
+## `TowerState`
+
+One tower standing on the floor.
+
+- `id` — distinct among every entity live at that moment, and kept for as long as
+  the tower stands.
+- `type` — one of the eight of `specs/towers.md`.
+- `col`, `row` — the footprint's top-left tile.
+- `rotation` — the placement rotation, `0` to `3`, fixed once the tower is
+  placed.
+- `level` — `1`, `2`, or `3`.
+- `heat` — `0` to `100`, and `0` for the Forge and the Sink.
+- `tripped`, `tripTimer` — whether the tower is offline on a trip, and the
+  seconds left on that cooldown, resting at `0`.
+- `fireClock` — the tower's own fire accumulator, in seconds, as
+  `specs/combat.md` describes it.
+- `targeting` — the id of the unit it is firing on, or `null`.
+- `firing` — whether the tower has a target and is online this frame.
+- `kills`, `damageDealt` — the tower's own tallies.
+- `spent` — everything spent on this tower, its build cost plus every upgrade.
+- `fresh` — whether it still refunds in full, as `specs/building.md` states.
+- `firingEnabled`, `thermalEnabled` — the two faculty gates the debug surface
+  poses. Both are `true` for a tower the game itself placed.
+
+`towers` lists every tower on the floor, and a tower added through the debug
+surface or committed by a placement is appended to it.
+
+## `UnitState`
+
+One surge unit on the floor.
+
+- `id` — distinct among every entity live at that moment, and kept for as long as
+  the unit exists.
+- `type` — one of the six of `specs/surge.md`.
+- `x`, `y` — the unit's centre.
+- `hp`, `maxHp` — its current and maximum hp.
+- `slowFactor` — the fraction of its base speed the live slow removes, `0` for
+  none.
+- `slowTimer` — the seconds the live slow has left, `0` for none.
+- `vent` — the vent it entered at, which fixes its exhaust.
+- `motion` — the locomotion gate the debug surface poses. It is `true` for a unit
+  the game itself released.
+
+`surge` lists every unit on the floor, and a unit added through the debug surface
+is appended to it.
+
+## `BuildState` and `PointerState`
+
+- `build` is the held placement preview, or `null` when none is armed. It carries
+  the type held, the footprint's top-left tile, and the held rotation. Whether
+  that footprint is placeable is decided from the floor at the read rather than
+  stored.
+- `pointer` carries the pointer's position, in logical stage units, and whether
+  it is currently pressed.
+
+## The rest
+
+- `waveSpawning` — whether the run's own release of surge runs, which the debug
+  surface poses.
+- `muted` — the game's readable copy of the runtime's mute bit, refreshed in
+  every update. The runtime owns muting, and this field is what the debug surface
+  reports.
+- `nextId` — the id the next tower or unit takes, so no two entities live at one
+  moment share one.
+- `simTime` — accumulated simulation time, in seconds. Every update adds the game
+  time it advanced by, whatever the screen.
+- `rngState` — the state of the game's seeded random generator. The vent each
+  unit enters at is drawn from it.
+
+## The contract
+
+The declaration above is what the debug surface reads and poses.
+
+- Keep every field under its declared name, type, and meaning.
+{{#if (eq engine.slug "simple-2d")}}
+- `initialize` builds the whole state in one go, so every field is present by the
+  time a frame can observe it, and none of them is optional.
+- The state handed to `update` is the whole of the game, and the state `update`
+  returns is the whole of the next frame. Every value the game carries from one
+  frame to the next lives in it; nothing is kept in a module-level variable or a
+  closure.
+- The state is handed over read-only, as `DeepReadonly<MeltdownState>`, to
+  `update`, to `render`, to every diagnostic source, and to every operation of
+  the debug surface. `update` and the surface's poses return a new
+  `MeltdownState` built from the one they received; `render`, the sources, and
+  `snapshot` return no state.
+{{else}}
+- The engine builds the state when the world opens, through the mode's
+  `gameStateClass`, so every field is present by the time a frame can observe it,
+  and none of them is optional.
+- The state is the whole of the authoritative game. Every value the game carries
+  from one frame to the next lives in it; nothing is kept in a module-level
+  variable or a closure, and any field an actor, component, or controller holds
+  of its own is derived data rebuilt from the declared ones.
+- The state is written only through the paths play runs on: the player controller
+  resolves the frame's input into it, the game mode's tick advances it, and the
+  debug surface's poses arrange it at the call. Rendering reads it and writes
+  nothing.
+{{/if}}
+- Fields you add hold derived data you can rebuild from the declared ones. The
+  run's derived figures, the routes across the floor, and the rectangles the
+  build panel laid its controls out on are all of that kind. A `reset` restores
+  the declared fields to their title-screen values, so those fields are the whole
+  of the authoritative state.
+{{/if}}

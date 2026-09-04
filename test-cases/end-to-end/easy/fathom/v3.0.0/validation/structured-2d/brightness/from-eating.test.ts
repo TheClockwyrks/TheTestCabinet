@@ -31,8 +31,8 @@
 // for the whole measurement and the round cannot end under it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BRIGHT_PER_EAT } from "../../src/constants";
 import { assertLessThanOrEqual, assertTrue } from "../assert";
+import { BRIGHT_PER_EAT } from "../constants";
 import { poseStraightRun } from "../fixtures";
 import {
   captureReplay,

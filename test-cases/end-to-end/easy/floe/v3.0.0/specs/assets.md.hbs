@@ -1,0 +1,142 @@
+# Floe — Art assets
+
+Floe's art is supplied with the project, under `assets/`. Seven folders cover the
+critter, the bear, the three vehicles, and the two floes, and the build renders
+each of those from its folder. Everything else the game shows is drawn in code,
+and the last section of this file lists it.
+
+## How the folders are organized
+
+Each folder under `assets/` holds one PNG per frame, named by its frame index
+(`0.png`, `1.png`, and so on). Every PNG has a transparent background in straight
+alpha, so only its drawn pixels are opaque and each frame composites cleanly over
+the ice and the water.
+
+| Folder | Frames | Frame size | Spans | What it covers |
+| --- | --- | --- | --- | --- |
+| `assets/crosser/` | `CROSSER_FRAMES` (`8`), `0`–`7` | 32 x 32 | 1 tile | The critter |
+| `assets/bear/` | `BEAR_FRAMES` (`18`), `0`–`17` | 32 x 32 | 1 tile | The bear, running, swimming, and lunging |
+| `assets/plow/` | `PLOW_FRAMES` (`1`), `0` | 96 x 32 | 3 tiles | The snow plow |
+| `assets/dogsled/` | `DOGSLED_FRAMES` (`1`), `0` | 64 x 32 | 2 tiles | The dogsled |
+| `assets/car/` | `CAR_FRAMES` (`1`), `0` | 64 x 32 | 2 tiles | The car |
+| `assets/pan/` | `PAN_FRAMES` (`1`), `0` | 32 x 32 | 1 tile | The one-tile floe |
+| `assets/raft/` | `RAFT_FRAMES` (`2`), `0`–`1` | 128 x 32 | 3 or 4 tiles | The long floes |
+
+Frame sizes are in pixels of source art, `SPRITE_TILE` (`32`) to a tile. A tile
+is `TILE` (`32`) logical units square, so a 32 x 32 frame maps onto one tile at a
+scale of one.
+
+## How they are drawn
+
+- A 32 x 32 frame is drawn over one tile, centered on its subject's own center,
+  so the critter and a bear are drawn where `specs/strait.md`'s map puts them.
+- A lane item's frame is drawn `32` units wide for every tile the item spans,
+  with its left edge on the item's own `x` and its top on its row's top edge: a
+  plow `PLOW_W` (`96`) units wide over its three tiles, a dogsled `DOGSLED_W`
+  (`64`) and a car `CAR_W` (`64`) over their two, a one-tile floe `PAN_W` (`32`)
+  over its one. `RAFT_W` (`128`) is the width of the raft art itself.
+- The three-tile raft is the left `96 x 32` of `assets/raft/0.png`, drawn over its
+  three tiles. The four-tile raft is the whole of `assets/raft/1.png`, drawn over
+  its four tiles. A long floe reads as one continuous slab rather than as small
+  floes butted together.
+- Each vehicle's art faces right. A vehicle in a lane whose `dir` is `-1` is drawn
+  mirrored horizontally, so every vehicle faces the way its lane runs. The bear
+  and the floes are never mirrored, the bear because it carries a frame set per
+  facing.
+- The sprites are pixel art, and they stay crisp at every scale the stage is
+  fitted to.
+
+Where a frame set holds two frames for a state, alternate them while the subject
+is in that state, at a rate that reads as motion. The rate is yours.
+
+## How they are loaded
+
+{{#if (eq engine.slug "none")}}
+The build loads the frames itself. Every URL it requests resolves against the
+page rather than against the origin root, so the produced site runs unchanged
+whether it is served from the root of a static host or mounted under a sub-path.
+The produced site is self-contained and carries every frame it draws.
+{{else}}
+The {{engine.name}} engine provides the asset loader, documented in the `engine/`
+directory at the root of this repository. It resolves every path under one root,
+`assets/`, relative to the page the build is served from, and it fetches and
+decodes the file. The build loads each frame through that loader rather than
+requesting a URL of its own, writing the path relative to that root:
+`bear/0.png`, `raft/1.png`.
+
+The produced site serves every seeded frame under that root, so a path the loader
+resolves reaches the seeded file at whatever base path the site is served from.
+{{/if}}
+
+## The critter: `assets/crosser/`
+
+Eight frames, a two-frame crouch-and-leap pair for each of the four facings.
+
+| Frames | Facing |
+| --- | --- |
+| `0`, `1` | down |
+| `2`, `3` | up |
+| `4`, `5` | left |
+| `6`, `7` | right |
+
+Draw the critter from the pair for its current facing, which
+`specs/hopping.md` fixes. A critter resting in a filled bay, and a lives icon in
+the HUD, may reuse one of these frames.
+
+## The bear: `assets/bear/`
+
+Eighteen frames, all top-down: a four-facing run, a four-facing submerged swim,
+and a lunge.
+
+| Frames | Set | Facing |
+| --- | --- | --- |
+| `0`, `1` | Run | down |
+| `2`, `3` | Run | up |
+| `4`, `5` | Run | left |
+| `6`, `7` | Run | right |
+| `8`, `9` | Swim | down |
+| `10`, `11` | Swim | up |
+| `12`, `13` | Swim | left |
+| `14`, `15` | Swim | right |
+| `16`, `17` | Lunge | any |
+
+| The bear is | Drawn from |
+| --- | --- |
+| Travelling on ice footing | The run pair for its facing |
+| Swimming | The swim pair for its facing |
+| Catching the critter | The lunge frames |
+
+A catch is drawn from the lunge pair at the point on the strait where the bear
+and the critter met, on the tick the catch happens and for as long as the hold
+that follows it runs. It is drawn there although no bear is on the strait over
+that hold, because a catch takes every bear off it: `specs/hunter.md` and
+`specs/progression.md` fix that.
+
+The swim frames already carry the submerged silhouette and its wake, so a bear
+over the water stays trackable, including where it passes under a floe.
+`specs/hunter.md` fixes when a bear is swimming.
+
+## The vehicles: `assets/plow/`, `assets/dogsled/`, `assets/car/`
+
+One frame each, drawn at the widths above over the tiles the vehicle spans.
+`specs/ice.md` fixes which lane carries which.
+
+## The floes: `assets/pan/` and `assets/raft/`
+
+`assets/pan/0.png` is the one-tile floe. `assets/raft/` carries the long floes:
+frame `0` is the three-tile raft, drawn in the left `96 x 32` of the image with
+its right tile transparent, and frame `1` is the four-tile raft, filling the
+whole `128 x 32`. `specs/water.md` fixes which lane carries which.
+
+## What is drawn in code
+
+No folder covers the following. Each is rendered by the build, and the spec named
+beside it fixes its behavior.
+
+| Drawn in code | Fixed by |
+| --- | --- |
+| The strait itself: the water, the ice of the shores, the median and the ice band, and the far shore | `specs/strait.md` |
+| The bays, open and filled | `specs/bays.md` |
+| The bonus catch | `specs/bays.md` |
+| The HUD, every screen, every menu, and all text | `specs/ui.md` |
+| The debug overlay | `specs/instrumentation.md` |

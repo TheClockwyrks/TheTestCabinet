@@ -1,0 +1,155 @@
+Build **Shatter**, a gravity-well rock shooter that runs entirely in the browser.
+
+Your project root is `{{workspace}}`. Build the game there.
+
+## Your starting point
+
+{{#if (eq engine.slug "none")}}
+A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
+describes it. Its dependencies are installed, so you can build and test right
+away: Vite builds it, Vitest tests it, ESLint lints it, and Prettier formats it.
+That toolchain is the whole of what it supplies.
+
+What is missing is everything under `src/`, and that directory does not exist
+yet. Nothing here supplies a frame loop, a canvas fit, input, audio, an overlay,
+or a line of game code. `index.html` loads `/src/main.ts`, so that module is
+where your build starts.
+{{else if (eq engine.slug "simple-2d")}}
+A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
+describes it. Its dependencies are installed, so you can build and test right
+away. It is wired up end to end: Vite builds it, Vitest tests it, ESLint lints
+it, Prettier formats it, and `src/main.ts` already stands the engine up over the
+page's canvas and runs the game.
+
+What is missing is the game itself: `src/game.ts`. As seeded it is a stub whose
+`initialize`, `update`, and `render` throw `"not implemented"`, and whose
+`BACKGROUND` is a placeholder. The stub is written against the `ShatterState` and
+`ShatterDebugApi` types the specification asks `src/game.ts` to declare, so the
+project does not type-check until those declarations exist. That first `tsc`
+failure on a fresh checkout is expected; declaring the types clears it.
+{{else}}
+A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
+describes it. Its dependencies are installed, so you can build and test right
+away. It is wired up end to end: Vite builds it, Vitest tests it, ESLint lints
+it, Prettier formats it, and `src/main.ts` already stands the engine up over the
+page's canvas and runs the game.
+
+What is missing is the game itself: `src/game.ts` does not exist yet.
+`src/main.ts` imports `game` and `BACKGROUND` from it, so the project does not
+type-check until the module exists. That first `tsc` failure on a fresh checkout
+is expected; creating the module clears it.
+{{/if}}
+
+{{#if (eq engine.slug "none")}}
+## The runtime
+
+This build runs on no engine, so the layer beneath the game is yours as well:
+the frame loop and the delta time it hands each update, fitting the fixed
+logical field onto the canvas, the keyboard input the player drives the game
+with, the audio, and the on-screen debug overlay. The specification in `specs/`
+states what Shatter needs from that layer and fixes nothing else about it.
+{{else if (eq engine.slug "simple-2d")}}
+## The {{engine.name}} engine
+
+This build runs on the **{{engine.name}}** engine, installed as a dependency of
+the project, so import it by its bare package name; there is nothing to add to
+`package.json` for it and nothing to install.
+
+The engine's own documentation is at `{{engine.docs}}`. It is the authoritative
+description of the engine's API; the specification in `specs/` describes the game
+and does not restate the engine. The documentation also carries a complete worked
+example of unit-testing a game built on it.
+
+Build the game on the engine rather than beside it. The engine owns the frame
+loop and the delta time it hands your update, the canvas fit, the input actions,
+the audio, and the on-screen debug overlay. It also holds the game's state, by
+value: each frame it hands `update` the current state read-only and keeps what
+`update` returns as the next, so a frame builds the next state from the current
+one rather than writing into it. Register what the game needs with the engine and
+use what it gives back. What remains yours is the game itself: the field, the
+well, the bodies flying over it, and everything drawn.
+{{else}}
+## The {{engine.name}} engine
+
+This build runs on the **{{engine.name}}** engine, installed as a dependency of
+the project, so import it by its bare package name; there is nothing to add to
+`package.json` for it and nothing to install.
+
+The engine's own documentation is at `{{engine.docs}}`. It is the authoritative
+description of the engine's API; the specification in `specs/` describes the game
+and does not restate the engine. The documentation also carries a complete worked
+example of unit-testing a game built on it.
+
+Build the game inside the engine's framework rather than beside it. The engine
+owns the frame loop and the delta time it hands each tick, rendering, the canvas
+fit, the input actions, the audio, and the on-screen debug overlay. Your game is
+a `GameDefinition` the engine drives: the single level the game runs in, the game
+mode that holds the screens and the rules, the actors and components the field is
+drawn by, and the controller the ship is flown through. Register what the game
+needs with the engine and use what it gives back. What remains yours is the game
+itself: the field, the well, the bodies flying over it, and what its components
+draw.
+{{/if}}
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Produce an implementation that matches the specification
+exactly. `specs/overview.md` states what you implement, which files stay as they
+are, the code quality the build is held to, and the commands that run over the
+finished repository. It also lists the other files of the specification and what
+each one fixes.
+
+This build is **{{variant.name}}**. {{variant.description}}
+
+The specification you have been given is written for that ruleset alone, so
+build what it says without looking for an alternative.
+
+## The build interface
+
+`npm ci` then `npm run build` must produce the static site, with no other manual
+step, into `dist/` at the project root, with an `index.html` at the root of that
+directory. Serving that directory as-is at the root of any static file server, or
+under a sub-path of one, must run the game; it is deployed to static hosting
+exactly that way, which is why every URL the running game requests resolves
+relative to the page. The scripts that do this are already in `package.json`. Add
+a dependency only if you genuinely need one, and run `npm install` afterward so
+the committed `package-lock.json` matches.
+
+## Driving the game in a browser
+
+{{#if (eq engine.slug "none")}}
+The project's Playwright and its headless Chromium are installed, so you can
+serve the built game and drive it in a real browser, fly a wave, check for
+console errors, or exercise `window.__shatter`.
+{{else}}
+The project's Playwright and its headless Chromium are installed, so you can
+serve the built game and drive it in a real browser, fly a wave, and check for
+console errors.
+{{/if}}
+
+When you launch the browser, use the project's own Playwright: import it from
+your project (for example `import { chromium } from "playwright"`) or run the
+project-local CLI with `npx playwright`. There is no global Playwright on `PATH`;
+it lives in your project's `node_modules` like any other dependency. Launch
+Chromium with the `--no-sandbox` argument, since this container has no Chromium
+sandbox and a default launch fails.
+
+## The showcase
+
+The game ships with its store-page presentation: a `showcase/` directory at the
+project root holding a player-facing description of the game and a short carousel
+of captured media. `specs/showcase.md` defines its contents — the description,
+the `showcase.toml` carousel, and how the media are captured.
+
+## Commit your work
+
+Your project root is a git repository, initialized before you started with the
+starter files in its first commit. Your finished implementation is published
+directly from this repository's commits, so work you leave uncommitted is not
+published. When the build is complete, commit everything: run `git add -A` then
+`git commit`, and confirm `git status` reports a clean working tree with nothing
+uncommitted or untracked. A `.gitignore` already excludes `node_modules/`, the
+build output, and coverage reports, so a clean tree means committing your source,
+your tests, your `package-lock.json`, your `showcase/` directory, and your
+`README.md`.

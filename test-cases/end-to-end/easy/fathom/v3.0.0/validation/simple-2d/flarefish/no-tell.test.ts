@@ -40,7 +40,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
-import { FLARE_INTERVAL, TILE } from "../../src/constants";
+import { FLARE_INTERVAL, TILE } from "../constants";
 import { captureReplay, createHarness, ticks, type Harness } from "../harness";
 import { requireSceneHeld, sceneGuard } from "../scene";
 import { startPlaying } from "../harness";

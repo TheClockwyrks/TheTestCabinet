@@ -23,8 +23,8 @@
 // has arrived by the end of the frame that delivered it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { CUES } from "../constants";
 import { GEO_3X3 } from "../fixtures";
 import {
   captureReplay,

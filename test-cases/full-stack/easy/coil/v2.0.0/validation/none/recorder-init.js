@@ -2460,6 +2460,21 @@
       return recorder.stop();
     },
 
+    /**
+     * Whether a capture is keeping frames right now.
+     *
+     * What a driver asks before it brackets a frame at all. Opening and closing
+     * one is not free even when nothing keeps it — every operation the frame
+     * issues is pooled so {@link last} can hand it back — and a driven run that
+     * nothing is recording has no reason to pay for it. A driver that wants ONE
+     * frame whatever the answer (which is what `frameCalls` is) brackets it
+     * anyway; this is what lets everything else stop.
+     */
+    armed() {
+      const recorder = recorderOf();
+      return recorder !== null && recorder.active;
+    },
+
     /** How many frames were closed while armed, before any decimation. */
     seen() {
       const recorder = recorderOf();

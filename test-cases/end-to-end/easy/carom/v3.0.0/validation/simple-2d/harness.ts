@@ -125,6 +125,8 @@ import {
   LAYOUT,
   P1_X1,
   P2_X0,
+  SPEED_CAP,
+  SPEED_MULT,
   WIN_SCORE,
   type Point,
 } from "./constants";
@@ -444,6 +446,38 @@ export interface UntilResult {
   snapshot: CaromSnapshot;
 }
 
+/** How long a free-running watch may last, and how often it reads. */
+export interface RunUntilOptions {
+  /** The real time the runtime's own loop is given. Defaults to 30 s. */
+  timeoutMs?: number;
+  /** The real interval between readings. Defaults to 25 ms. */
+  pollMs?: number;
+}
+
+/** What a free-running watch found. */
+export interface RunUntilResult {
+  /** Whether the predicate ever held before the deadline. */
+  hit: boolean;
+  /** The reading that ended the watch. */
+  snapshot: CaromSnapshot;
+  /** The real time the loop was left running, in milliseconds. */
+  elapsedMs: number;
+}
+
+/**
+ * How long {@link Harness.runUntil} leaves the runtime's own loop running before
+ * it gives up on the predicate.
+ *
+ * The deadline is the ONLY wall clock a free-running watch answers to, and it is
+ * a ceiling rather than a measurement: what a watch reports is how far the game's
+ * own clock got, so the deadline only has to be long enough that a machine which
+ * starves the frame callback still lets a running build reach its floor.
+ */
+const RUN_UNTIL_TIMEOUT_MS = 30_000;
+
+/** How often a free-running watch reads the game's clock, in real milliseconds. */
+const RUN_UNTIL_POLL_MS = 25;
+
 /**
  * How one dispatched pointer event is shaped, and how long the build is given to
  * see it.
@@ -534,8 +568,20 @@ export interface Harness {
     predicate: (snapshot: CaromSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
-  /** Drive the runtime's own frame loop for `ms` of real time, then halt it. */
-  runFor(ms: number): Promise<void>;
+  /**
+   * Hand the game to the runtime's own frame loop, let REAL time pass until
+   * `predicate` holds of a fresh reading, then halt it.
+   *
+   * Nothing here steps the game: the runtime's loop is what moves it, and the
+   * only thing this does while it runs is read. What bounds the wait is the
+   * game's own clock reaching the predicate, not a fixed stretch of wall clock,
+   * so a machine that starves the loop makes the wait longer rather than making
+   * the reading smaller.
+   */
+  runUntil(
+    predicate: (snapshot: CaromSnapshot) => boolean,
+    options?: RunUntilOptions,
+  ): Promise<RunUntilResult>;
 
   /** Press a key and leave it down, as a player holding it would. */
   hold(code: string): void;
@@ -898,6 +944,23 @@ function driveSurface(
 }
 
 /**
+ * Hand the host's event loop a turn.
+ *
+ * A frame this project advances is a SYNCHRONOUS render, and a sweep of them is
+ * one unbroken run of them: awaiting an already-settled promise only queues a
+ * microtask, so nothing timer-driven gets a turn until the whole sweep is over.
+ * The runner watching this worker is timer-driven, and a sweep long enough to
+ * outlast its own ping is reported as an error against a run in which every check
+ * passed. This is a macrotask, so the loop actually breathes; no game time passes
+ * across it and nothing here poses anything.
+ */
+function breathe(): Promise<void> {
+  return new Promise((resolve) => {
+    setImmediate(resolve);
+  });
+}
+
+/**
  * Build a runtime over a canvas of the harness's own, initialize the build's
  * game, and hand back everything a check reads.
  *
@@ -1107,16 +1170,30 @@ export async function createHarness(
         frames += step;
         snapshot = debug.snapshot();
         if (predicate(snapshot)) return { hit: true, frames, snapshot };
+        await breathe();
       }
       return { hit: false, frames, snapshot };
     },
 
-    async runFor(ms) {
+    async runUntil(predicate, runOptions = {}) {
+      const timeoutMs = runOptions.timeoutMs ?? RUN_UNTIL_TIMEOUT_MS;
+      const pollMs = Math.max(1, runOptions.pollMs ?? RUN_UNTIL_POLL_MS);
       const controller = new AbortController();
       const running = engine.run({ signal: controller.signal });
-      await new Promise((resolve) => setTimeout(resolve, ms));
+      const started = Date.now();
+      // A reading only: `snapshot` poses nothing, so the loop under watch is the
+      // only thing moving the game while this waits.
+      let snapshot = debug.snapshot();
+      let hit = predicate(snapshot);
+      while (!hit && Date.now() - started < timeoutMs) {
+        await new Promise((resolve) => setTimeout(resolve, pollMs));
+        snapshot = debug.snapshot();
+        hit = predicate(snapshot);
+      }
+      const elapsedMs = Date.now() - started;
       controller.abort();
       await running;
+      return { hit, snapshot, elapsedMs };
     },
 
     hold: (code) => dispatch("keydown", code),
@@ -2140,6 +2217,43 @@ export async function drivePaddleHit(
 /* ---- Rally speed --------------------------------------------------------- */
 
 /**
+ * The speed the rally is launched at, in units per second.
+ *
+ * Below `SERVE_SPEED` so the climb to `SPEED_CAP` takes a hit or two more than a
+ * served ball would, and a round number so the number of hits a check must drive
+ * to reach the ceiling follows from it and `SPEED_MULT` alone.
+ */
+export const RALLY_LAUNCH_SPEED = 500;
+
+/**
+ * The paddle hits it takes `SPEED_MULT` to carry {@link RALLY_LAUNCH_SPEED} to
+ * `SPEED_CAP`.
+ *
+ * The two rally checks state their lengths in terms of it rather than picking a
+ * number: one hit short of it is the last one the multiplier decides on its own,
+ * and one past it is the first spent sitting on the ceiling.
+ */
+export const RALLY_HITS_TO_CAP = Math.ceil(
+  Math.log(SPEED_CAP / RALLY_LAUNCH_SPEED) / Math.log(SPEED_MULT),
+);
+
+/**
+ * Frames between samples while a rally leg is swept.
+ *
+ * A leg is the ball crossing between the two paddle faces, and the shortest one
+ * it can be is that distance covered at `SPEED_CAP`; sampling eight times inside
+ * even that leg catches every reversal. A per-frame sweep would cost eight times
+ * as much to read frames between which nothing this collects can change: a ball's
+ * speed only ever changes at a paddle hit, and walls and obstacles preserve it
+ * exactly, so a sample taken a few frames after a hit reports the same figure the
+ * frame of the hit would.
+ */
+const RALLY_POLL_FRAMES = Math.max(
+  1,
+  Math.floor((((P2_X0 - P1_X1) / SPEED_CAP) * TICK_HZ) / 8),
+);
+
+/**
  * A live match on a field holding one ball, two still centred paddles, and the
  * ball launched level down the middle.
  *
@@ -2152,18 +2266,22 @@ export function arrangeRally(h: Harness): void {
   poseWorld(h);
   centerPaddles(h);
   placeBall(h, FIELD_CX, FIELD_CY);
-  aimBall(h, -500, 0);
+  aimBall(h, -RALLY_LAUNCH_SPEED, 0);
   spinBall(h, 0);
 }
 
 /**
- * Play a real rally and report the ball's speed after each successive paddle
- * hit. Speed is constant between hits, so each leg sweeps coarsely until the
+ * Play a real rally of `hits` paddle hits and report the ball's speed after each
+ * one. Speed is constant between hits, so each leg sweeps coarsely until the
  * horizontal direction reverses. Stops early if play ever leaves the field.
+ *
+ * `hits` has no default: a rally is the most expensive scenario in this suite,
+ * every leg of it is real physics rendered frame by frame, and how many legs a
+ * check needs follows from what that check decides. Each caller states its own.
  */
 export async function driveRallySpeeds(
   h: Harness,
-  hits = 24,
+  hits: number,
 ): Promise<number[]> {
   const speeds: number[] = [];
   let previousSign = -1; // the ball is launched toward the left paddle
@@ -2183,7 +2301,7 @@ export async function driveRallySpeeds(
         const ball = ball0(s);
         return Math.sign(ball.vx) === want && ball.vx !== 0;
       },
-      { maxFrames: 600, poll: 6 },
+      { maxFrames: 600, poll: RALLY_POLL_FRAMES },
     );
     if (leftPlay || !leg.hit) break;
     speeds.push(ball0(leg.snapshot).speed);

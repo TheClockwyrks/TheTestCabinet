@@ -36,8 +36,8 @@
 // should say so.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GAMEOVER_ITEMS, START_LIVES } from "../../src/constants";
 import { assertEqual, assertGreaterThan, assertMatches } from "../assert";
+import { GAMEOVER_ITEMS, START_LIVES } from "../constants";
 import { spawnDrifter } from "../fixtures";
 import {
   captureStill,

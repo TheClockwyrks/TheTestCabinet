@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::test_case::{ReviewItem, SubReviewItem};
-use crate::validation::{AutoVerdict, DebugScriptResult};
+use crate::validation::{AutoVerdict, DebugScriptResult, Inconclusive};
 
 /// A binary review item worth `weight`, scored, no sub-items.
 fn item(id: &str, weight: u32) -> ReviewItem {
@@ -61,6 +61,7 @@ fn script(
         gates: true,
         ran,
         precondition_unmet,
+        inconclusive: precondition_unmet.then_some(Inconclusive::PreconditionUnmet),
         detail: None,
         verdicts: verdicts
             .iter()

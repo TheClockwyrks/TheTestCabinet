@@ -1,0 +1,142 @@
+# Shatter — Screens and the HUD
+
+This file defines the five screens the game moves between, what each shows, the
+HUD drawn over live play, and the wave banner. The keys the screens are driven by
+are in `specs/controls.md`, and the run the `playing` screen carries is in
+`specs/progression.md`. Every piece of screen copy below carries the name this
+specification gives it.
+
+Every piece of text a screen shows is legible against whatever sits behind it at
+the logical field size, `1280 x 720`. The palette, the type, and the layout of
+each screen are yours.
+
+## The screens
+
+The game is on exactly one of five screens at a time.
+
+| Screen | What it is |
+| --- | --- |
+| `title` | The main menu, and where the game opens. |
+| `howto` | How to play. |
+| `playing` | Live play. |
+| `paused` | The pause menu, over the frozen field. |
+| `gameover` | The game was lost. |
+
+### `title`
+
+| Element | Constant | Content |
+| --- | --- | --- |
+| Title | `TITLE_TEXT` | `SHATTER` |
+| Tagline | `TAGLINE_TEXT` | `GRAVITY WELL SHOOTER` |
+| Menu | `TITLE_ITEMS` | `PLAY`, `HOW TO PLAY`, in that order |
+
+The menu's entries are stacked one above the next under the title and tagline. The
+highlighted entry is drawn distinctly from the others, so a player always sees
+which entry confirming would take, and the highlight rests on the first entry on
+arriving at the title.
+
+| Entry | Does |
+| --- | --- |
+| `PLAY` | Opens a new game, as `specs/progression.md` states, and moves to `playing`. |
+| `HOW TO PLAY` | Moves to `howto`. |
+
+Leaving the screen does nothing here. The star and a few dimmed drifting rocks may
+show behind the menu if that suits the look you design.
+
+### `howto`
+
+How to play, written in a player's words rather than as rules of a system. It
+covers:
+
+- the goal, which is to shoot every rock down through its fragments to clear a
+  wave;
+- that the star pulls bullets and rocks but never the ship, so shots bend around
+  it;
+- that a rock the star swallows comes back from the edge of the field;
+- that the saucer arrives to hunt and can be shot down;
+{{#if (eq variant.slug "warhead")}}
+- that larger rocks are armored and take several hits to break, showing their
+  damage as they take them;
+- that the torpedo is a single guided munition on a ten-second recharge which
+  homes onto the nearest body in a narrow forward cone, flies true through the
+  well, and destroys any rock outright;
+{{/if}}
+- the controls.
+
+{{#if (eq variant.slug "warhead")}}
+The controls it names include every key `specs/controls.md` binds, written as the
+standalone words `ARROWS`, `WASD`, `SPACE`, `ENTER`, `ESC`, `P`, `M`, and `F`.
+{{else}}
+The controls it names include every key `specs/controls.md` binds, written as the
+standalone words `ARROWS`, `WASD`, `SPACE`, `ENTER`, `ESC`, `P`, and `M`.
+{{/if}}
+
+Leaving the screen returns to `title`, with the title's highlight at the first
+entry.
+
+### `playing`
+
+{{#if (eq variant.slug "warhead")}}
+The live field: the star, the ship, every rock, every shot and every torpedo in
+flight, the saucer while it is visiting, and every saucer bullet, with the HUD
+drawn over them.
+{{else}}
+The live field: the star, the ship, every rock, every shot in flight, the saucer
+while it is visiting, and every saucer bullet, with the HUD drawn over them.
+{{/if}}
+
+### `paused`
+
+Reached by pausing during live play. The field stays visible behind the menu and
+is frozen: nothing advances. No body moves, no timer runs down, no wave arrives,
+no rock spawns, no saucer arrives or fires, and no cue plays, so a paused game is
+exactly where it was when it was paused. The accumulated simulation time goes on
+rising: it counts the ticks the game ran rather than the play it ran.
+
+| Element | Constant | Content |
+| --- | --- | --- |
+| Menu | `PAUSE_ITEMS` | `RESUME`, `RESTART`, `QUIT TO MENU`, in that order |
+
+| Entry | Does |
+| --- | --- |
+| `RESUME` | Returns to `playing` with the field and the run exactly as they stood. |
+| `RESTART` | Opens a new game, as `specs/progression.md` states, and moves to `playing`. |
+| `QUIT TO MENU` | Returns to `title`, with the title's highlight at the first entry. |
+
+Leaving this screen does what `RESUME` does.
+
+### `gameover`
+
+Shown on the tick the last ship is lost. It shows the final score and the wave the
+game reached.
+
+| Element | Constant | Content |
+| --- | --- | --- |
+| Menu | `GAMEOVER_ITEMS` | `PLAY AGAIN`, `MENU`, in that order |
+
+| Entry | Does |
+| --- | --- |
+| `PLAY AGAIN` | Opens a new game and moves to `playing`. |
+| `MENU` | Returns to `title`, with the title's highlight at the first entry. |
+
+## The HUD
+
+The HUD is drawn over the `playing` screen, in the upper portion of the field and
+clear of the field's centre.
+
+| Readout | Shows |
+| --- | --- |
+| Score | The running score, as digits, at the top left. It is the most prominent of the readouts. |
+| Ships | One small ship glyph per ship in reserve, in a row below the score. That is one fewer than the total the run has left, since the ship being flown is on the field rather than in the row, so a game that has just started draws two glyphs and a game on its last ship draws none. |
+{{#if (eq variant.slug "warhead")}}
+| Torpedo | A torpedo glyph with a charge bar beneath it, below the ships. The bar is full and the glyph lit while a torpedo is ready; while the charge is rising the glyph is dimmed and the bar fills smoothly from empty to full across the recharge. |
+{{/if}}
+
+Nothing else is required on the HUD, and a further readout of your own is welcome
+there.
+
+## The wave banner
+
+The `WAVE N` banner is drawn centred on the field while it runs, naming the wave
+about to start, as `specs/progression.md` states. It is not part of the persistent
+HUD, and nothing of it is drawn once the banner has run out.

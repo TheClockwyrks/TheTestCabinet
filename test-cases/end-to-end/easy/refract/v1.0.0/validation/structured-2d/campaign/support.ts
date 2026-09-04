@@ -25,10 +25,9 @@
 // reach the build). Only `regionLuminances` differs, because `none` reaches the
 // pixels through the page rather than through a context it holds.
 
-import { CAMPAIGN_LENGTH } from "../../src/constants";
 import { assertDeepEqual, assertLength, fail } from "../assert";
 import { tapAction, type Harness, type TextSpan } from "../harness";
-import { CHANNELS } from "../notation";
+import { CAMPAIGN_LENGTH, CHANNELS } from "../notation";
 import type { RefractSnapshot } from "../surface";
 
 /** The select grid's shape, from specs/modes/campaign.md: six by four. */

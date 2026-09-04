@@ -106,9 +106,20 @@ const SCHEDULES: { name: string; clock: () => Clock; replay?: string }[] = [
  */
 const BALL_START = { x: 1150, y: FIELD_H - 30, vx: -600, vy: 205, spin: 0 };
 
-/** How far a drive may run, and how often it is sampled. */
+/** How far a drive may run. */
 const MAX_FRAMES = 1400;
-const POLL_FRAMES = 3;
+/**
+ * Frames between samples.
+ *
+ * A sample is what detects the point, so it is also what sets how late a drive's
+ * elapsed game time can be read: at most one poll of it, which is 78 ms at the
+ * coarsest schedule below. The scenario is the ball crossing the field and coming
+ * back, several seconds of game time, so that is a couple of per cent of what
+ * {@link ELAPSED_TOLERANCE} allows eight of. A sweep sampling twice as often buys
+ * one more per cent of that margin and costs twice as much to decide the same
+ * things.
+ */
+const POLL_FRAMES = 6;
 
 /**
  * Vertical speeds below this count as travelling level rather than up or down, in

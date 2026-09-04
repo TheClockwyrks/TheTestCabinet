@@ -320,11 +320,37 @@ const kit = createCaseHarness<RefractSnapshot, RefractDebugApi>({
   // no reset touches. And only a harness created with `armAudio: true` is handed
   // the gesture, so a check that is not about sound never presses this build.
   arm: { kind: "click", x: 2, y: 2 },
-  // A build installs its surface while its entry module runs, so a page that has
-  // fired `load` has either installed it already or is not going to. Five seconds
-  // is generous against a conformant build and bounds the cost of one with no
-  // surface at all, which pays it once per harness.
-  surfaceTimeoutMs: 5_000,
+  // THIRTY SECONDS, AND THE ONLY READING IN THIS PROJECT THAT CANNOT BE TAKEN OFF
+  // THE HOST'S CLOCK. A page boots in real time and there is no simulated clock to
+  // read it against — the game does not exist yet, so it has no clock of its own
+  // to have gained on — so this wait is a real one, and the rule for a real one is
+  // that its allowance must be a length a LOADED host cannot cross, because
+  // everything on the other side of it is charged to the build. A probe that
+  // expires here does not report a slow host; it reports `window.__refract was
+  // still absent`, which reads as a hard conformance verdict against a build that
+  // installed its surface perfectly well — the worst shape a flake can take.
+  //
+  // Five seconds was that. On a host running nine of these projects at once, a
+  // conformant reference lost `instrumentation/reset` to exactly this ceiling.
+  // Thirty is chosen against the measured worst case rather than against a healthy
+  // machine — instrumented time-to-surface over thirteen harnesses at load average
+  // 73-120 ran 72 ms to 299 ms, so this is a hundred times the worst reading
+  // actually taken — and the poll returns the instant the global appears, so a
+  // conformant build is charged nothing for the headroom.
+  //
+  // EVERY PAGE PAYS THE WHOLE OF IT, and that is the point rather than an
+  // oversight. It is tempting to let one page's expired wait stand in for the
+  // rest, so that a build with no surface at all does not pay the ceiling once per
+  // harness. That trade is the wrong way round: the only evidence such a memo
+  // could rest on is a wait that expired, and a wait expires either because the
+  // build installs nothing or because the host stalled — so trusting it turns ONE
+  // unlucky page into a fabricated `still absent` on every harness after it. The
+  // cost it would have saved was measured instead of guessed: a reference with the
+  // one line that installs the surface removed validates in 705 s end to end,
+  // install and build and all 94 points decided, against the twenty minutes the
+  // runner caps the whole suite run at. Nearly all of that is idle waiting, eight
+  // workers deep, which is why the figure barely moves with how busy the host is.
+  surfaceTimeoutMs: 30_000,
   // Every beam cell narrowed to `col` and `row` before any check sees it, for
   // the reason on {@link projectCells}.
   projectSnapshot: projectCells,
@@ -552,19 +578,81 @@ export async function traceRoute(
 }
 
 /**
- * Draw a whole solution: one `trace` per channel present, in `CHANNELS` order.
+ * Draw several routes through the surface's `trace`, then read the state they
+ * left — ALL IN ONE CROSSING.
+ *
+ * The same operations in the same order as one {@link traceCells} per route
+ * followed by a `snapshot`, and the build sees no difference: `trace` resolves a
+ * route the moment it is called, between frames, so nothing runs between two of
+ * them for a crossing to have separated. What changes is the cost. A crossing is
+ * a round trip into a browser process, and a round trip is priced by how busy the
+ * HOST is — 6 ms on an idle box and 90 ms on a loaded one — so a sweep that solves
+ * twenty-five boards three channels at a time pays for a hundred of them in
+ * latency that has nothing to do with the build. Sending the whole solution at
+ * once takes that out of the reading, which is what keeps a sweep clear of the
+ * per-check allowance on a loaded host (`vitest.config.ts` names the four points
+ * that were lost to it).
+ *
+ * WHY THIS IS A CASE-LEVEL FUNCTION AND NOT A HARNESS METHOD. Batching is not a
+ * general capability the shared harness offers — it is sound here only because
+ * `specs/instrumentation.md` makes THIS case's `trace` resolve between frames, so
+ * a batch and a run of singles reach the same state. The two things it has to
+ * borrow from the harness it takes explicitly: the refusal a missing surface owes
+ * every operation, and the same narrowing {@link projectCells} applies at the
+ * harness's own single read point, so a check cannot tell a batched snapshot from
+ * any other.
+ */
+export async function traces(
+  h: Harness,
+  routes: readonly (readonly Cell[])[],
+): Promise<RefractSnapshot> {
+  if (h.surfaceFault !== null) failSurface(h.surfaceFault);
+  const returned = await h.page.evaluate(
+    ([handle, list]) => {
+      const api = (
+        window as unknown as Record<
+          string,
+          Record<string, (...a: unknown[]) => unknown>
+        >
+      )[handle];
+      for (const route of list) api.trace(route);
+      return api.snapshot();
+    },
+    [
+      HANDLE,
+      routes.map((route) => route.map(({ col, row }) => ({ col, row }))),
+    ] as const,
+  );
+  return projectCells(returned as RefractSnapshot);
+}
+
+/**
+ * Draw a whole solution: one `trace` per channel present, in `CHANNELS` order,
+ * and hand back the state they left.
  *
  * Each beam's route runs emitter to emitter, so each trace begins on the first
  * row of the grab table — an emitter of a channel whose beam carries no
  * segments — and the game's own rules accept or refuse every segment from
  * there. On the last permitted move of the last channel the board solves and
  * the trace ends on the spot, exactly as `specs/beams.md` states.
+ *
+ * The traces and the read-back go over in ONE crossing ({@link traces}), and the
+ * snapshot that comes back IS the state after the solve: `trace` resolves between
+ * frames, so nothing has run since. A caller that only wants the beams drawn may
+ * still ignore it.
  */
-export async function drawBeams(h: Harness, beams: Beams): Promise<void> {
+export async function drawBeams(
+  h: Harness,
+  beams: Beams,
+): Promise<RefractSnapshot> {
+  const routes: Cell[][] = [];
   for (const channel of CHANNELS) {
     const route = beams[channel];
-    if (route !== undefined && route.length > 0) await traceCells(h, route);
+    if (route !== undefined && route.length > 0) {
+      routes.push(route.map(({ col, row }) => ({ col, row })));
+    }
   }
+  return traces(h, routes);
 }
 
 /* ---- The real pointer ------------------------------------------------------ */
@@ -628,7 +716,7 @@ function requireScreen(
 export async function solveCampaignBoard(
   h: Harness,
   index: number,
-): Promise<void> {
+): Promise<RefractSnapshot> {
   const data = CAMPAIGN_BOARDS[index];
   if (data === undefined) {
     fail(`a campaign board index 0..${CAMPAIGN_BOARDS.length - 1}`, index);
@@ -640,7 +728,7 @@ export async function solveCampaignBoard(
       beams[channel] = route.map(([col, row]) => ({ col, row }));
     }
   }
-  await drawBeams(h, beams);
+  return drawBeams(h, beams);
 }
 
 /** What a course walk saw: each board on entry, and the screen it ended on. */
@@ -690,8 +778,10 @@ export async function driveCourse(
     );
     entered.push(snapshot);
     await onBoard?.(snapshot, index);
-    await solveCampaignBoard(h, index);
-    snapshot = await h.snapshot();
+    // The solution's own read-back IS the state after the solve: `trace` resolves
+    // between frames, so nothing has run since and a second crossing for a
+    // `snapshot` would read exactly what this already carries.
+    snapshot = await solveCampaignBoard(h, index);
     if (index < boards - 1) {
       requireScreen(
         snapshot,
@@ -771,8 +861,13 @@ export async function solveGenerated(
     await onBoard?.(snapshot, index);
     const verdict = solve(board);
     verdicts.push(verdict);
-    if (verdict.status === "solved") await drawBeams(h, verdict.beams);
-    snapshot = await h.snapshot();
+    // The solution's own read-back IS the state after the solve: `trace` resolves
+    // between frames, so nothing has run since. A board the solver could not crack
+    // is read back as it stands, unsolved, for the caller's own verdict.
+    snapshot =
+      verdict.status === "solved"
+        ? await drawBeams(h, verdict.beams)
+        : await h.snapshot();
     afterSolve.push(snapshot);
     if (index < count - 1 && snapshot.screen === "solved") {
       // First choice, highlighted on arrival: NEXT BOARD.

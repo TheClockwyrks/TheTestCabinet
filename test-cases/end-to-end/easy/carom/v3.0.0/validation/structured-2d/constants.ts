@@ -178,13 +178,15 @@ export const TITLE_ITEMS = ["SOLO", "VERSUS", "HOW TO PLAY"] as const;
 export const PAUSE_ITEMS = ["RESUME", "RESTART", "QUIT TO MENU"] as const;
 export const MATCHOVER_ITEMS = ["PLAY AGAIN", "MENU"] as const;
 
-// ---- Key bindings (specs/modes/*.md) -------------------------------------
+// ---- Key bindings (specs/ui.md) ------------------------------------------
 //
 // `KeyboardEvent.code` values, because a binding is a physical key rather than a
 // layout-dependent character — and because that is the vocabulary a check presses
-// in. Under an engine the runtime resolves an action from these; here the build
-// wrote the keyboard layer itself, so what a check presses is the key and what it
-// reads is the game moving.
+// in. The runtime resolves the action: a check dispatches the physical key at the
+// target the engine listens on, the engine raises whichever action the build
+// registered under that key, and the check reads the game moving. `specs/ui.md`
+// fixes every row of the table below, so a build that bound `p1-up` elsewhere
+// fails the control it moved rather than moving the target.
 //
 // `Escape` deliberately drives TWO actions, `pause` and `back`.
 export const BINDINGS = {
@@ -225,7 +227,15 @@ export const CUES = {
 
 export type CueName = (typeof CUES)[keyof typeof CUES];
 
-// ---- Input layout (specs/modes/*.md) -------------------------------------
+// ---- Input layout (specs/ui.md) ------------------------------------------
 
-/** Carom is two paddles facing each other: one vertical slider per side. */
+/**
+ * The touch layout the game's actions are registered on.
+ *
+ * `specs/ui.md` names it outright — "the controls are registered actions on the
+ * `LAYOUT` (`dual-vertical`) touch layout" — so it is the case's figure, not the
+ * build's, and the harness states it when it stands the engine up rather than
+ * asking the build which layout it chose. Carom is two paddles facing each
+ * other: one vertical slider per side.
+ */
 export const LAYOUT = "dual-vertical";

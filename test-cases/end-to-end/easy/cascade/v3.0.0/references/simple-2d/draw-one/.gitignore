@@ -1,0 +1,28 @@
+# Dependencies — reinstalled with `npm ci`. The engine,
+# `@test-cabinet/simple-2d`, is resolved from the repository's own
+# `packages/simple-2d` through a relative `file:` dependency that npm installs
+# as a symlink, so nothing of it is written here.
+node_modules/
+
+# Production build output — produced by `npm run build`. Anchored to this
+# project's root so the patterns name only its own output.
+/dist/
+/build/
+/out/
+
+# Coverage reports — produced by `npm test`.
+coverage/
+
+# Playwright verification scratch.
+test-results/
+playwright-report/
+
+# Logs.
+*.log
+
+# Scratch that `tcab validate --implementation` writes beside the build.
+.tcab/
+
+# The case's validator project, staged in by hand to run the suite or a
+# showcase capture against this build (see showcase/capture/README.md).
+validation/

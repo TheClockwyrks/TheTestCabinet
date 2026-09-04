@@ -67,7 +67,8 @@
 // check asks for a number of frames and gets exactly that number — no polling, no
 // waiting, and no measurement of the machine it ran on. The one check that is
 // ABOUT the loop running itself (`gameplay/advances-in-real-time`) hands it back
-// with `runFor`.
+// with `runUntil`, which watches the game's OWN clock while real time passes
+// rather than measuring one against the other.
 //
 // EVERYTHING CROSSING INTO THE PAGE IS ASYNC. That is the whole of the difference
 // between a suite here and its counterpart under an engine: `await h.snapshot()`
@@ -106,6 +107,8 @@ import {
   P1_X1,
   P2_X0,
   P2_X1,
+  SPEED_CAP,
+  SPEED_MULT,
   TRAIL_TIME,
   UNBOUND_KEY,
   WIN_SCORE,
@@ -597,10 +600,23 @@ const kit = createCaseHarness<CaromSnapshot, CaromCoreApi>({
   // the device a build offering touch controls has to believe it is on.
   hasTouch: true,
   // A build installs its surface while its entry module runs, so a page that has
-  // fired `load` has either installed it already or is not going to. Five seconds
-  // is generous against a conformant build and bounds the cost of one with no
-  // surface at all, which pays it once per harness.
-  surfaceTimeoutMs: 5_000,
+  // fired `load` has either installed it already or is not going to, and the
+  // wait returns the instant the global appears — a conformant build pays none of
+  // this ceiling however high it is set. What the ceiling bounds is the cost of a
+  // build that installs its surface later than `load` and then never gets there,
+  // which every harness of that build pays once.
+  //
+  // FIFTEEN SECONDS RATHER THAN FIVE, because five was set against a healthy
+  // machine and this is a deadline on the HOST. The project holds several pages
+  // of one browser open at once on a box that is also running a model's build,
+  // where a crossing into a page costs 90 ms against 6 ms idle; five seconds
+  // there is close enough to a deferred install that a loaded host was still
+  // finishing to read a conformant build as one that installs nothing, and every
+  // point that harness decides is then failed for the load average. Fifteen is
+  // still far below the cap on the whole suite run, so a build that genuinely
+  // installs no surface turns into "every point this decides failed" rather than
+  // "the validators did not run", which tells a reviewer far less.
+  surfaceTimeoutMs: 15_000,
   projectRoot: dirname(fileURLToPath(import.meta.url)),
 });
 
@@ -1576,6 +1592,45 @@ export async function drivePaddleHit(
 /* ---- Rally speed --------------------------------------------------------- */
 
 /**
+ * The speed the rally is launched at, in units per second.
+ *
+ * Below `SERVE_SPEED` so the climb to `SPEED_CAP` takes a hit or two more than a
+ * served ball would, and a round number so the number of hits a check must drive
+ * to reach the ceiling follows from it and `SPEED_MULT` alone.
+ */
+export const RALLY_LAUNCH_SPEED = 500;
+
+/**
+ * The paddle hits it takes `SPEED_MULT` to carry {@link RALLY_LAUNCH_SPEED} to
+ * `SPEED_CAP`.
+ *
+ * The two rally checks state their lengths in terms of it rather than picking a
+ * number: one hit short of it is the last one the multiplier decides on its own,
+ * and one past it is the first spent sitting on the ceiling.
+ */
+export const RALLY_HITS_TO_CAP = Math.ceil(
+  Math.log(SPEED_CAP / RALLY_LAUNCH_SPEED) / Math.log(SPEED_MULT),
+);
+
+/**
+ * Frames between samples while a rally leg is swept.
+ *
+ * A leg is the ball crossing between the two paddle faces, and the shortest one
+ * it can be is that distance covered at `SPEED_CAP`; sampling eight times inside
+ * even that leg catches every reversal. A per-frame sweep would cost eight times
+ * as much to read frames between which nothing this collects can change: a ball's
+ * speed only ever changes at a paddle hit, and walls and obstacles preserve it
+ * exactly, so a sample taken a few frames after a hit reports the same figure the
+ * frame of the hit would. Under this engineless harness every one of those frames
+ * is also a crossing into the page, so the saving is paid straight back into the
+ * per-check allowance the whole rally has to fit inside.
+ */
+const RALLY_POLL_FRAMES = Math.max(
+  1,
+  Math.floor((((P2_X0 - P1_X1) / SPEED_CAP) * TICK_HZ) / 8),
+);
+
+/**
  * A live match, an empty field but for one ball, both paddles standing on the
  * center line, and the ball launched level down the middle.
  *
@@ -1588,17 +1643,21 @@ export async function arrangeRally(h: AnyHarness): Promise<void> {
   await startPlaying(h);
   await isolateBall(h);
   await centerPaddles(h);
-  await placeBall(h, { x: FIELD_CX, y: FIELD_CY, vx: -500 });
+  await placeBall(h, { x: FIELD_CX, y: FIELD_CY, vx: -RALLY_LAUNCH_SPEED });
 }
 
 /**
- * Play a real rally and report the ball's speed after each successive paddle
- * hit. Speed is constant between hits, so each leg sweeps coarsely until the
+ * Play a real rally of `hits` paddle hits and report the ball's speed after each
+ * one. Speed is constant between hits, so each leg sweeps coarsely until the
  * horizontal direction reverses. Stops early if play ever leaves the field.
+ *
+ * `hits` has no default: a rally is the most expensive scenario in this suite,
+ * every leg of it is real physics rendered frame by frame, and how many legs a
+ * check needs follows from what that check decides. Each caller states its own.
  */
 export async function driveRallySpeeds(
   h: AnyHarness,
-  hits = 24,
+  hits: number,
 ): Promise<number[]> {
   const speeds: number[] = [];
   let previousSign = -1; // the ball is launched toward the left paddle
@@ -1618,7 +1677,7 @@ export async function driveRallySpeeds(
         const ball = ball0(s);
         return Math.sign(ball.vx) === want && ball.vx !== 0;
       },
-      { maxFrames: 600, poll: 6 },
+      { maxFrames: 600, poll: RALLY_POLL_FRAMES },
     );
     if (leftPlay || !leg.hit) break;
     speeds.push(ball0(leg.snapshot).speed);

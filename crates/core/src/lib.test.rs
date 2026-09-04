@@ -32,6 +32,7 @@ fn a_build_that_loaded_is_reviewed_however_badly_its_debug_api_behaved() {
         gates: true,
         ran: false,
         precondition_unmet: false,
+        inconclusive: None,
         detail: Some("window.__demo was not installed".to_string()),
         verdicts: Vec::new(),
         outputs: Vec::new(),

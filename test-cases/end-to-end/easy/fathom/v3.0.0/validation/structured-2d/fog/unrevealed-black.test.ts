@@ -31,12 +31,12 @@
 // pellet on is not something this point has any business turning on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { VISION_GAIN, VISION_MIN } from "../../src/constants";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
 } from "../assert";
+import { VISION_GAIN, VISION_MIN } from "../constants";
 import { placeForager, poseMaze } from "../fixtures";
 import {
   captureStill,

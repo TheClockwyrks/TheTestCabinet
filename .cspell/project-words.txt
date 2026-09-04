@@ -143,6 +143,7 @@ automatable
 automove
 autoplay
 autorepeat
+autorepeats
 autotile
 autotiled
 autotiles
@@ -153,6 +154,7 @@ Backquote
 Balatro
 Bastion
 battlespace
+BAYFILL
 beatability
 bezelled
 biarm
@@ -246,6 +248,7 @@ difficultyselect
 diggable
 dischargerig
 disjointness
+distinguishability
 dmgboard
 dodgeable
 dogfighter
@@ -272,7 +275,6 @@ Flakhound
 Flarefish
 flarefish
 flyin
-forcings
 forcings
 foregrip
 forkarray
@@ -396,6 +398,9 @@ multishots
 muteable
 napi
 needbar
+neighbour
+neighbours
+nobuild
 nonblank
 nonfiring
 nonking
@@ -463,6 +468,8 @@ rehit
 Reliquary
 relocks
 repath
+repathed
+repaths
 replayability
 reskin
 reskinned
@@ -512,6 +519,7 @@ serp
 serpentines
 setless
 setmaze
+setpoints
 sideload
 sideloaded
 sideloading
@@ -523,6 +531,7 @@ skyshard
 Skyworks
 slagdriver
 slingshotting
+slowability
 slowable
 slowhit
 splitter
@@ -551,6 +560,7 @@ synthwave
 taiko
 tankier
 tanky
+tappable
 targ
 targetable
 tcab
@@ -595,12 +605,14 @@ unhighlighted
 unioned
 unioning
 unitless
+unlaunched
 unmarks
 unminable
 unmined
 unmute
 unmuted
 unmutes
+unmuting
 unoccluded
 unparked
 unperformable

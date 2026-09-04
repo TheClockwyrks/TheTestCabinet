@@ -31,10 +31,13 @@ it("leaves the per-case dials to the case", () => {
   // the moment they are called spends a few hundred crossings on its longest
   // scenario, while one whose scenario walks a level to its clear spends thousands
   // of real simulated ticks.
+  // A dial the case DOES name is its own, and a dial it does not keeps the
+  // package's measured default — 300 s and eight workers, which is what the
+  // whole-run figures in `vitest-config.ts` were measured to set.
   const brisk = defineValidationConfig({ root: "/build", testTimeout: 60_000 });
   expect(brisk.test?.testTimeout).toBe(60_000);
-  expect(brisk.test?.hookTimeout).toBe(60_000);
-  expect(brisk.test?.maxWorkers).toBe(4);
+  expect(brisk.test?.hookTimeout).toBe(300_000);
+  expect(brisk.test?.maxWorkers).toBe(8);
 
   const patient = defineValidationConfig({
     root: "/build",

@@ -28,9 +28,11 @@ import { fromForager } from "../scene";
  *
  * specs/sensing.md: "Its radius is `R = KINDLE_VISION_MIN + KINDLE_VISION_GAIN *
  * G`, with `KINDLE_VISION_MIN` (`192`) and `KINDLE_VISION_GAIN` (`128`) in
- * logical units". Restated here rather than imported from the build's
- * `src/constants`, because only the Kindle workspace is seeded with them and this
- * one validation project is staged into both.
+ * logical units". Stated on the validator's side of the line, like every other
+ * figure a check grades by: the build writes its own `src/constants.ts` and a
+ * check that read these back off it would be asking the build to agree with
+ * itself. They sit here rather than in `../constants` because they are the Kindle
+ * dive's alone, and this one project is staged into both variants.
  */
 export const KINDLE_VISION_MIN = 192;
 export const KINDLE_VISION_GAIN = 128;

@@ -51,7 +51,12 @@ import {
   startPlaying,
 } from "../harness";
 import { requireSceneHeld, sceneGuard } from "../scene";
-import { BLOOM_MAX, FIRST_FLARE_MAX, FLARE_POLL, poseFlareRoom } from "./room";
+import {
+  BLOOM_MAX,
+  FIRST_FLARE_MAX,
+  FLARE_WAIT_POLL,
+  poseFlareRoom,
+} from "./room";
 
 /**
  * How far apart the two samples may be drawn, as an RGB distance.
@@ -112,9 +117,11 @@ it("shows nothing of itself between flares, in what it reports and on the canvas
   const room = await poseFlareRoom(h);
   const guard = await sceneGuard(h, { posesAgain: true });
 
+  // Pure waits, here and below: this point reads what the hunter SHOWS between
+  // flares, never when a flare began or ended, so both take the coarse wait grain.
   const bloom = await h.until(
     (snap) => snap.predators[room.index].flaring === true,
-    { maxTicks: ticks(FIRST_FLARE_MAX), poll: FLARE_POLL },
+    { maxTicks: ticks(FIRST_FLARE_MAX), poll: FLARE_WAIT_POLL },
   );
   assertEqual(
     bloom.hit,
@@ -131,7 +138,7 @@ it("shows nothing of itself between flares, in what it reports and on the canvas
     // Out the far side of the bloom, and well past its fade.
     const ended = await h.until(
       (snap) => snap.predators[room.index].flaring !== true,
-      { maxTicks: ticks(BLOOM_MAX), poll: FLARE_POLL },
+      { maxTicks: ticks(BLOOM_MAX), poll: FLARE_WAIT_POLL },
     );
     await h.advance(ticks(AFTER_FADE));
 
