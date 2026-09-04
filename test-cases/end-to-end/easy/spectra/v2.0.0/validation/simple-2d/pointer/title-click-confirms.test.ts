@@ -1,4 +1,5 @@
-// Spectra — pointer/click-confirms: a press and release inside one item takes it.
+// Spectra — pointer/title-click-confirms: a press and release inside one item
+// takes it.
 //
 // THE RULE. `specs/ui.md`, "Pointer and touch": "A pointer is pressed and released
 // inside one item's region" makes `menuIndex` that item's index and confirms it,

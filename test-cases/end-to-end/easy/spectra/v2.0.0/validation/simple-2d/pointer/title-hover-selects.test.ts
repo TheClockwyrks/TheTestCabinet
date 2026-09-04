@@ -1,4 +1,5 @@
-// Spectra — pointer/hover-selects: moving the mouse onto an item selects it.
+// Spectra — pointer/title-hover-selects: moving the mouse onto a title item
+// selects it.
 //
 // THE RULE. `specs/ui.md`, "Pointer and touch": "A pointer moves onto an item's
 // region" makes `menuIndex` that item's index. This point decides that and nothing
@@ -45,20 +46,20 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(async () => {
-  await h.dispose();
+afterEach(() => {
+  h?.dispose();
 });
 
 it("selects the title item the pointer moves onto", async () => {
-  await h.debug.reset();
-  const posed = await h.snapshot();
+  h.debug.reset();
+  const posed = h.snapshot();
   assertEqual(posed.screen, "title", "the game opens on the title");
   assertEqual(posed.menuIndex, MODE_ENTRY, "with its first item highlighted");
 
   await pointerOntoItem(h, HOWTO_ENTRY);
-  await captureStill(h, "menu");
+  captureStill(h, "menu");
 
-  const hovered = await h.snapshot();
+  const hovered = h.snapshot();
   assertEqual(
     hovered.menuIndex,
     HOWTO_ENTRY,

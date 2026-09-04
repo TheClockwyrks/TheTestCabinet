@@ -1,18 +1,30 @@
-// Spectra — pointer/slide-off-cancels: two edges in different items take neither.
+// Spectra — pointer/title-slide-off-cancels: two edges in different items take
+// neither.
 //
 // THE RULE. `specs/ui.md`, "Pointer and touch": "A confirm takes both of its edges
 // inside one item's region ... Two edges that fall in different regions, and an edge
 // that falls outside every region, confirm no item." This is the affordance that
 // lets a player who pressed the wrong entry slide off it and let go safely.
 //
-// WHAT IS DRIVEN. The pointer presses inside `HOW TO PLAY`'s region, travels to the
-// mode entry's while held, and releases there. The two edges fall in different
-// regions, so nothing is confirmed — and the selection followed the pointer, so the
-// highlight is on the item it ended over.
+// WHAT IS DRIVEN. The pointer presses inside the mode entry's region — the item the
+// pose already highlights — travels onto `HOW TO PLAY`'s region while held, and
+// releases there. The two edges fall in different regions, so nothing is confirmed,
+// and the selection followed the pointer, so the highlight is on `HOW TO PLAY`, the
+// item the gesture ended over.
+//
+// WHY THE PRESS STARTS ON THE HIGHLIGHTED ITEM. A cancel is a negative claim, and a
+// build that reads no pointer at all satisfies a negative claim for free: leave the
+// gesture ending where the pose already put the highlight and both readings come out
+// right for a build with no mouse code in it. Pressing the item the highlight is
+// ALREADY on and releasing on the other makes this point read back a highlight that
+// MOVED, which is what makes the negative claim decidable rather than free.
 //
 // EVERY WRONG MODEL READS AS A DIFFERENT SCREEN. A build that confirms on the press
-// opens `howto`; a build that confirms on the release alone opens `stageIntro`; only
-// a build that requires BOTH edges in one region is still on the title.
+// edge confirms the mode entry and opens `stageIntro`; a build that confirms on the
+// release edge alone opens `howto`; a build that never saw the pointer is still on
+// the title with the highlight on the mode entry, and fails on the highlight. Only a
+// build that requires BOTH edges in one region is on the title with the highlight on
+// `HOW TO PLAY`.
 //
 // WHERE THE ITEMS ARE, IS THE BUILD'S: both regions come from the build's own
 // `menuItemRect` (`specs/instrumentation.md`), so any layout passes.
@@ -54,7 +66,7 @@ it("confirms nothing when the press and the release fall in different items", as
     "the game opens on the title",
   );
 
-  await dragBetweenItems(h, HOWTO_ENTRY, MODE_ENTRY);
+  await dragBetweenItems(h, MODE_ENTRY, HOWTO_ENTRY);
   await captureStill(h, "title");
 
   const after = await h.snapshot();
@@ -66,8 +78,8 @@ it("confirms nothing when the press and the release fall in different items", as
   );
   assertEqual(
     after.menuIndex,
-    MODE_ENTRY,
-    "menuIndex after the held pointer travelled onto the mode entry's region, " +
+    HOWTO_ENTRY,
+    "menuIndex after the held pointer travelled onto HOW TO PLAY's region, " +
       "which selects it (specs/ui.md)",
   );
 });

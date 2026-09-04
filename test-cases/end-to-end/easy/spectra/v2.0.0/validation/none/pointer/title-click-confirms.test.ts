@@ -1,4 +1,5 @@
-// Spectra — pointer/click-confirms: a press and release inside one item takes it.
+// Spectra — pointer/title-click-confirms: a press and release inside one item
+// takes it.
 //
 // THE RULE. `specs/ui.md`, "Pointer and touch": "A pointer is pressed and released
 // inside one item's region" makes `menuIndex` that item's index and confirms it,
@@ -43,21 +44,21 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(() => {
-  h?.dispose();
+afterEach(async () => {
+  await h.dispose();
 });
 
 it("confirms the title item a press and release fall inside", async () => {
-  h.debug.reset();
-  const posed = h.snapshot();
+  await h.debug.reset();
+  const posed = await h.snapshot();
   assertEqual(posed.screen, "title", "the game opens on the title");
   assertEqual(posed.menuIndex, MODE_ENTRY, "with its first item highlighted");
 
   await clickItem(h, HOWTO_ENTRY);
-  captureStill(h, "howto");
+  await captureStill(h, "howto");
 
   assertEqual(
-    h.snapshot().screen,
+    (await h.snapshot()).screen,
     "howto",
     "the screen a press and release inside the second item's own region " +
       "reaches (specs/ui.md, Pointer and touch)",

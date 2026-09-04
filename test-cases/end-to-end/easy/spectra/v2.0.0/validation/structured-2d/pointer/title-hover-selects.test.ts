@@ -1,4 +1,5 @@
-// Spectra — pointer/hover-selects: moving the mouse onto an item selects it.
+// Spectra — pointer/title-hover-selects: moving the mouse onto a title item
+// selects it.
 //
 // THE RULE. `specs/ui.md`, "Pointer and touch": "A pointer moves onto an item's
 // region" makes `menuIndex` that item's index. This point decides that and nothing

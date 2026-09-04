@@ -1,4 +1,5 @@
-// Spectra — touch/tap-confirms: a contact that lifts where it landed takes it.
+// Spectra — touch/title-tap-confirms: a contact that lifts where it landed
+// takes it.
 //
 // THE RULE. `specs/ui.md`, "Pointer and touch": "A touch contact lands and lifts
 // inside one item's region" makes `menuIndex` that item's index and confirms it,

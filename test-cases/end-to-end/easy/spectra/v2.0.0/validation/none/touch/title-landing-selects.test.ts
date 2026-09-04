@@ -1,4 +1,5 @@
-// Spectra — touch/landing-selects: a contact selects the item it lands on.
+// Spectra — touch/title-landing-selects: a contact selects the item it lands
+// on.
 //
 // THE RULE. `specs/ui.md`, "Pointer and touch": "A touch contact lands inside an
 // item's region, or travels onto one" makes `menuIndex` that item's index. A finger
@@ -6,8 +7,8 @@
 // LANDING, and the landing is what selects.
 //
 // THE CONTACT IS LEFT DOWN, so no lift can confirm and the reading is the selection
-// alone. `pointer/hover-selects` decides the mouse's own move, and
-// `touch/tap-confirms` the confirm a lift makes.
+// alone. `pointer/title-hover-selects` decides the mouse's own move, and
+// `touch/title-tap-confirms` the confirm a lift makes.
 //
 // THE GROUND IS POSED. `reset` leaves the title with the highlight on the first item
 // (`specs/instrumentation.md`), and the contact lands on the second, so the index
@@ -23,6 +24,7 @@ import {
   captureStill,
   createHarness,
   landOnItem,
+  liftContact,
   type Harness,
 } from "../harness";
 
@@ -42,20 +44,22 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(() => {
-  h?.dispose();
+afterEach(async () => {
+  // The contact is left down by the check, so it is lifted before the page goes.
+  await liftContact(h);
+  await h.dispose();
 });
 
 it("selects the title item a touch contact lands on", async () => {
-  h.debug.reset();
-  const posed = h.snapshot();
+  await h.debug.reset();
+  const posed = await h.snapshot();
   assertEqual(posed.screen, "title", "the game opens on the title");
   assertEqual(posed.menuIndex, MODE_ENTRY, "with its first item highlighted");
 
   await landOnItem(h, HOWTO_ENTRY);
-  captureStill(h, "selected");
+  await captureStill(h, "selected");
 
-  const landed = h.snapshot();
+  const landed = await h.snapshot();
   assertEqual(
     landed.menuIndex,
     HOWTO_ENTRY,
