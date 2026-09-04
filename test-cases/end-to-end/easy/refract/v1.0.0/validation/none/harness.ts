@@ -38,8 +38,8 @@
 // of a chosen length. Every harness opens by taking the game off the clock, so a
 // check asks for a number of frames and gets exactly that number. The POINTER
 // needs no frames at all: `specs/instrumentation.md` makes `pointerDown`,
-// `pointerMove`, `pointerUp`, and `trace` take effect the moment they are called,
-// so a whole route — a whole campaign course — is drawn without advancing the
+// `pointerMove`, and `pointerUp` take effect the moment they are called, so a
+// whole route — a whole campaign course — is drawn without advancing the
 // game, and a frame is driven only where something is genuinely per-frame: a
 // render to sample, a cue to hear, a key to deliver.
 //
@@ -837,9 +837,9 @@ export async function driveCourse(
     );
     entered.push(snapshot);
     await onBoard?.(snapshot, index);
-    // The solution's own read-back IS the state after the solve: `trace` resolves
-    // between frames, so nothing has run since and a second crossing for a
-    // `snapshot` would read exactly what this already carries.
+    // The solution's own read-back IS the state after the solve: every pointer
+    // operation resolves between frames, so nothing has run since and a second
+    // crossing for a `snapshot` would read exactly what this already carries.
     snapshot = await solveCampaignBoard(h, index);
     if (index < boards - 1) {
       requireScreen(
@@ -920,9 +920,10 @@ export async function solveGenerated(
     await onBoard?.(snapshot, index);
     const verdict = solve(board);
     verdicts.push(verdict);
-    // The solution's own read-back IS the state after the solve: `trace` resolves
-    // between frames, so nothing has run since. A board the solver could not crack
-    // is read back as it stands, unsolved, for the caller's own verdict.
+    // The solution's own read-back IS the state after the solve: every pointer
+    // operation resolves between frames, so nothing has run since. A board the
+    // solver could not crack is read back as it stands, unsolved, for the
+    // caller's own verdict.
     snapshot =
       verdict.status === "solved"
         ? await drawBeams(h, verdict.beams)

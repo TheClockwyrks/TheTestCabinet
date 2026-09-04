@@ -9,7 +9,8 @@
 // something a player-driving check cannot find, and both are the same failure.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CAMPAIGN_LENGTH, TITLE_ITEMS } from "../../src/constants";
+import { TITLE_ITEMS } from "../constants";
+import { CAMPAIGN_LENGTH } from "../notation";
 import { R9_UNIQUE } from "../fixtures";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {

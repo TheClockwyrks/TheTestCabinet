@@ -9,7 +9,8 @@
 // inferred from the picture.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { STAGE_H, STAGE_W, TARGET_MIN_H, TARGET_MIN_W } from "../../src/constants";
+import { TARGET_MIN_H, TARGET_MIN_W } from "../constants";
+import { STAGE_H, STAGE_W } from "../notation";
 import { R9_UNIQUE } from "../fixtures";
 import { assertGreaterThanOrEqual, assertTruthy } from "../assert";
 import {

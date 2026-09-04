@@ -53,20 +53,36 @@ export interface NumberPoint {
 /**
  * Where board `board`'s number sits among one frame's runs of text.
  *
- * A number is the run that IS that number once trimmed — substring matching
- * would put board 1 inside `"12"` — and a build that draws a number more than
- * once (a shadow pass, a highlight redraw) draws the passes within a couple of
- * pixels of each other, so the mean of the matches names the tile's spot.
+ * A run that IS the number once trimmed is taken first, because substring
+ * matching would put board 1 inside `"12"`. Only when nothing reads as the
+ * bare number does the search widen to a run carrying exactly one integer
+ * equal to `board`, which is what `"07"`, `"#7"` and `"BOARD 7"` are: zero
+ * padding or a label around the number is the build's own copy and font
+ * choice, and specs/modes/campaign.md asks only that each board shows its
+ * number. A run carrying a second board's digits, such as `"1 OF 24 SOLVED"`,
+ * is not that number and stays out either way.
+ *
+ * A build that draws a number more than once (a shadow pass, a highlight
+ * redraw) draws the passes within a couple of pixels of each other, so the
+ * mean of the matches names the tile's spot.
  */
 export function numberRun(
   runs: readonly TextSpan[],
   board: number,
 ): NumberPoint {
-  const matches = runs.filter((run) => run.text.trim() === String(board));
+  const exact = runs.filter((run) => run.text.trim() === String(board));
+  const matches =
+    exact.length > 0
+      ? exact
+      : runs.filter((run) => {
+          const digits = run.text.match(/\d+/g);
+          return digits?.length === 1 && Number(digits[0]) === board;
+        });
   if (matches.length === 0) {
     fail(
-      `the select frame drawing the number ${board} as a run of its own ` +
-        "(specs/modes/campaign.md: each board in the grid shows its number)",
+      `the select frame drawing board ${board}'s number in a run of its own ` +
+        "(specs/modes/campaign.md: each board in the grid shows its number; a " +
+        "label or zero padding around the number is fine)",
       runs.map((run) => run.text),
     );
   }

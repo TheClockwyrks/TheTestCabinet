@@ -9,7 +9,7 @@
 // rather than assuming a corner is empty.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { STAGE_H, STAGE_W } from "../../src/constants";
+import { STAGE_H, STAGE_W } from "../notation";
 import { assertEqual, fail } from "../assert";
 import {
   captureStill,

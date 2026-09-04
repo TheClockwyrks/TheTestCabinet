@@ -43,7 +43,8 @@ it("a press on a released beam's live end resumes the trace there, and an extens
   await resetTo(h, 1);
   await loadBoard(h, GEO_7X6);
 
-  // Draw A -> B -> C and release: `trace` runs press, move per cell, release.
+  // Draw A -> B -> C and release: `traceCells` runs press, move per cell,
+  // release.
   traceCells(h, [A, B, C]);
   assertNull(h.snapshot().tracing, "the drawing trace ended with its release");
 

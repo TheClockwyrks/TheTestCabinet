@@ -64,8 +64,7 @@ import {
   resetTo,
   sampleColor,
   startCascade,
-  toCells,
-  traceCells,
+  traceRoute,
   type Harness,
   type Rgb,
   type TextSpan,
@@ -111,14 +110,6 @@ const SQUARE_ROW: readonly (readonly [number, number])[] = [
 const SOLVES = 2;
 /** Two colours this far apart of 441 are two colours, not one under a veil. */
 const VISIBLE = 5;
-
-/** Draw one route through `trace`, as `traceBeams` draws a solver's beam. */
-function traceRoute(
-  h: Harness,
-  route: readonly (readonly [number, number])[],
-): void {
-  traceCells(h, toCells(route));
-}
 
 /**
  * Whether a drawn text run plausibly covers the point: within the run's

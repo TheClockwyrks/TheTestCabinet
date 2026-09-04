@@ -19,10 +19,10 @@
 //
 // The second half is liveness. A surface that reports a plausible-looking
 // object unconnected to the running game is the failure mode worth naming, so
-// the check poses a board through `loadBoard`, draws a segment through
-// `trace`, and requires that BOTH readbacks move: the snapshot (the posed
-// board's cells, the drawn beam) and the rendered canvas (the frame after the
-// trace differs from the frame before it). The scenario board is GEO_3X3 —
+// the check poses a board through `loadBoard`, draws a segment through the
+// pointer operations, and requires that BOTH readbacks move: the snapshot (the
+// posed board's cells, the drawn beam) and the rendered canvas (the frame after
+// the segment differs from the frame before it). The scenario board is GEO_3X3 —
 // spec-derived, from fixtures.ts — and the traced hop T(0,0) -> t(1,1) is a
 // legal R1 diagonal that does not complete the beam, so what is read is an
 // ordinary mid-play state.

@@ -41,8 +41,8 @@ it("the release ends the trace, the partial beam persists, and a press on either
   await resetTo(h, 1);
   await loadBoard(h, GEO_7X6);
 
-  // Two segments of a board that needs six: a partial beam. `trace` ends with
-  // the release under test.
+  // Two segments of a board that needs six: a partial beam. `traceCells` ends
+  // with the release under test.
   traceCells(h, [A, B, C]);
 
   const released = h.snapshot();

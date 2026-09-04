@@ -17,8 +17,8 @@
 // WHY THE DEBUG SURFACE RATHER THAN RAW ASSIGNMENT. specs/instrumentation.md
 // fixes its operations, so they mean the same thing in every build: `loadBoard`
 // poses a board and moves to `playing`, the pointer operations feed the same
-// immediate input path a player's pointer feeds, `trace` draws a whole route in
-// one call, and `reset` gives everything back. Posing through it is how a
+// immediate input path a player's pointer feeds, so a whole route is drawn
+// without a frame passing, and `reset` gives everything back. Posing through it is how a
 // scenario is reproducible, and it is the seam the case's specification
 // documents. `surface.ts` is that specification as types, and it is the only
 // description of the surface this harness reads: the build's own module for it
@@ -1091,7 +1091,7 @@ export async function loadBoard(h: Harness, notation: string): Promise<Board> {
 /** A route as `routes.ts` stores it: ordered `[col, row]` pairs. */
 export type RoutePairs = ReadonlyArray<readonly [number, number]>;
 
-/** `[col, row]` pairs as the cell list the surface's `trace` takes. */
+/** `[col, row]` pairs as the cell list {@link traceCells} takes. */
 export function toCells(route: RoutePairs): CellRef[] {
   return route.map(([col, row]) => ({ col, row }));
 }

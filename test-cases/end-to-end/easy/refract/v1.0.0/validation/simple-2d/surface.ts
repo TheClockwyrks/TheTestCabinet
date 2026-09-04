@@ -14,7 +14,7 @@
 // out read-only, so the surface holds no state of its own and nothing on it
 // mutates anything. Every operation is written in the shape of the game's
 // `update`: a POSE takes the current state and returns the next one
-// (`loadBoard(state, board)`, `trace(state, cells)`), and a READING takes the
+// (`loadBoard(state, board)`, `clear(state)`), and a READING takes the
 // current state and returns what it read (`snapshot(state)`). A caller drives
 // a pose through `engine.apply((s) => debug.clear(s))` — the engine stores what
 // the pose returned, and the next frame's `update` receives it — and a reading

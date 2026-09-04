@@ -126,14 +126,14 @@ code:
   title-screen value (seedable; `muted` deliberately kept) and read a
   JSON-serializable view of the full state, with node centers, crystal spends,
   beam completeness, and the solved verdict derived by the game's own rules.
-- `startMode(mode)` and `loadBoard(board)` — pose the choice of a mode exactly
-  as its menu item does, and pose an arbitrary board (in the case's notation)
-  onto the playing screen with every beam empty.
-- `pointerDown(x, y)`, `pointerMove(x, y)`, `pointerUp()`, and
-  `trace(cells)` — feed the same input path the runtime's pointer feeds, each
-  taking effect the moment it is called, so a whole route draws from code with
-  no frame between calls. The hit radius, the grab rules, and the limits all
-  run exactly as they do for a player, and a refused move changes nothing.
+- `setMode(mode)`, `setScreen(screen)`, `setMenuIndex(index)` and
+  `loadBoard(board)` — set one field each, and pose an arbitrary board (in the
+  case's notation) onto the playing screen with every beam empty.
+- `pointerDown(x, y)`, `pointerMove(x, y)` and `pointerUp()` — feed the same
+  input path the runtime's pointer feeds, each taking effect the moment it is
+  called, so a whole route draws from code with no frame between calls. The hit
+  radius, the grab rules, and the limits all run exactly as they do for a
+  player, and a refused move changes nothing.
 - `clear()` — the `clear` action, on the playing screen alone.
 
 Everything but the two clock calls is a read or a pose of the game's state:

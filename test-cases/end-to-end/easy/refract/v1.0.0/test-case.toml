@@ -428,7 +428,7 @@ description = "The look and sound of the optical bench, which this case leaves e
 # run's engine is what gets staged into the built workspace at `validation/`.
 #
 # The suites pose boards through `loadBoard` in the notation `specs/board.md`
-# defines and draw through `trace` and the pointer operations, all of which take
+# defines and draw through the pointer operations, all of which take
 # effect the moment they are called, so even a whole campaign course walk costs
 # milliseconds. Campaign progress has NO pose: a suite that needs a later course
 # state really solves the boards, tracing routes precomputed from
@@ -486,13 +486,13 @@ title = "Instrumentation"
 [[review.categories.items]]
 id = "surface-present"
 title = "The debug and automation surface is present"
-description = "Every operation specs/instrumentation.md names is present as a function on the surface — reached on the page as window.__refract in an engineless build and off engine.debug in an engine build — and the surface is live: loadBoard poses a board, trace draws a segment on it, and both the snapshot and the rendered canvas change."
+description = "Every operation specs/instrumentation.md names is present as a function on the surface — reached on the page as window.__refract in an engineless build and off engine.debug in an engine build — and the surface is live: loadBoard poses a board, a pointerDown and a pointerMove draw a segment on it, and both the snapshot and the rendered canvas change."
 domains = ["campaign", "cascade", "tracing", "presentation"]
 failure_cap = "broken"
 # Automated validation: reflect that every required operation is installed as a
 # function (setAutoStep and advance under `none` alone), then prove liveness by
-# posing a board, tracing a segment, and reading both the snapshot and the canvas
-# back. See validation/<engine>/instrumentation/surface-present.test.ts.
+# posing a board, drawing a segment with the pointer operations, and reading
+# both the snapshot and the canvas back. See validation/<engine>/instrumentation/surface-present.test.ts.
 validation = { script = "instrumentation/surface-present.test.ts", outputs = [
   { id = "state", name = "The driven in-game state", kind = "image" },
 ] }
@@ -537,11 +537,12 @@ validation = { script = "instrumentation/pointer-operations-drive-play.test.ts",
 [[review.categories.items]]
 id = "trace-prefix"
 title = "A refused trace keeps its permitted prefix"
-description = "A route whose third hop the limits refuse leaves the beam ending at the last segment they permitted — exactly the first two cells — and the game does not throw, as specs/instrumentation.md states of a move the limits refuse."
+description = "A route drawn with pointerDown and pointerMove whose third hop the limits refuse leaves the beam ending at the last segment they permitted — exactly the first two cells — and the game plays on rather than throwing, as specs/beams.md R2 and specs/instrumentation.md state of a move the limits refuse."
 domains = ["campaign", "cascade", "tracing", "presentation"]
 failure_cap = "passable"
-# Automated validation: draw a route whose third hop lands on another channel's
-# lens and read the beam back. See
+# Automated validation: press an emitter, move to an adjacent node, then move
+# onto another channel's lens — a hop R2 refuses — and read the beam back,
+# then draw a further legal segment to show the game plays on. See
 # validation/<engine>/instrumentation/trace-prefix.test.ts.
 validation = { script = "instrumentation/trace-prefix.test.ts", outputs = [
   { id = "prefix", name = "The beam holding the permitted prefix", kind = "image" },

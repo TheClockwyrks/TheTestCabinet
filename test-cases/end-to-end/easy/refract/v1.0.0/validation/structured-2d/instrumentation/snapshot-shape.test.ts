@@ -92,7 +92,8 @@ it("reports the full documented shape, every derivation on the spec's formula", 
     "the oracle parse of the posed notation",
   );
 
-  // The partial triangle beam, drawn and released through `trace`.
+  // The partial triangle beam, drawn and released through the pointer
+  // operations.
   traceCells(h, TRIANGLE_BEAM);
   // The partial square beam, drawn move by move and left live: the pointer
   // operations resolve at the call, so no frame passes and the trace stays up
