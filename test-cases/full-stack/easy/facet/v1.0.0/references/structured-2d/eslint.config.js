@@ -17,7 +17,6 @@ export default tseslint.config(
       "build/",
       "out/",
       "coverage/",
-      "proof/",
       ".tcab/",
     ],
   },
