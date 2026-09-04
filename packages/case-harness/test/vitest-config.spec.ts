@@ -22,7 +22,6 @@ it("fixes what the runner has to be able to rely on", () => {
     // A missing validator is a broken suite, not a passing one.
     passWithNoTests: false,
     coverage: { enabled: false },
-    minWorkers: 1,
   });
 });
 

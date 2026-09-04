@@ -29,7 +29,6 @@ export default defineConfig({
     passWithNoTests: false,
     // Each suite file holds pages of the one shared browser while it runs.
     maxWorkers: 4,
-    minWorkers: 1,
     testTimeout: 60_000,
     hookTimeout: 60_000,
   },
