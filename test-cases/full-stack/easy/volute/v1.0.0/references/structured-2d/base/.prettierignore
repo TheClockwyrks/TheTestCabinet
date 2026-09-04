@@ -1,13 +1,12 @@
 # Everything that is not authored source: installed packages, build output,
-# coverage reports, captured proof, the vendored engine and its documentation,
-# the supplied specification, and the produced asset files, which are build
-# inputs rather than hand-written source.
+# coverage reports, the vendored engine and its documentation, the supplied
+# specification, and the produced asset files, which are build inputs rather
+# than hand-written source.
 node_modules/
 /dist/
 /build/
 /out/
 coverage/
-proof/
 .tcab/
 package-lock.json
 engine/
