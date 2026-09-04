@@ -49,18 +49,8 @@ import { dirname, join } from "node:path";
 import { it } from "vitest";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { assertGreaterThanOrEqual, assertNotNull, fail } from "../assert";
+import { GEMS_DIR, REQUIRED_SPRITES } from "../constants";
 import { mediaDestination, siteRoot } from "../harness";
-
-/**
- * How many distinct sprites specs/assets.md's four bullets ask for.
- *
- * Seven kinds at each of four strain states, the two cut overlays, the prism at
- * each of the same four strain states, and the one board frame.
- */
-const REQUIRED_SPRITES = 7 * 4 + 2 + 4 + 1;
-
-/** The served directory specs/assets.md lands the sprites under. */
-const GEMS_DIR = ["assets", "gems"];
 
 /** The side of one cell of the contact sheet the check leaves as evidence. */
 const CONTACT_CELL = 72;

@@ -436,6 +436,85 @@ export const DEFAULT_SEED = 1;
 export const HANDLE = "__facet";
 
 /* -------------------------------------------------------------------------- */
+/* The produced assets — specs/assets.md                                      */
+/* -------------------------------------------------------------------------- */
+//
+// Every figure specs/assets.md fixes about what a build PRODUCES, transcribed
+// under the names that file uses. The `assets/` suites read their counts from
+// here rather than each writing its own, so a figure that moves in the
+// specification moves once and the three projects cannot come to disagree about
+// it. What is NOT here is a suite's own sampling parameters — the side of a
+// contact-sheet cell, the height of a filmstrip frame, the RMS floor a check
+// calls silence — because those are the check's own choices and no
+// specification sentence fixes them.
+
+/**
+ * How many distinct sprites specs/assets.md's `draw` bullets ask for.
+ *
+ * "The seven kinds at each of four strain states" is twenty-eight; "the
+ * `brilliant` and the `star` treatments" are two overlays; "the `prism` at each
+ * of four strain states" is four; "The board frame, one sprite" is one.
+ */
+export const REQUIRED_SPRITES = 7 * 4 + 2 + 4 + 1;
+
+/** specs/assets.md: "A break animation for each of the seven kinds." */
+export const REQUIRED_BREAK_SHEETS = 7;
+
+/**
+ * The fewest files a sequence of separate frames can be made of.
+ *
+ * specs/assets.md asks for "a short sequence" per kind and fixes no length, so
+ * this is the floor at which a sequence is a sequence at all rather than a
+ * count the specification states.
+ */
+export const MIN_SHEET_FRAMES = 2;
+
+/**
+ * specs/assets.md: "Produce these four" — the clear burst, the flawed
+ * detonation, the cut-gem flash, and the cut aura.
+ */
+export const REQUIRED_FX_SYSTEMS = 4;
+
+/** The cues specs/assets.md names one by one for `sfx-synth` to produce. */
+export const SYNTH_CUES = [
+  "select",
+  "swap",
+  "refuse",
+  "land",
+  "flaw",
+  "cut",
+  "levelup",
+  "gameover",
+] as const;
+
+/** The shatter body `sfx-sample` produces: one file. */
+export const SAMPLED_BODIES = 1;
+
+/**
+ * specs/assets.md: "Produce two pieces: a title theme with a hook, and a slower
+ * play bed."
+ */
+export const MUSIC_PIECES = 2;
+
+/**
+ * The served tree specs/assets.md commits every produced file under.
+ *
+ * "a file committed at `public/assets/gems/ruby.png` is served at
+ * `assets/gems/ruby.png` beside the page", so these are the paths a check
+ * addresses the produced tree by, relative to the served root.
+ */
+export const ASSETS_DIR = "assets";
+
+/** specs/assets.md: "Land them under `public/assets/gems/`." */
+export const GEMS_DIR = [ASSETS_DIR, "gems"] as const;
+
+/** specs/assets.md: the particle systems land "under `public/assets/fx/`". */
+export const FX_DIR = [ASSETS_DIR, "fx"] as const;
+
+/** specs/assets.md: the `.wav`s land "under `public/assets/audio/`". */
+export const AUDIO_DIR = [ASSETS_DIR, "audio"] as const;
+
+/* -------------------------------------------------------------------------- */
 /* A stand-in for a missing export — THE CASE'S OWN                           */
 /* -------------------------------------------------------------------------- */
 
