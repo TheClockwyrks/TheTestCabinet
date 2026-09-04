@@ -27,7 +27,7 @@
 
 import { cellCenter, emptyBeams, parseBoard } from "./board";
 import { DEFAULT_SEED, REFRACT_DEBUG_VERSION } from "./constants";
-import { createInitialState, startMode as startModePose } from "./flow";
+import { createInitialState } from "./flow";
 import { beamComplete, boardSolved, spentAt } from "./rules";
 import { pointerDown, pointerMove, pointerUp } from "./game-pointer";
 import { targetsFor } from "./layout";
@@ -108,6 +108,8 @@ export interface RefractSnapshot {
   targets: SnapshotTarget[];
   muted: boolean;
   simTime: number;
+  /** The seeded generator's current state. */
+  rngState: number;
 }
 
 // ---- The pose surface ----------------------------------------------------
@@ -121,7 +123,9 @@ export interface RefractDebugApi {
   version: number;
   reset(state: RefractState, options?: { seed?: number }): RefractState;
   snapshot(state: RefractState): RefractSnapshot;
-  startMode(state: RefractState, mode: Mode): RefractState;
+  setMode(state: RefractState, mode: Mode): RefractState;
+  setScreen(state: RefractState, screen: Screen): RefractState;
+  setMenuIndex(state: RefractState, index: number): RefractState;
   loadBoard(state: RefractState, board: readonly string[]): RefractState;
   pointerDown(
     state: RefractState,
@@ -136,10 +140,6 @@ export interface RefractDebugApi {
     device?: PointerDevice,
   ): RefractState;
   pointerUp(state: RefractState, device?: PointerDevice): RefractState;
-  trace(
-    state: RefractState,
-    cells: readonly { col: number; row: number }[],
-  ): RefractState;
   clear(state: RefractState): RefractState;
 }
 
@@ -228,16 +228,26 @@ export function createDebugApi(): RefractDebugApi {
         targets: targetsFor(state).map((target) => ({ ...target })),
         muted: state.muted,
         simTime: state.simTime,
+        rngState: state.rngState,
       };
     },
 
+    /** The mode field alone. No screen moves, and no board is generated. */
+    setMode(state, mode) {
+      return { ...state, mode };
+    },
+
     /**
-     * The choice of a mode from the title menu, exactly as choosing its item
-     * does: Campaign to its select grid with the session's progress as it
-     * stands, Cascade to a fresh sequence from tier 1 on a generated board.
+     * The screen field alone. Everything the screen draws is left as it is,
+     * and nothing stays armed, exactly as leaving a screen in play disarms it.
      */
-    startMode(state, mode) {
-      return startModePose(state, mode);
+    setScreen(state, screen) {
+      return { ...state, screen, armedTarget: null };
+    },
+
+    /** The highlighted item on whichever menu the current screen shows. */
+    setMenuIndex(state, index) {
+      return { ...state, menuIndex: index };
     },
 
     /**
@@ -271,23 +281,6 @@ export function createDebugApi(): RefractDebugApi {
     /** A release: the trace ends and the beam stays exactly as drawn. */
     pointerUp(state, device = "mouse") {
       return pointerUp(state, device).state;
-    },
-
-    /**
-     * Sugar over the three pointer operations: a press at the first cell's
-     * center, a move to each remaining center in turn, then a release. A list
-     * the limits refuse part way through leaves the beam ending at the last
-     * segment they permitted.
-     */
-    trace(state, cells) {
-      if (cells.length === 0) return { ...state };
-      const [firstX, firstY] = cellCenter(cells[0], state.board);
-      let next = pointerDown(state, firstX, firstY, "mouse").state;
-      for (const cell of cells.slice(1)) {
-        const [x, y] = cellCenter(cell, next.board);
-        next = pointerMove(next, x, y, "mouse").state;
-      }
-      return pointerUp(next, "mouse").state;
     },
 
     /** The `clear` action: every beam emptied, on the playing screen alone. */
@@ -325,12 +318,13 @@ export interface RefractWindowApi {
   advance(seconds: number, frames?: number): void;
   reset(options?: { seed?: number }): void;
   snapshot(): RefractSnapshot;
-  startMode(mode: Mode): void;
+  setMode(mode: Mode): void;
+  setScreen(screen: Screen): void;
+  setMenuIndex(index: number): void;
   loadBoard(board: readonly string[]): void;
   pointerDown(x: number, y: number, device?: PointerDevice): void;
   pointerMove(x: number, y: number, device?: PointerDevice): void;
   pointerUp(device?: PointerDevice): void;
-  trace(cells: readonly { col: number; row: number }[]): void;
   clear(): void;
 }
 
@@ -375,17 +369,25 @@ export function createWindowApi(
       return api.snapshot(host.state);
     },
 
-    startMode(mode) {
-      host.apply((state) => api.startMode(state, mode));
+    setMode(mode) {
+      host.apply((state) => api.setMode(state, mode));
+    },
+
+    setScreen(screen) {
+      host.apply((state) => api.setScreen(state, screen));
+    },
+
+    setMenuIndex(index) {
+      host.apply((state) => api.setMenuIndex(state, index));
     },
 
     loadBoard(board) {
       host.apply((state) => api.loadBoard(state, board));
     },
 
-    // The three pointer poses and `trace` take effect the moment they are
-    // called, in the state `apply` stores back — no frame need pass between
-    // them, so a whole route draws from code without advancing the game.
+    // The three pointer poses take effect the moment they are called, in the
+    // state `apply` stores back — no frame need pass between them, so a whole
+    // route draws from code without advancing the game.
     pointerDown(x, y, device = "mouse") {
       host.apply((state) => api.pointerDown(state, x, y, device));
     },
@@ -396,10 +398,6 @@ export function createWindowApi(
 
     pointerUp(device = "mouse") {
       host.apply((state) => api.pointerUp(state, device));
-    },
-
-    trace(cells) {
-      host.apply((state) => api.trace(state, cells));
     },
 
     clear() {

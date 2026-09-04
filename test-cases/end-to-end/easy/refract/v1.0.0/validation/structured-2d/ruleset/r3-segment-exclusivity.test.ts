@@ -25,6 +25,7 @@ import {
   pressCell,
   resetTo,
   toCells,
+  traceCells,
   type Harness,
 } from "../harness";
 
@@ -104,7 +105,8 @@ it("a second channel drawing the same segment is refused", async () => {
   await loadBoard(h, R3_TWO_CHANNELS);
 
   // Triangle draws the crystal-to-crystal segment on its way across.
-  h.debug.trace(
+  traceCells(
+    h,
     toCells([
       [0, 0],
       [1, 1],

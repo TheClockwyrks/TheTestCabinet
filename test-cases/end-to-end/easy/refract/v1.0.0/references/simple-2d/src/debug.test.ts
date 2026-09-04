@@ -16,6 +16,25 @@ function fresh(): RefractState {
   return createInitialState();
 }
 
+/**
+ * A whole route drawn through the three pointer poses: a press at the first
+ * cell's center, a move to each remaining center, then a release. The surface
+ * carries no sugar for a route, so a caller that wants one composes it.
+ */
+function trace(
+  state: RefractState,
+  cells: readonly { col: number; row: number }[],
+): RefractState {
+  if (cells.length === 0) return state;
+  const [firstX, firstY] = cellCenter(cells[0], state.board);
+  let next = debug.pointerDown(state, firstX, firstY);
+  for (const cell of cells.slice(1)) {
+    const [x, y] = cellCenter(cell, next.board);
+    next = debug.pointerMove(next, x, y);
+  }
+  return debug.pointerUp(next);
+}
+
 describe("the surface", () => {
   it("reports its version", () => {
     expect(debug.version).toBe(REFRACT_DEBUG_VERSION);
@@ -44,6 +63,7 @@ describe("snapshot", () => {
       targets: expect.any(Array),
       muted: false,
       simTime: 0,
+      rngState: DEFAULT_SEED,
     });
   });
 
@@ -51,14 +71,14 @@ describe("snapshot", () => {
     const title: RefractState = { ...fresh(), menuIndex: 2 };
     expect(debug.snapshot(title).menuIndex).toBe(2);
 
-    const select = debug.startMode(fresh(), "campaign");
+    const select = debug.setScreen(fresh(), "select");
     expect(debug.snapshot({ ...select, selectIndex: 7 }).selectIndex).toBe(7);
   });
 
   it("derives node centers, spends, completeness, and the live end", () => {
     let state = debug.loadBoard(fresh(), ["T1T", "S.S"]);
     const [x, y] = cellCenter({ col: 1, row: 0 }, state.board);
-    state = debug.trace(state, [
+    state = trace(state, [
       { col: 0, row: 0 },
       { col: 1, row: 0 },
     ]);
@@ -98,7 +118,7 @@ describe("snapshot", () => {
 describe("reset", () => {
   it("restores every declared field, seeds the generator, and keeps mute", () => {
     let state = debug.loadBoard(fresh(), ["TtT"]);
-    state = debug.trace(state, [
+    state = trace(state, [
       { col: 0, row: 0 },
       { col: 1, row: 0 },
     ]);
@@ -115,22 +135,33 @@ describe("reset", () => {
   });
 });
 
-describe("startMode", () => {
-  it("poses the same transition the title menu makes", () => {
-    const campaign = debug.startMode(fresh(), "campaign");
-    expect(campaign.screen).toBe("select");
-    expect(campaign.mode).toBe("campaign");
+describe("setMode", () => {
+  it("sets the mode field alone", () => {
+    const posed = debug.setMode({ ...fresh(), simTime: 4.5 }, "cascade");
+    expect(posed.mode).toBe("cascade");
+    expect(posed).toEqual({ ...fresh(), simTime: 4.5, mode: "cascade" });
+  });
+});
 
-    const cascade = debug.startMode(fresh(), "cascade");
-    expect(cascade.screen).toBe("playing");
-    expect(cascade.mode).toBe("cascade");
-    expect(cascade.tier).toBe(1);
-    expect(cascade.board.nodes.length).toBeGreaterThan(0);
+describe("setScreen", () => {
+  it("sets the screen field alone, leaving the board it was posed over", () => {
+    const playing = debug.loadBoard(fresh(), ["TtT"]);
+    const posed = debug.setScreen(playing, "solved");
+    expect(posed.screen).toBe("solved");
+    expect(posed).toEqual({ ...playing, screen: "solved", armedTarget: null });
   });
 
-  it("leaves simTime as it is, so a clean run is reset followed by this", () => {
-    const state = { ...fresh(), simTime: 4.5 };
-    expect(debug.startMode(state, "campaign").simTime).toBe(4.5);
+  it("leaves no pointer target armed", () => {
+    const armed: RefractState = { ...fresh(), armedTarget: "menu-1" };
+    expect(debug.setScreen(armed, "howto").armedTarget).toBeNull();
+  });
+});
+
+describe("setMenuIndex", () => {
+  it("sets the highlighted item alone", () => {
+    const posed = debug.setMenuIndex(fresh(), 2);
+    expect(posed.menuIndex).toBe(2);
+    expect(posed).toEqual({ ...fresh(), menuIndex: 2 });
   });
 });
 
@@ -177,10 +208,10 @@ describe("the pointer operations", () => {
   });
 });
 
-describe("trace", () => {
+describe("a route drawn through the pointer poses", () => {
   it("draws a whole route and solves through the game's own rules", () => {
     let state = debug.loadBoard(fresh(), ["TtT"]);
-    state = debug.trace(state, [
+    state = trace(state, [
       { col: 0, row: 0 },
       { col: 1, row: 0 },
       { col: 2, row: 0 },
@@ -191,7 +222,7 @@ describe("trace", () => {
 
   it("stops at the last permitted segment when the limits refuse the rest", () => {
     let state = debug.loadBoard(fresh(), ["TtT", "SsS"]);
-    state = debug.trace(state, [
+    state = trace(state, [
       { col: 0, row: 0 },
       { col: 1, row: 0 },
       { col: 1, row: 1 }, // square's lens: refused, live end stays at (1,0)
@@ -206,14 +237,14 @@ describe("trace", () => {
 
   it("is a no-op for an empty route", () => {
     const state = debug.loadBoard(fresh(), ["TtT"]);
-    expect(debug.trace(state, [])).toEqual(state);
+    expect(trace(state, [])).toEqual(state);
   });
 });
 
 describe("clear", () => {
   it("empties every beam on the playing screen alone", () => {
     let state = debug.loadBoard(fresh(), ["TtT"]);
-    state = debug.trace(state, [
+    state = trace(state, [
       { col: 0, row: 0 },
       { col: 1, row: 0 },
     ]);

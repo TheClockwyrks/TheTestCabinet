@@ -1,16 +1,18 @@
-// Refract — instrumentation/trace-prefix: a `trace` whose list the limits
-// refuse part way through leaves the beam ending at the last segment they
-// permitted, and the game does not throw.
+// Refract — instrumentation/trace-prefix: a route whose hops the limits refuse
+// part way through leaves the beam ending at the last segment they permitted,
+// and the game does not throw.
 //
-// `trace` is sugar over the pointer operations, so it is subject to every limit
+// A route is drawn through the surface's three pointer operations, which feed
+// the same input path a player's pointer feeds, so it is subject to every limit
 // a hand-drawn trace is — and `specs/instrumentation.md` states exactly what a
-// refused list leaves behind: the beam ends at the last segment the limits
-// permitted. The failure modes this catches are a build that throws on the
+// refused hop leaves behind: "a move the limits refuse changes nothing and
+// leaves the trace live", and "the release ends the trace and leaves the beam
+// as drawn". The failure modes this catches are a build that throws on the
 // refused hop (the whole call is awaited; a throw inside it fails this check
 // with the build's own error), one that abandons the permitted prefix, and one
 // that applies the refused segment anyway.
 //
-// The list's third hop lands on another channel's lens, a move R2 refuses
+// The route's third hop lands on another channel's lens, a move R2 refuses
 // (`specs/beams.md`), so exactly the first two cells survive. That the game is
 // still running afterwards is proven by playing on: the square channel draws a
 // segment of its own through the same surface, and the build accepts it.

@@ -6,10 +6,10 @@
 // it lands (the tier after it), so this helper is the same loop with two
 // hooks. Everything it does goes through the shared harness and the debug
 // surface: the board is read off `snapshot`, the solution comes from the
-// spec-derived `solver.ts`, the beams are drawn through `trace`, and NEXT
-// BOARD is taken through the real `confirm` action on the solved menu
-// (specs/modes/cascade.md: `menuIndex` is 0 on arriving at `solved`, and
-// NEXT BOARD is the first of SOLVED_ITEMS).
+// spec-derived `solver.ts`, the beams are drawn through the pointer operations,
+// and NEXT BOARD is taken through the real `confirm` action on the solved menu
+// (specs/modes/cascade.md: `menuIndex` is 0 on arriving at `solved`, and NEXT
+// BOARD is the first of SOLVED_ITEMS).
 //
 // Documented residual risk (shared with `solveGenerated`): the solver is
 // capped, so a `limit` verdict — the cap spent before an answer — is reported

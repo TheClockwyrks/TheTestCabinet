@@ -42,6 +42,7 @@ import {
   toggleOverlay,
   watchCues,
   nodeCenter,
+  traceCells,
   type Harness,
 } from "./harness";
 import { parseBoard } from "./notation";
@@ -112,12 +113,12 @@ it("poses a fixture board through loadBoard", async () => {
   expect(got).toEqual(expected);
 });
 
-it("draws through trace: the snapshot and the canvas both change", async () => {
+it("draws a route: the snapshot and the canvas both change", async () => {
   await resetTo(h, 1);
   await loadBoard(h, GEO_3X3);
   const before = h.ctx.getImageData(0, 0, h.canvas.width, h.canvas.height);
 
-  h.debug.trace([
+  traceCells(h, [
     { col: 0, row: 0 },
     { col: 1, row: 1 },
   ]);
@@ -245,7 +246,7 @@ it("writes a replay as gzip, and hands the scenario's value back", async () => {
   await loadBoard(h, GEO_3X3);
 
   const value = await captureReplay(h, "drawn", async () => {
-    h.debug.trace([
+    traceCells(h, [
       { col: 0, row: 0 },
       { col: 1, row: 1 },
     ]);

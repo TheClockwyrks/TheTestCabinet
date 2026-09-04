@@ -19,7 +19,7 @@
 
 import { cellCenter, emptyBeams, parseBoard } from "./board";
 import { DEFAULT_SEED, REFRACT_DEBUG_VERSION } from "./constants";
-import { createInitialState, startMode as startModePose } from "./flow";
+import { createInitialState } from "./flow";
 import { beamComplete, boardSolved, spentAt } from "./rules";
 import { pointerDown, pointerMove, pointerUp } from "./pointer";
 import { clearBeams } from "./tracing";
@@ -87,6 +87,8 @@ export interface RefractSnapshot {
   targets: SnapshotTarget[];
   muted: boolean;
   simTime: number;
+  /** The seeded generator's current state. */
+  rngState: number;
 }
 
 /** One pointer target, as the snapshot reports it. */
@@ -111,7 +113,9 @@ export interface RefractDebugApi {
     options?: { seed?: number },
   ): RefractState;
   snapshot(state: DeepReadonly<RefractState>): RefractSnapshot;
-  startMode(state: DeepReadonly<RefractState>, mode: Mode): RefractState;
+  setMode(state: DeepReadonly<RefractState>, mode: Mode): RefractState;
+  setScreen(state: DeepReadonly<RefractState>, screen: Screen): RefractState;
+  setMenuIndex(state: DeepReadonly<RefractState>, index: number): RefractState;
   loadBoard(
     state: DeepReadonly<RefractState>,
     board: readonly string[],
@@ -131,10 +135,6 @@ export interface RefractDebugApi {
   pointerUp(
     state: DeepReadonly<RefractState>,
     device?: PointerDevice,
-  ): RefractState;
-  trace(
-    state: DeepReadonly<RefractState>,
-    cells: readonly { col: number; row: number }[],
   ): RefractState;
   clear(state: DeepReadonly<RefractState>): RefractState;
 }
@@ -224,16 +224,26 @@ export function createDebugApi(): RefractDebugApi {
         targets: targetsFor(state).map((target) => ({ ...target })),
         muted: state.muted,
         simTime: state.simTime,
+        rngState: state.rngState,
       };
     },
 
+    /** The mode field alone. No screen moves, and no board is generated. */
+    setMode(state, mode) {
+      return { ...state, mode };
+    },
+
     /**
-     * The choice of a mode from the title menu, exactly as choosing its item
-     * does: Campaign to its select grid with the session's progress as it
-     * stands, Cascade to a fresh sequence from tier 1 on a generated board.
+     * The screen field alone. Everything the screen draws is left as it is,
+     * and nothing stays armed, exactly as leaving a screen in play disarms it.
      */
-    startMode(state, mode) {
-      return startModePose(state, mode);
+    setScreen(state, screen) {
+      return { ...state, screen, armedTarget: null };
+    },
+
+    /** The highlighted item on whichever menu the current screen shows. */
+    setMenuIndex(state, index) {
+      return { ...state, menuIndex: index };
     },
 
     /**
@@ -270,23 +280,6 @@ export function createDebugApi(): RefractDebugApi {
     /** A release: it takes an armed target, or ends a trace as drawn. */
     pointerUp(state, device = "mouse") {
       return pointerUp(state, device).state;
-    },
-
-    /**
-     * Sugar over the three pointer operations: a press at the first cell's
-     * center, a move to each remaining center in turn, then a release. A list
-     * the limits refuse part way through leaves the beam ending at the last
-     * segment they permitted.
-     */
-    trace(state, cells) {
-      if (cells.length === 0) return { ...state };
-      const [firstX, firstY] = cellCenter(cells[0], state.board);
-      let next = pointerDown(state, firstX, firstY, "mouse").state;
-      for (const cell of cells.slice(1)) {
-        const [x, y] = cellCenter(cell, next.board);
-        next = pointerMove(next, x, y, "mouse").state;
-      }
-      return pointerUp(next, "mouse").state;
     },
 
     /** The `clear` action: every beam emptied, on the playing screen alone. */

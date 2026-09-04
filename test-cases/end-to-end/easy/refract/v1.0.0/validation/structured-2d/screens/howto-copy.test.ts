@@ -10,16 +10,18 @@
 // "[R] CLEAR" — does. What the rest of the copy says is the build's own
 // writing: whether the prose really teaches the game is the run-wide aesthetic
 // rating's, not this point's.
+//
+// The screen is POSED with `setScreen`, not walked to through the title menu: a
+// build with a broken `down` binding must fail `screens/title-down` and pass
+// this point.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { TITLE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,
   drawnText,
   resetTo,
-  tapAction,
   type Harness,
 } from "../harness";
 
@@ -34,13 +36,12 @@ afterEach(() => {
 });
 
 it("draws how-to text naming the clear key as a standalone R", async () => {
-  // Reach the how-to screen the way a player does: down twice to HOW TO PLAY,
-  // then confirm (specs/ui.md).
+  // Pose the how-to screen: `setScreen` sets its own field alone, and the
+  // screen it sets behaves exactly as specs/ui.md states for it
+  // (specs/instrumentation.md).
   await resetTo(h);
-  assertEqual(TITLE_ITEMS[2], "HOW TO PLAY");
-  await tapAction(h, "down");
-  await tapAction(h, "down");
-  await tapAction(h, "confirm");
+  h.debug.setScreen("howto");
+  await h.advance(1);
   assertEqual(h.snapshot().screen, "howto", "the how-to screen is up");
 
   // One whole frame's draws, recorded from a clean log.

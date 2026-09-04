@@ -11,9 +11,9 @@
 //
 // TWO HALVES, AND BOTH ARE THE BUILD'S. The first is presence: `version`
 // reports REFRACT_DEBUG_VERSION (2), and every operation the rendered
-// specification names for an engine build — reset, snapshot, startMode,
-// loadBoard, the three pointer operations, trace, and clear — is a function
-// on the surface. `setAutoStep` and `advance` are NOT demanded: the clock is
+// specification names for an engine build — reset, snapshot, setMode,
+// setScreen, setMenuIndex, loadBoard, the three pointer operations, and clear
+// — is a function on the surface. `setAutoStep` and `advance` are NOT demanded: the clock is
 // the engine's under this engine, and the specification gives those two
 // operations to the engineless build alone.
 //
@@ -40,6 +40,7 @@ import {
   createHarness,
   loadBoard,
   resetTo,
+  traceCells,
   type Harness,
 } from "../harness";
 import { parseBoard } from "../notation";
@@ -102,8 +103,9 @@ it("is live: loadBoard poses a board, trace draws on it, and both the snapshot a
 
   const before = h.ctx.getImageData(0, 0, h.canvas.width, h.canvas.height);
 
-  // One legal hop, drawn purely from code through the surface's own trace.
-  h.debug.trace([
+  // One legal hop, drawn purely from code through the surface's pointer
+  // operations.
+  traceCells(h, [
     { col: 0, row: 0 },
     { col: 1, row: 1 },
   ]);
@@ -118,7 +120,7 @@ it("is live: loadBoard poses a board, trace draws on it, and both the snapshot a
       { col: 0, row: 0 },
       { col: 1, row: 1 },
     ],
-    "trace draws the segment into the channel's beam",
+    "the drawn segment is in the channel's beam",
   );
 
   // And the canvas changed: the frame after the trace differs from the frame

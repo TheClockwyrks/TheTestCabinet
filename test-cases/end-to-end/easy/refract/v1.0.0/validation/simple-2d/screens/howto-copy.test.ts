@@ -9,6 +9,10 @@
 // the prose really teaches the game is the run-wide aesthetic rating's, not
 // this point's, which is why this item's cap is `great` rather than a
 // functional one.
+//
+// The screen is POSED with `setScreen`, not walked to through the title menu:
+// a build with a broken `down` binding must fail `screens/title-down` and pass
+// this point.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
@@ -17,7 +21,6 @@ import {
   createHarness,
   drawnText,
   resetTo,
-  tapAction,
   type Harness,
 } from "../harness";
 
@@ -33,13 +36,12 @@ afterEach(() => {
 
 it("draws its copy, naming the clear key as a standalone R", async () => {
   await resetTo(h);
-  await tapAction(h, "down");
-  await tapAction(h, "down");
-  await tapAction(h, "confirm");
+  h.debug.setScreen("howto");
+  await h.advance(1);
   assertEqual(
     h.snapshot().screen,
     "howto",
-    "posing: confirming HOW TO PLAY opens the how-to screen (specs/ui.md)",
+    "posing: the how-to screen is up (specs/instrumentation.md setScreen)",
   );
 
   h.calls.length = 0;

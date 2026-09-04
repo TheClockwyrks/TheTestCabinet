@@ -73,6 +73,13 @@ interface Harness {
   ): void;
   /** Press, move along, and release at the given cell centers, one frame per event. */
   drag(cells: readonly Cell[]): Promise<void>;
+  /**
+   * The same route drawn through the surface's three pointer poses, which
+   * resolve as they are called, so the whole route lands between frames.
+   */
+  trace(cells: readonly Cell[]): void;
+  /** Choose CASCADE from the title menu, the way a player does. */
+  enterCascade(): Promise<void>;
   pixel(x: number, y: number): [number, number, number];
   dispose(): void;
 }
@@ -134,6 +141,24 @@ async function createHarness(): Promise<Harness> {
       events.dispatchEvent(new KeyEvent("keyup", code));
     },
     pointer: dispatchPointer,
+    trace: (cells) => {
+      if (cells.length === 0) return;
+      const centers = cells.map((cell) => cellCenter(cell, engine.state.board));
+      engine.apply((state) =>
+        engine.debug.pointerDown(state, centers[0][0], centers[0][1]),
+      );
+      for (const [x, y] of centers.slice(1)) {
+        engine.apply((state) => engine.debug.pointerMove(state, x, y));
+      }
+      engine.apply((state) => engine.debug.pointerUp(state));
+    },
+    enterCascade: async () => {
+      engine.apply((state) => engine.debug.setScreen(state, "title"));
+      engine.apply((state) => engine.debug.setMenuIndex(state, 1));
+      events.dispatchEvent(new KeyEvent("keydown", "Enter"));
+      events.dispatchEvent(new KeyEvent("keyup", "Enter"));
+      await engine.advance(1);
+    },
     drag: async (cells) => {
       const centers = cells.map((cell) => cellCenter(cell, engine.state.board));
       dispatchPointer("pointerdown", centers[0][0], centers[0][1]);
@@ -493,12 +518,10 @@ describe("rendering", () => {
 
   it("draws a beam connecting the centers of the cells it links", async () => {
     h.engine.apply((s) => h.debug.loadBoard(s, ["TtT"]));
-    h.engine.apply((s) =>
-      h.debug.trace(s, [
-        { col: 0, row: 0 },
-        { col: 1, row: 0 },
-      ]),
-    );
+    h.trace([
+      { col: 0, row: 0 },
+      { col: 1, row: 0 },
+    ]);
     await h.engine.advance(1);
     const [x0, y] = cellCenter({ col: 0, row: 0 }, h.state.board);
     const [x1] = cellCenter({ col: 1, row: 0 }, h.state.board);
@@ -537,13 +560,11 @@ describe("rendering", () => {
     expect(h.state.screen).toBe("select");
 
     h.engine.apply((s) => h.debug.loadBoard(s, ["TtT"]));
-    h.engine.apply((s) =>
-      h.debug.trace(s, [
-        { col: 0, row: 0 },
-        { col: 1, row: 0 },
-        { col: 2, row: 0 },
-      ]),
-    );
+    h.trace([
+      { col: 0, row: 0 },
+      { col: 1, row: 0 },
+      { col: 2, row: 0 },
+    ]);
     expect(h.state.screen).toBe("solved");
     await h.engine.advance(1);
 
@@ -598,7 +619,7 @@ describe("the solved and complete screens", () => {
   });
 
   it("restarts cascade from its solved menu without reseeding", async () => {
-    h.engine.apply((s) => h.debug.startMode(s, "cascade"));
+    await h.enterCascade();
     const expected = generateBoardWithSolution(DEFAULT_SEED, 1);
     for (const route of expected.solution) {
       await h.drag(route);
@@ -617,7 +638,7 @@ describe("the solved and complete screens", () => {
   });
 
   it("leaves cascade's solved screen to the title with back", async () => {
-    h.engine.apply((s) => h.debug.startMode(s, "cascade"));
+    await h.enterCascade();
     const expected = generateBoardWithSolution(DEFAULT_SEED, 1);
     for (const route of expected.solution) {
       await h.drag(route);
@@ -639,13 +660,11 @@ describe("the solved and complete screens", () => {
     }));
     h.engine.apply((s) => h.debug.loadBoard(s, ["TtT"]));
     h.engine.apply((s) => ({ ...s, boardIndex: 23 }));
-    h.engine.apply((s) =>
-      h.debug.trace(s, [
-        { col: 0, row: 0 },
-        { col: 1, row: 0 },
-        { col: 2, row: 0 },
-      ]),
-    );
+    h.trace([
+      { col: 0, row: 0 },
+      { col: 1, row: 0 },
+      { col: 2, row: 0 },
+    ]);
     await h.engine.advance(1);
     expect(h.state.screen).toBe("complete");
     expect(h.state.solvedBoards).toHaveLength(24);
@@ -664,7 +683,7 @@ describe("the solved and complete screens", () => {
   });
 
   it("leaves the board to the title with back during cascade play", async () => {
-    h.engine.apply((s) => h.debug.startMode(s, "cascade"));
+    await h.enterCascade();
     h.tap("Escape");
     await h.engine.advance(1);
     expect(h.state.screen).toBe("title");

@@ -22,6 +22,7 @@ import {
   resetTo,
   startCascade,
   toCells,
+  traceCells,
   type Harness,
 } from "../harness";
 
@@ -47,7 +48,7 @@ it("solving moves to solved with the first choice highlighted", async () => {
   await startCascade(h);
 
   await loadBoard(h, GEO_3X3);
-  h.debug.trace(toCells(GEO_3X3_ROUTE));
+  traceCells(h, toCells(GEO_3X3_ROUTE));
   await h.advance(1);
   captureStill(h, "solved");
 

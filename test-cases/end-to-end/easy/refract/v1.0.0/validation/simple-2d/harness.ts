@@ -1097,12 +1097,34 @@ export function toCells(route: RoutePairs): CellRef[] {
 }
 
 /**
- * Draw one route through `trace`. The pose is immediate — every pointer
- * operation takes effect as it is made — so nothing advances here; a check
- * that wants the drawn beam rendered advances a frame itself.
+ * Draw one route through the surface's three pointer operations: a press at the
+ * first cell's center, a move to each remaining center, then a release. Each
+ * pose is immediate — every pointer operation takes effect in the state the
+ * call returns — so nothing advances here; a check that wants the drawn beam
+ * rendered advances a frame itself.
+ *
+ * The sequence lives here rather than on the surface: a route is a compound of
+ * atomic operations, and a compound belongs to whoever is driving
+ * (specs/instrumentation.md carries the three operations and no sugar over
+ * them). A list the limits refuse part way through leaves the beam ending at
+ * the last segment they permitted, which is itself a specified behavior a
+ * check can read back.
  */
+export function traceCells(h: Harness, cells: readonly CellRef[]): void {
+  if (cells.length === 0) return;
+  const { cols, rows } = h.snapshot().board;
+  const first = nodeCenter(cells[0].col, cells[0].row, cols, rows);
+  h.debug.pointerDown(first.x, first.y);
+  for (const cell of cells.slice(1)) {
+    const point = nodeCenter(cell.col, cell.row, cols, rows);
+    h.debug.pointerMove(point.x, point.y);
+  }
+  h.debug.pointerUp();
+}
+
+/** {@link traceCells} over a route stored as `[col, row]` pairs. */
 export function traceRoute(h: Harness, route: RoutePairs): void {
-  h.debug.trace(toCells(route));
+  traceCells(h, toCells(route));
 }
 
 /** The registered actions, as the build's own `BINDINGS` table names them. */
@@ -1161,17 +1183,22 @@ export async function startCascade(h: Harness): Promise<RefractSnapshot> {
 }
 
 /**
- * Enter a mode through the surface's `startMode`, then run the one frame that
- * draws the screen it opened.
+ * Begin a cascade sequence from wherever the game stands, WITHOUT resetting:
+ * the title screen and its first item are posed through the single-field
+ * operations, and the choice itself is made with the real registered actions.
  *
- * specs/instrumentation.md defines `startMode` as entering a mode "exactly as
- * choosing its menu item does", so a check that only needs to BE in a mode
- * poses it rather than walking the title menu. The title menu stays the subject
- * of the `screens/` items, which is where the binding is what is being decided.
+ * Starting Cascade is not a pose. specs/modes/cascade.md makes it set the mode,
+ * zero `solvedCount`, set `tier` to 1, GENERATE the first board and move to
+ * `playing`, and the surface carries no operation that generates a board — so
+ * the sequence is begun the way the game itself begins it. A check that has
+ * progress it must not lose (a solved campaign course, say) uses this rather
+ * than {@link startCascade}, whose fresh title is only reached by a reset.
  */
-export async function poseMode(h: Harness, mode: Mode): Promise<void> {
-  h.debug.startMode(mode);
+export async function enterCascade(h: Harness): Promise<RefractSnapshot> {
+  h.debug.setScreen("title");
+  h.debug.setMenuIndex(0);
   await h.advance(1);
+  return startCascade(h);
 }
 
 /** The snapshot's board as the oracle's `Board`, for `rules.ts`/`solver.ts`. */
@@ -1316,7 +1343,10 @@ export function traceBeams(h: Harness, beams: Beams): void {
   for (const channel of CHANNELS) {
     const beam = beams[channel];
     if (beam !== undefined && beam.length > 0) {
-      h.debug.trace(beam.map((cell) => ({ col: cell.col, row: cell.row })));
+      traceCells(
+        h,
+        beam.map((cell) => ({ col: cell.col, row: cell.row })),
+      );
     }
   }
 }

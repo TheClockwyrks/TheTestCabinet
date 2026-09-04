@@ -23,6 +23,7 @@ import {
   loadBoard,
   resetTo,
   toCells,
+  traceCells,
   type Harness,
 } from "../harness";
 
@@ -60,7 +61,7 @@ it("the route short one lens is drawn whole and reports complete false", async (
     [1, 0],
     [2, 0],
   ];
-  h.debug.trace(toCells(short));
+  traceCells(h, toCells(short));
   const snap = h.snapshot();
   assertDeepEqual(
     snap.beams.triangle?.cells,
@@ -91,7 +92,7 @@ it("the route threading every lens twice-each reports complete true", async () =
     [1, 0],
     [2, 0],
   ];
-  h.debug.trace(toCells(full));
+  traceCells(h, toCells(full));
   const snap = h.snapshot();
   assertDeepEqual(
     snap.beams.triangle?.cells,

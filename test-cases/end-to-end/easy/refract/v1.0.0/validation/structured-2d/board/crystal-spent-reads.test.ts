@@ -10,7 +10,7 @@
 // sample, differing somewhere by more than the item's 50 of 441 RGB distance.
 //
 // The entering beam is traced through the build's own pointer path
-// (specs/instrumentation.md: trace is sugar over the pointer operations), and
+// (specs/instrumentation.md: the surface's three pointer operations), and
 // the snapshot's spent field going 0 to 1 is asserted as the arrangement the
 // comparison reads (specs/beams.md: entering a crystal begins a crossing and
 // spends a charge).
@@ -22,6 +22,7 @@ import {
   createHarness,
   loadBoard,
   resetTo,
+  traceCells,
   type Harness,
 } from "../harness";
 import { cellCenter, NODE_R } from "../notation";
@@ -57,7 +58,7 @@ it("changes the crystal's region when a charge is spent", async () => {
     h.snapshot().board.nodes.find((node) => node.col === 1 && node.row === 0)
       ?.spent;
   assertEqual(spentAt(), 0, "the crystal's spent count before the entry");
-  h.debug.trace([
+  traceCells(h, [
     { col: 0, row: 0 },
     { col: 1, row: 0 },
   ]);

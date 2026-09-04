@@ -44,6 +44,7 @@ import {
   loadBoard,
   pixelsChanged,
   resetTo,
+  traceCells,
   type Harness,
 } from "../harness";
 import { REFRACT_DEBUG_VERSION, REQUIRED_OPS } from "../surface";
@@ -117,7 +118,7 @@ it("is live: loadBoard poses a board, trace draws on it, and the snapshot and th
   // `trace` draws a real segment through the pointer path — resolved at the
   // call, subject to every limit — and the drawn beam both reads back in the
   // snapshot and lands on the canvas the next rendered frame.
-  h.debug.trace([
+  traceCells(h, [
     { col: 0, row: 0 },
     { col: 1, row: 1 },
   ]);

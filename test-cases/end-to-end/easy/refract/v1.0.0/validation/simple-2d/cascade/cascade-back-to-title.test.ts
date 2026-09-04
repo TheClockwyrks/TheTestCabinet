@@ -8,8 +8,8 @@
 //
 // One board is really solved first, so the run being abandoned holds progress
 // a fresh one cannot. Every step is the player's own: the solve is the
-// spec-derived solver's beams drawn through `trace`, NEXT BOARD goes through
-// the registered actions, and `back` is the real Escape edge.
+// spec-derived solver's beams drawn through the pointer operations, NEXT BOARD
+// goes through the registered actions, and `back` is the real Escape edge.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

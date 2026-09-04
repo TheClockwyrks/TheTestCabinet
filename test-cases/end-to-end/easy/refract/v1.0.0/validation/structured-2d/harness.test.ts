@@ -40,6 +40,7 @@ import {
   sampleColor,
   solveGenerated,
   toggleOverlay,
+  traceCells,
   type Harness,
 } from "./harness";
 import { GEO_3X3 } from "./fixtures";
@@ -121,7 +122,7 @@ it("draws through trace: the snapshot and the canvas both move", async () => {
   const before = canvasPixels(h);
 
   // T(0,0) to t(1,1): one legal diagonal segment, short of solving.
-  h.debug.trace([
+  traceCells(h, [
     { col: 0, row: 0 },
     { col: 1, row: 1 },
   ]);
@@ -182,7 +183,7 @@ it("samples pixels, finds text draws, and hears cues", async () => {
 
   // Cues: a segment added plays the connect cue on its frame (specs/ui.md).
   clearCues(h);
-  h.debug.trace([
+  traceCells(h, [
     { col: 0, row: 0 },
     { col: 1, row: 1 },
   ]);
@@ -220,7 +221,7 @@ it("writes a still and a replay under the suite's own address", async () => {
   captureStill(h, "posed");
 
   await captureReplay(h, "flight", async () => {
-    h.debug.trace([
+    traceCells(h, [
       { col: 0, row: 0 },
       { col: 1, row: 1 },
     ]);

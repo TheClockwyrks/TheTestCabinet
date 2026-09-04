@@ -2,13 +2,17 @@
 //
 // specs/modes/cascade.md "Determinism": the sequence is a function of the seed
 // alone — seeding the generator and solving boards in order produces the same
-// boards, in the same order, every time — and boards are generated one at a
-// time as they are needed. So the run is made twice from reset({seed: 5}): the
-// first pass solves six boards with the spec-derived solver and keeps each
-// board and the beams that solved it; the second pass asserts each arriving
-// board IS the first pass's board, then re-applies the first pass's own beams
-// — determinism means they still solve — so the second pass consumes the
-// generator exactly as the first did, board by board, as each is needed.
+// boards, in the same order, every time. So the run is made twice from
+// reset({seed: 5}): the first pass solves six boards with the spec-derived
+// solver and keeps each board and the beams that solved it; the second pass
+// asserts each arriving board IS the first pass's board, then re-applies the
+// first pass's own beams — determinism means they still solve.
+//
+// What this decides is the reproduction and nothing beyond it. Whether the
+// boards were generated one at a time as they were needed, rather than all six
+// the moment the sequence began, is a rule specs/modes/cascade.md states and
+// this reading cannot separate: an eager generator reproduces the same six
+// boards in the same order on both passes.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
@@ -17,6 +21,7 @@ import {
   captureStill,
   createHarness,
   solveGenerated,
+  startCascade,
   tapAction,
   traceBeams,
   type Harness,
@@ -40,10 +45,7 @@ it("reproduces the same first six boards, in order, from the same seed", async (
   const firstPass = await solveGenerated(h, BOARDS, SEED);
 
   // The second run of the same seed, on the same build.
-  h.debug.reset({ seed: SEED });
-  await h.advance(1);
-  h.debug.startMode("cascade");
-  await h.advance(1);
+  await startCascade(h, SEED);
 
   for (let k = 0; k < BOARDS; k += 1) {
     const arrival = h.snapshot();

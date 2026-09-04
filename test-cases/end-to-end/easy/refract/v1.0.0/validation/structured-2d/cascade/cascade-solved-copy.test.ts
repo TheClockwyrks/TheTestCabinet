@@ -65,6 +65,7 @@ import {
   sampleColor,
   startCascade,
   toCells,
+  traceCells,
   type Harness,
   type Rgb,
   type TextSpan,
@@ -116,7 +117,7 @@ function traceRoute(
   h: Harness,
   route: readonly (readonly [number, number])[],
 ): void {
-  h.debug.trace(toCells(route));
+  traceCells(h, toCells(route));
 }
 
 /**

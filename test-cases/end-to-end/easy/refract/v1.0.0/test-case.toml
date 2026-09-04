@@ -537,10 +537,10 @@ validation = { script = "instrumentation/pointer-operations-drive-play.test.ts",
 [[review.categories.items]]
 id = "trace-prefix"
 title = "A refused trace keeps its permitted prefix"
-description = "A trace whose third hop the limits refuse leaves the beam ending at the last segment they permitted — exactly the first two cells — and the game does not throw, as specs/instrumentation.md states of a list refused part way through."
+description = "A route whose third hop the limits refuse leaves the beam ending at the last segment they permitted — exactly the first two cells — and the game does not throw, as specs/instrumentation.md states of a move the limits refuse."
 domains = ["campaign", "cascade", "tracing", "presentation"]
 failure_cap = "passable"
-# Automated validation: trace a list whose third hop lands on another channel's
+# Automated validation: draw a route whose third hop lands on another channel's
 # lens and read the beam back. See
 # validation/<engine>/instrumentation/trace-prefix.test.ts.
 validation = { script = "instrumentation/trace-prefix.test.ts", outputs = [
@@ -1072,22 +1072,76 @@ validation = { script = "campaign/select-states.test.ts", outputs = [
   { id = "states", name = "The grid with board 2 solved, board 3 unlocked, board 4 locked", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "select-move-horizontal"
-title = "Left and right move the highlight within its row"
-description = "left and right move the select highlight within its row and wrap from either end of the row to the other, read back from selectIndex."
+id = "select-move-right"
+title = "Right moves the highlight along its row"
+description = "right moves the select highlight one board along its row, read back from selectIndex."
 domains = ["campaign"]
 failure_cap = "passable"
-validation = { script = "campaign/select-move-horizontal.test.ts", outputs = [
-  { id = "highlight", name = "The highlight moved along its row", kind = "image" },
+validation = { script = "campaign/select-move-right.test.ts", outputs = [
+  { id = "highlight", name = "The highlight moved one board right along its row", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "select-move-vertical"
-title = "Up and down move the highlight between rows"
-description = "up and down move the select highlight between rows in the same column and wrap between the top row and the bottom row, read back from selectIndex."
+id = "select-move-left"
+title = "Left moves the highlight back along its row"
+description = "left moves the select highlight one board back along its row, read back from selectIndex."
 domains = ["campaign"]
 failure_cap = "passable"
-validation = { script = "campaign/select-move-vertical.test.ts", outputs = [
-  { id = "highlight", name = "The highlight moved down its column", kind = "image" },
+validation = { script = "campaign/select-move-left.test.ts", outputs = [
+  { id = "highlight", name = "The highlight moved one board left along its row", kind = "image" },
+] }
+[[review.categories.items]]
+id = "select-left-wraps"
+title = "Left at a row's start wraps to its end"
+description = "left on the first board of a row wraps the select highlight to the last board of that row, read back from selectIndex."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/select-left-wraps.test.ts", outputs = [
+  { id = "highlight", name = "The highlight wrapped to the end of its row", kind = "image" },
+] }
+[[review.categories.items]]
+id = "select-right-wraps"
+title = "Right at a row's end wraps to its start"
+description = "right on the last board of a row wraps the select highlight to the first board of that row, read back from selectIndex."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/select-right-wraps.test.ts", outputs = [
+  { id = "highlight", name = "The highlight wrapped to the start of its row", kind = "image" },
+] }
+[[review.categories.items]]
+id = "select-move-down"
+title = "Down moves the highlight a row down its column"
+description = "down moves the select highlight one row down, staying in the same column, read back from selectIndex."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/select-move-down.test.ts", outputs = [
+  { id = "highlight", name = "The highlight moved one row down its column", kind = "image" },
+] }
+[[review.categories.items]]
+id = "select-move-up"
+title = "Up moves the highlight a row up its column"
+description = "up moves the select highlight one row up, staying in the same column, read back from selectIndex."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/select-move-up.test.ts", outputs = [
+  { id = "highlight", name = "The highlight moved one row up its column", kind = "image" },
+] }
+[[review.categories.items]]
+id = "select-up-wraps"
+title = "Up on the top row wraps to the bottom row"
+description = "up on the top row wraps the select highlight to the bottom row of the same column, read back from selectIndex."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/select-up-wraps.test.ts", outputs = [
+  { id = "highlight", name = "The highlight wrapped to the bottom row", kind = "image" },
+] }
+[[review.categories.items]]
+id = "select-down-wraps"
+title = "Down on the bottom row wraps to the top row"
+description = "down on the bottom row wraps the select highlight to the top row of the same column, read back from selectIndex."
+domains = ["campaign"]
+failure_cap = "passable"
+validation = { script = "campaign/select-down-wraps.test.ts", outputs = [
+  { id = "highlight", name = "The highlight wrapped to the top row", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "select-enter"
@@ -1459,7 +1513,7 @@ validation = { script = "cascade/sequence-is-endless.test.ts", outputs = [
 [[review.categories.items]]
 id = "seeded-sequence"
 title = "A seed reproduces the same sequence"
-description = "Two runs seeded with the same value produce the same first six boards in the same order, so the sequence is a function of the seed alone and boards are generated one at a time as they are needed."
+description = "Two runs seeded with the same value produce the same first six boards in the same order, so the sequence is a function of the seed alone."
 domains = ["cascade"]
 failure_cap = "passable"
 # Automated validation: reset({seed: 5}) twice and solve the first pass's boards
@@ -1616,12 +1670,30 @@ validation = { script = "screens/howto-back.test.ts", outputs = [
   { id = "title", name = "The title after leaving how-to", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "mute"
-title = "Mute works from any screen"
-description = "The mute action flips the snapshot's muted flag from the title and from playing, and the game still accepts a trace while muted, so it stays fully playable with sound off."
+id = "mute-from-title"
+title = "Mute works from the title"
+description = "One press of the mute action on the title flips the snapshot's muted flag."
 domains = ["presentation"]
 failure_cap = "great"
-validation = { script = "screens/mute.test.ts", outputs = [
+validation = { script = "screens/mute-from-title.test.ts", outputs = [
+  { id = "title-muted", name = "The title after muting", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mute-from-playing"
+title = "Mute works from the playing screen"
+description = "One press of the mute action on the playing screen flips the snapshot's muted flag."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "screens/mute-from-playing.test.ts", outputs = [
+  { id = "playing-muted", name = "The playing screen after muting", kind = "image" },
+] }
+[[review.categories.items]]
+id = "playable-while-muted"
+title = "The game stays playable with the sound off"
+description = "With state.muted true, a trace drawn on the board leaves that channel's beam carrying the traced cells exactly as it does with sound on."
+domains = ["presentation", "tracing"]
+failure_cap = "passable"
+validation = { script = "screens/playable-while-muted.test.ts", outputs = [
   { id = "muted", name = "The game playing on while muted", kind = "image" },
 ] }
 [[review.categories.items]]

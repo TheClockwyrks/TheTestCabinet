@@ -36,6 +36,7 @@ import {
   moveToCell,
   pressCell,
   resetTo,
+  traceCells,
   type Harness,
 } from "../harness";
 import { cellCenter, parseBoard, CHANNELS } from "../notation";
@@ -92,7 +93,7 @@ it("reports the full documented shape, every derivation on the spec's formula", 
   );
 
   // The partial triangle beam, drawn and released through `trace`.
-  h.debug.trace(TRIANGLE_BEAM);
+  traceCells(h, TRIANGLE_BEAM);
   // The partial square beam, drawn move by move and left live: the pointer
   // operations resolve at the call, so no frame passes and the trace stays up
   // while the snapshot is read.
@@ -147,6 +148,7 @@ it("reports the full documented shape, every derivation on the spec's formula", 
   assertEqual(typeof snap.muted, "boolean", "muted is a boolean");
   assertEqual(typeof snap.simTime, "number", "simTime is a number");
   assertGreaterThanOrEqual(snap.simTime, 0, "simTime accumulates from 0");
+  assertEqual(typeof snap.rngState, "number", "rngState is a number");
 
   // The board: dimensions, and every node with its cell, its kind, its
   // channel/charges/spent nulls, and its x/y on the cell center formula.

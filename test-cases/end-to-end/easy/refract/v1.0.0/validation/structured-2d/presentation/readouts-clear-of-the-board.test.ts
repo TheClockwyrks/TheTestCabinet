@@ -31,6 +31,7 @@ import {
   createHarness,
   drawnTextSpans,
   loadBoard,
+  poseMode,
   resetTo,
   type Harness,
   type TextSpan,
@@ -83,8 +84,7 @@ function assertSpansClear(spans: TextSpan[], mode: string): void {
 
 async function poseLargestBoard(mode: Mode): Promise<void> {
   await resetTo(h, 1);
-  h.debug.startMode(mode);
-  await h.advance(1);
+  await poseMode(h, mode);
   await loadBoard(h, GEO_7X6);
   const snapshot = h.snapshot();
   assertEqual(snapshot.screen, "playing", `${mode}: the posed board is up`);

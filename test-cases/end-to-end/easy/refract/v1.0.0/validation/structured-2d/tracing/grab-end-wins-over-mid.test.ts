@@ -21,6 +21,7 @@ import {
   loadBoard,
   pressCell,
   resetTo,
+  traceCells,
   type Harness,
 } from "../harness";
 
@@ -43,8 +44,8 @@ it("a press on a node that is one beam's end and another's mid cell resumes the 
   // The square beam THROUGH the crystal — S(0,1) in by one diagonal, out to
   // S(2,1) by the other, distinct 2x2 blocks — then the triangle beam ONTO
   // it, ending there.
-  h.debug.trace([{ col: 0, row: 1 }, CRYSTAL, { col: 2, row: 1 }]);
-  h.debug.trace([{ col: 0, row: 0 }, CRYSTAL]);
+  traceCells(h, [{ col: 0, row: 1 }, CRYSTAL, { col: 2, row: 1 }]);
+  traceCells(h, [{ col: 0, row: 0 }, CRYSTAL]);
 
   const before = h.snapshot();
   assertDeepEqual(

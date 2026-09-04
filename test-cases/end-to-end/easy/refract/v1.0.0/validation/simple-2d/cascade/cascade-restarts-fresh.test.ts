@@ -10,8 +10,8 @@
 // To make the freshness observable, one board is really solved first, so the
 // count being abandoned is 1 rather than the 0 a fresh sequence would show
 // anyway. Every step is the player's own: the solve is the spec-derived
-// solver's beams drawn through `trace`, NEXT BOARD and the re-entry go through
-// the registered actions, and `back` is the real Escape edge.
+// solver's beams drawn through the pointer operations, NEXT BOARD and the re-
+// entry go through the registered actions, and `back` is the real Escape edge.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

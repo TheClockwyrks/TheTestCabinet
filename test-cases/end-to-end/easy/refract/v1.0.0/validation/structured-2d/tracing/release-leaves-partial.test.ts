@@ -19,6 +19,7 @@ import {
   loadBoard,
   pressCell,
   resetTo,
+  traceCells,
   type Harness,
 } from "../harness";
 
@@ -42,7 +43,7 @@ it("the release ends the trace, the partial beam persists, and a press on either
 
   // Two segments of a board that needs six: a partial beam. `trace` ends with
   // the release under test.
-  h.debug.trace([A, B, C]);
+  traceCells(h, [A, B, C]);
 
   const released = h.snapshot();
   assertNull(released.tracing, "the release ends the trace");

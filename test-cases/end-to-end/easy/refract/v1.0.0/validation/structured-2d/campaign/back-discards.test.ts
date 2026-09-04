@@ -18,6 +18,7 @@ import {
   startCampaign,
   tapAction,
   toCells,
+  traceCells,
   type Harness,
 } from "../harness";
 import { parseBoard } from "../notation";
@@ -43,7 +44,7 @@ it("returns to select, discards the beams, and leaves the board unchanged", asyn
   assertTruthy(route, "board 1's triangle route exists in routes.ts");
   if (route === undefined) return;
   const prefix = toCells(route.slice(0, 2));
-  h.debug.trace(prefix);
+  traceCells(h, prefix);
   assertDeepEqual(
     h.snapshot().beams.triangle?.cells,
     prefix,

@@ -19,19 +19,23 @@
 // list, reading it before any frame runs so simTime is the pose's own 0.
 //
 // The campaign precondition is read BEFORE the mode switch. Whether campaign
-// progress survives `startMode` is `campaign/campaign-progress-persists`'s
-// requirement, and reading `solvedBoards` after the switch would make this
+// progress survives entering the other mode is
+// `campaign/campaign-progress-persists`'s requirement, and reading `solvedBoards` after the switch would make this
 // item fail on a build that misses that one. And `muted` is compared against
 // whatever the mute toggle left rather than against `true`, because the
 // binding that turns muting on is `screens/mute`'s requirement; what reset
 // owes is that it leaves the bit alone.
 //
-// The second check reads the seed through the game's own determinism:
-// specs/instrumentation.md fixes that the same seed and the same calls reach
-// the same state, so two resets with seed 7 must generate the same first
-// cascade board, and a seedless reset must match a reset with DEFAULT_SEED
-// (1). (A build that uses no randomness never reads rngState and passes
-// vacuously, exactly as the spec allows.)
+// The second check reads the seed BACK and then replays it.
+// specs/instrumentation.md fixes what reset does to the generator exactly —
+// "rngState becomes options.seed, or DEFAULT_SEED (1) when no seed is given" —
+// and reports rngState on the snapshot, so the pose is verified by setting a
+// value and reading it back, which a build ignoring options.seed fails. The
+// determinism reading stays beside it for what the read-back does not cover:
+// the same seed and the same calls reach the same state, so two resets with
+// seed 7 must generate the same first cascade board, and a seedless reset must
+// match a reset with DEFAULT_SEED (1). (A build that uses no randomness passes
+// that second half vacuously, exactly as the spec allows.)
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNull } from "../assert";
@@ -39,10 +43,12 @@ import {
   captureStill,
   createHarness,
   driveCourse,
+  enterCascade,
   oracleBoard,
   resetTo,
   solveGenerated,
   startCampaign,
+  startCascade,
   tapAction,
   type Harness,
 } from "../harness";
@@ -80,7 +86,7 @@ it("restores every title-screen value after progress in both modes", async () =>
     "precondition: solving board 1 unlocked board 2",
   );
 
-  h.debug.startMode("cascade");
+  await enterCascade(h);
   await solveGenerated(h, 1);
   await tapAction(h, "mute");
 
@@ -122,36 +128,45 @@ it("restores every title-screen value after progress in both modes", async () =>
   );
 });
 
-it("seeds rngState from options.seed, defaulting to DEFAULT_SEED (1)", () => {
+it("seeds rngState from options.seed, defaulting to DEFAULT_SEED (1)", async () => {
+  // The seed itself, read straight back off the snapshot.
+  h.debug.reset({ seed: 7 });
+  assertEqual(
+    h.snapshot().rngState,
+    7,
+    "reset({seed: 7}) leaves rngState at 7",
+  );
+  h.debug.reset();
+  assertEqual(
+    h.snapshot().rngState,
+    DEFAULT_SEED,
+    "an omitted seed leaves rngState at DEFAULT_SEED (1)",
+  );
+
   // The first cascade board generated after a reset, as notation: the same
   // seed and the same calls must reach the same state
   // (specs/instrumentation.md "A deterministic core").
-  const firstCascadeBoard = (seed?: number): string => {
+  const firstCascadeBoard = async (seed?: number): Promise<string> => {
     if (seed === undefined) {
       h.debug.reset();
     } else {
       h.debug.reset({ seed });
     }
-    h.debug.startMode("cascade");
-    const s = h.snapshot();
-    assertEqual(
-      s.screen,
-      "playing",
-      "startMode('cascade') opens on playing (specs/modes/cascade.md)",
-    );
+    await h.advance(1);
+    const s = await startCascade(h);
     return boardToNotation(oracleBoard(s));
   };
 
-  const seededOnce = firstCascadeBoard(7);
-  const seededAgain = firstCascadeBoard(7);
+  const seededOnce = await firstCascadeBoard(7);
+  const seededAgain = await firstCascadeBoard(7);
   assertEqual(
     seededAgain,
     seededOnce,
     "reset({seed: 7}) twice generates the same first cascade board",
   );
 
-  const seedless = firstCascadeBoard(undefined);
-  const seededDefault = firstCascadeBoard(DEFAULT_SEED);
+  const seedless = await firstCascadeBoard(undefined);
+  const seededDefault = await firstCascadeBoard(DEFAULT_SEED);
   assertEqual(
     seededDefault,
     seedless,

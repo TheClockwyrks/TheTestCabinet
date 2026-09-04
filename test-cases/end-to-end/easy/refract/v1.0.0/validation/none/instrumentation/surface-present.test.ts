@@ -20,9 +20,9 @@
 // The second half is that it is LIVE. A surface whose operations exist and do
 // nothing — a plausible-looking object unconnected to the game on screen — is
 // the failure mode worth naming, so the point poses a board through `loadBoard`,
-// draws a segment through `trace`, and requires BOTH readbacks to move: the
-// snapshot (the state the build holds) and the canvas (the pixels the build
-// drew). The keyboard and the overlay are deliberately NOT demanded here: they
+// draws a segment through the pointer operations, and requires BOTH readbacks to
+// move: the snapshot (the state the build holds) and the canvas (the pixels the
+// build drew). The keyboard and the overlay are deliberately NOT demanded here: they
 // belong to the runtime layer the build writes, and the surface carries no
 // operation for them (specs/instrumentation.md).
 

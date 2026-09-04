@@ -83,6 +83,14 @@ export interface Harness {
   ): void;
   /** Press, move along, and release at the given cell centers, one frame per event. */
   drag(cells: readonly Cell[]): Promise<void>;
+  /**
+   * The same route drawn through the surface's three pointer poses, which
+   * resolve against the live world at the call, so the whole route lands with
+   * no frame advanced between the calls.
+   */
+  trace(cells: readonly Cell[]): void;
+  /** Choose CASCADE from the title menu, the way a player does. */
+  enterCascade(): Promise<void>;
   pixel(x: number, y: number): [number, number, number];
   dispose(): void;
 }
@@ -144,6 +152,23 @@ export async function createHarness(): Promise<Harness> {
       events.dispatchEvent(new KeyEvent("keyup", code));
     },
     pointer: dispatchPointer,
+    trace: (cells) => {
+      if (cells.length === 0) return;
+      const board = refractState(engine.world).board;
+      const centers = cells.map((cell) => cellCenter(cell, board));
+      engine.debug.pointerDown(centers[0][0], centers[0][1]);
+      for (const [x, y] of centers.slice(1)) {
+        engine.debug.pointerMove(x, y);
+      }
+      engine.debug.pointerUp();
+    },
+    enterCascade: async () => {
+      engine.debug.setScreen("title");
+      engine.debug.setMenuIndex(1);
+      events.dispatchEvent(new KeyEvent("keydown", "Enter"));
+      events.dispatchEvent(new KeyEvent("keyup", "Enter"));
+      await engine.advance(1);
+    },
     drag: async (cells) => {
       const board = refractState(engine.world).board;
       const centers = cells.map((cell) => cellCenter(cell, board));

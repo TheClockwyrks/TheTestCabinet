@@ -49,6 +49,7 @@ describe("snapshot", () => {
       targets: expect.any(Array),
       muted: false,
       simTime: 0,
+      rngState: DEFAULT_SEED,
     });
   });
 
@@ -57,7 +58,7 @@ describe("snapshot", () => {
     await h.engine.advance(1);
     expect(h.debug.snapshot().menuIndex).toBe(1);
 
-    h.debug.startMode("campaign");
+    h.debug.setScreen("select");
     h.tap("ArrowRight");
     await h.engine.advance(1);
     expect(h.debug.snapshot().selectIndex).toBe(1);
@@ -73,7 +74,7 @@ describe("snapshot", () => {
   it("derives node centers, spends, completeness, and the live end", () => {
     h.debug.loadBoard(["T1T", "S.S"]);
     const [x, y] = cellCenter({ col: 1, row: 0 }, h.state.board);
-    h.debug.trace([
+    h.trace([
       { col: 0, row: 0 },
       { col: 1, row: 0 },
     ]);
@@ -116,7 +117,7 @@ describe("snapshot", () => {
 describe("reset", () => {
   it("restores every declared field, seeds the generator, and keeps mute", () => {
     h.debug.loadBoard(["TtT"]);
-    h.debug.trace([
+    h.trace([
       { col: 0, row: 0 },
       { col: 1, row: 0 },
     ]);
@@ -143,6 +144,7 @@ describe("reset", () => {
       targets: expect.any(Array),
       muted: true,
       simTime: 0,
+      rngState: 99,
     });
     expect(h.state.rngState).toBe(99);
 
@@ -151,24 +153,39 @@ describe("reset", () => {
   });
 });
 
-describe("startMode", () => {
-  it("poses the same transition the title menu makes", () => {
-    h.debug.startMode("campaign");
-    expect(h.state.screen).toBe("select");
-    expect(h.state.mode).toBe("campaign");
-
-    h.debug.reset();
-    h.debug.startMode("cascade");
-    expect(h.state.screen).toBe("playing");
+describe("setMode", () => {
+  it("sets the mode field alone, generating no board and moving no screen", () => {
+    h.state.simTime = 4.5;
+    h.debug.setMode("cascade");
     expect(h.state.mode).toBe("cascade");
-    expect(h.state.tier).toBe(1);
-    expect(h.state.board.nodes.length).toBeGreaterThan(0);
+    expect(h.state.screen).toBe("title");
+    expect(h.state.board.nodes).toHaveLength(0);
+    expect(h.state.simTime).toBe(4.5);
+  });
+});
+
+describe("setScreen", () => {
+  it("sets the screen field alone, leaving the board it was posed over", () => {
+    h.debug.loadBoard(["TtT"]);
+    const board = h.debug.snapshot().board;
+    h.debug.setScreen("solved");
+    expect(h.state.screen).toBe("solved");
+    expect(h.debug.snapshot().board).toEqual(board);
+    expect(h.state.mode).toBe("campaign");
   });
 
-  it("leaves simTime as it is, so a clean run is reset followed by this", () => {
-    h.state.simTime = 4.5;
-    h.debug.startMode("campaign");
-    expect(h.state.simTime).toBe(4.5);
+  it("leaves no pointer target armed", () => {
+    h.state.armedTarget = "menu-1";
+    h.debug.setScreen("howto");
+    expect(h.state.armedTarget).toBeNull();
+  });
+});
+
+describe("setMenuIndex", () => {
+  it("sets the highlighted item alone", () => {
+    h.debug.setMenuIndex(2);
+    expect(h.state.menuIndex).toBe(2);
+    expect(h.state.screen).toBe("title");
   });
 });
 
@@ -216,19 +233,20 @@ describe("the pointer operations", () => {
   });
 });
 
-describe("trace", () => {
+describe("a route drawn through the pointer poses", () => {
   it("draws a whole route, solves through the game's own rules, and plays the solved cue", () => {
     h.debug.loadBoard(["TtT"]);
     h.cues.length = 0;
-    h.debug.trace([
+    h.trace([
       { col: 0, row: 0 },
       { col: 1, row: 0 },
       { col: 2, row: 0 },
     ]);
     expect(h.debug.snapshot().solved).toBe(true);
     expect(h.state.screen).toBe("solved");
-    // One batch, so each cue plays at most once for the call.
+    // Each pose announces the events it raised, in the order they happened.
     expect(h.cues.map((play) => play.cue)).toEqual([
+      "connect",
       "connect",
       "channel-complete",
       "solved",
@@ -237,7 +255,7 @@ describe("trace", () => {
 
   it("stops at the last permitted segment when the limits refuse the rest", () => {
     h.debug.loadBoard(["TtT", "SsS"]);
-    h.debug.trace([
+    h.trace([
       { col: 0, row: 0 },
       { col: 1, row: 0 },
       { col: 1, row: 1 }, // square's lens: refused, live end stays at (1,0)
@@ -253,7 +271,7 @@ describe("trace", () => {
   it("is a no-op for an empty route", () => {
     h.debug.loadBoard(["TtT"]);
     const before = JSON.stringify(h.debug.snapshot());
-    h.debug.trace([]);
+    h.trace([]);
     expect(JSON.stringify(h.debug.snapshot())).toBe(before);
   });
 });
@@ -261,7 +279,7 @@ describe("trace", () => {
 describe("clear", () => {
   it("empties every beam on the playing screen alone, playing the cue once", () => {
     h.debug.loadBoard(["TtT"]);
-    h.debug.trace([
+    h.trace([
       { col: 0, row: 0 },
       { col: 1, row: 0 },
     ]);

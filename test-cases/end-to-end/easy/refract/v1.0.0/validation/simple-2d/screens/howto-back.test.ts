@@ -1,11 +1,12 @@
 // Refract — screens/howto-back: back leaves the how-to screen for the title.
 //
 // specs/ui.md's `howto` section: `back` returns to `title` with `HOW TO PLAY`
-// highlighted (`menuIndex = 2`), the entry that led away. The how-to screen is
-// reached the way a player reaches it —
-// two downs and a confirm from the fresh title — and the arrival is asserted
-// before the back, so a build that never opened the screen fails on the pose
-// rather than on a return it never made. The still is the title the back left.
+// highlighted (`menuIndex = 2`). The how-to screen is POSED with `setScreen`
+// rather than walked to through the title menu, so a build with a broken `down`
+// binding fails `screens/title-down` and passes this point; the arrival is
+// asserted before the back, so a build that could not be posed onto the screen
+// fails on the pose rather than on a return it never made. The still is the
+// title the back left.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -29,13 +30,12 @@ afterEach(() => {
 
 it("back on the how-to screen returns to title with menuIndex 2", async () => {
   await resetTo(h);
-  await tapAction(h, "down");
-  await tapAction(h, "down");
-  await tapAction(h, "confirm");
+  h.debug.setScreen("howto");
+  await h.advance(1);
   assertEqual(
     h.snapshot().screen,
     "howto",
-    "posing: confirming HOW TO PLAY opens the how-to screen (specs/ui.md)",
+    "posing: the how-to screen is up (specs/instrumentation.md setScreen)",
   );
 
   await tapAction(h, "back");

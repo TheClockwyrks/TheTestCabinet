@@ -27,6 +27,7 @@ import {
   loadBoard,
   resetTo,
   tapAction,
+  traceCells,
   type Harness,
 } from "../harness";
 
@@ -52,7 +53,7 @@ it("plays the clear cue exactly once, on the frame the beams are cleared", async
 
   // The segment there is to remove. Its connect cue sounds here, and the log
   // is wiped after it so the section below reads the clear alone.
-  h.debug.trace([
+  traceCells(h, [
     { col: 0, row: 0 },
     { col: 1, row: 1 },
   ]);
