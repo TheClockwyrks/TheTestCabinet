@@ -10,7 +10,7 @@
 // `extractionScore(n, k)` in constants.ts is that formula, not a copied number.
 //
 // THE DRIVE is extract-three's: one segment of halide, halide, cobalt posed on
-// the straight top run with the quota exhausted, and a halide released straight
+// the straight top run with the inlet held, and a halide released straight
 // up the field into it. What that check reads as a count, this one reads as a
 // score.
 //

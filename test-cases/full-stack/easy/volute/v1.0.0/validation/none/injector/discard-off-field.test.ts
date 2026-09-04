@@ -13,18 +13,12 @@
 // specs/instrumentation.md fixes. Sixty ticks is therefore comfortably past the
 // crossing, which is the review item's own figure.
 //
-// THE HALL. The level is opened and the channel emptied, and the quota is left
-// as the level start leaves it — the one place in this category where the inlet
-// runs on. It has to: an exhausted quota over an EMPTY channel clears the level
-// on the next tick (specs/channel.md, "The order of a tick", step 6), which would
-// end the flight this point is about. What the running inlet puts on the channel
-// stays at the inlet: specs/channel.md emits at `s = 0` and only "on a tick where
-// the tail core's arc position is at least `SPACING`", and a lone lead core rides
-// level 1's 22 units/s (specs/progression.md), so across a whole second it covers
-// 22 of the 28 units a second emission needs. One core, within 22 units of
-// `(40, 40)`, nearly 400 units off the shot's path at `x = 420` and far outside
-// the 28-unit strike distance specs/injector.md fixes. Nothing seats, so the only
-// way the projectile can leave is the rule under test.
+// THE HALL. Empty, with nothing standing on the channel and nothing arriving:
+// `poseHall` holds the inlet with `setEmission(false)` and leaves the quota
+// unexhausted, so specs/progression.md's clear condition ("the moment its quota is
+// exhausted and no cores remain on the channel") never fires and the flight runs
+// on an EMPTY hall for its whole life. With no core anywhere, nothing can seat,
+// so the only way the projectile can leave is the rule under test.
 //
 // WHAT IS READ. Every tick of the drive, so the discard is placed rather than
 // merely noticed:
@@ -60,6 +54,8 @@ import {
 import {
   captureReplay,
   createHarness,
+  fireAt,
+  poseHall,
   type Harness,
   type VoluteSnapshot,
 } from "../harness";
@@ -103,14 +99,10 @@ afterEach(async () => {
 });
 
 it("discards a fired core once its center has left the field", async () => {
-  // The level is opened and the channel emptied by hand rather than through
-  // `poseHall`, because this is the one scenario that needs the quota LEFT as the
-  // level start leaves it — see the note above.
-  await h.debug.startLevel(1);
-  await h.debug.clearTrain();
+  await poseHall(h);
 
   const history = await captureReplay(h, "discard", async () => {
-    await h.debug.fire(OPENING_AIM);
+    await fireAt(h, OPENING_AIM);
     return h.stepWatching(DRIVE_TICKS);
   });
 

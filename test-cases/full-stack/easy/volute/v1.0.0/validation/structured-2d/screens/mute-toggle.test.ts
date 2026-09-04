@@ -5,16 +5,16 @@
 // deliberately not this point's business.
 //
 // THE SPEC IT RESTS ON.
-//   specs/controls.md ("Actions and bindings"): "mute | `KeyM` | — | edge |
-//   toggles the audio between muted and unmuted", and "Mute answers on every
-//   screen."
-//   specs/ui.md ("Mute"): "The game binds the mute action to the runtime's mute
-//   bit and toggles it from any screen."
-//   specs/state.md: `muted` is "the game's readable copy of the engine's mute
-//   bit", and specs/instrumentation.md has `snapshot()` report it, refreshed
-//   "from the runtime in every update".
-//   specs/state.md ("The title state"): `muted` is `false` on a fresh game, which
-//   is the precondition read back before the press.
+//   specs/controls.md ("Actions"): "`mute` | edge | toggles the audio between
+//   muted and unmuted", and "`mute` answers on every screen"; `src/constants.ts`
+//   binds the action to `KeyM`.
+//   specs/ui.md ("Mute"): "The game toggles `world.audio.setMuted` from any
+//   screen and reads the bit back with `world.audio.muted()`."
+//   specs/state.md: `muted` is "Whether audio is muted, which the engine owns and
+//   the debug surface reports", and specs/instrumentation.md has `snapshot()`
+//   report it as a live read of the runtime.
+//   specs/state.md: "A fresh game starts with its audio unmuted", which is the
+//   precondition read back before the press.
 //
 // THE DRIVE. The run is opened through the debug surface rather than through the
 // title's confirm key, so a broken title fails the title points alone. The bit
@@ -25,7 +25,8 @@
 //
 // WHAT IS NOT ASSERTED, AND WHY. That the speakers went quiet. specs/ui.md leaves
 // the runtime free to mute either by silencing its sources or by holding them at
-// zero gain — "A muted bed goes on looping silently" — and the engine's own bus
+// zero gain — "A muted bed keeps looping silently and returns when unmuted" — and
+// the engine's own bus
 // keeps announcing a muted cue at `gain: 0`, so a count of live sources cannot
 // decide this and would fail a conformant build for choosing either way. The
 // specification fixes the REPORTED bit, so the reported bit is what this reads;

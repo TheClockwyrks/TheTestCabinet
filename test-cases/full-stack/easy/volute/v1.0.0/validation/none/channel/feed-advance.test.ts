@@ -12,7 +12,7 @@
 // THE DRIVE. One core alone on the channel is the lead segment by definition
 // ("the lead segment is the one containing the head", and "a lone core forms a
 // segment of one"), so the rate it takes is the feed speed and nothing else.
-// The quota is posed to 0, so the inlet places nothing beside it; a single core
+// The inlet is held, so it places nothing beside it; a single core
 // is far under `PRESSURE_FREE` (24), so the pressure bleeds and stays at 0
 // through the drive and the multiplier stays 1. Sixty ticks is exactly one
 // second of simulated time (`TICK_HZ` is 60), so the arc the core gains over
@@ -63,7 +63,6 @@ it("advances the lead segment at the level's feed speed", async () => {
   await poseHall(h, {
     level: LEVEL,
     pressure: 0,
-    quotaRemaining: 0,
     cores: [[START_S, CHARGE_IDS[0], null]],
   });
   const before = head(await h.snapshot()).s;

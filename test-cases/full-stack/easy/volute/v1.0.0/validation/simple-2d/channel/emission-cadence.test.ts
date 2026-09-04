@@ -66,6 +66,9 @@ afterEach(async () => {
 it("places a core at the inlet on the tick the tail clears the spacing", async () => {
   await poseHall(h, {
     level: 1,
+    // The requirement IS the inlet, so the gate `specs/instrumentation.md`
+    // carries for it is open and the inlet emits by its own rule.
+    emission: true,
     quotaRemaining: QUOTA,
     cores: [[START_S, "halide", null]],
   });

@@ -40,16 +40,7 @@ import {
   topRunS,
   type Harness,
 } from "../harness";
-import {
-  approach,
-  assertInFlight,
-  LEAD_STEP,
-  PARKED,
-  PLUMB_SHOT_X,
-  poseFor,
-  SHOT,
-  UP_AIM,
-} from "./stage";
+import { approach, assertInFlight, PLUMB_SHOT_X, SHOT, UP_AIM } from "./stage";
 
 /** The perpendicular distance the shot's path keeps from the core's centre. */
 const OFFSET = 29;
@@ -83,14 +74,12 @@ it("seats nothing when the shot stays outside the strike distance", async () => 
     "the offset is outside the window the spec fixes",
   );
 
-  await poseHall(h, { cores: PARKED, loaded: SHOT });
+  await poseHall(h, { feed: false, loaded: SHOT });
 
   const after = await captureReplay(h, "miss", async () => {
     const short = await approach(h, UP_AIM);
     assertInFlight(short);
-    await h.debug.poseTrain([
-      [poseFor(topRunS(PLUMB_SHOT_X + OFFSET), LEAD_STEP), TARGET, null],
-    ]);
+    await h.debug.poseTrain([[topRunS(PLUMB_SHOT_X + OFFSET), TARGET, null]]);
     return h.step(CLEAR);
   });
 

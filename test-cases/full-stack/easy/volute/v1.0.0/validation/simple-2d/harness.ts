@@ -89,17 +89,11 @@ import {
   type SurfaceMetrics,
 } from "@test-cabinet/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
-// The one thing this project takes from the build's tree rather than from
-// `constants.ts`: the touch layout `src/main.ts` stands the engine up with. It is
-// wiring rather than a threshold — it decides which of the engine's control
-// schemes tags the actions the build registers, and no verdict rests on it — so
-// the harness reads it where the entry point reads it and builds the engine the
-// way the page does. Every FIGURE a point is decided against is written on the
-// case's side, in `constants.ts`, for the reason stated there.
-import { LAYOUT } from "../src/constants";
 import { BACKGROUND, game as build, type VoluteState } from "../src/game";
 import { assertTruthy, fail } from "./assert";
 import {
+  BINDINGS,
+  CELLS,
   CHANNEL,
   CHANNEL_ARC,
   CORE_RADIUS,
@@ -108,16 +102,19 @@ import {
   FIELD_W,
   HANDLE,
   INJECTOR,
+  LAYOUT,
   PATH_LENGTH,
   READINGS,
   SPACING,
   TICK_HZ,
   TICK_MS,
   UNBOUND_KEY,
+  levelSpec,
   type ChargeId,
   type MachineryKind,
   type Point,
   type ScreenName,
+  type TimedMachineryKind,
 } from "./constants";
 
 /* -------------------------------------------------------------------------- */
@@ -200,6 +197,10 @@ export interface VoluteSnapshot {
   /** Every projectile, oldest first. */
   projectiles: ProjectileView[];
   machinery: MachineryView | null;
+  /** Whether the inlet emits, the driver's first switch. */
+  emission: boolean;
+  /** Whether the train advances, the driver's second switch. */
+  feed: boolean;
   muted: boolean;
   /** Accumulated simulation time, in seconds. */
   simTime: number;
@@ -241,8 +242,16 @@ export interface VoluteSurface<S = unknown> {
   reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
   /** A pure reading of the running game. */
   snapshot(state: DeepReadonly<S>): VoluteSnapshot;
-  /** Pose what the start control on the title does: score 0, cells full, level 1. */
-  start(state: DeepReadonly<S>): S;
+  /** Set the screen, and nothing else. */
+  setScreen(state: DeepReadonly<S>, name: ScreenName): S;
+  /** Set the level in play, and nothing else. */
+  setLevel(state: DeepReadonly<S>, level: number): S;
+  /** Set the run's score, clamped to at least 0. */
+  setScore(state: DeepReadonly<S>, n: number): S;
+  /** Set the cells remaining, clamped to 0 through CELLS. */
+  setCells(state: DeepReadonly<S>, n: number): S;
+  /** Set the chain step, and restart the window that returns it to 1. */
+  setChainStep(state: DeepReadonly<S>, k: number): S;
   /** Open `level`, exactly as the interlude before it opens it. */
   startLevel(state: DeepReadonly<S>, level: number): S;
   /** Replace every core on the channel with the cores given. */
@@ -253,14 +262,20 @@ export interface VoluteSurface<S = unknown> {
   setLoaded(state: DeepReadonly<S>, charge: ChargeId): S;
   /** Set the charge the injector holds queued. The generator is untouched. */
   setQueued(state: DeepReadonly<S>, charge: ChargeId): S;
-  /** Aim at `angleDegrees` and release the loaded core along it. Always launches. */
-  fire(state: DeepReadonly<S>, angleDegrees: number): S;
+  /** Set the aim, normalized into [0, 360), and nothing else. */
+  setAim(state: DeepReadonly<S>, angleDegrees: number): S;
+  /** Release the loaded core along the current aim. Always launches. */
+  fire(state: DeepReadonly<S>): S;
   /** Set the pressure, clamped to 0 through 100. */
   setPressure(state: DeepReadonly<S>, value: number): S;
   /** Set the cores the inlet has left to emit this level. */
   setQuotaRemaining(state: DeepReadonly<S>, n: number): S;
-  /** Grant a kind exactly as extracting a run holding that mark grants it. */
-  grantMachinery(state: DeepReadonly<S>, kind: MachineryKind): S;
+  /** Hold the inlet, and let it go again. */
+  setEmission(state: DeepReadonly<S>, enabled: boolean): S;
+  /** Hold the train where it stands, and let it advance again. */
+  setFeed(state: DeepReadonly<S>, enabled: boolean): S;
+  /** Grant one of the three timed kinds, as extracting its mark grants it. */
+  grantMachinery(state: DeepReadonly<S>, kind: TimedMachineryKind): S;
   /** Pose the pause control: the screen becomes `paused`. */
   pause(state: DeepReadonly<S>): S;
   /** Pose it again: the screen returns to `playing`. */
@@ -285,8 +300,16 @@ export interface VoluteDebugApi {
   reset(options?: { seed?: number }): Promise<void>;
   /** A pure read of the running game. */
   snapshot(): Promise<VoluteSnapshot>;
-  /** Pose what the start control on the title does: score 0, cells full, level 1. */
-  start(): Promise<void>;
+  /** Set the screen, and nothing else. */
+  setScreen(name: ScreenName): Promise<void>;
+  /** Set the level in play, and nothing else. */
+  setLevel(level: number): Promise<void>;
+  /** Set the run's score, clamped to at least 0. */
+  setScore(n: number): Promise<void>;
+  /** Set the cells remaining, clamped to 0 through CELLS. */
+  setCells(n: number): Promise<void>;
+  /** Set the chain step, and restart the window that returns it to 1. */
+  setChainStep(k: number): Promise<void>;
   /** Open `level`, exactly as the interlude before it opens it. */
   startLevel(level: number): Promise<void>;
   /** Replace every core on the channel with the cores given. */
@@ -297,14 +320,20 @@ export interface VoluteDebugApi {
   setLoaded(charge: ChargeId): Promise<void>;
   /** Set the charge the injector holds queued. The generator is untouched. */
   setQueued(charge: ChargeId): Promise<void>;
-  /** Aim at `angleDegrees` and release the loaded core along it. Always launches. */
-  fire(angleDegrees: number): Promise<void>;
+  /** Set the aim, normalized into [0, 360), and nothing else. */
+  setAim(angleDegrees: number): Promise<void>;
+  /** Release the loaded core along the current aim. Always launches. */
+  fire(): Promise<void>;
   /** Set the pressure, clamped to 0 through 100. */
   setPressure(value: number): Promise<void>;
   /** Set the cores the inlet has left to emit this level. */
   setQuotaRemaining(n: number): Promise<void>;
-  /** Grant a kind exactly as extracting a run holding that mark grants it. */
-  grantMachinery(kind: MachineryKind): Promise<void>;
+  /** Hold the inlet, and let it go again. */
+  setEmission(enabled: boolean): Promise<void>;
+  /** Hold the train where it stands, and let it advance again. */
+  setFeed(enabled: boolean): Promise<void>;
+  /** Grant one of the three timed kinds, as extracting its mark grants it. */
+  grantMachinery(kind: TimedMachineryKind): Promise<void>;
   /** Pose the pause control: the screen becomes `paused`. */
   pause(): Promise<void>;
   /** Pose it again: the screen returns to `playing`. */
@@ -1188,15 +1217,22 @@ function readDebugSurface(surface: unknown): string | null {
 const REQUIRED_SURFACE_OPS = [
   "reset",
   "snapshot",
-  "start",
+  "setScreen",
+  "setLevel",
+  "setScore",
+  "setCells",
+  "setChainStep",
   "startLevel",
   "poseTrain",
   "clearTrain",
   "setLoaded",
   "setQueued",
+  "setAim",
   "fire",
   "setPressure",
   "setQuotaRemaining",
+  "setEmission",
+  "setFeed",
   "grantMachinery",
   "pause",
   "resume",
@@ -2654,93 +2690,127 @@ export function fieldPixels(h: Harness): Promise<PixelRect> {
 // concern is removed before its scenario is staged, rather than parked somewhere
 // harmless: containment leans on the game's own rules holding, and a broken build
 // is broken in exactly those rules. {@link poseHall} is the shape of that — it
-// opens a level, stops the inlet, empties the channel, and puts back exactly the
-// cores the requirement is about.
+// puts the hall in play on a level, HOLDS the inlet, empties the channel, and
+// puts back exactly the cores the requirement is about.
+//
+// WHY IT IS BUILT FROM SINGLE-FIELD POSES AND NOT FROM `startLevel`. `startLevel`
+// arranges the whole of a level opening — the screen, the seeded twelve, the
+// quota, the pressure, the chain step, the machinery, the projectiles, and both
+// injector draws — and a check that wants an empty channel would have to undo
+// most of it. `specs/instrumentation.md` carries `setScreen`, `setLevel`,
+// `setQuotaRemaining`, `setPressure` and `clearTrain` as poses of their own, so
+// this assembles the hall it wants and nothing else happens. `startLevel` is left
+// to the checks whose requirement IS the level opening.
+//
+// WHY THE INLET IS HELD RATHER THAN STARVED. `specs/progression.md` clears a level
+// "the moment its quota is exhausted and no cores remain on the channel", so a
+// hall posed with an exhausted quota and an EMPTY channel leaves `playing` on its
+// very next tick. Holding the inlet with `setEmission(false)` and leaving the
+// quota where it stands gives the one world most checks want: nothing arrives and
+// nothing clears, with no bystander core standing in a corner to keep the hall in
+// play. A check that IS about the inlet names `emission: true`, and a check about
+// clearing names `quotaRemaining: 0`.
 
 /** What {@link poseHall} arranges. Every field is optional; each defaults below. */
 export interface PoseOptions {
-  /** The level to open, 1 through 5. Defaults to 1. */
+  /**
+   * The screen the hall stands on. Defaults to `playing`.
+   *
+   * A check about an ending names `gameover` or `victory`:
+   * `specs/instrumentation.md`'s `setScreen` "changes nothing else", so the rest
+   * of the pose stands under whichever screen it names.
+   */
+  screen?: ScreenName;
+  /** The level to put in play, 1 through 5. Defaults to 1. */
   level?: number;
   /**
-   * The cores the inlet has left to emit. Defaults to 0, which stops the inlet.
+   * The cores the inlet has left to emit. Defaults to the level's full quota.
    *
-   * A check that wants the inlet running names a count; a check that does not
-   * takes the default, so nothing arrives to join the scenario it posed.
+   * A check about clearing names `0`; every other check takes the default, so
+   * the "quota exhausted and channel empty" clear never fires under it.
    */
   quotaRemaining?: number;
+  /**
+   * Whether the inlet emits. Defaults to `false`, which holds it.
+   *
+   * A check that wants cores arriving names `true`; a check that does not takes
+   * the default, so nothing joins the scenario it posed.
+   */
+  emission?: boolean;
+  /**
+   * Whether the train advances. Defaults to `true`, as play leaves it.
+   *
+   * A check whose requirement does not exercise the feed names `false`, which
+   * holds every core on the arc position it was posed at.
+   */
+  feed?: boolean;
   /** The pressure. Defaults to 0, the value a level starts at. */
   pressure?: number;
+  /** The chain step. Left where it stands by default, which is 1 after a reset. */
+  chainStep?: number;
+  /** The run's score. Left where it stands by default, which is 0 after a reset. */
+  score?: number;
+  /** The cells remaining. Left where they stand, which is CELLS after a reset. */
+  cells?: number;
   /** The cores to put on the channel. Defaults to none. */
   cores?: readonly PosedCore[];
-  /** The charge the injector holds loaded. Left as the level drew it by default. */
+  /** The charge the injector holds loaded. Left as it stands by default. */
   loaded?: ChargeId;
-  /** The charge the injector holds queued. Left as the level drew it by default. */
+  /** The charge the injector holds queued. Left as it stands by default. */
   queued?: ChargeId;
+  /** The aim, in degrees. Left where it stands by default. */
+  aim?: number;
   /**
-   * A machinery to grant once the hall is posed.
+   * A timed machinery to grant once the hall is posed.
    *
-   * Granted LAST, because `bore` "resolves at once, centered on the head core's
-   * position" — so it reads the train this call posed rather than the one the
-   * level opened with.
+   * `bore` is not one of them: `specs/instrumentation.md` grants only the three
+   * timed kinds, and a check that wants a bore poses a run carrying a `bore` mark
+   * and lets the ticks extract it.
    */
-  machinery?: MachineryKind;
+  machinery?: TimedMachineryKind;
 }
 
 /**
- * The arc position a bystander core is parked at: the inlet, `s = 0`.
+ * Pose an isolated hall in play, assembled from single-field poses alone.
  *
- * `(40, 40)` on specs/channel.md's polyline — the far corner of the field, 380
- * units from the vertical shot every insertion and injector check flies and
- * further still from the intake at the other end.
- */
-export const PARK_S = 0;
-
-/**
- * One core parked clear of a scenario, so an exhausted level cannot clear under
- * a check that is not about clearing.
- *
- * WHY IT IS NEEDED AT ALL, given that a check poses an ISOLATED hall. Nearly
- * every check stops the inlet ({@link poseHall} defaults `quotaRemaining` to 0),
- * and specs/progression.md clears a level "the moment its quota is exhausted and
- * no cores remain on the channel" — so a hall posed with an exhausted quota and
- * an EMPTY channel leaves `playing` on its very next tick, taking the pointer,
- * the turn actions, fire and swap with it. One core is the least that keeps the
- * hall in play, and it is parked at {@link PARK_S} where nothing any of these
- * checks drives can reach it.
- *
- * This is not a bystander the scenario has to contain: it is the hall's own
- * "there is still something on the channel" condition, and the checks that pose
- * cores of their own replace it with them.
- */
-export function parkedCore(s: number = PARK_S): PosedCore[] {
-  return [[s, "cobalt", null]];
-}
-
-/**
- * Open a level and pose an isolated hall on it.
- *
- * The order is the one the operations' own definitions force: `startLevel` seeds
- * the channel and refills the quota, so the quota and the pressure are set after
- * it; `clearTrain` removes the twelve the level opened with along with every
- * projectile; `poseTrain` then puts back exactly the cores the check is about;
- * and the machinery is granted last so an instant `bore` reads the posed train.
+ * The order is the one the operations' own definitions force: the screen and the
+ * level first, so the level's figures are the ones the rest reads; the driver's
+ * two switches next; then the quota, the pressure and the chain; then
+ * `clearTrain` to empty the channel and discard every projectile; then the cores
+ * the check is about; then the injector; then the machinery.
  *
  * Nothing here decides an outcome. Every extraction, score, chain step, grant,
  * cell and clear a check reads comes from the ticks it steps afterwards.
+ *
+ * A harness is freshly `reset` when a check receives it, so the fields this leaves
+ * alone — the chain, the score, the cells, the active machinery, the interlude —
+ * stand at their title values unless the check posed them.
  */
 export async function poseHall(
   h: Harness,
   options: PoseOptions = {},
 ): Promise<void> {
-  await h.debug.startLevel(options.level ?? 1);
-  await h.debug.setQuotaRemaining(options.quotaRemaining ?? 0);
+  const level = options.level ?? 1;
+  await h.debug.setScreen(options.screen ?? "playing");
+  await h.debug.setLevel(level);
+  await h.debug.setEmission(options.emission ?? false);
+  await h.debug.setFeed(options.feed ?? true);
+  await h.debug.setQuotaRemaining(
+    options.quotaRemaining ?? levelSpec(level).quota,
+  );
   await h.debug.setPressure(options.pressure ?? 0);
+  if (options.chainStep !== undefined) {
+    await h.debug.setChainStep(options.chainStep);
+  }
+  if (options.score !== undefined) await h.debug.setScore(options.score);
+  if (options.cells !== undefined) await h.debug.setCells(options.cells);
   await h.debug.clearTrain();
   if (options.cores !== undefined && options.cores.length > 0) {
     await h.debug.poseTrain(options.cores);
   }
   if (options.loaded !== undefined) await h.debug.setLoaded(options.loaded);
   if (options.queued !== undefined) await h.debug.setQueued(options.queued);
+  if (options.aim !== undefined) await h.debug.setAim(options.aim);
   if (options.machinery !== undefined) {
     await h.debug.grantMachinery(options.machinery);
   }
@@ -2749,31 +2819,39 @@ export async function poseHall(
 /**
  * Open a run from the title exactly as the start control does, and open `level`.
  *
- * `start()` is "the score `0`, the cells at `CELLS` (`3`), and level `1` opened
- * exactly as `startLevel` opens it", so a run from a known seed is the harness's
- * opening `reset` followed by this. A `level` beyond 1 is opened after it, which
- * leaves the score and the cells at their opening values.
+ * The start control poses "the score `0`, the cells at `CELLS` (`3`), and level
+ * `1` opened exactly as `startLevel` opens it" (specs/ui.md, specs/progression.md),
+ * and the surface carries each of those three as a pose of its own, so the
+ * sequence lives here. A `level` beyond 1 is opened in place of level 1, which
+ * leaves the score and the cells at their opening values either way.
  */
 export async function startRun(h: Harness, level = 1): Promise<void> {
-  await h.debug.start();
-  if (level !== 1) await h.debug.startLevel(level);
+  await h.debug.setScore(0);
+  await h.debug.setCells(CELLS);
+  await h.debug.startLevel(level);
 }
 
 /**
- * Aim at `angleDegrees` and release the loaded core along it.
+ * Point the injector at `angleDegrees` and release the loaded core along it.
  *
- * `fire()` on the surface always launches — "Any cooldown outstanding at the call
- * is cleared first" — so this is how a check that is not ABOUT the cooldown gets
- * a projectile into the hall. A check that IS about the cooldown raises the fire
+ * Two poses, because the surface carries two: `setAim` "does nothing else: no
+ * core is released", and `fire()` "releases the loaded core along the current
+ * aim". A check that wants the aim posed WITHOUT a projectile calls
+ * `h.debug.setAim` on its own.
+ *
+ * `fire()` always launches — "Any cooldown outstanding at the call is cleared
+ * first" — so this is how a check that is not ABOUT the cooldown gets a
+ * projectile into the hall. A check that IS about the cooldown raises the fire
  * CONTROL instead, with {@link pressFire}, which honours it.
  */
 export async function fireAt(h: Harness, angleDegrees: number): Promise<void> {
-  await h.debug.fire(angleDegrees);
+  await h.debug.setAim(angleDegrees);
+  await h.debug.fire();
 }
 
 /** Aim at a field point and release the loaded core toward it. */
 export async function fireToward(h: Harness, target: Point): Promise<void> {
-  await h.debug.fire(aimAt(target));
+  await fireAt(h, aimAt(target));
 }
 
 /** Raise the fire control itself, which honours the cooldown. One tick passes. */
@@ -2791,9 +2869,20 @@ export function pressConfirm(h: Harness): Promise<VoluteSnapshot> {
   return h.tap("Enter");
 }
 
-/** Raise the pause control, which pauses and resumes. One tick passes. */
+/**
+ * Raise the pause control on `Escape`, which pauses and resumes. One tick passes.
+ *
+ * `specs/controls.md` ("Pausing") binds pause to two interchangeable keys, so the
+ * key is taken from `BINDINGS.pause` rather than spelled here, and
+ * {@link pressPauseAlt} raises the same control on the other one.
+ */
 export function pressPause(h: Harness): Promise<VoluteSnapshot> {
-  return h.tap("Escape");
+  return h.tap(BINDINGS.pause[0]);
+}
+
+/** Raise the pause control on `KeyP`, its second key. One tick passes. */
+export function pressPauseAlt(h: Harness): Promise<VoluteSnapshot> {
+  return h.tap(BINDINGS.pause[1]);
 }
 
 /** Raise the mute control. One tick passes. */

@@ -467,6 +467,8 @@ redoubt
 redoubts
 refiller
 regen
+regrant
+regranted
 reharmonize
 rehit
 Reliquary
@@ -562,6 +564,7 @@ svgl
 swiftshader
 synthwave
 taiko
+tailmost
 tankier
 tanky
 tappable

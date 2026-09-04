@@ -36,14 +36,12 @@
 // reading; the second reading is the control that stops a build whose fire
 // control does nothing at all from passing this point by refusing everything.
 //
-// THE HALL. The quota is exhausted and one core is parked at the inlet
-// (`parkedCore()`), which specs/channel.md's polyline puts at `(40, 40)`. An
-// exhausted quota over an empty channel clears the level on the next tick
-// (specs/channel.md, "The order of a tick", step 6) and fire is live on
-// `playing` alone (specs/controls.md), so one core has to stand there; it sits
-// 130 units off the shots' path, far outside the 28-unit strike distance
-// specs/injector.md fixes, so nothing seats and the count of projectiles is the
-// whole reading. Both shots run due `-y` from `(420, 330)` and leave the field
+// THE HALL. Nothing stands on the channel and nothing arrives. `poseHall` holds
+// the inlet with `setEmission(false)` and leaves the quota unexhausted, so
+// specs/progression.md's clear condition ("the moment its quota is exhausted and
+// no cores remain on the channel") never fires and the hall holds `playing`,
+// where fire is live (specs/controls.md). With no core on the channel nothing can
+// seat, so the count of projectiles is the whole reading. Both shots run due `-y` from `(420, 330)` and leave the field
 // 31.9 ticks after release, so both are still in flight when the counts are
 // read.
 //
@@ -57,7 +55,7 @@ import { OPENING_AIM } from "../constants";
 import {
   captureReplay,
   createHarness,
-  parkedCore,
+  fireAt,
   poseHall,
   pressFire,
   type Harness,
@@ -83,10 +81,10 @@ afterEach(async () => {
 });
 
 it("refuses a shot inside the cooldown and honors one after it", async () => {
-  await poseHall(h, { cores: parkedCore() });
+  await poseHall(h);
 
   const fired = await captureReplay(h, "denied", async () => {
-    await h.debug.fire(OPENING_AIM);
+    await fireAt(h, OPENING_AIM);
     await h.step(INSIDE_TICKS);
     const refused = await pressFire(h);
     await h.step(GAP_TICKS);

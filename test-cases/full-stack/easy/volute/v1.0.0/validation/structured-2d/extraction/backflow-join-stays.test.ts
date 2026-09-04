@@ -28,8 +28,9 @@
 // build rewrites every arc position on the channel at once, and a build that
 // follows that rewrite with a sweep for runs empties the hall it was told to pack.
 //
-// THE POSE. Two segments of cobalt on the straight top run, quota exhausted
-// (specs/channel.md — "Emission") so the inlet delivers nothing, pressure 0, and
+// THE POSE. Two segments of cobalt on the straight top run, the inlet held
+// (specs/instrumentation.md — `setEmission`) so it delivers nothing, pressure 0,
+// and
 // backflow granted (specs/instrumentation.md's `grantMachinery`, which
 // specs/machinery.md makes "the active machinery... starting its full duration
 // afresh"): a pair at 90 and 62, and one core at 30 a clear 32 units behind them.

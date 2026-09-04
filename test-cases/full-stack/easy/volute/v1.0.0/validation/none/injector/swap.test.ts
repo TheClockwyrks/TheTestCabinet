@@ -20,13 +20,12 @@
 // (specs/progression.md), so nothing about the pose is out of the ordinary for the
 // level it is posed on.
 //
-// THE HALL. The quota is exhausted and one core is parked at the inlet
-// (`parkedCore()`), which specs/channel.md's polyline puts at `(40, 40)`. An
-// exhausted quota over an empty channel clears the level on the tick the press
-// runs (specs/channel.md, "The order of a tick", step 6), and swap is live on
-// `playing` alone (specs/controls.md), so one core has to stand there. It is
-// nowhere near the injector and nothing is fired, so the two charges are the
-// only things this check touches.
+// THE HALL. Nothing stands on the channel and nothing arrives. `poseHall` holds
+// the inlet with `setEmission(false)` and leaves the quota unexhausted, so
+// specs/progression.md's clear condition ("the moment its quota is exhausted and
+// no cores remain on the channel") never fires and the hall holds `playing`,
+// where swap is live (specs/controls.md). Nothing is fired, so the two charges
+// are the only things this check touches.
 //
 // TOLERANCE. None. A charge id is one of five names and the case grades it
 // exactly.
@@ -36,7 +35,6 @@ import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  parkedCore,
   poseHall,
   pressSwap,
   type Harness,
@@ -59,7 +57,7 @@ afterEach(async () => {
 });
 
 it("exchanges the loaded and queued charges when the swap control is raised", async () => {
-  await poseHall(h, { cores: parkedCore(), loaded: LOADED, queued: QUEUED });
+  await poseHall(h, { loaded: LOADED, queued: QUEUED });
 
   const posed = await h.snapshot();
   assertEqual(posed.injector.loaded, LOADED, "the charge posed as loaded");

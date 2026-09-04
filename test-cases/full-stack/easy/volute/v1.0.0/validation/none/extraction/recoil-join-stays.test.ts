@@ -33,8 +33,8 @@
 // last core stands at or behind the inlet. So the join is the case of a train that
 // has backed up as far as arc position 0, which is exactly the hall this poses.
 //
-// THE POSE. Three segments on the straight top run, quota exhausted
-// (specs/channel.md — "Emission"), pressure 0:
+// THE POSE. Three segments on the straight top run, the inlet held
+// (specs/instrumentation.md — `setEmission`), pressure 0:
 //
 //   * a LEAD of halide, sulfur, sulfur, head at 239;
 //   * a CHASER of sulfur, cobalt, cobalt, MERGE_GAP (15 units) short of the merge

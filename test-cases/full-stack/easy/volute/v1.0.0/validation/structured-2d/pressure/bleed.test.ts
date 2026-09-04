@@ -15,7 +15,7 @@
 // there and both name it as bleeding, so a build that wrote `coreCount < 24` for
 // the bleed fails here while a build that wrote the stated `<=` passes.
 //
-// THE DRIVE. An isolated hall: the quota is stopped at 0 so the inlet delivers
+// THE DRIVE. An isolated hall: the inlet is held so it delivers
 // nothing that would carry the count past 24 mid-measurement, and the channel
 // holds exactly 24 cores in one segment. One segment cannot merge and no
 // projectile exists, so `specs/extraction.md` has nothing to extract and no
@@ -84,7 +84,6 @@ afterEach(async () => {
 it("falls by 2.0 per second with 24 cores on the channel", async () => {
   await poseHall(harness, {
     level: 1,
-    quotaRemaining: 0,
     pressure: START_PRESSURE,
     cores: spacedBlock(HEAD_S, CORES, CHARGE),
   });

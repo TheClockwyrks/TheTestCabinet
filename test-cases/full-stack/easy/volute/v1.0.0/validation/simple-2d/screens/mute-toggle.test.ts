@@ -5,11 +5,11 @@
 // deliberately not this point's business.
 //
 // THE SPEC IT RESTS ON.
-//   specs/controls.md ("Actions and bindings"): "mute | `KeyM` | — | edge |
-//   toggles the audio between muted and unmuted", and "Mute answers on every
-//   screen."
-//   specs/ui.md ("Mute"): "The game binds the mute action to the runtime's mute
-//   bit and toggles it from any screen."
+//   specs/controls.md ("Actions"): "`mute` | edge | toggles the audio between
+//   muted and unmuted", and "`mute` answers on every screen"; `src/constants.ts`
+//   binds the action to `KeyM`.
+//   specs/ui.md ("Mute"): "The game toggles `api.audio.setMuted` from any screen
+//   and reads the bit back with `api.audio.muted()`."
 //   specs/state.md: `muted` is "the game's readable copy of the engine's mute
 //   bit", and specs/instrumentation.md has `snapshot()` report it, refreshed
 //   "from the runtime in every update".

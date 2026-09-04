@@ -9,26 +9,24 @@
 // clockwise on screen as it increases" — which makes clockwise the INCREASING
 // direction. specs/instrumentation.md fixes the tick at `1 / 60` s, so a 30-tick
 // window is exactly half a second and the turn it must cover is exactly
-// `180 / 2 = 90` degrees, upward. specs/controls.md binds turn right to
-// `ArrowRight` and reads it as a held value.
+// `180 / 2 = 90` degrees, upward. specs/controls.md ("Actions") reads `aim-right`
+// as a held value, and `src/constants.ts` binds it to `ArrowRight`.
 //
 // This is the mirror of `injector/aim-rotate-left` and is a point of its own
 // because the two are independent paths into one angle: a build that turns the
 // wrong way under one of them must score differently from one that turns the
 // wrong way under both.
 //
-// THE HALL. `fire(180)` leaves the aim at a known 180 degrees the way the
-// review item names — specs/instrumentation.md: "Sets the aim to
-// `angleDegrees`, normalized into `[0, 360)`" — and 180 keeps the whole sweep
-// clear of the `[0, 360)` seam. The quota is exhausted and one core is parked
-// at the inlet (`parkedCore()`), which specs/channel.md's polyline puts at
-// `(40, 40)`: an exhausted quota over an EMPTY channel clears the level on the
-// next tick (specs/channel.md, "The order of a tick", step 6) and the turn
-// actions are live on `playing` alone (specs/controls.md), so one core has to
-// stand there, and it stands where neither the shot nor the aim reading ever
-// reaches. The shot the pose fires runs due `-x` along `y = 330` and leaves the
-// field 40.6 ticks later, so it is still in flight and still harmless across
-// the whole window.
+// THE HALL. `setAim(180)` leaves the aim at a known 180 degrees, and nothing
+// else: `specs/instrumentation.md` — "Sets the aim to `angleDegrees`, normalized
+// into `[0, 360)`, and does nothing else: no core is released". 180 keeps the
+// whole sweep clear of the `[0, 360)` seam. No projectile is fired and nothing
+// stands on the channel: `poseHall` holds the inlet (`setEmission`), which is
+// independent of the quota, and the quota it leaves is a level start's — so
+// `specs/progression.md`'s clear, "the moment its quota is exhausted and no cores
+// remain on the channel", never fires, and the turn actions stay live on
+// `playing` (specs/controls.md) over an empty hall. The aim is the only thing in
+// this scenario.
 //
 // WHAT IS READ, AND WHY IT IS A DELTA. The item's own drive reads the aim's
 // absolute value at the end of a 30-tick hold. This reads its CHANGE across 30
@@ -55,7 +53,6 @@ import { AIM_RATE, TICK_DT, TURN_TOL } from "../constants";
 import {
   captureReplay,
   createHarness,
-  parkedCore,
   poseHall,
   signedTurn,
   type Harness,
@@ -87,8 +84,8 @@ afterEach(async () => {
 });
 
 it("turns the aim clockwise at 180 degrees per second while ArrowRight is held", async () => {
-  await poseHall(h, { cores: parkedCore() });
-  h.debug.fire(OPENING);
+  await poseHall(h, {});
+  h.debug.setAim(OPENING);
 
   const swung = await captureReplay(h, "right", async () => {
     h.hold("ArrowRight");

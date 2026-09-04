@@ -22,11 +22,12 @@
 // WHAT IS READ. The engine's cue bus announces every play at the moment it
 // happens and the harness stamps each announcement with the tick that was
 // running, so this decides that the hall SOUNDED on the tick the run was drawn
-// out. The cue's NAME is not asserted, though this engine offers it: an
-// engineless build owns its whole audio layer and has no bus to ask, and the
-// three validator projects of this case decide the same eighty-three points, so
-// the reading is the one every engine can make. Whether it was the extraction's
-// own cue and not another is the reviewer's, by ear.
+// out. The cue's NAME is not asserted here, though this engine offers it: this
+// point covers all three engines, and an engineless build owns its whole audio
+// layer with no bus to ask — so the reading is the one every engine can make.
+// Which of the five extraction cues sounded, and at which chain step, is decided
+// by `audio/extract-cue-step-one`, `-two` and `-beyond` beside this file, which
+// the manifest scopes to the two engines whose bus reports the name.
 //
 // WHY A MERGE AND NOT AN INSERTION. The reading is "a cue sounded on the tick the
 // run was drawn out", so the tick has to be one the specification puts NO other
@@ -48,10 +49,9 @@
 // ("Advance") rides the lead segment at the effective feed speed and "Every other
 // segment" at the fixed 180 units/s, so the trailing segment closes on its own,
 // merges, and the maximal same-charge run spanning the join is three cobalt with
-// a halide stopping it at each end. The quota is exhausted (`specs/channel.md`,
-// "Emission") so the inlet puts nothing into the gap, and the two halide left
-// standing keep the channel occupied so the level does not clear on the
-// extraction's tick.
+// a halide stopping it at each end. The inlet is held (`specs/instrumentation.md`,
+// `setEmission`) so it puts nothing into the gap, and the level's quota is left
+// where it stands, so no clear can follow the extraction's tick.
 //
 // TOLERANCE. None on the tick, and none would be honest: the specification fixes
 // the cue to "the tick its event happens", both the extraction and the score
@@ -152,7 +152,6 @@ it("sounds a cue on the tick the run is drawn out", async () => {
     // by SPACING, with the trailing one a gap short of the merge position.
     cores: [...spacedRun(LEAD_HEAD_S, LEAD), ...spacedRun(TRAIL_HEAD_S, TRAIL)],
     // The inlet stopped, so nothing arrives to join either segment.
-    quotaRemaining: 0,
   });
 
   const posed = await h.snapshot();

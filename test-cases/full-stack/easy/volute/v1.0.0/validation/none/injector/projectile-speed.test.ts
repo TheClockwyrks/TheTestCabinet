@@ -26,13 +26,12 @@
 // would show a chord SHORTER than 310 for the same speed, so one length reading
 // catches a curve as well as a wrong rate.
 //
-// THE HALL. The quota is exhausted and one core is parked at the inlet
-// (`parkedCore()`), which specs/channel.md's polyline puts at `(40, 40)`. An
-// exhausted quota over an empty channel clears the level on the next tick
-// (specs/channel.md, "The order of a tick", step 6), which would stop the hall
-// advancing at all; the parked core stands 130 units off the shot's path, far
-// outside the 28-unit strike distance specs/injector.md fixes, so nothing seats
-// and the flight runs undisturbed.
+// THE HALL. Nothing stands on the channel and nothing arrives. `poseHall` holds
+// the inlet with `setEmission(false)` and leaves the quota unexhausted, so
+// specs/progression.md's clear condition ("the moment its quota is exhausted and
+// no cores remain on the channel") never fires and the hall keeps advancing over
+// an EMPTY channel. With no core on the channel nothing can seat, so the flight
+// runs undisturbed.
 //
 // TOLERANCE. +/- 3 units on the 310-unit travel, the figure the review item
 // states. Over a window of counted ticks the arithmetic is exact — 30 ticks of
@@ -57,7 +56,7 @@ import {
   captureReplay,
   createHarness,
   distance,
-  parkedCore,
+  fireAt,
   poseHall,
   type Harness,
   type VoluteSnapshot,
@@ -92,10 +91,10 @@ afterEach(async () => {
 });
 
 it("carries a fired core 620 units per second along its firing angle", async () => {
-  await poseHall(h, { cores: parkedCore() });
+  await poseHall(h);
 
   const flight = await captureReplay(h, "flight", async () => {
-    await h.debug.fire(OPENING_AIM);
+    await fireAt(h, OPENING_AIM);
     const released = await h.snapshot();
     const arrived = await h.step(WINDOW_TICKS);
     return { released, arrived };

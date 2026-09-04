@@ -26,6 +26,7 @@
 import { SPACING, type ChargeId, type Point } from "../constants";
 import {
   drawnPoints,
+  fireAt,
   poseHall,
   type DrawCall,
   type Harness,
@@ -89,7 +90,7 @@ export async function driveShot(
   h: Harness,
   ticks: number,
 ): Promise<ShotFrames> {
-  await h.debug.fire(270);
+  await fireAt(h, 270);
   const result: ShotFrames = {
     strike: -1,
     removed: false,

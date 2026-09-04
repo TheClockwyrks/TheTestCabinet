@@ -17,14 +17,11 @@
 // rather than four tenths of it. A build that stacked the second grant on the
 // first would report one or the other wrongly.
 //
-// AND THE SAME KIND OVER ITSELF. The sentence the rule is written in ends
-// "starting its full duration afresh, including a grant of the kind already
-// active", and `specs/instrumentation.md` repeats it of `grantMachinery`. So the
-// same sightline is granted a second time over the one now running down, and its
-// seconds left are read back at the full 12 again. The reading before it is taken
-// too, so the check cannot pass on a timer that never moved: a machinery a second
-// of play has worn down reports under its full duration by more than the
-// tolerance, and the grant that follows puts it back.
+// WHAT THIS CHECK DOES NOT DECIDE. The same sentence ends "including a grant of
+// the kind already active", which is a second requirement a build implements on
+// its own — a build that replaces one kind with another correctly and treats a
+// re-grant of the RUNNING kind as a no-op is a distinct defect. That is
+// `machinery/regrant-restarts`, and it grades separately.
 //
 // THE TOLERANCES. The kind is an equality, not a measurement. The duration is
 // read with no tick stepped since the grant, so an ideal build reports exactly
@@ -34,12 +31,7 @@
 // 2% — and the choked rate it must not be is 60% away.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertLessThan,
-  assertNear,
-  assertNotNull,
-} from "../assert";
+import { assertEqual, assertNear, assertNotNull } from "../assert";
 import {
   MACHINERY_DURATION,
   TICK_DT,
@@ -87,7 +79,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it(`reports ${SECOND} at its full duration when it is granted over a running ${FIRST}, and afresh when it is granted over itself`, async () => {
+it(`reports ${SECOND} at its full duration when it is granted over a running ${FIRST}`, async () => {
   await poseHall(h, {
     level: LEVEL,
     pressure: 0,
@@ -100,14 +92,6 @@ it(`reports ${SECOND} at its full duration when it is granted over a running ${F
   const granted = await h.snapshot();
   const running = await h.step();
   await captureStill(h, "replaced");
-
-  // A second of play off the replacement, then the same kind granted over
-  // itself: the reading before the grant says the timer was running down, and
-  // the reading after says the grant restarted it.
-  await h.step(HELD_TICKS);
-  const worn = await h.snapshot();
-  await h.debug.grantMachinery(SECOND);
-  const regranted = await h.snapshot();
 
   assertNotNull(
     granted.machinery,
@@ -129,22 +113,5 @@ it(`reports ${SECOND} at its full duration when it is granted over a running ${F
     FREE_FEED,
     speedTolerance(FREE_FEED),
     `the effective feed speed once the ${FIRST} has been replaced`,
-  );
-
-  assertLessThan(
-    worn.machinery?.remaining ?? Number.NaN,
-    SECOND_DURATION - DURATION_TOL,
-    `the seconds left on the ${SECOND} after a second of play, before it is granted again`,
-  );
-  assertEqual(
-    regranted.machinery?.kind,
-    SECOND,
-    `the kind left active by a ${SECOND} granted over a running ${SECOND}`,
-  );
-  assertNear(
-    regranted.machinery?.remaining ?? Number.NaN,
-    SECOND_DURATION,
-    DURATION_TOL,
-    `the seconds left on a ${SECOND} granted over the ${SECOND} already active`,
   );
 });

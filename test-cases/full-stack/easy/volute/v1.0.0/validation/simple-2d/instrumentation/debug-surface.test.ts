@@ -19,7 +19,7 @@
 //    built, as the pair `[state, debug]`. The engine returns that same value from
 //    `engine.debug`"                                          — the surface
 //   "The surface carries `version` (`VOLUTE_DEBUG_VERSION`, `1`)"
-//   the fourteen operation headings under "The operations"    — REQUIRED_OPS
+//   every operation heading under "The operations"           — REQUIRED_OPS
 //   "Render-free core. Game state advances from ticks and input alone,
 //    independent of the canvas, of the frame loop that measured the delta time,
 //    and of wall-clock time"                                  — the clock
@@ -89,6 +89,7 @@ import {
   captureStill,
   createHarness,
   failSurface,
+  fireAt,
   head,
   poseHall,
   seconds,
@@ -228,7 +229,7 @@ it("restores every declared field to its title value on reset", async () => {
     queued: "olivine",
     machinery: "sightline",
   });
-  await h.debug.fire(90);
+  await fireAt(h, 90);
   await h.step(DRIVE_TICKS);
 
   await h.debug.reset({ seed: DEFAULT_SEED });
@@ -260,19 +261,97 @@ it("restores every declared field to its title value on reset", async () => {
   // requirement is that the clock went back to the start rather than that it
   // landed on a particular representation of it.
   assertNear(title.simTime, 0, TICK_DT, "the simulated time a reset leaves");
+
+  // "The inlet's gate and the train's gate are untouched": `poseHall` held the
+  // inlet, and a reset inside a posed scenario leaves it held, so a scenario
+  // that resets mid-drive stays the scenario it was.
+  assertEqual(title.emission, false, "the inlet's gate a reset leaves");
+  assertEqual(title.feed, true, "the train's gate a reset leaves");
 });
 
-it("opens a run with start and a named level with startLevel", async () => {
+it("poses the screen, the level, the score, the cells and the chain one at a time", async () => {
   await h.debug.reset({ seed: DEFAULT_SEED });
-  await h.debug.start();
-  const started = await h.snapshot();
 
-  // "the score `0`, the cells at `CELLS` (`3`), and level `1` opened exactly as
-  // `startLevel` opens it", and `startLevel` makes "the screen ... `playing`".
-  assertEqual(started.screen, "playing", "the screen start leaves");
-  assertEqual(started.score, 0, "the score start leaves");
-  assertEqual(started.cells, CELLS, "the cells start leaves");
-  assertEqual(started.level, 1, "the level start leaves");
+  // Each of these "changes nothing else", so each is read back on its own and
+  // the fields the others own are read back unchanged beside it.
+  await h.debug.setScreen("paused");
+  assertEqual(
+    (await h.snapshot()).screen,
+    "paused",
+    "the screen setScreen set",
+  );
+
+  await h.debug.setLevel(4);
+  const levelled = await h.snapshot();
+  assertEqual(levelled.level, 4, "the level setLevel set");
+  assertEqual(levelled.screen, "paused", "the screen setLevel left alone");
+  assertLength(levelled.train, 0, "the cores setLevel put on the channel");
+
+  await h.debug.setScore(1230);
+  assertEqual((await h.snapshot()).score, 1230, "the score setScore set");
+
+  await h.debug.setCells(1);
+  const spent = await h.snapshot();
+  assertEqual(spent.cells, 1, "the cells setCells set");
+  // "Neither ends a run or opens one": the screen is where setScreen left it.
+  assertEqual(spent.screen, "paused", "the screen setCells left alone");
+
+  await h.debug.setChainStep(3);
+  const chained = await h.snapshot();
+  assertEqual(chained.chainStep, 3, "the chain step setChainStep set");
+  // "restarts the window that returns the step to `1`", so the window is open.
+  assertGreaterThan(
+    chained.chainTimer,
+    0,
+    "the chain window setChainStep left",
+  );
+});
+
+it("holds the inlet and the train with the driver's two gates", async () => {
+  // Both gates are read back the way every other field is: set a value, read it.
+  await h.debug.reset({ seed: DEFAULT_SEED });
+  await h.debug.setEmission(false);
+  await h.debug.setFeed(false);
+  const held = await h.snapshot();
+  assertEqual(held.emission, false, "the inlet's gate setEmission set");
+  assertEqual(held.feed, false, "the train's gate setFeed set");
+
+  // With the train held, "no core's arc position changes there": the cores this
+  // poses stand where they were posed however long the hall runs. How FAR they
+  // would otherwise travel is `channel/feed-advance`'s point.
+  await h.debug.setScreen("playing");
+  await h.debug.poseTrain(spacedBlock(1000, 3, "halide"));
+  const posed = await h.snapshot();
+  const stepped = await h.step(DRIVE_TICKS);
+  assertNear(
+    head(stepped).s,
+    head(posed).s,
+    1e-6,
+    `the head's arc position after ${DRIVE_TICKS} ticks with the train held`,
+  );
+  // And with the inlet held, nothing arrives however much quota remains.
+  assertGreaterThan(stepped.quotaRemaining, 0, "the quota left to emit");
+  assertLength(
+    stepped.train,
+    3,
+    "the cores on a channel the inlet is held over",
+  );
+
+  // Let both go, and the hall runs again.
+  await h.debug.setEmission(true);
+  await h.debug.setFeed(true);
+  const running = await h.step(DRIVE_TICKS);
+  assertEqual(running.emission, true, "the inlet's gate setEmission set");
+  assertEqual(running.feed, true, "the train's gate setFeed set");
+  assertGreaterThan(
+    head(running).s,
+    head(stepped).s,
+    "the head's arc position once the train was let go",
+  );
+});
+
+it("opens a named level with startLevel", async () => {
+  await h.debug.reset({ seed: DEFAULT_SEED });
 
   // "Opens `level`, a whole number clamped to `1` through `LEVEL_COUNT` (`5`)".
   // Level 3 rather than 1, so a build that ignores the argument fails.
@@ -330,7 +409,7 @@ it("poses the train it is handed, and clears the channel", async () => {
   }
 
   // "Removes every core from the channel and every projectile."
-  await h.debug.fire(270);
+  await fireAt(h, 270);
   await h.debug.clearTrain();
   const cleared = await h.snapshot();
   assertLength(cleared.train, 0, "the cores clearTrain left");
@@ -343,16 +422,28 @@ it("holds the charges it is given and releases the loaded one on fire", async ()
   assertEqual(held.injector.loaded, "cobalt", "the charge setLoaded set");
   assertEqual(held.injector.queued, "garnet", "the charge setQueued set");
 
-  // "Sets the aim to `angleDegrees`, normalized into `[0, 360)`, and releases the
-  // loaded core along it": -90 is 270 once normalized, which is what makes this a
-  // reading of the normalization rather than of an angle the build echoed back.
-  await h.debug.fire(-90);
+  // "Sets the aim to `angleDegrees`, normalized into `[0, 360)`, and does nothing
+  // else": -90 is 270 once normalized, which is what makes this a reading of the
+  // normalization rather than of an angle the build echoed back. Nothing is
+  // released by it, which is the other half of the heading.
+  await h.debug.setAim(-90);
+  const aimed = await h.snapshot();
+  assertAngleNear(
+    aimed.injector.aim,
+    OPENING_AIM,
+    ANGLE_TOL,
+    "the aim setAim(-90) normalized to",
+  );
+  assertLength(aimed.projectiles, 0, "the projectiles setAim released");
+  assertEqual(aimed.injector.loaded, "cobalt", "the charge setAim left loaded");
+
+  await h.debug.fire();
   const fired = await h.snapshot();
   assertAngleNear(
     fired.injector.aim,
     OPENING_AIM,
     ANGLE_TOL,
-    "the aim fire(-90) normalized to",
+    "the aim fire() left the injector on",
   );
 
   // "the core leaves the injector as a projectile, the queued core becomes
@@ -456,7 +547,7 @@ it("reports the whole documented snapshot shape, from a live hall", async () => 
     queued: "garnet",
     machinery: "sightline",
   });
-  await h.debug.fire(270);
+  await fireAt(h, 270);
   await h.step(2);
 
   // The frame the snapshot below is read off: what the surface reports and what
@@ -490,6 +581,8 @@ it("reports the whole documented snapshot shape, from a live hall", async () => 
     assertEqual(typeof s[field], "number", `snapshot().${field}`);
   }
   assertEqual(typeof s.danger, "boolean", "snapshot().danger");
+  assertEqual(typeof s.emission, "boolean", "snapshot().emission");
+  assertEqual(typeof s.feed, "boolean", "snapshot().feed");
   assertEqual(typeof s.muted, "boolean", "snapshot().muted");
 
   // The train, head first, with every documented field on every entry.
@@ -626,7 +719,7 @@ it("reports values that move when the hall is stepped", async () => {
     cores: spacedBlock(1000, 3, "halide"),
     machinery: "sightline",
   });
-  await h.debug.fire(270);
+  await fireAt(h, 270);
   const before = await h.snapshot();
 
   const after = await h.step(DRIVE_TICKS);

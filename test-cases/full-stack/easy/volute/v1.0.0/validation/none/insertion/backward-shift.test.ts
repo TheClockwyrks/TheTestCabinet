@@ -58,16 +58,7 @@ import {
   topRunS,
   type Harness,
 } from "../harness";
-import {
-  approach,
-  assertInFlight,
-  LEAD_STEP,
-  PARKED,
-  PLUMB_SHOT_X,
-  poseFor,
-  SHOT,
-  UP_AIM,
-} from "./stage";
+import { approach, assertInFlight, PLUMB_SHOT_X, STAGE, UP_AIM } from "./stage";
 
 /**
  * The five charges, one per core, so no three consecutive cores can ever match
@@ -115,7 +106,7 @@ it("shifts the train behind the seated slot back by one spacing", async () => {
     "the shot arrives behind the struck core and inside the strike distance",
   );
 
-  await poseHall(h, { cores: PARKED, loaded: SHOT });
+  await poseHall(h, STAGE);
 
   const short = await approach(h, UP_AIM);
   assertInFlight(short);
@@ -123,9 +114,7 @@ it("shifts the train behind the seated slot back by one spacing", async () => {
   // Five cores in one segment, placed so that after the single tick that follows
   // the struck core stands LAG units to the +x side of the shot's path.
   const struckS = topRunS(PLUMB_SHOT_X + LAG);
-  await h.debug.poseTrain(
-    spacedRun(poseFor(struckS + STRUCK_INDEX * SPACING, LEAD_STEP), RUN),
-  );
+  await h.debug.poseTrain(spacedRun(struckS + STRUCK_INDEX * SPACING, RUN));
   const before = await h.snapshot();
   assertEqual(coreCount(before), RUN.length, "the five-core segment is posed");
   const spanBefore = head(before).s - tail(before).s;

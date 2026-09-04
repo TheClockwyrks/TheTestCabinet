@@ -14,8 +14,8 @@
 // "every other segment". Thirty ticks is half a second, over which the trailing
 // core gains 90 units and the lead one 11, so the gap is still 921 at the end
 // and no merge can enter the reading. The two carry different charges, so
-// nothing the drive does could extract; the quota is posed to 0, so the inlet
-// places nothing behind them.
+// nothing the drive does could extract; `poseHall` holds the inlet, so it places
+// nothing behind them.
 //
 // THE TOLERANCE. `CATCHUP_ARC_TOL`, the +/- 1 unit the review item states for
 // itself ("confirm the trailing core stands at 1090 (+/- 1)") in place of the
@@ -59,7 +59,6 @@ afterEach(async () => {
 
 it("closes a trailing segment at 180 units of arc per second", async () => {
   await poseHall(h, {
-    quotaRemaining: 0,
     cores: [
       [LEAD_S, "halide", null],
       [TRAIL_S, "sulfur", null],

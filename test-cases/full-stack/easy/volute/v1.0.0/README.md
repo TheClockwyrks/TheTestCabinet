@@ -23,11 +23,12 @@ This file is for people working on the case. Nothing in it is seeded.
   levels, seven screens — through without blurring a row. The asset pass is what
   `max_runtime_hours = 6` accounts for, not the difficulty.
 - **Determinism through debug verbs.** A scenario poses the moment it wants
-  rather than replaying a level from a seed. `startLevel`, `clearTrain`,
-  `poseTrain`, `setLoaded`, `setQueued`, `fire`, `setPressure`,
-  `setQuotaRemaining` and `grantMachinery` all route through the real systems,
-  and no operation decides an outcome, so every extraction, score and chain a
-  validator reads comes from stepping the game.
+  rather than replaying a level from a seed. `setScreen`, `setLevel`, `setScore`,
+  `setCells`, `setChainStep`, `startLevel`, `clearTrain`, `poseTrain`,
+  `setLoaded`, `setQueued`, `setAim`, `fire`, `setPressure`,
+  `setQuotaRemaining`, `setEmission`, `setFeed` and `grantMachinery` all route
+  through the real systems, and no operation decides an outcome, so every
+  extraction, score and chain a validator reads comes from stepping the game.
   `instrumentation.pose-decides-nothing` is the point that holds a build to
   that.
 - **Appearance is free; legibility is fixed.** The palette, the type, the
@@ -82,17 +83,25 @@ engine's own `file:` dependency, written in at seed time.
 
 ## The checklist
 
-Eighty-five items across eleven categories, in the categories grammar
-(`[review] format = 2`), every one weighted `1`. The case is on the per-engine
-spelling and so is validator-rated: every item carries `validation`,
+One hundred and twenty-nine items across eleven categories, in the categories
+grammar (`[review] format = 2`), every one weighted `1`. The case is on the
+per-engine spelling and so is validator-rated: every item carries `validation`,
 `failure_cap`, and `domains`. Four domains — `channel`, `injector`,
 `progression`, and `presentation` — and the run's functional rating is the worst
 across them.
 
-A `validation.script` path is relative to `validation/<engine>/`, and the same
-path must exist under all three engine directories, so a point is never decided
-under one engine and left to a reviewer under another. Every script is named
-`<category>/<item>.test.ts`.
+A `validation.script` path is relative to `validation/<engine>/`. Most points
+cover all three engines, so the same path exists under all three engine
+directories and a point is never decided under one engine and left to a reviewer
+under another. Sixteen points name `engines` instead, because what they decide
+belongs to the runtime rather than to the build under the engines they leave out:
+`channel/self-advancing`, `injector/swap-pointer` and `screens/start-touch` run
+under `none` alone, where the build writes the frame loop and the input layer,
+and the thirteen cue-identity points of the `audio` category run under
+`simple-2d` and `structured-2d` alone, where the engine's bus reports the name a
+cue sounded under. A scoped point is left out of the checklist of a run on an
+engine it does not name, and adds no weight to that run's score. Every script is
+named `<category>/<item>.test.ts`.
 
 Motion is handed back as a `replay` — the draw-command recording a validator
 takes off the recorder it arms itself — rather than as a `video`, which is a

@@ -12,8 +12,9 @@
 // "Any cooldown outstanding at the call is cleared first, so the call always
 // launches" — it cannot express this requirement. So the first shot is released
 // through `fire`, which sets the timer "as a played shot sets it", and both
-// attempts after it are the `Space` control specs/controls.md binds fire to,
-// which is the input the rule is about.
+// attempts after it are the `fire` action, which `src/constants.ts` binds to
+// `Space` and specs/controls.md ("Actions") makes the one that "fires the loaded
+// core along the aim" — the input the rule is about.
 //
 // WHERE THE PRESSES LAND, AND WHY THERE. specs/channel.md's tick order runs every
 // timer down at step 1 and never says where an input is consumed within a tick,
@@ -36,16 +37,16 @@
 // reading; the second reading is the control that stops a build whose fire
 // control does nothing at all from passing this point by refusing everything.
 //
-// THE HALL. The quota is exhausted and one core is parked at the inlet
-// (`parkedCore()`), which specs/channel.md's polyline puts at `(40, 40)`. An
-// exhausted quota over an empty channel clears the level on the next tick
-// (specs/channel.md, "The order of a tick", step 6) and fire is live on
-// `playing` alone (specs/controls.md), so one core has to stand there; it sits
-// 130 units off the shots' path, far outside the 28-unit strike distance
-// specs/injector.md fixes, so nothing seats and the count of projectiles is the
-// whole reading. Both shots run due `-y` from `(420, 330)` and leave the field
-// 31.9 ticks after release, so both are still in flight when the counts are
-// read.
+// THE HALL. Nothing stands on the channel at all. `specs/instrumentation.md`
+// (`setEmission`) gates the inlet independently of the quota, so `poseHall`
+// holds the inlet and leaves the quota where a level start leaves it: nothing
+// arrives, and `specs/progression.md`'s clear — "the moment its quota is
+// exhausted and no cores remain on the channel" — never fires on an unexhausted
+// quota, so the screen stays `playing` over an EMPTY hall. Nothing this check
+// reads can be disturbed by a bystander, because there is none.
+// Nothing seats, so the count of projectiles is the whole reading. Both shots run
+// due `-y` from `(420, 330)` and leave the field 31.9 ticks after release, so
+// both are still in flight when the counts are read.
 //
 // TOLERANCE. None to pick: the reading is a count of projectiles, which the case
 // grades exactly. The tolerance is spent on WHERE the two presses are placed,
@@ -57,7 +58,6 @@ import { OPENING_AIM } from "../constants";
 import {
   captureReplay,
   createHarness,
-  parkedCore,
   poseHall,
   pressFire,
   type Harness,
@@ -83,10 +83,11 @@ afterEach(async () => {
 });
 
 it("refuses a shot inside the cooldown and honors one after it", async () => {
-  await poseHall(h, { cores: parkedCore() });
+  await poseHall(h, {});
 
   const fired = await captureReplay(h, "denied", async () => {
-    h.debug.fire(OPENING_AIM);
+    h.debug.setAim(OPENING_AIM);
+    h.debug.fire();
     await h.step(INSIDE_TICKS);
     const refused = await pressFire(h);
     await h.step(GAP_TICKS);
