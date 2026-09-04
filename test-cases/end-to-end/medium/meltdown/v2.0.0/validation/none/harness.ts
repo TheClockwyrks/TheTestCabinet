@@ -111,18 +111,20 @@ import {
   type Vent,
 } from "./constants";
 
-declare module "vitest" {
-  export interface ProvidedContext {
-    /** Where the built site is served, from `globalSetup.ts`. */
-    meltdownUrl: string;
-    /** The one Chromium every suite worker connects to. */
-    meltdownBrowserWs: string;
-  }
-}
+// The addresses `globalSetup.ts` hands the suite workers are the SHARED harness's
+// keys, declared once in `./case-harness/config` rather than per case: the
+// `declare module "vitest"` that names them is a GLOBAL augmentation, and two
+// projects type-checked together that each declared their own would collide.
+// Importing the two names is also what puts that augmentation in this program, so
+// `inject` is typed rather than guessed.
+import { PROVIDE_URL_KEY, PROVIDE_WS_KEY } from "./case-harness/config";
 
 /* -------------------------------------------------------------------------- */
 /* The contract the build owes                                                */
 /* -------------------------------------------------------------------------- */
+
+/** The case this project decides, which prefixes every message the harness prints. */
+export const SLUG = "meltdown";
 
 /** The handle an engineless build installs its surface on. */
 export const HANDLE = "__meltdown";
@@ -301,6 +303,19 @@ export interface ControlsView {
   mute: Rect;
 }
 
+/**
+ * One row of the current screen's menu, as its hit rectangle in logical stage
+ * units.
+ *
+ * `index` is the row number `menuIndex` counts, so a scenario that reads a row
+ * back can say which row it holds without relying on the array's order — and a
+ * build that reported them out of order is caught by
+ * `screens/menu-rows-reported`.
+ */
+export interface MenuRowView extends Rect {
+  index: number;
+}
+
 /** The coming wave the panel previews, or `null` when there is none. */
 export interface NextWaveView {
   type: SurgeType;
@@ -357,6 +372,17 @@ export interface MeltdownSnapshot {
   buildZone: BuildZone | null;
   /** The cheapest open route from each vent to its opposite exhaust, in tiles. */
   paths: { left: { length: number }; top: { length: number } };
+  /**
+   * Every row of the menu the current screen shows, as its hit rectangle in
+   * logical stage units, in row order from `0`.
+   *
+   * `specs/screens.md` leaves where a build draws its menus entirely to the
+   * build and requires every row to be a pointer target, so the build reports
+   * what it drew and a scenario presses the rectangle it reported. Empty while
+   * the screen is `playing`, which shows no menu. A diagnostic read like
+   * `controls`: no operation sets it.
+   */
+  menu: MenuRowView[];
   controls: ControlsView;
   towers: TowerView[];
   surge: UnitView[];
@@ -371,7 +397,7 @@ export interface MeltdownDebugApi {
   advance(seconds: number, frames?: number): Promise<void>;
 
   // The core.
-  reset(options?: { seed?: number }): Promise<void>;
+  reset(seed?: number): Promise<void>;
   snapshot(): Promise<MeltdownSnapshot>;
 
   // The screen and the run.
@@ -1037,7 +1063,7 @@ const PRESS_HOLD_MS = 50;
 let browserPromise: Promise<Browser> | null = null;
 
 async function sharedBrowser(): Promise<Browser> {
-  browserPromise ??= connectChromium(inject("meltdownBrowserWs"));
+  browserPromise ??= connectChromium(inject(PROVIDE_WS_KEY), { slug: SLUG });
   return browserPromise;
 }
 
@@ -1234,7 +1260,7 @@ export async function createHarness(
     if (message.type() === "error") pageErrors.push(message.text());
   });
 
-  await page.goto(inject("meltdownUrl"), {
+  await page.goto(inject(PROVIDE_URL_KEY), {
     waitUntil: "load",
     timeout: NAVIGATION_TIMEOUT_MS,
   });
@@ -3145,6 +3171,54 @@ export async function tapAt(h: Harness, x: number, y: number): Promise<void> {
 /** {@link tapAt} at the centre of a control the panel reported. */
 export function tapControl(h: Harness, rect: Rect): Promise<void> {
   return tapAt(h, rect.x + rect.w / 2, rect.y + rect.h / 2);
+}
+
+/**
+ * The rectangle the build reported for row `index` of the current screen's menu,
+ * failing the check when it reported none.
+ *
+ * `specs/screens.md` requires every row of every menu to be a pointer target and
+ * `specs/instrumentation.md` has the snapshot report each row's rectangle, so a
+ * screen whose menu the build drew but did not report cannot be driven with the
+ * pointer at all — which is this failure rather than a missing row.
+ */
+export function menuRow(
+  snapshot: MeltdownSnapshot,
+  index: number,
+  doing = "the scenario",
+): MenuRowView {
+  const row = snapshot.menu.find((entry) => entry.index === index);
+  if (row === undefined) {
+    fail(
+      `snapshot().menu to hold row ${index} of the ${snapshot.screen} menu ` +
+        `(${doing}, specs/screens.md)`,
+      `rows ${JSON.stringify(snapshot.menu.map((entry) => entry.index))}`,
+    );
+  }
+  return row;
+}
+
+/**
+ * Move the pointer onto the centre of a reported menu row and run the frame that
+ * delivers it.
+ *
+ * Hover alone: `specs/controls.md` says reaching a row and taking it are
+ * separate, so this presses nothing.
+ */
+export async function hoverMenuRow(
+  h: Harness,
+  index: number,
+): Promise<MenuRowView> {
+  const row = menuRow(await h.snapshot(), index, "hovering a menu row");
+  await h.debug.pointerMove(row.x + row.w / 2, row.y + row.h / 2);
+  await h.advance(1);
+  return row;
+}
+
+/** {@link tapAt} at the centre of a reported menu row. */
+export async function tapMenuRow(h: Harness, index: number): Promise<void> {
+  const row = menuRow(await h.snapshot(), index, "tapping a menu row");
+  await tapAt(h, row.x + row.w / 2, row.y + row.h / 2);
 }
 
 /** {@link tapAt} at a tile's centre. */

@@ -58,10 +58,10 @@ export default defineConfig({
     // busier than the worst this one has been measured at.
     //
     // IT CANNOT RUN AWAY WITH THE RUN, because the runner caps the WHOLE vitest
-    // invocation at twenty minutes of wall clock regardless (`VITEST_TIMEOUT`,
-    // `crates/core/src/vitest_validator.rs`). A hung suite is still bounded, and
-    // the figure here is deliberately half of that cap so that one stuck check
-    // cannot be the thing that spends it.
+    // invocation at forty-five minutes of wall clock regardless
+    // (`VITEST_TIMEOUT`, `crates/core/src/vitest_validator.rs`). A hung suite is
+    // still bounded, and the figure here is between a fifth and a quarter of that
+    // cap, so one stuck check cannot be the thing that spends it.
     testTimeout: 600_000,
     // The hook budget matches, for the same reason: `beforeEach` builds a harness
     // and poses a floor, and a host slow enough to need the ceiling above is slow
