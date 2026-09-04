@@ -557,6 +557,12 @@ directory the seeded workspace ignores in both git and Prettier, which keeps a
 report out of the commit, out of the analyzer's authored set, and out of the
 `format` command's `prettier --check`.
 
+The lint and format configuration covers the `.ts` and `.js` files the run
+holds: the ones the workspace seeded and the ones the build wrote. The vendored
+engine under `.tcab/`, the build output, and the report directories are ignored,
+so the recorded figures describe the model's own code. Markdown is left to its
+own linter, so the seeded specs stay as the case authored them.
+
 The toolchain stage reads both files after the command finishes and whatever it
 exited with, because a failing suite is the one whose coverage is most worth
 having. What is recorded is bounded: per-file rows are capped and flagged when

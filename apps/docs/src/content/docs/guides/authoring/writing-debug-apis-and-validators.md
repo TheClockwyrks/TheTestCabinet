@@ -220,6 +220,28 @@ The names a project takes from the build are worth reading as a list, and worth
 keeping short: a list that grows is the signal that a case is drifting back
 toward grading the build against itself.
 
+### The engineless project builds on the shared harness
+
+An engine's validator project constructs the engine in process, as that engine's
+own validator pages describe. An engineless project reaches the build through a
+browser, and every case that supports the `none` engine reaches it the same way:
+serve the built site, hold one Chromium, drive the build a frame at a time
+through the debug API the case's instrumentation spec required, and read what it
+drew.
+
+That machinery is the `@test-cabinet/case-harness` package, staged beside the
+project at `validation/case-harness/`, so a `./case-harness/...` import resolves
+in the checkout and in a run alike. The runner stages it rather than the manifest
+naming it, which keeps the suites out of the run repository the model works in.
+
+The project's `harness.ts` calls `createCaseHarness` with what is genuinely the
+case's: its handle, the operations its specification requires, its snapshot and
+debug-surface types, its stage size, and its tick rate. The factory returns the
+harness, the replay and still writers, and the audio-cue reader, which the file
+re-exports under the case's own names. `assert.ts`, `setup.ts`, `globalSetup.ts`,
+and `vitest.config.ts` are thin files over the same package, and the case's
+compound sequences sit beside them.
+
 ### One requirement per validator
 
 A validator decides one requirement in one direction. A build with a working
@@ -279,6 +301,38 @@ creature senses gives it its senses and holds its body still, and a check on how
 it travels gives it both. A switch that turns a whole creature off cannot express
 the first, so each faculty a scenario has to hold is its own operation.
 
+### A check reads state before it reads pixels
+
+A validator decides its requirement from the strongest reading it has: the
+game's own state through the debug surface, the events the engine broadcast, and
+the drawing operations the build submitted. Each of those says what the build
+did. Pixels say what one frame happened to look like, which anti-aliasing, the
+resolved font, and the device pixel ratio all move.
+
+Pixels are the right reading where the requirement is about the picture itself,
+such as a field being dark or two shapes being distinguishable, and a sample is
+taken well inside a shape rather than near an edge. Under an engine they are the
+last reading reached for, because the scene and the draw calls answer the same
+claim exactly. Under `none` a validator holds a page rather than an engine, so
+they are more often the only reading a claim has.
+
+A suite leaning on pixels is usually reading a spec that pinned appearance, which
+[Appearance is loose and reviewed](/guides/authoring/writing-case-specifications/#appearance-is-loose-and-reviewed)
+leaves to the reviewer.
+
+### A replay covers the behavior it backs
+
+A `replay` output brackets the stretch of the scenario its check is about. The
+recorder is armed once the world is posed and disarmed once the behavior has
+played out, with a short run-up before and a short settle after, so a reviewer
+sees the behavior arrive and sees what it left behind.
+
+The bracket is what a reviewer watches, so it runs long enough for the behavior
+to be recognizable and stops once it has happened. A written recording holds at
+most three hundred frames, five seconds at a sixty-hertz tick, and a longer
+section is decimated to fit, so a bracket that spends its length on a world at
+rest hands the reviewer a thinned recording of the moment that mattered.
+
 ### A validator always reaches a verdict
 
 Every validator ends at a pass or a fail. A validator that cannot pose the world
@@ -315,6 +369,19 @@ reactive player to reach its later states, such as a paddle game, has unit
 validators only, because a validator-side AI would grade the AI as much as the
 build.
 
+### The suite finishes inside its budget
+
+A run is validated on a two-core host, and the runner caps a case's whole suite
+run at forty-five minutes, stopping it and leaving every point it had not
+reached undecided. A case is authored to finish in fifteen minutes there,
+measured by running the suites against the reference implementation, which
+leaves the margin a loaded host needs.
+
+Frames are what a suite spends. A validator advances the clock by the frames its
+requirement needs, so a scenario whose requirement sits behind a timer sets the
+timer and advances past it. A project's suites run across eight workers sharing
+one browser, so the wall clock follows the longest file rather than the sum.
+
 ### Failure caps
 
 Every validated review item declares the
@@ -348,6 +415,8 @@ When designing or revising a case's debug API and validators:
   implementation, and every spec-honoring design passes.
 - Every figure a suite asserts comes from the project's own `constants.ts`,
   transcribed from the specs.
+- An engineless project is built on the shared `@test-cabinet/case-harness`
+  package, with only what is genuinely the case's held beside it.
 - `constants.ts` re-exports only what the specs leave to the build, `harness.ts`
   takes only the build's entry, and every other reference the project makes
   resolves inside the project.
@@ -360,6 +429,11 @@ When designing or revising a case's debug API and validators:
   faculties its requirement does not exercise.
 - Every validator reaches a pass or a fail, and a debug API that cannot be
   driven fails the item rather than leaving it undecided.
+- Each check reads state, events, or draw calls where they answer its claim, and
+  reads pixels where the requirement is the picture itself.
+- Each replay brackets the behavior its check backs, with a short run-up and a
+  short settle around it.
+- The whole suite finishes in fifteen minutes on a two-core host.
 - Integration validators exist only where the game replays to a known outcome
   without a validator-side player.
 - Each validated item's failure cap follows the table above.

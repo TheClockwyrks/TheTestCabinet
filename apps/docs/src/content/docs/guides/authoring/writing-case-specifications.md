@@ -42,6 +42,10 @@ Every seeded spec and the prompt exclude:
   the product needs;
 - URLs, paths, and identifiers that point at this repository or the gallery.
 
+The seeded workspace carries the same rule. Its `index.html`, its
+`package.json`, and its tool configuration name the build's own files and its
+entry point, so what the model opens describes the game alone.
+
 Requirements that exist for validation are written as ordinary product
 requirements. The [instrumentation](/testing/end-to-end/instrumentation/)
 contract is the standing example: the debug API, deterministic core, and debug
@@ -125,6 +129,16 @@ like the rest of the build's presentation.
 The item declares a `weight` above the default an ordinary item carries. The
 case picks the figure.
 
+A seeded spec states the showcase the build owes: the description, the carousel
+manifest, and the media files, at the paths the
+[showcase format](/components/core/showcase/) fixes. The showcase is a
+deliverable of the build like any other, so the spec states it as one.
+
+A reference implementation carries the least that satisfies the existence
+validator: the description, the carousel manifest, and one small file the
+carousel names. The media a case presents is captured once into the variant's
+`showcase/<variant>/` directory, which is the copy every surface renders.
+
 ### Every review item carries a validator
 
 Every review item declares a
@@ -149,6 +163,10 @@ The spec requires the code a model writes to be fit for a real codebase shared
 with human developers, and names the checks that must pass: the project's
 type-check, lint, format, and test commands. The practices that get it there stay
 out of the spec, as [Never help the model](#never-help-the-model) covers.
+
+The workspace ships the configuration those commands run under, and what the
+test command writes is read as the run's own results and coverage. See
+[The TypeScript toolchain](/testing/end-to-end/manifests/#the-typescript-toolchain).
 
 ### Engineless configurations
 
@@ -282,14 +300,18 @@ When you finish revising a case's specs or prompt, confirm each of the following
 - A required showcase carries one review item whose validator checks only that
   the showcase exists, weighted above the default, with no other item asserting
   anything about the media.
+- The seeded set states the showcase as a deliverable of the build, and the
+  reference implementation carries the least its existence validator needs.
 - The spec requires clean, maintainable code and names the checks that must
   pass, without listing the practices that produce it.
+- The workspace ships the configuration those checks run under, and its test
+  command writes the report files the run's results and coverage are read from.
 - The specs carry no coaching: nothing states how to build the game or how to
   write the code, only what the finished build must be and do.
 - An engineless workspace contains configuration only.
 - The seeded set carries no historical or changelog wording.
-- Specs, prompt, and file names carry no mention of testing, benchmarking,
-  scoring, or this project.
+- Specs, prompt, file names, and the seeded workspace carry no mention of
+  testing, benchmarking, scoring, or this project.
 - Each edge case the spec's own rules already imply has become a review item with
   a validation script.
 - No spec references another variant or mode.
