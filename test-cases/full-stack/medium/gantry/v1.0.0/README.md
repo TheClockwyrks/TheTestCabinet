@@ -110,6 +110,7 @@ for every run:
 | `ui.md` | The screens, the menus, the readouts, and the eleven audio cues. |
 | `sites.md` | The six sites: envelope, anchors, budget, par, loads, and obstacles. |
 | `assets.md` | The asset-production contract: every model and sound, which binary produces it, and how the build consumes it. |
+| `showcase.md` | The showcase the finished game ships beside its source: the description, the carousel, and the media each names. |
 
 ## Assets and media
 
@@ -135,18 +136,18 @@ engines: `engines = ["none"]` with `[[engine]]` tables for `simple-3d` and
 `variants/base.toml`'s `[reference_implementation]` naming the authored build
 for every one. `experimental` is off.
 
-What is committed: all twelve specs (the five that branch three ways included),
+What is committed: all thirteen specs (the five that branch three ways included),
 all three starter workspaces, the prompt, `asset_dimension = "3d"` so a run
 schedules onto the 3D full-stack image, the four scoring domains, a checklist of
-797 validator-rated points across 13 categories, a validator suite per engine, a
+827 validator-rated points across 14 categories, a validator suite per engine, a
 reference implementation per engine, the produced asset set with the scripts
 that made it, baseline media per engine, and a showcase.
 
 ### The validator suites, and where they differ
 
-The three harnesses export **one async API**, so 689 of the 797 suite files are
+The three harnesses export **one async API**, so 743 of the 827 suite files are
 byte-identical across the three engine directories and the same point is decided
-by the same file whichever runtime a run selected. The 108 forks are where the
+by the same file whichever runtime a run selected. The 84 forks are where the
 picture is genuinely read differently, plus four that are per-engine by the
 specification itself (where the debug surface is reached, and that nothing is
 installed on the page under an engine).
@@ -163,19 +164,19 @@ own `rendering.ts` documents for exactly this.
 
 Pixel-level coverage comes from the `none` project, which drives the built site
 in real headless Chromium through `window.__gantry` and reads real pixels. The
-same 797 points are decided there, so every point is checked against a real
+same 827 points are decided there, so every point is checked against a real
 browser on at least one engine.
 
 ### What a suite run costs
 
 The `none` project is the largest validator suite in the repository and the only
-one that pays a browser crossing per tick: 797 suites, each loading the built
+one that pays a browser crossing per tick: 827 suites, each loading the built
 site into its own page. It is configured at eight workers rather than the shared
 default's four because the whole run must fit inside the platform's
 twenty-minute cap on a validator suite (`VITEST_TIMEOUT` in
 `crates/core/src/vitest_validator.rs`) — at four it measured 39 minutes, which
 the runner stops, and a stopped suite decides no point at all. The two engine
-projects run the same 797 points in about half a minute each.
+projects run the same 827 points in about half a minute each.
 
 The numbers pass this list used to call for is **done**. Every site in
 `specs/sites.md` has a worked crane and a tape that clears it inside its budget,
