@@ -221,6 +221,8 @@ it("counts the next creak from the creak that played, not from a suppressed cros
     previous = s.run.forces;
   }
 
+  await h.capture("cooldown", "The three crossings after the first creak");
+
   for (const tick of CROSSINGS) {
     assertGreaterThan(
       crossed.get(tick) ?? 0,
@@ -255,6 +257,4 @@ it("counts the next creak from the creak that played, not from a suppressed cros
     `the creaks tick ${CROSSINGS[3]} plays: it falls inside the cooldown the ` +
       `creak on tick ${CROSSINGS[2]} opened (specs/ui.md)`,
   );
-
-  await h.capture("cooldown", "The three crossings after the first creak");
 });

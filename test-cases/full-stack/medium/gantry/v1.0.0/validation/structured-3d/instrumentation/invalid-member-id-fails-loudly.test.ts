@@ -59,31 +59,35 @@ it("fails loudly on an id no member carries, and removes nothing", async () => {
     "the ids those three members carry (specs/instrumentation.md)",
   );
 
-  for (const id of STRANGERS) {
-    let threw = false;
-    try {
-      await h.debug.removeMember(id);
-    } catch {
-      threw = true;
-    }
-    if (!threw) {
-      fail(
-        `removeMember(${id}) to fail loudly, ${id} being an id no member ` +
-          "carries (specs/instrumentation.md)",
-        "the call returned instead",
+  try {
+    for (const id of STRANGERS) {
+      let threw = false;
+      try {
+        await h.debug.removeMember(id);
+      } catch {
+        threw = true;
+      }
+      if (!threw) {
+        fail(
+          `removeMember(${id}) to fail loudly, ${id} being an id no member ` +
+            "carries (specs/instrumentation.md)",
+          "the call returned instead",
+        );
+      }
+      const after = (await h.snapshot()).structure;
+      assertDeepEqual(
+        after.members,
+        before.members,
+        `the structure's members across removeMember(${id})`,
       );
     }
-    const after = (await h.snapshot()).structure;
-    assertDeepEqual(
-      after.members,
-      before.members,
-      `the structure's members across removeMember(${id})`,
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.advance(1);
+    await h.capture(
+      "member-ids-intact",
+      "The three members the two bad removals left standing",
     );
   }
-
-  await h.advance(1);
-  await h.capture(
-    "member-ids-intact",
-    "The three members the two bad removals left standing",
-  );
 });

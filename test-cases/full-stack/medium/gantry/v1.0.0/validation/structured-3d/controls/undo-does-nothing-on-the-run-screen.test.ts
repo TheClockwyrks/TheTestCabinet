@@ -82,14 +82,16 @@ it("leaves the structure standing when the undo action is pressed on the run scr
   await h.press(UNDO);
   await h.advance(1);
 
+  const after = await h.snapshot();
+
+  await h.capture("state", "the structure the undo action left standing");
+
   assertEqual(
-    (await h.snapshot()).structure.members.length,
+    after.structure.members.length,
     members,
     `the members standing after ${UNDO} on the run screen: \`undo\` reverses ` +
       "the most recent structure edit on the build screen, and the run screen " +
       "takes the camera actions, a pointer drag, `speed`, `mute` and `back` " +
       "alone (specs/controls.md § The run screen)",
   );
-
-  await h.capture("state", "the structure the undo action left standing");
 });

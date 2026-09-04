@@ -30,8 +30,8 @@ import { createHarness, type Harness } from "../harness";
 /** The `down` action's binding, as `specs/controls.md` fixes it. */
 const DOWN = BINDINGS.down[0]!;
 
-/** What the highlight reads after each press of `down` from `0`. */
-const EXPECTED = [1, 0, 1];
+/** The last entry of the title menu, which is where the wrap lives. */
+const LAST = TITLE_ITEMS.length - 1;
 
 let h: Harness;
 
@@ -43,27 +43,30 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("moves the title menu's highlight by one and wraps off the last entry", async () => {
-  const opening = await h.snapshot();
-  assertEqual(opening.screen, "title", "the menu screen the presses land on");
-  assertEqual(opening.menuIndex, 0, "the entry the title menu opens on");
+it("wraps the title menu's highlight off its last entry", async () => {
   assertEqual(
     TITLE_ITEMS.length,
     2,
     "the entries the title menu carries (specs/ui.md § Title)",
   );
 
-  for (const [press, index] of EXPECTED.entries()) {
-    await h.press(DOWN);
-    assertEqual(
-      (await h.snapshot()).menuIndex,
-      index,
-      `menuIndex after press ${press + 1} of ${DOWN} on a menu of ` +
-        `${TITLE_ITEMS.length} entries, which moves the highlight by one and ` +
-        "wraps at both ends (specs/ui.md § The screens)",
-    );
-  }
+  await h.debug.setMenuIndex(LAST);
+  const posed = await h.snapshot();
+  assertEqual(posed.screen, "title", "the menu screen the press lands on");
+  assertEqual(posed.menuIndex, LAST, "the entry the highlight is posed on");
+
+  await h.press(DOWN);
+
+  const after = await h.snapshot();
 
   await h.advance(1);
   await h.capture("state", "the title menu after down wrapped off its end");
+
+  assertEqual(
+    after.menuIndex,
+    0,
+    `menuIndex after ${DOWN} on the last entry of a menu of ` +
+      `${TITLE_ITEMS.length}, which wraps the highlight round to the first ` +
+      "(specs/ui.md § The screens)",
+  );
 });

@@ -65,14 +65,16 @@ it("leaves the camera yaw where it stands under a held right", async () => {
   await h.advance(FRAMES);
   await h.keyUp(RIGHT);
 
+  const after = await h.snapshot();
+
+  await h.advance(1);
+  await h.capture("state", "the select screen after a held right");
+
   assertEqual(
-    (await h.snapshot()).camera.yaw,
+    after.camera.yaw,
     posed.camera.yaw,
     `the camera yaw after ${RIGHT} was held for ${FRAMES} frames on the ` +
       "select screen, where the orbit directions drive the menu and nothing " +
       "else (specs/controls.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "the select screen after a held right");
 });

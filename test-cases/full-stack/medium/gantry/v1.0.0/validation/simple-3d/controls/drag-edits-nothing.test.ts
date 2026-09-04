@@ -109,12 +109,14 @@ it("leaves the member standing when a drag is released over it", async () => {
   await h.pointerUp();
   await h.advance(1);
 
+  const after = await h.snapshot();
+
+  await h.capture("state", "the build screen after the drag was released");
+
   assertLength(
-    (await h.snapshot()).structure.members,
+    after.structure.members,
     1,
     "the members standing after an orbit drag released over one with the " +
       "delete tool: a drag edits nothing (specs/controls.md)",
   );
-
-  await h.capture("state", "the build screen after the drag was released");
 });

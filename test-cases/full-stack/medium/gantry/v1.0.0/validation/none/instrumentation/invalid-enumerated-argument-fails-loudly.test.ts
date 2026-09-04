@@ -103,57 +103,61 @@ async function assertInvalid(
 }
 
 it("refuses a tool, screen, material, axis, load class or phase it was never given", async () => {
-  await openSite(h, 0);
-  await emptyYard(h);
+  try {
+    await openSite(h, 0);
+    await emptyYard(h);
 
-  // The build screen: where the tool and the structure poses apply.
-  await assertInvalid('setTool("hammer")', () =>
-    h.debug.setTool("hammer" as never),
-  );
-  await assertInvalid('setScreen("pause")', () =>
-    h.debug.setScreen("pause" as never),
-  );
-  await assertInvalid('addMember(..., "beam")', () =>
-    h.debug.addMember(0, 0, 0, 0, 2, 0, "beam" as never),
-  );
-  await assertInvalid('addLoad("pallet", ...)', () =>
-    h.debug.addLoad("pallet" as never, 40, 4, 2, 0, 0),
-  );
+    // The build screen: where the tool and the structure poses apply.
+    await assertInvalid('setTool("hammer")', () =>
+      h.debug.setTool("hammer" as never),
+    );
+    await assertInvalid('setScreen("pause")', () =>
+      h.debug.setScreen("pause" as never),
+    );
+    await assertInvalid('addMember(..., "beam")', () =>
+      h.debug.addMember(0, 0, 0, 0, 2, 0, "beam" as never),
+    );
+    await assertInvalid('addLoad("pallet", ...)', () =>
+      h.debug.addLoad("pallet" as never, 40, 4, 2, 0, 0),
+    );
 
-  // The program screen: where the tape poses apply.
-  await h.debug.setScreen("program");
-  await assertInvalid('addMoveStep("boom", ...)', () =>
-    h.debug.addMoveStep("boom" as never, 1, 1),
-  );
-  await h.debug.setScreen("build");
+    // The program screen: where the tape poses apply.
+    await h.debug.setScreen("program");
+    await assertInvalid('addMoveStep("boom", ...)', () =>
+      h.debug.addMoveStep("boom" as never, 1, 1),
+    );
+    await h.debug.setScreen("build");
 
-  // And a run in progress, which is where `setLoadPhase` applies and where its
-  // index names a load the run carries.
-  await poseCrane(h, READY_CRANE);
-  await addOneLoad(
-    h,
-    "crate",
-    40,
-    { x: 6, y: 2, z: 0, yaw: 0 },
-    { x: -6, y: 2, z: 0, yaw: 0 },
-  );
-  await poseTape(h, [
-    {
-      kind: "move",
-      commands: [
-        { axis: "hoist", target: HOIST_START + 2, rate: HOIST_MAX_RATE },
-      ],
-    },
-  ]);
-  await startRun(h);
-  await assertInvalid('setLoadPhase(0, "floating")', () =>
-    h.debug.setLoadPhase(0, "floating" as never),
-  );
-
-  await h.capture(
-    "invalid-enumerated-argument",
-    "The run the six refused calls left untouched",
-  );
+    // And a run in progress, which is where `setLoadPhase` applies and where its
+    // index names a load the run carries.
+    await poseCrane(h, READY_CRANE);
+    await addOneLoad(
+      h,
+      "crate",
+      40,
+      { x: 6, y: 2, z: 0, yaw: 0 },
+      { x: -6, y: 2, z: 0, yaw: 0 },
+    );
+    await poseTape(h, [
+      {
+        kind: "move",
+        commands: [
+          { axis: "hoist", target: HOIST_START + 2, rate: HOIST_MAX_RATE },
+        ],
+      },
+    ]);
+    await startRun(h);
+    await assertInvalid('setLoadPhase(0, "floating")', () =>
+      h.debug.setLoadPhase(0, "floating" as never),
+    );
+  } finally {
+    // In a `finally`, so a check that fails still leaves the picture that
+    // shows why.
+    await h.capture(
+      "invalid-enumerated-argument",
+      "The run the six refused calls left untouched",
+    );
+  }
 });
 
 /** The dotted paths at which two JSON-shaped readings differ. */

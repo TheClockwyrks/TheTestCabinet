@@ -286,6 +286,16 @@ it("carries the trolley's cable force to the same bottom-flange leg at every sle
       `the hung load at slew ${angle} degrees`,
     );
 
+    // The picture is taken before the forces are read out, so a reading that
+    // fails at the last angle still leaves the rig that produced it.
+    if (angle === ANGLES[ANGLES.length - 1]) {
+      await h.capture(
+        "corner-pairing",
+        "The rig at slew 180 with a load on the hook, the turned trolley's " +
+          "load still crossing its own ring corner",
+      );
+    }
+
     for (const [id, force] of loaded.forces) {
       const was = bare.forces.get(id);
       if (was === undefined) continue;
@@ -304,14 +314,7 @@ it("carries the trolley's cable force to the same bottom-flange leg at every sle
       );
     }
 
-    if (angle === ANGLES[ANGLES.length - 1]) {
-      await h.capture(
-        "corner-pairing",
-        "The rig at slew 180 with a load on the hook, the turned trolley's " +
-          "load still crossing its own ring corner",
-      );
-      break;
-    }
+    if (angle === ANGLES[ANGLES.length - 1]) break;
 
     // Off the hook and back in the yard, so the next angle is turned to with the
     // bare hook this reading starts from.

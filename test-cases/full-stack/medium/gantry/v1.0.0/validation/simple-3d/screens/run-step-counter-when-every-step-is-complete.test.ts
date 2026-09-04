@@ -160,6 +160,8 @@ it("reads step n / n once the tape's last step is complete", async () => {
   );
 
   const lines = await readoutLines(h);
+  await h.capture("step-last", "The step counter at the end of the tape");
+
   if (!readsCounter(lines, TAPE.length, TAPE.length)) {
     fail(
       `the step counter to read "${TAPE.length} / ${TAPE.length}" once every ` +
@@ -167,6 +169,4 @@ it("reads step n / n once the tape's last step is complete", async () => {
       `the screen's text reads [${lines.map((one) => one.trim()).join(" | ")}]`,
     );
   }
-
-  await h.capture("step-last", "The step counter at the end of the tape");
 });

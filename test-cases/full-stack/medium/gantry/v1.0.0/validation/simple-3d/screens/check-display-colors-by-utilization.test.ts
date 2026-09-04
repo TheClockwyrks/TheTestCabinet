@@ -28,9 +28,6 @@ import {
   type Harness,
 } from "../harness";
 
-/** The key the `check` action is bound to (`specs/controls.md`). */
-const CHECK_KEY = "KeyC";
-
 /** How far the extremes of the ramp must stand apart, out of 765. */
 const SPREAD = 25;
 

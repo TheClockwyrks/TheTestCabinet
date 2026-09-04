@@ -90,6 +90,8 @@ it("carries every produced .glb, .wav and .mid under assets/", async () => {
   );
 
   const produced = walk(WORKSPACE, []).sort();
+  await h.capture("tree", "The committed produced files under assets/");
+
   assertTrue(
     produced.length > 0,
     "the repository to carry produced files at all — eight `.glb` models, " +
@@ -108,6 +110,4 @@ it("carries every produced .glb, .wav and .mid under assets/", async () => {
     `gantry: the committed produced files under ${ROOT}/ —\n  ` +
       produced.join("\n  "),
   );
-
-  await h.capture("tree", "The committed produced files under assets/");
 });

@@ -53,13 +53,15 @@ it("selects the ring tool on the build screen", async () => {
   assertEqual(posed.tool, BEFORE, "the tool selected before the press");
 
   await h.press(KEY);
+  const after = await h.snapshot();
+
+  await h.advance(1);
+  await h.capture("state", "the build screen with the ring tool selected");
+
   assertEqual(
-    (await h.snapshot()).tool,
+    after.tool,
     "ring",
     `the tool after ${KEY}, which is the tool-ring action's binding ` +
       "(specs/controls.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "the build screen with the ring tool selected");
 });

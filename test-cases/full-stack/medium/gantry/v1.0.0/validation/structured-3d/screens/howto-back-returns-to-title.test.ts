@@ -28,6 +28,9 @@ const BACK = BINDINGS.back[0] as string;
 /** `HOW TO PLAY`: the title entry how-to is reached through. */
 const HOWTO_ENTRY = TITLE_ITEMS.indexOf("HOW TO PLAY");
 
+/** `SITES`: the other entry, posed first so the return has something to move. */
+const OTHER_ENTRY = TITLE_ITEMS.indexOf("SITES");
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -47,14 +50,16 @@ it("returns to the title with HOW TO PLAY selected", async () => {
   assertEqual(posed.screen, "howto", "the screen this point presses back on");
   assertEqual(
     posed.menuIndex,
-    HOWTO_ENTRY,
-    "the highlight carried onto the how-to screen, so the arrival rule this " +
-      "point decides has something to move",
+    OTHER_ENTRY,
+    "the highlight carried onto the how-to screen, so the return this point " +
+      "decides has something to move",
   );
 
   await h.press(BACK);
 
   const after = await h.snapshot();
+  await h.capture("state", "the title screen back left the how-to screen for");
+
   assertEqual(
     after.screen,
     "title",
@@ -62,9 +67,8 @@ it("returns to the title with HOW TO PLAY selected", async () => {
   );
   assertEqual(
     after.menuIndex,
-    0,
-    "the highlight the title screen carries on arriving (specs/ui.md)",
+    HOWTO_ENTRY,
+    "the title entry that led to how-to, which the return highlights " +
+      "(specs/ui.md)",
   );
-
-  await h.capture("state", "the title screen back left the how-to screen for");
 });

@@ -72,14 +72,16 @@ it("leaves the camera distance where it stands under a held zoom-in", async () =
   await h.advance(FRAMES);
   await h.keyUp(ZOOM_IN);
 
+  const after = await h.snapshot();
+
+  await h.advance(1);
+  await h.capture("state", "the select screen after a held zoom-in");
+
   assertEqual(
-    (await h.snapshot()).camera.dist,
+    after.camera.dist,
     posed.camera.dist,
     `the camera distance after ${ZOOM_IN} was held for ${FRAMES} frames on ` +
       "the select screen, which is not one of the three screens showing the " +
       "3D yard (specs/controls.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "the select screen after a held zoom-in");
 });

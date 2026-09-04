@@ -18,11 +18,17 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { BINDINGS } from "../constants";
+import { BINDINGS, TITLE_ITEMS } from "../constants";
 import { createHarness, type Harness } from "../harness";
 
-/** `back`'s binding, as `specs/controls.md` fixes it. */
-const BACK = BINDINGS.back[0]!;
+/** `back`, as specs/controls.md binds it. */
+const BACK = BINDINGS.back[0] as string;
+
+/** `SITES`: the title entry the select screen is reached through. */
+const SITES_ENTRY = TITLE_ITEMS.indexOf("SITES");
+
+/** A site well away from `0`, so the return cannot pass by keeping the index. */
+const POSED_SITE = 3;
 
 let h: Harness;
 
@@ -48,12 +54,19 @@ it("returns to the title with SITES selected", async () => {
   );
 
   await h.press(BACK);
-  assertEqual(
-    (await h.snapshot()).screen,
-    "title",
-    "the screen `back` on `select` returns to (specs/ui.md)",
-  );
 
-  await h.advance(1);
-  await h.capture("state", "The screen back returned to from the site list");
+  const after = await h.snapshot();
+  await h.capture("state", "the title screen back left the select screen for");
+
+  assertEqual(
+    after.screen,
+    "title",
+    "the screen back leaves the select screen for (specs/ui.md)",
+  );
+  assertEqual(
+    after.menuIndex,
+    SITES_ENTRY,
+    "the title entry that led to the select screen, which the return " +
+      "highlights (specs/ui.md)",
+  );
 });

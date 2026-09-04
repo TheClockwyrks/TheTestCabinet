@@ -278,6 +278,8 @@ it("shows every screen and draws every produced file with no asset request faili
   const failed = asked
     .filter((one) => one.status >= 400)
     .map((one) => `${one.name} → ${one.status}`);
+  await h.capture("run", "The play-through with every asset loaded");
+
   assertEqual(
     failed.join(", "),
     "",
@@ -299,6 +301,4 @@ it("shows every screen and draws every produced file with no asset request faili
         .map((one) => `${one.status} ${one.initiator} ${one.name}`)
         .join("\n  "),
   );
-
-  await h.capture("run", "The play-through with every asset loaded");
 });

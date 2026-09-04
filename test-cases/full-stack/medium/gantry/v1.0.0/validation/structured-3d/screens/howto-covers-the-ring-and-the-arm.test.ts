@@ -87,6 +87,8 @@ afterEach(async () => {
 
 it("names the slew ring, the arm, and the arm turning on it", async () => {
   const copy = await howtoCopy(h);
+  await h.capture("howto-ring", "The how-to copy on the ring");
+
   assertGreaterThan(
     copy.length,
     0,
@@ -99,6 +101,4 @@ it("names the slew ring, the arm, and the arm turning on it", async () => {
     "what the how-to copy leaves unnamed of the ring, the arm, and the arm " +
       "turning on it (specs/ui.md, specs/structure.md)",
   );
-
-  await h.capture("howto-ring", "The how-to copy on the ring");
 });

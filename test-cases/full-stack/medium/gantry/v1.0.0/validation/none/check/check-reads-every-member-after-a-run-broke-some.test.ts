@@ -109,6 +109,9 @@ it("reports every member the crane holds after a run broke some of them", async 
   );
 
   const second = await h.check();
+  await h.advance(1);
+  await h.capture("every-member", "the check after a run that broke members");
+
   assertDeepEqual(
     second,
     before,
@@ -116,7 +119,4 @@ it("reports every member the crane holds after a run broke some of them", async 
       "and member list, solved over every member the crane holds, the ones " +
       "the run broke included (specs/structure.md)",
   );
-
-  await h.advance(1);
-  await h.capture("every-member", "the check after a run that broke members");
 });

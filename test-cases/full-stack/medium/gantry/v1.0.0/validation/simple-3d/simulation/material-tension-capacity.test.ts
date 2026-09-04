@@ -177,6 +177,12 @@ it("scores a member in tension against its own material's tension capacity", asy
   await score(JIB_RIG);
   await score(TIED_JIB);
 
+  await h.advance(1);
+  await h.capture(
+    "material-capacities",
+    "The tied-jib rig, whose rails carry the props' outward thrust in tension",
+  );
+
   for (const material of ["strut", "cable", "rail"] as const) {
     assertGreaterThan(
       seen[material],
@@ -185,10 +191,4 @@ it("scores a member in tension against its own material's tension capacity", asy
         "material's capacity is genuinely read",
     );
   }
-
-  await h.advance(1);
-  await h.capture(
-    "material-capacities",
-    "The tied-jib rig, whose rails carry the props' outward thrust in tension",
-  );
 });

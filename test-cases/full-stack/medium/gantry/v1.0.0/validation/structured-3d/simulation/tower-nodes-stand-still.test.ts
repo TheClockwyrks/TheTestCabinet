@@ -244,6 +244,11 @@ it("never sweeps a tower member into a box the arm's own members sweep into", as
     TOWER_PATH_SIZE,
     TURN_TICKS,
   );
+  await h.capture(
+    "tower-clears-the-box",
+    "The arm turned with a box across the tower's would-be sweep",
+  );
+
   assertEqual(
     overTheTower.run.cause,
     null,
@@ -255,11 +260,6 @@ it("never sweeps a tower member into a box the arm's own members sweep into", as
     overTheTower.run.phase,
     "cleared",
     "the run ending as its tape does rather than on the box",
-  );
-
-  await h.capture(
-    "tower-clears-the-box",
-    "The arm turned with a box across the tower's would-be sweep",
   );
 
   // The same box raised to the arm's height does end the run, so that ring of

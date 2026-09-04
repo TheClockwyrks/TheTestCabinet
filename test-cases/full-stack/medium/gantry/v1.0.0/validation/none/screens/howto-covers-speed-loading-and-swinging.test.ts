@@ -117,6 +117,8 @@ afterEach(async () => {
 
 it("ties a command's speed to the load on the structure and to the swing", async () => {
   const copy = await howtoCopy(h);
+  await h.capture("howto-speed", "The how-to copy on speed");
+
   assertGreaterThan(
     copy.length,
     0,
@@ -132,6 +134,4 @@ it("ties a command's speed to the load on the structure and to the swing", async
     "what the how-to copy leaves untied to a command's speed, of the load it " +
       "puts on the structure and the load swinging (specs/ui.md)",
   );
-
-  await h.capture("howto-speed", "The how-to copy on speed");
 });

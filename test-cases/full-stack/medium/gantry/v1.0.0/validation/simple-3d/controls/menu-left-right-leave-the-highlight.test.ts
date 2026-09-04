@@ -58,17 +58,21 @@ it("leaves the site select's highlight where it stands under left and right", as
     "the entries the site select lists (specs/ui.md § Site select)",
   );
 
-  for (const key of [LEFT, RIGHT]) {
-    await h.press(key);
-    assertEqual(
-      (await h.snapshot()).menuIndex,
-      ENTRY,
-      `menuIndex after ${key} on a menu: \`left\` and \`right\` reach the ` +
-        "menu but leave the highlight where it is " +
-        "(specs/ui.md § The screens)",
-    );
+  try {
+    for (const key of [LEFT, RIGHT]) {
+      await h.press(key);
+      assertEqual(
+        (await h.snapshot()).menuIndex,
+        ENTRY,
+        `menuIndex after ${key} on a menu: \`left\` and \`right\` reach the ` +
+          "menu but leave the highlight where it is " +
+          "(specs/ui.md § The screens)",
+      );
+    }
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.advance(1);
+    await h.capture("state", "the site select's highlight after left and right");
   }
-
-  await h.advance(1);
-  await h.capture("state", "the site select's highlight after left and right");
 });

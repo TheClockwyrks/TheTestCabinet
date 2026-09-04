@@ -38,6 +38,9 @@ it("stands at yaw 45, pitch 30 and distance 40", async () => {
   await openSite(h, 0);
 
   const { camera } = await h.snapshot();
+  await h.advance(1);
+  await h.capture("state", "the yard through the camera's start pose");
+
   assertEqual(
     camera.yaw,
     CAMERA_START_YAW,
@@ -53,7 +56,4 @@ it("stands at yaw 45, pitch 30 and distance 40", async () => {
     CAMERA_START_DIST,
     "the camera's start distance (specs/controls.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "the yard through the camera's start pose");
 });

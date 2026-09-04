@@ -49,14 +49,16 @@ it("wraps the title menu's highlight to the last entry", async () => {
 
   await h.press(UP);
 
-  assertEqual(
-    (await h.snapshot()).menuIndex,
-    TITLE_ITEMS.length - 1,
-    `menuIndex after ${UP} on the first entry of a menu of ` +
-      `${TITLE_ITEMS.length}, which moves the highlight by one and wraps at ` +
-      "both ends (specs/ui.md § The screens)",
-  );
+  const after = await h.snapshot();
 
   await h.advance(1);
   await h.capture("state", "the title menu after up wrapped off its start");
+
+  assertEqual(
+    after.menuIndex,
+    TITLE_ITEMS.length - 1,
+    `menuIndex after ${UP} on the first entry of a menu of ` +
+      `${TITLE_ITEMS.length}, which wraps the highlight round to the last ` +
+      "(specs/ui.md § The screens)",
+  );
 });

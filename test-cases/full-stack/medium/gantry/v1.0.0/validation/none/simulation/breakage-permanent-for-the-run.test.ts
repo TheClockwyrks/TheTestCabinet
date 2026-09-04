@@ -197,64 +197,68 @@ afterEach(async () => {
 });
 
 it("never solves over the broken member again, however the arm turns", async () => {
-  await openSite(h, 5);
-  await clearAll(h);
-  await poseCrane(h, CRANE);
-  await addOneLoad(h, "crate", LOAD_MASS, HOOK, HOOK);
-  await poseTape(h, TAPE);
-  await startRun(h);
+  try {
+    await openSite(h, 5);
+    await clearAll(h);
+    await poseCrane(h, CRANE);
+    await addOneLoad(h, "crate", LOAD_MASS, HOOK, HOOK);
+    await poseTape(h, TAPE);
+    await startRun(h);
 
-  const broke = await runTicks(h, 1);
-  assertDeepEqual(
-    broke.run.broken,
-    [STAY],
-    `the members the first tick removed: the strut stay ${STAY}`,
-  );
+    const broke = await runTicks(h, 1);
+    assertDeepEqual(
+      broke.run.broken,
+      [STAY],
+      `the members the first tick removed: the strut stay ${STAY}`,
+    );
 
-  // The arm turns, with the load still swinging on the cable.
-  let turning = broke;
-  for (let sample = 1; sample <= TURNING; sample += 1) {
-    turning = await runTicks(h, STRIDE);
-    readStillBroken(turning, `${sample * STRIDE} more ticks of the turn`);
-  }
-  assertGreaterThan(
-    turning.run.axes.slew.value,
-    TURNED,
-    "how far the arm turned while the broken member stayed broken, in degrees " +
-      `(the tape drives it toward 90 at ${10} of the ${SLEW_MAX_RATE} it may ` +
-      "use)",
-  );
+    // The arm turns, with the load still swinging on the cable.
+    let turning = broke;
+    for (let sample = 1; sample <= TURNING; sample += 1) {
+      turning = await runTicks(h, STRIDE);
+      readStillBroken(turning, `${sample * STRIDE} more ticks of the turn`);
+    }
+    assertGreaterThan(
+      turning.run.axes.slew.value,
+      TURNED,
+      "how far the arm turned while the broken member stayed broken, in degrees " +
+        `(the tape drives it toward 90 at ${10} of the ${SLEW_MAX_RATE} it may ` +
+        "use)",
+    );
 
-  // And the moment eases: the load is set down, so the arm carries the hook
-  // alone from the next pendulum step on.
-  await h.debug.setLoadPhase(0, "placed");
-  const eased = await h.snapshot();
-  assertEqual(
-    eased.run.loads[0]?.phase,
-    "placed",
-    "the load set down by the pose, so the lifted moment comes off the arm " +
-      "(specs/instrumentation.md, specs/rigging.md)",
-  );
-  assertEqual(
-    eased.run.attached,
-    null,
-    "the hook carrying nothing once the load it held is placed " +
-      "(specs/rigging.md)",
-  );
+    // And the moment eases: the load is set down, so the arm carries the hook
+    // alone from the next pendulum step on.
+    await h.debug.setLoadPhase(0, "placed");
+    const eased = await h.snapshot();
+    assertEqual(
+      eased.run.loads[0]?.phase,
+      "placed",
+      "the load set down by the pose, so the lifted moment comes off the arm " +
+        "(specs/instrumentation.md, specs/rigging.md)",
+    );
+    assertEqual(
+      eased.run.attached,
+      null,
+      "the hook carrying nothing once the load it held is placed " +
+        "(specs/rigging.md)",
+    );
 
-  let after = eased;
-  for (let sample = 1; sample <= EASED; sample += 1) {
-    after = await runTicks(h, AFTER_STRIDE);
-    readStillBroken(
-      after,
-      `${sample * AFTER_STRIDE} ticks after the load was set down`,
+    let after = eased;
+    for (let sample = 1; sample <= EASED; sample += 1) {
+      after = await runTicks(h, AFTER_STRIDE);
+      readStillBroken(
+        after,
+        `${sample * AFTER_STRIDE} ticks after the load was set down`,
+      );
+    }
+  } finally {
+    // In a `finally`, so a check that fails still leaves the picture that
+    // shows why.
+    await h.capture(
+      "breakage-permanent-for-the-run",
+      "the crane turned and unloaded, still without the member that broke",
     );
   }
-
-  await h.capture(
-    "breakage-permanent-for-the-run",
-    "the crane turned and unloaded, still without the member that broke",
-  );
 });
 
 /** The whole reading, at one sample: the stay is gone and the run is running. */

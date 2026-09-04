@@ -38,13 +38,15 @@ it("shows the program screen from the build screen", async () => {
   );
 
   await h.press(PROGRAM_KEY);
+  const after = await h.snapshot();
+
+  await h.advance(1);
+  await h.capture("state", "the program screen the program action opened");
+
   assertEqual(
-    (await h.snapshot()).screen,
+    after.screen,
     "program",
     `the screen after ${PROGRAM_KEY}, which is the program action's binding ` +
       "(specs/controls.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "the program screen the program action opened");
 });

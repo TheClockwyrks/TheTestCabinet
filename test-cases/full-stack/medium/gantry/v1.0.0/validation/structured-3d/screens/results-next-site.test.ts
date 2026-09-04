@@ -53,6 +53,9 @@ it("opens the next site's build screen from NEXT SITE", async () => {
 
   await h.press(CONFIRM);
   const entered = await h.snapshot();
+  await h.advance(1);
+  await h.capture("state", "The build screen NEXT SITE opened");
+
   assertEqual(
     entered.screen,
     "build",
@@ -63,7 +66,4 @@ it("opens the next site's build screen from NEXT SITE", async () => {
     NEXT,
     `the site NEXT SITE opens from site ${SITE + 1} (specs/ui.md)`,
   );
-
-  await h.advance(1);
-  await h.capture("state", "The build screen NEXT SITE opened");
 });

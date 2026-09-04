@@ -28,7 +28,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, fail } from "../assert";
-import { REQUIRED_OPS, createHarness, type Harness } from "../harness";
+import {
+  REQUIRED_OPS,
+  createHarness,
+  openSite,
+  type Harness,
+} from "../harness";
 
 let h: Harness;
 
@@ -46,14 +51,18 @@ it("carries every operation specs/instrumentation.md names, each a function", as
   const { ops: found } = h.probe(REQUIRED_OPS);
 
   const missing = REQUIRED_OPS.filter((name) => found[name] !== "function");
+  await h.advance(1);
+  await h.capture(
+    "surface-operations",
+    "The build carrying the whole documented surface",
+  );
+
   if (missing.length > 0) {
     fail(
       `every one of the ${REQUIRED_OPS.length} operations ` +
         "specs/instrumentation.md names for this build to be present on " +
         "engine.debug as a function",
-      missing
-        .map((name) => `${name} is ${found[name] ?? "absent"}`)
-        .join(", "),
+      missing.map((name) => `${name} is ${found[name] ?? "absent"}`).join(", "),
     );
   }
 
@@ -62,10 +71,4 @@ it("carries every operation specs/instrumentation.md names, each a function", as
   for (const name of REQUIRED_OPS) {
     assertEqual(found[name], "function", `engine.debug.${name}`);
   }
-
-  await h.advance(1);
-  await h.capture(
-    "surface-operations",
-    "The build carrying the whole documented surface",
-  );
 });

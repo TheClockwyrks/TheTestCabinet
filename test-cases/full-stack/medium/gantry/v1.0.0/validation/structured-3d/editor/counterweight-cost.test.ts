@@ -73,6 +73,11 @@ it("raises the crane's cost by COUNTERWEIGHT_COST when one is placed", async () 
   await h.advance(1);
 
   const after = await h.snapshot();
+  await h.capture(
+    "counterweight-cost",
+    "The crane's cost with one strut and one counterweight",
+  );
+
   assertLength(
     after.structure.counterweights,
     1,
@@ -84,10 +89,5 @@ it("raises the crane's cost by COUNTERWEIGHT_COST when one is placed", async () 
     COST_TOL,
     "the rise in the crane's cost across one counterweight " +
       "(specs/structure.md § Cost and the budget)",
-  );
-
-  await h.capture(
-    "counterweight-cost",
-    "The crane's cost with one strut and one counterweight",
   );
 });

@@ -78,9 +78,6 @@ import type {
 /** The page global an engineless build installs its surface on. */
 export const HANDLE = "__gantry";
 
-/** The version the surface reports (`GANTRY_DEBUG_VERSION`). */
-export const GANTRY_DEBUG_VERSION = 1;
-
 /**
  * Every operation `specs/instrumentation.md` requires on the surface under this
  * engine, in the order that file introduces them — including the clock, the
@@ -230,6 +227,19 @@ const kit = createCaseHarness<GantrySnapshot, GantryDebugApi>({
   projectRoot: PROJECT_ROOT,
 });
 
+/*
+ * THE STILL AND NOT THE RECORDING, and the same on all three engines. The kit
+ * also carries `captureReplay`, and this file takes only `captureStill` — not
+ * because a recording would be unwelcome here, but because an output is declared
+ * ONCE per point and every engine has to produce it. Under `simple-3d` and
+ * `structured-3d` this case's project runs in Node, where the engine's VP9
+ * recorder and its `emitReplay` browser command are both out of reach (each of
+ * those harness headers says what moving them would cost), so a point that
+ * declared a `replay` would be a point two engines out of three could not answer.
+ * Gantry is stills everywhere, and the ones whose subject is a stretch of motion —
+ * a swing, a cable snapping, a breakage cascading into a collapse — hand a
+ * reviewer one frame of it.
+ */
 export const { captureStill, fitViewport, failSurface, SURFACE_REQUIREMENT } =
   kit;
 
@@ -335,7 +345,6 @@ export interface Harness {
    */
   diagnostics(): Promise<string[]>;
 
-
   /** Keep the picture on screen as the review item's `id` output. */
   capture(id: string, name: string): Promise<void>;
 
@@ -423,15 +432,17 @@ function baseOf(h: Harness): BaseHarness<GantrySnapshot, GantryDebugApi> {
  * page that has had no user gesture, and `specs/assets.md` has the build wait for
  * one too. Every check that reads `cues()` would otherwise have to remember to
  * ask for the gesture, and the check that forgot would report silence from a
- * build that was sounding perfectly. The gesture is one press of `UNBOUND_KEY`,
- * which `specs/controls.md` binds to no action on any screen, so it changes
- * nothing a check could read.
+ * build that was sounding perfectly. It is asked for as an OPTION rather than
+ * called afterwards, because the factory is the only place it can go: the gesture
+ * has to land before the opening `reset`, which is what puts back whatever it
+ * moved. The gesture itself is the one this project configured — one press of
+ * `UNBOUND_KEY`, which `specs/controls.md` binds to no action on any screen, so
+ * it changes nothing a check could read.
  */
 export async function createHarness(
   options?: HarnessOptions,
 ): Promise<Harness> {
-  const base = await kit.createHarness(options);
-  if (base.surfaceFault === null) await base.armAudio();
+  const base = await kit.createHarness({ ...options, armAudio: true });
 
   const debug = base.debug as unknown as GantryDriver;
 
@@ -550,7 +561,10 @@ async function paint(
   const ran = await base.page.evaluate(
     ([global, name]) => {
       const gate = (
-        window as unknown as Record<string, Record<string, () => void> | undefined>
+        window as unknown as Record<
+          string,
+          Record<string, () => void> | undefined
+        >
       )[global];
       if (gate === undefined) return false;
       gate[name]!();
@@ -887,7 +901,10 @@ export async function openSite(h: Harness, index: number): Promise<void> {
  * nothing and changes nothing that is built.
  */
 export async function emptyYard(h: Harness): Promise<void> {
-  await poseAll(h, await onEditScreenCalls(h, [["clearLoads"], ["clearObstacles"]]));
+  await poseAll(
+    h,
+    await onEditScreenCalls(h, [["clearLoads"], ["clearObstacles"]]),
+  );
 }
 
 /**
@@ -950,15 +967,12 @@ async function onEditScreenCalls(
   return [["setScreen", "build"], ...calls, ["setScreen", was]];
 }
 
-async function poseAll(
-  h: Harness,
-  calls: readonly PoseCall[],
-): Promise<void> {
+async function poseAll(h: Harness, calls: readonly PoseCall[]): Promise<void> {
   await h.page.evaluate(
     ({ handle, ops }) => {
-      const surface = (window as unknown as Record<string, Record<string, unknown>>)[
-        handle
-      ];
+      const surface = (
+        window as unknown as Record<string, Record<string, unknown>>
+      )[handle];
       for (const [name, ...args] of ops) {
         (surface[name] as (...a: unknown[]) => unknown)(...args);
       }
@@ -1327,7 +1341,8 @@ export function entriesOf(
   name?: string,
 ): DrawnEntry[] {
   return entries.filter(
-    (entry) => entry.kind === kind && (name === undefined || entry.name === name),
+    (entry) =>
+      entry.kind === kind && (name === undefined || entry.name === name),
   );
 }
 
@@ -1373,9 +1388,7 @@ export function colourDistance(
   a: readonly [number, number, number],
   b: readonly [number, number, number],
 ): number {
-  return (
-    Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2])
-  );
+  return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
 }
 
 /**

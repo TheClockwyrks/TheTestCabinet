@@ -59,6 +59,8 @@ it("appends an action step the state's program reports", async () => {
       "(specs/controls.md § Editing the tape)",
   );
   const step = program[0];
+  await h.capture("state", "the tape carrying the action step that was added");
+
   assertEqual(
     step?.kind,
     "action",
@@ -70,6 +72,4 @@ it("appends an action step the state's program reports", async () => {
     `the action the appended step carries, which is the ${ACTION} the edit ` +
       "asked for (specs/controls.md § Editing the tape)",
   );
-
-  await h.capture("state", "the tape carrying the action step that was added");
 });

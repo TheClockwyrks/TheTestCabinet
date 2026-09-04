@@ -69,6 +69,23 @@
 // starting a run each live HERE, once, so five hundred suites say what their
 // scenario is about in one line and say it the same way. A check that needs only
 // part of a sequence calls the operations it needs.
+//
+// AND ONE THING `validation/host.ts` DOES NOT STAND IN FOR: A RECORDING.
+// `engines/structured-3d` records a scene as VP9 video, which wants a browser's
+// encoder, and `emitReplay` is a browser command — so a project that runs in Node
+// reaches neither. Every point this case declares is therefore backed by a STILL,
+// including the ones whose subject is a stretch of motion rather than a posed
+// arrangement: a swing, a cable snapping, a breakage cascading into a collapse. A
+// reviewer would rather watch those than read one frame of them, and here there is
+// one frame.
+//
+// WHAT IT WOULD TAKE, stated so the next reader does not have to work it out
+// again: browser mode with the Playwright provider, and then the canvases, the
+// `webgl2` context, the asset transport, the audio decoder and every still written
+// through `node:fs` all move with it, because each of them is built for this
+// process. That is not a dial on this file, it is a different file — and the suite
+// would then pay a browser's wall clock against the budget the node choice was
+// made for. It is left undone deliberately rather than half-done.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
@@ -141,9 +158,6 @@ import type {
 /* -------------------------------------------------------------------------- */
 /* The contract the build owes                                                */
 /* -------------------------------------------------------------------------- */
-
-/** The version the surface reports (`GANTRY_DEBUG_VERSION`). */
-export const GANTRY_DEBUG_VERSION = 1;
 
 /**
  * What `cues()` reports a sound it could not name as.
@@ -478,7 +492,6 @@ export interface Harness {
    */
   diagnostics(): Promise<string[]>;
 
-
   /** Keep the picture on screen as the review item's `id` output. */
   capture(id: string, name: string): Promise<void>;
 
@@ -726,9 +739,9 @@ class KeyEvent extends Event {
 class PointerEvt extends Event {
   readonly clientX: number;
   readonly clientY: number;
-  readonly pointerId = 1;
+  readonly pointerId: number;
   readonly isPrimary = true;
-  readonly pointerType = "mouse";
+  readonly pointerType: "mouse" | "touch";
   readonly button: number;
   readonly buttons: number;
 
@@ -738,12 +751,18 @@ class PointerEvt extends Event {
     y: number,
     button: number,
     buttons: number,
+    device: "mouse" | "touch" = "mouse",
   ) {
     super(type);
     this.clientX = x;
     this.clientY = y;
     this.button = button;
     this.buttons = buttons;
+    this.pointerType = device;
+    // A finger is a pointer of its own, so it carries an id the mouse never
+    // does: `input.md` tracks each pointer by `id` and "among touches the first
+    // one down is" the primary.
+    this.pointerId = device === "touch" ? 2 : 1;
   }
 }
 
@@ -1025,6 +1044,9 @@ export async function createHarness(
   // `specs/instrumentation.md` states a release as happening "at the position the
   // pointer is at" and a dispatched pointer event has to carry one.
   let pointerAt = { x: 0, y: 0 };
+  // The live contact's landing position, kept for the same reason: a lift comes
+  // back "at the position it landed at" (`specs/instrumentation.md`).
+  let contactAt = { x: 0, y: 0 };
   let pressLive = false;
 
   const dispatch = (event: Event): void => {
@@ -2032,7 +2054,8 @@ export function entriesOf(
   name?: string,
 ): DrawnEntry[] {
   return entries.filter(
-    (entry) => entry.kind === kind && (name === undefined || entry.name === name),
+    (entry) =>
+      entry.kind === kind && (name === undefined || entry.name === name),
   );
 }
 
@@ -2078,9 +2101,7 @@ export function colourDistance(
   a: readonly [number, number, number],
   b: readonly [number, number, number],
 ): number {
-  return (
-    Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2])
-  );
+  return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
 }
 
 /**

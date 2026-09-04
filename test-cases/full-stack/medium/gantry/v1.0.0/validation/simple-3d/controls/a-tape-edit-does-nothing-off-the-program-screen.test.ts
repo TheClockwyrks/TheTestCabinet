@@ -48,6 +48,8 @@ it("adds no step to the tape while the build screen is showing", async () => {
   await h.advance(1);
 
   const s = await h.snapshot();
+  await h.capture("state", "The build screen with the tape still empty");
+
   assertLength(
     s.program,
     0,
@@ -59,6 +61,4 @@ it("adds no step to the tape while the build screen is showing", async () => {
     "build",
     "the screen after those edits, which change nothing",
   );
-
-  await h.capture("state", "The build screen with the tape still empty");
 });

@@ -21,7 +21,6 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull, assertNull } from "../assert";
-import { BINDINGS } from "../constants";
 import {
   clearAll,
   createHarness,
@@ -33,7 +32,6 @@ import {
 const SITE = 0;
 
 /** The key specs/controls.md binds the `check` action to on the build screen. */
-const CHECK_KEY = BINDINGS.check[0]!;
 
 let h: Harness;
 

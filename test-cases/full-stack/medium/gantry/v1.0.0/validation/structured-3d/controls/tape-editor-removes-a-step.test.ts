@@ -65,6 +65,8 @@ it("removes the middle step and leaves the others in order", async () => {
   await h.advance(1);
 
   const { program } = await h.snapshot();
+  await h.capture("state", "the tape with its middle step removed");
+
   assertLength(
     program,
     2,
@@ -85,6 +87,4 @@ it("removes the middle step and leaves the others in order", async () => {
     "the axis the second surviving step commands, which is the step that " +
       "stood after the removed one (specs/controls.md § Editing the tape)",
   );
-
-  await h.capture("state", "the tape with its middle step removed");
 });

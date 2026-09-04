@@ -81,14 +81,16 @@ it("removes the member the click picks by screen distance", async () => {
   await h.debug.setTool("delete");
   await h.click(at.x, at.y);
 
+  const after = await h.snapshot();
+
+  await h.advance(1);
+  await h.capture("state", "The empty structure the delete click left");
+
   assertLength(
-    (await h.snapshot()).structure.members,
+    after.structure.members,
     0,
     `the members standing after a delete click ${OFFSET_PX} logical pixels ` +
       `from the only member's drawn segment, inside MEMBER_PICK_PX ` +
       `(${MEMBER_PICK_PX}) (specs/controls.md)`,
   );
-
-  await h.advance(1);
-  await h.capture("state", "The empty structure the delete click left");
 });

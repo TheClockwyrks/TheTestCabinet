@@ -66,11 +66,22 @@ export type MaterialName = "strut" | "cable" | "rail";
 
 /** The six build tools `specs/controls.md` gives. */
 export type Tool =
-  "strut" | "cable" | "rail" | "ring" | "counterweight" | "delete";
+  | "strut"
+  | "cable"
+  | "rail"
+  | "ring"
+  | "counterweight"
+  | "delete";
 
 /** The seven screens `specs/ui.md` gives. */
 export type Screen =
-  "title" | "howto" | "select" | "build" | "program" | "run" | "results";
+  | "title"
+  | "howto"
+  | "select"
+  | "build"
+  | "program"
+  | "run"
+  | "results";
 
 /** The four axes `specs/program.md` gives. */
 export type AxisName = "slew" | "trolley" | "hoist" | "grip";
@@ -80,7 +91,10 @@ export type TapeAction = "attach" | "release";
 
 /** A structure's readiness issue (`specs/structure.md`). */
 export type ReadinessIssue =
-  "no-ring" | "no-rail" | "invalid-rail" | "disconnected-members";
+  | "no-ring"
+  | "no-rail"
+  | "invalid-rail"
+  | "disconnected-members";
 
 /** What would refuse a run: a readiness issue, or an empty tape. */
 export type StartIssue = ReadinessIssue | "empty-program";
@@ -380,7 +394,10 @@ export interface GantryDebugApi {
   reset(): void;
   setScreen(screen: Screen): void;
   setMenuIndex(index: number): void;
-  /** Opens site `index`, locked or not, and shows the `build` screen. */
+  /**
+   * Opens site `index`, locked or not: the opening `specs/state.md` fixes, and
+   * nothing else. The screen is left exactly as it stands.
+   */
   openSite(index: number): void;
   setCleared(index: number, cleared: boolean): void;
   setBest(index: number, cost: number, time: number): void;

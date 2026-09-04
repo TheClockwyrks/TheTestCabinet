@@ -182,6 +182,8 @@ it("fetches nothing from outside the origin its own dist is served on", async ()
     })
     .map((one) => `${one.name} (${one.initiator})`);
 
+  await h.capture("requests", "Every asset the played-through site requested");
+
   assertEqual(
     outside.join(", "),
     "",
@@ -196,6 +198,4 @@ it("fetches nothing from outside the origin its own dist is served on", async ()
         .map((one) => `${one.status} ${one.initiator} ${one.name}`)
         .join("\n  "),
   );
-
-  await h.capture("requests", "Every asset the played-through site requested");
 });

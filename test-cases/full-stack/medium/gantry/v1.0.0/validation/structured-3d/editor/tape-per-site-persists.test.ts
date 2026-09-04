@@ -95,44 +95,48 @@ it("keeps a site's tape to itself and hands it back on the next visit", async ()
     TAPE.length,
     `the steps site ${HOME} hands back on the next visit (specs/state.md)`,
   );
-  for (const [index, step] of TAPE.entries()) {
-    const stored = home.program[index];
-    assertEqual(stored?.kind, step.kind, `stored step ${index}'s kind`);
-    if (step.kind === "action") {
-      assertEqual(
-        stored?.kind === "action" ? stored.action : null,
-        step.action,
-        `stored step ${index}'s action`,
+  try {
+    for (const [index, step] of TAPE.entries()) {
+      const stored = home.program[index];
+      assertEqual(stored?.kind, step.kind, `stored step ${index}'s kind`);
+      if (step.kind === "action") {
+        assertEqual(
+          stored?.kind === "action" ? stored.action : null,
+          step.action,
+          `stored step ${index}'s action`,
+        );
+        continue;
+      }
+      const commands = stored?.kind === "move" ? stored.commands : [];
+      assertLength(
+        commands,
+        step.commands.length,
+        `the commands stored step ${index} carries`,
       );
-      continue;
+      for (const [at, command] of step.commands.entries()) {
+        assertEqual(
+          commands[at]?.axis,
+          command.axis,
+          `step ${index}, command ${at}: its axis`,
+        );
+        assertEqual(
+          commands[at]?.target,
+          command.target,
+          `step ${index}, command ${at}: its target`,
+        );
+        assertEqual(
+          commands[at]?.rate,
+          command.rate,
+          `step ${index}, command ${at}: its rate`,
+        );
+      }
     }
-    const commands = stored?.kind === "move" ? stored.commands : [];
-    assertLength(
-      commands,
-      step.commands.length,
-      `the commands stored step ${index} carries`,
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.capture(
+      "tape-per-site-persists",
+      "Site 1's tape, still written on the second visit",
     );
-    for (const [at, command] of step.commands.entries()) {
-      assertEqual(
-        commands[at]?.axis,
-        command.axis,
-        `step ${index}, command ${at}: its axis`,
-      );
-      assertEqual(
-        commands[at]?.target,
-        command.target,
-        `step ${index}, command ${at}: its target`,
-      );
-      assertEqual(
-        commands[at]?.rate,
-        command.rate,
-        `step ${index}, command ${at}: its rate`,
-      );
-    }
   }
-
-  await h.capture(
-    "tape-per-site-persists",
-    "Site 1's tape, still written on the second visit",
-  );
 });

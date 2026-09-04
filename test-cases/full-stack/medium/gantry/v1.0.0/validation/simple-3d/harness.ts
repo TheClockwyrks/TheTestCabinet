@@ -66,6 +66,22 @@
 // produced `.wav` so a build that binds its cues to files still initializes. None
 // of them changes what the game computes; each one supplies a browser facility the
 // build is entitled to assume.
+//
+// AND ONE THING NOTHING STANDS IN FOR: A RECORDING. `engines/simple-3d` records a
+// scene as VP9 video, which wants a browser's encoder, and `emitReplay` is a
+// browser command — so a project that runs in Node reaches neither. Every point
+// this case declares is therefore backed by a STILL, including the ones whose
+// subject is a stretch of motion rather than a posed arrangement: a swing, a cable
+// snapping, a breakage cascading into a collapse. A reviewer would rather watch
+// those than read one frame of them, and here there is one frame.
+//
+// WHAT IT WOULD TAKE, stated so the next reader does not have to work it out
+// again: browser mode with the Playwright provider, and then the canvases, the
+// `webgl2` context, the asset transport, the audio decoder and every still written
+// through `node:fs` below all move with it, because each of them is built for this
+// process. That is not a dial on this file, it is a different file — and the suite
+// would then pay a browser's wall clock against the budget the node choice was
+// made for. It is left undone deliberately rather than half-done.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -119,9 +135,6 @@ import type {
 /* -------------------------------------------------------------------------- */
 /* The contract the build owes                                                */
 /* -------------------------------------------------------------------------- */
-
-/** The version the surface reports (`GANTRY_DEBUG_VERSION`). */
-export const GANTRY_DEBUG_VERSION = 1;
 
 /**
  * Every operation `specs/instrumentation.md` requires on the surface under this
@@ -607,7 +620,6 @@ export interface Harness {
    */
   diagnostics(): Promise<string[]>;
 
-
   /** Keep the picture on screen as the review item's `id` output. */
   capture(id: string, name: string): Promise<void>;
 
@@ -823,7 +835,8 @@ function driveSurface(
       // would assert under `none`, where the call crosses into a browser and a
       // fault always comes back as a rejection.
       if (READINGS.includes(property)) {
-        return async (): Promise<unknown> => op.call(raw, engine.state);
+        return async (...args: unknown[]): Promise<unknown> =>
+          op.call(raw, engine.state, ...args);
       }
       return async (...args: unknown[]): Promise<void> => {
         engine.apply((state) => op.call(raw, state, ...args) as GantryState);
@@ -1073,6 +1086,10 @@ export async function createHarness(
   // one device pixel per CSS pixel — that map is the identity.
   let pointerX = 0;
   let pointerY = 0;
+  // The live contact's landing position, in the window units a dispatched event
+  // carries: a lift comes back "at the position it landed at"
+  // (`specs/instrumentation.md`).
+  let contactAt = { x: 0, y: 0 };
   const onWindow = (x: number, y: number): { x: number; y: number } => {
     const view = engine.viewport();
     const cssScale = view.scale / dpr;
@@ -2019,7 +2036,8 @@ export function entriesOf(
   name?: string,
 ): DrawnEntry[] {
   return entries.filter(
-    (entry) => entry.kind === kind && (name === undefined || entry.name === name),
+    (entry) =>
+      entry.kind === kind && (name === undefined || entry.name === name),
   );
 }
 
@@ -2065,9 +2083,7 @@ export function colourDistance(
   a: readonly [number, number, number],
   b: readonly [number, number, number],
 ): number {
-  return (
-    Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2])
-  );
+  return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
 }
 
 /**
@@ -2141,18 +2157,24 @@ class PointerEvt extends Event {
   readonly clientX: number;
   readonly clientY: number;
   readonly isPrimary = true;
-  readonly pointerId = 0;
-  readonly pointerType = "mouse";
+  readonly pointerId: number;
+  readonly pointerType: "mouse" | "touch";
   readonly button = 0;
 
   constructor(
     type: "pointerdown" | "pointermove" | "pointerup",
     x: number,
     y: number,
+    device: "mouse" | "touch" = "mouse",
   ) {
     super(type);
     this.clientX = x;
     this.clientY = y;
+    this.pointerType = device;
+    // A finger is a pointer of its own, so it carries an id the mouse never
+    // does: `input.md` tracks each pointer by `id` and "among touches the first
+    // one down is" the primary.
+    this.pointerId = device === "touch" ? 1 : 0;
   }
 }
 
@@ -2169,8 +2191,9 @@ function dispatchPointer(
   type: "pointerdown" | "pointermove" | "pointerup",
   x: number,
   y: number,
+  device: "mouse" | "touch" = "mouse",
 ): void {
-  events.dispatchEvent(new PointerEvt(type, x, y));
+  events.dispatchEvent(new PointerEvt(type, x, y, device));
 }
 
 /* -------------------------------------------------------------------------- */

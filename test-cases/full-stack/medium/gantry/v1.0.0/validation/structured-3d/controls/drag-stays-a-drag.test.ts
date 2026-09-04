@@ -73,12 +73,14 @@ it("holds nothing pending when a drag comes home before its release", async () =
   await h.pointerUp();
   await h.advance(1);
 
+  const after = await h.snapshot();
+
+  await h.capture("state", "the build screen after the drag came home");
+
   assertNull(
-    (await h.snapshot()).pendingNode,
+    after.pendingNode,
     `the pending node after a press that reached ${OUT_PX} pixels and came ` +
       "back to where it went down: it is an orbit drag from that moment until " +
       "it is released, and a drag edits nothing (specs/controls.md)",
   );
-
-  await h.capture("state", "the build screen after the drag came home");
 });

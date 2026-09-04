@@ -381,7 +381,10 @@ export interface GantryDebugApi {
   reset(): Promise<void>;
   setScreen(screen: Screen): Promise<void>;
   setMenuIndex(index: number): Promise<void>;
-  /** Opens site `index`, locked or not, and shows the `build` screen. */
+  /**
+   * Opens site `index`, locked or not: the opening `specs/state.md` fixes, and
+   * nothing else. The screen is left exactly as it stands.
+   */
   openSite(index: number): Promise<void>;
   setCleared(index: number, cleared: boolean): Promise<void>;
   setBest(index: number, cost: number, time: number): Promise<void>;

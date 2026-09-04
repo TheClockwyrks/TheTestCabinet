@@ -66,12 +66,14 @@ it("removes the ring on a click at one of its flange nodes", async () => {
   );
   await h.click(at.x, at.y);
 
-  assertNull(
-    (await h.snapshot()).structure.ring,
-    "the ring after a delete click on a flange node it occupies, inside " +
-      `NODE_PICK_PX (${NODE_PICK_PX}) of it (specs/controls.md)`,
-  );
+  const after = await h.snapshot();
 
   await h.advance(1);
   await h.capture("state", "The yard with the ring deleted");
+
+  assertNull(
+    after.structure.ring,
+    "the ring after a delete click on a flange node it occupies, inside " +
+      `NODE_PICK_PX (${NODE_PICK_PX}) of it (specs/controls.md)`,
+  );
 });

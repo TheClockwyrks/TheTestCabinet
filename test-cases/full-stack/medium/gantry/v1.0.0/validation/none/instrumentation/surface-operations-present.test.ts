@@ -23,7 +23,13 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, fail } from "../assert";
-import { HANDLE, REQUIRED_OPS, createHarness, type Harness } from "../harness";
+import {
+  HANDLE,
+  REQUIRED_OPS,
+  createHarness,
+  openSite,
+  type Harness,
+} from "../harness";
 
 let h: Harness;
 
@@ -45,7 +51,8 @@ it("carries every operation specs/instrumentation.md names, each a function", as
         | undefined;
       const kinds: Record<string, string> = {};
       for (const name of wanted) {
-        kinds[name] = surface === undefined ? "no surface" : typeof surface[name];
+        kinds[name] =
+          surface === undefined ? "no surface" : typeof surface[name];
       }
       return kinds;
     },
@@ -53,14 +60,18 @@ it("carries every operation specs/instrumentation.md names, each a function", as
   );
 
   const missing = REQUIRED_OPS.filter((name) => found[name] !== "function");
+  await h.advance(1);
+  await h.capture(
+    "surface-operations",
+    "The build carrying the whole documented surface",
+  );
+
   if (missing.length > 0) {
     fail(
       `every one of the ${REQUIRED_OPS.length} operations ` +
         "specs/instrumentation.md names for this build to be present on " +
         `window.${HANDLE} as a function`,
-      missing
-        .map((name) => `${name} is ${found[name] ?? "absent"}`)
-        .join(", "),
+      missing.map((name) => `${name} is ${found[name] ?? "absent"}`).join(", "),
     );
   }
 
@@ -69,10 +80,4 @@ it("carries every operation specs/instrumentation.md names, each a function", as
   for (const name of REQUIRED_OPS) {
     assertEqual(found[name], "function", `window.${HANDLE}.${name}`);
   }
-
-  await h.advance(1);
-  await h.capture(
-    "surface-operations",
-    "The build carrying the whole documented surface",
-  );
 });

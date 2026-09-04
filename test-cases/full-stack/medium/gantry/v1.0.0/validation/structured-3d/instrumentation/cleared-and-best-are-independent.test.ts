@@ -39,55 +39,59 @@ afterEach(async () => {
 });
 
 it("marks a site cleared without a score and scores one without marking it", async () => {
-  // The harness opens on a reset, so every site is uncleared with no score.
-  const opening = await h.snapshot();
-  assertEqual(opening.cleared[MARKED], false, `site ${MARKED + 1} before`);
-  assertNull(opening.best[SCORED], `site ${SCORED + 1}'s score before`);
+  try {
+    // The harness opens on a reset, so every site is uncleared with no score.
+    const opening = await h.snapshot();
+    assertEqual(opening.cleared[MARKED], false, `site ${MARKED + 1} before`);
+    assertNull(opening.best[SCORED], `site ${SCORED + 1}'s score before`);
 
-  await h.debug.setCleared(MARKED, true);
-  const marked = await h.snapshot();
-  assertEqual(
-    marked.cleared[MARKED],
-    true,
-    `site ${MARKED + 1}'s cleared mark, set on its own`,
-  );
-  assertNull(
-    marked.best[MARKED],
-    `site ${MARKED + 1}'s recorded score: a site can be marked cleared ` +
-      "without one (specs/state.md)",
-  );
+    await h.debug.setCleared(MARKED, true);
+    const marked = await h.snapshot();
+    assertEqual(
+      marked.cleared[MARKED],
+      true,
+      `site ${MARKED + 1}'s cleared mark, set on its own`,
+    );
+    assertNull(
+      marked.best[MARKED],
+      `site ${MARKED + 1}'s recorded score: a site can be marked cleared ` +
+        "without one (specs/state.md)",
+    );
 
-  await h.debug.setBest(SCORED, SCORE.cost, SCORE.time);
-  const scored = await h.snapshot();
-  assertDeepEqual(
-    scored.best[SCORED],
-    SCORE,
-    `site ${SCORED + 1}'s recorded score, set on its own`,
-  );
-  assertEqual(
-    scored.cleared[SCORED],
-    false,
-    `site ${SCORED + 1}'s cleared mark: a site can carry a score without ` +
-      "being marked cleared (specs/state.md)",
-  );
+    await h.debug.setBest(SCORED, SCORE.cost, SCORE.time);
+    const scored = await h.snapshot();
+    assertDeepEqual(
+      scored.best[SCORED],
+      SCORE,
+      `site ${SCORED + 1}'s recorded score, set on its own`,
+    );
+    assertEqual(
+      scored.cleared[SCORED],
+      false,
+      `site ${SCORED + 1}'s cleared mark: a site can carry a score without ` +
+        "being marked cleared (specs/state.md)",
+    );
 
-  await h.debug.clearBest(SCORED);
-  const cleared = await h.snapshot();
-  assertNull(cleared.best[SCORED], `site ${SCORED + 1}'s score, cleared`);
-  assertEqual(
-    cleared.cleared[SCORED],
-    false,
-    `site ${SCORED + 1}'s cleared mark across a clearBest`,
-  );
-  assertEqual(
-    cleared.cleared[MARKED],
-    true,
-    `site ${MARKED + 1}'s cleared mark across another site's clearBest`,
-  );
-
-  // The select screen is where the two facts are shown side by side
-  // (specs/ui.md), so that is the picture a reviewer is handed.
-  await h.debug.setScreen("select");
-  await h.advance(1);
-  await h.capture("independent", "The two per-site facts");
+    await h.debug.clearBest(SCORED);
+    const cleared = await h.snapshot();
+    assertNull(cleared.best[SCORED], `site ${SCORED + 1}'s score, cleared`);
+    assertEqual(
+      cleared.cleared[SCORED],
+      false,
+      `site ${SCORED + 1}'s cleared mark across a clearBest`,
+    );
+    assertEqual(
+      cleared.cleared[MARKED],
+      true,
+      `site ${MARKED + 1}'s cleared mark across another site's clearBest`,
+    );
+  } finally {
+    // The select screen is where the two facts are shown side by side
+    // (specs/ui.md), so that is the picture a reviewer is handed — and it is
+    // taken in a `finally`, so a check that fails still leaves the picture that
+    // shows why.
+    await h.debug.setScreen("select");
+    await h.advance(1);
+    await h.capture("independent", "The two per-site facts");
+  }
 });

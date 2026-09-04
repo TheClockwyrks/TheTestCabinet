@@ -87,6 +87,8 @@ it("stops the motor loop when a run in progress is aborted", async () => {
   const started = await h.cues();
   const looping = await h.loopingCues();
 
+  await h.capture("aborted", "The build screen after the abort");
+
   assertTrue(
     !looping.includes("motor"),
     `no motor loop live over the ${AFTER_FRAMES} frames after the abort: a run ` +
@@ -98,6 +100,4 @@ it("stops the motor loop when a run in progress is aborted", async () => {
     `no motor sound started over the ${AFTER_FRAMES} frames after the abort ` +
       "(specs/ui.md) — the loop is still being fed",
   );
-
-  await h.capture("aborted", "The build screen after the abort");
 });

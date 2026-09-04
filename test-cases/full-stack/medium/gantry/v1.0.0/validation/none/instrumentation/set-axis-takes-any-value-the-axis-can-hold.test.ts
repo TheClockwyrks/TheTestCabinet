@@ -65,23 +65,27 @@ it("takes a value outside the axis's step range and reads it back unchanged", as
   ]);
   await startRun(h);
 
-  for (const [axis, value] of POSES) {
-    await h.debug.setAxis(axis, value);
-    const { run } = await h.snapshot();
-    assertEqual(
-      run.axes[axis].value,
-      value,
-      `the ${axis}'s value after setAxis(${value}): the ranges in ` +
-        "specs/program.md bound a step's target, not the axis " +
-        "(specs/instrumentation.md)",
-    );
-    assertEqual(
-      run.phase,
-      "running",
-      `the run after setAxis("${axis}", ${value}): a pose reaches no verdict`,
-    );
-    assertNull(run.cause, `the cause after setAxis("${axis}", ${value})`);
+  try {
+    for (const [axis, value] of POSES) {
+      await h.debug.setAxis(axis, value);
+      const { run } = await h.snapshot();
+      assertEqual(
+        run.axes[axis].value,
+        value,
+        `the ${axis}'s value after setAxis(${value}): the ranges in ` +
+          "specs/program.md bound a step's target, not the axis " +
+          "(specs/instrumentation.md)",
+      );
+      assertEqual(
+        run.phase,
+        "running",
+        `the run after setAxis("${axis}", ${value}): a pose reaches no verdict`,
+      );
+      assertNull(run.cause, `the cause after setAxis("${axis}", ${value})`);
+    }
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.capture("state", "the run carrying the three values that were posed");
   }
-
-  await h.capture("state", "the run carrying the three values that were posed");
 });

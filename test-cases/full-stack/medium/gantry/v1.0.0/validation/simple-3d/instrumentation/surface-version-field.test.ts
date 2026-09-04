@@ -21,7 +21,8 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { GANTRY_DEBUG_VERSION, createHarness, type Harness } from "../harness";
+import { GANTRY_DEBUG_VERSION } from "../constants";
+import { createHarness, type Harness } from "../harness";
 
 let h: Harness;
 
@@ -36,13 +37,13 @@ afterEach(async () => {
 it("carries version as the plain number GANTRY_DEBUG_VERSION", async () => {
   const { version } = h.probe([]);
 
+  await h.advance(1);
+  await h.capture("surface-version", "The build the surface version was read from");
+
   assertEqual(typeof version, "number", "the type of engine.debug.version");
   assertEqual(
     version,
     GANTRY_DEBUG_VERSION,
     "engine.debug.version (specs/instrumentation.md)",
   );
-
-  await h.advance(1);
-  await h.capture("surface-version", "The build the surface version was read from");
 });

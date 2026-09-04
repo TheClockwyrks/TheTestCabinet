@@ -122,48 +122,52 @@ async function clearSiteZero(harness: Harness): Promise<void> {
 }
 
 it("opens a site through NEXT SITE and through REPLAY", async () => {
-  for (const entry of ["NEXT SITE", "REPLAY"] as const) {
-    const index = RESULTS_ITEMS.indexOf(entry);
-    await clearSiteZero(h);
+  try {
+    for (const entry of ["NEXT SITE", "REPLAY"] as const) {
+      const index = RESULTS_ITEMS.indexOf(entry);
+      await clearSiteZero(h);
 
-    await h.debug.setMenuIndex(index);
-    assertEqual(
-      (await h.snapshot()).menuIndex,
-      index,
-      `the highlight posed onto ${entry} (specs/instrumentation.md)`,
-    );
-    await h.press(CONFIRM);
+      await h.debug.setMenuIndex(index);
+      assertEqual(
+        (await h.snapshot()).menuIndex,
+        index,
+        `the highlight posed onto ${entry} (specs/instrumentation.md)`,
+      );
+      await h.press(CONFIRM);
 
-    const after = await h.snapshot();
-    assertEqual(
-      after.screen,
-      "build",
-      `the screen ${entry} shows (specs/ui.md)`,
-    );
-    assertEqual(
-      after.camera.yaw,
-      CAMERA_START_YAW,
-      `the camera's yaw after ${entry}: opening a site returns the camera to ` +
-        "its start pose (specs/state.md)",
-    );
-    assertEqual(
-      after.camera.pitch,
-      CAMERA_START_PITCH,
-      `the camera's pitch after ${entry} (specs/state.md)`,
-    );
-    assertEqual(
-      after.camera.dist,
-      CAMERA_START_DIST,
-      `the camera's distance after ${entry} (specs/state.md)`,
-    );
-    assertEqual(
-      after.historyDepth,
-      0,
-      `the undo history after ${entry}: opening a site empties it ` +
-        "(specs/state.md)",
-    );
+      const after = await h.snapshot();
+      assertEqual(
+        after.screen,
+        "build",
+        `the screen ${entry} shows (specs/ui.md)`,
+      );
+      assertEqual(
+        after.camera.yaw,
+        CAMERA_START_YAW,
+        `the camera's yaw after ${entry}: opening a site returns the camera to ` +
+          "its start pose (specs/state.md)",
+      );
+      assertEqual(
+        after.camera.pitch,
+        CAMERA_START_PITCH,
+        `the camera's pitch after ${entry} (specs/state.md)`,
+      );
+      assertEqual(
+        after.camera.dist,
+        CAMERA_START_DIST,
+        `the camera's distance after ${entry} (specs/state.md)`,
+      );
+      assertEqual(
+        after.historyDepth,
+        0,
+        `the undo history after ${entry}: opening a site empties it ` +
+          "(specs/state.md)",
+      );
+    }
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.advance(1);
+    await h.capture("results-entries", "The site the last entry taken opened");
   }
-
-  await h.advance(1);
-  await h.capture("results-entries", "The site the last entry taken opened");
 });

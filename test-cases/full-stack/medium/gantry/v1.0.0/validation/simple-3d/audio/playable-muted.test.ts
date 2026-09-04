@@ -109,37 +109,41 @@ afterEach(async () => {
 });
 
 it("clears a site muted exactly as it clears it sounding", async () => {
-  await h.press(BINDINGS.mute[0]!);
-  // The mute bit is the audio bus's, which the state mirrors on the next update.
-  await h.advance(1);
-  assertTrue((await h.snapshot()).muted, "the mute the `mute` action toggled");
+  try {
+    await h.press(BINDINGS.mute[0]!);
+    // The mute bit is the audio bus's, which the state mirrors on the next update.
+    await h.advance(1);
+    assertTrue((await h.snapshot()).muted, "the mute the `mute` action toggled");
 
-  const muted = await playthrough(h);
-  assertTrue(
-    (await h.snapshot()).muted,
-    "the game still muted at the end of the playthrough",
-  );
-  assertTrue(
-    JSON.parse(muted).phase === "cleared",
-    "the muted run cleared the site, so there is a verdict to compare",
-  );
+    const muted = await playthrough(h);
+    assertTrue(
+      (await h.snapshot()).muted,
+      "the game still muted at the end of the playthrough",
+    );
+    assertTrue(
+      JSON.parse(muted).phase === "cleared",
+      "the muted run cleared the site, so there is a verdict to compare",
+    );
 
-  // Sound back on, and the game back where this harness's own reset left it —
-  // bar the mute bit, which `reset` leaves alone (specs/instrumentation.md).
-  await h.press(BINDINGS.mute[0]!);
-  await h.advance(1);
-  assertTrue(
-    !(await h.snapshot()).muted,
-    "the mute the second press turned back off",
-  );
-  await h.debug.reset();
+    // Sound back on, and the game back where this harness's own reset left it —
+    // bar the mute bit, which `reset` leaves alone (specs/instrumentation.md).
+    await h.press(BINDINGS.mute[0]!);
+    await h.advance(1);
+    assertTrue(
+      !(await h.snapshot()).muted,
+      "the mute the second press turned back off",
+    );
+    await h.debug.reset();
 
-  assertEqual(
-    muted,
-    await playthrough(h),
-    "the run a muted build decides, against the same run sounding " +
-      "(specs/ui.md: the game stays fully playable muted)",
-  );
-
-  await h.capture("muted", "The results the muted run reached");
+    assertEqual(
+      muted,
+      await playthrough(h),
+      "the run a muted build decides, against the same run sounding " +
+        "(specs/ui.md: the game stays fully playable muted)",
+    );
+  } finally {
+    // In a `finally`, so a check that fails still leaves the picture that
+    // shows why.
+    await h.capture("muted", "The results the muted run reached");
+  }
 });

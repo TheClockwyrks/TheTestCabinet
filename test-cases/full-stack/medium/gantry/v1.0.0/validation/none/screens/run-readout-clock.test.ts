@@ -115,6 +115,8 @@ it("draws the run clock the ticks it has taken make", async () => {
       (figure) => Math.abs(figure - CLOCK_SECONDS) <= FIGURE_TOL,
     ),
   );
+  await h.capture("run-clock", "The run clock");
+
   if (!shown) {
     fail(
       `the run clock, ${CLOCK_SECONDS} seconds, drawn on the run screen ` +
@@ -122,6 +124,4 @@ it("draws the run clock the ticks it has taken make", async () => {
       `the screen's text reads [${drawn.map((one) => one.trim()).join(" | ")}]`,
     );
   }
-
-  await h.capture("run-clock", "The run clock");
 });

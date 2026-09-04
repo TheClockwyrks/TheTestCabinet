@@ -23,12 +23,10 @@ import {
   assertNotNull,
   assertNull,
 } from "../assert";
-import { BINDINGS, HOIST_MAX_RATE, HOIST_START } from "../constants";
+import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import { createHarness, openSite, poseTape, type Harness } from "../harness";
 
 const SITE = 0;
-
-const CHECK_KEY = BINDINGS.check[0]!;
 
 /**
  * The structure the reading is taken against: a slew ring and the one rail that

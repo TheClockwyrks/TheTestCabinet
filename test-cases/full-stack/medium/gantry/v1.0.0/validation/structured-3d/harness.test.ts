@@ -59,6 +59,7 @@ import {
   CAMERA_START_PITCH,
   CAMERA_START_YAW,
   CUES,
+  GANTRY_DEBUG_VERSION,
   HOIST_MAX_RATE,
   HOIST_START,
   RUN_SPEEDS,
@@ -71,7 +72,6 @@ import {
 } from "./constants";
 import {
   DESIGNS,
-  GANTRY_DEBUG_VERSION,
   MINIMAL_CRANE,
   REQUIRED_OPS,
   addOneLoad,

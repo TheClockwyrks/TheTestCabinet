@@ -95,21 +95,25 @@ it("leaves the idle run untouched by every pose that needs a run in progress", a
     },
   ];
 
-  for (const pose of poses) {
-    if (pose.indexed) {
-      // An index the idle run carries no entry for may be refused loudly; what it
-      // may not do is move the run.
-      await pose.run().catch(() => undefined);
-    } else {
-      await pose.run();
+  try {
+    for (const pose of poses) {
+      if (pose.indexed) {
+        // An index the idle run carries no entry for may be refused loudly; what it
+        // may not do is move the run.
+        await pose.run().catch(() => undefined);
+      } else {
+        await pose.run();
+      }
+      assertEqual(
+        JSON.stringify((await h.snapshot()).run),
+        idle,
+        `the idle run across a ${pose.name} made with no run in progress ` +
+          "(specs/instrumentation.md)",
+      );
     }
-    assertEqual(
-      JSON.stringify((await h.snapshot()).run),
-      idle,
-      `the idle run across a ${pose.name} made with no run in progress ` +
-        "(specs/instrumentation.md)",
-    );
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.capture("state", "the idle run six run poses could not touch");
   }
-
-  await h.capture("state", "the idle run six run poses could not touch");
 });

@@ -80,15 +80,19 @@ it("takes the next RUN_SPEEDS index on each press and wraps", async () => {
   );
   assertEqual(RUN_SPEEDS.length, 3, "the watch speeds the cycle runs through");
 
-  for (const [press, index] of EXPECTED.entries()) {
-    await h.press(SPEED);
-    assertEqual(
-      (await h.snapshot()).run.speedIndex,
-      index,
-      `run.speedIndex after press ${press + 1} of ${SPEED}, which takes the ` +
-        `next index into RUN_SPEEDS and wraps from the last (specs/ui.md)`,
-    );
+  try {
+    for (const [press, index] of EXPECTED.entries()) {
+      await h.press(SPEED);
+      assertEqual(
+        (await h.snapshot()).run.speedIndex,
+        index,
+        `run.speedIndex after press ${press + 1} of ${SPEED}, which takes the ` +
+          `next index into RUN_SPEEDS and wraps from the last (specs/ui.md)`,
+      );
+    }
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.capture("state", "the watch speed wrapped back to the first");
   }
-
-  await h.capture("state", "the watch speed wrapped back to the first");
 });

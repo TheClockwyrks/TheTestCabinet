@@ -45,12 +45,12 @@ it("returns to select from the results screen", async () => {
   await h.press(BACK);
 
   const after = await h.snapshot();
+  await h.capture("state", "the select screen back left the results screen for");
+
   assertEqual(
     after.screen,
     "select",
     "the screen back leaves the results screen for, as SITE SELECT does " +
       "(specs/ui.md)",
   );
-
-  await h.capture("state", "the select screen back left the results screen for");
 });

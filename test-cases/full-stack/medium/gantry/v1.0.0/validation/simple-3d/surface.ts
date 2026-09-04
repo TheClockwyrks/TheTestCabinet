@@ -434,7 +434,10 @@ export interface GantryDebugApi {
   reset(state: DeepReadonly<GantryState>): GantryState;
   setScreen(state: DeepReadonly<GantryState>, screen: Screen): GantryState;
   setMenuIndex(state: DeepReadonly<GantryState>, index: number): GantryState;
-  /** Opens site `index`, locked or not, and shows the `build` screen. */
+  /**
+   * Opens site `index`, locked or not: the opening `specs/state.md` fixes, and
+   * nothing else. The screen is left exactly as it stands.
+   */
   openSite(state: DeepReadonly<GantryState>, index: number): GantryState;
   setCleared(
     state: DeepReadonly<GantryState>,
@@ -624,8 +627,8 @@ type Driven<M> = M extends (
   ...args: infer A
 ) => GantryState
   ? (...args: A) => Promise<void>
-  : M extends (state: DeepReadonly<GantryState>) => infer R
-    ? () => Promise<R>
+  : M extends (state: DeepReadonly<GantryState>, ...args: infer A) => infer R
+    ? (...args: A) => Promise<R>
     : M;
 
 /**

@@ -65,6 +65,9 @@ it("raises the pitch by ORBIT_KEY_RATE times the time held", async () => {
   await h.keyUp(UP);
 
   const { camera } = await h.snapshot();
+  await h.advance(1);
+  await h.capture("state", "the yard after a quarter second of `up`");
+
   assertClose(
     camera.pitch,
     CAMERA_START_PITCH + TURNED,
@@ -73,7 +76,4 @@ it("raises the pitch by ORBIT_KEY_RATE times the time held", async () => {
       `ORBIT_KEY_RATE (${ORBIT_KEY_RATE}) deg/s against the frame's delta ` +
       "time (specs/controls.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "the yard after a quarter second of `up`");
 });

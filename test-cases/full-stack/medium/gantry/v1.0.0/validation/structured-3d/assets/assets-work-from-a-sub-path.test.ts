@@ -102,6 +102,11 @@ it("addresses every asset page-relative, so the site runs from a sub-path", asyn
   await poseTape(h, [HOLD]);
   await startRun(h);
   const ran = await runTicks(h, PLAY_TICKS);
+  await h.capture(
+    "sub-path",
+    "The site played, with every asset addressed page-relative",
+  );
+
   assertTrue(
     ran.run.phase === "running",
     "the run to still be going when the record is read, so what this point " +
@@ -137,10 +142,5 @@ it("addresses every asset page-relative, so the site runs from a sub-path", asyn
     "every asset the build asks for to resolve, so a relative reference " +
       "names a file the build actually produced (specs/assets.md) — these did " +
       "not",
-  );
-
-  await h.capture(
-    "sub-path",
-    "The site played, with every asset addressed page-relative",
   );
 });

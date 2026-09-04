@@ -124,6 +124,12 @@ it("keeps the recorded best when a clear ties its cost and takes longer", async 
   );
 
   const best = ended.best[SITE];
+  await h.advance(1);
+  await h.capture(
+    "best-kept",
+    "The recorded best after a slower clear of equal cost",
+  );
+
   assertNotNull(best, "the site's recorded best score");
   assertEqual(
     best?.cost,
@@ -137,11 +143,5 @@ it("keeps the recorded best when a clear ties its cost and takes longer", async 
     "the time of the score standing after an equal-cost, slower clear: a " +
       "later clear replaces the best only when its cost is lower, or equal " +
       "with a lower time (specs/ui.md)",
-  );
-
-  await h.advance(1);
-  await h.capture(
-    "best-kept",
-    "The recorded best after a slower clear of equal cost",
   );
 });

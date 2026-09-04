@@ -219,6 +219,11 @@ it("lets a cable that went slack carry tension again later in the run", async ()
     }
     arrived = snapshot.run.axes.trolley.value >= WATCHED_TO;
   }
+  await h.capture(
+    "slack-is-per-solve",
+    "the crane with the trolley out at the tip, its cross stay taut again",
+  );
+
   if (!arrived) {
     fail(
       `the trolley to reach ${WATCHED_TO} along the track within ` +
@@ -226,10 +231,6 @@ it("lets a cable that went slack carry tension again later in the run", async ()
       `it never did: the traverse is the scenario this point reads`,
     );
   }
-  await h.capture(
-    "slack-is-per-solve",
-    "the crane with the trolley out at the tip, its cross stay taut again",
-  );
 
   const firstSlack = seen.findIndex((one) => one.force === 0);
   assertGreaterThan(

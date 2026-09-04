@@ -61,17 +61,17 @@ it("calls the same lone strut disconnected only on the site that does not anchor
   await emptyYard(h);
   await standTheStrut();
   const unanchored = (await h.check()).issues;
+  await h.advance(1);
+  await h.capture(
+    "against-the-anchors",
+    "the lone strut on the site that does not anchor it",
+  );
+
   assertContains(
     unanchored,
     "disconnected-members",
     `the issues on site ${WITHOUT + 1}, whose anchors leave the strut with ` +
       "no member path to one (specs/structure.md)",
-  );
-
-  await h.advance(1);
-  await h.capture(
-    "against-the-anchors",
-    "the lone strut on the site that does not anchor it",
   );
 
   await openSite(h, WITH);

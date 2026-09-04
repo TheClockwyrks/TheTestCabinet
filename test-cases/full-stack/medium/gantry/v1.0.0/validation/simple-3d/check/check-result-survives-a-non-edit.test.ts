@@ -24,7 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull } from "../assert";
-import { BINDINGS, HOIST_MAX_RATE, HOIST_START } from "../constants";
+import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
   clearAll,
   createHarness,
@@ -35,8 +35,6 @@ import {
 } from "../harness";
 
 const SITE = 0;
-
-const CHECK_KEY = BINDINGS.check[0]!;
 
 /** A camera pose inside the limits specs/controls.md fixes, and not the start. */
 const CAMERA = { yaw: 120, pitch: 55, dist: 30 } as const;

@@ -67,6 +67,11 @@ it("carries both commands on the one move step", async () => {
   const step = program[0];
   assertEqual(step?.kind, "move", "the kind of the step the commands are on");
   if (step?.kind !== "move") return;
+  await h.capture(
+    "state",
+    "The program screen showing one move step on two axes",
+  );
+
   assertLength(
     step.commands,
     2,
@@ -87,9 +92,4 @@ it("carries both commands on the one move step", async () => {
       `the ${wanted.axis} command's rate`,
     );
   }
-
-  await h.capture(
-    "state",
-    "The program screen showing one move step on two axes",
-  );
 });

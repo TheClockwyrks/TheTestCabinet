@@ -47,6 +47,11 @@ it("holds the node it was given as the pending first node, placing nothing", asy
   await h.advance(1);
 
   const s = await h.snapshot();
+  await h.capture(
+    "pending-node-held",
+    "The build screen with a node held pending",
+  );
+
   assertNotNull(s.pendingNode, "the pending first node setPendingNode holds");
   assertEqual(s.pendingNode?.x, NODE.x, "the pending node's x");
   assertEqual(s.pendingNode?.y, NODE.y, "the pending node's y");
@@ -56,10 +61,5 @@ it("holds the node it was given as the pending first node, placing nothing", asy
     0,
     "the members standing: a first click holds a node and places nothing " +
       "(specs/controls.md)",
-  );
-
-  await h.capture(
-    "pending-node-held",
-    "The build screen with a node held pending",
   );
 });

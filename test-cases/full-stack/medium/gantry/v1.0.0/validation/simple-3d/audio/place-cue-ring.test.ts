@@ -44,15 +44,18 @@ it("plays the place cue when a structure edit places the ring", async () => {
   await h.advance(1);
   const played = await h.cues();
 
+  const after = await h.snapshot();
+
+  await h.capture("ring", "The slew ring the edit placed");
+
   assertNotNull(
-    (await h.snapshot()).structure.ring,
+    after.structure.ring,
     "the ring the edit placed, so a cue has an edit to sound for",
   );
+
   assertContains(
     played,
     "place",
     "the cue a structure edit that places the ring plays (specs/ui.md)",
   );
-
-  await h.capture("ring", "The slew ring the edit placed");
 });

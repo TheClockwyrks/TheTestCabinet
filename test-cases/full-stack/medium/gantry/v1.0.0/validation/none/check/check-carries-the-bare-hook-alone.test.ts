@@ -84,6 +84,12 @@ it("reports the same forces with a heavy load standing under the trolley", async
 
   const loaded = await h.check();
 
+  await h.advance(1);
+  await h.capture(
+    "bare-hook",
+    "the check taken with a heavy load standing under the trolley",
+  );
+
   assertLength(
     loaded.members,
     bare.members.length,
@@ -111,10 +117,4 @@ it("reports the same forces with a heavy load standing under the trolley", async
       `member ${member.id}'s utilization with the load standing`,
     );
   }
-
-  await h.advance(1);
-  await h.capture(
-    "bare-hook",
-    "the check taken with a heavy load standing under the trolley",
-  );
 });

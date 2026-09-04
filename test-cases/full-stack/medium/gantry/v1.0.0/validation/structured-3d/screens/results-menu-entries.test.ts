@@ -118,6 +118,8 @@ it("draws NEXT SITE, REPLAY and SITE SELECT in that order", async () => {
   await h.advance(1);
   const reading = await readingOrder(h);
   let at = 0;
+  await h.capture("results-menu", "The results menu");
+
   for (const entry of RESULTS_ITEMS) {
     const found = reading.indexOf(entry, at);
     if (found < 0) {
@@ -130,6 +132,4 @@ it("draws NEXT SITE, REPLAY and SITE SELECT in that order", async () => {
     }
     at = found + entry.length;
   }
-
-  await h.capture("results-menu", "The results menu");
 });

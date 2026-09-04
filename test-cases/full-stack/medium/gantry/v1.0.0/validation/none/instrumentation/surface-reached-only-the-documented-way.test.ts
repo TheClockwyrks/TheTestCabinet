@@ -38,6 +38,12 @@ it("installs the surface on window.__gantry as soon as the game has initialized"
     };
   }, HANDLE);
 
+  await h.advance(1);
+  await h.capture(
+    "surface-handle",
+    "The build carrying its surface on the documented handle",
+  );
+
   assertEqual(handle.kind, "object", `the type of window.${HANDLE}`);
   assertEqual(
     handle.snapshot,
@@ -56,11 +62,5 @@ it("installs the surface on window.__gantry as soon as the game has initialized"
     typeof h.openingSnapshot?.screen,
     "string",
     "the screen that opening reading reported, so it was a real snapshot",
-  );
-
-  await h.advance(1);
-  await h.capture(
-    "surface-handle",
-    "The build carrying its surface on the documented handle",
   );
 });

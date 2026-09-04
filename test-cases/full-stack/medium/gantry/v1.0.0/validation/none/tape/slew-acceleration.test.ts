@@ -76,15 +76,20 @@ it("raises the slew's rate by SLEW_ACCEL / TICK_HZ on each driving tick", async 
   await poseTape(h, TAPE);
   await startRun(h);
 
-  for (let tick = 1; tick <= SAMPLES; tick += 1) {
-    const s = await runTicks(h, 1);
-    assertClose(
-      s.run.axes.slew.rate,
-      STEP * tick,
-      TOL,
-      `the slew's rate after ${tick} driving tick(s), ${STEP} deg/s added ` +
-        "each (specs/program.md)",
-    );
+  try {
+    for (let tick = 1; tick <= SAMPLES; tick += 1) {
+      const s = await runTicks(h, 1);
+      assertClose(
+        s.run.axes.slew.rate,
+        STEP * tick,
+        TOL,
+        `the slew's rate after ${tick} driving tick(s), ${STEP} deg/s added ` +
+          "each (specs/program.md)",
+      );
+    }
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.capture("state", "The driven state this point decides");
   }
-  await h.capture("state", "The driven state this point decides");
 });

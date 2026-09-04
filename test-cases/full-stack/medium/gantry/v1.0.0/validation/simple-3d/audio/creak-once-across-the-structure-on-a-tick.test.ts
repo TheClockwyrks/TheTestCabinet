@@ -231,6 +231,8 @@ it("sounds the creak once on a tick two members crossed together", async () => {
   await poseWorld(h);
 
   const together = await crossOnce(h, TWO_MEMBER_MASS);
+  await h.capture("together", "The tick two members crossed together");
+
   assertGreaterThan(
     together.crossed,
     1,
@@ -243,7 +245,6 @@ it("sounds the creak once on a tick two members crossed together", async () => {
     0,
     `the creak the two-member crossing plays, so there is something to count`,
   );
-  await h.capture("together", "The tick two members crossed together");
 
   // Past the first run's own cooldown, then the same run again under the mass
   // that takes one member across instead of two.

@@ -230,6 +230,11 @@ it("lets the arm swing outside the envelope without clamping it or ending the ru
   ) {
     arrived = await runTicks(h, STRIDE);
   }
+  await h.capture(
+    "swung-out",
+    "The arm standing outside the site's build envelope, mid-run",
+  );
+
   assertNear(
     arrived.run.axes.slew.value,
     TARGET,
@@ -249,10 +254,5 @@ it("lets the arm swing outside the envelope without clamping it or ending the ru
       ", cause " +
       String(arrived.run.cause) +
       ")",
-  );
-
-  await h.capture(
-    "swung-out",
-    "The arm standing outside the site's build envelope, mid-run",
   );
 });

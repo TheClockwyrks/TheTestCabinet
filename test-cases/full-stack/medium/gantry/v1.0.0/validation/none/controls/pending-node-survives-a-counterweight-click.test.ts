@@ -75,6 +75,12 @@ it("places the counterweight and leaves the pending node held", async () => {
   await h.click(at.x, at.y);
 
   const s = await h.snapshot();
+  await h.advance(1);
+  await h.capture(
+    "state",
+    "The counterweight placed with the pending node still held",
+  );
+
   assertLength(
     s.structure.counterweights,
     1,
@@ -95,11 +101,5 @@ it("places the counterweight and leaves the pending node held", async () => {
     JSON.stringify(s.pendingNode),
     JSON.stringify(PENDING),
     "the node still held pending",
-  );
-
-  await h.advance(1);
-  await h.capture(
-    "state",
-    "The counterweight placed with the pending node still held",
   );
 });

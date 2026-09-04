@@ -82,6 +82,11 @@ it("reports no forces on the idle placeholder or at the instant a run starts", a
   );
 
   const started = await startRun(h);
+  await h.capture(
+    "forces-empty",
+    "The run at tick 0, carrying no solve of its own yet",
+  );
+
   assertEqual(
     started.run.tick,
     0,
@@ -92,10 +97,5 @@ it("reports no forces on the idle placeholder or at the instant a run starts", a
     0,
     "the forces a run carries before its first tick has solved " +
       "(specs/instrumentation.md)",
-  );
-
-  await h.capture(
-    "forces-empty",
-    "The run at tick 0, carrying no solve of its own yet",
   );
 });

@@ -56,6 +56,8 @@ it("appends a move step carrying the command it was given", async () => {
   const step = program[0];
   assertEqual(step?.kind, "move", "the kind of step addMoveStep appends");
   if (step?.kind !== "move") return;
+  await h.capture("state", "The program screen showing the one move step");
+
   assertLength(
     step.commands,
     1,
@@ -64,6 +66,4 @@ it("appends a move step carrying the command it was given", async () => {
   assertEqual(step.commands[0]?.axis, AXIS, "the command's axis");
   assertEqual(step.commands[0]?.target, TARGET, "the command's target");
   assertEqual(step.commands[0]?.rate, RATE, "the command's rate");
-
-  await h.capture("state", "The program screen showing the one move step");
 });

@@ -61,18 +61,22 @@ it("selects each of the six build tools in turn", async () => {
       "(specs/instrumentation.md)",
   );
 
-  for (const tool of WALK) {
-    await h.debug.setTool(tool);
-    await h.advance(1);
-    assertEqual(
-      (await h.snapshot()).tool,
-      tool,
-      `the tool setTool("${tool}") selects (specs/instrumentation.md)`,
+  try {
+    for (const tool of WALK) {
+      await h.debug.setTool(tool);
+      await h.advance(1);
+      assertEqual(
+        (await h.snapshot()).tool,
+        tool,
+        `the tool setTool("${tool}") selects (specs/instrumentation.md)`,
+      );
+    }
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.capture(
+      "set-tool-selects-a-tool",
+      "The build screen with the last selected tool",
     );
   }
-
-  await h.capture(
-    "set-tool-selects-a-tool",
-    "The build screen with the last selected tool",
-  );
 });

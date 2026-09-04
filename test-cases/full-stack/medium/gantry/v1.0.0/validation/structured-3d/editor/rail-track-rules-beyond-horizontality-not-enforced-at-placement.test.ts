@@ -78,6 +78,11 @@ it("accepts a horizontal rail that breaks a track rule the editor does not check
   await h.advance(1);
 
   const { structure } = await h.snapshot();
+  await h.capture(
+    "rail-track-rules-beyond-horizontality-not-enforced-at-placement",
+    "Two parallel horizontal rails the editor accepted",
+  );
+
   assertLength(
     structure.members,
     RAILS.length,
@@ -93,9 +98,4 @@ it("accepts a horizontal rail that breaks a track rule the editor does not check
     );
     assertEqual(placed?.material, "rail", `member ${index}'s material`);
   }
-
-  await h.capture(
-    "rail-track-rules-beyond-horizontality-not-enforced-at-placement",
-    "Two parallel horizontal rails the editor accepted",
-  );
 });

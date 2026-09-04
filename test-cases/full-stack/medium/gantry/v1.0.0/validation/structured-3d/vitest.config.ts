@@ -23,7 +23,10 @@
 // drives it with `engine.advance` in this process. What the engine expects a
 // browser to supply — a `webgl2` context, `fetch`, an audio context — the harness
 // supplies instead; `validation/host.ts` is the whole of that adapter and says
-// what each of the three is worth.
+// what each of the three is worth. What it does NOT supply is the engine's
+// recorder, whose VP9 encoder and `emitReplay` command both want a browser — so
+// every point this case declares is backed by a still rather than a recording,
+// which `harness.ts` states in full.
 //
 // `passWithNoTests` is `false` because a missing validator is a broken suite
 // rather than a passing one.

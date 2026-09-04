@@ -100,12 +100,14 @@ it("takes the member at 11 pixels and nothing at 13", async () => {
   const outside = offMidpoint(a, b, OUTSIDE_PX);
   await h.pointerMove(outside.x, outside.y);
   await h.advance(1);
+  const after = await h.snapshot();
+
+  await h.capture("state", "the build screen with the pointer out of range");
+
   assertNull(
-    (await h.snapshot()).pick.member,
+    after.pick.member,
     `the member candidate ${OUTSIDE_PX} logical pixels from the projected ` +
       `segment, beyond MEMBER_PICK_PX (${MEMBER_PICK_PX}) ` +
       "(specs/controls.md)",
   );
-
-  await h.capture("state", "the build screen with the pointer out of range");
 });

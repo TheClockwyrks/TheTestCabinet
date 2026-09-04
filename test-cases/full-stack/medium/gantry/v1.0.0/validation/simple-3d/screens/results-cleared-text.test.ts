@@ -101,6 +101,8 @@ it("draws CLEARED_TEXT on the results screen", async () => {
   await h.advance(1);
   const drawn = await readoutText(h);
   const wanted = CLEARED_TEXT.toLowerCase();
+  await h.capture("results-copy", "The cleared copy");
+
   if (!drawn.some((text) => text.toLowerCase().includes(wanted))) {
     fail(
       `CLEARED_TEXT ("${CLEARED_TEXT}") drawn on the results screen ` +
@@ -108,6 +110,4 @@ it("draws CLEARED_TEXT on the results screen", async () => {
       `the screen's text reads [${drawn.map((one) => one.trim()).join(" | ")}]`,
     );
   }
-
-  await h.capture("results-copy", "The cleared copy");
 });

@@ -73,45 +73,49 @@ afterEach(async () => {
 it("draws the world vertical straight up the stage at every camera pose", async () => {
   await openSite(h, 0);
 
-  for (const pose of POSES) {
-    await h.debug.setCamera(pose.yaw, pose.pitch, pose.dist);
-    await h.advance(1);
+  try {
+    for (const pose of POSES) {
+      await h.debug.setCamera(pose.yaw, pose.pitch, pose.dist);
+      await h.advance(1);
 
-    const at = `yaw ${pose.yaw}, pitch ${pose.pitch}, distance ${pose.dist}`;
-    const foot = await h.project(
-      CAMERA_TARGET.x,
-      CAMERA_TARGET.y,
-      CAMERA_TARGET.z,
-    );
-    const head = await h.project(
-      CAMERA_TARGET.x,
-      CAMERA_TARGET.y + 1,
-      CAMERA_TARGET.z,
-    );
-    assertTrue(
-      foot.visible,
-      `the foot of the vertical segment is on the stage at ${at}`,
-    );
-    assertTrue(
-      head.visible,
-      `the head of the vertical segment is on the stage at ${at}`,
-    );
+      const at = `yaw ${pose.yaw}, pitch ${pose.pitch}, distance ${pose.dist}`;
+      const foot = await h.project(
+        CAMERA_TARGET.x,
+        CAMERA_TARGET.y,
+        CAMERA_TARGET.z,
+      );
+      const head = await h.project(
+        CAMERA_TARGET.x,
+        CAMERA_TARGET.y + 1,
+        CAMERA_TARGET.z,
+      );
+      assertTrue(
+        foot.visible,
+        `the foot of the vertical segment is on the stage at ${at}`,
+      );
+      assertTrue(
+        head.visible,
+        `the head of the vertical segment is on the stage at ${at}`,
+      );
 
-    assertGreaterThanOrEqual(
-      Math.abs(head.y - foot.y),
-      ALONG_FLOOR,
-      `the stage y between (0, 6, 0) and (0, 7, 0) at ${at}: a world unit of ` +
-        "height has to be drawn as a length for the reading to mean anything",
-    );
-    assertNear(
-      head.x,
-      foot.x,
-      ACROSS_TOLERANCE,
-      `the stage x of (0, 7, 0) against (0, 6, 0)'s at ${at}: the camera ` +
-        "looks at the target with +y up, so the world vertical carries no " +
-        "roll (specs/controls.md)",
-    );
+      assertGreaterThanOrEqual(
+        Math.abs(head.y - foot.y),
+        ALONG_FLOOR,
+        `the stage y between (0, 6, 0) and (0, 7, 0) at ${at}: a world unit of ` +
+          "height has to be drawn as a length for the reading to mean anything",
+      );
+      assertNear(
+        head.x,
+        foot.x,
+        ACROSS_TOLERANCE,
+        `the stage x of (0, 7, 0) against (0, 6, 0)'s at ${at}: the camera ` +
+          "looks at the target with +y up, so the world vertical carries no " +
+          "roll (specs/controls.md)",
+      );
+    }
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.capture("state", "the yard from the second of the two camera poses");
   }
-
-  await h.capture("state", "the yard from the second of the two camera poses");
 });

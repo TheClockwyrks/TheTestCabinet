@@ -75,13 +75,15 @@ it("takes the member with the click exactly MEMBER_PICK_PX away", async () => {
 
   await h.pointerMove(at.x, at.y);
   await h.advance(1);
+  const after = await h.snapshot();
+
+  await h.capture("state", "the build screen with the pointer at the radius");
+
   assertEqual(
-    (await h.snapshot()).pick.member,
+    after.pick.member,
     MEMBER_ID,
     `the member candidate exactly MEMBER_PICK_PX (${MEMBER_PICK_PX}) logical ` +
       "pixels from the projected segment, which is AT MOST the radius and so " +
       "in range (specs/controls.md)",
   );
-
-  await h.capture("state", "the build screen with the pointer at the radius");
 });

@@ -265,6 +265,11 @@ it("takes a reaction past RING_CAP at one anchor without ending the run", async 
     "the run to end as the tape does",
   );
 
+  await h.capture(
+    "loaded-anchor",
+    "The crane whose counterweight cluster funnels its load into one anchor",
+  );
+
   assertEqual(
     ended.run.phase,
     "cleared",
@@ -280,10 +285,5 @@ it("takes a reaction past RING_CAP at one anchor without ending the run", async 
     ended.run.broken,
     0,
     "the members broken while the anchor carried a reaction past RING_CAP",
-  );
-
-  await h.capture(
-    "loaded-anchor",
-    "The crane whose counterweight cluster funnels its load into one anchor",
   );
 });

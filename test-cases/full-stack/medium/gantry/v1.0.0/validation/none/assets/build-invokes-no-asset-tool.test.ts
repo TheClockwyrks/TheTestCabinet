@@ -252,6 +252,8 @@ it(
     };
 
     const installed = run("npm", ["ci", "--no-audit", "--no-fund"]);
+    await h.capture("build", "The build run with the asset tools withheld");
+
     if (installed.code !== 0) {
       fail(
         "`npm ci` to exit 0 with `voxel`, `sfx-synth`, `sfx-sample` and " +
@@ -318,8 +320,6 @@ it(
         `  shims invoked: none\n` +
         `  produced files emitted: ${[...rebuilt].sort().join(", ")}`,
     );
-
-    await h.capture("build", "The build run with the asset tools withheld");
   },
   600_000,
 );

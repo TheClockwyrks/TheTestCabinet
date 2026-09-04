@@ -41,12 +41,14 @@ it("opens howto from the title menu's HOW TO PLAY entry", async () => {
   assertEqual(posed.menuIndex, ENTRY, "the highlighted title entry");
 
   await h.press(CONFIRM);
-  assertEqual(
-    (await h.snapshot()).screen,
-    "howto",
-    `the screen TITLE_ITEMS[${ENTRY}], HOW TO PLAY, opens (specs/ui.md)`,
-  );
+  const after = await h.snapshot();
 
   await h.advance(1);
   await h.capture("state", "The screen HOW TO PLAY opened");
+
+  assertEqual(
+    after.screen,
+    "howto",
+    `the screen TITLE_ITEMS[${ENTRY}], HOW TO PLAY, opens (specs/ui.md)`,
+  );
 });

@@ -243,6 +243,11 @@ it("shares the cable force between the trolley's two rail nodes in its own propo
   const change = (id: number) =>
     (loaded.get(id) ?? NaN) - (bare.get(id) ?? NaN);
 
+  await h.capture(
+    "trolley-share",
+    "A load on the hook with the trolley a quarter along its rail",
+  );
+
   assertNear(
     change(near.id),
     ((1 - FRACTION) * EXTRA) / near.cosine,
@@ -257,10 +262,5 @@ it("shares the cable force between the trolley's two rail nodes in its own propo
     TOLERANCE,
     `the mast cable at (${FAR.x}, ${FAR.y}, ${FAR.z}) taking ${FRACTION} of ` +
       `the ${EXTRA} the hung load adds to the cable force (specs/statics.md)`,
-  );
-
-  await h.capture(
-    "trolley-share",
-    "A load on the hook with the trolley a quarter along its rail",
   );
 });

@@ -195,6 +195,11 @@ it("stands an arm node at its lattice position turned about the slew axis", asyn
   // pivot rather than a reading of the axes.
   const turned = await runTicks(h, 1);
 
+  await h.capture(
+    "arm-turned",
+    "The jib rig with its arm turned 90 degrees and the trolley at the far end",
+  );
+
   assertEqual(
     turned.run.axes.slew.value,
     ANGLE,
@@ -226,10 +231,5 @@ it("stands an arm node at its lattice position turned about the slew axis", asyn
     axis.z,
     "the pivot standing on the +z side of the slew axis, since a positive slew " +
       "turns +x toward +z (specs/statics.md, specs/world.md)",
-  );
-
-  await h.capture(
-    "arm-turned",
-    "The jib rig with its arm turned 90 degrees and the trolley at the far end",
   );
 });

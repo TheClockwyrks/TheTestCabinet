@@ -32,7 +32,6 @@ import {
 
 const SITE = 0;
 
-const CHECK_KEY = BINDINGS.check[0]!;
 const UNDO_KEY = BINDINGS.undo[0]!;
 
 let h: Harness;

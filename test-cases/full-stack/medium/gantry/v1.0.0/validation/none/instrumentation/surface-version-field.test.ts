@@ -14,7 +14,8 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { GANTRY_DEBUG_VERSION, HANDLE, createHarness, type Harness } from "../harness";
+import { GANTRY_DEBUG_VERSION } from "../constants";
+import { HANDLE, createHarness, type Harness } from "../harness";
 
 let h: Harness;
 
@@ -35,13 +36,13 @@ it("carries version as the plain number GANTRY_DEBUG_VERSION", async () => {
     return { kind: typeof held, value: held };
   }, HANDLE);
 
+  await h.advance(1);
+  await h.capture("surface-version", "The build the surface version was read from");
+
   assertEqual(version.kind, "number", `the type of window.${HANDLE}.version`);
   assertEqual(
     version.value,
     GANTRY_DEBUG_VERSION,
     `window.${HANDLE}.version (specs/instrumentation.md)`,
   );
-
-  await h.advance(1);
-  await h.capture("surface-version", "The build the surface version was read from");
 });

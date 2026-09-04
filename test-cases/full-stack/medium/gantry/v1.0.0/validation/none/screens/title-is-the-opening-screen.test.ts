@@ -33,6 +33,15 @@ afterEach(async () => {
 
 it("stands the game up on the title screen with the first entry highlighted", async () => {
   const opening = h.openingSnapshot;
+
+  // The picture is taken before the reading is decided. What it shows is the
+  // screen a reset stands the game back up on, which the opening snapshot was
+  // taken off a moment earlier and which nothing below touches — so a check that
+  // fails still leaves the picture that shows why.
+  await h.debug.reset();
+  await h.advance(1);
+  await h.capture("title", "The screen the game opens on");
+
   assertNotNull(
     opening,
     "a snapshot off the build as it stood itself up, before anything was posed",
@@ -48,8 +57,4 @@ it("stands the game up on the title screen with the first entry highlighted", as
     0,
     "the highlighted title entry on arriving (specs/ui.md)",
   );
-
-  await h.debug.reset();
-  await h.advance(1);
-  await h.capture("title", "The screen the game opens on");
 });

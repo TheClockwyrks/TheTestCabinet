@@ -78,28 +78,32 @@ it("leaves the tape alone on every screen but the program screen", async () => {
 
   const posed = JSON.stringify((await h.snapshot()).program);
 
-  for (const screen of ELSEWHERE) {
-    await h.debug.setScreen(screen);
-    // Five poses the program screen would take: an appended move, a second
-    // command on the move step at 0 (which commands the hoist and not the
-    // trolley), an appended action, the removal of a step the tape carries, and
-    // the emptying.
-    await h.debug.addMoveStep("slew", 90, SLEW_MAX_RATE);
-    await h.debug.addCommand(0, "trolley", 2, TROLLEY_MAX_RATE);
-    await h.debug.addActionStep("release");
-    await h.debug.removeStep(0);
-    await h.debug.clearProgram();
+  try {
+    for (const screen of ELSEWHERE) {
+      await h.debug.setScreen(screen);
+      // Five poses the program screen would take: an appended move, a second
+      // command on the move step at 0 (which commands the hoist and not the
+      // trolley), an appended action, the removal of a step the tape carries, and
+      // the emptying.
+      await h.debug.addMoveStep("slew", 90, SLEW_MAX_RATE);
+      await h.debug.addCommand(0, "trolley", 2, TROLLEY_MAX_RATE);
+      await h.debug.addActionStep("release");
+      await h.debug.removeStep(0);
+      await h.debug.clearProgram();
 
-    assertEqual(
-      JSON.stringify((await h.snapshot()).program),
-      posed,
-      `the tape after the five tape poses on the ${screen} screen, where the ` +
-        "tape editor does not live (specs/instrumentation.md)",
+      assertEqual(
+        JSON.stringify((await h.snapshot()).program),
+        posed,
+        `the tape after the five tape poses on the ${screen} screen, where the ` +
+          "tape editor does not live (specs/instrumentation.md)",
+      );
+    }
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.capture(
+      "untouched",
+      "The tape the poses off the program screen left",
     );
   }
-
-  await h.capture(
-    "untouched",
-    "The tape the poses off the program screen left",
-  );
 });

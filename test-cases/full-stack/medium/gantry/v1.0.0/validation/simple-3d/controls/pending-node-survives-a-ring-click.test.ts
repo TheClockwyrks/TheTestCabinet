@@ -67,6 +67,9 @@ it("places the ring and leaves the pending node held", async () => {
   await h.click(at.x, at.y);
 
   const s = await h.snapshot();
+  await h.advance(1);
+  await h.capture("state", "The ring placed with the pending node still held");
+
   assertNotNull(
     s.structure.ring,
     "the ring the click under the ring tool places (specs/controls.md)",
@@ -86,7 +89,4 @@ it("places the ring and leaves the pending node held", async () => {
     JSON.stringify(PENDING),
     "the node still held pending",
   );
-
-  await h.advance(1);
-  await h.capture("state", "The ring placed with the pending node still held");
 });

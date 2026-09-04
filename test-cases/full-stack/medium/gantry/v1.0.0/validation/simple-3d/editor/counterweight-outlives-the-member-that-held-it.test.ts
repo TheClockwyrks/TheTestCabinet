@@ -75,6 +75,11 @@ it("leaves the counterweight standing when the member under it is removed", asyn
   await h.advance(1);
 
   const { structure } = await h.snapshot();
+  await h.capture(
+    "counterweight-outlives-the-member-that-held-it",
+    "The counterweight left at a bare node",
+  );
+
   assertLength(structure.members, 0, "the members left after the removal");
   assertContains(
     structure.counterweights,
@@ -88,10 +93,5 @@ it("leaves the counterweight standing when the member under it is removed", asyn
     COST_TOL,
     "the crane's cost with nothing but that counterweight left, which is " +
       "still charged for (specs/structure.md § Cost and the budget)",
-  );
-
-  await h.capture(
-    "counterweight-outlives-the-member-that-held-it",
-    "The counterweight left at a bare node",
   );
 });

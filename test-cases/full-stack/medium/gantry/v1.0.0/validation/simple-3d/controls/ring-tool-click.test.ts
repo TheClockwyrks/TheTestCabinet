@@ -57,6 +57,9 @@ it("places the ring with its base corner at the clicked node", async () => {
   await h.click(at.x, at.y);
 
   const { ring } = (await h.snapshot()).structure;
+  await h.advance(1);
+  await h.capture("state", "The ring placed by the click's own node");
+
   assertNotNull(
     ring,
     "the ring a click under the ring tool places (specs/controls.md)",
@@ -67,7 +70,4 @@ it("places the ring with its base corner at the clicked node", async () => {
     "the base corner the ring stands by: the node the click picked " +
       "(specs/controls.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "The ring placed by the click's own node");
 });

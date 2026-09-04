@@ -71,6 +71,12 @@ it("places no member and keeps the first node held pending", async () => {
   await h.click(second.x, second.y);
 
   const s = await h.snapshot();
+  await h.advance(1);
+  await h.capture(
+    "state",
+    "The refused second click with the first node still held",
+  );
+
   assertLength(
     s.structure.members,
     0,
@@ -88,11 +94,5 @@ it("places no member and keeps the first node held pending", async () => {
     JSON.stringify(s.pendingNode),
     JSON.stringify(FIRST),
     "the node still held pending: the first click's",
-  );
-
-  await h.advance(1);
-  await h.capture(
-    "state",
-    "The refused second click with the first node still held",
   );
 });

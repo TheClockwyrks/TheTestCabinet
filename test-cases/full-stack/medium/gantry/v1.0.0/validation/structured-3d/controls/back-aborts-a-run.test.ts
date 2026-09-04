@@ -72,6 +72,9 @@ it("ends a running run and shows the build screen", async () => {
 
   await h.press(BACK);
   const s = await h.snapshot();
+  await h.advance(1);
+  await h.capture("state", "the build screen an aborted run returns to");
+
   assertEqual(
     s.run.phase,
     "idle",
@@ -83,7 +86,4 @@ it("ends a running run and shows the build screen", async () => {
     "build",
     "the screen `back` returns to from an aborted run (specs/controls.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "the build screen an aborted run returns to");
 });

@@ -40,13 +40,15 @@ it("shows the build screen from the program screen", async () => {
   );
 
   await h.press(BUILD_KEY);
+  const after = await h.snapshot();
+
+  await h.advance(1);
+  await h.capture("state", "the build screen the build action returned to");
+
   assertEqual(
-    (await h.snapshot()).screen,
+    after.screen,
     "build",
     `the screen after ${BUILD_KEY}, which is the build action's binding ` +
       "(specs/controls.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "the build screen the build action returned to");
 });
