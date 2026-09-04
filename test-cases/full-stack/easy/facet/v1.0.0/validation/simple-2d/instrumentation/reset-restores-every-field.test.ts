@@ -1,5 +1,5 @@
-// Facet — instrumentation/reset-restores: `reset` puts every declared field back
-// to its title-screen value, and `options.seed` is what seeds `rngState`.
+// Facet — instrumentation/reset-restores-every-field: `reset` puts every
+// declared field back to its title-screen value.
 //
 // WHY THIS IS A POINT. specs/instrumentation.md writes `reset` out field by
 // field — "the title screen with its first menu item highlighted, no board in
@@ -7,14 +7,19 @@
 // `score` at `0`, `level` at `1`, `levelScore` at `0`, `lastCleared`,
 // `lastPoints` and `lastWaves` at `0`, `moveScore`, `bestMove` and `bestChain`
 // at `0`, no selection, no offer, no refusal and no armed target, the pointer
-// reported as up and driven by `mouse`, and `simTime` at `0`. `options.seed`
-// seeds `rngState`, defaulting to `DEFAULT_SEED` (`1`)" — and specs/state.md
-// says the same thing from the other side: "A `reset` restores the declared
-// fields to their title-screen values, so those fields are the whole of the
-// authoritative state." It is the operation every reproducible scenario in this
-// project begins from: a `reset` that leaves one field of a spent round behind
-// makes the next scenario start somewhere nobody wrote down, and the failure
-// surfaces as a wrong number in an unrelated check rather than here.
+// reported as up and driven by `mouse`, and `simTime` at `0`" — and
+// specs/state.md says the same thing from the other side: "A `reset` restores
+// the declared fields to their title-screen values, so those fields are the
+// whole of the authoritative state." It is the operation every reproducible
+// scenario in this project begins from: a `reset` that leaves one field of a
+// spent round behind makes the next scenario start somewhere nobody wrote down,
+// and the failure surfaces as a wrong number in an unrelated check rather than
+// here.
+//
+// WHAT IT DOES NOT DECIDE. That `options.seed` is what seeds `rngState` is
+// `instrumentation/reset-seeds-the-rng`. A build whose reset restores every
+// field and ignores the seed passes this point and fails that one, which is the
+// separation two points buy.
 //
 // SO IT IS DRIVEN DIRTY FIRST. A reset read off a game that was already at rest
 // asserts nothing: every field would be at its resting value whether `reset` ran
@@ -42,34 +47,18 @@
 // fault. That a step really ran is carried by `chainStep` and the simulation
 // clock, and the three fields are read where the specification names them — at
 // `0`, after the reset.
-//
-// `bestMove` IS THE ONE FIGURE POSED RATHER THAN EARNED. specs/rules.md takes it
-// only "when `phase` returns to `idle`", and this arrangement is deliberately
-// caught mid-chain, so a move that has scored has not yet raised it. `setBestMove`
-// is the operation the specification provides for exactly that, and without it
-// the `0` asserted after the reset would be a `0` that was never anything else.
-//
-// WHAT IT DELIBERATELY DOES NOT DECIDE. What a seed DEALS. That the same seed
-// reproduces the same opening board is `instrumentation/seeded-determinism`;
-// what is read here is the field the specification says the seed sets, and the
-// default it says a bare `reset` carries.
-//
-// `muted` is not among the fields asserted: specs/instrumentation.md says
-// "`muted` is untouched; the runtime owns muting", so a reset that changed it
-// would be the defect.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
   assertDeepEqual,
   assertEqual,
   assertGreaterThan,
-  assertNotEqual,
   assertNotNull,
   assertLength,
   assertNull,
 } from "../assert";
 import { quietRowsWithEscape } from "../board";
-import { DEFAULT_SEED, GRID_COLS, GRID_ROWS } from "../constants";
+import { GRID_COLS, GRID_ROWS } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -125,9 +114,6 @@ const PLAYING_TARGET = "pause";
  * A touch press is what gives that half of the sentence something to undo.
  */
 const PRESS_DEVICE = "touch";
-
-/** A seed other than the default, for reading what `options.seed` does. */
-const OTHER_SEED = DEFAULT_SEED + 1;
 
 function requireSurface(): void {
   if (h.surfaceFault !== null) failSurface(h.surfaceFault);
@@ -233,27 +219,4 @@ it("restores every declared field to its title-screen value", async () => {
   // clock the reading just held to zero.
   await h.advance(1);
   captureStill(h, "reset");
-});
-
-it("seeds rngState from options.seed, defaulting to DEFAULT_SEED", () => {
-  requireSurface();
-
-  // "`options.seed` seeds `rngState`, defaulting to `DEFAULT_SEED` (`1`)": a
-  // bare reset and a reset carrying the default are the same reset, so the two
-  // reach the same generator state.
-  h.debug.reset({ seed: DEFAULT_SEED });
-  const named = h.snapshot().rngState;
-  h.debug.reset();
-  const bare = h.snapshot().rngState;
-  assertEqual(bare, named, "the rngState a bare reset reaches");
-
-  // And the seed is really what set it: another seed reaches another state. A
-  // build whose `reset` ignored the option would answer the same number here.
-  h.debug.reset({ seed: OTHER_SEED });
-  const other = h.snapshot().rngState;
-  assertNotEqual(
-    other,
-    named,
-    `the rngState reset({ seed: ${OTHER_SEED} }) reaches`,
-  );
 });

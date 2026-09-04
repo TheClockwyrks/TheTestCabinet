@@ -175,10 +175,10 @@ This case is validator-rated: every point on the checklist carries a Vitest
 suite, and the validators decide the functional rating through each point's
 failure cap. A reviewer rates the run's aesthetics and may override a verdict.
 
-The checklist in `test-case.toml` holds 169 points across 20 categories, all on
+The checklist in `test-case.toml` holds 178 points across 20 categories, all on
 the single `gameplay` domain, and each point is one observable behavior, so a
 build fails exactly the rule it breaks. One of them, the showcase's existence,
-carries a weight of 3; every other point is worth 1, for 171 in
+carries a weight of 3; every other point is worth 1, for 180 in
 total. `validation/` holds one project per
 engine — `validation/none/`, `validation/simple-2d/` and
 `validation/structured-2d/` — each with a suite per point at

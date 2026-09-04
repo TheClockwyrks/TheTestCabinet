@@ -482,24 +482,55 @@ format = 2
 [[review.categories]]
 id = "instrumentation"
 title = "Instrumentation"
+# THREE ITEMS, because the surface can be whole and report the wrong version,
+# or report the right version and answer a snapshot with fields missing. Three
+# separate failures with three separate remedies. Presence and shape are the
+# whole verdict of all three: what each operation DOES is the subject of the
+# item that owns that behavior, and nothing is called here.
 [[review.categories.items]]
-id = "debug-api"
+id = "debug-api-operations-present"
 title = "Debug and automation API present"
-description = "Every operation specs/instrumentation.md names is present as a function on the debug surface, version reports FACET_DEBUG_VERSION (1), and snapshot() reports the full documented shape at the documented types."
+description = "Every operation specs/instrumentation.md names is present as a function on the debug surface."
 domains = ["gameplay"]
 failure_cap = "broken"
 # Automated validation: reflect over the surface for every operation
-# specs/instrumentation.md names — twenty-six under `none`, which owns the
-# clock through `setAutoStep` and `advance`, and twenty-four under an engine,
-# which does not — read the version's value in both places that file fixes it,
-# then pose a board exercising all seven kinds, a prism, both cut letters and all
-# four strain digits and assert a snapshot carries every documented field at the
-# documented type, with all 64 cells in reading order and each carrying its
-# `fell`, with `pointer` carrying its `device`, and with `targets` present as an
-# array. Presence and shape are the whole verdict: what each operation DOES is
-# the subject of the item that owns that behavior, and nothing is read here. See
-# validation/<engine>/instrumentation/debug-api.test.ts.
-validation = { script = "instrumentation/debug-api.test.ts", outputs = [
+# specs/instrumentation.md names — twenty-six under `none`, which owns the clock
+# through `setAutoStep` and `advance`, and twenty-four under an engine, which
+# does not — and assert each reflects as a function. Reflected rather than
+# called, so a build is held to having the operation rather than to what one
+# call of it happened to do. See
+# validation/<engine>/instrumentation/debug-api-operations-present.test.ts.
+validation = { script = "instrumentation/debug-api-operations-present.test.ts", outputs = [
+  { id = "surface", name = "The screen the surface was reflected on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "debug-api-version"
+title = "The surface reports its version, in both places"
+description = "version reports FACET_DEBUG_VERSION (1) as a plain number on the surface itself and in the snapshot."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: read the version's value in both places
+# specs/instrumentation.md fixes it — the surface's own member, and the
+# snapshot's `version` field — and hold both to the same number. Reflection
+# answers a `typeof` and nothing about a VALUE, which is why this is its own
+# reading. See validation/<engine>/instrumentation/debug-api-version.test.ts.
+validation = { script = "instrumentation/debug-api-version.test.ts", outputs = [
+  { id = "version", name = "The screen the version was read on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "debug-api-snapshot-shape"
+title = "snapshot() reports the whole documented shape"
+description = "snapshot() reports every field specs/instrumentation.md documents, at the documented type, over a board that is really in play."
+domains = ["gameplay"]
+failure_cap = "broken"
+# Automated validation: pose a board exercising all seven kinds, a prism, both
+# cut letters and all four strain digits, and assert a snapshot carries every
+# documented field at the documented type, with all 64 cells in reading order
+# and each carrying its `fell`, with `pointer` carrying its `device`, and with
+# `targets` present as an array. Read over a posed board rather than at rest, so
+# what is read is live values rather than the resting ones a stub would answer
+# with. See validation/<engine>/instrumentation/debug-api-snapshot-shape.test.ts.
+validation = { script = "instrumentation/debug-api-snapshot-shape.test.ts", outputs = [
   { id = "state", name = "The driven board the surface was inspected against", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -530,10 +561,13 @@ failure_cap = "scuffed"
 validation = { script = "instrumentation/cell-geometry.test.ts", outputs = [
   { id = "board", name = "The posed board whose geometry was read", kind = "image" },
 ] }
+# TWO ITEMS. What `reset` PUTS BACK and what `options.seed` DOES are two claims,
+# and a build whose reset restores every field while ignoring the seed holds the
+# first and not the second.
 [[review.categories.items]]
-id = "reset-restores"
+id = "reset-restores-every-field"
 title = "reset restores the title-screen state"
-description = "reset() puts the game on title with menuIndex 0, no board in play, phase idle, chainStep, swapTimer, stepTimer, score, levelScore, lastCleared, lastPoints, lastWaves, moveScore, bestMove, bestChain and simTime 0, level 1, no selection, no offer, no refusal and no armed target, the pointer up and driven by mouse, and options.seed seeds rngState, defaulting to DEFAULT_SEED (1)."
+description = "reset() puts the game on title with menuIndex 0, no board in play, phase idle, chainStep, swapTimer, stepTimer, score, levelScore, lastCleared, lastPoints, lastWaves, moveScore, bestMove, bestChain and simTime 0, level 1, no selection, no offer, no refusal and no armed target, and the pointer up and driven by mouse."
 domains = ["gameplay"]
 failure_cap = "scuffed"
 # Automated validation: drive a round dirty — a posed board, an accepted swap
@@ -542,29 +576,63 @@ failure_cap = "scuffed"
 # and assert every field the operation lists is back at its stated value. No
 # figure is required of `lastCleared`, `lastPoints` or `lastWaves` before the
 # reset: what they report of a step is `scoring/last-step-reported`'s and
-# `expansion`'s point. Also assert that a bare reset and reset({ seed: 1 }) reach
-# the same rngState, and that a second seed reaches a different one. See
-# validation/<engine>/instrumentation/reset-restores.test.ts.
-validation = { script = "instrumentation/reset-restores.test.ts", outputs = [
+# `expansion`'s point. See
+# validation/<engine>/instrumentation/reset-restores-every-field.test.ts.
+validation = { script = "instrumentation/reset-restores-every-field.test.ts", outputs = [
   { id = "reset", name = "The title screen after reset", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "seeded-determinism"
+id = "reset-seeds-the-rng"
+title = "options.seed is what seeds rngState"
+description = "reset({ seed }) seeds rngState from the seed it was given, and a bare reset seeds it from DEFAULT_SEED (1), so two different seeds reach two different generator states."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: assert a bare reset and reset({ seed: 1 }) reach the
+# same rngState, and that a second seed reaches a different one. The second half
+# is what makes the first mean anything: a build that hard-coded one generator
+# state would answer the first perfectly. See
+# validation/<engine>/instrumentation/reset-seeds-the-rng.test.ts.
+validation = { script = "instrumentation/reset-seeds-the-rng.test.ts", outputs = [
+  { id = "seeded", name = "The title screen the seeds were read on", kind = "image" },
+] }
+# TWO ITEMS, because reproducible and seeded are two properties. A build that
+# deals ONE fixed board, ignoring `rngState` altogether, is perfectly
+# reproducible and passes the first of these on every seed; what it has lost is
+# the thing that makes a seed useful. The compared cells are the kind, the cut
+# and the strain of each, in both: a dealt gem's `fell` is the build's own
+# choice of how far it came in from, so two deals from one seed are entitled to
+# agree on it and nothing requires them to.
+[[review.categories.items]]
+id = "seeded-determinism-same-seed"
 title = "The same seed reproduces the same deal"
-description = "reset({seed}) followed by start() deals the identical opening board and reaches the identical rngState every time, and a different seed deals a different board."
+description = "reset({seed}) followed by a deal reaches the identical opening board and the identical rngState every time, in a freshly loaded instance as well as in the one that dealt first."
 domains = ["gameplay"]
 failure_cap = "scuffed"
 # Automated validation: deal from one seed twice, from a fresh instance each
-# time, and assert the 64 cells and rngState match exactly; then deal from an
-# adjacent seed and assert the board differs. The two seeds are adjacent on
-# purpose — a build that quantized its seed, or read only its high bits,
-# reproduces its own deal perfectly and would answer a widely separated pair.
-# The compared cells are the kind, the cut and the strain of each: a dealt gem's
-# `fell` is the build's own choice of how far it came in from, so two deals from
-# one seed are entitled to agree on it and nothing requires them to. See
-# validation/<engine>/instrumentation/seeded-determinism.test.ts.
-validation = { script = "instrumentation/seeded-determinism.test.ts", outputs = [
+# time, and assert the 64 cells and rngState match exactly. The second deal is
+# driven in an independently loaded instance, because replaying a seed inside
+# one page proves only that the deal is a function of something that was reset:
+# a build holding a counter in a module-level variable, or seeding itself off
+# the clock and then merely reporting `rngState`, passes that and still deals
+# differently on a fresh load. See
+# validation/<engine>/instrumentation/seeded-determinism-same-seed.test.ts.
+validation = { script = "instrumentation/seeded-determinism-same-seed.test.ts", outputs = [
   { id = "deal", name = "The board dealt from the recorded seed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "seeded-determinism-different-seed"
+title = "A different seed deals a different board"
+description = "reset({seed}) followed by a deal reaches a different opening board from a different seed, so the seed is what the deal is a function of."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: deal from two ADJACENT seeds and assert the boards
+# differ. Adjacent on purpose — a build that quantized its seed, or read only
+# its high bits, reproduces its own deal perfectly and would answer a widely
+# separated pair. Sixty-four cells drawn from seven kinds: two seeds that agreed
+# here would be one seed. See
+# validation/<engine>/instrumentation/seeded-determinism-different-seed.test.ts.
+validation = { script = "instrumentation/seeded-determinism-different-seed.test.ts", outputs = [
+  { id = "deal", name = "The board one of the two seeds dealt", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "delta-time-independent"
@@ -756,23 +824,38 @@ validation = { script = "board/opening-falls-in.test.ts", outputs = [
 [[review.categories]]
 id = "moves"
 title = "Move Rules (R1-R3)"
+# ONE ITEM PER AXIS. R1 names two shapes an exchange may take, and a build can
+# wire one of them and not the other — a drag reader that answers a sideways
+# gesture and drops an upright one, a release that only ever trades with the
+# cell to the right. Such a build leaves half of every board unplayable, and
+# under one item it would grade exactly as a build that accepts neither.
 [[review.categories.items]]
-id = "r1-adjacent-accepted"
-title = "R1 accepts an orthogonally adjacent swap"
-description = "A productive swap of two cells differing by 1 in column and 0 in row is accepted, and so is one differing by 0 in column and 1 in row: phase becomes swapping with the two cells exchanged and no refusal standing, and SWAP_SECONDS (0.18) later the step resolves at chainStep 1."
+id = "r1-adjacent-accepted-horizontal"
+title = "R1 accepts an exchange one column apart"
+description = "A productive swap of two cells differing by 1 in column and 0 in row is accepted: phase becomes swapping with the two cells exchanged and no refusal standing, and SWAP_SECONDS (0.18) later the step resolves at chainStep 1."
 domains = ["gameplay"]
 failure_cap = "broken"
-# Automated validation: pose one board on which a horizontal neighbor exchange
-# makes a run and one on which a vertical exchange does, request each, assert the
-# phase is `swapping` with no refusal and the two cells exchanged, then drive
-# past SWAP_SECONDS and assert the phase is `resolving` at chain step 1. That
-# the swap HOLDS for its own span before resolving is `chain`'s two points, and
-# what is read here is only that the acceptance path was opened at all. Capped
-# at `broken` because every move Facet has begins with an orthogonal exchange:
-# a build that refuses them cannot be played. See
-# validation/<engine>/moves/r1-adjacent-accepted.test.ts.
-validation = { script = "moves/r1-adjacent-accepted.test.ts", outputs = [
-  { id = "swap", name = "An accepted adjacent swap", kind = "replay" },
+# Automated validation: pose a board on which a horizontal neighbor exchange
+# makes a run, request it, assert the phase is `swapping` with no refusal and
+# the two cells exchanged, then drive past SWAP_SECONDS and assert the phase is
+# `resolving` at chain step 1. That the swap HOLDS for its own span before
+# resolving is `chain`'s two points, and what is read here is only that the
+# acceptance path was opened at all. Capped at `broken` because every move Facet
+# has begins with an orthogonal exchange: a build that refuses them cannot be
+# played. See validation/<engine>/moves/r1-adjacent-accepted-horizontal.test.ts.
+validation = { script = "moves/r1-adjacent-accepted-horizontal.test.ts", outputs = [
+  { id = "swap", name = "An accepted sideways swap", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r1-adjacent-accepted-vertical"
+title = "R1 accepts an exchange one row apart"
+description = "A productive swap of two cells differing by 0 in column and 1 in row is accepted: phase becomes swapping with the two cells exchanged and no refusal standing, and SWAP_SECONDS (0.18) later the step resolves at chainStep 1."
+domains = ["gameplay"]
+failure_cap = "broken"
+# The same rule on the other axis, read the same way. See
+# validation/<engine>/moves/r1-adjacent-accepted-vertical.test.ts.
+validation = { script = "moves/r1-adjacent-accepted-vertical.test.ts", outputs = [
+  { id = "swap", name = "An accepted upright swap", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "r1-non-adjacent-refused"
@@ -1284,35 +1367,83 @@ failure_cap = "scuffed"
 validation = { script = "cuts/r8-star-from-intersection.test.ts", outputs = [
   { id = "cut", name = "A star cut where two runs cross", kind = "replay" },
 ] }
+# TWO ITEMS, one per precedence relation. A build that resolves one of them and
+# not the other hands the player the wrong cut on one class of board, and would
+# grade exactly as a build that resolves neither if the two shared one point.
+# Each asserts that exactly one gem was created, which is R8's own sentence.
 [[review.categories.items]]
-id = "r8-priority"
-title = "Priority among created cuts"
-description = "Where more than one R8 row applies to one cell, prism wins over star and star wins over brilliant, and that cell takes exactly one created gem."
+id = "r8-priority-prism-over-star"
+title = "A contested cell takes a prism rather than a star"
+description = "Where R8's prism row and its star row both apply to one cell, the prism wins, and that cell takes exactly one created gem."
 domains = ["gameplay"]
 failure_cap = "passable"
-# Automated validation: pose a cell lying in a run of five and a run of three
-# and assert a prism rather than a star; pose one lying in a run of four and a
-# run of three and assert a star rather than a brilliant. Both boundaries of the
-# ordering are exercised, and each asserts that exactly one gem was created. See
-# validation/<engine>/cuts/r8-priority.test.ts.
-validation = { script = "cuts/r8-priority.test.ts", outputs = [
-  { id = "cut", name = "The higher cut winning a contested cell", kind = "replay" },
+# Automated validation: pose a cell lying in a run of five and in a run of
+# three, arranged so that both readings of R8's placement paragraph put the
+# run's gem at the same cell, and assert the cut is a prism. See
+# validation/<engine>/cuts/r8-priority-prism-over-star.test.ts.
+validation = { script = "cuts/r8-priority-prism-over-star.test.ts", outputs = [
+  { id = "cut", name = "A prism winning a contested cell", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "r8-run-placement"
-title = "Where a run's created gem is placed"
-description = "A run's created gem is placed at whichever of the chain's two swapped cells lies in that run, at the one of lower index when both do, and at the run's cell at index floor((n - 1) / 2) when neither does, indexing from the lowest-column end for a horizontal run and the lowest-row end for a vertical one."
+id = "r8-priority-star-over-brilliant"
+title = "A contested cell takes a star rather than a brilliant"
+description = "Where R8's star row and its brilliant row both apply to one cell, the star wins, and that cell takes exactly one created gem."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose a cell lying in a run of four and in a run of
+# three, arranged the same way, and assert the cut is a star. See
+# validation/<engine>/cuts/r8-priority-star-over-brilliant.test.ts.
+validation = { script = "cuts/r8-priority-star-over-brilliant.test.ts", outputs = [
+  { id = "cut", name = "A star winning a contested cell", kind = "replay" },
+] }
+# THREE ITEMS, one per clause of R8's placement paragraph. A build that answers
+# one clause and not the others puts a created gem in the wrong cell on most
+# boards, and would grade exactly as a build that answers none of them if the
+# three shared one point. Every scenario poses a run of four, whose middle index
+# is 1, and places the answer somewhere else, so the three clauses disagree and
+# a fallback to any one of them is caught. All three runs are horizontal, so the
+# created gem's column holds nothing empty at or below it and R9 cannot move it.
+[[review.categories.items]]
+id = "r8-run-placement-at-the-swapped-cell"
+title = "A run's created gem goes to the swapped cell in it"
+description = "A run's created gem is placed at whichever of the chain's two swapped cells lies in that run, indexing from the lowest-column end for a horizontal run and the lowest-row end for a vertical one."
 domains = ["gameplay"]
 failure_cap = "scuffed"
-# Automated validation: three posed runs of four, one per clause — one swapped
-# cell in the run, both swapped cells in it (exchanging two gems of the run's
-# own kind at differing strain, at indices 2 and 3, so an answer of 3 or of the
-# middle index both fail), and neither in it, cleared through R5's union. All
-# three are horizontal, so the created gem's column holds nothing empty at or
-# below it and R9 cannot move it. See
-# validation/<engine>/cuts/r8-run-placement.test.ts.
-validation = { script = "cuts/r8-run-placement.test.ts", outputs = [
-  { id = "placement", name = "A created brilliant landing at its indexed cell", kind = "replay" },
+# Automated validation: pose a run of four completed by a swap, with exactly one
+# of the swapped cells in it, at index 2 — so a build falling back to the middle
+# index answers 1 and fails. See
+# validation/<engine>/cuts/r8-run-placement-at-the-swapped-cell.test.ts.
+validation = { script = "cuts/r8-run-placement-at-the-swapped-cell.test.ts", outputs = [
+  { id = "placement", name = "A created gem landing at the swapped cell", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r8-run-placement-at-the-lower-index"
+title = "With both swapped cells in the run, the lower index wins"
+description = "A run's created gem is placed at the one of lower index when both of the chain's swapped cells lie in that run."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a standing run of four and exchange two gems of the
+# run's own kind at differing strain, at indices 2 and 3 — so an answer of 3, or
+# of the middle index, both fail. A standing run is an ordinary board under the
+# rules: a posed board rests as it was written until a swap is accepted on it,
+# and R3 accepts one whenever the board it produces carries a maximal run. See
+# validation/<engine>/cuts/r8-run-placement-at-the-lower-index.test.ts.
+validation = { script = "cuts/r8-run-placement-at-the-lower-index.test.ts", outputs = [
+  { id = "placement", name = "A created gem landing at the lower-indexed cell", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "r8-run-placement-at-the-middle-index"
+title = "With neither swapped cell in the run, the middle index wins"
+description = "A run's created gem is placed at the run's cell at index floor((n - 1) / 2) when neither of the chain's swapped cells lies in it."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose a standing run of four and make the swap far from
+# it, completing a second run that seeds the same step through R5's union, so
+# neither swapped cell lies in the run this point reads. Its gem belongs at
+# index 1, which a build placing at an end or at the swap would miss. See
+# validation/<engine>/cuts/r8-run-placement-at-the-middle-index.test.ts.
+validation = { script = "cuts/r8-run-placement-at-the-middle-index.test.ts", outputs = [
+  { id = "placement", name = "A created gem landing at the run's middle index", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "r8-star-placement"

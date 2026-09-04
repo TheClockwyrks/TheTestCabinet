@@ -1,4 +1,5 @@
-// cuts/r8-run-placement — where a run's created gem is placed.
+// cuts/r8-run-placement-at-the-middle-index — with neither swapped cell in the
+// run, the created gem goes to the run's middle index.
 //
 // specs/rules.md, the placement paragraph under R8: "For a run of length `n`,
 // index its cells `0` to `n - 1` from its lowest-column end for a horizontal run
@@ -7,40 +8,39 @@
 // at the one of lower index when both lie in it, and at the run's cell at index
 // `floor((n - 1) / 2)` when neither does."
 //
-// Three clauses, and one scenario each. Every one poses a HORIZONTAL run of four,
-// for a reason that is R9's: R8 creates the gem and R9 settles the board in the
-// same step, so a created gem standing over an emptied cell of its own column
-// would fall before anything could read it. A horizontal run empties exactly one
-// cell in each of its columns, and the created gem fills one of them — so in the
-// column that holds it nothing is empty at all, and nothing below it was emptied
-// either. R9 cannot move it, and the cell it is read at is the cell R8 placed it
-// at.
+// THREE CLAUSES, THREE POINTS. A build that answers one of them and not the
+// others puts a created gem in the wrong cell on most boards, and would grade
+// exactly as a build that answers none of them if the three shared one point.
 //
-// EACH SCENARIO IS ARRANGED SO THE THREE CLAUSES DISAGREE. A run of four has
-// `floor((4 - 1) / 2)` = index 1, so:
+// THIS POINT IS THE THIRD CLAUSE: "at the run's cell at index
+// `floor((n - 1) / 2)` when neither does". For a run of four that is index 1,
+// which a build placing at an end or at the swap would miss.
 //
-//   - one swapped cell in the run, at index 2 — a build falling back to the middle
-//     index would answer index 1;
-//   - both swapped cells in the run, at indices 2 and 3 — a build taking the
-//     higher would answer index 3, and one falling back to the middle, index 1;
-//   - neither swapped cell in the run — index 1, which a build placing at an end
-//     or at the swap would miss.
+// IT NEEDS A RUN THAT ALREADY STANDS, for the reason the second clause's point
+// gives: the swap is made far from the run this point reads, so neither of its
+// cells can lie in it. specs/instrumentation.md has a posed board rest "exactly
+// as it was written until a swap is accepted on it", and R3 accepts the swap
+// because the board it produces carries a maximal run.
 //
-// THE MIDDLE SCENARIO NEEDS A RUN THAT ALREADY STANDS, and so does the last. Two
-// cells the swap exchanged can both lie in one run only if both hold that run's
-// kind afterwards, and therefore both held it before — the exchange moves strain
-// and cut between them, not kind. specs/instrumentation.md is explicit that a
-// posed board "rests exactly as it was written until a swap is accepted on it",
-// and R3 accepts a swap whenever "the board it produces carries at least one
-// maximal run", which a standing run satisfies. So both are ordinary boards under
-// the rules, reached the way the rules allow.
+// THE RUN IS HORIZONTAL, for a reason that is R9's: R8 creates the gem and R9
+// settles the board in the same step, so a created gem standing over an emptied
+// cell of its own column would fall before anything could read it. A horizontal
+// run empties exactly one cell in each of its columns, and the created gem fills
+// one of them — so in the column that holds it nothing is empty at all, and
+// nothing below it was emptied either. R9 cannot move it, and the cell it is read
+// at is the cell R8 placed it at.
+//
+// THE RUN IS FOUR LONG SO THE THREE CLAUSES DISAGREE. `floor((4 - 1) / 2)` is
+// index 1, so a build falling back to the middle index, or to an end, or to the
+// swap, answers a different cell in each of the three scenarios and each is
+// caught by the point that is about it.
 //
 // EVERY READING IS TAKEN AT STEP 1. specs/rules.md has an accepted swap exchange
 // its two cells at once, set `phase` to `swapping` with `chainStep` at `0`, and
 // clear nothing until `SWAP_SECONDS` (`0.18`) of game time has passed; step 1
 // then resolves, R8 and R9 both inside it. `swapAndResolve` carries the game
 // through that animation and hands back `first`, the reading of step 1's result,
-// which is what each scenario reads. A later step is seeded from whatever R9's
+// which is what the scenario reads. A later step is seeded from whatever R9's
 // refill dealt and may create a cut of its own at a cell no clause of the
 // placement paragraph names.
 
@@ -112,58 +112,6 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await h.dispose();
-});
-
-it("places a run's gem at the swapped cell that lies in the run", async () => {
-  // Three rubies stand in row 3 at columns 3, 4 and 6, and the fourth drops in from
-  // (5,2). Of the two cells the swap exchanged only (5,3) lies in the run, at index
-  // 2 counting from the run's lowest column, 3.
-  const cells: readonly PlacedToken[] = [
-    { col: 3, row: 3, token: "R0" },
-    { col: 4, row: 3, token: "R0" },
-    { col: 6, row: 3, token: "R0" },
-    { col: 5, row: 2, token: "R0" },
-  ];
-  const from: CellRef = { col: 5, row: 2 };
-  const to: CellRef = { col: 5, row: 3 };
-  const posed = quietRowsWith(cells);
-  assertLength(maximalRuns(posed), 0, "maximal runs on the posed board");
-  assertRunOfFour(posed, from, to, 3, [3, 4, 5, 6]);
-
-  await loadBoard(h, posed);
-  const { first } = await swapAndResolve(h, from, to);
-  assertEqual(first.lastCleared, 4, "cells the step cleared");
-
-  const created = cutCells(first);
-  assertLength(created, 1, "gems the step created");
-  assertEqual(created[0].col, 5, "the column the created gem was placed at");
-  assertEqual(created[0].row, 3, "the row the created gem was placed at");
-});
-
-it("places a run's gem at the lower-indexed of two swapped cells in it", async () => {
-  // The run of four already stands across columns 3 to 6 of row 3, and the swap
-  // exchanges two of its own cells — (5,3) at index 2 with (6,3) at index 3. They
-  // carry different strain, so the exchange really does change the board, while the
-  // kinds it moves leave the run standing exactly where it was.
-  const cells: readonly PlacedToken[] = [
-    { col: 3, row: 3, token: "R0" },
-    { col: 4, row: 3, token: "R0" },
-    { col: 5, row: 3, token: "R0" },
-    { col: 6, row: 3, token: "R2" },
-  ];
-  const from: CellRef = { col: 5, row: 3 };
-  const to: CellRef = { col: 6, row: 3 };
-  const posed = quietRowsWith(cells);
-  assertRunOfFour(posed, from, to, 3, [3, 4, 5, 6]);
-
-  await loadBoard(h, posed);
-  const { first } = await swapAndResolve(h, from, to);
-  assertEqual(first.lastCleared, 4, "cells the step cleared");
-
-  const created = cutCells(first);
-  assertLength(created, 1, "gems the step created");
-  assertEqual(created[0].col, 5, "the column the created gem was placed at");
-  assertEqual(created[0].row, 3, "the row the created gem was placed at");
 });
 
 it("places a run's gem at its middle index when neither swapped cell is in it", async () => {

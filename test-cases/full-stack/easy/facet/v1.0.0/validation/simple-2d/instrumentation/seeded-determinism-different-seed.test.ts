@@ -1,26 +1,26 @@
-// Facet — instrumentation/seeded-determinism: the same seed deals the same
-// opening board and reaches the same generator state, and a different seed deals
-// a different board.
+// Facet — instrumentation/seeded-determinism-different-seed: the seed is what
+// the deal is a function OF.
 //
-// WHY THIS IS A POINT. specs/instrumentation.md rests the whole automation
-// surface on it — "Seeded randomness. Any randomness the game uses runs off a
-// generator seeded from `state.rngState`, and it keeps its whole generator state
-// in that field, so reseeding and replaying the same calls reproduces the same
-// result exactly. The deal of an opening board and the refill in R9 draw from
-// it" — and closes the section with "Given the same seed and the same sequence
-// of calls and elapsed game time, the game reaches the same state every time."
+// specs/instrumentation.md: "`options.seed` seeds `rngState`", and "Any
+// randomness the game uses runs off a generator seeded from `state.rngState`
+// … The deal of an opening board and the refill in R9 draw from it."
 // specs/rules.md says the opening board's kinds are "drawn from `GEM_KINDS` off
-// the game's seeded random source". A build that reached for `Math.random`, or
-// that kept part of its generator outside `rngState`, deals a different board
-// every run: every scenario written against a dealt board becomes a coin toss,
-// and a failing run cannot be reproduced to be looked at.
+// the game's seeded random source".
+//
+// WHY IT IS SEPARATE FROM REPRODUCIBILITY. A build that deals ONE fixed board,
+// ignoring `rngState` altogether, is perfectly reproducible: it passes
+// `instrumentation/seeded-determinism-same-seed` on every seed. What it has
+// lost is the thing that makes a seed useful — every scenario a check writes
+// against a seed reads the same board, and `reset({ seed })` decides nothing.
+// So the two directions are two points, and a build can hold one without the
+// other.
 //
 // WHY A SECOND INSTANCE. Replaying the same seed inside one page proves only
 // that the deal is a function of something that was reset. A build holding a
 // counter in a module-level variable, or seeding itself off the clock and then
-// merely reporting `rngState`, passes that and still deals differently the next
-// time the game is stood up. So the replay is driven in a second, independently
-// initialized instance, and the two deals are compared cell for cell.
+// merely reporting `rngState`, passes that and still deals differently on a
+// fresh load. So the replay is driven in a second, independently loaded
+// instance, and the two deals are compared cell for cell.
 //
 // WHAT A CELL IS COMPARED BY, AND WHY `fell` IS NOT AMONG IT. A deal is compared
 // through the notation, which writes a cell's kind, its cut and its strain — the
@@ -33,13 +33,15 @@
 //
 // WHAT IT DELIBERATELY DOES NOT DECIDE. What an opening board must LOOK like —
 // that it holds no run under R4 and carries a legal swap is `board/opening-*` —
-// and what `reset` restores, which is `instrumentation/reset-restores`. Only
-// that the deal is reproducible from the seed, and that the seed is what it is
-// reproducible from.
+// and what `reset` restores, which is `instrumentation/reset-restores`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertNotEqual } from "../assert";
-import { assertBoardEquals, renderBoard } from "../board";
+import {
+  assertNotEqual,
+} from "../assert";
+import {
+  renderBoard,
+} from "../board";
 import {
   captureStill,
   createHarness,
@@ -92,33 +94,6 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("deals the same opening board from the same seed, in a fresh instance", async () => {
-  requireSurface();
-  // A round from a known deal is a `reset` carrying a seed followed by the deal
-  // itself, which is what the harness's `startRound` runs: `dealBoard` "deals a
-  // fresh opening board through the game's own code, drawing from `rngState`".
-  h.debug.reset({ seed: SEED });
-  const opened = startRound(h);
-
-  // The same seed, in a build that was stood up and initialized separately.
-  const again = await dealFresh(SEED);
-
-  assertBoardEquals(
-    again.rows,
-    renderBoard(opened),
-    `the deal from seed ${SEED}`,
-  );
-  assertEqual(
-    again.rngState,
-    opened.rngState,
-    `the rngState the deal from seed ${SEED} left`,
-  );
-
-  // The board the comparison was made over.
-  await h.advance(1);
-  captureStill(h, "deal");
-});
-
 it("deals a different opening board from a different seed", async () => {
   requireSurface();
   h.debug.reset({ seed: SEED });
@@ -133,4 +108,9 @@ it("deals a different opening board from a different seed", async () => {
     mine.join(" / "),
     `the deal from seed ${OTHER_SEED}, against the deal from seed ${SEED}`,
   );
+
+  // The board one of the two seeds dealt, as the picture the comparison was
+  // made over.
+  await h.advance(1);
+  captureStill(h, "deal");
 });

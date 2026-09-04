@@ -1,44 +1,47 @@
-// cuts/r8-priority — when more than one row of R8's table applies to one cell,
-// `prism` beats `star` and `star` beats `brilliant`, and the cell takes exactly
-// one created gem.
+// cuts/r8-priority-prism-over-star — a contested cell takes a prism rather than
+// a star.
 //
-// specs/rules.md, under R8: "Where more than one row applies to one cell, `prism`
-// wins over `star`, and `star` wins over `brilliant`, and that cell takes one
-// created gem."
+// specs/rules.md, under R8: "Where more than one row applies to one cell,
+// `prism` wins over `star`, and `star` wins over `brilliant`, and that cell
+// takes one created gem."
+//
+// TWO PRECEDENCE RELATIONS, TWO POINTS. A build that resolves one of them and
+// not the other hands the player the wrong cut on one class of board, and would
+// grade exactly as a build that resolves neither if the two shared one point.
+//
+// THIS POINT IS THE FIRST RELATION. Five along the row crossing three down the
+// column makes R8's second row (`prism`) and its third row (`star`) both apply,
+// and the prism must win.
 //
 // HOW A CELL IS MADE TO BE CONTESTED. Two rows apply to one cell only when the
-// cell a run's created gem is placed at is also the cell two runs cross at. Both
-// scenarios below arrange exactly that, and they arrange it so that it holds under
-// either reading of R8's placement paragraph, which is what keeps this point about
-// PRIORITY and not about placement:
+// cell a run's created gem is placed at is also the cell two runs cross at. The
+// scenario below arranges exactly that, and arranges it so that it holds under
+// either reading of R8's placement paragraph, which is what keeps this point
+// about PRIORITY and not about placement:
 //
 //   - the crossing cell (4,4) is one of the two cells the swap exchanged, and it
 //     lies in the row run — so the placement paragraph's first clause puts the
 //     run's gem there;
-//   - and (4,4) is also the run's cell at index `floor((n - 1) / 2)` — index 2 of
-//     the five-run at columns 2..6, index 1 of the four-run at columns 3..6 — so
-//     the paragraph's last clause puts it there too.
+//   - and (4,4) is also the run's cell at index `floor((n - 1) / 2)` — so the
+//     paragraph's last clause puts it there too.
 //
 // A build that reads the placement rule either way therefore contests the same
-// cell, and the only question left is which cut wins it. `cuts/r8-run-placement`
-// is where the placement rule itself is decided.
+// cell, and the only question left is which cut wins it. The placement rule
+// itself is decided by the three `cuts/r8-run-placement-*` points.
 //
-// WHAT EACH SCENARIO PROVES. Five along the row crossing three down the column
-// makes `prism` and `star` both apply, and the prism must win. Four along the row
-// crossing three down the column makes `star` and `brilliant` both apply, and the
-// star must win. In each, the whole step must create exactly ONE gem: a build that
-// honored the losing row as well would leave two.
+// THE STEP MUST CREATE EXACTLY ONE GEM. specs/rules.md: "that cell takes one
+// created gem". A build that honored the losing row as well would leave two.
 //
-// BOTH ARE READ AT STEP 1. specs/rules.md has an accepted swap exchange its two
-// cells at once, set `phase` to `swapping` with `chainStep` at `0`, and clear
-// nothing until `SWAP_SECONDS` (`0.18`) of game time has passed; step 1 then
-// resolves, R8 and R9 both inside it. `swapAndResolve` carries the game through
-// that animation and hands back `first`, the reading of step 1's result, which is
-// what each scenario reads. A later step is seeded from whatever R9's refill
-// dealt and may create cuts of its own.
+// THE READING IS TAKEN AT STEP 1. specs/rules.md has an accepted swap exchange
+// its two cells at once, set `phase` to `swapping` with `chainStep` at `0`, and
+// clear nothing until `SWAP_SECONDS` (`0.18`) of game time has passed; step 1
+// then resolves, R8 and R9 both inside it. `swapAndResolve` carries the game
+// through that animation and hands back `first`, the reading of step 1's result.
+// A later step is seeded from whatever R9's refill dealt and may create cuts of
+// its own.
 //
-// Neither scenario reads WHERE the gem ended up: R9 settles after R8 in the same
-// step, and the emptied column below the crossing lets the created gem fall.
+// WHERE the gem ended up is not read: R9 settles after R8 in the same step, and
+// the emptied column below the crossing lets the created gem fall.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
@@ -156,36 +159,4 @@ it("gives a contested cell a prism rather than a star", async () => {
   const created = cutCells(first);
   assertLength(created, 1, "gems the step created");
   assertEqual(created[0].cut, "prism", "the cut that won the contested cell");
-});
-
-it("gives a contested cell a star rather than a brilliant", async () => {
-  // Row 4 carries four rubies across columns 3 to 6 once the swap lands, bounded by
-  // a jade at (2,4) and an amber at (7,4). The crossing cell lies in a run of four,
-  // which R8's first row makes a brilliant, and in two crossing runs, which its
-  // third row makes a star.
-  //
-  // This scenario writes no replay: the two here share one output id, and the one
-  // the item keeps is the prism above, where the cut that wins is the rarest.
-  const posed = quietRowsWith([
-    { col: 3, row: 4, token: "R0" },
-    { col: 5, row: 4, token: "R0" },
-    { col: 6, row: 4, token: "R0" },
-    ...COLUMN_ARM,
-  ]);
-  assertCrossing(posed, 4);
-
-  const before = loadBoard(h, posed);
-  assertLength(cutCells(before), 0, "cut gems on the posed board");
-
-  const { first } = await swapAndResolve(h, FROM, TO);
-
-  // The clear set is the union of the two runs: four along the row and three down
-  // the column, sharing the crossing.
-  assertEqual(first.chainStep, 1, "the chain step the accepted swap resolved");
-  assertEqual(first.lastCleared, 6, "cells the step cleared");
-
-  // One gem created, and the star won the cell the two rows contested.
-  const created = cutCells(first);
-  assertLength(created, 1, "gems the step created");
-  assertEqual(created[0].cut, "star", "the cut that won the contested cell");
 });

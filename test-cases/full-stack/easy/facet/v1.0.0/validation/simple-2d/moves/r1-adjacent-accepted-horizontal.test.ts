@@ -1,12 +1,15 @@
-// Facet — moves/r1-adjacent-accepted: R1 accepts an orthogonally adjacent swap.
+// Facet — moves/r1-adjacent-accepted-horizontal: R1 accepts an exchange one
+// column apart.
 //
-// R1 in specs/rules.md names TWO shapes an exchange may take, and both are a
-// move: the two cells "differ by 1 in column and 0 in row, or by 0 in column and
-// 1 in row". Both are posed here rather than one, because a build that wired
-// only one axis — a drag reader that answers a sideways gesture and drops an
-// upright one, a release that only ever trades with the cell to the right —
-// passes a check that poses a single orientation while half of every board is
-// unplayable.
+// R1 in specs/rules.md names TWO shapes an exchange may take, and this is the
+// first: the two cells "differ by 1 in column and 0 in row". The other is
+// `moves/r1-adjacent-accepted-vertical`.
+//
+// WHY THE TWO AXES ARE TWO POINTS. A build that wired only one of them — a drag
+// reader that answers a sideways gesture and drops an upright one, a release
+// that only ever trades with the cell to the right — leaves half of every board
+// unplayable, and would grade identically to a build that accepts neither if the
+// two axes shared one point.
 //
 // WHAT ACCEPTANCE LOOKS LIKE, AND WHY IT IS READ IN TWO PLACES. specs/rules.md
 // puts an animation between the acceptance and the first step: an accepted swap
@@ -27,15 +30,14 @@
 //
 // WHAT IS DELIBERATELY NOT READ. What the step then CLEARS, which is `runs`'s,
 // and how long the swap holds before it resolves, which is `chain`'s two swap
-// points. What this one reads is only that the acceptance path was opened at all,
-// on both of R1's admissible offsets.
+// points. What this one reads is only that the acceptance path was opened at all.
 //
-// WHY THE READING IS ABOUT R1 AND NOTHING ELSE. Each board is the run-free
-// filler with exactly the cells its scenario needs written over it, and the
-// fixture assertions prove of each that it carries no maximal run of its own and
-// that the exchange makes one. R2 is satisfied because a posed board rests
-// `idle`, and R3 is satisfied because the exchange is productive — so R1 is the
-// only rule left with anything to say about the request.
+// WHY THE READING IS ABOUT R1 AND NOTHING ELSE. The board is the run-free filler
+// with exactly the cells the scenario needs written over it, and the fixture
+// assertions prove that it carries no maximal run of its own and that the
+// exchange makes one. R2 is satisfied because a posed board rests `idle`, and R3
+// is satisfied because the exchange is productive — so R1 is the only rule left
+// with anything to say about the request.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertNull, assertTrue } from "../assert";
@@ -81,22 +83,6 @@ const SIDEWAYS_ROWS: BoardRows = quietRowsWith([
 
 /** The sideways pair: `1` in column, `0` in row. */
 const SIDEWAYS: Pair = { a: { col: 4, row: 3 }, b: { col: 5, row: 3 } };
-
-/**
- * A board whose only move trades UPRIGHT: `(3,3)` with `(3,4)`, one row apart
- * and in one column.
- *
- * Two rubies flank the gap at `(3,4)` and a third waits directly above it, so
- * the exchange completes row 4 over columns 2, 3 and 4.
- */
-const UPRIGHT_ROWS: BoardRows = quietRowsWith([
-  { col: 2, row: 4, token: "R0" },
-  { col: 4, row: 4, token: "R0" },
-  { col: 3, row: 3, token: "R0" },
-]);
-
-/** The upright pair: `0` in column, `1` in row. */
-const UPRIGHT: Pair = { a: { col: 3, row: 3 }, b: { col: 3, row: 4 } };
 
 let h: Harness;
 
@@ -178,10 +164,4 @@ it("accepts an exchange one column apart", async () => {
   await captureReplay(h, "swap", () =>
     acceptsAndResolves(SIDEWAYS_ROWS, SIDEWAYS, "the sideways exchange"),
   );
-});
-
-it("accepts an exchange one row apart", async () => {
-  // The same rule on the other axis. A build that accepts only one of the two
-  // orientations reaches this check having passed the one above it.
-  await acceptsAndResolves(UPRIGHT_ROWS, UPRIGHT, "the upright exchange");
 });

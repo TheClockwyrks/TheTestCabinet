@@ -1,34 +1,33 @@
-// Facet — instrumentation/debug-api: the build installed a debug and automation
-// surface that is WHOLE, that reports `FACET_DEBUG_VERSION` in both the places
-// the specification puts it, and whose `snapshot` reports the documented shape
-// off a board that is really in play.
+// Facet — instrumentation/debug-api-snapshot-shape: `snapshot` reports the
+// documented shape, off a board that is really in play.
 //
-// WHY THIS IS A POINT AT ALL, AND WHY IT IS THIS SHAPE. Under an engine the
-// surface is handed back from `initialize` and the engine holds it. Nothing
-// holds it here: an engineless build gets no runtime, so the global it is
-// installed on, every operation on it, the version, and the snapshot shape are
-// all deliverables of the build (specs/instrumentation.md). Every other
-// automated point in this project reaches the game through it, so when the
-// surface is missing or partial they all fail together; this is the one that
-// names the fault plainly. The harness reports it as `surfaceFault` rather than
-// by throwing so it lands here rather than in some unrelated check's setup.
+// specs/instrumentation.md fixes the shape outright and adds "The shape is
+// fixed, and every field is present on every screen." So every field is read at
+// the type the specification gives it, and the reading is taken over a POSED
+// BOARD rather than at rest, so what is read is live values rather than the
+// resting ones a stub would answer with.
 //
-// WHAT REFLECTION CAN AND CANNOT SAY. `probe` answers a `typeof` and nothing
-// more, so it can say an operation is a function and can say nothing at all
-// about a VALUE. specs/instrumentation.md fixes the version in two independent
-// places — "The surface carries `version` (`FACET_DEBUG_VERSION`, `1`), a plain
-// number" and the snapshot's own `version` field — so each is read by the reader
-// that belongs to it and both are held to the same number. A build that put the
-// version in one place and not the other conforms in neither.
+// WHAT IS READ, AND WHAT IS LEFT TO OTHERS. The four fields that may be `null`
+// — `selection`, `offer`, `refusal` and `armedTarget` — are asked only to be
+// REPORTED at all; their resting values are
+// `instrumentation/snapshot-resting-values`. `targets` is asked to be a list;
+// WHICH rectangles it holds is the `targets` category's.
 //
-// WHAT IT DELIBERATELY DOES NOT DECIDE. What each operation DOES: `loadBoard`
-// posing the written board is `board/load-board`, `requestSwap` going through
-// R1-R3 is the `moves` points, and the derived fields of the snapshot —
-// `levelTarget`, `multiplier`, `legalSwap` and a cell's center — each have a
-// point of their own. This one decides that the operations are THERE, that the
-// version is right, and that the snapshot carries every documented field, with
-// the documented type, over a board that is really in play rather than a shape
-// filled with resting values.
+// WHY THIS IS A POINT AT ALL. Under an engine the surface is handed back from
+// `initialize` and the engine holds it. Nothing holds it here: an engineless
+// build gets no runtime, so the global it is installed on, every operation on
+// it, the version, and the snapshot shape are all deliverables of the build
+// (specs/instrumentation.md). Every other automated point in this project
+// reaches the game through it, so when the surface is missing or partial they
+// all fail together; these three are the ones that name the fault plainly. The
+// harness reports it as `surfaceFault` rather than by throwing so it lands here
+// rather than in some unrelated check's setup.
+//
+// WHAT THE THREE DELIBERATELY DO NOT DECIDE. What each operation DOES:
+// `loadBoard` writing the board it was given is `board/load-board-carries-the-
+// tokens`, `requestSwap` going through R1-R3 is the `moves` points, and the
+// derived fields of the snapshot — `levelTarget`, `multiplier`, `legalSwap` and
+// a cell's center — each have a point of their own.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -43,11 +42,9 @@ import {
 import { quietRowsWith } from "../board";
 import {
   CUTS,
-  FACET_DEBUG_VERSION,
   GEM_KINDS,
   GRID_COLS,
   GRID_ROWS,
-  HANDLE,
   MAX_STRAIN,
   POINTER_DEVICES,
   SCREENS,
@@ -59,7 +56,6 @@ import {
   loadBoard,
   type Harness,
 } from "../harness";
-import { REQUIRED_OPS } from "../surface";
 
 let h: Harness;
 
@@ -140,51 +136,19 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(async () => {
-  await h.dispose();
-});
-
-it(`carries every operation on window.${HANDLE}, as functions`, async () => {
-  // The whole operation list of specs/instrumentation.md, including the two the
-  // engineless flavor adds because nothing outside this build owns its loop:
-  // `setAutoStep` and `advance`. Reflected rather than called, so a build is
-  // held to having the operation rather than to what one call of it happened to
-  // do.
-  requireSurface();
-
-  const probed = await h.probe(REQUIRED_OPS);
-  for (const op of REQUIRED_OPS) {
-    assertEqual(probed[op], "function", `typeof window.${HANDLE}.${op}`);
-  }
-});
-
-it("reports FACET_DEBUG_VERSION on the surface and in the snapshot", async () => {
-  // Two readers, because the specification fixes two places. `debugVersion`
-  // reads the member off the surface itself; the snapshot's `version` is read
-  // through the operation. Both are the same plain number, `1`.
-  requireSurface();
-
-  assertEqual(
-    await h.debugVersion(),
-    FACET_DEBUG_VERSION,
-    `window.${HANDLE}.version`,
-  );
-  assertEqual(
-    (await h.snapshot()).version,
-    FACET_DEBUG_VERSION,
-    "the version the snapshot reports",
-  );
+afterEach(() => {
+  h?.dispose();
 });
 
 it("reports the whole documented snapshot shape, off a board in play", async () => {
   requireSurface();
-  await loadBoard(h, INSPECTED);
+  loadBoard(h, INSPECTED);
   // One frame, so the still below is of the board the reading was taken over
   // rather than of whatever the page last drew.
   await h.advance(1);
-  await captureStill(h, "state");
+  captureStill(h, "state");
 
-  const s = await h.snapshot();
+  const s = h.snapshot();
 
   // The scalars, field by field, at the type the specification gives each.
   assertEqual(typeof s.version, "number", "snapshot.version");
