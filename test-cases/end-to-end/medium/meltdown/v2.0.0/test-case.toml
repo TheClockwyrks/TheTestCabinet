@@ -4014,7 +4014,8 @@ validation = { script = "presentation/text-legible.test.ts", outputs = [
 # trip-cue through a tower carried over 100 by a real shot, never through
 # setTowerTripped; wave-clear-cue, victory-cue and game-over-cue through a real
 # wave clearing, a real final wave and lives really reaching zero, never through
-# setScreen or setPhase; menu-cue through the arrow bindings; fire-cue, death-cue
+# setScreen or setPhase; menu-cue through the arrow bindings and
+# menu-cue-on-pointer through a real mouse move; fire-cue, death-cue
 # and leak-cue through a real shot, a real kill and a real leak.
 [[review.categories]]
 id = "audio"
@@ -4102,12 +4103,21 @@ validation = { script = "audio/game-over-cue.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "menu-cue"
-title = "Moving a menu plays its cue"
-description = "Moving the highlight on a menu emits the menu cue, whether the highlight was moved by a key or by the pointer reaching a row."
+title = "Moving a menu with a key plays its cue"
+description = "Moving the highlight on a menu with a movement key emits the menu cue."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "audio/menu-cue.test.ts", outputs = [
   { id = "menu", name = "The menu move the cue answers", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-cue-on-pointer"
+title = "Reaching a menu row with the pointer plays its cue"
+description = "Moving the pointer onto a menu row it is not already on emits the menu cue on the frame the highlight changes."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/menu-cue-on-pointer.test.ts", outputs = [
+  { id = "menu", name = "The row the pointer reached", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "mute-silences"

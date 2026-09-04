@@ -20,14 +20,10 @@
 // or clear is reachable. That is what makes "the menu cue and nothing else" a
 // reading of the build rather than of the scenario.
 //
-// AND THE POINTER PATH, BECAUSE THE RULE IS STATED OF BOTH. `specs/controls.md`:
-// "Moving onto a row of the menu the current screen shows makes that row the
-// highlighted row, exactly as `up` and `down` reaching it do, and raises the
-// `menu` cue on the frame the highlight changes." A build that sounds for the
-// keyboard and stays silent under the pointer has met half the rule, so the last
-// leg moves the pointer into the rectangle the build reported for a row it is not
-// already on and reads the frame the highlight changed on. Both legs exercise the
-// same cue on the same rule, so they share one verdict.
+// THE KEY PATH ONLY. `specs/controls.md` raises the same cue when the pointer
+// reaches a row, and a build can sound for one route and stay silent on the
+// other, so that route is `audio.menu-cue-on-pointer`'s and this point says
+// nothing about it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -42,7 +38,6 @@ import {
   createHarness,
   resetTo,
   tapAction,
-  hoverMenuRow,
   watchCues,
   type Harness,
 } from "../harness";
@@ -65,7 +60,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("plays the menu cue on the frame the highlight moves, by key or pointer", async () => {
+it("plays the menu cue on the frame a key moves the highlight", async () => {
   // `reset` restores the title screen with `menuIndex` at `0`
   // (specs/instrumentation.md).
   resetTo(h);
@@ -114,27 +109,10 @@ it("plays the menu cue on the frame the highlight moves, by key or pointer", asy
     "the gain the menu cue played at on an unmuted bus (specs/audio.md)",
   );
 
-  // The pointer path: onto the row the highlight is NOT on, so the move is a
-  // change rather than a hover of the row already highlighted.
-  await hoverMenuRow(h, 0);
-  const pointerFrame = h.engine.frame().count;
-
-  assertEqual(
-    h.snapshot().menuIndex,
-    0,
-    "the highlighted row after the pointer moved into the rectangle the " +
-      "build reported for it (specs/controls.md)",
-  );
-  assertDeepEqual(
-    playedOn(played, pointerFrame),
-    [CUES.menu],
-    "the cues that played on the frame the pointer moved the highlight: the " +
-      "menu cue, and nothing else (specs/audio.md, specs/controls.md)",
-  );
   assertLength(
     played,
-    2,
-    "the cues played over the whole scenario: one for the key's move and one " +
-      "for the pointer's (specs/audio.md)",
+    1,
+    "the cues played over the whole scenario: the one the key's move raised " +
+      "(specs/audio.md)",
   );
 });

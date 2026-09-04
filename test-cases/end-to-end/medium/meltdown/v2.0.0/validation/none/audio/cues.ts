@@ -379,6 +379,31 @@ export async function mousePress(
 }
 
 /**
+ * Move Chromium's own mouse to a logical stage point and run the frame that
+ * delivers it.
+ *
+ * WHY A REAL MOUSE. `specs/instrumentation.md` is explicit that no operation of
+ * the debug surface plays a cue, so a move posed through `pointerMove` is
+ * entitled to be silent. Only a genuine pointer event can raise the `menu` cue
+ * `specs/controls.md` binds to the pointer reaching a row. The logical point is
+ * mapped through the harness's own fit, which at the stage's own size is the
+ * identity.
+ *
+ * The frame run after the move is the frame the cue belongs to, and it is what
+ * is returned.
+ */
+export async function mouseMove(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<number> {
+  const at = h.css(x, y);
+  await h.page.mouse.move(at.x, at.y);
+  await h.advance(1);
+  return h.frame();
+}
+
+/**
  * Arm a tower type by pressing the shop entry the PANEL reported for it.
  *
  * `specs/hud.md` leaves where each control sits to the build and reports the
