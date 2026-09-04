@@ -11,7 +11,7 @@ has initialized. Every scenario driven from code reaches the game through it, so
 it is present and exactly as specified here.
 
 Each operation is a read of the game's state or a pose of one part of it. A pose
-sets one thing, and the game's own tick, paddle motion, ring orbits,
+sets one thing, and the game's own tick, deflector motion, ring orbits,
 reflections, pod draws, and scoring run from there exactly as they do in play,
 so a scenario driven from code behaves exactly like one played by hand.
 
@@ -34,7 +34,7 @@ and returns the next `KesslerState`; a reading takes the state the same way and
 returns what it read. A caller drives a pose through the engine's `apply`, as
 `engine.apply((s) => debug.setScore(s, 500))`, and a reading against the
 engine's current state, as `debug.snapshot(engine.state)`. A pose sets one
-thing, and the game's own tick, paddle motion, ring orbits, reflections, pod
+thing, and the game's own tick, deflector motion, ring orbits, reflections, pod
 draws, and scoring run from there exactly as they do in play, so a scenario
 driven from code behaves exactly like one played by hand. `src/game.ts` declares
 and exports its type, `KesslerDebugApi`.
@@ -54,7 +54,7 @@ Each operation acts on the live game at the moment it is called. A pose takes
 only the parameters its heading names, arranges the running game through the
 same systems play uses, and returns nothing; a reading takes no parameters,
 returns plain data built at the call, and changes nothing. A pose sets one
-thing, and the game's own tick, paddle motion, ring orbits, reflections, pod
+thing, and the game's own tick, deflector motion, ring orbits, reflections, pod
 draws, and scoring run from there exactly as they do in play, so a scenario
 driven from code behaves exactly like one played by hand. Kessler runs in one
 level for the whole session and every screen is a value of the state's screen
@@ -70,12 +70,7 @@ The surface is inert during normal play, doing nothing until something calls it.
 The surface rests on the simulation being deterministic and steppable. Three
 properties make it so.
 
-- A fixed timestep, decoupled from rendering. The simulation advances only in
-  whole ticks of `TICK_DT` (`1 / 60`) seconds, `TICK_HZ` (`60`) of them per
-  second of game time: each frame's delta time accumulates, whole ticks are
-  consumed, and the remainder waits for the next frame. An interval of game time
-  therefore reaches the same state however it was divided into frames, and
-  drawing advances nothing.
+- A fixed timestep, decoupled from rendering, as `specs/overview.md` fixes it.
 - Simulation-owned contacts. Every contact is decided from the state's own polar
   figures under the crossing rules of `specs/deflector-and-ball.md` and
   `specs/rings.md`, so what a tick resolves follows from the state alone.
@@ -93,25 +88,28 @@ the cues a scenario hears come from the ticks run after it.
 ## What the runtime provides instead
 
 {{#if (eq engine.slug "none")}}
-The keyboard and the overlay belong to the runtime layer beneath the game, and
-the surface carries no operation for either. That layer delivers the key
-bindings `specs/controls.md` fixes, so a dispatched keyboard event turns the
-deflector, launches the ball, and works the menus exactly as a player's key
-does, and it draws and toggles the debug overlay.
+The keyboard, the pointer, and the overlay belong to the runtime layer beneath
+the game, and the surface carries no operation for any of them. That layer
+delivers the input `specs/controls.md` fixes, so a dispatched keyboard event
+turns the deflector, launches the ball, and works the menus exactly as a
+player's key does, and a dispatched pointer event works the menus exactly as a
+player's mouse or finger does, and it draws and toggles the debug overlay.
 
 The clock is the exception, because nothing outside this build owns it. The
 surface is what takes the game off real time and advances it, through
 `setAutoStep` and `step` below.
 {{else}}
-The clock, the keyboard, and the overlay belong to the {{engine.name}} engine,
+The clock, the input, and the overlay belong to the {{engine.name}} engine,
 which documents them in the `engine/` directory at the root of this repository,
 and the surface carries no operation for any of them. The engine advances the
 game frame by frame, and a clock that supplies its own deltas takes it off real
 time: a scenario pairs a `ConstantClock` of `1000 / 60` milliseconds with
 `engine.advance`, so one frame consumes exactly one tick. The engine drives the
-actions the game registers, so a dispatched keyboard event turns the deflector,
-launches the ball, and works the menus exactly as a player's key does, and it
-draws and toggles the debug overlay.
+actions the game registers and the pointer it maps, so a dispatched keyboard
+event turns the deflector, launches the ball, and works the menus exactly as a
+player's key does, a dispatched pointer event works the menus exactly as a
+player's mouse or finger does, and the engine draws and toggles the debug
+overlay.
 {{/if}}
 
 What the overlay shows is Kessler's, under Diagnostics below.
@@ -144,6 +142,8 @@ caller that wants several things arranged makes several calls, in the order it
 wants them. No pose decides an outcome: every bounce, hit, destruction, catch,
 burn-up, life loss, and clearing comes from the ticks run after the pose, so a
 scenario reads what happened from the snapshot.
+
+`paddle` names the deflector throughout the operations and the snapshot below.
 {{#if (eq engine.slug "simple-2d")}}
 
 Each operation's first parameter is the current state,
@@ -182,18 +182,18 @@ first.
 
 {{/if}}
 {{#if (eq engine.slug "simple-2d")}}
-### `reset(state, options)`
+### `reset(state, seed)`
 {{else}}
-### `reset(options)`
+### `reset(seed)`
 {{/if}}
 
 Restores the game to its boot state: the `title` screen
 with `menu.index` at `0`, the score at `0`, `3` lives, wave `1`, `ticks` at `0`,
 the deflector at angle `90` with span `48`, every ring slot filled at its full
 hit points with every ring angle at `0` and each ring's speed from the wave-1
-formulas, no balls, no pods, no timed effect, no shield, and both driver
-switches on. `options` is optional, and `options.seed` seeds the pod generator,
-defaulting to `DEFAULT_SEED` (`1`).
+formulas, no balls, no pods, no timed effect, no shield, the interstitial timer
+at `0`, and both driver switches on. `seed` is an optional whole number that
+seeds the pod generator, defaulting to `DEFAULT_SEED` (`1`).
 {{#if (eq engine.slug "none")}}
 
 Whether the simulation advances on its own each frame is untouched.
@@ -212,29 +212,41 @@ restores.
 A pure reading of `state`, returned as the plain object under Snapshot shape
 below. It returns no state, because it poses nothing.
 
-### `setScreen(state, name)`
+### `menuItemRect(state, index)`
 {{else}}
 ### `snapshot()`
 
 A pure read of the state, returned as the plain object under Snapshot shape
 below. It changes nothing.
 
+### `menuItemRect(index)`
+{{/if}}
+
+A pure read of where the build drew a menu entry. It returns the hit region of
+entry `index` on the current screen's menu, as
+`{ x: <number>, y: <number>, width: <number>, height: <number> }`, in the
+stage's logical units, with `(x, y)` the region's top-left corner. It is the
+region `specs/controls.md` has the pointer and touch act over, so what it
+reports is where the entry actually answers. On a screen with no menu, and for
+an `index` outside the menu's entries, it returns `null`. It changes nothing.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setScreen(state, name)`
+{{else}}
 ### `setScreen(name)`
 {{/if}}
 
-Enters the screen `name`, one of the six values `specs/screens.md` names,
-exactly as the real transition into it enters it, with the entering menu
-highlighting its top entry. No cue sounds at the call, as the deterministic core
-above states.
+Sets `screen` to `name`, one of the six values `specs/screens.md` names, and
+changes nothing else. The score, the lives, the wave, the deflector, the balls,
+the rings, the pods, the timed effects, the shield, the interstitial timer, the
+menu highlight, and both driver switches all stand exactly as they stood. No
+cue sounds at the call, as the deterministic core above states.
 
-| `name` | What the call does |
-| --- | --- |
-| `playing` | Starts a fresh session exactly as confirming START does: score `0`, `3` lives, wave `1`, every slot filled, ring angles at `0`, the wave-1 figures in force, and a ball parked on the deflector. |
-| `waveclear` | Enters the interstitial exactly as the clearing event enters it: balls, pods, timed effects, and the shield are removed and a fresh interstitial begins for the wave the counter holds. The score stays as it stands, and the interstitial runs out into the next wave exactly as a played one does. |
-| `paused` | Enters the pause overlay exactly as `Escape` does during play, freezing the simulation intact. |
-| `gameover` | Enters the game-over screen exactly as losing the last life enters it, showing the score and wave as they stand. |
-| `title` | Discards the session exactly as QUIT does. |
-| `howto` | Enters the how-to screen exactly as confirming HOW TO PLAY does. |
+What each screen then does is the screen's own, fixed in `specs/screens.md`: a
+tick of `playing` advances the whole simulation, a tick of `waveclear` counts
+the interstitial timer down, and `title`, `howto`, `paused`, and `gameover`
+advance nothing. A caller that wants a screen arranged the way the real
+transition into it arranges it makes the calls that arrange it.
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `setScore(state, n)`, `setLives(state, n)`
@@ -247,6 +259,30 @@ carries on from the posed figure: the next scoring event adds to the posed
 score, and a life loss at posed lives `1` ends the game.
 
 {{#if (eq engine.slug "simple-2d")}}
+### `setMenuIndex(state, n)`
+{{else}}
+### `setMenuIndex(n)`
+{{/if}}
+
+Sets the highlighted menu entry to `n`, a whole number from `0` to the entry
+count of the current screen's menu minus `1`. The highlight moves exactly as
+`up` and `down` move it, and no cue sounds. On a screen with no menu the call
+changes nothing.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setInterstitialTicks(state, ticks)`
+{{else}}
+### `setInterstitialTicks(ticks)`
+{{/if}}
+
+Sets the interstitial timer to `ticks`, a whole number of at least `0`. The
+timer counts down only on `waveclear`, where each tick lowers it by `1` and the
+tick that takes it to `0` ends the interstitial, laying the next wave out and
+returning `screen` to `playing` as `specs/screens.md` states; a tick of
+`waveclear` with the timer already at `0` ends it at once. On every other
+screen the posed figure simply holds. The clearing event sets it to `180`.
+
+{{#if (eq engine.slug "simple-2d")}}
 ### `setWave(state, n)`
 {{else}}
 ### `setWave(n)`
@@ -255,7 +291,7 @@ score, and a life loss at posed lives `1` ends the game.
 Sets the wave counter to `n`, a whole number of at least `1`, and puts the
 wave-`n` figures in force: each ring's speed is set from the wave formulas of
 `specs/rings.md`, overwriting any `setRingSpeed`, and the wave ball speed used
-by a serve, a launch, and a paddle bounce becomes the wave-`n` figure of
+by a serve, a launch, and a deflector bounce becomes the wave-`n` figure of
 `specs/deflector-and-ball.md`. The rings keep their targets and their angles,
 every ball keeps the velocity it holds, and the effects, pods, score, lives,
 and screen stay as they stand.
@@ -422,6 +458,9 @@ by default and a `reset` restores both.
   wave: <number>,
   score: <number>,
   lives: <number>,
+  seed: <number>,           // the seed the pod generator was laid with
+  interstitialTicks: <number>, // ticks left of the interstitial; counts down
+                            // on `waveclear` alone
 {{#if (eq engine.slug "none")}}
   autoStep: <boolean>,      // whether the frame loop advances the simulation
 {{/if}}
@@ -454,7 +493,9 @@ every live ball, the parked ball included, in spawn order. `rings` always holds
 three entries, ring 1 first, and each ring's `targets` lists its live targets
 by `slot` with the hit points each has left, so a slot with no entry holds no
 target. `paddle.angleDeg` and every ring's `angleDeg` are normalized into
-`[0, 360)`, and the three effect timers count down in whole ticks.
+`[0, 360)`, and the three effect timers count down in whole ticks. `seed` is
+the value the last `reset` laid the pod generator with, so a scenario reads
+back the seed it posed.
 {{#if (eq engine.slug "none")}}
 
 `autoStep` is `true` while the frame loop advances the simulation from the wall

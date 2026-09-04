@@ -2,9 +2,10 @@
 
 This file fixes the field's geometry and every contact radius, the angular
 conventions every rule reads angles by, the order a tick resolves in, the
-containment field, and the planet. Positions are in the logical units and the
-polar mapping of `specs/overview.md`. The deflector and the ball's reflections
-are in `specs/deflector-and-ball.md`, and the rings are in `specs/rings.md`.
+background, the containment field, and the planet. Positions are in the
+logical units and the polar mapping of `specs/overview.md`. The deflector and
+the ball's reflections are in `specs/deflector-and-ball.md`, and the rings are
+in `specs/rings.md`.
 
 ## Angular conventions
 
@@ -60,6 +61,14 @@ before its advance this tick and the position the advance gave it.
 
 A destruction inside step 5 runs its salvage pod draw at once, so draws happen
 in the order destructions resolve. `specs/pods.md` fixes the draw.
+
+## The background
+
+A starfield is drawn behind the play area, on every screen that shows the
+field. It is drawn in code rather than loaded from a file, and it sits far
+enough back that the planet, the rings and their targets, the deflector, the
+balls, the pods, and the containment field all stay readable over it. How
+dense it is, what it is drawn in, and whether it moves are yours.
 
 ## The containment field
 
