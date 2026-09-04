@@ -2518,3 +2518,58 @@ failure_cap = "passable"
 validation = { script = "audio/runs-without-audio.test.ts", outputs = [
   { id = "silent", name = "The game played through with no audio bus at all", kind = "image" },
 ] }
+
+# --- Showcase ----------------------------------------------------------------
+# Read off the produced tree rather than off the running game. The showcase is the
+# store-page presentation of the finished build — a player-facing description and
+# an ordered carousel of captured media, in a `showcase/` directory at the root of
+# the produced repository — which `specs/showcase.md` defines and
+# `specs/overview.md` lists among the things the build ships.
+#
+# It is worth THREE points rather than one, because it is a deliverable of its own:
+# a whole file of the specification, and the one piece of a run a person meets
+# before they meet the game. Every other point on this checklist is one behavior of
+# the game itself.
+#
+# Its cap is `great` all the same: a build that shipped no showcase flies, shoots
+# and scores exactly as well as one that did, so the miss costs the presentation
+# and leaves the standard flow of gameplay untouched. The weight and the cap say
+# different things on purpose — how much of the score the point carries, and how
+# far a failure may drag a rating down.
+#
+# It lowers `presentation` alone. This case rates the game on four domains, three
+# of which are the simulation the ship flies in; a showcase that never turned up
+# says nothing about the well, the flight model or the board, and everything about
+# what the build presents.
+#
+# ONE point, and it grades EXISTENCE alone. Whether the description reads like
+# something a player would want to play, whether the carousel opens on the
+# strongest view of live play, and whether the media is worth looking at is a
+# reviewer's judgement, and belongs to the AESTHETIC half of `presentation` rather
+# than to an assertion. The validator's whole verdict is that the two files are
+# there and that the carousel points at a file that is there with them: not a
+# dimension, not a byte of a picture, not a word of the prose.
+#
+# The script drives nothing. It reads the produced tree with `node:fs`, so one
+# suite stands unchanged in all three engine directories and the point means the
+# same thing whichever engine the run selected. What it hands back as evidence is a
+# `.png` copied out of the build's own showcase, so a reviewer sees the picture the
+# build chose to present its game with beside the verdict.
+[[review.categories]]
+id = "showcase"
+title = "Showcase"
+[[review.categories.items]]
+id = "exists"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, and at least one file the carousel names is present in showcase/."
+weight = 3
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: read the produced tree, confirm the description and the
+# carousel are both there, and confirm the carousel names a file present beside
+# them; the still handed back is a `.png` copied out of the showcase itself.
+# Nothing about the media is checked beyond its being there. See
+# validation/<engine>/showcase/exists.test.ts.
+validation = { script = "showcase/exists.test.ts", outputs = [
+  { id = "carousel", name = "A screenshot from the build's showcase", kind = "image" },
+] }
