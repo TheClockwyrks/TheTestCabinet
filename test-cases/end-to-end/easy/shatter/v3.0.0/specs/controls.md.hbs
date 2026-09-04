@@ -27,7 +27,7 @@ layout-dependent character.
 {{#if (eq variant.slug "warhead")}}
 | `KeyF` | Launch the torpedo | — |
 {{/if}}
-| `KeyP` | Pause | — |
+| `KeyP` | Pause | Resume the paused game |
 | `Escape` | Pause | Leave the screen |
 | `KeyM` | Toggle sound | Toggle sound |
 
@@ -61,8 +61,8 @@ The whole of `ACTIONS` is registered.
 | `b` | Fire the gun | — |
 {{/if}}
 | `confirm` | — | Confirm the selection |
-| `back` | Pause | Leave the screen |
-| `pause` | Pause | — |
+| `back` | — | Leave the screen |
+| `pause` | Pause | Resume the paused game |
 | `mute` | Toggle sound | Toggle sound |
 
 ## The bindings
@@ -84,10 +84,12 @@ The whole of `ACTIONS` is registered.
 | `pause` | `KeyP`, `Escape` |
 | `mute` | `KeyM` |
 
-`Escape` drives both `back` and `pause`, and the screen decides which one applies:
-it pauses while the game is being played and leaves the screen otherwise. `Space`
-likewise drives firing while the game is being played and confirms on a screen
-showing a menu.
+`back` is read on `title`, `howto`, `paused`, and `gameover`, and `pause` is read
+on `playing` and `paused`. `Escape` raises both on one frame, so a single `Escape`
+press on `playing` pauses once and a single `Escape` press on `paused` resumes
+once. On `paused`, `pause` and `back` are read before the menu edges, and a frame
+carrying either resumes and does nothing else. `Space` drives firing while the game
+is being played and confirms on a screen showing a menu.
 {{/if}}
 
 ## Holds and presses

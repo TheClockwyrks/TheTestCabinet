@@ -83,6 +83,13 @@ function runClocks(sim: Sim): void {
 
 /** Move the highlight, and take the entry `confirm` lands on. */
 function stepMenu(sim: Sim, input: FrameInput): void {
+  // On `paused`, `back` and `pause` are read before the menu's own edges, and a
+  // frame carrying either resumes and does nothing else (`specs/controls.md`).
+  if (sim.screen === "paused" && (input.back || input.pause)) {
+    leaveScreen(sim);
+    return;
+  }
+
   const items = menuItems(sim.screen);
   if (items !== null && items.length > 0) {
     if (input.menuUp) {
@@ -96,7 +103,10 @@ function stepMenu(sim: Sim, input: FrameInput): void {
       return;
     }
   }
-  if (input.back || input.pause) leaveScreen(sim);
+
+  // `howto` shows no menu, so confirming leaves it as `back` does
+  // (`specs/ui.md`); every screen that does show one took its confirm above.
+  if (input.back || input.confirm) leaveScreen(sim);
 }
 
 /** Take the highlighted entry of whatever menu the current screen shows. */
@@ -104,7 +114,9 @@ function confirmMenuItem(sim: Sim): void {
   switch (sim.screen) {
     case "title":
       if (sim.menuIndex === 0) startRun(sim);
-      else goTo(sim, "howto");
+      // The highlight stays on `HOW TO PLAY` while the how-to screen shows
+      // (`specs/ui.md`), so this moves the screen and nothing else.
+      else sim.screen = "howto";
       return;
     case "paused":
       if (sim.menuIndex === 0) resume(sim);
@@ -130,6 +142,10 @@ function resume(sim: Sim): void {
 function leaveScreen(sim: Sim): void {
   switch (sim.screen) {
     case "howto":
+      // The title's highlight is untouched by this screen, so the return lands on
+      // the entry that opened it (`specs/ui.md`).
+      sim.screen = "title";
+      return;
     case "gameover":
       goTo(sim, "title");
       return;

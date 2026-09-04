@@ -139,18 +139,17 @@ export function handleScreens(sim: Sim, input: FrameInput): void {
       moveMenu(sim, input, TITLE_ITEMS.length);
       if (input.confirm) {
         if (sim.menuIndex === 0) startNewGame(sim);
-        else {
-          sim.screen = "howto";
-          sim.menuIndex = 0;
-        }
+        // The highlight stays on `HOW TO PLAY` while the how-to screen shows
+        // (`specs/ui.md`), so this moves the screen and nothing else.
+        else sim.screen = "howto";
       }
       return;
 
     case "howto":
-      if (input.back) {
-        sim.screen = "title";
-        sim.menuIndex = 0;
-      }
+      // Confirming leaves this screen as leaving it does, and neither touches the
+      // title's highlight, so the return lands on the entry that opened it
+      // (`specs/ui.md`).
+      if (input.back || input.confirm) sim.screen = "title";
       return;
 
     case "playing":
@@ -161,6 +160,15 @@ export function handleScreens(sim: Sim, input: FrameInput): void {
       return;
 
     case "paused":
+      // `back` and `pause` are read before the menu's own edges, and a frame
+      // carrying either resumes and does nothing else (`specs/controls.md`).
+      // Leaving this screen and pausing again each do what RESUME does
+      // (`specs/ui.md`).
+      if (input.back || input.pause) {
+        sim.screen = "playing";
+        sim.menuIndex = 0;
+        return;
+      }
       moveMenu(sim, input, PAUSE_ITEMS.length);
       if (input.confirm) {
         if (sim.menuIndex === 0) {
@@ -172,13 +180,16 @@ export function handleScreens(sim: Sim, input: FrameInput): void {
           sim.screen = "title";
           sim.menuIndex = 0;
         }
-      } else if (input.back) {
-        sim.screen = "playing";
-        sim.menuIndex = 0;
       }
       return;
 
     case "gameover":
+      // Leaving this screen does what MENU does (`specs/ui.md`).
+      if (input.back) {
+        sim.screen = "title";
+        sim.menuIndex = 0;
+        return;
+      }
       moveMenu(sim, input, GAMEOVER_ITEMS.length);
       if (input.confirm) {
         if (sim.menuIndex === 0) startNewGame(sim);

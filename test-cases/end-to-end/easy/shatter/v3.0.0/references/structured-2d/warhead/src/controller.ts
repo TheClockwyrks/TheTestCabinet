@@ -33,20 +33,30 @@ export class ShatterController extends PlayerController {
       case "title":
         this.menu(state, TITLE_ITEMS.length, (index) => {
           if (index === 0) startRun(state);
-          else {
-            state.screen = "howto";
-            state.menuIndex = 0;
-          }
+          // The highlight stays on `HOW TO PLAY` while the how-to screen shows
+          // (`specs/ui.md`), so this moves the screen and nothing else.
+          else state.screen = "howto";
         });
         break;
-      case "howto":
-        if (this.input.pressed("back")) toTitle(state);
+      case "howto": {
+        // Confirming leaves this screen as leaving it does, and neither touches
+        // the title's highlight, so the return lands on the entry that opened it
+        // (`specs/ui.md`).
+        const leaving = this.input.pressed("back");
+        const accepted = this.input.pressed("confirm");
+        if (leaving || accepted) state.screen = "title";
         break;
+      }
       case "playing":
         this.play(state);
         break;
-      case "paused":
-        if (this.input.pressed("back")) {
+      case "paused": {
+        // Leaving this screen and pausing again each do what RESUME does
+        // (`specs/ui.md`). Both edges are read before the menu's own, and a frame
+        // carrying either resumes and does nothing else (`specs/controls.md`).
+        const leaving = this.input.pressed("back");
+        const pausing = this.input.pressed("pause");
+        if (leaving || pausing) {
           resumeRun(state);
           break;
         }
@@ -56,7 +66,13 @@ export class ShatterController extends PlayerController {
           else toTitle(state);
         });
         break;
+      }
       case "gameover":
+        // Leaving this screen does what MENU does (`specs/ui.md`).
+        if (this.input.pressed("back")) {
+          toTitle(state);
+          break;
+        }
         this.menu(state, GAMEOVER_ITEMS.length, (index) => {
           if (index === 0) startRun(state);
           else toTitle(state);

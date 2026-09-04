@@ -183,7 +183,7 @@ field uses.
   binds `game` to it, and runs.
 - `src/constants.ts`, holding every figure this specification fixes.
 - `index.html`, the page and the canvas the engine fits the field into.
-- `.tcab/`, holding the vendored engine that `package.json` resolves the
+- The vendored engine directory that `package.json` resolves the engine
   dependency from.
 - `engine/`, the engine's own documentation.
 - The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
@@ -241,7 +241,7 @@ itself.
   binds `game` to it, and runs.
 - `src/constants.ts`, holding every figure this specification fixes.
 - `index.html`, the page and the canvas the engine fits the field into.
-- `.tcab/`, holding the vendored engine that `package.json` resolves the
+- The vendored engine directory that `package.json` resolves the engine
   dependency from.
 - `engine/`, the engine's own documentation.
 - The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
@@ -324,12 +324,9 @@ it.
   nothing is fetched at runtime.
 - Run in the browser with no backend. Everything needed to play is self-contained,
   and no API key or credential is needed to build, run, or play.
-{{#if (eq engine.slug "none")}}
-- Hold the game's whole state in one value, the one the frame loop advances and
-  the debug surface reads.
-{{else if (eq engine.slug "simple-2d")}}
+{{#if (eq engine.slug "simple-2d")}}
 - Hold the game's whole state in `ShatterState`, as `specs/state.md` declares it.
-{{else}}
+{{else if (eq engine.slug "structured-2d")}}
 - Hold the game's whole authoritative state in `ShatterState`, the world's game
   state, as `specs/state.md` declares it.
 {{/if}}

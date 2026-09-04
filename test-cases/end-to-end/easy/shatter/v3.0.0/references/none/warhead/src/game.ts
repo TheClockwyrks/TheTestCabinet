@@ -176,14 +176,17 @@ function handleScreenInput(state: ShatterState, api: UpdateApi): void {
       if (!api.input.pressed("confirm")) return;
       if (highlighted(state, TITLE_ITEMS.length) === 0) startNewGame(state);
       else {
+        // The title's highlight is left exactly as it was, so leaving `howto`
+        // comes back to the entry that opened it (`specs/ui.md`).
         state.screen = "howto";
-        state.menuIndex = 0;
       }
       return;
     }
     case "howto": {
+      // Confirming leaves this screen as leaving it does, and neither touches the
+      // title's highlight or anything else the title screen holds (`specs/ui.md`).
       const leaving = api.input.pressed("confirm") || api.input.pressed("back");
-      if (leaving) toTitle(state);
+      if (leaving) state.screen = "title";
       return;
     }
     case "playing": {
@@ -194,8 +197,12 @@ function handleScreenInput(state: ShatterState, api: UpdateApi): void {
       return;
     }
     case "paused": {
-      // Leaving this screen does what RESUME does (`specs/ui.md`).
-      if (api.input.pressed("back")) {
+      // Leaving this screen and pausing again each do what RESUME does
+      // (`specs/ui.md`). Both edges are read before the menu's own, and a frame
+      // carrying either resumes and does nothing else (`specs/controls.md`).
+      const leaving = api.input.pressed("back");
+      const pausing = api.input.pressed("pause");
+      if (leaving || pausing) {
         state.screen = "playing";
         return;
       }
@@ -208,6 +215,11 @@ function handleScreenInput(state: ShatterState, api: UpdateApi): void {
       return;
     }
     case "gameover": {
+      // Leaving this screen does what MENU does (`specs/ui.md`).
+      if (api.input.pressed("back")) {
+        toTitle(state);
+        return;
+      }
       menuNavigation(state, api, GAMEOVER_ITEMS.length);
       if (!api.input.pressed("confirm")) return;
       if (highlighted(state, GAMEOVER_ITEMS.length) === 0) startNewGame(state);

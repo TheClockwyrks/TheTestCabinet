@@ -341,7 +341,7 @@ export const KEY_FIRE = "Space";
 export const KEYS_CONFIRM = ["Space", "Enter"] as const;
 /** Launch the torpedo (`warhead` only). */
 export const KEY_TORPEDO = "KeyF";
-/** Pause while playing. */
+/** Pause while playing; resume the paused game on a menu. */
 export const KEY_PAUSE = "KeyP";
 /** Pause while playing; leave the screen otherwise. */
 export const KEY_BACK = "Escape";

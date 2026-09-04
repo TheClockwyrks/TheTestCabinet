@@ -2178,6 +2178,24 @@ validation = { script = "screens/howto-returns.test.ts", outputs = [
   { id = "title", name = "The title screen the how-to returned to", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "howto-confirm-returns"
+title = "Confirming on the how-to screen returns to the title"
+description = "The how-to shows no menu of its own, so confirming leaves it as leaving it does: a confirm press on howto gives screen title."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-confirm-returns.test.ts", outputs = [
+  { id = "title", name = "The title screen confirming the how-to returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-returns-to-its-entry"
+title = "The return from the how-to lands on the entry that opened it"
+description = "The how-to leaves the title's highlight exactly as it was, so a how-to opened by confirming TITLE_ITEMS entry 1 returns with menuIndex 1."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/howto-returns-to-its-entry.test.ts", outputs = [
+  { id = "title", name = "The title screen with the highlight back on HOW TO PLAY", kind = "image" },
+] }
+[[review.categories.items]]
 id = "pause-freezes-the-field"
 title = "Pausing freezes the field"
 description = "With a rock drifting, pausing and advancing two seconds leaves every body where it stood and every timer where it was, per the rule specs/ui.md states that the paused screen advances nothing. simTime still accumulates, which the same rule fixes."
@@ -2203,6 +2221,24 @@ domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "screens/resume-returns-to-play.test.ts", outputs = [
   { id = "resumed", name = "The game resumed exactly as it stood", kind = "image" },
+] }
+[[review.categories.items]]
+id = "resume-p"
+title = "The pause key resumes a paused game"
+description = "Pausing again from a paused game with a posed score, ships, wave and a rock on the field gives screen playing with all four exactly as they stood."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/resume-p.test.ts", outputs = [
+  { id = "resumed", name = "The game the pause key gave back", kind = "image" },
+] }
+[[review.categories.items]]
+id = "resume-escape"
+title = "Escape resumes a paused game, once"
+description = "One Escape press on a paused game gives screen playing with the run and the field as they stood, and it is still playing a quarter of a second later, since a frame carrying pause or back resumes and does nothing else."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/resume-escape.test.ts", outputs = [
+  { id = "resumed", name = "The game one Escape press gave back", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "restart-begins-a-new-game"
@@ -2266,6 +2302,15 @@ domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "screens/game-over-menu-returns-to-the-title.test.ts", outputs = [
   { id = "title", name = "The title screen MENU returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-returns"
+title = "Leaving the game-over screen returns to the title"
+description = "Leaving the game-over screen does what MENU does: a back press on gameover gives screen title with menuIndex 0."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/gameover-returns.test.ts", outputs = [
+  { id = "title", name = "The title screen leaving the game-over reached", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "menu-selection-stays-in-range"

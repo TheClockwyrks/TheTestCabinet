@@ -2,11 +2,12 @@
 // screen.
 //
 // THE RULE. `specs/controls.md` binds `Escape` to BOTH the `back` action and the
-// `pause` action, and says outright how a build resolves that: "`Escape` drives
-// both `back` and `pause`, and the screen decides which one applies: it pauses
-// while the game is being played and leaves the screen otherwise." The action table
-// agrees from the other side — `back` reads "Pause" in the playing column and
-// "Leave the screen" in the menu column. `specs/ui.md` names the screen it reaches,
+// `pause` action, and says outright how a build resolves that: "`back` is read on
+// `title`, `howto`, `paused`, and `gameover`, and `pause` is read on `playing` and
+// `paused`. `Escape` raises both on one frame, so a single `Escape` press on
+// `playing` pauses once and a single `Escape` press on `paused` resumes once." The
+// action table agrees from the other side — `pause` reads "Pause" in the playing
+// column, and `back` is empty there. `specs/ui.md` names the screen it reaches,
 // `paused`, "the pause menu, over the frozen field".
 //
 // THE AMBIGUITY IS THE POINT. One physical `Escape` arms two actions at once, and

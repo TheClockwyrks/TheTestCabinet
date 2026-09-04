@@ -281,7 +281,10 @@ export interface Binding {
  * layout-dependent character.
  *
  * `Escape` deliberately drives TWO actions, `back` and `pause`, and the screen
- * decides which applies; `Space` likewise drives `a` and `confirm`.
+ * decides which is read: `back` on `title`, `howto`, `paused` and `gameover`,
+ * `pause` on `playing` and `paused`. On `paused` both are read and either
+ * resumes, which is why one press there resumes once. `Space` likewise drives `a`
+ * and `confirm`.
  *
  * `b` IS THE ONE ROW THE TWO VARIANTS DIFFER ON, and the `warhead` key stands
  * here for the same reason the `warhead` figures above stand unconditionally: it

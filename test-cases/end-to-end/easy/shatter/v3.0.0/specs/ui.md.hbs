@@ -32,8 +32,10 @@ The game is on exactly one of five screens at a time.
 
 The menu's entries are stacked one above the next under the title and tagline. The
 highlighted entry is drawn distinctly from the others, so a player always sees
-which entry confirming would take, and the highlight rests on the first entry on
-arriving at the title.
+which entry confirming would take. The highlight rests on the first entry when the
+game opens and on every return from a game, where `PLAY` is the entry that led
+away; a return from `howto` puts the highlight back on `HOW TO PLAY`, the entry
+that opened that screen.
 
 | Entry | Does |
 | --- | --- |
@@ -71,8 +73,10 @@ The controls it names include every key `specs/controls.md` binds, written as th
 standalone words `ARROWS`, `WASD`, `SPACE`, `ENTER`, `ESC`, `P`, and `M`.
 {{/if}}
 
-Leaving the screen returns to `title`, with the title's highlight at the first
-entry.
+`howto` shows no menu of its own, and the title's highlight is left exactly as it
+was while this screen shows. Confirming leaves the screen as leaving it does, and
+both return to `title`, so a screen opened from `HOW TO PLAY` returns with that
+entry highlighted.
 
 ### `playing`
 
@@ -103,7 +107,8 @@ rising: it counts the ticks the game ran rather than the play it ran.
 | `RESTART` | Opens a new game, as `specs/progression.md` states, and moves to `playing`. |
 | `QUIT TO MENU` | Returns to `title`, with the title's highlight at the first entry. |
 
-Leaving this screen does what `RESUME` does.
+Leaving this screen and pausing again each do what `RESUME` does, so `Escape` and
+`P` alike resume the game from here.
 
 ### `gameover`
 
@@ -118,6 +123,8 @@ game reached.
 | --- | --- |
 | `PLAY AGAIN` | Opens a new game and moves to `playing`. |
 | `MENU` | Returns to `title`, with the title's highlight at the first entry. |
+
+Leaving the screen does what `MENU` does.
 
 ## The HUD
 
