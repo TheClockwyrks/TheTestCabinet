@@ -41,9 +41,11 @@ export default defineConfig({
     // projects at once (load average ~450), the slowest suite here — a
     // twenty-five-board cascade sweep — took about 40 s against about 6 s quiet,
     // and the engineless sibling of this project lost four points to a sixty-
-    // second allowance under the same conditions. Five minutes is a quarter of
-    // the twenty-minute cap the runner puts on the WHOLE suite run, so a single
-    // file can only cross it on a host where the whole run was already lost;
+    // second allowance under the same conditions. The runner caps the WHOLE
+    // suite run at forty-five minutes (`VITEST_TIMEOUT`,
+    // `crates/core/src/vitest_validator.rs`), so five minutes — a ninth of that
+    // cap — can only be crossed by a single file on a host where the whole run
+    // was already lost;
     // below that, no correct build loses a point to the clock. A hung build is
     // still bounded, and bounded twice over.
     testTimeout: 300_000,

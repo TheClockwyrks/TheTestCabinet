@@ -1,7 +1,7 @@
 // Refract — audio/pointer: raising a pointer event the way a PLAYER raises it.
 //
 // The shared harness poses the pointer through the debug surface (`pressCell`,
-// `moveToCell`, `debug.trace`), which specs/instrumentation.md says resolves
+// `moveToCell`, `traceCells`), which specs/instrumentation.md says resolves
 // "against the live state before the call returns rather than deferred to the
 // next frame". That is exactly right for arranging a board, and wrong for
 // pinning a CUE: specs/ui.md fixes each cue as played "on the frame its event

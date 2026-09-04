@@ -1,12 +1,16 @@
 // Refract — presentation/readouts-clear-of-the-board: the readouts sit clear
 // of the board.
 //
-// specs/ui.md: the mode's readouts "sit clear of the board, whose extent is
-// given in specs/board.md" — on the largest board, cell centers spanning
-// x 352..928 and y 152..632, widened by NODE_R (30) on every side. The check
-// poses the 7x6 board GEO_7X6 in each mode and holds every text draw of one
-// rendered frame outside that box, so no heading, hint, or progress readout
-// overlaps a node or a beam on the board sizes where space is tightest.
+// specs/ui.md "playing": inside the board's extent the screen draws only the
+// board — its cells, the nodes with whatever readout a node itself carries, and
+// the beams — and every other element of the screen sits clear of that extent,
+// the mode's own readouts and the two controls included. specs/board.md gives
+// the extent: on the largest board, cell centers spanning x 352..928 and
+// y 152..632, widened by NODE_R (30) on every side. The check poses the 7x6
+// board GEO_7X6 in each mode and holds every text draw of one rendered frame
+// outside that box, so no heading, hint, or progress readout overlaps a node or
+// a beam on the board sizes where space is tightest. GEO_7X6 carries no
+// crystal, so nothing on it draws the one readout the extent is left open for.
 //
 // WHERE A TEXT DRAW'S BOUNDS COME FROM. The harness records every context
 // call: each fillText/strokeText carries the transform, measured width, and

@@ -4,12 +4,19 @@
 // The targets are the geometry a player aims at, so the ids and their order are
 // specification, not presentation: `menu-0` through `menu-2` on the title, one
 // per entry of TITLE_ITEMS; `back` on how-to; `board-1` through `board-24` and
-// then `back` on select; `clear` and then `back` on playing. A build that
-// reports a different set has either not built the targets or named them
-// something a player-driving check cannot find, and both are the same failure.
+// then `back` on select; `clear` and then `back` on playing; one `menu-<i>` per
+// choice on solved, three of them on a board that is not the last; `menu-0` and
+// `menu-1` on complete. A build that reports a different set has either not
+// built the targets or named them something a player-driving check cannot find,
+// and both are the same failure.
+//
+// Every screen the walk does not arrive at in play is POSED with `setScreen`,
+// which sets `state.screen` alone (specs/instrumentation.md), so a build whose
+// menus are the broken part fails the menu points and not this one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CAMPAIGN_LENGTH, TITLE_ITEMS } from "../../src/constants";
+import { TITLE_ITEMS } from "../constants";
+import { CAMPAIGN_LENGTH } from "../notation";
 import { R9_UNIQUE } from "../fixtures";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
@@ -49,6 +56,17 @@ it("reports the fixed target ids on every screen that carries them", async () =>
   );
   captureStill(h, "title");
 
+  h.debug.setScreen("howto");
+  await h.advance(1);
+  const howto = h.snapshot();
+  assertEqual(howto.screen, "howto");
+  assertDeepEqual(
+    ids(howto.targets),
+    ["back"],
+    "howto carries the back target and nothing else " +
+      "(specs/controls.md, Pointer targets)",
+  );
+
   await startCampaign(h, 1);
   const select = h.snapshot();
   assertEqual(select.screen, "select");
@@ -69,5 +87,31 @@ it("reports the fixed target ids on every screen that carries them", async () =>
     ids(playing.targets),
     ["clear", "back"],
     "playing carries clear and then back (specs/controls.md, Pointer targets)",
+  );
+
+  // The posed board stays behind both screens, as specs/modes/campaign.md has
+  // it. `boardIndex` rests at 0, so the solved board is board 1, which is not
+  // board 24, and the next board is offered alongside the replay and the way
+  // back to the grid.
+  h.debug.setScreen("solved");
+  await h.advance(1);
+  const solved = h.snapshot();
+  assertEqual(solved.screen, "solved");
+  assertDeepEqual(
+    ids(solved.targets),
+    ["menu-0", "menu-1", "menu-2"],
+    "solved carries one menu-<i> per choice it offers, three on a board that " +
+      "is not the last (specs/modes/campaign.md, The solved screen)",
+  );
+
+  h.debug.setScreen("complete");
+  await h.advance(1);
+  const complete = h.snapshot();
+  assertEqual(complete.screen, "complete");
+  assertDeepEqual(
+    ids(complete.targets),
+    ["menu-0", "menu-1"],
+    "complete carries menu-0 and menu-1, one per choice " +
+      "(specs/controls.md, Pointer targets)",
   );
 });

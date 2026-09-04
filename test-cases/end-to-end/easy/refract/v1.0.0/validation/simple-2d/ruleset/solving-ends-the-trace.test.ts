@@ -15,6 +15,14 @@
 //     gesture), and the release all change nothing — the solved board cannot
 //     be taken apart by retracting.
 //
+// The solved screen draws its own menu over the finished board, and where its
+// `menu-<i>` targets sit is the build's to choose (specs/controls.md, Pointer
+// targets). The press and the retract move stay on the board cells the gesture
+// is about — arming or highlighting a target changes no beam — and only the
+// release is moved, to the first point the build's own target list leaves free,
+// so no choice can be taken by the gesture whatever layout the build drew
+// (specs/controls.md: a release anywhere but the armed target takes nothing).
+//
 // Beams are compared with the pointer fields left out: the snapshot's
 // `pointer` mirrors the pointer the surface reports (specs/instrumentation.md)
 // and moves with every pose, while the beams must not.
@@ -27,6 +35,7 @@ import {
   createHarness,
   loadBoard,
   nodeCenter,
+  pointOutsideEveryTarget,
   resetTo,
   type Harness,
 } from "../harness";
@@ -110,13 +119,26 @@ it("ends the trace on the solving move and holds the beams against a further pre
   );
 
   h.debug.pointerMove(at(2, 1).x, at(2, 1).y);
+  const retracted = h.snapshot();
+  assertDeepEqual(
+    retracted.beams,
+    held,
+    "the retract gesture takes nothing apart — the solved board holds its " +
+      "beams (specs/controls.md)",
+  );
+  assertNull(retracted.tracing, "no trace survives the retract gesture");
+
+  // The release lands where the build itself reports no target, so the gesture
+  // ends without taking a choice off the solved screen's menu.
+  const away = pointOutsideEveryTarget(h.snapshot().targets);
+  h.debug.pointerMove(away.x, away.y);
   h.debug.pointerUp();
   const after = h.snapshot();
   assertDeepEqual(
     after.beams,
     held,
-    "the retract gesture takes nothing apart — the solved board holds its " +
-      "beams (specs/controls.md)",
+    "the release that ends the gesture takes nothing apart either " +
+      "(specs/controls.md)",
   );
   assertNull(after.tracing, "no trace survives the further gesture");
 

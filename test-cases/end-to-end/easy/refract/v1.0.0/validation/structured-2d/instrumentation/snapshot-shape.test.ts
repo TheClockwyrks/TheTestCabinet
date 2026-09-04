@@ -1,6 +1,6 @@
 // Refract — instrumentation/snapshot-shape: on a posed board carrying all
 // three channels and a crystal, with a partial beam drawn, the snapshot
-// reports version REFRACT_DEBUG_VERSION (1) and every field
+// reports version REFRACT_DEBUG_VERSION (2) and every field
 // specs/instrumentation.md lists with its documented type, with each node's
 // x and y on the cell center formula in specs/board.md and spent, complete,
 // and solved derived exactly as specs/beams.md states.
@@ -36,6 +36,7 @@ import {
   moveToCell,
   pressCell,
   resetTo,
+  traceCells,
   type Harness,
 } from "../harness";
 import { cellCenter, parseBoard, CHANNELS } from "../notation";
@@ -91,8 +92,9 @@ it("reports the full documented shape, every derivation on the spec's formula", 
     "the oracle parse of the posed notation",
   );
 
-  // The partial triangle beam, drawn and released through `trace`.
-  h.debug.trace(TRIANGLE_BEAM);
+  // The partial triangle beam, drawn and released through the pointer
+  // operations.
+  traceCells(h, TRIANGLE_BEAM);
   // The partial square beam, drawn move by move and left live: the pointer
   // operations resolve at the call, so no frame passes and the trace stays up
   // while the snapshot is read.
@@ -147,6 +149,7 @@ it("reports the full documented shape, every derivation on the spec's formula", 
   assertEqual(typeof snap.muted, "boolean", "muted is a boolean");
   assertEqual(typeof snap.simTime, "number", "simTime is a number");
   assertGreaterThanOrEqual(snap.simTime, 0, "simTime accumulates from 0");
+  assertEqual(typeof snap.rngState, "number", "rngState is a number");
 
   // The board: dimensions, and every node with its cell, its kind, its
   // channel/charges/spent nulls, and its x/y on the cell center formula.

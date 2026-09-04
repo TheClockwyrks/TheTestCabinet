@@ -8,8 +8,8 @@
 // segment joining them.
 //
 // The board is R9_UNIQUE (fixtures.ts). The beam T(0,0)-t(0,1)-t(1,1) is drawn
-// through `trace` (which releases), then pressed at t(1,1) and extended to
-// t(2,1) — a legal orthogonal segment that completes nothing.
+// through the pointer operations (which releases), then pressed at t(1,1) and
+// extended to t(2,1) — a legal orthogonal segment that completes nothing.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNotNull } from "../assert";

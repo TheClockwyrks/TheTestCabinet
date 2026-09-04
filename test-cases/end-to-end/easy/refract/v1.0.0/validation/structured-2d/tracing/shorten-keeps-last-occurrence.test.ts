@@ -22,6 +22,7 @@ import {
   loadBoard,
   pressCell,
   resetTo,
+  traceCells,
   type Harness,
 } from "../harness";
 
@@ -52,7 +53,7 @@ it("a press on a twice-carried cell drops only the cells after its last occurren
   await resetTo(h, 1);
   await loadBoard(h, CRYSTAL_TWICE);
 
-  h.debug.trace(ROUTE);
+  traceCells(h, ROUTE);
 
   // The precondition the item states: the beam carries the crystal's cell
   // twice.

@@ -38,12 +38,15 @@
 // outlined against a lens's fill". An outline wide enough to fill the form is
 // not an outline any more. The three pinned silhouettes drawn to NODE_R all
 // enclose the disc of radius NODE_R / 2 (15) — the incircle of the inscribed
-// triangle, the smallest of the three interiors, and the disc
-// board/emitter-versus-lens reads fill against outline over. Three stroke bands
-// tangent to a disc of radius 15 cover half of it at a width of about 13 px, so
-// a stroke at or past 13 px reads as a fill and breaks item 2. Half of that is
-// 6.5 px, and the bound is taken at the whole number below it: NODE_R + 6. The
-// binarized edge, about a pixel, sits inside that rounding.
+// triangle, the smallest of the three interiors. That is the disc
+// board/emitter-versus-lens reads fill against outline over, taken there on
+// each node's OWN reach rather than on NODE_R, since the specification fixes no
+// minimum size; a form drawn to the full radius, which is the widest stroke
+// this bound has to admit, gives the same 15. Three stroke bands tangent to a
+// disc of radius 15 cover half of it at a width of about 13 px, so a stroke at
+// or past 13 px reads as a fill and breaks item 2. Half of that is 6.5 px, and
+// the bound is taken at the whole number below it: NODE_R + 6. The binarized
+// edge, about a pixel, sits inside that rounding.
 //
 // The same allowance is given to a crystal, whose form item 2 says nothing
 // about, because specs/board.md gives one radius to all three kinds and no

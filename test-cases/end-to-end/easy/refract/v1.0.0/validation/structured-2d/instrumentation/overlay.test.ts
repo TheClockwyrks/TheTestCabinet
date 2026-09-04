@@ -37,6 +37,7 @@ import {
   loadBoard,
   resetTo,
   toCells,
+  traceCells,
   type Harness,
 } from "../harness";
 import { CHANNELS, type Channel } from "../notation";
@@ -165,8 +166,8 @@ afterEach(() => {
 it("registers the diagnostics the specification asks for, and reading them changes nothing", async () => {
   await resetTo(h, 1);
   await loadBoard(h, OVERLAY_BOARD);
-  h.debug.trace(toCells(TRIANGLE_ROUTE));
-  h.debug.trace(toCells(SQUARE_ROUTE));
+  traceCells(h, toCells(TRIANGLE_ROUTE));
+  traceCells(h, toCells(SQUARE_ROUTE));
   await h.advance(1);
 
   // Evidence: the posed board the diagnostics below are read from.

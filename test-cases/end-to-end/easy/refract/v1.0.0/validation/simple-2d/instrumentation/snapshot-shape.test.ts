@@ -2,7 +2,7 @@
 // documented shape, with the four derived fields derived as the specs state.
 //
 // specs/instrumentation.md fixes the snapshot: version REFRACT_DEBUG_VERSION
-// (1) and every field of its "Snapshot shape" block, present whatever the mode
+// (2) and every field of its "Snapshot shape" block, present whatever the mode
 // is. Four fields are derived rather than stored — a node's x and y from the
 // cell center formula in specs/board.md, a crystal's spent from the crossings
 // the drawn beams have begun on it, a beam's complete from R6 and R7 in
@@ -90,7 +90,7 @@ function poseShape(): RefractSnapshot {
   return h.snapshot();
 }
 
-it("reports version 1 and every documented field with its documented type", async () => {
+it("reports the version and every documented field, with its documented type", async () => {
   await resetTo(h, 1);
   await loadBoard(h, SHAPE_BOARD);
   const s = poseShape();
@@ -161,6 +161,7 @@ it("reports version 1 and every documented field with its documented type", asyn
   assertEqual(typeof s.pointer.down, "boolean", "pointer.down");
   assertEqual(typeof s.muted, "boolean", "muted");
   assertEqual(typeof s.simTime, "number", "simTime");
+  assertEqual(typeof s.rngState, "number", "rngState");
 });
 
 it("derives node centers, spent, complete, and solved as the specs state", async () => {

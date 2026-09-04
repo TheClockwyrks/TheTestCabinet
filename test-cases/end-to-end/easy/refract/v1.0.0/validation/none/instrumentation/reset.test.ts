@@ -21,13 +21,16 @@
 // `screens/mute`'s requirement; what reset owes is that it leaves the bit
 // alone.
 //
-// THE SEED IS OBSERVED THROUGH THE ONE WINDOW THE SPEC OPENS: determinism.
-// `rngState` is not a snapshot field; what the spec fixes is that the same seed
-// and the same calls reproduce the same result exactly, and that an omitted
-// seed means DEFAULT_SEED (1). So the same seed must generate the same cascade
-// opening board twice, and `reset()` must open on the board `reset({ seed: 1 })`
-// opens on. (A build that uses no randomness generates the same board every
-// time and passes both, exactly as the spec allows.)
+// THE SEED IS READ BACK, AND THEN REPLAYED. specs/instrumentation.md fixes what
+// `reset` does to the generator exactly — "`rngState` becomes `options.seed`, or
+// `DEFAULT_SEED` (`1`) when no seed is given" — and reports `rngState` on the
+// snapshot, so the pose is verified by setting a value and reading it back. That
+// alone is what a build ignoring `options.seed` fails. The determinism reading
+// stays beside it because it covers what the read-back does not: that the same
+// seed and the same calls reproduce the same result exactly. (A build that uses
+// no randomness generates the same board every time and passes the second half,
+// exactly as the spec allows; it cannot pass the first without honouring the
+// seed.)
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -125,6 +128,20 @@ it("restores every declared field to its title-screen value, muted untouched", a
 });
 
 it("seeds rngState from options.seed, defaulting to DEFAULT_SEED", async () => {
+  // The seed itself, read straight back off the snapshot.
+  await h.debug.reset({ seed: 7 });
+  assertEqual(
+    (await h.snapshot()).rngState,
+    7,
+    "reset({ seed: 7 }) leaves rngState at 7",
+  );
+  await h.debug.reset();
+  assertEqual(
+    (await h.snapshot()).rngState,
+    DEFAULT_SEED,
+    `an omitted seed leaves rngState at DEFAULT_SEED (${DEFAULT_SEED})`,
+  );
+
   // The same seed and the same calls reproduce the same result exactly, so two
   // runs from reset({ seed: 7 }) open the cascade on the same board.
   const opening = async (): Promise<string> => {

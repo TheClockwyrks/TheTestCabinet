@@ -2,8 +2,9 @@
 //
 // specs/modes/cascade.md "The solved screen": RESTART returns `solvedCount`
 // to 0 and `tier` to 1, generates a board, and moves to `playing`. Two boards
-// are really solved first — the spec-derived solver's beams drawn through
-// `trace` — so the progression being dropped is real (solvedCount 2), and
+// are really solved first — the spec-derived solver's beams drawn through the
+// pointer operations — so the progression being dropped is real (solvedCount
+// 2), and
 // RESTART is chosen the way a player chooses it: `down` from NEXT BOARD to
 // RESTART on the solved menu, then `confirm`, through the registered actions.
 // (The spec's no-reseed clause is the generator's internals and is not

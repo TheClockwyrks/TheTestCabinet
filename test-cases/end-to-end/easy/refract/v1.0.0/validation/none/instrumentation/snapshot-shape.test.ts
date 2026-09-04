@@ -85,6 +85,7 @@ const SNAPSHOT_FIELDS = [
   "pointer",
   "muted",
   "simTime",
+  "rngState",
 ] as const;
 
 let h: Harness;
@@ -130,6 +131,7 @@ it("reports the version and every documented field, with its documented type", a
     "solvedCount",
     "tier",
     "simTime",
+    "rngState",
   ] as const) {
     assertEqual(typeof snapshot[field], "number", `typeof ${field}`);
   }

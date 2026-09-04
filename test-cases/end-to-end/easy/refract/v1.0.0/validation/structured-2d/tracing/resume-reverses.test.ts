@@ -25,6 +25,7 @@ import {
   moveToCell,
   pressCell,
   resetTo,
+  traceCells,
   type Harness,
 } from "../harness";
 
@@ -48,7 +49,7 @@ it("a press on the far end reorients the beam so the pressed node is its last ce
   await loadBoard(h, GEO_7X6);
 
   // Draw A -> B -> C and release.
-  h.debug.trace([A, B, C]);
+  traceCells(h, [A, B, C]);
   assertDeepEqual(
     h.snapshot().beams.triangle?.cells,
     [A, B, C],

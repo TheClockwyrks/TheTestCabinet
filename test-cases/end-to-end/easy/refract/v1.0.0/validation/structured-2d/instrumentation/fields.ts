@@ -26,4 +26,5 @@ export const SNAPSHOT_FIELDS = [
   "pointer",
   "muted",
   "simTime",
+  "rngState",
 ] as const;

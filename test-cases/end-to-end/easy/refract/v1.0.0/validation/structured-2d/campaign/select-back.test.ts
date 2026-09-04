@@ -1,8 +1,10 @@
-// Refract — campaign/select-back: back on the select screen returns to title.
+// Refract — campaign/select-back: back on the select screen returns to title,
+// with the entry that led away highlighted.
 //
 // One transition of the campaign's screen table (specs/modes/campaign.md: on
-// `select`, `back` returns to `title`), raised through the real registered
-// action and read back from the game's own screen.
+// `select`, "`back` ... return[s] to `title` with `CAMPAIGN` highlighted
+// (`menuIndex = 0`)"), raised through the real registered action and read back
+// from the game's own screen and highlight.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -24,7 +26,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("returns to the title", async () => {
+it("returns to the title with CAMPAIGN highlighted", async () => {
   await startCampaign(h);
   assertEqual(h.snapshot().screen, "select");
 
@@ -32,5 +34,11 @@ it("returns to the title", async () => {
   await h.advance(1);
   captureStill(h, "title");
 
-  assertEqual(h.snapshot().screen, "title", "back on select returns to title");
+  const returned = h.snapshot();
+  assertEqual(returned.screen, "title", "back on select returns to title");
+  assertEqual(
+    returned.menuIndex,
+    0,
+    "with CAMPAIGN, the entry that led away, highlighted",
+  );
 });

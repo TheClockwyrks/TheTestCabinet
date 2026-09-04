@@ -6,7 +6,7 @@
 // is delivered by the one frame the tap runs. That frame empties every beam
 // (specs/controls.md "Clearing") and is therefore the frame the clear cue must
 // play on, once (specs/ui.md). The segment it removes is drawn first through
-// the surface's `trace`, so the precondition of the item — "when there was a
+// the surface's pointer operations, so the precondition of the item — "when there was a
 // segment to remove" — is posed and asserted before the key goes down.
 
 import { afterEach, beforeEach, it } from "vitest";

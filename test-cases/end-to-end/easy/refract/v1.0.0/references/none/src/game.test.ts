@@ -88,6 +88,13 @@ interface Harness {
   ): void;
   /** Press, move along, and release at the given cell centers, one frame per event. */
   drag(cells: readonly Cell[]): void;
+  /**
+   * The same route drawn through the surface's three pointer poses, which
+   * resolve as they are called, so the whole route lands between frames.
+   */
+  trace(cells: readonly Cell[]): void;
+  /** Choose CASCADE from the title menu, the way a player does. */
+  enterCascade(): void;
   pixel(x: number, y: number): [number, number, number];
   dispose(): void;
 }
@@ -182,6 +189,22 @@ function createHarness(): Harness {
       events.dispatchEvent(new KeyEvent("keyup", code));
     },
     pointer: dispatchPointer,
+    trace: (cells) => {
+      if (cells.length === 0) return;
+      const centers = cells.map((cell) =>
+        cellCenter(cell, runtime.state.board),
+      );
+      api.pointerDown(centers[0][0], centers[0][1]);
+      for (const [x, y] of centers.slice(1)) api.pointerMove(x, y);
+      api.pointerUp();
+    },
+    enterCascade: () => {
+      api.setScreen("title");
+      api.setMenuIndex(1);
+      events.dispatchEvent(new KeyEvent("keydown", "Enter"));
+      events.dispatchEvent(new KeyEvent("keyup", "Enter"));
+      step(1);
+    },
     drag: (cells) => {
       const centers = cells.map((cell) =>
         cellCenter(cell, runtime.state.board),
@@ -291,7 +314,8 @@ describe("the menus", () => {
     h.tap("Escape");
     h.step(1);
     expect(h.state.screen).toBe("title");
-    expect(h.state.menuIndex).toBe(0);
+    // The title remembers the entry that led away (specs/ui.md).
+    expect(h.state.menuIndex).toBe(2);
   });
 });
 
@@ -503,12 +527,12 @@ describe("window.__refract, driven end to end", () => {
     h.api.setAutoStep(false);
     h.api.reset({ seed: 5 });
     h.api.loadBoard(["T2T", "S.S"]);
-    h.api.trace([
+    h.trace([
       { col: 0, row: 0 },
       { col: 1, row: 0 },
       { col: 2, row: 0 },
     ]);
-    h.api.trace([
+    h.trace([
       { col: 0, row: 1 },
       { col: 2, row: 1 },
     ]);
@@ -518,7 +542,7 @@ describe("window.__refract, driven end to end", () => {
     expect(snapshot.beams.square?.cells).toEqual([]);
     expect(snapshot.solved).toBe(false);
 
-    h.api.trace([
+    h.trace([
       { col: 0, row: 1 },
       { col: 1, row: 0 },
       { col: 2, row: 1 },
@@ -538,21 +562,21 @@ describe("window.__refract, driven end to end", () => {
     h.api.setAutoStep(true);
   });
 
-  it("startMode(cascade) reruns the identical sequence for the same seed", () => {
+  it("cascade reruns the identical sequence for the same seed", () => {
     h.api.setAutoStep(false);
     h.api.reset({ seed: 11 });
-    h.api.startMode("cascade");
+    h.enterCascade();
     const first = h.api.snapshot().board;
 
     h.api.reset({ seed: 11 });
-    h.api.startMode("cascade");
+    h.enterCascade();
     expect(h.api.snapshot().board).toEqual(first);
     h.api.setAutoStep(true);
   });
 
   it("keeps the pointer poses subject to every limit", () => {
     h.api.loadBoard(["TtT", "SsS"]);
-    h.api.trace([
+    h.trace([
       { col: 0, row: 0 },
       { col: 1, row: 1 }, // square's lens: refused
       { col: 1, row: 0 },
@@ -602,7 +626,7 @@ describe("rendering", () => {
 
   it("draws a beam connecting the centers of the cells it links", () => {
     h.api.loadBoard(["TtT"]);
-    h.api.trace([
+    h.trace([
       { col: 0, row: 0 },
       { col: 1, row: 0 },
     ]);
@@ -633,12 +657,16 @@ describe("rendering", () => {
     expect(h.state.screen).toBe("howto");
     h.tap("Escape");
     h.step(1);
+    // Back on the title with HOW TO PLAY highlighted (specs/ui.md); one more
+    // down wraps the highlight onto CAMPAIGN.
+    h.tap("KeyS");
+    h.step(1);
     h.tap("Enter");
     h.step(1);
     expect(h.state.screen).toBe("select");
 
     h.api.loadBoard(["TtT"]);
-    h.api.trace([
+    h.trace([
       { col: 0, row: 0 },
       { col: 1, row: 0 },
       { col: 2, row: 0 },
@@ -695,7 +723,7 @@ describe("the solved and complete screens", () => {
   });
 
   it("restarts cascade from its solved menu without reseeding", () => {
-    h.api.startMode("cascade");
+    h.enterCascade();
     const expected = generateBoardWithSolution(DEFAULT_SEED, 1);
     for (const route of expected.solution) {
       h.drag(route);
@@ -714,7 +742,7 @@ describe("the solved and complete screens", () => {
   });
 
   it("leaves cascade's solved screen to the title with back", () => {
-    h.api.startMode("cascade");
+    h.enterCascade();
     const expected = generateBoardWithSolution(DEFAULT_SEED, 1);
     for (const route of expected.solution) {
       h.drag(route);
@@ -722,7 +750,8 @@ describe("the solved and complete screens", () => {
     h.tap("Escape");
     h.step(1);
     expect(h.state.screen).toBe("title");
-    expect(h.state.menuIndex).toBe(0);
+    // Cascade's screens return to the title on CASCADE (specs/modes/cascade.md).
+    expect(h.state.menuIndex).toBe(1);
   });
 
   it("offers the grid and the title from the complete screen", () => {
@@ -735,7 +764,7 @@ describe("the solved and complete screens", () => {
     }));
     h.api.loadBoard(["TtT"]);
     h.apply((s) => ({ ...s, boardIndex: 23 }));
-    h.api.trace([
+    h.trace([
       { col: 0, row: 0 },
       { col: 1, row: 0 },
       { col: 2, row: 0 },
@@ -758,7 +787,7 @@ describe("the solved and complete screens", () => {
   });
 
   it("leaves the board to the title with back during cascade play", () => {
-    h.api.startMode("cascade");
+    h.enterCascade();
     h.tap("Escape");
     h.step(1);
     expect(h.state.screen).toBe("title");

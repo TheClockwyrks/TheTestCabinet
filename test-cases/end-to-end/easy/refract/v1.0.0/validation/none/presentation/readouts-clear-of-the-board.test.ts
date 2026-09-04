@@ -1,18 +1,20 @@
 // presentation/readouts-clear-of-the-board — the readouts sit clear of the
 // board.
 //
-// specs/ui.md: the current mode adds its own readouts to the playing screen,
-// and those sit clear of the board, whose extent specs/board.md gives — cell
-// centers spanning x 352..928 and y 152..632 on the largest board, with every
-// node's form inside NODE_R of its center. So on a posed 7x6 board, in each
-// mode, every text run the frame draws must bound outside that widened box
-// (`BOARD_EXTENT`), or it overlaps a node or a beam on the largest board a
-// player can be handed.
+// specs/ui.md "playing": inside the board's extent the screen draws only the
+// board — its cells, the nodes with whatever readout a node itself carries, and
+// the beams — and every other element of the screen sits clear of that extent,
+// the mode's own readouts and the two controls included. specs/board.md gives
+// the extent: cell centers spanning x 352..928 and y 152..632 on the largest
+// board, with every node's form inside NODE_R of its center. So on a posed 7x6
+// board, in each mode, every text run the frame draws must bound outside that
+// widened box (`BOARD_EXTENT`), or it overlaps a node or a beam on the largest
+// board a player can be handed.
 //
 // The posed board is GEO_7X6, which carries no crystal on purpose: a crystal
 // shows its charge count, which a build may legitimately draw as a numeral at
-// the crystal's own cell, and that numeral is the crystal's readout rather
-// than the mode's. Each run's box is measured in the page under the font in
+// the crystal's own cell, and that numeral is a readout the node itself carries
+// — the one thing specs/ui.md leaves inside the extent. Each run's box is measured in the page under the font in
 // force at its draw (see text-bounds.ts), so the reading is of the run's real
 // extent rather than its anchor alone.
 

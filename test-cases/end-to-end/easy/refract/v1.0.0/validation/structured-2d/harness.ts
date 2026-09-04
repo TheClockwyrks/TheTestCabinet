@@ -18,9 +18,8 @@
 // WHY THE DEBUG SURFACE RATHER THAN RAW ASSIGNMENT. specs/instrumentation.md
 // fixes its operations, so they mean the same thing in every build: `loadBoard`
 // poses a board the rules apply to unchanged, the pointer operations feed the
-// same input path a player's pointer feeds, `trace` is sugar over them and is
-// subject to every limit a hand-drawn trace is, and `reset` gives everything
-// back. Posing through it is how a scenario is reproducible, and it is the
+// same input path a player's pointer feeds and are subject to every limit a
+// hand-drawn trace is, and `reset` gives everything back. Posing through it is how a scenario is reproducible, and it is the
 // seam the case's specification documents. `surface.ts` is that specification
 // as types, and it is the only description of the surface this harness reads:
 // the build's own module for it is never imported.
@@ -31,12 +30,12 @@
 // so a build that returned no surface, or a surface missing an operation, fails
 // the checks that reach the game through it. See `readDebugSurface`.
 //
-// HOW THE SURFACE IS DRIVEN. Directly. The pointer operations and `trace` take
+// HOW THE SURFACE IS DRIVEN. Directly. The three pointer operations take
 // effect the moment they are called (specs/instrumentation.md), so a whole
 // route is drawn with no frame advanced between the calls — the immediacy is
 // itself a specified behavior, and the suite about it advances nothing. One
 // consequence is worth stating once, here: a SCREEN-CHANGING pose (`reset`,
-// `startMode`, `loadBoard`) may land at the call or as late as the end of the
+// `setScreen`, `loadBoard`) may land at the call or as late as the end of the
 // next advanced frame — the spec fixes the arrangement, not the moment, and
 // both designs are conformant — so a scenario poses, advances a frame, and
 // then reads, which is correct under either design. The scenario helpers below
@@ -47,8 +46,8 @@
 // second and the pointer resolves at the call — so the fixed clock is the
 // SUITE's choice, made so a duration is a whole number of frames on every
 // machine. A check that is specifically about the step size
-// (instrumentation/deterministic-core) builds its own harnesses with clocks of
-// its own.
+// (instrumentation/advances-on-elapsed-time) builds its own harnesses with
+// clocks of its own.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
@@ -1190,6 +1189,33 @@ export function moveToCell(h: Harness, cell: CellRef): void {
   h.debug.pointerMove(x, y);
 }
 
+/**
+ * Draw a whole route through the surface's three pointer operations: a press
+ * at the first cell's center, a move to each remaining center, then a release,
+ * each resolved against the live world the moment it is called.
+ *
+ * The sequence lives here rather than on the surface: a route is a compound of
+ * atomic operations, and a compound belongs to whoever is driving
+ * (specs/instrumentation.md carries the three operations and no sugar over
+ * them). A list the limits refuse part way through leaves the beam ending at
+ * the last segment they permitted, which is itself a specified behavior a
+ * check can read back.
+ */
+export function traceCells(h: Harness, cells: readonly CellRef[]): void {
+  if (cells.length === 0) return;
+  pressCell(h, cells[0]);
+  for (const cell of cells.slice(1)) moveToCell(h, cell);
+  h.debug.pointerUp();
+}
+
+/** {@link traceCells} over a route stored as `[col, row]` pairs. */
+export function traceRoute(
+  h: Harness,
+  route: ReadonlyArray<readonly [number, number]>,
+): void {
+  traceCells(h, toCells(route));
+}
+
 /* ---- The player's own pointer path ----------------------------------------- */
 //
 // The debug surface's pointer operations resolve "against the live state before
@@ -1270,20 +1296,19 @@ export async function playerDraw(
 }
 
 /**
- * Enter a mode through the surface's `startMode`, then run the one frame that
- * draws the screen it opened.
+ * Set `state.mode` alone, through the pose that sets its own field and nothing
+ * else, then run the one frame that draws what the current screen draws.
  *
- * specs/instrumentation.md defines `startMode` as entering a mode "exactly as
- * choosing its menu item does", so a check that only needs to BE in a mode
- * poses it. The title menu stays the subject of the `screens/` items, which is
- * where the binding is what is being decided.
+ * For a check that needs the game to BE in a mode without moving a screen or
+ * choosing a board. Entering a mode from the title is the mode's own entry
+ * point, which {@link startCampaign} and {@link startCascade} drive.
  */
 export async function poseMode(h: Harness, mode: Mode): Promise<void> {
-  h.debug.startMode(mode);
+  h.debug.setMode(mode);
   await h.advance(1);
 }
 
-/** `[col, row]` pairs — the shape `routes.ts` stores — as `trace` cells. */
+/** `[col, row]` pairs — the shape `routes.ts` stores — as a cell list. */
 export function toCells(
   route: ReadonlyArray<readonly [number, number]>,
 ): CellRef[] {
@@ -1303,25 +1328,54 @@ export async function tapAction(
 }
 
 /**
- * From a fresh title, choose CAMPAIGN the way a player does: `confirm` on the
- * title menu's first item. Lands on `select` with a fresh course.
+ * Open the campaign's select grid on a fresh course, through the two
+ * single-field poses that ARE what choosing CAMPAIGN does:
+ * specs/modes/campaign.md fixes the effect as "sets `state.mode` to
+ * `\"campaign\"` and goes to `select`", and nothing else.
+ *
+ * Through the poses rather than through the title menu, deliberately: a build
+ * with a broken title menu and a correct grid must fail the menu checks and
+ * pass the grid's, so campaign/campaign-starts is where taking the item is the
+ * subject and every other check reaches the campaign directly.
  */
 export async function startCampaign(h: Harness, seed?: number): Promise<void> {
   await resetTo(h, seed);
-  await tapAction(h, "confirm");
+  h.debug.setMode("campaign");
+  h.debug.setScreen("select");
   await h.advance(1);
 }
 
 /**
- * From a fresh title, choose CASCADE the way a player does: `down` to the
- * second item, then `confirm`. Lands on `playing` with the first generated
- * board.
+ * From a fresh title, begin a cascade sequence by taking the title's CASCADE
+ * item with the pointer. Lands on `playing` with the first generated board.
  */
 export async function startCascade(h: Harness, seed?: number): Promise<void> {
   await resetTo(h, seed);
-  await tapAction(h, "down");
-  await tapAction(h, "confirm");
+  await enterCascade(h);
+}
+
+/**
+ * Begin a cascade sequence from wherever the game stands, WITHOUT resetting:
+ * the title screen is posed through its single-field operation, and the entry
+ * is taken with the pointer.
+ *
+ * Starting Cascade is not a pose. specs/modes/cascade.md makes it set the
+ * mode, zero `solvedCount`, set `tier` to 1, GENERATE the first board and move
+ * to `playing`, and the surface carries no operation that generates a board —
+ * so the sequence is begun the way the game itself begins it. The route is the
+ * pointer rather than the menu keys: CASCADE is `TITLE_ITEMS[1]`, so
+ * specs/controls.md fixes its target as `menu-1` and taking that target as
+ * "the same as `confirm` with `state.menuIndex` at `i`", which reaches the
+ * entry without walking the highlight — a build whose `down` does not move the
+ * highlight owes that point to screens/title-down and to no cascade check. A
+ * check that has progress it must not lose (a solved campaign course, say)
+ * uses this rather than {@link startCascade}, whose fresh title costs a reset.
+ */
+export async function enterCascade(h: Harness): Promise<void> {
+  h.debug.setScreen("title");
   await h.advance(1);
+  const cascade = targetCenter(targetById(h.snapshot(), "menu-1"));
+  await pressRelease(h, cascade);
 }
 
 /* ---- The campaign course -------------------------------------------------- */
@@ -1343,7 +1397,7 @@ export function solveCampaignBoard(h: Harness, index: number): void {
   for (const channel of CHANNELS) {
     const route = data.routes[channel];
     if (route === undefined) continue;
-    h.debug.trace(toCells(route));
+    traceCells(h, toCells(route));
   }
   assertEqual(
     h.snapshot().solved,
@@ -1419,7 +1473,7 @@ export function traceBeams(h: Harness, beams: Beams): void {
   for (const channel of CHANNELS) {
     const cells = beams[channel];
     if (cells === undefined) continue;
-    h.debug.trace(cells);
+    traceCells(h, cells);
   }
 }
 
@@ -1439,7 +1493,7 @@ export interface SolvedGenerated {
  * spec-derived solver, trace the found beams, assert the build agrees it is
  * solved, and take the solved screen's first choice, NEXT BOARD, to the next.
  *
- * Entry is `reset({seed})` then `startMode("cascade")` — the checklist's
+ * Entry is `reset({seed})` then the title's CASCADE item — the checklist's
  * stated recipe for a run from a clean progression — so the sequence is a
  * function of the seed alone and two runs of one seed meet the same boards.
  *
@@ -1458,10 +1512,7 @@ export async function solveGenerated(
   k: number,
   seed: number,
 ): Promise<SolvedGenerated[]> {
-  h.debug.reset({ seed });
-  await h.advance(1);
-  h.debug.startMode("cascade");
-  await h.advance(1);
+  await startCascade(h, seed);
 
   const solvedBoards: SolvedGenerated[] = [];
   for (let count = 0; count < k; count += 1) {

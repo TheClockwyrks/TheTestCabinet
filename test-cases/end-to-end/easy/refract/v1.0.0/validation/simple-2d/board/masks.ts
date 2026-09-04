@@ -2,7 +2,8 @@
 //
 // Private to the board category. The checks here compare what a node LOOKS
 // like rather than any single color — silhouettes-distinct, crystal-distinct,
-// crystal-readout, emitter-versus-lens, channel-hues, node-radius — and they
+// crystal-charges-read, crystal-spent-reads, emitter-versus-lens, channel-hues,
+// node-radius — and they
 // share one way of reading a region: every pixel within a radius of a cell
 // center, taken in one `getImageData` over the canvas the engine drew into, in
 // device pixels through the same viewport mapping `h.pixel` uses.

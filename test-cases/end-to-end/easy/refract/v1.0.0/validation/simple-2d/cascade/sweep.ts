@@ -6,10 +6,10 @@
 // it lands (the tier after it), so this helper is the same loop with two
 // hooks. Everything it does goes through the shared harness and the debug
 // surface: the board is read off `snapshot`, the solution comes from the
-// spec-derived `solver.ts`, the beams are drawn through `trace`, and NEXT
-// BOARD is taken through the real `confirm` action on the solved menu
-// (specs/modes/cascade.md: `menuIndex` is 0 on arriving at `solved`, and
-// NEXT BOARD is the first of SOLVED_ITEMS).
+// spec-derived `solver.ts`, the beams are drawn through the pointer operations,
+// and NEXT BOARD is taken through the real `confirm` action on the solved menu
+// (specs/modes/cascade.md: `menuIndex` is 0 on arriving at `solved`, and NEXT
+// BOARD is the first of SOLVED_ITEMS).
 //
 // Documented residual risk (shared with `solveGenerated`): the solver is
 // capped, so a `limit` verdict — the cap spent before an answer — is reported
@@ -96,14 +96,23 @@ export async function sweepGenerated(
 }
 
 /**
- * The generator's contract for one emitted board, as specs/modes/cascade.md
- * states it: within GRID_MAX_COLS x GRID_MAX_ROWS (7 x 6), the channels
- * present are the first n of CHANNELS with exactly two emitters for each, and
- * every crystal carries 1 to MAX_CHARGES (3) charges.
+ * The generator's grid bound for one emitted board, as specs/modes/cascade.md
+ * states it: within GRID_MAX_COLS x GRID_MAX_ROWS (7 x 6).
  */
-export function assertWellFormed(board: Board, context: string): void {
+export function assertFitsGrid(board: Board, context: string): void {
   assertBetween(board.cols, 1, GRID_MAX_COLS, `${context}: cols`);
   assertBetween(board.rows, 1, GRID_MAX_ROWS, `${context}: rows`);
+}
+
+/**
+ * The generator's channel rows for one emitted board, as
+ * specs/modes/cascade.md states them: the channels present are the first n of
+ * CHANNELS, with exactly two emitters for each.
+ */
+export function assertTwoEmittersPerChannel(
+  board: Board,
+  context: string,
+): void {
   const present = channelsPresent(board);
   assertDeepEqual(
     present,
@@ -120,6 +129,17 @@ export function assertWellFormed(board: Board, context: string): void {
       `${context}: exactly two ${channel} emitters (specs/modes/cascade.md)`,
     );
   }
+}
+
+/**
+ * The generator's charge ceiling for one emitted board, as
+ * specs/modes/cascade.md states it: every crystal carries 1 to MAX_CHARGES (3)
+ * charges, "never above MAX_CHARGES".
+ */
+export function assertCrystalChargesInRange(
+  board: Board,
+  context: string,
+): void {
   for (const node of board.nodes) {
     if (node.kind !== "crystal") continue;
     assertBetween(

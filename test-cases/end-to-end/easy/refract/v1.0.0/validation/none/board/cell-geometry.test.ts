@@ -4,10 +4,9 @@
 // centers are CELL_PITCH (96) apart on both axes, the grid is centered on
 // (BOARD_CX, BOARD_CY) (640, 392) whatever its dimensions, and every position
 // in the game — the pointer's hit radius above all — is measured against that.
-// So the reading is pixels at the formula's own coordinates on a posed 3x3
-// and a posed 7x6, and bare bench at the four corners just outside the 7x6
-// board's extent (cell centers spanning x 352..928, y 152..632, widened by
-// NODE_R) — so the grid neither drifts nor spills as boards change size.
+// So the reading is pixels at the formula's own coordinates on a posed 3x3 and
+// a posed 7x6 — the same centering on both, so the grid does not drift as the
+// board changes size.
 //
 // EVERY NODE IS READ THE SAME WAY, by the loudest pixel of the form drawn about
 // its center rather than by the center pixel alone. specs/board.md's only
@@ -32,30 +31,22 @@
 // on the same frame, which is why each posed board leaves one interior cell
 // empty: specs/board.md lets a build draw whatever background it likes, so a
 // node-region reading held against a stage-edge sample measures the build's
-// backdrop as much as its node. The corner readings stay on the bench sample,
-// because those points are genuinely off the board.
+// backdrop as much as its node. Every reading this item takes is held against
+// that ground; nothing is read off the board, because specs/board.md leaves
+// what sits behind and around the board to the build.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,
   center,
-  colorDistance,
   createHarness,
   loadBoard,
-  sampleBench,
-  sampleColor,
   type Harness,
   type Rgb,
 } from "../harness";
 import { NODE_R, type Board } from "../notation";
-import {
-  APART_MIN,
-  bodyCentroid,
-  bodyMask,
-  groundSample,
-  MATCH_MAX,
-} from "./sampling";
+import { APART_MIN, bodyCentroid, bodyMask, groundSample } from "./sampling";
 
 /**
  * A 3x3 occupied but for one cell: two emitters per channel, lenses between.
@@ -78,14 +69,6 @@ DtsSdtT
 `;
 
 /**
- * Points just outside the four corners of the largest board's extent — the
- * center span x 352..928, y 152..632 widened by NODE_R (specs/board.md), then
- * 12 px further out diagonally so the sampled cluster sits wholly clear of a
- * conformant board's own anti-aliased edge. A grid that drifted off center or
- * outgrew the formula's pitch puts drawn form here; a conformant one leaves
- * the bench bare.
- */
-/**
  * How far the body's centroid may sit from the formula center.
  *
  * specs/board.md draws the disc of NODE_R (30) about a cell center as the box a
@@ -104,14 +87,6 @@ DtsSdtT
  * centroid sits about 24 out.
  */
 const CENTROID_MAX = NODE_R / 3 + 2;
-
-const OUTSIDE_MARGIN = 12;
-const OUTSIDE_CORNERS = [
-  { x: 352 - NODE_R - OUTSIDE_MARGIN, y: 152 - NODE_R - OUTSIDE_MARGIN },
-  { x: 928 + NODE_R + OUTSIDE_MARGIN, y: 152 - NODE_R - OUTSIDE_MARGIN },
-  { x: 352 - NODE_R - OUTSIDE_MARGIN, y: 632 + NODE_R + OUTSIDE_MARGIN },
-  { x: 928 + NODE_R + OUTSIDE_MARGIN, y: 632 + NODE_R + OUTSIDE_MARGIN },
-] as const;
 
 let h: Harness;
 
@@ -147,7 +122,7 @@ async function assertNodesOnCenters(
   }
 }
 
-it("draws every node of a 3x3 and a 7x6 on its formula center, and nothing outside the extent", async () => {
+it("draws every node of a 3x3 and a 7x6 on its formula center", async () => {
   // The 3x3 first: eight centers, each computed from the formula for a board
   // of THESE dimensions, so a build that anchored the grid anywhere but the
   // shared center misses them.
@@ -159,16 +134,4 @@ it("draws every node of a 3x3 and a 7x6 on its formula center, and nothing outsi
   const large = await loadBoard(h, FULL_7X6);
   await captureStill(h, "board");
   await assertNodesOnCenters(large, await groundSample(h, large), "7x6");
-  const bench = await sampleBench(h);
-
-  // And just outside the four corners of the widened extent, bare bench: a
-  // grid drawn oversized, off-pitch, or off-center puts form out here.
-  for (const corner of OUTSIDE_CORNERS) {
-    const color = await sampleColor(h, corner.x, corner.y);
-    assertLessThanOrEqual(
-      colorDistance(color, bench),
-      MATCH_MAX,
-      `bare bench just outside the extent at (${corner.x}, ${corner.y})`,
-    );
-  }
 });

@@ -48,6 +48,7 @@ import {
   loadBoard,
   resetTo,
   sampleBackground,
+  traceCells,
   type Harness,
   type Rgb,
 } from "../harness";
@@ -121,11 +122,11 @@ it("draws an orthogonal and a diagonal segment visibly, each in its channel's hu
   };
 
   // The two segments, through the build's own pointer path.
-  h.debug.trace([
+  traceCells(h, [
     { col: 0, row: 0 },
     { col: 1, row: 0 },
   ]);
-  h.debug.trace([
+  traceCells(h, [
     { col: 0, row: 1 },
     { col: 1, row: 2 },
   ]);

@@ -128,7 +128,7 @@ describe("emitted boards", () => {
         h.debug.reset();
         h.debug.loadBoard(boardNotation(generated.board));
         for (const route of generated.solution) {
-          h.debug.trace(route);
+          h.trace(route);
         }
         expect(h.debug.snapshot().solved, label).toBe(true);
       }

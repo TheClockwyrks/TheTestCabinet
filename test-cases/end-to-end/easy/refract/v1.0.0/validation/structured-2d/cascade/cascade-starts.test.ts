@@ -7,10 +7,13 @@
 // the campaign uses hold the resting values specs/state.md gives them
 // (boardIndex 0, solvedBoards empty, unlockedCount 1, selectIndex 0).
 //
-// The entry is the REAL path a player takes: `down` to the title menu's second
-// item and `confirm` (specs/ui.md: CASCADE is TITLE_ITEMS[1] and the title
-// menu is keyboard only), so what is checked is the wired menu, not a posed
-// state.
+// The entry is the REAL path a player takes, since starting the sequence is
+// what this point decides: CASCADE is `TITLE_ITEMS[1]`, so the title's `menu-1`
+// pointer target is pressed and released at its center, which specs/controls.md
+// fixes as "the same as `confirm` with `state.menuIndex` at `i`". The pointer
+// rather than a key: the title's target ids are the specification's, while the
+// menu's key bindings are the build's own, and those get their checks in
+// screens/ where the binding is the subject.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {

@@ -2,8 +2,9 @@
 // returns the game to its title-screen values.
 //
 // Everything is dirtied FIRST, through the game's own systems: campaign board
-// 1 really solved (driveCourse), then — via `startMode`, which leaves both
-// progressions standing — one generated cascade board really solved, the next
+// 1 really solved (driveCourse), then — via the title's CASCADE item, taken
+// without a reset so both progressions stand — one generated cascade board
+// really solved, the next
 // board opened with a live partial trace on it, and the engine muted through
 // the real mute action. Then `reset({seed: 7})`, and the state is held
 // against the full title-state list in specs/instrumentation.md: title with
@@ -18,12 +19,13 @@
 // after reset sees simTime restored to zero plus at most that one frame.
 //
 // The campaign precondition is read BEFORE the mode switch. Whether campaign
-// progress survives `startMode` is `campaign/campaign-progress-persists`'s
-// requirement, and reading `solvedBoards` after the switch would make this
-// item fail on a build that misses that one. And `muted` is compared against
-// whatever the mute toggle left rather than against `true`, because the
-// binding that turns muting on is `screens/mute`'s requirement; what reset
-// owes is that it leaves the bit alone.
+// progress survives entering the other mode is
+// `campaign/campaign-progress-persists`'s requirement, and reading
+// `solvedBoards` after the switch would make this item fail on a build that
+// misses that one. And `muted` is compared against whatever the mute toggle
+// left rather than against `true`, because the binding that turns muting on is
+// `screens/mute`'s requirement; what reset owes is that it leaves the bit
+// alone.
 //
 // A DELIBERATE ENGINE DIFFERENCE, not a drift: this engine's branch of
 // specs/state.md fixes the no-board-in-play board as `cols` 0, `rows` 0 and no
@@ -32,11 +34,12 @@
 // with no nodes, so the same two assertions there would fail a spec-honoring
 // build. `nodes` empty is the clause all three engines share.
 //
-// `rngState` is not asserted directly. specs/instrumentation.md says only that
-// `options.seed` seeds it, and a build that derives its initial generator
-// state from the seed honors that sentence while holding a different number,
-// so the seed is read through the one window the spec does fix: the same seed
-// and the same calls reproduce the same result.
+// `rngState` IS asserted directly. specs/instrumentation.md fixes the value —
+// "`rngState` becomes `options.seed`, or `DEFAULT_SEED` (`1`) when no seed is
+// given" — and reports it on the snapshot, so the pose is verified by setting a
+// value and reading it back, which a build ignoring `options.seed` fails. The
+// determinism reading stays beside it for what the read-back does not cover:
+// the same seed and the same calls reproduce the same result.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -54,10 +57,11 @@ import {
   captureStill,
   createHarness,
   driveCourse,
-  poseMode,
+  enterCascade,
   pressCell,
   resetTo,
   seconds,
+  startCascade,
   tapAction,
   traceBeams,
   type Harness,
@@ -81,10 +85,10 @@ it("restores the title-screen values after progress in both modes, leaving muted
   await driveCourse(h, 1, 1);
   assertContains(h.snapshot().solvedBoards, 0, "campaign board 1 is solved");
 
-  // Cascade progress, without disturbing the campaign's: startMode leaves the
-  // progression of both modes as it stands (specs/instrumentation.md).
-  h.debug.startMode("cascade");
-  await h.advance(1);
+  // Cascade progress, without disturbing the campaign's: the title's CASCADE
+  // item is taken without a reset, and choosing a mode leaves the other mode's
+  // progression as it stands (specs/modes/campaign.md).
+  await enterCascade(h);
   const arrival = h.snapshot();
   assertEqual(arrival.screen, "playing", "cascade opens on playing");
   const result = solve(boardFromSnapshot(arrival));
@@ -160,17 +164,30 @@ it("restores the title-screen values after progress in both modes, leaving muted
 });
 
 it("seeds rngState from options.seed, defaulting to DEFAULT_SEED (1)", async () => {
+  // The seed itself, read straight back off the snapshot.
+  await resetTo(h, 7);
+  assertEqual(
+    h.snapshot().rngState,
+    7,
+    "reset({seed: 7}) leaves rngState at 7",
+  );
+  await resetTo(h);
+  assertEqual(
+    h.snapshot().rngState,
+    DEFAULT_SEED,
+    "an omitted seed leaves rngState at DEFAULT_SEED (1)",
+  );
+
   // The first cascade board generated after a reset, as notation: the same
   // seed and the same calls must reach the same state
   // (specs/instrumentation.md "A deterministic core").
   const firstCascadeBoard = async (seed?: number): Promise<string> => {
-    await resetTo(h, seed);
-    await poseMode(h, "cascade");
+    await startCascade(h, seed);
     const opened = h.snapshot();
     assertEqual(
       opened.screen,
       "playing",
-      "startMode('cascade') opens on playing (specs/modes/cascade.md)",
+      "choosing CASCADE opens on playing (specs/modes/cascade.md)",
     );
     return boardToNotation(boardFromSnapshot(opened));
   };

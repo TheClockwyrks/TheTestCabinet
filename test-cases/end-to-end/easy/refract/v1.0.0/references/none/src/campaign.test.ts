@@ -11,7 +11,7 @@
 // full-grid finale.
 
 import { describe, expect, it } from "vitest";
-import { channelsOn } from "./board";
+import { cellCenter, channelsOn } from "./board";
 import { CAMPAIGN_BOARDS, campaignBoard } from "./campaign";
 import {
   CAMPAIGN_LENGTH,
@@ -19,10 +19,30 @@ import {
   GRID_MAX_ROWS,
   MAX_CHARGES,
 } from "./constants";
-import { createDebugApi } from "./debug";
+import { createDebugApi, type RefractDebugApi } from "./debug";
 import { measureDifficulty } from "./difficulty";
 import { createInitialState } from "./flow";
 import type { Cell, RefractState } from "./game";
+
+/**
+ * A route drawn through the surface's three pointer poses: a press at the
+ * first cell's center, a move to each remaining center, then a release. The
+ * surface carries no sugar for a route, so a caller that wants one composes it.
+ */
+function traceRoute(
+  api: RefractDebugApi,
+  state: RefractState,
+  cells: readonly { col: number; row: number }[],
+): RefractState {
+  if (cells.length === 0) return state;
+  const [firstX, firstY] = cellCenter(cells[0], state.board);
+  let next = api.pointerDown(state, firstX, firstY);
+  for (const cell of cells.slice(1)) {
+    const [x, y] = cellCenter(cell, next.board);
+    next = api.pointerMove(next, x, y);
+  }
+  return api.pointerUp(next);
+}
 
 /**
  * One known solution per board, found by exhaustive search over the ruleset
@@ -850,7 +870,7 @@ describe("the campaign boards", () => {
         );
         expect(channelsOn(state.board)).toHaveLength(solution.length);
         for (const channelRoute of solution) {
-          state = debug.trace(state, route(channelRoute));
+          state = traceRoute(debug, state, route(channelRoute));
         }
         const snapshot = debug.snapshot(state);
         expect(snapshot.solved).toBe(true);

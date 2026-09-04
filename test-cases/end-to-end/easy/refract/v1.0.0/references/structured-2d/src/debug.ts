@@ -25,16 +25,11 @@ import type { World } from "@test-cabinet/structured-2d";
 import { playEvents } from "./audio";
 import { cellCenter, emptyBeams, parseBoard } from "./board";
 import { DEFAULT_SEED, REFRACT_DEBUG_VERSION } from "./constants";
-import { resetState, startMode as startModePose } from "./flow";
+import { resetState } from "./flow";
 import { beamComplete, boardSolved, spentAt } from "./rules";
 import { targetsFor } from "./layout";
 import { pointerDown, pointerMove, pointerUp } from "./pointer";
-import {
-  clearBeams,
-  mergeEvents,
-  noEvents,
-  type TraceEvents,
-} from "./tracing";
+import { clearBeams, noEvents, type TraceEvents } from "./tracing";
 import {
   refractState,
   type Channel,
@@ -109,6 +104,8 @@ export interface RefractSnapshot {
   targets: SnapshotTarget[];
   muted: boolean;
   simTime: number;
+  /** The seeded generator's current state. */
+  rngState: number;
 }
 
 // ---- The surface ---------------------------------------------------------
@@ -121,12 +118,13 @@ export interface RefractDebugApi {
   version: number;
   reset(options?: { seed?: number }): void;
   snapshot(): RefractSnapshot;
-  startMode(mode: Mode): void;
+  setMode(mode: Mode): void;
+  setScreen(screen: Screen): void;
+  setMenuIndex(index: number): void;
   loadBoard(board: readonly string[]): void;
   pointerDown(x: number, y: number, device?: PointerDevice): void;
   pointerMove(x: number, y: number, device?: PointerDevice): void;
   pointerUp(device?: PointerDevice): void;
-  trace(cells: readonly { col: number; row: number }[]): void;
   clear(): void;
 }
 
@@ -223,16 +221,28 @@ export function createDebugApi(world: () => World): RefractDebugApi {
         targets: targetsFor(live).map((target) => ({ ...target })),
         muted: live.muted,
         simTime: live.simTime,
+        rngState: live.rngState,
       };
     },
 
+    /** The mode field alone. No screen moves, and no board is generated. */
+    setMode(mode) {
+      state().mode = mode;
+    },
+
     /**
-     * The choice of a mode from the title menu, exactly as choosing its item
-     * does: Campaign to its select grid with the session's progress as it
-     * stands, Cascade to a fresh sequence from tier 1 on a generated board.
+     * The screen field alone. Everything the screen draws is left as it is,
+     * and nothing stays armed, exactly as leaving a screen in play disarms it.
      */
-    startMode(mode) {
-      startModePose(state(), mode);
+    setScreen(screen) {
+      const live = state();
+      live.screen = screen;
+      live.armedTarget = null;
+    },
+
+    /** The highlighted item on whichever menu the current screen shows. */
+    setMenuIndex(index) {
+      state().menuIndex = index;
     },
 
     /**
@@ -264,27 +274,6 @@ export function createDebugApi(world: () => World): RefractDebugApi {
     /** A release: the trace ends and the beam stays exactly as drawn. */
     pointerUp(device = "mouse") {
       play(pointerUp(state(), device));
-    },
-
-    /**
-     * Sugar over the three pointer operations: a press at the first cell's
-     * center, a move to each remaining center in turn, then a release. A list
-     * the limits refuse part way through leaves the beam ending at the last
-     * segment they permitted, and the whole route is one batch, so each cue
-     * plays at most once for the call.
-     */
-    trace(cells) {
-      if (cells.length === 0) return;
-      const live = state();
-      const events = noEvents();
-      const [firstX, firstY] = cellCenter(cells[0], live.board);
-      mergeEvents(events, pointerDown(live, firstX, firstY, "mouse"));
-      for (const cell of cells.slice(1)) {
-        const [x, y] = cellCenter(cell, live.board);
-        mergeEvents(events, pointerMove(live, x, y, "mouse"));
-      }
-      mergeEvents(events, pointerUp(live, "mouse"));
-      play(events);
     },
 
     /** The `clear` action: every beam emptied, on the playing screen alone. */

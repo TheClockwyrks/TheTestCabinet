@@ -19,10 +19,10 @@
 //
 // The second half is the game behind it. An operation that exists but arranges
 // nothing the running game honors — a `loadBoard` that reports a plausible
-// board the renderer never drew, a `trace` the snapshot alone believes — is a
+// board the renderer never drew, a segment the snapshot alone believes — is a
 // surface that is present and useless, and that is the failure mode this
-// item's description names: `loadBoard` poses a board, `trace` draws a segment
-// on it, and BOTH the snapshot and the rendered canvas change.
+// item's description names: `loadBoard` poses a board, a press and a move draw
+// a segment on it, and BOTH the snapshot and the rendered canvas change.
 //
 // Every other automated item drives this surface to pose its own scenario, so
 // a missing surface or an operation that does not act also shows up as those
@@ -44,6 +44,7 @@ import {
   loadBoard,
   pixelsChanged,
   resetTo,
+  traceCells,
   type Harness,
 } from "../harness";
 import { REFRACT_DEBUG_VERSION, REQUIRED_OPS } from "../surface";
@@ -114,10 +115,10 @@ it("is live: loadBoard poses a board, trace draws on it, and the snapshot and th
     "the rendered canvas changes when a board is posed",
   );
 
-  // `trace` draws a real segment through the pointer path — resolved at the
-  // call, subject to every limit — and the drawn beam both reads back in the
+  // The pointer operations draw a real segment — each resolved at the call,
+  // subject to every limit — and the drawn beam both reads back in the
   // snapshot and lands on the canvas the next rendered frame.
-  h.debug.trace([
+  traceCells(h, [
     { col: 0, row: 0 },
     { col: 1, row: 1 },
   ]);

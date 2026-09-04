@@ -10,10 +10,12 @@ build installs the finished surface on `window.__refract` as soon as the game ha
 initialized. Every scenario driven from code reaches the game through it, so it is
 present and exactly as specified here.
 
-Each operation is a read or a pose of the game's state. It arranges the board, and
-the game's own targeting, grab rules, limits, and completion test run from there
-exactly as they do in play, so a scenario driven from code behaves exactly like
-one played by hand.
+Each operation is a read or a pose of the game's state. Each pose sets one field,
+poses one board, reports one pointer event, or moves the clock; `reset` and
+`clear` are the exceptions, and each is the whole of a behavior the game already
+has. A pose arranges the board, and the game's own targeting, grab rules, limits,
+and completion test run from there exactly as they do in play, so a scenario
+driven from code behaves exactly like one played by hand.
 
 The surface is inert during normal play, doing nothing until something calls it.
 {{else if (eq engine.slug "simple-2d")}}
@@ -31,7 +33,9 @@ Each operation is a reading or a pose of `RefractState`, written in the shape of
 `update`, because the engine holds the state by value and nothing holds a writable
 one. A pose takes the current state, as `DeepReadonly<RefractState>`, and returns
 the next `RefractState`; a reading takes the state the same way and returns what
-it read. A caller drives a pose through the engine's `apply`, as
+it read. Each pose sets one field, poses one board, or reports one pointer event;
+`reset` and `clear` are the exceptions, and each is the whole of a behavior the
+game already has. A caller drives a pose through the engine's `apply`, as
 `engine.apply((s) => debug.clear(s))`, and a reading against the engine's current
 state, as `debug.snapshot(engine.state)`. A pose arranges the board, and the
 game's own targeting, grab rules, limits, and completion test run from there
@@ -53,10 +57,13 @@ it, so it is present and exactly as specified here.
 Each operation acts on the live game at the moment it is called. A pose takes
 only the parameters its heading names, arranges the running game through the
 same systems play uses, and returns nothing; a reading returns plain data built
-at the call and changes nothing. A pose arranges the board, and the game's own
-targeting, grab rules, limits, and completion test run from there exactly as
-they do in play, so a scenario driven from code behaves exactly like one played
-by hand. `src/game.ts` declares and exports its type, `RefractDebugApi`.
+at the call and changes nothing. Each pose sets one field, poses one board, or
+reports one pointer event; `reset` and `clear` are the exceptions, and each is
+the whole of a behavior the game already has. A pose arranges the board, and the
+game's own targeting, grab rules, limits, and completion test run from there
+exactly as they do in play, so a scenario driven from code behaves exactly like
+one played by hand. `src/game.ts` declares and exports its type,
+`RefractDebugApi`.
 
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
@@ -178,8 +185,8 @@ title screen with its first menu item highlighted, `mode` back to `"campaign"`, 
 board in play, every beam empty, no trace live, the pointer reported as up,
 `simTime` at `0`, campaign progress cleared, so no board is recorded solved and
 only the opening board is unlocked, and the cascade progression back to its
-opening state, `solvedCount` at `0` and `tier` at `1`. `options.seed` seeds
-`rngState`, defaulting to `DEFAULT_SEED` (`1`).
+opening state, `solvedCount` at `0` and `tier` at `1`. `rngState` becomes
+`options.seed`, or `DEFAULT_SEED` (`1`) when no seed is given.
 
 No pointer target is armed afterwards.
 
@@ -191,32 +198,53 @@ No pointer target is armed afterwards.
 A pure read of the state, returned as the plain object under Snapshot shape below.
 It changes nothing.
 
-### `startMode(mode)`
+### `setMode(mode)`
 {{else if (eq engine.slug "simple-2d")}}
 ### `snapshot(state)`
 
 A pure reading of `state`, returned as the plain object under Snapshot shape
 below. It returns no state, because it poses nothing.
 
-### `startMode(state, mode)`
+### `setMode(state, mode)`
 {{else}}
 ### `snapshot()`
 
 A pure read of the state, returned as the plain object under Snapshot shape below.
 It changes nothing.
 
-### `startMode(mode)`
+### `setMode(mode)`
 {{/if}}
 
-Poses the choice of a mode from the title menu, with `mode` being `"campaign"` or
-`"cascade"`. `state.mode` becomes that mode and the game moves to the screen that
-mode opens on, exactly as choosing its menu item does, as
-`specs/modes/campaign.md` and `specs/modes/cascade.md` describe. It leaves the
-progression of both modes as it stands and `simTime` as it is, so a run from a
-clean progression is a `reset` followed by this.
+Sets `state.mode` to `"campaign"` or `"cascade"`, and sets its own field alone.
+The screen, the board, the beams, the live trace, the progression of both modes,
+`menuIndex`, `selectIndex`, `rngState`, and `simTime` are all left as they are.
+No board is chosen and none is generated.
 
-The game runs from there: the board the mode opens with is chosen, and generated
-where the mode generates it, through the game's own code.
+{{#if (eq engine.slug "none")}}
+### `setScreen(screen)`
+{{else if (eq engine.slug "simple-2d")}}
+### `setScreen(state, screen)`
+{{else}}
+### `setScreen(screen)`
+{{/if}}
+
+Sets `state.screen` to one of the six screen names `specs/state.md` declares, and
+sets its own field alone. The mode, the board, the beams, the live trace, the
+progression of both modes, `menuIndex`, `selectIndex`, `rngState`, and `simTime`
+are all left as they are. No pointer target is armed afterwards, as when a screen
+is left in play. The screen it sets then behaves exactly as `specs/ui.md`,
+`specs/modes/campaign.md`, and `specs/modes/cascade.md` state for it.
+
+{{#if (eq engine.slug "none")}}
+### `setMenuIndex(index)`
+{{else if (eq engine.slug "simple-2d")}}
+### `setMenuIndex(state, index)`
+{{else}}
+### `setMenuIndex(index)`
+{{/if}}
+
+Sets `state.menuIndex`, the highlighted item on whichever menu the current screen
+shows, and sets its own field alone.
 
 {{#if (eq engine.slug "none")}}
 ### `loadBoard(board)`
@@ -284,25 +312,6 @@ A move that satisfies R9 solves the board and ends the trace on the spot, as
 nothing.
 
 {{#if (eq engine.slug "none")}}
-### `trace(cells)`
-{{else if (eq engine.slug "simple-2d")}}
-### `trace(state, cells)`
-{{else}}
-### `trace(cells)`
-{{/if}}
-
-Sugar over the three pointer operations: a press at the first cell's center, a
-move to each remaining cell's center in turn, then a release, all from a mouse.
-`cells` is a list of `{ col, row }`, and each center comes from the formula in
-`specs/board.md`.
-Because each of those operations takes effect as it is made, one call draws the
-whole route.
-
-Running entirely through the pointer path, a `trace` is subject to every limit a
-hand-drawn trace is. A list the limits refuse part way through leaves the beam
-ending at the last segment they permitted.
-
-{{#if (eq engine.slug "none")}}
 ### `clear()`
 {{else if (eq engine.slug "simple-2d")}}
 ### `clear(state)`
@@ -363,6 +372,7 @@ emptied and any live trace ends. It applies on the `playing` screen alone.
   ],
   muted: <boolean>,
   simTime: <number>,   // accumulated simulation time, in seconds
+  rngState: <number>,  // the seeded generator's current state
 }
 ```
 
@@ -402,6 +412,12 @@ what the game holds. Four are derived rather than stored:
 A node's `channel` is `null` for a crystal, and its `charges` and `spent` are
 `null` for an emitter and for a lens. `beams` carries one entry per channel
 present on the board and no entry for a channel the board does not use.
+
+`rngState` is the seeded generator state `specs/state.md` declares, reported as
+the game holds it. A `reset` sets it to the seed it was given, and generating a
+Cascade board consumes it and leaves it advanced, as `specs/modes/cascade.md`
+states, so the value fixed for it is the one it carries immediately after a
+`reset`.
 
 A beam's `cells` lists the cells its segments join, **in the order they were
 drawn**, so the last cell is the end the most recent trace worked from and the one
