@@ -5,9 +5,9 @@
 // the tick that paused it left it" — so the field is still behind the menu.
 // This point is `back`'s path; `pause`'s is its own point.
 //
-// The session is entered through the surface — setScreen("playing") "starts a
-// fresh session exactly as confirming START does" — so a broken title menu
-// costs the navigation points, not this one. What is pressed here is Escape.
+// The session is entered through the surface, by the sequence of atomic poses
+// the harness begins one with — `setScreen` sets the screen and nothing else —
+// so a broken title menu costs the navigation points, not this one. What is pressed here is Escape.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

@@ -1,4 +1,5 @@
-// Kessler — the keyboard beneath the actions (specs/controls.md).
+// Kessler — the keyboard and the pointer beneath the actions
+// (specs/controls.md).
 //
 // The game stands on no engine, so the keyboard belongs to this runtime
 // layer. Keys are bound by `KeyboardEvent.code`, and each action is reported
@@ -16,6 +17,7 @@ import {
   OVERLAY_TOGGLE_CODE,
   type Action,
 } from "./constants";
+import { computeFit, type Fit } from "./viewport";
 
 /** Every action each bound code fires. `Space` carries two. */
 const CODE_TO_ACTIONS: ReadonlyMap<string, readonly Action[]> = (() => {
@@ -129,5 +131,88 @@ export class Keyboard {
   /** Forget every held key — the window lost focus mid-hold. */
   releaseAll(): void {
     this.down.clear();
+  }
+}
+
+/** One thing the pointer did, in the stage's own logical units. */
+export interface PointerMove {
+  /** Coming into contact, moving, or leaving contact. */
+  readonly type: "down" | "move" | "up";
+  readonly x: number;
+  readonly y: number;
+}
+
+/**
+ * The pointer beneath the menus (`specs/controls.md`).
+ *
+ * A mouse, a pen and a touch contact all arrive as pointer events, so one
+ * listener serves all three and the menus answer any of them. Each event's
+ * client position is mapped through the same letterboxed fit the frame draws
+ * under, so what the game reads is a point on the 1000 x 1000 stage rather
+ * than a CSS pixel: this class is the only place outside `src/viewport.ts`
+ * that knows what a unit is worth on screen.
+ *
+ * Samples queue in arrival order and the frame loop drains them, so a press
+ * and the release that follows it are two moments rather than one.
+ */
+export class Pointer {
+  private readonly queue: PointerMove[] = [];
+  private detach: (() => void) | null = null;
+
+  /** Start listening on `canvas`, whose box the client position maps through. */
+  attach(canvas: HTMLCanvasElement): void {
+    const onEvent = (event: Event): void => {
+      const pointer = event as PointerEvent;
+      if (pointer.isPrimary === false) return;
+      const at = this.stagePoint(canvas, pointer);
+      if (at === null) return;
+      const type =
+        pointer.type === "pointerdown"
+          ? "down"
+          : pointer.type === "pointerup"
+            ? "up"
+            : "move";
+      this.queue.push({ type, x: at.x, y: at.y });
+    };
+    for (const name of ["pointerdown", "pointermove", "pointerup"]) {
+      canvas.addEventListener(name, onEvent);
+    }
+    this.detach = () => {
+      for (const name of ["pointerdown", "pointermove", "pointerup"]) {
+        canvas.removeEventListener(name, onEvent);
+      }
+    };
+  }
+
+  /** Stop listening. */
+  release(): void {
+    this.detach?.();
+    this.detach = null;
+  }
+
+  /** The samples that arrived since the last call, in arrival order. */
+  drain(): PointerMove[] {
+    if (this.queue.length === 0) return [];
+    return this.queue.splice(0, this.queue.length);
+  }
+
+  /**
+   * The stage point `event` landed on, or `null` where the canvas has no area
+   * to map through.
+   */
+  private stagePoint(
+    canvas: HTMLCanvasElement,
+    event: PointerEvent,
+  ): { x: number; y: number } | null {
+    const box = canvas.getBoundingClientRect();
+    if (box.width <= 0 || box.height <= 0) return null;
+    // The fit is computed in the box's own CSS pixels, so the device pixel
+    // ratio cancels out of both the scale and the offsets.
+    const fit: Fit = computeFit(box.width, box.height);
+    if (fit.scale <= 0) return null;
+    return {
+      x: (event.clientX - box.left - fit.offsetX) / fit.scale,
+      y: (event.clientY - box.top - fit.offsetY) / fit.scale,
+    };
   }
 }

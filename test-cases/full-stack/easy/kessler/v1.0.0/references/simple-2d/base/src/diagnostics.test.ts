@@ -44,6 +44,7 @@ describe("the diagnostic sources", () => {
     const sources = collect();
     let state: KesslerState = bootState(NO_ASSETS);
     state = debug.setScreen(state, "playing");
+    state = debug.parkBall(state);
     state = debug.setScore(state, 725);
     state = debug.setEffectTicks(state, "widen", 90);
     state = debug.setShield(state, true);

@@ -1,8 +1,8 @@
 // Kessler — the entry point (specs/overview.md).
 //
 // Loads the produced assets, builds the runtime layer beneath the game — the
-// keyboard, the audio bus, the particle effects, the diagnostics, and the
-// frame loop — installs the debugging and automation surface on
+// keyboard, the pointer, the audio bus, the particle effects, the
+// diagnostics, and the frame loop — installs the debugging and automation surface on
 // `window.__kessler`, and starts the loop. Nothing here decides a rule of
 // the game; it wires the pieces together and hands the loop its canvas.
 
@@ -11,7 +11,7 @@ import { WebAudioBus } from "./audio";
 import { Diagnostics, registerGameDiagnostics } from "./diagnostics";
 import { Fx } from "./fx";
 import { Game } from "./game";
-import { Keyboard } from "./input";
+import { Keyboard, Pointer } from "./input";
 import { Runtime } from "./runtime";
 import { createApi, installApi } from "./surface";
 
@@ -31,11 +31,13 @@ async function main(): Promise<void> {
     particle: (system, x, y) => fx.spawn(system, x, y),
   });
   const keyboard = new Keyboard();
+  const pointer = new Pointer();
   const diagnostics = new Diagnostics();
   registerGameDiagnostics(diagnostics, game, fx);
 
   keyboard.onFirstPress(() => audio.unlock());
   keyboard.attach();
+  pointer.attach(canvas);
   // A click is a gesture too, and unlocking twice is harmless.
   window.addEventListener("pointerdown", () => audio.unlock());
 
@@ -45,6 +47,7 @@ async function main(): Promise<void> {
     game,
     assets,
     keyboard,
+    pointer,
     diagnostics,
     audio,
     fx,

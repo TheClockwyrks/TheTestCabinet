@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { NO_ASSETS } from "./assets";
 import { createDebugApi, type KesslerDebugApi } from "./debug";
-import { RINGS, type Cue } from "./figures";
+import { PAUSE_MENU, RINGS, SCREENS, TITLE_MENU, type Cue } from "./figures";
 import {
   advanceTicks,
   bootState,
@@ -24,6 +24,9 @@ type Bound<F> = F extends (state: never, ...rest: infer A) => infer R
 /** The surface with every operation's state bound: `ops.setScore(500)`. */
 type Ops = { [K in keyof KesslerDebugApi]: Bound<KesslerDebugApi[K]> };
 
+/** The four screens carrying no menu (`specs/screens.md`). */
+const MENU_FREE = ["howto", "playing", "waveclear", "gameover"] as const;
+
 function makeOps() {
   const cues: Cue[] = [];
   const io: FlowIo = { cue: (cue) => cues.push(cue), particle: () => {} };
@@ -37,7 +40,9 @@ function makeOps() {
           ...rest: unknown[]
         ) => unknown;
         const result = operation(state, ...args);
-        if (name === "snapshot") return result;
+        // The two readings return what they read; every pose returns the
+        // next state (specs/instrumentation.md).
+        if (name === "snapshot" || name === "menuItemRect") return result;
         state = result as KesslerState;
         return result;
       };
@@ -47,6 +52,7 @@ function makeOps() {
     ops,
     cues,
     snapshot: () => debug.snapshot(state),
+    rect: (index: number) => debug.menuItemRect(state, index),
     tick: (count = 1) => {
       state = advanceTicks(state, count, NO_HELD, io);
     },
@@ -70,7 +76,7 @@ describe("reset", () => {
 
   it("rejects a malformed seed", () => {
     const { ops } = makeOps();
-    expect(() => ops.reset({ seed: Number.NaN })).toThrow();
+    expect(() => ops.reset(Number.NaN)).toThrow();
   });
 });
 
@@ -80,50 +86,120 @@ describe("setScreen", () => {
     expect(() => ops.setScreen("menu" as never)).toThrow();
   });
 
-  it("playing starts a fresh session with a parked ball, silently", () => {
+  it("sets the screen and changes nothing else, silently", () => {
     const { ops, cues, snapshot } = makeOps();
-    ops.setScreen("playing");
-    const snap = snapshot();
-    expect(snap.screen).toBe("playing");
-    expect(snap.score).toBe(0);
-    expect(snap.lives).toBe(3);
-    expect(snap.wave).toBe(1);
-    expect(snap.balls).toHaveLength(1);
-    expect(snap.balls[0].parked).toBe(true);
+    ops.setScreen("paused");
+    ops.setScore(900);
+    ops.setMenuIndex(1);
+    ops.setInterstitialTicks(77);
+    ops.spawnBall(600, 500, 20, 0);
+    const before = snapshot();
+    ops.setScreen("title");
+    const after = snapshot();
+    expect(after.screen).toBe("title");
+    expect({ ...after, screen: before.screen }).toEqual(before);
     expect(cues).toEqual([]);
   });
 
-  it("title discards the session exactly as QUIT does", () => {
+  it("reaches every screen directly", () => {
     const { ops, snapshot } = makeOps();
-    ops.setScreen("playing");
-    ops.setScore(900);
-    ops.setScreen("title");
-    const snap = snapshot();
-    expect(snap.screen).toBe("title");
-    expect(snap.score).toBe(0);
-    expect(snap.balls).toEqual([]);
+    for (const name of SCREENS) {
+      ops.setScreen(name);
+      expect(snapshot().screen).toBe(name);
+    }
   });
 
-  it("waveclear runs out into the next wave with the score intact", () => {
+  it("runs the posed interstitial out into the next wave", () => {
     const { ops, snapshot, tick } = makeOps();
-    ops.setScreen("playing");
     ops.setScore(700);
+    ops.setInterstitialTicks(180);
     ops.setScreen("waveclear");
+    tick(179);
     expect(snapshot().screen).toBe("waveclear");
-    tick(180);
+    expect(snapshot().interstitialTicks).toBe(1);
+    tick();
     const snap = snapshot();
     expect(snap.screen).toBe("playing");
     expect(snap.wave).toBe(2);
     expect(snap.score).toBe(700);
   });
+});
 
-  it("paused, gameover, and howto enter directly", () => {
-    const { ops, snapshot } = makeOps();
-    for (const name of ["paused", "gameover", "howto"] as const) {
-      ops.setScreen(name);
-      expect(snapshot().screen).toBe(name);
+describe("the menu highlight and the interstitial timer", () => {
+  it("setMenuIndex poses each entry of both menus, silently", () => {
+    const { ops, cues, snapshot } = makeOps();
+    for (const screen of ["title", "paused"] as const) {
+      ops.setScreen(screen);
+      ops.setMenuIndex(1);
+      expect(snapshot().menu.index).toBe(1);
+      ops.setMenuIndex(0);
       expect(snapshot().menu.index).toBe(0);
     }
+    expect(cues).toEqual([]);
+  });
+
+  it("setMenuIndex rejects an entry the menu does not carry", () => {
+    const { ops } = makeOps();
+    ops.setScreen("title");
+    expect(() => ops.setMenuIndex(TITLE_MENU.length)).toThrow();
+  });
+
+  it("setMenuIndex changes nothing on a screen with no menu", () => {
+    const { ops, snapshot } = makeOps();
+    for (const screen of MENU_FREE) {
+      ops.setScreen(screen);
+      const before = snapshot();
+      ops.setMenuIndex(1);
+      expect(snapshot()).toEqual(before);
+    }
+  });
+
+  it("setInterstitialTicks is read back and counts down on waveclear alone", () => {
+    const { ops, snapshot, tick } = makeOps();
+    ops.setInterstitialTicks(40);
+    expect(snapshot().interstitialTicks).toBe(40);
+    ops.setScreen("paused");
+    tick(5);
+    expect(snapshot().interstitialTicks).toBe(40);
+    ops.setScreen("waveclear");
+    tick(5);
+    expect(snapshot().interstitialTicks).toBe(35);
+  });
+});
+
+describe("menuItemRect", () => {
+  it("reports a distinct on-stage region for every entry of both menus", () => {
+    const { ops, rect } = makeOps();
+    for (const [screen, entries] of [
+      ["title", TITLE_MENU],
+      ["paused", PAUSE_MENU],
+    ] as const) {
+      ops.setScreen(screen);
+      const regions = entries.map((_entry, index) => rect(index));
+      for (const region of regions) {
+        expect(region).not.toBeNull();
+        expect(region!.width).toBeGreaterThan(0);
+        expect(region!.height).toBeGreaterThan(0);
+        expect(region!.x).toBeGreaterThanOrEqual(0);
+        expect(region!.y).toBeGreaterThanOrEqual(0);
+        expect(region!.x + region!.width).toBeLessThanOrEqual(1000);
+        expect(region!.y + region!.height).toBeLessThanOrEqual(1000);
+      }
+      expect(regions[0]!.y + regions[0]!.height).toBeLessThanOrEqual(
+        regions[1]!.y,
+      );
+    }
+  });
+
+  it("answers null off a menu and past a menu's entries", () => {
+    const { ops, rect } = makeOps();
+    for (const screen of MENU_FREE) {
+      ops.setScreen(screen);
+      expect(rect(0)).toBeNull();
+    }
+    ops.setScreen("title");
+    expect(rect(TITLE_MENU.length)).toBeNull();
+    expect(rect(-1)).toBeNull();
   });
 });
 
@@ -163,6 +239,7 @@ describe("score, lives, wave", () => {
   it("setWave sets the ball speed a launch serves at", () => {
     const { ops, snapshot } = makeOps();
     ops.setScreen("playing");
+    ops.parkBall();
     ops.setWave(9);
     ops.launchBall();
     const ball = snapshot().balls[0];
@@ -179,6 +256,7 @@ describe("the deflector and balls", () => {
   it("setPaddleAngle normalizes and carries the parked ball", () => {
     const { ops, snapshot } = makeOps();
     ops.setScreen("playing");
+    ops.parkBall();
     ops.setPaddleAngle(-90);
     const snap = snapshot();
     expect(snap.paddle.angleDeg).toBe(270);
@@ -190,6 +268,7 @@ describe("the deflector and balls", () => {
   it("launchBall acts as Space and is a no-op without a parked ball", () => {
     const { ops, snapshot } = makeOps();
     ops.setScreen("playing");
+    ops.parkBall();
     ops.launchBall();
     expect(snapshot().balls[0].parked).toBe(false);
     ops.launchBall();
@@ -199,6 +278,7 @@ describe("the deflector and balls", () => {
   it("clearBalls empties the field without a life loss", () => {
     const { ops, snapshot, tick } = makeOps();
     ops.setScreen("playing");
+    ops.parkBall();
     ops.clearBalls();
     expect(snapshot().balls).toEqual([]);
     tick();
@@ -209,6 +289,7 @@ describe("the deflector and balls", () => {
   it("spawnBall appends in spawn order and stops at the cap", () => {
     const { ops, snapshot } = makeOps();
     ops.setScreen("playing");
+    ops.parkBall();
     for (let i = 0; i < 7; i += 1) ops.spawnBall(600, 500, 10 * i, 0);
     const balls = snapshot().balls;
     expect(balls).toHaveLength(6);

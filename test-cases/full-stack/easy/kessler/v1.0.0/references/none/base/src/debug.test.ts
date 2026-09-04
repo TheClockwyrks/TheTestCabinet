@@ -2,10 +2,20 @@
 // back, the domains that fail loudly, and the no-op cases the spec fixes.
 
 import { describe, expect, it } from "vitest";
-import { RINGS, type Cue } from "./constants";
+import {
+  PAUSE_MENU,
+  RINGS,
+  SCREENS,
+  STAGE_SIZE,
+  TITLE_MENU,
+  type Cue,
+} from "./constants";
 import { createStateOps } from "./debug";
 import { Game } from "./game";
 import { pointAt, polarOf } from "./polar";
+
+/** The four screens carrying no menu (`specs/screens.md`). */
+const MENU_FREE = ["howto", "playing", "waveclear", "gameover"] as const;
 
 function makeOps() {
   const cues: Cue[] = [];
@@ -30,7 +40,7 @@ describe("reset", () => {
 
   it("rejects a malformed seed", () => {
     const { ops } = makeOps();
-    expect(() => ops.reset({ seed: Number.NaN })).toThrow();
+    expect(() => ops.reset(Number.NaN)).toThrow();
   });
 });
 
@@ -40,50 +50,120 @@ describe("setScreen", () => {
     expect(() => ops.setScreen("menu" as never)).toThrow();
   });
 
-  it("playing starts a fresh session with a parked ball, silently", () => {
+  it("sets the screen and changes nothing else, silently", () => {
     const { ops, cues } = makeOps();
-    ops.setScreen("playing");
-    const snap = ops.snapshot();
-    expect(snap.screen).toBe("playing");
-    expect(snap.score).toBe(0);
-    expect(snap.lives).toBe(3);
-    expect(snap.wave).toBe(1);
-    expect(snap.balls).toHaveLength(1);
-    expect(snap.balls[0].parked).toBe(true);
+    ops.setScreen("paused");
+    ops.setScore(900);
+    ops.setMenuIndex(1);
+    ops.setInterstitialTicks(77);
+    ops.spawnBall(600, 500, 20, 0);
+    const before = ops.snapshot();
+    ops.setScreen("title");
+    const after = ops.snapshot();
+    expect(after.screen).toBe("title");
+    expect({ ...after, screen: before.screen }).toEqual(before);
     expect(cues).toEqual([]);
   });
 
-  it("title discards the session exactly as QUIT does", () => {
+  it("reaches every screen directly", () => {
     const { ops } = makeOps();
-    ops.setScreen("playing");
-    ops.setScore(900);
-    ops.setScreen("title");
-    const snap = ops.snapshot();
-    expect(snap.screen).toBe("title");
-    expect(snap.score).toBe(0);
-    expect(snap.balls).toEqual([]);
+    for (const name of SCREENS) {
+      ops.setScreen(name);
+      expect(ops.snapshot().screen).toBe(name);
+    }
   });
 
-  it("waveclear runs out into the next wave with the score intact", () => {
+  it("runs the posed interstitial out into the next wave", () => {
     const { game, ops } = makeOps();
-    ops.setScreen("playing");
     ops.setScore(700);
+    ops.setInterstitialTicks(180);
     ops.setScreen("waveclear");
+    for (let i = 0; i < 179; i += 1) game.tick();
     expect(ops.snapshot().screen).toBe("waveclear");
-    for (let i = 0; i < 180; i += 1) game.tick();
+    expect(ops.snapshot().interstitialTicks).toBe(1);
+    game.tick();
     const snap = ops.snapshot();
     expect(snap.screen).toBe("playing");
     expect(snap.wave).toBe(2);
     expect(snap.score).toBe(700);
   });
+});
 
-  it("paused, gameover, and howto enter directly", () => {
-    const { ops } = makeOps();
-    for (const name of ["paused", "gameover", "howto"] as const) {
-      ops.setScreen(name);
-      expect(ops.snapshot().screen).toBe(name);
+describe("the menu highlight and the interstitial timer", () => {
+  it("setMenuIndex poses each entry of both menus, silently", () => {
+    const { ops, cues } = makeOps();
+    for (const screen of ["title", "paused"] as const) {
+      ops.setScreen(screen);
+      ops.setMenuIndex(1);
+      expect(ops.snapshot().menu.index).toBe(1);
+      ops.setMenuIndex(0);
       expect(ops.snapshot().menu.index).toBe(0);
     }
+    expect(cues).toEqual([]);
+  });
+
+  it("setMenuIndex rejects an entry the menu does not carry", () => {
+    const { ops } = makeOps();
+    ops.setScreen("title");
+    expect(() => ops.setMenuIndex(TITLE_MENU.length)).toThrow();
+  });
+
+  it("setMenuIndex changes nothing on a screen with no menu", () => {
+    const { ops } = makeOps();
+    for (const screen of MENU_FREE) {
+      ops.setScreen(screen);
+      const before = ops.snapshot();
+      ops.setMenuIndex(1);
+      expect(ops.snapshot()).toEqual(before);
+    }
+  });
+
+  it("setInterstitialTicks is read back and counts down on waveclear alone", () => {
+    const { game, ops } = makeOps();
+    ops.setInterstitialTicks(40);
+    expect(ops.snapshot().interstitialTicks).toBe(40);
+    ops.setScreen("paused");
+    for (let i = 0; i < 5; i += 1) game.tick();
+    expect(ops.snapshot().interstitialTicks).toBe(40);
+    ops.setScreen("waveclear");
+    for (let i = 0; i < 5; i += 1) game.tick();
+    expect(ops.snapshot().interstitialTicks).toBe(35);
+  });
+});
+
+describe("menuItemRect", () => {
+  it("reports a distinct on-stage region for every entry of both menus", () => {
+    const { ops } = makeOps();
+    for (const [screen, entries] of [
+      ["title", TITLE_MENU],
+      ["paused", PAUSE_MENU],
+    ] as const) {
+      ops.setScreen(screen);
+      const regions = entries.map((_entry, index) => ops.menuItemRect(index));
+      for (const region of regions) {
+        expect(region).not.toBeNull();
+        expect(region!.width).toBeGreaterThan(0);
+        expect(region!.height).toBeGreaterThan(0);
+        expect(region!.x).toBeGreaterThanOrEqual(0);
+        expect(region!.y).toBeGreaterThanOrEqual(0);
+        expect(region!.x + region!.width).toBeLessThanOrEqual(STAGE_SIZE);
+        expect(region!.y + region!.height).toBeLessThanOrEqual(STAGE_SIZE);
+      }
+      expect(regions[0]!.y + regions[0]!.height).toBeLessThanOrEqual(
+        regions[1]!.y,
+      );
+    }
+  });
+
+  it("answers null off a menu and past a menu's entries", () => {
+    const { ops } = makeOps();
+    for (const screen of MENU_FREE) {
+      ops.setScreen(screen);
+      expect(ops.menuItemRect(0)).toBeNull();
+    }
+    ops.setScreen("title");
+    expect(ops.menuItemRect(TITLE_MENU.length)).toBeNull();
+    expect(ops.menuItemRect(-1)).toBeNull();
   });
 });
 
@@ -123,6 +203,7 @@ describe("score, lives, wave", () => {
   it("setWave sets the ball speed a launch serves at", () => {
     const { ops } = makeOps();
     ops.setScreen("playing");
+    ops.parkBall();
     ops.setWave(9);
     ops.launchBall();
     const ball = ops.snapshot().balls[0];
@@ -139,6 +220,7 @@ describe("the deflector and balls", () => {
   it("setPaddleAngle normalizes and carries the parked ball", () => {
     const { ops } = makeOps();
     ops.setScreen("playing");
+    ops.parkBall();
     ops.setPaddleAngle(-90);
     const snap = ops.snapshot();
     expect(snap.paddle.angleDeg).toBe(270);
@@ -150,6 +232,7 @@ describe("the deflector and balls", () => {
   it("launchBall acts as Space and is a no-op without a parked ball", () => {
     const { ops } = makeOps();
     ops.setScreen("playing");
+    ops.parkBall();
     ops.launchBall();
     expect(ops.snapshot().balls[0].parked).toBe(false);
     ops.launchBall();
@@ -159,6 +242,7 @@ describe("the deflector and balls", () => {
   it("clearBalls empties the field without a life loss", () => {
     const { game, ops } = makeOps();
     ops.setScreen("playing");
+    ops.parkBall();
     ops.clearBalls();
     expect(ops.snapshot().balls).toEqual([]);
     game.tick();
@@ -169,6 +253,7 @@ describe("the deflector and balls", () => {
   it("spawnBall appends in spawn order and stops at the cap", () => {
     const { ops } = makeOps();
     ops.setScreen("playing");
+    ops.parkBall();
     for (let i = 0; i < 7; i += 1) ops.spawnBall(600, 500, 10 * i, 0);
     const balls = ops.snapshot().balls;
     expect(balls).toHaveLength(6);

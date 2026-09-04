@@ -23,6 +23,15 @@ import {
   type ParticleSystem,
   type ScreenName,
 } from "./constants";
+import type { PointerMove } from "./input";
+import {
+  menuEntries,
+  menuEntryAt,
+  menuItemRect,
+  menuItemRects,
+  TITLE_HOWTO_ENTRY,
+  type MenuItemRect,
+} from "./menus";
 import { mulberry32, type Rng } from "./rng";
 import { launchParkedBall, tickPlaying, type TickIo } from "./sim";
 import { pointAt } from "./polar";
@@ -61,6 +70,8 @@ export interface Snapshot {
   wave: number;
   score: number;
   lives: number;
+  seed: number;
+  interstitialTicks: number;
   autoStep: boolean;
   waveAdvance: boolean;
   podSpawn: boolean;
@@ -125,11 +136,20 @@ export class Game {
   readonly held = { left: false, right: false };
 
   /** The seed the pod stream reseeds from at each session start. */
-  private seed = DEFAULT_SEED;
+  seed = DEFAULT_SEED;
+  /** Ticks left on the wave-clear interstitial while on `waveclear`. */
+  interstitialTicks = 0;
   /** The session's pod stream; pod draws alone consume it. */
   private rng: Rng = mulberry32(DEFAULT_SEED);
-  /** Ticks left on the wave-clear interstitial while on `waveclear`. */
-  private interstitialTicks = 0;
+  /**
+   * The menu entry a pointer press is down inside, and the screen it went
+   * down on. A release inside the same entry of the same screen accepts it
+   * (`specs/controls.md`); anything else clears the latch and accepts
+   * nothing. It is derived from the contact alone, so any pose leaves it
+   * consistent: a pose that changes the screen leaves a press that can no
+   * longer match.
+   */
+  private pointerPress: { screen: ScreenName; entry: number } | null = null;
   /** Unconsumed game time carried between updates, in seconds. */
   private accumulated = 0;
   private readonly hooks: GameHooks;
@@ -160,12 +180,10 @@ export class Game {
       this.simTicks += 1;
       const outcome = tickPlaying(this.session, this.tickIo());
       if (outcome.clearedWave !== null) {
-        this.screen = "waveclear";
-        this.menuIndex = 0;
         this.interstitialTicks = INTERSTITIAL_TICKS;
+        this.enter("waveclear");
       } else if (outcome.gameOver) {
-        this.screen = "gameover";
-        this.menuIndex = 0;
+        this.enter("gameover");
         this.hooks.cue("game-over");
       }
     } else if (this.screen === "waveclear") {
@@ -205,10 +223,7 @@ export class Game {
   handleAction(action: Action): void {
     switch (this.screen) {
       case "title":
-        this.menuAction(action, TITLE_MENU.length, (index) => {
-          if (index === 0) this.startFreshSession();
-          else this.enter("howto");
-        });
+        this.menuAction(action, TITLE_MENU.length);
         break;
       case "howto":
         if (action === "confirm" || action === "back") this.enter("title");
@@ -224,10 +239,7 @@ export class Game {
           this.enter("playing");
           break;
         }
-        this.menuAction(action, PAUSE_MENU.length, (index) => {
-          if (index === 0) this.enter("playing");
-          else this.discardSession();
-        });
+        this.menuAction(action, PAUSE_MENU.length);
         break;
       case "gameover":
         if (action === "confirm") this.discardSession();
@@ -236,25 +248,107 @@ export class Game {
   }
 
   /** The shared menu behavior: wrap-around movement and confirm. */
-  private menuAction(
-    action: Action,
-    entries: number,
-    accept: (index: number) => void,
-  ): void {
+  private menuAction(action: Action, entries: number): void {
     if (action === "up" || action === "down") {
       const delta = action === "down" ? 1 : -1;
       this.menuIndex = (this.menuIndex + delta + entries) % entries;
       this.hooks.cue("menu-move");
     } else if (action === "confirm") {
-      this.hooks.cue("menu-select");
-      accept(this.menuIndex);
+      this.acceptHighlighted();
     }
   }
 
-  /** Enters `screen` with its top menu entry highlighted. */
+  /**
+   * Accepts the highlighted entry of the menu the game is standing on, which
+   * is what `confirm` does and what a pointer press and release inside an
+   * entry's region does (`specs/screens.md`, `specs/controls.md`).
+   */
+  private acceptHighlighted(): void {
+    const index = this.menuIndex;
+    if (this.screen === "title") {
+      this.hooks.cue("menu-select");
+      if (index === 0) this.startFreshSession();
+      else this.enter("howto");
+      return;
+    }
+    if (this.screen === "paused") {
+      this.hooks.cue("menu-select");
+      if (index === 0) this.enter("playing");
+      else this.discardSession();
+    }
+  }
+
+  /**
+   * One pointer sample, routed to the menu the game is standing on. A pointer
+   * over an entry's region highlights it; a press latches the entry it went
+   * down inside; and a release inside that same entry accepts it. A release
+   * anywhere else, and every sample on a screen with no menu, accepts
+   * nothing (`specs/controls.md`).
+   */
+  handlePointer(sample: PointerMove): void {
+    if (menuItemRects(this.screen) === null) {
+      this.pointerPress = null;
+      return;
+    }
+    const over = menuEntryAt(this.screen, sample.x, sample.y);
+    if (over !== null && over !== this.menuIndex) {
+      this.menuIndex = over;
+      this.hooks.cue("menu-move");
+    }
+    if (sample.type === "down") {
+      this.pointerPress =
+        over === null ? null : { screen: this.screen, entry: over };
+      return;
+    }
+    if (sample.type === "up") {
+      const press = this.pointerPress;
+      this.pointerPress = null;
+      if (
+        press !== null &&
+        press.screen === this.screen &&
+        press.entry === over
+      ) {
+        this.menuIndex = press.entry;
+        this.acceptHighlighted();
+      }
+    }
+  }
+
+  /**
+   * Where the build drew menu entry `index` on the current screen, or `null`
+   * on a screen with no menu and past the menu's entries. A pure read.
+   */
+  menuItemRect(index: number): MenuItemRect | null {
+    return menuItemRect(this.screen, index);
+  }
+
+  /**
+   * Poses the highlight on entry `n` of the current screen's menu, exactly
+   * where `up` and `down` would leave it, silently. On a screen with no menu
+   * the call changes nothing (`specs/instrumentation.md`).
+   */
+  poseMenuIndex(n: number): void {
+    const entries = menuEntries(this.screen);
+    if (entries === null) return;
+    if (!Number.isInteger(n) || n < 0 || n >= entries.length) {
+      throw new Error(
+        `setMenuIndex n must be 0 to ${entries.length - 1}; got ${String(n)}`,
+      );
+    }
+    this.menuIndex = n;
+  }
+
+  /**
+   * Enters `screen` from the one the game is on, highlighting the entry
+   * `specs/screens.md` fixes for that arrival: the entry that led away from
+   * the screen being entered to the screen just left, and entry `0`
+   * otherwise. Only `title` entered from `howto` is anything but `0`.
+   */
   private enter(screen: ScreenName): void {
+    const from = this.screen;
     this.screen = screen;
-    this.menuIndex = 0;
+    this.menuIndex =
+      screen === "title" && from === "howto" ? TITLE_HOWTO_ENTRY : 0;
   }
 
   // --- The session lifecycle ---
@@ -295,6 +389,7 @@ export class Game {
     this.podSpawn = true;
     this.interstitialTicks = 0;
     this.accumulated = 0;
+    this.pointerPress = null;
     this.held.left = false;
     this.held.right = false;
   }
@@ -312,25 +407,16 @@ export class Game {
   }
 
   /**
-   * Enters a screen exactly as the real transition into it does, with the
-   * entering menu highlighting its top entry and no cue sounding
-   * (`specs/instrumentation.md`'s `setScreen` table).
+   * Sets the screen and changes nothing else (`specs/instrumentation.md`'s
+   * `setScreen`): the score, the lives, the wave, the deflector, the balls,
+   * the rings, the pods, the timed effects, the shield, the interstitial
+   * timer, the menu highlight, and both driver switches all stand exactly as
+   * they stood, and no cue sounds. A caller that wants a screen arranged the
+   * way the real transition into it arranges it makes the calls that arrange
+   * it.
    */
   poseScreen(name: ScreenName): void {
-    switch (name) {
-      case "playing":
-        this.startFreshSession();
-        break;
-      case "waveclear":
-        this.enterWaveclear();
-        break;
-      case "title":
-        this.discardSession();
-        break;
-      default:
-        this.enter(name);
-        break;
-    }
+    this.screen = name;
   }
 
   // --- The snapshot (specs/instrumentation.md) ---
@@ -345,6 +431,8 @@ export class Game {
       wave: session.wave,
       score: session.score,
       lives: session.lives,
+      seed: this.seed,
+      interstitialTicks: this.interstitialTicks,
       autoStep: this.autoStep,
       waveAdvance: this.waveAdvance,
       podSpawn: this.podSpawn,

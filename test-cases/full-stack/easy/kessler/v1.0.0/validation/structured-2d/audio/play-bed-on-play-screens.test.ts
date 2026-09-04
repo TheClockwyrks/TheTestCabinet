@@ -22,6 +22,7 @@ import {
   advanceTicks,
   captureStill,
   openHarness,
+  poseInterstitial,
   type Harness,
 } from "../harness";
 
@@ -46,7 +47,7 @@ it("loops the play bed on playing, paused, and waveclear", async () => {
   captureStill(h, "paused");
   assertTrue(h.looping(BED_PLAY), "the play bed sounding as a loop on paused");
 
-  h.debug.setScreen("waveclear");
+  poseInterstitial(h);
   await advanceTicks(h, 2);
   captureStill(h, "waveclear");
   assertTrue(

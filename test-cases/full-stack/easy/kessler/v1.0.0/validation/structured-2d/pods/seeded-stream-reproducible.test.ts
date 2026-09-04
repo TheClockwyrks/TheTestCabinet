@@ -4,7 +4,7 @@
 // specs/pods.md: "The game keeps one random stream for the whole session: a
 // mulberry32 generator seeded with the session's seed. ... so the same seed and
 // the same play shed the same pods in the same order." The reading is a
-// comparison between two sessions of one build, reset({ seed }) with the same
+// comparison between two sessions of one build, reset(seed) with the same
 // seed and played identically, so any conformant stream implementation passes;
 // the seed is chosen (from the specification's own generator) so the six draws
 // shed more than once, keeping the comparison from passing vacuously.
@@ -34,7 +34,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-/** One session: reset({ seed: SEED }), six identical destructions, sheds read. */
+/** One session: reset(SEED), six identical destructions, sheds read. */
 async function playSession(h2: Harness): Promise<(string | null)[]> {
   isolate(h2, SEED);
   h2.debug.setPodSpawn(true);

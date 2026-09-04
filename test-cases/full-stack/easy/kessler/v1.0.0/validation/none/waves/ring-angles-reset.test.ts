@@ -15,7 +15,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { angularOffset, RINGS, TICK_DT, WAVECLEAR_TICKS } from "../constants";
-import { captureStill, openHarness, type Harness } from "../harness";
+import {
+  captureStill,
+  openHarness,
+  poseInterstitial,
+  type Harness,
+} from "../harness";
 
 let h: Harness;
 
@@ -33,7 +38,7 @@ it("resets every ring angle to 0 for the new wave", async () => {
   await h.debug.setRingAngle(1, 123);
   await h.debug.setRingAngle(2, 210);
   await h.debug.setRingAngle(3, 301);
-  await h.debug.setScreen("waveclear");
+  await poseInterstitial(h);
 
   const after = await h.tick(WAVECLEAR_TICKS);
   await captureStill(h, "reset-angles");

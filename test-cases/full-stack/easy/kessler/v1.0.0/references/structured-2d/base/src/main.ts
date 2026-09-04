@@ -36,9 +36,9 @@ const engine = createEngine({
   // The stage background, which the engine clears the canvas to each frame so
   // the letterbox bars match the field. The game owns the color.
   background: BACKGROUND,
-  // No touch layout is selected: Kessler is played from the keyboard alone
-  // (specs/controls.md), and its actions are its own rather than a layout's
-  // vocabulary, so the game registers every one of them from ACTIONS.
+  // No touch layout is selected: a layout supplies on-screen controls over its
+  // own vocabulary of actions, and Kessler's actions are its own, so the game
+  // registers every one of them from ACTIONS itself.
 });
 
 async function main(): Promise<void> {

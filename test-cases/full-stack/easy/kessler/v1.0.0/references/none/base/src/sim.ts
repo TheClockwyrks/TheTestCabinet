@@ -352,11 +352,9 @@ function resolveContainment(
   prev: Polar,
   cur: Polar,
 ): void {
-  if (!(
-    prev.r < CONTAINMENT_CONTACT_RADIUS && cur.r >= CONTAINMENT_CONTACT_RADIUS
-  )) {
-    return;
-  }
+  const crossedOutward =
+    prev.r < CONTAINMENT_CONTACT_RADIUS && cur.r >= CONTAINMENT_CONTACT_RADIUS;
+  if (!crossedOutward) return;
   const n = radialAt(cur.angleDeg);
   const velocity = { x: ball.vx, y: ball.vy };
   if (dot(velocity, n) <= 0) return;

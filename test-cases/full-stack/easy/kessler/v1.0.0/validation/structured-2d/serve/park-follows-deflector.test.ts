@@ -19,6 +19,7 @@ import {
 } from "../assert";
 import { captureReplay, isolate, openHarness, type Harness } from "../harness";
 import type { KesslerSnapshot } from "../surface";
+import { DEFLECTOR_BALL_CONTACT_RADIUS } from "../constants";
 import { offsetDeg, readBall } from "./reading";
 
 /** How many ticks of held rotation the ball is read across. */
@@ -53,7 +54,12 @@ it("holds radius 194 at the deflector's center angle tick over tick", async () =
     const ball = snap.balls[0];
     assertTrue(ball.parked, "the ball stays parked while it rides");
     const read = readBall(ball);
-    assertCloseTo(read.r, 194, 2, "the parked ball's center radius");
+    assertCloseTo(
+      read.r,
+      DEFLECTOR_BALL_CONTACT_RADIUS,
+      2,
+      "the parked ball's center radius",
+    );
     assertCloseTo(
       offsetDeg(snap.paddle.angleDeg, read.thetaDeg),
       0,

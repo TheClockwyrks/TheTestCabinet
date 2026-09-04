@@ -69,9 +69,11 @@ spends the last life, fixed in `specs/deflector-and-ball.md`, sets it to
 ### `waveclear`
 
 A banner announcing the cleared wave, shown over the field for `180` ticks.
-Only the interstitial's timer advances during it, and no input is read. When
-the timer lapses, `screen` returns to `playing` with the next wave laid out as
-`specs/rings.md` states.
+That count is the interstitial timer the snapshot reports as
+`interstitialTicks` in `specs/instrumentation.md`, and the clearing event sets
+it to `180`. Only that timer advances during the interstitial, and no input is
+read. When it lapses, `screen` returns to `playing` with the next wave laid
+out as `specs/rings.md` states.
 
 ### `paused`
 
@@ -95,15 +97,33 @@ reached. Entering it plays the `game-over` cue, and `confirm` returns to
 
 ## Menus
 
-`title` and `paused` carry a menu. Its entries are indexed from `0` at the
-top, and the snapshot's `menu.index`, fixed in `specs/instrumentation.md`, is
-the highlighted entry, drawn distinctly from the others so a player always
-sees which entry `confirm` would accept. Entering a menu-bearing screen
-highlights entry `0`, and on every other screen `menu.index` rests at `0`.
+`title` and `paused` carry a menu, indexed as the tables above index it. The
+snapshot's `menu.index`, fixed in `specs/instrumentation.md`, is the
+highlighted entry, drawn distinctly from the others so a player always sees
+which entry `confirm` would accept. On a screen with no menu `menu.index`
+rests at `0`.
 
-`up` moves the highlight up one entry and `down` moves it down one, each
-wrapping past the end to the other, and each move plays the `menu-move` cue.
-`confirm` accepts the highlighted entry and plays the `menu-select` cue.
+`up` moves the highlight to the previous entry and `down` moves it to the
+next, each wrapping past the end to the other, and each move plays the
+`menu-move` cue. `confirm` accepts the highlighted entry and plays the
+`menu-select` cue.
+
+Both menu-bearing screens are driven by pointer and by touch as well as by the
+keyboard, as `specs/controls.md` fixes, and each reports a hit region for
+every entry it shows through the `menuItemRect` reading of
+`specs/instrumentation.md`.
+
+### What is highlighted on arrival
+
+Arriving at a menu-bearing screen highlights the entry that led away from it
+to the screen just left, and entry `0` otherwise.
+
+| Arrival | Highlighted entry |
+| --- | --- |
+| `title`, entered from `howto` | `1`, `HOW TO PLAY` |
+| `title`, entered from `playing`, `paused`, or `gameover` | `0`, `START` |
+| `title`, when the game opens | `0`, `START` |
+| `paused`, on every entry into it | `0`, `RESUME` |
 
 ## What advances on each screen
 
@@ -121,8 +141,9 @@ simulation: one already playing keeps playing over a frozen field.
 
 ## The HUD
 
-The HUD is drawn on `playing`, near the top of the stage and clear of the
-containment field, and each readout is legible at a glance.
+The HUD is drawn on `playing`, clear of the containment field, so nothing it
+draws crosses the field of play, and each readout is legible at a glance.
+Where on the stage it sits is yours.
 
 | Readout | Content |
 | --- | --- |

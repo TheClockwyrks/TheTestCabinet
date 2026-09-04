@@ -5,15 +5,19 @@
 // start of a wave.", with the table giving 12, 16, and 20 slots and full hit
 // points of 1, 2, and 1 for rings 1 to 3, and "A session starts at wave `1`".
 //
-// THE ROUTE IS THE SURFACE'S OWN SESSION START. `setScreen("playing")` "starts
-// a fresh session exactly as confirming START does: score 0, 3 lives, wave 1,
-// every slot filled" (specs/instrumentation.md), so no menu stands between the
-// check and the layout it reads — a build with a broken title and a correct
-// wave layout fails the navigation points and passes this one.
+// THE ROUTE IS THE HARNESS'S OWN SESSION START: the sequence of atomic poses
+// that begins a session the way confirming START begins one, so no menu stands
+// between the check and the layout it reads — a build with a broken title and a
+// correct wave layout fails the navigation points and passes this one.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertLength } from "../assert";
-import { captureStill, openHarness, poseScene, type Harness } from "../harness";
+import {
+  captureStill,
+  openHarness,
+  startFreshSession,
+  type Harness,
+} from "../harness";
 import { figures } from "./rig";
 
 let h: Harness;
@@ -27,8 +31,7 @@ afterEach(async () => {
 });
 
 it("fills every slot of all three rings at full hit points", async () => {
-  await h.reset();
-  const snap = await poseScene(h, "playing");
+  const snap = await startFreshSession(h);
   await h.tick(1);
   await captureStill(h, "field");
 

@@ -74,7 +74,7 @@ describe("determinism through the surface", () => {
       const game = new Game();
       const api = createApi(game, tickingClock(game));
       api.setAutoStep(false);
-      api.reset({ seed: 42 });
+      api.reset(42);
       api.setScreen("playing");
       api.setPaddleAngle(15);
       api.launchBall();
@@ -93,7 +93,7 @@ describe("determinism through the surface", () => {
       const game = new Game();
       const api = createApi(game, tickingClock(game));
       api.setAutoStep(false);
-      api.reset({ seed });
+      api.reset(seed);
       api.setScreen("playing");
       // Rain hits until pod draws diverge: pierce destroys outright, and
       // wave advance held off keeps the session on `playing` throughout.

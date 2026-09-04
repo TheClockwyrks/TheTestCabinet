@@ -35,6 +35,25 @@ import type { DeepReadonly } from "ts-essentials";
 
 const FRAME_MS = 1000 / 60;
 
+class PointerishEvent extends Event {
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly isPrimary = true;
+  readonly pointerType: "mouse" | "touch";
+
+  constructor(
+    type: "pointerdown" | "pointermove" | "pointerup",
+    x: number,
+    y: number,
+    pointerType: "mouse" | "touch" = "mouse",
+  ) {
+    super(type);
+    this.clientX = x;
+    this.clientY = y;
+    this.pointerType = pointerType;
+  }
+}
+
 class KeyEvent extends Event {
   readonly code: string;
   readonly repeat: boolean;
@@ -57,6 +76,13 @@ interface Harness {
   tap(code: string, repeat?: boolean): void;
   down(code: string): void;
   up(code: string): void;
+  /** One pointer or touch event at a logical stage point, then its frame. */
+  point(
+    type: "pointerdown" | "pointermove" | "pointerup",
+    x: number,
+    y: number,
+    device?: "mouse" | "touch",
+  ): Promise<void>;
   pose(transition: (state: DeepReadonly<KesslerState>) => KesslerState): void;
   dispose(): void;
 }
@@ -123,6 +149,10 @@ async function createHarness(): Promise<Harness> {
     },
     down: (code) => events.dispatchEvent(new KeyEvent("keydown", code)),
     up: (code) => events.dispatchEvent(new KeyEvent("keyup", code)),
+    point: async (type, x, y, device = "mouse") => {
+      events.dispatchEvent(new PointerishEvent(type, x, y, device));
+      await engine.advance(1);
+    },
     pose: (transition) => void engine.apply(transition),
     dispose: () => engine.destroy(),
   };
@@ -216,6 +246,61 @@ describe("the keyboard", () => {
   });
 });
 
+describe("the pointer and the finger on the menus", () => {
+  /** The middle of the region the build reports for menu entry `index`. */
+  function center(index: number): { x: number; y: number } {
+    const rect = h.debug.menuItemRect(h.engine.state, index);
+    expect(rect).not.toBeNull();
+    return {
+      x: rect!.x + rect!.width / 2,
+      y: rect!.y + rect!.height / 2,
+    };
+  }
+
+  it("moves the highlight onto the entry the pointer entered", async () => {
+    const at = center(1);
+    await h.point("pointermove", at.x, at.y);
+    expect(snap().menu.index).toBe(1);
+    expect(snap().screen).toBe("title");
+    expect(h.cues.filter((cue) => cue === CUES.menuMove)).toHaveLength(1);
+  });
+
+  it("accepts the entry a press and release landed inside", async () => {
+    const at = center(1);
+    await h.point("pointermove", at.x, at.y);
+    await h.point("pointerdown", at.x, at.y);
+    await h.point("pointerup", at.x, at.y);
+    expect(snap().screen).toBe("howto");
+    expect(h.cues).toContain(CUES.menuSelect);
+  });
+
+  it("accepts nothing when the release falls outside the region", async () => {
+    const at = center(1);
+    await h.point("pointermove", at.x, at.y);
+    await h.point("pointerdown", at.x, at.y);
+    await h.point("pointermove", 8, 8);
+    await h.point("pointerup", 8, 8);
+    expect(snap().screen).toBe("title");
+    expect(snap().menu.index).toBe(1);
+  });
+
+  it("highlights and then accepts on a touch contact", async () => {
+    const at = center(1);
+    await h.point("pointerdown", at.x, at.y, "touch");
+    expect(snap().menu.index).toBe(1);
+    await h.point("pointerup", at.x, at.y, "touch");
+    expect(snap().screen).toBe("howto");
+  });
+
+  it("does nothing on a screen carrying no menu", async () => {
+    const at = center(1);
+    h.pose((state) => h.debug.setScreen(state, "playing"));
+    await h.point("pointerdown", at.x, at.y);
+    await h.point("pointerup", at.x, at.y);
+    expect(snap().screen).toBe("playing");
+  });
+});
+
 describe("the clock the engine owns", () => {
   it("resolves sixty ticks in a second of game time", async () => {
     h.pose((s) => h.debug.setScreen(s, "playing"));
@@ -225,6 +310,7 @@ describe("the clock the engine owns", () => {
 
   it("advances a launched ball by its speed per tick", async () => {
     h.pose((s) => h.debug.setScreen(s, "playing"));
+    h.pose((s) => h.debug.parkBall(s));
     h.pose((s) => h.debug.setPaddleAngle(s, 0));
     h.pose((s) => h.debug.launchBall(s));
     await h.engine.advance(30);

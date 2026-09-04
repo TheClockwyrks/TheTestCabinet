@@ -13,11 +13,11 @@ import { POD_KINDS } from "./constants";
 import {
   GAME_OVER_HEADING,
   GAME_TITLE,
-  PAUSE_MENU,
   STAGE_SIZE,
-  TITLE_MENU,
   WAVE_BONUS_PER_WAVE,
+  type ScreenName,
 } from "./figures";
+import { entryBaseline, menuEntries, menuItemRects } from "./menus";
 import { roundRect, text } from "./draw";
 import type { View } from "./flow";
 import { drawHud } from "./render";
@@ -65,14 +65,12 @@ function dim(ctx: Ctx, alpha: number): void {
  * One menu, entries indexed from `0` at the top, the highlighted entry drawn
  * distinctly so a player always sees which entry `confirm` would accept.
  */
-function drawMenu(
-  ctx: Ctx,
-  entries: readonly string[],
-  index: number,
-  top: number,
-): void {
+function drawMenu(ctx: Ctx, screen: ScreenName, index: number): void {
+  const entries = menuEntries(screen);
+  const rects = menuItemRects(screen);
+  if (entries === null || rects === null) return;
   entries.forEach((entry, i) => {
-    const y = top + i * 56;
+    const y = entryBaseline(rects[i]);
     const highlighted = i === index;
     text(ctx, entry, CX, y, {
       size: 26,
@@ -117,7 +115,7 @@ function drawTitle(ctx: Ctx, state: View): void {
     align: "center",
     spacing: 10,
   });
-  drawMenu(ctx, TITLE_MENU, state.menuIndex, 560);
+  drawMenu(ctx, "title", state.menuIndex);
   text(ctx, "W/S OR ARROWS - SELECT   ·   SPACE/ENTER - CONFIRM", CX, 730, {
     size: 13,
     color: COLORS.textFaint,
@@ -276,7 +274,7 @@ function drawPaused(ctx: Ctx, state: View): void {
     align: "center",
     spacing: 12,
   });
-  drawMenu(ctx, PAUSE_MENU, state.menuIndex, 494);
+  drawMenu(ctx, "paused", state.menuIndex);
   text(ctx, "ESC OR P - RESUME", CX, 626, {
     size: 13,
     color: COLORS.textFaint,

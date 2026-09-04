@@ -10,6 +10,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertLength } from "../assert";
 import { captureReplay, isolate, openHarness, type Harness } from "../harness";
+import { ballSpeedAtWave } from "../constants";
 import { readBall, unparked } from "./reading";
 
 /** Past the cap point: the uncapped formula would serve this wave at 570. */
@@ -37,5 +38,10 @@ it("serves a past-the-cap wave at exactly 480 units per second", async () => {
 
   const flying = unparked(after);
   assertLength(flying, 1, "the served ball is the only ball");
-  assertCloseTo(readBall(flying[0]).speed, 480, 2, "the capped serve speed");
+  assertCloseTo(
+    readBall(flying[0]).speed,
+    ballSpeedAtWave(WAVE),
+    2,
+    "the capped serve speed",
+  );
 });

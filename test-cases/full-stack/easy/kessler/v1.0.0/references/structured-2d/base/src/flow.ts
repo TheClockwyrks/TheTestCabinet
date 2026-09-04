@@ -23,6 +23,7 @@ import {
   type ActionName,
   type Screen,
 } from "./constants";
+import { menuEntryAt, menuItemRects, TITLE_HOWTO_ENTRY } from "./menus";
 import { nextFloat, seedRng } from "./rng";
 import { launchParkedBall, tickPlaying, type TickIo } from "./sim";
 import {
@@ -58,10 +59,17 @@ export const SILENT_HOOKS: TickHooks = {
  */
 const TICK_EPSILON = 1e-9;
 
-/** Enters `screen` with its top menu entry highlighted. */
+/**
+ * Enters `screen` from the one the game is on, highlighting the entry
+ * `specs/screens.md` fixes for that arrival: the entry that led away from the
+ * screen being entered to the screen just left, and entry `0` otherwise. Only
+ * `title` entered from `howto` is anything but `0`.
+ */
 function enter(state: KesslerState, screen: Screen): void {
+  const from = state.screen;
   state.screen = screen;
-  state.menuIndex = 0;
+  state.menuIndex =
+    screen === "title" && from === "howto" ? TITLE_HOWTO_ENTRY : 0;
 }
 
 /**
@@ -138,10 +146,7 @@ export function handleAction(
 ): void {
   switch (onScreen) {
     case "title":
-      menuAction(state, action, TITLE_ITEMS.length, hooks, (index) => {
-        if (index === 0) startFreshSession(state);
-        else enter(state, "howto");
-      });
+      menuAction(state, action, TITLE_ITEMS.length, hooks);
       break;
     case "howto":
       if (action === "confirm" || action === "back") enter(state, "title");
@@ -159,10 +164,7 @@ export function handleAction(
         enter(state, "playing");
         break;
       }
-      menuAction(state, action, PAUSE_ITEMS.length, hooks, (index) => {
-        if (index === 0) enter(state, "playing");
-        else discardSession(state);
-      });
+      menuAction(state, action, PAUSE_ITEMS.length, hooks);
       break;
     case "gameover":
       if (action === "confirm") discardSession(state);
@@ -176,15 +178,82 @@ function menuAction(
   action: ActionName,
   entries: number,
   hooks: TickHooks,
-  accept: (index: number) => void,
 ): void {
   if (action === "up" || action === "down") {
     const delta = action === "down" ? 1 : -1;
     state.menuIndex = (state.menuIndex + delta + entries) % entries;
     hooks.cue(CUES.menuMove);
   } else if (action === "confirm") {
+    acceptHighlighted(state, hooks);
+  }
+}
+
+/**
+ * Accepts the highlighted entry of the menu the game is standing on, which is
+ * what `confirm` does and what a pointer press and release inside an entry's
+ * region does (`specs/screens.md`, `specs/controls.md`).
+ */
+function acceptHighlighted(state: KesslerState, hooks: TickHooks): void {
+  const index = state.menuIndex;
+  if (state.screen === "title") {
     hooks.cue(CUES.menuSelect);
-    accept(state.menuIndex);
+    if (index === 0) startFreshSession(state);
+    else enter(state, "howto");
+    return;
+  }
+  if (state.screen === "paused") {
+    hooks.cue(CUES.menuSelect);
+    if (index === 0) enter(state, "playing");
+    else discardSession(state);
+  }
+}
+
+// --- The pointer and the finger on the menus (specs/controls.md) ---------
+
+/** One thing a pointer did, in the stage's own logical units. */
+export interface PointerMove {
+  /** Coming into contact, moving, or leaving contact. */
+  readonly type: "down" | "move" | "up";
+  readonly x: number;
+  readonly y: number;
+}
+
+/**
+ * One pointer sample, routed to the menu the game is standing on. A pointer
+ * over an entry's region highlights it; a press latches the entry it went
+ * down inside; and a release inside that same entry accepts it. A release
+ * anywhere else, and every sample on a screen with no menu, accepts nothing.
+ */
+export function handlePointer(
+  state: KesslerState,
+  sample: PointerMove,
+  hooks: TickHooks,
+): void {
+  if (menuItemRects(state.screen) === null) {
+    state.pointerPress = null;
+    return;
+  }
+  const over = menuEntryAt(state.screen, sample.x, sample.y);
+  if (over !== null && over !== state.menuIndex) {
+    state.menuIndex = over;
+    hooks.cue(CUES.menuMove);
+  }
+  if (sample.type === "down") {
+    state.pointerPress =
+      over === null ? null : { screen: state.screen, entry: over };
+    return;
+  }
+  if (sample.type === "up") {
+    const press = state.pointerPress;
+    state.pointerPress = null;
+    if (
+      press !== null &&
+      press.screen === state.screen &&
+      press.entry === over
+    ) {
+      state.menuIndex = press.entry;
+      acceptHighlighted(state, hooks);
+    }
   }
 }
 
@@ -221,25 +290,15 @@ export function enterWaveclear(state: KesslerState): void {
 }
 
 /**
- * Enters a screen exactly as the real transition into it does, with the
- * entering menu highlighting its top entry and no cue sounding
- * (`specs/instrumentation.md`'s `setScreen` table).
+ * Sets the screen and changes nothing else (`specs/instrumentation.md`'s
+ * `setScreen`): the score, the lives, the wave, the deflector, the balls, the
+ * rings, the pods, the timed effects, the shield, the interstitial timer, the
+ * menu highlight, and both driver switches all stand exactly as they stood,
+ * and no cue sounds. A caller that wants a screen arranged the way the real
+ * transition into it arranges it makes the calls that arrange it.
  */
 export function poseScreen(state: KesslerState, name: Screen): void {
-  switch (name) {
-    case "playing":
-      startFreshSession(state);
-      break;
-    case "waveclear":
-      enterWaveclear(state);
-      break;
-    case "title":
-      discardSession(state);
-      break;
-    default:
-      enter(state, name);
-      break;
-  }
+  state.screen = name;
 }
 
 /**
@@ -264,5 +323,6 @@ export function resetState(
   state.accumulator = 0;
   state.held.left = false;
   state.held.right = false;
+  state.pointerPress = null;
   state.nextId = 0;
 }

@@ -9,6 +9,7 @@ import { RINGS, type ActionName, type CueName } from "./constants";
 import { snapshotOf } from "./debug";
 import { ringSpeedForWave } from "./figures";
 import {
+  enterWaveclear,
   handleAction,
   poseScreen,
   resetState,
@@ -122,10 +123,43 @@ describe("the title menu", () => {
     expect(snapshot().screen).toBe("howto");
     act("confirm");
     expect(snapshot().screen).toBe("title");
-    act("down");
     act("confirm");
     act("back");
     expect(snapshot().screen).toBe("title");
+  });
+
+  it("returns from the how-to with HOW TO PLAY highlighted", () => {
+    const { act, snapshot } = makeGame();
+    act("down");
+    act("confirm");
+    act("back");
+    const snap = snapshot();
+    expect(snap.screen).toBe("title");
+    expect(snap.menu.index).toBe(1);
+  });
+
+  it("returns from a discarded session with START highlighted", () => {
+    const { act, snapshot } = makeGame();
+    act("confirm");
+    act("pause");
+    act("down");
+    act("confirm");
+    const snap = snapshot();
+    expect(snap.screen).toBe("title");
+    expect(snap.menu.index).toBe(0);
+  });
+
+  it("opens the pause menu on RESUME however far the highlight had moved", () => {
+    const { act, snapshot } = makeGame();
+    act("confirm");
+    act("pause");
+    act("down");
+    expect(snapshot().menu.index).toBe(1);
+    act("pause");
+    act("pause");
+    const snap = snapshot();
+    expect(snap.screen).toBe("paused");
+    expect(snap.menu.index).toBe(0);
   });
 });
 
@@ -210,7 +244,7 @@ describe("the wave-clear interstitial", () => {
   it("runs 180 ticks and lays out the next wave", () => {
     const { act, state, tick, snapshot } = makeGame();
     act("confirm");
-    poseScreen(state, "waveclear");
+    enterWaveclear(state);
     for (let i = 0; i < 179; i += 1) tick();
     expect(snapshot().screen).toBe("waveclear");
     tick();
@@ -228,7 +262,7 @@ describe("the wave-clear interstitial", () => {
   it("reads no input", () => {
     const { act, state, snapshot } = makeGame();
     act("confirm");
-    poseScreen(state, "waveclear");
+    enterWaveclear(state);
     act("confirm");
     act("back");
     act("launch");
@@ -243,7 +277,7 @@ describe("the wave-clear interstitial", () => {
     state.effects.shieldActive = true;
     state.nextId += 1;
     state.pods.push({ id: state.nextId, kind: "widen", r: 300, angleDeg: 0 });
-    poseScreen(state, "waveclear");
+    enterWaveclear(state);
     const snap = snapshot();
     expect(snap.balls).toEqual([]);
     expect(snap.pods).toEqual([]);

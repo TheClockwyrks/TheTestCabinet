@@ -1,29 +1,46 @@
-// states/quit-discards-session — after confirm on QUIT, confirming START
-// opens a fresh session rather than resuming the discarded one.
+// states/quit-discards-session — after confirm on QUIT, confirming START opens a
+// fresh session rather than resuming the discarded one.
 //
-// specs/screens.md, on `paused`: "`confirm` on `QUIT` discards the session
-// and returns to `title`"; on `title`: "`confirm` on `START` starts a fresh
-// session and sets `screen` to `playing`", with wave 1 laid out. A fresh
-// session holds score 0 and the 3 starting lives specs/scoring.md fixes.
+// specs/screens.md, on `paused`: "`confirm` on `QUIT` discards the session and
+// returns to `title`"; on `title`: "`confirm` on `START` starts a fresh session
+// and sets `screen` to `playing`", with wave 1 laid out. A fresh session holds
+// score 0 and the 3 starting lives specs/scoring.md fixes.
 //
-// The discarded session is posed to figures a fresh one can never hold —
-// score 4321, 1 life, wave 3 — so a build that quietly resumed it is told
-// from one that started over. The QUIT confirm itself IS this requirement, so
-// the route runs the real keys over the pause menu (down to QUIT, Enter, then
-// Enter again on START); the pause screen is entered through the surface so a
-// broken pause key fails its own point, not this one. Enter is the confirm
-// key pressed, deliberately, because Space also carries launch.
+// The discarded session is posed to figures a fresh one can never hold — score
+// 4321, 1 life, wave 3 — so a build that quietly resumed it is told from one that
+// started over. The two confirms ARE this requirement, so both are real key
+// presses; `Enter` is the key pressed, deliberately, because `Space` also
+// carries `launch`.
 //
-// START IS REACHED BY READING THE HIGHLIGHT, NOT BY ASSUMING IT. specs/screens.md
-// has entering `title` highlight entry 0, which is START — but that is
-// screens/menu-index-resets-on-entry's point. Here the highlight is read off the
-// snapshot on landing and walked to START with the real `down` key, so a build
-// whose highlight arrives stale fails its own point rather than this one.
+// EACH HIGHLIGHT IS POSED, NOT WALKED. Which entry a key press moves the
+// highlight onto is the controls category's point, and where a menu's highlight
+// lands on arrival is `screens/title-from-quit-highlights-start`; a build whose
+// only fault is one of those must fail there rather than here. The pause screen
+// is likewise entered through the surface, so a broken pause key fails its own
+// point.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLessThan } from "../assert";
-import { BINDINGS, START_LIVES, TITLE_MENU } from "../constants";
-import { captureReplay, openHarness, tap, type Harness } from "../harness";
+import { assertEqual } from "../assert";
+import { BINDINGS, PAUSE_MENU, START_LIVES, TITLE_MENU } from "../constants";
+import {
+  captureReplay,
+  openHarness,
+  poseMenu,
+  startFreshSession,
+  tap,
+  type Harness,
+} from "../harness";
+
+/** The key that carries `confirm` alone — `Space` also carries `launch`. */
+const CONFIRM = BINDINGS.confirm[1];
+/** Entry 1 of the pause menu: QUIT. Entry 0 of the title menu: START. */
+const QUIT_ENTRY = PAUSE_MENU.indexOf("QUIT");
+const START_ENTRY = TITLE_MENU.indexOf("START");
+
+/** Figures a fresh session can never hold, so a resumption is unmistakable. */
+const POSED_SCORE = 4321;
+const POSED_LIVES = 1;
+const POSED_WAVE = 3;
 
 let h: Harness;
 
@@ -36,40 +53,22 @@ afterEach(async () => {
 });
 
 it("opens a fresh session after confirm on QUIT", async () => {
-  await h.reset();
-  await h.debug.setScreen("playing");
-  await h.debug.setScore(4321);
-  await h.debug.setLives(1);
-  await h.debug.setWave(3);
-  await h.debug.setScreen("paused");
-  assertEqual(
-    (await h.snapshot()).menu.index,
-    0,
-    "the pause menu opens on RESUME",
-  );
+  await startFreshSession(h);
+  await h.debug.setScore(POSED_SCORE);
+  await h.debug.setLives(POSED_LIVES);
+  await h.debug.setWave(POSED_WAVE);
+  const paused = await poseMenu(h, "paused", QUIT_ENTRY);
+  assertEqual(paused.menu.index, QUIT_ENTRY, "the highlight on QUIT");
 
   await captureReplay(h, "quit-restart", async () => {
-    await tap(h, BINDINGS.down[0]);
-    assertEqual(
-      (await h.snapshot()).menu.index,
-      1,
-      "the highlight moved down to QUIT",
-    );
-    await tap(h, "Enter");
+    await tap(h, CONFIRM);
     assertEqual(
       (await h.snapshot()).screen,
       "title",
       "the title QUIT discards to",
     );
-    for (let moves = 0; (await h.snapshot()).menu.index !== 0; moves += 1) {
-      assertLessThan(
-        moves,
-        TITLE_MENU.length,
-        "down presses spent bringing the title highlight to START",
-      );
-      await tap(h, BINDINGS.down[0]);
-    }
-    await tap(h, "Enter");
+    await h.debug.setMenuIndex(START_ENTRY);
+    await tap(h, CONFIRM);
   });
 
   const fresh = await h.snapshot();

@@ -31,49 +31,45 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it(
-  "rebuilds from the committed tree without invoking a generation tool",
-  async () => {
-    try {
-      await h.tick(1);
-      await captureStill(h, "built-game");
-    } catch {
-      // Evidence only; the rebuild below carries the verdict.
-    }
+it("rebuilds from the committed tree without invoking a generation tool", async () => {
+  try {
+    await h.tick(1);
+    await captureStill(h, "built-game");
+  } catch {
+    // Evidence only; the rebuild below carries the verdict.
+  }
 
-    const lifecycleHits = installLifecycleToolCommands();
-    if (lifecycleHits.length > 0) {
-      fail(
-        "install lifecycle scripts that invoke no generation tool, so `npm ci` completes where the tools are absent",
-        `package.json runs a tool at install time: ${lifecycleHits.join("; ")}`,
-      );
-    }
+  const lifecycleHits = installLifecycleToolCommands();
+  if (lifecycleHits.length > 0) {
+    fail(
+      "install lifecycle scripts that invoke no generation tool, so `npm ci` completes where the tools are absent",
+      `package.json runs a tool at install time: ${lifecycleHits.join("; ")}`,
+    );
+  }
 
-    const rebuilt = rebuildWithoutTools();
-    if (rebuilt.toolsInvoked.length > 0) {
-      fail(
-        "`npm run build` completing without invoking a generation tool (specs/assets.md, production is a one-time step)",
-        `the build invoked: ${rebuilt.toolsInvoked.join(", ")}`,
-      );
-    }
-    if (!rebuilt.completed) {
-      fail(
-        "`npm run build` completing from the committed tree with the generation tools absent",
-        `it failed: ${rebuilt.failure ?? "with no output"}`,
-      );
-    }
-    if (!rebuilt.builtOutput) {
-      fail(
-        "`npm run build` producing a non-empty output directory (dist/, build/, or out/)",
-        "the rebuild completed but left no build output",
-      );
-    }
-    if (rebuilt.externalHtmlRefs.length > 0) {
-      fail(
-        "a built page that fetches nothing from outside its own output",
-        `index.html references: ${rebuilt.externalHtmlRefs.join(", ")}`,
-      );
-    }
-  },
-  300_000,
-);
+  const rebuilt = rebuildWithoutTools();
+  if (rebuilt.toolsInvoked.length > 0) {
+    fail(
+      "`npm run build` completing without invoking a generation tool (specs/assets.md, production is a one-time step)",
+      `the build invoked: ${rebuilt.toolsInvoked.join(", ")}`,
+    );
+  }
+  if (!rebuilt.completed) {
+    fail(
+      "`npm run build` completing from the committed tree with the generation tools absent",
+      `it failed: ${rebuilt.failure ?? "with no output"}`,
+    );
+  }
+  if (!rebuilt.builtOutput) {
+    fail(
+      "`npm run build` producing a non-empty output directory (dist/, build/, or out/)",
+      "the rebuild completed but left no build output",
+    );
+  }
+  if (rebuilt.externalHtmlRefs.length > 0) {
+    fail(
+      "a built page that fetches nothing from outside its own output",
+      `index.html references: ${rebuilt.externalHtmlRefs.join(", ")}`,
+    );
+  }
+}, 300_000);

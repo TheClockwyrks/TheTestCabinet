@@ -86,6 +86,15 @@ export class KesslerState extends GameState implements Session {
   readonly held = { left: false, right: false };
   /** Ticks left on the wave-clear interstitial while on `waveclear`. */
   interstitialTicks = 0;
+  /**
+   * The menu entry a pointer press is down inside, and the screen it went
+   * down on. A release inside the same entry of the same screen accepts it
+   * (`specs/controls.md`); anything else clears the latch and accepts
+   * nothing. It is derived from the contact alone, so any pose leaves it
+   * consistent: a pose that changes the screen leaves a press that can no
+   * longer match.
+   */
+  pointerPress: { screen: Screen; entry: number } | null = null;
   /** Unconsumed game time carried between frames, in seconds. */
   accumulator = 0;
 }

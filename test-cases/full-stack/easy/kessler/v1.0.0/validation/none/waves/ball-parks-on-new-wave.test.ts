@@ -21,7 +21,12 @@ import {
   SERVE_RADIUS,
   WAVECLEAR_TICKS,
 } from "../constants";
-import { captureReplay, openHarness, type Harness } from "../harness";
+import {
+  captureReplay,
+  openHarness,
+  poseInterstitial,
+  type Harness,
+} from "../harness";
 
 let h: Harness;
 
@@ -36,7 +41,7 @@ afterEach(async () => {
 it("parks one ball on the deflector when the new wave begins", async () => {
   await h.reset();
   await h.debug.setScreen("playing");
-  await h.debug.setScreen("waveclear");
+  await poseInterstitial(h);
   const during = await h.snapshot();
   assertEqual(during.balls.length, 0, "the interstitial holds no ball");
 

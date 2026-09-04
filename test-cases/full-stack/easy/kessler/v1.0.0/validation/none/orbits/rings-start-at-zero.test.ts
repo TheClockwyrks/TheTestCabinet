@@ -1,13 +1,11 @@
 // orbits/rings-start-at-zero — a fresh session starts every ring at angle 0.
 //
 // specs/rings.md: "Every ring starts a session, and starts each wave, at ring
-// angle `0`." The session is started through the surface —
-// specs/instrumentation.md's setScreen('playing') "starts a fresh session
-// exactly as confirming START does: ... every slot filled, ring angles at
-// `0`" — from a session whose three ring angles were first posed elsewhere,
-// so a build that merely never moved its rings is told apart from one that
-// starts them at 0. The reading is wrap-aware distance from 0, so 360-epsilon
-// and epsilon both read as the float dust they are.
+// angle `0`." The session is started through the harness's own sequence of
+// atomic poses, over a session whose three ring angles were first posed
+// elsewhere, so a build that merely never moved its rings is told apart from one
+// that starts them at 0. The reading is wrap-aware distance from 0, so
+// 360-epsilon and epsilon both read as the float dust they are.
 //
 // The menus stay untouched: the real key route into a session belongs to the
 // screens checks, and a build with a broken menu and a correct session start
@@ -15,7 +13,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo } from "../assert";
-import { captureStill, openHarness, type Harness } from "../harness";
+import {
+  captureStill,
+  openHarness,
+  startFreshSession,
+  type Harness,
+} from "../harness";
 import { advanceDeg, ringAngle } from "./rings";
 
 let h: Harness;
@@ -36,8 +39,7 @@ it("starts all three rings at angle 0", async () => {
   await h.debug.setRingAngle(2, 190);
   await h.debug.setRingAngle(3, 305);
 
-  await h.debug.setScreen("playing");
-  const fresh = await h.snapshot();
+  const fresh = await startFreshSession(h);
 
   await h.tick(1);
   await captureStill(h, "fresh");

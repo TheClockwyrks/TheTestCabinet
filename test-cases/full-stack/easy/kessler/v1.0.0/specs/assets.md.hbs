@@ -118,7 +118,7 @@ Produce each of these with `particle-2d` as a `system.json`, and play it live.
 | System | File | Fired at |
 | --- | --- | --- |
 | Destruction burst | `assets/particles/burst.json` | the arc center of a destroyed target |
-| Impact spark | `assets/particles/spark.json` | the contact point of a paddle, containment, or shield reflection |
+| Impact spark | `assets/particles/spark.json` | the contact point of a deflector, containment, or shield reflection |
 | Burn-up | `assets/particles/burnup.json` | a ball or pod reaching the planet |
 
 Each system is authored radially symmetric, so an instance reads correctly at
@@ -204,8 +204,9 @@ sits under the cues rather than competing with them.
   drowns a bed.
 
 {{#if (eq engine.slug "none")}}
-Decode each `.wav` with the Web Audio API, play a cue on its event, and run the
-beds through looping sources.
+Each cue plays from its produced file on the event that fires it, and each bed
+plays from its produced file and loops continuously under the screens listed
+above.
 {{else if (eq engine.slug "simple-2d")}}
 Bind each name in `CUES` to its file with `api.audio.load`, play a cue on its
 event, and run the beds through `api.audio.loop` and `api.audio.stop`.

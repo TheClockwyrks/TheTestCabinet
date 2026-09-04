@@ -407,11 +407,16 @@ export type CueName = (typeof CUE_NAMES)[number];
 export const MUSIC_TITLE = "music-title";
 export const MUSIC_PLAY = "music-play";
 
+/** The least each bed runs before it loops, in seconds. */
+export const MUSIC_MIN_SECONDS = 12;
+
 /** The ball sheet: six frames, advancing one frame per 5 ticks, wrapping. */
 export const BALL_SHEET_FRAMES = 6;
 export const BALL_SPIN_TICKS_PER_FRAME = 5;
 
 /** The sprite canvas sizes, in pixels (one logical unit each at draw time). */
 export const PLANET_SPRITE_SIZE = 160;
+/** The planet's disc, across, on that canvas. */
+export const PLANET_DISC_SIZE = 140;
 export const POD_SPRITE_SIZE = 24;
 export const BALL_SPRITE_SIZE = 24;
