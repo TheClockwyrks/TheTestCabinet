@@ -4,6 +4,10 @@
 // shown over the field for `180` ticks." The banner's copy is the build's to
 // write, so announcing the cleared wave is read as the frame drawing text that
 // speaks of the wave or of the clear.
+//
+// THE INTERSTITIAL IS POSED THE WAY THE CLEARING EVENT ENTERS IT, through the
+// harness's own sequence of atomic poses — `setScreen` sets the screen and
+// nothing else — so the banner is read over a screen a cleared wave would leave.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertMatches } from "../assert";
@@ -11,7 +15,7 @@ import {
   captureStill,
   drawnText,
   openHarness,
-  poseScene,
+  poseInterstitial,
   type Harness,
 } from "../harness";
 
@@ -26,7 +30,7 @@ afterEach(async () => {
 });
 
 it("draws a banner announcing the cleared wave", async () => {
-  const posed = await poseScene(h, "waveclear");
+  const posed = await poseInterstitial(h);
   assertEqual(posed.screen, "waveclear", "the screen the banner is read from");
 
   const { calls } = await h.frameDraw();

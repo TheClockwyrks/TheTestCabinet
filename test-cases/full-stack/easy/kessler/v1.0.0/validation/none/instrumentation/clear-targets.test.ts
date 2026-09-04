@@ -16,14 +16,19 @@
 // pod read; one that treats "zero live targets" as the clearing event fails the
 // screen read.
 //
-// The field is the one a fresh session lays out (`setScreen("playing")`), so
-// the call is exercised against every slot of all three rings; the parked ball
-// and the switches are left exactly as that entry posed them, because what the
-// call must NOT do is the requirement.
+// The field is the one a fresh session lays out, entered through the harness's
+// own sequence of atomic poses, so the call is exercised against every slot of
+// all three rings; the parked ball and the switches are left exactly as that
+// entry posed them, because what the call must NOT do is the requirement.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
-import { captureStill, openHarness, poseScene, type Harness } from "../harness";
+import {
+  captureStill,
+  openHarness,
+  startFreshSession,
+  type Harness,
+} from "../harness";
 
 /** Ticks the emptied field is watched for a clearing that must not come. */
 const WATCH_TICKS = 30;
@@ -39,7 +44,7 @@ afterEach(async () => {
 });
 
 it("empties the rings and plays on in playing", async () => {
-  const laid = await poseScene(h, "playing");
+  const laid = await startFreshSession(h);
   const targetsLaid = laid.rings.reduce(
     (count, ring) => count + ring.targets.length,
     0,

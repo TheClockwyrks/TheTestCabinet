@@ -32,9 +32,12 @@ export const REQUIRED_OPS = [
   "step",
   "reset",
   "snapshot",
+  "menuItemRect",
   "setScreen",
   "setScore",
   "setLives",
+  "setMenuIndex",
+  "setInterstitialTicks",
   "setWave",
   "setPaddleAngle",
   "launchBall",
@@ -56,9 +59,15 @@ export const REQUIRED_OPS = [
 /** The name of one operation the surface carries. */
 export type OperationName = (typeof REQUIRED_OPS)[number];
 
-/** `reset`'s options: the seed the pod generator is laid with. */
-export interface ResetOptions {
-  seed?: number;
+/**
+ * The hit region `menuItemRect` reports, in the stage's logical units, with
+ * `(x, y)` the region's top-left corner.
+ */
+export interface MenuItemRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 /** One live ball, as the snapshot lists it: spawn order, oldest first. */
@@ -113,6 +122,10 @@ export interface KesslerSnapshot {
   wave: number;
   score: number;
   lives: number;
+  /** The seed the last `reset` laid the pod generator with. */
+  seed: number;
+  /** Ticks left of the interstitial; counts down on `waveclear` alone. */
+  interstitialTicks: number;
   /** Whether the frame loop advances the simulation from the wall clock. */
   autoStep: boolean;
   /** The two driver switches, each on by default and restored by `reset`. */
@@ -148,16 +161,26 @@ export interface KesslerDebugApi {
   /** Run `ticks` whole ticks (>= 1, default 1), each followed by a render. */
   step(ticks?: number): void;
 
-  /** Restore the boot state; `options.seed` seeds the pod generator. */
-  reset(options?: ResetOptions): void;
+  /** Restore the boot state; `seed` seeds the pod generator. */
+  reset(seed?: number): void;
   /** A pure read of the state. It changes nothing. */
   snapshot(): KesslerSnapshot;
+  /**
+   * Where the build drew menu entry `index` on the current screen, or `null`
+   * off a menu and for an `index` outside the menu's entries. It changes
+   * nothing.
+   */
+  menuItemRect(index: number): MenuItemRect | null;
 
-  /** Enter a screen exactly as the real transition into it enters it. */
+  /** Set `screen` to `name`, and change nothing else. */
   setScreen(name: Screen): void;
 
   setScore(n: number): void;
   setLives(n: number): void;
+  /** Set the highlighted menu entry; off a menu, changes nothing. */
+  setMenuIndex(n: number): void;
+  /** Set the interstitial timer, in whole ticks. */
+  setInterstitialTicks(ticks: number): void;
   /** Set the wave counter and put the wave-`n` figures in force. */
   setWave(n: number): void;
 

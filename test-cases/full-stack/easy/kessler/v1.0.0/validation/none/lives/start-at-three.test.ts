@@ -1,19 +1,24 @@
 // lives/start-at-three — a fresh session opens holding 3 lives.
 //
 // specs/screens.md starts a session with the lives figure specs/field.md's
-// life-loss check spends, and specs/instrumentation.md fixes the figure on the
-// surface route this check takes: setScreen('playing') "starts a fresh session
-// exactly as confirming START does: score `0`, `3` lives, wave `1` ...". The
-// lives are first posed down to 1, so a session that merely inherits whatever
-// lives stood is told apart from one that starts at 3.
+// life-loss check spends, and specs/instrumentation.md fixes it on the boot
+// state `reset` restores: "`3` lives". The lives are first posed down to 1, so a
+// session that merely inherits whatever lives stood is told apart from one that
+// starts at 3.
 //
-// The menus stay untouched: the real key route into a session belongs to the
+// The session is begun through the harness's own sequence of atomic poses, so
+// the menus stay untouched: the real key route into a session belongs to the
 // screens checks.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { START_LIVES } from "../constants";
-import { captureStill, openHarness, type Harness } from "../harness";
+import {
+  captureStill,
+  openHarness,
+  startFreshSession,
+  type Harness,
+} from "../harness";
 
 let h: Harness;
 
@@ -31,8 +36,7 @@ it("starts a fresh session with 3 lives", async () => {
   // Disturb the figure, so the next session's 3 is the session start's own.
   await h.debug.setLives(1);
 
-  await h.debug.setScreen("playing");
-  const fresh = await h.snapshot();
+  const fresh = await startFreshSession(h);
 
   await h.tick(1);
   await captureStill(h, "fresh");

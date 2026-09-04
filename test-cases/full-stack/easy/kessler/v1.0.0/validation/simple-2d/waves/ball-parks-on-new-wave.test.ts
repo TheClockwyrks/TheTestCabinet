@@ -20,6 +20,7 @@ import {
   angularOffset,
   captureReplay,
   openHarness,
+  poseInterstitial,
   xyToPolar,
   type Harness,
 } from "../harness";
@@ -37,7 +38,7 @@ afterEach(() => {
 it("parks one ball on the deflector when the new wave begins", async () => {
   h.reset();
   h.debug.setScreen("playing");
-  h.debug.setScreen("waveclear");
+  poseInterstitial(h);
   const during = h.snapshot();
   assertEqual(during.balls.length, 0, "the interstitial holds no ball");
 

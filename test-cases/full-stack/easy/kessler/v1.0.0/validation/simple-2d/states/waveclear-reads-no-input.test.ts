@@ -15,7 +15,13 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { KEYS, WAVECLEAR_TICKS } from "../constants";
-import { captureReplay, hold, openHarness, type Harness } from "../harness";
+import {
+  captureReplay,
+  hold,
+  openHarness,
+  poseInterstitial,
+  type Harness,
+} from "../harness";
 
 /** How long the rotation is held: well inside the 180-tick interstitial. */
 const HELD_TICKS = 100;
@@ -34,7 +40,7 @@ it("ignores a held rotation during the interstitial", async () => {
   h.reset();
   h.debug.setScreen("playing");
   h.debug.setPaddleAngle(137);
-  h.debug.setScreen("waveclear");
+  poseInterstitial(h);
   const entered = h.snapshot();
   assertEqual(
     entered.screen,

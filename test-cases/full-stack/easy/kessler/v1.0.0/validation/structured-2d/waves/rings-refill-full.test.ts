@@ -12,7 +12,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { WAVECLEAR_TICKS } from "../constants";
-import { captureStill, openHarness, type Harness } from "../harness";
+import {
+  captureStill,
+  openHarness,
+  poseInterstitial,
+  type Harness,
+} from "../harness";
 import { RINGS, totalTargets } from "./rig";
 
 let h: Harness;
@@ -29,7 +34,7 @@ it("refills every slot of every ring at full hit points", async () => {
   h.reset();
   h.debug.setScreen("playing");
   h.debug.clearTargets();
-  h.debug.setScreen("waveclear");
+  poseInterstitial(h);
   const emptied = h.snapshot();
   assertEqual(totalTargets(emptied), 0, "the field entering the interstitial");
 

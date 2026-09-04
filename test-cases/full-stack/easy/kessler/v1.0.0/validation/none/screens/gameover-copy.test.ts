@@ -3,11 +3,11 @@
 // specs/screens.md, on `gameover`: "Shows the heading `GAME OVER`, the final
 // score, and the wave the session reached."
 //
-// The score and wave are posed before the screen is entered —
-// `setScreen('gameover')` enters "exactly as losing the last life enters it,
-// showing the score and wave as they stand" (specs/instrumentation.md) — with
-// figures chosen so neither is a digit-substring of the other or of anything
-// else on the frame.
+// The score and wave are posed before the screen is entered — `setScreen` sets
+// the screen and leaves "the score, the lives, the wave ... exactly as they
+// stood" (specs/instrumentation.md), so what the screen shows is what was posed
+// — with figures chosen so neither is a digit-substring of the other or of
+// anything else on the frame.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertTrue } from "../assert";
@@ -16,7 +16,7 @@ import {
   captureStill,
   drewText,
   openHarness,
-  poseScene,
+  startFreshSession,
   type Harness,
 } from "../harness";
 
@@ -37,7 +37,7 @@ const FINAL_SCORE = 850;
 const FINAL_WAVE = 6;
 
 it("draws GAME OVER, the final score, and the wave reached", async () => {
-  await poseScene(h, "playing");
+  await startFreshSession(h);
   await h.debug.setScore(FINAL_SCORE);
   await h.debug.setWave(FINAL_WAVE);
   await h.debug.setScreen("gameover");

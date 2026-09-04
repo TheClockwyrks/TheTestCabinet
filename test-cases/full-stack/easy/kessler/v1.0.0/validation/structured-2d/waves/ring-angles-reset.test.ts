@@ -19,6 +19,7 @@ import {
   angularOffset,
   captureStill,
   openHarness,
+  poseInterstitial,
   type Harness,
 } from "../harness";
 
@@ -38,7 +39,7 @@ it("resets every ring angle to 0 for the new wave", async () => {
   h.debug.setRingAngle(1, 123);
   h.debug.setRingAngle(2, 210);
   h.debug.setRingAngle(3, 301);
-  h.debug.setScreen("waveclear");
+  poseInterstitial(h);
 
   const after = await h.tick(WAVECLEAR_TICKS);
   captureStill(h, "reset-angles");

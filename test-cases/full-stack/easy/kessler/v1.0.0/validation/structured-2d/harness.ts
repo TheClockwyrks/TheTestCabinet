@@ -81,16 +81,24 @@ import {
 } from "@test-cabinet/structured-2d";
 import { BACKGROUND, game as build } from "../src/game";
 import { fail } from "./assert";
-import { STAGE_CX, STAGE_CY, STAGE_H, STAGE_W, TICK_MS } from "./constants";
+import {
+  STAGE_CX,
+  STAGE_CY,
+  STAGE_H,
+  STAGE_W,
+  TICK_MS,
+  WAVECLEAR_TICKS,
+} from "./constants";
 import {
   REQUIRED_OPS,
   type KesslerDebugApi,
   type KesslerSnapshot,
+  type MenuItemRect,
   type PodKind,
   type Screen,
 } from "./surface";
 
-export type { KesslerDebugApi, KesslerSnapshot, PodKind, Screen };
+export type { KesslerDebugApi, KesslerSnapshot, MenuItemRect, PodKind, Screen };
 export { REQUIRED_OPS };
 
 /** The case's surface, exactly as `surface.ts` specifies it. */
@@ -337,7 +345,8 @@ function serveWorkspaceAssets(): void {
   hostServed = true;
   const host = globalThis as unknown as Record<string, unknown>;
   const inherited = host.fetch as
-    ((input: string, init?: unknown) => Promise<Response>) | undefined;
+    | ((input: string, init?: unknown) => Promise<Response>)
+    | undefined;
 
   host.fetch = async (input: unknown, init?: unknown): Promise<Response> => {
     const url = typeof input === "string" ? input : String(input);
@@ -428,6 +437,11 @@ export interface FrameDraw {
 
 export interface Harness {
   readonly engine: Engine<KesslerSurface>;
+  /**
+   * The target the engine reads input off: where a key event and a pointer
+   * event are dispatched, as the engine's validator pages describe.
+   */
+  readonly keys: EventTarget;
   /**
    * The world currently open, read fresh on every access. Kessler runs in ONE
    * level for the whole session (`specs/overview.md`), so this world lives as
@@ -726,6 +740,7 @@ export async function openHarness(
 
   const harness: Harness = {
     engine,
+    keys,
     get world() {
       return engine.world;
     },
@@ -746,7 +761,7 @@ export async function openHarness(
     timeMs: () => engine.frame().timeMs,
 
     snapshot: () => debug.snapshot(),
-    reset: (seed) => debug.reset(seed === undefined ? undefined : { seed }),
+    reset: (seed) => debug.reset(seed),
 
     advance: (frames) => engine.advance(frames),
 
@@ -1573,4 +1588,158 @@ export function captureStill(h: Harness, outputId: string): void {
   } catch (error) {
     console.warn(`kessler: could not write ${destination}: ${String(error)}`);
   }
+}
+
+/**
+ * Start a fresh session the way confirming START starts one, out of atomic
+ * poses: the reset lays wave 1 — score `0`, `3` lives, wave `1`, every slot
+ * filled, every ring angle at `0`, the wave-1 figures in force, the deflector
+ * at angle `90` with its baseline span — `setScreen("playing")` puts the game
+ * on the live field, and `parkBall` puts the serve on the deflector.
+ *
+ * `setScreen` sets the screen and nothing else, so the arrangement is this
+ * sequence rather than the call: the authoring guide puts every compound
+ * sequence in the harness, and this is the one every check that needs a
+ * session in play shares. `seed` seeds the pod generator.
+ */
+export function startFreshSession(h: Harness, seed?: number): KesslerSnapshot {
+  h.reset(seed);
+  h.debug.setScreen("playing");
+  h.debug.parkBall();
+  return h.snapshot();
+}
+
+/**
+ * Enter the interstitial the way the clearing event enters it, out of atomic
+ * poses: every ball, every pod, every timed effect and the shield are removed,
+ * the interstitial timer is set to the `180` ticks `specs/screens.md` fixes,
+ * and the screen becomes `waveclear`.
+ *
+ * The wave the interstitial is running out belongs to the caller: it poses
+ * `setWave` and the ring state it wants before calling this.
+ */
+export function poseInterstitial(
+  h: Harness,
+  ticks: number = WAVECLEAR_TICKS,
+): KesslerSnapshot {
+  h.debug.clearBalls();
+  h.debug.clearPods();
+  for (const kind of ["widen", "narrow", "pierce"] as const) {
+    h.debug.setEffectTicks(kind, 0);
+  }
+  h.debug.setShield(false);
+  h.debug.setInterstitialTicks(ticks);
+  h.debug.setScreen("waveclear");
+  return h.snapshot();
+}
+
+/**
+ * Stand on the menu-bearing screen `screen` with entry `index` highlighted,
+ * through the two poses that say exactly that and nothing else.
+ *
+ * The route for every check whose requirement is what `confirm` does to an
+ * entry rather than how the highlight got there: walking to the entry with the
+ * `down` key would fail the check on a build whose only fault is its `down`
+ * key, which is a defect `controls/arrow-down-moves-highlight` already decides.
+ */
+export function poseMenu(
+  h: Harness,
+  screen: Screen,
+  index: number,
+): KesslerSnapshot {
+  h.debug.setScreen(screen);
+  h.debug.setMenuIndex(index);
+  return h.snapshot();
+}
+
+/**
+ * The hit region the build reports for menu entry `index` on the screen it is
+ * standing on, or `null` where there is no such entry.
+ *
+ * The layout is the build's — `specs/screens.md` fixes no position for a menu —
+ * so a check that drives the pointer at an entry asks the build where it drew
+ * it, exactly as `specs/instrumentation.md` has it report.
+ */
+export function menuRect(h: Harness, index: number): MenuItemRect | null {
+  return h.debug.menuItemRect(index);
+}
+
+/** The middle of a reported hit region, which is where a press aims. */
+export function rectCenter(rect: MenuItemRect): { x: number; y: number } {
+  return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+}
+
+/* -------------------------------------------------------------------------- */
+/* The pointer and the finger                                                 */
+/* -------------------------------------------------------------------------- */
+//
+// The engine owns the pointer as it owns the keyboard, reading `clientX`,
+// `clientY`, `isPrimary` and `pointerType` off events dispatched at the same
+// target the keys go to. The harness pins the surface to the stage's own size
+// at a device pixel ratio of `1`, so a logical stage point IS the client
+// position an event carries.
+//
+// EACH PART OF A GESTURE RUNS ITS OWN FRAME, because the engine closes its
+// input frame each time one runs: a press and a release delivered inside one
+// frame would be one sample list rather than the two moments a build reads.
+
+/** One pointer event, as the engine reads it off the target. */
+function pointerEvent(
+  type: "pointerdown" | "pointermove" | "pointerup",
+  x: number,
+  y: number,
+  device: "mouse" | "touch",
+): Event {
+  return Object.assign(new Event(type), {
+    clientX: x,
+    clientY: y,
+    isPrimary: true,
+    pointerType: device,
+  });
+}
+
+/** Move the pointer onto the logical stage point `(x, y)`, and run its frame. */
+export async function pointerTo(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<void> {
+  h.keys.dispatchEvent(pointerEvent("pointermove", x, y, "mouse"));
+  await h.advance(1);
+}
+
+/** Press the primary button where the pointer stands, and run its frame. */
+export async function pointerDown(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<void> {
+  h.keys.dispatchEvent(pointerEvent("pointerdown", x, y, "mouse"));
+  await h.advance(1);
+}
+
+/** Release the primary button where the pointer stands, and run its frame. */
+export async function pointerUp(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<void> {
+  h.keys.dispatchEvent(pointerEvent("pointerup", x, y, "mouse"));
+  await h.advance(1);
+}
+
+/** Land a touch contact on the logical stage point `(x, y)`, and run its frame. */
+export async function touchDown(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<void> {
+  h.keys.dispatchEvent(pointerEvent("pointerdown", x, y, "touch"));
+  await h.advance(1);
+}
+
+/** Lift the touch contact at `(x, y)`, and run its frame. */
+export async function touchUp(h: Harness, x: number, y: number): Promise<void> {
+  h.keys.dispatchEvent(pointerEvent("pointerup", x, y, "touch"));
+  await h.advance(1);
 }

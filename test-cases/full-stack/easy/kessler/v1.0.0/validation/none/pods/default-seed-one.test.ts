@@ -4,7 +4,7 @@
 // specs/pods.md: "A fresh session seeds it with DEFAULT_SEED (1), and pod
 // draws are the only thing that consumes it." The reading is the item's own
 // comparison: a session reset with NO seed, played through three destructions,
-// sheds exactly what a reset({ seed: 1 }) session played the same way sheds.
+// sheds exactly what a reset(1) session played the same way sheds.
 // The seed-1 stream sheds on its second draw (mulberry32(1): 0.6271 then
 // 0.0027), so the comparison cannot pass on two empty runs.
 //
@@ -49,11 +49,7 @@ it("sheds as a seed-1 session sheds when reset names no seed", async () => {
   );
   const seeded = await playSession(h, DEFAULT_SEED);
 
-  assertDeepEqual(
-    fresh,
-    seeded,
-    "the fresh session's sheds, against reset({ seed: 1 })",
-  );
+  assertDeepEqual(fresh, seeded, "the fresh session's sheds, against reset(1)");
   // Vacuity guard: the specification's own seed-1 stream sheds within three
   // draws, so two empty runs cannot pass this item quietly.
   assertTrue(

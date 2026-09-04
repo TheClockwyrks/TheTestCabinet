@@ -69,6 +69,11 @@ it("reports every documented field, with the posed values", async () => {
   assertEqual(typeof s.paddle.spanDeg, "number", "paddle.spanDeg");
   assertEqual(typeof s.menu.index, "number", "menu.index");
 
+  // The two fields a pose sets and the snapshot reads back, so `reset(seed)`
+  // and `setInterstitialTicks` can each be verified by setting and reading.
+  assertEqual(typeof s.seed, "number", "seed");
+  assertEqual(typeof s.interstitialTicks, "number", "interstitialTicks");
+
   // The balls, in spawn order, every documented field carrying its pose.
   assertLength(s.balls, 2, "balls");
   for (const [i, posed] of [BALL_A, BALL_B].entries()) {

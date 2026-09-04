@@ -14,7 +14,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { WAVECLEAR_TICKS } from "../constants";
-import { captureStill, openHarness, type Harness } from "../harness";
+import {
+  captureStill,
+  openHarness,
+  poseInterstitial,
+  type Harness,
+} from "../harness";
 
 let h: Harness;
 
@@ -30,7 +35,7 @@ it("raises the wave counter by one when the interstitial ends", async () => {
   await h.reset();
   await h.debug.setScreen("playing");
   await h.debug.setWave(3);
-  await h.debug.setScreen("waveclear");
+  await poseInterstitial(h);
 
   const during = await h.tick(WAVECLEAR_TICKS - 1);
   assertEqual(during.screen, "waveclear", "the screen after 179 ticks");

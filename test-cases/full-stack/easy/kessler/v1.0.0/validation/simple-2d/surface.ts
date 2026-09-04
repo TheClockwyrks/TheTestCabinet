@@ -32,7 +32,12 @@ export const DEFAULT_SEED = 1;
 
 /** The six screens, as specs/screens.md names them. The game opens on `title`. */
 export type Screen =
-  "title" | "howto" | "playing" | "waveclear" | "paused" | "gameover";
+  | "title"
+  | "howto"
+  | "playing"
+  | "waveclear"
+  | "paused"
+  | "gameover";
 
 /** The five salvage pod kinds, as specs/pods.md names them. */
 export type PodKind = "widen" | "multiball" | "shield" | "pierce" | "narrow";
@@ -48,9 +53,12 @@ export type EffectKind = "widen" | "narrow" | "pierce";
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "menuItemRect",
   "setScreen",
   "setScore",
   "setLives",
+  "setMenuIndex",
+  "setInterstitialTicks",
   "setWave",
   "setPaddleAngle",
   "launchBall",
@@ -79,11 +87,17 @@ export type OperationName = (typeof REQUIRED_OPS)[number];
  * current state and hand back, and which to run through `engine.apply`; the
  * surface's shape alone cannot say at runtime, so the specification names them.
  */
-export const READINGS = ["snapshot"] as const;
+export const READINGS = ["snapshot", "menuItemRect"] as const;
 
-/** `reset`'s options: the seed the pod generator is laid with. */
-export interface ResetOptions {
-  seed?: number;
+/**
+ * The hit region `menuItemRect` reports, in the stage's logical units, with
+ * `(x, y)` the region's top-left corner.
+ */
+export interface MenuItemRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 /** One live ball, parked included, as the snapshot reports it. */
@@ -132,6 +146,10 @@ export interface KesslerSnapshot {
   wave: number;
   score: number;
   lives: number;
+  /** The seed the last `reset` laid the pod generator with. */
+  seed: number;
+  /** Ticks left of the interstitial; counts down on `waveclear` alone. */
+  interstitialTicks: number;
   /** The two driver switches. */
   waveAdvance: boolean;
   podSpawn: boolean;
@@ -168,17 +186,30 @@ export interface KesslerSnapshot {
  * `spawnBall` at the cap, `parkBall` beside a parked ball).
  */
 export interface KesslerDebugApi<S = unknown> {
-  /** Restores the boot state; `options.seed` seeds the pod generator. */
-  reset(state: DeepReadonly<S>, options?: ResetOptions): S;
+  /** Restores the boot state; `seed` seeds the pod generator. */
+  reset(state: DeepReadonly<S>, seed?: number): S;
   /** A pure reading of `state`. Poses nothing. */
   snapshot(state: DeepReadonly<S>): KesslerSnapshot;
+  /**
+   * Where the build drew menu entry `index` on `state`'s screen, or `null`
+   * off a menu and for an `index` outside the menu's entries. Poses nothing.
+   */
+  menuItemRect(state: DeepReadonly<S>, index: number): MenuItemRect | null;
 
-  /** Enters `name` exactly as the real transition into it does. */
+  /** Sets `screen` to `name`, and changes nothing else. */
   setScreen(state: DeepReadonly<S>, name: Screen): S;
   /** Sets the score to `n`, a whole number of at least 0. */
   setScore(state: DeepReadonly<S>, n: number): S;
   /** Sets the lives to `n`, a whole number of at least 0. */
   setLives(state: DeepReadonly<S>, n: number): S;
+  /**
+   * Sets the highlighted menu entry to `n`, a whole number from `0` to the
+   * current screen's entry count minus `1`. No cue sounds; off a menu the
+   * call changes nothing.
+   */
+  setMenuIndex(state: DeepReadonly<S>, n: number): S;
+  /** Sets the interstitial timer to `ticks`, a whole number of at least `0`. */
+  setInterstitialTicks(state: DeepReadonly<S>, ticks: number): S;
   /** Sets the wave to `n` >= 1 and puts the wave-`n` figures in force. */
   setWave(state: DeepReadonly<S>, n: number): S;
 
