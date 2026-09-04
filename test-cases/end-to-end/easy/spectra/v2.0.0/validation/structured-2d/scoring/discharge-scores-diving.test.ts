@@ -55,7 +55,6 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { requireDrone } from "./scene";
 
 /**
  * Where the two divers stand, in logical units.

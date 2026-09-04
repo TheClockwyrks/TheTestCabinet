@@ -34,7 +34,6 @@ import {
   droneOf,
   fireAt,
   findDrone,
-  poseDrone,
   startStage,
   type Harness,
   type SpectraSnapshot,

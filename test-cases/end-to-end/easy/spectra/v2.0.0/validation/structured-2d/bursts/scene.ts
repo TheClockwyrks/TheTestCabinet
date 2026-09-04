@@ -11,7 +11,6 @@ import { assertLength, assertTrue } from "../assert";
 import { PLAYER_BULLET_SPEED } from "../constants";
 import {
   fireAt,
-  poseDrone,
   posePlayerBullet,
   ticksFor,
   type Band,

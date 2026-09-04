@@ -9,13 +9,7 @@
 
 import { assertLength, assertTrue } from "../assert";
 import { PLAYER_BULLET_SPEED } from "../constants";
-import {
-  poseDrone,
-  SHOT_GAP,
-  ticksFor,
-  type Band,
-  type Harness,
-} from "../harness";
+import { SHOT_GAP, ticksFor, type Band, type Harness } from "../harness";
 
 /** What {@link firedPop} found: the burst the shot started, and when. */
 export interface Pop {

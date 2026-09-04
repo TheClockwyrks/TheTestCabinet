@@ -40,12 +40,7 @@ import {
   SCORE_FLUX_DIVE,
   SCORE_SHARD_DIVE,
 } from "../constants";
-import {
-  assertEqual,
-  assertLength,
-  assertNotNull,
-  assertNull,
-} from "../assert";
+import { assertEqual, assertLength, assertNull } from "../assert";
 import {
   captureStill,
   createHarness,

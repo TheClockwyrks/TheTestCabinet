@@ -20,10 +20,10 @@
 // coincidence.
 //
 // EVERY BOOLEAN IS POSED BOTH WAYS, AND THAT IS NOT PEDANTRY. `startPosed` shuts
-// all three world gates and `poseDrone` leaves all three of a drone's faculties
+// all four world gates and `poseDrone` leaves all three of a drone's faculties
 // off, so a pose to `false` names a value the world ALREADY holds and is answered
 // identically by a build whose setter works and a build whose setter does nothing.
-// Only the pose that CHANGES the world decides anything, and each of these six
+// Only the pose that CHANGES the world decides anything, and each of these seven
 // facts has to be shown to move in both directions — so each is posed on, read
 // back, posed off, and read back again. The two readings are taken with no frame
 // between them and the second before the still, so the game's own rules cannot
@@ -167,9 +167,10 @@ it("reports every posed value back through snapshot", async () => {
   h.debug.setFireCooldown(COOLDOWN);
 
   // The world gates and the dive clock. Each gate ON, which is the direction that
-  // moves it: `startPosed` shut all three. The other direction follows below.
+  // moves it: `startPosed` shut all four. The other direction follows below.
   h.debug.setWaveEntry(true);
   h.debug.setDiveLaunching(true);
+  h.debug.setStageClearing(true);
   h.debug.setShipContact(true);
   h.debug.setDiveClock(DIVE_CLOCK);
 
@@ -196,11 +197,12 @@ it("reports every posed value back through snapshot", async () => {
 
   // ---- And each boolean the other way, before any frame runs ---------------
   //
-  // The six facts above were all posed to the value that CHANGED the world; posed
-  // back, each has to change it again. No frame runs between the two readings, so
-  // nothing but the poses themselves can be what moved.
+  // The seven facts above were all posed to the value that CHANGED the world;
+  // posed back, each has to change it again. No frame runs between the two
+  // readings, so nothing but the poses themselves can be what moved.
   h.debug.setWaveEntry(false);
   h.debug.setDiveLaunching(false);
+  h.debug.setStageClearing(false);
   h.debug.setShipContact(false);
   h.debug.setDroneTravel(shard, false);
   h.debug.setDroneOscillation(shard, false);
@@ -239,6 +241,7 @@ it("reports every posed value back through snapshot", async () => {
   // The world gates and the dive clock.
   assertEqual(s.waveEntry, true, "setWaveEntry(true)");
   assertEqual(s.diveLaunching, true, "setDiveLaunching(true)");
+  assertEqual(s.stageClearing, true, "setStageClearing(true)");
   assertEqual(
     s.ship.contact,
     true,
@@ -268,10 +271,11 @@ it("reports every posed value back through snapshot", async () => {
   assertEqual(posed.oscillation, true, "setDroneOscillation(true)");
   assertEqual(posed.fire, true, "setDroneFire(true)");
 
-  // The six booleans, posed back.
+  // The seven booleans, posed back.
   const restored = droneOf(back, shard);
   assertEqual(back.waveEntry, false, "setWaveEntry(false)");
   assertEqual(back.diveLaunching, false, "setDiveLaunching(false)");
+  assertEqual(back.stageClearing, false, "setStageClearing(false)");
   assertEqual(
     back.ship.contact,
     false,

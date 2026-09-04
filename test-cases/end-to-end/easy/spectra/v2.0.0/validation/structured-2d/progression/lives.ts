@@ -14,10 +14,8 @@
 // frames its fall is given are each point's own, stated beside the figure specs/
 // fixes for them, because they are what the point is asserting about.
 
-import { slotX, slotY } from "../constants";
 import {
   SHIP_LANE_Y,
-  poseDrone,
   poseEnemyBullet,
   type Band,
   type Harness,

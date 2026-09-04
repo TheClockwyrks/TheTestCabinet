@@ -14,6 +14,11 @@ write. It listens to the page and reports which keys are down, by their
 `KeyboardEvent.code` values, along with the press edge of each. Every key below is
 named by its `code`, so a binding is a physical key rather than a layout-dependent
 character.
+
+The same layer carries the pointer and the touch contacts `specs/ui.md` drives the
+menus with. It listens to the page for them and reports where each one is, in the
+stage's logical units through the same canvas fit the game is drawn under, along
+with the press and the release edges of each.
 {{else}}
 ## How input reaches the game
 

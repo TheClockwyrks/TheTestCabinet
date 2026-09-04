@@ -37,10 +37,10 @@ export default tseslint.config(
       ],
     },
   },
-  // `validation/` is not part of this build. It is the test case's own vitest
-  // project, staged in beside `src/` when the finished repository is checked
-  // against the specification and absent the rest of the time — so the three
-  // blocks below match nothing, and cost nothing, until it is there.
+  // `validation/` is not part of this build. It is a separate vitest project,
+  // staged in beside `src/` when the finished repository is checked against the
+  // specification and absent the rest of the time — so the three blocks below
+  // match nothing, and cost nothing, until it is there.
   //
   // Every figure one of those suites asserts is transcribed from the
   // specification into `validation/constants.ts` and imported from

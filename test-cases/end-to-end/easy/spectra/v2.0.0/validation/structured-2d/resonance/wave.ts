@@ -29,7 +29,6 @@ import { BINDINGS, RESONANCE_MAX } from "../constants";
 import {
   SHIP_LANE_Y,
   distanceBetween,
-  poseDrone,
   type Band,
   type Harness,
   type SpectraSnapshot,

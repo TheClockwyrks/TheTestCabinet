@@ -506,13 +506,13 @@ description = "What the game looks and sounds like: the screens and their menus,
 # `overload` in `variants/overload.toml` — because the two modes genuinely disagree
 # about what a mismatched shot does, and a claim that is true under one and false
 # under the other cannot be stated commonly. A base run's checklist is therefore
-# 279 points and an overload run's is 297: 273 common behaviors of the game, the
+# 282 points and an overload run's is 300: 276 common behaviors of the game, the
 # showcase's three, and the variant's own three or twenty-one. The whole of it is
-# reporter-side material — never seeded into a run, so the model never sees it. Every item
-# restates a requirement the seeded specification already states, in the spec's own
-# vocabulary and naming the spec's own constants, and every threshold a validator
-# asserts is derived from a figure or rule in the specs plus a numeric tolerance
-# stated in the item.
+# reporter-side material — never seeded into a run, so the model never sees it.
+# Every item restates a requirement the seeded specification already states, in
+# the spec's own vocabulary and naming the spec's own constants, and every
+# threshold a validator asserts is derived from a figure or rule in the specs plus
+# a numeric tolerance stated in the item.
 #
 # EVERY point carries a validation script, and every point is ONE OBSERVABLE
 # BEHAVIOR, so a build fails exactly the rule it breaks: the key that starts a
@@ -534,13 +534,14 @@ description = "What the game looks and sounds like: the screens and their menus,
 # one variant at a time, so the other simply does not run.
 #
 # EVERY SCENARIO IS POSED, AND POSED EMPTY. The shared harness's `startPosed`
-# clears the drones, bullets and bursts, turns the three world gates off, and opens
+# clears the drones, bullets and bursts, turns the four world gates off, and opens
 # a live wave — so a validator's world holds only what its requirement concerns and
-# nothing it did not ask for enters, launches, or costs a life. An empty wave is
-# safe because a stage clears on the MOMENT its last drone is destroyed rather than
-# on a predicate over an empty field (`stages.empty-wave-does-not-clear` is what
-# holds a build to that). Turning a gate back on is the exception, and the point
-# that does it is the point whose requirement the gate is.
+# nothing it did not ask for enters, launches, ends the stage, or costs a life. An
+# empty wave then stays a live one however the field empties, so a point that
+# destroys the one drone it posed reads what the kill did rather than what a stage
+# end did, and no point has to stand a bystander in a corner to hold the wave open.
+# Turning a gate back on is the exception, and the point that does it is the point
+# whose requirement the gate is.
 #
 # THE MEDIA a point declares is produced by its own suite, from the scenario the
 # case controls. `kind` is decided ONCE here and serves all three engines —
@@ -629,7 +630,7 @@ validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [
 [[review.categories.items]]
 id = "poses-read-back"
 title = "Every pose is reported by the snapshot"
-description = "Each pose operation's value is read back by snapshot: screen, phase, phase timer, menu index, score, lives, the extra-life latch, stage, resonance, inversion, the ship's x, band, lockout and cooldown, a drone's position, band (on a Shard, a Flux and a Prism alike, since band is the stored field on every kind), phase, slot, band clock, shell and three faculties, a bullet's velocity, the three world gates, and the dive clock. Mute is not in the list: there is no setMuted."
+description = "Each pose operation's value is read back by snapshot: screen, phase, phase timer, menu index, score, lives, the extra-life latch, stage, resonance, inversion, the ship's x, band, lockout and cooldown, a drone's position, band (on a Shard, a Flux and a Prism alike, since band is the stored field on every kind), phase, slot, band clock, shell and three faculties, a bullet's velocity, the four world gates, and the dive clock. Mute is not in the list: there is no setMuted."
 domains = ["polarity", "swarm", "arcade", "presentation"]
 failure_cap = "broken"
 validation = { script = "instrumentation/poses-read-back.test.ts", outputs = [
@@ -809,7 +810,7 @@ validation = { script = "instrumentation/ship-contact-gate.test.ts", outputs = [
 id = "stage-clearing-gate"
 title = "Stage clearing off ends no stage"
 description = "With setStageClearing(false), destroying the last drone of the game's own wave leaves the screen inWave, the phase live and no SCORE_STAGE_CLEAR paid; with the gate as reset leaves it, the same kill ends the wave."
-domains = ["swarm"]
+domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "instrumentation/stage-clearing-gate.test.ts", outputs = [
   { id = "carrying-on", name = "The wave still live after its last drone fell", kind = "image" },

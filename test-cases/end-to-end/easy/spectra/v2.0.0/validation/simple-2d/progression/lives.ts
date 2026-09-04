@@ -14,8 +14,8 @@
 // frames its fall is given are each point's own, stated beside the figure specs/
 // fixes for them, because they are what the point is asserting about.
 
-import { SHIP_Y, slotX, slotY } from "../constants";
-import { lastBullet, poseDrone, type Band, type Harness } from "../harness";
+import { SHIP_Y } from "../constants";
+import { lastBullet, type Band, type Harness } from "../harness";
 
 /**
  * Put one enemy bullet `above` units over the ship's centre, carrying `band`, and

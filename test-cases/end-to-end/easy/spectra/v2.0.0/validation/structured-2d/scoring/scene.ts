@@ -10,7 +10,6 @@ import { PLAYER_BULLET_SPEED } from "../constants";
 import {
   droneById,
   fireAt,
-  poseDrone,
   ticksFor,
   type Band,
   type DroneSnapshot,

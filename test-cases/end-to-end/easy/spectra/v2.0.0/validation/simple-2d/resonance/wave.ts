@@ -31,7 +31,6 @@ import { fail } from "../assert";
 import {
   distance,
   lastBullet,
-  poseDrone,
   type Band,
   type Harness,
   type SpectraSnapshot,
