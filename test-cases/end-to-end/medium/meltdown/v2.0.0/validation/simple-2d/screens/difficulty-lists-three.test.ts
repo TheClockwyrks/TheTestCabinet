@@ -1,10 +1,11 @@
-// screens/difficulty-lists-three — the difficulty screen names Easy, Medium and
-// Hard.
+// screens/difficulty-lists-three — the difficulty screen names every row of
+// DIFFICULTY_ITEMS.
 //
-// THE RULE. specs/screens.md's `difficultyselect` section: it "Draws the three
-// rows of `DIFFICULTY_ITEMS`: `EASY`, `MEDIUM`, and `HARD`." specs/modes.md fixes
-// what each of them changes; this item is only that all three are on the screen to
-// be chosen from.
+// THE RULE. specs/screens.md's `difficultyselect` section: it "Draws the four
+// rows of `DIFFICULTY_ITEMS`: `EASY`, `MEDIUM`, `HARD`, and `BACK`."
+// specs/modes.md fixes what each difficulty changes; this item is only that every
+// row is on the screen — the three to choose from, and the `BACK` row that is the
+// list's only way out on a touchscreen.
 //
 // THE COPY IS THE CASE'S. `DIFFICULTY_ITEMS` lives in `constants.ts`,
 // transcribed from specs/screens.md. Matching is by substring and ignores case,
@@ -42,7 +43,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("names all three difficulties on the difficulty screen", async () => {
+it("names every row of the difficulty screen", async () => {
   poseMenu(h, "difficultyselect", OPENING_ROW);
   const calls = await drawFrame(h);
   captureStill(h, "difficulties");

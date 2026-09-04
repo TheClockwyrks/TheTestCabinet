@@ -36,7 +36,7 @@ import {
 /** The row the press starts from: the first. */
 const FIRST_ROW = 0;
 
-/** The row it must land on: the last of the five `MODE_ITEMS`. */
+/** The row it must land on: the last of the six `MODE_ITEMS`. */
 const LAST_ROW = MODE_ITEMS.length - 1;
 
 let h: Harness;

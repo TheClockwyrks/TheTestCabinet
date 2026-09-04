@@ -27,6 +27,16 @@
 // `specs/instrumentation.md` says a reset leaves behind, and the check reads both
 // back before it presses anything.
 //
+//
+// AND THE POINTER PATH, BECAUSE THE RULE IS STATED OF BOTH. `specs/controls.md`:
+// "Moving onto a row of the menu the current screen shows makes that row the
+// highlighted row, exactly as `up` and `down` reaching it do, and raises the
+// `menu` cue on the frame the highlight changes." A build that sounds for the
+// keyboard and stays silent under the pointer has met half the rule, so the last
+// leg moves the pointer into the rectangle the build reported for a row it is not
+// already on and reads the frame the highlight changed on. Both legs exercise the
+// same cue on the same rule, so they share one verdict.
+//
 // THE KEY IS A REAL ONE, held through Chromium's own input pipeline and released
 // the moment the highlight has moved. `specs/controls.md` reads every action "as a
 // press edge" that "fires once per press", and holding a key "fires its action
@@ -40,6 +50,7 @@ import {
   captureStill,
   createHarness,
   framesFor,
+  hoverMenuRow,
   watchCues,
   type Harness,
 } from "../harness";
@@ -72,7 +83,7 @@ afterEach(async () => {
   await h?.dispose();
 });
 
-it("sounds on the frame of each move, and on no frame between them", async () => {
+it("sounds on the frame of each move, by key or by pointer, and on no other", async () => {
   // The harness has already reset the game, so this is the title with its
   // highlight on the first of two rows.
   await h.advance(1);
@@ -91,6 +102,15 @@ it("sounds on the frame of each move, and on no frame between them", async () =>
   const second = await moveHighlight(h);
   const secondFrame = second.frame;
   const secondSounds = soundsOn(played, secondFrame);
+
+  await h.advance(GAP_FRAMES);
+
+  // The pointer path: onto the row the highlight is NOT on, so the move is a
+  // change rather than a hover of the row already highlighted.
+  await hoverMenuRow(h, SECOND_ROW);
+  const pointerFrame = h.frame();
+  const pointerSounds = soundsOn(played, pointerFrame);
+  const reached = await h.snapshot();
 
   await captureStill(h, "menu");
 
@@ -123,9 +143,21 @@ it("sounds on the frame of each move, and on no frame between them", async () =>
     0,
     `sounds emitted on frame ${secondFrame}, the frame of the wrapping move`,
   );
+  assertEqual(
+    reached.menuIndex,
+    SECOND_ROW,
+    "the row the pointer reached, moved into the rectangle the build reported " +
+      "for it (specs/controls.md)",
+  );
+  assertGreaterThan(
+    pointerSounds,
+    0,
+    `sounds emitted on frame ${pointerFrame}, the frame the pointer moved the ` +
+      `highlight on (specs/controls.md)`,
+  );
   assertDeepEqual(
-    framesOutside(played, [firstFrame, secondFrame]),
+    framesOutside(played, [firstFrame, secondFrame, pointerFrame]),
     [],
-    "the frames of every sound emitted away from the two moves",
+    "the frames of every sound emitted away from the three moves",
   );
 });

@@ -29,7 +29,7 @@ import { poseMenu } from "./menu";
 /** The key specs/controls.md binds `confirm` to. */
 const CONFIRM = BINDINGS.confirm[0];
 
-/** The row Containment sits on, first of the five modes. */
+/** The row Containment sits on, first of the six rows of the mode list. */
 const CONTAINMENT_ROW = 0;
 
 let h: Harness;

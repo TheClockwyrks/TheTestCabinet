@@ -1,15 +1,71 @@
-// Meltdown — screens/howto-back-row: NOT YET WRITTEN.
+// Meltdown — screens/howto-back-row — the how-to screen draws one row, and confirming it
+// returns to the title.
 //
-// This file is a placeholder so the case manifest resolves. The review item
-// `screens.howto-back-row` points at it, and the suite that belongs here has still to
-// be written against the rendered specs.
+// THE RULE. `specs/screens.md`, on `howto`: the screen "draws the one row of
+// `HOWTO_ITEMS`: `BACK`", and the row table sends it to `title`.
 //
-// THE CLAIM IT MUST DECIDE.
-// BACK on the how-to screen returns to the title:
-// The how-to screen draws the one row of HOWTO_ITEMS, BACK, and confirming it moves the screen to title.
+// TWO READINGS, ONE REQUIREMENT. That the screen offers exactly one row is the
+// precondition the requirement is stated over — a how-to page with no row at all
+// is the defect this item exists to catch — and where confirming it leads is the
+// requirement itself. The row count is read off `menu`, the rectangles
+// `specs/instrumentation.md` has the build report for "every row of the menu the
+// current screen shows"; that those rectangles are big enough to tap is
+// `screens.menu-rows-are-touch-targets`'s, and that every screen reports them at
+// all is `screens.menu-rows-reported`'s.
 //
-// Write it in the shape every other suite in this project uses: pose the world
-// through the debug surface, hold only what this requirement concerns, advance
-// the clock by the frames the requirement needs, and assert one thing in one
-// direction. Every figure it compares against comes from this project's own
-// `constants.ts`.
+// WHY THE ROW EXISTS AND WHY IT IS GRADED. `specs/controls.md` makes the game
+// fully playable on a touchscreen, so a page a player can only leave with a key
+// strands a player who has no keyboard. That `back` reaches the same screen is
+// `screens.back-from-howto`'s requirement.
+//
+// WHAT THE PAGE SAYS IS NOT THIS ITEM'S. `screens.howto-content` reads the topics
+// it covers; this one reads its one row.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { HOWTO_ITEMS } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  resetTo,
+  tapAction,
+  type Harness,
+} from "../harness";
+
+/** The one row the how-to screen draws, and the only index it has. */
+const BACK_ROW = HOWTO_ITEMS.indexOf("BACK");
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("draws one row and returns to the title when it is confirmed", async () => {
+  resetTo(h);
+  h.debug.setScreen("howto");
+  h.debug.setMenuIndex(BACK_ROW);
+  await h.advance(1);
+
+  const before = h.snapshot();
+  assertEqual(before.screen, "howto", "the screen the row is confirmed on");
+  assertEqual(
+    before.menu.length,
+    HOWTO_ITEMS.length,
+    "the rows the how-to screen reports it drew (specs/screens.md, howto)",
+  );
+  assertEqual(before.menuIndex, BACK_ROW, "the row the confirm is made on");
+
+  await tapAction(h, "confirm");
+  captureStill(h, "title");
+
+  assertEqual(
+    h.snapshot().screen,
+    "title",
+    "the screen confirming the how-to screen's BACK row leads to",
+  );
+});

@@ -86,7 +86,7 @@ afterEach(() => {
  * decides.
  */
 async function ventsFrom(seed: number): Promise<VentName[]> {
-  h.debug.reset({ seed });
+  h.debug.reset(seed);
   h.debug.setScreen("playing");
   h.debug.setPhase("wave");
   h.debug.setWavePending(UNITS);
@@ -127,7 +127,7 @@ it("draws the same vents from one seed and different vents from another", async 
   assertDeepEqual(
     second,
     first,
-    `the vents drawn on a second release after reset({ seed: ${SEED} })`,
+    `the vents drawn on a second release after reset(${SEED})`,
   );
 
   const other = await ventsFrom(OTHER_SEED);
@@ -139,6 +139,6 @@ it("draws the same vents from one seed and different vents from another", async 
   assertNotEqual(
     other.join(""),
     first.join(""),
-    `the vents drawn after reset({ seed: ${OTHER_SEED} }), against seed ${SEED}'s`,
+    `the vents drawn after reset(${OTHER_SEED}), against seed ${SEED}'s`,
   );
 });

@@ -118,6 +118,7 @@ import {
   type Face,
   type MeltdownDebugApi,
   type MeltdownSnapshot,
+  type MenuRowSnapshot,
   type ModeName,
   type Phase,
   type RectSnapshot,
@@ -1843,6 +1844,53 @@ export async function clickAt(h: Harness, x: number, y: number): Promise<void> {
 export function clickControl(h: Harness, rect: RectSnapshot): Promise<void> {
   const at = centreOf(rect);
   return clickAt(h, at.x, at.y);
+}
+
+/**
+ * The rectangle the build reported for row `index` of the current screen's menu,
+ * or the failure that it reported none.
+ *
+ * `specs/screens.md` requires every row of every menu to be a pointer target and
+ * has the build report each row's rectangle, so a screen whose menu the build
+ * drew but did not report cannot be driven with the pointer at all.
+ */
+export function menuRow(
+  snapshot: MeltdownSnapshot,
+  index: number,
+): MenuRowSnapshot {
+  const row = snapshot.menu.find((entry) => entry.index === index);
+  if (row === undefined) {
+    fail(
+      `snapshot().menu to hold row ${index} of the ${snapshot.screen} menu, ` +
+        `one rectangle per row in row order (specs/screens.md)`,
+      snapshot.menu.map((entry) => entry.index),
+    );
+  }
+  return row;
+}
+
+/**
+ * Move the pointer onto the centre of a reported menu row and run the frame that
+ * delivers it.
+ *
+ * Hover alone: `specs/controls.md` says reaching a row and taking it are
+ * separate, so this presses nothing.
+ */
+export async function hoverMenuRow(
+  h: Harness,
+  index: number,
+): Promise<MenuRowSnapshot> {
+  const row = menuRow(h.debug.snapshot(), index);
+  const at = centreOf(row);
+  h.point("move", at.x, at.y);
+  await h.advance(1);
+  return row;
+}
+
+/** {@link clickAt} on the centre of a reported menu row. */
+export async function clickMenuRow(h: Harness, index: number): Promise<void> {
+  const at = centreOf(menuRow(h.debug.snapshot(), index));
+  await clickAt(h, at.x, at.y);
 }
 
 /**

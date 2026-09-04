@@ -1,15 +1,82 @@
-// Meltdown — screens/title-returns-with-howto-selected: NOT YET WRITTEN.
+// screens/title-returns-with-howto-selected — leaving the how-to screen puts
+// the title's highlight back on HOW TO PLAY.
 //
-// This file is a placeholder so the case manifest resolves. The review item
-// `screens.title-returns-with-howto-selected` points at it, and the suite that belongs here has still to
-// be written against the rendered specs.
+// THE RULE. `specs/screens.md`, "What is highlighted on arrival": arriving at
+// `title` from `howto` highlights `HOW TO PLAY`, row `1`. It is the one arrival in
+// that table whose row is not `0`, and the reason the table gives is that
+// "returning to a screen highlights the row that led away from it, so a player who
+// steps into a screen and comes back finds the highlight where they left it".
 //
-// THE CLAIM IT MUST DECIDE.
-// Leaving the how-to screen returns to the title on HOW TO PLAY:
-// Returning to title from howto leaves menuIndex 1, the HOW TO PLAY row that led away from it.
+// THE ROUND TRIP IS DRIVEN, NOT POSED, because an arrival highlight is an ENTRY
+// EFFECT and `setScreen` runs none (`specs/instrumentation.md`): a posed title
+// screen carries whatever highlight the pose left, so a build that never moves its
+// highlight would pass such a check outright. The title is opened on row `1`, that
+// row is confirmed into `howto`, and the way back is `back`.
 //
-// Write it in the shape every other suite in this project uses: pose the world
-// through the debug surface, hold only what this requirement concerns, advance
-// the clock by the frames the requirement needs, and assert one thing in one
-// direction. Every figure it compares against comes from this project's own
-// `constants.ts`.
+// THE HIGHLIGHT IS READ ON THE TITLE, AFTER THE RETURN. A build that returns to
+// row `0` is the ordinary defect this catches: it drops a player who was reading
+// the how-to page back onto `PLAY`, one press away from a run they did not ask
+// for.
+//
+// WHY THE WAY BACK IS `back` AND NOT THE `BACK` ROW. Both leave `howto` for
+// `title`, and which row the page's own row leads to is
+// `screens.howto-back-row`'s. This item is about the highlight the ARRIVAL sets,
+// so it takes the shorter of the two routes.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { TITLE_ITEMS, BINDINGS } from "../constants";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { poseMenu } from "./menu";
+
+/** The key specs/controls.md binds `confirm` to. */
+const CONFIRM = BINDINGS.confirm[0];
+
+/** The key specs/controls.md binds `back` to. */
+const BACK = BINDINGS.back[0];
+
+/** The row that leads to the how-to screen, and the row the return must set. */
+const HOWTO_ROW = TITLE_ITEMS.indexOf("HOW TO PLAY");
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("returns to the title with HOW TO PLAY highlighted", async () => {
+  poseMenu(h, "title", HOWTO_ROW);
+  await h.advance(1);
+
+  const opened = h.snapshot();
+  assertEqual(opened.screen, "title", "the screen the trip starts on");
+  assertEqual(opened.menuIndex, HOWTO_ROW, "the row the trip leads away from");
+
+  await h.tap(CONFIRM);
+  const inside = h.snapshot();
+  assertEqual(
+    inside.screen,
+    "howto",
+    "precondition: HOW TO PLAY opens the how-to screen (specs/screens.md)",
+  );
+
+  await h.tap(BACK);
+  captureStill(h, "returned");
+
+  const back = h.snapshot();
+  assertEqual(
+    back.screen,
+    "title",
+    "precondition: back leaves the how-to screen for the title",
+  );
+  assertEqual(
+    back.menuIndex,
+    HOWTO_ROW,
+    "the row the title is highlighted on after a trip into the how-to " +
+      "screen, which specs/screens.md fixes at HOW TO PLAY",
+  );
+});

@@ -60,8 +60,16 @@ import { isRowLabel, normalize, poseMenu } from "./menu";
  */
 const MIN_DISTINCT_CHARS = 24;
 
-/** The row the description of each mode is read on, in `MODE_ITEMS` order. */
-const ROWS = MODE_ITEMS.map((_, index) => index);
+/**
+ * The rows a description is read on: the five that name a mode, in `MODE_ITEMS`
+ * order.
+ *
+ * `BACK` is the sixth row and is excluded, because specs/screens.md says of it
+ * that it "names no mode and draws no description".
+ */
+const ROWS = MODE_ITEMS.flatMap((item, index) =>
+  item === "BACK" ? [] : [index],
+);
 
 let h: Harness;
 

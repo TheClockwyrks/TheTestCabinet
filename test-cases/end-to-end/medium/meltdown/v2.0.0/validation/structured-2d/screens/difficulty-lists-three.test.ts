@@ -1,12 +1,13 @@
-// Meltdown — screens/difficulty-lists-three: the difficulty list draws all three
-// names.
+// Meltdown — screens/difficulty-lists-three: the difficulty list draws every row
+// of DIFFICULTY_ITEMS.
 //
-// THE RULE. specs/screens.md, `difficultyselect`: "Draws the three rows of
-// `DIFFICULTY_ITEMS`: `EASY`, `MEDIUM`, and `HARD`."
+// THE RULE. specs/screens.md, `difficultyselect`: "Draws the four rows of
+// `DIFFICULTY_ITEMS`: `EASY`, `MEDIUM`, `HARD`, and `BACK`."
 //
-// THREE READINGS OF ONE REQUIREMENT: each name is looked for as a run of text,
-// and the failure names the one the build did not draw. A build that lists two
-// difficulties leaves one a player can never reach, so all three is the
+// ONE READING PER ROW OF ONE REQUIREMENT: each name is looked for as a run of
+// text, and the failure names the one the build did not draw. A build that lists
+// two difficulties leaves one a player can never reach, and a build that omits
+// `BACK` leaves a touchscreen player no way off the list, so every row is the
 // requirement.
 //
 // THE NAMES COME OFF `DIFFICULTY_ITEMS`, the seeded constant, rather than being

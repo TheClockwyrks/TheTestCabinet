@@ -1,12 +1,13 @@
-// Meltdown — screens/difficulty-lists-three: the difficulty list names Easy,
-// Medium and Hard.
+// Meltdown — screens/difficulty-lists-three: the difficulty list draws every row
+// of DIFFICULTY_ITEMS.
 //
-// THE RULE. `specs/screens.md`, on `difficultyselect`: it "Draws the three rows of
-// `DIFFICULTY_ITEMS`: `EASY`, `MEDIUM`, and `HARD`." All three, because
-// `specs/modes.md` gives each its own starting money and wave count and a
-// difficulty a player cannot see is one a player cannot choose.
+// THE RULE. `specs/screens.md`, on `difficultyselect`: it "Draws the four rows of
+// `DIFFICULTY_ITEMS`: `EASY`, `MEDIUM`, `HARD`, and `BACK`." All three
+// difficulties, because `specs/modes.md` gives each its own starting money and
+// wave count and a difficulty a player cannot see is one a player cannot choose;
+// and `BACK` with them, because it is the list's only way out on a touchscreen.
 //
-// EACH NAME IS ASSERTED SEPARATELY, so a build that drew two of the three fails
+// EACH NAME IS ASSERTED SEPARATELY, so a build that drew three of the four fails
 // with the missing one named. MATCHED BY SUBSTRING, because the words are the
 // case's and the presentation is the build's: a row is commonly drawn with a marker
 // or padding beside it.
@@ -40,7 +41,7 @@ afterEach(async () => {
   await h?.dispose();
 });
 
-it("draws all three difficulty names on the difficulty list", async () => {
+it("draws every row of the difficulty list", async () => {
   const { debug } = h;
   await debug.reset();
   await debug.setScreen("difficultyselect");

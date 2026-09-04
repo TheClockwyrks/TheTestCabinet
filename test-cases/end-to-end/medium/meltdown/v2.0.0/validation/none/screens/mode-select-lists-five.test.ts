@@ -1,11 +1,14 @@
-// Meltdown — screens/mode-select-lists-five: the mode list names all five modes.
+// Meltdown — screens/mode-select-lists-five: the mode list draws every row of
+// MODE_ITEMS.
 //
-// THE RULE. `specs/screens.md`, on `modeselect`: it "Draws the five rows of
-// `MODE_ITEMS`: `CONTAINMENT`, `THE HUNDRED`, `DEEP POCKETS`, `BOTTLENECK`, and
-// `SUDDEN DEATH`." All five, because `specs/modes.md` makes all five playable and a
-// mode a player cannot see is a mode a player cannot choose.
+// THE RULE. `specs/screens.md`, on `modeselect`: it "Draws the six rows of
+// `MODE_ITEMS`: `CONTAINMENT`, `THE HUNDRED`, `DEEP POCKETS`, `BOTTLENECK`,
+// `SUDDEN DEATH`, and `BACK`." All five modes, because `specs/modes.md` makes all
+// five playable and a mode a player cannot see is a mode a player cannot choose;
+// and `BACK` with them, because a row a player cannot see is a row a finger cannot
+// find, and it is the list's only way out on a touchscreen.
 //
-// EACH NAME IS ASSERTED SEPARATELY, so a build that drew four of the five fails with
+// EACH NAME IS ASSERTED SEPARATELY, so a build that drew five of the six fails with
 // the missing one named rather than with "the list is wrong".
 //
 // MATCHED BY SUBSTRING, because the words are the case's and the presentation is

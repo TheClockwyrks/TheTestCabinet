@@ -1,4 +1,4 @@
-// Meltdown — instrumentation/reset-seeds-randomness: `reset({ seed })` seeds the
+// Meltdown — instrumentation/reset-seeds-randomness: `reset(seed)` seeds the
 // game's randomness, so the same seed replays and a different seed does not.
 //
 // THE RULE. `specs/instrumentation.md`: "`options.seed`, a number defaulting to
@@ -80,7 +80,7 @@ let h: Harness;
  */
 async function ventsFrom(seed: number, picture: boolean): Promise<Vent[]> {
   const { debug } = h;
-  await debug.reset({ seed });
+  await debug.reset(seed);
   await debug.setScreen("playing");
   await debug.setPhase("wave");
   await debug.setLives(UNENDING_LIVES);

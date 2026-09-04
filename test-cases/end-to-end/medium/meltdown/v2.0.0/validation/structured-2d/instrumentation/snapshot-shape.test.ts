@@ -246,6 +246,16 @@ function assertRunShape(snapshot: MeltdownSnapshot): void {
 
 /** Every control the build panel reports, as the specification lists them. */
 function assertControlsShape(snapshot: MeltdownSnapshot): void {
+  // The floor posed here is `playing`, which shows no menu, so what the SHAPE
+  // requires of `menu` is the field itself: an array, present on every screen.
+  // What it holds on each of the seven menu screens, and that it is empty here,
+  // is `screens.menu-rows-reported`'s.
+  assertEqual(
+    Array.isArray(snapshot.menu),
+    true,
+    "menu, an array on every screen",
+  );
+
   const { controls } = snapshot;
   assertLength(
     controls.shop,

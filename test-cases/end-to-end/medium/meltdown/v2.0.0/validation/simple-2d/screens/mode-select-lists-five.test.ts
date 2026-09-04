@@ -1,13 +1,14 @@
-// screens/mode-select-lists-five — every one of the five modes is named on the
-// mode screen.
+// screens/mode-select-lists-five — every row of MODE_ITEMS is named on the mode
+// screen.
 //
-// THE RULE. specs/screens.md's `modeselect` section: it "Draws the five rows of
-// `MODE_ITEMS`: `CONTAINMENT`, `THE HUNDRED`, `DEEP POCKETS`, `BOTTLENECK`, and
-// `SUDDEN DEATH`." specs/modes.md fixes what each of them changes; this item is
-// only that a player can see all five are there.
+// THE RULE. specs/screens.md's `modeselect` section: it "Draws the six rows of
+// `MODE_ITEMS`: `CONTAINMENT`, `THE HUNDRED`, `DEEP POCKETS`, `BOTTLENECK`,
+// `SUDDEN DEATH`, and `BACK`." specs/modes.md fixes what each mode changes; this
+// item is only that a player can see every row is there — the five modes, and the
+// `BACK` row that is the list's only way out on a touchscreen.
 //
 // THE COPY IS THE CASE'S. `MODE_ITEMS` lives in `constants.ts`, transcribed
-// from specs/screens.md, so the five exact strings are what the frame is read
+// from specs/screens.md, so its exact strings are what the frame is read
 // for. Matching is by substring and ignores case, because a row is commonly
 // drawn with a marker or padding around it, and specs/overview.md fixes no
 // typeface, no palette and no layout — so nothing here reads where a row was
@@ -44,7 +45,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("names all five modes on the mode screen", async () => {
+it("names every row of the mode list on the mode screen", async () => {
   poseMenu(h, "modeselect", OPENING_ROW);
   const calls = await drawFrame(h);
   captureStill(h, "modes");
