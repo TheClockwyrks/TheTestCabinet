@@ -70,7 +70,11 @@ it("plays the menu cue on the frame the pointer moves the highlight", async () =
   await h.advance(1);
   const posed = h.snapshot();
   assertEqual(posed.screen, "title", "posing: the screen the move is made on");
-  assertEqual(posed.menuIndex, POSED_ROW, "posing: the row the move starts from");
+  assertEqual(
+    posed.menuIndex,
+    POSED_ROW,
+    "posing: the row the move starts from",
+  );
 
   const played = watchCues(h);
   await h.advance(QUIET_TICKS);
