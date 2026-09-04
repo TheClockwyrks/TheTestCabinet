@@ -3,8 +3,8 @@
 // LOCAL TO THIS GROUP ON PURPOSE. `validation/simple-2d/harness.ts` owns the
 // compound sequences the whole project shares and the small colour vocabulary
 // every group uses (`sample`, `colorDistance`); what is here is the sampling
-// geometry only these fifteen checks want, so it lives beside them and leaves the
-// shared file alone.
+// geometry only these seventeen checks want, so it lives beside them and leaves
+// the shared file alone.
 //
 // NOTHING HERE FIXES A BOUND. `specs/overview.md` closes its Visual design section
 // with the sentence that the palette, the type and every other aspect of the look

@@ -91,6 +91,14 @@ export const SOFTEN = 90;
 
 /** The ship's collision radius. */
 export const SHIP_R = 14;
+/**
+ * The hull's length nose to tail: `specs/ship.md` draws the ship "roughly `34`
+ * long from nose to tail". Never asserted — the `presentation` group reads a disc
+ * of this radius about the ship's centre so the whole hull, and any mark a build
+ * draws around it, falls inside the reading whatever point inside the hull the
+ * build calls the centre.
+ */
+export const HULL_LEN = 34;
 /** The rotation rate while a turn key is held, in radians per second. */
 export const SHIP_TURN = 300 * DEG;
 /** The same rate as the specification quotes it, in degrees per second. */

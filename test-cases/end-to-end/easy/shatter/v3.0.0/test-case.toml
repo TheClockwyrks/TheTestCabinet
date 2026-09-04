@@ -2642,7 +2642,7 @@ validation = { script = "presentation/thrust-flame-while-thrusting.test.ts", out
 [[review.categories.items]]
 id = "invulnerable-ship-blinks"
 title = "A ship in its grace reads as protected"
-description = "Over the grace window the ship's drawn appearance — the pixels inside SHIP_R of its centre, compared as an RGB distance out of 441 — differs measurably from its steady appearance at some sampled instant, and reads as the steady ship again once the grace has run out. Presence and difference, not one blink implementation: a build that blinks and a build that holds one changed look for the whole window both pass."
+description = "Over the grace window the ship's drawn appearance — the pixels within the hull's nose-to-tail length (34) of its centre — differs from its steady appearance at some sampled instant: at least 12 of the 441 points sampled over that disc read more than 40 from their steady readings, of the 441 an RGB distance can span. Once the grace has run out the ship reads as the steady ship again, with no more than 4 of those points still that far from it. Presence and difference, not one blink implementation: a build that blinks and a build that holds one changed look for the whole window both pass."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/invulnerable-ship-blinks.test.ts", outputs = [
