@@ -1505,27 +1505,41 @@ description = "Every registered source reads the state current at the read, so p
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "instrumentation/overlay-sources-report-the-live-game.test.ts", outputs = [ { id = "live", name = "The diagnostics following a posed run", kind = "replay" } ] }
+# The four points below are scoped to `none`. `specs/instrumentation.md` gives
+# drawing the panel, toggling it with the backtick key, and keeping it read-only
+# to the engine under `simple-2d` and `structured-2d`, where registering the
+# sources is the whole of Orrery's part; only the engineless build writes the
+# overlay itself. The two points above stay unscoped because registering the
+# sources, and having each report the frame being drawn, is the build's own work
+# under every engine.
 [[review.categories.items]]
 id = "overlay-read-only"
 title = "Reading the diagnostics changes nothing"
 description = "A session that shows the overlay and lets it report across a stretch of advanced frames reaches exactly the state of an identical session that never shows it, so every source is a pure read."
 domains = ["workshop"]
 failure_cap = "passable"
-validation = { script = "instrumentation/overlay-read-only.test.ts", outputs = [ { id = "watched", name = "The watched run beside the unwatched one", kind = "replay" } ] }
+validation = { script = "instrumentation/overlay-read-only.test.ts", engines = ["none"], outputs = [ { id = "watched", name = "The watched run beside the unwatched one", kind = "replay" } ] }
 [[review.categories.items]]
-id = "overlay-toggle"
-title = "The backtick key shows and hides the overlay"
-description = "Pressing the backtick key (KeyboardEvent.code Backquote) draws the debug overlay over the game, and pressing it again removes it."
+id = "overlay-shows-on-the-backtick-key"
+title = "The backtick key shows the overlay"
+description = "Pressing the backtick key (KeyboardEvent.code Backquote) draws the debug overlay over the game."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "instrumentation/overlay-toggle.test.ts", outputs = [ { id = "shown", name = "The overlay shown by the backtick key", kind = "image" } ] }
+validation = { script = "instrumentation/overlay-shows-on-the-backtick-key.test.ts", engines = ["none"], outputs = [ { id = "shown", name = "The overlay shown by the backtick key", kind = "image" } ] }
+[[review.categories.items]]
+id = "overlay-hides-on-a-second-backtick"
+title = "A second backtick press removes the overlay"
+description = "A second press of the backtick key takes the overlay off, leaving the frame drawing exactly what it drew before either press."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/overlay-hides-on-a-second-backtick.test.ts", engines = ["none"], outputs = [ { id = "hidden", name = "The overlay taken off by the second press", kind = "image" } ] }
 [[review.categories.items]]
 id = "overlay-off-at-start"
 title = "The overlay is off when the game starts"
 description = "A freshly started build draws no debug overlay until the backtick key first shows it."
 domains = ["presentation"]
 failure_cap = "great"
-validation = { script = "instrumentation/overlay-off-at-start.test.ts", outputs = [ { id = "fresh", name = "A fresh start with no overlay drawn", kind = "image" } ] }
+validation = { script = "instrumentation/overlay-off-at-start.test.ts", engines = ["none"], outputs = [ { id = "fresh", name = "A fresh start with no overlay drawn", kind = "image" } ] }
 
 # --- Field, motes, and filaments ----------------------------------------------
 # The geometry every pointer position, every collision and every drawn sprite is
