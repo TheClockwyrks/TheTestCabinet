@@ -39,12 +39,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
-  assertCloseTo,
+  assertBetween,
   assertEqual,
   assertLength,
   assertTrue,
 } from "../assert";
-import { PAUSED_ITEMS } from "../constants";
+import { PAUSED_ITEMS, TICK_S } from "../constants";
 import {
   assertBoardEquals,
   maximalRuns,
@@ -147,16 +147,26 @@ it("returns to playing with the board, the chain and both timers where the pause
     assertEqual(resumed.screen, "playing", "the screen RESUME returns to");
     assertEqual(resumed.phase, "resolving", "the phase the resume hands back");
     assertEqual(resumed.chainStep, held.chainStep, "chainStep after resuming");
-    assertCloseTo(
+
+    // A WINDOW OF ONE FRAME, not an equality, and the reason is the choice
+    // itself: `confirm` is a key, and a key press is delivered by a frame. A
+    // build that reads the press in its event handler is back on `playing`
+    // before that frame's update runs, so the step's timer carries a tick of
+    // that frame; one that compares held state at the top of the frame is still
+    // on `paused` through it and carries nothing. Both are conformant, and
+    // specs/ui.md fixes neither. What the item forbids is the timer being LOST
+    // — reset to zero, or rebuilt from the resume — and a window one frame wide
+    // catches that while passing both readings of when the press lands.
+    assertBetween(
       resumed.swapTimer,
       held.swapTimer,
-      6,
+      held.swapTimer + TICK_S,
       "swapTimer after resuming",
     );
-    assertCloseTo(
+    assertBetween(
       resumed.stepTimer,
       held.stepTimer,
-      6,
+      held.stepTimer + TICK_S,
       "stepTimer after resuming",
     );
     assertBoardEquals(h.board(), heldBoard, "the board after resuming");
