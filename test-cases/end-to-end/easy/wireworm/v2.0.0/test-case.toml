@@ -2220,11 +2220,23 @@ title = "Screens and menus"
 [[review.categories.items]]
 id = "title-screen"
 title = "The title screen shows its title, tagline and menu"
-description = "The title screen draws WIREWORM, CUT THE CURRENT, and both TITLE_ITEMS, with the highlighted item visibly distinct."
+description = "The game opens on the title with the highlight on the first item, and the frame draws WIREWORM, CUT THE CURRENT and both TITLE_ITEMS."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "screens/title-screen.test.ts", outputs = [
   { id = "title", name = "The title screen and its menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-highlight"
+title = "The highlighted title item is drawn distinctly"
+description = "The title menu marks which item `confirm` would take: the frame with the second TITLE_ITEMS entry highlighted differs from the frame with the first highlighted. specs/ui.md fixes no treatment, so a tint, a weight, a marker beside the row or a plate behind it all pass and a menu that marks nothing fails."
+domains = ["presentation"]
+failure_cap = "great"
+# Capped `great`: an unmarked highlight leaves the standard flow of gameplay
+# intact — every menu item is still reachable and `confirm` still takes the one
+# the game reports — but a player has to count rows to know which.
+validation = { script = "screens/title-highlight.test.ts", outputs = [
+  { id = "title", name = "The title menu with the highlight moved", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "title-descend-starts"

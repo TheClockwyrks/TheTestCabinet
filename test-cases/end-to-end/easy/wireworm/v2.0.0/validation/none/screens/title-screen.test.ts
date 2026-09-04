@@ -1,30 +1,22 @@
-// Wireworm — screens/title-screen: the title screen carries its title, its
-// tagline and both menu items, and it marks which of them is highlighted.
+// Wireworm — screens/title-screen: the title screen opens with its first item
+// highlighted and carries its title, its tagline and both menu items.
 //
 // specs/ui.md's `title` table fixes three pieces of copy — `TITLE_TEXT`
 // (WIREWORM), `TAGLINE_TEXT` (CUT THE CURRENT) and both entries of
-// `TITLE_ITEMS` — and then one rule about how they are arranged: "The
-// highlighted item is drawn distinctly from the others, so a player always sees
-// which item `confirm` would take."
+// `TITLE_ITEMS` — and states that "the highlight rests on the first item when
+// the game opens".
 //
 // The copy is matched by SUBSTRING, because the words are the case's and the
 // presentation is the build's: a menu entry is commonly drawn with a selection
 // marker or padding around it, and requiring the exact run would fail a screen
 // showing precisely the right words.
 //
-// The highlight is read as a DIFFERENCE rather than as a treatment, because the
-// specification fixes no treatment: a colour, a weight, a marker beside the row
-// and a plate behind it are all conformant. So the frame is drawn once with the
-// highlight on the first item and once with it on the second, and the two must
-// not come out identical — which every one of those treatments satisfies, and a
-// screen that marks nothing does not. It is a comparison between two frames of
-// the same build, so it fixes no threshold; whether the distinction READS at a
-// glance is the reviewer's, from the captured still. A build whose title screen
-// animates would satisfy it incidentally, which is the price of not fixing a
-// treatment the case deliberately left open.
+// Whether the highlight is drawn DISTINCTLY is a separate requirement and
+// `screens/title-highlight` is the item that decides it, so a build that draws
+// all four runs of copy but marks no highlight fails there and passes here.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertNotEqual } from "../assert";
+import { assertEqual } from "../assert";
 import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../constants";
 import {
   captureStill,
@@ -32,7 +24,6 @@ import {
   drewText,
   type Harness,
 } from "../harness";
-import { renderDigest } from "./screens";
 
 let h: Harness;
 
@@ -44,7 +35,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("draws the title, the tagline and both menu items, marking the highlight", async () => {
+it("opens on the title with its first item highlighted, drawing the title, the tagline and both menu items", async () => {
   const calls = await h.frameCalls();
   await captureStill(h, "title");
 
@@ -57,15 +48,4 @@ it("draws the title, the tagline and both menu items, marking the highlight", as
   for (const item of TITLE_ITEMS) {
     assertEqual(drewText(calls, item), true, `draws the menu item "${item}"`);
   }
-
-  // The same screen, the highlight one item on: the frame must not be the same
-  // picture, or nothing on it says which item `confirm` would take.
-  const onFirst = renderDigest(calls);
-  await h.debug.setMenuIndex(1);
-  const onSecond = renderDigest(await h.frameCalls());
-  assertNotEqual(
-    onSecond,
-    onFirst,
-    `the frame with "${TITLE_ITEMS[1]}" highlighted differs from the one with "${TITLE_ITEMS[0]}" highlighted`,
-  );
 });

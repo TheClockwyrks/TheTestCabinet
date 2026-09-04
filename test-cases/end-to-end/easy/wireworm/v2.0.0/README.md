@@ -138,7 +138,7 @@ reference build to produce the baseline it is shown beside.
 
 ## Validation
 
-This case is validator-rated: every one of the `212` items on the checklist
+This case is validator-rated: every one of the `226` items on the checklist
 carries a Vitest suite, and the validators decide the functional rating through
 each item's failure cap. A reviewer rates the run's aesthetics through the four
 domains and may override a verdict.
@@ -170,7 +170,7 @@ reference's side by side.
 A run is rated on four domains — `charge` (the node field and the discharge),
 `worm` (the data-worm itself), `arcade` (the cursor, the foes and the run) and
 `presentation` (the screens, the HUD, the art and the audio) — and its overall
-rating is the worst of the four. The `212` checklist items are grouped into
+rating is the worst of the four. The `226` checklist items are grouped into
 fourteen categories, and each names the domains its failure lowers and how far it
 lowers them. All but one are worth a point apiece; `showcase.exists` is worth
 three, because it grades a deliverable of its own rather than a behavior of the
