@@ -47,7 +47,7 @@
 //
 // THE SCREEN IS POSED, because what the list DRAWS does not depend on how a player
 // got to it — reaching it is `screens.containment-opens-difficulty-select`'s
-// reading, the three names are `screens.difficulty-lists-three`'s, and what
+// reading, the three names are `screens.difficulty-lists-its-rows`'s, and what
 // confirming a row does is `screens.difficulty-starts-the-run`'s. "Before it is
 // chosen" is read here as the screen still standing at `difficultyselect` with
 // nothing started when the figures are read.

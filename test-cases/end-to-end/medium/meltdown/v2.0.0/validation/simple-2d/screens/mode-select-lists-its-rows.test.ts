@@ -1,4 +1,4 @@
-// screens/mode-select-lists-five — every row of MODE_ITEMS is named on the mode
+// screens/mode-select-lists-its-rows — every row of MODE_ITEMS is named on the mode
 // screen.
 //
 // THE RULE. specs/screens.md's `modeselect` section: it "Draws the six rows of

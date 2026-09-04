@@ -3359,12 +3359,12 @@ validation = { script = "screens/title-to-howto.test.ts", outputs = [
   { id = "howto", name = "The how-to screen, opened from the title", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "mode-select-lists-five"
+id = "mode-select-lists-its-rows"
 title = "Mode select lists every row of MODE_ITEMS"
 description = "The five mode names and the BACK row all appear on the screen."
 domains = ["presentation"]
 failure_cap = "scuffed"
-validation = { script = "screens/mode-select-lists-five.test.ts", outputs = [
+validation = { script = "screens/mode-select-lists-its-rows.test.ts", outputs = [
   { id = "modes", name = "The mode list, every row drawn", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -3395,12 +3395,12 @@ validation = { script = "screens/special-mode-starts-immediately.test.ts", outpu
   { id = "started", name = "A special mode running straight from the list", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "difficulty-lists-three"
+id = "difficulty-lists-its-rows"
 title = "Difficulty select lists every row of DIFFICULTY_ITEMS"
 description = "Easy, Medium, Hard and the BACK row all appear."
 domains = ["presentation"]
 failure_cap = "scuffed"
-validation = { script = "screens/difficulty-lists-three.test.ts", outputs = [
+validation = { script = "screens/difficulty-lists-its-rows.test.ts", outputs = [
   { id = "difficulties", name = "The difficulty list, every row drawn", kind = "image" },
 ] }
 [[review.categories.items]]

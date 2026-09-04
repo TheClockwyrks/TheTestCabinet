@@ -1,4 +1,4 @@
-// Meltdown — screens/difficulty-lists-three: the difficulty list draws every row
+// Meltdown — screens/difficulty-lists-its-rows: the difficulty list draws every row
 // of DIFFICULTY_ITEMS.
 //
 // THE RULE. `specs/screens.md`, on `difficultyselect`: it "Draws the four rows of

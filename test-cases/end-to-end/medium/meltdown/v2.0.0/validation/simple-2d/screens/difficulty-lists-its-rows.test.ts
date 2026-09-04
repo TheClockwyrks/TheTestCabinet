@@ -1,4 +1,4 @@
-// screens/difficulty-lists-three — the difficulty screen names every row of
+// screens/difficulty-lists-its-rows — the difficulty screen names every row of
 // DIFFICULTY_ITEMS.
 //
 // THE RULE. specs/screens.md's `difficultyselect` section: it "Draws the four

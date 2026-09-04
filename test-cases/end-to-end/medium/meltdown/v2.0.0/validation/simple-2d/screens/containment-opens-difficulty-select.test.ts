@@ -9,7 +9,7 @@
 //
 // THE DIRECTION THIS ITEM DECIDES is Containment's alone. That the OTHER four rows
 // start at once is `screens.special-mode-starts-immediately`'s requirement, and
-// what the difficulty screen then lists is `screens.difficulty-lists-three`'s. A
+// what the difficulty screen then lists is `screens.difficulty-lists-its-rows`'s. A
 // build that sends every row to the difficulty screen fails that item and passes
 // this one, and a build that starts Containment on the spot fails this one alone —
 // which is the split a grade needs to name what the build got wrong.

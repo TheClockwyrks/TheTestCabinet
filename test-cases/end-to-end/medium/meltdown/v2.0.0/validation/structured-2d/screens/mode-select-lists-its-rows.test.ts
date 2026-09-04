@@ -1,4 +1,4 @@
-// Meltdown — screens/mode-select-lists-five: the mode list draws every row of
+// Meltdown — screens/mode-select-lists-its-rows: the mode list draws every row of
 // MODE_ITEMS.
 //
 // THE RULE. specs/screens.md, `modeselect`: "Draws the six rows of `MODE_ITEMS`:
