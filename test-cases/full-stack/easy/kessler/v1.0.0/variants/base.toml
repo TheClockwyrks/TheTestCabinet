@@ -5,9 +5,17 @@ slug = "base"
 name = "Base"
 description = "The orbital demolition run: ride the deflector, bat the ball through three rings of derelicts, catch the salvage pods they shed, and survive waves that orbit faster and pay more."
 
-# No `showcase` yet. The curated catalog presentation — a player-facing description
-# and a carousel led by sustained real play captured from a reference build — lands
-# in the change that adds `showcase/base/` and its capture driver.
+# What the game looks like played correctly, shown before anyone runs it: a
+# twenty-four-second replay of one real run on wave 1 — the opening serve, the
+# steered returns that gut all three rings of derelicts, the salvage pods those
+# breaks shed falling inward, and the shield, widen, pierce and multiball a catch
+# grants, up to six balls in the sky at once — plus three stills of that same
+# take. It was captured from `references/structured-2d/base`, played through the
+# game's own keyboard input with nothing posed mid-play; the driver that records
+# it is `showcase/capture/`. `showcase/base/showcase.toml` lists the media in
+# carousel order, the replay leading, and `showcase/base/showcase.md` carries the
+# description. Never seeded into a run.
+showcase = "showcase/base"
 
 # The authored, *correct* playable build of this variant, one directory per supported
 # engine, because the build a reference demonstrates differs under each. This table

@@ -59,9 +59,9 @@ point rather than a broken seed.
 
 Kessler ships one variant:
 
-| Variant | The game it asks for                                                       |
-| ------- | -------------------------------------------------------------------------- |
-| `base`  | The endless orbital score attack through the three rings, over waves.      |
+| Variant | The game it asks for                                                  |
+| ------- | --------------------------------------------------------------------- |
+| `base`  | The endless orbital score attack through the three rings, over waves. |
 
 Every spec is common. The wave progression is the game's own difficulty curve
 and the pod effects are in-game tools, so nothing about the game is a variant
@@ -69,33 +69,37 @@ axis; the specs branch only on the engine.
 
 ## Contents
 
-| Path             | Seeded to run? | Purpose                                                                 |
-| ---------------- | -------------- | ----------------------------------------------------------------------- |
-| `specs/`         | Yes            | The spec handed to the model, by concern.                               |
-| `workspaces/`    | Yes            | The starter TypeScript project, `<engine>/`, seeded at the run root.    |
-| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.                           |
-| `test-case.toml` | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items. |
-| `variants/`      | No             | One TOML file per variant (listed in `variants`).                       |
-| `description.md` | No             | The site-facing introduction on the case's detail page.                 |
-| `changelog.md`   | No             | This version's entry in the case's changelog.                           |
-| `README.md`      | No             | This overview.                                                          |
+| Path                   | Seeded to run? | Purpose                                                                 |
+| ---------------------- | -------------- | ----------------------------------------------------------------------- |
+| `specs/`               | Yes            | The spec handed to the model, by concern.                               |
+| `workspaces/`          | Yes            | The starter TypeScript project, `<engine>/`, seeded at the run root.    |
+| `references/`          | No             | The authored, correct build, `<engine>/<variant>/`. Never seeded.       |
+| `validation/`          | No             | The validator suites deciding every review point, `<engine>/`.          |
+| `validation-baseline/` | No             | The baseline media, captured from each reference build.                 |
+| `showcase/`            | No             | The variant's catalog media and description, plus its capture driver.   |
+| `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.                           |
+| `test-case.toml`       | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items. |
+| `variants/`            | No             | One TOML file per variant (listed in `variants`).                       |
+| `description.md`       | No             | The site-facing introduction on the case's detail page.                 |
+| `changelog.md`         | No             | This version's entry in the case's changelog.                           |
+| `README.md`            | No             | This overview.                                                          |
 
 The specification is split across `specs/` by concern, and every file is seeded
 for every run:
 
-| Spec                    | Covers                                                                            |
-| ----------------------- | --------------------------------------------------------------------------------- |
-| `overview.md`           | What is built, the runtime, the code quality, and the commands run over it.       |
-| `field.md`              | The stage, the polar mapping, every contact radius, the tick order, determinism.  |
-| `deflector-and-ball.md` | The deflector, serving and launching, the bounce pipeline, and every reflection.  |
-| `rings.md`              | The three rings, their derelicts, orbits, contacts, destruction, and waves.       |
-| `pods.md`               | The seeded pod draw, the five kinds, and the effects they grant.                  |
-| `scoring.md`            | The points, the lives, and the wave bonus.                                        |
-| `screens.md`            | The six screens, their transitions, the menus, and the HUD.                       |
-| `controls.md`           | The actions, the keys bound to them, and what each does on each screen.           |
-| `assets.md`             | The production contract for the assets the build must make.                       |
-| `instrumentation.md`    | The debug and automation surface, the snapshot, and the diagnostics overlay.      |
-| `showcase.md`           | The showcase directory the finished build ships beside its source.                |
+| Spec                    | Covers                                                                           |
+| ----------------------- | -------------------------------------------------------------------------------- |
+| `overview.md`           | What is built, the runtime, the code quality, and the commands run over it.      |
+| `field.md`              | The stage, the polar mapping, every contact radius, the tick order, determinism. |
+| `deflector-and-ball.md` | The deflector, serving and launching, the bounce pipeline, and every reflection. |
+| `rings.md`              | The three rings, their derelicts, orbits, contacts, destruction, and waves.      |
+| `pods.md`               | The seeded pod draw, the five kinds, and the effects they grant.                 |
+| `scoring.md`            | The points, the lives, and the wave bonus.                                       |
+| `screens.md`            | The six screens, their transitions, the menus, and the HUD.                      |
+| `controls.md`           | The actions, the keys bound to them, and what each does on each screen.          |
+| `assets.md`             | The production contract for the assets the build must make.                      |
+| `instrumentation.md`    | The debug and automation surface, the snapshot, and the diagnostics overlay.     |
+| `showcase.md`           | The showcase directory the finished build ships beside its source.               |
 
 ## Assets and media
 
