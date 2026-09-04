@@ -101,8 +101,12 @@ it("raises the yaw by ORBIT_PER_PX per pixel dragged on the run screen", async (
   await h.pointerUp();
   await h.advance(1);
 
+  const after = await h.snapshot();
+
+  await h.capture("state", "the run screen after a rightward orbit drag");
+
   assertClose(
-    (await h.snapshot()).camera.yaw,
+    after.camera.yaw,
     before + ORBIT_PER_PX * DRAG_PX,
     ORBIT_PER_PX,
     `the camera yaw after a drag of ${DRAG_PX} logical pixels rightward on ` +
@@ -110,6 +114,4 @@ it("raises the yaw by ORBIT_PER_PX per pixel dragged on the run screen", async (
       `ORBIT_PER_PX (${ORBIT_PER_PX}) degrees a pixel ` +
       "(specs/controls.md § The run screen, § The camera)",
   );
-
-  await h.capture("state", "the run screen after a rightward orbit drag");
 });

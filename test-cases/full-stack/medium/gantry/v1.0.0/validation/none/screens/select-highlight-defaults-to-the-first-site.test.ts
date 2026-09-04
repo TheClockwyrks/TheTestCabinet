@@ -46,6 +46,9 @@ it("highlights the first site on arriving with no site opened", async () => {
 
   await h.press(CONFIRM);
   const arrived = await h.snapshot();
+  await h.advance(1);
+  await h.capture("select-default", "The default highlight");
+
   assertEqual(
     arrived.screen,
     "select",
@@ -57,7 +60,4 @@ it("highlights the first site on arriving with no site opened", async () => {
     "the highlighted site on arriving before any site has been opened " +
       "(specs/ui.md)",
   );
-
-  await h.advance(1);
-  await h.capture("select-default", "The default highlight");
 });

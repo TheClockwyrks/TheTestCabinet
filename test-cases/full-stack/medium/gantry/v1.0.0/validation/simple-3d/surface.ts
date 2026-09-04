@@ -191,6 +191,21 @@ export interface Projected {
   visible: boolean;
 }
 
+/**
+ * A menu entry's hit region, in logical stage units.
+ *
+ * `specs/ui.md` leaves the menu layout to the build and fixes only that every
+ * entry occupies one of these; `menuItemRect` is how a check finds where the
+ * build drew an entry, so a check aims a press or a contact at the middle of
+ * what the build reported and knows no menu coordinate of its own.
+ */
+export interface MenuRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /** One obstacle: the axis-aligned box it fills. */
 export interface Obstacle {
   min: Vec3;
@@ -410,6 +425,8 @@ export interface GantryDebugApi {
   check(state: DeepReadonly<GantryState>): CheckResult;
   /** What the last frame drew (`specs/instrumentation.md`). */
   drawn(): DrawnEntry[];
+  /** The hit region of entry `index` of the menu the screen showing carries. */
+  menuItemRect(state: DeepReadonly<GantryState>, index: number): MenuRect;
 
   /* ---- The run and the screens ------------------------------------------- */
 
@@ -417,7 +434,10 @@ export interface GantryDebugApi {
   reset(state: DeepReadonly<GantryState>): GantryState;
   setScreen(state: DeepReadonly<GantryState>, screen: Screen): GantryState;
   setMenuIndex(state: DeepReadonly<GantryState>, index: number): GantryState;
-  /** Opens site `index`, locked or not, and shows the `build` screen. */
+  /**
+   * Opens site `index`, locked or not: the opening `specs/state.md` fixes, and
+   * nothing else. The screen is left exactly as it stands.
+   */
   openSite(state: DeepReadonly<GantryState>, index: number): GantryState;
   setCleared(
     state: DeepReadonly<GantryState>,
@@ -441,6 +461,8 @@ export interface GantryDebugApi {
   startRun(state: DeepReadonly<GantryState>): GantryState;
   /** Poses the abort: a running run ends with no verdict. */
   abortRun(state: DeepReadonly<GantryState>): GantryState;
+  /** Poses the `check` action: the result is left showing on the build screen. */
+  showCheck(state: DeepReadonly<GantryState>): GantryState;
 
   /* ---- The structure ------------------------------------------------------ */
 
@@ -605,8 +627,8 @@ type Driven<M> = M extends (
   ...args: infer A
 ) => GantryState
   ? (...args: A) => Promise<void>
-  : M extends (state: DeepReadonly<GantryState>) => infer R
-    ? () => Promise<R>
+  : M extends (state: DeepReadonly<GantryState>, ...args: infer A) => infer R
+    ? (...args: A) => Promise<R>
     : M;
 
 /**

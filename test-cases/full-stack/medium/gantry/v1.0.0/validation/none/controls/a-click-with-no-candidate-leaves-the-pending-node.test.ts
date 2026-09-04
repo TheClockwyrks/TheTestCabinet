@@ -100,6 +100,8 @@ it("holds the pending node and places nothing when a click takes nothing", async
   await h.click(at.x, at.y);
 
   const s = await h.snapshot();
+  await h.capture("state", "the build screen after a click onto empty stage");
+
   assertDeepEqual(
     s.pendingNode,
     PENDING,
@@ -112,6 +114,4 @@ it("holds the pending node and places nothing when a click takes nothing", async
     "the members standing after a click with no candidate in range, which " +
       "places nothing (specs/controls.md)",
   );
-
-  await h.capture("state", "the build screen after a click onto empty stage");
 });

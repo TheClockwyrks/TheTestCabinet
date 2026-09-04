@@ -125,76 +125,80 @@ afterEach(async () => {
 it("draws every point on the orbit direction where it draws the target", async () => {
   await openSite(h, 0);
 
-  for (const pose of POSES) {
-    await h.debug.setCamera(pose.yaw, pose.pitch, pose.dist);
-    await h.advance(1);
+  try {
+    for (const pose of POSES) {
+      await h.debug.setCamera(pose.yaw, pose.pitch, pose.dist);
+      await h.advance(1);
 
-    const at = `yaw ${pose.yaw}, pitch ${pose.pitch}, distance ${pose.dist}`;
-    const along = orbitDirection(pose);
-    const across = acrossDirection(pose);
-    const other = cross(along, across);
+      const at = `yaw ${pose.yaw}, pitch ${pose.pitch}, distance ${pose.dist}`;
+      const along = orbitDirection(pose);
+      const across = acrossDirection(pose);
+      const other = cross(along, across);
 
-    const centre = await h.project(TARGET.x, TARGET.y, TARGET.z);
-    assertTrue(centre.visible, `the target is on the stage at ${at}`);
+      const centre = await h.project(TARGET.x, TARGET.y, TARGET.z);
+      assertTrue(centre.visible, `the target is on the stage at ${at}`);
 
-    // The build's own scale: what one world unit at the target's own depth is
-    // worth on its stage, measured rather than assumed.
-    const offset = add(TARGET, across);
-    const beside = await h.project(offset.x, offset.y, offset.z);
-    const unit = Math.hypot(beside.x - centre.x, beside.y - centre.y);
-    assertGreaterThan(
-      unit,
-      0,
-      `the stage length a one-unit world offset at the target is drawn at, ` +
-        `at ${at}: the reading has to have a scale to be read against`,
-    );
-
-    for (const reach of [REACH, -REACH]) {
-      const on = step(TARGET, along, reach);
-      const drawn = await h.project(on.x, on.y, on.z);
-      const which = `${reach > 0 ? "toward the camera" : "beyond the target"}`;
-      assertTrue(
-        drawn.visible,
-        `the on-axis probe ${Math.abs(reach)} units ${which} is on the stage ` +
-          `at ${at}`,
-      );
-      assertNear(
-        drawn.x,
-        centre.x,
-        TOLERANCE,
-        `the stage x of the point ${Math.abs(reach)} units ${which} along the ` +
-          `orbit direction at ${at}, against the target's: that line is the ` +
-          "view axis (specs/controls.md)",
-      );
-      assertNear(
-        drawn.y,
-        centre.y,
-        TOLERANCE,
-        `the stage y of the point ${Math.abs(reach)} units ${which} along the ` +
-          `orbit direction at ${at}, against the target's: that line is the ` +
-          "view axis (specs/controls.md)",
-      );
-    }
-
-    for (const [name, aside] of [
-      ["across", across],
-      ["above", other],
-    ] as const) {
-      const off = add(step(TARGET, along, REACH), aside);
-      const drawn = await h.project(off.x, off.y, off.z);
-      assertTrue(
-        drawn.visible,
-        `the off-axis probe one unit ${name} the line is on the stage at ${at}`,
-      );
+      // The build's own scale: what one world unit at the target's own depth is
+      // worth on its stage, measured rather than assumed.
+      const offset = add(TARGET, across);
+      const beside = await h.project(offset.x, offset.y, offset.z);
+      const unit = Math.hypot(beside.x - centre.x, beside.y - centre.y);
       assertGreaterThan(
-        Math.hypot(drawn.x - centre.x, drawn.y - centre.y) / unit,
-        OFF_AXIS_FLOOR,
-        `the stage distance from the target of a probe one unit ${name} the ` +
-          `orbit direction at ${at}, in units of what a one-unit offset is ` +
-          "drawn at: a point off the view axis is drawn off the target",
+        unit,
+        0,
+        `the stage length a one-unit world offset at the target is drawn at, ` +
+          `at ${at}: the reading has to have a scale to be read against`,
       );
-    }
-  }
 
-  await h.capture("state", "the yard from the second of the two camera poses");
+      for (const reach of [REACH, -REACH]) {
+        const on = step(TARGET, along, reach);
+        const drawn = await h.project(on.x, on.y, on.z);
+        const which = `${reach > 0 ? "toward the camera" : "beyond the target"}`;
+        assertTrue(
+          drawn.visible,
+          `the on-axis probe ${Math.abs(reach)} units ${which} is on the stage ` +
+            `at ${at}`,
+        );
+        assertNear(
+          drawn.x,
+          centre.x,
+          TOLERANCE,
+          `the stage x of the point ${Math.abs(reach)} units ${which} along the ` +
+            `orbit direction at ${at}, against the target's: that line is the ` +
+            "view axis (specs/controls.md)",
+        );
+        assertNear(
+          drawn.y,
+          centre.y,
+          TOLERANCE,
+          `the stage y of the point ${Math.abs(reach)} units ${which} along the ` +
+            `orbit direction at ${at}, against the target's: that line is the ` +
+            "view axis (specs/controls.md)",
+        );
+      }
+
+      for (const [name, aside] of [
+        ["across", across],
+        ["above", other],
+      ] as const) {
+        const off = add(step(TARGET, along, REACH), aside);
+        const drawn = await h.project(off.x, off.y, off.z);
+        assertTrue(
+          drawn.visible,
+          `the off-axis probe one unit ${name} the line is on the stage at ${at}`,
+        );
+        assertGreaterThan(
+          Math.hypot(drawn.x - centre.x, drawn.y - centre.y) / unit,
+          OFF_AXIS_FLOOR,
+          `the stage distance from the target of a probe one unit ${name} the ` +
+            `orbit direction at ${at}, in units of what a one-unit offset is ` +
+            "drawn at: a point off the view axis is drawn off the target",
+        );
+      }
+    }
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.capture("state", "the yard from the second of the two camera poses");
+  }
 });

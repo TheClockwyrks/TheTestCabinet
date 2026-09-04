@@ -35,13 +35,15 @@ it("stays on the title screen under back", async () => {
   assertEqual(posed.screen, "title", "the screen `back` is pressed on");
 
   await h.press(BACK);
+  const after = await h.snapshot();
+
+  await h.advance(1);
+  await h.capture("state", "the title screen unmoved under back");
+
   assertEqual(
-    (await h.snapshot()).screen,
+    after.screen,
     "title",
     "the screen after `back` on `title`, which has no screen to leave for " +
       "(specs/controls.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "the title screen unmoved under back");
 });

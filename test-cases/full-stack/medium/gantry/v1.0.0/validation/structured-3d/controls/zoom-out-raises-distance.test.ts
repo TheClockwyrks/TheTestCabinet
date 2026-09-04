@@ -52,6 +52,9 @@ it("raises the distance by ZOOM_RATE times the time held", async () => {
   await h.keyUp(ZOOM_OUT);
 
   const { camera } = await h.snapshot();
+  await h.advance(1);
+  await h.capture("state", "the yard after a second of `zoom-out`");
+
   assertClose(
     camera.dist,
     CAMERA_START_DIST + COVERED,
@@ -60,7 +63,4 @@ it("raises the distance by ZOOM_RATE times the time held", async () => {
       `raises it at ZOOM_RATE (${ZOOM_RATE}) units/s against the frame's ` +
       "delta time (specs/controls.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "the yard after a second of `zoom-out`");
 });

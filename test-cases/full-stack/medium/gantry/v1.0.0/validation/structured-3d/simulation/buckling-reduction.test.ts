@@ -133,16 +133,16 @@ it("scores a compressed strut of length STRUT_MAX_LEN against its reduced capaci
         `${reduced.toFixed(4)} (specs/structure.md)`,
     );
   }
+  await h.advance(1);
+  await h.capture(
+    "long-struts",
+    "The long-leg tower, whose length-6 legs carry compression",
+  );
+
   assertGreaterThan(
     scored,
     0,
     `struts of length ${STRUT_MAX_LEN} standing in compression, so the check ` +
       "has something to score",
-  );
-
-  await h.advance(1);
-  await h.capture(
-    "long-struts",
-    "The long-leg tower, whose length-6 legs carry compression",
   );
 });

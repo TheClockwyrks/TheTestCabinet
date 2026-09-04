@@ -73,7 +73,10 @@ it("empties the tape stored on every site", async () => {
   await h.debug.reset();
 
   for (const site of SITES_TAPED) {
-    await h.debug.openSite(site);
+    // The harness's opening, so the still below is taken on the build screen.
+    // `openSite` alone leaves the screen as it stands
+    // (`specs/instrumentation.md`), and `reset` has just left it on `title`.
+    await openSite(h, site);
     const { program } = await h.snapshot();
     if (site === SITES_TAPED[SITES_TAPED.length - 1]) {
       await h.advance(1);

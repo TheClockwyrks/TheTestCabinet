@@ -61,6 +61,9 @@ it("holds the picked node pending and places no member", async () => {
   await h.click(at.x, at.y);
 
   const s = await h.snapshot();
+  await h.advance(1);
+  await h.capture("state", "The build screen with the first node held pending");
+
   assertNotNull(
     s.pendingNode,
     "the pending node a first click under the strut tool holds " +
@@ -77,7 +80,4 @@ it("holds the picked node pending and places no member", async () => {
     "the members a first click places: none, the second click places the " +
       "member (specs/controls.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "The build screen with the first node held pending");
 });

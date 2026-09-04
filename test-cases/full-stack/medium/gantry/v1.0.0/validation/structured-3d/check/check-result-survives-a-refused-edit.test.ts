@@ -20,7 +20,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNotNull } from "../assert";
-import { BINDINGS, STRUT_MAX_LEN } from "../constants";
+import { STRUT_MAX_LEN } from "../constants";
 import {
   createHarness,
   emptyYard,
@@ -30,7 +30,6 @@ import {
 } from "../harness";
 
 /** The key `specs/controls.md` binds the `check` action to. */
-const CHECK_KEY = BINDINGS.check[0]!;
 
 /** Two ground nodes of site 1's envelope, `8` apart: over `STRUT_MAX_LEN`. */
 const FROM = { x: 0, y: 0, z: 0 } as const;
@@ -51,7 +50,7 @@ it("still shows the check result after an edit the editor refused", async () => 
   await emptyYard(h);
   await standMinimalCrane(h);
 
-  await h.press(CHECK_KEY);
+  await h.debug.showCheck();
   const before = await h.snapshot();
   assertNotNull(
     before.checkResult,
@@ -62,6 +61,12 @@ it("still shows the check result after an edit the editor refused", async () => 
   await h.debug.addMember(FROM.x, FROM.y, FROM.z, TO.x, TO.y, TO.z, "strut");
 
   const after = await h.snapshot();
+  await h.advance(1);
+  await h.capture(
+    "still-shown",
+    "the check result still on the build screen after a refused edit",
+  );
+
   assertEqual(
     after.structure.members.length,
     before.structure.members.length,
@@ -74,11 +79,5 @@ it("still shows the check result after an edit the editor refused", async () => 
     "the check result the build screen is showing after the refused edit: " +
       "the refusal changed nothing, so the structure has not changed and the " +
       "result the action left still describes it (specs/structure.md)",
-  );
-
-  await h.advance(1);
-  await h.capture(
-    "still-shown",
-    "the check result still on the build screen after a refused edit",
   );
 });

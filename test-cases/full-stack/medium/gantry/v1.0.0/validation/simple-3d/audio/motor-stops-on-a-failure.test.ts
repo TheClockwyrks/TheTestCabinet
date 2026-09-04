@@ -120,6 +120,8 @@ it("stops the motor loop on the tick a run fails, with an axis still driving", a
   const started = await h.cues();
   const looping = await h.loopingCues();
 
+  await h.capture("failed", "The run screen after the failure");
+
   assertTrue(
     !looping.includes("motor"),
     `no motor loop live over the ${AFTER_FRAMES} frames after the failure: a ` +
@@ -131,6 +133,4 @@ it("stops the motor loop on the tick a run fails, with an axis still driving", a
     `no motor sound started over the ${AFTER_FRAMES} frames after the failure ` +
       "(specs/ui.md) — the loop is still being fed",
   );
-
-  await h.capture("failed", "The run screen after the failure");
 });

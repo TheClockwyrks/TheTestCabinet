@@ -11,7 +11,7 @@ import type {
   ShapeComponent,
   TextComponent,
 } from "@test-cabinet/structured-3d";
-import { STAGE_H, STAGE_W } from "../constants";
+import { STAGE_H } from "../constants";
 import { LAYER } from "../layers";
 import {
   ACCENT,
@@ -26,22 +26,16 @@ import {
 } from "../palette";
 import { cost as costText, seconds, siteRows, type SiteMark } from "../format";
 import { GantryView, type ViewFrame } from "../actor-view";
-import { HudGroup, MARGIN, type Rect } from "./kit";
+import { siteRowRect } from "../menus";
+import { HudGroup, MARGIN } from "./kit";
 import type { GantryState } from "../game";
 
-const LEFT = MARGIN + 36;
-const ROW_W = STAGE_W - 2 * LEFT;
-const ROW_H = 64;
-const ROW_PITCH = 76;
-const ROW_TOP = 152;
+// A row is drawn at the hit region `src/menus.ts` lays out, so it sits exactly
+// where a pointer selects it (`specs/ui.md`).
+export { siteRowRect } from "../menus";
 
-/** Where one row's rectangle sits. */
-export const siteRowRect = (index: number): Rect => ({
-  x: LEFT,
-  y: ROW_TOP + index * ROW_PITCH,
-  w: ROW_W,
-  h: ROW_H,
-});
+/** The left edge every row and caption on this screen is aligned to. */
+const LEFT = MARGIN + 36;
 
 /** The colour a site's state is spoken in. */
 export const stateTone = (state: "locked" | "open" | "cleared"): string =>

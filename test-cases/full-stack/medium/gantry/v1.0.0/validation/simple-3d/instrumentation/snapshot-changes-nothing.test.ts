@@ -77,6 +77,11 @@ it("leaves every field as it was however often it is read", async () => {
   const last = await h.snapshot();
 
   const changed = differingPaths(first, last);
+  await h.capture(
+    "snapshot-is-a-reading",
+    `The run ${READINGS + 2} readings left`,
+  );
+
   if (changed.length > 0) {
     fail(
       `every field to read the same after ${READINGS + 2} snapshots with ` +
@@ -85,11 +90,6 @@ it("leaves every field as it was however often it is read", async () => {
       `${changed.length} field(s) moved: ${changed.slice(0, 12).join(", ")}`,
     );
   }
-
-  await h.capture(
-    "snapshot-is-a-reading",
-    `The run ${READINGS + 2} readings left`,
-  );
 });
 
 /** The dotted paths at which two JSON-shaped readings differ. */

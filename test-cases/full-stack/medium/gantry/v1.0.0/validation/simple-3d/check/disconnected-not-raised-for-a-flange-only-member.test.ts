@@ -93,17 +93,19 @@ it("raises no disconnected-members for a strut hanging off a flange node", async
     );
   }
 
-  assertLacks(
-    (await h.check()).issues,
-    `the issues with a strut joined only to the top-flange node (${FLANGE.x}` +
-      `, ${FLANGE.y}, ${FLANGE.z}), which gives it a member path to a flange ` +
-      "node and so a place in the arm (specs/structure.md)",
-  );
+  const checked = await h.check();
 
   await h.advance(1);
   await h.capture(
     "flange-only",
     "the strut hanging off a top-flange node and touching nothing else",
+  );
+
+  assertLacks(
+    checked.issues,
+    `the issues with a strut joined only to the top-flange node (${FLANGE.x}` +
+      `, ${FLANGE.y}, ${FLANGE.z}), which gives it a member path to a flange ` +
+      "node and so a place in the arm (specs/structure.md)",
   );
 });
 

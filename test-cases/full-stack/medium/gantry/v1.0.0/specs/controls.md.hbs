@@ -8,7 +8,9 @@ and `specs/program.md`; what each screen shows is `specs/ui.md`.
 {{#if (eq engine.slug "none")}}
 The runtime layer you write delivers the input: it maps the key bindings below
 to the actions the game reads, and it reports the pointer's position in logical
-stage units along with its press and release edges.
+stage units along with its press and release edges. A touch contact reaches the
+game the same way, as a landing and a lift at a position in those same units,
+told apart from the pointer's own press and release.
 {{else if (eq engine.slug "simple-3d")}}
 The {{engine.name}} engine delivers the input, and its own documentation
 defines the API. The game registers each action below against its bindings as
@@ -19,7 +21,9 @@ from the same place, `pointer` for its position and whether it is held and
 `pointerPressed` and `pointerReleased` for its edges, and its position arrives
 in logical stage units, on the same axes the readouts are laid out on. A
 position on the stage names a line through the yard rather than a point in it,
-and the engine's view turns one into the other.
+and the engine's view turns one into the other. A touch contact arrives on those
+same pointer reads, so what the game does with the pointer is what a finger
+does.
 {{else}}
 The {{engine.name}} engine delivers the input, and its own documentation
 defines the API. The game registers each action below against its bindings from
@@ -30,7 +34,9 @@ the pointer from the same reader, `pointer` for its position and whether it is
 held and `pointerPressed` and `pointerReleased` for its edges, and its position
 arrives in logical stage units, on the same axes the screen components are laid
 out on. A position on the stage names a line through the yard rather than a
-point in it, and the world's camera turns one into the other.
+point in it, and the world's camera turns one into the other. A touch contact
+arrives on those same pointer reads, so what the game does with the pointer is
+what a finger does.
 {{/if}}
 
 ## The actions
@@ -57,8 +63,8 @@ point in it, and the world's camera turns one into the other.
 
 `ACTIONS` holds those action names in the order above, and `BINDINGS` the keys
 that fire each. Every action applies where the table says and does nothing
-elsewhere; the menus are driven by the four directions, `confirm`, and `back`
-alone.
+elsewhere. The menus take the pointer and a touch contact as well as these
+actions, as `specs/ui.md` states.
 
 `back` resolves against the first of these that applies:
 
@@ -100,6 +106,10 @@ The camera pose persists across the three screens and resets to the start pose
 when a site is opened.
 
 ## Clicks and drags
+
+This section covers the build, program, and run screens. A press on a menu
+screen works the menu as `specs/ui.md` states, turning no camera and editing
+nothing.
 
 A press is a click or an orbit drag, told apart by how far it travels. A press
 whose pointer stays less than `CLICK_SLOP` (`6`) logical pixels from the

@@ -68,6 +68,8 @@ it("raises the yaw by ORBIT_PER_PX per pixel dragged rightward", async () => {
   await h.advance(1);
 
   const { camera } = await h.snapshot();
+  await h.capture("state", "the yard after a rightward orbit drag");
+
   assertClose(
     camera.yaw,
     CAMERA_START_YAW + ORBIT_PER_PX * DRAG_PX,
@@ -76,6 +78,4 @@ it("raises the yaw by ORBIT_PER_PX per pixel dragged rightward", async () => {
       `which turns at ORBIT_PER_PX (${ORBIT_PER_PX}) degrees a pixel ` +
       "(specs/controls.md)",
   );
-
-  await h.capture("state", "the yard after a rightward orbit drag");
 });

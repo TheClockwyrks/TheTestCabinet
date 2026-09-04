@@ -88,6 +88,8 @@ it("plays the placed cue on the tick a load is set down on its pad", async () =>
   const released = await runTicks(h, 1);
   const played = await h.cues();
 
+  await h.capture("pad", "The load set down on its pad");
+
   assertEqual(
     released.run.loads[0]?.phase,
     "placed",
@@ -98,6 +100,4 @@ it("plays the placed cue on the tick a load is set down on its pad", async () =>
     "placed",
     "the cue a load being set down on its pad plays (specs/ui.md)",
   );
-
-  await h.capture("pad", "The load set down on its pad");
 });

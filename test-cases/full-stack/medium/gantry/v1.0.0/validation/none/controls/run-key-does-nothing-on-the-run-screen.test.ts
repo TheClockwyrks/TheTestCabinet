@@ -83,6 +83,8 @@ it("carries the run it was watching on when the run action is pressed", async ()
   await h.advance(1);
 
   const after = await h.snapshot();
+  await h.capture("state", "the run the run action left running on");
+
   assertEqual(
     after.run.tick,
     TICKS + PRESS_TICKS,
@@ -96,6 +98,4 @@ it("carries the run it was watching on when the run action is pressed", async ()
     "running",
     "the run's phase across the press: nothing began and nothing ended",
   );
-
-  await h.capture("state", "the run the run action left running on");
 });

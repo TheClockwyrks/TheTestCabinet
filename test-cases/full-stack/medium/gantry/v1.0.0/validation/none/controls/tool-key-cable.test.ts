@@ -49,13 +49,15 @@ it("selects the cable tool on the build screen", async () => {
   assertEqual(posed.tool, BEFORE, "the tool selected before the press");
 
   await h.press(KEY);
+  const after = await h.snapshot();
+
+  await h.advance(1);
+  await h.capture("state", "the build screen with the cable tool selected");
+
   assertEqual(
-    (await h.snapshot()).tool,
+    after.tool,
     "cable",
     `the tool after ${KEY}, which is the tool-cable action's binding ` +
       "(specs/controls.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "the build screen with the cable tool selected");
 });

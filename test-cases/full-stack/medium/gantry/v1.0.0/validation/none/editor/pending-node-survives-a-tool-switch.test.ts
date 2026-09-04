@@ -67,23 +67,27 @@ it("keeps the pending node through a switch to every tool", async () => {
       "first switch",
   );
 
-  for (const tool of WALK) {
-    await h.debug.setTool(tool);
-    await h.advance(1);
-    const s = await h.snapshot();
-    assertEqual(s.tool, tool, "the tool selected before this reading");
-    assertNotNull(
-      s.pendingNode,
-      `the pending node after switching to the ${tool} tool ` +
-        "(specs/controls.md)",
+  try {
+    for (const tool of WALK) {
+      await h.debug.setTool(tool);
+      await h.advance(1);
+      const s = await h.snapshot();
+      assertEqual(s.tool, tool, "the tool selected before this reading");
+      assertNotNull(
+        s.pendingNode,
+        `the pending node after switching to the ${tool} tool ` +
+          "(specs/controls.md)",
+      );
+      assertEqual(s.pendingNode?.x, NODE.x, `the pending node's x under ${tool}`);
+      assertEqual(s.pendingNode?.y, NODE.y, `the pending node's y under ${tool}`);
+      assertEqual(s.pendingNode?.z, NODE.z, `the pending node's z under ${tool}`);
+    }
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.capture(
+      "pending-node-survives-a-tool-switch",
+      "The node still held pending after every tool switch",
     );
-    assertEqual(s.pendingNode?.x, NODE.x, `the pending node's x under ${tool}`);
-    assertEqual(s.pendingNode?.y, NODE.y, `the pending node's y under ${tool}`);
-    assertEqual(s.pendingNode?.z, NODE.z, `the pending node's z under ${tool}`);
   }
-
-  await h.capture(
-    "pending-node-survives-a-tool-switch",
-    "The node still held pending after every tool switch",
-  );
 });

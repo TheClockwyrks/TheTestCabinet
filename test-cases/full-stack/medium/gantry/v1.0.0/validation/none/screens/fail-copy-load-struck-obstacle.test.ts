@@ -156,13 +156,6 @@ it("reads a carried load driven into an obstacle out as THE LOAD STRUCK AN OBSTA
   for (let i = 1; i < READINGS && ended.run.phase === "running"; i += 1) {
     ended = await runTicks(h, STRIDE);
   }
-  if (ended.run.phase === "running") {
-    fail(
-      `the run to end within ${STRIDE * READINGS} ticks, the trolley carrying ` +
-        "the crate into the box (specs/statics.md § Collisions)",
-      `it is still running at tick ${ended.run.tick}`,
-    );
-  }
   // The frame that FOLLOWS the tick that ended it: a failed run "stays here, the
   // scene as it stood, with the failure copy below shown plainly"
   // (specs/ui.md § Run), and nothing ticks under the reading.
@@ -171,6 +164,14 @@ it("reads a carried load driven into an obstacle out as THE LOAD STRUCK AN OBSTA
     "fail-copy",
     "the run screen after the carried load struck an obstacle",
   );
+
+  if (ended.run.phase === "running") {
+    fail(
+      `the run to end within ${STRIDE * READINGS} ticks, the trolley carrying ` +
+        "the crate into the box (specs/statics.md § Collisions)",
+      `it is still running at tick ${ended.run.tick}`,
+    );
+  }
 
   assertEqual(
     ended.run.cause,

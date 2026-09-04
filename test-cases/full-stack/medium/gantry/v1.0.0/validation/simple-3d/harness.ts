@@ -66,6 +66,22 @@
 // produced `.wav` so a build that binds its cues to files still initializes. None
 // of them changes what the game computes; each one supplies a browser facility the
 // build is entitled to assume.
+//
+// AND ONE THING NOTHING STANDS IN FOR: A RECORDING. `engines/simple-3d` records a
+// scene as VP9 video, which wants a browser's encoder, and `emitReplay` is a
+// browser command — so a project that runs in Node reaches neither. Every point
+// this case declares is therefore backed by a STILL, including the ones whose
+// subject is a stretch of motion rather than a posed arrangement: a swing, a cable
+// snapping, a breakage cascading into a collapse. A reviewer would rather watch
+// those than read one frame of them, and here there is one frame.
+//
+// WHAT IT WOULD TAKE, stated so the next reader does not have to work it out
+// again: browser mode with the Playwright provider, and then the canvases, the
+// `webgl2` context, the asset transport, the audio decoder and every still written
+// through `node:fs` below all move with it, because each of them is built for this
+// process. That is not a dial on this file, it is a different file — and the suite
+// would then pay a browser's wall clock against the budget the node choice was
+// made for. It is left undone deliberately rather than half-done.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -109,6 +125,7 @@ import type {
   LoadClass,
   LoadPose,
   MaterialName,
+  MenuRect,
   Projected,
   Screen,
   TapeAction,
@@ -118,9 +135,6 @@ import type {
 /* -------------------------------------------------------------------------- */
 /* The contract the build owes                                                */
 /* -------------------------------------------------------------------------- */
-
-/** The version the surface reports (`GANTRY_DEBUG_VERSION`). */
-export const GANTRY_DEBUG_VERSION = 1;
 
 /**
  * Every operation `specs/instrumentation.md` requires on the surface under this
@@ -140,6 +154,7 @@ export const REQUIRED_OPS = [
   "snapshot",
   "check",
   "drawn",
+  "menuItemRect",
   "reset",
   "setScreen",
   "setMenuIndex",
@@ -150,6 +165,7 @@ export const REQUIRED_OPS = [
   "setCamera",
   "startRun",
   "abortRun",
+  "showCheck",
   "clearStructure",
   "addMember",
   "removeMember",
@@ -188,7 +204,12 @@ export const REQUIRED_OPS = [
  * separates them: "Readings" is a section of `specs/instrumentation.md` and it
  * holds exactly these two under this engine, `project` having gone to the engine.
  */
-export const READINGS: readonly string[] = ["snapshot", "check", "drawn"];
+export const READINGS: readonly string[] = [
+  "snapshot",
+  "check",
+  "drawn",
+  "menuItemRect",
+];
 
 /**
  * What `cues()` reports a sound it could not name as.
@@ -534,6 +555,12 @@ export interface Harness {
   pointerUp(): Promise<void>;
   /** Down, a tick, up, a tick: the click a player's press makes. */
   click(x: number, y: number): Promise<void>;
+  /** A touch contact landing at a logical stage position. */
+  touchDown(x: number, y: number): Promise<void>;
+  /** The contact lifting, at the position it landed at. */
+  touchUp(): Promise<void>;
+  /** Land a contact, a tick, lift it, a tick: the tap a finger makes. */
+  tap(x: number, y: number): Promise<void>;
 
   /**
    * Where a world position is drawn, in logical stage units, THROUGH THE CAMERA
@@ -592,7 +619,6 @@ export interface Harness {
    * a panel that is not drawn draws no text.
    */
   diagnostics(): Promise<string[]>;
-
 
   /** Keep the picture on screen as the review item's `id` output. */
   capture(id: string, name: string): Promise<void>;
@@ -809,7 +835,8 @@ function driveSurface(
       // would assert under `none`, where the call crosses into a browser and a
       // fault always comes back as a rejection.
       if (READINGS.includes(property)) {
-        return async (): Promise<unknown> => op.call(raw, engine.state);
+        return async (...args: unknown[]): Promise<unknown> =>
+          op.call(raw, engine.state, ...args);
       }
       return async (...args: unknown[]): Promise<void> => {
         engine.apply((state) => op.call(raw, state, ...args) as GantryState);
@@ -1059,6 +1086,10 @@ export async function createHarness(
   // one device pixel per CSS pixel — that map is the identity.
   let pointerX = 0;
   let pointerY = 0;
+  // The live contact's landing position, in the window units a dispatched event
+  // carries: a lift comes back "at the position it landed at"
+  // (`specs/instrumentation.md`).
+  let contactAt = { x: 0, y: 0 };
   const onWindow = (x: number, y: number): { x: number; y: number } => {
     const view = engine.viewport();
     const cssScale = view.scale / dpr;
@@ -1141,6 +1172,29 @@ export async function createHarness(
       pointer("pointerdown", x, y);
       await step(1);
       pointer("pointerup", x, y);
+      await step(1);
+    },
+
+    // A CONTACT, NOT THE MOUSE. `specs/controls.md` has a touch contact arrive
+    // on the engine's own pointer reads, told apart by its device, so it is
+    // delivered as a pointer event carrying `pointerType: "touch"` and the
+    // engine's contact bookkeeping (`input.md`: "A touch or a pen in contact
+    // holds `primary`") applies unchanged.
+    async touchDown(x, y) {
+      const at = onWindow(x, y);
+      contactAt = { x: at.x, y: at.y };
+      dispatchPointer(events, "pointerdown", at.x, at.y, "touch");
+    },
+    async touchUp() {
+      dispatchPointer(events, "pointerup", contactAt.x, contactAt.y, "touch");
+    },
+
+    async tap(x, y) {
+      // The landing, a tick, the lift, a tick: the same bracketing `click`
+      // uses, so a build that reads its input once a frame sees both edges.
+      await this.touchDown(x, y);
+      await step(1);
+      await this.touchUp();
       await step(1);
     },
 
@@ -1462,6 +1516,109 @@ export const MINIMAL_CRANE: CraneDesign = {
 };
 
 /* -------------------------------------------------------------------------- */
+/* The menus, where the build drew them                                       */
+/* -------------------------------------------------------------------------- */
+//
+// `specs/ui.md` gives every menu the pointer and touch as well as the key
+// actions, and deliberately leaves the LAYOUT to the build: what it fixes is
+// that the build reports each entry's hit region through `menuItemRect`, and
+// what the pointer and a contact do over that region. So every helper below
+// asks the build where it put the entry and then drives a real gesture there.
+// Nothing here knows a menu coordinate, and a build that lays its menus out any
+// way it likes passes.
+
+/** Where the build put entry `index` of the menu the screen showing carries. */
+export async function menuRect(h: Harness, index: number): Promise<MenuRect> {
+  return h.debug.menuItemRect(index);
+}
+
+/** The middle of a hit region: where a gesture aimed at that entry lands. */
+export function rectCenter(rect: MenuRect): { x: number; y: number } {
+  return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+}
+
+/** Move the pointer onto entry `index`, and run the frame that reads it. */
+export async function pointerOntoItem(
+  h: Harness,
+  index: number,
+): Promise<{ x: number; y: number }> {
+  const at = rectCenter(await menuRect(h, index));
+  await h.pointerMove(at.x, at.y);
+  await h.advance(1);
+  return at;
+}
+
+/** Press and release inside entry `index`'s region: the click that takes it. */
+export async function clickItem(
+  h: Harness,
+  index: number,
+): Promise<{ x: number; y: number }> {
+  const at = rectCenter(await menuRect(h, index));
+  await h.click(at.x, at.y);
+  return at;
+}
+
+/** Land a contact inside entry `index`'s region and lift it there. */
+export async function tapItem(
+  h: Harness,
+  index: number,
+): Promise<{ x: number; y: number }> {
+  const at = rectCenter(await menuRect(h, index));
+  await h.tap(at.x, at.y);
+  return at;
+}
+
+/**
+ * Press inside entry `from`'s region, travel to `to`, and release there.
+ *
+ * The slide-off affordance: a press begun on one entry and released elsewhere
+ * takes nothing (`specs/ui.md`). A check reads that nothing was taken and that
+ * the highlight followed the pointer.
+ */
+export async function slideOffItem(
+  h: Harness,
+  from: number,
+  to: { x: number; y: number } | number,
+): Promise<void> {
+  const start = rectCenter(await menuRect(h, from));
+  const end = typeof to === "number" ? rectCenter(await menuRect(h, to)) : to;
+  await h.pointerDown(start.x, start.y);
+  await h.advance(1);
+  await h.pointerMove(end.x, end.y);
+  await h.advance(1);
+  await h.pointerUp();
+  await h.advance(1);
+}
+
+/**
+ * A stage point inside no entry's region of the menu showing.
+ *
+ * Found by walking a coarse grid over the stage and keeping the first point
+ * every reported region misses, so it holds for any layout a build chooses.
+ */
+export async function offEveryMenuItem(
+  h: Harness,
+  count: number,
+): Promise<{ x: number; y: number }> {
+  const rects: MenuRect[] = [];
+  for (let i = 0; i < count; i += 1) rects.push(await menuRect(h, i));
+  const holds = (x: number, y: number): boolean =>
+    !rects.some(
+      (r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h,
+    );
+  for (let y = 8; y < STAGE_H; y += 16) {
+    for (let x = 8; x < STAGE_W; x += 16) {
+      if (holds(x, y)) return { x, y };
+    }
+  }
+  fail(
+    "a stage point inside no menu entry's hit region (specs/ui.md leaves the " +
+      "layout to the build, and a menu cannot cover the whole stage)",
+    "every point of a 16-pixel grid over the stage fell inside a reported region",
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* Compound sequences                                                         */
 /* -------------------------------------------------------------------------- */
 //
@@ -1471,17 +1628,22 @@ export const MINIMAL_CRANE: CraneDesign = {
 // real simulation" (`specs/instrumentation.md`).
 
 /**
- * Open a site, leaving the build screen showing.
+ * Enter a site, leaving the build screen showing.
  *
- * `openSite` carries the effects `specs/state.md` states for opening a site — the
- * site's own loads and obstacles back in the yard, the undo history emptied, the
- * pending node and the shown check cleared, the camera back at its start pose,
- * the run back to its idle placeholder — and then shows `build`. It reaches any
- * site whether or not it has been unlocked, which is what lets a check about site
- * five's envelope run without playing four sites to reach it.
+ * TWO OPERATIONS, COMPOSED HERE. `openSite` carries the effects
+ * `specs/state.md` states for opening a site — the site's own loads and
+ * obstacles back in the yard, the undo history emptied, the pending node and
+ * the shown check cleared, the camera back at its start pose, the run back to
+ * its idle placeholder — and leaves the screen exactly as it stands.
+ * `setScreen("build")` is the other half, and "the two together are what
+ * entering a site from the select screen does" (`specs/instrumentation.md`).
+ *
+ * It reaches any site whether or not it has been unlocked, which is what lets a
+ * check about site five's envelope run without playing four sites to reach it.
  */
 export async function openSite(h: Harness, index: number): Promise<void> {
   await h.debug.openSite(index);
+  await h.debug.setScreen("build");
 }
 
 /**
@@ -1874,7 +2036,8 @@ export function entriesOf(
   name?: string,
 ): DrawnEntry[] {
   return entries.filter(
-    (entry) => entry.kind === kind && (name === undefined || entry.name === name),
+    (entry) =>
+      entry.kind === kind && (name === undefined || entry.name === name),
   );
 }
 
@@ -1920,9 +2083,7 @@ export function colourDistance(
   a: readonly [number, number, number],
   b: readonly [number, number, number],
 ): number {
-  return (
-    Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2])
-  );
+  return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
 }
 
 /**
@@ -1996,18 +2157,24 @@ class PointerEvt extends Event {
   readonly clientX: number;
   readonly clientY: number;
   readonly isPrimary = true;
-  readonly pointerId = 0;
-  readonly pointerType = "mouse";
+  readonly pointerId: number;
+  readonly pointerType: "mouse" | "touch";
   readonly button = 0;
 
   constructor(
     type: "pointerdown" | "pointermove" | "pointerup",
     x: number,
     y: number,
+    device: "mouse" | "touch" = "mouse",
   ) {
     super(type);
     this.clientX = x;
     this.clientY = y;
+    this.pointerType = device;
+    // A finger is a pointer of its own, so it carries an id the mouse never
+    // does: `input.md` tracks each pointer by `id` and "among touches the first
+    // one down is" the primary.
+    this.pointerId = device === "touch" ? 1 : 0;
   }
 }
 
@@ -2024,8 +2191,9 @@ function dispatchPointer(
   type: "pointerdown" | "pointermove" | "pointerup",
   x: number,
   y: number,
+  device: "mouse" | "touch" = "mouse",
 ): void {
-  events.dispatchEvent(new PointerEvt(type, x, y));
+  events.dispatchEvent(new PointerEvt(type, x, y, device));
 }
 
 /* -------------------------------------------------------------------------- */

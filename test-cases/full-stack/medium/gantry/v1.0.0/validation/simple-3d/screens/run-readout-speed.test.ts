@@ -114,6 +114,8 @@ it("draws the RUN_SPEEDS entry the run's speed index names", async () => {
     frames.push(await readoutText(h));
   }
 
+  await h.capture("run-speed", "The watch-speed readout");
+
   for (const [index, speed] of RUN_SPEEDS.entries()) {
     const other = frames[index === 0 ? 1 : index - 1] as string[];
     const mine = frames[index] as string[];
@@ -134,6 +136,4 @@ it("draws the RUN_SPEEDS entry the run's speed index names", async () => {
       );
     }
   }
-
-  await h.capture("run-speed", "The watch-speed readout");
 });

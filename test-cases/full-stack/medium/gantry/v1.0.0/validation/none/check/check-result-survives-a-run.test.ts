@@ -24,7 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNotNull } from "../assert";
-import { BINDINGS, HOIST_MAX_RATE, HOIST_MIN } from "../constants";
+import { HOIST_MAX_RATE, HOIST_MIN } from "../constants";
 import {
   createHarness,
   emptyYard,
@@ -37,7 +37,6 @@ import {
 } from "../harness";
 
 /** The key `specs/controls.md` binds the `check` action to. */
-const CHECK_KEY = BINDINGS.check[0]!;
 
 let h: Harness;
 
@@ -65,7 +64,7 @@ it("still shows the check result once a run has been and gone", async () => {
     },
   ]);
 
-  await h.press(CHECK_KEY);
+  await h.debug.showCheck();
   const shown = (await h.snapshot()).checkResult;
   assertNotNull(
     shown,
@@ -83,6 +82,12 @@ it("still shows the check result once a run has been and gone", async () => {
 
   await h.debug.setScreen("build");
   const back = await h.snapshot();
+  await h.advance(1);
+  await h.capture(
+    "still-shown",
+    "the check result still on the build screen after the run",
+  );
+
   assertDeepEqual(
     back.checkResult,
     shown,
@@ -90,11 +95,5 @@ it("still shows the check result once a run has been and gone", async () => {
       "issues, cost, budget, verdict and member list the action left, since " +
       "the run changed neither the structure nor the tape " +
       "(specs/structure.md)",
-  );
-
-  await h.advance(1);
-  await h.capture(
-    "still-shown",
-    "the check result still on the build screen after the run",
   );
 });

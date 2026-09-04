@@ -81,6 +81,9 @@ it("places a rail between the two clicked nodes and clears the pending node", as
   await h.click(second.x, second.y);
 
   const s = await h.snapshot();
+  await h.advance(1);
+  await h.capture("state", "The rail the two clicks placed");
+
   assertLength(
     s.structure.members,
     1,
@@ -103,7 +106,4 @@ it("places a rail between the two clicked nodes and clears the pending node", as
     "the pending node after the second click, which places the member and " +
       "clears it (specs/controls.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "The rail the two clicks placed");
 });

@@ -61,6 +61,11 @@ it("places a counterweight on the node a member ends at", async () => {
   await h.advance(1);
 
   const { structure } = await h.snapshot();
+  await h.capture(
+    "counterweight-on-a-member-end",
+    "A counterweight on the top of a single strut",
+  );
+
   assertContains(
     structure.counterweights,
     HEAD,
@@ -71,10 +76,5 @@ it("places a counterweight on the node a member ends at", async () => {
     structure.counterweights,
     1,
     "the counterweights standing: the one that was placed",
-  );
-
-  await h.capture(
-    "counterweight-on-a-member-end",
-    "A counterweight on the top of a single strut",
   );
 });

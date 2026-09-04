@@ -159,6 +159,12 @@ it("carries RING_MASS / 8 at a flange node and crosses the top flange's share do
 
   const own = (halfMasses + RING_MASS / 8) * GRAVITY;
   const crossed = (RING_MASS / 8) * GRAVITY;
+  await h.advance(1);
+  await h.capture(
+    "ring-flange-load",
+    "The jib rig, whose top-flange corner at (0, 6, 0) carries no arm member",
+  );
+
   assertNear(
     reading.force,
     -(own + crossed),
@@ -168,11 +174,5 @@ it("carries RING_MASS / 8 at a flange node and crosses the top flange's share do
       `plus RING_MASS / 8 (${RING_MASS / 8}) under GRAVITY, plus the ` +
       `RING_MASS / 8 the untouched top-flange node's reaction carries down ` +
       "the corner (specs/statics.md)",
-  );
-
-  await h.advance(1);
-  await h.capture(
-    "ring-flange-load",
-    "The jib rig, whose top-flange corner at (0, 6, 0) carries no arm member",
   );
 });

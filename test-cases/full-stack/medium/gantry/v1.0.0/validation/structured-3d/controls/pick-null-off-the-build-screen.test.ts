@@ -96,6 +96,8 @@ it("reads no node and no member on the program screen", async () => {
   await h.advance(1);
 
   const { pick } = await h.snapshot();
+  await h.capture("state", "the program screen with the pointer over a node");
+
   assertNull(
     pick.node,
     "pick.node on the program screen, with the pointer on a node's projected " +
@@ -108,6 +110,4 @@ it("reads no node and no member on the program screen", async () => {
       "`pick` reads `{ node: null, member: null }` on every screen but " +
       "`build` (specs/instrumentation.md § Snapshot shape)",
   );
-
-  await h.capture("state", "the program screen with the pointer over a node");
 });

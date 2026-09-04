@@ -100,6 +100,9 @@ it("keeps the yaw at or above 0 and below 360 through the wrap", async () => {
     await h.keyUp(RIGHT);
   }
 
+  await h.advance(1);
+  await h.capture("state", "the yard as the camera yaw comes round");
+
   assertTrue(
     wrapped,
     `the yaw to come round inside ${HOLD_TICKS} frames of held \`right\` from ` +
@@ -107,7 +110,4 @@ it("keeps the yaw at or above 0 and below 360 through the wrap", async () => {
       `${ORBIT_KEY_RATE} deg/s (${(TO_WRAP / ORBIT_KEY_RATE) * TICK_HZ} ` +
       "frames): the yaw runs free and WRAPS (specs/controls.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "the yard as the camera yaw comes round");
 });

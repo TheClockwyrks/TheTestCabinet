@@ -70,6 +70,11 @@ it("still holds the pending node after the program screen and back", async () =>
   await h.advance(1);
 
   const s = await h.snapshot();
+  await h.capture(
+    "state",
+    "The build screen with the pending node still held after the switch",
+  );
+
   assertEqual(s.screen, "build", "the screen the switch came back to");
   assertNotNull(
     s.pendingNode,
@@ -80,10 +85,5 @@ it("still holds the pending node after the program screen and back", async () =>
     JSON.stringify(s.pendingNode),
     JSON.stringify(NODE),
     "the node still held pending",
-  );
-
-  await h.capture(
-    "state",
-    "The build screen with the pending node still held after the switch",
   );
 });

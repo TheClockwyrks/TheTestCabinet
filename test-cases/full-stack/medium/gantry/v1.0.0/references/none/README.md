@@ -179,6 +179,7 @@ the frame loop replaces each frame.
 | `src/sim/` | The simulation core: the truss solve, the axis controller, the pendulum, collisions, breakage, and the tick pipeline. It renders nothing and reads no input |
 | `src/editor.ts` | Pointer picking on the lattice and the six build tools |
 | `src/screens.ts`, `src/screens-tape.ts` | The seven screens, the navigation, and the tape editor's widgets |
+| `src/menus.ts` | Where the menu entries are laid out, and what a pointer or a contact lands on |
 | `src/render*.ts` | The `three` yard, the camera and projection, and the 2D screen layer over it |
 | `src/runtime*.ts` | The runtime this build stands on: canvas fit, keyboard, pointer, audio, and the diagnostics overlay |
 | `src/assets.ts` | Loading the produced models and sounds through the bundler |
@@ -195,7 +196,7 @@ any frame rate.
 
 The game installs `window.__gantry` as soon as it has initialized. It can pose a
 site and read it back without a real pointer or real time — `setAutoStep(false)`
-and `advance(n)` take the game off the wall clock, `openSite`, `addMember`,
-`setRing`, `addMoveStep` and friends build a crane and a tape under the same
-rules a player builds under, and `snapshot()` reads the whole game back. It is
-inert until something calls it.
+and `advance(n)` take the game off the wall clock, `openSite` and `setScreen`
+reach any site's build screen, `addMember`, `setRing`, `addMoveStep` and friends
+build a crane and a tape under the same rules a player builds under, and
+`snapshot()` reads the whole game back. It is inert until something calls it.

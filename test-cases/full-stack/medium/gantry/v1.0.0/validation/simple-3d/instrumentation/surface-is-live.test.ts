@@ -74,15 +74,15 @@ it("lands a posed ring in the state the game holds, and every reading reports it
   );
 
   const after = await h.check();
-  assertTrue(
-    !after.issues.includes("no-ring"),
-    "the `no-ring` issue, gone from a check computed over the posed ring " +
-      "(specs/structure.md)",
-  );
-
   await h.advance(1);
   await h.capture(
     "ring-posed",
     "The ring the pose put in the game's own state",
+  );
+
+  assertTrue(
+    !after.issues.includes("no-ring"),
+    "the `no-ring` issue, gone from a check computed over the posed ring " +
+      "(specs/structure.md)",
   );
 });

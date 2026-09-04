@@ -151,6 +151,12 @@ it("adds COUNTERWEIGHT_MASS at the node the counterweight stands on", async () =
 
   await h.debug.addCounterweight(LOADED.x, LOADED.y, LOADED.z);
   const after = await h.check();
+  await h.advance(1);
+  await h.capture(
+    "counterweight-load",
+    "A counterweight on one bottom-flange corner of the jib rig",
+  );
+
   assertTrue(after.stable, "the jib rig still stands with the counterweight on");
 
   assertNear(
@@ -167,11 +173,5 @@ it("adds COUNTERWEIGHT_MASS at the node the counterweight stands on", async () =
     TOLERANCE,
     `the leg under (${UNLOADED.x}, ${UNLOADED.y}, ${UNLOADED.z}), which ` +
       "carries no counterweight and must be unchanged",
-  );
-
-  await h.advance(1);
-  await h.capture(
-    "counterweight-load",
-    "A counterweight on one bottom-flange corner of the jib rig",
   );
 });

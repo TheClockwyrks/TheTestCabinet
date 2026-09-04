@@ -69,6 +69,9 @@ it("clears the pending node without placing a member", async () => {
   await h.click(at.x, at.y);
 
   const s = await h.snapshot();
+  await h.advance(1);
+  await h.capture("state", "The build screen with the pending node cleared");
+
   assertNull(
     s.pendingNode,
     "the pending node after a second click on the pending node itself, which " +
@@ -79,7 +82,4 @@ it("clears the pending node without placing a member", async () => {
     0,
     "the members that second click placed: none (specs/controls.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "The build screen with the pending node cleared");
 });

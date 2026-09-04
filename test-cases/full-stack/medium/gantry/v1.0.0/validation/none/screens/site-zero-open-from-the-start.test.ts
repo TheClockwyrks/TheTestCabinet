@@ -53,6 +53,9 @@ it("enters the first site on a game that has cleared nothing", async () => {
 
   await h.press(CONFIRM);
   const entered = await h.snapshot();
+  await h.advance(1);
+  await h.capture("state", "The site that is open from the start");
+
   assertEqual(
     entered.screen,
     "build",
@@ -64,7 +67,4 @@ it("enters the first site on a game that has cleared nothing", async () => {
     SITE,
     "the site entered from the first row (specs/ui.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "The site that is open from the start");
 });

@@ -67,17 +67,21 @@ it("leaves the watch speed alone on the build and program screens", async () => 
   const speed = started.run.speedIndex;
   assertEqual(speed, 0, "the watch speed a run starts at (specs/state.md)");
 
-  for (const screen of SCREENS) {
-    await h.debug.setScreen(screen);
-    await h.press(SPEED);
-    assertEqual(
-      (await h.snapshot()).run.speedIndex,
-      speed,
-      `run.speedIndex after ${SPEED} on the ${screen} screen, where the speed ` +
-        "action does not apply (specs/controls.md)",
-    );
+  try {
+    for (const screen of SCREENS) {
+      await h.debug.setScreen(screen);
+      await h.press(SPEED);
+      assertEqual(
+        (await h.snapshot()).run.speedIndex,
+        speed,
+        `run.speedIndex after ${SPEED} on the ${screen} screen, where the speed ` +
+          "action does not apply (specs/controls.md)",
+      );
+    }
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.advance(1);
+    await h.capture("state", "the watch speed unmoved off the run screen");
   }
-
-  await h.advance(1);
-  await h.capture("state", "the watch speed unmoved off the run screen");
 });

@@ -142,6 +142,8 @@ it("lists each move step's command as an axis, a target and a rate, in order", a
   }
 
   const [first, second] = found as [number, number];
+  await h.capture("program-moves", "The move steps listed");
+
   if (!(first < second)) {
     fail(
       "the tape's first step listed above its second: the editor lists the " +
@@ -150,6 +152,4 @@ it("lists each move step's command as an axis, a target and a rate, in order", a
         `y ${second}`,
     );
   }
-
-  await h.capture("program-moves", "The move steps listed");
 });

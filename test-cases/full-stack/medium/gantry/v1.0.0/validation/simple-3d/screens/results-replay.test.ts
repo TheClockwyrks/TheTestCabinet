@@ -54,13 +54,13 @@ it("opens this site again from REPLAY", async () => {
 
   await h.press(CONFIRM);
   const entered = await h.snapshot();
+  await h.advance(1);
+  await h.capture("state", "The build screen REPLAY opened");
+
   assertEqual(entered.screen, "build", "the screen REPLAY shows (specs/ui.md)");
   assertEqual(
     entered.siteIndex,
     SITE,
     `the site REPLAY opens, which is site ${SITE + 1} again (specs/ui.md)`,
   );
-
-  await h.advance(1);
-  await h.capture("state", "The build screen REPLAY opened");
 });

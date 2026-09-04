@@ -154,6 +154,8 @@ it("fetches nothing from outside the origin its own dist is served on", async ()
 
   const fetched = h.assetRequests();
 
+  await h.capture("requests", "Every asset the played-through site requested");
+
   assertGreaterThan(
     fetched.length,
     0,
@@ -185,6 +187,4 @@ it("fetches nothing from outside the origin its own dist is served on", async ()
         .map((one) => `${one.found ? "ok " : "404"} ${one.path}`)
         .join("\n  "),
   );
-
-  await h.capture("requests", "Every asset the played-through site requested");
 });

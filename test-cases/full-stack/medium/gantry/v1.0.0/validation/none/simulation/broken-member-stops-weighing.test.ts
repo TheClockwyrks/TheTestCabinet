@@ -254,26 +254,30 @@ it("drops a broken member's mass from the nodes it hung on", async () => {
   );
   const reference = withoutLeg.forces;
 
-  for (const [where, force] of reference) {
-    const survived = broken.get(where);
-    if (survived === undefined) {
-      throw new Error("gantry: the broken crane reports no member at " + where);
+  try {
+    for (const [where, force] of reference) {
+      const survived = broken.get(where);
+      if (survived === undefined) {
+        throw new Error("gantry: the broken crane reports no member at " + where);
+      }
+      assertNear(
+        survived,
+        force,
+        Math.max(Math.abs(force), 1) * TOLERANCE,
+        "the member at " +
+          where +
+          " carrying, once the overloaded leg has " +
+          "broken, exactly what it carries in the crane that never had that leg " +
+          "— the broken member's half-masses are gone from its two end nodes " +
+          "(specs/statics.md)",
+      );
     }
-    assertNear(
-      survived,
-      force,
-      Math.max(Math.abs(force), 1) * TOLERANCE,
-      "the member at " +
-        where +
-        " carrying, once the overloaded leg has " +
-        "broken, exactly what it carries in the crane that never had that leg " +
-        "— the broken member's half-masses are gone from its two end nodes " +
-        "(specs/statics.md)",
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.capture(
+      "after-the-break",
+      "The tower standing on the paths beside the leg that broke",
     );
   }
-
-  await h.capture(
-    "after-the-break",
-    "The tower standing on the paths beside the leg that broke",
-  );
 });

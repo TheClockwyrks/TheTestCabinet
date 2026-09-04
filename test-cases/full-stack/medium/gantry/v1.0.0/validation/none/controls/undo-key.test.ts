@@ -63,46 +63,50 @@ afterEach(async () => {
 });
 
 it("undoes an edit under KeyZ on the build screen and not on the program screen", async () => {
-  await openSite(h, 0);
-  const opened = await h.snapshot();
-  assertEqual(opened.screen, "build", "the screen a site opening shows");
-  const empty = opened.historyDepth;
+  try {
+    await openSite(h, 0);
+    const opened = await h.snapshot();
+    assertEqual(opened.screen, "build", "the screen a site opening shows");
+    const empty = opened.historyDepth;
 
-  // On the build screen, where the table says the action applies.
-  await placeStrut(h, "before the undo on the build screen");
-  assertEqual(
-    (await h.snapshot()).historyDepth,
-    empty + 1,
-    "historyDepth once the edit has landed (specs/state.md)",
-  );
+    // On the build screen, where the table says the action applies.
+    await placeStrut(h, "before the undo on the build screen");
+    assertEqual(
+      (await h.snapshot()).historyDepth,
+      empty + 1,
+      "historyDepth once the edit has landed (specs/state.md)",
+    );
 
-  await h.press(KEY);
-  assertEqual(
-    (await h.snapshot()).historyDepth,
-    empty,
-    `historyDepth after ${KEY} on the build screen, where the undo action ` +
-      "applies (specs/controls.md)",
-  );
+    await h.press(KEY);
+    assertEqual(
+      (await h.snapshot()).historyDepth,
+      empty,
+      `historyDepth after ${KEY} on the build screen, where the undo action ` +
+        "applies (specs/controls.md)",
+    );
 
-  // The same key, on a screen the table does not name.
-  await placeStrut(h, "before the undo on the program screen");
-  const before = (await h.snapshot()).historyDepth;
-  await h.debug.setScreen("program");
-  assertEqual(
-    (await h.snapshot()).screen,
-    "program",
-    "the screen the second press is delivered on",
-  );
+    // The same key, on a screen the table does not name.
+    await placeStrut(h, "before the undo on the program screen");
+    const before = (await h.snapshot()).historyDepth;
+    await h.debug.setScreen("program");
+    assertEqual(
+      (await h.snapshot()).screen,
+      "program",
+      "the screen the second press is delivered on",
+    );
 
-  await h.press(KEY);
-  assertEqual(
-    (await h.snapshot()).historyDepth,
-    before,
-    `historyDepth after ${KEY} on the program screen, where the undo action ` +
-      "does not apply (specs/controls.md)",
-  );
-
-  await h.debug.setScreen("build");
-  await h.advance(1);
-  await h.capture("state", "the strut the program screen's undo left standing");
+    await h.press(KEY);
+    assertEqual(
+      (await h.snapshot()).historyDepth,
+      before,
+      `historyDepth after ${KEY} on the program screen, where the undo action ` +
+        "does not apply (specs/controls.md)",
+    );
+  } finally {
+    // In a `finally`, so a check that fails still leaves the picture that
+    // shows why.
+    await h.debug.setScreen("build");
+    await h.advance(1);
+    await h.capture("state", "the strut the program screen's undo left standing");
+  }
 });

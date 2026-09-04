@@ -64,14 +64,14 @@ it("drops the pending node when a site is opened", async () => {
   await h.advance(1);
 
   const s = await h.snapshot();
+  await h.capture(
+    "pending-node-cleared-by-opening-a-site",
+    "The newly opened site, with no node held pending",
+  );
+
   assertEqual(s.siteIndex, NEXT_SITE, "the site that was opened");
   assertNull(
     s.pendingNode,
     "the pending node an opening clears (specs/controls.md, specs/state.md)",
-  );
-
-  await h.capture(
-    "pending-node-cleared-by-opening-a-site",
-    "The newly opened site, with no node held pending",
   );
 });

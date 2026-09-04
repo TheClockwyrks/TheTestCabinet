@@ -79,10 +79,10 @@ it("draws a strut, a cable and a rail in forms that differ", async () => {
   await standMinimalCrane(h);
   await h.advance(1);
   const rails = entriesOf(await h.drawn(), "member", "rail");
+  await h.capture("materials", "The three materials, each over the same span");
+
   assertTrue(rails.length > 0, "a rail among what the standing crane drew");
   profiles.set("rail", profileOf(rails[0]!.size));
-
-  await h.capture("materials", "The three materials, each over the same span");
 
   const pairs: readonly (readonly [string, string])[] = [
     ["strut", "cable"],

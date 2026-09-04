@@ -199,6 +199,7 @@ poses ever advances the game.
 | `src/pick.ts`, `src/project.ts` | What a click at the pointer would take, through the camera the yard is drawn with |
 | `src/edits.ts`, `src/editor.ts` | The structure editor's rules, and the six build tools over a pick |
 | `src/screens.ts`, `src/tape.ts` | The seven screens and their navigation, and the tape editor's widgets |
+| `src/menus.ts` | Where the menu entries are laid out, and what a pointer or a contact lands on |
 | `src/render*.ts` | The yard in the engine's scene, the readouts on its screen layer, and the look both share |
 | `src/assets.ts` | The produced models and sounds, loaded through the engine's own loader |
 | `src/debug.ts`, `src/diagnostics.ts` | The debug surface, and the values the overlay shows |

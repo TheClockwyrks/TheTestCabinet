@@ -90,6 +90,12 @@ it("reports no load entries on an opened site, an aborted run and a reset", asyn
   // And a reset.
   await h.debug.reset();
   const reset = await h.snapshot();
+  await h.advance(1);
+  await h.capture(
+    "idle-run-loads",
+    "The idle run standing over a yard that holds loads",
+  );
+
   assertEqual(reset.run.phase, "idle", "the run a reset puts back");
   assertLength(
     reset.run.loads,
@@ -101,11 +107,5 @@ it("reports no load entries on an opened site, an aborted run and a reset", asyn
     reset.site.loads,
     SITES[0]!.loads.length,
     "the loads a reset puts back in site 1's yard",
-  );
-
-  await h.advance(1);
-  await h.capture(
-    "idle-run-loads",
-    "The idle run standing over a yard that holds loads",
   );
 });

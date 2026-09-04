@@ -109,6 +109,8 @@ it("holds the run screen after a run fails", async () => {
   );
 
   const held = await runTicks(h, HELD_TICKS);
+  await h.capture("failed-run", "The run screen held after a failure");
+
   assertEqual(
     held.run.phase,
     "failed",
@@ -120,6 +122,4 @@ it("holds the run screen after a run fails", async () => {
     `the screen showing ${HELD_TICKS} ticks after the failure: a failed run ` +
       "stays on the run screen (specs/ui.md)",
   );
-
-  await h.capture("failed-run", "The run screen held after a failure");
 });

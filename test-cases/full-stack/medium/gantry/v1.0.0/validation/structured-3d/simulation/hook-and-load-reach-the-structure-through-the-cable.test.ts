@@ -222,6 +222,11 @@ it("hands the structure the cable force rather than the weight of what hangs", a
   await runTicks(h, SWING_TICKS);
   const swinging = await read(HOOK_MASS + LOAD_MASS);
 
+  await h.capture(
+    "swinging-bob",
+    "The rig with a load swinging on the hook off the vertical",
+  );
+
   assertGreaterThan(
     Math.abs(swinging.cableY - hanging.cableY),
     1,
@@ -236,10 +241,5 @@ it("hands the structure the cable force rather than the weight of what hangs", a
     "the corner's leg carrying the vertical component of the cable force the " +
       "rigging made on that tick, not (HOOK_MASS + " + LOAD_MASS + ") * " +
       "GRAVITY (specs/statics.md, specs/rigging.md)",
-  );
-
-  await h.capture(
-    "swinging-bob",
-    "The rig with a load swinging on the hook off the vertical",
   );
 });

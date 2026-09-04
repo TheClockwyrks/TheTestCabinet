@@ -176,6 +176,8 @@ afterEach(async () => {
 it("commits a decodable, non-silent .wav for each of the eleven cues", async () => {
   const report: string[] = [];
 
+  await h.capture("cues", "The eleven committed cue files");
+
   for (const cue of CUES) {
     const path = join(WORKSPACE, "assets", "audio", `${cue}.wav`);
     assertTrue(
@@ -211,6 +213,4 @@ it("commits a decodable, non-silent .wav for each of the eleven cues", async () 
 
   assertEqual(report.length, CUES.length, "the cues read off disk");
   console.log(`gantry: the committed cue files —\n  ${report.join("\n  ")}`);
-
-  await h.capture("cues", "The eleven committed cue files");
 });

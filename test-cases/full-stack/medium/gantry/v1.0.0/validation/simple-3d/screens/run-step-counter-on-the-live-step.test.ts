@@ -128,6 +128,8 @@ it("reads step m / n on the tape step the run is on", async () => {
   );
 
   const lines = await readoutLines(h);
+  await h.capture("step-mid", "The step counter mid-tape");
+
   if (!readsCounter(lines, LIVE_INDEX + 1, TAPE.length)) {
     fail(
       `the step counter to read "${LIVE_INDEX + 1} / ${TAPE.length}" while ` +
@@ -136,6 +138,4 @@ it("reads step m / n on the tape step the run is on", async () => {
       `the screen's text reads [${lines.map((one) => one.trim()).join(" | ")}]`,
     );
   }
-
-  await h.capture("step-mid", "The step counter mid-tape");
 });

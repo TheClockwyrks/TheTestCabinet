@@ -94,23 +94,27 @@ it("runs exactly the ticks it is asked for, in order", async () => {
   );
 
   let expected = 0;
-  for (const block of BLOCKS) {
-    await h.advance(block);
-    expected += block;
-    const { run } = await h.snapshot();
-    assertEqual(
-      run.tick,
-      expected,
-      `run.tick after advance(${block}), the ${expected}th tick of the run ` +
-        "(specs/instrumentation.md)",
-    );
-    assertEqual(
-      run.phase,
-      "running",
-      "the run still in progress, so run.tick is a driven count rather than " +
-        "the count an ended run stopped at",
-    );
+  try {
+    for (const block of BLOCKS) {
+      await h.advance(block);
+      expected += block;
+      const { run } = await h.snapshot();
+      assertEqual(
+        run.tick,
+        expected,
+        `run.tick after advance(${block}), the ${expected}th tick of the run ` +
+          "(specs/instrumentation.md)",
+      );
+      assertEqual(
+        run.phase,
+        "running",
+        "the run still in progress, so run.tick is a driven count rather than " +
+          "the count an ended run stopped at",
+      );
+    }
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.capture("ticks", "The run at the tick the advances counted to");
   }
-
-  await h.capture("ticks", "The run at the tick the advances counted to");
 });

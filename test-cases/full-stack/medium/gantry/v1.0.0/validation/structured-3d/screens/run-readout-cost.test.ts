@@ -89,6 +89,8 @@ it("draws the crane's cost on the run screen", async () => {
   const shown = drawn.some((text) =>
     numbersIn(text).some((figure) => Math.abs(figure - cost) <= FIGURE_TOL),
   );
+  await h.capture("run-cost", "The cost readout on the run screen");
+
   if (!shown) {
     fail(
       `the crane's cost, ${cost.toFixed(2)}, drawn on the run screen ` +
@@ -96,6 +98,4 @@ it("draws the crane's cost on the run screen", async () => {
       `the screen's text reads [${drawn.map((one) => one.trim()).join(" | ")}]`,
     );
   }
-
-  await h.capture("run-cost", "The cost readout on the run screen");
 });

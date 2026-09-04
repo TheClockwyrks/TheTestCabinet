@@ -92,17 +92,19 @@ it("reports invalid-rail, then disconnected-members, then empty-program", async 
   await clearAll(h);
   await poseCrane(h, GAPPED);
 
-  assertDeepEqual(
-    (await h.check()).issues,
-    EXPECTED,
-    "the issues of a ringed crane whose two rails leave a gap, carrying an " +
-      "adrift member and an empty tape, in the order specs/structure.md " +
-      "lists them (specs/instrumentation.md)",
-  );
+  const checked = await h.check();
 
   await h.advance(1);
   await h.capture(
     "three-issues",
     "invalid-rail ahead of disconnected-members and empty-program",
+  );
+
+  assertDeepEqual(
+    checked.issues,
+    EXPECTED,
+    "the issues of a ringed crane whose two rails leave a gap, carrying an " +
+      "adrift member and an empty tape, in the order specs/structure.md " +
+      "lists them (specs/instrumentation.md)",
   );
 });

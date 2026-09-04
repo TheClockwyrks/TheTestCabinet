@@ -65,6 +65,7 @@ import {
   type AxisName,
 } from "./sim";
 import * as st from "./state";
+import { menuRects } from "./menus";
 import { lastDrawnEntries } from "./render";
 import type { DrawnEntry } from "./render-drawn";
 
@@ -339,6 +340,22 @@ export function createDebugSurface(): GantryDebugApi {
       };
     },
 
+    menuItemRect(state, index) {
+      // A menu entry's region is only a reading where a menu is showing, so a
+      // screen with none and an index the menu has no entry at are both
+      // outside the domain (`specs/instrumentation.md`).
+      const count = st.menuLength(state);
+      if (count === 0) {
+        invalid(
+          `menuItemRect is read on a screen showing a menu; ${state.screen} shows none`,
+        );
+      }
+      const at = requireIndex("index", index, count);
+      const rect = menuRects(state)[at];
+      if (rect === undefined) invalid(`index has no entry at ${at}`);
+      return { x: rect.x, y: rect.y, w: rect.w, h: rect.h };
+    },
+
     drawn(): DrawnEntry[] {
       // What the last frame drew. The frame itself describes what it put on
       // screen, so the reading and the picture cannot disagree
@@ -390,8 +407,11 @@ export function createDebugSurface(): GantryDebugApi {
     },
 
     openSite(state, index): GantryState {
+      // The opening `specs/state.md` fixes and nothing else: the screen is left
+      // exactly as it stands, so a caller entering a site from the select
+      // screen calls `setScreen(s, "build")` after this.
       const site = requireIndex("index", index, SITE_COUNT);
-      return st.setScreen(st.openSite(state, site), "build");
+      return st.openSite(state, site);
     },
 
     setCleared(state, index, cleared): GantryState {
@@ -428,6 +448,12 @@ export function createDebugSurface(): GantryDebugApi {
     abortRun(state): GantryState {
       if (!running(state)) return thaw(state);
       return st.abortRun(state);
+    },
+
+    showCheck(state): GantryState {
+      // The `check` action, on the screen the action applies to.
+      if (!onScreen(state, "build")) return thaw(state);
+      return edits.showCheck(state);
     },
 
     // ---- The structure ----------------------------------------------------

@@ -93,13 +93,15 @@ it("returns to the build screen from a run that has already ended", async () => 
   await h.press(BACK);
   await h.advance(1);
 
+  const after = await h.snapshot();
+
+  await h.capture("state", "the build screen back returned to from a verdict");
+
   assertEqual(
-    (await h.snapshot()).screen,
+    after.screen,
     "build",
     `the screen after ${BACK} on a run screen with no run in progress: ` +
       "`back` aborts a run in progress and otherwise returns to `build` " +
       "(specs/ui.md § Run)",
   );
-
-  await h.capture("state", "the build screen back returned to from a verdict");
 });

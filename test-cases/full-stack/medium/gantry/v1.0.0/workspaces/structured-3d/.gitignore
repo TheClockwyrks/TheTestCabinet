@@ -13,6 +13,14 @@ node_modules/
 # Coverage reports — produced by `npm test`.
 coverage/
 
+# Asset-authoring scratch. Only the finished `.glb`, `.wav`, and `.mid` files
+# under `assets/` are committed, never the intermediate configuration, action
+# log, or preview files an asset tool leaves beside what it produced.
+assets/**/*.config.json
+assets/**/*.actions.json
+assets/**/*.preview.png
+assets/**/*.preview.gif
+
 # Playwright verification scratch.
 test-results/
 playwright-report/

@@ -58,6 +58,9 @@ it("opens the site after the one that was cleared", async () => {
 
   await h.press(CONFIRM);
   const entered = await h.snapshot();
+  await h.advance(1);
+  await h.capture("state", "The site the clear before it opened");
+
   assertEqual(
     entered.screen,
     "build",
@@ -69,7 +72,4 @@ it("opens the site after the one that was cleared", async () => {
     NEXT,
     `the site entered, which is site ${NEXT + 1} (specs/ui.md)`,
   );
-
-  await h.advance(1);
-  await h.capture("state", "The site the clear before it opened");
 });

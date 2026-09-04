@@ -54,15 +54,15 @@ it("clears the pending node without placing a member", async () => {
   await h.advance(1);
 
   const s = await h.snapshot();
+  await h.capture(
+    "pending-node-cleared",
+    "The build screen with no node held pending",
+  );
+
   assertNull(s.pendingNode, "the pending node clearPendingNode drops");
   assertLength(
     s.structure.members,
     0,
     "the members standing: the clear places nothing (specs/instrumentation.md)",
-  );
-
-  await h.capture(
-    "pending-node-cleared",
-    "The build screen with no node held pending",
   );
 });

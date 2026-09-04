@@ -64,6 +64,12 @@ it("reports the readiness issues alone, with empty-program only in the check", a
 
   const ringless = await h.snapshot();
   const checked = (await h.check()).issues;
+  await h.advance(1);
+  await h.capture(
+    "structure-issues",
+    "the readiness issues the structure reports on its own",
+  );
+
   assertGreaterThan(
     checked.filter((issue) => issue !== "empty-program").length,
     0,
@@ -76,11 +82,5 @@ it("reports the readiness issues alone, with empty-program only in the check", a
     "structure.issues against the check's issues less `empty-program`: the " +
       "readiness issues the check reports, in the same order, with the " +
       "tape's issue absent (specs/instrumentation.md)",
-  );
-
-  await h.advance(1);
-  await h.capture(
-    "structure-issues",
-    "the readiness issues the structure reports on its own",
   );
 });

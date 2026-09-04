@@ -93,6 +93,9 @@ it("puts the highlight on the first entry on arriving at results", async () => {
     END_CAP,
     "the tape to run out and the site to clear",
   );
+  await h.advance(1);
+  await h.capture("results-index", "The results highlight on arriving");
+
   assertEqual(
     ended.screen,
     "results",
@@ -103,7 +106,4 @@ it("puts the highlight on the first entry on arriving at results", async () => {
     0,
     "the highlighted entry on arriving at results (specs/ui.md)",
   );
-
-  await h.advance(1);
-  await h.capture("results-index", "The results highlight on arriving");
 });

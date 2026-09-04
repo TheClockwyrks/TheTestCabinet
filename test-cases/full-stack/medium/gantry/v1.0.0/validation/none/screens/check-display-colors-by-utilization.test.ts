@@ -28,9 +28,6 @@ import {
   type Harness,
 } from "../harness";
 
-/** The key the `check` action is bound to (`specs/controls.md`). */
-const CHECK_KEY = "KeyC";
-
 /** How far the extremes of the ramp must stand apart, out of 765. */
 const SPREAD = 25;
 
@@ -52,9 +49,9 @@ it("colours each member by its utilization when the structure stands", async () 
   // THE ACTION, NOT THE READING. `specs/instrumentation.md` is explicit that
   // `check()` "is pure: it computes the check and returns it, and it displays
   // nothing, so the result the build screen is showing is untouched" — so what
-  // colours the members is the `check` action a player fires, and the reading is
-  // only how this check learns what the solve found.
-  await h.press(CHECK_KEY);
+  // colours the members is the `check` action, posed by `showCheck`, and the
+  // reading is only how this check learns what the solve found.
+  await h.debug.showCheck();
   await h.advance(1);
 
   const found = await h.check();

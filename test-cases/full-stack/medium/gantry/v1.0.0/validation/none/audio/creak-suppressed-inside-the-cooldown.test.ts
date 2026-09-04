@@ -199,6 +199,8 @@ it("sounds nothing on a crossing that falls inside the creak cooldown", async ()
   const atInside = await runTicks(h, 1);
   const insidePlayed = await h.cues();
 
+  await h.capture("suppressed", "The suppressed crossing");
+
   assertEqual(
     atInside.run.phase,
     "running",
@@ -235,6 +237,4 @@ it("sounds nothing on a crossing that falls inside the creak cooldown", async ()
       `${CREAK_COOLDOWN * TICK_HZ} ticks) of the creak on tick ${FIRST} plays ` +
       "nothing (specs/ui.md)",
   );
-
-  await h.capture("suppressed", "The suppressed crossing");
 });

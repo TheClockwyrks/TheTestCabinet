@@ -98,55 +98,59 @@ it("fits the whole 1280 x 720 stage into every window shape", async () => {
         "(specs/overview.md)",
     );
 
-    for (const probe of PROBES) {
-      // A REAL pointer event at the window position the specification's fit
-      // maps this stage point to. `specs/instrumentation.md` says a caller
-      // reaching a control "dispatches a real pointer or key event", and the
-      // surface's own `pointerMove` takes stage units and so could not see the
-      // fit at all.
-      //
-      // UNDER THIS ENGINE the harness's own `pointerMove` IS that raw event: it
-      // dispatches a `PointerEvent`-shaped event carrying the CLIENT position it
-      // is given, and the engine maps that position — times the device pixel
-      // ratio, through the inverse viewport map — into the stage's logical
-      // units. At the default surface the two coincide, which is why every other
-      // suite writes stage units; here the surface is deliberately not the
-      // default, so what goes in is the window position and what comes back out
-      // of the snapshot is the stage point the fit put under it.
-      await h.pointerMove(
-        view.cssOffsetX + probe.x * view.cssScale,
-        view.cssOffsetY + probe.y * view.cssScale,
-      );
-      // "Every update reads the pointer's current position into it"
-      // (specs/instrumentation.md), so one frame runs before the reading.
-      await h.advance(1);
-      const { pointer } = await h.snapshot();
-      const where =
-        `stage (${probe.x}, ${probe.y}) over a ${surface.cssWidth} x ` +
-        `${surface.cssHeight} window ${surface.shape}`;
-      assertClose(
-        pointer.x,
-        probe.x,
-        TOLERANCE,
-        `${where}: the stage's whole width fitted at one uniform scale and ` +
-          "centred, so the pointer over that point reads it back " +
-          "(specs/overview.md)",
-      );
-      assertClose(
-        pointer.y,
-        probe.y,
-        TOLERANCE,
-        `${where}: the stage's whole height fitted at the same scale and ` +
-          "centred, so the pointer over that point reads it back " +
-          "(specs/overview.md)",
-      );
-    }
-
-    if (surface === SURFACES[0]) {
-      await h.capture(
-        "fit",
-        "The stage fitted and centred in an off-aspect window",
-      );
+    try {
+      for (const probe of PROBES) {
+        // A REAL pointer event at the window position the specification's fit
+        // maps this stage point to. `specs/instrumentation.md` says a caller
+        // reaching a control "dispatches a real pointer or key event", and the
+        // surface's own `pointerMove` takes stage units and so could not see the
+        // fit at all.
+        //
+        // UNDER THIS ENGINE the harness's own `pointerMove` IS that raw event: it
+        // dispatches a `PointerEvent`-shaped event carrying the CLIENT position it
+        // is given, and the engine maps that position — times the device pixel
+        // ratio, through the inverse viewport map — into the stage's logical
+        // units. At the default surface the two coincide, which is why every other
+        // suite writes stage units; here the surface is deliberately not the
+        // default, so what goes in is the window position and what comes back out
+        // of the snapshot is the stage point the fit put under it.
+        await h.pointerMove(
+          view.cssOffsetX + probe.x * view.cssScale,
+          view.cssOffsetY + probe.y * view.cssScale,
+        );
+        // "Every update reads the pointer's current position into it"
+        // (specs/instrumentation.md), so one frame runs before the reading.
+        await h.advance(1);
+        const { pointer } = await h.snapshot();
+        const where =
+          `stage (${probe.x}, ${probe.y}) over a ${surface.cssWidth} x ` +
+          `${surface.cssHeight} window ${surface.shape}`;
+        assertClose(
+          pointer.x,
+          probe.x,
+          TOLERANCE,
+          `${where}: the stage's whole width fitted at one uniform scale and ` +
+            "centred, so the pointer over that point reads it back " +
+            "(specs/overview.md)",
+        );
+        assertClose(
+          pointer.y,
+          probe.y,
+          TOLERANCE,
+          `${where}: the stage's whole height fitted at the same scale and ` +
+            "centred, so the pointer over that point reads it back " +
+            "(specs/overview.md)",
+        );
+      }
+    } finally {
+      // In a `finally`, so a check that fails still leaves the picture that
+      // shows why.
+      if (surface === SURFACES[0]) {
+        await h.capture(
+          "fit",
+          "The stage fitted and centred in an off-aspect window",
+        );
+      }
     }
   }
 });

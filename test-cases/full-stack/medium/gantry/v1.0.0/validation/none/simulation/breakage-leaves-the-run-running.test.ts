@@ -200,6 +200,11 @@ it("carries on running after a breakage the structure survives", async () => {
   assertNull(broke.run.cause, "the cause on the breaking tick");
 
   const later = await runTicks(h, WATCHED);
+  await h.capture(
+    "breakage-leaves-the-run-running",
+    "the crane still running ten ticks after its stay broke",
+  );
+
   assertEqual(
     later.run.tick,
     1 + WATCHED,
@@ -217,10 +222,5 @@ it("carries on running after a breakage the structure survives", async () => {
     [STAY],
     `the run's broken members ${WATCHED} ticks past the breakage: the strut ` +
       "stay alone, so nothing followed it",
-  );
-
-  await h.capture(
-    "breakage-leaves-the-run-running",
-    "the crane still running ten ticks after its stay broke",
   );
 });

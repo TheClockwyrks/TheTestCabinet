@@ -82,19 +82,21 @@ it("calls a member that reaches the crane only by crossing it disconnected", asy
     );
   }
 
-  assertContains(
-    readiness((await h.check()).issues),
-    "disconnected-members",
-    `the issues with a strut crossing the crane at (${CROSSING_POINT.x}, ` +
-      `${CROSSING_POINT.y}, ${CROSSING_POINT.z}) and sharing an end node ` +
-      "with nothing: a crossing is not a join, so it has no member path to " +
-      "an anchor or to a flange node (specs/structure.md)",
-  );
+  const checked = await h.check();
 
   await h.advance(1);
   await h.capture(
     "crossing-orphan",
     "the crossing member the check calls disconnected",
+  );
+
+  assertContains(
+    readiness(checked.issues),
+    "disconnected-members",
+    `the issues with a strut crossing the crane at (${CROSSING_POINT.x}, ` +
+      `${CROSSING_POINT.y}, ${CROSSING_POINT.z}) and sharing an end node ` +
+      "with nothing: a crossing is not a join, so it has no member path to " +
+      "an anchor or to a flange node (specs/structure.md)",
   );
 
   await h.debug.removeMember(id);

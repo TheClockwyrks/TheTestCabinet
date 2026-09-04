@@ -80,6 +80,9 @@ it("removes the counterweight the click picks, leaving the ring standing", async
   await h.click(at.x, at.y);
 
   const s = await h.snapshot();
+  await h.advance(1);
+  await h.capture("state", "The ring standing with its counterweight deleted");
+
   assertLength(
     s.structure.counterweights,
     0,
@@ -96,7 +99,4 @@ it("removes the counterweight the click picks, leaving the ring standing", async
     JSON.stringify(RING),
     "the corner the ring still reads",
   );
-
-  await h.advance(1);
-  await h.capture("state", "The ring standing with its counterweight deleted");
 });

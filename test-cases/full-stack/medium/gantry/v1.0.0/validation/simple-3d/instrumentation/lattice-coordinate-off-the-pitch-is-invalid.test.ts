@@ -68,37 +68,41 @@ it("fails loudly on a coordinate that is not a multiple of LATTICE_PITCH", async
     ],
   ];
 
-  for (const [what, call] of offPitch) {
-    let threw = false;
-    try {
-      await call();
-    } catch {
-      threw = true;
-    }
-    if (!threw) {
-      fail(
-        `${what} to fail loudly, its odd coordinate being no multiple of ` +
-          `LATTICE_PITCH (${LATTICE_PITCH}) and so outside the domain, ` +
-          "rather than being refused as an edit (specs/instrumentation.md)",
-        "the call returned instead",
+  try {
+    for (const [what, call] of offPitch) {
+      let threw = false;
+      try {
+        await call();
+      } catch {
+        threw = true;
+      }
+      if (!threw) {
+        fail(
+          `${what} to fail loudly, its odd coordinate being no multiple of ` +
+            `LATTICE_PITCH (${LATTICE_PITCH}) and so outside the domain, ` +
+            "rather than being refused as an edit (specs/instrumentation.md)",
+          "the call returned instead",
+        );
+      }
+
+      const s = await h.snapshot();
+      assertLength(s.structure.members, 0, `the members after ${what}`);
+      assertNull(s.structure.ring, `the ring after ${what}`);
+      assertLength(
+        s.structure.counterweights,
+        0,
+        `the counterweights after ${what}`,
       );
+      assertNull(s.pendingNode, `the pending node after ${what}`);
+      assertEqual(s.historyDepth, 0, `historyDepth after ${what}`);
     }
-
-    const s = await h.snapshot();
-    assertLength(s.structure.members, 0, `the members after ${what}`);
-    assertNull(s.structure.ring, `the ring after ${what}`);
-    assertLength(
-      s.structure.counterweights,
-      0,
-      `the counterweights after ${what}`,
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.advance(1);
+    await h.capture(
+      "error-messages",
+      "The empty structure the five off-pitch calls left",
     );
-    assertNull(s.pendingNode, `the pending node after ${what}`);
-    assertEqual(s.historyDepth, 0, `historyDepth after ${what}`);
   }
-
-  await h.advance(1);
-  await h.capture(
-    "error-messages",
-    "The empty structure the five off-pitch calls left",
-  );
 });

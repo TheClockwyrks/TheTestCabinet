@@ -90,6 +90,8 @@ afterEach(async () => {
 
 it("names the anchors, the budget, and the loads and their pads", async () => {
   const copy = await howtoCopy(h);
+  await h.capture("howto-site", "The how-to copy on reading a site");
+
   assertGreaterThan(
     copy.length,
     0,
@@ -102,6 +104,4 @@ it("names the anchors, the budget, and the loads and their pads", async () => {
     "what the how-to copy leaves unnamed of the anchors, the budget, and the " +
       "loads and their pads (specs/ui.md, specs/sites.md)",
   );
-
-  await h.capture("howto-site", "The how-to copy on reading a site");
 });

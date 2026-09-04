@@ -82,6 +82,12 @@ it("deletes the member and leaves the pending node held", async () => {
   await h.click((pa.x + pb.x) / 2, (pa.y + pb.y) / 2);
 
   const s = await h.snapshot();
+  await h.advance(1);
+  await h.capture(
+    "state",
+    "The member deleted with the pending node still held",
+  );
+
   assertLength(
     s.structure.members,
     0,
@@ -97,11 +103,5 @@ it("deletes the member and leaves the pending node held", async () => {
     JSON.stringify(s.pendingNode),
     JSON.stringify(PENDING),
     "the node still held pending",
-  );
-
-  await h.advance(1);
-  await h.capture(
-    "state",
-    "The member deleted with the pending node still held",
   );
 });

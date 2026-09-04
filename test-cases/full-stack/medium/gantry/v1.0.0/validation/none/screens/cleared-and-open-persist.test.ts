@@ -135,12 +135,12 @@ it("keeps a site cleared after another site is played", async () => {
 
   await h.debug.setScreen("select");
   const listed = await h.snapshot();
+  await h.capture("state", "the site list after another site was played");
+
   assertEqual(listed.screen, "select", "the site list this point reads");
   assertTrue(
     listed.cleared[CLEARED_SITE] === true,
     `site ${CLEARED_SITE} to still read cleared after site ${OTHER_SITE} was ` +
       `played, so site ${OTHER_SITE} still reads open (specs/ui.md)`,
   );
-
-  await h.capture("state", "the site list after another site was played");
 });

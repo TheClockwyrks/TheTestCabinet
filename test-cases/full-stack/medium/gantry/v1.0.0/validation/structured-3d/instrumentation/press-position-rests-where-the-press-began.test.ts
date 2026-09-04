@@ -66,6 +66,11 @@ it("leaves pressX and pressY where the press went down after it is released", as
 
   const { pointer } = await h.snapshot();
 
+  await h.capture(
+    "press-position",
+    "The pointer resting where the last press began",
+  );
+
   assertClose(
     pointer.pressX,
     DOWN.x,
@@ -96,9 +101,4 @@ it("leaves pressX and pressY where the press went down after it is released", as
     "the pointer position after the release",
   );
   assertEqual(pointer.down, false, "the press the release ended");
-
-  await h.capture(
-    "press-position",
-    "The pointer resting where the last press began",
-  );
 });

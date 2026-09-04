@@ -263,6 +263,11 @@ it("puts no slew term on a tower node, however fast the arm turns", async () => 
   for (const [id, force] of stillLoaded) {
     largest = Math.max(largest, Math.abs(force - (stillBare.get(id) ?? NaN)));
   }
+  await h.capture(
+    "tower-node-still",
+    "The counterweight-carrying outrigger with the arm turning above it",
+  );
+
   assertGreaterThan(
     largest,
     1,
@@ -284,9 +289,4 @@ it("puts no slew term on a tower node, however fast the arm turns", async () => 
         "tower node's prescribed acceleration is zero (specs/statics.md)",
     );
   }
-
-  await h.capture(
-    "tower-node-still",
-    "The counterweight-carrying outrigger with the arm turning above it",
-  );
 });

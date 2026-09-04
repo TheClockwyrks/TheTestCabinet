@@ -254,6 +254,8 @@ it("numbers each site row with its index plus one", async () => {
   await h.advance(1);
 
   const order = readingOrder(textDraws(await frameOps(h)));
+  await h.capture("select-numbers", "The site numbers");
+
   assertTrue(
     order.length > 0,
     "the select screen to draw text at all (specs/ui.md)",
@@ -274,6 +276,4 @@ it("numbers each site row with its index plus one", async () => {
       );
     }
   }
-
-  await h.capture("select-numbers", "The site numbers");
 });

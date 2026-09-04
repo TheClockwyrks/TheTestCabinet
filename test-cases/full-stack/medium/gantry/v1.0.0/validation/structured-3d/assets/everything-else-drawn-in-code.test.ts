@@ -243,6 +243,8 @@ it("fetches the eight models and the twelve sounds and no other asset file", asy
     (path) => !models.includes(path) && !audio.includes(path),
   );
 
+  await h.capture("requests", "Every asset the played-through site requested");
+
   assertEqual(
     other.join(", "),
     "",
@@ -269,6 +271,4 @@ it("fetches the eight models and the twelve sounds and no other asset file", asy
     `gantry: every asset the played-through site requested —\n  ` +
       paths.join("\n  "),
   );
-
-  await h.capture("requests", "Every asset the played-through site requested");
 });

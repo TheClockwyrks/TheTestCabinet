@@ -250,6 +250,8 @@ it("builds a cruising tick's inertial loads from an acceleration of zero", async
     }
     was = now.rate;
   }
+  await h.capture("state", "The arm on a cruising tick of a slew move");
+
   if (cruising === null) {
     fail(
       `a tick of the move to ${TARGET} degrees whose slew rate the clamp left ` +
@@ -258,8 +260,6 @@ it("builds a cruising tick's inertial loads from an acceleration of zero", async
       "no tick cruised",
     );
   }
-
-  await h.capture("state", "The arm on a cruising tick of a slew move");
 
   const tick = cruising as GantrySnapshot;
   assertNear(

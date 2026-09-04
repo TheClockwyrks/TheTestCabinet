@@ -83,32 +83,36 @@ it("covers as many ticks a frame as the watch speed says", async () => {
   );
 
   let expected = 0;
-  for (const [index, speed] of RUN_SPEEDS.entries()) {
-    if (index > 0) await h.debug.setSpeedIndex(index);
+  try {
+    for (const [index, speed] of RUN_SPEEDS.entries()) {
+      if (index > 0) await h.debug.setSpeedIndex(index);
 
-    await h.advance(FRAMES);
-    expected += FRAMES * speed;
-    // One reading covers both halves: the speed does not move under a block, so
-    // the snapshot the block ends on says which speed it ran at as well as what
-    // it counted.
-    const { run } = await h.snapshot();
-    assertEqual(
-      run.speedIndex,
-      index,
-      `the watch speed posed for this block, RUN_SPEEDS[${index}] (${speed})`,
-    );
-    assertEqual(
-      run.tick,
-      expected,
-      `run.tick after ${FRAMES} frames at speed ${speed}: a frame covers ` +
-        `${speed} ticks (specs/instrumentation.md)`,
-    );
-    assertEqual(
-      run.phase,
-      "running",
-      "the run still in progress, so the count is a driven one",
-    );
+      await h.advance(FRAMES);
+      expected += FRAMES * speed;
+      // One reading covers both halves: the speed does not move under a block, so
+      // the snapshot the block ends on says which speed it ran at as well as what
+      // it counted.
+      const { run } = await h.snapshot();
+      assertEqual(
+        run.speedIndex,
+        index,
+        `the watch speed posed for this block, RUN_SPEEDS[${index}] (${speed})`,
+      );
+      assertEqual(
+        run.tick,
+        expected,
+        `run.tick after ${FRAMES} frames at speed ${speed}: a frame covers ` +
+          `${speed} ticks (specs/instrumentation.md)`,
+      );
+      assertEqual(
+        run.phase,
+        "running",
+        "the run still in progress, so the count is a driven one",
+      );
+    }
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.capture("scaled", "The run at the tick three speeds counted to");
   }
-
-  await h.capture("scaled", "The run at the tick three speeds counted to");
 });

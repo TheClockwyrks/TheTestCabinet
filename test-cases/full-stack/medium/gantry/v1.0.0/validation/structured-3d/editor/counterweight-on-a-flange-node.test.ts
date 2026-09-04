@@ -66,15 +66,15 @@ it("places a counterweight on a flange node where no member ends", async () => {
   await h.advance(1);
 
   const { structure } = await h.snapshot();
+  await h.capture(
+    "counterweight-on-a-flange-node",
+    "A counterweight on the ring's top-flange node",
+  );
+
   assertContains(
     structure.counterweights,
     FLANGE_NODE,
     `the counterweight on (${FLANGE_NODE.x}, ${FLANGE_NODE.y}, ` +
       `${FLANGE_NODE.z}), a flange node of the ring (specs/structure.md)`,
-  );
-
-  await h.capture(
-    "counterweight-on-a-flange-node",
-    "A counterweight on the ring's top-flange node",
   );
 });

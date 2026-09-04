@@ -157,6 +157,8 @@ it("draws every one of the four axes' values on the run screen", async () => {
   );
 
   const draws = await readoutText(h);
+  await h.capture("run-axes", "The four axis values");
+
   for (const axis of AXES) {
     const value = state.run.axes[axis].value;
     const lines = axisLines(draws, axis);
@@ -172,6 +174,4 @@ it("draws every one of the four axes' values on the run screen", async () => {
       );
     }
   }
-
-  await h.capture("run-axes", "The four axis values");
 });

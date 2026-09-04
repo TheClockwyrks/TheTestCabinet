@@ -101,6 +101,8 @@ it("leaves a cheaper record standing when a costlier clear beats it on time", as
     ended = await runTicks(h, BATCH);
     driven += BATCH;
   }
+  await h.capture("state", "the results screen the costlier clear reached");
+
   assertEqual(
     ended.run.phase,
     "cleared",
@@ -130,6 +132,4 @@ it("leaves a cheaper record standing when a costlier clear beats it on time", as
     "the recorded best time, which a costlier clear does not replace " +
       "(specs/ui.md)",
   );
-
-  await h.capture("state", "the results screen the costlier clear reached");
 });

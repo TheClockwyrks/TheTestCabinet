@@ -296,6 +296,11 @@ it("reports every field specs/instrumentation.md lists, with its documented type
   check.boolean(s.muted, "muted");
   check.number(s.simTime, "simTime");
 
+  await h.capture(
+    "snapshot-shape",
+    "The run the whole documented snapshot was read over",
+  );
+
   if (problems.length > 0) {
     fail(
       "every field of the Snapshot shape block of specs/instrumentation.md, " +
@@ -311,11 +316,6 @@ it("reports every field specs/instrumentation.md lists, with its documented type
     (s.run as { tick: number }).tick,
     0,
     "the ticks of run clock behind the reading",
-  );
-
-  await h.capture(
-    "snapshot-shape",
-    "The run the whole documented snapshot was read over",
   );
 });
 

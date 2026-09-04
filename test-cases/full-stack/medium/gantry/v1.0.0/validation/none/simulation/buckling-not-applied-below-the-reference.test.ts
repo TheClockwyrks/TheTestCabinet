@@ -70,16 +70,16 @@ it("scores a compressed strut shorter than BUCKLE_REF against its plain capacity
         `${length.toFixed(3)})^2 (specs/structure.md)`,
     );
   }
+  await h.advance(1);
+  await h.capture(
+    "short-struts",
+    "The minimal crane, whose short struts carry compression",
+  );
+
   assertGreaterThan(
     scored,
     0,
     `members shorter than BUCKLE_REF (${BUCKLE_REF}) standing in compression, ` +
       "so the check has something to score",
-  );
-
-  await h.advance(1);
-  await h.capture(
-    "short-struts",
-    "The minimal crane, whose short struts carry compression",
   );
 });

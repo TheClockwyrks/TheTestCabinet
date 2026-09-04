@@ -260,6 +260,11 @@ it("hands an arm node the tangential term, which reverses with the commanded dir
   );
 
   const backward = (await readAt(-SLEW_MAX_RATE, true)) - (await readAt(-SLEW_MAX_RATE, false));
+  await h.capture(
+    "tangential",
+    "The jib rig on the tick a slew move is driving the arm around",
+  );
+
   assertNear(
     backward,
     -expected,
@@ -267,10 +272,5 @@ it("hands an arm node the tangential term, which reverses with the commanded dir
     "the same term reversing when the move is commanded the other way, since " +
       "alpha is `+s * a` and `s` is the sign of the distance to go " +
       "(specs/program.md, specs/statics.md)",
-  );
-
-  await h.capture(
-    "tangential",
-    "The jib rig on the tick a slew move is driving the arm around",
   );
 });

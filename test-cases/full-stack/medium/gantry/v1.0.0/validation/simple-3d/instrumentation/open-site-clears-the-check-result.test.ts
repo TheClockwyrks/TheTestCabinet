@@ -13,7 +13,7 @@
 // reading cannot: "The reading is pure: it computes the check and returns it, and
 // it displays nothing", and § Snapshot shape repeats it — "The `check` reading
 // never sets it." So the one route to a shown result is the key `specs/controls.md`
-// binds the action to, pressed on the build screen where the action lives. That is
+// `showCheck` poses on the build screen where the action lives. That is
 // the direct route to this scenario rather than a detour: it is the only one.
 //
 // Nothing is built. `specs/ui.md` gives what the screen shows when the check finds
@@ -22,11 +22,9 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertNotNull, assertNull } from "../assert";
-import { BINDINGS } from "../constants";
 import { clearAll, createHarness, openSite, type Harness } from "../harness";
 
 /** The key `specs/controls.md` binds the `check` action to. */
-const CHECK_KEY = BINDINGS.check[0]!;
 
 let h: Harness;
 
@@ -41,7 +39,7 @@ afterEach(async () => {
 it("clears the shown check result when a site is opened", async () => {
   await openSite(h, 0);
   await clearAll(h);
-  await h.press(CHECK_KEY);
+  await h.debug.showCheck();
   const shown = await h.snapshot();
   assertNotNull(
     shown.checkResult,

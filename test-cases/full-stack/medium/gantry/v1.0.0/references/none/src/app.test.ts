@@ -44,6 +44,8 @@ function harness(): Harness {
     feedPointerMove: () => {},
     feedPointerDown: () => {},
     feedPointerUp: () => {},
+    feedTouchDown: () => {},
+    feedTouchUp: () => {},
     playCue: (cue) => {
       cues.push(cue);
     },
@@ -162,6 +164,7 @@ describe("the six reference designs", () => {
       const h = harness();
       h.game.autoStep = false;
       h.debug.openSite(i);
+      h.debug.setScreen("build");
       pose(h.debug, designs[i]);
 
       const check = h.debug.check();
@@ -207,6 +210,7 @@ describe("the cues a run raises", () => {
     const h = harness();
     h.game.autoStep = false;
     h.debug.openSite(0);
+    h.debug.setScreen("build");
     pose(h.debug, designs[0]);
     h.debug.startRun();
     h.cues.length = 0;
@@ -255,6 +259,7 @@ describe("the cues a run raises", () => {
     const h = harness();
     h.game.autoStep = false;
     h.debug.openSite(0);
+    h.debug.setScreen("build");
     pose(h.debug, designs[0]);
     h.debug.startRun();
     h.cues.length = 0;
@@ -275,6 +280,7 @@ describe("the frame loop", () => {
     const h = harness();
     h.game.autoStep = false;
     h.debug.openSite(0);
+    h.debug.setScreen("build");
     pose(h.debug, designs[0]);
     h.debug.startRun();
     const drawn = h.draws();
@@ -287,6 +293,7 @@ describe("the frame loop", () => {
     const h = harness();
     h.game.autoStep = false;
     h.debug.openSite(0);
+    h.debug.setScreen("build");
     pose(h.debug, designs[0]);
     h.debug.startRun();
     h.game.update(TICK_DT * 1.5);
@@ -300,6 +307,7 @@ describe("the frame loop", () => {
     const h = harness();
     h.game.autoStep = true;
     h.debug.openSite(0);
+    h.debug.setScreen("build");
     pose(h.debug, designs[0]);
     h.debug.startRun();
     h.game.frame(MAX_FRAME_DT * 4);
@@ -313,6 +321,7 @@ describe("the diagnostic sources", () => {
   it("read the game and name the screen, the site, the run, and the camera", () => {
     const h = harness();
     h.debug.openSite(2);
+    h.debug.setScreen("build");
     const before = h.debug.snapshot();
     const lines = diagnosticLines(h.game.state);
     expect(lines.length).toBeGreaterThanOrEqual(7);

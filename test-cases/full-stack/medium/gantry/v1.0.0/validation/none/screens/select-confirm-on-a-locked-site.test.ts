@@ -57,6 +57,9 @@ it("stays on the site list under confirm on a locked site", async () => {
 
   await h.press(CONFIRM);
   const after = await h.snapshot();
+  await h.advance(1);
+  await h.capture("state", "The site list under confirm on a locked site");
+
   assertEqual(
     after.screen,
     "select",
@@ -69,7 +72,4 @@ it("stays on the site list under confirm on a locked site", async () => {
     "the open site after `confirm` on a locked site, no site having been " +
       "opened (specs/ui.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "The site list under confirm on a locked site");
 });

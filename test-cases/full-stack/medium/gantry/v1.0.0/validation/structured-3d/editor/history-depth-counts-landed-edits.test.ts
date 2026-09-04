@@ -71,33 +71,37 @@ it("raises historyDepth by one for each edit that lands", async () => {
 
   const baseline = (await h.snapshot()).historyDepth;
 
-  for (const [index, [a, b]] of STRUTS.entries()) {
-    await h.debug.addMember(a.x, a.y, a.z, b.x, b.y, b.z, "strut");
-    // Read straight after the call, with no frame in between: a pose "sets one
-    // thing and leaves the rest of the game as it stands"
-    // (`specs/instrumentation.md`), so the edit has landed by the time it
-    // returns and a frame run here would only be a frame this point is not
-    // about.
-    const s = await h.snapshot();
-    assertLength(
-      s.structure.members,
-      index + 1,
-      `the members standing after strut ${index}, from (${a.x}, ${a.y}, ` +
-        `${a.z}) to (${b.x}, ${b.y}, ${b.z}): the edit has to land before it ` +
-        "can be undone (specs/structure.md)",
-    );
-    assertEqual(
-      s.historyDepth,
-      baseline + index + 1,
-      `historyDepth after ${index + 1} landed edits (specs/state.md)`,
+  try {
+    for (const [index, [a, b]] of STRUTS.entries()) {
+      await h.debug.addMember(a.x, a.y, a.z, b.x, b.y, b.z, "strut");
+      // Read straight after the call, with no frame in between: a pose "sets one
+      // thing and leaves the rest of the game as it stands"
+      // (`specs/instrumentation.md`), so the edit has landed by the time it
+      // returns and a frame run here would only be a frame this point is not
+      // about.
+      const s = await h.snapshot();
+      assertLength(
+        s.structure.members,
+        index + 1,
+        `the members standing after strut ${index}, from (${a.x}, ${a.y}, ` +
+          `${a.z}) to (${b.x}, ${b.y}, ${b.z}): the edit has to land before it ` +
+          "can be undone (specs/structure.md)",
+      );
+      assertEqual(
+        s.historyDepth,
+        baseline + index + 1,
+        `historyDepth after ${index + 1} landed edits (specs/state.md)`,
+      );
+    }
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    // One frame, so the still below is the build screen carrying the four struts
+    // rather than the frame that stood before the first of them was placed.
+    await h.advance(1);
+    await h.capture(
+      "history-depth-counts-landed-edits",
+      "The four struts the undo history counts",
     );
   }
-
-  // One frame, so the still below is the build screen carrying the four struts
-  // rather than the frame that stood before the first of them was placed.
-  await h.advance(1);
-  await h.capture(
-    "history-depth-counts-landed-edits",
-    "The four struts the undo history counts",
-  );
 });

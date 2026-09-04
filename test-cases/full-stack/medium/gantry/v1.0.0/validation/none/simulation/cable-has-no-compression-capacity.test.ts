@@ -198,6 +198,12 @@ it("reports no compression on a cable standing in a compression seat", async () 
 
   // The requirement: as a cable it reports no compression at all.
   const asCable = await readSeat("cable");
+  await h.advance(1);
+  await h.capture(
+    "slack-cable",
+    "The jib rig whose mast brace is a cable in a compression seat",
+  );
+
   assertEqual(
     asCable.force,
     0,
@@ -208,11 +214,5 @@ it("reports no compression on a cable standing in a compression seat", async () 
     asCable.utilization,
     0,
     "the utilization a slack cable reports (specs/statics.md)",
-  );
-
-  await h.advance(1);
-  await h.capture(
-    "slack-cable",
-    "The jib rig whose mast brace is a cable in a compression seat",
   );
 });

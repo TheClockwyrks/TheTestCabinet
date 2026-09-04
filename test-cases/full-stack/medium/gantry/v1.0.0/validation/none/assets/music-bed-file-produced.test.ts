@@ -140,6 +140,8 @@ afterEach(async () => {
 
 it("commits the music bed as a decodable, non-silent .wav", async () => {
   const path = join(WORKSPACE, MUSIC);
+  await h.capture("music", "The committed music bed");
+
   assertTrue(
     existsSync(path),
     `the music bed committed at \`${MUSIC}\` (specs/assets.md)`,
@@ -165,6 +167,4 @@ it("commits the music bed as a decodable, non-silent .wav", async () => {
       `${wav.sampleRate}Hz ${wav.bits}-bit format ${wav.format}, ` +
       `${wav.dataBytes} bytes, peak ${wav.peak.toFixed(4)}`,
   );
-
-  await h.capture("music", "The committed music bed");
 });

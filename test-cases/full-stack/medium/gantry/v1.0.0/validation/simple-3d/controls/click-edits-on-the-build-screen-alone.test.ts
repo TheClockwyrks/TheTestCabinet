@@ -81,6 +81,8 @@ it("leaves the structure alone under a delete click on the run screen", async ()
   await h.click(on.x, on.y);
 
   const s = await h.snapshot();
+  await h.capture("state", "the run screen after a click on the member");
+
   assertEqual(s.screen, "run", "the screen the click was made on");
   assertLength(
     s.structure.members,
@@ -89,6 +91,4 @@ it("leaves the structure alone under a delete click on the run screen", async ()
       "turns the camera and nothing else: a click edits the structure on the " +
       "build screen alone (specs/controls.md)",
   );
-
-  await h.capture("state", "the run screen after a click on the member");
 });

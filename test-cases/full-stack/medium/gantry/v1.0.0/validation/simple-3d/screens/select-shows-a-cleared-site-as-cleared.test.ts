@@ -391,6 +391,10 @@ it("draws a site's row differently once it is cleared", async () => {
   const open = await rowAs(false);
   const cleared = await rowAs(true);
 
+  // The still is the list a reviewer reads: site 1 cleared, site 2 open behind
+  // it, and the rest locked.
+  await h.capture("select-states", "A cleared row beside an open row");
+
   if (open === cleared) {
     fail(
       `site ${SITE + 1}'s row to be drawn differently when it is cleared from ` +
@@ -399,8 +403,4 @@ it("draws a site's row differently once it is cleared", async () => {
         "once its number and name are set aside",
     );
   }
-
-  // The still is the list a reviewer reads: site 1 cleared, site 2 open behind
-  // it, and the rest locked.
-  await h.capture("select-states", "A cleared row beside an open row");
 });

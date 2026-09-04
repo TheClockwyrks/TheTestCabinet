@@ -66,27 +66,31 @@ it("clears the run's attachment when the load hanging is posed off the hook", as
   await startRun(h);
   await h.advance(1);
 
-  for (const phase of ["waiting", "lost"] as const) {
-    await h.debug.setLoadPhase(0, "attached");
-    assertEqual(
-      (await h.snapshot()).run.attached,
-      0,
-      `the load hanging on the hook before it is posed "${phase}"`,
-    );
+  try {
+    for (const phase of ["waiting", "lost"] as const) {
+      await h.debug.setLoadPhase(0, "attached");
+      assertEqual(
+        (await h.snapshot()).run.attached,
+        0,
+        `the load hanging on the hook before it is posed "${phase}"`,
+      );
 
-    await h.debug.setLoadPhase(0, phase);
-    const { run } = await h.snapshot();
-    assertNull(
-      run.attached,
-      `run.attached after the hanging load was posed "${phase}" ` +
-        "(specs/instrumentation.md)",
-    );
-    assertEqual(
-      run.loads[0]?.phase,
-      phase,
-      `run.loads[0].phase after the pose to "${phase}"`,
-    );
+      await h.debug.setLoadPhase(0, phase);
+      const { run } = await h.snapshot();
+      assertNull(
+        run.attached,
+        `run.attached after the hanging load was posed "${phase}" ` +
+          "(specs/instrumentation.md)",
+      );
+      assertEqual(
+        run.loads[0]?.phase,
+        phase,
+        `run.loads[0].phase after the pose to "${phase}"`,
+      );
+    }
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.capture("off", "The hook empty after the load was posed off it");
   }
-
-  await h.capture("off", "The hook empty after the load was posed off it");
 });

@@ -70,17 +70,19 @@ it("wraps to the first entry when down moves from the clamped last entry", async
   await h.press(DOWN);
   await h.advance(1);
 
+  const after = await h.snapshot();
+
+  await h.capture(
+    "state",
+    "the results menu after down moved from its last entry",
+  );
+
   assertEqual(
-    (await h.snapshot()).menuIndex,
+    after.menuIndex,
     0,
     `menuIndex after ${DOWN} with menuIndex ${HELD} held on a menu of ` +
       `${ENTRIES} entries: the menu highlights its last entry instead and ` +
       "`down` moves from it, wrapping off the end " +
       "(specs/state.md § The session, specs/ui.md § The screens)",
-  );
-
-  await h.capture(
-    "state",
-    "the results menu after down moved from its last entry",
   );
 });

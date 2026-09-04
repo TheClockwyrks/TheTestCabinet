@@ -92,6 +92,12 @@ it("opens the site with the structure and tape stored on it", async () => {
 
   await h.press(CONFIRM);
   const entered = await h.snapshot();
+  await h.advance(1);
+  await h.capture(
+    "entered-site",
+    "The build screen entered with its stored structure and tape",
+  );
+
   assertEqual(
     entered.screen,
     "build",
@@ -142,10 +148,4 @@ it("opens the site with the structure and tape stored on it", async () => {
       "that command's target",
     );
   }
-
-  await h.advance(1);
-  await h.capture(
-    "entered-site",
-    "The build screen entered with its stored structure and tape",
-  );
 });

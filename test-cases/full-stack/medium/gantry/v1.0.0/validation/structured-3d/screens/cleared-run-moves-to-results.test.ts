@@ -80,6 +80,8 @@ it("shows the results screen when a run ends cleared", async () => {
     "the run to end",
   );
 
+  await h.capture("state", "the results screen a cleared run moved to");
+
   assertEqual(
     ended.run.phase,
     "cleared",
@@ -92,6 +94,4 @@ it("shows the results screen when a run ends cleared", async () => {
     "results",
     "the screen a cleared run moves to (specs/ui.md)",
   );
-
-  await h.capture("state", "the results screen a cleared run moved to");
 });

@@ -67,6 +67,9 @@ it("raises the pitch by ORBIT_PER_PX per pixel dragged toward the top", async ()
   await h.advance(1);
 
   const { camera } = await h.snapshot();
+  await h.advance(1);
+  await h.capture("state", "the yard after an upward orbit drag");
+
   assertClose(
     camera.pitch,
     CAMERA_START_PITCH + ORBIT_PER_PX * DRAG_PX,
@@ -75,7 +78,4 @@ it("raises the pitch by ORBIT_PER_PX per pixel dragged toward the top", async ()
       `top of the stage, which turns at ORBIT_PER_PX (${ORBIT_PER_PX}) ` +
       "degrees a pixel (specs/controls.md)",
   );
-
-  await h.advance(1);
-  await h.capture("state", "the yard after an upward orbit drag");
 });

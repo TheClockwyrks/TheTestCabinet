@@ -67,6 +67,11 @@ it("solves the run-start posture a first tick that commands no motion stands at"
 
   await startRun(h);
   const first = await runTicks(h, 1);
+  await h.capture(
+    "run-start-solve",
+    "the run's first tick at the posture the check solves",
+  );
+
   assertEqual(first.run.tick, 1, "the run's first tick");
 
   assertLength(
@@ -98,9 +103,4 @@ it("solves the run-start posture a first tick that commands no motion stands at"
         "the check's at the same posture",
     );
   }
-
-  await h.capture(
-    "run-start-solve",
-    "the run's first tick at the posture the check solves",
-  );
 });

@@ -68,14 +68,16 @@ it("reads false a pixel short of CLICK_SLOP and true at it", async () => {
 
   await h.pointerMove(PRESS.x + CLICK_SLOP, PRESS.y);
   await h.advance(1);
+  const after = await h.snapshot();
+
+  await h.capture("state", "the yard under a press that has become a drag");
+
   assertEqual(
-    (await h.snapshot()).pointer.dragging,
+    after.pointer.dragging,
     true,
     `pointer.dragging on the move that reaches CLICK_SLOP (${CLICK_SLOP}) ` +
       "from where the press went down (specs/controls.md)",
   );
-
-  await h.capture("state", "the yard under a press that has become a drag");
   await h.pointerUp();
   await h.advance(1);
 });

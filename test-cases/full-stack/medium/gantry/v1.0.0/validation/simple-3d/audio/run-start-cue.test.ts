@@ -61,12 +61,12 @@ it("plays the run-start cue when a run starts", async () => {
   await h.advance(1);
   const played = await h.cues();
 
+  await h.capture("start", "The run the start cue opened");
+
   assertEqual(started.run.phase, "running", "the run the start began");
   assertContains(
     played,
     "run-start",
     "the cue a run starting plays (specs/ui.md)",
   );
-
-  await h.capture("start", "The run the start cue opened");
 });

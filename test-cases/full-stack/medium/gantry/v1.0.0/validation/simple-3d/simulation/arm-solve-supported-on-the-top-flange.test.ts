@@ -142,13 +142,14 @@ it("leaves every arm member's force alone when the tower below changes", async (
   await h.debug.addCounterweight(0, 4, 2);
 
   const heavy = await h.check();
-  assertTrue(
-    heavy.stable,
-    "the stiffened, weighted tower to stand (specs/structure.md)",
-  );
   await h.capture(
     "tower-changed",
     "the rig with the tower stiffened and weighted below the ring",
+  );
+
+  assertTrue(
+    heavy.stable,
+    "the stiffened, weighted tower to stand (specs/structure.md)",
   );
 
   for (const member of light.members) {

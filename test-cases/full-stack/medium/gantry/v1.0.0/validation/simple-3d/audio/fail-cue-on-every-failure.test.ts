@@ -186,6 +186,8 @@ it("plays the fail cue on the failing tick of a run, whatever the cause", async 
   await startRun(h);
   await h.cues();
   const unplaced = await runToTheEnd(h, 40, "the tape to run out");
+  await h.capture("failures", "The last of the three failures");
+
   assertEqual(
     unplaced.snapshot.run.cause,
     "loads-unplaced",
@@ -201,6 +203,4 @@ it("plays the fail cue on the failing tick of a run, whatever the cause", async 
         "whatever the cause (specs/ui.md)",
     );
   }
-
-  await h.capture("failures", "The last of the three failures");
 });

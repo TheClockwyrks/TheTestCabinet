@@ -70,14 +70,16 @@ it("takes the results menu's last entry when the held index names none", async (
   await h.press(CONFIRM);
   await h.advance(1);
 
+  const after = await h.snapshot();
+
+  await h.capture("state", "the screen the menu's last entry led to");
+
   assertEqual(
-    (await h.snapshot()).screen,
+    after.screen,
     "select",
     `the screen after ${CONFIRM} with menuIndex ${HELD} held on a menu of ` +
       `${ENTRIES} entries: the menu highlights its last entry instead, ` +
       "`SITE SELECT`, which returns to `select` " +
       "(specs/state.md § The session, specs/ui.md § Results)",
   );
-
-  await h.capture("state", "the screen the menu's last entry led to");
 });

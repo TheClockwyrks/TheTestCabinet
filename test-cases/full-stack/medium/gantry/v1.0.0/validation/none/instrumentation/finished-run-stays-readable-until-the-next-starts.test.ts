@@ -121,25 +121,29 @@ it("still reports a failed run's phase, cause, clock and broken list off the run
     broken: ended.run.broken,
   };
 
-  for (const screen of ["build", "program"] as const) {
-    await h.debug.setScreen(screen);
-    const s = await h.snapshot();
-    assertDeepEqual(
-      {
-        phase: s.run.phase,
-        cause: s.run.cause,
-        tick: s.run.tick,
-        broken: s.run.broken,
-      },
-      verdict,
-      `the finished run, read on the ${screen} screen: it is "left as it ` +
-        'ended until the next one starts" (specs/state.md)',
+  try {
+    for (const screen of ["build", "program"] as const) {
+      await h.debug.setScreen(screen);
+      const s = await h.snapshot();
+      assertDeepEqual(
+        {
+          phase: s.run.phase,
+          cause: s.run.cause,
+          tick: s.run.tick,
+          broken: s.run.broken,
+        },
+        verdict,
+        `the finished run, read on the ${screen} screen: it is "left as it ` +
+          'ended until the next one starts" (specs/state.md)',
+      );
+    }
+  } finally {
+    // In a `finally`, so a check that fails inside the sweep still leaves
+    // the picture that shows why.
+    await h.advance(1);
+    await h.capture(
+      "finished-run-readable",
+      "The finished run, still readable from the program screen",
     );
   }
-
-  await h.advance(1);
-  await h.capture(
-    "finished-run-readable",
-    "The finished run, still readable from the program screen",
-  );
 });

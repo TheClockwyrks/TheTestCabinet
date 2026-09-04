@@ -25,6 +25,7 @@ import {
 } from "./constants";
 import type { Game } from "./app";
 import * as editor from "./editor";
+import { menuRects } from "./menus";
 import { project } from "./render";
 import type { DrawnEntry } from "./render-drawn";
 import {
@@ -186,6 +187,14 @@ export interface Snapshot {
   simTime: number;
 }
 
+/** A menu entry's hit region, in logical stage units. */
+export interface MenuRectReport {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /** Where a world position is drawn, in logical stage units. */
 export interface ProjectionReport {
   x: number;
@@ -206,6 +215,7 @@ export interface GantryDebugApi {
   check(): CheckReport;
   project(x: number, y: number, z: number): ProjectionReport;
   drawn(): DrawnEntry[];
+  menuItemRect(index: number): MenuRectReport;
 
   // The run and the screens
   reset(): void;
@@ -218,6 +228,7 @@ export interface GantryDebugApi {
   setCamera(yaw: number, pitch: number, dist: number): void;
   startRun(): void;
   abortRun(): void;
+  showCheck(): void;
 
   // The structure
   clearStructure(): void;
@@ -292,6 +303,8 @@ export interface GantryDebugApi {
   pointerMove(x: number, y: number): void;
   pointerDown(x: number, y: number): void;
   pointerUp(): void;
+  touchDown(x: number, y: number): void;
+  touchUp(): void;
   keyDown(code: string): void;
   keyUp(code: string): void;
 }
@@ -618,6 +631,23 @@ export function createDebugSurface(game: Game): GantryDebugApi {
       return project(now().camera, world);
     },
 
+    menuItemRect(index) {
+      // A menu entry's region is only a reading where a menu is showing, so a
+      // screen with none and an index the menu has no entry at are both
+      // outside the domain (`specs/instrumentation.md`).
+      const state = now();
+      const count = st.menuLength(state);
+      if (count === 0) {
+        invalid(
+          `menuItemRect is read on a screen showing a menu; ${state.screen} shows none`,
+        );
+      }
+      const at = requireIndex("index", index, count);
+      const rect = menuRects(state)[at];
+      if (rect === undefined) invalid(`index has no entry at ${at}`);
+      return { x: rect.x, y: rect.y, w: rect.w, h: rect.h };
+    },
+
     // ---- The run and the screens -----------------------------------------
 
     reset() {
@@ -647,8 +677,11 @@ export function createDebugSurface(game: Game): GantryDebugApi {
     },
 
     openSite(index) {
+      // The opening `specs/state.md` fixes and nothing else: the screen is left
+      // exactly as it stands, so a caller entering a site from the select
+      // screen calls `setScreen("build")` after this.
       const site = requireIndex("index", index, SITE_COUNT);
-      put(st.setScreen(st.openSite(now(), site), "build"));
+      put(st.openSite(now(), site));
     },
 
     setCleared(index, cleared) {
@@ -689,6 +722,12 @@ export function createDebugSurface(game: Game): GantryDebugApi {
     abortRun() {
       if (!running()) return;
       put(st.abortRun(now()));
+    },
+
+    showCheck() {
+      // The `check` action, on the screen the action applies to.
+      if (!onScreen("build")) return;
+      put(editor.showCheck(now()));
     },
 
     // ---- The structure ----------------------------------------------------
@@ -914,6 +953,14 @@ export function createDebugSurface(game: Game): GantryDebugApi {
 
     pointerUp() {
       game.runtime.feedPointerUp();
+    },
+
+    touchDown(x, y) {
+      game.runtime.feedTouchDown(requireNumber("x", x), requireNumber("y", y));
+    },
+
+    touchUp() {
+      game.runtime.feedTouchUp();
     },
 
     keyDown(code) {

@@ -63,12 +63,12 @@ it("starts the run when the check reports an empty issue list", async () => {
 
   await h.debug.startRun();
   const started = await h.snapshot();
+  await h.capture("started", "the run that started on an empty issue list");
+
   assertEqual(
     started.run.phase,
     "running",
     "the run the `run` action starts when the check reports no issue " +
       "(specs/program.md)",
   );
-
-  await h.capture("started", "the run that started on an empty issue list");
 });

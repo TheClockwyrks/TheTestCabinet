@@ -79,14 +79,15 @@ it("reports a negative force in a tower leg pressed down on its anchor", async (
 
   await h.debug.addCounterweight(CORNER[0], CORNER[1], CORNER[2]);
   const loaded = await h.check();
+  await h.capture(
+    "leg-in-compression",
+    "the crane with a counterweight on the bottom-flange corner (0, 2, 0)",
+  );
+
   assertTrue(
     loaded.stable,
     "the crane to stand with the counterweight on the corner " +
       "(specs/structure.md)",
-  );
-  await h.capture(
-    "leg-in-compression",
-    "the crane with a counterweight on the bottom-flange corner (0, 2, 0)",
   );
 
   const force = forceOf(loaded.members, LEG);
