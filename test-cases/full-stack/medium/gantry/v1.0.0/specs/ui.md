@@ -48,8 +48,9 @@ tape editor instead (`specs/controls.md`).
 
 The game opens on `title`, showing `TITLE_TEXT` (`GANTRY`), `TAGLINE_TEXT`
 (`RIG THE CRANE. RUN THE TAPE.`), and the menu `TITLE_ITEMS` (`SITES`,
-`HOW TO PLAY`), with `menuIndex` `0` on arriving. `SITES` opens `select`,
-`HOW TO PLAY` opens `howto`, and `back` does nothing.
+`HOW TO PLAY`), with `menuIndex` `0` as it opens. `SITES` opens `select`,
+`HOW TO PLAY` opens `howto`, and `back` does nothing. Returning to `title`
+highlights the entry that led away from it, as the two screens below state.
 
 ### How to play
 
@@ -57,8 +58,8 @@ The game opens on `title`, showing `TITLE_TEXT` (`GANTRY`), `TAGLINE_TEXT`
 and the parts they place, the ring and what the arm turns on, writing a tape
 and what each axis does, why speed loads the structure and swings the load,
 and setting a load down inside the tolerances. It names the tool, `undo`,
-`check`, screen-switch, and `run` bindings. `back` returns to `title` with
-`menuIndex` `0`.
+`check`, screen-switch, and `run` bindings. `back` returns to `title` with the
+highlight on `HOW TO PLAY`, the entry that led here, so `menuIndex` reads `1`.
 
 ### Site select
 
@@ -72,7 +73,8 @@ state reads without relying on hue alone.
 
 `confirm` on an open or cleared site enters it, opening the `build` screen
 with that site's stored structure and tape; `confirm` on a locked site does
-nothing; and `back` returns to `title`. On arriving, the highlight sits on the
+nothing; and `back` returns to `title` with the highlight on `SITES`, the entry
+that led here, so `menuIndex` reads `0`. On arriving, the highlight sits on the
 site the yard screens last showed (`siteIndex`, `specs/state.md`), which is the
 site at index `0`, `menuIndex` `0`, before any site has been opened.
 

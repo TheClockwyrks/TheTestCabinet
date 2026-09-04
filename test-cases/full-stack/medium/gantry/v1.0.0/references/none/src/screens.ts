@@ -75,11 +75,15 @@ export const pendingStartIssues = (state: GantryState): readonly StartIssue[] =>
 
 // ---- Where the navigation leads --------------------------------------------
 
-/** The title screen, whose menu is highlighted at `0` on arriving. */
-const gotoTitle = (state: GantryState): GantryState => ({
+/**
+ * The title screen, highlighting the entry that led away from it
+ * (`specs/ui.md`): `HOW TO PLAY` on the way back from how-to, `SITES` on the
+ * way back from select.
+ */
+const gotoTitle = (state: GantryState, entry: number): GantryState => ({
   ...state,
   screen: "title",
-  menuIndex: 0,
+  menuIndex: entry,
 });
 
 /**
@@ -141,9 +145,12 @@ function goBack(state: GantryState): GantryState {
   switch (state.screen) {
     case "title":
       return state;
+    // TITLE_ITEMS: `SITES` at 0, `HOW TO PLAY` at 1. Each return highlights the
+    // entry that led away from the title (`specs/ui.md`).
     case "howto":
+      return gotoTitle(state, 1);
     case "select":
-      return gotoTitle(state);
+      return gotoTitle(state, 0);
     case "build":
     case "program":
       return gotoSelect(state);

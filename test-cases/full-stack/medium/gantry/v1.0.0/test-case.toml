@@ -9214,12 +9214,12 @@ validation = { script = "screens/cleared-run-moves-to-results.test.ts", outputs 
 ] }
 
 # From howto press Escape and read screen and menuIndex. — screen reads title
-# and menuIndex reads 0.
+# and menuIndex reads 1, the index of HOW TO PLAY.
 # From specs/ui.md § The screens.
 [[review.categories.items]]
 id = "howto-back-returns-to-title"
-title = "back on the how-to screen returns to the title with menuIndex 0"
-description = "back on the how-to screen returns to title with menuIndex 0, the arrival rule the title screen carries on every path into it."
+title = "back on the how-to screen returns to the title with HOW TO PLAY selected"
+description = "back on the how-to screen returns to title with the highlight on HOW TO PLAY, the entry that led there, so menuIndex reads 1."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "screens/howto-back-returns-to-title.test.ts", outputs = [
@@ -9380,12 +9380,13 @@ validation = { script = "screens/results-replay.test.ts", outputs = [
   { id = "state", name = "The build screen REPLAY opened", kind = "image" },
 ] }
 
-# On select press Escape. — screen reads title.
+# On select, with menuIndex posed to 3, press Escape and read screen and
+# menuIndex. — screen reads title and menuIndex reads 0, the index of SITES.
 # From specs/ui.md § The screens.
 [[review.categories.items]]
 id = "select-back-returns-to-title"
-title = "back on the select screen returns to the title"
-description = "back on the select screen returns to the title screen, which is where the site list was entered from."
+title = "back on the select screen returns to the title with SITES selected"
+description = "back on the select screen returns to the title screen with the highlight on SITES, the entry that led there, so menuIndex reads 0."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "screens/select-back-returns-to-title.test.ts", outputs = [

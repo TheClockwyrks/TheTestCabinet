@@ -93,10 +93,18 @@ describe("the site select", () => {
     expect(handleAction(s, "confirm").siteIndex).toBe(1);
   });
 
-  it("goes back to the title", () => {
-    const s = handleAction(setScreen(titleState(), "select"), "back");
+  it("goes back to the title with SITES selected", () => {
+    // `specs/ui.md`: navigating back to a menu selects the entry that led away
+    // from it, and select is reached through `SITES`, TITLE_ITEMS index 0.
+    const back = handleAction(setScreen(titleState(), "select"), "back");
+    expect(back.screen).toBe("title");
+    expect(back.menuIndex).toBe(0);
+  });
+
+  it("goes back from how-to with HOW TO PLAY selected", () => {
+    const s = handleAction(setScreen(titleState(), "howto"), "back");
     expect(s.screen).toBe("title");
-    expect(s.menuIndex).toBe(0);
+    expect(s.menuIndex).toBe(1);
   });
 });
 

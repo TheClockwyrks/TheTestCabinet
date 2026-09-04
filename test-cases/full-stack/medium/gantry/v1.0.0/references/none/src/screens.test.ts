@@ -194,10 +194,12 @@ describe("the title screen", () => {
     expect(act(state, "back")).toBe(state);
   });
 
-  it("returns from how to play to the title with the first entry", () => {
+  it("returns from how to play to the title with HOW TO PLAY selected", () => {
+    // `specs/ui.md`: navigating back to a menu selects the entry that led away
+    // from it, so the return highlights `HOW TO PLAY` rather than `SITES`.
     const state = act(titleState(), "down", "confirm", "back");
     expect(state.screen).toBe("title");
-    expect(state.menuIndex).toBe(0);
+    expect(state.menuIndex).toBe(1);
   });
 });
 

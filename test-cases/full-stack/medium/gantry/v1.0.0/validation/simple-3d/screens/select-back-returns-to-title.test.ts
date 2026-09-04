@@ -1,17 +1,20 @@
-// screens/select-back-returns-to-title — `back` on the select screen returns to
-// the title.
+// screens/select-back-returns-to-title — back leaves the select screen for the
+// title, with the highlight on the entry that led there.
 //
-// `specs/ui.md` § The screens, Site select: "`confirm` on a locked site does
-// nothing; and `back` returns to `title`." The title screen is where the site
-// list is entered from, so `back` is the way out of it.
+// specs/ui.md, "Site select": "`back` returns to `title` with the highlight on
+// `SITES`, the entry that led here, so `menuIndex` reads `0`." The interesting
+// half is the highlight: the select screen carries a highlight of its own, over
+// the six sites, and the return does not carry that index across — it puts the
+// title menu on the entry the player left the title through.
 //
-// The screen is posed with `setScreen`, which "shows a named screen and sets
-// nothing else" (`specs/instrumentation.md`), rather than reached by taking
-// `SITES` off the title menu: what that entry opens is its own review point, and a
-// build that never reached `select` must fail that item and be decided fairly on
-// this one. The highlight is posed too, because `setScreen` leaves `menuIndex` as
-// it stands and a menu screen showing an out-of-range highlight is not the screen
-// this item is about.
+// THE SELECT HIGHLIGHT IS POSED OFF ZERO FIRST, so a build that simply kept
+// `menuIndex` where the select screen left it reads `3` here and fails, and one
+// that reset it to `0` for the wrong reason still has to be reading the entry
+// rather than the site.
+//
+// `back` is delivered as its binding, `Escape` (specs/controls.md), held across
+// a tick so a build reading held state at the top of a frame sees it exactly as
+// one latching the edge does.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -31,13 +34,17 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("leaves the select screen for the title under back", async () => {
+it("returns to the title with SITES selected", async () => {
   await h.debug.setScreen("select");
-  await h.debug.setMenuIndex(0);
+  await h.debug.setMenuIndex(POSED_SITE);
+
+  const posed = await h.snapshot();
+  assertEqual(posed.screen, "select", "the screen this point presses back on");
   assertEqual(
-    (await h.snapshot()).screen,
-    "select",
-    "the screen `back` is pressed on",
+    posed.menuIndex,
+    POSED_SITE,
+    "the site highlighted on the select screen, so the return this point " +
+      "decides has something to move",
   );
 
   await h.press(BACK);
