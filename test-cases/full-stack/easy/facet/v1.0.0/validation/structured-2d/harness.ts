@@ -719,7 +719,8 @@ export interface Harness {
   /**
    * Reflect over the surface WITHOUT invoking it: the `typeof` of each name.
    *
-   * `instrumentation/debug-api` is one script under all three engines and needs
+   * `instrumentation/debug-api-operations-present` is one script under all three
+   * engines and needs
    * one spelling. A `typeof` and nothing more, so the version's VALUE is not
    * reported here: the specification puts that value both on the surface, read
    * with {@link Harness.debugVersion}, and in the snapshot, read as
@@ -731,7 +732,8 @@ export interface Harness {
    *
    * `specs/instrumentation.md` puts the version in two places — on the surface
    * ("carries `version` … a plain number") and in the snapshot — so
-   * `instrumentation/debug-api` reads both, and this is the surface half. One
+   * `instrumentation/debug-api-version` reads both, and this is the surface half.
+   * One
    * spelling under all three engines: {@link Harness.probe} reports only the
    * `typeof` of a name, and the surface's own members are not otherwise
    * reachable as values under every engine.
@@ -852,7 +854,8 @@ export function missingSurface(reason: string): FacetSurface {
  *    assertion, the moment a check first reaches for an operation.
  *
  * A surface that IS an object but is missing an operation is handed back
- * UNCHANGED, so `instrumentation/debug-api` can sweep it honestly and see which
+ * UNCHANGED, so `instrumentation/debug-api-operations-present` can sweep it
+ * honestly and see which
  * of `REQUIRED_OPS` is absent. Wrapping it would fabricate the very members that
  * point exists to look for.
  */
@@ -1534,8 +1537,9 @@ export function framesPast(seconds: number): number {
 //
 // THE ITEMS THAT DECIDE THOSE TRANSITIONS DO NOT REACH FOR THESE HELPERS.
 // Whether `PLAY` really opens a round, `CONTINUE` really opens the next level
-// and `QUIT` really returns to the title is what `screens/start-round`,
-// `levels/continue-opens-next-level` and `screens/quit-to-title` decide, by
+// and `QUIT` really returns to the title is what the two `screens/start-round-*`
+// points, `levels/continue-opens-next-level` and the two `screens/quit-from-*`
+// points decide, by
 // working the menu the way a player does and reading what the build did. Every
 // other check reaches its scenario through here instead, so a build with a
 // broken title menu fails those items rather than every item in the project.

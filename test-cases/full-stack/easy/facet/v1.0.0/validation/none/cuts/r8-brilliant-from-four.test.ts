@@ -25,7 +25,8 @@
 // reading a different question, and one whose answer the build's random source
 // decides.
 //
-// WHERE the brilliant lands is `cuts/r8-run-placement`'s point. This check finds
+// WHERE the brilliant lands is the three `cuts/r8-run-placement-at-the-*`
+// points'. This check finds
 // the created gem wherever on the board it stands.
 
 import { afterEach, beforeEach, it } from "vitest";

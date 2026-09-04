@@ -21,7 +21,7 @@
 // defines `pause()` as the `pause` action from `playing`, so it arranges the
 // screen this point starts on. Arranging it that way keeps the verdict about
 // LEAVING the menu: a build whose pause key never opened the menu fails the
-// points that are about opening it — `screens/paused-screen`, `keyboard/pause-key`
+// points that are about opening it — `screens/paused-copy`, `keyboard/pause-key`
 // — and is still asked this question fairly.
 //
 // WHAT "EXACTLY AS IT WAS LEFT" IS MEASURED AS. The board in the notation of

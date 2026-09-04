@@ -7,9 +7,11 @@
 // for that choice: "the screen returns to `playing` and the board, the chain,
 // and every timer carry on from exactly where `pause` left them."
 //
-// THE POSE IS THE ROUTE. specs/instrumentation.md defines `resume()` as the
-// choice of `RESUME` from the pause menu, so the pose decides the same thing the
-// menu entry does. It is the right route because this point is about what the
+// THE POSE IS THE ROUTE. `setScreen("playing")` makes the same screen change
+// `RESUME` makes, and specs/instrumentation.md says the screen "behaves from
+// there exactly as it does when a player reaches it", so the pose decides the
+// same thing the menu entry does. It is the right route because this point is
+// about what the
 // screen change PRESERVES rather than about which key chose it: taking the
 // choice through the menu would put `PAUSED_ITEMS`' ordering and the `confirm`
 // binding inside a verdict about the board, and both of those are points of

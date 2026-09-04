@@ -15,16 +15,15 @@
 // help from the key beside it in the table. `Escape` is `keyboard/pause-escape`'s,
 // and a build that bound one and missed the other owes exactly one of the two.
 //
-// SO THE CHECK IS THE PLAYER'S OWN GESTURE, not a pose. specs/instrumentation.md
-// carries a `pause()` operation that arranges the same screen, and driving that
-// would prove the screen exists while saying nothing about the key — which is
-// half the point. The key is pressed through the real input path instead, and
+// SO THE CHECK IS THE PLAYER'S OWN GESTURE, not a pose. `setScreen("paused")`
+// arranges the same screen, and driving that would prove the screen exists while
+// saying nothing about the key — which is half the point. The key is pressed through the real input path instead, and
 // the frame that press runs is what the screen is read after.
 //
 // WHAT IT DOES NOT DECIDE. That `pause` LEAVES the menu again is
-// `screens/paused-back`, that nothing advances while it is up is
+// `screens/pause-leaves-paused`, that nothing advances while it is up is
 // `screens/paused-freezes`, and the menu's copy and items are
-// `screens/paused-screen`. This point is the arrival: the screen, and the
+// `screens/paused-copy`. This point is the arrival: the screen, and the
 // highlight it arrives with.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -68,8 +67,8 @@ it(`opens the pause menu when ${PAUSE_KEY} is pressed on a live board`, async ()
   assertEqual(before.screen, "playing", "the screen the key is pressed on");
 
   // A real press of the bound key, delivered as an edge one frame reads —
-  // never the surface's own `pause()`, which would arrange the screen without
-  // saying anything about the binding.
+  // never `setScreen`, which would arrange the screen without saying anything
+  // about the binding.
   await h.tap(PAUSE_KEY);
 
   // The frame the press ran is the first frame of the pause menu, so the

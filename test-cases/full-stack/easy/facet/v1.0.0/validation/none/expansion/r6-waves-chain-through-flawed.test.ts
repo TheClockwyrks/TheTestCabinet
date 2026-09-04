@@ -35,8 +35,10 @@
 //
 // WHAT IS READ, AND WHAT IS NOT. `lastWaves`, and the phase and chain step that
 // say a step really resolved to report it. That the flawed gems are TAKEN at all
-// is `expansion/r6-flawed-adjacent`'s point and that a chain of them is taken end
-// to end is `expansion/r6-closure`'s, so neither the membership nor the count is
+// is `expansion/r6-flawed-adjacent-taken`'s point and that a chain of them is
+// taken end
+// to end is `expansion/r6-closure-along-a-flawed-line`'s, so neither the
+// membership nor the count is
 // read here.
 //
 // THE EXPECTATION IS COMPUTED, NOT COPIED. `board.ts`'s `clearSetInWavesFromRuns`

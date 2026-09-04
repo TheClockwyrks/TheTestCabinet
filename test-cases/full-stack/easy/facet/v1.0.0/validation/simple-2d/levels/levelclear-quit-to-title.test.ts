@@ -3,13 +3,13 @@
 //
 // specs/ui.md gives `levelclear` two items and this is the second: "`QUIT` — Sets
 // `screen = title` and `menuIndex = 0`, abandoning the round."
-// specs/instrumentation.md poses that choice as `quit()`, "the choice of `QUIT`,
-// which the pause menu and the game-over menu both offer", and says what it
-// leaves: "the screen becomes `title` with its first menu item highlighted, no
-// board is in play".
+// specs/ui.md then says what the title holds: "No board is in play on this
+// screen", and specs/instrumentation.md fixes the resting values a snapshot
+// reports for that.
 //
-// WHY IT IS ITS OWN POINT. It is the same choice `screens/quit-to-title` reads
-// from the pause and game-over menus, offered from a THIRD screen. A build wires
+// WHY IT IS ITS OWN POINT. It is the same choice `screens/quit-from-paused` and
+// `screens/quit-from-gameover` read from their own menus, offered from a THIRD
+// screen. A build wires
 // a menu screen at a time, so one that answered QUIT on the two menus a player
 // meets more often can still strand a player on a cleared level, and nothing else
 // in this checklist would see it. specs/ui.md also says `back` does nothing on

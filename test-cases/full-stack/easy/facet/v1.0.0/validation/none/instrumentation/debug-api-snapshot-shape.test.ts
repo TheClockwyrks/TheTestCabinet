@@ -215,7 +215,8 @@ it("reports the whole documented snapshot shape, off a board in play", async () 
     // R9 gives every gem a `fell`, "how far it traveled to reach the cell it now
     // holds, as a whole number of rows", so the field is reported on every cell
     // rather than on the ones a step moved. What figure a POSED board's gems
-    // carry is `board/load-board`'s point and what a settled one's carry is
+    // carry is `board/load-board-carries-the-tokens`'s point and what a settled
+    // one's carry is
     // `settling`'s, so all that is read here is the type and the floor a whole
     // number of rows traveled cannot fall below.
     assertTrue(Number.isInteger(cell.fell), `a whole fell at ${at}`);

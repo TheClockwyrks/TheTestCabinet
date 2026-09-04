@@ -299,7 +299,8 @@ export function readDebugSurface(
  * read off the raw surface at the moment a check reaches for it, so a missing
  * operation fails the check that needed it and never the `beforeEach`. A member
  * that is not a function comes back as it is, which is what lets
- * `instrumentation/debug-api` test for an operation by `typeof`.
+ * `instrumentation/debug-api-operations-present` test for an operation by
+ * `typeof`.
  */
 export function driveSurface(
   engine: Engine<FacetState, FacetSurface>,
@@ -472,7 +473,8 @@ export interface Harness {
    * A member is read at the moment a check reaches for it, so a missing
    * operation fails THAT check with the surface's Expected/Actual pair and
    * never a `beforeEach`. A member that is not a function passes through
-   * unwrapped, which is what lets `instrumentation/debug-api` test an operation
+   * unwrapped, which is what lets `instrumentation/debug-api-operations-present`
+   * test an operation
    * by `typeof`.
    */
   readonly debug: FacetDriver;
@@ -625,7 +627,8 @@ export interface Harness {
   /**
    * Reflect over the surface WITHOUT invoking it: the `typeof` of each name.
    *
-   * `instrumentation/debug-api` is one script under all three engines and needs
+   * `instrumentation/debug-api-operations-present` is one script under all three
+   * engines and needs
    * one spelling. A `typeof` and nothing more, so the version's VALUE is not
    * reported here: the specification puts that value both on the surface, read
    * with {@link Harness.debugVersion}, and in the snapshot, read as
@@ -637,7 +640,8 @@ export interface Harness {
    *
    * `specs/instrumentation.md` puts the version in two places — on the surface
    * ("carries `version` … a plain number") and in the snapshot — so
-   * `instrumentation/debug-api` reads both, and this is the surface half. One
+   * `instrumentation/debug-api-version` reads both, and this is the surface half.
+   * One
    * spelling under all three engines: {@link Harness.probe} reports only the
    * `typeof` of a name, and the surface's own members are not otherwise
    * reachable as values under every engine.
@@ -1258,8 +1262,9 @@ export function framesPast(seconds: number): number {
 //
 // THE ITEMS THAT DECIDE THOSE TRANSITIONS DO NOT REACH FOR THESE HELPERS.
 // Whether `PLAY` really opens a round, `CONTINUE` really opens the next level
-// and `QUIT` really returns to the title is what `screens/start-round`,
-// `levels/continue-opens-next-level` and `screens/quit-to-title` decide, by
+// and `QUIT` really returns to the title is what the two `screens/start-round-*`
+// points, `levels/continue-opens-next-level` and the two `screens/quit-from-*`
+// points decide, by
 // working the menu the way a player does and reading what the build did. Every
 // other check reaches its scenario through here instead, so a build with a
 // broken title menu fails those items rather than every item in the project.

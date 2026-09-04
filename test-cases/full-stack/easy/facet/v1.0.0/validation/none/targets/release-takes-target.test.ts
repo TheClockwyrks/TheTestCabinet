@@ -14,7 +14,8 @@
 // `menu-0` IS `PLAY`, SO THE TAKE IS READ AS THE SCREEN IT REACHES.
 // specs/ui.md's title menu is `PLAY`, `HOW TO PLAY` in that order, so taking the
 // first item starts a round: the screen becomes `playing` and a board is in play.
-// What a fresh round is made of is `screens/start-round`'s point, and it is not
+// What a fresh round is made of is `screens/start-round-from-title`'s point, and
+// it is not
 // re-read here; what is decided is that the release took the target at all,
 // which needs only that the screen the title menu's first item leads to is the
 // screen the game is on afterwards.

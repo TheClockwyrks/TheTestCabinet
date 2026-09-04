@@ -37,7 +37,8 @@
 //
 // WHAT IT DELIBERATELY DOES NOT DECIDE. What an opening board must LOOK like —
 // that it holds no run under R4 and carries a legal swap is `board/opening-*` —
-// and what `reset` restores, which is `instrumentation/reset-restores`.
+// and what `reset` restores, which is
+// `instrumentation/reset-restores-every-field`.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

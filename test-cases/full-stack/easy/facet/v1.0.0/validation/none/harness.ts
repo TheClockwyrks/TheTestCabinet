@@ -562,7 +562,8 @@ export interface Harness {
    *
    * `specs/instrumentation.md` puts the version in two places — on the surface
    * ("carries `version` … a plain number") and in the snapshot — so
-   * `instrumentation/debug-api` reads both, and this is the surface half. One
+   * `instrumentation/debug-api-version` reads both, and this is the surface half.
+   * One
    * spelling under all three engines: {@link Harness.probe} reports only the
    * `typeof` of a name, and the surface's own members are not otherwise
    * reachable as values under every engine.
@@ -999,7 +1000,7 @@ export async function createHarness(
   if (surfaceFault === null) {
     // Off the wall clock and back to a known title screen before a check touches
     // anything: from here the game changes only when this harness says so, and the
-    // deal a `start` makes is the one this seed makes.
+    // deal a fresh round makes is the one this seed makes.
     await call("setAutoStep", [false]);
     await call("reset", [{ seed }]);
     // And a recorder over the surface before a check can arm one. A build is free
@@ -2055,8 +2056,9 @@ export function framesPast(seconds: number): number {
 //
 // THE ITEMS THAT DECIDE THOSE TRANSITIONS DO NOT REACH FOR THESE HELPERS.
 // Whether `PLAY` really opens a round, `CONTINUE` really opens the next level
-// and `QUIT` really returns to the title is what `screens/start-round`,
-// `levels/continue-opens-next-level` and `screens/quit-to-title` decide, by
+// and `QUIT` really returns to the title is what the two `screens/start-round-*`
+// points, `levels/continue-opens-next-level` and the two `screens/quit-from-*`
+// points decide, by
 // working the menu the way a player does and reading what the build did. Every
 // other check reaches its scenario through here instead, so a build with a
 // broken title menu fails those items rather than every item in the project.
