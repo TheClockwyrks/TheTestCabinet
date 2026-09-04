@@ -116,18 +116,20 @@ What the overlay shows is Arc Foundry's, under Diagnostics below.
 
 ## The driver
 
-The hold the surface takes on the game is deliberately narrow: it is a hold on the
-spawner, and on nothing else. Structures keep firing, projectiles keep travelling, status
-effects keep running down, the economy keeps paying its bounties and its bonuses, and the
-run keeps resolving its own victory and defeat, whatever the surface has posed.
+The holds the surface takes on the game are deliberately narrow, and each is a hold on
+one faculty. Whatever a hold is on, everything it is not on keeps running: structures
+keep firing, projectiles keep travelling, status effects keep running down, the economy
+keeps paying its bounties, and the run keeps resolving its own victory and defeat.
+
+The first is a hold on the spawner.
 
 - The hold is off while the game plays normally. A wave launched by the level's harvest
   releases the composition `specs/enemies.md` fixes, on the game's own schedule.
-- `spawnUnit` engages the hold. The run enters a live wave whose spawn schedule is empty,
-  so the units on the yard are exactly the ones `spawnUnit` released and nothing else
-  arrives. That wave clears the ordinary way, when every one of those units has died or
-  leaked, and clearing it pays the ordinary wave-clear bonus and opens the next build
-  phase.
+- `spawnUnit` engages the hold, and so does `setPhase("wave")`. The run enters a live
+  wave whose spawn schedule is empty, so the units on the yard are exactly the ones a
+  caller released and nothing else arrives. That wave clears the ordinary way, when
+  every one of those units has died or leaked, and clearing it pays the ordinary
+  wave-clear bonus and opens the next build phase.
 - `startRun` and `reset` release the hold, so a run entered through either launches its
   own waves again.
 {{#if (eq engine.slug "none")}}
@@ -137,12 +139,20 @@ run keeps resolving its own victory and defeat, whatever the surface has posed.
 - The readings never engage it.
 {{/if}}
 
-A unit's travel is held separately, one unit at a time, by `setUnitFrozen`. A held unit
-keeps every faculty but travel: it is targetable, it takes damage, its burn ticks, its
-slow runs down and expires, its health bar reads the fraction it is on, and it is drawn
-where it stands. Its body holds the position it was posed at, however long the scenario
-runs, and the checkpoint it is heading for does not advance. Every other unit, and
-everything else in the game, carries on untouched.
+The second is a hold on the wave's own clear-and-pay resolution, engaged and released by
+`setWaveHold` and reported as the snapshot's `waveHeld`. While it is on, a wave whose
+units have all died or leaked stays running, so no wave-clear bonus lands in the middle
+of a reading — which is what a caller measuring a bounty, a leak, or a cue across a kill
+needs. Nothing else changes: the bounty is still paid, the leak still costs Grid
+Integrity, and defeat still resolves at zero. It is off while the game plays normally,
+and `startRun` and `reset` release it.
+
+The third is a hold on a unit's travel, one unit at a time, by `setUnitFrozen`. A held
+unit keeps every faculty but travel: it is targetable, it takes damage, its burn ticks,
+its slow runs down and expires, its health bar reads the fraction it is on, and it is
+drawn where it stands. Its body holds the position it was posed at, however long the
+scenario runs, and the checkpoint it is heading for does not advance. Every other unit,
+and everything else in the game, carries on untouched.
 
 ## The operations
 
@@ -209,6 +219,8 @@ already doing, so a scenario that must be reproducible calls `setAutoStep(false)
 | `pressControls` | The build panel's own two controls, the refinement control and the press control, in the order they are drawn. |
 | `menuButtons` | The choices of the menu screen currently showing, in the order they are presented. |
 | `statusControls` | The status bar's overlay, speed, pause, and mute controls, in the order they are drawn. |
+| `statusReadouts` | The status bar's readouts — the reads it draws that are not controls — in the order they are drawn. |
+| `recipeEntries` | Every ingredient cell the recipe book currently draws, in the order the book draws them. |
 
 `panelButtons`, `pressControls`, and `menuButtons` each return an array of
 `{ action, label, x, y, w, h, disabled }`. `label` is the text as drawn, `x`, `y`, `w`,
@@ -228,11 +240,29 @@ combination tower.
 same geometry and a `state` reporting the value the control is currently reading rather
 than whether it can be activated.
 
+`statusReadouts` returns an array of `{ readout, label, x, y, w, h }`, with the same
+geometry. `specs/hud.md` fixes the bar's reads and their left-to-right order and leaves
+each one's rectangle to the build, so this is how a caller finds a read without knowing
+where it was drawn — which the hover of `specs/controls.md` needs, because the read it
+acts on is a read rather than a control and `statusControls` never reports it.
+
+`recipeEntries` returns an array of
+`{ combo, ingredient, type, quality, state, x, y, w, h }`, one entry per ingredient cell
+the recipe book draws. `combo` is the combination tower identifier of the recipe the cell
+belongs to and `ingredient` is that ingredient's index within the recipe, counted from
+`0` in the order `specs/combinations.md` lists it, so the twelve recipes' cells are told
+apart. `type` and `quality` are the ingredient's own, `state` is `"selected"`, `"owned"`,
+or `"missing"` exactly as `specs/hud.md` defines the three, and `x`, `y`, `w`, and `h`
+are the cell's rectangle. It returns an empty array while the recipe book is closed.
+Because a cell's rectangle is the one the book was laid out at, it reports the cells of
+the frame the book was last drawn on: a caller opens the book, advances a frame, and
+reads.
+
 The status bar and the build panel are drawn on `playing` and on `paused` alone, as
-`specs/hud.md` states, so `panelButtons`, `pressControls`, and `statusControls` each
-return an empty array on every other screen. On `paused` all three report what is drawn:
-each `state` reads its live value, and each `disabled` reports the inertness
-`specs/controls.md` gives that screen.
+`specs/hud.md` states, so `panelButtons`, `pressControls`, `statusControls`, and
+`statusReadouts` each return an empty array on every other screen. On `paused` all four
+report what is drawn: each `state` reads its live value, and each `disabled` reports the
+inertness `specs/controls.md` gives that screen.
 
 | Reading | `action` values |
 | --- | --- |
@@ -240,6 +270,7 @@ each `state` reads its live value, and each `disabled` reports the inertness
 | `pressControls` | `refine`, `stamp` |
 | `menuButtons` | `salvage`, `howto`, `map-substation`, `map-switchyard`, `map-transformer`, `difficulty-easy`, `difficulty-medium`, `difficulty-hard`, `back`, `resume`, `restart`, `quit`, `again`, `menu` |
 | `statusControls` | `combos`, `damage`, `speed`, `pause`, `mute` |
+| `statusReadouts` | `charge`, `integrity`, `wave`, `maze-length`, `paused`, `overload` |
 
 A `combine-special` row is one reachable recipe, and its `label` names the combination
 tower that recipe would build, so several such rows are told apart by their labels.
@@ -252,15 +283,28 @@ tower that recipe would build, so several such rows are told apart by their labe
 | `pause` | `true` while the in-place pause is engaged |
 | `mute` | `true` while audio is muted |
 
+A `statusReadouts` `readout` names the read of `specs/hud.md` the entry reports: `charge`,
+`integrity`, `wave`, and `maze-length` are the four the bar always carries, and `paused`
+and `overload` are the two conditional reads, present only on the frames the bar is
+actually drawing them. `label` is the text as drawn, so a caller reads the figure the
+same way a player does.
+
 The rectangle a reading reports is the control's real hit region: a press and release at
-the center of a reported, non-disabled rectangle activates that control. Because
+the center of a reported, non-disabled rectangle activates that control, and on a menu a
+touch contact landing and lifting at that center takes the choice the same way. Because
 `specs/ui.md` fixes each menu's content and navigation rather than its layout, this is
 how a caller finds a choice without knowing where it was drawn. A `statusControls`
 `state` and what the control draws agree, so toggling mute changes both the reported
 value and the pixels inside the reported rectangle.
 
-All five readings are pure. Reading a menu never moves the highlight and never activates
-a choice.
+A `statusReadouts` rectangle carries the same guarantee for a read rather than for a
+control: it is where that read is drawn, so a pointer standing at its center is over it,
+which is what the maze-length hover of `specs/controls.md` acts on. A `recipeEntries`
+rectangle is where that ingredient cell is drawn, so whatever the book draws to tell the
+cell's `state` apart is inside it.
+
+All seven readings are pure. Reading a menu never moves the highlight and never activates
+a choice, and reading the recipe book never opens or closes it.
 
 ### The run
 
@@ -274,6 +318,8 @@ a choice.
 | `setMenuIndex(index)` | Sets the highlighted entry on the menu screen showing, counted from `0`. |
 | `setPaused(paused)` | Engages or releases the in-place pause. |
 | `setSpeed(multiplier)` | Sets the speed multiplier to `1`, `2`, `4`, or `8`. |
+| `setPhase(phase)` | Sets the phase the live run is in: `"build"`, `"wave"`, or `"finale"`. |
+| `setWaveHold(held)` | Holds the running wave's own clear-and-pay resolution, or releases it. |
 | `setOverlay(overlay, open)` | Opens or closes a read-only overlay. `overlay` is `"combos"` or `"damage"`. |
 
 `reset` restores every field the snapshot reports to its title-screen value: the `title`
@@ -281,17 +327,38 @@ screen with the menu index at `0` and no phase, the map back to `"substation"` a
 difficulty to `"medium"`, the yard emptied of every structure, unit, and projectile, the
 selection and the combine set cleared, nothing held on the cursor, the press unarmed,
 Charge at `START_CHARGE`, Grid Integrity at `START_INTEGRITY`, refinement at `0`, the
-wave counter at `0`, the stamp allowance at `STAMPS_PER_LEVEL`, the Maze Rating at `0`,
+wave counter at `0` with its hold released, the stamp allowance at `STAMPS_PER_LEVEL`,
+the Maze Rating at `0`,
 the speed multiplier at `1`, both overlays closed, the pause released, and the simulation
 clock at `0`. Two fields are deliberately untouched, because both belong to the runtime
 rather than to the game: the mute bit, which is a player preference, and the pointer
 position. Because `reset` restores exactly those fields, anything else the build keeps
 across frames is derived from them.
 
+`setScreen` reaches its screen as a fresh arrival rather than as a return, so a menu it
+shows opens with its first entry highlighted, at menu index `0`, whichever screen the
+call was made from. `setMenuIndex` is how a caller poses any other entry.
+
 `startRun` gives the run the opening allocation `specs/campaign.md` states and nothing
 more, so what it arranges is what choosing a difficulty from the menu arranges. A caller
 that wants only part of that opening poses the parts it wants with the operations below
 instead.
+
+`setPhase` moves the run between its three phases and does nothing else. It releases no
+unit and composes no wave, so `"wave"` opens a live wave whose spawn schedule is empty
+exactly as `spawnUnit` does — `waveActive` reads `true`, the driver's hold on the spawner
+engages, and the yard holds whatever it already held. `"build"` ends whatever phase is
+running without paying a wave-clear bonus and without advancing the wave counter, and
+`"finale"` opens the maze-rating finale. It spends no wave number, and it is invalid off
+a run, where `phase` reads `null`.
+
+`setWaveHold` holds one faculty of the run: the resolution that ends a wave. While the
+hold is on, a wave whose units have all died or leaked stays running — no wave-clear
+bonus is paid, the wave counter does not advance, and no build phase opens — and every
+other rule keeps running exactly as it does with the hold off, so structures fire,
+bounties are paid, leaks cost Grid Integrity, and defeat still resolves at zero Grid
+Integrity. It is reported as the snapshot's `waveHeld`, and `startRun` and `reset`
+release it.
 
 ### Resources and progress
 
@@ -310,6 +377,7 @@ instead.
 | `clearStructures` | Removes every candidate, component, combination tower, and blocker from the yard, reopens their tiles, clears the selection and the combine set, and recomputes the route. |
 | `setNextRoll(type, quality)` | Arms the exact component the next placed rock rolls. `type` is a base component identifier and `quality` is `1` through `5`. The rock still enters through the real placement path; this fixes only what it rolls. |
 | `clearNextRoll` | Clears the arming and returns the press to its seeded random roll. |
+| `clearHeld` | Puts away whatever rock is held on the cursor, spending no stamp. |
 | `placeRock(col, row)` | Drops a rock at the anchor tile through the real placement path: it rolls, becomes a candidate, spends one stamp, and the route is recomputed. |
 | `placeComponent(type, quality, col, row)` | Places a permanent firing component of that type at that quality, at the anchor tile. |
 | `placeCombo(combo, col, row)` | Places a combination tower at upgrade level `0` at the anchor tile. `combo` is a combination tower identifier. |
@@ -342,6 +410,14 @@ that blocker in place, as `specs/scrap-press.md` states.
 `setNextRoll` fixes the roll and nothing else, so the type-and-quality distribution of
 `specs/scrap-press.md` is what an unarmed press draws from. The arming survives until a
 rock consumes it or `clearNextRoll` clears it.
+
+`clearHeld` empties the cursor, so `held` reads
+`{ active: false, col: 0, row: 0, legal: false }` and the build panel shows the inspector
+again. It is what a caller uses to put a
+rock away, because `specs/scrap-press.md` makes placement continuous — a drop that leaves
+stamps in the allowance arms the next rock immediately — so a scenario about anything
+other than the held rock has one on the cursor it never asked for. It spends no stamp,
+refunds none, changes no other state, and does nothing when nothing is held.
 
 ### The Load
 
@@ -383,16 +459,26 @@ the pointer position `pointerMove` moves, they set no state of their own: what e
 changes is whatever the act it delivers changes.
 
 Each delivers one act, and a caller that wants a gesture made of several delivers them
-in order: a click is a `pointerDown` followed by a `pointerUp`, and a press modified by
-the `modify` action of `specs/controls.md` is a `keyDown` of its key around that pair.
+in order: a click is a `pointerDown` followed by a `pointerUp`, a tap is a `touchStart`
+followed by a `touchEnd`, and a press modified by the `modify` action of
+`specs/controls.md` is a `keyDown` of its key around a click's pair.
 
 | Operation | Effect |
 | --- | --- |
 | `pointerMove(x, y)` | Moves the pointer to a logical position. The held footprint and every hover read of `specs/controls.md` follow it. |
 | `pointerDown(x, y)` | A press at a logical position. It moves the pointer there first, so a press needs no `pointerMove` before it. |
 | `pointerUp` | A release at the position the pointer is at. |
+| `touchStart(x, y)` | A touch contact landing at a logical position. |
+| `touchMove(x, y)` | Moves the contact that is down to a logical position, as a finger traveling across the stage does. |
+| `touchEnd` | Lifts the contact at the position it is at. |
 | `keyDown(code)` | Presses a key down. `code` is a standard `KeyboardEvent.code`. Any one-shot action it fires on the current screen applies immediately, and a held action stays held until `keyUp`. |
 | `keyUp(code)` | Releases a key. |
+
+The touch operations deliver a contact rather than a pointer, so a contact that has not
+landed hovers over nothing: what `specs/controls.md` gives a pointer move on a menu entry
+is given to a landing contact and to a contact traveling while it is down. One contact is
+down at a time, a `touchMove` or a `touchEnd` with none down does nothing, and a
+`touchStart` with one already down replaces it.
 
 {{/if}}
 ## Snapshot shape
@@ -416,6 +502,7 @@ the `modify` action of `specs/controls.md` is a `keyDown` of its key around that
   wave: <number>,                // current wave, 0 before wave 1
   totalWaves: <number>,          // N for the chosen difficulty
   waveActive: <boolean>,         // a wave is spawning or has live units
+  waveHeld: <boolean>,           // the wave's clear-and-pay resolution is held
   charge: <number>,
   integrity: <number>,
   refinement: <number>,          // 0..8
@@ -483,6 +570,7 @@ does not use reports its resting value rather than going missing.
 | Field | Resting value |
 | --- | --- |
 | `phase` | `null` off the yard |
+| `waveHeld` | `false` unless `setWaveHold` holds it |
 | `menuIndex` | `0` on `playing` |
 | `wave` | `0` before wave `1` |
 | `mazeRating` | `0` before the finale |

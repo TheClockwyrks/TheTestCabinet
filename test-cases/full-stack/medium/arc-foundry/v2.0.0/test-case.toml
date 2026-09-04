@@ -455,17 +455,28 @@ format = 2
 id = "instrumentation"
 title = "Instrumentation"
 [[review.categories.items]]
-id = "surface-present"
-title = "The debug and automation surface is present"
-description = "Every operation specs/instrumentation.md names is present as a function on the surface — reached on the page as window.__foundry in an engineless build and off engine.debug in an engine build — and the surface is live: placeComponent stands a Capacitor on the yard, snapshot reports it in structures, and the rendered frame changes."
+id = "surface-complete"
+title = "The debug and automation surface is complete"
+description = "Every operation specs/instrumentation.md names is present as a function on the surface — reached on the page as window.__foundry in an engineless build and off engine.debug in an engine build — and version reads FOUNDRY_DEBUG_VERSION."
 domains = ["simulation", "presentation", "audio"]
 failure_cap = "broken"
 # Automated validation: reflect that every required operation is installed as
-# a function (the clock and input operations under `none` alone), then prove
-# liveness by standing a structure up, reading it back off the snapshot, and
-# reading the canvas. See validation/<engine>/instrumentation/surface-
-# present.test.ts.
-validation = { script = "instrumentation/surface-present.test.ts", outputs = [
+# a function (the clock and input operations under `none` alone) and read the
+# version back. See validation/<engine>/instrumentation/surface-
+# complete.test.ts.
+validation = { script = "instrumentation/surface-complete.test.ts", outputs = [
+  { id = "surface", name = "The frame the surface was reflected over", kind = "image" },
+] }
+[[review.categories.items]]
+id = "surface-takes-effect"
+title = "The debug and automation surface reaches the running game"
+description = "The surface is wired to the game rather than to a plausible-looking object beside it: placeComponent stands a Capacitor on the yard, snapshot reports it in structures, and the pixels of its footprint change."
+domains = ["simulation", "presentation", "audio"]
+failure_cap = "broken"
+# Automated validation: stand a structure up through the surface, read it back
+# off the snapshot, and read the canvas where it stands. See
+# validation/<engine>/instrumentation/surface-takes-effect.test.ts.
+validation = { script = "instrumentation/surface-takes-effect.test.ts", outputs = [
   { id = "posed", name = "The posed yard the surface stood a structure on", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -505,16 +516,28 @@ validation = { script = "instrumentation/reset-title-state.test.ts", outputs = [
   { id = "title", name = "The title state after reset", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "reset-leaves-mute-and-pointer"
-title = "reset leaves the mute bit and the pointer untouched"
-description = "Two fields survive a reset because both belong to the runtime rather than to the game: with audio muted and the pointer moved, reset leaves muted true and leaves the reported pointer where it was."
+id = "reset-keeps-mute"
+title = "A reset leaves the mute bit alone"
+description = "The mute bit survives a reset, because it is a player preference rather than part of the run."
 domains = ["simulation", "audio"]
 failure_cap = "great"
-# Automated validation: mute, move the pointer, reset, and read both fields
-# back. See validation/<engine>/instrumentation/reset-leaves-mute-and-
-# pointer.test.ts.
-validation = { script = "instrumentation/reset-leaves-mute-and-pointer.test.ts", outputs = [
-  { id = "title", name = "The title after a reset that kept the mute bit", kind = "image" },
+# Automated validation: mute through the action, reset, and read the bit back
+# with no frame in between. See
+# validation/<engine>/instrumentation/reset-keeps-mute.test.ts.
+validation = { script = "instrumentation/reset-keeps-mute.test.ts", outputs = [
+  { id = "title", name = "The title screen a reset returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reset-keeps-the-pointer"
+title = "A reset leaves the reported pointer alone"
+description = "The reported pointer position survives a reset, because it says where the device is rather than anything about the run."
+domains = ["simulation"]
+failure_cap = "great"
+# Automated validation: move the pointer, reset, and read the reported
+# position back with no frame in between. See
+# validation/<engine>/instrumentation/reset-keeps-the-pointer.test.ts.
+validation = { script = "instrumentation/reset-keeps-the-pointer.test.ts", outputs = [
+  { id = "title", name = "The title screen a reset returned to", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "seeded-rolls-repeat"
@@ -529,16 +552,28 @@ validation = { script = "instrumentation/seeded-rolls-repeat.test.ts", outputs =
   { id = "rolls", name = "The yard of rolls the seeded press produced", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "deterministic-core"
-title = "The simulation advances on elapsed time alone"
-description = "Covering one second of simulation time as a single frame and as sixty frames adds 1.0 to simTime either way and leaves a travelling unit at the same position within 1 logical unit, and a projectile fired under each covers the same distance, so the simulation reads nothing from the renderer and nothing from the wall clock."
+id = "frame-division-movement"
+title = "A unit walks the same second however it is divided"
+description = "Covering one second of simulation time as a single frame and as sixty frames adds 1.0 to simTime either way and leaves a travelling unit at the same position within 1 logical unit, so the simulation reads nothing from the renderer and nothing from the wall clock."
 domains = ["simulation"]
 failure_cap = "scuffed"
 # Automated validation: cover the same second under two step sizes and compare
-# simTime and the unit and projectile positions. See
-# validation/<engine>/instrumentation/deterministic-core.test.ts.
-validation = { script = "instrumentation/deterministic-core.test.ts", outputs = [
+# simTime and the unit's position. See
+# validation/<engine>/instrumentation/frame-division-movement.test.ts.
+validation = { script = "instrumentation/frame-division-movement.test.ts", outputs = [
   { id = "drive", name = "The yard the two step sizes were compared over", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "frame-division-projectile"
+title = "A projectile flies the same interval however it is divided"
+description = "A projectile fired under a single-frame step and under a thirty-frame step covers the same distance within 1 logical unit over the same interval of simulation time."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: fire under two step sizes over the same interval and
+# compare the distance flown. See
+# validation/<engine>/instrumentation/frame-division-projectile.test.ts.
+validation = { script = "instrumentation/frame-division-projectile.test.ts", outputs = [
+  { id = "flight", name = "The flight the two step sizes were compared over", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "spawner-hold"
@@ -589,16 +624,76 @@ validation = { script = "instrumentation/menu-run-uses-the-seed.test.ts", output
   { id = "rolls", name = "The same rolls from two menu-driven runs", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "clear-combine-set-empties-it"
-title = "clearCombineSet empties the set and keeps the selection"
-description = "After select(id) reports combineSet [id], clearCombineSet reports combineSet empty while selected still reads id, and clearSelection empties both."
+id = "clear-held"
+title = "clearHeld empties the cursor and changes nothing else"
+description = "clearHeld leaves held reading { active: false, col: 0, row: 0, legal: false }, spends no stamp and refunds none, leaves the selection and the press's arming untouched, and does nothing when nothing is held."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: drop a rock so the press arms another, put it away,
+# and read the cursor, the allowance, the selection and the arming back.
+# See validation/<engine>/instrumentation/clear-held.test.ts.
+validation = { script = "instrumentation/clear-held.test.ts", outputs = [
+  { id = "cleared", name = "The cursor emptied of its held rock", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-phase"
+title = "setPhase moves the run between its phases and does nothing else"
+description = "setPhase opens a live wave, a build phase or the finale without releasing a unit, composing a wave, spending a wave number or paying a wave-clear bonus."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: pose each phase in turn and read the yard, the wave
+# counter and the bank on either side. See
+# validation/<engine>/instrumentation/set-phase.test.ts.
+validation = { script = "instrumentation/set-phase.test.ts", outputs = [
+  { id = "phase", name = "The run posed into a phase", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wave-hold"
+title = "setWaveHold holds the wave's clear-and-pay resolution"
+description = "With the hold engaged a wave stays live with nothing left on the yard and pays no wave-clear bonus, while every other rule keeps running, and releasing it clears the wave and pays."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: hold the resolution, clear the yard, read the phase
+# and the bank, then release it and read them again. See
+# validation/<engine>/instrumentation/wave-hold.test.ts.
+validation = { script = "instrumentation/wave-hold.test.ts", outputs = [
+  { id = "hold", name = "The held wave and its release", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "clear-combine-set-empties-the-set"
+title = "clearCombineSet empties the combine set"
+description = "After select(id) reports combineSet [id], clearCombineSet reports combineSet empty rather than a set of one."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: select one structure and read combineSet after each of
-# select, clearCombineSet and clearSelection. See
-# validation/<engine>/instrumentation/clear-combine-set-empties-it.test.ts.
-validation = { script = "instrumentation/clear-combine-set-empties-it.test.ts", outputs = [
-  { id = "cleared", name = "The emptied set with the selection standing", kind = "image" },
+# Automated validation: select one structure, clear the set, and read
+# combineSet back. See validation/<engine>/instrumentation/clear-combine-set-
+# empties-the-set.test.ts.
+validation = { script = "instrumentation/clear-combine-set-empties-the-set.test.ts", outputs = [
+  { id = "cleared", name = "The yard the set was cleared on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-combine-set-keeps-the-selection"
+title = "clearCombineSet leaves the selection standing"
+description = "clearCombineSet leaves selected reading the structure it read before, so a check that empties the set still knows which structure it is standing on."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: select one structure, clear the set, and read
+# selected back. See validation/<engine>/instrumentation/clear-combine-set-
+# keeps-the-selection.test.ts.
+validation = { script = "instrumentation/clear-combine-set-keeps-the-selection.test.ts", outputs = [
+  { id = "cleared", name = "The yard the set was cleared on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-selection-empties-both"
+title = "clearSelection clears the selection and the set together"
+description = "clearSelection leaves selected null and combineSet empty, so it clears both where clearCombineSet clears one."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: select one structure, clear the selection, and read
+# both back. See validation/<engine>/instrumentation/clear-selection-empties-
+# both.test.ts.
+validation = { script = "instrumentation/clear-selection-empties-both.test.ts", outputs = [
+  { id = "cleared", name = "The yard the selection was cleared on", kind = "image" },
 ] }
 
 # --- The yard and placement ---------------------------------------------------
@@ -1069,16 +1164,52 @@ validation = { script = "press/dismantle-returns-nothing.test.ts", outputs = [
   { id = "hud", name = "The HUD across a no-refund dismantle", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "build-phase-only-actions"
-title = "Stamping, keeping, downgrading and dismantling are build-phase actions"
-description = "During a live wave a stamp, a keep, a downgrade and a dismantle each change nothing: no structure is placed or removed, no stamp is spent and no component is harvested."
+id = "stamp-refused-midwave"
+title = "A stamp during a live wave changes nothing"
+description = "A stamp taken during a live wave, through the control and through the surface alike, places no structure and spends no stamp, so the wave walks the maze it started with."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: start a wave and attempt each of the four actions in
-# turn, reading the yard back after each. See validation/<engine>/press/build-
-# phase-only-actions.test.ts.
-validation = { script = "press/build-phase-only-actions.test.ts", outputs = [
-  { id = "refused", name = "The yard unchanged across four refused build actions", kind = "replay" },
+# Automated validation: pose a live wave over a standing yard, take the stamp
+# both ways, and hold the yard against the one the wave started with. See
+# validation/<engine>/press/stamp-refused-midwave.test.ts.
+validation = { script = "press/stamp-refused-midwave.test.ts", outputs = [
+  { id = "refused", name = "The yard unchanged across a refused stamp", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "keep-refused-midwave"
+title = "A keep during a live wave changes nothing"
+description = "A keep taken during a live wave harvests no component and hardens no candidate, so the wave walks the maze it started with."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: pose a live wave over a standing candidate, take the
+# keep, and hold the yard against the one the wave started with. See
+# validation/<engine>/press/keep-refused-midwave.test.ts.
+validation = { script = "press/keep-refused-midwave.test.ts", outputs = [
+  { id = "refused", name = "The yard unchanged across a refused keep", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "downgrade-refused-midwave"
+title = "A downgrade during a live wave changes nothing"
+description = "A downgrade taken during a live wave harvests no component and hardens no candidate, so the wave walks the maze it started with."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: pose a live wave over a standing candidate, take the
+# downgrade, and hold the yard against the one the wave started with. See
+# validation/<engine>/press/downgrade-refused-midwave.test.ts.
+validation = { script = "press/downgrade-refused-midwave.test.ts", outputs = [
+  { id = "refused", name = "The yard unchanged across a refused downgrade", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "dismantle-refused-midwave"
+title = "A dismantle during a live wave changes nothing"
+description = "A dismantle taken during a live wave removes no structure, so the wave walks the maze it started with."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: pose a live wave over a standing component, take the
+# dismantle, and hold the yard against the one the wave started with. See
+# validation/<engine>/press/dismantle-refused-midwave.test.ts.
+validation = { script = "press/dismantle-refused-midwave.test.ts", outputs = [
+  { id = "refused", name = "The yard unchanged across a refused dismantle", kind = "replay" },
 ] }
 
 # --- Combining and the quality ladder -----------------------------------------
@@ -1102,16 +1233,28 @@ validation = { script = "quality/combine-climbs.test.ts", outputs = [
   { id = "fold", name = "The tier the fold produced", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "combine-same-type-and-tier-only"
-title = "A quality fold takes a same-type, same-tier pair alone"
-description = "A quality-combine is offered on a base structure that has a matching partner and on nothing else: a Capacitor beside a Coil at the same tier, and a Scrap Capacitor beside a Tuned one, each offer no fold and a combine on either changes nothing."
+id = "combine-refuses-mixed-type"
+title = "A quality fold is refused across two types"
+description = "A Capacitor beside a Coil at the same tier offers no fold on either piece, and a combine on either changes nothing."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: stand each mismatched pair in turn, read the offered
-# actions, and attempt the combine. See validation/<engine>/quality/combine-
-# same-type-and-tier-only.test.ts.
-validation = { script = "quality/combine-same-type-and-tier-only.test.ts", outputs = [
-  { id = "refused", name = "The mismatched pair that offers no fold", kind = "image" },
+# Automated validation: stand the mismatched pair alone, read COMBINE on each
+# side, and commit a combine on each anyway. See
+# validation/<engine>/quality/combine-refuses-mixed-type.test.ts.
+validation = { script = "quality/combine-refuses-mixed-type.test.ts", outputs = [
+  { id = "refused", name = "The mismatched types that offer no fold", kind = "image" },
+] }
+[[review.categories.items]]
+id = "combine-refuses-mixed-tier"
+title = "A quality fold is refused across two tiers"
+description = "A Scrap Capacitor beside a Tuned one offers no fold on either piece, and a combine on either changes nothing."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: stand the mismatched pair alone, read COMBINE on each
+# side, and commit a combine on each anyway. See
+# validation/<engine>/quality/combine-refuses-mixed-tier.test.ts.
+validation = { script = "quality/combine-refuses-mixed-tier.test.ts", outputs = [
+  { id = "refused", name = "The mismatched tiers that offer no fold", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "teslaprime-terminal"
@@ -1302,15 +1445,37 @@ validation = { script = "refinement/refinement-midwave.test.ts", outputs = [
   { id = "midwave", name = "The press refined mid-wave", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "refinement-changes-nothing-else"
-title = "Refinement changes only the quality distribution"
-description = "Buying refinement leaves every standing structure's damage, range, fire rate and abilities untouched, leaves Grid Integrity and the stamp allowance where they were, and changes no tile."
+id = "refinement-keeps-the-structures"
+title = "Refinement leaves every standing structure alone"
+description = "Buying refinement leaves every standing structure's damage, range, fire rate, abilities, aura and targeting exactly as they were, because refinement biases a future roll rather than a structure already on the yard."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: stand a spread of structures, refine, and compare
-# every reported stat before and after. See
-# validation/<engine>/refinement/refinement-changes-nothing-else.test.ts.
-validation = { script = "refinement/refinement-changes-nothing-else.test.ts", outputs = [
+# Automated validation: stand a spread of structures, buy a rung, and hold
+# every reported figure of every structure against the reading before it. See
+# validation/<engine>/refinement/refinement-keeps-the-structures.test.ts.
+validation = { script = "refinement/refinement-keeps-the-structures.test.ts", outputs = [
+  { id = "unchanged", name = "The yard unchanged across a refinement", kind = "image" },
+] }
+[[review.categories.items]]
+id = "refinement-keeps-the-vitals"
+title = "Refinement leaves Grid Integrity and the allowance alone"
+description = "Buying refinement leaves Grid Integrity and the stamp allowance where they were, both posed part-way rather than at their opening figures."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: pose both part-way, buy a rung, and read them back.
+# See validation/<engine>/refinement/refinement-keeps-the-vitals.test.ts.
+validation = { script = "refinement/refinement-keeps-the-vitals.test.ts", outputs = [
+  { id = "unchanged", name = "The yard unchanged across a refinement", kind = "image" },
+] }
+[[review.categories.items]]
+id = "refinement-keeps-the-maze"
+title = "Refinement changes no tile"
+description = "Buying refinement leaves the maze length where it was, because refining the press touches no tile."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: buy a rung and read the maze length back. See
+# validation/<engine>/refinement/refinement-keeps-the-maze.test.ts.
+validation = { script = "refinement/refinement-keeps-the-maze.test.ts", outputs = [
   { id = "unchanged", name = "The yard unchanged across a refinement", kind = "image" },
 ] }
 
@@ -1444,16 +1609,28 @@ validation = { script = "firing/regulator-never-fires.test.ts", outputs = [
   { id = "quiet", name = "The Regulator standing quiet under a unit", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "tallies"
-title = "A structure tallies its kills and its damage"
-description = "A firing structure's reported kills and damageDealt are the running totals of what it dealt: after driving a counted number of kills its damageDealt equals the health it removed and its kills equals the units it destroyed."
+id = "tallies-kills"
+title = "A structure tallies its kills"
+description = "A firing structure's reported kills is the running total of the units it destroyed: after clearing a counted number of units off the yard it reads exactly that count."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: drive a counted set of kills with one structure and
-# hold both tallies against the health removed. See
-# validation/<engine>/firing/tallies.test.ts.
-validation = { script = "firing/tallies.test.ts", outputs = [
-  { id = "tally", name = "The structure and its tallies", kind = "replay" },
+# Automated validation: hold three units inside one structure's reach, let it
+# clear them, and read the kill tally. See
+# validation/<engine>/firing/tallies-kills.test.ts.
+validation = { script = "firing/tallies-kills.test.ts", outputs = [
+  { id = "kills", name = "The structure clearing the units it tallies", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "tallies-damage"
+title = "A structure tallies the damage it dealt"
+description = "A firing structure's reported damageDealt is the running total of the health it removed, on an arrangement where whole shots leave nothing spilled to overkill."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: hold three units inside one structure's reach, let it
+# clear them, and hold the damage tally against the health removed. See
+# validation/<engine>/firing/tallies-damage.test.ts.
+validation = { script = "firing/tallies-damage.test.ts", outputs = [
+  { id = "damage", name = "The structure clearing the units it tallies", kind = "replay" },
 ] }
 
 # --- Targeting priorities -----------------------------------------------------
@@ -1770,15 +1947,27 @@ validation = { script = "abilities/aura-not-outside.test.ts", outputs = [
   { id = "outside", name = "The structure beyond the aura, unaffected", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "aura-sums-and-caps"
-title = "Aura bonuses sum and cap at AURA_CAP"
-description = "Bonuses from several Regulators covering one structure add together, and the summed bonus is capped at AURA_CAP (1.0), so a structure under enough Regulators reports exactly twice its base damage and no more."
+id = "aura-sums"
+title = "Aura bonuses from several Regulators sum"
+description = "Two Regulators covering one structure give it the sum of their bonuses rather than the larger of the two."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: stand two Regulators over one structure, read its
-# damage, then stand enough to exceed the cap and read it again. See
-# validation/<engine>/abilities/aura-sums-and-caps.test.ts.
-validation = { script = "abilities/aura-sums-and-caps.test.ts", outputs = [
+# Automated validation: stand two Scrap Regulators over one Capacitor and
+# hold its reported damage against the summed bonus. See
+# validation/<engine>/abilities/aura-sums.test.ts.
+validation = { script = "abilities/aura-sums.test.ts", outputs = [
+  { id = "sum", name = "The summed damage under two auras", kind = "image" },
+] }
+[[review.categories.items]]
+id = "aura-caps-at-max"
+title = "A summed aura bonus stops at AURA_CAP"
+description = "Enough Regulators to carry the summed bonus past AURA_CAP (1.0) leave the structure reporting exactly twice its base damage and no more."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: stand five Tesla-Prime Regulators over one Capacitor
+# and hold its reported damage against the cap. See
+# validation/<engine>/abilities/aura-caps-at-max.test.ts.
+validation = { script = "abilities/aura-caps-at-max.test.ts", outputs = [
   { id = "cap", name = "The capped damage under many auras", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -1886,16 +2075,52 @@ validation = { script = "combos/range-by-level.test.ts", outputs = [
   { id = "levels", name = "The tower's reach across its track", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "rate-and-abilities-flat"
-title = "Cadence and ability parameters are flat across level"
-description = "A tower's fire rate and every ability parameter — a splash radius, a chain's leaps, leap range and falloff, a slow's amount and duration, a burn's fraction and duration, a crit's chance and multiplier, a multishot's N, an aura's radius and bonus — are identical at level 0 and level 3, so a tower scales through its damage alone."
+id = "rate-flat-across-level"
+title = "A tower's cadence is flat across level"
+description = "Every combination tower reports the fire rate its own row fixes at level 0, and reports exactly that rate again at level 3."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: read every reported stat and ability parameter at both
-# ends of the track. See validation/<engine>/combos/rate-and-abilities-
-# flat.test.ts.
-validation = { script = "combos/rate-and-abilities-flat.test.ts", outputs = [
-  { id = "flat", name = "The tower's abilities unchanged across levels", kind = "image" },
+# Automated validation: stand all twelve, read fireRate at both ends of the
+# track, and compare. See
+# validation/<engine>/combos/rate-flat-across-level.test.ts.
+validation = { script = "combos/rate-flat-across-level.test.ts", outputs = [
+  { id = "flat", name = "The towers' cadences unchanged across levels", kind = "image" },
+] }
+[[review.categories.items]]
+id = "abilities-flat-across-level"
+title = "A tower's reported ability block is flat across level"
+description = "Every combination tower reports the same abilities, aura radius and aura bonus at level 0 and at level 3."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: stand all twelve, read the ability names and the aura
+# figures at both ends of the track, and compare. See
+# validation/<engine>/combos/abilities-flat-across-level.test.ts.
+validation = { script = "combos/abilities-flat-across-level.test.ts", outputs = [
+  { id = "flat", name = "The towers' ability blocks unchanged across levels", kind = "image" },
+] }
+[[review.categories.items]]
+id = "status-abilities-flat-across-level"
+title = "A slow's and a burn's parameters are flat across level"
+description = "A slow's amount and duration and a burn's fraction and duration, read off the unit a Corroder struck, are identical at level 0 and level 3, even though the shot the burn scales from doubles across the track."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: fire a Corroder at a held unit at both ends of the
+# track and read the four figures off the unit it struck. See
+# validation/<engine>/combos/status-abilities-flat-across-level.test.ts.
+validation = { script = "combos/status-abilities-flat-across-level.test.ts", outputs = [
+  { id = "flat", name = "The struck unit's status parameters across levels", kind = "image" },
+] }
+[[review.categories.items]]
+id = "multishot-flat-across-level"
+title = "A multishot's N is flat across level"
+description = "A Fork Array puts up the same number of projectiles on one cadence at level 0 and at level 3, with the same five units in range."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: read one cadence with five units in range at both
+# ends of the track. See
+# validation/<engine>/combos/multishot-flat-across-level.test.ts.
+validation = { script = "combos/multishot-flat-across-level.test.ts", outputs = [
+  { id = "flat", name = "The volley a multishot put up across levels", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "upgrade-cost"
@@ -1991,16 +2216,48 @@ validation = { script = "combos/never-an-ingredient.test.ts", outputs = [
 id = "load"
 title = "The Load"
 [[review.categories.items]]
-id = "roster-stats"
-title = "Each Load type carries its roster figures"
-description = "Each of the six types reports the speed, flying flag, bounty and leak value the roster fixes: a Mote at 60 and 1 and 1, a Spark at 120, a Slug at 38 with a leak of 2, a Cluster at 72, a Filament at 85 and flying, and a Dynamo at 30 with a bounty of 40 and a leak of 5."
+id = "roster-bounty"
+title = "Each Load type pays its roster bounty"
+description = "Each of the six types pays the bounty its roster row fixes on the frame it is removed: a Mote 1, a Dynamo 40, and each of the rest its own."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: release one of each type and hold its reported figures
-# against the roster, driving one kill and one leak of each. See
-# validation/<engine>/load/roster-stats.test.ts.
-validation = { script = "load/roster-stats.test.ts", outputs = [
-  { id = "roster", name = "The six types on the yard", kind = "replay" },
+# Automated validation: drive one kill of each type on a field nothing else
+# can move the bank on. See validation/<engine>/load/roster-bounty.test.ts.
+validation = { script = "load/roster-bounty.test.ts", outputs = [
+  { id = "bounty", name = "The kill each bounty was read off", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "roster-leak"
+title = "Each Load type costs its roster leak value"
+description = "Each of the six types costs the Grid Integrity its roster row fixes when it grounds out: a Mote 1, a Slug 2, a Dynamo 5, and each of the rest its own."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: drive one ground-out of each type and read Grid
+# Integrity. See validation/<engine>/load/roster-leak.test.ts.
+validation = { script = "load/roster-leak.test.ts", outputs = [
+  { id = "leak", name = "The ground-out each leak value was read off", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "roster-speed"
+title = "Each Load type travels at its roster speed"
+description = "Each of the six types reports the speed its roster row fixes, read off a unit that is travelling: a Mote at 60, a Spark at 120, a Slug at 38, a Cluster at 72, a Filament at 85 and a Dynamo at 30."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: release one of each type and read baseSpeed and speed
+# off it while it walks. See validation/<engine>/load/roster-speed.test.ts.
+validation = { script = "load/roster-speed.test.ts", outputs = [
+  { id = "speed", name = "A unit travelling at its roster speed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "roster-flying"
+title = "Exactly the marked Load types fly"
+description = "Each of the six types reports the flying flag its roster row fixes, and the Filament alone carries it."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: release one of each type and read the flying flag.
+# See validation/<engine>/load/roster-flying.test.ts.
+validation = { script = "load/roster-flying.test.ts", outputs = [
+  { id = "flying", name = "The released types and what flies", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "wave-one-health"
@@ -2039,16 +2296,40 @@ validation = { script = "load/health-is-a-whole-number.test.ts", outputs = [
   { id = "rounding", name = "The rounded health the Load carries", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "only-health-scales"
-title = "Only health scales across waves"
-description = "A unit's speed, bounty and leak value are the same at wave 1 and at wave 40: the roster's figures are constant for the whole run and only health grows."
+id = "bounty-constant-across-waves"
+title = "A bounty is the same at wave 40 as at wave 1"
+description = "Each roster type pays exactly its own bounty on a kill at wave 1 and at wave 40, while the health that does scale has grown between the two."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: release each type at wave 1 and at a deep wave and
-# compare its speed, bounty and leak. See validation/<engine>/load/only-
-# health-scales.test.ts.
-validation = { script = "load/only-health-scales.test.ts", outputs = [
-  { id = "constant", name = "The roster's constant figures at depth", kind = "image" },
+# Automated validation: drive one kill of every type at each of the two waves
+# on a field nothing else can move the bank on. See
+# validation/<engine>/load/bounty-constant-across-waves.test.ts.
+validation = { script = "load/bounty-constant-across-waves.test.ts", outputs = [
+  { id = "constant", name = "The roster's constant bounties at depth", kind = "image" },
+] }
+[[review.categories.items]]
+id = "leak-constant-across-waves"
+title = "A leak value is the same at wave 40 as at wave 1"
+description = "Each roster type costs exactly its own leak value on a ground-out at wave 1 and at wave 40, while the health that does scale has grown between the two."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: drive one ground-out of every type at each of the two
+# waves and read Grid Integrity. See
+# validation/<engine>/load/leak-constant-across-waves.test.ts.
+validation = { script = "load/leak-constant-across-waves.test.ts", outputs = [
+  { id = "constant", name = "The roster's constant leak values at depth", kind = "image" },
+] }
+[[review.categories.items]]
+id = "speed-constant-across-waves"
+title = "A speed is the same at wave 40 as at wave 1"
+description = "Each roster type travels at exactly its own roster speed at wave 1 and at wave 40, while the health that does scale has grown between the two."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: read every type's speed off a travelling unit at each
+# of the two waves. See
+# validation/<engine>/load/speed-constant-across-waves.test.ts.
+validation = { script = "load/speed-constant-across-waves.test.ts", outputs = [
+  { id = "constant", name = "The roster's constant speeds at depth", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "no-armour"
@@ -2294,16 +2575,28 @@ validation = { script = "campaign/no-regeneration.test.ts", outputs = [
   { id = "steady", name = "Grid Integrity holding where a leak left it", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "victory-after-final-wave"
-title = "Clearing wave N runs the finale, then victory"
-description = "Clearing the final wave with Grid Integrity remaining puts the run into the finale phase rather than straight onto the victory screen, and the victory screen follows once the finale has run."
+id = "final-wave-enters-the-finale"
+title = "Clearing wave N opens the finale"
+description = "Clearing the final wave with Grid Integrity remaining puts the run into the finale phase on the playing screen, with an Overload Dynamo released, rather than straight onto the victory screen."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: drive a run to the final wave, clear it, and read the
-# phase and then the screen. See validation/<engine>/campaign/victory-after-
-# final-wave.test.ts.
-validation = { script = "campaign/victory-after-final-wave.test.ts", outputs = [
+# Automated validation: drive a run to its last clear and read the phase on
+# the frame it clears. See
+# validation/<engine>/campaign/final-wave-enters-the-finale.test.ts.
+validation = { script = "campaign/final-wave-enters-the-finale.test.ts", outputs = [
   { id = "finale", name = "The finale opening after the final wave", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "finale-ends-in-victory"
+title = "The victory screen follows the finale"
+description = "Walking the finale's Overload Dynamo into the collector ends the finale and advances the run to the victory screen."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: drive a run into its finale, ground the Dynamo out,
+# and read the screen. See
+# validation/<engine>/campaign/finale-ends-in-victory.test.ts.
+validation = { script = "campaign/finale-ends-in-victory.test.ts", outputs = [
+  { id = "victory", name = "The run reaching its victory screen", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "finale-dynamo-walks"
@@ -2342,16 +2635,28 @@ validation = { script = "campaign/maze-rating-tallies.test.ts", outputs = [
   { id = "rating", name = "The Maze Rating accruing over the finale", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "finale-takes-status"
-title = "The Overload Dynamo takes slow and burn"
-description = "The Overload Dynamo carries a slow and a burn like any other unit: a Choke's hit lowers its speed by the stated amount for the stated duration, and a Rectifier's burn tallies into the Maze Rating while it runs."
+id = "finale-takes-slow"
+title = "The Overload Dynamo takes a slow"
+description = "A Choke's hit lowers the Overload Dynamo's speed by the stated amount for the stated duration, and while it holds the Dynamo travels at baseSpeed * slowFactor."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: hit the Overload Dynamo with a Choke and a Rectifier
-# and read its speed, its slow and burn fields, and the Maze Rating. See
-# validation/<engine>/campaign/finale-takes-status.test.ts.
-validation = { script = "campaign/finale-takes-status.test.ts", outputs = [
-  { id = "status", name = "The Overload Dynamo slowed and burning", kind = "replay" },
+# Automated validation: walk the Dynamo past a Scrap Choke under its own
+# power and read the slow off it on the frame the hit lands. See
+# validation/<engine>/campaign/finale-takes-slow.test.ts.
+validation = { script = "campaign/finale-takes-slow.test.ts", outputs = [
+  { id = "slow", name = "The Overload Dynamo slowed", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "finale-takes-burn"
+title = "The Overload Dynamo takes a burn, and it tallies"
+description = "A Rectifier's burn lands on the Overload Dynamo at the stated fraction and duration, and every tick of a burn tallies into the Maze Rating even though the Dynamo loses no health."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: walk the Dynamo past a Scrap Rectifier, read the burn
+# off it, then pose a burn on an empty yard and read the Maze Rating rise.
+# See validation/<engine>/campaign/finale-takes-burn.test.ts.
+validation = { script = "campaign/finale-takes-burn.test.ts", outputs = [
+  { id = "burn", name = "The Overload Dynamo burning", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "finale-leak-is-free"
@@ -2421,16 +2726,63 @@ validation = { script = "difficulty/milestones-by-difficulty.test.ts", outputs =
   { id = "milestone", name = "The milestone wave at each difficulty", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "nothing-else-changes"
-title = "Difficulty changes nothing but waves and toughness"
-description = "The starting Charge, the starting Grid Integrity, the stamp allowance, the refinement odds and costs, the bounties, the leak values, the wave-clear bonus, the component stats and the recipes are identical at all three difficulties."
+id = "same-opening-allocation"
+title = "Every difficulty opens a run with the same allocation"
+description = "The starting Charge, the starting Grid Integrity, the stamp allowance and the opening refinement level are identical at all three difficulties."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: open a run at each difficulty and compare every one of
-# those figures across the three. See validation/<engine>/difficulty/nothing-
-# else-changes.test.ts.
-validation = { script = "difficulty/nothing-else-changes.test.ts", outputs = [
-  { id = "same", name = "The same economy under three difficulties", kind = "image" },
+# Automated validation: open a run at each difficulty and compare the four
+# opening figures. See
+# validation/<engine>/difficulty/same-opening-allocation.test.ts.
+validation = { script = "difficulty/same-opening-allocation.test.ts", outputs = [
+  { id = "same", name = "The same opening allocation under three difficulties", kind = "image" },
+] }
+[[review.categories.items]]
+id = "same-refinement-track"
+title = "Every difficulty offers the same refinement track"
+description = "The roll odds at every rung and the Charge cost of every rung are identical at all three difficulties."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: read the track at each difficulty and compare. See
+# validation/<engine>/difficulty/same-refinement-track.test.ts.
+validation = { script = "difficulty/same-refinement-track.test.ts", outputs = [
+  { id = "track", name = "The same refinement track under three difficulties", kind = "image" },
+] }
+[[review.categories.items]]
+id = "same-structure-stats"
+title = "Every difficulty gives a structure the same stats"
+description = "The damage, range, fire rate, aura and abilities of every base component are identical at all three difficulties, read at the bottom, the middle and the top of the quality ladder."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: stand each type at three tiers under each difficulty
+# and compare the blocks. See
+# validation/<engine>/difficulty/same-structure-stats.test.ts.
+validation = { script = "difficulty/same-structure-stats.test.ts", outputs = [
+  { id = "stats", name = "The same component stats under three difficulties", kind = "image" },
+] }
+[[review.categories.items]]
+id = "same-recipes"
+title = "Every difficulty offers the same recipes"
+description = "The twelve combination-tower recipes the inspector offers are identical at all three difficulties."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: read the recipes the inspector offers at each
+# difficulty and compare. See
+# validation/<engine>/difficulty/same-recipes.test.ts.
+validation = { script = "difficulty/same-recipes.test.ts", outputs = [
+  { id = "recipes", name = "The same recipes under three difficulties", kind = "image" },
+] }
+[[review.categories.items]]
+id = "same-bounties-and-leaks"
+title = "Every difficulty pays the same bounties and leaks"
+description = "What each Load type's kill pays and what its ground-out costs are identical at all three difficulties."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: drive one kill and one leak of every type at each
+# difficulty and compare. See
+# validation/<engine>/difficulty/same-bounties-and-leaks.test.ts.
+validation = { script = "difficulty/same-bounties-and-leaks.test.ts", outputs = [
+  { id = "economy", name = "The same economy under three difficulties", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "difficulty-carried-into-run"
@@ -2455,16 +2807,26 @@ validation = { script = "difficulty/difficulty-carried-into-run.test.ts", output
 id = "screens"
 title = "Screens and navigation"
 [[review.categories.items]]
-id = "title"
+id = "title-draws-its-copy"
 title = "The title screen draws its copy"
-description = "After reset the screen reads title with menuIndex 0, and the frame draws TITLE_TEXT (ARC FOUNDRY), TAGLINE_TEXT (GROUND THE LOAD) and every entry of TITLE_ITEMS, with the entry at the current index drawn distinctly from the others."
+description = "After reset the screen reads title with menuIndex 0, and the frame draws TITLE_TEXT (ARC FOUNDRY), TAGLINE_TEXT (GROUND THE LOAD) and every entry of TITLE_ITEMS."
 domains = ["presentation"]
-failure_cap = "great"
-# Automated validation: reset to the title, read the text draws, and compare
-# the highlighted entry's draw against the others. See
-# validation/<engine>/screens/title.test.ts.
-validation = { script = "screens/title.test.ts", outputs = [
+failure_cap = "passable"
+# Automated validation: reset to the title and read the text draws. See
+# validation/<engine>/screens/title-draws-its-copy.test.ts.
+validation = { script = "screens/title-draws-its-copy.test.ts", outputs = [
   { id = "title", name = "The title screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-marks-the-selection"
+title = "The title screen marks the entry it is on"
+description = "The entry at the current menu index is drawn distinctly from the others, so a player reads which choice a confirm would take."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: compare the highlighted entry's draw against the
+# others. See validation/<engine>/screens/title-marks-the-selection.test.ts.
+validation = { script = "screens/title-marks-the-selection.test.ts", outputs = [
+  { id = "title", name = "The title screen's marked entry", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "title-salvage"
@@ -2482,7 +2844,7 @@ id = "title-howto"
 title = "HOW TO PLAY leads to the how-to screen"
 description = "Taking HOW TO PLAY from the title moves the screen to howto."
 domains = ["presentation"]
-failure_cap = "great"
+failure_cap = "scuffed"
 # Automated validation: reset, highlight HOW TO PLAY, confirm it, and read the
 # screen. See validation/<engine>/screens/title-howto.test.ts.
 validation = { script = "screens/title-howto.test.ts", outputs = [
@@ -2573,7 +2935,7 @@ id = "howto-names-the-keys"
 title = "The how-to screen names the controls"
 description = "The how-to screen draws text naming each key BINDINGS binds, so a player reads the controls without leaving it."
 domains = ["presentation"]
-failure_cap = "great"
+failure_cap = "scuffed"
 # Automated validation: open the how-to screen and read the text draws against
 # BINDINGS. See validation/<engine>/screens/howto-names-the-keys.test.ts.
 validation = { script = "screens/howto-names-the-keys.test.ts", outputs = [
@@ -2605,14 +2967,26 @@ validation = { script = "screens/pause-menu.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "pause-resume"
-title = "RESUME returns to playing and clears the in-place pause"
-description = "Taking RESUME from the pause menu moves the screen back to playing and leaves paused false, even when the in-place pause was engaged before the menu opened."
+title = "RESUME returns the screen to playing"
+description = "Taking RESUME from the pause menu moves the screen back to playing."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: engage the in-place pause, open the pause menu, take
-# RESUME, and read the screen and paused back. See
+# Automated validation: pose the pause menu, take RESUME at the rectangle the
+# build reports for it, and read the screen. See
 # validation/<engine>/screens/pause-resume.test.ts.
 validation = { script = "screens/pause-resume.test.ts", outputs = [
+  { id = "resume", name = "The run resumed from the pause menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-resume-clears-the-in-place-pause"
+title = "RESUME clears an in-place pause engaged under the menu"
+description = "Taking RESUME leaves paused false even when the in-place pause was engaged before the menu opened, so the player is not returned to a playing screen that does not play."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: engage the in-place pause, open the menu over it,
+# take RESUME, and read paused. See validation/<engine>/screens/pause-resume-
+# clears-the-in-place-pause.test.ts.
+validation = { script = "screens/pause-resume-clears-the-in-place-pause.test.ts", outputs = [
   { id = "resume", name = "The run resumed from the pause menu", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -2650,6 +3024,54 @@ validation = { script = "screens/victory-screen.test.ts", outputs = [
   { id = "victory", name = "The victory screen", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "title-highlights-howto-on-return"
+title = "Returning from How To Play highlights HOW TO PLAY"
+description = "Taking BACK from the how-to screen returns to the title with the HOW TO PLAY entry highlighted, which is the entry that led away from it."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: open howto, take BACK, and read menuIndex against the
+# title's reported entries. See
+# validation/<engine>/screens/title-highlights-howto-on-return.test.ts.
+validation = { script = "screens/title-highlights-howto-on-return.test.ts", outputs = [
+  { id = "title", name = "The title returned to from How To Play", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-highlights-salvage-on-return"
+title = "Returning from the map select highlights SALVAGE"
+description = "Taking BACK from the map select returns to the title with the SALVAGE entry highlighted, which is the entry that led away from it."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: open mapselect, take BACK, and read menuIndex against
+# the title's reported entries. See
+# validation/<engine>/screens/title-highlights-salvage-on-return.test.ts.
+validation = { script = "screens/title-highlights-salvage-on-return.test.ts", outputs = [
+  { id = "title", name = "The title returned to from the map select", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-highlights-salvage-from-a-run"
+title = "Quitting a run to the title highlights SALVAGE"
+description = "Taking QUIT TO MENU from the pause menu returns to the title with the SALVAGE entry highlighted."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: open a run, reach the pause menu, take QUIT TO MENU,
+# and read menuIndex against the title's reported entries. See
+# validation/<engine>/screens/title-highlights-salvage-from-a-run.test.ts.
+validation = { script = "screens/title-highlights-salvage-from-a-run.test.ts", outputs = [
+  { id = "title", name = "The title a run was quit to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mapselect-highlights-the-chosen-map"
+title = "Returning from the difficulty select highlights the chosen map"
+description = "Choosing the Switchyard and then taking BACK from the difficulty select returns to the map select with the Switchyard entry highlighted."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: choose a map that is not the first entry, take BACK,
+# and read menuIndex against the map select's reported entries. See
+# validation/<engine>/screens/mapselect-highlights-the-chosen-map.test.ts.
+validation = { script = "screens/mapselect-highlights-the-chosen-map.test.ts", outputs = [
+  { id = "mapselect", name = "The map select returned to on the chosen map", kind = "image" },
+] }
+[[review.categories.items]]
 id = "victory-play-again"
 title = "PLAY AGAIN replays the same run"
 description = "Taking PLAY AGAIN from the victory screen begins a fresh run on the same map at the same difficulty."
@@ -2662,28 +3084,74 @@ validation = { script = "screens/victory-play-again.test.ts", outputs = [
   { id = "again", name = "The fresh run a replay began", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "victory-menu"
+title = "MENU returns to the title from the victory screen"
+description = "Taking MENU from the victory screen returns to the title."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: reach the victory screen, take MENU, and read the
+# screen. See validation/<engine>/screens/victory-menu.test.ts.
+validation = { script = "screens/victory-menu.test.ts", outputs = [
+  { id = "title", name = "The title the victory screen's MENU returned to", kind = "image" },
+] }
+[[review.categories.items]]
 id = "overload-screen"
 title = "The overload screen shows the wave reached and no rating"
-description = "The overload screen draws the wave the run reached and no Maze Rating, and offers TRY AGAIN and MENU."
+description = "The overload screen draws the wave the run reached and carries no Maze Rating, because a defeat never reaches the finale."
 domains = ["presentation"]
 failure_cap = "scuffed"
-# Automated validation: lose a run mid-campaign and read the text draws and
-# the offered choices. See validation/<engine>/screens/overload-
-# screen.test.ts.
+# Automated validation: lose a run mid-campaign, read the frame's text draws
+# for the wave, and read the rating off the snapshot. See
+# validation/<engine>/screens/overload-screen.test.ts.
 validation = { script = "screens/overload-screen.test.ts", outputs = [
   { id = "overload", name = "The overload screen", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "overload-try-again"
+title = "TRY AGAIN replays the lost run"
+description = "Taking TRY AGAIN from the overload screen begins a fresh run on the same map at the same difficulty."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: pose a map and difficulty, reach the overload screen,
+# take TRY AGAIN, and read the opening state, map and difficulty. See
+# validation/<engine>/screens/overload-try-again.test.ts.
+validation = { script = "screens/overload-try-again.test.ts", outputs = [
+  { id = "again", name = "The fresh run a retry began", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overload-menu"
+title = "MENU returns to the title from the overload screen"
+description = "Taking MENU from the overload screen returns to the title."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: reach the overload screen, take MENU, and read the
+# screen. See validation/<engine>/screens/overload-menu.test.ts.
+validation = { script = "screens/overload-menu.test.ts", outputs = [
+  { id = "title", name = "The title the overload screen's MENU returned to", kind = "image" },
+] }
+[[review.categories.items]]
 id = "window-fit"
 title = "The stage fits every window"
-description = "Over surfaces wider than the stage, taller than it, and at a raised device pixel ratio, the whole 1280x720 stage is inside the surface with its aspect ratio preserved and the letterboxing even, and the bars carry the stage's background color, within an RGB distance of 25 of 441 from a sampled empty patch of the stage's own background. The fit is read on the first frame before any input."
+description = "Over surfaces wider than the stage, taller than it, and at a raised device pixel ratio, the whole 1280x720 stage is inside the surface with its aspect ratio preserved and the letterboxing even. The fit is read on the first frame before any input."
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: build the game over several differently shaped
-# surfaces, read the viewport back, and sample the bar pixels against the
-# background. See validation/<engine>/screens/window-fit.test.ts.
+# surfaces, read the viewport back, and sample the canvas where a
+# structure stands. See validation/<engine>/screens/window-fit.test.ts.
 validation = { script = "screens/window-fit.test.ts", outputs = [
   { id = "fit", name = "The stage fitted and centred in an off-aspect window", kind = "image" },
+] }
+[[review.categories.items]]
+id = "letterbox-bars"
+title = "The letterbox bars carry the stage's background"
+description = "The bars around the fitted stage carry the stage's background color, within an RGB distance of 25 of 441 from the nearest sampled empty patch of the stage's own background."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: build the game over a window wider than the stage
+# and sample the bar pixels in device coordinates against several patches
+# of the stage. See validation/<engine>/screens/letterbox-bars.test.ts.
+validation = { script = "screens/letterbox-bars.test.ts", outputs = [
+  { id = "bars", name = "The letterbox bars beside the fitted stage", kind = "image" },
 ] }
 
 # --- Keyboard actions ---------------------------------------------------------
@@ -2751,15 +3219,39 @@ validation = { script = "controls/key-upgrade-tower.test.ts", outputs = [
   { id = "upgraded", name = "The tower the upgrade key raised", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "key-upgrade-press"
-title = "KeyU refines the press when no tower is selected"
-description = "Pressing KeyU with nothing selected, or with a base structure or a blocker selected, refines the press one level and spends its cost rather than doing nothing."
+id = "key-upgrade-press-no-selection"
+title = "KeyU refines the press with nothing selected"
+description = "Pressing KeyU with nothing selected refines the press one level and spends its cost rather than doing nothing."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: bank Charge, clear the selection, press KeyU, and
+# read the refinement level and the bank. See
+# validation/<engine>/controls/key-upgrade-press-no-selection.test.ts.
+validation = { script = "controls/key-upgrade-press-no-selection.test.ts", outputs = [
+  { id = "refined", name = "The press the upgrade key refined", kind = "image" },
+] }
+[[review.categories.items]]
+id = "key-upgrade-press-component-selected"
+title = "KeyU refines the press with a base component selected"
+description = "Pressing KeyU with a base component selected refines the press one level and spends its cost, because a base component is not a combination tower."
 domains = ["simulation"]
 failure_cap = "passable"
 # Automated validation: bank Charge, select a base component, press KeyU, and
-# read the refinement level. See validation/<engine>/controls/key-upgrade-
-# press.test.ts.
-validation = { script = "controls/key-upgrade-press.test.ts", outputs = [
+# read the refinement level and the bank. See
+# validation/<engine>/controls/key-upgrade-press-component-selected.test.ts.
+validation = { script = "controls/key-upgrade-press-component-selected.test.ts", outputs = [
+  { id = "refined", name = "The press the upgrade key refined", kind = "image" },
+] }
+[[review.categories.items]]
+id = "key-upgrade-press-blocker-selected"
+title = "KeyU refines the press with a blocker selected"
+description = "Pressing KeyU with a blocker selected refines the press one level and spends its cost, because a blocker is not a combination tower."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: bank Charge, select a blocker, press KeyU, and read
+# the refinement level and the bank. See
+# validation/<engine>/controls/key-upgrade-press-blocker-selected.test.ts.
+validation = { script = "controls/key-upgrade-press-blocker-selected.test.ts", outputs = [
   { id = "refined", name = "The press the upgrade key refined", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -2863,25 +3355,49 @@ validation = { script = "controls/press-edge-only.test.ts", outputs = [
 id = "input"
 title = "The pointer, the menus and back"
 [[review.categories.items]]
-id = "menu-up-wraps"
-title = "The up action moves the highlight and wraps"
-description = "On a menu the up action moves the highlight up by one entry, and from the first entry it wraps to the last."
+id = "menu-up-moves"
+title = "The up action moves the highlight up one entry"
+description = "On a menu the up action moves the highlight up by one entry from an entry with room above it."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: open a menu, take the up action from a middle entry
-# and again from the first, and read menuIndex. See
+# Automated validation: pose the highlight at a middle entry, press the up
+# action, and read menuIndex. See
+# validation/<engine>/input/menu-up-moves.test.ts.
+validation = { script = "input/menu-up-moves.test.ts", outputs = [
+  { id = "wrap", name = "The highlight moved up one entry", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-up-wraps"
+title = "The up action wraps from the first entry to the last"
+description = "On a menu the up action taken from the first entry moves the highlight to the last."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: pose the highlight at the first entry, press the up
+# action, and read menuIndex against the entry count the build reports. See
 # validation/<engine>/input/menu-up-wraps.test.ts.
 validation = { script = "input/menu-up-wraps.test.ts", outputs = [
   { id = "wrap", name = "The highlight wrapping to the last entry", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "menu-down-wraps"
-title = "The down action moves the highlight and wraps"
-description = "On a menu the down action moves the highlight down by one entry, and from the last entry it wraps to the first."
+id = "menu-down-moves"
+title = "The down action moves the highlight down one entry"
+description = "On a menu the down action moves the highlight down by one entry from an entry with room below it."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: open a menu, take the down action from a middle entry
-# and again from the last, and read menuIndex. See
+# Automated validation: pose the highlight at a middle entry, press the down
+# action, and read menuIndex. See
+# validation/<engine>/input/menu-down-moves.test.ts.
+validation = { script = "input/menu-down-moves.test.ts", outputs = [
+  { id = "wrap", name = "The highlight moved down one entry", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-down-wraps"
+title = "The down action wraps from the last entry to the first"
+description = "On a menu the down action taken from the last entry moves the highlight to the first."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: pose the highlight at the last entry, press the down
+# action, and read menuIndex. See
 # validation/<engine>/input/menu-down-wraps.test.ts.
 validation = { script = "input/menu-down-wraps.test.ts", outputs = [
   { id = "wrap", name = "The highlight wrapping to the first entry", kind = "image" },
@@ -2899,16 +3415,184 @@ validation = { script = "input/menu-confirm.test.ts", outputs = [
   { id = "confirm", name = "The entry the confirm action took", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "pointer-activates-control"
-title = "A press at a reported rectangle activates its control"
-description = "A press and release at the centre of any non-disabled rectangle menuButtons, panelButtons or statusControls reports activates that control, so a caller finds a choice without knowing where it was drawn."
+id = "pointer-activates-menu"
+title = "A press at a reported menu rectangle takes that choice"
+description = "A press and release at the centre of a rectangle menuButtons reports takes that menu choice, so a caller finds an entry without knowing where it was drawn."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: read each control's rectangle back and press at its
-# centre, confirming the effect the control commits. See
-# validation/<engine>/input/pointer-activates-control.test.ts.
-validation = { script = "input/pointer-activates-control.test.ts", outputs = [
-  { id = "press", name = "The control activated at its reported rectangle", kind = "image" },
+# Automated validation: read a menu entry's rectangle back, press at its
+# centre, and read the screen it led to. See
+# validation/<engine>/input/pointer-activates-menu.test.ts.
+validation = { script = "input/pointer-activates-menu.test.ts", outputs = [
+  { id = "press", name = "The menu entry activated at its reported rectangle", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-hover-highlights"
+title = "The highlight follows the pointer across a menu"
+description = "Moving the pointer onto a menu entry's reported hit region, without pressing, moves the menu highlight to that entry."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: read a menu entry's rectangle back, move the pointer
+# onto its centre, and read menuIndex. See
+# validation/<engine>/input/pointer-hover-highlights.test.ts.
+validation = { script = "input/pointer-hover-highlights.test.ts", outputs = [
+  { id = "hover", name = "The highlight moved onto the entry under the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-press-across-entries"
+title = "A press and a release in two entries take neither"
+description = "Pressing inside one menu entry's reported region and releasing inside another's takes no entry, so the menu is still showing."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: press at one reported rectangle's centre, release at
+# another's, and read the screen. See
+# validation/<engine>/input/pointer-press-across-entries.test.ts.
+validation = { script = "input/pointer-press-across-entries.test.ts", outputs = [
+  { id = "across", name = "The menu after a press and release in different entries", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-press-outside"
+title = "A release outside every entry takes none"
+description = "Pressing inside a menu entry's reported region and releasing outside every reported region takes no entry, so the menu is still showing."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: press at a reported rectangle's centre, release at a
+# point no rectangle covers, and read the screen. See
+# validation/<engine>/input/pointer-press-outside.test.ts.
+validation = { script = "input/pointer-press-outside.test.ts", outputs = [
+  { id = "outside", name = "The menu after a release outside every entry", kind = "image" },
+] }
+[[review.categories.items]]
+id = "touch-landing-highlights"
+title = "A contact landing on an entry highlights it"
+description = "A touch contact landing inside a menu entry's reported hit region moves the menu highlight to that entry, before any lift."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: land a contact at a reported rectangle's centre, leave
+# it down, and read menuIndex. See
+# validation/<engine>/input/touch-landing-highlights.test.ts.
+validation = { script = "input/touch-landing-highlights.test.ts", outputs = [
+  { id = "landing", name = "The highlight moved onto the entry a contact landed on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "touch-travel-highlights"
+title = "A contact travelling onto an entry highlights it"
+description = "A touch contact that landed over no entry and then travelled onto one moves the menu highlight to that entry, before any lift."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: land a contact where no rectangle covers, travel it
+# onto a reported rectangle, and read menuIndex. See
+# validation/<engine>/input/touch-travel-highlights.test.ts.
+validation = { script = "input/touch-travel-highlights.test.ts", outputs = [
+  { id = "travel", name = "The highlight moved onto the entry a contact travelled onto", kind = "image" },
+] }
+[[review.categories.items]]
+id = "touch-tap-takes"
+title = "A tap inside one entry takes that entry"
+description = "A touch contact landing and lifting inside one menu entry's reported hit region takes that entry, so every menu is operable with a contact alone."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: land and lift a contact at a reported rectangle's
+# centre and read the screen it led to. See
+# validation/<engine>/input/touch-tap-takes.test.ts.
+validation = { script = "input/touch-tap-takes.test.ts", outputs = [
+  { id = "tap", name = "The menu entry taken by a tap at its reported rectangle", kind = "image" },
+] }
+[[review.categories.items]]
+id = "touch-tap-across-entries"
+title = "A landing and a lift in two entries take neither"
+description = "A touch contact landing inside one menu entry's reported region and lifting inside another's takes no entry, so the menu is still showing."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: land a contact at one reported rectangle's centre,
+# travel it to another's, lift, and read the screen. See
+# validation/<engine>/input/touch-tap-across-entries.test.ts.
+validation = { script = "input/touch-tap-across-entries.test.ts", outputs = [
+  { id = "across", name = "The menu after a landing and lift in different entries", kind = "image" },
+] }
+[[review.categories.items]]
+id = "touch-tap-outside"
+title = "A lift outside every entry takes none"
+description = "A touch contact landing inside a menu entry's reported region and lifting outside every reported region takes no entry, so the menu is still showing."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: land a contact at a reported rectangle's centre,
+# travel it off every rectangle, lift, and read the screen. See
+# validation/<engine>/input/touch-tap-outside.test.ts.
+validation = { script = "input/touch-tap-outside.test.ts", outputs = [
+  { id = "outside", name = "The menu after a lift outside every entry", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-menu-key-opens"
+title = "KeyP opens the pause menu from playing"
+description = "Pressing KeyP on playing opens the pause menu, which is the binding of pause-menu that back never spends."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: open a run, press KeyP once, and read the screen. See
+# validation/<engine>/input/pause-menu-key-opens.test.ts.
+validation = { script = "input/pause-menu-key-opens.test.ts", outputs = [
+  { id = "open", name = "The pause menu KeyP opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-menu-key-closes"
+title = "KeyP closes the pause menu and resumes"
+description = "Pressing KeyP on paused closes the pause menu, returns to playing and clears any in-place pause, doing exactly what RESUME does."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: open the pause menu with KeyP, press it again, and
+# read the screen and the in-place pause. See
+# validation/<engine>/input/pause-menu-key-closes.test.ts.
+validation = { script = "input/pause-menu-key-closes.test.ts", outputs = [
+  { id = "resume", name = "The run KeyP resumed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-menu-key-keeps-what-is-pending"
+title = "KeyP opens the menu over a held rock, a selection and an overlay"
+description = "With a rock held, a structure selected and an overlay open, KeyP opens the pause menu and leaves all three exactly as they were, and resuming hands all three back."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: pose all three, press KeyP, read them on paused, press
+# it again, and read them on playing. See
+# validation/<engine>/input/pause-menu-key-keeps-what-is-pending.test.ts.
+validation = { script = "input/pause-menu-key-keeps-what-is-pending.test.ts", outputs = [
+  { id = "paused", name = "The pause menu opened over all three", kind = "image" },
+  { id = "resumed", name = "The run resumed with all three intact", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-activates-status-control"
+title = "A press at a reported status-bar rectangle activates that control"
+description = "A press and release at the centre of a rectangle statusControls reports activates that control: the combos toggle opens the book, speed steps the multiplier, and mute flips the bit."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: read each control's rectangle back, press at its
+# centre, and read the value it committed. See
+# validation/<engine>/input/pointer-activates-status-control.test.ts.
+validation = { script = "input/pointer-activates-status-control.test.ts", outputs = [
+  { id = "press", name = "The status control activated at its reported rectangle", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-activates-inspector-control"
+title = "A press at a reported inspector rectangle activates that control"
+description = "A press and release at the centre of a rectangle panelButtons reports activates that control, stepping the targeting priority one place."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: read the targeting control's rectangle back, press at
+# its centre, and read the priority. See
+# validation/<engine>/input/pointer-activates-inspector-control.test.ts.
+validation = { script = "input/pointer-activates-inspector-control.test.ts", outputs = [
+  { id = "press", name = "The inspector control activated at its reported rectangle", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-activates-press-control"
+title = "A press at a reported press-control rectangle activates that control"
+description = "A press and release at the centre of a rectangle pressControls reports activates that control, arming a rock on the cursor."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: read the stamp control's rectangle back, press at its
+# centre, and read the cursor. See
+# validation/<engine>/input/pointer-activates-press-control.test.ts.
+validation = { script = "input/pointer-activates-press-control.test.ts", outputs = [
+  { id = "press", name = "The press control activated at its reported rectangle", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "pointer-drop-illegal"
@@ -3098,39 +3782,73 @@ validation = { script = "status-bar/integrity-alert.test.ts", outputs = [
   { id = "alert", name = "The Grid Integrity read in alert", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "wave-read"
-title = "The bar reads WAVE n / N during a wave and BUILD in a build phase"
-description = "During a wave the bar draws the wave number and the run's total, and during a build phase it draws a BUILD read instead."
+id = "build-read-in-a-build-phase"
+title = "The bar reads BUILD during a build phase"
+description = "During a build phase the status bar draws a BUILD read, so a player tells a build phase from a live wave at a glance."
 domains = ["presentation"]
 failure_cap = "scuffed"
-# Automated validation: read the bar's text draws in a build phase and again
-# during the wave it launches. See validation/<engine>/status-bar/wave-
-# read.test.ts.
-validation = { script = "status-bar/wave-read.test.ts", outputs = [
+# Automated validation: read the bar's text draws in a build phase. See
+# validation/<engine>/status-bar/build-read-in-a-build-phase.test.ts.
+validation = { script = "status-bar/build-read-in-a-build-phase.test.ts", outputs = [
+  { id = "bar", name = "The bar's BUILD read", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wave-read-during-a-wave"
+title = "The bar reads WAVE n / N during a wave"
+description = "During a live wave the status bar draws the current wave number and the run's total, and no longer draws BUILD."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: pose a held live wave and read the bar's figures and
+# text draws. See
+# validation/<engine>/status-bar/wave-read-during-a-wave.test.ts.
+validation = { script = "status-bar/wave-read-during-a-wave.test.ts", outputs = [
   { id = "bar", name = "The bar's wave read", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "maze-length"
-title = "The bar draws the maze length and follows it"
-description = "The status bar draws the current maze length in tiles, and the drawn figure changes on the frame a placement or a dismantle changes the route, with no advance in between."
+id = "maze-length-drawn"
+title = "The bar draws the current maze length"
+description = "The status bar draws the current maze length in tiles, within a whole tile of the figure the snapshot reports."
 domains = ["presentation"]
 failure_cap = "scuffed"
-# Automated validation: read the drawn figure, place a wall across a leg, and
-# read it again without advancing. See validation/<engine>/status-bar/maze-
-# length.test.ts.
-validation = { script = "status-bar/maze-length.test.ts", outputs = [
+# Automated validation: read the bar's figures against snapshot().mazeLength
+# on an open yard. See
+# validation/<engine>/status-bar/maze-length-drawn.test.ts.
+validation = { script = "status-bar/maze-length-drawn.test.ts", outputs = [
+  { id = "bar", name = "The bar's maze length", kind = "image" },
+] }
+[[review.categories.items]]
+id = "maze-length-follows-the-route"
+title = "The drawn maze length follows a placement"
+description = "The drawn figure changes on the frame a placement or a dismantle changes the route, with no advance in between."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: read the drawn figure, wall a leg, and read it again
+# on the same frame. See
+# validation/<engine>/status-bar/maze-length-follows-the-route.test.ts.
+validation = { script = "status-bar/maze-length-follows-the-route.test.ts", outputs = [
   { id = "bar", name = "The bar's maze length following a placement", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "status-controls-reported"
-title = "statusControls reports the five controls and their states"
-description = "statusControls returns the combos, damage, speed, pause and mute controls in the order they are drawn, each with a rectangle on the stage, and each state reads the value the control is on: true while the overlay is open, the live multiplier for speed, and the pause and mute bits."
+title = "statusControls reports the five controls in order"
+description = "statusControls returns the combos, damage, speed, pause and mute controls in the order they are drawn, each with a rectangle inside the status bar, running left to right."
 domains = ["presentation"]
 failure_cap = "scuffed"
-# Automated validation: toggle each control in turn and hold the reported
-# state against the snapshot. See validation/<engine>/status-bar/status-
-# controls-reported.test.ts.
+# Automated validation: read the reported controls and hold the actions, the
+# order and each rectangle against the bar. See
+# validation/<engine>/status-bar/status-controls-reported.test.ts.
 validation = { script = "status-bar/status-controls-reported.test.ts", outputs = [
+  { id = "controls", name = "The status bar's five controls", kind = "image" },
+] }
+[[review.categories.items]]
+id = "status-control-states-live"
+title = "Each status control reports its live value"
+description = "Each control's reported state reads the value the game holds after that value is posed: true while its overlay is open, the live multiplier for speed, and the pause and mute bits."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: pose each value in turn and read the control's state
+# back. See validation/<engine>/status-bar/status-control-states-live.test.ts.
+validation = { script = "status-bar/status-control-states-live.test.ts", outputs = [
   { id = "controls", name = "The status bar's five controls", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -3161,7 +3879,7 @@ id = "mute-reads-its-value"
 title = "The mute control draws its live value"
 description = "Muting changes the pixels inside the mute control's reported rectangle, whether the mute was toggled from the bar or from the keyboard."
 domains = ["presentation", "audio"]
-failure_cap = "great"
+failure_cap = "passable"
 # Automated validation: sample the control's rectangle muted and unmuted,
 # toggling by each route. See validation/<engine>/status-bar/mute-reads-its-
 # value.test.ts.
@@ -3214,16 +3932,40 @@ validation = { script = "build-panel/odds.test.ts", outputs = [
   { id = "odds", name = "The panel's odds at a refined press", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "refinement-control"
+id = "refinement-control-reads-level-and-cost"
 title = "The refinement control shows the level and the next cost"
-description = "The panel draws the current refinement level and the Charge cost of the next level, and the control reports disabled at R8 and when the next level is unaffordable."
+description = "The panel draws the current refinement level and the Charge cost of the next level."
 domains = ["presentation"]
 failure_cap = "scuffed"
-# Automated validation: read the control and its disabled flag at an
-# affordable level, an unaffordable one and at R8. See
-# validation/<engine>/build-panel/refinement-control.test.ts.
-validation = { script = "build-panel/refinement-control.test.ts", outputs = [
+# Automated validation: pose a level in the middle of the track and read the
+# panel's figures. See validation/<engine>/build-panel/refinement-control-
+# reads-level-and-cost.test.ts.
+validation = { script = "build-panel/refinement-control-reads-level-and-cost.test.ts", outputs = [
   { id = "control", name = "The refinement control", kind = "image" },
+] }
+[[review.categories.items]]
+id = "refinement-control-disabled-at-max"
+title = "The refinement control is disabled at R8"
+description = "At the top of the refinement track the control reports disabled, with Charge to spare, so the refusal is the track's rather than the bank's."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: pose the top rung with Charge to spare and read the
+# control. See validation/<engine>/build-panel/refinement-control-disabled-at-
+# max.test.ts.
+validation = { script = "build-panel/refinement-control-disabled-at-max.test.ts", outputs = [
+  { id = "control", name = "The refinement control at the top of the track", kind = "image" },
+] }
+[[review.categories.items]]
+id = "refinement-control-disabled-unaffordable"
+title = "The refinement control is disabled when the next level is unaffordable"
+description = "One Charge short of the next level's cost the control reports disabled, while at exactly that cost it is offered."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: pose exactly the price and then one Charge short, and
+# read the control at each. See validation/<engine>/build-panel/refinement-
+# control-disabled-unaffordable.test.ts.
+validation = { script = "build-panel/refinement-control-disabled-unaffordable.test.ts", outputs = [
+  { id = "control", name = "The refinement control one Charge short", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "refinement-control-refines"
@@ -3251,16 +3993,28 @@ validation = { script = "build-panel/stamp-control.test.ts", outputs = [
   { id = "control", name = "The stamp control and its allowance", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "harvest-prompt"
-title = "The harvest prompt reads START before wave 1 and SEND after"
-description = "The panel draws HARVEST_PROMPT_START (KEEP OR COMBINE A ROLL TO START) during the build phase before wave 1, and HARVEST_PROMPT_SEND (KEEP OR COMBINE A ROLL TO SEND) during every build phase after it."
+id = "harvest-prompt-start-before-wave-one"
+title = "The harvest prompt reads START before wave 1"
+description = "The panel draws HARVEST_PROMPT_START (KEEP OR COMBINE A ROLL TO START) during the build phase before wave 1, and does not already draw the SEND prompt there."
 domains = ["presentation"]
-failure_cap = "great"
-# Automated validation: read the panel's text draws in the opening build phase
-# and in the one after wave 1 clears. See validation/<engine>/build-
-# panel/harvest-prompt.test.ts.
-validation = { script = "build-panel/harvest-prompt.test.ts", outputs = [
-  { id = "prompt", name = "The harvest prompt in both phases", kind = "image" },
+failure_cap = "passable"
+# Automated validation: pose the wave counter at 0 and read the panel's text
+# draws both ways. See validation/<engine>/build-panel/harvest-prompt-start-
+# before-wave-one.test.ts.
+validation = { script = "build-panel/harvest-prompt-start-before-wave-one.test.ts", outputs = [
+  { id = "prompt", name = "The harvest prompt before wave 1", kind = "image" },
+] }
+[[review.categories.items]]
+id = "harvest-prompt-send-after-wave-one"
+title = "The harvest prompt reads SEND after wave 1"
+description = "The panel draws HARVEST_PROMPT_SEND (KEEP OR COMBINE A ROLL TO SEND) during every build phase after wave 1, and no longer draws the START prompt there."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: pose the wave counter past 1 and read the panel's
+# text draws both ways. See validation/<engine>/build-panel/harvest-prompt-
+# send-after-wave-one.test.ts.
+validation = { script = "build-panel/harvest-prompt-send-after-wave-one.test.ts", outputs = [
+  { id = "prompt", name = "The harvest prompt after wave 1", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "slots-fixed"
@@ -3419,7 +4173,7 @@ id = "recipe-book-blockers-not-owned"
 title = "Blockers and towers never count as owned"
 description = "A blocker and a combination tower never satisfy an ingredient: a yard holding a blocker where a recipe wants a Capacitor reads that ingredient as missing."
 domains = ["presentation"]
-failure_cap = "great"
+failure_cap = "passable"
 # Automated validation: stand a blocker and a tower on an otherwise empty yard
 # and sample the ingredients they might be mistaken for. See
 # validation/<engine>/overlays/recipe-book-blockers-not-owned.test.ts.
@@ -4053,7 +4807,7 @@ id = "cue-files-distinct"
 title = "The eleven effect cues are eleven different sounds"
 description = "No two of the eleven effect cue files are the same audio, so the events are told apart by ear rather than by one sound committed eleven times."
 domains = ["audio"]
-failure_cap = "great"
+failure_cap = "scuffed"
 # Automated validation: decode the eleven files and compare their samples
 # pairwise. See validation/<engine>/audio/cue-files-distinct.test.ts.
 validation = { script = "audio/cue-files-distinct.test.ts", outputs = [
@@ -4200,7 +4954,7 @@ id = "cue-once-per-frame"
 title = "A cue plays once on a frame that raises it several times"
 description = "A frame on which several units die plays the kill cue once, not once per unit, so a wave clearing does not stack the same sound."
 domains = ["audio"]
-failure_cap = "great"
+failure_cap = "scuffed"
 # Automated validation: kill three frozen units on one frame and count the
 # kill cues played on it. See validation/<engine>/audio/cue-once-per-
 # frame.test.ts.
@@ -4231,4 +4985,46 @@ failure_cap = "passable"
 # validation/<engine>/audio/playable-muted.test.ts.
 validation = { script = "audio/playable-muted.test.ts", outputs = [
   { id = "muted", name = "The run driven with sound muted", kind = "replay" },
+] }
+
+# --- Showcase -----------------------------------------------------------------
+# `specs/showcase.md` makes the store-page presentation a deliverable of the build
+# like any other: a `showcase/` directory holding a description, a carousel, and
+# the media the carousel names. Without a point for it a build that shipped none
+# of that would lose nothing at all.
+#
+# ONE point, and it grades EXISTENCE alone. Whether the description reads like
+# something a player would want to play, whether the carousel opens on the
+# strongest view of live play, and whether the media is worth looking at is a
+# reviewer's judgement, and belongs to the AESTHETIC half of the domains rather
+# than to an assertion. The validator's whole verdict is that the two files are
+# there and that the carousel points at a file that is there with them: not a
+# dimension, not a byte of a picture, not a word of the prose. No other point on
+# this checklist mentions the showcase.
+#
+# It is WEIGHTED above the ordinary point, because it stands for a whole
+# deliverable rather than for one behavior inside one.
+#
+# The script drives nothing. It reads the produced tree with `node:fs`, so one
+# suite stands unchanged in all three engine directories and the point means the
+# same thing whichever engine the run selected. What it hands back as evidence is
+# a `.png` copied out of the build's own showcase, so a reviewer sees the picture
+# the build chose to present its game with beside the verdict.
+[[review.categories]]
+id = "showcase"
+title = "The showcase"
+[[review.categories.items]]
+id = "exists"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, and at least one file the carousel names is present in showcase/."
+weight = 3
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: read the produced tree, confirm the description and the
+# carousel are both there, and confirm the carousel names a file present beside
+# them; the still handed back is a `.png` copied out of the showcase itself.
+# Nothing about the media is checked beyond its being there. See
+# validation/<engine>/showcase/exists.test.ts.
+validation = { script = "showcase/exists.test.ts", outputs = [
+  { id = "carousel", name = "A screenshot from the build's showcase", kind = "image" },
 ] }
