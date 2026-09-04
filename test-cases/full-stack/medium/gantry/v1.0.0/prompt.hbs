@@ -7,77 +7,26 @@ Your project root is `{{workspace}}`. Build the game there.
 {{#if (eq engine.slug "none")}}
 A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
 describes it. Its dependencies are installed, so you can build and test right
-away: Vite builds it, Vitest tests it, ESLint lints it, and Prettier formats it,
-and `three` and `@test-cabinet/voxel-runtime` are installed for the 3D scene and
-the models you produce. That toolchain is the whole of what it supplies.
-
-What is missing is everything under `src/` and everything under `assets/`, and
-neither directory exists yet. Nothing here supplies a frame loop, a canvas fit,
-input, audio, an overlay, or a line of game code. `index.html` loads
-`/src/main.ts`, so that module is where your build starts.
-{{else if (eq engine.slug "simple-3d")}}
-A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
-describes it. Its dependencies are installed, so you can build and test right
-away. It is wired up end to end: Vite builds it, Vitest tests it, ESLint lints
-it, Prettier formats it, `three` is installed for the 3D scene, and
-`src/main.ts` already stands the engine up over the page's canvas and runs the
-game.
-
-What is missing is the game itself, `src/game.ts`, and everything under
-`assets/`, which does not exist yet. As seeded, `src/game.ts` is a stub whose
-`initialize`, `update`, and `render` throw `"not implemented"`, and whose
-`BACKGROUND` is a placeholder. The stub is written against the `GantryState` and
-`GantryDebugApi` types the specification asks `src/game.ts` to declare, so the
-project does not type-check until those declarations exist.
+away. What is missing is everything under `src/` and everything under `assets/`;
+neither directory exists yet. `specs/overview.md` states what you implement and
+which files stay as they are.
 {{else}}
 A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
 describes it. Its dependencies are installed, so you can build and test right
-away. It is wired up end to end: Vite builds it, Vitest tests it, ESLint lints
-it, Prettier formats it, `three` is installed for the yard's geometry, and
-`src/main.ts` already stands the engine up over the page's canvas and runs the
-game.
+away, and `src/main.ts` already stands the engine up over the page's canvas and
+runs the game.
 
 What is missing is the game itself, `src/game.ts`, and everything under
-`assets/`, which does not exist yet. As seeded, `src/game.ts` is a stub game
-definition whose instance's `initialize` throws `"not implemented"`, with no
-`update` and no `render` in the file at all, and whose `BACKGROUND` is a
-placeholder. The stub is written against the `GantryState` and `GantryDebugApi`
-types the specification asks `src/game.ts` to declare, so the project does not
-type-check until those declarations exist.
+`assets/`, which does not exist yet. `specs/overview.md` states what the seeded
+stub gives you, what you write in its place, and which files stay as they are.
 {{/if}}
 
 {{#if (eq engine.slug "none")}}
 ## The runtime
 
-This build runs on no engine, so the layer beneath the game is yours as well:
-the frame loop and the delta time it hands each update, fitting the fixed
-logical stage onto the canvas, the pointer and the input actions the player
-drives the game with, the audio, and the on-screen debug overlay. The
-specification in `specs/` states what Gantry needs from that layer and fixes
-nothing else about it. Rendering the 3D yard is yours too, on the installed
-`three`.
-{{else if (eq engine.slug "simple-3d")}}
-## The {{engine.name}} engine
-
-This build runs on the **{{engine.name}}** engine, installed as a dependency of
-the project, so import it by its bare package name; there is nothing to add to
-`package.json` for it and nothing to install.
-
-The engine's own documentation is at `{{engine.docs}}`. It is the authoritative
-description of the engine's API; the specification in `specs/` describes the
-game and does not restate the engine.
-
-Build the game on the engine rather than beside it. The engine owns the frame
-loop and the delta time it hands your update, the canvas fit, the input
-actions, the pointer, the audio cues, asset loading, and the on-screen debug
-overlay. It also holds the game's state, by value: each frame it hands `update`
-the current state read-only and keeps what `update` returns as the next, so a
-frame builds the next state from the current one rather than writing into it.
-The picture is drawn through the engine as well: `render` fills the scene the
-engine draws, poses the camera it draws through, and puts the readouts on the
-screen layer over that picture. What remains yours is the game itself: its
-simulation and everything it draws, the 3D yard on the installed `three`
-included.
+This build runs on no engine, so the layer beneath the game is yours as well,
+rendering the 3D yard on the installed `three` included. `specs/overview.md`
+states what Gantry needs from that layer and fixes nothing else about it.
 {{else}}
 ## The {{engine.name}} engine
 
@@ -88,18 +37,6 @@ the project, so import it by its bare package name; there is nothing to add to
 The engine's own documentation is at `{{engine.docs}}`. It is the authoritative
 description of the engine's API; the specification in `specs/` describes the
 game and does not restate the engine.
-
-Build the game inside the engine's framework rather than beside it. The engine
-owns the frame loop and the delta time it hands each tick, rendering and the
-camera, the canvas fit, collision detection, the input actions, the pointer, the
-audio cues, asset loading and decoding, and the on-screen debug overlay, and the
-game is written as subclasses of its classes: a game instance, a game mode and
-the game state it names, actors and their components, and the controllers that
-drive them. The engine constructs, ticks, and renders them in a fixed order. The
-framework's state is live: the game state the mode holds is written in place
-rather than replaced, and a tick advances the fields it moves rather than
-returning a new value. What remains yours is the game itself: its rules, its
-state, and everything it puts on screen through the engine's render components.
 {{/if}}
 
 ## What to read first
