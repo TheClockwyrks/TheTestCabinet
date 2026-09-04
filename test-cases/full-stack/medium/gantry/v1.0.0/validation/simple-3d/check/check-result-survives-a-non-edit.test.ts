@@ -64,7 +64,7 @@ it("leaves the same result showing across a tool, the camera and a screen", asyn
     },
   ]);
 
-  await h.press(CHECK_KEY);
+  await h.debug.showCheck();
   const shown = (await h.snapshot()).checkResult;
   assertNotNull(
     shown,

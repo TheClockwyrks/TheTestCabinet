@@ -228,6 +228,7 @@ export interface GantryDebugApi {
   setCamera(yaw: number, pitch: number, dist: number): void;
   startRun(): void;
   abortRun(): void;
+  showCheck(): void;
 
   // The structure
   clearStructure(): void;
@@ -676,8 +677,11 @@ export function createDebugSurface(game: Game): GantryDebugApi {
     },
 
     openSite(index) {
+      // The opening `specs/state.md` fixes and nothing else: the screen is left
+      // exactly as it stands, so a caller entering a site from the select
+      // screen calls `setScreen("build")` after this.
       const site = requireIndex("index", index, SITE_COUNT);
-      put(st.setScreen(st.openSite(now(), site), "build"));
+      put(st.openSite(now(), site));
     },
 
     setCleared(index, cleared) {
@@ -718,6 +722,12 @@ export function createDebugSurface(game: Game): GantryDebugApi {
     abortRun() {
       if (!running()) return;
       put(st.abortRun(now()));
+    },
+
+    showCheck() {
+      // The `check` action, on the screen the action applies to.
+      if (!onScreen("build")) return;
+      put(editor.showCheck(now()));
     },
 
     // ---- The structure ----------------------------------------------------

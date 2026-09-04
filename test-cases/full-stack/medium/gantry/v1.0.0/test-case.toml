@@ -285,7 +285,7 @@ description = "The produced voxel models and audio and the 3D scene they sit in:
 format = 2
 
 # ----------------------------------------------------------------------------
-# Instrumentation — 119 points
+# Instrumentation — 122 points
 # ----------------------------------------------------------------------------
 [[review.categories]]
 id = "instrumentation"
@@ -714,6 +714,21 @@ validation = { script = "instrumentation/clear-best-removes-a-score.test.ts", ou
   { id = "state", name = "The driven state this point decides", kind = "image" },
 ] }
 
+# On the build screen of site 0 with a sound crane posed, read checkResult
+# (null), call showCheck, and read it again beside the check reading. —
+# checkResult carries exactly what check reports: the same issues, cost,
+# budget, stable verdict and member list.
+# From specs/instrumentation.md § The run and the screens.
+[[review.categories.items]]
+id = "show-check-leaves-the-result-showing"
+title = "showCheck leaves the check result showing"
+description = "showCheck poses the check action: it computes the static check and leaves it showing on the build screen, so checkResult carries what the check reading reports."
+domains = ["construction"]
+failure_cap = "passable"
+validation = { script = "instrumentation/show-check-leaves-the-result-showing.test.ts", outputs = [
+  { id = "state", name = "The driven state this point decides", kind = "image" },
+] }
+
 # Run the check action on site 0, call openSite(1) and read checkResult. —
 # checkResult reads null.
 # From specs/instrumentation.md § The run and the screens.
@@ -741,8 +756,8 @@ validation = { script = "instrumentation/open-site-empties-the-history.test.ts",
 ] }
 
 # Call reset, so only site 0 is open and no site is cleared, then call
-# openSite(5) and read snapshot(). — screen reads build, siteIndex reads 5,
-# site.name reads Heavy Haul, and cleared still reads false for every site.
+# openSite(5) and read snapshot(). — siteIndex reads 5, site.name reads Heavy
+# Haul, and cleared still reads false for every site.
 # From specs/instrumentation.md § The run and the screens.
 [[review.categories.items]]
 id = "open-site-opens-a-locked-site"
@@ -796,16 +811,17 @@ validation = { script = "instrumentation/open-site-sets-the-site-index.test.ts",
   { id = "state", name = "The driven state this point decides", kind = "image" },
 ] }
 
-# From the title screen call openSite(4) and read snapshot().screen. — screen
-# reads build.
+# From the title screen call openSite(4) and read snapshot().screen; then from
+# the select screen call openSite(2) and read it again. — screen reads title
+# after the first call and select after the second.
 # From specs/instrumentation.md § The run and the screens.
 [[review.categories.items]]
-id = "open-site-shows-the-build-screen"
-title = "openSite shows the build screen"
-description = "openSite opens the site and then shows the build screen, which together are what entering a site from the select screen does."
+id = "open-site-leaves-the-screen-as-it-stands"
+title = "openSite leaves the screen as it stands"
+description = "openSite carries the site opening and nothing else: the screen showing when it is called is still showing after it, so entering a site from the select screen is openSite followed by setScreen."
 domains = ["construction"]
 failure_cap = "broken"
-validation = { script = "instrumentation/open-site-shows-the-build-screen.test.ts", outputs = [
+validation = { script = "instrumentation/open-site-leaves-the-screen-as-it-stands.test.ts", outputs = [
   { id = "state", name = "The driven state this point decides", kind = "image" },
 ] }
 

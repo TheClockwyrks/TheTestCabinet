@@ -558,6 +558,7 @@ export interface GantryDebugApi {
   setCamera(yaw: number, pitch: number, dist: number): void;
   startRun(): void;
   abortRun(): void;
+  showCheck(): void;
 
   // The structure
   clearStructure(): void;

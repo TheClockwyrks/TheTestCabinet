@@ -407,8 +407,11 @@ export function createDebugSurface(): GantryDebugApi {
     },
 
     openSite(state, index): GantryState {
+      // The opening `specs/state.md` fixes and nothing else: the screen is left
+      // exactly as it stands, so a caller entering a site from the select
+      // screen calls `setScreen(s, "build")` after this.
       const site = requireIndex("index", index, SITE_COUNT);
-      return st.setScreen(st.openSite(state, site), "build");
+      return st.openSite(state, site);
     },
 
     setCleared(state, index, cleared): GantryState {
@@ -445,6 +448,12 @@ export function createDebugSurface(): GantryDebugApi {
     abortRun(state): GantryState {
       if (!running(state)) return thaw(state);
       return st.abortRun(state);
+    },
+
+    showCheck(state): GantryState {
+      // The `check` action, on the screen the action applies to.
+      if (!onScreen(state, "build")) return thaw(state);
+      return edits.showCheck(state);
     },
 
     // ---- The structure ----------------------------------------------------

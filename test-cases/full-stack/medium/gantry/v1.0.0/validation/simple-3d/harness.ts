@@ -152,6 +152,7 @@ export const REQUIRED_OPS = [
   "setCamera",
   "startRun",
   "abortRun",
+  "showCheck",
   "clearStructure",
   "addMember",
   "removeMember",
@@ -1610,17 +1611,22 @@ export async function offEveryMenuItem(
 // real simulation" (`specs/instrumentation.md`).
 
 /**
- * Open a site, leaving the build screen showing.
+ * Enter a site, leaving the build screen showing.
  *
- * `openSite` carries the effects `specs/state.md` states for opening a site — the
- * site's own loads and obstacles back in the yard, the undo history emptied, the
- * pending node and the shown check cleared, the camera back at its start pose,
- * the run back to its idle placeholder — and then shows `build`. It reaches any
- * site whether or not it has been unlocked, which is what lets a check about site
- * five's envelope run without playing four sites to reach it.
+ * TWO OPERATIONS, COMPOSED HERE. `openSite` carries the effects
+ * `specs/state.md` states for opening a site — the site's own loads and
+ * obstacles back in the yard, the undo history emptied, the pending node and
+ * the shown check cleared, the camera back at its start pose, the run back to
+ * its idle placeholder — and leaves the screen exactly as it stands.
+ * `setScreen("build")` is the other half, and "the two together are what
+ * entering a site from the select screen does" (`specs/instrumentation.md`).
+ *
+ * It reaches any site whether or not it has been unlocked, which is what lets a
+ * check about site five's envelope run without playing four sites to reach it.
  */
 export async function openSite(h: Harness, index: number): Promise<void> {
   await h.debug.openSite(index);
+  await h.debug.setScreen("build");
 }
 
 /**

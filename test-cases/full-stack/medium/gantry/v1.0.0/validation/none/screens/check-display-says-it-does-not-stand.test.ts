@@ -119,7 +119,7 @@ it("says the structure does not stand when the check finds a mechanism", async (
   await poseCrane(h, UNBRACED);
 
   const found = await h.check();
-  await h.press("KeyC");
+  await h.debug.showCheck();
   await h.advance(1);
 
   const runs = await frameText(h);

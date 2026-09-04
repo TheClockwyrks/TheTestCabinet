@@ -93,9 +93,9 @@ it("carries the whole site opening, not just the screen", async () => {
   await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, [ATTACH]);
-  // The check action, which is the only thing that leaves a result on screen,
-  // and it is run after the tape so the tape does not clear it again.
-  await h.press(BINDINGS.check[0]!);
+  // The check action, posed by `showCheck` — the only thing that leaves a result
+  // on screen — run after the tape so the tape does not clear it again.
+  await h.debug.showCheck();
   await h.debug.setPendingNode(PENDING.x, PENDING.y, PENDING.z);
   await h.debug.setCamera(ORBITED.yaw, ORBITED.pitch, ORBITED.dist);
 

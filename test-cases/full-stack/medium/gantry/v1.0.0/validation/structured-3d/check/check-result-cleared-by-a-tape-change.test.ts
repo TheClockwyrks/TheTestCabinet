@@ -8,8 +8,9 @@
 // the tape's, so a result left showing across a tape edit could describe a tape
 // that is no longer there.
 //
-// The result is put on screen by the `check` action, bound to `KeyC` on the build
-// screen (specs/controls.md), because the `check` READING never sets it
+// The result is put on screen by `showCheck`, which "Poses the `check` action:
+// computes the static check and leaves it showing on the build screen, exactly as
+// the action does", because the `check` READING never sets it
 // (specs/instrumentation.md). The tape edit is one move step appended through the
 // tape poses, which are the tape editor's own rules (specs/instrumentation.md §
 // The tape); the crane is left untouched, so the structure cannot be what cleared
@@ -70,7 +71,7 @@ it("clears the shown result when a step is appended to the tape", async () => {
     "rail",
   );
 
-  await h.press(CHECK_KEY);
+  await h.debug.showCheck();
   const before = await h.snapshot();
   assertNotNull(
     before.checkResult,

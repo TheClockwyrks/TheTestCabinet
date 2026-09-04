@@ -65,6 +65,16 @@ import type { Runtime, StagePointerEvent } from "./runtime";
 
 // ---- A runtime that records instead of drawing, sounding, or listening -----
 
+/**
+ * Enter a site the way the select screen does: `openSite` carries the opening
+ * `specs/state.md` fixes and leaves the screen alone, so the build screen is
+ * the caller's second call (`specs/instrumentation.md`).
+ */
+function enterSite(h: Harness, index: number): void {
+  h.debug.openSite(index);
+  h.debug.setScreen("build");
+}
+
 interface Harness {
   runtime: Runtime;
   game: Game;
@@ -341,7 +351,7 @@ describe("the snapshot", () => {
   });
 
   it("reports an obstacle as its minimum corner and its size", () => {
-    h.debug.openSite(2);
+    enterSite(h, 2);
     const s = h.debug.snapshot();
     expect(s.site.obstacles).toEqual([
       { min: { x: 5, y: 0, z: -6 }, size: { x: 1, y: 8, z: 12 } },
@@ -351,7 +361,7 @@ describe("the snapshot", () => {
   it("reports what the picker found on the build screen alone", () => {
     vi.mocked(editor.pick).mockReturnValue({ node: [2, 0, 4], member: 7 });
     expect(h.debug.snapshot().pick).toEqual({ node: null, member: null });
-    h.debug.openSite(0);
+    enterSite(h, 0);
     expect(h.debug.snapshot().pick).toEqual({
       node: { x: 2, y: 0, z: 4 },
       member: 7,
@@ -379,7 +389,7 @@ describe("the domains", () => {
   });
 
   it("refuses a coordinate that is not a lattice node", () => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     expect(() => h.debug.setRing(1, 2, 0)).toThrow();
     expect(() => h.debug.addCounterweight(0, 2.5, 0)).toThrow();
     expect(() => h.debug.setPendingNode(0, 0, 3)).toThrow();
@@ -391,7 +401,7 @@ describe("the domains", () => {
   });
 
   it("refuses an index or a member id nothing carries", () => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     expect(() => h.debug.removeMember(0)).toThrow();
     expect(() => h.debug.setLoadTarget(1, 0, 0, 0, 0)).toThrow();
     h.debug.setScreen("program");
@@ -425,11 +435,13 @@ describe("the screens and the run", () => {
     expect(s.siteIndex).toBe(0);
   });
 
-  it("opens a site, locked or not, and shows the build screen", () => {
+  it("opens a site, locked or not, and leaves the screen as it stands", () => {
     h.debug.setCamera(200, 60, 70);
     h.debug.openSite(5);
     const s = h.debug.snapshot();
-    expect(s.screen).toBe("build");
+    // The call was made from the title screen, and `openSite` carries the
+    // opening `specs/state.md` fixes and nothing else.
+    expect(s.screen).toBe("title");
     expect(s.siteIndex).toBe(5);
     expect(s.site.name).toBe(SIM_SITES[5].name);
     expect(s.site.loads).toHaveLength(SIM_SITES[5].loads.length);
@@ -466,7 +478,7 @@ describe("the screens and the run", () => {
   });
 
   it("refuses a start the `run` action refuses, silently", () => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     h.debug.startRun();
     const s = h.debug.snapshot();
     expect(s.screen).toBe("build");
@@ -475,7 +487,7 @@ describe("the screens and the run", () => {
   });
 
   it("starts the ordinary run, with nothing ticked at the call", () => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     rig(h.game);
     h.debug.startRun();
     const s = h.debug.snapshot();
@@ -493,15 +505,28 @@ describe("the screens and the run", () => {
   });
 
   it("does not start from a screen the `run` action has no reach on", () => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     rig(h.game);
     h.debug.setScreen("title");
     h.debug.startRun();
     expect(h.debug.snapshot().run.phase).toBe("idle");
   });
 
+  it("poses the check action on the build screen alone", () => {
+    enterSite(h, 0);
+    h.debug.showCheck();
+    expect(vi.mocked(editor.showCheck)).toHaveBeenCalledTimes(1);
+    // The `check` action reaches the build screen and nothing else, and so
+    // does this pose (`specs/instrumentation.md`).
+    h.debug.setScreen("program");
+    h.debug.showCheck();
+    h.debug.setScreen("title");
+    h.debug.showCheck();
+    expect(vi.mocked(editor.showCheck)).toHaveBeenCalledTimes(1);
+  });
+
   it("aborts a run in progress with no verdict", () => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     rig(h.game);
     h.debug.startRun();
     h.debug.advance(5);
@@ -515,7 +540,7 @@ describe("the screens and the run", () => {
 
 describe("reset", () => {
   it("restores every field but `muted`", () => {
-    h.debug.openSite(3);
+    enterSite(h, 3);
     h.debug.setCleared(1, true);
     h.debug.setBest(1, 10, 20);
     h.debug.setCamera(100, 50, 30);
@@ -551,7 +576,7 @@ describe("reset", () => {
 
 describe("the readings", () => {
   it("computes the check on the spot and displays nothing", () => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     const shown: CheckResult = {
       issues: ["no-rail"],
       cost: 1,
@@ -594,7 +619,7 @@ describe("the readings", () => {
 
 describe("the structure poses", () => {
   it("reach the editor's rule pipeline with the arguments as read", () => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     h.debug.addMember(0, 0, 0, 0, 2, 0, "strut");
     expect(vi.mocked(editor.addMember)).toHaveBeenCalledWith(
       h.game.state,
@@ -618,7 +643,7 @@ describe("the structure poses", () => {
   });
 
   it("plays the cue the edit raises", () => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     vi.mocked(editor.setRing).mockImplementation((state) => ({
       state,
       cue: "place",
@@ -629,7 +654,7 @@ describe("the structure poses", () => {
   });
 
   it("apply on the build screen and nowhere else", () => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     h.debug.setScreen("program");
     h.debug.setRing(0, 2, 0);
     h.debug.clearStructure();
@@ -646,7 +671,7 @@ describe("the structure poses", () => {
 
 describe("the tape poses", () => {
   beforeEach(() => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     h.debug.setScreen("program");
   });
 
@@ -694,7 +719,7 @@ describe("the tape poses", () => {
 
 describe("the site poses", () => {
   it("hold only what a scenario is about", () => {
-    h.debug.openSite(4);
+    enterSite(h, 4);
     h.debug.clearLoads();
     h.debug.clearObstacles();
     h.debug.addLoad("drum", 120, 7, 3, 0, 0);
@@ -718,15 +743,15 @@ describe("the site poses", () => {
   });
 
   it("put the authored set back on a reopen", () => {
-    h.debug.openSite(2);
+    enterSite(h, 2);
     h.debug.clearObstacles();
     expect(h.debug.snapshot().site.obstacles).toEqual([]);
-    h.debug.openSite(2);
+    enterSite(h, 2);
     expect(h.debug.snapshot().site.obstacles).toHaveLength(1);
   });
 
   it("do nothing with a run in progress", () => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     rig(h.game);
     h.debug.startRun();
     h.debug.clearLoads();
@@ -736,7 +761,7 @@ describe("the site poses", () => {
 
 describe("the run poses", () => {
   beforeEach(() => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     rig(h.game);
     h.debug.startRun();
   });
@@ -796,7 +821,7 @@ describe("the run poses", () => {
 
 describe("the clock", () => {
   it("advances whole frames, each covering one tick", () => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     rig(h.game);
     h.debug.setAutoStep(false);
     h.debug.startRun();
@@ -808,7 +833,7 @@ describe("the clock", () => {
   });
 
   it("scales what a frame covers by the watch speed", () => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     rig(h.game);
     h.debug.startRun();
     h.debug.setSpeedIndex(2);
@@ -825,7 +850,7 @@ describe("the clock", () => {
   });
 
   it("carries no time measured elsewhere into a run", () => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     rig(h.game);
     // Half a tick's worth of frame time on the build screen.
     h.game.frame(1 / (TICK_HZ * 2));
@@ -835,7 +860,7 @@ describe("the clock", () => {
   });
 
   it("takes the run's own step and the tape with it", () => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     rig(h.game);
     h.debug.startRun();
     h.debug.advance(1);
@@ -848,7 +873,7 @@ describe("the clock", () => {
   });
 
   it("reports the diagnostics the overlay draws", () => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     rig(h.game);
     const lines = h.diagnostics();
     expect(lines.length).toBeGreaterThanOrEqual(7);
@@ -895,7 +920,7 @@ describe("input", () => {
   });
 
   it("turns a press that reaches CLICK_SLOP into an orbit drag", () => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     h.debug.setScreen("run");
     h.debug.pointerDown(100, 100);
     // The move that carries the press across the boundary turns nothing.
@@ -932,7 +957,7 @@ describe("a run ending", () => {
   ];
 
   it("clears the site, records the score, and shows the results", () => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     rig(h.game, instant);
     h.debug.startRun();
     const cost = h.debug.check().cost;
@@ -952,7 +977,7 @@ describe("a run ending", () => {
   });
 
   it("stays on the run screen with its cause when it fails", () => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     rig(h.game, instant);
     h.debug.startRun();
     h.debug.advance(4);
@@ -966,7 +991,7 @@ describe("a run ending", () => {
   });
 
   it("leaves the run it ended readable, and ticks it no further", () => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     rig(h.game, instant);
     h.debug.startRun();
     h.debug.advance(4);
@@ -978,7 +1003,7 @@ describe("a run ending", () => {
 
 describe("the camera against the frame's delta", () => {
   it("orbits and zooms while its action is held, on the yard screens", () => {
-    h.debug.openSite(0);
+    enterSite(h, 0);
     h.hold("right", true);
     h.hold("zoom-in", true);
     h.game.frame(1);

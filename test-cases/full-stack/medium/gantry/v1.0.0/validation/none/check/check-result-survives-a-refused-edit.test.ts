@@ -51,7 +51,7 @@ it("still shows the check result after an edit the editor refused", async () => 
   await emptyYard(h);
   await standMinimalCrane(h);
 
-  await h.press(CHECK_KEY);
+  await h.debug.showCheck();
   const before = await h.snapshot();
   assertNotNull(
     before.checkResult,

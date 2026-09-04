@@ -59,7 +59,7 @@ it("names empty-program on the check display when the tape is empty", async () =
   await clearAll(h);
   await standMinimalCrane(h);
 
-  await h.press("KeyC");
+  await h.debug.showCheck();
   await h.advance(1);
 
   const runs = await frameText(h);

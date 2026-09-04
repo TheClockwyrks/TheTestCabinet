@@ -215,7 +215,8 @@ clock is already doing, so a scenario that must be reproducible calls
 `empty-program` last. `specs/structure.md` fixes the issues, the solve the
 check runs, and what a structure with an issue reports. The reading is pure: it
 computes the check and returns it, and it displays nothing, so the result the
-build screen is showing is untouched.
+build screen is showing is untouched; `showCheck` below is the pose that shows
+one.
 
 | Operation | Returns |
 | --- | --- |
@@ -305,37 +306,46 @@ picks none.
 | `reset` | Returns the game to its title state, as below. |
 | `setScreen(screen)` | Shows a named screen and sets nothing else; `menuIndex` is left as it stands (`specs/state.md`), so a caller posing a screen with a menu sets it with `setMenuIndex` afterwards. `screen` is one of the seven identifiers of `specs/ui.md`. |
 | `setMenuIndex(index)` | Sets the highlighted entry of the menu on the screen showing, counted from `0`; the domain is the entry count of the menu that screen shows (`specs/ui.md`). |
-| `openSite(index)` | Opens site `index`, counted from `0`, locked or not, as below. |
+| `openSite(index)` | Opens site `index`, counted from `0`, locked or not: the opening `specs/state.md` fixes, as below, and nothing else. The screen is left as it stands. |
 | `setCleared(index, cleared)` | Sets whether site `index` has been cleared this session, and with it which sites are open. |
 | `setBest(index, cost, time)` | Records `{ cost, time }` as site `index`'s best score, whatever it held. |
 | `clearBest(index)` | Returns site `index` to having no recorded score. |
 | `setCamera(yaw, pitch, dist)` | Sets the orbit camera's pose as the orbit controls set it (`specs/controls.md`): the pitch and the distance are held inside their limits, and the yaw wraps to at or above `0` and below `360`. |
 | `startRun` | Poses the `run` action: the same refusals, the same `run-start`, and the same move to the run screen as `specs/program.md` states. |
 | `abortRun` | Poses the abort, ending a running run with no verdict: `run` goes back to its idle placeholder and the build screen returns. |
+| `showCheck` | Poses the `check` action: computes the static check and leaves it showing on the build screen, exactly as the action does (`specs/structure.md`). |
 
-`openSite` carries the effects `specs/state.md` states for opening a site and
-then shows the `build` screen; the two together are what entering a site from
-the select screen does (`specs/ui.md`). It is the surface's way onto any site
-without playing to it, and a site opened this way carries the loads and
+`openSite` carries exactly the effects `specs/state.md` states for opening a
+site and leaves the screen where it stands. It is the surface's way onto any
+site without playing to it, and a site opened this way carries the loads and
 obstacles `specs/sites.md` gives it, so a caller that wants a different set
-poses it with the site operations below.
+poses it with the site operations below. Entering a site from the select screen
+is the two operations `openSite` then `setScreen("build")`, in that order.
 
 `setScreen` shows the screen and sets nothing else. Arriving at a screen in
 play does more than show it: `specs/ui.md` puts the highlight somewhere on
 every menu, entering `build` from the select screen opens a site, and a cleared
 run records its score on the way to `results`. Each of those belongs to the
-operation that carries it, which is why entering a site is `openSite` rather
-than `setScreen("build")`.
+operation that carries it, so a caller that wants the arrival poses it as the
+operations that make it up.
+
+`startRun` and `abortRun` do move the screen, because each poses a player's ACT
+rather than a state transition: `startRun` is the `run` action, with the
+refusals `specs/program.md` gives it, `abortRun` is the abort, and each takes
+the screen its act takes. `openSite` poses no act, only the opening
+`specs/state.md` fixes, so it moves no screen.
 
 The first eight of these apply on every screen, `setMenuIndex` aside: it applies
 on the three screens that show a menu — `title`, `select`, and `results` — and
 does nothing on the other four, whatever the index. `startRun` applies on the
 build and program screens, where the `run` action does, and `abortRun` while a
-run is in progress. `startRun` is refused exactly as the action is, leaving the
-state as it was; `check` says why it would refuse. A run that begins is the
-ordinary run, and it starts as `specs/state.md` says a run starts: nothing has
-ticked at the call, so `run.tick` reads `0` immediately after it, and the axes,
-the pivot, and the bob stand at the run-start values that file gives.
+run is in progress. `showCheck` applies on the build screen, where the `check`
+action does, and does nothing on any other. `startRun` is refused exactly as the
+action is, leaving the state as it was; `check` says why it would refuse. A run
+that begins is the ordinary run, and it starts as `specs/state.md` says a run
+starts: nothing has ticked at the call, so `run.tick` reads `0` immediately
+after it, and the axes, the pivot, and the bob stand at the run-start values
+that file gives.
 
 `reset` restores every field the snapshot reports to its title-screen value, bar
 one: the `title` screen with `menuIndex` `0`, site `0` open, every site
@@ -425,6 +435,8 @@ are accepted as written and judged when the step starts.
 | `addObstacle(x, y, z, w, h, d)` | Appends an obstacle: the axis-aligned box with minimum corner `(x, y, z)` and size `(w, h, d)`. |
 
 The site poses apply on the build and program screens, with no run in progress.
+`openSite` leaves the screen as it stands, so a caller that opens a site from
+`title` or `select` and then poses loads or obstacles sets the screen first.
 They are what lets a scenario hold only what it is about: a caller clears the
 loads and the obstacles and adds back exactly the ones its requirement
 concerns, so a check on a lift runs against one load and a check on a member
@@ -650,7 +662,8 @@ gives the value each rests at.
   sets each of the six fields, and `specs/controls.md` fixes what separates a
   click from an orbit drag.
 - `checkResult` is the result the build screen is currently showing, exactly as
-  the `check` action left it. The `check` reading never sets it.
+  the `check` action or the `showCheck` pose left it. The `check` reading never
+  sets it.
 - `run.stepLive` is whether the step at `run.stepIndex` has been taken and is
   not yet complete, and `run.pivot` is the point the cable hangs from at the
   most recent tick's geometry, which the pendulum reads on the tick after

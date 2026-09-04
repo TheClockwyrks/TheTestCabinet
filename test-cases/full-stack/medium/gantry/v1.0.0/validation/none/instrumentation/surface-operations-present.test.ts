@@ -36,7 +36,7 @@ afterEach(async () => {
 });
 
 it("carries every operation specs/instrumentation.md names, each a function", async () => {
-  await h.debug.openSite(0);
+  await openSite(h, 0);
 
   const found = await h.page.evaluate(
     ([handle, wanted]) => {

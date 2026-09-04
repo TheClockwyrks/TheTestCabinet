@@ -458,6 +458,8 @@ export interface GantryDebugApi {
   startRun(state: DeepReadonly<GantryState>): GantryState;
   /** Poses the abort: a running run ends with no verdict. */
   abortRun(state: DeepReadonly<GantryState>): GantryState;
+  /** Poses the `check` action: the result is left showing on the build screen. */
+  showCheck(state: DeepReadonly<GantryState>): GantryState;
 
   /* ---- The structure ------------------------------------------------------ */
 

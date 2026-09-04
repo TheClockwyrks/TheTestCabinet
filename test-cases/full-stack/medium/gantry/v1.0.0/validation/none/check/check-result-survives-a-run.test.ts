@@ -65,7 +65,7 @@ it("still shows the check result once a run has been and gone", async () => {
     },
   ]);
 
-  await h.press(CHECK_KEY);
+  await h.debug.showCheck();
   const shown = (await h.snapshot()).checkResult;
   assertNotNull(
     shown,

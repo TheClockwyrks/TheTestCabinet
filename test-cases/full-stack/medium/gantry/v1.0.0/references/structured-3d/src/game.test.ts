@@ -134,6 +134,7 @@ describe("the six reference designs", () => {
     (i, want) => {
       const h = harness();
       h.debug.openSite(i);
+      h.debug.setScreen("build");
       pose(h.debug, designs[i]);
 
       const check = h.debug.check();
@@ -180,6 +181,7 @@ describe("the frame and the run", () => {
   function firstLift(): Harness {
     const h = harness();
     h.debug.openSite(0);
+    h.debug.setScreen("build");
     pose(h.debug, designs[0]);
     h.debug.startRun();
     h.cues.length = 0;
@@ -240,6 +242,7 @@ describe("the frame and the run", () => {
     updateFrame(h.state, TICK_DT * 20, h.io);
     expect(h.state.run.tick).toBe(20);
     h.debug.openSite(0);
+    h.debug.setScreen("build");
     const s = h.debug.snapshot();
     expect(s.run.phase).toBe("idle");
     expect(s.run.tick).toBe(0);

@@ -391,6 +391,8 @@ export interface GantryDebugApi {
   startRun(): Promise<void>;
   /** Poses the abort: a running run ends with no verdict. */
   abortRun(): Promise<void>;
+  /** Poses the `check` action: the result is left showing on the build screen. */
+  showCheck(): Promise<void>;
 
   /* ---- The structure ------------------------------------------------------ */
 

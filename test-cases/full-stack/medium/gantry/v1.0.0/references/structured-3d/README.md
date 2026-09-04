@@ -206,7 +206,8 @@ any frame rate.
 
 The game instance's `initialize` returns the automation surface, and the engine
 hands it back as `engine.debug`. It can pose a site and read it back without a
-real pointer: `openSite`, `addMember`, `setRing`, `addMoveStep` and friends
+real pointer: `openSite` and `setScreen` reach any site's build screen,
+`addMember`, `setRing`, `addMoveStep` and friends
 build a crane and a tape under the same rules a player builds under, `startRun`
 starts the run the `G` key starts, and `snapshot()` reads the whole game back.
 The clock, the keyboard, the pointer, the camera's projection and the overlay

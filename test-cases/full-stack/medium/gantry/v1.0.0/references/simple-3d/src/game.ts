@@ -521,6 +521,7 @@ export interface GantryDebugApi {
   ): GantryState;
   startRun(state: ReadonlyGantryState): GantryState;
   abortRun(state: ReadonlyGantryState): GantryState;
+  showCheck(state: ReadonlyGantryState): GantryState;
 
   // ---- The structure ------------------------------------------------------
 

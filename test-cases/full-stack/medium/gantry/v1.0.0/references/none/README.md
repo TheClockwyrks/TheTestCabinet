@@ -196,7 +196,7 @@ any frame rate.
 
 The game installs `window.__gantry` as soon as it has initialized. It can pose a
 site and read it back without a real pointer or real time — `setAutoStep(false)`
-and `advance(n)` take the game off the wall clock, `openSite`, `addMember`,
-`setRing`, `addMoveStep` and friends build a crane and a tape under the same
-rules a player builds under, and `snapshot()` reads the whole game back. It is
-inert until something calls it.
+and `advance(n)` take the game off the wall clock, `openSite` and `setScreen`
+reach any site's build screen, `addMember`, `setRing`, `addMoveStep` and friends
+build a crane and a tape under the same rules a player builds under, and
+`snapshot()` reads the whole game back. It is inert until something calls it.

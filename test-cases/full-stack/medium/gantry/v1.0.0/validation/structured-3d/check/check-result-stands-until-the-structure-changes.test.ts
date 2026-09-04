@@ -10,9 +10,8 @@
 // two are different things: the `check` reading "is pure: it computes the check
 // and returns it, and it displays nothing", and "`checkResult` is the result the
 // build screen is currently showing, exactly as the `check` action left it. The
-// `check` reading never sets it." So the result is put on screen the only way it
-// can be — the `check` action, which specs/controls.md binds to `KeyC` on the
-// build screen — and read back off `snapshot().checkResult`.
+// `check` reading never sets it." So the result is put on screen by `showCheck`,
+// which poses the `check` action, and read back off `snapshot().checkResult`.
 //
 // The edit is one member placed through the structure pose, which "enter[s] the
 // rule pipeline the build tools feed" (specs/instrumentation.md), so it is the
@@ -51,7 +50,7 @@ it("clears the shown result when a member is placed", async () => {
   await clearAll(h);
   await standMinimalCrane(h);
 
-  await h.press(CHECK_KEY);
+  await h.debug.showCheck();
   const shown = (await h.snapshot()).checkResult;
   assertNotNull(
     shown,

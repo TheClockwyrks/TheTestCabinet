@@ -10,10 +10,10 @@
 // The result has to be put there by the `check` ACTION, because the `check`
 // reading cannot: "The reading is pure: it computes the check and returns it, and
 // it displays nothing", and § Snapshot shape repeats it — "The `check` reading
-// never sets it." So the one route to a shown result is the key
-// `specs/controls.md` binds the action to, pressed on the build screen where the
-// action lives. That is the direct route to this scenario rather than a detour: it
-// is the only one.
+// never sets it." So the one route to a shown result is `showCheck`, which
+// "Poses the `check` action: computes the static check and leaves it showing on
+// the build screen, exactly as the action does". That is the direct route to this
+// scenario rather than a detour: it is the only one.
 //
 // Nothing is built. `specs/ui.md` gives what the screen shows when the check finds
 // "A readiness issue" as a result like any other, so an empty structure is enough
@@ -40,7 +40,7 @@ afterEach(async () => {
 it("shows no check result after a reset", async () => {
   await openSite(h, 0);
   await emptyYard(h);
-  await h.press(CHECK_KEY);
+  await h.debug.showCheck();
   const shown = await h.snapshot();
   assertNotNull(
     shown.checkResult,

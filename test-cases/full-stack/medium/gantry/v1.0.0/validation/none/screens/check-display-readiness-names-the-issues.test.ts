@@ -67,7 +67,7 @@ it("names the readiness issues on the check display", async () => {
   await h.debug.clearRing();
 
   const found = await h.check();
-  await h.press("KeyC");
+  await h.debug.showCheck();
   await h.advance(1);
 
   const runs = await frameText(h);

@@ -390,6 +390,8 @@ export interface GantryDebugApi {
   startRun(): void;
   /** Poses the abort: a running run ends with no verdict. */
   abortRun(): void;
+  /** Poses the `check` action: the result is left showing on the build screen. */
+  showCheck(): void;
 
   /* ---- The structure ------------------------------------------------------ */
 

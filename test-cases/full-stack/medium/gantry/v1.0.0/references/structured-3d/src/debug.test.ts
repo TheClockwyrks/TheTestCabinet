@@ -29,10 +29,18 @@ function harness(): Harness {
   return { state, debug, cues };
 }
 
-/** A harness on a site's build screen, which is where the editor poses land. */
+/**
+ * A harness on a site's build screen, which is where the editor poses land.
+ *
+ * `openSite` carries the opening `specs/state.md` fixes and leaves the screen
+ * alone, so the build screen is the caller's second call
+ * (`specs/instrumentation.md`) — the same pair entering a site from the select
+ * screen is.
+ */
 function onSite(index = 0): Harness {
   const h = harness();
   h.debug.openSite(index);
+  h.debug.setScreen("build");
   return h;
 }
 
@@ -151,11 +159,13 @@ describe("the screens", () => {
     expect(() => h.debug.setMenuIndex(1.5)).toThrow(/integer/);
   });
 
-  it("opens a site and shows its build screen", () => {
+  it("opens a site and leaves the screen as it stands", () => {
     const h = harness();
     h.debug.openSite(2);
     const s = h.debug.snapshot();
-    expect(s.screen).toBe("build");
+    // The call was made on the title screen, and `openSite` carries the
+    // opening `specs/state.md` fixes and nothing else.
+    expect(s.screen).toBe("title");
     expect(s.siteIndex).toBe(2);
     expect(s.site.name).toBe(SITE_NAMES[2]);
     expect(s.site.obstacles).toHaveLength(SITES[2].obstacles.length);

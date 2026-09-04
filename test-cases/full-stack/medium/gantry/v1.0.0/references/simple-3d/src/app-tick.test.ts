@@ -190,7 +190,7 @@ const debug = createDebugSurface();
 /** A site posed and ready to run, with the stub the frame is driven through. */
 function readied(index: number): { s: GantryState; io: Stub } {
   const io = stub();
-  let s = debug.openSite(titleState(), index);
+  let s = debug.setScreen(debug.openSite(titleState(), index), "build");
   s = pose(debug, s, designs[index]);
   return { s, io };
 }
@@ -359,7 +359,7 @@ describe("what every update does", () => {
   it("orbits the camera against the frame's delta while a key is held", () => {
     const io = stub();
     io.held.add("right");
-    const start = debug.openSite(titleState(), 0);
+    const start = debug.setScreen(debug.openSite(titleState(), 0), "build");
     const s = updateGame(start, io.api, 1);
     expect(s.camera.yaw).toBeCloseTo((start.camera.yaw + 90) % 360, 9);
   });
@@ -373,7 +373,7 @@ describe("what every update does", () => {
 
   it("follows a press into an orbit drag once it passes CLICK_SLOP", () => {
     const io = stub();
-    const start = debug.openSite(titleState(), 0);
+    const start = debug.setScreen(debug.openSite(titleState(), 0), "build");
     io.samples = [
       sample("down", 600, 300),
       sample("move", 602, 300),
@@ -399,7 +399,11 @@ describe("what every update does", () => {
       sample("move", 700, 300),
       sample("up", 700, 300),
     ];
-    const s = updateGame(debug.openSite(titleState(), 0), io.api, TICK_DT);
+    const s = updateGame(
+      debug.setScreen(debug.openSite(titleState(), 0), "build"),
+      io.api,
+      TICK_DT,
+    );
     expect(s.pointer.down).toBe(false);
     expect(s.pointer.dragging).toBe(false);
   });
