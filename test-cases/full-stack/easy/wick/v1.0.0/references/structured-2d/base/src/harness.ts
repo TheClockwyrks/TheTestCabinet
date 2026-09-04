@@ -150,7 +150,6 @@ export async function createHarness(): Promise<Harness> {
     height: STAGE_H,
     game,
     background: BACKGROUND,
-    imageSmoothing: false,
     layout: "dpad-4",
     clock: new ConstantClock(FRAME_MS),
     surface: surfaceOf(events),

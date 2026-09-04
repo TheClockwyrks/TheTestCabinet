@@ -2,10 +2,12 @@
 // howto with menuIndex 0 and the idle run, exactly as confirming HOW TO PLAY
 // does.
 //
-// WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, `setScreen`'s row
-// for `howto`: from "any", "Enters the how-to screen exactly as confirming
-// `HOW TO PLAY` does: the idle run", "with `menuIndex` `0`". specs/ui.md:
-// `HOW TO PLAY` "Sets `screen = howto` and `menuIndex = 0`".
+// WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, `setScreen`: "Sets
+// `screen` to `name` ... with `menuIndex`, `almanacTab`, and `almanacScroll`
+// all `0`", and "Applies on every screen". specs/ui.md: `HOW TO PLAY` "Sets
+// `screen = howto` and `menuIndex = 0`". The run the how-to screen carries is
+// the caller's to arrange: "the idle run the menus hold is `reset`", which is
+// the reset this pose is taken from.
 //
 // THE POSE. A fresh reset, the highlight moved to the second item by a real
 // key so `menuIndex` is not already 0, then the pose. The route to howto is

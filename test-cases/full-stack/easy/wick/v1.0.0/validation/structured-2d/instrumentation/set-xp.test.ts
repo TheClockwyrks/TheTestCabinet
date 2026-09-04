@@ -23,6 +23,7 @@ import {
   advanceTicks,
   captureStill,
   createHarness,
+  enable,
   isolate,
   type Harness,
 } from "../harness";
@@ -44,7 +45,10 @@ afterEach(() => {
 });
 
 it("poses xp without a level-up, and the next gem queues what the total earns", async () => {
+  // The gain at the end has to be SPENT for the queue to be readable, so
+  // `progression` is turned back on; the other eight switches stay held.
   isolate(h, { level: 1 });
+  enable(h, "progression");
   h.debug.setXp(FIRST_XP);
   assertEqual(h.snapshot().run.xp, FIRST_XP, "run.xp after setXp(4.5)");
 

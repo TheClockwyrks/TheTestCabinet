@@ -2,14 +2,15 @@
 // carry the stage's background color.
 //
 // WHERE THE THRESHOLD COMES FROM. specs/overview.md ("Units, ticks, the world,
-// and the camera"): "the letterbox bars carry the stage's background color",
-// and, under What you implement: "src/game.ts also exports BACKGROUND, a CSS
-// color string: the stage background. src/main.ts hands it to the engine as the
-// color the canvas is cleared to each frame, so the letterbox bars around the
-// stage match the night. The seeded stub exports a placeholder; replace it with
-// the color your night uses." The color itself is the build's ("Wick fixes no
-// palette", specs/ui.md), so what a check decides is that the bars really are
-// THAT color once the build's frame has been drawn.
+// and the camera"): "The stage has one background color, painted across the
+// whole stage before anything else is drawn, and the letterbox bars carry that
+// color", and, under What you implement: "src/game.ts also exports BACKGROUND,
+// a CSS color string: the stage background. src/main.ts hands it to the engine
+// as the color the canvas is cleared to each frame, so the letterbox bars
+// around the stage match the night. The seeded stub exports a placeholder;
+// replace it with the color your night uses." The color itself is the build's
+// ("Wick fixes no palette", specs/ui.md), so what a check decides is that the
+// bars really are THAT color once the build's frame has been drawn.
 //
 // THE WORLD. An isolated playing run (`isolate`) over a surface wider than the
 // stage's ratio, so a bar of 160 CSS pixels stands at each side. `playing` is
@@ -33,10 +34,11 @@ import { STAGE_H, STAGE_W } from "../constants";
 import { captureStill, createHarness, isolate, type Harness } from "../harness";
 // The build's own stage background, which `src/main.ts` hands the engine as the
 // color the canvas is cleared to. It is the SUBJECT of this point rather than a
-// threshold, which is why it is read from the build rather than restated in
-// `constants.ts`: the specification fixes that the bars carry it, and leaves
-// which color it is to the build.
-import { BACKGROUND } from "../../src/game";
+// threshold, which is why it is read from the build rather than restated as a
+// figure: the specification fixes that the bars carry it, and leaves which color
+// it is to the build. It reaches this suite from `../constants`, the one place
+// this project reads the build's own modules.
+import { BACKGROUND } from "../constants";
 
 /** A surface 320 CSS pixels wider than the stage's ratio: a bar at each side. */
 const CSS_WIDTH = STAGE_W + 320;

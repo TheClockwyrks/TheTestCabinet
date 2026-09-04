@@ -2,22 +2,24 @@
 // carry the stage's background colour.
 //
 // WHERE THE FIGURES COME FROM. `specs/overview.md`, "Units, ticks, the world,
-// and the camera": "the letterbox bars carry the stage's background color", and
-// under What you implement: "`src/game.ts` also exports `BACKGROUND`, a CSS
+// and the camera": "The stage has one background color, painted across the whole
+// stage before anything else is drawn, and the letterbox bars carry that color",
+// and under What you implement: "`src/game.ts` also exports `BACKGROUND`, a CSS
 // color string: the stage background. `src/main.ts` hands it to the engine as
 // the color the canvas is cleared to each frame, so the letterbox bars around
 // the stage match the night." Which colour it is belongs to the build ("Wick
 // fixes no palette, no font, and no styling for any screen", `specs/ui.md`),
-// so what is decided
-// here is that the bars really are THAT colour once the build's frame has been
-// drawn.
+// so what is decided here is that the bars really are THAT colour once the
+// build's frame has been drawn.
 //
-// WHY `BACKGROUND` IS READ OFF THE BUILD. It is the SUBJECT of this point
-// rather than a threshold. The specification fixes that the bars carry it and
-// leaves the colour open, so the only honest reading of "the stage's background
-// color" is the string the build exports under the name the specification gives
-// it, resolved by painting it onto a scratch canvas with the same library the
-// engine draws through, so any CSS spelling reads the same way.
+// WHY `BACKGROUND` IS THE BUILD'S. It is the SUBJECT of this point rather
+// than a threshold. The specification fixes that the bars carry it and leaves
+// the colour open, so the only honest reading of "the stage's background
+// color" is the string the build exports under the name the specification
+// gives it. It reaches this suite from `../constants`, the one place this
+// project reads the build's own modules, and it is resolved by painting it
+// onto a scratch canvas with the same library the engine draws through, so any
+// CSS spelling reads the same way.
 //
 // THE BOUND. None. The engine clears the canvas to one colour and the stage's
 // own picture is confined to the fitted box, so every channel of every bar
@@ -33,11 +35,8 @@
 import { createCanvas } from "@napi-rs/canvas";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertTrue, fail } from "../assert";
-import { STAGE_H, STAGE_W } from "../constants";
+import { BACKGROUND, STAGE_H, STAGE_W } from "../constants";
 import { captureStill, createHarness, isolate, type Harness } from "../harness";
-// The build's own stage background, which `src/main.ts` hands the engine as the
-// colour the canvas is cleared to each frame.
-import { BACKGROUND } from "../../src/game";
 
 /** A surface 320 CSS pixels wider than the stage: a bar at each side. */
 const CSS_WIDTH = STAGE_W + 320;

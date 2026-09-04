@@ -7,8 +7,9 @@
 //   - `specs/instrumentation.md` ("A deterministic core"): "so is the
 //     remainder on any other frame or pose that leaves `playing`. On every
 //     other screen a frame ticks nothing and the accumulator holds `0`."
-//   - `specs/instrumentation.md` (`setScreen`, `playing` from `paused`):
-//     "Resumes exactly as `pause` on `paused` does; the run is untouched."
+//   - `specs/instrumentation.md` (`setScreen`): "Nothing else changes: the
+//     run ... stand[s] exactly as [it was]. A call that leaves `playing`
+//     discards the accumulator."
 //
 // THE DRIVE. An isolated run, every switch off. One frame of 10 ms poses a
 // remainder of 0.01 s with no tick consumed. Then `KeyP` is pressed with a

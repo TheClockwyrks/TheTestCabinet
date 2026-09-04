@@ -18,11 +18,11 @@
 //   engine's mute bit, refreshed every frame."
 //
 // THE DRIVE. Each screen is reached the shortest way the specification allows
-// and never through another screen's menu: `title` by `reset`, `howto` and
-// `almanac` and `paused` and `fallen` through `setScreen`, which enters each
-// "exactly as the real transition into it" does (specs/instrumentation.md),
-// `playing` through `isolate`, `levelup` by the tick a queued level-up opens
-// it, `chest` by the tick that collects a chest at the lamplighter's center,
+// and never through another screen's menu: `title`, `howto`, `almanac`, and
+// `paused` through `setScreen`, which "sets `screen` to `name`"
+// (specs/instrumentation.md), `playing` through `isolate`, `levelup` by the
+// tick a queued level-up opens it, `chest` by the tick that collects a chest at
+// the lamplighter's center, `fallen` by the tick `hp` at `0` ends the run on,
 // and `dawn` by the tick that crosses `DAWN_TIME × TICK_HZ`, which `setTick`
 // cannot pose. The bit is read before each press and compared against its
 // opposite after, so the reading is a FLIP rather than a value, whichever way
@@ -37,10 +37,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { DAWN_TICK, SCREENS, type Screen } from "../constants";
+import { SCREENS, type Screen } from "../constants";
 import {
   captureStill,
   createHarness,
+  endDawn,
+  endFallen,
   isolate,
   openChest,
   openLevelUp,
@@ -68,8 +70,11 @@ async function reach(harness: Harness, screen: Screen): Promise<void> {
     return;
   }
   if (screen === "dawn") {
-    harness.debug.setTick(DAWN_TICK - 1);
-    await harness.tick(1);
+    await endDawn(harness);
+    return;
+  }
+  if (screen === "fallen") {
+    await endFallen(harness);
     return;
   }
   harness.debug.setScreen(screen);

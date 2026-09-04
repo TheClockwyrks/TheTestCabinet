@@ -38,7 +38,7 @@ afterEach(() => {
 });
 
 it("removes every zone and leaves the projectiles", async () => {
-  isolate(h, { keepTaper: true });
+  isolate(h, { taper: true });
   armWeapon(h, 0);
   armWeapon(h, holdWeapon(h, "lantern"));
   const fired = await advanceTicks(h, 1);

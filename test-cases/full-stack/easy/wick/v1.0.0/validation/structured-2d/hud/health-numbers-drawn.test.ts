@@ -9,9 +9,9 @@
 // `maxHp` as "`BASE_MAX_HP` (`100`) `+ TALLOW_HP_PER_LEVEL` (`15`) `×` the Tallow
 // level held", so one level of Tallow makes the maximum `115`, and `73` is a
 // whole health under it that no other readout on the HUD can be showing. On an
-// isolated run the level is posed high and its experience is `0`, the kill count
-// is `0`, and the clock reads `0:00`, so neither `73` nor `115` appears anywhere
-// but the health readout. The health is posed to a whole number so the rounding
+// isolated run the level reads `1` and its experience `0` of `5`, the kill
+// count is `0`, and the clock reads `0:00`, so neither `73` nor `115` appears
+// anywhere but the health readout. The health is posed to a whole number so the rounding
 // rule leaves it as it stands and this point turns on the numbers alone.
 //
 // HOW A FIGURE IS READ. `specs/ui.md` fixes no font, no layout, and no copy, so

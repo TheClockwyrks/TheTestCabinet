@@ -36,7 +36,7 @@ afterEach(async () => {
 });
 
 it("zeroes the timer when the slot's id changes, so the new weapon fires next tick", async () => {
-  await isolate(h, { keepTaper: true });
+  await isolate(h, { taper: true });
   await h.debug.setWeaponCooldown(0, TAPER_TIMER);
   assertEqual(
     (await h.snapshot()).run.weapons[0]?.cooldown,

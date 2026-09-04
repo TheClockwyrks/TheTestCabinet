@@ -60,10 +60,13 @@ describe("the menu rectangles", () => {
     expect(menuRects(overlay)).toHaveLength(3);
   });
 
-  it("reports none on a screen with no menu", () => {
-    for (const screen of ["howto", "playing", "chest"] as const) {
-      expect(menuRects(on(screen))).toEqual([]);
+  it("reports one box on howto and chest, and none on playing", () => {
+    // Neither shows a menu; each answers the pointer on the box its way out is
+    // taken in (specs/controls.md).
+    for (const screen of ["howto", "chest"] as const) {
+      expect(menuRects(on(screen))).toHaveLength(1);
     }
+    expect(menuRects(on("playing"))).toEqual([]);
   });
 
   it("stacks them down the stage, disjoint, in menu order", () => {

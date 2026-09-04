@@ -14,14 +14,14 @@
 // the pose".
 //
 // WHY AN ISOLATED RUN. `isolate` clears every enemy, projectile, zone, gem and
-// pickup, removes the fresh run's Taper, and turns every driver switch off, so
+// pickup, leaves the loadout empty, and turns all nine driver switches off, so
 // what a check watches is the one behavior it names: no director spawn, no
 // scripted event, no despawn, no enemy motion, no contact hit, no other
-// weapon firing, and no effect moving unless the check turns that faculty
-// back on.
+// weapon firing, no effect moving, no drop from a death, and no gain spent on
+// a level, unless the check turns that faculty back on.
 //
-// WHERE THE LAMPLIGHTER STANDS FOR A GEOMETRY READING. A fresh run starts it
-// at `(0, 0)` (`specs/world.md`, The lamplighter), so a circle laid about the
+// WHERE THE LAMPLIGHTER STANDS FOR A GEOMETRY READING. A run starts it at
+// `(0, 0)` (`specs/world.md`, The lamplighter), so a circle laid about the
 // world origin and one laid about the lamplighter's center would read the
 // same. {@link POSED} is a center that is neither the origin nor on either
 // axis, posed through `setPlayerPosition`, which "Sets the lamplighter's

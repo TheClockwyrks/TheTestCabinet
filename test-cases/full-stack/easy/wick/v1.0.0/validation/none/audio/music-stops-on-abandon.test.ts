@@ -22,8 +22,8 @@
 // before the confirm, so a build whose pause menu never moved fails on the
 // precondition rather than on the music. The pause it is pressed from is only
 // the way in, so it is posed through the surface, whose `setScreen("paused")`
-// from `playing` is defined as "Exactly as `pause` does" — a build with a broken
-// pause key fails `controls/`, not this.
+// sets `screen` and nothing else — a build with a broken pause key fails
+// `controls/`, not this.
 //
 // WHY THE WORLD IS POSED AS IT IS. An isolated night: every driver switch off,
 // nothing alive, nothing dropped, and no slot held, so nothing can end the run

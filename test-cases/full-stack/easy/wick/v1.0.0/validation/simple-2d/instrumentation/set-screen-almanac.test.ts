@@ -1,28 +1,25 @@
-// instrumentation/set-screen-almanac — `setScreen('almanac')` from playing
-// enters the almanac with the idle run and menuIndex, almanacTab, and
-// almanacScroll all 0, exactly as confirming THE ALMANAC does.
+// instrumentation/set-screen-almanac — `setScreen('almanac')` sets `screen` to
+// almanac with menuIndex, almanacTab, and almanacScroll all 0.
 //
-// WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, `setScreen`'s row for
-// `almanac`: from "any", "Enters the almanac exactly as confirming
-// `THE ALMANAC` does: the idle run, `menuIndex` `0`, `almanacTab` `0`,
-// `almanacScroll` `0`". specs/ui.md (`title`): `THE ALMANAC` "Sets
-// `screen = almanac`, with `menuIndex`, `almanacTab`, and `almanacScroll` all
-// `0`". The idle run is the table under specs/state.md, "The idle run",
-// restated as `IDLE_RUN`.
+// WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, `setScreen`: "Sets
+// `screen` to `name`, one of the `Screen` values, with `menuIndex`,
+// `almanacTab`, and `almanacScroll` all `0`", and "Applies on every screen".
+// specs/ui.md (`title`): `THE ALMANAC` "Sets `screen = almanac`, with
+// `menuIndex`, `almanacTab`, and `almanacScroll` all `0`".
 //
-// THE POSE, TWICE, so neither half of the row can pass by accident. First from
-// the busy night, where "the idle run" is read against a run whose every region
-// would betray a call that merely flipped the screen field. Then from the
-// almanac itself with its two indices moved off 0 by real key edges, which is
-// the only way the state carries a non-zero `almanacTab` or `almanacScroll` at
-// all: the row is "from any", so the call must put both back. The route is the
-// surface alone; whether the title menu reaches the almanac is a screens point.
+// THE POSE, TWICE, so neither half of the reading can pass by accident. First
+// from the busy night, a screen the call has to change. Then from the almanac
+// itself with its two indices moved off 0 by real key edges, which is the only
+// way the state carries a non-zero `almanacTab` or `almanacScroll` at all: the
+// pose applies on every screen, so the call must put both back. The route is
+// the surface alone; whether the title menu reaches the almanac is a screens
+// point, and what the pose leaves standing is `set-screen-leaves-the-run`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { ALMANAC_ENTRIES, ALMANAC_ROWS, ALMANAC_TABS } from "../constants";
 import { captureStill, createHarness, tap, type Harness } from "../harness";
-import { assertIdleRun, poseBusyNight } from "./helpers";
+import { poseBusyNight } from "./helpers";
 
 const TAB_STEP = "ArrowRight";
 const ENTRY_STEP = "ArrowDown";
@@ -47,7 +44,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("enters the almanac with the idle run and the three indices at 0", async () => {
+it("enters the almanac with the three indices at 0", async () => {
   poseBusyNight(h);
   await h.tick(1);
 
@@ -58,7 +55,6 @@ it("enters the almanac with the idle run and the three indices at 0", async () =
   assertEqual(entered.menuIndex, 0, "menuIndex on arriving");
   assertEqual(entered.almanacTab, 0, "almanacTab on arriving");
   assertEqual(entered.almanacScroll, 0, "almanacScroll on arriving");
-  assertIdleRun(entered.run, "run on the almanac: the idle run");
 
   // Disturb both indices, then take the row again: it is written "from any".
   for (let step = 0; step < SCROLLING_TAB; step += 1) await tap(h, TAB_STEP);
@@ -85,5 +81,4 @@ it("enters the almanac with the idle run and the three indices at 0", async () =
   assertEqual(again.menuIndex, 0, "menuIndex the call restores");
   assertEqual(again.almanacTab, 0, "almanacTab the call restores");
   assertEqual(again.almanacScroll, 0, "almanacScroll the call restores");
-  assertIdleRun(again.run, "run after the second call: the idle run");
 });

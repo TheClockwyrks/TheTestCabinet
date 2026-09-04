@@ -31,21 +31,7 @@ import {
   type PickupKind,
   type WeaponId,
 } from "./constants";
-import {
-  RUN_SCREENS,
-  SILENT,
-  choose,
-  closeChest,
-  endRun,
-  openLevelUpNow,
-  pause,
-  resume,
-  setSwitch,
-  startRun,
-  toAlmanac,
-  toHowto,
-  toTitle,
-} from "./flow";
+import { RUN_SCREENS, SILENT, choose, setSwitch } from "./flow";
 import { menuRects, tabRects, type WickRect } from "./menus";
 import { forgetHits } from "./sim/effects";
 import {
@@ -95,6 +81,8 @@ export interface WickSnapshot {
   enemyContact: boolean;
   weaponFire: boolean;
   effectMotion: boolean;
+  drops: boolean;
+  progression: boolean;
   run: {
     tick: number;
     time: number;
@@ -192,6 +180,8 @@ export interface WickDebugApi {
   setEnemyContact(on: boolean): void;
   setWeaponFire(on: boolean): void;
   setEffectMotion(on: boolean): void;
+  setDrops(on: boolean): void;
+  setProgression(on: boolean): void;
   setTick(tick: number): void;
   setSpawnTimer(seconds: number): void;
   setPlayerPosition(x: number, y: number): void;
@@ -422,39 +412,24 @@ export function createDebugApi(worldOf: () => World): WickDebugApi {
   const heldSlot = (slot: unknown, length: number): number =>
     whole(slot, "slot", 0, length - 1);
 
+  /**
+   * Set `screen` and the three menu indices, and nothing else: the run, the
+   * loadout, `offers`, `nextOffers`, `chestResult`, `pendingLevelUps`,
+   * `rngState`, `simTime`, and the driver switches all stand as they were, and
+   * no cue sounds. A call that leaves `playing` discards the accumulator, as
+   * every frame and pose that leaves `playing` does. Applies on every screen.
+   * Beginning a run, opening an overlay, and ending a run are the game's own
+   * systems; a caller composes them out of the poses beside this one.
+   */
   const setScreen = (name: unknown): void => {
     const target = oneOf(name, "name", SCREENS);
     const s = state();
-    const from = s.screen;
-    switch (target) {
-      case "title":
-        toTitle(s);
-        break;
-      case "howto":
-        toHowto(s);
-        break;
-      case "almanac":
-        toAlmanac(s);
-        break;
-      case "playing":
-        if (from === "paused") resume(s);
-        else if (from === "chest") closeChest(s);
-        else if (from === "levelup") return;
-        else startRun(s);
-        break;
-      case "levelup":
-        openLevelUpNow(s, SILENT);
-        break;
-      case "paused":
-        pause(s);
-        break;
-      case "fallen":
-      case "dawn":
-        endRun(s, target, SILENT);
-        break;
-      case "chest":
-        return;
-    }
+    const leaving = s.screen === "playing" && target !== "playing";
+    s.screen = target;
+    s.menuIndex = 0;
+    s.almanacTab = 0;
+    s.almanacScroll = 0;
+    if (leaving) s.accumulator = 0;
     settle();
   };
 
@@ -499,6 +474,8 @@ export function createDebugApi(worldOf: () => World): WickDebugApi {
     setEnemyContact: (on) => setSwitch(state(), "enemyContact", bool(on, "on")),
     setWeaponFire: (on) => setSwitch(state(), "weaponFire", bool(on, "on")),
     setEffectMotion: (on) => setSwitch(state(), "effectMotion", bool(on, "on")),
+    setDrops: (on) => setSwitch(state(), "drops", bool(on, "on")),
+    setProgression: (on) => setSwitch(state(), "progression", bool(on, "on")),
 
     setTick(tick) {
       const value = whole(tick, "tick", 0, LAST_TICK);

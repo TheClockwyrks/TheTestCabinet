@@ -8,10 +8,11 @@
 // section's formula. specs/state.md's idle run is what a fresh run is built
 // from, so kills and pendingLevelUps stand at 0.
 //
-// THE POSE. A reset, then setScreen("playing"), which from the title "Begins a
-// fresh run exactly as LIGHT THE LAMP and TRY AGAIN do"
-// (specs/instrumentation.md). Nothing else is posed and no tick is run, so what
-// the snapshot reports is the run as it was begun. The frame drawn afterwards
+// THE POSE. A fresh run through the surface, the sequence
+// specs/instrumentation.md names: "a fresh run is `reset`, this pose to
+// `playing`, and `setWeapon(0, "taper", 1)`", which `freshRun` composes.
+// Nothing else is posed and no tick is run, so what the snapshot reports is the
+// run as it was begun. The frame drawn afterwards
 // is the picture kept as evidence; the reading was taken before it.
 //
 // THE TOLERANCE. FIGURE_TOLERANCE on xp, a real number; the level, the
@@ -20,7 +21,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertWithin } from "../assert";
 import { FIGURE_TOLERANCE, XP_BASE } from "../constants";
-import { captureStill, createHarness, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  freshRun,
+  type Harness,
+} from "../harness";
 
 let h: Harness;
 
@@ -33,9 +39,7 @@ afterEach(() => {
 });
 
 it("reads level 1, xp 0, xpToNext 5, kills 0, and pendingLevelUps 0 on a fresh run", async () => {
-  h.reset();
-  h.debug.setScreen("playing");
-  const start = h.snapshot();
+  const start = freshRun(h);
 
   await h.frameDraw();
   captureStill(h, "start");

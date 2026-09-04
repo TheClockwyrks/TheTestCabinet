@@ -2,11 +2,10 @@
 // survives into the one `TRY AGAIN` starts.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/ui.md`, "A fresh run":
-// "`LIGHT THE LAMP`, `TRY AGAIN`, and the debug surface's
-// `setScreen("playing")` each begin a fresh run, and whatever the previous run
-// held is discarded", with "no enemy, projectile, zone, gem, or pickup in the
-// world, no level-up queued", level `1`, `kills = 0`, and `specs/state.md`'s
-// idle values for `offers` and `chestResult`. `specs/ui.md`,
+// "`LIGHT THE LAMP` and `TRY AGAIN` each begin a fresh run, and whatever the
+// previous run held is discarded", with "no enemy, projectile, zone, gem, or
+// pickup in the world, no level-up queued", level `1`, `kills = 0`, and
+// `specs/state.md`'s idle values for `offers` and `chestResult`. `specs/ui.md`,
 // "`fallen` and `dawn`": `END_ITEMS` is `TRY AGAIN`, `TITLE` "in that order",
 // `menuIndex` is `0` on arriving, and "`TRY AGAIN` starts a fresh run and sets
 // `screen = playing`".
@@ -65,7 +64,7 @@ afterEach(() => {
 });
 
 it("starts the new run holding none of the ended run's world", async () => {
-  isolate(h, { keepTaper: true });
+  isolate(h, { taper: true });
   h.debug.setLevel(6);
   h.debug.setKills(143);
   placeEnemy(h, "moth", AWAY, 0);

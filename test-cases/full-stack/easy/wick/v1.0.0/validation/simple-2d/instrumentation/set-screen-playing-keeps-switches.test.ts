@@ -1,16 +1,17 @@
 // instrumentation/set-screen-playing-keeps-switches — with spawning and
-// weaponFire posed off, `setScreen('playing')` begins a fresh run with both
-// still off, because the switches are held outside the run.
+// weaponFire posed off, `setScreen('playing')` leaves both off, because the
+// switches are held outside the run.
 //
 // WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, "The driver
-// switches": each "is left as it stands by `setScreen`"; `setScreen`: "The
-// driver switches stay as they are"; "Snapshot shape": "The seven switches sit
-// beside `muted`, outside `run`, and a fresh run leaves them as they stand".
+// switches": each "is left as it stands by `setScreen`"; `setScreen`: "the
+// driver switches all stand exactly as they were"; "Snapshot shape": "The nine
+// switches sit beside `muted`, outside `run`, and a fresh run leaves them as
+// they stand".
 //
 // THE POSE. A reset (every switch on), two switches off through their own
 // operations, then the pose from the title. The two read false and the other
-// five true, so a fresh run that restored the switches along with the run
-// fails and one that dropped the rest with them fails too.
+// seven true, so a pose that restored the switches fails and one that dropped
+// the rest with them fails too.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -35,7 +36,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("carries the posed switches into the fresh run", async () => {
+it("carries the posed switches across the pose", async () => {
   h.reset();
   disable(h, ...OFF);
 
@@ -48,6 +49,6 @@ it("carries the posed switches into the fresh run", async () => {
   const switches = switchesOf(s);
   for (const name of SWITCH_NAMES) {
     const expected = !(OFF as readonly string[]).includes(name);
-    assertEqual(switches[name], expected, `${name} across the fresh run`);
+    assertEqual(switches[name], expected, `${name} across the pose`);
   }
 });

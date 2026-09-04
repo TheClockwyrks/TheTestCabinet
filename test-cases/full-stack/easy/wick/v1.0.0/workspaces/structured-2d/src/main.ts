@@ -37,9 +37,6 @@ const engine = createEngine({
   // The stage background, which the engine clears the canvas to each frame so
   // the letterbox bars match the night. The game owns the color.
   background: BACKGROUND,
-  // The produced sprites are pixel art drawn at one unit per pixel, so the fit
-  // samples them nearest-neighbor and they stay crisp at any window size.
-  imageSmoothing: false,
   // The lamplighter only moves, so a four-way pad carries the whole game, with
   // the menu vocabulary that comes with it.
   layout: LAYOUT,

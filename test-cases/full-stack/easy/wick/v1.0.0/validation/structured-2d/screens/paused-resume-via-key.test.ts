@@ -19,8 +19,8 @@
 // THE DRIVE. An isolated `playing` world holding one moth, the lamplighter
 // posed away from the origin and the clock posed off `0`; the pause posed
 // through `setScreen("paused")` — which `specs/instrumentation.md` says enters
-// it "exactly as `pause` does" — and the run read there; then the `KeyP` this
-// point is about.
+// it by setting `screen` alone, with the run left as it stands — and the run
+// read there; then the `KeyP` this point is about.
 //
 // THE TOLERANCE. None: the whole run is compared field for field.
 

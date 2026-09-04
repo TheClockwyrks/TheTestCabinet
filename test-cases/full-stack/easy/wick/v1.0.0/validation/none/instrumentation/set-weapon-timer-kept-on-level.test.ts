@@ -32,7 +32,7 @@ afterEach(async () => {
 });
 
 it("keeps the timer when only the level changes, and it counts on from there", async () => {
-  await isolate(h, { keepTaper: true });
+  await isolate(h, { taper: true });
   await h.debug.setWeaponCooldown(0, TAPER_TIMER);
 
   await h.debug.setWeapon(0, "taper", 5);

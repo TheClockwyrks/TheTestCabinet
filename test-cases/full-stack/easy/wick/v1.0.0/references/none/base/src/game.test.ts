@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { ALMANAC_ROWS, TICK_DT, WHEEL_ROW } from "./constants";
+import { ALMANAC_ROWS, TICK_DT, TITLE_ITEMS, WHEEL_ROW } from "./constants";
 import { almanacEntries } from "./almanac";
 import { Game } from "./game";
 import {
   almanacRowRects,
   almanacTabRects,
+  chestRects,
   endRects,
+  howtoRects,
   levelUpLayout,
+  menuRects,
   pauseRects,
   titleRects,
   type Rect,
@@ -20,15 +23,26 @@ function middle(rect: Rect): StagePoint {
 }
 
 function hover(g: Game, at: StagePoint): void {
-  g.handlePointer({ at, presses: [], wheel: 0 });
+  g.handlePointer({ at, presses: [], releases: [], wheel: 0 });
 }
 
+/** A whole click on one frame: the press arms the item and the lift takes it. */
 function click(g: Game, at: StagePoint): void {
-  g.handlePointer({ at: null, presses: [at], wheel: 0 });
+  g.handlePointer({ at: null, presses: [at], releases: [at], wheel: 0 });
+}
+
+/** A press held across the frame, with no lift. */
+function press(g: Game, at: StagePoint): void {
+  g.handlePointer({ at: null, presses: [at], releases: [], wheel: 0 });
+}
+
+/** A lift at a point, with no press before it on this frame. */
+function lift(g: Game, at: StagePoint): void {
+  g.handlePointer({ at: null, presses: [], releases: [at], wheel: 0 });
 }
 
 function wheel(g: Game, travel: number): void {
-  g.handlePointer({ at: null, presses: [], wheel: travel });
+  g.handlePointer({ at: null, presses: [], releases: [], wheel: travel });
 }
 
 function game(): { game: Game; mute: { on: boolean } } {
@@ -98,6 +112,7 @@ describe("the title screen", () => {
     expect(g.state.menuIndex).toBe(0);
     g.handleAction("back");
     expect(g.state.screen).toBe("title");
+    expect(g.state.menuIndex).toBe(TITLE_ITEMS.indexOf("HOW TO PLAY"));
     expect(g.wantedLoops().size).toBe(0);
   });
 
@@ -235,7 +250,7 @@ describe("the almanac", () => {
     expect(g.state.screen).toBe("almanac");
     g.handleAction("back");
     expect(g.state.screen).toBe("title");
-    expect(g.state.menuIndex).toBe(0);
+    expect(g.state.menuIndex).toBe(TITLE_ITEMS.indexOf("THE ALMANAC"));
     expect(g.state.almanacTab).toBe(0);
     expect(g.state.almanacScroll).toBe(0);
   });
@@ -330,6 +345,43 @@ describe("the pointer", () => {
     expect(g.state.menuIndex).toBe(0);
     expect(g.state.almanacScroll).toBe(0);
     expect(g.drainCues()).toEqual(["menu-move"]);
+  });
+
+  it("takes nothing when the lift falls outside the box the press armed", () => {
+    const { game: g } = game();
+    const rects = titleRects();
+    press(g, middle(rects[2]));
+    expect(g.state.menuIndex).toBe(2);
+    expect(g.state.screen).toBe("title");
+    lift(g, middle(rects[0]));
+    expect(g.state.screen).toBe("title");
+    expect(g.state.menuIndex).toBe(2);
+  });
+
+  it("takes the item when the lift falls back inside the armed box", () => {
+    const { game: g } = game();
+    const rects = titleRects();
+    press(g, middle(rects[2]));
+    lift(g, middle(rects[2]));
+    expect(g.state.screen).toBe("howto");
+  });
+
+  it("leaves the how-to screen on a click in its one box", () => {
+    const { game: g } = game();
+    g.toHowto();
+    expect(menuRects(g.state)).toHaveLength(1);
+    click(g, middle(howtoRects()[0]));
+    expect(g.state.screen).toBe("title");
+    expect(g.state.menuIndex).toBe(2);
+  });
+
+  it("closes the chest overlay on a click in its one box", () => {
+    const { game: g } = game();
+    g.startRun();
+    g.state.screen = "chest";
+    expect(menuRects(g.state)).toHaveLength(1);
+    click(g, middle(chestRects()[0]));
+    expect(g.state.screen).toBe("playing");
   });
 
   it("scrolls the almanac's list by the wheel, clamped, and nowhere else", () => {

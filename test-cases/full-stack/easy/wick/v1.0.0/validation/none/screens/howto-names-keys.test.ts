@@ -11,8 +11,8 @@
 // `KeyM`, and its "The pointer" section is what the mouse answers.
 //
 // WHY THE WORLD IS POSED AS IT IS. Nothing but the screen: `setScreen("howto")`
-// "Enters the how-to screen exactly as confirming `HOW TO PLAY` does", which
-// reaches the copy without pressing a menu key, so a build with a broken title
+// "Sets `screen` to `name`" and nothing else, which reaches the copy without
+// pressing a menu key, so a build with a broken title
 // menu fails the title points and is read here on its how-to screen. One frame
 // is then run and what it draws is read.
 //

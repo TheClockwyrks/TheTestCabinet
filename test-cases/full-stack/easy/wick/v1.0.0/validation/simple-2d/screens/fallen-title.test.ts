@@ -34,6 +34,7 @@ import { END_ITEMS, IDLE_RUN } from "../constants";
 import {
   captureStill,
   createHarness,
+  endFallen,
   isolate,
   runFields,
   spawnEnemyAt,
@@ -56,7 +57,7 @@ it("returns to the title on the idle run from the fallen screen", async () => {
   spawnEnemyAt(h, "moth", 260, -60);
   h.debug.setTick(6000);
   h.debug.setKills(52);
-  h.debug.setScreen("fallen");
+  await endFallen(h);
 
   const wanted = END_ITEMS.indexOf("TITLE");
   let staged = h.snapshot();

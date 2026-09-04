@@ -1,15 +1,15 @@
 // instrumentation/switch-changes-only-itself — `setDespawning(false)` issued
-// on title reads back false, leaves the other six switches and the idle run
+// on title reads back false, leaves the other eight switches and the idle run
 // exactly as they were, and is still false after `setScreen('playing')`.
 //
-// WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, "The seven switch
+// WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, "The nine switch
 // operations": "Each applies on every screen and changes nothing but its
 // switch"; "A switch changes only what it names"; each "is left as it stands
 // by `setScreen`".
 //
 // THE POSE. A fresh reset on the title, the one switch off, the snapshot
 // compared against the reading before it with that field alone changed; then
-// the fresh run, and the switch still off.
+// the pose to `playing`, and the switch still off.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
@@ -61,6 +61,6 @@ it("changes one switch on the title and carries it into the run", async () => {
   assertDeepEqual(
     switchesOf(playing),
     { ...switchesOf(before), despawning: false },
-    "the seven switches after the fresh run",
+    "the nine switches after the pose to playing",
   );
 });

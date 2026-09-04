@@ -59,7 +59,7 @@ afterEach(() => {
 });
 
 it("puts the slash's near edge at the lamplighter's x after this tick's move", async () => {
-  const posed = isolate(h, { keepTaper: true });
+  const posed = isolate(h, { taper: true });
   assertEqual(posed.run.player.facing, "right", "the fresh run's facing");
   armWeapon(h, TAPER_SLOT);
 

@@ -46,11 +46,10 @@ project does not type-check until those declarations exist.
 This build runs on no engine, so the layer beneath the game is yours as well:
 the frame loop and the delta time it hands each update, fitting the fixed
 logical stage onto the canvas, the keyboard and the input actions the player
-drives the game with, the pointer the menus answer, the audio including the
-cues that loop, loading the
-sprites and sounds you produce, and the on-screen debug overlay. The
-specification in `specs/` states what Wick needs from that layer and fixes
-nothing else about it.
+drives the game with, the pointer and the touch contacts the menus answer, the
+audio including the cues that loop, loading the sprites and sounds you produce,
+and the on-screen debug overlay. The specification in `specs/` states what Wick
+needs from that layer and fixes nothing else about it.
 {{else if (eq engine.slug "simple-2d")}}
 ## The {{engine.name}} engine
 
@@ -99,7 +98,10 @@ The full specification is in the `specs/` directory at `{{workspace}}`, already
 present in your project. Produce an implementation that matches the
 specification exactly. `specs/overview.md` states what you implement, which
 files stay as they are, the code quality the build is held to, and the commands
-that run over the finished repository.
+that run over the finished repository. `specs/assets.md` is the contract for the
+art and the sound this build produces: what to make, which tool on this
+machine's `PATH` makes each file, where it lands under `assets/`, how it is
+loaded, and what stays drawn in code.
 
 ## The build interface
 
@@ -109,15 +111,6 @@ of that directory. Serving that directory as-is must run the game, both at the
 root of a static file server and mounted under a sub-path, so every URL the
 build emits or constructs at runtime is page-relative. The scripts that do this
 are already in `package.json`.
-
-## The assets the game plays
-
-Wick ships no art and no sound, and this build makes both: the lamplighter, the
-thirteen enemies, the death puff, the sixteen weapon effects, the twenty-seven
-icons, the gems, the pickups, the ground tile, and the game's cues and music.
-`specs/assets.md` states what to produce, which tool on this machine's `PATH`
-produces each file, where each lands under `assets/`, how it is loaded, and the
-bar each is held to. It also lists what stays drawn in code.
 
 ## Driving the game in a browser
 
@@ -141,4 +134,4 @@ published. When the build is complete, commit everything: run `git add -A` then
 uncommitted or untracked. A `.gitignore` already excludes `node_modules/`, the
 build output, and coverage reports, so a clean tree means committing your
 source, your tests, your `package-lock.json`, your produced files under
-`assets/`, and your `README.md`.
+`assets/`, your `showcase/`, and your `README.md`.

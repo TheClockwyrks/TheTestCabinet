@@ -113,10 +113,13 @@ describe("what the pointer answers", () => {
     state.screen = "levelup";
     state.run.offers = ["ember", "lure", "lamp-oil"];
     expect(menuRects(state)).toHaveLength(3);
-    for (const screen of ["howto", "playing", "chest"] as const) {
+    // `howto` and `chest` show no menu and answer the pointer on one box each.
+    for (const screen of ["howto", "chest"] as const) {
       state.screen = screen;
-      expect(menuRects(state)).toEqual([]);
+      expect(menuRects(state)).toHaveLength(1);
     }
+    state.screen = "playing";
+    expect(menuRects(state)).toEqual([]);
   });
 
   it("reports the almanac's window of rows and its tab bar alone", () => {

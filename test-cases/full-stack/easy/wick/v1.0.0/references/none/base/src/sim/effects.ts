@@ -123,6 +123,7 @@ export function resolveDeaths(ctx: TickContext): void {
     run.kills += 1;
     ctx.cues.add(CUES.kill);
     run.puffs.push({ x: enemy.x, y: enemy.y, bornTick: run.tick });
+    if (!ctx.state.switches.drops) continue;
     const def = ENEMIES[enemy.type];
     if (def.rank === "elite") {
       run.pickups.push({

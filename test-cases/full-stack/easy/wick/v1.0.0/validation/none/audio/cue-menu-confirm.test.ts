@@ -27,9 +27,8 @@
 //     `menu-confirm` without a run's music starting under it. Each moving frame
 //     is a frame of its own and carries `menu-move`, which is
 //     `audio/cue-menu-move`'s point.
-//   - THE END SCREEN. An isolated night, then `setScreen("fallen")`, which from
-//     `playing` "Ends the run exactly as that ending does"
-//     (specs/instrumentation.md). specs/ui.md gives it `END_ITEMS` as
+//   - THE END SCREEN. An isolated night, then `setScreen("fallen")`, which
+//     "Sets `screen` to `name`" and nothing else (specs/instrumentation.md). specs/ui.md gives it `END_ITEMS` as
 //     `TRY AGAIN`, `TITLE` with "`menuIndex` is `0` on arriving", so `confirm`
 //     alone takes `TRY AGAIN`, which "starts a fresh run and sets
 //     `screen = playing`".

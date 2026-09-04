@@ -41,7 +41,7 @@ import type {
   Puff,
   RunState,
 } from "../state";
-import { centeredRect, circle, sprite } from "./draw";
+import { blit, centeredRect, circle, sprite } from "./draw";
 import { ageOf, puffFrame, puffImage, walkFrame } from "./effects";
 import { COLORS } from "./theme";
 
@@ -64,7 +64,7 @@ export function drawGround(
   for (let y = startY; y < top + STAGE_H; y += size) {
     for (let x = startX; x < left + STAGE_W; x += size) {
       if (tile) {
-        ctx.drawImage(tile, x, y, size, size);
+        blit(ctx, tile, x, y, size, size);
         continue;
       }
       // The stand-in tile: flagstones with a seam along the top and left.

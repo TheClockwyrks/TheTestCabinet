@@ -25,8 +25,8 @@
 // is named and leaves what it does to the control points.
 //
 // THE DRIVE. The how-to screen posed through the debug surface, which
-// `specs/instrumentation.md` says "Enters the how-to screen exactly as
-// confirming `HOW TO PLAY` does", and one frame. The title menu is not
+// `specs/instrumentation.md` says "Sets `screen` to `name` ... with
+// `menuIndex`, `almanacTab`, and `almanacScroll` all `0`", and one frame. The title menu is not
 // touched: a build with a broken menu and a correct how-to screen passes
 // here and fails the menu's own points.
 //

@@ -1,11 +1,11 @@
 # Wick — Controls
 
 This file defines how a player operates the game: the eight actions, the keys
-bound to each, what each screen reads of them, and what the pointer does. The
-movement vector and `facing` the held directions drive are in `specs/world.md`,
-the weapons that aim by facing are in `specs/weapons.md`, and what each screen
-shows is in `specs/ui.md`. Every figure below carries the name this
-specification gives it. Every menu also answers the mouse.
+bound to each, what each screen reads of them, and what the pointer and touch
+do. The movement vector and `facing` the held directions drive are in
+`specs/world.md`, the weapons that aim by facing are in `specs/weapons.md`, and
+what each screen shows is in `specs/ui.md`. Every figure below carries the name
+this specification gives it. Every menu also answers the mouse and touch.
 
 ## Where input comes from
 
@@ -72,43 +72,66 @@ do, the movement vector and `facing`, is in `specs/world.md`. Movement is the
 only thing the player steers; every weapon fires on its own rhythm, as
 `specs/weapons.md` states.
 
-## The pointer
+## The pointer and touch
 
 The pointer is read in the stage's own coordinates, `0` to `STAGE_W` across and
 `0` to `STAGE_H` down, whatever the canvas's size on the page and wherever the
-letterbox bars fall, and wheel travel is read in those same units.
+letterbox bars fall, and wheel travel is read in those same units. A mouse, a
+pen, and a touch contact all reach the menus on those coordinates, so every rule
+below holds for a finger as it holds for a mouse.
 {{#if (eq engine.slug "none")}}
-The runtime layer you write maps both the event's client position and the
-event's wheel travel through the same fit it draws under.
+The runtime layer you write maps every pointer event's position and every wheel
+event's travel through the same fit it draws under, and it reads touch contacts
+beside the mouse rather than the mouse alone.
 {{else}}
-The {{engine.name}} engine delivers the position and the wheel travel already
-in those units, and its documentation defines the API.
+The {{engine.name}} engine delivers the position, the contacts, and the wheel
+travel already in those units, and its documentation defines the API.
 {{/if}}
 
-Every screen that shows a vertical menu answers the pointer: `title`, `almanac`,
-`levelup`, `paused`, `fallen`, and `dawn`. Each item the menu currently shows
-occupies a rectangle on the stage, and no two of a screen's rectangles overlap.
-On `title`, `levelup`, `paused`, `fallen`, and `dawn` that is every item of the
-menu, and the rectangle at position `i` belongs to the item at `menuIndex` `i`.
-On `almanac` it is the visible entry rows, at most `ALMANAC_ROWS` of them, and
-the rectangle at position `i` belongs to the entry at `menuIndex`
-`almanacScroll + i`. On `almanac` each tab of the tab bar occupies a rectangle
-as well, disjoint from every entry rectangle.
+Every screen that shows a vertical menu answers the pointer and touch: `title`,
+`almanac`, `levelup`, `paused`, `fallen`, and `dawn`. Each item the menu
+currently shows occupies a rectangle on the stage, and no two of a screen's
+rectangles overlap. On `title`, `levelup`, `paused`, `fallen`, and `dawn` that
+is every item of the menu, and the rectangle at position `i` belongs to the
+item at `menuIndex` `i`. On `almanac` it is the visible entry rows, at most
+`ALMANAC_ROWS` of them, and the rectangle at position `i` belongs to the entry
+at `menuIndex` `almanacScroll + i`. On `almanac` each tab of the tab bar
+occupies a rectangle as well, disjoint from every entry rectangle.
 
-Three rules, applied on every frame, after that frame's press edges and before
+`howto` and `chest` show no menu, and each answers the pointer and touch on one
+rectangle instead: the area the screen's way out is taken in, which the screen
+shows. It is that screen's rectangle at position `0`, so the rules below reach
+it exactly as they reach a menu item, and taking it does what `back` on `howto`
+and `confirm` on `chest` do. `playing` answers neither.
+
+Four rules, applied on every frame, after that frame's press edges and before
 its update:
 
 1. Hover. The pointer inside the rectangle of the item at `menuIndex` `i`, with
    `menuIndex` not `i`, sets `menuIndex` to `i` and plays `menu-move`. The
-   pointer inside no rectangle changes nothing.
-2. Click. A primary press edge inside the rectangle of the item at `menuIndex`
-   `i` sets `menuIndex` to `i`, playing `menu-move` if that changed it, and then
-   takes that item exactly as `confirm` on it does. A primary press edge inside
-   no rectangle does nothing. On `almanac` an entry carries no `confirm`, so a
-   click on an entry only moves the highlight; a click inside the rectangle of a
-   tab the almanac is not showing selects that tab exactly as `right` reaching
-   it does, and a click inside the shown tab's rectangle changes nothing.
-3. The wheel. On `almanac`, wheel travel moves the list. A frame's travel is
+   pointer inside no rectangle changes nothing. A touch contact never hovers:
+   only a device reporting a position while out of contact moves the highlight
+   this way.
+2. Press and release. A primary press edge inside the rectangle of the item at
+   `menuIndex` `i` sets `menuIndex` to `i`, playing `menu-move` if that changed
+   it, and arms that item. That press's release edge inside the same rectangle
+   takes the armed item exactly as `confirm` on it does. A release edge anywhere
+   else disarms it and takes nothing, so a pointer dragged off an item before it
+   lifts takes nothing, and a press edge inside no rectangle arms nothing. On
+   `almanac` an entry carries no `confirm`, so a press on an entry only moves the
+   highlight; a press and release inside the rectangle of a tab the almanac is
+   not showing selects that tab exactly as `right` reaching it does, and a
+   press and release inside the shown tab's rectangle changes nothing. On
+   `howto` the one rectangle carries no `confirm`, so a press and release inside
+   it does exactly what `back` there does.
+3. Touch. A touch contact landing inside a rectangle is that rectangle's press
+   edge and lifting is its release edge, so a contact landing and lifting inside
+   the rectangle of the item at `menuIndex` `i` selects that item and takes it
+   exactly as `confirm` on it does, and a contact lifting outside the rectangle
+   it landed in leaves that item selected and takes nothing. A contact landing
+   inside no rectangle does nothing, and the almanac's entry rows and its tab
+   rectangles answer a contact exactly as they answer a press and a release.
+4. The wheel. On `almanac`, wheel travel moves the list. A frame's travel is
    that frame's wheel deltas summed in stage units, divided by `WHEEL_ROW`
    (`100`) and truncated toward zero to give the number of rows `almanacScroll`
    moves, downward travel moving it toward the end of the list; the remainder is
@@ -132,11 +155,12 @@ its update:
 
 An action a row omits does nothing on that screen, so `confirm` on `almanac`
 changes nothing, and `back` on `playing` does exactly what `pause` on `playing`
-does. `menuIndex` is `0` on entering every screen, and on a screen with no
+does. `menuIndex` is `0` on entering every screen but `title`, which selects the
+entry that led away from it as `specs/ui.md` states, and on a screen with no
 highlight it stays `0`. Where each `confirm` leads is in `specs/ui.md`.
 
 ## Out of scope
 
-- Touch and gamepad input. The keyboard and the pointer are the whole of the
+- Gamepad input. The keyboard, the pointer, and touch are the whole of the
   game's input.
 - Rebinding. The bindings are fixed and the game offers no way to change them.

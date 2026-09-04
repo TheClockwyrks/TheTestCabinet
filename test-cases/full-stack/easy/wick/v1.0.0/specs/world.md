@@ -74,9 +74,9 @@ which is how the game is played, and holds while it is off.
    projectiles first, in ascending `id`, then the zones in ascending `id`.
    Every enemy is live until the hits are done, so a shape hits an enemy whose
    `hp` an earlier shape of this tick already took to `0` or below. Then an
-   enemy whose `hp` is at or below `0` dies: its drop and its bread or draft
-   land at its center, at rest for this tick, and every re-hit entry naming it
-   is dropped.
+   enemy whose `hp` is at or below `0` dies, and every re-hit entry naming it
+   is dropped; while `drops` is on its drop and its bread or draft land at its
+   center, at rest for this tick.
 7. Contact. Every live enemy's `contactCooldown` and the lamplighter's
    `hurtFlash` count down, and, while `enemyContact` is on, an overlapping
    enemy whose cooldown is due hits, as Contact damage states.
@@ -226,10 +226,10 @@ experience each grants.
 | `medium` | `3` |
 | `large` | `10` |
 
-A gem is `{ id, tier, x, y, attracted }`. Every common enemy drops one gem of
-the tier `specs/enemies.md` lists for its type, at the enemy's position, on the
-tick it dies. A gem sits where it was dropped until it is attracted, and it
-stays on the field until it is collected.
+A gem is `{ id, tier, x, y, attracted }`. While `drops` is on, every common
+enemy drops one gem of the tier `specs/enemies.md` lists for its type, at the
+enemy's position, on the tick it dies. A gem sits where it was dropped until
+it is attracted, and it stays on the field until it is collected.
 
 ### Attraction and flight
 
@@ -280,10 +280,10 @@ the others wait for the next `playing` tick.
 | Probability a common kill drops bread | `BREAD_CHANCE` | `0.02` |
 | Probability a common kill drops a draft | `DRAFT_CHANCE` | `0.005` |
 
-Each common enemy killed by a weapon draws from the game's seeded random
-generator on the tick it dies. A first draw, uniform on `[0, 1)`, drops bread
-when it is below `BREAD_CHANCE`. Only when it did not, a second draw drops a
-draft when it is below `DRAFT_CHANCE`. A kill therefore drops at most one of
-the two, and the pickup lands at the enemy's position beside its gem. Elites
-and the Dark make no draw; an elite drops its chest, and the Dark drops
-nothing.
+While `drops` is on, each common enemy killed by a weapon draws from the game's
+seeded random generator on the tick it dies; while it is off no kill draws. A
+first draw, uniform on `[0, 1)`, drops bread when it is below `BREAD_CHANCE`.
+Only when it did not, a second draw drops a draft when it is below
+`DRAFT_CHANCE`. A kill therefore drops at most one of the two, and the pickup
+lands at the enemy's position beside its gem. Elites and the Dark make no draw;
+an elite drops its chest, and the Dark drops nothing.

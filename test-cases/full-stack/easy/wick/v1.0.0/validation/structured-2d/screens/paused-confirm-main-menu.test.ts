@@ -13,9 +13,9 @@
 // THE DRIVE. An isolated `playing` world with a moth, a gem, a clock posed off
 // `0` and the lamplighter posed away from the origin, so a title screen still
 // carrying any of it fails; the pause posed through `setScreen("paused")` —
-// which `specs/instrumentation.md` says enters it "exactly as `pause` does" —
-// one `ArrowDown` onto `MAIN MENU`, read back as the precondition, then the
-// `Enter` this point is about.
+// which `specs/instrumentation.md` says enters it by setting `screen` alone,
+// with the run left as it stands — one `ArrowDown` onto `MAIN MENU`, read back
+// as the precondition, then the `Enter` this point is about.
 //
 // THE TOLERANCE. None: a screen name, an index, and a run compared field for
 // field against the idle run.

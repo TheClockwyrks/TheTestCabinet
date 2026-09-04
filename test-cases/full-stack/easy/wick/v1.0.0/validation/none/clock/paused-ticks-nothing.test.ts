@@ -9,8 +9,8 @@
 // projectile, zone, and gem, and every timer.
 //
 // THE DRIVE. The live night of `./stage`, run one tick so that everything in
-// it is mid-motion, then paused through `setScreen("paused")`, which enters
-// the screen "Exactly as `pause` does". Sixty frames then run on `paused`, and
+// it is mid-motion, then paused through `setScreen("paused")`, which sets
+// `screen` and nothing else. Sixty frames then run on `paused`, and
 // `run` is read against the state the pause left. A build that ticked under
 // the pause moves the moth, the bolt, and the gem, and lowers the puddle's
 // `ttl`, the contact cooldown, and Taper's timer.

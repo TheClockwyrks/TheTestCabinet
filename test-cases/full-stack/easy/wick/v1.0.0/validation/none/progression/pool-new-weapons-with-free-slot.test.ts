@@ -44,7 +44,7 @@ afterEach(async () => {
 });
 
 it("holds all nine base weapons a run does not start with", async () => {
-  await isolate(h, { keepTaper: true });
+  await isolate(h, { taper: true });
 
   const overlay = await openLevelUp(h);
   await captureStill(h, "new");

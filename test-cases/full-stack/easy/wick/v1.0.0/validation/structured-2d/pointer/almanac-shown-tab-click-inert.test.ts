@@ -20,11 +20,11 @@
 // highlight only as far as "the greater of that and `menuIndex − ALMANAC_ROWS
 // + 1`", so an entry inside the first window leaves the scroll at `0`.
 //
-// THE DRIVE. `setScreen("almanac")` — "exactly as confirming `THE ALMANAC`
-// does" (`specs/instrumentation.md`) — four real `ArrowDown` presses onto the
-// fifth entry, then a primary press and release in the middle of the FIRST
-// tab's own rectangle, read off `tabRects`, which is the tab `almanacTab` `0`
-// already shows.
+// THE DRIVE. `setScreen("almanac")` — by setting `screen` with the three menu
+// indices at `0` and the run left as it stands (`specs/instrumentation.md`) —
+// four real `ArrowDown` presses onto the fifth entry, then a primary press and
+// release in the middle of the FIRST tab's own rectangle, read off `tabRects`,
+// which is the tab `almanacTab` `0` already shows.
 //
 // THE TOLERANCE. None: three indices and a screen name.
 

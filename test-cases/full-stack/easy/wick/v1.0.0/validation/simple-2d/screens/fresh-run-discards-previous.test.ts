@@ -5,10 +5,9 @@
 // point; this one is that the old ones are gone rather than carried over.
 //
 // THE SPEC IT RESTS ON.
-//   specs/ui.md ("A fresh run"): "`LIGHT THE LAMP`, `TRY AGAIN`, and the debug
-//   surface's `setScreen("playing")` each begin a fresh run, and whatever the
-//   previous run held is discarded", with the fresh run's fields restated as
-//   `FRESH_RUN`.
+//   specs/ui.md ("A fresh run"): "`LIGHT THE LAMP` and `TRY AGAIN` each begin a
+//   fresh run, and whatever the previous run held is discarded", with the fresh
+//   run's fields restated as `FRESH_RUN`.
 //   specs/ui.md ("`fallen` and `dawn`"): "`TRY AGAIN` starts a fresh run and
 //   sets `screen = playing`", with `END_ITEMS` "`TRY AGAIN`, `TITLE`, in that
 //   order" and "`menuIndex` is `0` on arriving".

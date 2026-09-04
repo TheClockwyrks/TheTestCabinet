@@ -17,8 +17,9 @@
 // rather than by where a build drew its rows.
 //
 // HOW THE SCENARIO IS DRIVEN. The almanac is entered through
-// `setScreen("almanac")`, which specs/instrumentation.md defines as "exactly as
-// confirming `THE ALMANAC` does". The wheel is Chromium's own, turned by exactly
+// `setScreen("almanac")`, which specs/instrumentation.md defines as setting
+// `screen` alone, "with `menuIndex`, `almanacTab`, and `almanacScroll`
+// all `0`". The wheel is Chromium's own, turned by exactly
 // `WHEEL_ROW` (`100`) stage units of downward travel taken into the page's CSS
 // pixels through the harness's fit, which is the same conversion the build
 // applies to `deltaY` inverted. The pointer is rested on a point inside none of

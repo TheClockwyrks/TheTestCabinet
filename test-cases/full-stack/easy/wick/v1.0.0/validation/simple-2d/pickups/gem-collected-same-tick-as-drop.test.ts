@@ -22,9 +22,10 @@
 // than by the pose; `enemyContact` is off, so the moth standing there costs no
 // health, and `enemyMotion` is off, so it stays where it was put. The drop
 // therefore lands at distance 0, inside both `pickupRadius` (48) and
-// `COLLECT_RADIUS` (8), which is the case phase 9 is being read for. `isolate`
-// poses `ISOLATE_LEVEL` (50), whose `xpToNext` is 495, so the gain opens no
-// overlay over the reading.
+// `COLLECT_RADIUS` (8), which is the case phase 9 is being read for. `drops` is
+// turned back on because the drop is half of what this tick is about;
+// `progression` stays off, so the gain reaches `xp` and opens no overlay over
+// the reading.
 //
 // WHAT IS READ. The snapshot of that single tick: the moth gone, no gem on the
 // field, and `xp` risen by 1. A build that leaves the tick's own drops for the
@@ -36,7 +37,13 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLength, assertWithin } from "../assert";
 import { FIGURE_TOLERANCE, GEM_VALUES } from "../constants";
-import { captureStill, createHarness, isolate, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  enable,
+  isolate,
+  type Harness,
+} from "../harness";
 import { armKill } from "./night";
 
 /** The common whose drop is read, and the tier specs/enemies.md gives it. */
@@ -55,6 +62,8 @@ afterEach(() => {
 
 it("leaves no gem and raises xp by 1 on the tick a moth dies at the lamplighter", async () => {
   const posed = isolate(h);
+  // The gem the death drops is what this tick is about; `progression` stays off, so the gain lands on `xp` alone.
+  enable(h, "drops");
   armKill(h, TYPE, 0, 0);
   assertLength(h.snapshot().run.gems, 0, "gems before the killing tick");
 

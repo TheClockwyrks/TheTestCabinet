@@ -1,4 +1,4 @@
-// Wick — clock/title-ticks-nothing: nothing advances on title and howto.
+// Wick — clock/title-ticks-nothing: nothing advances on title.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE.
 //   - `specs/overview.md` ("Units, ticks, the world, and the camera"): "Only
@@ -17,8 +17,9 @@
 //     switch is ON here, and a title that
 //     ticked would spawn on its first tick ("A spawn therefore lands on the
 //     first tick of a run", `specs/enemies.md`).
-//   - `specs/instrumentation.md` (`setScreen`, `howto`): "Enters the how-to
-//     screen exactly as confirming `HOW TO PLAY` does: the idle run."
+//   - `specs/instrumentation.md` (`setScreen`): "Sets `screen` to `name` ...
+//     Nothing else changes", so the pose to `howto` carries the idle run
+//     `reset` restored across with it."
 //
 // THE DRIVE. `reset`, which leaves the game on `title` with every switch on,
 // then sixty frames; then `howto` through the surface and sixty more. After
@@ -26,6 +27,8 @@
 // spawned), and every other idle value in place.
 //
 // TOLERANCE. None: the idle run is a table of exact values.
+//
+// The other screen is `clock/howto-ticks-nothing`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
@@ -34,11 +37,10 @@ import {
   captureStill,
   createHarness,
   IDLE_RUN,
-  poseScreen,
   type Harness,
 } from "../harness";
 
-/** Frames run on each screen: a second of the clock. */
+/** Frames run on the screen: a second of the clock. */
 const IDLE_FRAMES = TICK_HZ;
 
 let h: Harness;
@@ -51,28 +53,16 @@ afterEach(() => {
   h.dispose();
 });
 
-it("keeps the idle run at tick 0 with nothing spawned across frames on title and howto", async () => {
+it("keeps the idle run at tick 0 with nothing spawned across frames on title", async () => {
   h.reset();
   await h.advance(IDLE_FRAMES);
-  const title = h.snapshot();
-
-  assertEqual(title.screen, "title", "the screen after sixty frames on title");
-  assertDeepEqual(
-    title.run,
-    IDLE_RUN,
-    "the run after sixty frames on title, against the idle run",
-  );
-
-  const howtoAt = poseScreen(h, "howto");
-  assertEqual(howtoAt.screen, "howto", "the screen the surface posed");
-  await h.advance(IDLE_FRAMES);
-  const howto = h.snapshot();
+  const held = h.snapshot();
   captureStill(h, "idle");
 
-  assertEqual(howto.screen, "howto", "the screen after sixty frames on howto");
+  assertEqual(held.screen, "title", "the screen after sixty frames on title");
   assertDeepEqual(
-    howto.run,
+    held.run,
     IDLE_RUN,
-    "the run after sixty frames on howto, against the idle run",
+    "the run after sixty frames on title, against the idle run",
   );
 });

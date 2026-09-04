@@ -41,6 +41,7 @@ import {
   cuesOnFrame,
   isolate,
   menuRects,
+  openChest,
   openLevelUp,
   pressDown,
   tabRects,
@@ -173,6 +174,39 @@ export async function poseTitle(h: Harness): Promise<WickSnapshot> {
   assertEqual(title.screen, "title", "the screen the game opens on");
   assertEqual(title.menuIndex, 0, "menuIndex on the title the game opened on");
   return title;
+}
+
+/**
+ * Stand on `howto`, and hand back the middle of the one box it answers.
+ *
+ * `specs/controls.md` ("The pointer and touch"): "`howto` and `chest` show no
+ * menu, and each answers the pointer and touch on one rectangle instead ... It
+ * is that screen's rectangle at position `0`." That the box is reported at all
+ * is `instrumentation/menu-rects-one-box-without-menu`'s, so it is read here as
+ * the precondition of aiming at it.
+ */
+export async function howtoPoint(h: Harness): Promise<XY> {
+  await h.debug.setScreen("howto");
+  const opened = await h.snapshot();
+  assertEqual(opened.screen, "howto", 'the screen setScreen("howto") entered');
+  const points = await menuPoints(h, 1, "for the how-to screen");
+  return points[0]!;
+}
+
+/**
+ * Open the chest overlay over an isolated night, and hand back the middle of
+ * the one box it answers.
+ *
+ * The overlay is reached the REAL way, by a chest at the lamplighter's feet and
+ * the tick that collects it, because `setScreen` "poses the screen field and
+ * nothing else" and a dismissal is about the overlay a run actually opened.
+ */
+export async function chestPoint(h: Harness): Promise<XY> {
+  await night(h);
+  const opened = await openChest(h);
+  assertEqual(opened.screen, "chest", "the screen the collected chest opened");
+  const points = await menuPoints(h, 1, "for the chest overlay");
+  return points[0]!;
 }
 
 /**

@@ -117,7 +117,8 @@ it("still runs with the moth sheet and the hit cue unavailable", async () => {
       );
     }
 
-    // Into play, on the build's own loop, exactly as `LIGHT THE LAMP` starts one.
+    // Into play, on the build's own loop: `setScreen` stands the game on
+    // `playing`, and the loop runs it from there in real time.
     await site.page.evaluate(
       (handle) =>
         (

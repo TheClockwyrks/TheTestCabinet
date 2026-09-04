@@ -64,6 +64,8 @@ const SNAPSHOT_FIELDS = [
   "enemyContact",
   "weaponFire",
   "effectMotion",
+  "drops",
+  "progression",
   "run",
   "muted",
   "accumulator",
@@ -214,6 +216,8 @@ it("reports the whole documented shape from a posed run", async () => {
     "enemyContact",
     "weaponFire",
     "effectMotion",
+    "drops",
+    "progression",
     "muted",
   ] as const) {
     assertTypeOf(s[flag], "boolean", `snapshot().${flag}`);

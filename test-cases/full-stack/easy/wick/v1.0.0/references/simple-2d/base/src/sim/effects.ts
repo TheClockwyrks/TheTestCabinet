@@ -107,8 +107,9 @@ export function forgetHits(run: DraftRun, dead: ReadonlySet<number>): void {
 
 /**
  * The last part of phase 6: an enemy whose `hp` is at or below `0` dies. The
- * kill count rises, its drop lands at its center, a common kill draws for
- * bread and a draft, and a puff is left to draw.
+ * kill count rises and a puff is left to draw. While `drops` is on its drop
+ * lands at its center and a common kill draws for bread and a draft; while it
+ * is off the death leaves nothing on the field and draws nothing.
  */
 export function resolveDeaths(ctx: TickContext): void {
   const { run } = ctx;
@@ -123,6 +124,7 @@ export function resolveDeaths(ctx: TickContext): void {
     run.kills += 1;
     ctx.cues.add(CUES.kill);
     run.puffs.push({ x: enemy.x, y: enemy.y, bornTick: run.tick });
+    if (!ctx.state.drops) continue;
     const { drop } = ENEMIES[enemy.type];
     if (drop === "chest") {
       run.pickups.push({

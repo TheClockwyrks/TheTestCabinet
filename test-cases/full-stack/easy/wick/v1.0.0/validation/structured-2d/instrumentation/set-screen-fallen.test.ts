@@ -1,15 +1,26 @@
-// Wick — instrumentation/set-screen-fallen: `setScreen('fallen')` on `playing`
-// or `paused` ends the run fallen, the run kept for the end screen.
+// Wick — instrumentation/set-screen-fallen: `setScreen('fallen')` shows the
+// fallen screen from `playing` and from `paused` and ends no run: the run
+// stands exactly as it did.
 //
-// WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`, the
-// `setScreen` table, row `fallen`, `dawn` from `playing`, `paused`: "Ends the
-// run exactly as that ending does, the run kept for the end screen to report",
-// with `menuIndex` `0`. `specs/state.md`: "The `fallen` and `dawn` screens keep
-// the run that just ended, since they report its time, level, and kills."
+// WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`,
+// `setScreen`: "Sets `screen` to `name` ... Nothing else changes: the run, the
+// loadout, `offers`, `nextOffers`, `chestResult`, `pendingLevelUps`,
+// `rngState`, `simTime`, and the driver switches all stand exactly as they
+// were", with `menuIndex` `0`, and "Applies on every screen". "The pose sets
+// the screen and nothing else, so a run is never begun, discarded, ended, or
+// grown by it": the run is ENDED through the ending rule instead, "the fallen
+// ending is `setHp` at `0` and one tick, and the dawn ending is `setTick` at
+// `DAWN_TIME × TICK_HZ − 1` (`35999`) and one tick", which is `world/`'s
+// point. `specs/state.md`: "The `fallen` and `dawn` screens keep the run that
+// just ended, since they report its time, level, and kills."
 //
-// THE POSES. An isolated run with its tick, level, and kills posed to figures
-// apart from the idle run's, once from `playing` and once from `paused`; each
-// time the whole `run` before is compared with the whole `run` after.
+// WHAT IS READ, AND WHY THE WHOLE RUN. The end screens are the two the game
+// reaches by ENDING a run, so the reading that matters is that this pose did
+// not: the whole `run` before the call is compared with the whole `run` after
+// it, `hp`, the clock, the level, the kills, and the field included, from an
+// isolated run whose figures are told apart from the idle run's.
+//
+// THE POSES. Once from `playing` and once from `paused`.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
@@ -44,12 +55,11 @@ function poseRun(): void {
   placeEnemy(h, "moth", 300, 0);
 }
 
-it("ends the run fallen from playing and from paused, keeping the run", async () => {
+it("shows the fallen screen from playing and from paused with the run untouched", async () => {
   for (const from of ["playing", "paused"] as const) {
     poseRun();
-    // `setScreen("playing")` on `playing` would begin a fresh run (the "any
-    // other" row), so the run is posed on `playing` and only `paused` is
-    // entered through the surface.
+    // The run is posed on `playing`, which is where the poses that arrange it
+    // apply, and only `paused` is then entered through the surface.
     const before = from === "paused" ? poseScreen(h, "paused") : h.snapshot();
     assertEqual(before.screen, from, "screen before the pose");
 
@@ -70,9 +80,25 @@ it("ends the run fallen from playing and from paused, keeping the run", async ()
       0,
       `menuIndex after setScreen('fallen') from ${from}`,
     );
-    assertEqual(after.run.tick, POSED_TICK, `run.tick kept from ${from}`);
-    assertEqual(after.run.level, POSED_LEVEL, `run.level kept from ${from}`);
-    assertEqual(after.run.kills, POSED_KILLS, `run.kills kept from ${from}`);
-    assertDeepEqual(after.run, before.run, `run kept on fallen from ${from}`);
+    assertEqual(
+      after.run.tick,
+      POSED_TICK,
+      `run.tick after the pose from ${from}`,
+    );
+    assertEqual(
+      after.run.level,
+      POSED_LEVEL,
+      `run.level after the pose from ${from}`,
+    );
+    assertEqual(
+      after.run.kills,
+      POSED_KILLS,
+      `run.kills after the pose from ${from}`,
+    );
+    assertDeepEqual(
+      after.run,
+      before.run,
+      `the whole run after setScreen('fallen') from ${from}, against the run before it`,
+    );
   }
 });

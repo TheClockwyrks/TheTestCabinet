@@ -9,9 +9,9 @@
 // step along" its heading, so the moth's position after the resumed tick is
 // not the posed one.
 //
-// WHY THE WORLD IS POSED AS IT IS. The run is paused by its `setScreen` row
-// before the spawn, and resumed by the row that "Resumes exactly as `pause`
-// on `paused` does"; `enemyMotion` alone is turned on for the one tick after,
+// WHY THE WORLD IS POSED AS IT IS. The run is paused and resumed by
+// `setScreen`, which "Sets `screen` to `name` ... Nothing else changes", so
+// neither crossing touches the moth; `enemyMotion` alone is turned on for the one tick after,
 // so the only thing that can move the moth is its own chase.
 
 import { afterEach, beforeEach, it } from "vitest";

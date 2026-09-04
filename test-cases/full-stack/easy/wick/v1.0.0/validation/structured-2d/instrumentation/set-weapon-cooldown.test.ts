@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 it("poses the timer and the weapon fires when it is due", async () => {
-  isolate(h, { keepTaper: true });
+  isolate(h, { taper: true });
   h.debug.setWeaponCooldown(0, POSED_SECONDS);
   assertEqual(
     h.snapshot().run.weapons[0]?.cooldown,

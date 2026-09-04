@@ -21,9 +21,10 @@
 // the accumulator holds 0.
 //
 // WHY THE NIGHT IS POSED AS IT IS. The accounting is about the clock alone, so
-// the `playing` run is the empty isolated night; each other screen is entered
-// through the surface's own transition, the two overlays through the tick that
-// opens each, so the frames measured are frames on exactly that screen.
+// the `playing` run is the empty isolated night; the menu screens are entered
+// through `setScreen`, and the two overlays and the two endings through the
+// ticks that open them, so the frames measured are frames on exactly that
+// screen.
 //
 // TOLERANCE. `FIGURE_TOLERANCE` (1e-9) on each identity: a sum of a handful of
 // decimal figures formed in floating point.
@@ -34,6 +35,8 @@ import { FIGURE_TOLERANCE, TICK_DT, TICK_EPSILON } from "../constants";
 import {
   captureStill,
   createHarness,
+  endDawn,
+  endFallen,
   isolate,
   openChest,
   openLevelUp,
@@ -71,7 +74,7 @@ afterEach(() => {
   h.dispose();
 });
 
-/** Enter `screen` from a fresh reset, by its own transition. */
+/** Enter `screen` from a fresh reset, by the route that reaches it. */
 async function enter(screen: Exclude<Screen, "playing">): Promise<void> {
   if (screen === "levelup") {
     isolate(h);
@@ -79,6 +82,12 @@ async function enter(screen: Exclude<Screen, "playing">): Promise<void> {
   } else if (screen === "chest") {
     isolate(h);
     await openChest(h);
+  } else if (screen === "fallen") {
+    isolate(h);
+    await endFallen(h);
+  } else if (screen === "dawn") {
+    isolate(h);
+    await endDawn(h);
   } else {
     poseScene(h, screen);
   }

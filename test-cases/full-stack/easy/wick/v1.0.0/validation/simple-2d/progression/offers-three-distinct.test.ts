@@ -24,7 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertEqual } from "../assert";
-import { OFFER_COUNT } from "../constants";
+import { BASE_WEAPON_IDS, OFFER_COUNT, PASSIVE_IDS } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -32,6 +32,12 @@ import {
   openLevelUp,
   type Harness,
 } from "../harness";
+
+/**
+ * The candidates a fresh run's pool holds: one per base weapon, Taper's being
+ * its `+1 level` offer, and one per passive (specs/progression.md, The pool).
+ */
+const FRESH_POOL_SIZE = BASE_WEAPON_IDS.length + PASSIVE_IDS.length;
 
 /** Eight seeds, spread across the whole domain reset accepts. */
 const SEEDS = [0, 1, 7, 1009, 65535, 999983, 2147483647, 4294967295];
@@ -46,7 +52,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("presents three distinct candidates from every seed over a twenty-deep pool", async () => {
+it("presents three distinct candidates from every seed over the fresh pool", async () => {
   for (const seed of SEEDS) {
     isolate(h, { seed });
 
@@ -58,7 +64,7 @@ it("presents three distinct candidates from every seed over a twenty-deep pool",
       "levelup",
       `the overlay opened at seed ${seed}`,
     );
-    assertEqual(pool.length, 20, `the pool at seed ${seed}`);
+    assertEqual(pool.length, FRESH_POOL_SIZE, `the pool at seed ${seed}`);
     assertEqual(offers.length, OFFER_COUNT, `the offers at seed ${seed}`);
     assertEqual(
       new Set(offers).size,

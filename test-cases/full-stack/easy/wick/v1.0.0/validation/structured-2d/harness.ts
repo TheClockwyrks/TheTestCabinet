@@ -21,7 +21,7 @@
 //
 // WHY THE DEBUG SURFACE RATHER THAN RAW ASSIGNMENT. `specs/instrumentation.md`
 // fixes its operations, so they mean the same thing in every build: a pose
-// arranges the running game through the same systems play uses, the seven
+// arranges the running game through the same systems play uses, the nine
 // driver switches hold the game's autonomous systems still while one behavior
 // is watched, and `reset` gives everything back. `surface.ts` is that
 // specification as types, and it is the only description of the surface this
@@ -80,12 +80,12 @@ import {
   type Viewport,
   type World,
 } from "@test-cabinet/structured-2d";
-import { BACKGROUND, game as build } from "../src/game";
+import { game as build } from "../src/game";
 import { fail } from "./assert";
 import {
   ASSET_ROOT,
+  BACKGROUND,
   BASE_MAX_HP,
-  ISOLATE_LEVEL,
   LAST_TICK,
   LAYOUT,
   MOVE_SPEED,
@@ -468,8 +468,7 @@ function serveWorkspaceAssets(): void {
   hostServed = true;
   const host = globalThis as unknown as Record<string, unknown>;
   const inherited = host.fetch as
-    | ((input: string, init?: unknown) => Promise<Response>)
-    | undefined;
+    ((input: string, init?: unknown) => Promise<Response>) | undefined;
 
   host.fetch = async (input: unknown, init?: unknown): Promise<Response> => {
     const url = typeof input === "string" ? input : String(input);
@@ -1011,11 +1010,13 @@ export async function createHarness(
     width: STAGE_W,
     height: STAGE_H,
     game,
-    // The build's own stage background, image smoothing off for its pixel art,
-    // and the four-way layout, handed to the engine exactly as the seeded
-    // `src/main.ts` hands them (specs/overview.md, specs/controls.md).
+    // The build's own stage background and the four-way layout, handed to the
+    // engine exactly as the seeded `src/main.ts` hands them (specs/overview.md,
+    // specs/controls.md). Nothing here touches image smoothing: turning it off
+    // for the pixel art is the build's own work under
+    // `presentation/pixel-art-sampled-nearest`, so the harness leaves the engine
+    // at its default and reads what each blit was actually sampled under.
     background: BACKGROUND,
-    imageSmoothing: false,
     layout: LAYOUT,
     clock: options.clock ?? (scripted as ScriptedClock),
     surface,
@@ -1480,6 +1481,143 @@ export function clickRect(h: Harness, rect: WickRect): Promise<WickSnapshot> {
 }
 
 /**
+ * Press the primary button at a logical stage point, run the one frame that
+ * reads it, and LEAVE the button down.
+ *
+ * The half of a click a check about arming needs: "a primary press edge inside
+ * the rectangle of the item at `menuIndex` `i` sets `menuIndex` to `i` ... and
+ * arms that item" (specs/controls.md), with the release still to come.
+ */
+export async function pressAt(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.pressPointer(x, y);
+  await h.advance(1);
+  return h.snapshot();
+}
+
+/** Press the middle of a reported rectangle, leaving the button down. */
+export function pressRect(h: Harness, rect: WickRect): Promise<WickSnapshot> {
+  const at = centerOf(rect);
+  return pressAt(h, at.x, at.y);
+}
+
+/** Travel the held mouse to a logical stage point, one driven frame. */
+export async function glideTo(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.movePointer(x, y, { button: -1, buttons: 1 });
+  await h.advance(1);
+  return h.snapshot();
+}
+
+/** Lift the primary button at a logical stage point, one driven frame. */
+export async function liftAt(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.releasePointer(x, y);
+  await h.advance(1);
+  return h.snapshot();
+}
+
+/** Lift the primary button in the middle of a reported rectangle. */
+export function liftRect(h: Harness, rect: WickRect): Promise<WickSnapshot> {
+  const at = centerOf(rect);
+  return liftAt(h, at.x, at.y);
+}
+
+/* ---- Touch ---------------------------------------------------------------- */
+//
+// A CONTACT REACHES THE SAME RULES. "A touch contact landing inside a rectangle
+// is that rectangle's press edge and lifting is its release edge", and "a touch
+// contact never hovers: only a device reporting a position while out of contact
+// moves the highlight this way" (specs/controls.md). So a contact is driven as
+// the events a finger really produces: a `pointerdown` naming `touch`, moves
+// that carry the held mask while it travels, and a `pointerup` naming `touch`.
+// There is no move before the landing, because a finger reports no position
+// before it touches the glass.
+
+/** What a contact's events carry: the device, and the mask while it travels. */
+const CONTACT: PointerInit = { pointerType: "touch" };
+const CONTACT_HELD: PointerInit = {
+  pointerType: "touch",
+  button: -1,
+  buttons: 1,
+};
+
+/** Land a real contact at a logical stage point, one driven frame. */
+export async function touchLandAt(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.pressPointer(x, y, CONTACT);
+  await h.advance(1);
+  return h.snapshot();
+}
+
+/** Land a contact in the middle of a reported rectangle. */
+export function touchLandRect(
+  h: Harness,
+  rect: WickRect,
+): Promise<WickSnapshot> {
+  const at = centerOf(rect);
+  return touchLandAt(h, at.x, at.y);
+}
+
+/** Travel the held contact to a logical stage point, one driven frame. */
+export async function touchGlideTo(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.movePointer(x, y, CONTACT_HELD);
+  await h.advance(1);
+  return h.snapshot();
+}
+
+/** Lift the contact at a logical stage point, one driven frame. */
+export async function touchLiftAt(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.releasePointer(x, y, CONTACT);
+  await h.advance(1);
+  return h.snapshot();
+}
+
+/**
+ * Land a contact on a logical stage point and lift it there: two driven frames.
+ *
+ * The landing and the lift are separately observable, so the tap runs a frame
+ * for each.
+ */
+export async function touchTapAt(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  await touchLandAt(h, x, y);
+  return touchLiftAt(h, x, y);
+}
+
+/** Tap the middle of a reported rectangle. */
+export function touchTapRect(
+  h: Harness,
+  rect: WickRect,
+): Promise<WickSnapshot> {
+  const at = centerOf(rect);
+  return touchTapAt(h, at.x, at.y);
+}
+
+/**
  * Turn the wheel by `rows` rows and run the one frame that reads the travel.
  *
  * `specs/controls.md` makes a frame's travel "that frame's wheel deltas summed
@@ -1506,6 +1644,8 @@ const SWITCH_OPS: Readonly<
   enemyContact: "setEnemyContact",
   weaponFire: "setWeaponFire",
   effectMotion: "setEffectMotion",
+  drops: "setDrops",
+  progression: "setProgression",
 };
 
 /** Set one driver switch through its own operation. */
@@ -1514,7 +1654,7 @@ export function setSwitch(h: Harness, name: SwitchName, on: boolean): void {
   setter(on);
 }
 
-/** Set all seven driver switches to `on`. */
+/** Set all nine driver switches to `on`. */
 export function setSwitches(h: Harness, on: boolean): void {
   for (const name of SWITCH_NAMES) setSwitch(h, name, on);
 }
@@ -1532,7 +1672,7 @@ export function disable(h: Harness, ...switches: readonly SwitchName[]): void {
   for (const name of switches) setSwitch(h, name, false);
 }
 
-/** The seven switches as the snapshot reports them, by name. */
+/** The nine switches as the snapshot reports them, by name. */
 export function switchesOf(s: WickSnapshot): Record<SwitchName, boolean> {
   return {
     spawning: s.spawning,
@@ -1542,6 +1682,8 @@ export function switchesOf(s: WickSnapshot): Record<SwitchName, boolean> {
     enemyContact: s.enemyContact,
     weaponFire: s.weaponFire,
     effectMotion: s.effectMotion,
+    drops: s.drops,
+    progression: s.progression,
   };
 }
 
@@ -1549,39 +1691,48 @@ export interface IsolateOptions {
   /** The seed `reset` lays the generator with. Defaults to `DEFAULT_SEED`. */
   seed?: number;
   /**
-   * The level the run is posed at. Defaults to `ISOLATE_LEVEL` (50), whose
-   * `xpToNext` of 495 keeps any gain a scenario's kills produce from opening
-   * an overlay mid-scenario. A check that reads `level` poses its own.
+   * The level the run is posed at. Left at the idle run's `1` when it is not
+   * named: the `progression` switch, off with the rest, is what keeps a gain
+   * from becoming a level-up mid-scenario, so nothing here has to outrun the
+   * build's own `xpToNext`.
    */
   level?: number;
   /**
-   * Whether to leave the fresh run's Taper in its slot. Off by default, so a
-   * check about another weapon sees no slash when it turns `weaponFire` on;
-   * a check about Taper itself, or about the fresh run's loadout, keeps it.
+   * Whether to put Taper at level `1` in the first weapon slot. Off by
+   * default, so a check about another weapon sees no slash when it turns
+   * `weaponFire` on; a check that needs a weapon held asks for one.
+   *
+   * `setScreen("playing")` installs nothing — it sets the screen and nothing
+   * else (`specs/instrumentation.md`) — so the loadout an isolated world holds
+   * is exactly what the check posed into it. `setWeapon` zeroes the slot's
+   * timer when its id changes, so the Taper this leaves is the level `1` and
+   * cooldown `0` a run starts with.
    */
-  keepTaper?: boolean;
+  taper?: boolean;
 }
 
 /**
- * Pose an ISOLATED world: a fresh `playing` screen holding nothing — no
- * enemy, projectile, zone, gem, or pickup, no weapon and no passive — with
- * every driver switch off and the level at `ISOLATE_LEVEL`.
+ * Pose an ISOLATED world: the `playing` screen over an idle run holding
+ * nothing — no enemy, projectile, zone, gem, or pickup, no weapon and no
+ * passive — with every driver switch off.
  *
  * The arrangement the authoring guide requires of a validator — clear every
  * entity the requirement is not about, then spawn back exactly what it IS
- * about through the surface's atomic poses. The switches are off so no
+ * about through the surface's atomic poses. All NINE switches are off, so no
  * autonomous consequence (a director spawn, an event, a despawn, a move, a
- * contact hit, a weapon firing, an effect moving) arrives on top of the
- * behavior being watched; a check that is ABOUT one turns it back on with
- * {@link enable}. Taper, which every fresh run holds, is removed so no slash
- * appears when `weaponFire` is turned on for a check about another weapon.
- * The level is posed high enough that no gain a scenario's kills drop crosses
- * a threshold and opens an overlay mid-scenario; a check that reads `level`
- * poses its own.
+ * contact hit, a weapon firing, an effect moving, a death's drop, or a gain
+ * spent on a level) arrives on top of the behavior being watched; a check that
+ * is ABOUT one turns it back on with {@link enable}. `drops` and `progression`
+ * are why an isolated run needs no posed level: a scenario that kills leaves
+ * nothing on the field, and one that collects a gem raises `xp` without the
+ * level-up overlay taking the screen out from under the check. The loadout is
+ * empty, so no slash appears when `weaponFire` is turned on for a check about
+ * another weapon, and `taper` puts Taper back for a check that needs a weapon
+ * held.
  *
  * `reset` first, so nothing a previous section left is inherited, seeding the
- * generator with `seed` when one is named; then the fresh run
- * (`setScreen("playing")` begins one exactly as LIGHT THE LAMP does); then
+ * generator with `seed` when one is named; then `setScreen("playing")`, which
+ * sets the screen and nothing else over the idle run `reset` restored; then
  * the clears, which score nothing, draw nothing, and sound nothing.
  */
 export function isolate(
@@ -1591,31 +1742,37 @@ export function isolate(
   h.reset(options.seed);
   h.debug.setScreen("playing");
   setSwitches(h, false);
-  if (!(options.keepTaper ?? false)) {
-    const { weapons } = h.snapshot().run;
-    for (let slot = weapons.length - 1; slot >= 0; slot -= 1) {
-      h.debug.removeWeapon(slot);
-    }
-  }
   h.debug.clearEnemies();
   h.debug.clearProjectiles();
   h.debug.clearZones();
   h.debug.clearGems();
   h.debug.clearPickups();
-  h.debug.setLevel(options.level ?? ISOLATE_LEVEL);
+  if (options.taper ?? false) {
+    h.debug.setWeapon(0, "taper", 1);
+  }
+  if (options.level !== undefined) {
+    h.debug.setLevel(options.level);
+  }
   return h.snapshot();
 }
 
 /**
- * Begin a fresh run through the surface, every switch as it stands and Taper
- * in the first slot: `reset` and `setScreen("playing")`, which `specs/ui.md`
- * makes the same run LIGHT THE LAMP begins. For a check about the run the
- * game plays — the director, the first tick's spawn, the fresh-run state — as
- * opposed to a scenario posed into an isolated world.
+ * Compose a fresh run out of atomic poses, every switch as it stands: `reset`
+ * to the idle run, `setScreen("playing")`, and Taper at level `1` in the first
+ * weapon slot — the sequence `specs/instrumentation.md` names under
+ * `setScreen` for arranging what `LIGHT THE LAMP` and `TRY AGAIN` begin.
+ * `setWeapon` zeroes the slot's timer when its id changes, so the Taper this
+ * leaves is the level `1` and cooldown `0` of `specs/ui.md`'s fresh run.
+ *
+ * For a check about the run the game PLAYS — the director, the first tick's
+ * spawn — as opposed to a scenario posed into an isolated world. A check about
+ * what STARTING a run does drives `LIGHT THE LAMP` or `TRY AGAIN` instead: the
+ * surface begins no run, so nothing here stands in for that.
  */
 export function freshRun(h: Harness, seed?: number): WickSnapshot {
   h.reset(seed);
   h.debug.setScreen("playing");
+  h.debug.setWeapon(0, "taper", 1);
   return h.snapshot();
 }
 
@@ -1624,9 +1781,8 @@ export function freshRun(h: Harness, seed?: number): WickSnapshot {
  * field at the value the table "The idle run" gives, and every derived field
  * (`specs/instrumentation.md`, "Snapshot shape") at what those values derive
  * to with no passive held. What `run` holds on `title`, `howto`, and
- * `almanac`, and what
- * `reset` and `setScreen("title")` restore; a check compares a whole run
- * against it with `assertDeepEqual`.
+ * `almanac` as play reaches them, and what `reset` restores; a check compares
+ * a whole run against it with `assertDeepEqual`.
  */
 export const IDLE_RUN: SnapshotRun = {
   tick: 0,
@@ -1689,13 +1845,14 @@ export async function startPlay(
 }
 
 /**
- * Enter screen `screen` through the surface, exactly as the real transition
- * enters it, and read what it left.
+ * Pose screen `screen` through the surface and read what it left.
  *
- * A thin name over `debug.setScreen` so a suite says which screen it is
- * posing; it deliberately does NOT reset first, so a check can arrange a run
- * and then pose the screen that shows it. A check that wants a clean slate
- * calls `h.reset()` first or uses {@link isolate}.
+ * A thin name over `debug.setScreen`, which sets `screen` and the three menu
+ * indices and nothing else (`specs/instrumentation.md`), so a suite says which
+ * screen it is posing; it deliberately does NOT reset first, so a check can
+ * arrange a run and then pose the screen that shows it. A check that wants a
+ * clean slate calls `h.reset()` first or uses {@link isolate}. A check about
+ * what a REAL transition does drives the transition instead.
  */
 export function poseScreen(h: Harness, screen: Screen): WickSnapshot {
   h.debug.setScreen(screen);

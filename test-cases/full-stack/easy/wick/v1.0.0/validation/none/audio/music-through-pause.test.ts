@@ -9,11 +9,12 @@
 // has `pause` return to `playing`, and only `back` on `paused` abandons the run,
 // which is `audio/music-stops-on-abandon`'s point.
 //
-// WHY THE PAUSE IS REACHED THROUGH THE SURFACE. specs/instrumentation.md defines
-// the pose to be the played transition: `setScreen("paused")` from `playing` is
-// "Exactly as `pause` does; the accumulator is discarded as on any frame that
-// leaves `playing`". A key press would put the pause control's own correctness
-// between this point and the loop it reads, and that control is `controls/`'s.
+// WHY THE PAUSE IS REACHED THROUGH THE SURFACE. specs/instrumentation.md has
+// the pose set `screen` and nothing else, with "the accumulator ...
+// discard[ed], as every frame and pose that leaves `playing` does", so the
+// world beneath is the one the run left. A key press would put the pause
+// control's own correctness between this point and the loop it reads, and that
+// control is `controls/`'s.
 //
 // WHY THE WORLD IS POSED AS IT IS. An isolated night: every driver switch off,
 // nothing alive, nothing dropped, and no slot held, so nothing can end the run

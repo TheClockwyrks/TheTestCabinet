@@ -8,10 +8,12 @@
 // specs/progression.md ("The chest overlay") adds what happens in between: the
 // tick that collects one ends on `chest`, and "The simulation does not tick
 // while the overlay is open; `confirm` closes it, setting `chestResult` to
-// `null` and `screen` to `playing`." specs/instrumentation.md gives
-// `setScreen("playing")` from `chest` the same meaning, "Closes the overlay
-// exactly as `confirm` does". So two chests on the lamplighter's center are
-// collected one tick apart, lowest id first, with the overlay between them.
+// `null` and `screen` to `playing`." The screen is put back to `playing` here
+// by `setScreen`, which "sets the screen and nothing else"
+// (specs/instrumentation.md), so the next tick runs without this point passing
+// through the overlay's own `confirm`, which another point decides. So two
+// chests on the lamplighter's center are collected one tick apart, lowest id
+// first, with the overlay between them.
 //
 // THE WORLD. An isolated `playing` run: nothing alive, nothing else on the
 // ground, no weapon and no passive held, every driver switch off, so nothing

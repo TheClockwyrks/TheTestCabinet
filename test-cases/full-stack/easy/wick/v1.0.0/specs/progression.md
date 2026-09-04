@@ -59,11 +59,13 @@ The last column is the experience collected over a run at which that level is
 left, so a lamplighter reaches level `11` after collecting `500` experience.
 
 Experience arrives from gems alone, each adding `GEM_VALUES[tier] × xpMul` on
-the tick it is collected, as `specs/world.md` states. After every gain, while
+the tick it is collected, as `specs/world.md` states. While the `progression`
+driver switch `specs/instrumentation.md` defines is on, after every gain, while
 `xp >= xpToNext(level)`: `xp` falls by `xpToNext(level)`, `level` rises by `1`,
 and one level-up is queued in `pendingLevelUps`. The overflow carries into the
 next level, and one gem can queue several level-ups when it carries enough
-experience for them.
+experience for them. While the switch is off no gain is spent: `xp` stands
+however high it climbs, and `level` and `pendingLevelUps` hold.
 
 ## The level-up overlay
 

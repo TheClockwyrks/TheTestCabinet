@@ -3,11 +3,11 @@
 // `0`.
 //
 // WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — `setScreen(name)`):
-// the `paused | playing` row: "Exactly as `pause` does; the accumulator is
-// discarded as on any frame that leaves `playing`." specs/ui.md: "The delta
-// time left unconsumed is discarded on any frame or pose that leaves
-// `playing` ... so the accumulator is `0` on every screen but `playing` by
-// every route."
+// "Sets `screen` to `name` ... A call that leaves `playing` discards the
+// accumulator, as every frame and pose that leaves `playing` does."
+// specs/ui.md: "The delta time left unconsumed is discarded on any frame or
+// pose that leaves `playing` ... so the accumulator is `0` on every screen but
+// `playing` by every route."
 //
 // WHY THE WORLD IS POSED AS IT IS. The run holds one entity of every kind and
 // a partial frame is posed first, so the accumulator holds a remainder the

@@ -7,9 +7,9 @@
 //   - `specs/ui.md` (the screen table): "`levelup`, `chest`, `paused` |
 //     Nothing. The world beneath holds exactly the tick it was at." And of
 //     `paused`: "The world held still, with the HUD, under `PAUSED_TEXT`".
-//   - `specs/instrumentation.md` (`setScreen`, `paused` from `playing`):
-//     "Exactly as `pause` does; the accumulator is discarded as on any frame
-//     that leaves `playing`."
+//   - `specs/instrumentation.md` (`setScreen`): "Nothing else changes: the
+//     run ... stand[s] exactly as [it was]. A call that leaves `playing`
+//     discards the accumulator."
 //
 // THE DRIVE. From an isolated run, the live world of `live-world.ts` is posed
 // with every switch on: a moth chasing, a bolt flying, a puddle and the bolt

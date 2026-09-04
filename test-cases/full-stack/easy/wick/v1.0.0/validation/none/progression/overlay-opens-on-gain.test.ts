@@ -10,9 +10,11 @@
 // there by the end of the second `playing` tick after the gain whether the build
 // opens it on the gain's own tick or on the one after.
 //
-// WHY THE WORLD IS POSED AS IT IS. An isolated night with every faculty held,
-// nothing alive, and no slot held, so the pool is every base weapon and every
-// passive and the draw has more than `OFFER_COUNT` candidates to make. Level
+// WHY THE WORLD IS POSED AS IT IS. An isolated night with `progression` alone
+// turned back on, which is the faculty that spends a gain on a level, and every
+// other faculty held, nothing alive, and no slot held, so the pool is every
+// base weapon and every passive and the draw has more than `OFFER_COUNT`
+// candidates to make. Level
 // `1` with `xp` one short of `XP_BASE` and a small gem at the lamplighter's
 // center is the shortest real gain that crosses a threshold; the gem is
 // collected by a real tick, and one further frame is run so a build that opens
@@ -51,7 +53,7 @@ afterEach(async () => {
 });
 
 it("stands on levelup with offers filled after a gain that queues one", async () => {
-  await isolate(h);
+  await isolate(h, { on: ["progression"] });
   await h.debug.setLevel(POSED_LEVEL);
   await h.debug.setXp(POSED_XP);
 

@@ -16,8 +16,8 @@
 // single row of travel is well inside that. The list has somewhere to go.
 //
 // THE DRIVE. `setScreen("almanac")`, which `specs/instrumentation.md` makes
-// enter the almanac "exactly as confirming `THE ALMANAC` does: the idle run,
-// `menuIndex` `0`, `almanacTab` `0`, `almanacScroll` `0`", then one frame
+// enter the almanac by setting `screen` with `menuIndex`, `almanacTab`, and
+// `almanacScroll` all `0` and the run left as it stands, then one frame
 // carrying exactly `WHEEL_ROW` stage units of downward travel.
 //
 // THE TOLERANCE. None: the specification divides by `WHEEL_ROW` and truncates,

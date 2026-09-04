@@ -5,20 +5,21 @@
 // the others wait for the next `playing` tick." specs/instrumentation.md fixes
 // which id is the lower: "A pose that creates an entity gives it the next id
 // from `nextId`", so the chest posed first carries it. specs/progression.md
-// ("The chest overlay") gives the way back to `playing`: "`confirm` closes it,
-// setting `chestResult` to `null` and `screen` to `playing`", which
-// `setScreen("playing")` from `chest` does "exactly as `confirm` does". So with
-// two chests on the lamplighter's center, the first tick takes the lower id
-// alone and leaves the other standing, and the first `playing` tick after the
-// overlay closes takes that one.
+// ("The chest overlay") holds the simulation while the overlay is open, so the
+// way back onto `playing` is `setScreen("playing")`, which "Sets `screen` to
+// `name` ... Nothing else changes" (specs/instrumentation.md). So with two
+// chests on the lamplighter's center, the first tick takes the lower id alone
+// and leaves the other standing, and the first `playing` tick after the overlay
+// is left takes that one.
 //
 // WHY THE WORLD IS POSED AS IT IS. An isolated night: every driver switch off,
 // nothing alive, nothing else dropped, and no slot held, so the two chests are
 // the only pickups in the world and nothing else opens an overlay. Both are
 // posed on the lamplighter's center, at distance `0`, so both meet the
 // collection condition on the same tick, which is the only way the one-per-tick
-// rule can be read at all. `isolate` poses `ISOLATE_LEVEL` (`50`) and no gem is
-// on the field, so no level-up competes for the end of either tick.
+// rule can be read at all. `isolate` holds `progression` and `drops` with the
+// rest, and no gem is on the field, so no level-up competes for the end of
+// either tick.
 //
 // THE TOLERANCE. None: pickup ids and counts and a screen name are exact.
 

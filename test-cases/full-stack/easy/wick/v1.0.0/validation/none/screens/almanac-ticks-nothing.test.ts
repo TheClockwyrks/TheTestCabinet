@@ -12,7 +12,7 @@
 // formula gives an empty loadout.
 //
 // WHY THE WORLD IS POSED AS IT IS. The almanac is entered through
-// `setScreen("almanac")`, which specs/instrumentation.md gives "the idle run",
+// `setScreen("almanac")`, over the idle run a `reset` leaves standing,
 // and sixty frames are then run with no key pressed at all. Sixty is a second of
 // the build's loop: long enough that a build that consumed a tick per frame
 // would have consumed sixty, and a build that consumed one every few frames at

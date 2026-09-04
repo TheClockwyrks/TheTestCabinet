@@ -29,12 +29,13 @@ import { loadSprites } from "./assets";
 import { defineCues, syncLoops } from "./audio";
 import { createDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
-import { runFrame } from "./flow";
+import { resetGesture, runFrame } from "./flow";
 import {
   pressedActions,
   readHeld,
   readPointer,
   registerActions,
+  resetPointer,
 } from "./input";
 import { renderGame } from "./render/render";
 import { COLORS } from "./render/theme";
@@ -221,6 +222,8 @@ export interface WickState {
   readonly enemyContact: boolean;
   readonly weaponFire: boolean;
   readonly effectMotion: boolean;
+  readonly drops: boolean;
+  readonly progression: boolean;
 }
 
 // ---- The debug surface, as specs/instrumentation.md fixes it -------------
@@ -239,6 +242,8 @@ export interface WickSnapshot {
   enemyContact: boolean;
   weaponFire: boolean;
   effectMotion: boolean;
+  drops: boolean;
+  progression: boolean;
   run: {
     tick: number;
     time: number;
@@ -348,6 +353,8 @@ export interface WickDebugApi {
   setEnemyContact(state: DeepReadonly<WickState>, on: boolean): WickState;
   setWeaponFire(state: DeepReadonly<WickState>, on: boolean): WickState;
   setEffectMotion(state: DeepReadonly<WickState>, on: boolean): WickState;
+  setDrops(state: DeepReadonly<WickState>, on: boolean): WickState;
+  setProgression(state: DeepReadonly<WickState>, on: boolean): WickState;
   setTick(state: DeepReadonly<WickState>, tick: number): WickState;
   setSpawnTimer(state: DeepReadonly<WickState>, seconds: number): WickState;
   setPlayerPosition(
@@ -474,6 +481,10 @@ export const game: Game<WickState, WickDebugApi> = {
   ): Promise<[WickState, WickDebugApi]> {
     registerActions(api);
     registerDiagnostics(api);
+    // The pointing device's contact and any armed gesture belong to the device
+    // rather than to the state, so a fresh game starts them fresh here.
+    resetPointer();
+    resetGesture();
     await Promise.all([loadSprites(api), defineCues(api)]);
     return [initialState(), createDebugApi()];
   },

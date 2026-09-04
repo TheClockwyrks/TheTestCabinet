@@ -1,16 +1,17 @@
-// screens/menu-index-resets-on-entry — arriving on any screen sets `menuIndex`
-// to `0`.
+// screens/menu-index-resets-on-entry — arriving on any screen but `title` sets
+// `menuIndex` to `0`, and arriving on `title` selects the entry that led away.
 //
 // WHERE THE THRESHOLD COMES FROM. specs/ui.md ("Menu navigation"): "`menuIndex`
-// is `0` on entering every screen, and on a screen with no menu it stays `0`."
-// specs/controls.md ("What each screen reads") repeats it word for word. Each
-// screen's own section says the same of its arrival: "`menuIndex` is `0` on
-// arriving" on `title`, `almanac`, `paused` and the end screens, "`menuIndex` is
-// `0` on opening" on `levelup`, "`menuIndex = 0`" on the `howto` and `chest`
-// rows and on the two transitions back to `title`. specs/instrumentation.md
-// fixes it for the posed transitions too: `setScreen(name)` "Enters screen
-// `name` ... exactly as the real transition into it from the current screen
-// enters it, with `menuIndex` `0`."
+// is `0` on entering every screen but `title`, which selects the entry that led
+// away from it as the `title` section above states, and on a screen with no
+// menu it stays `0`." specs/controls.md ("What each screen reads") repeats it.
+// Each screen's own section says the same of its arrival: "`menuIndex` is `0`
+// on arriving" on `almanac`, `paused` and the end screens, "`menuIndex` is `0`
+// on opening" on `levelup`, "`menuIndex = 0`" on the `howto` and `chest` rows.
+// specs/ui.md ("`title`") gives the exception: "Arriving here selects the entry
+// the arriving transition led away from", `THE ALMANAC` after `back` on the
+// almanac, `HOW TO PLAY` after `back` on the how-to screen, and
+// `LIGHT THE LAMP` after `TITLE` on an end screen.
 //
 // WHY THE WORLD IS POSED AS IT IS. All nine screens are entered in one drive,
 // each by a real transition rather than a pose where a real one exists, and the
@@ -69,14 +70,19 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("arrives on each of the nine screens with menuIndex 0", async () => {
-  /** Move the title's highlight onto `item`, from the `0` the title is entered on. */
+it("arrives on each of the nine screens with the index the rule gives it", async () => {
+  /**
+   * Move the title's highlight onto `item` with real `down` presses, from
+   * wherever the arriving transition left it: the title "selects the entry that
+   * led away from it", so the starting index is not always `0`.
+   */
   const highlight = async (item: number): Promise<WickSnapshot> => {
     const title = await h.snapshot();
     assertEqual(title.screen, "title", "the screen the highlight is moved on");
-    assertEqual(title.menuIndex, 0, "the title's highlight before it is moved");
+    const steps =
+      (item - title.menuIndex + TITLE_ITEMS.length) % TITLE_ITEMS.length;
     let posed = title;
-    for (let i = 0; i < item; i += 1) posed = await pressDown(h);
+    for (let i = 0; i < steps; i += 1) posed = await pressDown(h);
     assertEqual(
       posed.menuIndex,
       item,
@@ -93,12 +99,22 @@ it("arrives on each of the nine screens with menuIndex 0", async () => {
     0,
     "on arriving at almanac",
   );
-  assertHighlight(await pressBack(h), "title", 0, "on returning to the title");
+  assertHighlight(
+    await pressBack(h),
+    "title",
+    ALMANAC_ITEM,
+    "on returning to the title from the almanac",
+  );
 
   // howto, from a title standing on its third item.
   await highlight(HOW_TO_PLAY);
   assertHighlight(await pressConfirm(h), "howto", 0, "on arriving at howto");
-  assertHighlight(await pressBack(h), "title", 0, "on returning to the title");
+  assertHighlight(
+    await pressBack(h),
+    "title",
+    HOW_TO_PLAY,
+    "on returning to the title from the how-to screen",
+  );
 
   // playing, from an overlay standing on its second offer.
   await night(h);

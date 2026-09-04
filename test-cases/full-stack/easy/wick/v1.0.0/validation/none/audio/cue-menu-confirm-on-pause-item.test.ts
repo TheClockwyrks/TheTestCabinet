@@ -23,8 +23,8 @@
 // WHY THE WORLD IS POSED AS IT IS. An isolated night: a fresh `playing` run with
 // every driver switch off, nothing alive, nothing dropped and no slot held, then
 // the settling frames this category spends before it watches anything, then
-// `setScreen("paused")`, which specs/instrumentation.md makes the played
-// transition ("`paused` | `playing` | Exactly as `pause` does"). The frame that
+// `setScreen("paused")`, which specs/instrumentation.md defines as setting
+// `screen` and nothing else. The frame that
 // confirms `RESUME` enters `playing` and so "runs that frame's ticks"
 // (specs/controls.md); over a world holding nothing with every faculty off that
 // tick raises no cue of its own. `music` is looping across both `paused` and

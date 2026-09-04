@@ -119,7 +119,7 @@ export type ScreenName = (typeof SCREENS)[number];
 export const RUN_SCREENS = ["playing", "paused"] as const;
 
 /**
- * The seven driver switches, in the order the table in "The driver switches"
+ * The nine driver switches, in the order the table in "The driver switches"
  * lists them, each "reported by the snapshot under the same name".
  */
 export const SWITCH_NAMES = [
@@ -130,6 +130,8 @@ export const SWITCH_NAMES = [
   "enemyContact",
   "weaponFire",
   "effectMotion",
+  "drops",
+  "progression",
 ] as const;
 
 export type SwitchName = (typeof SWITCH_NAMES)[number];
@@ -143,6 +145,8 @@ export const SWITCH_OPS: Readonly<Record<SwitchName, string>> = {
   enemyContact: "setEnemyContact",
   weaponFire: "setWeaponFire",
   effectMotion: "setEffectMotion",
+  drops: "setDrops",
+  progression: "setProgression",
 };
 
 /**
@@ -171,6 +175,8 @@ export const REQUIRED_OPS: readonly string[] = [
   "setEnemyContact",
   "setWeaponFire",
   "setEffectMotion",
+  "setDrops",
+  "setProgression",
   // The clock
   "setTick",
   "setSpawnTimer",
@@ -285,14 +291,27 @@ export const MENU_SCREENS: readonly ScreenName[] = [
 ];
 
 /**
- * The three screens with no vertical menu: "`howto`, `playing`, and `chest`
- * report an empty list" (specs/instrumentation.md — `menuRects`).
+ * The three screens with no vertical menu, on which `menuIndex` "stays `0`"
+ * (specs/ui.md — "Menu navigation").
  */
 export const MENULESS_SCREENS: readonly ScreenName[] = [
   "howto",
   "playing",
   "chest",
 ];
+
+/**
+ * The screens `menuRects` reports nothing on: "`playing` reports an empty
+ * list" (specs/instrumentation.md — `menuRects`).
+ */
+export const RECTLESS_SCREENS: readonly ScreenName[] = ["playing"];
+
+/**
+ * The two screens with no menu that answer one rectangle each: "`howto` and
+ * `chest` report exactly one rectangle, the area the screen's way out is taken
+ * in" (specs/instrumentation.md — `menuRects`).
+ */
+export const ONE_BOX_SCREENS: readonly ScreenName[] = ["howto", "chest"];
 
 /* -------------------------------------------------------------------------- */
 /* The lamplighter (specs/world.md — "The lamplighter", "Contact damage")      */

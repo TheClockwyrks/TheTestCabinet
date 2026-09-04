@@ -17,8 +17,8 @@
 // halfway down the previous tab's list fails. The highlight is posed OFF `0`
 // first, so that half of the reading can fail at all.
 //
-// THE DRIVE. `setScreen("almanac")` — "exactly as confirming `THE ALMANAC`
-// does: the idle run, `menuIndex` `0`, `almanacTab` `0`, `almanacScroll` `0`"
+// THE DRIVE. `setScreen("almanac")` — by setting `screen` with `menuIndex`,
+// `almanacTab`, and `almanacScroll` all `0` and the run left as it stands
 // (`specs/instrumentation.md`) — then three real `ArrowDown` presses onto the
 // fourth entry of the `TOOLS` tab, which is inside the first window of
 // `ALMANAC_ROWS` (`10`) rows and so leaves `almanacScroll` at `0`. Then a

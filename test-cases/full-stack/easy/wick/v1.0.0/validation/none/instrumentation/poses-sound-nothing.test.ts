@@ -18,9 +18,11 @@
 // same evaluation as the call: the same document leaves the build's own loop
 // running in real time while the clock is held, and a frame of that loop
 // reconciles the loops, so a read taken across two crossings would hear the
-// frame after the pose as well as the pose. The level-up overlay is reached by
-// `setScreen("levelup")` (itself a pose) so `choose` can be made, and the two
-// routes into play are compared on the loop they leave running.
+// frame after the pose as well as the pose. `choose` accepts an offer, and the
+// offers are drawn by the tick that opens the overlay rather than by the pose
+// that sets the screen, so that one is made on an isolated night whose overlay
+// was opened the real way; the two routes into play are compared on the loop
+// they leave running.
 //
 // AND WHY THE FRAME AFTER EACH POSE IS READ TOO. The bracket alone decides only
 // what sounded INSIDE the call. A build that queues the transition's cue rather
@@ -52,6 +54,8 @@ import {
   captureStill,
   createHarness,
   isLooping,
+  isolate,
+  openLevelUp,
   soundCount,
   soundsSince,
   startRunFromTitle,
@@ -122,11 +126,13 @@ it("plays no cue at a pose, and reconciles the loops on the next frame", async (
   );
   await h.debug.setPendingLevelUps(1);
   await requireSilent("setScreen('levelup')", "setScreen", "levelup");
-  assertEqual(
-    (await h.snapshot()).screen,
-    "levelup",
-    "the overlay choose is made on",
-  );
+
+  // `choose` accepts one of the overlay's offers, which the tick that opens it
+  // draws; the pose sets the screen alone, so the overlay is opened the real
+  // way on a night with nothing else in it.
+  await isolate(h);
+  const overlay = await openLevelUp(h);
+  assertEqual(overlay.screen, "levelup", "the overlay choose is made on");
   await requireSilent("choose(0)", "choose", 0);
 
   // The posed route: music is looping one frame after `setScreen("playing")`.

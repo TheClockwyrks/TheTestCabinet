@@ -12,9 +12,10 @@
 // gain is an exact integer sum, so `xp` is read exactly.
 //
 // WHY THE WORLD IS POSED AS IT IS. The night is isolated at level 1 with no
-// Soot, so a gem is worth exactly its table value; the gem is posed at the
-// lamplighter's center and collected by the real tick, which is the gain the
-// sentence defers the level-up to.
+// Soot and `progression` turned back on, which is the faculty that spends a
+// gain on a level, so a gem is worth exactly its table value; the gem is posed
+// at the lamplighter's center and collected by the real tick, which is the gain
+// the sentence defers the level-up to.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -58,7 +59,7 @@ afterEach(async () => {
 });
 
 it("poses experience without a level-up, which the next gain then derives", async () => {
-  await isolate(h, { level: 1 });
+  await isolate(h, { level: 1, on: ["progression"] });
   await h.debug.setXp(SMALL_XP);
   assertEqual((await h.snapshot()).run.xp, SMALL_XP, "xp after setXp(4.5)");
 

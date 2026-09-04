@@ -83,7 +83,7 @@ afterEach(() => {
 async function runAt(timer: number): Promise<Run> {
   const h = await createHarness();
   harnesses.push(h);
-  isolate(h, { keepTaper: true });
+  isolate(h, { taper: true });
   h.debug.setWeaponCooldown(TAPER_SLOT, timer);
 
   const blits = await h.frameBlits();

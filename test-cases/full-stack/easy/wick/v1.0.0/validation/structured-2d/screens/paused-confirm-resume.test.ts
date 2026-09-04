@@ -19,12 +19,12 @@
 // at.
 //
 // THE DRIVE. An isolated `playing` world holding one moth and one gem, the
-// lamplighter posed away from the origin and the clock posed off `0`; the
-// pause posed through `setScreen("paused")` — which `specs/instrumentation.md`
-// says enters it "exactly as `pause` does" — which arrives on `RESUME`, the
-// item at index `0`; then the `Enter` this point is about. What the keys that
-// resume without the menu do is `screens/paused-resume-via-key`'s and
-// `screens/paused-back-resumes`' point.
+// lamplighter posed away from the origin and the clock posed off `0`; the pause
+// posed through `setScreen("paused")` — which `specs/instrumentation.md` says
+// enters it by setting `screen` alone, with the run left as it stands — which
+// arrives on `RESUME`, the item at index `0`; then the `Enter` this point is
+// about. What the keys that resume without the menu do is
+// `screens/paused-resume-via-key`'s and `screens/paused-back-resumes`' point.
 //
 // THE TOLERANCE. None: the whole run is compared field for field.
 

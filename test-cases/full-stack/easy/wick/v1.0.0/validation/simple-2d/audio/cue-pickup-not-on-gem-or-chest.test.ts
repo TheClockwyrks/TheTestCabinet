@@ -21,8 +21,8 @@
 // and every driver switch off, so no bread or draft can be on the field to
 // sound the cue honestly and nothing else can raise a cue at all. Each sits on
 // the lamplighter's own center, a distance of `0`, so the collection lands on
-// the first tick. `isolate` poses level `ISOLATE_LEVEL` (50), whose `xpToNext`
-// of 495 one small gem cannot reach, so no overlay opens over the first
+// the first tick. `progression` is one of the switches `isolate` holds off, so
+// the gem's experience is spent on no level and no overlay opens over the first
 // reading.
 //
 // TOLERANCE. None. Both readings are counts.

@@ -61,9 +61,9 @@ import { assertNames, assertShows, textOn, type Shown } from "./stage";
 const ALMANAC: ScreenName = "almanac";
 
 /**
- * Open the almanac as `setScreen` opens it: "Enters the almanac exactly as
- * confirming `THE ALMANAC` does: the idle run, `menuIndex` `0`, `almanacTab`
- * `0`, `almanacScroll` `0`" (`specs/instrumentation.md`).
+ * Stand the game on the almanac through `setScreen`, which "Sets `screen` to
+ * `name`, one of the `Screen` values, with `menuIndex`, `almanacTab`, and
+ * `almanacScroll` all `0`" (`specs/instrumentation.md`).
  *
  * The three indices are read back as a PRECONDITION, so a build that entered the
  * screen somewhere other than its first tab and first entry fails the

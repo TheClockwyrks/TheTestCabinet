@@ -17,8 +17,9 @@
 // a confirmable item would leave `almanac` on the click.
 //
 // HOW THE SCENARIO IS DRIVEN. The almanac is entered through
-// `setScreen("almanac")`, which specs/instrumentation.md defines as "exactly as
-// confirming `THE ALMANAC` does". `menuRects()` reports where this build drew
+// `setScreen("almanac")`, which specs/instrumentation.md defines as setting
+// `screen` alone, "with `menuIndex`, `almanacTab`, and `almanacScroll`
+// all `0`". `menuRects()` reports where this build drew
 // the ten visible rows of the `TOOLS` tab, "the ten of `BASE_WEAPON_IDS`, then
 // the six of `EVOLUTION_IDS`" shown "`ALMANAC_ROWS` (`10`) entries at a time",
 // and the primary button is pressed at the middle of the third, with exactly one

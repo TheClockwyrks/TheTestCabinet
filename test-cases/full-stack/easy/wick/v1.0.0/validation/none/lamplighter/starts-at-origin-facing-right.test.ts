@@ -11,10 +11,10 @@
 // exact: `0` and `0`, the string `"right"`, and `hp` equal to `maxHp`, which is
 // `BASE_MAX_HP` (`100`) with no passive held.
 //
-// THE ROUTE. specs/instrumentation.md fixes `setScreen("playing")` from any
-// screen but `paused`, `chest`, and `levelup` as "Begins a fresh run exactly as
-// `LIGHT THE LAMP` and `TRY AGAIN` do", so `startRun` (a `reset`, then that
-// call) is the fresh run itself, reached without a menu. The run before it is
+// THE ROUTE. specs/instrumentation.md spells the fresh run out under
+// `setScreen`: "a fresh run is `reset`, this pose to `playing`, and
+// `setWeapon(0, \"taper\", 1)`", which is what `startRun` calls, reached without
+// a menu. The run before it is
 // disturbed on purpose, the lamplighter walked off the origin, turned left, and
 // hurt, so that the fresh run's figures are the fresh run's and not what the
 // harness's own reset happened to leave.

@@ -1241,6 +1241,13 @@ export const FRESH_RUN = {
 /* ------------------------------- Controls --------------------------------- */
 // specs/controls.md: the actions and the `KeyboardEvent.code` keys bound to each.
 
+/**
+ * specs/controls.md, Where input comes from: "`src/main.ts` builds the engine
+ * with `LAYOUT` (`dpad-4`), so the four movement actions are the layout's own
+ * vocabulary and the menu actions come with it".
+ */
+export const LAYOUT = "dpad-4";
+
 export const ACTIONS = [
   "up",
   "down",
@@ -1530,14 +1537,6 @@ export const BAR_SHARE_TOLERANCE = 0.2;
 export const BAR_EDGE_TOLERANCE = 0.02;
 
 /**
- * The level a scenario poses through `isolate` so no gain its kills produce
- * crosses a threshold and opens an overlay mid-scenario: at level 50,
- * xpToNext is 495 (specs/progression.md), beyond any experience a bounded
- * scenario collects. A check that reads `level` poses its own.
- */
-export const ISOLATE_LEVEL = 50;
-
-/**
  * A `KeyboardEvent.code` bound to no action (specs/controls.md binds eight
  * codes), used to give the engine the gesture that unlocks its audio without
  * driving the game.
@@ -1555,3 +1554,20 @@ export const UNBOUND_KEY = "F24";
  * tick, misses by 3 units or more.
  */
 export const DRAWN_POINT_TOLERANCE = 1;
+
+/* ---- What the specification leaves to the build -------------------------- */
+//
+// The one value this project reads off the build rather than restating from the
+// specs, re-exported here so the project has a single import site for it. It is
+// read to drive the build and to name the subject of a check, never compared
+// against a figure of the case's own.
+//
+// specs/overview.md fixes only that "`src/game.ts` also exports `BACKGROUND`, a
+// CSS color string: the stage background", that `src/main.ts` "hands it to the
+// engine as the color the canvas is cleared to each frame, so the letterbox
+// bars around the stage match the night", and specs/ui.md that "Wick fixes no
+// palette". Which color it is is therefore the build's own choice: the harness
+// stands the engine up with it the way the page does, and the letterbox check
+// asserts that the bars really carry it.
+
+export { BACKGROUND } from "../src/game";

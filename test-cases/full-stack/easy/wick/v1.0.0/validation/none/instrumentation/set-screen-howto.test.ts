@@ -1,22 +1,19 @@
 // Wick — instrumentation/set-screen-howto: `setScreen("howto")` from `title`
-// enters `howto` with `menuIndex` `0` and the idle run.
+// stands the game on `howto` with `menuIndex` `0`.
 //
 // WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — `setScreen(name)`):
-// the `howto` row, "any | Enters the how-to screen exactly as confirming
-// `HOW TO PLAY` does: the idle run"; "with `menuIndex` `0`". specs/ui.md: the
-// title's `HOW TO PLAY` "Sets `screen = howto` and `menuIndex = 0`".
+// "Sets `screen` to `name`, one of the `Screen` values, with `menuIndex`,
+// `almanacTab`, and `almanacScroll` all `0`", and "Applies on every screen".
 //
 // WHY THE WORLD IS POSED AS IT IS. The title is where the harness's reset
-// leaves the game; `menuIndex` is moved off `0` first so the `0` after the call
-// is the call's.
+// leaves the game; `menuIndex` is moved off `0` first, so the `0` after the
+// call is the call's rather than a figure that was already `0`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual } from "../assert";
+import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  documentedRun,
-  idleRun,
   poseScreen,
   pressDown,
   type Harness,
@@ -32,7 +29,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("enters the how-to screen with the idle run", async () => {
+it("stands the game on the how-to screen", async () => {
   const moved = await pressDown(h);
   assertEqual(moved.screen, "title", "the screen the call is made from");
   assertEqual(moved.menuIndex, 1, "menuIndex moved off 0 before the call");
@@ -42,5 +39,4 @@ it("enters the how-to screen with the idle run", async () => {
 
   assertEqual(howto.screen, "howto", "the screen after setScreen('howto')");
   assertEqual(howto.menuIndex, 0, "menuIndex on entering howto");
-  assertDeepEqual(documentedRun(howto.run), idleRun(), "the run on howto");
 });

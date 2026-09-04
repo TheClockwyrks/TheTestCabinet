@@ -11,11 +11,11 @@
 //
 // WHY THE WORLD IS POSED AS IT IS. An isolated run holding Halo alone, with
 // the hum let up first, then `paused` posed — `specs/instrumentation.md`
-// makes that pose the real pause, "Exactly as `pause` does" — and the hum
-// read as `false` there, which is the state this point resumes FROM. Then
-// `playing` posed from `paused`, which the same table makes the real resume:
-// "`playing` from `paused`: Resumes exactly as `pause` on `paused` does; the
-// run is untouched." Posing both keeps the `pause` binding out of an audio
+// makes that pose set `screen` alone, leaving the run as it stands — and the
+// hum read as `false` there, which is the state this point resumes FROM. Then
+// `playing` posed from `paused`, which sets `screen` back the same way, so
+// the run under the pause is the run the resumed frames read. Posing both
+// keeps the `pause` binding out of an audio
 // point, so a build with a broken key fails the control points and is decided
 // here on its audio alone.
 //

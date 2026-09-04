@@ -15,9 +15,10 @@
 // attracted", and after it moves "a gem whose center is at most
 // `COLLECT_RADIUS` from the lamplighter's center is collected on that tick"
 // (`specs/world.md`, Attraction and flight), so one tick collects it. The
-// isolated run sits at `ISOLATE_LEVEL`, whose `xpToNext` is far above `3.6`,
-// so the gain crosses no threshold and `xp` is read as it stands. Every driver
-// switch is off, so no kill drops another gem.
+// isolated run holds the `progression` switch off, so the gain is spent on no
+// level and `xp` is read as it stands, however high it climbs
+// (`specs/instrumentation.md`, the switch table). Every driver switch is off,
+// so no kill drops another gem.
 //
 // THE TOLERANCE. `REAL_EPS` on `xp`, one gem value times one multiplier; the
 // unscaled figure, `3`, is six tenths away.

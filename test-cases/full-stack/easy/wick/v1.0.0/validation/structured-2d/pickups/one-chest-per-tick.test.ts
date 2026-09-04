@@ -18,9 +18,9 @@
 // the only pickups in the world and nothing else opens an overlay. Both are
 // posed on the lamplighter's center, at distance `0`, so both meet the
 // collection condition on the same tick, which is the only arrangement in which
-// the one-per-tick rule can be read at all. `isolate` poses `ISOLATE_LEVEL`
-// (`50`) and no gem is on the field, so no level-up competes for the end of
-// either tick.
+// the one-per-tick rule can be read at all. `isolate` holds the `progression`
+// switch off and leaves no gem on the field, so no level-up competes for the
+// end of either tick.
 //
 // THE TOLERANCE. None: pickup ids and counts and a screen name are exact.
 

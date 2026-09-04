@@ -4,6 +4,7 @@ import {
   ALMANAC_TABS,
   ENEMY_IDS,
   TICK_DT,
+  TITLE_ITEMS,
   WHEEL_ROW,
   type ActionName,
   type CueName,
@@ -22,6 +23,7 @@ import {
   runFrame,
   startRun,
   toAlmanac,
+  toHowto,
   type PointerInput,
 } from "./flow";
 import type { WickRect } from "./game";
@@ -39,15 +41,35 @@ interface World {
   update(dt: number): void;
 }
 
-/** A pointer resting on the middle of `rect`, doing what `over` says. */
-function at(rect: WickRect, over: Partial<PointerInput> = {}): PointerInput {
-  return {
-    x: rect.x + rect.width / 2,
-    y: rect.y + rect.height / 2,
-    clicked: false,
-    wheel: 0,
-    ...over,
-  };
+/** The middle of a rectangle, which is where a pointer test aims. */
+function center(rect: WickRect): { x: number; y: number } {
+  return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+}
+
+/** A device resting, out of contact, on the middle of `rect`. */
+function at(rect: WickRect): PointerInput {
+  return { at: center(rect), presses: [], releases: [], wheel: 0 };
+}
+
+/** A whole click on the middle of `rect`: the press arms it, the lift takes it. */
+function click(rect: WickRect): PointerInput {
+  const point = center(rect);
+  return { at: null, presses: [point], releases: [point], wheel: 0 };
+}
+
+/** A press on the middle of `rect`, with the button left down. */
+function press(rect: WickRect): PointerInput {
+  return { at: null, presses: [center(rect)], releases: [], wheel: 0 };
+}
+
+/** A lift at a stage point, with no press before it on the same frame. */
+function lift(point: { x: number; y: number }): PointerInput {
+  return { at: null, presses: [], releases: [point], wheel: 0 };
+}
+
+/** A frame carrying wheel travel and nothing else. */
+function turn(travel: number): PointerInput {
+  return { at: null, presses: [], releases: [], wheel: travel };
 }
 
 /** One frame of nothing but the press edges `pressed`, in order. */
@@ -285,7 +307,8 @@ describe("the almanac", () => {
     expect(w.state.accumulator).toBe(0);
     w.press("back");
     expect(w.state.screen).toBe("title");
-    expect(w.state.menuIndex).toBe(0);
+    // Returning selects the entry that led away (specs/ui.md, `almanac`).
+    expect(w.state.menuIndex).toBe(TITLE_ITEMS.indexOf("THE ALMANAC"));
   });
 });
 
@@ -302,7 +325,12 @@ describe("the pointer", () => {
 
   it("changes nothing while it rests in no rectangle", () => {
     const w = world();
-    w.point({ x: 4, y: 4, clicked: true, wheel: 0 });
+    w.point({
+      at: null,
+      presses: [{ x: 4, y: 4 }],
+      releases: [{ x: 4, y: 4 }],
+      wheel: 0,
+    });
     expect(w.state.menuIndex).toBe(0);
     expect(w.state.screen).toBe("title");
     expect(w.drain()).toEqual([]);
@@ -310,12 +338,12 @@ describe("the pointer", () => {
 
   it("takes the item it clicks, moving the highlight there first", () => {
     const w = world();
-    w.point(at(menuRects(w.state)[2], { clicked: true }));
+    w.point(click(menuRects(w.state)[2]));
     expect(w.state.screen).toBe("howto");
     expect(w.state.menuIndex).toBe(0);
     expect(w.drain()).toEqual(["menu-move", "menu-confirm"]);
     const fresh = world();
-    fresh.point(at(menuRects(fresh.state)[0], { clicked: true }));
+    fresh.point(click(menuRects(fresh.state)[0]));
     expect(fresh.state.screen).toBe("playing");
     expect(fresh.state.run.weapons).toHaveLength(1);
   });
@@ -326,7 +354,7 @@ describe("the pointer", () => {
     w.state.run.pendingLevelUps = 1;
     openLevelUpOverlay(w.state, w.cues);
     const chosen = w.state.run.offers[1];
-    w.point(at(menuRects(w.state)[1], { clicked: true }));
+    w.point(click(menuRects(w.state)[1]));
     expect(w.state.menuIndex).toBe(0);
     expect(w.state.screen).toBe("playing");
     expect(
@@ -340,10 +368,10 @@ describe("the pointer", () => {
     const w = world();
     startRun(w.state);
     pause(w.state);
-    w.point(at(menuRects(w.state)[0], { clicked: true }));
+    w.point(click(menuRects(w.state)[0]));
     expect(w.state.screen).toBe("playing");
     pause(w.state);
-    w.point(at(menuRects(w.state)[1], { clicked: true }));
+    w.point(click(menuRects(w.state)[1]));
     expect(w.state.screen).toBe("title");
     expect(w.state.run).toEqual(idleRun());
   });
@@ -354,14 +382,14 @@ describe("the pointer", () => {
     endRun(w.state, "fallen", w.cues);
     w.point(at(menuRects(w.state)[1]));
     expect(w.state.menuIndex).toBe(1);
-    w.point(at(menuRects(w.state)[0], { clicked: true }));
+    w.point(click(menuRects(w.state)[0]));
     expect(w.state.screen).toBe("playing");
   });
 
   it("highlights an almanac entry without leaving the screen", () => {
     const w = world();
     toAlmanac(w.state);
-    w.point(at(menuRects(w.state)[2], { clicked: true }));
+    w.point(click(menuRects(w.state)[2]));
     expect(w.state.menuIndex).toBe(2);
     expect(w.state.screen).toBe("almanac");
   });
@@ -379,30 +407,69 @@ describe("the pointer", () => {
     toAlmanac(w.state);
     w.state.menuIndex = 4;
     w.state.almanacScroll = 2;
-    w.point(at(tabRects(w.state)[2], { clicked: true }));
+    w.point(click(tabRects(w.state)[2]));
     expect(w.state.almanacTab).toBe(2);
     expect(w.state.menuIndex).toBe(0);
     expect(w.state.almanacScroll).toBe(0);
     expect(w.drain()).toEqual(["menu-move"]);
   });
 
+  it("takes nothing when the lift falls outside the box the press armed", () => {
+    const w = world();
+    const rects = menuRects(w.state);
+    w.point(press(rects[2]));
+    expect(w.state.menuIndex).toBe(2);
+    expect(w.state.screen).toBe("title");
+    w.point(lift(center(rects[0])));
+    expect(w.state.screen).toBe("title");
+    expect(w.state.menuIndex).toBe(2);
+  });
+
+  it("takes the item when the lift falls back inside the armed box", () => {
+    const w = world();
+    const rects = menuRects(w.state);
+    w.point(press(rects[2]));
+    w.point(lift(center(rects[2])));
+    expect(w.state.screen).toBe("howto");
+  });
+
+  it("leaves the how-to screen on a click in its one box", () => {
+    const w = world();
+    toHowto(w.state);
+    const rects = menuRects(w.state);
+    expect(rects).toHaveLength(1);
+    w.point(click(rects[0]));
+    expect(w.state.screen).toBe("title");
+    expect(w.state.menuIndex).toBe(2);
+  });
+
+  it("closes the chest overlay on a click in its one box", () => {
+    const w = world();
+    startRun(w.state);
+    w.state.screen = "chest";
+    const rects = menuRects(w.state);
+    expect(rects).toHaveLength(1);
+    w.point(click(rects[0]));
+    expect(w.state.screen).toBe("playing");
+  });
+
   it("scrolls the almanac's list by whole rows, held within the list", () => {
     const w = world();
     toAlmanac(w.state);
-    w.point({ x: -1, y: -1, clicked: false, wheel: WHEEL_ROW });
+    w.point(turn(WHEEL_ROW));
     expect(w.state.almanacScroll).toBe(1);
     expect(w.state.menuIndex).toBe(0);
-    w.point({ x: -1, y: -1, clicked: false, wheel: WHEEL_ROW - 1 });
+    w.point(turn(WHEEL_ROW - 1));
     expect(w.state.almanacScroll).toBe(1);
-    w.point({ x: -1, y: -1, clicked: false, wheel: WHEEL_ROW * 40 });
+    w.point(turn(WHEEL_ROW * 40));
     expect(w.state.almanacScroll).toBe(entriesOf(0).length - ALMANAC_ROWS);
-    w.point({ x: -1, y: -1, clicked: false, wheel: -WHEEL_ROW * 40 });
+    w.point(turn(-WHEEL_ROW * 40));
     expect(w.state.almanacScroll).toBe(0);
   });
 
   it("leaves every other screen's wheel alone", () => {
     const w = world();
-    w.point({ x: -1, y: -1, clicked: false, wheel: WHEEL_ROW * 4 });
+    w.point(turn(WHEEL_ROW * 4));
     expect(w.state.almanacScroll).toBe(0);
     expect(w.state.menuIndex).toBe(0);
   });

@@ -24,18 +24,7 @@ import {
   type PickupKind,
   type WeaponId,
 } from "./constants";
-import {
-  closeChest,
-  endRun,
-  openLevelUpOverlay,
-  pause,
-  resume,
-  startRun,
-  toAlmanac,
-  toHowto,
-  toTitle,
-  choose as chooseOffer,
-} from "./flow";
+import { choose as chooseOffer } from "./flow";
 import type { Screen, WickDebugApi, WickSnapshot, WickState } from "./game";
 import { menuRects, tabRects } from "./menus";
 import { seedState } from "./rng";
@@ -174,6 +163,8 @@ export function snapshot(state: View): WickSnapshot {
     enemyContact: state.enemyContact,
     weaponFire: state.weaponFire,
     effectMotion: state.effectMotion,
+    drops: state.drops,
+    progression: state.progression,
     run: {
       tick: r.tick,
       time: runTime(r),
@@ -270,7 +261,16 @@ export function snapshot(state: View): WickSnapshot {
 
 // ---- The screens -----------------------------------------------------------
 
-/** Enter `name` exactly as the real transition into it would. */
+/**
+ * Set `screen`, and nothing else (specs/instrumentation.md, `setScreen`).
+ *
+ * The pose sets the screen and the three menu cursors alone, so a run is never
+ * begun, discarded, ended, or grown by it. The sequences that build what a
+ * screen shows are the caller's: a fresh run is `reset`, this pose, and
+ * `setWeapon(0, "taper", 1)`; the level-up overlay is `setPendingLevelUps` and
+ * a tick; the chest overlay is a chest collected; the endings are `setHp` at
+ * `0` or `setTick` at `DAWN_TICK - 1` and a tick.
+ */
 function setScreen(state: View, name: unknown): WickState {
   const target = oneOf(name, "name", [
     "title",
@@ -284,35 +284,13 @@ function setScreen(state: View, name: unknown): WickState {
     "chest",
   ] as const);
   const draft = cloneState(state);
-  const discarded = new Set<CueName>();
-  switch (target) {
-    case "title":
-      toTitle(draft);
-      break;
-    case "howto":
-      toHowto(draft);
-      break;
-    case "almanac":
-      toAlmanac(draft);
-      break;
-    case "playing":
-      if (draft.screen === "paused") resume(draft);
-      else if (draft.screen === "chest") closeChest(draft);
-      else if (draft.screen !== "levelup") startRun(draft);
-      break;
-    case "levelup":
-      openLevelUpOverlay(draft, discarded);
-      break;
-    case "paused":
-      pause(draft);
-      break;
-    case "fallen":
-    case "dawn":
-      if (onRunScreen(draft)) endRun(draft, target, discarded);
-      break;
-    case "chest":
-      break;
-  }
+  // "A call that leaves `playing` discards the accumulator, as every frame and
+  // pose that leaves `playing` does."
+  if (draft.screen === "playing" && target !== "playing") draft.accumulator = 0;
+  draft.screen = target;
+  draft.menuIndex = 0;
+  draft.almanacTab = 0;
+  draft.almanacScroll = 0;
   return draft;
 }
 
@@ -351,6 +329,8 @@ export function createDebugApi(): WickDebugApi {
     setEnemyContact: (state, on) => setSwitch(state, "enemyContact", on),
     setWeaponFire: (state, on) => setSwitch(state, "weaponFire", on),
     setEffectMotion: (state, on) => setSwitch(state, "effectMotion", on),
+    setDrops: (state, on) => setSwitch(state, "drops", on),
+    setProgression: (state, on) => setSwitch(state, "progression", on),
 
     setTick(state, tick) {
       const value = whole(tick, "tick", 0, DAWN_TICK - 1);

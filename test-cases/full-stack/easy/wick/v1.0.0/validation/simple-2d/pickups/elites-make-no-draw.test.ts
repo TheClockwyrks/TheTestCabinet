@@ -35,7 +35,13 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertWithin } from "../assert";
 import { FIGURE_TOLERANCE } from "../constants";
-import { captureStill, createHarness, isolate, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  enable,
+  isolate,
+  type Harness,
+} from "../harness";
 import { armKill } from "./night";
 
 /** The elite killed: specs/enemies.md ranks the mothwing `elite`. */
@@ -62,6 +68,8 @@ afterEach(() => {
 
 it("leaves each mothwing's chest alone and rngState untouched across 20 kills", async () => {
   isolate(h);
+  // The drop the elite leaves is the requirement; every other faculty stays held.
+  enable(h, "drops");
 
   for (let killed = 0; killed < KILLS; killed += 1) {
     const at = armKill(h, TYPE, FIRST + killed * SPACING, 0);

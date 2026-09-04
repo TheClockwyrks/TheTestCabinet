@@ -10,9 +10,10 @@
 // opens the level-up overlay". So the tick that collects the gem crossing the
 // threshold is itself the tick that ends on `levelup`, with `menuIndex` `0`.
 //
-// WHY THE WORLD IS POSED AS IT IS. An isolated night with every faculty held,
-// nothing alive, and no slot held, so nothing but the gem happens on the tick
-// that is read. Level `1` with `xp` one short of `XP_BASE` and a small gem at
+// WHY THE WORLD IS POSED AS IT IS. An isolated night with `progression` alone
+// turned back on, which is the faculty that spends a gain on a level, and every
+// other faculty held, nothing alive, and no slot held, so nothing but the gem
+// happens on the tick that is read. Level `1` with `xp` one short of `XP_BASE` and a small gem at
 // the lamplighter's center is the shortest real gain that crosses a threshold,
 // and it is collected in phase 9 of the very tick whose end is read, so a build
 // that defers the overlay to the following tick reads `playing`. No chest is on
@@ -49,7 +50,7 @@ afterEach(async () => {
 });
 
 it("ends the gaining tick on levelup with menuIndex 0", async () => {
-  await isolate(h);
+  await isolate(h, { on: ["progression"] });
   await h.debug.setLevel(POSED_LEVEL);
   await h.debug.setXp(POSED_XP);
 

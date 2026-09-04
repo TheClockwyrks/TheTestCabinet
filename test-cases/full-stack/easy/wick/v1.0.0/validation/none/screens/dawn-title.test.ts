@@ -10,9 +10,9 @@
 // right with `BASE_MAX_HP` (`100`) health, no weapons, no passives, nothing
 // alive, nothing dropped, no offers, no level-ups earned, no chest result, the
 // spawn timer at `0`, no events fired, and the next id `0`", which `idleRun()`
-// restates; specs/instrumentation.md says the same of the transition:
-// `setScreen("title")` "Discards the run exactly as `TITLE` on an end screen or
-// `back` on `paused` does: the idle run."
+// restates; specs/ui.md ("`fallen` and `dawn`") states the transition itself:
+// "`TITLE` returns to `title` with `LIGHT THE LAMP` selected. `back` does what
+// `TITLE` does."
 //
 // WHY THE WORLD IS POSED AS IT IS. An isolated night given a level, experience,
 // kills, a loadout, a queued level-up, an enemy, a gem and a pickup, and then

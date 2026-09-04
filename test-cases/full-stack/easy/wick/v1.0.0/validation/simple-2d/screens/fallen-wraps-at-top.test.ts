@@ -27,6 +27,7 @@ import { END_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,
+  endFallen,
   isolate,
   tap,
   type Harness,
@@ -44,7 +45,7 @@ afterEach(() => {
 
 it("wraps the fallen highlight from the first item to the last", async () => {
   isolate(h);
-  h.debug.setScreen("fallen");
+  await endFallen(h);
   const before = h.snapshot();
   assertEqual(before.screen, "fallen", "the screen ArrowUp is pressed on");
   assertEqual(before.menuIndex, 0, "the highlight before ArrowUp");

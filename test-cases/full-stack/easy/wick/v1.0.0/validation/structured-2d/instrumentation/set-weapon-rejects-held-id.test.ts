@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 it("throws for an id held in another slot and changes nothing", async () => {
-  isolate(h, { keepTaper: true });
+  isolate(h, { taper: true });
   holdWeapon(h, "ember");
   const before = h.snapshot();
 

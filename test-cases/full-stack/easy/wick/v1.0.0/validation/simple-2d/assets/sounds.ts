@@ -90,14 +90,20 @@ export function committedAudio(path: string): string {
 export function readSound(path: string): SoundRead {
   const file = committedAudio(path);
   const found = producedFile(path);
-  if (found === null) return { file, sound: null, reason: `no file at ${file}` };
+  if (found === null)
+    return { file, sound: null, reason: `no file at ${file}` };
   let bytes: Buffer;
   try {
     bytes = readFileSync(found);
   } catch (error) {
-    return { file, sound: null, reason: `${file} could not be read: ${why(error)}` };
+    return {
+      file,
+      sound: null,
+      reason: `${file} could not be read: ${why(error)}`,
+    };
   }
-  if (bytes.length === 0) return { file, sound: null, reason: `${file} is empty` };
+  if (bytes.length === 0)
+    return { file, sound: null, reason: `${file} is empty` };
   let decoded: ReturnType<typeof decodeWav>;
   try {
     decoded = decodeWav(bytes);

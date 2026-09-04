@@ -16,9 +16,9 @@
 //
 // WHY THE OVERLAY IS CLOSED FIRST. A collected chest opens the `chest` overlay
 // (`specs/progression.md`), and the HUD this point is about is the `playing`
-// screen's. `setScreen("playing")` from `chest` "Closes the overlay exactly as
-// `confirm` does" (`specs/instrumentation.md`), which is the way a player leaves
-// it.
+// screen's. `setScreen("playing")` from `chest` sets `screen` alone, leaving
+// `chestResult` standing (`specs/instrumentation.md`), which is the way a
+// player leaves it.
 //
 // HOW THE SLOT IS READ. `specs/assets.md` produces one icon file per weapon, so
 // the two icons are told apart by the PRODUCED FILE each blit's bytes came from,

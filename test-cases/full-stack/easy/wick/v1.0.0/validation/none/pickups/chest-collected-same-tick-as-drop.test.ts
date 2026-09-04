@@ -14,9 +14,11 @@
 // specs/progression.md ("The chest overlay") ends that tick with "`chestResult`
 // records it, and `screen` becomes `chest` with `menuIndex` `0`".
 //
-// WHY THE WORLD IS POSED AS IT IS. An isolated night: every driver switch off,
-// nothing alive, nothing dropped, and no slot held, so the only pickup in the
-// world is the one the kill left and nothing else opens an overlay. The kill is
+// WHY THE WORLD IS POSED AS IT IS. An isolated night with `drops` alone turned
+// back on, since the chest the death leaves is what the rule is about: every
+// other driver switch off, nothing alive, nothing dropped, and no slot held, so
+// the only pickup in the world is the one the kill left and nothing else opens
+// an overlay. The kill is
 // the real one: the mothwing's health is posed down with `setEnemyHp`, which
 // "Sets enemy `id`'s `hp` to `hp`, a real number above `0` and at most its
 // `maxHp`" (specs/instrumentation.md), and a level-1 Ember bolt posed on its
@@ -53,7 +55,7 @@ afterEach(async () => {
 });
 
 it("leaves no chest on the field and ends the drop's tick on the chest overlay", async () => {
-  const opened = await isolate(h);
+  const opened = await isolate(h, { on: ["drops"] });
   const at = opened.run.player;
   const elite = await placeEnemy(h, "mothwing", at.x, at.y);
   await h.debug.setEnemyHp(elite.id, POSED_HP);

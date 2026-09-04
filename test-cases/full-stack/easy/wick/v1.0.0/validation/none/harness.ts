@@ -48,6 +48,12 @@ import type { Page } from "playwright";
 import {
   createCaseHarness,
   imageDraws,
+  mouseGlide,
+  mousePress,
+  mouseRelease,
+  touchGlide,
+  touchPress,
+  touchRelease,
   type DrawCall,
   type Harness as BaseHarness,
   type HarnessOptions,
@@ -294,6 +300,8 @@ export interface WickSnapshot {
   enemyContact: boolean;
   weaponFire: boolean;
   effectMotion: boolean;
+  drops: boolean;
+  progression: boolean;
   run: RunView;
   muted: boolean;
   /** Frame time waiting for the next tick, in seconds. */
@@ -341,7 +349,7 @@ export interface WickDebugApi {
   reset(options?: { seed?: number }): Promise<void>;
   /** A pure read of the running game. */
   snapshot(): Promise<WickSnapshot>;
-  /** Enter a screen exactly as the real transition into it does. */
+  /** Set `screen`, with every menu index at `0`; nothing else changes. */
   setScreen(name: ScreenName): Promise<void>;
   /**
    * The current screen's vertical menu, in menu order; empty on a screen with
@@ -364,6 +372,10 @@ export interface WickDebugApi {
   setEnemyContact(on: boolean): Promise<void>;
   setWeaponFire(on: boolean): Promise<void>;
   setEffectMotion(on: boolean): Promise<void>;
+  /** Hold the drop a death leaves: a gem, a bread or draft, a chest. */
+  setDrops(on: boolean): Promise<void>;
+  /** Hold the level a gain earns; `xp` still rises while it is off. */
+  setProgression(on: boolean): Promise<void>;
   /** Set `tick`, `0` to `MAX_POSED_TICK`; nothing else changes. */
   setTick(tick: number): Promise<void>;
   setSpawnTimer(seconds: number): Promise<void>;
@@ -478,6 +490,11 @@ const kit = createCaseHarness<WickSnapshot, WickDebugApi>({
   // `UNBOUND_KEY` is bound to nothing (specs/controls.md), so arming changes no
   // game state.
   arm: { kind: "key", code: UNBOUND_KEY },
+  // `specs/controls.md` makes touch one of the three ways every menu is driven,
+  // so the context reports a touchscreen: a contact arrives as
+  // `pointerType: "touch"` and `navigator.maxTouchPoints` is non-zero, which is
+  // the device a build that answers a finger has to believe it is on.
+  hasTouch: true,
   // The seed the opening `reset` fixes, so a scenario driven from a fresh
   // harness is reproducible from that line on. `specs/instrumentation.md`
   // defaults `options.seed` to `DEFAULT_SEED` itself, and the harness passes it
@@ -984,7 +1001,7 @@ export function ticksHpFell(
   return fell;
 }
 
-/** The seven switches, as the snapshot reports them. */
+/** The nine switches, as the snapshot reports them. */
 export function switchesOf(
   snapshot: WickSnapshot,
 ): Record<SwitchName, boolean> {
@@ -1392,29 +1409,23 @@ export function drawNearest(
 // concern is removed before its scenario is staged, rather than parked somewhere
 // harmless, and every faculty the requirement does not exercise is held:
 // containment leans on the game's own rules holding, and a broken build is
-// broken in exactly those rules. {@link isolate} is the shape of that — it opens
-// a fresh run, empties the world, drops the starting weapon, turns every driver
-// switch off, and lifts the level out of reach of any gain a scenario's kills
-// produce. A check then turns on exactly the faculties it is about.
-
-/**
- * The level {@link isolate} poses the run at.
- *
- * `xpToNext(50)` is `495`, so no gem a scenario's kills drop and collect
- * crosses a threshold and opens an overlay in the middle of a check that is not
- * about level-ups. A check that reads `level` poses its own with `setLevel`
- * after isolating. This is the harness's own figure, not the specification's.
- */
-export const ISOLATE_LEVEL = 50;
+// broken in exactly those rules. {@link isolate} is the shape of that — it
+// resets to the idle run, stands the game on `playing`, empties the world, and
+// turns every one of the nine driver switches off, `drops` and `progression`
+// among them, so no kill a scenario makes litters the field and no experience a
+// scenario gains spends a level under it. A check then turns on exactly the
+// faculties it is about, and holds NOTHING in a state chosen to keep it quiet:
+// the level an isolated night stands at is the idle run's `1`, not a figure
+// picked to outrun the build's own `xpToNext`.
 
 /** What {@link isolate} arranges. Every field is optional; each defaults below. */
 export interface IsolateOptions {
   /** The seed the reset is given. Defaults to `DEFAULT_SEED`. */
   seed?: number;
-  /** The level to pose. Defaults to {@link ISOLATE_LEVEL}. */
+  /** The level to pose. Left at the idle run's `1` by default. */
   level?: number;
-  /** Keep the Taper a fresh run starts with, instead of removing it. Off by default. */
-  keepTaper?: boolean;
+  /** Put Taper at level `1` in the first slot, as a fresh run holds it. Off by default. */
+  taper?: boolean;
   /**
    * The faculties to turn back on once every switch is off: exactly the ones
    * the check is about. Defaults to none.
@@ -1423,14 +1434,15 @@ export interface IsolateOptions {
 }
 
 /**
- * Open a fresh run and pose an isolated night on it.
+ * Pose an isolated night: the idle run, standing on `playing`, with nothing
+ * alive, nothing dropped, no slot held, and every driver switch off.
  *
  * The order is the one the operations' own definitions force: the reset first,
- * so nothing a previous section left is inherited and every switch comes back
- * on as `reset` restores them; `setScreen("playing")` next, which "begins a
- * fresh run exactly as `LIGHT THE LAMP` ... do[es]" with Taper alone in the
- * first slot; then, over the running session, every switch off, every entity
- * kind cleared, every held slot emptied, and the level lifted. Nothing here
+ * so nothing a previous section left is inherited, the idle run stands, and
+ * every switch comes back on as `reset` restores them; `setScreen("playing")`
+ * next, which "sets `screen` to `name` ... Nothing else changes"; then every
+ * switch off and every entity kind cleared, which a conformant `reset` has
+ * already left empty and which this states rather than assumes. Nothing here
  * decides an outcome: every hit, kill, drop, level-up, and ending a check reads
  * comes from the frames it steps afterwards.
  *
@@ -1449,24 +1461,8 @@ export async function isolate(
   await h.debug.clearZones();
   await h.debug.clearGems();
   await h.debug.clearPickups();
-  const opened = await h.snapshot();
-  if (options.keepTaper !== true) {
-    for (
-      let slot = (opened.run.weapons ?? []).length - 1;
-      slot >= 0;
-      slot -= 1
-    ) {
-      await h.debug.removeWeapon(slot);
-    }
-  }
-  for (
-    let slot = (opened.run.passives ?? []).length - 1;
-    slot >= 0;
-    slot -= 1
-  ) {
-    await h.debug.removePassive(slot);
-  }
-  await h.debug.setLevel(options.level ?? ISOLATE_LEVEL);
+  if (options.taper === true) await h.debug.setWeapon(0, "taper", 1);
+  if (options.level !== undefined) await h.debug.setLevel(options.level);
   if (options.on !== undefined) await enable(h, ...options.on);
   return h.snapshot();
 }
@@ -1492,6 +1488,10 @@ export async function setSwitch(
       return h.debug.setWeaponFire(on);
     case "effectMotion":
       return h.debug.setEffectMotion(on);
+    case "drops":
+      return h.debug.setDrops(on);
+    case "progression":
+      return h.debug.setProgression(on);
   }
 }
 
@@ -1525,6 +1525,11 @@ export async function releaseAll(h: Harness): Promise<void> {
  * Begin a fresh run through the surface, from a reset: the direct route into
  * play for every check that is not about the menus, with every switch on and
  * Taper alone in the first slot, exactly as a player's run starts.
+ *
+ * The three calls are the sequence `specs/instrumentation.md` names under
+ * `setScreen`: "a fresh run is `reset`, this pose to `playing`, and
+ * `setWeapon(0, \"taper\", 1)`". The surface poses one thing per call, so the
+ * arrangement lives here rather than behind one operation.
  */
 export async function startRun(
   h: Harness,
@@ -1532,6 +1537,7 @@ export async function startRun(
 ): Promise<WickSnapshot> {
   await h.debug.reset({ seed });
   await h.debug.setScreen("playing");
+  await h.debug.setWeapon(0, "taper", 1);
   return h.snapshot();
 }
 
@@ -1551,7 +1557,14 @@ export async function startRunFromTitle(
   return pressConfirm(h);
 }
 
-/** Enter `screen` exactly as the real transition does, and read what it left. */
+/**
+ * Set `screen` and read what the pose left.
+ *
+ * The pose sets the screen alone, so what the screen shows is whatever the
+ * caller arranged first: this is the thin name over the operation, and the
+ * sequences that reach a screen through the game's own systems are
+ * {@link startRun}, {@link openLevelUp}, {@link openChest}, and the endings.
+ */
 export async function poseScreen(
   h: Harness,
   screen: ScreenName,
@@ -2060,15 +2073,87 @@ export async function hoverAt(h: Harness, at: XY): Promise<WickSnapshot> {
 }
 
 /**
- * Press the primary button at a stage point, run the one frame that reads the
- * press, release, and answer what that frame left.
+ * Move the real mouse onto a stage point, press it, lift it, and run the ONE
+ * frame that reads all three, and answer what that frame left.
  *
- * The pointer is moved to the point before the press, as a hand does, so the
- * frame carries the hover and the click together. A check that needs the click
- * alone poses the pointer elsewhere first and drives `mousePress`.
+ * `specs/controls.md` makes a press arm an item and its release inside the same
+ * rectangle take it, and the rules run "on every frame, after that frame's
+ * press edges": a whole click delivered between two frames therefore lands its
+ * hover, its press and its release on one frame, which is what a real click
+ * between two frames does. A check that needs the parts of the gesture APART —
+ * a press held across a frame, a drag, a lift somewhere else — drives
+ * {@link pressAt}, {@link glideTo} and {@link liftAt} instead, a frame each.
  */
-export function clickAt(h: Harness, at: XY): Promise<WickSnapshot> {
-  return h.clickPointer(at.x, at.y);
+export async function clickAt(h: Harness, at: XY): Promise<WickSnapshot> {
+  const css = h.css(at.x, at.y);
+  await h.page.mouse.move(css.x, css.y);
+  await h.page.mouse.down();
+  await h.page.mouse.up();
+  return h.step(1);
+}
+
+/**
+ * Press the real mouse at a stage point and run the one frame that reads it,
+ * leaving the button DOWN.
+ *
+ * The half of a click a check about arming needs: "a primary press edge inside
+ * the rectangle of the item at `menuIndex` `i` sets `menuIndex` to `i` ... and
+ * arms that item" (specs/controls.md), with the release still to come.
+ */
+export async function pressAt(h: Harness, at: XY): Promise<WickSnapshot> {
+  await mousePress(h, at.x, at.y);
+  return h.snapshot();
+}
+
+/** Travel the held mouse to a stage point, one driven frame. */
+export async function glideTo(h: Harness, at: XY): Promise<WickSnapshot> {
+  await mouseGlide(h, at.x, at.y);
+  return h.snapshot();
+}
+
+/** Lift the real mouse where it stands, one driven frame. */
+export async function liftAt(h: Harness): Promise<WickSnapshot> {
+  await mouseRelease(h);
+  return h.snapshot();
+}
+
+/* ---- Touch ---------------------------------------------------------------- */
+//
+// A REAL CONTACT, for the reason the mouse is a real mouse. `specs/controls.md`
+// rule 3 makes a landing the press edge and a lift the release edge, and rule 1
+// makes a contact never hover, so a check about touch has to make the build's
+// own input layer see a finger arrive, travel and lift. These drive Chromium's
+// touch pipeline through the harness's shared drivers, one driven frame per
+// part, so a caller counting frames can add them up.
+
+/** Land a real contact at a stage point, run the frame that reads it. */
+export async function touchLandAt(h: Harness, at: XY): Promise<WickSnapshot> {
+  await touchPress(h, at.x, at.y);
+  return h.snapshot();
+}
+
+/** Travel the held contact to a stage point, run the frame that reads it. */
+export async function touchGlideTo(h: Harness, at: XY): Promise<WickSnapshot> {
+  await touchGlide(h, at.x, at.y);
+  return h.snapshot();
+}
+
+/** Lift the contact where it stands, run the frame that reads it. */
+export async function touchLift(h: Harness): Promise<WickSnapshot> {
+  await touchRelease(h);
+  return h.snapshot();
+}
+
+/**
+ * Land a contact at a stage point and lift it there: two driven frames.
+ *
+ * "A touch contact landing inside a rectangle is that rectangle's press edge
+ * and lifting is its release edge" (specs/controls.md), and the two are
+ * separately observable, so the tap runs a frame for each.
+ */
+export async function touchTapAt(h: Harness, at: XY): Promise<WickSnapshot> {
+  await touchLandAt(h, at);
+  return touchLift(h);
 }
 
 /**
@@ -2102,8 +2187,10 @@ export async function wheelBy(
 //
 // Each is reached through the REAL path: a chest at the lamplighter's feet and
 // the tick that collects it, a queued level-up and the tick that opens it, a
-// gem at the center and the tick that collects it. `setScreen("levelup")` and
-// the `fallen`/`dawn` rows of `setScreen` serve the screen-copy checks alone.
+// gem at the center and the tick that collects it, `hp` at `0` and the tick
+// that ends the run fallen, the clock at `MAX_POSED_TICK` and the tick that
+// reaches dawn. `setScreen` poses the screen field and nothing else, so it
+// reaches none of them and no check uses it to.
 
 /**
  * Pose a chest at the lamplighter's center and run the tick that collects it:

@@ -13,7 +13,9 @@
 // posed before a tick is gone at the end of that tick. One tick is therefore
 // the whole span.
 //
-// WHY THE WORLD IS POSED AS IT IS. An isolated night with `despawning` alone.
+// WHY THE WORLD IS POSED AS IT IS. An isolated night with `despawning` and
+// `drops`, the second so "no gem" is read against a night that could have
+// dropped one.
 // `enemyMotion` is off, so the moth is exactly where it was posed when the
 // distance is tested and a build whose moth walked in cannot pass by having
 // moved inside the boundary. `enemyContact` and `weaponFire` are off, so
@@ -59,7 +61,7 @@ afterEach(async () => {
 });
 
 it("removes a moth 1201 units out on the next tick, with nothing dropped", async () => {
-  await isolate(h, { on: ["despawning"] });
+  await isolate(h, { on: ["despawning", "drops"] });
   await h.debug.setKills(POSED_KILLS);
   const moth = await placeEnemy(h, "moth", BEYOND, 0);
 

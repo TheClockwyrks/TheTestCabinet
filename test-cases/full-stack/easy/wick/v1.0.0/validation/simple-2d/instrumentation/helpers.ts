@@ -12,6 +12,9 @@ import { assertDeepEqual } from "../assert";
 import { BASE_MAX_HP, MOVE_SPEED, PICKUP_RADIUS, XP_BASE } from "../constants";
 import {
   drawnText,
+  endDawn,
+  endFallen,
+  freshRun,
   holdPassive,
   holdWeapon,
   isolate,
@@ -46,6 +49,8 @@ export const SNAPSHOT_FIELDS = [
   "enemyContact",
   "weaponFire",
   "effectMotion",
+  "drops",
+  "progression",
   "run",
   "muted",
   "accumulator",
@@ -132,57 +137,84 @@ export const HIT_FIELDS = ["enemy", "cooldown"] as const;
 
 /**
  * The screens that show no menu, on which `menuIndex` "stays 0" (specs/ui.md,
- * Menu navigation) and on which `menuRects` "report an empty list"
- * (specs/instrumentation.md, Menus). `paused` shows `PAUSE_ITEMS` and `almanac`
- * shows its entry rows, so both carry a menu.
+ * Menu navigation). `paused` shows `PAUSE_ITEMS` and `almanac` shows its entry
+ * rows, so both carry a menu.
  */
 export const MENU_FREE_SCREENS = ["howto", "playing", "chest"] as const;
 
 /**
+ * The screens `menuRects` reports nothing on: "`playing` reports an empty
+ * list" (specs/instrumentation.md, Menus).
+ */
+export const RECTLESS_SCREENS = ["playing"] as const;
+
+/**
+ * The two screens with no menu that answer one rectangle each: "`howto` and
+ * `chest` report exactly one rectangle, the area the screen's way out is taken
+ * in" (specs/instrumentation.md, Menus).
+ */
+export const ONE_BOX_SCREENS = ["howto", "chest"] as const;
+
+/**
  * The nine screens of specs/ui.md, each reached THROUGH THE SURFACE ALONE, so a
  * build whose menus cannot be walked still answers for what a screen reports.
- * `title` is the reset; `howto`, `almanac`, `playing`, `paused`, `fallen`, and
- * `dawn` are `setScreen` rows; `levelup` and `chest` have no row of their own
- * and are opened by the tick that opens them.
+ * `title`, `howto`, `almanac`, `playing`, and `paused` are the atomic
+ * `setScreen`; `levelup`, `chest`, `fallen`, and `dawn` are the screens the
+ * game's own systems open, so each is reached by the sequence that opens it.
  */
 export const SCREEN_ROUTES: readonly [Screen, (h: Harness) => Promise<void>][] =
   [
     ["title", async (on) => on.reset()],
     ["howto", async (on) => void poseScene(on, "howto")],
     ["almanac", async (on) => void poseScene(on, "almanac")],
-    ["playing", async (on) => void poseScene(on, "playing")],
+    ["playing", async (on) => void freshRun(on)],
     [
       "levelup",
       async (on) => {
-        poseScene(on, "playing");
+        freshRun(on);
         await openLevelUp(on, 1);
       },
     ],
     [
       "chest",
       async (on) => {
-        poseScene(on, "playing");
+        freshRun(on);
         await openChest(on);
       },
     ],
-    ["paused", async (on) => void poseScene(on, "paused")],
+    [
+      "paused",
+      async (on) => {
+        freshRun(on);
+        on.debug.setScreen("paused");
+      },
+    ],
     [
       "fallen",
       async (on) => {
-        poseScene(on, "playing");
-        await on.tick(3);
-        on.debug.setScreen("fallen");
+        freshRun(on);
+        await on.tick(RUN_TICKS);
+        await endFallen(on);
       },
     ],
     [
       "dawn",
       async (on) => {
-        poseScene(on, "playing");
-        await on.tick(3);
-        on.debug.setScreen("dawn");
+        freshRun(on);
+        await on.tick(RUN_TICKS);
+        await endDawn(on);
       },
     ],
   ];
+
+/** The ticks a run screen's route runs before the ending it is reached by. */
+export const RUN_TICKS = 3;
+
+/**
+ * The run clock a route leaves on `fallen`: `RUN_TICKS` plus the one tick the
+ * `hp` at `0` ends the run on.
+ */
+export const FALLEN_TICK = RUN_TICKS + 1;
 
 /* -------------------------------------------------------------------------- */
 /* The idle run                                                               */

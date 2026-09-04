@@ -25,6 +25,13 @@
 // Which weapon lands the hit is nothing a drop depends on: "Kill count and
 // drops apply to every rank alike" (`specs/enemies.md`, The life of an enemy).
 //
+// WHY `drops` IS TURNED ON. It is the faculty every check that uses this
+// helper is about: with it off "A death leaves nothing on the field and draws
+// nothing from the generator" (`specs/instrumentation.md`, the switch table),
+// which is what an isolated world holds by default. {@link killWithPuddle}
+// turns it back on and leaves the other eight switches off, and a check that
+// poses its own world turns it on before calling {@link killOne}.
+//
 // WHERE THE ENEMY STANDS. `POST` (200) units from the lamplighter's center,
 // which is far outside every collection the tick could make: a gem is
 // attracted within `pickupRadius` (`48` with no Lure held) and collected
@@ -42,6 +49,7 @@ import { fail } from "../assert";
 import { ENEMIES, OIL_SPLASH_LEVELS, type EnemyId } from "../constants";
 import {
   advanceTicks,
+  enable,
   enemyById,
   isolate,
   placeEnemyNear,
@@ -103,11 +111,15 @@ export async function killOne(h: Harness, type: EnemyId): Promise<Death> {
   return { id, at, before, after };
 }
 
-/** Pose an isolated run and kill one enemy of `type` in it. */
+/**
+ * Pose an isolated run with `drops` on — the faculty every check here reads —
+ * and kill one enemy of `type` in it. The other eight switches stay off.
+ */
 export async function killWithPuddle(
   h: Harness,
   type: EnemyId,
 ): Promise<Death> {
   isolate(h);
+  enable(h, "drops");
   return killOne(h, type);
 }

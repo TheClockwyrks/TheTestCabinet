@@ -21,17 +21,16 @@
 //
 // WHY THE WORLD IS POSED AS IT IS. `reset`, which restores "the `title` screen
 // with `menuIndex`, `almanacTab`, and `almanacScroll` all `0`", and then the
-// almanac posed through the debug surface, which enters it "exactly as
-// confirming `THE ALMANAC` does: the idle run, `menuIndex` `0`, `almanacTab`
-// `0`, `almanacScroll` `0`" (`specs/instrumentation.md`). The tab the press is
-// made from is read back first, so a build that opened the screen elsewhere
-// fails on that rather than on a cue this point never posed. `ALMANAC_TABS`
-// holds four names, so the tab to the right of the first is the second and the
-// press moves rather than wrapping onto itself. The move itself is a real
-// `ArrowRight`, and a pose "sounds nothing" (`specs/instrumentation.md`), so
-// the event this cue belongs to only happens on a frame a key press makes. The
-// almanac "carries no music" (`specs/ui.md`), so no bed starts under the frame
-// this reads.
+// almanac posed through the debug surface, which enters it by setting `screen`
+// with `menuIndex`, `almanacTab`, and `almanacScroll` all `0` and the run left
+// as it stands (`specs/instrumentation.md`). The tab the press is made from is
+// read back first, so a build that opened the screen elsewhere fails on that
+// rather than on a cue this point never posed. `ALMANAC_TABS` holds four names,
+// so the tab to the right of the first is the second and the press moves rather
+// than wrapping onto itself. The move itself is a real `ArrowRight`, and a pose
+// "sounds nothing" (`specs/instrumentation.md`), so the event this cue belongs
+// to only happens on a frame a key press makes. The almanac "carries no music"
+// (`specs/ui.md`), so no bed starts under the frame this reads.
 //
 // WHAT IS READ, AND WHY EXACTLY ONCE. The cues the collector holds for the ONE
 // frame the press ran on, counted by name, which must be `1`. Reading that

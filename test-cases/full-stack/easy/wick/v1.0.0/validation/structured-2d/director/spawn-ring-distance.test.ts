@@ -32,7 +32,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNear } from "../assert";
-import { REAL_EPS, SPAWN_DISTANCE } from "../constants";
+import { REAL_EPS, SPAWN_DISTANCE, SPAWN_WINDOWS, ticksOf } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -49,7 +49,7 @@ const PLAYER_Y = -211.25;
 
 /** Spawns read, and the ticks that covers at window 0's one-second interval. */
 const SPAWNS = 8;
-const BUDGET_TICKS = 8 * 60 + 1;
+const BUDGET_TICKS = SPAWNS * ticksOf(SPAWN_WINDOWS[0]!.interval) + 1;
 
 let h: Harness;
 

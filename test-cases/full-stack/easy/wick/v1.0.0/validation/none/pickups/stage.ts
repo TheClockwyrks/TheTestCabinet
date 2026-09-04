@@ -6,8 +6,8 @@
 // seeded random generator on the tick it dies. A first draw, uniform on
 // `[0, 1)`, drops bread when it is below `BREAD_CHANCE`. Only when it did not, a
 // second draw drops a draft when it is below `DRAFT_CHANCE`." A probability is
-// only readable over a sample, so `drop-kinds-occur`, `bread-rate`, and
-// `draft-rate` each pose the same sample — `DROP_ROLL_KILLS` (`4000`) common
+// only readable over a sample, so `bread-drops`, `drafts-drop`, `bread-rate`,
+// and `draft-rate` each pose the same sample — `DROP_ROLL_KILLS` (`4000`) common
 // kills at distinct points, from one seed — and read a different fact off it.
 // `drop-at-most-one` poses a longer one, `DROP_PAIR_KILLS`, because the design
 // it exists to catch is only visible on the far rarer kill where both draws
@@ -111,7 +111,8 @@ async function poseKills(h: Harness, points: readonly XY[]): Promise<void> {
  * Open an isolated night and kill `kills` commons in it, a round to a tick, and
  * hand back what they dropped.
  *
- * The night is `isolate`'s: every driver switch off and no slot held, so
+ * The night is `isolate`'s with `drops` turned back on, which is the faculty
+ * these checks read: every other driver switch is off and no slot is held, so
  * `spawning` and `events` bring nothing in, no weapon of the lamplighter's own
  * fires, and the only draws the ticks make are the kills' own. The seed is
  * `isolate`'s `DEFAULT_SEED` (`1`), so the sample is the same one every time
@@ -121,7 +122,7 @@ export async function sweepCommonKills(
   h: Harness,
   kills: number = DROP_ROLL_KILLS,
 ): Promise<KillSweep> {
-  await isolate(h);
+  await isolate(h, { on: ["drops"] });
   const rounds: KillRound[] = [];
   const counts: Record<PickupKind, number> = { chest: 0, bread: 0, draft: 0 };
   let made = 0;

@@ -7,7 +7,7 @@
 // lamplighter's position and facing, the enemy count with the spawn window
 // index, the projectile and zone counts, the gem count, the held weapons with
 // their levels and cooldowns, the held passives with their levels,
-// `pendingLevelUps`, and the seven driver switches, the same facts the
+// `pendingLevelUps`, and the nine driver switches, the same facts the
 // snapshot reports"; "through `world.diagnostics` in the game mode's
 // `beginPlay`. Each source is a function of no arguments ... read the live
 // state at the call". The engine's `engine.diagnostics()` evaluates every
@@ -21,7 +21,7 @@
 // window 2), level 7 with xp 12 over 65, hp 37 over 130 (Tallow 2), 253
 // kills, the lamplighter at (311, -127) facing left, four enemies, three
 // projectiles, two zones, five gems, Ember at 3 with a 0.7 s timer and Pin
-// at 2, Bellows at 4 and Tallow at 2, six level-ups queued, and four
+// at 2, Bellows at 4 and Tallow at 2, six level-ups queued, and six
 // switches off beside three on. The overlay is shown for the still.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -31,7 +31,6 @@ import {
   SWITCH_NAMES,
   captureStill,
   createHarness,
-  disable,
   hasToken,
   holdPassive,
   holdWeapon,
@@ -118,8 +117,8 @@ it("reports every listed fact with the snapshot's live value", async () => {
   placePuddle(h, "oil-splash", PLAYER_X - 400, PLAYER_Y);
   for (const x of [200, 250, 300, 350, 400])
     placeGem(h, "small", PLAYER_X + x, PLAYER_Y - 200);
-  disable(h, "spawning", "despawning", "enemyContact", "effectMotion");
-  // `isolate` turned every switch off; the three on are turned on by name.
+  // `isolate` turned all nine switches off; the three on are turned on by
+  // name, which leaves six off and three on for the panel to report.
   h.debug.setEvents(true);
   h.debug.setEnemyMotion(true);
   h.debug.setWeaponFire(true);
@@ -207,6 +206,6 @@ it("reports every listed fact with the snapshot's live value", async () => {
   }
   const offs = text.match(/\b(false|off)\b/gi)?.length ?? 0;
   const ons = text.match(/\b(true|on)\b/gi)?.length ?? 0;
-  assertGreaterThanOrEqual(offs, 4, "off readings for the four switches off");
+  assertGreaterThanOrEqual(offs, 6, "off readings for the six switches off");
   assertGreaterThanOrEqual(ons, 3, "on readings for the three switches on");
 });

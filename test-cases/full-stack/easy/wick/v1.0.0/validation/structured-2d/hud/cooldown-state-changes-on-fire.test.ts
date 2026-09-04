@@ -80,7 +80,7 @@ afterEach(() => {
 });
 
 it("changes the slot's picture on the tick the weapon fires", async () => {
-  isolate(h, { keepTaper: true });
+  isolate(h, { taper: true });
   h.debug.setWeaponCooldown(TAPER_SLOT, TIMER);
   h.debug.setWeaponFire(true);
 

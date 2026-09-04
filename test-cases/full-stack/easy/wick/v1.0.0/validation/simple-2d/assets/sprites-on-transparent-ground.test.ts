@@ -72,7 +72,8 @@ it("authors every sprite drawn over the night on a transparent canvas", async ()
   );
 
   for (const { sprite, pixels, reason } of reads) {
-    if (pixels === null) fail(`a decodable image at ${committed(sprite)}`, reason);
+    if (pixels === null)
+      fail(`a decodable image at ${committed(sprite)}`, reason);
     assertGreaterThanOrEqual(
       clearPixels(pixels),
       1,

@@ -32,6 +32,7 @@ import { LAMP_OIL_ID, XP_BASE } from "../constants";
 import {
   captureStill,
   createHarness,
+  enable,
   isolate,
   spawnGemAt,
   type Harness,
@@ -58,6 +59,8 @@ afterEach(() => {
 
 it("stands on levelup with its offers filled by the second playing tick after the gain", async () => {
   isolate(h);
+  // Spending experience on levels is the requirement, so `progression` is the one faculty turned back on.
+  enable(h, "progression");
   h.debug.setLevel(POSED_LEVEL);
   h.debug.setXp(POSED_XP);
   const { player } = h.snapshot().run;

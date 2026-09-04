@@ -583,10 +583,11 @@ export async function openEvolveChest(h: Harness): Promise<WickSnapshot> {
 }
 
 /**
- * Close the open overlay the way `confirm` does, to pose the next scenario:
- * "`playing` | `chest` | Closes the overlay exactly as `confirm` does:
- * `chestResult` becomes `null`" (`specs/instrumentation.md`, `setScreen`). What
- * `confirm` itself does is `chest-confirm-closes`.
+ * Stand the game back on `playing` to pose the next scenario:
+ * `setScreen("playing")` "Sets `screen` to `name` ... Nothing else changes"
+ * (`specs/instrumentation.md`), so what the check posed crosses it untouched.
+ * Closing the overlay for real is `confirm`'s, which `chest-confirm-closes`
+ * decides.
  */
 export async function closeChest(h: Harness): Promise<WickSnapshot> {
   await h.debug.setScreen("playing");

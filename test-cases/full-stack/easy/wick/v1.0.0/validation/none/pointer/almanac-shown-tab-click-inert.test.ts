@@ -17,9 +17,9 @@
 // that reset them and one that left them alone would read the same.
 //
 // HOW THE SCENARIO IS DRIVEN. The almanac is entered through
-// `setScreen("almanac")`, which specs/instrumentation.md defines as "exactly as
-// confirming `THE ALMANAC` does: the idle run, `menuIndex` `0`, `almanacTab`
-// `0`, `almanacScroll` `0`", so the first tab is the shown one. The highlight is
+// `setScreen("almanac")`, which specs/instrumentation.md defines as setting
+// `screen` alone, "with `menuIndex`, `almanacTab`, and `almanacScroll`
+// all `0`", so the first tab is the shown one. The highlight is
 // moved to the fifth entry with real `down` presses, which leaves `almanacScroll`
 // at `0` because "the greater of that and `menuIndex − ALMANAC_ROWS + 1`" is
 // below `0` for an index under `ALMANAC_ROWS` (`10`). The primary button is then

@@ -1,11 +1,11 @@
 // Wick — instrumentation/switch-changes-only-itself: `setDespawning(false)`
-// issued on `title` reads back `false`, leaves the other six switches and the
+// issued on `title` reads back `false`, leaves the other eight switches and the
 // idle run exactly as they were, and is still `false` after
 // `setScreen("playing")`.
 //
 // WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md): "A switch changes
 // only what it names" ("The driver switches"); "Each applies on every screen
-// and changes nothing but its switch" ("The seven switch operations"); and
+// and changes nothing but its switch" ("The nine switch operations"); and
 // `setScreen`: "The driver switches stay as they are." The comparison is exact
 // equality of the documented snapshot with the one switch set aside.
 //

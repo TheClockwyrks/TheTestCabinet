@@ -10,7 +10,8 @@
 // WHY THE WORLD IS POSED AS IT IS. Every rank on the field, since the sentence
 // names the elites and the Dark; a kill count that is not `0`, so a count
 // that rose is plain; an elite's drop would be a chest and a common's a gem,
-// so both lists are read.
+// so both lists are read, and `drops` is the one faculty left on so a build
+// that dropped through the clear has something to drop with.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
@@ -35,7 +36,7 @@ afterEach(async () => {
 });
 
 it("removes every enemy with no outcome", async () => {
-  await isolate(h);
+  await isolate(h, { on: ["drops"] });
   await h.debug.setKills(POSED_KILLS);
   await placeEnemy(h, "moth", 200, 0);
   await placeEnemy(h, "moth", -200, 0);

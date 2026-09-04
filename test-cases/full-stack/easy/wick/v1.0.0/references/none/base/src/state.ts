@@ -167,6 +167,8 @@ export interface Switches {
   enemyContact: boolean;
   weaponFire: boolean;
   effectMotion: boolean;
+  drops: boolean;
+  progression: boolean;
 }
 
 export type SwitchName = keyof Switches;
@@ -179,6 +181,8 @@ export const SWITCH_NAMES: readonly SwitchName[] = [
   "enemyContact",
   "weaponFire",
   "effectMotion",
+  "drops",
+  "progression",
 ];
 
 export interface WickState {
@@ -244,6 +248,8 @@ export function allSwitchesOn(): Switches {
     enemyContact: true,
     weaponFire: true,
     effectMotion: true,
+    drops: true,
+    progression: true,
   };
 }
 

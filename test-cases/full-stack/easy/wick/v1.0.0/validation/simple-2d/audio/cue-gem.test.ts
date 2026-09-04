@@ -19,8 +19,8 @@
 // else can raise a cue on the tick. The gem is placed on the lamplighter's own
 // center, a distance of `0` and so inside `COLLECT_RADIUS` (8) whatever the
 // build's pickup radius, which makes the collection the first tick's only
-// event. `isolate` poses level `ISOLATE_LEVEL` (50), whose `xpToNext` of 495
-// no single small gem can reach, so no level-up overlay opens on top of the
+// event. `progression` is one of the switches `isolate` holds off, so the gem's
+// experience is spent on no level and no level-up overlay opens on top of the
 // reading.
 //
 // TOLERANCE. None. Both readings are counts.

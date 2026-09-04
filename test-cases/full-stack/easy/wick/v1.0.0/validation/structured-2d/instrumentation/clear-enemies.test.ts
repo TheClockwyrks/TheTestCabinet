@@ -15,6 +15,7 @@ import { assertDeepEqual, assertEqual, assertLength } from "../assert";
 import {
   captureStill,
   createHarness,
+  enable,
   isolate,
   onCue,
   placeEnemy,
@@ -35,6 +36,10 @@ afterEach(() => {
 
 it("empties the field without kills, drops, or cues", async () => {
   isolate(h);
+  // "Nothing drops" is one of the readings, so `drops` is turned back on:
+  // with it off a real death leaves nothing either, and the reading would
+  // pass for a build whose `clearEnemies` killed rather than removed.
+  enable(h, "drops");
   h.debug.setKills(POSED_KILLS);
   placeEnemy(h, "moth", 300, 0);
   placeEnemy(h, "moth", -300, 0);

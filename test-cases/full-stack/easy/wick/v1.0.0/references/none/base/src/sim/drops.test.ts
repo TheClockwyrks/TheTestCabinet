@@ -154,6 +154,21 @@ describe("pickups", () => {
     expect(world.cues.has("chest")).toBe(true);
   });
 
+  it("gains experience but spends no level while `progression` is off", () => {
+    const world = playing();
+    world.state.switches.progression = false;
+    const { run } = world.state;
+    run.xp = 4;
+    gem(world, "large", 0);
+    step(world);
+    expect(run.gems).toEqual([]);
+    expect(run.xp).toBeCloseTo(14, 9);
+    expect(run.level).toBe(1);
+    expect(run.pendingLevelUps).toBe(0);
+    expect(world.state.screen).toBe("playing");
+    expect(world.cues.has("gem")).toBe(true);
+  });
+
   it("lets a chest take the overlay ahead of a level-up on the same tick", () => {
     const world = playing();
     world.state.run.pendingLevelUps = 1;

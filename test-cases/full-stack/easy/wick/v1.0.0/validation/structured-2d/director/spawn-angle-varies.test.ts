@@ -32,7 +32,7 @@ import {
   assertGreaterThan,
   assertGreaterThanOrEqual,
 } from "../assert";
-import { ANGLE_EPS } from "../constants";
+import { ANGLE_EPS, SPAWN_WINDOWS, ticksOf } from "../constants";
 import {
   angleOf,
   angularOffset,
@@ -50,7 +50,7 @@ const SEED_B = 987_654;
 
 /** Spawns read from one run, and the ticks that covers at window 0's interval. */
 const SPAWNS = 30;
-const BUDGET_TICKS = 30 * 60 + 1;
+const BUDGET_TICKS = SPAWNS * ticksOf(SPAWN_WINDOWS[0]!.interval) + 1;
 
 /** The angles of a run's spawns, in degrees about the lamplighter. */
 async function spawnAngles(

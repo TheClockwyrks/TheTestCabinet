@@ -8,12 +8,13 @@
 // `XP_BASE` (`5`). `specs/state.md`'s idle run gives `kills` `0` and
 // `pendingLevelUps` `0`.
 //
-// THE POSE. The run the game itself begins, not a posed one: `reset` and
-// `setScreen("playing")`, which `specs/instrumentation.md` makes the same run
-// `LIGHT THE LAMP` begins. Nothing is cleared and no switch is touched, so
-// what is read is the state a player would be handed. The reading is taken
-// before any tick runs, so it is the run's opening values rather than what a
-// first tick left.
+// THE POSE. `freshRun`, the sequence `specs/instrumentation.md` names under
+// `setScreen` for arranging what `LIGHT THE LAMP` begins: `reset`, the pose to
+// `playing`, and `setWeapon(0, "taper", 1)`. Every figure read here comes from
+// the idle run `reset` restores rather than from anything the sequence poses,
+// so it is the run's own opening values. Nothing is cleared and no switch is
+// touched, so what is read is the state a player would be handed. The reading
+// is taken before any tick runs, so it is not what a first tick left.
 //
 // THE TOLERANCE. Exact: every figure here is a stated whole number.
 

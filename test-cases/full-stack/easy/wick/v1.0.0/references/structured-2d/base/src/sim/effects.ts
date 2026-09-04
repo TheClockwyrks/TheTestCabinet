@@ -112,8 +112,8 @@ export function forgetHits(run: RunState, dead: ReadonlySet<number>): void {
 
 /**
  * The last part of phase 6: an enemy whose `hp` is at or below `0` dies. The
- * kill count rises, its drop lands at its center, a common kill draws for
- * bread and a draft, and a puff is left to draw.
+ * kill count rises, and a puff is left to draw; while `drops` is on its drop
+ * lands at its center and a common kill draws for bread and a draft.
  */
 export function resolveDeaths(ctx: TickContext): void {
   const { run } = ctx;
@@ -128,6 +128,9 @@ export function resolveDeaths(ctx: TickContext): void {
     run.kills += 1;
     ctx.cues.add(CUES.kill);
     run.puffs.push({ x: enemy.x, y: enemy.y, bornTick: run.tick });
+    // The `drops` switch gates what a death LEAVES, not the death itself: the
+    // kill still counts, the cue still sounds, and no draw is made.
+    if (!ctx.state.drops) continue;
     const def = ENEMIES[enemy.type];
     if (def.drop === "chest") {
       run.pickups.push({

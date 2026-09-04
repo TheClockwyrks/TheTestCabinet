@@ -121,6 +121,22 @@ describe("deaths", () => {
     expect(world.state.rngState).toBe(rngBefore);
   });
 
+  it("leaves nothing and draws nothing while `drops` is off", () => {
+    const world = playing();
+    world.state.switches.drops = false;
+    const { run } = world.state;
+    spawnEnemy(run, "rat", 500, 0).hp = 0;
+    spawnEnemy(run, "owl", -500, 0).hp = 0;
+    const rngBefore = world.state.rngState;
+    step(world);
+    expect(run.kills).toBe(2);
+    expect(run.enemies).toEqual([]);
+    expect(run.gems).toEqual([]);
+    expect(run.pickups).toEqual([]);
+    expect(world.state.rngState).toBe(rngBefore);
+    expect(world.cues.has("kill")).toBe(true);
+  });
+
   it("rolls bread, then a draft, at most one per common kill", () => {
     const counts = { bread: 0, draft: 0, none: 0 };
     for (let seed = 1; seed <= 400; seed += 1) {

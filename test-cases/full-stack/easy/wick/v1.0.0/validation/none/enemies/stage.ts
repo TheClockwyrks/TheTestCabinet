@@ -223,13 +223,14 @@ export interface Death {
  * Ember bolt on its center, run the tick the bolt hits on, and answer what the
  * tick left.
  *
- * Every faculty is held: `enemyMotion`, so the enemy dies exactly where it was
- * posed, and the rest so nothing else lands in the night. A bolt "hit[s] at the
- * position it was created at" on the tick it exists for (`specs/world.md`,
- * phase 6), so the tick is the whole scenario.
+ * Every faculty is held but `drops`, which is what the checks over this read:
+ * `enemyMotion` is off, so the enemy dies exactly where it was posed, and the
+ * rest so nothing else lands in the night. A bolt "hit[s] at the position it
+ * was created at" on the tick it exists for (`specs/world.md`, phase 6), so
+ * the tick is the whole scenario.
  */
 export async function killOne(h: Harness, type: EnemyId): Promise<Death> {
-  await isolate(h);
+  await isolate(h, { on: ["drops"] });
   const posed = await placeEnemy(h, type, KILL_AT.x, KILL_AT.y);
   await h.debug.setEnemyHp(posed.id, KILL_HP);
   await placeProjectile(h, "ember", KILL_AT.x, KILL_AT.y, 0, 0, 0);

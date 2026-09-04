@@ -36,9 +36,15 @@ export function isOfferId(id: string): id is OfferId {
   return isWeaponId(id) || isPassiveId(id) || id === LAMP_OIL_ID;
 }
 
-/** Add experience and queue every level-up it crosses. */
-export function gainXp(run: DraftRun, amount: number): void {
+/**
+ * Add experience, and, while `spend` is on, queue every level-up it crosses
+ * (specs/progression.md "Levels and experience": the `progression` driver
+ * switch). With `spend` off the gain still reaches `xp`, which stands however
+ * high it climbs, and `level` and `pendingLevelUps` hold.
+ */
+export function gainXp(run: DraftRun, amount: number, spend = true): void {
   run.xp += amount;
+  if (!spend) return;
   while (run.xp >= xpToNext(run.level)) {
     run.xp -= xpToNext(run.level);
     run.level += 1;

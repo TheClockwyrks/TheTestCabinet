@@ -17,7 +17,7 @@
 //
 // HOW THE SCENARIO IS DRIVEN. An isolated night is held under the pause screen
 // through `setScreen("paused")`, which specs/instrumentation.md defines as
-// "Exactly as `pause` does". `menuRects()` reports where this build drew the two
+// setting `screen` and nothing else. `menuRects()` reports where this build drew the two
 // items; the pointer is moved to the middle of the second, and exactly one frame
 // runs after the move, because the pointer rules are "applied on every frame".
 //
