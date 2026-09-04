@@ -48,6 +48,7 @@ import { expect, inject } from "vitest";
 import type { Browser, BrowserContext, CDPSession, Page } from "playwright";
 import { connectChromium } from "./chromium";
 import { fail } from "./assert";
+import { hostFault } from "./case-harness/host";
 import {
   CUE_NAMES,
   MUSIC_PLAY,
@@ -295,6 +296,9 @@ const INIT_SCRIPTS = [
   "image-init.js",
 ] as const;
 
+/** The case this project validates, which prefixes what the harness prints. */
+const SLUG = "kessler";
+
 /** This module's directory: the validator project's root. */
 const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 
@@ -324,7 +328,9 @@ const AUDIO_LOAD_TIMEOUT_MS = 2_000;
 let browserPromise: Promise<Browser> | null = null;
 
 async function sharedBrowser(): Promise<Browser> {
-  browserPromise ??= connectChromium(inject("kesslerBrowserWs"));
+  browserPromise ??= connectChromium(inject("kesslerBrowserWs"), {
+    slug: SLUG,
+  });
   return browserPromise;
 }
 
@@ -486,13 +492,32 @@ export async function openHarness(
   const cssWidth = options.cssWidth ?? STAGE_W;
   const cssHeight = options.cssHeight ?? STAGE_H;
   const dpr = options.dpr ?? 1;
-  const context = await contextFor(
-    cssWidth,
-    cssHeight,
-    dpr,
-    options.touch ?? false,
-  );
-  const page = await context.newPage();
+
+  // A BROWSER THAT NEVER CAME UP, OR A PAGE THAT WAS NEVER SERVED, IS THE HOST'S
+  // DOING AND NOT THE BUILD'S, so it leaves the running check UNDECIDED rather
+  // than failing it. `hostFault` is the shared harness's — see its `host.ts` —
+  // and it reaches the running check through the hook `setup.ts` registers. A
+  // throw here would instead mark every point the file decides failed, on a
+  // build that was never asked anything, because this runs in the `beforeEach`
+  // of every check file.
+  //
+  // Only these three reach it: the browser, the page, and the served file.
+  // A page that loaded and then installed no surface, drew nothing, or answered
+  // a call wrongly is the build's own doing, and is failed as such below.
+  let page: Page;
+  try {
+    const context = await contextFor(
+      cssWidth,
+      cssHeight,
+      dpr,
+      options.touch ?? false,
+    );
+    page = await context.newPage();
+  } catch (error) {
+    return hostFault(
+      `no page could be opened in the shared Chromium (${String(error)})`,
+    );
+  }
   openPages.add(page);
 
   // Whatever this page throws or logs as an error while THIS harness drives it.
@@ -506,7 +531,14 @@ export async function openHarness(
     if (message.type() === "error") pageErrors.push(message.text());
   });
 
-  await page.goto(inject("kesslerUrl"), { waitUntil: "load" });
+  try {
+    await page.goto(inject("kesslerUrl"), { waitUntil: "load" });
+  } catch (error) {
+    return hostFault(
+      `the built site would not load from this project's own server ` +
+        `(${String(error)})`,
+    );
+  }
 
   const surfaceFault = await readSurfaceFault(page);
   const refuse = (): never => failSurface(surfaceFault ?? "");

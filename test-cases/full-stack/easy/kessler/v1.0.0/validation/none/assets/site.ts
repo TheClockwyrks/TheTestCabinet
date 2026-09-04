@@ -20,6 +20,9 @@ import type { Browser, Page } from "playwright";
 import { connectChromium } from "../chromium";
 import { WORKSPACE } from "./media-out";
 
+/** The case this project validates, which prefixes what the harness prints. */
+const SLUG = "kessler";
+
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -122,7 +125,9 @@ export async function openSite(options: SiteOptions = {}): Promise<Site> {
   }
   const origin = `http://127.0.0.1:${address.port}`;
 
-  const browser: Browser = await connectChromium(inject("kesslerBrowserWs"));
+  const browser: Browser = await connectChromium(inject("kesslerBrowserWs"), {
+    slug: SLUG,
+  });
   const context = await browser.newContext({
     viewport: { width: 1000, height: 1000 },
     deviceScaleFactor: 1,

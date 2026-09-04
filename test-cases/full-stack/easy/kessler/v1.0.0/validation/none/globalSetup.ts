@@ -32,6 +32,9 @@ import { fileURLToPath } from "node:url";
 import type { TestProject } from "vitest/node";
 import { launchChromiumServer } from "./chromium";
 
+/** The case this project validates, which prefixes what the harness prints. */
+const SLUG = "kessler";
+
 /** Where `npm run build` may have put the site, in the order the runner looks. */
 const BUILD_OUTPUTS = ["dist", "build", "out"] as const;
 
@@ -130,7 +133,7 @@ export default async function setup(
   }
 
   const { server, url } = await serve(root);
-  const browser = await launchChromiumServer();
+  const browser = await launchChromiumServer({ slug: SLUG });
 
   project.provide("kesslerUrl", url);
   project.provide("kesslerBrowserWs", browser.wsEndpoint());
