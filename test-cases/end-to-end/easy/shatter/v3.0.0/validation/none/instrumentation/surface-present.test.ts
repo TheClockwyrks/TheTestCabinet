@@ -20,11 +20,12 @@
 // WHAT IS NOT DEMANDED. `REQUIRED_OPS` is the list `specs/instrumentation.md`
 // states for EVERY variant. The torpedo operations and `setRockHealth` are stated
 // under `warhead` alone, so a `base` build is correct to carry none of them and
-// this point never asks for one; the three `warhead` instrumentation items and the
-// `armor` and `torpedo` groups are what decide those. The keyboard, the overlay
-// and muting are not on the surface either: `specs/instrumentation.md` puts them
-// in the runtime layer beneath the game, so demanding an operation for any of them
-// would fail a perfectly conformant build.
+// this point never asks for one; the four `warhead` instrumentation items and the
+// `armor` and `torpedo` groups are what decide those, and each of them names the
+// operation it could not reach. The keyboard, the overlay and
+// muting are not on the surface either: `specs/instrumentation.md` puts them in the
+// runtime layer beneath the game, so demanding an operation for any of them would
+// fail a perfectly conformant build.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThan } from "../assert";

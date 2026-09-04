@@ -62,7 +62,7 @@ it("changes the wave and leaves the rock roster exactly as it was", async () => 
   for (const place of PLACES) {
     ids.push(await poseRock(h, place.size, place.x, place.y));
   }
-  const before = await h.advance(1);
+  const before = await h.step(1);
   assertEqual(before.wave, OPENING_WAVE, "the wave the run was posed at");
 
   await h.debug.setWave(POSED_WAVE);
@@ -83,7 +83,7 @@ it("changes the wave and leaves the rock roster exactly as it was", async () => 
 
   // And a tick later, so a build that queued its spawn for the next update is
   // caught rather than passing on the reading taken the instant the pose returned.
-  const stepped = await h.advance(1);
+  const stepped = await h.step(1);
   assertEqual(stepped.wave, POSED_WAVE, "the wave a tick on");
   assertDeepEqual(
     stepped.rocks.map((rock) => rock.id),

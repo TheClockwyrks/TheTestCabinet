@@ -42,6 +42,7 @@ import {
 } from "../assert";
 import { EXTRA_LIFE_STEP, SCORE_SMALL } from "../constants";
 import {
+  armAudio,
   captureStill,
   createHarness,
   fireAt,
@@ -114,7 +115,7 @@ it("sounds more on the tick a kill crosses 10,000 than the same kill does otherw
   // A genuine, browser-trusted gesture: an engineless build's audio does not start
   // until the player has interacted with the page (`specs/audio.md`), and the key
   // is bound to nothing (`specs/controls.md`).
-  await h.armAudio();
+  await armAudio(h);
 
   // The ordinary kill, from a score nowhere near a boundary.
   const ordinary = await shootOneSmall(h);

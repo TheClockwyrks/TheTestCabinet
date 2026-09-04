@@ -37,15 +37,21 @@ export default defineConfig({
     // the project then competes with itself for the processor it is already
     // saturating, and holds one engine's worth of memory per worker while it
     // does. The host running this is also running a model's build, so the cores
-    // were never all this project's to take.
+    // were never all this project's to take. That is the whole of the argument
+    // for the cap, and it does not rest on any ceiling: eight is what a project
+    // that saturates a core per worker may take from a host it shares.
     //
-    // Eight rather than four, because the cap has to answer to the runner's OWN
-    // ceiling as well: `VITEST_TIMEOUT` in `crates/core/src/vitest_validator.rs`
-    // bounds the whole suite run at twenty minutes, and a cap tight enough to
-    // serialise 257 suites trades a per-suite risk for a whole-run one. Eight
-    // workers finish this project inside a third of that ceiling on a host
-    // running at twenty-five times its core count, which is the condition these
-    // figures were measured under.
+    // WHAT EIGHT ACTUALLY COSTS, MEASURED. Against the `warhead` reference build,
+    // 291 suite files and 342 checks finished in 14.7 s of wall clock at eight workers,
+    // with the slowest FILE at 3.6 s (`saucer/at-most-one-at-a-time`, which samples two minutes of game time every tick). The reading was taken on
+    // a twenty-core box carrying four of these case worktrees at load average
+    // ~13 — a loaded host rather than an idle one, so it is an upper bound rather
+    // than a best case. Against that, the fifteen minutes
+    // `guides/authoring/writing-debug-apis-and-validators.md` asks a case to
+    // finish in, and the forty-five the runner caps the WHOLE suite run at
+    // (`VITEST_TIMEOUT`, `crates/core/src/vitest_validator.rs`), are both orders
+    // of magnitude away. Nothing here is close to either, so the worker count is
+    // set by what the host can spare rather than by a deadline.
     maxWorkers: 8,
     minWorkers: 1,
     // A ceiling on a suite that never terminates, not a schedule any check is

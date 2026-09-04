@@ -21,8 +21,9 @@
 // WHAT IS NOT DEMANDED. `REQUIRED_OPS` is the list `specs/instrumentation.md`
 // states for EVERY variant. The torpedo operations and `setRockHealth` are stated
 // under `warhead` alone, so a `base` build is correct to carry none of them and
-// this point never asks for one; the three `warhead` instrumentation items and the
-// `armor` and `torpedo` groups are what decide those. The clock, the keyboard, the
+// this point never asks for one; the four `warhead` instrumentation items and the
+// `armor` and `torpedo` groups are what decide those, and each of them names the
+// operation it could not reach. The clock, the keyboard, the
 // overlay and muting are not on the surface either: under this engine
 // `specs/instrumentation.md` puts all four with the engine, so demanding an
 // operation for any of them would fail a perfectly conformant build.

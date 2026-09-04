@@ -1285,21 +1285,6 @@ export function enemyBulletById(
 }
 
 /**
- * Whether this build carries torpedoes — which is to say, whether it is the
- * `warhead` variant.
- *
- * `specs/instrumentation.md` gives `snapshot()` a `torpedoes` roster under
- * `warhead` and none under `base`, so its presence is the one reading that tells
- * the two apart. It decides nothing a build is GRADED on: it is read only where a
- * requirement is one item longer under one variant than the other — the how-to
- * screen's list of keys — so that a suite serving both checklists asks each build
- * for the list `specs/controls.md` handed it.
- */
-export function carriesTorpedoes(h: Harness): boolean {
-  return h.snapshot().torpedoes !== undefined;
-}
-
-/**
  * The `warhead` torpedo roster, or a failure naming the member a `base`
  * snapshot does not carry.
  *

@@ -19,6 +19,15 @@
 // update: a build that reset the runtime's own bit reports sound back on as soon as
 // the next tick refreshes the copy, and that is the fault this leg is looking for.
 //
+// WHAT THE VARIANT ADDS IS ITS OWN ITEM. `specs/instrumentation.md` has `reset` empty
+// the torpedo roster and fill the charge under `warhead`, and that is
+// `instrumentation/reset-clears-the-torpedoes`, an item of the warhead checklist
+// alone. It is not read here behind a probe of the build's own surface: a
+// requirement gated on whether the build installed `addTorpedo` is one a build can
+// shed by implementing less, and a `warhead` build that never wrote the torpedo
+// would then pass this point on the strength of its omission while one that wrote
+// the torpedo and forgot to clear it would fail.
+//
 // AND THE CLOCK IS THE OTHER. `specs/instrumentation.md` says of the auto-step
 // setting that "`reset` leaves this setting exactly as it stands: the clock is the
 // runtime's rather than a game value, so a reset taken under a held clock leaves
@@ -51,7 +60,6 @@ import {
   poseRock,
   poseSaucer,
   startPlaying,
-  WARHEAD_OPS,
   type Harness,
 } from "../harness";
 
@@ -159,19 +167,6 @@ it("puts every declared field back to its title value", async () => {
   assertEqual(s.waveSpawning, true, "reset turns the wave gate back on");
   assertEqual(s.saucerSpawning, true, "reset turns the saucer gate back on");
   assertCloseTo(s.simTime, 0, TITLE_DIGITS, "reset returns the clock to zero");
-
-  // And the four fields the variant adds, demanded of a build whose surface
-  // carries the variant's operations.
-  const probed = await h.probe(WARHEAD_OPS);
-  if (probed.ops.addTorpedo === "function") {
-    assertLength(s.torpedoes ?? [], 0, "reset empties the torpedoes");
-    assertCloseTo(
-      s.torpedoCharge ?? -1,
-      1,
-      TITLE_DIGITS,
-      "reset fills the torpedo charge",
-    );
-  }
 });
 
 it("leaves the mute bit exactly as it stands", async () => {

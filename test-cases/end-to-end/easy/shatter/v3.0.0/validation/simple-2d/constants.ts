@@ -310,9 +310,12 @@ export interface Binding {
  * `warhead`, where it launches the torpedo and every `torpedo` script presses it,
  * and to `Space` under `base`, where it is a second way to fire a gun that `a`
  * already fires and that no check presses. The one place the whole table is read
- * rather than indexed — the how-to screen's word list — skips this row and takes
- * the torpedo's word from the build's own torpedo roster instead, so a `base`
- * build is never asked to name a key it was never given.
+ * rather than indexed — `screens/howto-shows-the-controls`'s word list — skips
+ * this row, because that script is on BOTH checklists; the torpedo's word is
+ * `screens/howto-names-the-torpedo-key`, which only the warhead checklist names
+ * and which indexes this row directly. So a `base` build is never asked to name a
+ * key it was never given, and a `warhead` build is asked for it whatever it
+ * happened to implement.
  */
 export const BINDINGS: Readonly<Record<ActionName, Binding>> = {
   up: { keys: ["ArrowUp", "KeyW"] },

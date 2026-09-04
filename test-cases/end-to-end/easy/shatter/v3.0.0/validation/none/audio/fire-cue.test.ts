@@ -38,6 +38,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { FIRE_INTERVAL_TICKS, KEY_FIRE, TICK_HZ } from "../constants";
 import {
+  armAudio,
   captureStill,
   createHarness,
   startPlaying,
@@ -98,7 +99,7 @@ it("sounds on the tick the round appears, and not before or after it", async () 
   // build's audio does not start until the player has interacted with the page, so
   // a key delivered any other way would leave a perfectly good build silent. The
   // key is bound to nothing (`specs/controls.md`), so arming changes no state.
-  await h.armAudio();
+  await armAudio(h);
 
   const shot = await watchForEvent(
     h,

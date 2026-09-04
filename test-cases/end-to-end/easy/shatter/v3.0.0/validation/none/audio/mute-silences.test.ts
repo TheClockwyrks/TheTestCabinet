@@ -41,6 +41,7 @@ import {
   START_LIVES,
 } from "../constants";
 import {
+  armAudio,
   captureStill,
   createHarness,
   poseRock,
@@ -90,7 +91,7 @@ it("emits nothing across a shot, a shatter and a death while muted", async () =>
   // A genuine, browser-trusted gesture: an engineless build's audio does not start
   // until the player has interacted with the page (`specs/audio.md`). The key is
   // bound to nothing (`specs/controls.md`), so arming neither mutes nor lifts a mute.
-  await h.armAudio();
+  await armAudio(h);
 
   const opening = await h.snapshot();
   assertEqual(

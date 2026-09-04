@@ -16,14 +16,16 @@
 // a screen reading "the sharp turn" contains no `P` at all. It is why this item uses
 // `drewWord` where the two menu items above it use `drewText`.
 //
-// WHY THE WORD LIST IS READ OFF THE BUILD'S OWN ROSTER. This item is on BOTH
-// checklists, and its requirement is one word longer on one of them, because
-// `specs/controls.md` binds `KeyF` under `warhead` and binds nothing to it under
-// `base`. The variant is therefore read the only way a suite serving both can read
-// it — `carriesTorpedoes`, the harness's own read of whether the build reports a
-// torpedo roster. It decides nothing about the SCENARIO, which is the same screen
-// either way; it decides only how long the list of keys the specification handed this
-// build is.
+// THE WORD LIST IS THE COMMON ONE, AND IT IS NOT READ OFF THE BUILD. This item is on
+// BOTH checklists and asserts the same list on each: the keys `specs/controls.md`
+// binds under every variant. `warhead` binds one key more — `KeyF`, for the torpedo —
+// and that word is `screens/howto-names-the-torpedo-key`, an item of the warhead
+// checklist alone. Branching here on whether the build happens to report a torpedo
+// roster would make the requirement a function of what the build implemented: a
+// `warhead` build that wrote no torpedo at all would be asked for one word fewer and
+// pass, while one that wrote the torpedo and forgot to name its key would fail. The
+// variant's own additions are their own items, so each fails on its own and neither
+// grades a build against itself.
 //
 // THE SCREEN IS POSED. `setScreen("howto")` is the direct route to the screen whose
 // CONTENT this item grades; reaching it through the title menu is
@@ -36,12 +38,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { HOWTO_WORDS, HOWTO_WORD_TORPEDO } from "../constants";
+import { HOWTO_WORDS } from "../constants";
 import {
   captureStill,
-  carriesTorpedoes,
   createHarness,
   drewWord,
+  presentCalls,
   type Harness,
 } from "../harness";
 import { reachHowto } from "./screens";
@@ -57,16 +59,12 @@ afterEach(async () => {
 });
 
 it("names every key specs/controls.md binds, as standalone words", async () => {
-  const words = (await carriesTorpedoes(h))
-    ? [...HOWTO_WORDS, HOWTO_WORD_TORPEDO]
-    : [...HOWTO_WORDS];
-
   await reachHowto(h);
 
-  const calls = await h.presentCalls();
+  const calls = await presentCalls(h);
   await captureStill(h, "howto");
 
-  for (const word of words) {
+  for (const word of HOWTO_WORDS) {
     assertEqual(
       drewWord(calls, word),
       true,

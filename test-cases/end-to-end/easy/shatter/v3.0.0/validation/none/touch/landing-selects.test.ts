@@ -39,7 +39,7 @@ const HOW_TO_PLAY = 1;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ touch: true });
+  h = await createHarness();
 });
 
 afterEach(async () => {

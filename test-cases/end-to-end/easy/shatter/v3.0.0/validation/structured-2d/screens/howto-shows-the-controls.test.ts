@@ -14,16 +14,17 @@
 // of it — so the words required here are read off it through the mapping below,
 // which is the specification's own list, key for word.
 //
-// THE ONE VARIANT-DEPENDENT ROW IS READ, NOT ASSUMED. `specs/controls.md` binds
+// THE ONE VARIANT-DEPENDENT ROW IS NOT READ HERE AT ALL. `specs/controls.md` binds
 // `b` to `KeyF` under `warhead`, where it launches the torpedo, and to `Space`
 // under `base`, where the gun's own key already covers the word `SPACE`. So that
-// row is taken only from a build that reports a torpedo roster at all
-// (`carriesTorpedoes`, `specs/instrumentation.md`): `warhead` is graded on `F`
-// and `base` is not. The probe decides nothing about the SCENARIO — the screen is
-// the same either way — only how long the specification's list is for this build.
-// A key the table binds that the mapping does not cover is asserted to be none,
-// so a later revision that adds a binding fails here rather than quietly dropping
-// a word from the requirement.
+// row is skipped, and `F` is `screens/howto-names-the-torpedo-key`, an item of the
+// warhead checklist alone. It used to be taken from whether the build reported a
+// torpedo roster, and a requirement decided that way is one a build can shed by
+// implementing less: a `warhead` build that never wrote the torpedo was asked for
+// one word fewer and passed, while one that wrote the whole torpedo and forgot to
+// name its key failed. A key the table binds that the mapping does not cover is
+// asserted to be none, so a later revision that adds a binding fails here rather
+// than quietly dropping a word from the requirement.
 //
 // STANDALONE WORDS, WHICH IS WHAT THE SPECIFICATION ASKS FOR. Each word must
 // appear with a non-alphanumeric on either side of it or at an end of a run, so
@@ -47,7 +48,6 @@ import { BINDINGS, VARIANT_ACTION, type ActionName } from "../constants";
 import { assertLength, assertMatches } from "../assert";
 import {
   captureStill,
-  carriesTorpedoes,
   clearCalls,
   createHarness,
   resetTo,
@@ -82,14 +82,14 @@ const WORD_FOR_KEY: Readonly<Record<string, string>> = {
 };
 
 /**
- * Every key `specs/controls.md` binds this build, once each.
+ * Every key `specs/controls.md` binds under EVERY variant, once each.
  *
  * The whole transcribed table but for its one variant-dependent row, which is
- * included only where the build carries torpedoes.
+ * `screens/howto-names-the-torpedo-key`'s on the warhead checklist alone.
  */
-function boundKeys(withTorpedo: boolean): readonly string[] {
+function boundKeys(): readonly string[] {
   const actions = (Object.keys(BINDINGS) as ActionName[]).filter(
-    (action) => withTorpedo || action !== VARIANT_ACTION,
+    (action) => action !== VARIANT_ACTION,
   );
   return [...new Set(actions.flatMap((action) => BINDINGS[action].keys))];
 }
@@ -133,7 +133,7 @@ it("names every key BINDINGS binds, as a standalone word, on the howto screen", 
 
   const drawn = drawnRuns(h);
 
-  const keys = boundKeys(carriesTorpedoes(h));
+  const keys = boundKeys();
   const unmapped = unmappedKeys(keys);
   const required = requiredWords(keys);
 

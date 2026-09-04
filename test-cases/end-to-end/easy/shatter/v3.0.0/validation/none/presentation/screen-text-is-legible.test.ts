@@ -43,6 +43,7 @@ import {
   colorDistance,
   createHarness,
   luminance,
+  presentCalls,
   startPlaying,
   textDraws,
   type Harness,
@@ -138,7 +139,7 @@ it("draws every screen's text apart from the pixels immediately around it", asyn
 
   for (const screen of screens) {
     await pose(harness, screen);
-    const runs = textDraws(await harness.presentCalls()).filter(
+    const runs = textDraws(await presentCalls(harness)).filter(
       (run) => run.text.trim() !== "",
     );
     // Overwritten each time round, so what is kept is the last screen that RAN,

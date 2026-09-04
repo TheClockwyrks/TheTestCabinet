@@ -36,7 +36,7 @@ afterEach(async () => {
 it("removes every saucer bullet and leaves the rest standing", async () => {
   await startPlaying(h);
   const posed = await posePopulatedField(h);
-  const before = await h.advance(1);
+  const before = await h.step(1);
   assertLength(
     before.enemyBullets,
     posed.enemyBullets.length,

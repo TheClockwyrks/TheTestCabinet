@@ -32,6 +32,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { ROCK_RADIUS, SHIP_R, START_LIVES } from "../constants";
 import {
+  armAudio,
   captureStill,
   createHarness,
   poseRock,
@@ -94,7 +95,7 @@ it("sounds on the tick the ship is destroyed, and not on the approach", async ()
   // A genuine, browser-trusted gesture: an engineless build's audio does not start
   // until the player has interacted with the page (`specs/audio.md`), and the key
   // is bound to nothing (`specs/controls.md`).
-  await h.armAudio();
+  await armAudio(h);
 
   await h.debug.setShipPosition(SHIP_X, SHIP_Y);
   await h.debug.setShipVelocity(0, 0);

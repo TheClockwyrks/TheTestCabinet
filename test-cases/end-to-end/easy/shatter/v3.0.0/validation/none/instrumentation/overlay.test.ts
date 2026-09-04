@@ -51,10 +51,15 @@
 // but for exactly that tick, which is what "watching the overlay leaves the game
 // exactly as it is" means when the toggle is a key.
 //
-// THE VARIANT IS READ OFF THE BUILD, and this is the one item in the group that
-// branches on it, because the requirement itself does: specs/instrumentation.md's
-// Diagnostics list adds the torpedo charge and the torpedoes in flight under
-// `warhead`, and the item is a common one that both checklists name.
+// WHAT THE VARIANT ADDS IS ITS OWN ITEM. specs/instrumentation.md's Diagnostics list
+// adds the torpedo charge and the torpedoes in flight under `warhead`, and those two
+// are `instrumentation/overlay-reports-the-torpedo`, an item of the warhead checklist
+// alone. They are not read here behind the build's own torpedo roster, which is what
+// this script used to do: a requirement gated on what the build implemented can be
+// shed by implementing less, so a `warhead` build that wrote no torpedo would pass
+// this point on the strength of its omission while one that wrote the torpedo and
+// left it off the panel would fail. A suite is named by a variant's checklist, so it
+// already knows which variant it is grading.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -68,13 +73,12 @@ import {
 import { TICK_DT } from "../constants";
 import {
   captureStill,
-  carriesTorpedoes,
   createHarness,
   drawnText,
   poseBullet,
   poseRock,
   poseSaucer,
-  poseTorpedo,
+  presentCalls,
   startPlaying,
   ticksFor,
   toggleOverlay,
@@ -137,24 +141,6 @@ const ROCK_ROW_STEP = 100;
  * simulation time is recognisable as itself on the panel.
  */
 const SIM_SECONDS = 23;
-
-/**
- * The `warhead` charge posed, and the forms it may be drawn in.
- *
- * Three fifths: specs/weapons.md runs the charge from `0` to `1`, so this is a value
- * a real recharge passes through six seconds in, and it is neither of the two ends a
- * build could be reporting by accident. It is accepted as the fraction it is or as
- * the percentage a panel might show instead.
- */
-const TORPEDO_CHARGE = 0.6;
-const CHARGE_FORMS = /0\.6|\b60\b/;
-
-/** The `warhead` torpedoes posed, above the star and clear of every body. */
-const TORPEDO_PLACES = [
-  { x: 420, y: 260 },
-  { x: 860, y: 260 },
-] as const;
-const TORPEDO_HEADING = -Math.PI / 2;
 
 /**
  * The decimal places the game time either side of the toggle is compared to.
@@ -244,27 +230,17 @@ it("draws every registered value when toggled on, and takes them away again", as
     gun: false,
     travel: false,
   });
-  const warhead = await carriesTorpedoes(h);
-  if (warhead) {
-    for (const place of TORPEDO_PLACES) {
-      await poseTorpedo(h, place.x, place.y, TORPEDO_HEADING, {
-        homing: false,
-      });
-    }
-    await h.debug.setTorpedoCharge(TORPEDO_CHARGE);
-  }
-
   // Frozen behind the pause menu, so what changes across the toggle is the overlay
   // and nothing else (specs/ui.md).
   await h.debug.setScreen("paused");
 
   // The frame as the build draws it with the overlay off, which specs/controls.md
   // says is how the game starts. `presentCalls` redraws without advancing.
-  const bare = drawnText(await h.presentCalls());
+  const bare = drawnText(await presentCalls(h));
   const before = await h.snapshot();
 
   await toggleOverlay(h);
-  const overlaid = drawnText(await h.presentCalls());
+  const overlaid = drawnText(await presentCalls(h));
   await captureStill(h, "overlay");
   const overlay = newLines(bare, overlaid);
 
@@ -305,17 +281,6 @@ it("draws every registered value when toggled on, and takes them away again", as
     "the accumulated simulation time, in seconds",
   );
 
-  // And the two the variant adds, demanded of a build whose surface carries the
-  // variant's operations.
-  if (warhead) {
-    assertForm(overlay, CHARGE_FORMS, "the torpedo charge, three fifths");
-    assertFigure(
-      overlay,
-      TORPEDO_PLACES.length,
-      "how many torpedoes are in flight",
-    );
-  }
-
   // ---- And watching it changed nothing but the tick that delivered the key -
 
   const after = await h.snapshot();
@@ -337,7 +302,7 @@ it("draws every registered value when toggled on, and takes them away again", as
 
   // And the panel is a toggle rather than a switch that only goes one way.
   await toggleOverlay(h);
-  const cleared = drawnText(await h.presentCalls());
+  const cleared = drawnText(await presentCalls(h));
   assertLessThanOrEqual(
     cleared.length,
     bare.length,

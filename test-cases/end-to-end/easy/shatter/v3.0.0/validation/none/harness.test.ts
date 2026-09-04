@@ -77,13 +77,14 @@ import {
 import { starDistance, wrappedDistance } from "./geometry";
 import {
   aimedRound,
+  armAudio,
   captureReplay,
   captureStill,
   colorDistance,
   createHarness,
   destroyRock,
-  drewText,
   drawnText,
+  drewText,
   driveBullet,
   failSurface,
   fireAt,
@@ -93,10 +94,11 @@ import {
   poseEnemyBullet,
   poseRock,
   poseSaucer,
+  presentCalls,
   REQUIRED_OPS,
   requireRock,
-  rockById,
   requireSaucer,
+  rockById,
   ROUND_STANDOFF,
   sampleColor,
   sampleField,
@@ -108,7 +110,7 @@ import {
   ticksFor,
   toggleOverlay,
   watchCues,
-  watchStops,
+  stops,
   type Harness,
   type Recording,
 } from "./harness";
@@ -394,7 +396,7 @@ it("samples pixels, reads text draws, and captures cues", async () => {
   // A cue sounds on the tick the fire key is delivered, once audio is armed with
   // a genuine browser gesture. What is read is that a sound was emitted and when;
   // the NAME is unobservable under this engine and nothing asserts it.
-  await h.armAudio();
+  await armAudio(h);
   const played = watchCues(h);
   const soundsBefore = await h.sounds();
   await h.tap(KEY_FIRE);
@@ -545,9 +547,8 @@ it("destroyRock takes a rock apart however many hits its armor needs", async () 
 
 it("holdFor holds a key down, and the held cue starts and stops with it", async () => {
   await startPlaying(h);
-  await h.armAudio();
+  await armAudio(h);
   const played = watchCues(h);
-  const stopped = watchStops(h);
 
   await h.holdFor(KEYS_THRUST[0], ticksFor(0.5));
   const burning = await h.snapshot();
@@ -555,10 +556,12 @@ it("holdFor holds a key down, and the held cue starts and stops with it", async 
   assertGreaterThanOrEqual(played.length, 1, "the held cue started");
 
   // The key is released by `holdFor`; the tick that follows is the one on which
-  // the game sees it released and lets the voice go.
-  const stopsBefore = stopped.length;
+  // the game sees it released and lets the voice go. A stop is counted as a delta
+  // on the build's running total rather than attributed to a tick, because the
+  // release lands between two of them — see `stops`.
+  const stopsBefore = await stops(h);
   await h.advance(2);
-  assertGreaterThan(stopped.length, stopsBefore, "the held cue stopped");
+  assertGreaterThan(await stops(h), stopsBefore, "the held cue stopped");
   assertEqual(
     (await h.snapshot()).ship.thrusting,
     false,
@@ -569,7 +572,7 @@ it("holdFor holds a key down, and the held cue starts and stops with it", async 
 it("presentCalls redraws without advancing, and scanDevice reads a whole line", async () => {
   await startPlaying(h);
   const before = (await h.snapshot()).simTime;
-  const calls = await h.presentCalls();
+  const calls = await presentCalls(h);
   assertGreaterThan(calls.length, 0, "the render the loop made");
   assertCloseTo(
     (await h.snapshot()).simTime,

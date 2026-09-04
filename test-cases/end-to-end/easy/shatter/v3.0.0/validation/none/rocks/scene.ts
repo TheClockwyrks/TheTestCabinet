@@ -310,7 +310,7 @@ export async function killWith(
     const bullet = await poseBullet(h, shot.x, shot.y, shot.vx, shot.vy);
     let before = await h.snapshot();
     for (let tick = 1; tick <= ROUND_FLIGHT_TICKS; tick += 1) {
-      const at = await h.advance(1);
+      const at = await h.step(1);
       if (rockById(at, rockId) === undefined) {
         return { rounds, before, at, bullet };
       }
@@ -500,7 +500,7 @@ export async function slingIntoTheStar(h: Harness): Promise<Recycle> {
 
   let before = falling.snapshot;
   for (let tick = 1; tick <= ticksFor(2); tick += 1) {
-    const at = await h.advance(1);
+    const at = await h.step(1);
     const was = before.rocks[0];
     const now = at.rocks[0];
     if (

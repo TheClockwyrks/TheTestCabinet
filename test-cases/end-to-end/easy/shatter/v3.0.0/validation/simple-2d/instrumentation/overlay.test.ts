@@ -38,6 +38,15 @@
 // `specs/instrumentation.md` accumulates every tick's `TICK_DT` "whatever the
 // screen", so it must advance by exactly the toggle's one frame and no more.
 //
+// WHAT THE VARIANT ADDS IS ITS OWN ITEM. `specs/instrumentation.md`'s Diagnostics
+// list adds the torpedo charge and the torpedoes in flight under `warhead`, and
+// those two are `instrumentation/overlay-reports-the-torpedo`, an item of the
+// warhead checklist alone. They are not read here behind the build's own surface,
+// which is what this script used to do: a requirement gated on what the build
+// implemented can be shed by implementing less, so a `warhead` build that wrote no
+// torpedo would pass this point on the strength of its omission while one that
+// wrote the torpedo and left it off the panel would fail.
+//
 // AND THE CLOCK IS DRIVEN TO A FIGURE OF ITS OWN FIRST. The accumulated simulation
 // time is one of the values the overlay owes, and a reading taken moments after a
 // reset is a `0` that half the panel could be showing anyway. So the run is carried
@@ -54,7 +63,6 @@ import {
   poseBullet,
   poseRock,
   poseSaucer,
-  poseTorpedo,
   secondsFor,
   startPlaying,
   ticksFor,
@@ -117,24 +125,6 @@ const ROCK_ROW_STEP = 100;
  * simulation time is recognisable as itself on the panel.
  */
 const SIM_SECONDS = 23;
-
-/**
- * The `warhead` charge posed, and the forms it may be drawn in.
- *
- * Three fifths: `specs/weapons.md` runs the charge from `0` to `1`, so this is a
- * value a real recharge passes through six seconds in, and it is neither of the two
- * ends a build could be reporting by accident. It is accepted as the fraction it is
- * or as the percentage a panel might show instead.
- */
-const TORPEDO_CHARGE = 0.6;
-const CHARGE_FORMS = /0\.6|\b60\b/;
-
-/** The `warhead` torpedoes posed, at rest above the star and clear of every body. */
-const TORPEDO_PLACES = [
-  { x: 420, y: 260 },
-  { x: 860, y: 260 },
-] as const;
-const TORPEDO_HEADING = -Math.PI / 2;
 
 /** The engine's own frame-time line, which is not one of the game's sources. */
 const ENGINE_METRICS = /^\s*frame\s*:/i;
@@ -215,13 +205,6 @@ it("draws every registered value and changes nothing in the game", async () => {
     poseRock(h, "small", ROCK_ROW_X0 + i * ROCK_ROW_STEP, ROCK_ROW_Y);
   }
   poseSaucer(h, SAUCER.x, SAUCER.y);
-  const warhead = typeof h.debug.addTorpedo === "function";
-  if (warhead) {
-    for (const place of TORPEDO_PLACES) {
-      poseTorpedo(h, place.x, place.y, TORPEDO_HEADING);
-    }
-    h.debug.setTorpedoCharge?.(TORPEDO_CHARGE);
-  }
 
   // Frozen behind the pause menu, so what changes across the toggle is the
   // overlay and nothing else (specs/ui.md).
@@ -277,17 +260,6 @@ it("draws every registered value and changes nothing in the game", async () => {
     SIM_SECONDS,
     "the accumulated simulation time, in seconds",
   );
-
-  // And the two the variant adds, demanded of a build whose surface carries the
-  // variant's operations.
-  if (warhead) {
-    assertForm(overlay, CHARGE_FORMS, "the torpedo charge, three fifths");
-    assertFigure(
-      overlay,
-      TORPEDO_PLACES.length,
-      "how many torpedoes are in flight",
-    );
-  }
 
   // ---- And the game is exactly as it was ----------------------------------
 

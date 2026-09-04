@@ -6,7 +6,7 @@
 //
 // THE OTHER END OF THE HELD CUE, READ THROUGH THE OTHER DOOR. A release makes no
 // sound, so there is nothing for `watchCues` to hear; what is observable is the
-// voice being told to stop, which `../audio-init.js` counts on every
+// voice being told to stop, which `../audio-stops-init.js` counts on every
 // `AudioScheduledSourceNode.stop()` and every `<audio>` element being paused. So
 // the burn is really held, the key is really released, and the tenth of a second
 // the specification allows is driven out one tick at a time.
@@ -35,9 +35,11 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { KEYS_THRUST } from "../constants";
 import {
+  armAudio,
   captureStill,
   createHarness,
   startPlaying,
+  stops,
   ticksFor,
   type Harness,
 } from "../harness";
@@ -106,7 +108,7 @@ it("stops a sounding voice within a tenth of a second of the key coming up", asy
   // A genuine, browser-trusted gesture: an engineless build's audio does not start
   // until the player has interacted with the page (`specs/audio.md`), and the key
   // is bound to nothing (`specs/controls.md`).
-  await h.armAudio();
+  await armAudio(h);
   await h.debug.setShipAngle(ACROSS_THE_FIELD);
 
   const burn = await watchForEvent(
@@ -139,12 +141,12 @@ it("stops a sounding voice within a tenth of a second of the key coming up", asy
       "audio/thrust-cue-starts is the point that owns it (specs/audio.md)",
   );
 
-  const before = await h.stops();
+  const before = await stops(h);
   await h.release(THRUST_KEY);
   await h.advance(PICTURE_TICKS);
   await captureStill(h, "released");
   await h.advance(RELEASE_TICKS - PICTURE_TICKS);
-  const stopped = (await h.stops()) - before;
+  const stopped = (await stops(h)) - before;
 
   assertGreaterThanOrEqual(
     stopped,
