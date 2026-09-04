@@ -28,6 +28,7 @@ const FRAME = 1 / 60;
 
 function ball(patch: Partial<BallState> = {}): BallState {
   return {
+    index: 0,
     x: 640,
     y: 360,
     vx: 0,
@@ -40,11 +41,12 @@ function ball(patch: Partial<BallState> = {}): BallState {
   };
 }
 
+function paddle(cy: number, vy = 0): PaddleState {
+  return { cy, vy, driven: false, drivenVy: 0 };
+}
+
 function paddles(leftCy = 360, rightCy = 360): [PaddleState, PaddleState] {
-  return [
-    { cy: leftCy, vy: 0 },
-    { cy: rightCy, vy: 0 },
-  ];
+  return [paddle(leftCy), paddle(rightCy)];
 }
 
 /** One ball stepped by `dt` against centered (or the given) paddles. */
@@ -53,7 +55,7 @@ function one(
   dt: number,
   [left, right]: [PaddleState, PaddleState] = paddles(),
 ): { b: BallState; events: StepEvents } {
-  const { balls, events } = step([b], left, right, dt);
+  const { balls, events } = step([b], left, right, OBSTACLES, dt);
   return { b: balls[0], events };
 }
 
@@ -62,7 +64,7 @@ function repeat(b: BallState, dt: number, count: number): BallState {
   let current = b;
   const [left, right] = paddles();
   for (let i = 0; i < count; i++)
-    current = step([current], left, right, dt).balls[0];
+    current = step([current], left, right, OBSTACLES, dt).balls[0];
   return current;
 }
 
@@ -83,11 +85,11 @@ describe("free flight", () => {
     const b = ball({ x: 300, vx: 240, vy: 120, spin: 80 });
     const input = [b];
     const [left, right] = paddles();
-    const { balls } = step(input, left, right, 0.5);
+    const { balls } = step(input, left, right, OBSTACLES, 0.5);
     expect(b).toEqual(ball({ x: 300, vx: 240, vy: 120, spin: 80 }));
     expect(input).toEqual([b]);
     expect(balls[0]).not.toBe(b);
-    expect(left).toEqual({ cy: 360, vy: 0 });
+    expect(left).toEqual(paddle(360));
   });
 
   it("reaches the same place however the interval was divided", () => {
@@ -263,7 +265,7 @@ describe("ball-to-ball collision", () => {
     dt: number,
   ): { a: BallState; b: BallState; events: StepEvents } {
     const [left, right] = paddles();
-    const { balls, events } = step([first, second], left, right, dt);
+    const { balls, events } = step([first, second], left, right, OBSTACLES, dt);
     return { a: balls[0], b: balls[1], events };
   }
 

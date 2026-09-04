@@ -28,8 +28,7 @@ import {
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
-  await h.armAudio();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {

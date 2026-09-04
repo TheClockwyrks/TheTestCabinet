@@ -340,9 +340,17 @@ export function GgConfigEditPage() {
     const input: GgConfigInput = {
       name: name.trim(),
       description: description.trim(),
-      // A saved configuration records its own name as the `preset` facet, so every
-      // run launched from it is sliceable by which configuration produced it.
-      capabilitySet: capabilitySetFromDraft(draft, name.trim()),
+      // A saved configuration records its own name as the `preset` facet, so every run
+      // launched from it is sliceable by which configuration produced it, and its own id
+      // as `presetId`, which is what a run is attributed to. A configuration being
+      // created has no id yet — it is minted server-side — and one being duplicated must
+      // not carry the original's; a launch takes the id from the
+      // [offered configuration](../runs/gg/useGgConfigs) either way.
+      capabilitySet: capabilitySetFromDraft(
+        draft,
+        name.trim(),
+        editing ? (configId ?? null) : null,
+      ),
       // Stored beside the resolved set: gg reads the set, and this is what says which
       // fields of which profile still follow a saved agent.
       agentSources: agentSourcesFromDraft(draft),

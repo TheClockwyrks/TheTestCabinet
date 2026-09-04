@@ -39,6 +39,25 @@
 //! from the same lockfile. An install that failed prepares nothing, so validation
 //! installs for itself and reaches its own verdict about the tree.
 //!
+//! # The test command's figures are read from files it wrote
+//!
+//! The stage runs the `test` command and then reads the two report files the case's
+//! own build vitest config writes into the tree ([`crate::toolchain_report`]),
+//! whatever the command exited with, because the config sets `reportOnFailure` and a
+//! failing suite is the one whose coverage is most worth having. Nothing is derived
+//! from what the command printed. A case whose configuration writes no reports records
+//! no figures at all, which is how the record distinguishes *not reported* from
+//! *zero*.
+//!
+//! The stage owns those two paths for the length of the command and
+//! [clears them](crate::toolchain_report::discard_reports) on either side of it. The
+//! collected tree arrives carrying whatever the model's own in-container test run left
+//! behind, so clearing first is what makes a figure read afterwards a figure this
+//! invocation produced; and removing them again keeps host-written files, with the
+//! absolute paths and stack traces the record strips, out of the published
+//! `implementation/` tree. A command recorded as `ran: false` contributes no figures at
+//! all.
+//!
 //! # Every step is bounded, and every failure is a recorded fact
 //!
 //! Each command runs under a wall-clock cap and its output is capped at
@@ -56,8 +75,8 @@ use crate::playable::find_build_output;
 use crate::post_run::{PostRunContext, PostRunReport, PostRunStage};
 use crate::toolchain::{
     ToolchainCommandResult, ToolchainSmokeResult, ToolchainSummary, ToolchainTestRun,
-    parse_coverage_percent, parse_test_counts,
 };
+use crate::toolchain_report::{discard_reports, read_coverage_summary, read_test_report};
 
 /// Wall-clock cap on the dependency install, and on the static build the smoke
 /// check needs. A cold `npm ci` for a game project is minutes, not seconds.
@@ -146,25 +165,33 @@ impl PostRunStage for ToolchainStage {
 
         let test = match (commands.test.as_deref(), &unavailable) {
             (None, _) => None,
+            // A command that never ran wrote no reports, and reading whatever an
+            // earlier run left in the tree would attribute another run's figures to
+            // this one.
             (Some(command), Some(reason)) => Some(ToolchainTestRun {
                 result: ToolchainCommandResult::skipped(command, reason),
-                tests_total: None,
-                tests_passed: None,
-                tests_failed: None,
-                coverage_percent: None,
+                tests: None,
+                coverage: None,
             }),
             (Some(command), None) => {
-                let (result, raw) = run_command_raw(repo, command, COMMAND_TIMEOUT).await;
-                // Parsed from the WHOLE output, before it is bounded: a truncated
-                // excerpt could easily drop the very summary line the figures come
-                // from, which would report "no tests" for a suite that ran.
-                let (tests_total, tests_passed, tests_failed) = parse_test_counts(&raw);
+                // The stage owns the two report paths while its own command runs. The
+                // collected tree arrives with whatever the model's own in-container
+                // `npm test` left in `coverage/`, so clearing them first is what makes
+                // a figure read afterwards a figure THIS invocation produced — a
+                // runner that cannot resolve, or dies before writing, then reports
+                // nothing instead of another run's numbers.
+                discard_reports(repo);
+                let result = run_command(repo, command, COMMAND_TIMEOUT).await;
+                let (tests, coverage) = reported_figures(repo, &result);
+                // Read, then removed. `implementation/` is published as a copy of what
+                // the model produced, and these two files are the host's writing:
+                // istanbul's whole instrumentation map keyed by absolute host paths,
+                // and failure messages carrying the stack frames the record strips.
+                discard_reports(repo);
                 Some(ToolchainTestRun {
                     result,
-                    tests_total,
-                    tests_passed,
-                    tests_failed,
-                    coverage_percent: parse_coverage_percent(&raw),
+                    tests,
+                    coverage,
                 })
             }
         };
@@ -190,11 +217,40 @@ impl PostRunStage for ToolchainStage {
             typecheck_ran = summary.typecheck.ran,
             typecheck_passed = summary.typecheck.succeeded,
             gated = summary.gates(),
+            // Whether the case is on the report-file contract at all, which is the
+            // one thing a host operator cannot tell from the commands themselves.
+            tests_reported = summary.test.as_ref().is_some_and(|t| t.tests.is_some()),
+            coverage_reported = summary.test.as_ref().is_some_and(|t| t.coverage.is_some()),
             smoke_clean = summary.smoke.as_ref().is_some_and(|s| s.clean()),
             "ran the case's TypeScript toolchain over the produced implementation",
         );
         Ok(PostRunReport::toolchain(summary))
     }
+}
+
+/// The figures a finished `test` command contributes, read from the report files it
+/// left in `repo`.
+///
+/// Gated on whether the command RAN, and deliberately not on what it exited with. The
+/// build config sets `reportOnFailure`, so a suite that failed still wrote its coverage
+/// and a failing suite is the one whose coverage matters most. A command that timed out
+/// or could not be started is recorded as `ran: false`, and a figure beside that would
+/// describe an invocation with no result — including one that flushed a partial report
+/// on its way to being killed.
+///
+/// A case whose configuration writes no reports leaves both absent, which is how the
+/// record says *not reported* rather than *zero*.
+fn reported_figures(
+    repo: &Path,
+    result: &ToolchainCommandResult,
+) -> (
+    Option<crate::toolchain::ToolchainTests>,
+    Option<crate::toolchain::ToolchainCoverage>,
+) {
+    if !result.ran {
+        return (None, None);
+    }
+    (read_test_report(repo), read_coverage_summary(repo))
 }
 
 /// Build the implementation and open the built site in headless Chromium.
@@ -261,17 +317,12 @@ fn truncate_chars(line: &str, limit: usize) -> String {
 }
 
 /// Run one declared command through `sh -c` from `repo`, bounded by `timeout`.
+///
+/// Only the bounded result is returned. The unbounded output used to be handed back
+/// beside it so the test command's figures could be scraped out of it; those figures
+/// now come from the files the runner wrote (see [`crate::toolchain_report`]), and
+/// nothing else ever wanted the whole of what a command printed.
 async fn run_command(repo: &Path, command: &str, timeout: Duration) -> ToolchainCommandResult {
-    run_command_raw(repo, command, timeout).await.0
-}
-
-/// Run one declared command, returning its bounded result **and** its unbounded
-/// combined output, which the test command's figures are parsed from.
-async fn run_command_raw(
-    repo: &Path,
-    command: &str,
-    timeout: Duration,
-) -> (ToolchainCommandResult, String) {
     // `sh -c` verbatim, matching how the validator runs the case's `[build]`
     // commands: the manifest declares a shell line, not an argv vector.
     let child = match tokio::process::Command::new("sh")
@@ -294,29 +345,23 @@ async fn run_command_raw(
     {
         Ok(child) => child,
         Err(err) => {
-            return (
-                ToolchainCommandResult::skipped(command, format!("could not start `sh`: {err}")),
-                String::new(),
+            return ToolchainCommandResult::skipped(
+                command,
+                format!("could not start `sh`: {err}"),
             );
         }
     };
 
     let Ok(output) = tokio::time::timeout(timeout, child.wait_with_output()).await else {
-        return (
-            ToolchainCommandResult::skipped(
-                command,
-                format!("timed out after {} seconds", timeout.as_secs()),
-            ),
-            String::new(),
+        return ToolchainCommandResult::skipped(
+            command,
+            format!("timed out after {} seconds", timeout.as_secs()),
         );
     };
     let output = match output {
         Ok(output) => output,
         Err(err) => {
-            return (
-                ToolchainCommandResult::skipped(command, format!("could not be run: {err}")),
-                String::new(),
-            );
+            return ToolchainCommandResult::skipped(command, format!("could not be run: {err}"));
         }
     };
 
@@ -331,8 +376,7 @@ async fn run_command_raw(
         }
         raw.push_str(&stderr);
     }
-    let result = ToolchainCommandResult::ran(command, output.status.code(), &raw);
-    (result, raw)
+    ToolchainCommandResult::ran(command, output.status.code(), &raw)
 }
 
 #[cfg(test)]

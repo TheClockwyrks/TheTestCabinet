@@ -50,8 +50,9 @@ A spec entry's `dest` defaults to its `source` with any trailing `.hbs`
 removed. Within one variant, two seeded entries may not share a `dest`. A
 variant's `spec`, review, and `[[domain]]` entries are additive on the common
 ones, and each id must be unique across the common set and the variant's own.
-Every review point the variant adds carries a `validation` script for every
-engine the case supports, with `domains` and `failure_cap`.
+Every review point the variant adds carries a `validation` script with
+`domains` and `failure_cap`. The script covers every engine the case supports
+unless the validation's `engines` key names fewer.
 
 ## Validate
 

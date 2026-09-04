@@ -3,13 +3,19 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Carom — Neon Paddle Duel</title>
+    <title>Carom</title>
+    <!--
+      An inline, empty icon. Without one the browser requests /favicon.ico on its
+      own and the dev server answers 404, which logs a console error the game did
+      not cause.
+    -->
+    <link rel="icon" href="data:," />
     <style>
       html,
       body {
         margin: 0;
         height: 100%;
-        background: #0b0e14;
+        background: #000;
         overflow: hidden;
       }
       /*
@@ -21,7 +27,7 @@
         display: block;
         width: 100vw;
         height: 100vh;
-        background: #0b0e14;
+        background: #000;
         touch-action: none;
       }
     </style>

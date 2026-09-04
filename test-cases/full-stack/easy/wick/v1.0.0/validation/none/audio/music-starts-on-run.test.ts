@@ -49,7 +49,7 @@ import { SETTLE_FRAMES } from "./cues";
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -57,7 +57,6 @@ afterEach(async () => {
 });
 
 it("has music looping on the frame after a run starts from the title", async () => {
-  await h.armAudio();
   await h.debug.reset();
   await h.step(SETTLE_FRAMES);
 

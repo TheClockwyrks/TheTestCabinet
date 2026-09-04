@@ -9,14 +9,20 @@
 // never also acts on the screen it lands in. `mute` is answered here on
 // every screen, since the engine's bus owns muting.
 //
+// The pointer is read here too, from the same reader, and answered after
+// this frame's press edges and before the mode's tick, which is the order
+// `specs/controls.md` fixes for the three pointer rules.
+//
 // Controllers tick before the game mode does, so a press this frame is on the
 // state before the frame's ticks resolve, exactly as a player expects: the
 // key arrives, then the tick it steers. The controller holds nothing
 // authoritative of its own.
 
 import { PlayerController } from "@test-cabinet/structured-2d";
+import type { CueName } from "./constants";
 import { handleAction } from "./flow";
-import { heldMovement, pressedActions } from "./input";
+import { heldMovement, pointerFrame, pressedActions } from "./input";
+import { applyPointer } from "./pointer";
 import { wickState } from "./state";
 
 export class LamplighterController extends PlayerController {
@@ -26,12 +32,14 @@ export class LamplighterController extends PlayerController {
     state.held = heldMovement(this.input);
 
     const onScreen = state.screen;
+    const sink = (cue: CueName): void => audio.play(cue);
     for (const action of pressedActions(this.input)) {
       if (action === "mute") {
         audio.setMuted(!audio.muted());
         continue;
       }
-      handleAction(state, action, onScreen, (cue) => audio.play(cue));
+      handleAction(state, action, onScreen, sink);
     }
+    applyPointer(state, pointerFrame(this.input), sink);
   }
 }

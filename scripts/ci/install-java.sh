@@ -27,6 +27,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=packages/gg-sandbox-java/java-version.sh
 source "$ROOT/packages/gg-sandbox-java/java-version.sh"
+# shellcheck source=scripts/ci/fetch.sh
+source "$ROOT/scripts/ci/fetch.sh"
 
 INSTALL_DIR="${JAVA_INSTALL_DIR:-$HOME/.local/share/gg-java}"
 mkdir -p "$INSTALL_DIR"
@@ -54,9 +56,9 @@ else
 	echo "Installing Temurin JDK $JDK_VERSION ($JDK_ARCH) -> $JDK_DIR"
 	JDK_TAG="jdk-${JDK_VERSION/+/%2B}"
 	JDK_FILE="OpenJDK${JDK_VERSION%%.*}U-jdk_${JDK_ARCH}_linux_hotspot_${JDK_VERSION/+/_}.tar.gz"
-	curl -sSfL \
+	gg_fetch \
 		"https://github.com/adoptium/temurin${JDK_VERSION%%.*}-binaries/releases/download/${JDK_TAG}/${JDK_FILE}" \
-		-o "$WORK/jdk.tar.gz"
+		"$WORK/jdk.tar.gz"
 	rm -rf "$JDK_DIR"
 	mkdir -p "$JDK_DIR"
 	# One leading component, because the tarball's top level is the release directory.
@@ -79,9 +81,9 @@ else
 		REST="${COORDINATE#*:}"
 		ARTIFACT="${REST%%:*}"
 		VERSION="${REST#*:}"
-		curl -sSfL \
+		gg_fetch \
 			"https://repo1.maven.org/maven2/${GROUP//./\/}/${ARTIFACT}/${VERSION}/${ARTIFACT}-${VERSION}.jar" \
-			-o "$LIB_DIR/${ARTIFACT}-${VERSION}.jar"
+			"$LIB_DIR/${ARTIFACT}-${VERSION}.jar"
 	done <<<"$TEAVM_JARS"
 	echo "$TEAVM_VERSION" >"$STAMP"
 	echo "$(find "$LIB_DIR" -name '*.jar' | wc -l) jars"

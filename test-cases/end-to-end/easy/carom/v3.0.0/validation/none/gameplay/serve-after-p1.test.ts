@@ -1,12 +1,13 @@
 // gameplay/serve-after-p1 — after a point is scored ON player one, the next
 // serve travels toward player one.
 //
-// The point is a real one: the ball is aimed down the clear lane at the LEFT
-// goal and the build's own simulation carries it out, scoring for player two.
-// The serve that follows is then expired and its direction read on the launch
-// frame. Nothing is posed about the serve itself, and the score is asserted
-// alongside the direction so a build that never scored the point cannot pass by
-// serving left out of a countdown it never left.
+// The point is a real one: the field is emptied to the one ball, that ball is
+// aimed at the LEFT goal, and the build's own simulation carries it out, scoring
+// for player two. The hold that follows is then run out with `endHolds`, which
+// touches nothing but the timer, and the direction is read on the launch frame
+// the build's own serve produces. Nothing is posed about the serve itself, and
+// the score is asserted alongside the direction so a build that never scored the
+// point cannot pass by serving left out of a countdown it never left.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertLessThan } from "../assert";
@@ -16,6 +17,7 @@ import {
   captureReplay,
   createHarness,
   driveGoal,
+  endHolds,
   startPlaying,
   type Harness,
 } from "../harness";
@@ -54,7 +56,7 @@ it("serves toward player one after player two scores", async () => {
     assertEqual(point.snapshot.score.p2, 1);
     assertEqual(point.snapshot.screen, "countdown");
 
-    await harness.debug.serve();
+    await endHolds(harness);
     const launched = await harness.until((s) => s.screen === "playing", {
       maxFrames: 60,
       poll: 1,

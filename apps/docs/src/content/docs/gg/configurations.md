@@ -36,6 +36,11 @@ test.
 A configuration names no test case, and it does not have to name the models it
 runs on.
 
+An operator renames a configuration freely. A run records the name it was
+launched under, for display and for slicing, while the [coverage
+cells](/components/backend/coverage/#what-identifies-a-gg-cell) and ladder
+climbers built on a configuration are bound to its id.
+
 ### Run limits
 
 The Configuration tab carries the [execution ceilings](/gg/execution-limits/)
@@ -233,29 +238,40 @@ agent, so a document without it is refused:
 "openingTurn": {
   "modules":   ["files", "shell"],
   "functions": ["docs.search", "views.open_docs_view", "views.open_text",
-                "views.open_file", "files.search"]
+                "views.open_file", "files.search"],
+  "tree":      { "include": true, "depth": 2 }
 }
 ```
 
 `modules` names gg modules by id, the namespace half of an operation id, and
 the listed modules are searched together in one listing view keyed by the
 modules in the listed order. `functions` names operation ids, and each listed function's documentation
-is opened in the listed order. The value above is the default a new profile is
-seeded with, and the two lists are independent of each other.
+is opened in the listed order. `tree` decides whether the program opens a
+[tree](/gg/filesystem/#trees) of the workspace, and at what depth. The value
+above is the default a new profile is seeded with, and the three are independent
+of each other.
+
+`tree` is optional in a document: one written without it reads as
+`{ "include": false, "depth": 2 }`, so a configuration authored before the tree
+existed opens the window it always opened.
 
 The lists are checked against the operation vocabulary the way `operations` is.
 A module id that is no gg module, a function id that is no gg operation, or a
 function held by role or placement rather than by configuration, refuses the
-launch and names the entry. An entry the agent's capabilities and allowlist do
-not hold is dropped when the window is seeded, with a warning per entry. An
-opening turn left empty seeds no program. The seeding rules are stated in full
-under [views](/gg/responses-as-code/views/#the-opening-turn).
+launch and names the entry. A `tree.depth` outside the range trees accept
+refuses the launch whether or not `include` is set. An entry the agent's
+capabilities and allowlist do not hold is dropped when the window is seeded,
+with a warning per entry; the tree is dropped for an agent that does not hold
+`files.tree`. An opening turn left empty seeds no program. The seeding rules are
+stated in full under [views](/gg/responses-as-code/views/#the-opening-turn).
 
-The editor's Opening Turn tab, shown for a RaC agent, carries one block per gg
+The editor's Opening Turn tab, shown for a RaC agent, carries a Workspace tree
+switch with a depth field beside it, then one block per gg
 module: a List module switch, enabled when the agent holds at least one of the
 module's functions, and beneath it an Open documentation checkbox per held
 function, each toggled independently of the switch. Each function row names its
-operation id and the capability that offers it. A reset restores the default.
+operation id and the capability that offers it. The depth is kept when the tree
+switch is off. A reset restores the default.
 The tab keeps every entry the agent has ever chosen; the saved configuration
 carries only the ones the agent currently holds, so switching a capability off
 and on loses nothing.
@@ -427,6 +443,20 @@ mode:
   pinned itself never appears here.
 - The submission goes to gg's own enqueue endpoint (`POST /gg/runs`) with the
   resolved capability set rather than the flat launch body.
+
+A configuration is also launched on a schedule rather than by hand. A
+[coverage plan or ladder](/components/backend/coverage/#combinations) takes a
+configuration and a model per launch slot as one of its members, and its top-up
+enqueues the same run this form does.
+
+A launch from a configuration carries that configuration's id, which is what puts
+the run in the same [coverage
+cell](/components/backend/coverage/#what-identifies-a-gg-cell) the scheduled member
+fills. The id must name a configuration the launching account holds, and a launch
+naming any other is refused. The run records the configuration's name as it stands
+at that moment, so the run log and a comparison label it the way the coverage
+matrix does. A capability set assembled by hand names no configuration and is
+attributed to none.
 
 A launch refuses a capability set carrying any value gg cannot honour exactly as
 written, and names every one of them at once, so a single pass over the

@@ -128,11 +128,10 @@ kills a program that does not catch one.
 An arm whose guest can see the throw at its entry point reports it to the host
 over `feedback.report-error` with the failure's code, and the host files the
 turn as `program_unknown_name` for a refusal and `program_api_error` for any
-other uncaught failed call. Python, Ruby, C++, TypeScript, JavaScript and
-PureScript report. C# reports every uncaught managed exception with kind `other`
-and no code, so its refusals and its failed calls are filed as `program_throw`.
-An arm whose program dies the way its runtime kills it — Rust, Swift, Kotlin and
-Java — reports nothing to the host and the turn is filed as `sandbox_trap`.
+other uncaught failed call. Python, Ruby, C++, C#, TypeScript, JavaScript and
+PureScript report. An arm whose program dies the way its runtime kills it —
+Rust, Swift, Kotlin and Java — reports nothing to the host and the turn is filed
+as `sandbox_trap`.
 
 What each arm files each of the five failure shapes as, today:
 
@@ -144,7 +143,7 @@ What each arm files each of the five failure shapes as, today:
 | Python | `program_api_error` | `program_throw` | `program_throw` | `program_throw` | `sandbox_trap` |
 | Ruby | `program_api_error` | `program_throw` | nothing to file | `program_throw` | `program_throw` |
 | C++ | `program_api_error` | `sandbox_trap` | `program_throw` | `sandbox_trap` | `sandbox_trap` |
-| C# | `program_throw` | `program_throw` | `program_throw` | `sandbox_trap` | `sandbox_trap` |
+| C# | `program_api_error` | `program_throw` | `program_throw` | `sandbox_trap` | `sandbox_trap` |
 | Rust | `sandbox_trap` | `sandbox_trap` | `sandbox_trap` | `sandbox_trap` | `sandbox_trap` |
 | Swift | `sandbox_trap` | `sandbox_trap` | nothing to file | `sandbox_trap` | `sandbox_trap` |
 | Kotlin | `sandbox_trap` | `sandbox_trap` | refused by `kotlinc` | `sandbox_trap` | refused by `kotlinc` |

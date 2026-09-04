@@ -115,7 +115,8 @@ export type LadderSchedule = {
 };
 
 /**
- * One rung: exactly one test case, pinned to an exact version and variant.
+ * One rung: exactly one [pinned case](ReviewPlanCase) — a slug, an exact version, a
+ * variant, and the engine its runs are built on.
  */
 export type LadderRung = {
   /**
@@ -140,6 +141,15 @@ export type LadderRung = {
    * The variant to climb.
    */
   variant: string;
+  /**
+   * The engine to climb on, or null for the `none` engine.
+   *
+   * Part of the rung's identity within the climb, because clearing a case with a
+   * runtime underneath is a different achievement from clearing it with nothing: one
+   * ladder holds the same case at the same version and variant twice when the two
+   * pins name different engines.
+   */
+  engine?: string;
   /**
    * This rung's override of the ladder's runs-per-cell target, or null to inherit
    * it — so one pivotal step can demand more evidence without making the whole
@@ -170,6 +180,10 @@ export type LadderRungInput = {
    * The variant to climb.
    */
   variant: string;
+  /**
+   * The engine to climb on, or null for the `none` engine.
+   */
+  engine?: string;
   /**
    * This rung's override of the ladder's runs-per-cell target, or null to inherit.
    */
@@ -422,17 +436,47 @@ export type LadderCell = {
    */
   variant: string;
   /**
-   * The harness.
+   * The engine this cell counts against, resolved: `none` where the pin names none.
+   * Always concrete, because a run recorded with no engine is a `none` run and the
+   * two must land in one cell.
+   */
+  engine: string;
+  /**
+   * The harness — `gg` on a gg cell.
    */
   harness: HarnessSlug;
   /**
-   * The model id.
+   * The model id: the one a harness cell's runs are launched with, and on a gg cell the
+   * one its bound set's root agent runs.
    */
   model: string;
   /**
    * The provider for a provider-routed harness, or null.
    */
   provider?: string;
+  /**
+   * The gg configuration this cell's runs are launched from, as the member names it, or
+   * null on a harness cell.
+   */
+  ggConfigId?: string;
+  /**
+   * That configuration's current display name — what the cell is labelled by, and the
+   * first gg segment of its [identity](crate::db::CellKey). Null on a harness cell, and
+   * on a gg cell whose configuration no longer exists.
+   */
+  ggConfigName?: string;
+  /**
+   * The model bound to each of the configuration's launch slots. Empty on a harness cell.
+   */
+  ggSlotModels?: { [key in string]: string };
+  /**
+   * Why a top-up cannot launch this cell, or null when it can.
+   *
+   * A cell whose member cannot be resolved is still counted and still reported — it keeps
+   * its place in the matrix carrying the reason — because a plan that silently got
+   * smaller is a plan whose missing runs nobody can explain.
+   */
+  unlaunchable?: string;
   /**
    * The target run count (the plan's `runs_per_cell`).
    */
@@ -536,22 +580,46 @@ export type LadderRungOutcome = {
  */
 export type LadderClimber = {
   /**
-   * The combination's canonical key (`harness|model|provider`), which is how
-   * steering and verdicts reference it.
+   * The combination's canonical key — the text this ladder's steering and every one of
+   * its verdicts is stored against.
+   *
+   * Its shape follows the shape of the combination: a harness climber's key is its
+   * `harness|model|provider` triple, and a gg climber's names the configuration and the
+   * models it binds, because two climbers running one configuration on different models
+   * are exactly the two arms a ladder exists to separate. It is written and compared,
+   * never parsed — a client reproduces it by echoing this field, not by assembling one.
    */
   key: string;
   /**
-   * The harness.
+   * The harness the climber runs — `gg` on a gg climber.
    */
   harness: HarnessSlug;
   /**
-   * The canonical model id.
+   * The model the climber's runs are attributed to: the harness climber's own, and for a
+   * gg climber the model its bound configuration's root agent runs.
    */
   model: string;
   /**
    * The provider for a provider-routed harness, or null.
    */
   provider?: string;
+  /**
+   * The gg configuration this climber runs (`saved:<id>`), or null on a harness climber.
+   * This is what makes a climber a gg climber.
+   */
+  ggConfigId?: string;
+  /**
+   * That configuration's current display name, or null on a harness climber. Resolved on
+   * every read rather than stored, so a renamed configuration renames its climbers at
+   * once.
+   */
+  ggConfigName?: string;
+  /**
+   * The model bound to each of the configuration's launch slots, keyed by slot name.
+   * Empty on a harness climber. These are half of what the key distinguishes, so a board
+   * can label two climbers of one configuration without re-deriving them.
+   */
+  ggSlotModels?: { [key in string]: string };
   /**
    * Climb-order weight; higher goes first, zero is the default. Pushes one model to
    * the front without reordering the ladder — which would change what every *other*
@@ -567,6 +635,16 @@ export type LadderClimber = {
    * Whether the climber is stopped by hand.
    */
   held: boolean;
+  /**
+   * Why this climber cannot be launched at all, or null when it can.
+   *
+   * A ladder is where an unlaunchable member is hardest to see: a climber that cannot
+   * launch simply stops moving, and a rung it is stuck on looks exactly like one still
+   * waiting on its runs — for as long as anyone leaves it there. So the reason is carried on
+   * the climber itself rather than only on the rung it happens to stand on, which a topped
+   * out or walled climber does not have at all.
+   */
+  unlaunchable?: string;
   /**
    * Where the climber stands.
    */
@@ -622,6 +700,15 @@ export type LadderProgressRung = {
    * The variant to climb.
    */
   variant: string;
+  /**
+   * The engine to climb on, or null for the `none` engine.
+   *
+   * Part of the rung's identity within the climb, because clearing a case with a
+   * runtime underneath is a different achievement from clearing it with nothing: one
+   * ladder holds the same case at the same version and variant twice when the two
+   * pins name different engines.
+   */
+  engine?: string;
   /**
    * This rung's override of the ladder's runs-per-cell target, or null to inherit
    * it — so one pivotal step can demand more evidence without making the whole
@@ -720,6 +807,10 @@ export type LadderClimberInput = {
   /**
    * Which combination to steer. Identified by the combination itself rather than by
    * its key, because a model id contains slashes and has no business in a URL path.
+   *
+   * A climber read off the board can be handed straight back: the key is taken from the
+   * member as it would be stored, so the derived fields a read filled in
+   * (`model`, `ggConfigName`) make no difference to which climber is addressed.
    */
   combination: ReviewPlanCombo;
   /**
@@ -744,7 +835,8 @@ export type LadderClimberInput = {
  */
 export type LadderOverrideInput = {
   /**
-   * Which combination.
+   * Which combination, in either shape and either — stored or read — form; the same
+   * normalization [`LadderClimberInput::combination`] describes applies.
    */
   combination: ReviewPlanCombo;
   /**

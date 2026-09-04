@@ -7,26 +7,29 @@
 // that the dependency runs one way: whether a segment may be added is decided
 // from the board and the beams alone, never from anything the renderer holds.
 // So the first check covers one second of game time as a single frame and as
-// sixty and requires `simTime` to gain 1.0 either way; the second takes one
-// rules decision — a refused and an accepted segment — entirely between frames,
-// and requires the identical decision when the same moves arrive with a frame
-// rendered between each. A build whose rules peek at render state, or whose
-// pointer path only works once a frame has run, resolves the two differently.
+// sixty and requires `simTime` to gain 1.0 either way.
+//
+// The second takes one rules decision — a refused and an accepted segment —
+// twice, and the contrast is whether the board has been RENDERED at all: once
+// on a board posed and never drawn, once on the same board after five frames
+// have drawn it. That is the contrast the spec sentence names, since what it
+// forbids is the decision reading anything the renderer holds. No frame falls
+// between the pointer calls in either run: `specs/state.md` has `pointer`
+// refreshed from the runtime layer in every update, so a frame mid-gesture
+// would grade the pointer mirror rather than the renderer.
 //
 // `advance` is called directly here, with this check's own divisions, because
 // the step size is the SUBJECT; everything else in this directory steps the
-// suite's plain 60 Hz.
+// suite's plain 60 Hz. The board is posed through the surface's own
+// `loadBoard` rather than through the harness helper for the same reason: the
+// helper runs the frame that draws the pose, and the unrendered leg is the
+// leg that must have no frame in it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertDeepEqual, assertNull } from "../assert";
 import { R2_FOREIGN } from "../fixtures";
-import {
-  captureStill,
-  center,
-  createHarness,
-  loadBoard,
-  type Harness,
-} from "../harness";
+import { boardToNotation, parseBoard } from "../notation";
+import { captureStill, center, createHarness, type Harness } from "../harness";
 
 let h: Harness;
 
@@ -59,20 +62,20 @@ it("a refused and an accepted segment resolve identically with zero frames betwe
   // R2_FOREIGN: triangle presses T(0, 0); the move to s(1, 1) is refused (R2,
   // another channel's lens) and the move to t(1, 0) is accepted. The decision
   // must come from the board and the beams alone, so it cannot depend on
-  // whether a frame — a render — falls between the calls.
+  // whether the board has been rendered before the gesture.
   const drawWith = async (
     label: string,
-    betweenCalls: () => Promise<void>,
+    rendered: boolean,
   ): Promise<{ afterRefusal: unknown; final: unknown }> => {
-    const board = await loadBoard(h, R2_FOREIGN);
+    const board = parseBoard(R2_FOREIGN);
+    await h.debug.loadBoard(boardToNotation(board).split("\n"));
+    if (rendered) await h.advance(5);
     const emitter = center(board, { col: 0, row: 0 });
     const foreign = center(board, { col: 1, row: 1 });
     const own = center(board, { col: 1, row: 0 });
 
     await h.debug.pointerDown(emitter.x, emitter.y);
-    await betweenCalls();
     await h.debug.pointerMove(foreign.x, foreign.y);
-    await betweenCalls();
     const afterRefusal = (await h.snapshot()).beams;
     assertDeepEqual(
       afterRefusal.triangle?.cells,
@@ -80,7 +83,6 @@ it("a refused and an accepted segment resolve identically with zero frames betwe
       `the foreign-lens move is refused (${label})`,
     );
     await h.debug.pointerMove(own.x, own.y);
-    await betweenCalls();
     await h.debug.pointerUp();
 
     const snapshot = await h.snapshot();
@@ -96,25 +98,25 @@ it("a refused and an accepted segment resolve identically with zero frames betwe
     return { afterRefusal, final: snapshot.beams };
   };
 
-  const unframed = await drawWith(
-    "zero frames between the calls",
-    async () => {},
+  const unrendered = await drawWith(
+    "a board that has never been rendered",
+    false,
   );
-  const framed = await drawWith("a frame between each call", () =>
-    h.advance(1),
-  );
+  const rendered = await drawWith("a board five frames have drawn", true);
 
   await h.advance(1);
   await captureStill(h, "drive");
 
   assertDeepEqual(
-    unframed.afterRefusal,
-    framed.afterRefusal,
-    "the refused segment leaves the same beams, frames or none",
+    unrendered.afterRefusal,
+    rendered.afterRefusal,
+    "the refused segment leaves the same beams on a board that has been " +
+      "rendered and on one that never has",
   );
   assertDeepEqual(
-    unframed.final,
-    framed.final,
-    "the accepted segment leaves the same beams, frames or none",
+    unrendered.final,
+    rendered.final,
+    "the accepted segment leaves the same beams on a board that has been " +
+      "rendered and on one that never has",
   );
 });

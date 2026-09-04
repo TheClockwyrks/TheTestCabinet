@@ -163,24 +163,30 @@ export function glowCircle(
 }
 
 /**
- * A vertical menu with a highlighted selection. The selected item is bright
- * and flanked by triangle markers in the accent color; the others are dim.
- * Markers are drawn beside the measured text so they never overlap it.
+ * A vertical menu with a highlighted selection, drawn at the hit regions the
+ * build laid out (src/menus.ts).
+ *
+ * Each item is centred in its own rectangle rather than positioned here, so
+ * what `menuItemRect` reports and what a player sees are the same geometry. The
+ * selected item is bright and flanked by triangle markers in the accent colour;
+ * the others are dim. Markers are drawn beside the measured text so they never
+ * overlap it.
  */
 export function drawMenu(
   ctx: Ctx,
   mode: RenderMode,
   items: readonly string[],
+  rects: readonly { x: number; y: number; w: number; h: number }[],
   selected: number,
-  centerX: number,
-  startY: number,
-  spacing: number,
   itemSize: number,
   letterSpacing: number,
   accent: string,
 ): void {
   for (let i = 0; i < items.length; i++) {
-    const y = startY + i * spacing;
+    const rect = rects[i];
+    if (rect === undefined) continue;
+    const centerX = rect.x + rect.w / 2;
+    const y = rect.y + rect.h / 2;
     const isSel = i === selected;
     const opts: TextOpts = {
       size: itemSize,

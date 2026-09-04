@@ -1,14 +1,15 @@
 // screens/title-copy — the title screen draws its title, its tagline, and its
-// two menu items, stacked.
+// three menu items, stacked.
 //
 // WHERE THE THRESHOLD COMES FROM. specs/ui.md ("`title`") fixes the copy: the
 // title `TITLE_TEXT` (`WICK`), the tagline `TAGLINE_TEXT` (`KEEP THE LIGHT`),
-// and the menu `TITLE_ITEMS`, "`LIGHT THE LAMP`, `HOW TO PLAY`, in that
-// order", of which "The menu's items are stacked one above the next under the
-// title and tagline." specs/ui.md ("Presentation") fixes "no palette, no font,
-// no layout, and no styling", so the copy is looked for folded and the only
-// arrangement asserted is the one the file states: the first item above the
-// second.
+// and the menu `TITLE_ITEMS`, "`LIGHT THE LAMP`, `THE ALMANAC`, `HOW TO PLAY`,
+// in that order", of which "The menu's items are stacked one above the next
+// under the title and tagline." specs/ui.md ("Presentation") fixes "no palette,
+// no font, and no styling, and each screen's layout is yours except where a
+// table below places one element relative to another", so the copy is looked
+// for folded and the only arrangement asserted is the one the file states: each
+// item above the next.
 //
 // WHY THE WORLD IS POSED AS IT IS. Nothing is posed: the harness's opening
 // reset leaves the game on `title`, which is where this copy lives, and one
@@ -37,7 +38,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("draws WICK, KEEP THE LIGHT, and the two menu items stacked", async () => {
+it("draws WICK, KEEP THE LIGHT, and the three menu items stacked", async () => {
   const title = await h.snapshot();
   assertEqual(title.screen, "title", "the screen the frame is read on");
 
@@ -46,7 +47,8 @@ it("draws WICK, KEEP THE LIGHT, and the two menu items stacked", async () => {
 
   assertShows(page, TITLE_TEXT, "the title screen");
   assertShows(page, TAGLINE_TEXT, "the title screen");
-  assertShows(page, TITLE_ITEMS[0], "the title screen");
-  assertShows(page, TITLE_ITEMS[1], "the title screen");
-  assertStacked(page, TITLE_ITEMS[0], TITLE_ITEMS[1], "the title menu");
+  for (const item of TITLE_ITEMS) assertShows(page, item, "the title screen");
+  for (let i = 1; i < TITLE_ITEMS.length; i += 1) {
+    assertStacked(page, TITLE_ITEMS[i - 1]!, TITLE_ITEMS[i]!, "the title menu");
+  }
 });

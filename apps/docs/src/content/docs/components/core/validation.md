@@ -86,10 +86,25 @@ Observation has three channels:
 
 A validator is written against one engine's API and uses that engine's own
 vocabulary, so a case supporting several engines ships a validator per verdict
-unit per engine. A review item names its suite relative to the engine's validator
-project, and the case ships that suite under `validation/<engine>/` for every
-engine it supports. Resolution holds the declaration against each of them, so a
-point is decided the same way whichever engine ran.
+unit per engine that validator covers. Every engine the case supports has a
+validator project of its own under `validation/<engine>/`, and a review item
+names its suite relative to that project.
+
+A validation's `engines` key names the engines its validator decides its point
+on. Absent or empty, the validator covers every engine the case supports.
+Non-empty, it covers exactly the engines named, which is how a case scopes a
+point that is the model's own work under one engine and the engine's work under
+another: an engineless build draws the case's debug overlay itself, while under
+an engine the engine draws it. Each entry names an engine the case supports, a
+repeated slug is rejected, and the key is legal only on the per-engine manifest
+format, since a case naming one workspace has no engine to scope to. Resolution
+holds each declared script against the validator project of every engine its
+validation covers, and against those alone.
+
+A review point whose validator does not cover the run's engine is not part of
+that run's checklist. It is not driven, no verdict is recorded against it, the
+reviewer is not shown it, and it adds no weight to the run's score. Every graded
+point a run carries is decided by a validator.
 
 Each validator produces an auto verdict, decided from a list of assertions and
 passing only when every assertion passed.
@@ -135,6 +150,12 @@ Deciding the run's points means running that project:
   and reading the outcome from the JSON reporter written to a file.
 - Reuse the dependency install the tree already carries, and install only a tree
   nothing prepared.
+- Remove the staged project once the run returns, whatever the outcome, so the
+  tree is left as validation found it. A directory already standing at that name
+  is held aside for the run and put back afterwards. The tree a run collects is
+  published verbatim, and the tree `tcab validate` and `tcab capture-baselines`
+  are pointed at is a case's committed reference implementation, so the project
+  lives exactly as long as the run that needs it.
 
 ### Only the run's own variant's suites are run
 
@@ -324,6 +345,16 @@ derived, from its validators and reviews, so validator and reviewer verdicts
 are stored as written. Every
 other toolchain command is recorded and gates nothing, and a typecheck that
 never ran leaves the run ungated.
+
+The `test` command's results and coverage are read from the report files the
+case's own build vitest config writes into the tree, not from what the command
+printed; the [manifest's TypeScript
+toolchain](/testing/end-to-end/manifests/#the-typescript-toolchain) states which
+files those are and what a case configures to get them. They gate nothing
+either: a red suite and thin coverage are recorded as facts about the build and
+left to validation and the reviewer. They describe the tests the model wrote over
+the code the model wrote, and never the case's validators, whose own suite has
+coverage disabled.
 
 The run stays reviewable. A gated run is published with its results and the
 compiler output, and a reviewer may still play and score the build; the gate

@@ -1,11 +1,16 @@
-# Everything that is not authored source: installed packages, build output, and
-# coverage reports.
+# Everything that is not authored source: installed packages, build output,
+# coverage reports, and the vendored engine.
 node_modules/
 dist/
 build/
 out/
 coverage/
 package-lock.json
+
+# Seeded reading material rather than this project's source: the specification,
+# and the engine's own documentation on a run that has one.
+specs/
+engine/
 
 # Prose. The formatter handles code; Markdown is left to its own linter.
 *.md

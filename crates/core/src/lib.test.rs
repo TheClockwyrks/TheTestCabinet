@@ -483,6 +483,7 @@ fn version_with_cap(seconds: u64) -> TestCaseVersion {
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         common_specs: Vec::new(),
         common_workspace: Default::default(),
         init: None,

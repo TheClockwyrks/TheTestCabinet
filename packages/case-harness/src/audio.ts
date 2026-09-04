@@ -21,6 +21,12 @@
 // NEITHER THROWS AND NEITHER ASSERTS. A build with no audio at all spends the
 // budget and answers `0`, so the point that is ABOUT the audio reaches its own
 // failure with its own message rather than dying inside a helper.
+//
+// WHICH MAKES ONE THING THE CALLER'S. A build whose audio was never opened is
+// silent for a reason that has nothing to do with the build, and reads here
+// exactly like one with no audio at all: `0`, patiently, for the whole budget. So
+// a check that waits on either of these is a check about sound, and its harness
+// is one created with `armAudio` (see {@link HarnessOptions.armAudio}).
 
 import type { Harness } from "./harness";
 

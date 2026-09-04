@@ -49,13 +49,24 @@ layout, bound to these keys:
 | `p2-up` / `p2-down` | `↑` / `↓`          | Moves player two's (right) paddle — and, in Solo, player one's as well.                                                   |
 | `confirm`           | `Enter` or `Space` | Accepts the selected menu item.                                                                                           |
 | `back`              | `Esc`              | Goes back a screen: leaves how-to-play, resumes from the pause menu, and returns to the title from the match-over screen. |
-| `pause`             | `P` or `Esc`       | Pauses during a match.                                                                                                    |
+| `pause`             | `P` or `Esc`       | Opens the pause menu during a match, and resumes from it.                                                                 |
 | `mute`              | `M`                | Toggles mute, on any screen.                                                                                              |
 
 Either side's up/down action moves a menu selection, so the menus answer to
 `W`/`S` and `↑`/`↓` alike. `Esc` drives **two** actions — `pause` and `back` —
-and the game reads whichever the current screen calls for, so it pauses in a
-match and steps back on a menu.
+and each screen reads the ones it calls for: on a live match only `pause` is
+read, so one `Esc` opens the pause menu and leaves it open, and on the pause
+menu both are read and either resumes, so one `Esc` resumes once. `P` opens the
+pause menu and closes it again just as `Esc` does.
+
+**The menus also take a mouse and a finger.** Moving the pointer onto an item
+highlights it, and pressing and releasing inside that same item accepts it; a
+press that slides off onto another item, or off the menu entirely, accepts
+nothing. A touch contact behaves the same, except that a finger does not hover,
+so the landing itself highlights the item it lands in. Each item's hit region is
+a row-wide box laid out in `src/menus.ts`, which is the same description
+`src/render.ts` draws the items from and the debug surface reports through
+`menuItemRect`.
 
 The **backtick** key (`` ` ``) toggles the engine's debug overlay. That key
 belongs to the engine, not to this game.
@@ -103,15 +114,15 @@ declared type and the `DeepReadonly` view the engine hands out are the same
 shape, and every function over the state is a **transition**: the current state
 (or a slice of it) in, the next one out, built by spreading what it keeps around
 what it changes. `update` is the transition the engine runs every frame;
-`startMatch`, `respawn`, `toTitle`, `recordTrail`, and the debug surface's poses
-are the ones it is composed from. The slice-level arithmetic follows the same
-shape — `integratePaddle(paddle, dt)` returns the next paddle, `updateAi(...)`
-the next AI paddle, `step(ball, left, right, dt)` the ball after its flight
-beside the events it saw, and `nextSign(rngState)` the sign drawn beside the
-generator's next state. There is no module-level game state and no closure over
-mutable data; `render` and every diagnostic source are reads of the state they
-are given, and the compiler — not a convention — is what says they cannot change
-it.
+`startMatch`, `respawn`, `toTitle`, `serveBall`, `recordTrail`, and the debug
+surface's poses are the ones it is composed from. The slice-level arithmetic
+follows the same shape — `integratePaddle(paddle, vy, dt)` returns the next
+paddle, `aiPaddle(...)` the next AI paddle,
+`step(ball, left, right, obstacles, dt)` the ball after its flight beside the
+events it saw, and `nextSign(rngState)` the sign drawn beside the generator's
+next state. There is no module-level game state and no closure over mutable
+data; `render` and every diagnostic source are reads of the state they are
+given, and the compiler — not a convention — is what says they cannot change it.
 
 ## Debugging and automation
 
@@ -130,23 +141,41 @@ returns the next one, and a caller drives it through `engine.apply`; a
 `engine.state`:
 
 ```ts
-engine.apply((s) => engine.debug.startMatch(s, "versus"));
-engine.apply((s) => engine.debug.setBall(s, 0, { x: 300, vx: 400 }));
+engine.apply((s) => engine.debug.setScreen(s, "countdown"));
+engine.apply((s) => engine.debug.setBallHoldTimer(s, 0));
+await engine.advance(1); // the launch, through the build's own serve
+engine.apply((s) => engine.debug.setBallPosition(s, 300, 360));
+engine.apply((s) => engine.debug.setBallVelocity(s, 400, 0));
 await engine.advance(30);
 const { ball } = engine.debug.snapshot(engine.state);
 ```
 
-The operations are:
+**Every operation is atomic.** Each one sets one field, or one fixed pair of
+fields, or places or removes one entity, or reads the state; none of them takes
+a patch object and merges it, and none arranges several unrelated things at
+once. `reset` is the one exception, and it is a lifecycle verb rather than a
+pose. The operations are:
 
-- `reset(state, options?)` and `snapshot(state)` — the title screen (seedable),
-  and a JSON-serializable view of the full state.
-- `startMatch(state, mode)`, `serve(state)`, `setScore(state, p1, p2)`,
-  `setPaddle(state, side, patch)`, and `setBall(state, index, patch)` — a
-  scenario set up through the game's own state; each returns a state in which
-  the caller holds the paddles, until `reset`.
-- `setAiControl(state, enabled)` — in Solo, the AI's paddle handed back to the
-  computer opponent for the rest of a driven scenario, so a check can exercise
-  the real AI against a posed shot.
+- The world — `clearWorld(state)`, `spawnBall(state)`,
+  `spawnObstacle(state, index)`, `reset(state)`, and `setSeed(state, seed)`. An
+  absent ball takes no part in a frame and an absent obstacle has no collision,
+  so a scenario can empty the field and put back only what it is about.
+- Screens and menus — `setScreen`, `setMode`, `setMenuIndex`, `setTitleIndex`,
+  and `setResumeScreen`, each setting its own field alone.
+- The match — `setScore(state, p1, p2)`, `setWinner(state, side)`, and
+  `setReceiver(state, side)`. The win rule still resolves through real play.
+- The paddles — `setPaddleCy`, `setPaddleVy`, and `setPaddleDriven`, each taking
+  a side. Driving one side leaves the other with its player or the AI, and
+  `drivenVy` (the velocity a driven paddle moves at) and `vy` (the velocity the
+  last frame integrated) are two separate fields.
+- The ball — `setBallPosition`, `setBallVelocity`, `setBallSpin`, `setBallHeld`,
+  and `setBallHoldTimer`.
+- The AI — `setAiTracking(state, enabled)` and `setAiMovement(state, enabled)`,
+  the two faculties gated one at a time, so a check can watch a blind opponent
+  hold station or a seeing one refuse to move.
+- The readings — `snapshot(state)`, a JSON-serializable view of the whole
+  declared state, and `menuItemRect(state, index)`, the hit region of a menu
+  item in logical units, which is the same layout `src/render.ts` draws from.
 
 Every one of those is a read or a pose of `CaromState`: they arrange the world,
 and the game's own `update` is what runs from there when the engine advances a
@@ -155,7 +184,7 @@ frame.
 Everything about _driving a browser game_ rather than about Carom is the
 engine's. The clock, the exact frames, and the registered actions are driven by
 constructing an engine directly (which is what `src/engine.test.ts` does), so the
-surface deliberately carries no `step`, `setAutoStep`, `keyDown`, `keyUp`, or
+surface deliberately carries no `advance`, `setAutoStep`, `keyDown`, `keyUp`, or
 `press`. A check that wants the frames a scenario drew arms the engine's
 draw-command recorder around that section and keeps the recording.
 
@@ -242,7 +271,9 @@ src/
   match.ts            Building the state and the transitions between screens,
                       shared by the menus and the debug surface
   rng.ts              The seeded generator: a draw beside the next state
-  entities.ts         Paddle and ball arithmetic and geometry
+  entities.ts         Paddle, ball and obstacle arithmetic and geometry
+  menus.ts            Where each menu item is: the layout render.ts draws from
+                      and debug.ts reports through menuItemRect
   trail.ts            The ball's motion trail, a fixed slice of time
   physics.ts          Delta-time integration, collision, the spin mechanic
   ai.ts               The beatable AI opponent

@@ -1,8 +1,11 @@
 // ball/wall-bounce-bottom — the ball reflects off the bottom wall.
 //
-// The ball is fired straight down the field's center line, clear of both
-// obstacles and both paddles, into the bottom wall. specs/balls.md fixes the
-// result exactly: if `y + BALL_R > FIELD_H` and `vy > 0`, then `y = FIELD_H - BALL_R` and `vy = -vy`. Speed is unchanged, so the bounce is a pure reflection.
+// The ball is fired straight down the field's center line into the bottom
+// wall, over a field holding one ball and nothing else: neither obstacle is on
+// it and both paddles are held off the lane, so the wall is the only thing the
+// flight can meet. specs/balls.md fixes the result exactly: if
+// `y + BALL_R > FIELD_H` and `vy > 0`, then `y = FIELD_H - BALL_R` and
+// `vy = -vy`. Speed is unchanged, so the bounce is a pure reflection.
 //
 // Placement is read at the end of the frame of the contact. The frame is cut
 // into sub-steps, and a sub-step that follows the one that struck carries the
@@ -10,7 +13,7 @@
 // `FIELD_H - BALL_R`, on the field side of it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BALL_R, FIELD_CX, FIELD_H } from "../../src/constants";
+import { BALL_R, FIELD_CX, FIELD_H } from "../constants";
 import {
   assertCloseTo,
   assertEqual,

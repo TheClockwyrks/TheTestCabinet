@@ -1,13 +1,11 @@
 -- | Durable notes that survive context compaction.
 -- |
--- | A run picks one of three memory strategies and binds only that strategy's functions, so what
--- | this module offers is the honest answer to what memory can do here. The scratchpad keeps every
--- | memory in the context window (`writeMemory` and `updateMemory`); the two file-shaped strategies
--- | keep the contents outside it (`createMemory`, `readMemory` and `editMemory`), one behind an index
--- | that is always in context and one behind `searchMemories`. Deleting is bound under all three.
+-- | A run picks one of three memory strategies and binds only that strategy's functions. The
+-- | scratchpad strategy keeps every memory in the context window; the two file-shaped strategies keep
+-- | the contents outside it until a memory is read, one behind an index that is always in context and
+-- | one behind a keyword search.
 -- |
--- | Every mutation hands back the budget after it, so a program decides whether to write another
--- | memory by reading numbers rather than by parsing a sentence about them.
+-- | Every mutation hands back the memory budget after it.
 module Gg.Memories
   ( writeMemory
   , updateMemory
@@ -35,8 +33,7 @@ type MemoryCodeOptions = (code :: String, onUse :: String)
 -- | How much of the run's durable-memory budget is used, after the call that returned it.
 -- |
 -- | Every maximum is optional: each limit can be turned off, and a run's memory strategy applies only
--- | some of them, so `Nothing` means nothing bounds that axis and is worth checking before
--- | subtracting.
+-- | some of them. `Nothing` means nothing bounds that axis.
 -- |
 -- | # Fields
 -- |
@@ -75,11 +72,10 @@ type MemoryHit =
 
 -- | Record a durable memory that survives context compaction.
 -- |
--- | A memory may also carry **code**. `code` is a PureScript module every later program may import
--- | as `Lib.<Key>`, so a helper got right once is never written again; `onUse` is a script gg runs
--- | on every use of the memory, whose views arrive on the next turn. Neither is context — they cost
--- | no window, are never shown back, and count against no body limit — and both are bounded on their
--- | own.
+-- | A memory may also carry code. `code` is a PureScript module every later program may import as
+-- | `Lib.<Key>`; `onUse` is a script gg runs on every use of the memory, whose views arrive on the
+-- | next turn. Neither costs window, neither is shown back, and both are bounded on their own rather
+-- | than against the body limit.
 -- |
 -- | # Operation
 -- |
@@ -100,20 +96,18 @@ type MemoryHit =
 -- |
 -- | # Returns
 -- |
--- | The memory budget the write left behind. A maximum this run does not bound is `Nothing`, which
--- | is worth checking before subtracting.
+-- | The memory budget the write left behind. A maximum this run does not bound is `Nothing`.
 -- |
 -- | # Throws
 -- |
--- | `Conflict` on a duplicate name, and `LimitExceeded` when the body would breach the run's caps —
--- | revising or deleting a memory beats accruing more.
+-- | `Conflict` on a duplicate name, and `LimitExceeded` when the body would breach the run's caps.
 writeMemory
   :: forall given rest
    . Union given rest MemoryCodeOptions
   => { name :: String, description :: String, body :: String | given }
   -> Effect MemoryUsage
 writeMemory written =
-  memoryUsage <$> Wire.call "write_memory" "memories" "Gg.Memories.writeMemory" [ Wire.lower {} written ]
+  Wire.callMap memoryUsage "write_memory" "memories" "Gg.Memories.writeMemory" [ Wire.lower {} written ]
 
 -- | Replace an existing memory's description and body, keyed on its name.
 -- |
@@ -148,7 +142,7 @@ updateMemory
   => { name :: String, description :: String, body :: String | given }
   -> Effect MemoryUsage
 updateMemory written =
-  memoryUsage <$> Wire.call "update_memory" "memories" "Gg.Memories.updateMemory" [ Wire.lower {} written ]
+  Wire.callMap memoryUsage "update_memory" "memories" "Gg.Memories.updateMemory" [ Wire.lower {} written ]
 
 -- | Record a new memory whose contents stay out of the context window until they are read.
 -- |
@@ -187,7 +181,7 @@ createMemory
   => { name :: String, description :: String, body :: String | given }
   -> Effect MemoryUsage
 createMemory written =
-  memoryUsage <$> Wire.call "create_memory" "memories" "Gg.Memories.createMemory" [ Wire.lower {} written ]
+  Wire.callMap memoryUsage "create_memory" "memories" "Gg.Memories.createMemory" [ Wire.lower {} written ]
 
 -- | Read one memory's full contents by slug — the only call that brings them into the context window.
 -- |
@@ -215,8 +209,6 @@ readMemory name = Wire.call "read_memory" "memories" "Gg.Memories.readMemory" [ 
 
 -- | Revise a memory in place, replacing the one exact occurrence of `search` with `replace`.
 -- |
--- | Appending is quoting the last line and replacing it with itself plus what is being added.
--- |
 -- | # Operation
 -- |
 -- | memories.edit_memory
@@ -239,13 +231,12 @@ readMemory name = Wire.call "read_memory" "memories" "Gg.Memories.readMemory" [ 
 -- | leave the memory empty — deleting it is the call for that.
 editMemory :: { name :: String, search :: String, replace :: String } -> Effect MemoryUsage
 editMemory edit =
-  memoryUsage <$> Wire.call "edit_memory" "memories" "Gg.Memories.editMemory" [ Wire.wire edit ]
+  Wire.callMap memoryUsage "edit_memory" "memories" "Gg.Memories.editMemory" [ Wire.wire edit ]
 
 -- | Find the memories mentioning any of the given keywords, best first.
 -- |
--- | Plain case-insensitive substring matching over each memory's slug, description and contents,
--- | ranked by how many of the keywords a memory mentions and then by how often. Several specific
--- | words rank better than one sentence, and the hits worth having in full are then read.
+-- | Case-insensitive substring matching over each memory's slug, description and contents, ranked by
+-- | how many of the keywords a memory mentions and then by how often.
 -- |
 -- | # Operation
 -- |
@@ -253,8 +244,7 @@ editMemory edit =
 -- |
 -- | # Arguments
 -- |
--- | - `keywords` — The words to look for. Several specific words rank better than one sentence,
--- |   because a memory is ranked by how many of them it mentions.
+-- | - `keywords` — The words to look for. A memory is ranked by how many of them it mentions.
 -- |
 -- | # Returns
 -- |
@@ -270,9 +260,8 @@ searchMemories keywords =
 
 -- | Read the full contents of a memory a search matched.
 -- |
--- | `Gg.Memories.readMemory` with the slug already taken out of the hit, for the common case where
--- | the search that found it is the thing in hand. A hit carries an excerpt and nothing more, so
--- | this is how the rest of a promising one is read.
+-- | `Gg.Memories.readMemory` with the slug taken out of the hit, which carries an excerpt and
+-- | nothing more.
 -- |
 -- | # Alias
 -- |
@@ -312,7 +301,7 @@ readHit hit = readMemory hit.name
 -- | `NotFound` when no memory has that name.
 deleteMemory :: String -> Effect MemoryUsage
 deleteMemory name =
-  memoryUsage <$> Wire.call "delete_memory" "memories" "Gg.Memories.deleteMemory" [ Wire.wire name ]
+  Wire.callMap memoryUsage "delete_memory" "memories" "Gg.Memories.deleteMemory" [ Wire.wire name ]
 
 
 -- | The memory budget, whose every maximum may be switched off.

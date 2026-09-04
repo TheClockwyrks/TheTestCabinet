@@ -1,0 +1,494 @@
+// Orrery — what a check reads off a frame's DRAWING. CASE-PROVIDED, and the SAME
+// FILE in all three engine projects.
+//
+// A frame produces two things a check can read: the pixels it left on the canvas,
+// which `color.ts` samples, and the ORDERED LIST OF OPERATIONS it issued against
+// its 2D context, which is this file. The second is what a check about placement
+// reads — where a sprite landed, which source it drew, what angle it was turned
+// to, what text was drawn and where — because a pixel reading cannot tell a
+// sprite drawn in the right place from a shape painted there in code, and
+// `specs/assets.md` is emphatic that "every mote, filament, glyph, hub, gripper,
+// mount, and aperture on screen is a produced sprite".
+//
+// ONE LIST SHAPE, THREE RECORDERS. Under no engine the operations come from the
+// injected recorder the shared harness installs; under either engine they come
+// from a proxy this project's `harness.ts` puts over the real context. Both
+// normalize to {@link DrawCall} — and both replace a bitmap argument with an
+// {@link ImageRef}, so a source is identified by its per-harness identity and its
+// natural size rather than by a path. A path is the wrong key on purpose: a
+// bundler is free to inline a small produced PNG as a `data:` URI, and that is
+// still the committed file. What settles the question is
+// `Harness.imagePixels(id)`, which hands back the source's own pixels; see
+// `assets/sprites.ts` for the comparison a check makes with them.
+//
+// EVERY READING CARRIES THE TRANSFORM. A build is free to translate to a region
+// and draw at the origin, so where a call landed is only known once the transform
+// in force at that call is applied. Each walk below carries that state through
+// `save`/`restore` and every transform operation.
+
+/* -------------------------------------------------------------------------- */
+/* The transform                                                              */
+/* -------------------------------------------------------------------------- */
+
+/** A 2D affine transform, in the canvas's `[a, b, c, d, e, f]` order. */
+export type Matrix = [number, number, number, number, number, number];
+
+/** The transform that changes nothing. */
+export const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
+
+/** A point in the stage's logical units, unless a reading says otherwise. */
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/** `m` followed by `n`, in the canvas's own multiplication order. */
+export function multiply(m: Matrix, n: Matrix): Matrix {
+  return [
+    m[0] * n[0] + m[2] * n[1],
+    m[1] * n[0] + m[3] * n[1],
+    m[0] * n[2] + m[2] * n[3],
+    m[1] * n[2] + m[3] * n[3],
+    m[0] * n[4] + m[2] * n[5] + m[4],
+    m[1] * n[4] + m[3] * n[5] + m[5],
+  ];
+}
+
+/** The leading `count` arguments, when every one of them is a number. */
+export function numbers(args: unknown[], count: number): number[] | null {
+  const taken = args.slice(0, count);
+  return taken.length === count && taken.every((v) => typeof v === "number")
+    ? (taken as number[])
+    : null;
+}
+
+/** Where `(x, y)` lands under `m`. */
+export function apply(m: Matrix, x: number, y: number): Point {
+  return { x: m[0] * x + m[2] * y + m[4], y: m[1] * x + m[3] * y + m[5] };
+}
+
+/**
+ * The transform after `method(...args)` is applied to `current`, or `null` for a
+ * call that is not a transform operation — which is how a walk tells "this moved
+ * the pen" from "this drew something".
+ */
+export function transformed(
+  current: Matrix,
+  method: string,
+  args: unknown[],
+): Matrix | null {
+  if (method === "translate") {
+    const v = numbers(args, 2);
+    return v
+      ? multiply(current, [1, 0, 0, 1, v[0] as number, v[1] as number])
+      : current;
+  }
+  if (method === "scale") {
+    const v = numbers(args, 2);
+    return v
+      ? multiply(current, [v[0] as number, 0, 0, v[1] as number, 0, 0])
+      : current;
+  }
+  if (method === "rotate") {
+    const v = numbers(args, 1);
+    if (!v) return current;
+    const c = Math.cos(v[0] as number);
+    const s = Math.sin(v[0] as number);
+    return multiply(current, [c, s, -s, c, 0, 0]);
+  }
+  if (method === "transform") {
+    const v = numbers(args, 6);
+    return v ? multiply(current, v as Matrix) : current;
+  }
+  if (method === "setTransform") {
+    const v = numbers(args, 6);
+    if (v) return v as Matrix;
+    if (args.length === 0) return IDENTITY;
+    if (typeof args[0] === "object" && args[0] !== null) {
+      const m = args[0] as Record<string, unknown>;
+      const parts = [m.a, m.b, m.c, m.d, m.e, m.f];
+      if (parts.every((p) => typeof p === "number")) return parts as Matrix;
+    }
+    return current;
+  }
+  if (method === "resetTransform") return IDENTITY;
+  return null;
+}
+
+/**
+ * The rotation a transform carries, in DEGREES clockwise on the stage, wrapped
+ * into `[0, 360)`.
+ *
+ * What the checks about a turned sprite read: `specs/assets.md` has the gripper,
+ * the arm hub, the wheel hub and the filament strip "turned to" a live angle, and
+ * a build turns them by rotating the context around the point it draws at.
+ */
+export function rotationOf(m: Matrix): number {
+  const radians = Math.atan2(m[1], m[0]);
+  return (((radians * (180 / Math.PI)) % 360) + 360) % 360;
+}
+
+/** The uniform scale a transform carries, as the length of its first basis vector. */
+export function scaleOf(m: Matrix): number {
+  return Math.hypot(m[0], m[1]);
+}
+
+/* -------------------------------------------------------------------------- */
+/* The operations                                                             */
+/* -------------------------------------------------------------------------- */
+
+/** One recorded operation on the 2D context, in the order the render made it. */
+export type DrawCall =
+  | { kind: "call"; method: string; args: unknown[] }
+  | { kind: "set"; property: string; value: unknown };
+
+/**
+ * A bitmap source a frame named.
+ *
+ * `id` is identity WITHIN ONE HARNESS: the same source drawn on a hundred frames
+ * carries one id, and two different produced sprites never share one, so
+ * `Harness.imagePixels(id)` reads the source's own pixels back. `width` and
+ * `height` are its natural size, which is how a `44 x 44` mote sprite is told
+ * from a `24 x 24` instruction glyph. `src` is where it came from when that is
+ * short enough to be a path rather than an inlined file, and is `null` otherwise.
+ */
+export interface ImageRef {
+  id: number;
+  /** `"bitmap"` for anything a canvas can draw, `"pixels"` for an `ImageData`. */
+  kind: "bitmap" | "pixels";
+  /** The host type, such as `HTMLImageElement` or `ImageBitmap`. */
+  name: string;
+  width: number;
+  height: number;
+  src: string | null;
+  srcHash: string | null;
+}
+
+/** One image a frame drew, and where it landed. */
+export interface ImageDraw {
+  image: ImageRef;
+  /** The source rectangle, when the call named one. */
+  sx: number | null;
+  sy: number | null;
+  sw: number | null;
+  sh: number | null;
+  /** The destination's top-left, mapped through the transform in force. */
+  dx: number;
+  dy: number;
+  /** The destination's size, scaled by the transform in force. */
+  dw: number;
+  dh: number;
+  /** The destination's centre, which is where a sprite is placed. */
+  cx: number;
+  cy: number;
+  /** The rotation in force at the call, in degrees clockwise, `[0, 360)`. */
+  angle: number;
+  /** The transform in force at the call, for a reading this one does not carry. */
+  transform: Matrix;
+}
+
+/** The {@link ImageRef} an argument names, or `null` when it is not a source. */
+export function imageRef(value: unknown): ImageRef | null {
+  if (value === null || typeof value !== "object") return null;
+  const named = (value as { $src?: ImageRef }).$src;
+  return named !== undefined && typeof named.id === "number" ? named : null;
+}
+
+/** Every argument list `method` was called with, in order. */
+export function callsTo(
+  calls: readonly DrawCall[],
+  method: string,
+): unknown[][] {
+  return calls.flatMap((call) =>
+    call.kind === "call" && call.method === method ? [call.args] : [],
+  );
+}
+
+/** Every value `property` was set to, in order. */
+export function setsOf(
+  calls: readonly DrawCall[],
+  property: string,
+): unknown[] {
+  return calls.flatMap((call) =>
+    call.kind === "set" && call.property === property ? [call.value] : [],
+  );
+}
+
+/**
+ * The geometry calls a frame made, by name.
+ *
+ * Enough of a count to compare two frames of the same scene: a frame that drew a
+ * highlight, a ghost, a marked cell or an effect asked for strictly more of these
+ * than the same frame without it, whatever shape the build chose to draw it as.
+ */
+export const DRAW_METHODS: readonly string[] = [
+  "arc",
+  "ellipse",
+  "rect",
+  "roundRect",
+  "fillRect",
+  "strokeRect",
+  "moveTo",
+  "lineTo",
+  "quadraticCurveTo",
+  "bezierCurveTo",
+  "fill",
+  "stroke",
+  "fillText",
+  "strokeText",
+  "drawImage",
+  "putImageData",
+];
+
+/** How many drawing operations the frame issued. */
+export function drawOps(calls: readonly DrawCall[]): number {
+  return calls.filter(
+    (call) => call.kind === "call" && DRAW_METHODS.includes(call.method),
+  ).length;
+}
+
+/**
+ * Walk a frame's operations carrying the transform, handing each drawing call to
+ * `visit` with the transform in force at it.
+ *
+ * The one place `save`/`restore` and the transform operations are interpreted;
+ * every reading below is written over it.
+ */
+export function walk(
+  calls: readonly DrawCall[],
+  visit: (method: string, args: unknown[], current: Matrix) => void,
+): void {
+  const stack: Matrix[] = [];
+  let current: Matrix = IDENTITY;
+  for (const call of calls) {
+    if (call.kind !== "call") continue;
+    const { method, args } = call;
+    if (method === "save") {
+      stack.push(current);
+      continue;
+    }
+    if (method === "restore") {
+      current = stack.pop() ?? IDENTITY;
+      continue;
+    }
+    const moved = transformed(current, method, args);
+    if (moved !== null) {
+      current = moved;
+      continue;
+    }
+    visit(method, args, current);
+  }
+}
+
+/**
+ * Every logical point a frame's drawing calls named, mapped through the transform
+ * in force at the call.
+ *
+ * The leading pair of arguments is the position for every method listed, except
+ * the two bitmap calls, whose destination follows the source, and the curve
+ * calls, whose control points come first and whose endpoint is the last pair.
+ */
+export function drawnPoints(calls: readonly DrawCall[]): Point[] {
+  const points: Point[] = [];
+  walk(calls, (method, args, current) => {
+    const push = (x: unknown, y: unknown): void => {
+      if (typeof x === "number" && typeof y === "number") {
+        points.push(apply(current, x, y));
+      }
+    };
+    if (
+      method === "arc" ||
+      method === "ellipse" ||
+      method === "rect" ||
+      method === "roundRect" ||
+      method === "fillRect" ||
+      method === "strokeRect" ||
+      method === "moveTo" ||
+      method === "lineTo"
+    ) {
+      push(args[0], args[1]);
+    } else if (method === "drawImage" || method === "putImageData") {
+      push(args[1], args[2]);
+    } else if (method === "quadraticCurveTo") {
+      push(args[0], args[1]);
+      push(args[2], args[3]);
+    } else if (method === "bezierCurveTo") {
+      push(args[0], args[1]);
+      push(args[2], args[3]);
+      push(args[4], args[5]);
+    }
+  });
+  return points;
+}
+
+/** The straight-line distance between two points. */
+export function distanceBetween(a: Point, b: Point): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+/** Every point a frame drew that lies within `radius` of `centre`. */
+export function pointsNear(
+  calls: readonly DrawCall[],
+  centre: Point,
+  radius: number,
+): Point[] {
+  return drawnPoints(calls).filter(
+    (point) => distanceBetween(point, centre) <= radius,
+  );
+}
+
+/**
+ * Every image the frame drew, with the source it drew, where it landed, and the
+ * angle it was turned to.
+ *
+ * The three `drawImage` forms are all read: `(image, dx, dy)` takes the source's
+ * own natural size, `(image, dx, dy, dw, dh)` names the destination size, and
+ * `(image, sx, sy, sw, sh, dx, dy, dw, dh)` names both.
+ */
+export function imageDraws(calls: readonly DrawCall[]): ImageDraw[] {
+  const draws: ImageDraw[] = [];
+  walk(calls, (method, args, current) => {
+    if (method !== "drawImage") return;
+    const image = imageRef(args[0]);
+    if (image === null) return;
+
+    let sx: number | null = null;
+    let sy: number | null = null;
+    let sw: number | null = null;
+    let sh: number | null = null;
+    let dx: number;
+    let dy: number;
+    let dw: number;
+    let dh: number;
+    if (args.length >= 9) {
+      const v = numbers(args.slice(1), 8);
+      if (v === null) return;
+      [sx, sy, sw, sh, dx, dy, dw, dh] = v as number[];
+    } else if (args.length >= 5) {
+      const v = numbers(args.slice(1), 4);
+      if (v === null) return;
+      [dx, dy, dw, dh] = v as number[];
+    } else {
+      const v = numbers(args.slice(1), 2);
+      if (v === null) return;
+      [dx, dy] = v as number[];
+      dw = image.width;
+      dh = image.height;
+    }
+
+    const at = apply(current, dx, dy);
+    const far = apply(current, dx + dw, dy + dh);
+    draws.push({
+      image,
+      sx,
+      sy,
+      sw,
+      sh,
+      dx: at.x,
+      dy: at.y,
+      dw: far.x - at.x,
+      dh: far.y - at.y,
+      cx: (at.x + far.x) / 2,
+      cy: (at.y + far.y) / 2,
+      angle: rotationOf(current),
+      transform: current,
+    });
+  });
+  return draws;
+}
+
+/**
+ * Every image a frame drew whose CENTRE lies within `radius` of a point.
+ *
+ * The reading almost every presentation check makes: `specs/assets.md` draws each
+ * sprite "centered on the thing it depicts", so the sprite for the mote on a hex
+ * is the one whose centre sits on that hex's centre. The rotation a build applies
+ * turns the sprite about its own centre and leaves that centre where it was, so
+ * this reading holds under every angle.
+ */
+export function imagesNear(
+  calls: readonly DrawCall[],
+  centre: Point,
+  radius: number,
+): ImageDraw[] {
+  return imageDraws(calls).filter(
+    (draw) => distanceBetween({ x: draw.cx, y: draw.cy }, centre) <= radius,
+  );
+}
+
+/**
+ * The distinct sources a frame drew, by their {@link ImageRef.id}, in the order
+ * they were first drawn.
+ */
+export function distinctSources(calls: readonly DrawCall[]): ImageRef[] {
+  const seen = new Map<number, ImageRef>();
+  for (const draw of imageDraws(calls)) {
+    if (!seen.has(draw.image.id)) seen.set(draw.image.id, draw.image);
+  }
+  return [...seen.values()];
+}
+
+/* -------------------------------------------------------------------------- */
+/* Text                                                                       */
+/* -------------------------------------------------------------------------- */
+//
+// MATCHING IS BY SUBSTRING, NEVER BY EQUALITY. The words are the case's — the
+// title, the tagline, the menu items, the solved panel's heading — and how a
+// build presents them is the build's: a menu item is commonly drawn with a
+// selection marker or padding around it. Requiring the exact run would fail a
+// screen showing precisely the right words.
+
+/** Every string the frame drew, through `fillText` or `strokeText`. */
+export function drawnText(calls: readonly DrawCall[]): string[] {
+  return [
+    ...callsTo(calls, "fillText"),
+    ...callsTo(calls, "strokeText"),
+  ].flatMap((args) => (typeof args[0] === "string" ? [args[0]] : []));
+}
+
+/** Whether the frame drew `text` as part of some run of text, ignoring case. */
+export function drewText(calls: readonly DrawCall[], text: string): boolean {
+  const wanted = text.trim().toLowerCase();
+  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
+}
+
+/** One run of text a frame drew, and where it drew it. */
+export interface TextDraw {
+  text: string;
+  /** The anchor the run was drawn at, mapped through the transform in force. */
+  x: number;
+  y: number;
+  /** The rotation in force at the call, in degrees clockwise, `[0, 360)`. */
+  angle: number;
+}
+
+/** Every run of text the frame drew, with its anchor in stage units. */
+export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
+  const draws: TextDraw[] = [];
+  walk(calls, (method, args, current) => {
+    if (method !== "fillText" && method !== "strokeText") return;
+    const [text] = args;
+    const at = numbers(args.slice(1), 2);
+    if (typeof text !== "string" || at === null) return;
+    draws.push({
+      text,
+      ...apply(current, at[0] as number, at[1] as number),
+      angle: rotationOf(current),
+    });
+  });
+  return draws;
+}
+
+/** Every run of text the frame drew whose anchor lies inside a rectangle. */
+export function textIn(
+  calls: readonly DrawCall[],
+  region: { x: number; y: number; w: number; h: number },
+): TextDraw[] {
+  return textDraws(calls).filter(
+    (draw) =>
+      draw.x >= region.x &&
+      draw.x < region.x + region.w &&
+      draw.y >= region.y &&
+      draw.y < region.y + region.h,
+  );
+}

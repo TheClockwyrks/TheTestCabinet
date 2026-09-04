@@ -5,15 +5,25 @@
 // sin(SERVE_ANGLE)`, and the ball is not advanced on the frame it is served, so
 // the launch frame reads exactly that speed; one percent is rounding room.
 //
-// A fresh match is started and its pre-serve hold expired; the LAUNCH itself is
+// A fresh match is opened and its pre-serve hold run out; the LAUNCH itself is
 // the build's own, on the frame after. Nothing about the serve is posed:
-// `startMatch` opens the countdown and `serve` ends it, and what leaves is
-// whatever the build's own serve produced.
+// `openCountdown` opens the countdown and `endHolds` ends it, and what leaves is
+// whatever the build's own serve produced. The field is emptied to that one ball
+// first — a serve is about the ball and its aim, and nothing else on the field
+// takes any part in it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
 import { SERVE_SPEED } from "../constants";
-import { ball0, captureReplay, createHarness, type Harness } from "../harness";
+import {
+  ball0,
+  captureReplay,
+  createHarness,
+  endHolds,
+  isolateBall,
+  openCountdown,
+  type Harness,
+} from "../harness";
 
 /**
  * One percent of `SERVE_SPEED`: rounding room on a launch the specification
@@ -26,7 +36,7 @@ const SPEED_TOLERANCE = SERVE_SPEED * 0.01;
  *
  * A recording that opened on the launch frame would drop a reviewer into a ball
  * already in flight; opening on the held ball is what makes the launch something
- * they watch HAPPEN. It cannot move what is measured: `serve()` only expires the
+ * they watch HAPPEN. It cannot move what is measured: `endHolds` only expires the
  * hold, the launch is still the build's own on the frame after it, and what
  * leaves a countdown is not a function of how long the countdown had been
  * running when it was cut short.
@@ -54,13 +64,12 @@ afterEach(async () => {
 });
 
 it("serves the ball at SERVE_SPEED", async () => {
-  const { debug } = harness;
-  await debug.reset();
-  await debug.startMatch("versus");
+  await openCountdown(harness, "versus");
+  await isolateBall(harness);
 
   const launched = await captureReplay(harness, "serve", async () => {
     await harness.advance(HELD_TICKS);
-    await debug.serve();
+    await endHolds(harness);
 
     const swept = await harness.until((s) => s.screen === "playing", {
       maxFrames: 60,

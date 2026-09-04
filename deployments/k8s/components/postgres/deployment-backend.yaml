@@ -102,6 +102,14 @@ spec:
               value: "http://tcab-artifacts:8790"
             - name: TCAB_ARENA_PUBLIC_URL
               value: "http://tcab-arena:8791"
+            # The artifact service as THIS POD reaches it, for pruning a deleted run's
+            # tree and sweeping the trees no run row references. Distinct from the
+            # advertised URL above, which the azure overlays repoint at a VPN hostname;
+            # this one stays on in-cluster Service DNS. This Deployment replaces the
+            # base StatefulSet wholesale, so the base's copy of this variable does not
+            # reach the postgres overlays and it is repeated here.
+            - name: TCAB_ARTIFACTS_URL
+              value: "http://tcab-artifacts:8790"
             # The shared service token the dispatcher claims queued jobs with; MUST
             # match the dispatcher's TCAB_BACKEND_SERVICE_TOKEN or the queue never
             # drains. From the backend secret below.

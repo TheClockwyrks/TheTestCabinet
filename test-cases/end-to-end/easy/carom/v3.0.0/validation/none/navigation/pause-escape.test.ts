@@ -1,16 +1,21 @@
 // navigation/pause-escape — Escape on the pause menu resumes the match.
 //
-// specs/ui.md: on `paused`, `back` resumes to `resumeScreen`, the screen that
-// was paused. `Escape` drives both `pause` and `back`, and on the pause menu the
-// build must read it as `back`. The match is paused from live play, so the
-// screen resumed to is `playing`, and it keeps running after: the ball moves on.
+// specs/ui.md: on `paused`, `back` resumes to `resumeScreen`, the screen that was
+// paused. `Escape` raises `pause` and `back` together on one frame, and on
+// `paused` the build has to read the pair as one resume — it must not resume and
+// pause again — so exactly one press is made and the screen it leaves the game on
+// is read back.
+//
+// The pause menu is posed over a live match with `openPauseMenu`, which sets what
+// specs/ui.md says a `pause` edge sets: `resumeScreen = playing` and
+// `menuIndex = 0`. That the ball then carries on from where it hung is
+// `pause/ball-continues`'s point, and the key that OPENS the menu is graded by
+// the pause category rather than here.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan } from "../assert";
-import { ball0, captureStill, createHarness, type Harness } from "../harness";
+import { assertEqual } from "../assert";
+import { captureStill, createHarness, type Harness } from "../harness";
 import { reachPaused } from "./screens";
-
-const AFTER_TICKS = 12; // 0.1 s
 
 let h: Harness;
 
@@ -25,16 +30,12 @@ afterEach(async () => {
 it("resumes the paused match on Escape", async () => {
   await reachPaused(h, "versus");
   const paused = await h.snapshot();
+  assertEqual(paused.resumeScreen, "playing");
 
   await h.tap("Escape");
   await captureStill(h, "resumed");
-  const resumed = await h.snapshot();
-  assertEqual(resumed.screen, "playing");
 
-  await h.advance(AFTER_TICKS);
-  const later = ball0(await h.snapshot());
-  assertGreaterThan(
-    Math.hypot(later.x - ball0(paused).x, later.y - ball0(paused).y),
-    0,
-  );
+  const resumed = await h.snapshot();
+  assertEqual(resumed.screen, paused.resumeScreen);
+  assertEqual(resumed.screen, "playing");
 });

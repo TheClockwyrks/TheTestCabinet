@@ -8,9 +8,13 @@
 // under the rule it is over 120 units from the ball's line when the ball
 // passes, far more than the 66 a contact needs. An AI that predicts the
 // reflected destination, or that moves faster than it should, blocks it.
+//
+// The field holds that one ball: both obstacles are removed, so the steep climb
+// into the wall meets nothing on the way, and the human paddle is driven out of
+// the lane. Both of the AI's faculties are on, and its paddle is left the AI's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_CX, FIELD_CY } from "../../src/constants";
+import { FIELD_CX, FIELD_CY } from "../constants";
 import { assertEqual } from "../assert";
 import {
   arrangeAiScenario,
@@ -48,7 +52,7 @@ afterEach(() => {
 });
 
 it("is beaten by a shot that banks off a wall on its way in", async () => {
-  await arrangeAiScenario(harness, SCENARIO);
+  arrangeAiScenario(harness, SCENARIO);
 
   const { result } = await captureReplay(harness, "scored", async () => {
     const outcome = await driveAiScenario(harness);

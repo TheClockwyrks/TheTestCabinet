@@ -13,20 +13,32 @@
 // build that anchored its grid to a corner, spaced it by its own pitch, or let
 // it drift with the board's size fails on whichever board it misplaced.
 //
-// Two readings are generalized so the check serves what specs/board.md pins:
+// Three readings make the check serve what specs/board.md pins:
 //
-// - A node's "sampled cluster at its computed center" is the strongest sample
-//   of its form ABOUT that center (the center cluster and rings inside
-//   NODE_R), because an emitter is the OUTLINED silhouette — open at the very
-//   center by design — and a check that sampled only the open middle would
-//   fail every conformant emitter. The comparand is the board's own ground
-//   (an empty cell's sample), since empty cells may legally carry quiet
-//   texture the node must still stand apart from.
+// - EVERY NODE IS READ THE SAME WAY, by the loudest pixel of the form drawn
+//   within NODE_R of its computed center rather than by the center pixel
+//   alone. specs/board.md's only statement here is that a node's silhouette is
+//   drawn inside NODE_R of its cell center; which pixel inside that radius
+//   carries the form is the build's, and an emitter, the OUTLINED silhouette,
+//   is open at the very center by design while a lens may still wear an iris
+//   over the middle of its fill. The comparand is the board's own ground (an
+//   empty cell's sample), since empty cells may legally carry quiet texture the
+//   node must still stand apart from, and a stage-edge sample would measure the
+//   build's backdrop as much as its node.
+// - PRESENCE IS NOT POSITION, so both are read. A form standing apart from the
+//   ground SOMEWHERE inside NODE_R of a formula center says only that something
+//   is drawn near that point: a node whose own silhouette reaches NODE_R answers
+//   it from as far as 2 * NODE_R away, more than half a CELL_PITCH, so a grid
+//   drawn half a pitch off center still leaves a crescent of the node that moved
+//   off each center inside the disc. What says the form is CENTERED on the point
+//   rather than merely visible from it is the body's centroid, and CENTROID_MAX
+//   below says how far it may sit and where that figure comes from.
 // - "Match the background" at the corners is read as the checklist's matching
 //   line — within 25 of 441, the figure it states wherever a sample must show
-//   the bare bench (node-radius, emitter-versus-lens, stage-fit) — sampled
-//   diagonally NODE_R + 4 outside each corner center, off-board points no
-//   node of a conformant board can reach.
+//   the bare bench (emitter-versus-lens, stage-fit) — sampled diagonally
+//   NODE_R + 4 outside each corner center, off-board points no node of a
+//   conformant board can reach. Those points are genuinely off the board, so
+//   they keep the far-field background sample.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
@@ -42,16 +54,42 @@ import {
   type Harness,
 } from "../harness";
 import { cellCenter, NODE_R, type Board } from "../notation";
-import { groundSample, strongestAboutCenter } from "./pixels";
+import { APART_MIN, bodyCentroid, bodyMask, groundSample } from "./pixels";
 
-/** The item's line for a node clearly apart from the bench: 50 of 441. */
-const APART_MIN = 50;
+/**
+ * How far the body's centroid may sit from the formula center.
+ *
+ * specs/board.md draws the disc of NODE_R (30) about a cell center as the box a
+ * node's silhouette is drawn inside, and pins the three forms — a triangle, a
+ * square, and a diamond. A square and a diamond are centrally symmetric, so one
+ * filling its box puts its centroid on the center exactly. A triangle does not:
+ * the most lopsided triangle that still fills the box is the isoceles one with
+ * its apex on the rim and its base a chord across the far side, and its centroid
+ * sits NODE_R / 3 (10) out. That is the largest offset the pinned forms
+ * themselves produce, and 2 px is added on top for the binarized edge and the
+ * lattice the disc is sampled on.
+ *
+ * Nothing here is read off this case's builds, and the line is nowhere near
+ * what it must catch: a grid drawn half a CELL_PITCH off center leaves each
+ * formula center reading a crescent of the node that moved off it, whose
+ * centroid sits about 24 out.
+ */
+const CENTROID_MAX = NODE_R / 3 + 2;
 
 /** The checklist's matching line for a sample of bare bench: 25 of 441. */
 const MATCH_MAX = 25;
 
-/** Diagonally outside a corner center, past every conformant node's reach. */
-const CORNER_OUT = NODE_R + 4;
+/**
+ * Diagonally outside a corner center, past every conformant node's reach.
+ *
+ * specs/board.md item 4 lets a halo, a backing, or a highlight reach
+ * `CELL_PITCH / 2` (`48`) from a cell center, so a probe nearer than that reads
+ * drawing the spec permits. `sampleColor` averages a cluster of five points at
+ * +/-4 on each axis, and the nearest of those to the corner center sits at
+ * `hypot(CORNER_OUT - 4, CORNER_OUT)`, so the offset has to clear 48 with the
+ * cluster included: at `NODE_R + 10` (`40`) the nearest sample is 53.8 out.
+ */
+const CORNER_OUT = NODE_R + 10;
 
 let h: Harness;
 
@@ -69,11 +107,20 @@ function assertNodesOnCenters(board: Board): void {
   const ground = groundSample(h, board);
   for (const node of board.nodes) {
     const center = cellCenter(node.col, node.row, board.cols, board.rows);
+    const body = bodyMask(h, center.x, center.y, NODE_R, ground);
     assertGreaterThan(
-      strongestAboutCenter(h, center.x, center.y, ground),
+      body.peak,
       APART_MIN,
-      `the ${node.kind} at (${node.col}, ${node.row}) drawn on its ` +
-        `formula center (${center.x}, ${center.y})`,
+      `the ${node.kind} at (${node.col}, ${node.row}): its loudest pixel ` +
+        `within NODE_R of its formula center (${center.x}, ${center.y})`,
+    );
+    const centroid = bodyCentroid(body);
+    assertLessThanOrEqual(
+      centroid === null ? Infinity : Math.hypot(centroid.x, centroid.y),
+      CENTROID_MAX,
+      `the ${node.kind} at (${node.col}, ${node.row}): how far the form ` +
+        `drawn about its formula center (${center.x}, ${center.y}) has its ` +
+        `own mass sitting from that point`,
     );
   }
 }

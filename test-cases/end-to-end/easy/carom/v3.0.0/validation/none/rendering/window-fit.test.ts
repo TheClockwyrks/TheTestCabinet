@@ -20,6 +20,15 @@
 // non-uniformly, that cropped, that ignored the pixel ratio, or that drew in
 // device pixels puts something other than a paddle at those points.
 //
+// THE SCENE IS THE STILL, ISOLATED ONE. `arrangeColorScene` empties the field and
+// spawns back one ball and one obstacle, centres both paddles, and parks the ball
+// in the clear, so what each sample lands on is a body rather than a body plus
+// whatever else the standard world would have put under it. Neither paddle is
+// taken from the player: this requirement is about where the build DREW them, and
+// a Versus match with no key held moves neither. Where each body actually is is
+// then read back off the snapshot rather than assumed, which is what lets one
+// scene serve every variant.
+//
 // EACH SHAPE IS A WINDOW OF ITS OWN. A device pixel ratio belongs to a browser
 // context rather than to a page, so `createHarness` opens one per shape and the
 // build meets each as a fresh page — which is also the state the requirement is
@@ -35,15 +44,14 @@ import {
   assertLessThanOrEqual,
 } from "../assert";
 import {
-  COLOR_POINTS,
   DISTINCT_MIN,
+  FIELD_POINTS,
   arrangeColorScene,
   captureStill,
   colorDistance,
   createHarness,
   sampleColor,
-  FIELD_POINTS,
-  sampleField,
+  sampleScene,
   type Harness,
 } from "../harness";
 
@@ -146,21 +154,19 @@ it.each(SURFACES)(
     assertCloseTo(Math.min(view.offsetX, view.offsetY), 0, 6);
 
     // And the build really drew into that map: a posed scene puts each element
-    // under its own logical coordinate, mapped through the specified fit.
+    // under its own logical coordinate, mapped through the specified fit. Each
+    // paddle is sampled where the snapshot says that paddle is, so what this
+    // reads is the fit rather than an assumption about where the scene stood.
     await arrangeColorScene(h);
-    const field = await sampleField(h);
-    const left = await sampleColor(
-      h,
-      COLOR_POINTS.leftPaddle.x,
-      COLOR_POINTS.leftPaddle.y,
+    const scene = await sampleScene(h);
+    assertGreaterThan(
+      colorDistance(scene.leftPaddle, scene.background),
+      DISTINCT_MIN,
     );
-    const right = await sampleColor(
-      h,
-      COLOR_POINTS.rightPaddle.x,
-      COLOR_POINTS.rightPaddle.y,
+    assertGreaterThan(
+      colorDistance(scene.rightPaddle, scene.background),
+      DISTINCT_MIN,
     );
-    assertGreaterThan(colorDistance(left, field), DISTINCT_MIN);
-    assertGreaterThan(colorDistance(right, field), DISTINCT_MIN);
   },
 );
 
@@ -176,15 +182,13 @@ it("draws the field inside the fit, with the bars the field's background", async
   assertDeepEqual(h.device(0, 0), { x: 160, y: 0 });
   assertDeepEqual(h.device(FIELD_W, FIELD_H), { x: 1440, y: 720 });
 
-  const field = await sampleField(h);
-  const paddle = await sampleColor(
-    h,
-    COLOR_POINTS.leftPaddle.x,
-    COLOR_POINTS.leftPaddle.y,
-  );
+  const scene = await sampleScene(h);
 
   // The paddle is under its own logical coordinate, mapped through the fit.
-  assertGreaterThan(colorDistance(paddle, field), DISTINCT_MIN);
+  assertGreaterThan(
+    colorDistance(scene.leftPaddle, scene.background),
+    DISTINCT_MIN,
+  );
 
   // The bars either side are the field's background color (specs/overview.md).
   // They are outside the logical space, so they are sampled in device pixels

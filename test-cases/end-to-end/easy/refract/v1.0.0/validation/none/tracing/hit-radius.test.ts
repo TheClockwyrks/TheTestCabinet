@@ -23,6 +23,11 @@
 // specified radius begins nothing; a build that widened it begins the trace
 // this assertion forbids.
 //
+// The MISSED press is taken FIRST, on the board as `loadBoard` left it, so
+// "the board is left unchanged" rests on a board this suite has not touched.
+// Taking it after the inside press would make it rest on what the release
+// before it left behind, which is `tracing/trace-empty-release`'s requirement.
+//
 // The presses go through the surface's `pointerDown`, which feeds the same
 // input path a player's press feeds, hit radius included
 // (`specs/instrumentation.md` — "nothing is bypassed").
@@ -63,17 +68,6 @@ it("begins a trace within NODE_HIT_R of a node, and none past it", async () => {
   const board = await loadBoard(h, R3_REDRAW);
   const emitter = center(board, { col: 0, row: 0 });
 
-  await h.debug.pointerDown(emitter.x + (NODE_HIT_R - 2), emitter.y);
-  await h.advance(1);
-  await captureStill(h, "targeted");
-  const inside = await h.snapshot();
-  assertDeepEqual(
-    inside.tracing,
-    { channel: "triangle", live: { col: 0, row: 0 } },
-    "a press NODE_HIT_R - 2 from the emitter's center begins its trace",
-  );
-  await h.debug.pointerUp();
-
   // 48 out from (0, 0) on the diagonal — 33.9 on each axis, so the emitter's
   // is still the nearest cell center and the neighbour's is 70.7 away.
   // Farther than NODE_HIT_R from every cell center on the board, so no node is
@@ -84,6 +78,17 @@ it("begins a trace within NODE_HIT_R of a node, and none past it", async () => {
   assertNull(
     outside.tracing,
     "a press farther than NODE_HIT_R from every cell center begins no trace",
+  );
+  await h.debug.pointerUp();
+
+  await h.debug.pointerDown(emitter.x + (NODE_HIT_R - 2), emitter.y);
+  await h.advance(1);
+  await captureStill(h, "targeted");
+  const inside = await h.snapshot();
+  assertDeepEqual(
+    inside.tracing,
+    { channel: "triangle", live: { col: 0, row: 0 } },
+    "a press NODE_HIT_R - 2 from the emitter's center begins its trace",
   );
   await h.debug.pointerUp();
 });

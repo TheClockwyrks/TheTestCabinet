@@ -20,7 +20,7 @@ import type { DrawApi } from "@test-cabinet/structured-2d";
 import { PADDLE_HALF, PADDLE_W } from "./constants";
 import { glowRect, type Ctx } from "./draw";
 import { integratePaddle, paddleBounds, type Side } from "./sim";
-import { isLiveScreen, screenOf } from "./state";
+import { isSimulating, screenOf } from "./state";
 import { COLOR, FURNITURE_ALPHA, LAYER } from "./theme";
 
 /** The two sides' body colors and halos, from this build's theme. */
@@ -59,7 +59,7 @@ export class Paddle extends Pawn {
   tick(dt: number): void {
     const requested = this.requested;
     this.requested = 0;
-    if (!isLiveScreen(screenOf(this.world))) return;
+    if (!isSimulating(this.world)) return;
 
     const next = integratePaddle({ cy: this.transform.y, vy: requested }, dt);
     this.transform.y = next.cy;

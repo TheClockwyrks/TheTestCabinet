@@ -1,11 +1,7 @@
 /**
- * Run shell commands in the workspace.
+ * Run shell commands in the workspace, which is the working directory.
  *
- * One function, and the way a program reaches everything gg has no call of its own for: a build, a
- * test run, `git`, `curl`, a package manager. The workspace is the working directory.
- *
- * A non-zero exit is a *result* rather than a failure, because deciding whether a build or a test run
- * passed is the single most common thing a program does with one.
+ * A non-zero exit is a result rather than a failure.
  */
 
 import * as raw from "test-cabinet:gg/shell";
@@ -33,15 +29,13 @@ export interface ShellOutput {
 /**
  * Run a command with `sh -c` in the workspace and hand back its merged output.
  *
- * A non-zero exit is not a failure: `exitCode` on the result is what says whether the command
- * succeeded, and only a process that could not be launched, or one the timeout killed, throws.
+ * A non-zero exit is not a failure: `exitCode` on the result says whether the command succeeded,
+ * and only a process that could not be launched, or one the timeout killed, throws.
  *
- * This run may **offload** shell output. Under `offload`, `output` holds only the tail that fits and
- * ends with a note naming the two files the command's full stdout and stderr were written to, each
- * with the shape of what it holds — the line count, the 50th, 95th and 99th-percentile line lengths,
- * and the five longest lines by length and line number — so a window can be aimed at the right
- * region of a file nobody has seen. Those files are readable by absolute path, so reading one, or
- * grepping it, beats running the command again.
+ * Where this run offloads shell output, `output` holds only the tail that fits and ends with a note
+ * naming the two files the command's full stdout and stderr were written to, each with the shape of
+ * what it holds: the line count, the 50th, 95th and 99th-percentile line lengths, and the five
+ * longest lines by length and line number. Those files are readable by absolute path.
  *
  * @ggop shell.shell
  * @param command The command line, run by `sh -c` with the workspace as its working directory.

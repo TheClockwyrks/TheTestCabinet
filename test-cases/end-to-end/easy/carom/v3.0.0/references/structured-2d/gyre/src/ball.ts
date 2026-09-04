@@ -1,30 +1,36 @@
 // Carom — the ball: the one actor whose tick runs the match's physics.
 //
-// The actor carries the ball's motion (`vx`, `vy`, `spin`; the position is its
-// transform) and its trail, and each `playing` frame it hands the whole flight
-// to the pure `step()` in `src/physics.ts`: the spin's curve and decay, the
-// sub-stepped integration, and every collision against the walls, the two
-// paddles, and the two obstacles, in the fixed order specs/balls.md states.
-// The paddles and the obstacles are read from the world by their case-fixed
-// tags, AFTER they have ticked — the mode spawns the ball last, and actors
-// tick in spawn order — so a contact reads each paddle's integrated velocity
-// for this frame, which is what drives the spin mechanic, and each obstacle's
-// live pose for this frame, which is the oriented rectangle the flight
-// resolves against (specs/playfield.md).
+// The actor carries the whole of the ball specs/state.md declares: its motion
+// (`vx`, `vy`, `spin`; the position is its transform), its pre-serve hold
+// (`held`, `holdTimer`), and its trail. WHETHER THE BALL IS PRESENT IS WHETHER
+// THIS ACTOR IS IN THE WORLD — `clearWorld` destroys it and `spawnBall` places
+// it (specs/instrumentation.md) — so an absent ball is not advanced, not drawn,
+// collides with nothing, and scores no point without a flag anywhere saying so.
+//
+// Each `playing` frame it hands the whole flight to the pure `step()` in
+// `src/physics.ts`: the spin's curve and decay, the sub-stepped integration,
+// and every collision against the walls, the two paddles, and whichever
+// obstacles are on the field, in the fixed order specs/balls.md states. The
+// paddles and the obstacles are read from the world by their case-fixed tags,
+// AFTER they have ticked — the ball is spawned last, and actors tick in spawn
+// order — so a contact reads each paddle's integrated velocity for this frame,
+// which is what drives the spin mechanic, and each obstacle's pose for the
+// frame, which the mode winds once per frame AFTER every sub-step
+// (specs/playfield.md).
 //
 // The cues the flight raised play here, one per event per frame, through the
-// world's audio bus. What the ball does NOT do is score: judging a rally is
-// the match rules' job, and the mode's tick runs after every actor's
-// (src/match-mode.ts).
+// world's audio bus. What the ball does NOT do is count its own hold or score:
+// judging a rally is the match rules' job, and the mode's tick runs after every
+// actor's (src/match-mode.ts).
 
 import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
 import type { DrawApi } from "@test-cabinet/structured-2d";
-import { BALL_R, CUES, TAGS } from "./constants";
+import { BALL_R, CUES, HOLD_TIME, TAGS } from "./constants";
 import { glowCircle, type Ctx } from "./draw";
 import { step } from "./physics";
-import { parkedBall, type BallSim, type Side } from "./sim";
+import { parkedBall, type BallSim } from "./sim";
 import { Obstacle } from "./scenery";
-import { screenOf } from "./state";
+import { caromState, screenOf } from "./state";
 import { Paddle } from "./paddle";
 import { COLOR, LAYER } from "./theme";
 import { recordSample, ribbon, type TrailSample } from "./trail";
@@ -34,29 +40,17 @@ export class Ball extends Actor {
   vy = 0;
   /** The signed lateral-curvature scalar (specs/balls.md). */
   spin = 0;
+  /** True while the ball waits at its home point rather than flying. */
+  held = true;
+  /** Seconds remaining of that wait. */
+  holdTimer = HOLD_TIME;
   /** Recent positions, oldest first, for the motion trail. */
   trail: readonly TrailSample[] = [];
-
-  private paddles: { left: Paddle; right: Paddle } | null = null;
-  /** The two obstacle actors, in `OBSTACLE_CENTERS` order (A then B). */
-  private obstacles: readonly Obstacle[] = [];
 
   constructor() {
     super();
     this.attach(new TrailStreak()).layer = LAYER.trail;
     this.attach(new BallBody()).layer = LAYER.ball;
-  }
-
-  beginPlay(): void {
-    this.paddles = {
-      left: this.sidePaddle(TAGS.paddleLeft, "left"),
-      right: this.sidePaddle(TAGS.paddleRight, "right"),
-    };
-    // `byTag` reports in spawn order, which is A then B (src/levels.ts) — the
-    // fixed order the collision resolves the pair in (specs/balls.md).
-    this.obstacles = this.world
-      .byTag(TAGS.obstacle)
-      .filter((actor): actor is Obstacle => actor instanceof Obstacle);
   }
 
   /** The ball's motion as the physics reads it. */
@@ -70,9 +64,14 @@ export class Ball extends Actor {
     };
   }
 
-  /** Park at the field center, motionless and spinless, with no trail. */
+  /**
+   * The arrangement `spawnBall` and a fresh countdown place the ball in: at its
+   * home point, held, with a full hold, no motion, no spin, and no trail.
+   */
   park(): void {
     this.pose(parkedBall());
+    this.held = true;
+    this.holdTimer = HOLD_TIME;
     this.trail = [];
   }
 
@@ -87,21 +86,27 @@ export class Ball extends Actor {
 
   tick(dt: number): void {
     const screen = screenOf(this.world);
+    if (screen !== "playing" && screen !== "countdown") return;
 
-    if (screen === "playing" && this.paddles !== null) {
+    if (screen === "playing" && !this.held) {
+      const left = this.paddle(TAGS.paddleLeft);
+      const right = this.paddle(TAGS.paddleRight);
       const { ball, events } = step(
         this.sim(),
-        { cy: this.paddles.left.transform.y, vy: this.paddles.left.vy },
-        { cy: this.paddles.right.transform.y, vy: this.paddles.right.vy },
-        // The obstacles' LIVE poses: they ticked before this actor, so these
-        // are this frame's settled centers and angles.
-        this.obstacles.map((obstacle) => obstacle.pose()),
+        { cy: left?.transform.y ?? 0, vy: left?.vy ?? 0 },
+        { cy: right?.transform.y ?? 0, vy: right?.vy ?? 0 },
+        // Whichever obstacles are on the field, at the pose the frame's clock
+        // gave them. An absent obstacle is simply not in the list.
+        this.world
+          .byTag(TAGS.obstacle)
+          .filter((actor): actor is Obstacle => actor instanceof Obstacle)
+          .map((obstacle) => obstacle.pose()),
         dt,
       );
       this.pose(ball);
       // One cue per event that actually happened. A frame long enough to
       // contain two different kinds of bounce plays both, because each is its
-      // own event and each has its own cue (specs/ui.md).
+      // own event and each has its own cue (specs/audio.md).
       if (events.paddle) this.world.audio.play(CUES.paddleHit);
       if (events.wall) this.world.audio.play(CUES.wallBounce);
       if (events.obstacle) this.world.audio.play(CUES.obstacleBounce);
@@ -111,21 +116,21 @@ export class Ball extends Actor {
     // its position and the simulation time are appended to the trail and the
     // window is pruned (specs/state.md). Held at the center, the trail
     // collapses to nothing within TRAIL_TIME.
-    if (screen === "playing" || screen === "countdown") {
-      this.trail = recordSample(this.trail, {
-        x: this.transform.x,
-        y: this.transform.y,
-        t: this.world.frame().timeMs / 1000,
-      });
-    }
+    this.trail = recordSample(this.trail, {
+      x: this.transform.x,
+      y: this.transform.y,
+      t: caromState(this.world).game.simTime,
+    });
   }
 
-  private sidePaddle(tag: string, side: Side): Paddle {
+  /**
+   * The tagged paddle, or null. Both paddles are always on the field
+   * (specs/state.md), so the null is a guard against a half-built world rather
+   * than a case the rules cover.
+   */
+  private paddle(tag: string): Paddle | null {
     const found = this.world.byTag(tag)[0];
-    if (!(found instanceof Paddle)) {
-      throw new Error(`Carom: no ${side} paddle carries the "${tag}" tag`);
-    }
-    return found;
+    return found instanceof Paddle ? found : null;
   }
 }
 

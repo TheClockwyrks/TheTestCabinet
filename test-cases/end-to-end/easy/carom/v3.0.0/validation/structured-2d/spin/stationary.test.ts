@@ -3,9 +3,13 @@
 // Spin comes from the paddle's vertical velocity at contact, so a still paddle
 // adds none and the return flies straight. The paddle pose is the precondition;
 // the bounce, and the spin it does or does not add, are the build's own physics.
+//
+// The contact runs over a field holding one ball and neither obstacle, with the
+// far paddle held off the lane, so the struck paddle is the only body the ball
+// meets between the pose and the reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_CY } from "../../src/constants";
+import { FIELD_CY } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   LEAD_TICKS,
@@ -13,7 +17,6 @@ import {
   captureReplay,
   createHarness,
   drivePaddleHit,
-  startPlaying,
   type Harness,
 } from "../harness";
 
@@ -50,8 +53,7 @@ afterEach(() => {
 });
 
 it("imparts no spin from a still paddle", async () => {
-  await startPlaying(harness);
-  arrangePaddleHit(harness, "left", {
+  await arrangePaddleHit(harness, "left", {
     cy: FIELD_CY,
     vy: 0,
     ballY: FIELD_CY,

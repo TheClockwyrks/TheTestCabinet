@@ -116,6 +116,20 @@ variants = [
   "variants/downpour.toml",
 ]
 
+# The audio packs the run container is staged with, and all that `sfx-sample` and
+# `music` can reach. A tool config that names no pack plays the first pack of
+# that kind.
+#
+# The bank is the point of this declaration. The bed is asked to be a bright,
+# bouncy fairground loop (`specs/assets.md`), and `gm-lite`'s music box,
+# glockenspiel, marimba, trumpet, clarinet, and saxophone are a midway band as it
+# stands. `combat-core` is staged for the park's mechanical half, where
+# `sfx-sample` earns its keep: the ratchet and clatter of a ride starting, and
+# the alarm a broken one raises. `cinematic` and `synthwave` are not staged; a
+# park this cheerful has neither an orchestra nor neon in it.
+[audio]
+packs = ["combat-core@0.1.0", "gm-lite@0.1.0"]
+
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
 # repository root. `npm ci` is deliberate — it requires the build to commit a

@@ -1,29 +1,23 @@
 # frozen_string_literal: true
 
 module GG
-  # Read, write, edit and list the files of the workspace.
+  # Read, write, edit, list and walk the files of the workspace.
   #
-  # Nothing here places anything in the agent's context window; a view is what does that.
+  # Nothing here places anything in the context window.
   module Files
     extend Surface::Operations
 
     # Read a file, as either a `GG::Files::TextFile` or a `GG::Files::ImageFile`.
     #
-    # Which of the two comes back is detected from the file's bytes, never from the extension, so a
-    # mislabelled picture is still a picture. Both are classes, so an ordinary `case` narrows them:
-    #
-    # ```ruby
-    # case GG::Files.read_file("logo.png")
-    # when GG::Files::TextFile then …
-    # when GG::Files::ImageFile then …
-    # end
-    # ```
+    # Which of the two comes back is detected from the file's bytes, never from the extension. Both
+    # are classes, so a `case` narrows them.
     #
     # A relative path resolves against the workspace; an absolute one is read as given, so anything
     # else in this container — an offloaded command's output under `/tmp/gg-shell`, say — is
-    # readable. This call hands bytes to the program and places nothing in the context window;
-    # reading a picture describes it and shows nothing, so a file only read here is a file nobody
-    # has looked at.
+    # readable.
+    #
+    # The bytes go to the program and nothing is placed in the context window. A picture is
+    # described rather than shown.
     #
     # @param path [String] The file to read, relative to the workspace or absolute.
     # @param offset [Integer, nil] The 1-based line to start at. Left out, the read starts at the
@@ -44,8 +38,7 @@ module GG
 
     # Write UTF-8 text to a file, creating parent directories and replacing what is there.
     #
-    # The contents may be given as a block, which is what a Ruby program reaches for when the text
-    # is assembled rather than held: `GG::Files.write_file("notes.md") { rows.join("\n") }`.
+    # The contents may be given as a `contents` argument or as a block returning the text.
     #
     # @overload write_file(path, contents)
     #   @param path [String] Where to write, relative to the workspace or absolute. Parent
@@ -74,9 +67,6 @@ module GG
 
     # Replace the one exact occurrence of some text in a file with something else.
     #
-    # Widening the surrounding context until the match is unique is the way to disambiguate;
-    # counting occurrences is not.
-    #
     # @param path [String] The file to edit.
     # @param old_string [String] The exact text to find, whitespace included. It must appear exactly
     #   once.
@@ -92,8 +82,8 @@ module GG
 
     # List a directory, sorted by name; no argument lists the workspace root.
     #
-    # Each entry carries a bare `name` — join it with the directory that was listed — and its
-    # `kind`. An empty directory is an empty array, not a failure.
+    # Each entry carries a bare `name`, with no directory part, and its `kind`. An empty directory
+    # is an empty array, not a failure.
     #
     # @param path [String, nil] The directory to list, relative to the workspace or absolute. Leave
     #   it out for the workspace root.
@@ -110,28 +100,60 @@ module GG
     end
     operation :list_dir, "files.list_dir", tool: "list_dir"
 
+    # Render the tree beneath a directory, skipping everything the ignore files exclude.
+    #
+    # One block of text: the root itself unnamed, each level indented two further spaces than its
+    # parent, every level in path order, and directories suffixed `/`. A root with nothing beneath
+    # it renders as `(empty directory)`.
+    #
+    # `depth` counts levels of children below the root, so `1` is the root's own entries. A
+    # directory sitting at the bound is suffixed with how many entries it holds that were not
+    # walked, as `assets/ (12 entries not shown)`.
+    #
+    # What `.gitignore`, `.ignore` and their kin exclude — nested files, negations and
+    # `.git/info/exclude` included, and `.git` itself — is never walked and never rendered, whether
+    # or not the workspace is a repository yet. Dotfiles are otherwise rendered like any other
+    # entry, and symbolic links are not followed.
+    #
+    # The rendering is bounded at 1000 lines and 16 KiB, whichever binds first, and a result cut by
+    # either ends with a line saying so.
+    #
+    # @param path [String, nil] The directory to walk, relative to the workspace or absolute. Leave
+    #   it out for the workspace root.
+    # @param depth [Integer, nil] How many levels of children below the root to render, at least 1.
+    #   Leave it out for 2; the ceiling is 10, and a larger request is answered at 10.
+    # @return [String] the rendered tree
+    # @raise [GG::Core::ApiError] `:not_found` for a `path` that does not exist, and
+    #   `:invalid_argument` for a `path` that is not a directory or a `depth` of zero.
+    def self.tree(path: nil, depth: nil)
+      bound = Check.uint("tree", "depth", depth)
+      if bound == 0
+        raise Core::ApiError.new("tree", Core::ApiErrorCode::INVALID_ARGUMENT,
+                                 "`depth` must be at least 1, got 0; leave it out for gg's " \
+                                 "default of 2")
+      end
+
+      Wire.call("tree", "files", "tree", [Wire.js(path), Wire.js(bound)])
+    end
+    operation :tree, "files.tree", tool: "tree"
+
     # Search the workspace's files for a regular expression and hand back every matching line.
     #
-    # `query` is a regular expression — Rust syntax, so `foo|bar`, `fn\s+update`, and `(?i)todo`
-    # for a case-insensitive match — tried against each line on its own, and every line it matches
-    # comes back with its path and 1-based line number, in path order and then line order. It is the
-    # pattern's text, as a String, rather than a Ruby Regexp. `path` roots the search at one
-    # directory or one file; leave it out for the workspace root.
+    # A `grep` over the workspace. `query` is a regular expression — Rust syntax, so `foo|bar`,
+    # `fn\s+update`, and `(?i)todo` for a case-insensitive match — tried against each line on its
+    # own, and every line it matches comes back with its path and 1-based line number, in path
+    # order and then line order. It is the pattern's text, as a String, rather than a Ruby Regexp.
+    # `path` roots the search at one directory or one file; leave it out for the workspace root.
     #
-    # The search honours ignore files: what `.gitignore`, `.ignore` and their kin exclude — nested
-    # files, negations and `.git/info/exclude` included, and `.git` itself — is never scanned and
-    # never returned, whether or not the workspace is a repository yet, and a file that is not text
-    # (one carrying a NUL byte) is skipped rather than matched byte by byte. Dotfiles are otherwise
-    # searched like any other file. So a match list holds the project's own sources rather than
-    # `node_modules`, build output and the run's own bookkeeping, and a file under an ignored path
-    # is still reachable by its path through every other call in this module.
+    # What `.gitignore`, `.ignore` and their kin exclude — nested files, negations and
+    # `.git/info/exclude` included, and `.git` itself — is never scanned and never returned, whether
+    # or not the workspace is a repository yet. A file carrying a NUL byte is skipped. Dotfiles are
+    # otherwise searched like any other file. A file under an ignored path is still readable by its
+    # path.
     #
-    # The result is bounded so one search cannot flood a turn, which is where it differs from a
-    # shell `grep`: at most `limit` matches come back — 50 by default, and never more than 200 — and
-    # a list exactly `limit` long may have been cut. There is no offset, because a search is a
-    # question about where to point the other calls rather than a way of reading a file, so the
-    # answer to a cut list is a narrower query or path. A matching line longer than 200 characters
-    # is cut there and annotated in place as `foo (123 more chars...)`.
+    # At most `limit` matches come back — 50 by default, and never more than 200 — and a list
+    # exactly `limit` long may have been cut. There is no offset. A matching line longer than 200
+    # characters is cut there and annotated in place as `foo (123 more chars...)`.
     #
     # @param query [String] The regular expression to match each line against, in Rust syntax;
     #   `(?i)` at the front makes it case-insensitive. It may not be blank.
@@ -182,7 +204,7 @@ module GG
       # @return [Integer] The 1-based last line returned.
       attr_reader :last_line
 
-      # @return [Integer] The file's total line count, which says whether to page again.
+      # @return [Integer] The file's total line count.
       attr_reader :total_lines
 
       # @api private
@@ -203,8 +225,7 @@ module GG
 
     # A picture's description, as `GG::Files.read_file` returns it.
     #
-    # The pixels never enter the program. `GG::Views.open_file` is what attaches the picture to the
-    # turn for it to be looked at, which is worth far more than base64 in a variable.
+    # The pixels never enter the program.
     class ImageFile
       include Value
 
@@ -238,8 +259,7 @@ module GG
 
     # What a directory entry is.
     #
-    # Every arm is a Symbol, so a comparison may name the constant or write the literal:
-    # `GG::Files::EntryKind::FILE` and `:file` are the same value.
+    # Every arm is a Symbol: `GG::Files::EntryKind::FILE` and `:file` are the same value.
     module EntryKind
       # An ordinary file.
       FILE = :file
@@ -255,8 +275,7 @@ module GG
     class DirEntry
       include Value
 
-      # @return [String] The entry's bare name, with no directory part. Join it with the directory
-      #   that was listed.
+      # @return [String] The entry's bare name, with no directory part.
       attr_reader :name
 
       # @return [GG::Files::EntryKind] What the entry is.

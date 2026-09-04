@@ -370,8 +370,10 @@ files.readFile("notes.md");
         ran.said
     );
     assert!(
-        ran.said.contains("more frames, inside gg's SDK"),
-        "and the strike should be counted; it said {:?}",
+        ran.said
+            .contains("\u{2026} and 4 more frames, inside gg's SDK"),
+        "and the strike should be counted, at the four frames the documented budget spends \
+         reaching a membrane call; it said {:?}",
         ran.said
     );
     let reported = ran.reported.as_ref().expect("the throw was reported");
@@ -621,6 +623,46 @@ const = 3;
     assert!(
         ran.said.contains("program.js:3"),
         "the bad line is line 3 and the diagnosis should say so; it said {:?}",
+        ran.said
+    );
+}
+
+/// **A stack is captured ten frames deep, innermost first.**
+///
+/// The number is the budget every arm on this guest spends and the striking above is spent out of
+/// it: an SDK frame between the model's own line and the throw is a frame the model's line can be
+/// pushed off the end by. The arms that compile a second SDK into the program are designed against
+/// this figure, so it is measured here rather than assumed.
+#[test]
+fn a_stack_is_captured_ten_frames_deep() {
+    let mut program = String::new();
+    for step in 0..15 {
+        program.push_str(&format!(
+            "function step{step}() {{ step{}(); }}\n",
+            step + 1
+        ));
+    }
+    program.push_str("function step15() { throw new Error(\"the deepest step\"); }\nstep0();\n");
+    let ran = run(&program);
+    assert!(ran.failed(), "a program that threw failed");
+    let frames = ran
+        .said
+        .lines()
+        .filter(|line| line.trim_start().starts_with("at "))
+        .count();
+    assert_eq!(
+        frames, 10,
+        "the engine captures ten frames of a stack; it said {:?}",
+        ran.said
+    );
+    assert!(
+        ran.said.contains("at step15") && ran.said.contains("at step6"),
+        "and the ten it keeps are the innermost ten; it said {:?}",
+        ran.said
+    );
+    assert!(
+        !ran.said.contains("at step5"),
+        "and the frames outside the capture are discarded by the engine, uncounted; it said {:?}",
         ran.said
     );
 }

@@ -11,6 +11,10 @@
 //!   service forwards to the backend's publish-job verify endpoint. This is the one
 //!   *read* that is token-gated: it is a server-to-server pull (not browser-loaded
 //!   media), and a run's source tree is published deliberately, never ambiently.
+//! - The **backend** manages the lifetime of a stored tree — `DELETE
+//!   /runs/{id}/artifacts` when a run is deleted, and `GET /runs` to enumerate the
+//!   stored trees for its reclamation sweep — authed by the shared **control-plane
+//!   service token**.
 //! - A **reviewer** (through the console) reads the run's playable build and
 //!   proof/asset media — `GET /runs/{id}/build` (and the trailing-slash
 //!   `/runs/{id}/build/` the console actually loads), `/runs/{id}/build/{*path}`,
@@ -40,6 +44,8 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use futures_util::StreamExt;
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 use tokio::io::AsyncWriteExt;
 use tower_http::compression::CompressionLayer;
 use tower_http::compression::predicate::{DefaultPredicate, NotForContentType, Predicate};
@@ -80,9 +86,10 @@ pub struct AppState {
     pub backend_url: Arc<String>,
     /// The HTTP client the upload-auth verify call uses.
     pub http: reqwest::Client,
-    /// The shared control-plane service token a run-tree delete must present, or
-    /// `None` when deletion is disabled (the delete route then rejects every
-    /// caller). See [`crate::auth::verify_service_token`].
+    /// The shared control-plane service token the backend's two management routes —
+    /// the run-tree delete and the `GET /runs` listing — must present, or `None` when
+    /// tree management is disabled (both routes then reject every caller). See
+    /// [`crate::auth::verify_service_token`].
     pub service_token: Option<Arc<String>>,
 }
 
@@ -100,6 +107,10 @@ pub fn router(state: AppState) -> Router {
         // to disk, and that layer only bounds the buffering extractors. The cap is
         // applied as the bytes are written — see `MAX_UPLOAD_BYTES`.
         .route("/runs/{id}/artifacts", post(upload).delete(delete))
+        // Enumerate every stored tree (backend → service, shared control-plane
+        // service token) so the backend's reclamation sweep can compare the volume's
+        // contents against its own run rows.
+        .route("/runs", get(list_runs))
         // Download a run's source tree as a tar (publisher → service, per-publish-job
         // token). The one *gated* read: a server-to-server pull the publisher uses to
         // drive the GitHub-repo + Pages release, verified against the backend like an
@@ -329,6 +340,67 @@ async fn delete(
 
     tracing::info!(run.id = %id, "deleted run artifacts");
     Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// One entry of the [`list_runs`] response.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredTreeOut {
+    /// The run id the tree is keyed by.
+    id: String,
+    /// When the tree was last written, RFC 3339 in UTC. This is the run's upload
+    /// time, which is what the backend's sweep measures its grace window against.
+    modified_at: String,
+}
+
+/// The [`list_runs`] response body.
+#[derive(serde::Serialize)]
+struct TreeListingOut {
+    runs: Vec<StoredTreeOut>,
+}
+
+/// `GET /runs` — list every run tree the store holds, with each tree's last-write
+/// time.
+///
+/// The backend's artifact reclamation sweep is the caller: it compares these ids
+/// against its own run rows and deletes the trees nothing references. That is a
+/// destructive decision made from this answer, so the route carries the same gate
+/// the delete does — the shared control-plane service token
+/// (`TCAB_BACKEND_SERVICE_TOKEN`). With no token configured the service rejects
+/// every caller (`401`). `200 OK` with `{ "runs": [{ "id", "modifiedAt" }] }`.
+#[tracing::instrument(name = "artifacts.list_runs", skip(state, headers), err(Debug))]
+async fn list_runs(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> Result<Response, ApiError> {
+    crate::auth::verify_service_token(
+        &headers,
+        state.service_token.as_deref().map(String::as_str),
+    )?;
+
+    // Reading the root's directory entries and stat-ing each one is blocking, and the
+    // store can hold thousands of trees; keep it off the async runtime.
+    let store = state.store.clone();
+    let trees = tokio::task::spawn_blocking(move || store.list_runs())
+        .await
+        .map_err(|err| ApiError::internal(format!("artifact listing task failed: {err}")))?
+        .map_err(map_store_error)?;
+
+    let mut runs = Vec::with_capacity(trees.len());
+    for tree in trees {
+        let modified_at = OffsetDateTime::from(tree.modified)
+            .format(&Rfc3339)
+            .map_err(|err| {
+                ApiError::internal(format!("formatting a stored tree's modified time: {err}"))
+            })?;
+        runs.push(StoredTreeOut {
+            id: tree.id,
+            modified_at,
+        });
+    }
+
+    tracing::debug!(trees = runs.len(), "listed stored run trees");
+    Ok((StatusCode::OK, axum::Json(TreeListingOut { runs })).into_response())
 }
 
 /// `GET /runs/{id}/tree.tar` — stream a tar of run `{id}`'s stored source tree

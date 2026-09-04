@@ -1,13 +1,7 @@
 /**
- * Ending the session, in the shape the agent's own role calls for.
+ * Ending the session.
  *
- * Under responses as code every reply is a program, so there is no prose turn that could mean "the
- * work is done" — a model that answers "task complete" has written a reply that failed to be a
- * program rather than an ending. These are the calls that mean it.
- *
- * Which of them a program gets is decided by the agent's role: one that does work is given the plain
- * ending, and one that reviews is given the verdict pair instead. No agent holds both, because an
- * ending is a result and the two roles produce different results.
+ * Every reply is a program, so an ending is a call rather than a sentence.
  *
  * @ggmodule session
  */
@@ -21,9 +15,8 @@ import gg.internal.ggTexts
 /**
  * End the session, reporting what was done in a sentence or two.
  *
- * It does not stop the program — whatever follows it still runs — so it belongs last, once the tools
- * have confirmed the work is really done. A program that then fails cancels the ending, and the
- * session gets another turn.
+ * It does not stop the program; whatever follows it still runs. A program that then fails cancels the
+ * ending, and the session gets another turn.
  *
  * @ggop session.finish
  * @param summary What was done, in a sentence or two.
@@ -36,8 +29,7 @@ public fun finish(summary: String) {
 /**
  * Accept the work under review: it meets every completion criterion and stays in scope.
  *
- * This ends the session, and does not stop the program, so it belongs last — once the change has
- * actually been read.
+ * This ends the session and does not stop the program.
  *
  * @ggop session.approve
  * @throws ApiError `REFUSED` for a second verdict in one turn.

@@ -2,8 +2,11 @@
 //
 // This reads the pixels the build actually PAINTED, through `getImageData` over
 // the mapping the world's camera and `engine.viewport()` give. The scene is
-// posed still and unobstructed first — both paddles centred, the ball parked
-// mid-field, the obstacles at their fixed centres — so each sample point is the
+// posed still and unobstructed first: the field is CLEARED and spawned back
+// holding exactly the bodies these samples name — one ball at the mid-field
+// sample point, both obstacles at their fixed centres, and the two paddles
+// centred and held still — so a body the scene is not about is absent rather
+// than standing somewhere it might drift from. Each sample point is then the
 // solid interior of one element, and each sample is a small cluster well inside
 // the shape rather than a single anti-aliased edge pixel.
 //

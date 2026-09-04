@@ -889,6 +889,8 @@
       this.scratch = undefined;
 
       this.design = { width: 0, height: 0, background: null };
+      /** The operations of the last frame CLOSED, whether armed or not. */
+      this.lastOps = [];
       this.resetPools();
       this.watch();
       this.context = this.wrap(target, false);
@@ -961,13 +963,18 @@
      * the section held.
      *
      * What does NOT reset: the recipes, the clip, the current path, the save
-     * stack, and what each style property was last stated to hold. Those are facts
-     * about the context rather than about a recording, and the next recording
-     * inherits them exactly as the next frame does.
+     * stack, what each style property was last stated to hold, and the operations
+     * of the last frame closed. Those are facts about the context rather than
+     * about a recording, and the next recording inherits them exactly as the next
+     * frame does.
+     *
+     * The last frame's operations belong in that list because `last()` answers
+     * them "whether or not a capture was running": a check that drives its frame
+     * inside `captureReplay` and reads what that frame drew afterwards would
+     * otherwise see an empty frame purely because its evidence was being
+     * collected, which is a capture deciding a verdict.
      */
     resetPools() {
-      /** The operations of the last frame CLOSED, whether armed or not. */
-      this.lastOps = [];
       /** Every image captured while armed, and where each lives. */
       this.imagePool = [];
       this.imageAt = new Map();

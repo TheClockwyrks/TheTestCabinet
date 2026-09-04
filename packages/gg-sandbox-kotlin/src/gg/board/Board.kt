@@ -1,12 +1,11 @@
 /**
  * The epic and issue board, shared by every agent in the run.
  *
- * An issue is the heavyweight unit of work: its scope, non-scope and completion criteria are exactly
- * what a delegated child agent is briefed from, which is why creating one asks for more than adding a
- * task does. Its five required parts are positional, and the four a program may say nothing about are
- * default arguments, so a call that wants one of them names that one and no other.
+ * An issue's scope, non-scope and completion criteria are what a delegated child agent is briefed
+ * from.
  *
- * Two of a revision's fields are three-way, and `gg.core.Patch` is how all three states are said.
+ * An issue revision's description and epic are three-way, and `gg.core.Patch` is how all three states
+ * are said.
  *
  * @ggmodule board
  */
@@ -69,7 +68,7 @@ public fun createEpic(prefix: String, title: String, description: String): EpicC
  *   to.
  * @param completionCriteria What must be true for the issue to be done, which is what a reviewer
  *   checks the work against.
- * @param agent The agent the issue is dispatched to. It must be one this agent may spawn.
+ * @param agent The agent the issue is dispatched to, from the ones this run permits.
  * @param description What the work is, at whatever length is useful, written for a child agent with
  *   no other context.
  * @param blockedBy The ids of every issue that must be done before this one.
@@ -185,12 +184,11 @@ public fun removeIssue(id: String): BoardUsage =
  * Register a wait on an issue and hand back gg's acknowledgement.
  *
  * It does not block inside the program: the wait is recorded and the call returns at once, so the
- * rest of the program still runs. The suspension happens after the program ends and between turns —
- * the run frees this agent's slot for others until the issue is terminal, then resumes on the next
- * turn. It is how the next turn's work is sequenced behind an issue this one depends on.
+ * rest of the program still runs. The suspension happens after the program ends, and the session
+ * resumes on the next turn once the issue is terminal.
  *
  * @ggop board.wait_for_issue
- * @param id The issue to wait on. It may not be the issue this agent was assigned.
+ * @param id The issue to wait on. It may not be the issue this session was assigned.
  * @return gg's acknowledgement that the wait is registered
  * @throws ApiError `NOT_FOUND` for an unknown id.
  */
@@ -232,9 +230,6 @@ public data class IssueCreated(val id: String, val board: BoardUsage) {
     /**
      * Register a wait on this issue, with its id already supplied.
      *
-     * `gg.board.waitForIssue` for the common case where the created issue is in hand, written as a
-     * member so that the value carrying the id is what the call hangs off.
-     *
      * @ggalias board.wait_for_issue
      * @return gg's acknowledgement that the wait is registered
      * @throws ApiError `NOT_FOUND` when the board no longer holds the issue.
@@ -245,7 +240,7 @@ public data class IssueCreated(val id: String, val board: BoardUsage) {
 /**
  * Where an issue stands.
  *
- * @property wireName gg's own word for this status, which is what both execution modes report.
+ * @property wireName gg's own word for this status.
  */
 public enum class IssueStatus(public val wireName: String) {
     /** Not started, and dispatchable once its blockers are done. */

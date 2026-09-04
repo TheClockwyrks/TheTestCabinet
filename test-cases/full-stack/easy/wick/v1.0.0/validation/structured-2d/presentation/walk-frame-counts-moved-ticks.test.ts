@@ -2,11 +2,11 @@
 // the lamplighter MOVED on, and a pause in movement advances it not at all.
 //
 // WHERE THE FIGURE COMES FROM. `specs/assets.md`, Animation: "The walk frame is
-// `floor(m x TICK_DT / WALK_FRAME_TIME) mod 6`, with `m` the number of ticks of
+// `floor(m × TICK_DT / WALK_FRAME_TIME) mod 6`, with `m` the number of ticks of
 // this run on which the lamplighter moved, so the cycle advances one frame per
 // `WALK_FRAME_TIME` seconds of movement and wraps." `WALK_FRAME_TIME` is `0.1`
 // seconds, which `specs/world.md`'s timer rule ("An interval of `s` seconds
-// anywhere in this specification is likewise `round(s x TICK_HZ)` ticks") makes
+// anywhere in this specification is likewise `round(s × TICK_HZ)` ticks") makes
 // exactly six ticks, so the frame is `floor(m / 6) mod 6` in whole ticks with
 // no rounding to argue about.
 //

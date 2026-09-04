@@ -7,10 +7,10 @@
 #
 # Production lanes: every cue is PURE SYNTH via `sfx-synth` (the contract allows
 # `sfx-synth` or `sfx-sample` per cue; the cold/glassy palette wants the tight
-# oscillator control, and no baked sample pack is required). The two beds are
+# oscillator control). The two beds are
 # sequenced with `music` on SYNTH-WAVEFORM tracks only
 # (`define-track --instrument sine|triangle|saw|square`) — specs/assets.md
-# allows the beds to sequence "the baked instrument bank, synth waveforms, or
+# allows the beds to sequence "a declared instrument bank, synth waveforms, or
 # both", and the synth-waveform lane keeps the beds as cold and glassy as the
 # cues. Each bed's note grid fills its `max_duration_ms` EXACTLY (bars x beats
 # at the chosen BPM), so the rendered file ends on the loop boundary and the

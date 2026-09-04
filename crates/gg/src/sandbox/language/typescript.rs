@@ -54,8 +54,11 @@ use super::{
     ProgramLanguage, spell,
 };
 use crate::docs::MAX_SEARCH_LIMIT;
+use crate::sandbox::language::WORKSPACE_TREE_VIEW;
 use crate::sandbox::locate::Locations;
-use crate::sandbox::operations::{DOCS_SEARCH, OperationId, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::sandbox::operations::{
+    DOCS_SEARCH, FILES_TREE, OperationId, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT,
+};
 
 #[path = "typescript.compile.rs"]
 mod compile;
@@ -143,6 +146,7 @@ impl ProgramLanguage for TypeScript {
     /// function.
     fn prepare_module(
         &self,
+        _key: &str,
         source: &str,
         context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {
@@ -247,10 +251,10 @@ impl ProgramLanguage for TypeScript {
         open_docs_views_statement(self, names)
     }
 
-    /// [One named `import`, one search over every granted module at once, and a `for…of` opening a
-    /// documentation view apiece](self::bootstrap_program).
-    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
-        bootstrap_program(self, modules, docs)
+    /// [One named `import`, one workspace tree in a text view, one search over every granted module
+    /// at once, and a `for…of` opening a documentation view apiece](self::bootstrap_program).
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str], tree: Option<u32>) -> String {
+        bootstrap_program(self, modules, docs, tree)
     }
 }
 
@@ -431,11 +435,14 @@ pub(super) fn open_docs_views_statement(language: &dyn ProgramLanguage, names: &
     )
 }
 
-/// The opening turn: the import, **one** search naming every module gg handed it at once, then a
-/// `for…of` over the documentation keys, each iteration opening one view.
+/// The opening turn: the import, the workspace tree in a text view, **one** search naming every
+/// module gg handed it at once, then a `for…of` over the documentation keys, each iteration opening
+/// one view.
 ///
 /// ```text
-/// import { docs, views } from "gg";
+/// import { docs, files, views } from "gg";
+///
+/// views.openText("workspace tree", files.tree({ depth: 2 }));
 ///
 /// docs.search({ modules: ["gg.files", "gg.shell"], limit: 100 });
 ///
@@ -464,14 +471,31 @@ pub(super) fn bootstrap_program(
     language: &dyn ProgramLanguage,
     modules: &[&str],
     docs: &[&str],
+    tree: Option<u32>,
 ) -> String {
     let (docs_binding, search) = call_site(language, DOCS_SEARCH);
     let (views, open_docs_view) = call_site(language, VIEWS_OPEN_DOCS_VIEW);
-    let bindings: Vec<&str> = match modules.is_empty() {
-        true => vec![views.as_str()],
-        false => vec![docs_binding.as_str(), views.as_str()],
-    };
+    let (files, tree_call) = call_site(language, FILES_TREE);
+    let (text_binding, open_text) = call_site(language, VIEWS_OPEN_TEXT);
+    let mut bindings: Vec<&str> = Vec::new();
+    if tree.is_some() {
+        bindings.push(files.as_str());
+        bindings.push(text_binding.as_str());
+    }
+    if !modules.is_empty() {
+        bindings.push(docs_binding.as_str());
+    }
+    bindings.push(views.as_str());
+    bindings.sort_unstable();
+    bindings.dedup();
     let import = surface_import(&bindings);
+    let walked = match tree {
+        None => String::new(),
+        Some(depth) => format!(
+            "{open_text}({}, {tree_call}({{ depth: {depth} }}));\n\n",
+            serde_json::Value::String(WORKSPACE_TREE_VIEW.to_string())
+        ),
+    };
     let searched = match modules.is_empty() {
         true => String::new(),
         false => format!(
@@ -480,7 +504,7 @@ pub(super) fn bootstrap_program(
         ),
     };
     format!(
-        "{import}\n{searched}for (const name of {}) {{\n  {open_docs_view}(name);\n}}\n",
+        "{import}\n{walked}{searched}for (const name of {}) {{\n  {open_docs_view}(name);\n}}\n",
         inline(docs)
     )
 }

@@ -6,6 +6,7 @@ import {
   CUES,
   DAWN_TIME,
   ENEMIES,
+  HURT_FLASH,
   MIN_DAMAGE_TAKEN,
   PLAYER_RADIUS,
   TICK_DT,
@@ -55,12 +56,16 @@ export function heal(ctx: TickContext, amount: number): void {
 }
 
 /**
- * Phase 7: every enemy's contact cooldown counts down, and, while
- * `enemyContact` is on, an overlapping enemy whose cooldown is due hits.
+ * Phase 7: every enemy's contact cooldown and the lamplighter's hurt flash
+ * count down, and, while `enemyContact` is on, an overlapping enemy whose
+ * cooldown is due hits. A tick on which any hit lands arms the flash again,
+ * whatever the number of hits; nothing else sets it, so a heal leaves it as
+ * it was.
  */
 export function contact(ctx: TickContext): void {
   const { run, state } = ctx;
   const reduction = armor(run.passives);
+  run.hurtFlash = countDown(run.hurtFlash);
   for (const enemy of run.enemies) {
     enemy.contactCooldown = countDown(enemy.contactCooldown);
     if (!state.enemyContact) continue;
@@ -69,6 +74,7 @@ export function contact(ctx: TickContext): void {
     if (!circlesOverlap(enemy, def.radius, run.player, PLAYER_RADIUS)) continue;
     run.player.hp -= Math.max(MIN_DAMAGE_TAKEN, def.damage - reduction);
     enemy.contactCooldown = CONTACT_COOLDOWN;
+    run.hurtFlash = HURT_FLASH;
     ctx.cues.add(CUES.hurt);
   }
 }

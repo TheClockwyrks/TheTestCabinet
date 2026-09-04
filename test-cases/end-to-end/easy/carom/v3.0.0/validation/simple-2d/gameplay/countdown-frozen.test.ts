@@ -7,9 +7,15 @@
 // game must stay paused with the ball still held at centre, resume back INTO the
 // countdown rather than into a live rally, and then finish the remaining hold
 // and actually launch.
+//
+// The field is posed down to the one ball whose hold is the subject: both
+// obstacles are removed, and the ball is spawned back HELD at its home with a
+// full hold timer, which is the countdown's own starting arrangement. Nothing is
+// taken from the player — the pause key has to reach the build for this check to
+// mean anything, so neither paddle is driven.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HOLD_TIME } from "../../src/constants";
+import { HOLD_TIME } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
@@ -21,6 +27,7 @@ import {
   createHarness,
   holdTimer0,
   openCountdown,
+  poseWorld,
   TICK_HZ,
   type Harness,
 } from "../harness";
@@ -43,7 +50,8 @@ afterEach(() => {
 });
 
 it("freezes the countdown while paused and resumes it where it stopped", async () => {
-  await openCountdown(harness, "solo");
+  openCountdown(harness, "solo");
+  poseWorld(harness, { live: false });
 
   // The whole bracket is one recorded section: a countdown part-run, the press
   // that pauses it, the long stretch in which it does NOT run, the press that

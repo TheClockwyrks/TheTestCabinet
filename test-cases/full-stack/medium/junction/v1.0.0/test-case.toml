@@ -116,6 +116,20 @@ variants = [
   "variants/base.toml",
 ]
 
+# The audio packs the run container is staged with, and the boundary of what
+# `sfx-sample` and `music` may reach. A tool config that names no pack plays the
+# first pack of that kind.
+#
+# The city's cues are civil engineering, and `specs/assets.md` sends the richer
+# ones to `sfx-sample`. `combat-core`'s stamps, clanks, and metal impacts are the
+# material behind the build thunk a laid road makes and behind the utility alert.
+# The bed is specified as calm, warm, and low-key, the kind a builder leaves
+# running for hours, which is what `gm-lite`'s piano, electric piano, nylon
+# guitar, and vibraphone are for. An orchestra would score the city and a synth
+# rack would date it, so neither bank is staged.
+[audio]
+packs = ["combat-core@0.1.0", "gm-lite@0.1.0"]
+
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
 # repository root. `npm ci` is deliberate — it requires the build to commit a

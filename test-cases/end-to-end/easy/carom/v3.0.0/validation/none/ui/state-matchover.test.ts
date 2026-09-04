@@ -6,6 +6,11 @@
 // win rule that resolves on it (first to WIN_SCORE, by at least WIN_LEAD), run
 // through the build's own scoring code. Nothing assigns the end state.
 //
+// `arrangeGoal` empties the field and spawns back the one ball it drives, so a
+// scored point is that ball and the goal edge and nothing else: both obstacles
+// come OFF the field rather than being reasoned around, and the paddles are
+// stood out of the lane. The shot meets nothing on its way in any variant.
+//
 // The two entries are the case's copy (`MATCHOVER_ITEMS`, specs/ui.md), matched
 // by substring because a selected entry is commonly drawn with a marker beside
 // it. The final score is read as the two numbers drawn: `11` somewhere in the

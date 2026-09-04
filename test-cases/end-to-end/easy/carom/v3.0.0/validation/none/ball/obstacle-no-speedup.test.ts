@@ -6,6 +6,10 @@
 // are compared. Sampled every frame, so the outgoing speed is read at the instant
 // of the rebound with no stray flight in between — which is why the margin is a
 // float margin rather than a tolerance.
+//
+// The field is emptied and the struck obstacle alone is spawned back, so the
+// speed read on the far side of the bounce is the speed off THAT face and
+// nothing else the ball met on the way.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
@@ -20,8 +24,10 @@ import {
   type Harness,
 } from "../harness";
 
-const FACE_X = OBSTACLES[0].x0;
-const LANE_Y = OBSTACLE_CENTERS[0].y;
+/** Obstacle A: the one body the field is left holding beside the ball. */
+const OBSTACLE = 0;
+const FACE_X = OBSTACLES[OBSTACLE].x0;
+const LANE_Y = OBSTACLE_CENTERS[OBSTACLE].y;
 const APPROACH_SPEED = 600;
 /** The review item's margin: a tenth of a percent of the approach speed. */
 const SPEED_TOLERANCE = APPROACH_SPEED * 0.001;
@@ -54,6 +60,7 @@ afterEach(async () => {
 it("leaves the ball's speed unchanged through an obstacle bounce", async () => {
   await startPlaying(harness);
   await arrangeObstacleBounce(harness, {
+    obstacle: OBSTACLE,
     faceX: FACE_X,
     y: LANE_Y,
     from: "left",

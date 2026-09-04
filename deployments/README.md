@@ -93,6 +93,15 @@ These are the long-running **service** images, distinct from the **run-container
 images a run executes inside ([`containers/`](../containers/README.md)), which are
 published separately by [`build-containers.yml`](../.github/workflows/build-containers.yml).
 
+The `tcab-driver` stage carries the [audio store](../containers/README.md#the-audio-store)
+at `/opt/tcab-audio`, copied out of the published `test-cabinet-audio-store` image
+that `build-containers.yml` publishes. `images/services.Dockerfile` resolves that
+image through the `AUDIO_STORE_IMAGE` build arg, so the build reads no audio
+credential and pins the store by digest where a deployment wants one. The driver
+stages each run's declared packs out of that store, so it and `TCAB_CONTAINER_TAG`
+move to the same commit; see
+[Pinning images](../apps/docs/src/content/docs/deployment/kubernetes/overview.md#pinning-images).
+
 ## Secrets
 
 Every file here is a **template with placeholder values only** — never commit a

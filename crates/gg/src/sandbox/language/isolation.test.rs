@@ -1,22 +1,25 @@
-//! The [isolation gate](super) applied — to every registered language, which must pass, and to four
+//! The [isolation gate](super) applied — to every registered language, which must pass, and to five
 //! deliberately broken preparations, which it must catch.
 //!
-//! The broken four are not inventions. Two of them are the bugs that were **measured** on real
+//! The broken five are not inventions. Two of them are the bugs that were **measured** on real
 //! toolchains while this capability was being designed — a shared output tree that interleaved two
 //! agents' `purs` programs, and a shared build strategy that silently produced nothing for three of
 //! four concurrent TeaVM builds — written in the smallest code that has the same shape. The other
-//! two are the next two mistakes along the same road: a memoised compile, and a compiler cache keyed
-//! on something that is not the program.
+//! three are the next mistakes along the same road: a memoised compile, a compiler cache keyed on
+//! something that is not the program, and an artifact kept where a preparation's reset does not
+//! reach.
 //!
 //! They are here because a gate nothing has ever failed is a gate nobody knows works. A language
-//! author reading this file is meant to recognise their own design in one of the four, and the
+//! author reading this file is meant to recognise their own design in one of the five, and the
 //! passing pair below it is what they should have written instead.
 
 use std::path::Path;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use super::super::compile::{CompilerPool, PrepareContext};
+use std::path::PathBuf;
+
+use super::super::compile::{AgentWorkspace, CompilerPool, PrepareContext};
 use super::*;
 
 // ---------------------------------------------------------------------------------------------
@@ -43,24 +46,43 @@ fn every_registered_language_prepares_only_its_own_program_under_concurrency() {
     }
 }
 
-/// A language's preparation may not stand on ground another preparation can reach — asserted
-/// directly, so that a language whose corruption happened to be invisible in one run's artifacts is
-/// still caught by the thing that made it possible.
+/// **A workspace belongs to one agent and to all of that agent's preparations** — both halves,
+/// asserted directly, so that a language whose corruption happened to be invisible in one run's
+/// artifacts is still caught by the thing that made it possible.
+///
+/// The two halves fail in opposite directions and neither implies the other. Two agents on one tree
+/// is the precondition of the measured `purs` corruption. One agent on two trees is the regression
+/// that would quietly restore a tree per preparation, and every marker check in the gate would go on
+/// passing while a session re-staged its language's library set on every turn.
 #[test]
-fn no_two_preparations_of_a_language_are_handed_the_same_workspace() {
+fn a_workspace_belongs_to_one_agent_and_to_all_of_its_preparations() {
     for preparation in preparations() {
-        let opened: Vec<_> = (0..4)
-            .filter_map(|n| {
-                let context = PrepareContext::new();
-                let source = preparation.source(&format!("gg-workspace-{n:03}-marker"));
-                let _ = preparation.prepare(&source, &context);
-                context.opened_workspace().map(Path::to_path_buf)
-            })
-            .collect();
-        for (index, path) in opened.iter().enumerate() {
+        let opened = |agent: &AgentWorkspace, first: usize| -> Vec<PathBuf> {
+            (first..first + 2)
+                .filter_map(|n| {
+                    let context = PrepareContext::for_agent(agent, preparation.persistent_work());
+                    let source = preparation.source(&format!("gg-workspace-{n:03}-marker"));
+                    let _ = preparation.prepare(&source, &context);
+                    context.opened_workspace().map(Path::to_path_buf)
+                })
+                .collect()
+        };
+        let one = AgentWorkspace::new();
+        let other = AgentWorkspace::new();
+        let mine = opened(&one, 0);
+        let theirs = opened(&other, 2);
+
+        for paths in [&mine, &theirs] {
             assert!(
-                !opened[..index].contains(path),
-                "{} handed two preparations {}",
+                paths.windows(2).all(|pair| pair[0] == pair[1]),
+                "{} handed one agent's preparations different workspaces: {paths:?}",
+                preparation.describe()
+            );
+        }
+        for path in &mine {
+            assert!(
+                !theirs.contains(path),
+                "{} handed two agents {}",
                 preparation.describe(),
                 path.display()
             );
@@ -100,7 +122,8 @@ fn a_language_module_reaches_a_compiler_only_through_the_seam() {
         ),
         (
             "TempDir",
-            "ask for `context.workspace()`, which is created per preparation and removed with it",
+            "ask for `context.workspace()`, which is the agent's own tree and is cleared before \
+             each of its preparations",
         ),
     ];
 
@@ -432,6 +455,72 @@ fn a_cache_keyed_on_the_wrong_thing_is_caught() {
     );
 }
 
+/// An artifact kept where a preparation's reset does not reach — the mistake a language makes when
+/// it decides the working directory is "too temporary" and puts its build output beside it, at the
+/// root of the tree the seam handed it.
+///
+/// The tree is the agent's, so nothing here leaks between agents and every concurrent check passes.
+/// What leaks is the agent's own previous turn: the file the last preparation wrote is still there,
+/// and a language reading its output directory back finds two responses in it.
+struct OutputOutsideTheReset;
+
+impl Preparation for OutputOutsideTheReset {
+    fn describe(&self) -> String {
+        "a compiler keeping its output where the reset does not reach".to_string()
+    }
+
+    fn source(&self, marker: &str) -> String {
+        format!("program {marker}\n")
+    }
+
+    fn prepare(&self, source: &str, context: &PrepareContext) -> Result<String, String> {
+        let workspace = context.workspace()?;
+        // `root()` is the parent of the two directories a preparation owns, so a file written
+        // straight into it survives every preparation the agent goes on to make.
+        let path = workspace
+            .root()
+            .join(format!("build-{}.js", source.trim().replace(' ', "-")));
+        std::fs::write(&path, source).map_err(|error| error.to_string())?;
+
+        let mut artifact = String::new();
+        let entries = std::fs::read_dir(workspace.root()).map_err(|error| error.to_string())?;
+        let mut names: Vec<_> = entries
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
+            .map(|entry| entry.path())
+            .collect();
+        names.sort();
+        for name in names {
+            artifact.push_str(&std::fs::read_to_string(&name).map_err(|error| error.to_string())?);
+        }
+        Ok(artifact)
+    }
+}
+
+/// **The gate catches an artifact that outlived the preparation that produced it.**
+///
+/// Not "reports an error" — reports the *right* one: [`Breach::Stale`], which says an agent's turn
+/// would evaluate its own earlier turn's leftovers. Nothing failed, nothing was empty, and no other
+/// agent was involved, so this is the one broken preparation here that only the sequential phase can
+/// see.
+#[test]
+fn output_kept_outside_the_reset_is_caught_carrying_an_earlier_turn() {
+    let breaches = breaches(&OutputOutsideTheReset);
+    assert!(
+        caught(&breaches, |breach| matches!(breach, Breach::Stale { .. })),
+        "the gate did not notice one turn's artifact holding an earlier turn's program:\n{}",
+        render(&breaches)
+    );
+    assert!(
+        !caught(&breaches, |breach| matches!(
+            breach,
+            Breach::Baseline { .. } | Breach::Contended { .. }
+        )),
+        "the corruption should be silent — nothing should have failed:\n{}",
+        render(&breaches)
+    );
+}
+
 // ---------------------------------------------------------------------------------------------
 // What a language should have written instead
 // ---------------------------------------------------------------------------------------------
@@ -639,7 +728,7 @@ fn a_failure_that_only_appears_under_concurrency_is_reported_as_contention() {
     );
 }
 
-/// **Two preparations handed one workspace are reported**, which is the one thing in this file that
+/// **Two agents handed one workspace are reported**, which is the one thing in this file that
 /// cannot be proved by a broken [`Preparation`].
 ///
 /// [`shared_workspaces`]'s own documentation says why: a workspace path is built from a monotonic
@@ -651,7 +740,7 @@ fn a_failure_that_only_appears_under_concurrency_is_reported_as_contention() {
 /// **Verified by mutation**: widening the sharing threshold from `> 1` to `> 2` — the off-by-one a
 /// reader of that filter would most plausibly write — fails here with `left: 0, right: 1`.
 #[test]
-fn two_preparations_handed_one_workspace_are_reported() {
+fn two_agents_handed_one_workspace_are_reported() {
     let shared = Path::new("/tmp/gg-prepare/7-1");
     let breaches = shared_workspaces([
         ("gg-isolation-000-marker", Some(shared)),
@@ -672,7 +761,7 @@ fn two_preparations_handed_one_workspace_are_reported() {
         render(&breaches)
     );
     let Breach::SharedWorkspace { path, markers } = &breaches[0] else {
-        panic!("two preparations sharing a tree is not any other kind of breach");
+        panic!("two agents sharing a tree is not any other kind of breach");
     };
     assert_eq!(path, shared);
     assert_eq!(
@@ -685,6 +774,43 @@ fn two_preparations_handed_one_workspace_are_reported() {
             .contains("were handed the same workspace"),
         "the report names both: {}",
         breaches[0]
+    );
+}
+
+/// **One agent's preparations handed more than one workspace are reported** — the inverse detector,
+/// proved directly for the reason its sibling above is: the seam is supposed to make the input
+/// impossible, so no fixture can produce it.
+///
+/// It is the only check in the gate that would notice the workspace going back to being a
+/// preparation's rather than an agent's. Every marker check passes under that regression, which is
+/// exactly why this one is asserted rather than assumed.
+#[test]
+fn one_agents_preparations_handed_two_workspaces_are_reported() {
+    let first = PathBuf::from("/tmp/gg-prepare/7-100-0");
+    let second = PathBuf::from("/tmp/gg-prepare/7-100-1");
+    let breaches = unstable_workspace(&[first.clone(), first.clone(), second.clone()]);
+    assert_eq!(
+        breaches.len(),
+        1,
+        "one agent standing on two trees is one breach:\n{}",
+        render(&breaches)
+    );
+    let Breach::UnstableWorkspace { paths } = &breaches[0] else {
+        panic!("one agent on two trees is not any other kind of breach");
+    };
+    assert_eq!(paths, &[first.clone(), second]);
+    assert!(
+        breaches[0].to_string().contains("2 different workspaces"),
+        "the report says how many and names them: {}",
+        breaches[0]
+    );
+    assert!(
+        unstable_workspace(&[first.clone(), first]).is_empty(),
+        "an agent whose preparations all stood on one tree is what the seam promises"
+    );
+    assert!(
+        unstable_workspace(&[]).is_empty(),
+        "a preparation that opened no workspace has no path to compare"
     );
 }
 

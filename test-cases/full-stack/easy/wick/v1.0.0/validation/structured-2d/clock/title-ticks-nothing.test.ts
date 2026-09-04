@@ -5,14 +5,16 @@
 //     the `playing` screen ticks; the level-up and chest overlays and every
 //     other screen tick nothing".
 //   - `specs/state.md` ("The idle run"): "`run` holds the values below
-//     whenever `screen` is `title` or `howto`", with the table: tick, level,
+//     whenever `screen` is `title`, `howto`, or `almanac`", with the table:
+//     tick, level,
 //     xp, kills `0`, `1`, `0`, `0`; the player at the origin facing right with
 //     `BASE_MAX_HP`; every list empty; `pendingLevelUps` `0`; `spawnTimer` `0`;
 //     `nextId` `0`. That table is `IDLE_RUN` in `harness.ts`, with the derived
 //     fields of `specs/instrumentation.md` ("Snapshot shape") beside it.
 //   - `specs/instrumentation.md` (`reset`): restores "the `title` screen with
-//     `menuIndex` `0`, the idle run of `specs/state.md`, ... and every driver
-//     switch on." So the director's switch is ON here, and a title that
+//     `menuIndex`, `almanacTab`, and `almanacScroll` all `0`, the idle run of
+//     `specs/state.md`, ... and every driver switch on." So the director's
+//     switch is ON here, and a title that
 //     ticked would spawn on its first tick ("A spawn therefore lands on the
 //     first tick of a run", `specs/enemies.md`).
 //   - `specs/instrumentation.md` (`setScreen`, `howto`): "Enters the how-to

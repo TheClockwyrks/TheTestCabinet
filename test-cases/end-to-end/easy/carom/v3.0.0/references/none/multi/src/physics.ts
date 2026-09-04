@@ -7,6 +7,11 @@
 // state however it was divided into frames — which is the property the debug API
 // in `src/debug.ts` leans on.
 //
+// WHICH BALLS AND WHICH OBSTACLES TAKE PART IS THE CALLER'S. Both arrive as the
+// bodies PRESENT on the field (specs/state.md), so a ball that has been removed
+// takes no sub-step and an obstacle that has been removed has no collision — the
+// field simply does not contain them.
+//
 // To guarantee no ball tunnels through a paddle, wall, obstacle, or another ball
 // at high speed, the integration is split into sub-steps short enough
 // (<= MAX_SUBSTEP units of travel) that a ball's center can never skip past an
@@ -20,7 +25,6 @@ import {
   FIELD_H,
   MAX_BOUNCE_ANGLE,
   MAX_SUBSTEP,
-  OBSTACLES,
   PADDLE_HALF,
   SPEED_CAP,
   SPEED_MULT,
@@ -29,8 +33,14 @@ import {
   SPIN_HALFLIFE,
   type Rect,
 } from "./constants";
-import { ballSpeed, clamp, paddleFrontX, paddleRect } from "./entities";
-import type { BallState, PaddleState, Side } from "./game";
+import {
+  ballSpeed,
+  clamp,
+  obstacleRect,
+  paddleFrontX,
+  paddleRect,
+} from "./entities";
+import type { BallState, ObstacleState, PaddleState, Side } from "./game";
 
 /** What one step's collisions did, so the caller can play a cue per event. */
 export interface StepEvents {
@@ -217,6 +227,7 @@ function resolveBallPairs(balls: BallState[], events: StepEvents): void {
 /** Advance one ball through a single sub-step and resolve what it strikes. */
 function substepBall(
   ball: BallState,
+  obstacles: readonly ObstacleState[],
   left: PaddleState,
   right: PaddleState,
   h: number,
@@ -247,12 +258,17 @@ function substepBall(
   resolveWalls(ball, events);
   resolvePaddle(ball, left, "left", events);
   resolvePaddle(ball, right, "right", events);
-  for (const obstacle of OBSTACLES) resolveObstacle(ball, obstacle, events);
+  // Only the obstacles PRESENT in the field: one taken off it has no collision
+  // at all (specs/instrumentation.md).
+  for (const obstacle of obstacles) {
+    resolveObstacle(ball, obstacleRect(obstacle), events);
+  }
 }
 
 /** Advance every ball by `dt` seconds and resolve every collision they make. */
 export function step(
   balls: BallState[],
+  obstacles: readonly ObstacleState[],
   left: PaddleState,
   right: PaddleState,
   dt: number,
@@ -287,7 +303,7 @@ export function step(
   for (let i = 0; i < substeps; i++) {
     for (const ball of balls) {
       if (ball.held) continue;
-      substepBall(ball, left, right, h, decay, events);
+      substepBall(ball, obstacles, left, right, h, decay, events);
     }
     resolveBallPairs(balls, events);
   }

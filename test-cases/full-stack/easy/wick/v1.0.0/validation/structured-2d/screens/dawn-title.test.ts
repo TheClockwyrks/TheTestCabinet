@@ -5,8 +5,9 @@
 // `dawn`": the menu is `END_ITEMS` (`TRY AGAIN`, `TITLE`, "in that order"),
 // and "`confirm` takes the highlighted item: ... `TITLE` returns to `title`
 // with `menuIndex = 0`". `specs/state.md`, "The idle run", says the idle
-// values hold "whenever `screen` is `title` or `howto` ... and leaving a run
-// for the title restores them", the table this suite spells as `IDLE_RUN`.
+// values hold "whenever `screen` is `title`, `howto`, or `almanac` ... and
+// leaving a run for the title restores them", the table this suite spells as
+// `IDLE_RUN`.
 // `specs/controls.md` binds `confirm` to `Enter` and `Space`.
 //
 // THE DRIVE. An isolated `playing` run with every driver switch off, its level

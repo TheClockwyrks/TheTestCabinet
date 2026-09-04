@@ -33,10 +33,10 @@ The debug surface is a required deliverable. The engine returns it from
 `engine.debug` exactly as `initialize` handed it over, and that is how the game
 is driven from code, so it is present and exactly as `specs/instrumentation.md`
 specifies. Because nothing holds a writable state, its operations are written in
-the shape of `update`: a pose takes the current state and returns the next, and
-a caller applies it through `engine.apply((s) => debug.serve(s))`; a reading
-takes the state and returns what it read, as `debug.snapshot(engine.state)`.
-Nothing is published to the page.
+the shape of `update`: every one takes the current state first, then the
+arguments its heading names. A pose returns the next state, applied through
+`engine.apply((s) => debug.setScreen(s, "countdown"))`; a reading returns what
+it read, as `debug.snapshot(engine.state)`. Nothing is published to the page.
 
 `CaromState` **is a contract**. Keep every field, under the name, type, and
 meaning `specs/state.md` gives it. You may add fields, but only for data you can
@@ -56,7 +56,8 @@ carries a complete worked example of testing a game this way.
 - **`index.html`** — the page and the canvas the engine fits the field into.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.
-- **`.tcab/`** — the vendored engine.
+- **The vendored engine directory** that `package.json` resolves the engine
+  dependency from.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the
 `package-lock.json` — the build is installed with `npm ci`. Leave the existing

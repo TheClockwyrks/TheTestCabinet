@@ -267,19 +267,15 @@ pub(super) fn compile_program(
 /// program's scope. The bytes written to [`PROGRAM_FILE`] are the model's, with a module in scope
 /// or without one.
 ///
-/// # Why the `.rlib` is rebuilt here rather than kept from the read
+/// # Where the `.rlib` comes from
 ///
-/// A [`Workspace`] belongs to one preparation and is removed when it ends, so the artifact
-/// [`compile_module`] produced is gone by the time a program wants to link it. The seam's one
-/// sanctioned place for something that outlives a preparation is a
-/// [shared toolchain directory](crate::sandbox::shared_toolchain_dir), and it is closed to this:
-/// what may be cached there is what cannot change a verdict, and a module's `.rlib` decides whether
-/// the program that links it compiles at all.
+/// From the read that loaded the module: [`compile_module`] built it under the binding key into
+/// that key's directory in the [loaded-module band](crate::sandbox::Workspace::open_module), which
+/// a preparation's reset leaves standing. This names it and compiles the model's own file alone, so
+/// a turn's `rustc` count is one however much the agent has loaded.
 ///
-/// So the module is rebuilt with the program, in the program's own private tree. What it costs is
-/// one further `rustc` per module per program compiled — a module the agent loaded and this program
-/// never names still pays it — and what it buys is that no preparation can reach anything another
-/// preparation produced.
+/// [`build_module`] is the miss: a module handed to a program in an agent whose workspace holds no
+/// build made from those bytes is built here and recorded, so the program after it names one.
 fn compile(
     program: &str,
     modules: &[CodeModule],
@@ -314,50 +310,35 @@ fn compile(
     componentize(&module).map_err(PrepareFailure::Toolchain)
 }
 
-/// The file a code module is **checked** under, and the crate name that check is written under.
+/// Compile a code [skill](crate::skills)'s or [memory](crate::memories)'s Rust into the crate a
+/// program links, and report the names that crate offers.
 ///
-/// One name for both, because the check builds the same crate the program compile will: only the
-/// name differs, and there is no binding key to use here — a key is minted after the module has been
-/// accepted.
-const MODULE_FILE: &str = "module.rs";
-
-/// The crate name the check compiles a module under. See [`MODULE_FILE`].
-const MODULE_CRATE: &str = "module";
-
-/// Check a code [skill](crate::skills)'s or [memory](crate::memories)'s Rust, and report the names
-/// its crate offers.
+/// This is where a module is compiled and the only place. `key` is the binding key, so the crate
+/// is built under the name a program writes — `--crate-name <key>`, `lib<key>.rlib` — into that
+/// key's directory in the [band](crate::sandbox::Workspace::open_module), and every program the
+/// agent writes afterwards names that file on `--extern`.
 ///
-/// What comes back is **source**, because that is the one thing that survives: the `.rlib` this
-/// builds lives in a workspace the seam removes when this call returns, so the program compile that
-/// links the module [builds it again](compile) from these bytes.
+/// Running `rustc` here is also what buys the *location*. A module that does not build would
+/// otherwise take down every program the agent writes from then on, with the diagnostic arriving
+/// against the turn's own program in a file the model never wrote. Here the author is told at the
+/// read, at the module's own line and column.
 ///
-/// The compiler runs here anyway, and what it buys is the *location*. Without it a module that does
-/// not build would take down every program the agent writes from then on, with the diagnostic
-/// arriving against the turn's own program in a file the model never wrote. Running `rustc` here
-/// instead means the author is told at the read, at the module's own line and column, exactly as
-/// every other compiled arm tells them.
-///
-/// It is a **full build** rather than `--emit=metadata`, and the artifact is thrown away. What the
-/// extra code generation buys is that this check and the program compile are the same invocation:
-/// an error only the code generator raises would otherwise pass here and fail there, against a
-/// program whose author could do nothing about it. See [`invoke_module_rustc`].
+/// It is a **full build** rather than `--emit=metadata`, which is what makes the read and the link
+/// the same invocation: an error only the code generator raises would otherwise pass here and fail
+/// against a program whose author could do nothing about it. See [`invoke_module_rustc`].
 pub(super) fn compile_module(
+    key: &str,
     source: &str,
     context: &PrepareContext,
 ) -> Result<PreparedModule, PrepareFailure> {
     let libraries = libraries().map_err(PrepareFailure::Toolchain)?;
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
 
-    workspace
-        .write(MODULE_FILE, source)
+    let (file, artifact) = write_module(key, source, workspace)?;
+    let report = invoke_module_rustc(key, &file, &artifact, libraries, context)
         .map_err(PrepareFailure::Toolchain)?;
-
-    let artifact = workspace
-        .output()
-        .join(super::source::module_artifact(MODULE_CRATE));
-    let report = invoke_module_rustc(MODULE_CRATE, MODULE_FILE, &artifact, libraries, context)
-        .map_err(PrepareFailure::Toolchain)?;
-    classify(&report, MODULE_FILE, source.lines().count())?;
+    classify(&report, &file, source.lines().count())?;
+    workspace.record_module(key, source, vec![artifact]);
 
     Ok(PreparedModule {
         exports: super::source::exports(source),
@@ -365,9 +346,38 @@ pub(super) fn compile_module(
     })
 }
 
-/// Build one loaded module into the `.rlib` the program compile will name on `--extern`.
+/// Write one module's source into its own directory in the band, and say where its `.rlib` goes.
 ///
-/// A failure here is **gg's own**, and that is why it is a [`Lowering`](PrepareFailure::Lowering)
+/// The source file is named **relative to the working directory** because that is what `rustc`
+/// reports as a diagnostic's `file_name`, and a module's author reads `modules/<key>/module_<key>.rs`
+/// rather than a temporary path nobody should be shown. The artifact is absolute so the
+/// `--extern <key>=…` reaching it is a path this arm wrote.
+fn write_module(
+    key: &str,
+    source: &str,
+    workspace: &Workspace,
+) -> Result<(String, PathBuf), PrepareFailure> {
+    let name = super::source::module_file(key);
+    workspace
+        .open_module(key)
+        .map_err(PrepareFailure::Toolchain)?;
+    workspace
+        .write_module(key, &name, source)
+        .map_err(PrepareFailure::Toolchain)?;
+    let artifact = workspace
+        .work()
+        .join(workspace.module_path(key, &super::source::module_artifact(key)));
+    Ok((workspace.module_path(key, &name), artifact))
+}
+
+/// Name the `.rlib` of the module bound at `module.name`, building it first when this agent's
+/// workspace holds no build made from these bytes.
+///
+/// The build is the miss rather than the rule — a module reaching a program compile was built at the
+/// read that loaded it — and it is what keeps a program handed a module this workspace never saw
+/// compiling: the authorship gate's own scope, and a test that drives the program step directly.
+///
+/// A refusal here is **gg's own**, which is why it is a [`Lowering`](PrepareFailure::Lowering)
 /// rather than anything the model is shown: every module reaching a program compile has already been
 /// accepted by [`compile_module`], under this same invocation, so a refusal now is this arm
 /// disagreeing with itself over somebody else's file. Handing the module author's diagnostic to the
@@ -378,13 +388,12 @@ fn build_module(
     libraries: &Libraries,
     context: &PrepareContext,
 ) -> Result<PathBuf, PrepareFailure> {
-    let file = super::source::module_file(&module.name);
-    workspace
-        .write(&file, &module.source)
-        .map_err(PrepareFailure::Toolchain)?;
-    let artifact = workspace
-        .output()
-        .join(super::source::module_artifact(&module.name));
+    if let Some(artifacts) = workspace.module_build(&module.name, &module.source)
+        && let Some(artifact) = artifacts.into_iter().next()
+    {
+        return Ok(artifact);
+    }
+    let (file, artifact) = write_module(&module.name, &module.source, workspace)?;
     let report = invoke_module_rustc(&module.name, &file, &artifact, libraries, context)
         .map_err(PrepareFailure::Toolchain)?;
     if !report.ok {
@@ -395,6 +404,7 @@ fn build_module(
             report.stderr_tail(),
         )));
     }
+    workspace.record_module(&module.name, &module.source, vec![artifact.clone()]);
     Ok(artifact)
 }
 
@@ -496,10 +506,9 @@ fn link_the_shell(libraries: &Libraries) -> Vec<String> {
 
 /// Spawn `rustc` over one code module, building the `.rlib` a program links it through.
 ///
-/// The **one** invocation a module is ever compiled by: [`compile_module`] runs it to check the
-/// author's file at the read, and [`build_module`] runs it again inside the preparation that links
-/// the result. Only `name` differs between the two, so a module the read accepted is a module the
-/// program compile builds.
+/// The **one** invocation a module is ever compiled by: [`compile_module`] runs it at the read that
+/// binds the module, and [`build_module`] runs the same thing on the one occasion a program is
+/// handed a module this workspace holds no build of.
 ///
 /// The crate type is `lib` rather than the program's `bin`: a code module is a file of items and
 /// declares no `main`, so asking for the program's crate type would refuse every module ever written
@@ -895,6 +904,25 @@ fn fingerprint() -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     LIBRARIES_TAR_GZ.hash(&mut hasher);
     hasher.finish()
+}
+
+/// **The crates and modules `rustc` said this program could not import**, read out of the rendering
+/// [`Diagnostic::render`](Diagnostic::render) produced.
+///
+/// Two codes name one: `E0432` for an `use` that resolved to nothing (``unresolved import `serd` ``)
+/// and `E0433` for a path that named no crate or module (``failed to resolve: use of unresolved
+/// module or unlinked crate `serd` ``). Both quote the path in backticks and this arm renders the
+/// code in front of the message, so the code is what says the sentence is about an import and the
+/// backticks are what say which one.
+///
+/// A path deeper than the crate (``unresolved import `itertools::Nope` ``) is returned whole. The
+/// [match](crate::sandbox::supporting) is over path segments, so the crate is recovered from it.
+pub(super) fn unresolved_imports(diagnostic: &str) -> Vec<String> {
+    diagnostic
+        .lines()
+        .filter(|line| line.contains("error[E0432]") || line.contains("error[E0433]"))
+        .flat_map(|line| crate::sandbox::language::diagnostics::named(line, "`", "`"))
+        .collect()
 }
 
 #[cfg(test)]

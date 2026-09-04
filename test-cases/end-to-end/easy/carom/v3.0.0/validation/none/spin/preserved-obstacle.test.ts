@@ -6,8 +6,11 @@
 // (specs/balls.md). A spinning ball is flown at obstacle A's left face, and its
 // spin on the frame of the bounce is read against its posed spin decayed over
 // exactly the frames flown. Two percent is rounding room: the product of the
-// per-step factors is the same number. Under gyre the obstacles are held
-// upright at clock 0.
+// per-step factors is the same number.
+//
+// The field is emptied and the struck obstacle alone is spawned back, so the
+// bounce the spin is carried through is the only bounce there is. Under gyre
+// the obstacles are held upright at clock 0.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -28,6 +31,10 @@ import {
   type Harness,
 } from "../harness";
 
+/** Obstacle A: the one body the field is left holding beside the ball. */
+const OBSTACLE = 0;
+const RECT = OBSTACLES[OBSTACLE];
+
 /** Gentle enough that the curve keeps the ball on the face it is aimed at. */
 const SPIN = 300;
 const SPIN_TOLERANCE = 0.02;
@@ -47,8 +54,8 @@ afterEach(async () => {
 
 it("keeps the spin, less the decay, through an obstacle bounce", async () => {
   await startPlaying(harness);
-  await arrangeFaceShot(harness, OBSTACLES[0], "left");
-  await harness.debug.setBall(0, { spin: SPIN });
+  await arrangeFaceShot(harness, OBSTACLE, "left");
+  await harness.debug.setBallSpin(SPIN);
   const posed = ball0(await harness.snapshot()).spin;
 
   const bounce = await captureReplay(harness, "bounce", async () => {
@@ -60,9 +67,9 @@ it("keeps the spin, less the decay, through an obstacle bounce", async () => {
   assertEqual(bounce.hit, true);
   const struck = ball0(bounce.snapshot);
   // It met the face it was aimed at, rather than an end of the obstacle.
-  assertGreaterThan(struck.y, OBSTACLES[0].y0);
-  assertLessThan(struck.y, OBSTACLES[0].y1);
-  assertLessThan(struck.x, OBSTACLE_CENTERS[0].x);
+  assertGreaterThan(struck.y, RECT.y0);
+  assertLessThan(struck.y, RECT.y1);
+  assertLessThan(struck.x, OBSTACLE_CENTERS[OBSTACLE].x);
   const decayed =
     posed * Math.pow(0.5, bounce.frames / TICK_HZ / SPIN_HALFLIFE);
   assertLessThanOrEqual(

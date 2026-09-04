@@ -14,6 +14,11 @@
 // (1, 0), and over 100 from every other center, so no neighboring region can
 // catch it. The non-overlap clause — NODE_HIT_R below half CELL_PITCH (96) —
 // is the specification's own arithmetic, asserted on the case's constants.
+//
+// The MISSED press is taken FIRST, on the board as `loadBoard` left it, so
+// "the board is left unchanged" rests on a board this suite has not touched.
+// Taking it after the inside press would make it rest on what the release
+// before it left behind, which is `tracing/trace-empty-release`'s requirement.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -58,6 +63,21 @@ it("begins a trace within NODE_HIT_R of a node's center and none beyond it", asy
 
   const emitter = nodeCenter(0, 0, 3, 3);
 
+  // Outside the radius: NODE_HIT_R + 2 from the emitter's center, and farther
+  // than NODE_HIT_R from every other cell center of this board.
+  h.debug.pointerDown(emitter.x + (NODE_HIT_R + 2), emitter.y);
+  const refused = h.snapshot();
+  assertNull(
+    refused.tracing,
+    "a press farther than NODE_HIT_R from every cell center begins no trace",
+  );
+  assertEqual(
+    refused.beams.triangle?.cells.length,
+    0,
+    "the board is left unchanged: the channel's beam still carries no cells",
+  );
+  h.debug.pointerUp();
+
   // Inside the radius: NODE_HIT_R - 2 from the emitter's center.
   h.debug.pointerDown(emitter.x + (NODE_HIT_R - 2), emitter.y);
   await h.advance(1);
@@ -73,21 +93,6 @@ it("begins a trace within NODE_HIT_R of a node's center and none beyond it", asy
     begun.tracing?.live,
     { col: 0, row: 0 },
     "the trace begins at the targeted node",
-  );
-  h.debug.pointerUp();
-
-  // Outside the radius: NODE_HIT_R + 2 from the emitter's center, and farther
-  // than NODE_HIT_R from every other cell center of this board.
-  h.debug.pointerDown(emitter.x + (NODE_HIT_R + 2), emitter.y);
-  const refused = h.snapshot();
-  assertNull(
-    refused.tracing,
-    "a press farther than NODE_HIT_R from every cell center begins no trace",
-  );
-  assertEqual(
-    refused.beams.triangle?.cells.length,
-    0,
-    "the board is left unchanged: the channel's beam still carries no cells",
   );
   h.debug.pointerUp();
 });

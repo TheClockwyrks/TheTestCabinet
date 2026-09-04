@@ -30,9 +30,10 @@ import {
 } from "@test-cabinet/structured-2d";
 import { wickAssets } from "./assets";
 import { STAGE_CX, STAGE_CY, TAGS } from "./constants";
+import { dim } from "./render/draw";
 import { drawProjectile, drawZone } from "./render/effects";
-import { drawHud } from "./render/hud";
-import { HELD_SCREENS, HUD_SCREENS, dim, drawScreen } from "./render/screens";
+import { drawHud, drawHurt } from "./render/hud";
+import { HELD_SCREENS, HUD_SCREENS, drawScreen } from "./render/screens";
 import { LAYERS } from "./render/theme";
 import {
   drawEnemy,
@@ -316,7 +317,8 @@ abstract class StageLayer extends DrawComponent {
 
 /**
  * The HUD: drawn on the night and on every overlay held over it, over the
- * dimming that quiets the held world.
+ * dimming that quiets the held world and over the hurt cast the view carries
+ * while the lamplighter's flash runs.
  */
 class HudLayer extends StageLayer {
   constructor() {
@@ -326,6 +328,7 @@ class HudLayer extends StageLayer {
   drawStage(ctx: CanvasRenderingContext2D, state: WickState): void {
     if (!HUD_SCREENS.includes(state.screen)) return;
     if (HELD_SCREENS.includes(state.screen)) dim(ctx);
+    drawHurt(ctx, state.run.hurtFlash);
     drawHud(ctx, state.run, wickAssets());
   }
 }

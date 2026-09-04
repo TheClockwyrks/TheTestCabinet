@@ -4,19 +4,22 @@
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/ui.md`, Presentation: "On
 // every menu the item at `menuIndex` is drawn distinctly from the others, so a
 // player always sees which item `confirm` would accept." `specs/ui.md`,
-// "`title`", gives that menu two items, `TITLE_ITEMS`, arriving on index `0`.
+// "`title`", gives that menu the three items of `TITLE_ITEMS`, arriving on
+// index `0`.
 //
-// WHAT IS READ, AND WHY. The pixels of each item's own rows, on the frame with
-// the first item highlighted and on the frame with the second highlighted. A
-// highlight that follows `menuIndex` changes BOTH bands: the one it left and
-// the one it reached. A build whose menu draws both items the same way changes
-// neither, and one that draws a fixed marker changes neither. How the
-// highlight looks is entirely the build's (`specs/ui.md` fixes "no palette, no
-// font, no layout, and no styling"), so nothing but "these rows are not the
-// same picture" is read of it.
+// WHAT IS READ, AND WHY. The pixels of the first two items' own rows, the two
+// the highlight moves between, on the frame with the first item highlighted
+// and on the frame with the second highlighted. A highlight that follows
+// `menuIndex` changes BOTH of those bands: the one it left and the one it
+// reached. The rows of the item the move never reaches are not read, since the
+// specification fixes nothing about what a build redraws there. A build whose
+// menu draws both items the same way changes neither band, and one that draws
+// a fixed marker changes neither. How the highlight looks is entirely the
+// build's (`specs/ui.md` fixes "no palette, no font, and no styling"), so
+// nothing but "these rows are not the same picture" is read of it.
 //
-// WHERE THE BANDS COME FROM. The anchors the frame drew each item's text at,
-// taken off the first frame and used unchanged on the second, so the two
+// WHERE THE BANDS COME FROM. The anchors the frame drew those two items' text
+// at, taken off the first frame and used unchanged on the second, so the two
 // readings cover the same rectangle of canvas. Each band spans the full stage
 // width, so a marker drawn beside the words counts as much as the words.
 //
@@ -43,6 +46,9 @@ import { anchorY, bandAt } from "./stage";
 /** How many pixels of an item's rows must change for the highlight to have moved. */
 const MOVED_PIXELS = 32;
 
+/** The two title items one `down` from index `0` moves the highlight between. */
+const MOVED_BETWEEN: readonly string[] = TITLE_ITEMS.slice(0, 2);
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -57,9 +63,9 @@ it("redraws both title items when the highlight moves between them", async () =>
   h.reset();
   const first = await h.frameDraw();
   const draws = textDraws(first.calls);
-  const anchors = TITLE_ITEMS.map((item) => anchorY(draws, item));
+  const anchors = MOVED_BETWEEN.map((item) => anchorY(draws, item));
   for (const [index, at] of anchors.entries()) {
-    assertNotNull(at, `where ${TITLE_ITEMS[index]} was drawn`);
+    assertNotNull(at, `where ${MOVED_BETWEEN[index]} was drawn`);
   }
   const before = anchors.map((at) => bandAt(h, at as number));
 
@@ -68,7 +74,7 @@ it("redraws both title items when the highlight moves between them", async () =>
   captureStill(h, "highlight");
   assertEqual(moved.menuIndex, 1, "menuIndex on the second frame");
 
-  for (const [index, item] of TITLE_ITEMS.entries()) {
+  for (const [index, item] of MOVED_BETWEEN.entries()) {
     assertGreaterThan(
       pixelsDiffering(
         before[index],

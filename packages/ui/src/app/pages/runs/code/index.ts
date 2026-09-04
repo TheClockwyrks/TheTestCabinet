@@ -7,6 +7,8 @@ export { CodeSymbolTable, MAX_SYMBOL_ROWS } from "./CodeSymbolTable";
 export { CodeOutliers } from "./CodeOutliers";
 export { CodeCyclesCallout } from "./CodeCyclesCallout";
 export { CodeFigures } from "./CodeFigures";
+export { ToolchainTests } from "./ToolchainTests";
+export { ToolchainCoverage } from "./ToolchainCoverage";
 export {
   buildCodeTree,
   codeBreadcrumb,
@@ -26,5 +28,18 @@ export {
   formatMetricValue,
   isApproximate,
   lookupMetric,
+  toolchainCoverage,
+  toolchainTests,
   type CodeFigure,
 } from "./codeFormat";
+export {
+  COVERAGE_METRIC_KEYS,
+  COVERAGE_METRIC_META,
+  coveragePercent,
+  formatCoveragePercent,
+  indexCoverage,
+  rollUpCoverage,
+  type CoverageMetricKey,
+  type CoverageRollup,
+  type CoverageTally,
+} from "./coverageJoin";

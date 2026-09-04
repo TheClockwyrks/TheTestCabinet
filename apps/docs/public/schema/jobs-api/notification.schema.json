@@ -35,6 +35,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "A worker-wide notification about a run: that it reached a terminal state, or\nthat publishing it failed. Carries the run's display identity (flattened to the\nconsole's notification shape) plus how it ended. Delivered over\n`GET /notifications` (SSE).",
   "properties": {
+    "engine": {
+      "description": "The [engine](crate::engine) the run is built on, as its slug. `None` is the\n`none` engine, exactly as an absent `engine` on the launch request is.\n\nIt rides with the harness and the model because those three plus the case pin\nare a run's [coverage cell](https://docs.testcabinet.ai/components/backend/coverage/),\nand an in-flight run has no record to read one out of. A console listing the runs\nbehind one cell — a ladder rung, a plan's cell — would otherwise show a live row\nfrom every other engine's cell of the same case, and count it toward a figure it\nwill never join.",
+      "type": ["string", "null"]
+    },
     "ggPreset": {
       "description": "The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job\nwas launched from, lifted out of its stored capability set. A gg run has no\nsingle harness model — [`model_id`](Self::model_id) is only its representative\nprimary-slot binding — so the active-run list identifies a gg row by its\nconfiguration instead. `None` for every third-party-harness job (which carries\nno capability set) and for a gg job assembled by hand rather than from a named\nconfiguration.",
       "type": ["string", "null"]

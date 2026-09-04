@@ -1,7 +1,18 @@
 import { createCanvas } from "@napi-rs/canvas";
 import { beforeEach, describe, expect, it } from "vitest";
 import { clearSprites } from "../assets";
-import { STAGE_CX, STAGE_CY, STAGE_H, STAGE_W } from "../constants";
+import {
+  ALMANAC_TABS,
+  HURT_FLASH,
+  STAGE_CX,
+  STAGE_CY,
+  STAGE_H,
+  STAGE_W,
+  WALK_FRAME_TIME,
+} from "../constants";
+import { entriesOf } from "../almanac";
+import { menuRects, tabRects } from "../menus";
+import { COLORS } from "./theme";
 import { freshRun, initialState, type Draft } from "../state";
 import { spawnEnemy } from "../sim/enemies";
 import { renderGame } from "./render";
@@ -103,6 +114,7 @@ describe("rendering", () => {
     for (const screen of [
       "title",
       "howto",
+      "almanac",
       "playing",
       "levelup",
       "chest",
@@ -122,6 +134,96 @@ describe("rendering", () => {
     expect(() => frame(state)).not.toThrow();
     run.chestResult = null;
     expect(() => frame(state)).not.toThrow();
+  });
+
+  it("draws every tab of the almanac and every entry of one", () => {
+    const state = initialState(1);
+    state.screen = "almanac";
+    for (let tab = 0; tab < ALMANAC_TABS.length; tab += 1) {
+      state.almanacTab = tab;
+      state.almanacScroll = 0;
+      for (let i = 0; i < entriesOf(tab).length; i += 1) {
+        state.menuIndex = i;
+        state.almanacScroll = Math.max(0, i - 9);
+        expect(() => frame(state)).not.toThrow();
+      }
+    }
+  });
+
+  it("draws each menu's highlight over the rectangle the pointer answers", () => {
+    const state = playingState();
+    state.run.offers = ["ember", "lure", "lamp-oil"];
+    const highlight = [255, 207, 92, 255];
+    expect(COLORS.highlight).toBe("#ffcf5c");
+    for (const screen of [
+      "title",
+      "almanac",
+      "levelup",
+      "paused",
+      "fallen",
+    ] as const) {
+      state.screen = screen;
+      state.menuIndex = 0;
+      const rects = menuRects(state);
+      expect(rects.length).toBeGreaterThan(1);
+      rects.forEach((_, index) => {
+        state.menuIndex = index;
+        const ctx = frame(state);
+        rects.forEach((rect, i) => {
+          const drawn = pixel(ctx, rect.x + 3, rect.y + 3);
+          if (i === index) expect(drawn).toEqual(highlight);
+          else expect(drawn).not.toEqual(highlight);
+        });
+      });
+    }
+  });
+
+  it("draws the almanac's tab bar over the rectangles it reports", () => {
+    const state = initialState(1);
+    state.screen = "almanac";
+    const rects = tabRects(state);
+    rects.forEach((_, index) => {
+      state.almanacTab = index;
+      const ctx = frame(state);
+      rects.forEach((rect, i) => {
+        const drawn = pixel(ctx, rect.x + 4, rect.y + 4);
+        if (i === index) expect(drawn).toEqual([255, 207, 92, 255]);
+        else expect(drawn).not.toEqual([255, 207, 92, 255]);
+      });
+    });
+  });
+
+  it("names what the highlighted level-up offer does, and follows the highlight", () => {
+    const state = playingState();
+    state.screen = "levelup";
+    state.run.offers = ["ember", "lure", "lamp-oil"];
+    const lines = menuRects(state);
+    const below = lines[lines.length - 1];
+    const box = [below.x, below.y + below.height, below.width, 60] as const;
+    const first = frame(state).getImageData(...box).data;
+    state.menuIndex = 1;
+    const second = frame(state).getImageData(...box).data;
+    expect([...second]).not.toEqual([...first]);
+  });
+
+  it("casts the hurt flash over the view while it runs", () => {
+    const state = playingState();
+    const quiet = frame(state);
+    state.run.hurtFlash = HURT_FLASH;
+    const hurt = frame(state);
+    expect(pixel(hurt, 8, 8)).not.toEqual(pixel(quiet, 8, 8));
+    state.run.hurtFlash = 0;
+    expect(pixel(frame(state), 8, 8)).toEqual(pixel(quiet, 8, 8));
+  });
+
+  it("holds the almanac's picture still until simTime moves on", () => {
+    const state = initialState(1);
+    state.screen = "almanac";
+    state.almanacTab = 2;
+    const box = [512, 260, 672, 180] as const;
+    const first = frame(state).getImageData(...box).data;
+    state.simTime = WALK_FRAME_TIME / 4;
+    expect([...frame(state).getImageData(...box).data]).toEqual([...first]);
   });
 
   it("puts a world point where the camera formula says", () => {

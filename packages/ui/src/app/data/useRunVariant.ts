@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { RunSubject } from "@test-cabinet/run-record";
 import type {
   CaseVariantRef,
@@ -6,6 +6,7 @@ import type {
   ReviewModel,
 } from "./galleryContext";
 import { useGalleryData } from "./galleryContext";
+import { reviewItemsForEngine } from "../../ratings";
 import type { VariantSummary } from "./testCases";
 
 /** The resolution of a run's catalog variant, alongside the load state of the
@@ -155,15 +156,25 @@ export interface ReviewModelState extends ReviewModel {
 }
 
 /**
- * The scoring model for a run's subject: the effective (common + variant)
- * weighted checklist items and the effective (common + variant) scoring domains.
- * Lets the verdict page, the review pages, and the review editor score a run from
- * its verdicts and per-domain ratings.
+ * The scoring model for a run's subject: the checklist the run actually carries
+ * (the effective common + variant items, restricted to the run's engine) and the
+ * effective (common + variant) scoring domains. Lets the verdict page, the review
+ * pages, and the review editor score a run from its verdicts and per-domain
+ * ratings.
  *
  * It resolves through {@link useRunVariant}, so the model is the one belonging to
  * the run's OWN case version. A checklist is a property of a version: items are
  * added, removed and reworded between them, and scoring a run against a later
  * version's checklist decides its verdict against points it was never graded on.
+ *
+ * It is also the one belonging to the run's OWN engine. A point whose validator
+ * names a set of engines is meaningful only under those — the same surface can be
+ * the model's own code on one engine and the engine's on another — so a run built
+ * on any other engine does not carry that point at all: it is not driven, no
+ * verdict is recorded against it, it is not shown, and it adds no weight. That is
+ * what `reviewItemsForEngine` drops here, mirroring the backend's
+ * `review_items_for_engine`, which the review endpoint validates a submitted
+ * checklist against.
  *
  * Items and domains are empty both while the fetch is in flight and when this
  * host holds no such version — the two are not the same thing, so `status` is
@@ -173,8 +184,17 @@ export interface ReviewModelState extends ReviewModel {
  */
 export function useReviewModel(subject: RunSubject): ReviewModelState {
   const { variant, status } = useRunVariant(subject);
+  const declared = variant?.reviewItems;
+  const engine = subject.engineSlug;
+  // Memoized because the result is a fresh array: the verdict and review surfaces
+  // key effects and memos off this list, and a new identity every render would
+  // re-seed them forever.
+  const items = useMemo(
+    () => (declared ? reviewItemsForEngine(declared, engine) : []),
+    [declared, engine],
+  );
   return {
-    items: variant?.reviewItems ?? [],
+    items,
     domains: variant?.domains ?? [],
     validatorRated: variant?.validatorRated ?? false,
     status,

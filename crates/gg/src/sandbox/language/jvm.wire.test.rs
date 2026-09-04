@@ -160,8 +160,8 @@ const HUNGRY: &str = r#"public final class Program {
 /// **gg's generated entry class** — the two lines the host reaches a compiled program through.
 ///
 /// It is `run`'s eight canonically-lowered parameters and a call, with **no `try` and no `catch`**:
-/// ruling D8a's whole point is that a failure reaches the model as its own runtime's dying words
-/// rather than as something gg intercepted and re-described. The one line that differs between the
+/// the failure rule's whole point is that a failure reaches the model as its own runtime's dying
+/// words rather than as something gg intercepted and re-described. The one line that differs between the
 /// two JVM arms is the call — `Program.main(new String[0])` here, `ProgramKt.main()` in Kotlin.
 ///
 /// It declares **no `main`**, on purpose: TeaVM is given the *model's* class as its main class, so
@@ -265,10 +265,10 @@ fn a_hand_written_java_program_reaches_gg_through_the_wire_and_dies_as_its_runti
         ran.said
     );
 
-    // WHAT WENT WRONG, and then WHERE — ruling D8a's two halves. The header is gg's one change to
-    // the vendored `org.teavm.runtime.ExceptionHandling`; upstream's uncaught path prints frames and
-    // nothing else, so before it the model read a located trace of a failure it was never told the
-    // nature of.
+    // WHAT WENT WRONG, and then WHERE — the failure rule's two halves. The header is gg's one
+    // change to the vendored `org.teavm.runtime.ExceptionHandling`; upstream's uncaught path prints
+    // frames and nothing else, so before it the model read a located trace of a failure it was
+    // never told the nature of.
     assert!(
         ran.said.contains("the model's own message"),
         "the failure did not carry the exception's own message; its stderr was {:?}",
@@ -400,7 +400,7 @@ fn a_fault_the_runtime_raises_names_itself_and_where_it_happened() {
 /// The production pool, the production driver text, the production classpath — the only thing this
 /// says that a turn does not is which file to write, and that is what selects the target.
 fn compile(program: &str) -> Vec<u8> {
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     let workspace = context.workspace().expect("a preparation workspace");
     workspace
         .write(PROGRAM_FILE, program)

@@ -5,16 +5,19 @@
 // `p2-up`/`p2-down` on the arrows all move the human's paddle, because Solo has
 // no player two (specs/modes/single-player.md).
 //
-// The match is started from the title with real key events dispatched at the
-// target the runtime listens on, so the game stays under normal player control:
-// nothing here calls a control operation, and the paddle moves only because the
-// build read the action the runtime raised from the key the case binds. The key is
-// then held for a known span and the displacement read back off the game's own
+// The countdown is posed through the debug surface — the menus are the navigation
+// checks' surface, not this one's — and NOTHING takes a paddle, so the game stays
+// under normal player control: no operation here touches a paddle, and it moves
+// only because the build read the action the runtime raised from the key the case
+// binds. The key is dispatched as a real event at the target the runtime listens
+// on, held for a known span, and the displacement read back off the game's own
 // state, which is what makes this a check of the CONTROL rather than of the
-// simulation. The title route is load-bearing, not a preference: every posing
-// operation (`startMatch` included) hands both paddles to the debug driver and
-// only `reset` gives them back, so a match posed open would leave this key
-// dead.
+// simulation.
+//
+// THE FIELD IS EMPTY. Which paddle a key moves, and which way, is about the
+// paddles alone, so the ball and the obstacles come off the field: nothing else
+// is moving while the key is held, and with no ball there is no hold to elapse,
+// so the countdown cannot turn over partway through the span.
 //
 // The direction is the whole point here, not the rate: how fast a held paddle
 // travels is the `paddle-movement` category's, and asserting it in both places
@@ -25,9 +28,10 @@ import { assertCloseTo, assertContains, assertLessThan } from "../assert";
 import {
   MOVE_MIN,
   captureReplay,
+  clearField,
   createHarness,
   holdMove,
-  startWithKeys,
+  openCountdown,
   type Harness,
 } from "../harness";
 
@@ -60,7 +64,8 @@ afterEach(() => {
 });
 
 it("moves the human's paddle up while ArrowUp is held, and stops on release", async () => {
-  await startWithKeys(h, "solo");
+  await openCountdown(h, "solo");
+  clearField(h);
   assertContains(["countdown", "playing"], h.snapshot().screen);
 
   const moved = await captureReplay(h, "move", async () => {

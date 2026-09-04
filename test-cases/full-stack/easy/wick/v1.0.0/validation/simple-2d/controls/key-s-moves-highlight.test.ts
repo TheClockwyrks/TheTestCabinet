@@ -12,9 +12,9 @@
 //   menu highlight down", and "The two keys bound to an action are
 //   interchangeable".
 //   specs/controls.md ("What each screen reads"): on `title`, "`up`, `down`
-//   move the highlight, wrapping at both ends".
+//   move the highlight, wrapping".
 //   specs/ui.md (`title`): "`menuIndex` is `0` on arriving. `up` and `down`
-//   move the highlight by one item", over the two items of `TITLE_ITEMS`, so
+//   move the highlight by one item", over the three items of `TITLE_ITEMS`, so
 //   one `down` from `0` reads `1`.
 //
 // THE DRIVE. The title is reached through `reset` alone ("the `title` screen

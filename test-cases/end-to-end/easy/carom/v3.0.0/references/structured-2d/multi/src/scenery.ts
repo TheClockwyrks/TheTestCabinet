@@ -1,13 +1,14 @@
 // Carom — the field's fixed furniture: the decorative net and the two
 // obstacles.
 //
-// Both are placed by the level definitions (`src/levels.ts`) and never tick:
-// the net is decoration with no collision (specs/playfield.md), and the
-// obstacles are fixed bars whose collision geometry is the `OBSTACLES`
-// rectangles in `src/constants.ts` — the same rectangles `src/physics.ts`
-// resolves against, so the picture and the collision cannot drift apart. Each
-// obstacle actor's transform sits on its center from `OBSTACLE_CENTERS`, which
-// is where `world.byTag(TAGS.obstacle)` reports it.
+// The net is decoration with no collision (specs/playfield.md) and is placed by
+// each level definition. The obstacles are PRESENCE STATE (specs/state.md):
+// which of them is on the field is something `clearWorld` and `spawnObstacle`
+// change, so they are spawned rather than declared, each carrying its index in
+// the order of `OBSTACLE_CENTERS` and sitting on that centre. Their collision
+// geometry is the `OBSTACLES` rectangles in `src/constants.ts`, the same
+// rectangles `src/physics.ts` resolves against, so the picture and the
+// collision cannot drift apart.
 
 import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
 import type { DrawApi } from "@test-cabinet/structured-2d";
@@ -16,7 +17,8 @@ import {
   NET_X,
   OBSTACLE_HH,
   OBSTACLE_HW,
-  type Point,
+  OBSTACLES,
+  type Rect,
 } from "./constants";
 import { glowRect, type Ctx } from "./draw";
 import { screenOf } from "./state";
@@ -50,17 +52,19 @@ class NetDashes extends DrawComponent {
   }
 }
 
-/** One of the two fixed mid-field bars the ball banks off. */
+/** One of the two fixed mid-field bars the balls bank off. */
 export class Obstacle extends Actor {
+  /** This obstacle's place in the order of `OBSTACLE_CENTERS`. */
+  index = 0;
+
   constructor() {
     super();
     this.attach(new ObstacleBody()).layer = LAYER.obstacles;
   }
 
-  /** Place the actor on its fixed center. */
-  placeAt(center: Point): void {
-    this.transform.x = center.x;
-    this.transform.y = center.y;
+  /** The rectangle the collision resolves this obstacle against. */
+  rect(): Rect {
+    return OBSTACLES[this.index];
   }
 }
 

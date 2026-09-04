@@ -29,6 +29,7 @@ use std::time::{Duration, Instant};
 
 use anstyle::{AnsiColor, Color, Style};
 use serde_json::Value;
+use test_cabinet_code_analysis::walk::RootSeeding;
 use test_cabinet_code_analysis::{AnalysisRequest, analyze};
 use test_cabinet_core::{
     CODE_METRICS, CodeAnalysisDocument, CodeAuthoredBasis, CodeMetricUnit, CodeTreeBasis,
@@ -56,6 +57,13 @@ pub async fn execute(args: AnalyzeArgs) -> anyhow::Result<()> {
         root,
         seed_commit: args.seed_commit.as_deref(),
         tree_basis: args.tree_basis.into(),
+        // A checkout on disk carries no engine selection, so this command cannot know
+        // whether a root-level `engine/` is an engine's seeded documentation or the
+        // build's own code — and the default is to floor neither. Over-counting seeded
+        // markdown makes a size figure a little large; the run path, which does know,
+        // answers properly. With `--seed-commit`, the authored-set ladder removes seeded
+        // material the model never touched regardless.
+        root_seeding: RootSeeding::default(),
     });
     let elapsed = started.elapsed();
 
@@ -292,10 +300,15 @@ fn cell(row: &MetricRow, label_width: usize, value_width: usize) -> String {
 
 /// The human heading for a catalog family.
 ///
-/// Only the families whose own name does not read as a heading are renamed; anything else —
+/// Two kinds of family are renamed here: the ones whose own name does not read as a heading,
+/// and the two whose name reads as a heading for the *wrong measurement*. Anything else —
 /// including a family added to the catalog later — falls through to its own name rather than
 /// being dropped, so a new family appears in this report before anyone remembers to name it
 /// here.
+///
+/// The strings must stay identical to the console's `familyHeading`, modulo this function's
+/// lowercase convention, so a reader who moves between `tcab analyze` and the run's Code tab
+/// is reading the same report.
 fn family_heading(family: &str) -> &str {
     match family {
         "size" => "size and shape",
@@ -303,7 +316,17 @@ fn family_heading(family: &str) -> &str {
         "api" => "public api",
         "typescript" => "typescript discipline",
         "rust" => "rust discipline",
-        "notes" => "coverage",
+        // These are static counts of test code the model *wrote* — files, functions, lines and
+        // the ratio — and nothing here executes anything. Heading them "tests" put them beside
+        // the executed test results the run record now carries and invited a reader to take
+        // one for the other.
+        "tests" => "test authorship",
+        // `notes` is the walk's diagnostics *about the analysis* — what it truncated, what an
+        // ignore file removed, how many files and bytes the floor skipped, what it could not
+        // parse. Heading them "coverage" made them read as code coverage, which the static
+        // analyzer does not measure and cannot, and collided with the console's own Coverage
+        // area of plans and ladders.
+        "notes" => "analysis notes",
         other => other,
     }
 }

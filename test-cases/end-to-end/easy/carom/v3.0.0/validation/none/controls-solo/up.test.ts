@@ -5,37 +5,42 @@
 // `p2-up`/`p2-down` on the arrows all move the human's paddle, because Solo has
 // no player two (specs/modes/single-player.md).
 //
-// The match is started from the title with real key presses, and here they are
-// real in the strongest sense: `hold`, `release` and `tap` press the key
-// through Chromium's own input pipeline, so what reaches the build is a
-// browser-trusted DOM key event on the real page rather than a synthetic one
-// posed at the event target a runtime listens on. The game stays under normal
-// player control: nothing here calls a control operation, and the paddle moves
-// only because the build read the action its own runtime layer raised from the
-// key the case binds. That layer is the build's own —
-// `specs/instrumentation.md` puts the keyboard in the runtime layer an
-// engineless build supplies, and gives the surface no keyboard operation at
-// all — so the whole path from a physical key to a moving paddle belongs to the
-// build and every step of it is exercised, which makes this check stronger here
-// rather than weaker. The key is then held for a known span and the
-// displacement read back off the game's own state, which is what makes this a
-// check of the CONTROL rather than of the simulation. The title route is
-// load-bearing, not a preference: every posing operation (`startMatch`
-// included) hands both paddles to the debug driver and only `reset` gives them
-// back, so a match posed open would leave this key dead.
+// The match is opened through the debug surface, and the key that follows is a
+// real one in the strongest sense: `hold`, `release` and `tap` press it through
+// Chromium's own input pipeline, so what reaches the build is a browser-trusted
+// DOM key event on the real page rather than a synthetic one posed at the event
+// target a runtime listens on. The posed opening takes NEITHER paddle from the
+// player — only `setPaddleDriven` does that, and nothing here calls it
+// (specs/instrumentation.md) — so the game is under normal player control from
+// the first frame and the paddle moves only because the build read the action its
+// own runtime layer raised from the key the case binds. No menu key is pressed on
+// the way in, which is the point of opening it this way: a build with a broken
+// title menu and a working control fails the navigation checks and passes this
+// one. That runtime layer is the build's own — `specs/instrumentation.md` puts
+// the keyboard in the layer an engineless build supplies, and gives the surface
+// no keyboard operation at all — so the whole path from a physical key to a
+// moving paddle belongs to the build and every step of it is exercised, which
+// makes this check stronger here rather than weaker. The key is then held for a
+// known span and the displacement read back off the game's own state, which is
+// what makes this a check of the CONTROL rather than of the simulation.
+//
+// THE FIELD IS EMPTIED FIRST. This point is about a key and a paddle, so the ball
+// and the obstacles come off the field: nothing can arrive at a paddle mid-hold,
+// and the clip a reviewer watches is the travel, the release, and the stop.
 //
 // The direction is the whole point here, not the rate: how fast a held paddle
 // travels is the `paddle-movement` category's, and asserting it in both places
 // would cost one build two items for one fault.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertCloseTo, assertContains, assertLessThan } from "../assert";
+import { assertCloseTo, assertEqual, assertLessThan } from "../assert";
 import {
   MOVE_MIN,
   captureReplay,
+  clearField,
   createHarness,
   holdMove,
-  startWithKeys,
+  startPlaying,
   type Harness,
 } from "../harness";
 
@@ -68,8 +73,9 @@ afterEach(async () => {
 });
 
 it("moves the human's paddle up while ArrowUp is held, and stops on release", async () => {
-  await startWithKeys(h, "solo");
-  assertContains(["countdown", "playing"], (await h.snapshot()).screen);
+  await startPlaying(h, "solo");
+  await clearField(h);
+  assertEqual((await h.snapshot()).screen, "playing");
 
   const moved = await captureReplay(h, "move", async () => {
     await h.advance(REST_TICKS);

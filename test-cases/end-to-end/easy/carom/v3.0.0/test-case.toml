@@ -326,6 +326,14 @@ source = "specs/instrumentation.md.hbs"
 # motion is captured (a gzipped recording from the engine's own draw-command
 # recorder on an engine run, screenshots and a short clip under `none`); it seeds
 # to `specs/showcase.md`.
+# The sounds the game plays, when each plays, and how muting behaves. The events
+# themselves belong to the files that define them; this one names the sound each
+# makes. It branches on `engine.slug`, because an engine run plays a cue through
+# the runtime's bus under the seeded `CUES` names while an engineless build writes
+# the audio layer under them, and on `variant.slug` for multi's fifth cue.
+[[spec]]
+source = "specs/audio.md.hbs"
+
 [[spec]]
 source = "specs/showcase.md.hbs"
 
@@ -1400,6 +1408,13 @@ domains = ["single-player", "versus"]
 failure_cap = "scuffed"
 validation = { script = "navigation/pause-escape.test.ts", outputs = [{ id = "resumed", name = "The match resumed by Escape", kind = "image" }] }
 [[review.categories.items]]
+id = "pause-p"
+title = "P resumes from the pause menu"
+description = "On the pause menu reached from a live match, pressing KeyP sets screen back to the screen that was paused."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+validation = { script = "navigation/pause-p.test.ts", outputs = [{ id = "resumed", name = "The match resumed by P", kind = "image" }] }
+[[review.categories.items]]
 id = "pause-resume"
 title = "RESUME resumes"
 description = "On the pause menu with menuIndex 0, pressing Enter sets screen back to the screen that was paused."
@@ -1448,6 +1463,127 @@ description = "On the title with menuIndex 2, pressing Space sets screen to howt
 domains = ["single-player", "versus"]
 failure_cap = "great"
 validation = { script = "navigation/space-confirms.test.ts", outputs = [{ id = "howto", name = "The how-to screen opened by Space", kind = "image" }] }
+# The remembered title selection is graded once per path back to the title
+# (specs/ui.md, "The remembered title selection" and "Returning to the title"):
+# confirming an entry on the title menu stores it in `titleIndex`, and every return
+# to the title restores `menuIndex` from it, so the title comes back on the entry
+# the player left it by. Each point drives one path and reads both halves — what
+# the confirm remembered, and what the return restored. Between them the three
+# cover all three entries, which is what says the restored selection follows the
+# entry confirmed rather than a constant; each poses `titleIndex` onto another
+# entry first where the entry it expects is the one a fresh title already carries.
+[[review.categories.items]]
+id = "title-remembers-howto"
+title = "The title returns to HOW TO PLAY from the how-to screen"
+description = "Confirming HOW TO PLAY on the title sets titleIndex to 2, and pressing Escape on the how-to screen returns to the title with menuIndex 2."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+validation = { script = "navigation/title-remembers-howto.test.ts", outputs = [{ id = "title", name = "The title back on HOW TO PLAY", kind = "image" }] }
+[[review.categories.items]]
+id = "title-remembers-solo"
+title = "QUIT TO MENU from a Solo match returns to the title on SOLO"
+description = "With titleIndex posed to 2, confirming SOLO on the title sets titleIndex to 0, and confirming QUIT TO MENU on the pause menu of that Solo match returns to the title with menuIndex 0."
+domains = ["single-player"]
+failure_cap = "passable"
+validation = { script = "navigation/title-remembers-solo.test.ts", outputs = [{ id = "title", name = "The title back on SOLO after quitting", kind = "image" }] }
+[[review.categories.items]]
+id = "title-remembers-versus"
+title = "MENU after a Versus match returns to the title on VERSUS"
+description = "With titleIndex posed to 2, confirming VERSUS on the title sets titleIndex to 1, and confirming MENU on that match's match-over screen returns to the title with menuIndex 1."
+domains = ["versus"]
+failure_cap = "passable"
+validation = { script = "navigation/title-remembers-versus.test.ts", outputs = [{ id = "title", name = "The title back on VERSUS after the match", kind = "image" }] }
+
+# --- Pointer ------------------------------------------------------------------
+# specs/ui.md drives every menu screen with a mouse as well as with the keyboard,
+# over item regions the BUILD lays out and reports through `menuItemRect`. The case
+# fixes no menu geometry, so each point below asks the build where it put the item
+# and drives the real pointer at the middle of that region: any layout passes, and
+# a build that reports a region it does not answer on fails. The three points are
+# the three behaviors specs/ui.md gives the pointer — a move selects, a press and
+# its release inside one item confirms that item, and two edges that fall in
+# different items confirm nothing. Each is graded on the title menu, where the
+# entries confirm to screens a check can read straight off `screen`. The keyboard's
+# own edges are the `navigation` category's points, not these.
+[[review.categories]]
+id = "pointer"
+title = "Pointer"
+[[review.categories.items]]
+id = "hover-selects"
+title = "Moving the pointer onto an item selects it"
+description = "On the title with menuIndex 0, moving the pointer onto the region menuItemRect reports for HOW TO PLAY sets menuIndex to 2, with screen still title."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+validation = { script = "pointer/hover-selects.test.ts", outputs = [{ id = "menu", name = "The title menu with the hovered item selected", kind = "image" }] }
+[[review.categories.items]]
+id = "click-confirms"
+title = "A press and release inside one item confirms it"
+description = "On the title with menuIndex 0, pressing and releasing the pointer inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+validation = { script = "pointer/click-confirms.test.ts", outputs = [{ id = "howto", name = "The how-to screen opened by a click", kind = "image" }] }
+[[review.categories.items]]
+id = "slide-off-cancels"
+title = "A press and release in different items confirms nothing"
+description = "On the title, pressing the pointer inside HOW TO PLAY's region and releasing it inside VERSUS's leaves screen at title, confirming neither item."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+validation = { script = "pointer/slide-off-cancels.test.ts", outputs = [{ id = "title", name = "The title still showing after the pointer slid off", kind = "image" }] }
+
+# --- Touch --------------------------------------------------------------------
+# specs/ui.md gives every menu screen a finger as well as the keyboard and the
+# mouse, and a finger is not a small mouse: it never hovers, so the first the
+# build hears of it is the contact LANDING, and the landing is what selects. Each
+# point below drives one real touch contact — carrying the device a finger
+# carries — at the middle of the region the build reports through `menuItemRect`,
+# so any layout passes and only the handling is graded. The three are the three
+# behaviors specs/ui.md gives a contact: a landing selects, a lift inside the
+# region it landed in confirms that item, and a lift in a different region
+# confirms nothing while the selection follows the finger. All three are graded on
+# the title menu, where a confirm that should not have happened is loud (a match
+# opens) and one that should have is silent (the title stays). The mouse's own
+# edges are the `pointer` category's points, and the keyboard's the `navigation`
+# category's, not these.
+[[review.categories]]
+id = "touch"
+title = "Touch"
+[[review.categories.items]]
+id = "landing-selects"
+title = "A touch contact selects the item it lands on"
+description = "On the title with menuIndex 0, a touch contact landing inside the region menuItemRect reports for HOW TO PLAY, and not lifted, sets menuIndex to 2."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: land a real touch contact in the region the build reports
+# for the third title item, leave it down so no lift can confirm, and read
+# menuIndex back. See validation/<engine>/touch/landing-selects.test.ts.
+validation = { script = "touch/landing-selects.test.ts", outputs = [
+  { id = "selected", name = "The title menu with the item the contact landed on selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tap-confirms"
+title = "A contact that lifts where it landed confirms that item"
+description = "On the title with menuIndex 0, a touch contact landing and lifting inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: land and lift a real touch contact inside the third title
+# item's reported region, with no key pressed, and read the screen it confirmed
+# to. See validation/<engine>/touch/tap-confirms.test.ts.
+validation = { script = "touch/tap-confirms.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen opened by a tap", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drag-cancels"
+title = "A contact that lifts on a different item confirms nothing"
+description = "On the title, a touch contact landing inside SOLO's region, travelling onto HOW TO PLAY's and lifting there leaves screen at title, with menuIndex 2."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: slide one real touch contact from the first title item to
+# the third and lift it there — the screen must stay on the title, and the
+# selection must have followed the finger, which is what says the contact was read
+# at all. See validation/<engine>/touch/drag-cancels.test.ts.
+validation = { script = "touch/drag-cancels.test.ts", outputs = [
+  { id = "title", name = "The title still showing after the contact slid off", kind = "image" },
+] }
 
 # --- Visibility (sampled from the rendered canvas) ----------------------------
 # Each point samples the pixels the build actually RENDERS at a known on-field
@@ -1684,4 +1820,51 @@ failure_cap = "passable"
 # that frame. See validation/<engine>/audio/scoring.test.ts.
 validation = { script = "audio/scoring.test.ts", outputs = [
   { id = "score", name = "The scored point whose cue is checked", kind = "replay" },
+] }
+
+# --- Showcase (read off the produced tree, not off the running game) ----------
+# The showcase is the store-page presentation of the finished game: a
+# player-facing description and an ordered carousel of captured media, shipped in
+# a `showcase/` directory at the root of the produced repository, which
+# `specs/showcase.md` defines. It is worth THREE points rather than one, because
+# it is a deliverable of its own — a whole file of the specification, and the one
+# piece of a run a person meets before they meet the game — where every other
+# point on this checklist is one behavior of the game itself.
+#
+# Its cap is `great` all the same: a build that shipped no showcase plays exactly
+# as well as one that did, so the miss costs the presentation and leaves the
+# standard flow of gameplay untouched. The weight and the cap say different
+# things on purpose — how much of the score the point carries, and how far a
+# failure may drag the ratings down.
+#
+# ONE point, and it grades EXISTENCE alone. Whether the description reads like
+# something a player would want to play, whether the carousel opens on the
+# strongest view of live play, and whether the media is worth looking at is a
+# reviewer's judgement, and belongs to the AESTHETIC half of the domains rather
+# than to an assertion. The validator's whole verdict is that the two
+# files are there and that the carousel points at a file that is there with them:
+# not a dimension, not a byte of a picture, not a word of the prose.
+#
+# The script drives nothing. It reads the produced tree with `node:fs`, so one
+# suite stands unchanged in all three engine directories and the point means the
+# same thing whichever engine the run selected. What it hands back as evidence is
+# a `.png` copied out of the build's own showcase, so a reviewer sees the picture
+# the build chose to present its game with beside the verdict.
+[[review.categories]]
+id = "showcase"
+title = "Showcase"
+[[review.categories.items]]
+id = "exists"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, and at least one file the carousel names is present in showcase/."
+weight = 3
+domains = ["single-player", "versus"]
+failure_cap = "great"
+# Automated validation: read the produced tree, confirm the description and the
+# carousel are both there, and confirm the carousel names a file present beside
+# them; the still handed back is a `.png` copied out of the showcase itself.
+# Nothing about the media is checked beyond its being there. See
+# validation/<engine>/showcase/exists.test.ts.
+validation = { script = "showcase/exists.test.ts", outputs = [
+  { id = "carousel", name = "A screenshot from the build's showcase", kind = "image" },
 ] }

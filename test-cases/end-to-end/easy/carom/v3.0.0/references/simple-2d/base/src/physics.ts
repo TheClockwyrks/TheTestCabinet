@@ -4,12 +4,16 @@
 // velocity by the current spin, decays the spin, then integrates and resolves
 // collisions. Every rate it uses is per second and is multiplied by `dt`, so the
 // same interval of game time reaches the same state however it was divided into
-// frames — which is the property the debug API in `src/debug.ts` leans on.
+// frames — which is the property the debug surface in `src/debug.ts` leans on.
 //
 // To guarantee the ball never tunnels through a paddle, wall, or obstacle at high
 // speed, the integration is split into sub-steps short enough (<= MAX_SUBSTEP units
 // of travel) that the ball's center can never skip past an object in one move, and
 // collisions are resolved after each sub-step.
+//
+// The obstacles are handed in rather than read from `src/constants.ts`, because
+// which of them are in the field is state: an obstacle the debug surface removed
+// is not in the list and has no collision (specs/instrumentation.md).
 //
 // Nothing here writes to the ball it is handed. Each stage takes a ball and the
 // events so far and returns the ball after it and the events including its own,
@@ -20,7 +24,6 @@ import {
   FIELD_H,
   MAX_BOUNCE_ANGLE,
   MAX_SUBSTEP,
-  OBSTACLES,
   PADDLE_HALF,
   SPEED_CAP,
   SPEED_MULT,
@@ -29,8 +32,14 @@ import {
   SPIN_HALFLIFE,
   type Rect,
 } from "./constants";
-import { ballSpeed, clamp, paddleFrontX, paddleRect } from "./entities";
-import type { BallState, PaddleState, Side } from "./game";
+import {
+  ballSpeed,
+  clamp,
+  obstacleRect,
+  paddleFrontX,
+  paddleRect,
+} from "./entities";
+import type { BallState, ObstacleState, PaddleState, Side } from "./game";
 
 /** What one step's collisions did, so the caller can play a cue per event. */
 export interface StepEvents {
@@ -95,8 +104,8 @@ function bounceOffPaddle(
   // Placed just off the front face so the same contact cannot re-trigger.
   const front = paddleFrontX(side);
   return {
+    ...ball,
     x: side === "left" ? front + BALL_R : front - BALL_R,
-    y: ball.y,
     vx: dir * speed * Math.cos(theta),
     vy: speed * Math.sin(theta),
     spin: clamp(
@@ -140,9 +149,10 @@ function resolvePaddle(
   return { ball: reflect(ball, hit), events: { ...events, wall: true } };
 }
 
-function resolveObstacle({ ball, events }: Flight, rect: Rect): Flight {
-  const hit = collideCircleRect(ball.x, ball.y, BALL_R, rect);
-  if (!hit) return { ball, events };
+function resolveObstacle(flight: Flight, obstacle: ObstacleState): Flight {
+  const { ball, events } = flight;
+  const hit = collideCircleRect(ball.x, ball.y, BALL_R, obstacleRect(obstacle));
+  if (!hit) return flight;
   // Reflect the velocity component normal to the struck face and push out. Speed
   // and spin are preserved, so the spin keeps curving the ball after the bounce.
   return { ball: reflect(ball, hit), events: { ...events, obstacle: true } };
@@ -189,6 +199,7 @@ function substep(
   flight: Flight,
   left: PaddleState,
   right: PaddleState,
+  obstacles: readonly ObstacleState[],
   h: number,
   decay: number,
 ): Flight {
@@ -199,11 +210,13 @@ function substep(
   // 2. Advance the position by the elapsed time.
   const moved = { ...spun, x: spun.x + spun.vx * h, y: spun.y + spun.vy * h };
 
-  // 3. Resolve every collision the move could have made.
+  // 3. Resolve every collision the move could have made, in the fixed order
+  //    specs/balls.md gives: the walls, the left paddle, the right paddle, then
+  //    the obstacles in the order of OBSTACLE_CENTERS.
   const afterWalls = resolveWalls({ ball: moved, events: flight.events });
   const afterLeft = resolvePaddle(afterWalls, left, "left");
   const afterRight = resolvePaddle(afterLeft, right, "right");
-  return OBSTACLES.reduce(resolveObstacle, afterRight);
+  return obstacles.reduce(resolveObstacle, afterRight);
 }
 
 /** The ball after `dt` seconds of flight, with every collision it made resolved. */
@@ -211,12 +224,13 @@ export function step(
   ball: BallState,
   left: PaddleState,
   right: PaddleState,
+  obstacles: readonly ObstacleState[],
   dt: number,
 ): Flight {
   // The frame is cut into sub-steps short enough that the ball's center cannot
   // skip past an object in one move. Every part of the step — the spin, the
   // integration, and the collisions — happens per SUB-step rather than per frame,
-  // so the curve the ball actually travels is resolved to MAX_SUBSTEP px however
+  // so the curve the ball actually travels is resolved to MAX_SUBSTEP units however
   // long the frame was. That is what keeps a rally on a 30 Hz display and the same
   // rally on a 240 Hz one landing in the same place.
   const substeps = Math.max(1, Math.ceil((ballSpeed(ball) * dt) / MAX_SUBSTEP));
@@ -231,7 +245,7 @@ export function step(
     events: { paddle: false, wall: false, obstacle: false },
   };
   for (let i = 0; i < substeps; i++) {
-    flight = substep(flight, left, right, h, decay);
+    flight = substep(flight, left, right, obstacles, h, decay);
   }
   return flight;
 }

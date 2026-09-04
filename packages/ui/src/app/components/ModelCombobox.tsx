@@ -19,6 +19,12 @@ interface ModelComboboxProps {
   value: string;
   /** Called with the new model id on every edit or selection. */
   onChange: (value: string) => void;
+  /** When set, an option picked from the list is reported here **instead of** being
+   * committed to the field — for a picker that collects several models rather than
+   * one, where a pick appends to a list and the field goes back to empty. Typed free
+   * text still arrives through `onChange`, since there is no other moment at which a
+   * hand-typed id becomes a choice. */
+  onCommit?: (value: string) => void;
   /** The backend model catalog; each entry contributes one option. */
   models: Model[];
   /** When set, offer only the slugs usable with this harness family, and commit
@@ -85,6 +91,7 @@ function buildOptions(models: Model[], family?: HarnessFamily): ModelOption[] {
 export function ModelCombobox({
   value,
   onChange,
+  onCommit,
   models,
   harnessFamily,
   excludeIds,
@@ -140,7 +147,7 @@ export function ModelCombobox({
   }, [open]);
 
   function commit(option: ModelOption) {
-    onChange(option.id);
+    (onCommit ?? onChange)(option.id);
     setOpen(false);
     setHighlight(-1);
   }

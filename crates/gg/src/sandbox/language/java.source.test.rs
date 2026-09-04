@@ -8,6 +8,11 @@
 use super::*;
 use crate::sandbox::export_names;
 
+/// The binding key these cases wrap a module under.
+///
+/// One key, because the wrap is the same shape for every key and what these cases read is the shape.
+const MODULE_CHECK_CLASS: &str = "Module";
+
 /// The module's own body: everything the wrapper's header on line 1 is not, plus every line after.
 fn body(wrapped: &Wrapped) -> String {
     let header = wrapped

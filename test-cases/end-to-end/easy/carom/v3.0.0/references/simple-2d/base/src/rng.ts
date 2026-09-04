@@ -1,17 +1,23 @@
 // Carom — the game's seeded random generator.
 //
 // The only randomness Carom uses is the vertical direction of a serve, and
-// `specs/instrumentation.md` requires that it run off a SEEDABLE generator so a
-// scenario reseeded with `reset({ seed })` and replayed reaches the same state.
+// specs/instrumentation.md requires that it run off a SEEDABLE generator so a
+// scenario reseeded with `setSeed` and replayed reaches the same state.
 //
 // The generator's whole state is the one 32-bit integer `CaromState.rngState`,
 // which is why it is a declared field rather than a module-level variable: the
-// debug API's `reset()` restores the declared fields, and a generator hidden in a
-// closure would survive that reset and desynchronize the replay.
+// debug surface's `reset` restores the declared fields, and a generator hidden in
+// a closure would survive that reset and desynchronize the replay. `seed` records
+// what it was last seeded from, which is the value `setSeed` was given.
 //
 // A draw is a function of that integer alone and returns the value drawn BESIDE
 // the generator's next state, `[value, next]`. The caller stores `next` where the
 // old state was; nothing here holds or advances anything of its own.
+
+/** The generator's starting state for a seed: the seed as one 32-bit word. */
+export function seedState(seed: number): number {
+  return seed | 0;
+}
 
 /**
  * The next draw in `[0, 1)`, and the generator state that follows `state`.

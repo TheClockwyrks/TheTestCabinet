@@ -19,33 +19,40 @@ nothing gg offers is in scope before the program asks for it.
 A run-time frame is read back through the source map `purs` and `esbuild` both
 emit: `esbuild` composes the two into the bundle it writes, and gg reads the
 composition with a standard source-map library. A frame in the model's own
-PureScript names the model's own file and line, and a frame in a library names
-that library's own module.
+PureScript names the model's own file and line, a frame in a library names that
+library's own module, and a frame in gg's own SDK is struck.
 
-The preparation workspace, compiler isolation, the two failure bands and the
+The compile workspace, compiler isolation, the two failure bands and the
 diagnostic bound are shared with the other program languages and are described
 on [compilation](/gg/languages/compilation/).
 
 ## Program shape
 
 A program is a module with its own `module … where` header and a `main` of type
-`Effect Unit`. The module name is the model's, and it is the name gg's bundler
-entry imports `main` from. It has to be a name neither the shipped library set
-nor a loaded code module already publishes, since `purs` compiles the program
-alongside both and answers a collision with `DuplicateModule` at line 1; a
-program naming a loaded module's own `Lib.<Key>` is refused before the compiler
-runs, with a sentence naming the key. A reply with no header is
-`ErrorParsingModule` at line 1, and a program that compiles but declares no
-`main` is refused with a sentence naming the type it must define.
+`Effect Unit`. The module name is the model's, and nothing reads it. gg derives
+the bundler's entry point from the module directory `purs` wrote for the
+response, which is the one directory in the compiler's output that neither the
+shipped library set nor a loaded code module claims.
+
+The previous response's module directory is removed from that output at the
+start of every program compile, so a module name a later response reuses still
+resolves to that response's own build.
+
+A name the shipped library set or a loaded code module already publishes is
+`DuplicateModule` at line 1 of the model's own file, which is the compiler's own
+answer. A reply with no header is `ErrorParsingModule` at line 1, and a program
+that compiles but declares no `main` is refused with a sentence naming the type
+it must define.
 
 ## Code modules
 
 A code skill's or memory's module is an ordinary PureScript module with its own
 `module … where` header and its own export list, and gg files it under
-`Lib.<Key>` by rewriting the name in that header. The rewrite occupies the
-author's own header line and adds none, so every diagnostic is at the line the
-author wrote. A file with no header is `ErrorParsingModule` at line 1, which is
-the compiler's own answer.
+`Lib.<Key>` by rewriting the name in that header. The header is located through
+the arm's code mask, so a `module` written inside a leading comment is comment
+rather than header. The rewrite occupies the author's own header line and adds
+none, so every diagnostic is at the line the author wrote. A file with no header
+is `ErrorParsingModule` at line 1, which is the compiler's own answer.
 
 `<Key>` is the binding key, which on this arm is PascalCase and ASCII: a skill
 named `csv-tools` is keyed `CsvTools` and compiled as `Lib.CsvTools`. A key that
@@ -53,7 +60,10 @@ would open with something other than an upper-case letter is prefixed `Module`,
 because a PureScript module name is a proper name.
 
 The module is compiled into the same `purs` project as the program that uses it,
-so the program reaches it the way it reaches any other module. The line is the
+so the program reaches it the way it reaches any other module. The project is the
+agent's: the staged library set and `purs`'s own output directory are laid out
+once for the agent and kept across its preparations, so a module compiled at the
+read that bound it stays compiled. The line is the
 key's own:
 
 ```
@@ -64,11 +74,17 @@ and an export is `CsvTools.parse`, type-checked by `purs` against the module's
 own signature. `ProgramLanguage::lib_import` states that line and
 `ProgramLanguage::lib_access` states `CsvTools.<name>`.
 
-Using a skill or a memory compiles its module on its own first, under
-`module.purs` and the name `Lib.Module`, so an author's mistake is a located
-diagnostic naming the skill rather than a failure of the next program that has it
-in scope. gg reports the lower-case value names among its exports, with the type
-names each signature writes in return and in parameter position.
+Using a skill or a memory compiles its module on its own first, under the name
+`Lib.<Key>` it will be reached by, so an author's mistake is a located diagnostic
+naming the skill rather than a failure of the next program that has it in scope.
+Its file is written into the loaded-module band of the agent's compile workspace,
+where `purs` finds it up to date on every later program. gg reports the lower-case
+value names among its exports, with the type names each signature writes in return
+and in parameter position. That reading is over the module as written: it walks
+the source a byte at a time to split a signature at its top-level constraint and
+function arrows. PureScript accepts two spellings of each, so a constraint ends
+at `=>` or `⇒` and an argument ends at `->` or `→`, and a signature
+written in either spelling declares the same parameters.
 
 `.purs` is the arm's only module file extension.
 
@@ -116,9 +132,16 @@ and the compiled externs of everything a program imports, so the tree ships
 compiled and inside the binary. It is compiled with the codegen set a turn's
 compile uses, because `purs` treats a module built for a different set as stale.
 `warm_prepare` unpacks it once per machine into a content-keyed shared toolchain
-directory, sealed read-only, and each preparation hard-links its own tree out of
-that one. The two files at the root
-of `output/` that `purs` rewrites are staged as real copies.
+directory, sealed read-only, and each agent hard-links one tree out of that one
+at its first preparation.
+
+The project directory and the compiler's output directory are declared as
+persistent work, so the reset the next preparation pays leaves both standing. A
+program's compile then removes from that output directory every module directory
+the shipped library set and this turn's loaded code modules do not claim, so
+what survives a preparation is the library set and the loaded modules' builds.
+The two files at the root of `output/` that `purs` rewrites are staged as real
+copies.
 
 ## SDK and signature catalogue
 
@@ -132,6 +155,11 @@ loader resolves to the instance a TypeScript program shares, so a call the agent
 was not granted arrives as an `ApiError` carrying `unavailable` from the host. The
 rules every arm's SDK obeys are on
 [the agent surface](/gg/languages/agent-surface/).
+
+Every call crosses that bridge in one engine frame, which is what keeps the
+model's own innermost frame inside the
+[guest's ten-frame capture](/gg/languages/ecmascript-guest/). The value a call
+answers with is read inside that same frame, once the call has returned.
 
 `packages/gg-sandbox-purescript/signatures.sh` reflects the catalogue with
 `purs compile --codegen docs`, run against the shipped library tree with this
@@ -170,11 +198,11 @@ diagnostics carrying the compiler's own error code and span.
 | `ErrorParsingModule` or `ErrorParsingFFIModule` in the model's file | `PrepareError::Syntax` |
 | Any other `purs` error code in the model's file | `PrepareError::Compile` |
 | `esbuild` reporting no matching export for `main` | `PrepareError::Compile`, with a sentence saying the program must define `main :: Effect Unit` |
-| A program header naming a loaded module's `Lib.<Key>` | `PrepareError::Compile`, with a sentence naming the key |
 | `purs` reporting a diagnostic only in a loaded module's file | `PrepareFailure::Lowering`, naming the key — the module compiled on its own when it was loaded |
 | `purs` reporting only diagnostics in gg's shipped library files | `PrepareFailure::Toolchain` |
 | A compiler that could not run, was killed, timed out, or reported nothing readable | `PrepareFailure::Toolchain` |
 | A `purs` release disagreeing with the manifest's pin | `PrepareFailure::Toolchain` |
+| The response's module directory not identifiable in the compiler's output | `PrepareFailure::Toolchain`, naming what was found |
 
 Diagnostics in the model's own file are deduplicated and capped at eight, since
 `purs` reports one error per site. The band is decided over the whole set before
@@ -193,9 +221,14 @@ composed, so a frame in the model's own code names `program.purs`, a frame in a
 loaded code module names `Lib.<Key>.purs`, and a frame in a library names that
 library's module. `purs` maps a definition that takes no argument to its
 type-signature line, so a frame in one reports the signature rather than the
-body. Two kinds of frame name neither the model's code nor a library and are
-struck instead, with the report closing on how many went: gg's own bundler entry,
-and a position in the flattened bundle the composed map resolves nothing for.
+body.
+
+Three kinds of frame name neither the model's code nor a library and are struck
+instead, with the report closing on how many went: gg's own bundler entry, a
+position in the flattened bundle the composed map resolves nothing for, and this
+arm's own SDK. The SDK is struck under both names it carries in the composed map,
+its PureScript sources under the library directory the manifest names it by and
+the JavaScript `purs` emitted for its `Gg.` modules.
 
 ## The idiomatic PureScript surface
 
@@ -236,7 +269,8 @@ under is the expression a call site writes.
 The arm names `purs` as its [checker](/gg/languages/compilation/), so the shared
 body states that a program is compiled before it runs, that one `purs` refuses
 is not executed, and that a call the run withheld compiles and fails when it
-runs. The library set is carried by a compile failure rather than by the prompt.
+runs. The library set is reached through a compile failure rather than through
+the prompt.
 
 ## Code mask
 
@@ -244,5 +278,13 @@ The arm keeps one byte-level lexer, `purescript.mask.rs`, answering which bytes
 of a source are code: `"…"` with escapes, `"""…"""` raw strings, `-- …` line
 comments — recognised only where the dashes are not part of an operator like
 `-->` — and nested `{- … -}` block comments, with the prime-versus-character
-rule for `'`. Its reader is the code-module analysis, which must not take a
-declaration written into a string for one the module makes.
+rule for `'`. It has two readers: the code-module analysis, which must not take
+a declaration written into a string for one the module makes, and the header
+rewrite that files a code module under `Lib.<Key>`. A source that does not lex
+cleanly declines the mask, and both readers then read the source as it stands.
+
+Every source is UTF-8 and the lexer reads all of it: a comment, a string or a
+character literal may hold text outside ASCII. Every delimiter the scan looks
+for is ASCII, so the scan stays byte-indexed and tests bytes directly. A
+character literal holds one character of whatever width, and a quote following
+an identifier character is a prime whether that character is ASCII or not.

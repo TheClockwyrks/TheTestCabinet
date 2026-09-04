@@ -4,7 +4,9 @@
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`,
 // `setScreen(name)`: "Any row not listed, `chest` from anywhere or `levelup`
 // from `title` among them, leaves the state as it was." `paused` is listed
-// from `playing` alone, so `paused` from `title` is unlisted too.
+// from `playing` alone, so `paused` from `title` is unlisted too. `title`,
+// `howto`, and `almanac` are each listed from any screen, so none of the three
+// belongs here; each has its own item.
 //
 // THE POSES. `setScreen('chest')` on an isolated run with a moth on the field,
 // then `setScreen('levelup')` and `setScreen('paused')` on the title reached by

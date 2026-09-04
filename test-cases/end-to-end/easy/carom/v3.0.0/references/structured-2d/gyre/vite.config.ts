@@ -1,4 +1,4 @@
-// CASE-PROVIDED. Do not edit.
+// Supplied with the project. Do not edit.
 //
 // Carom builds to a fully self-contained static bundle. `base: "./"` makes the
 // emitted asset URLs relative, so the `dist/` output runs correctly whether it

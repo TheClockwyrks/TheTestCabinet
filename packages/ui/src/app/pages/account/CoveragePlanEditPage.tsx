@@ -14,12 +14,15 @@ import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";
+import { SettingRow } from "../../components/SettingRow";
+import { Switch } from "../../components/Switch";
 import { routes } from "../../routes";
 import {
   AxisPicker,
   BufferTargetField,
   ComboPicker,
   CasePicker,
+  DEFAULT_COVERAGE_AXIS,
 } from "./coveragePickers";
 import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
@@ -30,6 +33,13 @@ import styles from "./Coverage.module.scss";
 // actually applies is whatever `GET /coverage-settings` reports, and an empty
 // override field defers to it rather than to this.
 const FALLBACK_BUFFER_TARGET = 10;
+
+/** The run target a new plan starts with, and the one its control resets to. */
+const DEFAULT_RUNS_PER_CELL = 3;
+
+// A plan does not top itself up until its reviewer asks it to, which is what the
+// row's reset control points back at.
+const DEFAULT_AUTO_TOP_UP = false;
 
 // The coverage plan editor (`/account/coverage/new` and `/account/coverage/:planId/
 // edit`): name, runs-per-cell, how the plan is fed (run order, review buffer,
@@ -56,15 +66,17 @@ export function CoveragePlanEditPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
-  const [runsPerCell, setRunsPerCell] = useState(3);
+  const [runsPerCell, setRunsPerCell] = useState(DEFAULT_RUNS_PER_CELL);
   const [comboGroupIds, setComboGroupIds] = useState<string[]>([]);
   const [caseGroupIds, setCaseGroupIds] = useState<string[]>([]);
   const [combos, setCombos] = useState<ReviewPlanCombo[]>([]);
   const [cases, setCases] = useState<ReviewPlanCase[]>([]);
   // How the plan is fed. `outerAxis`/`autoTopUp` default to today's behaviour so a
   // plan created here is fed exactly as one created before this existed.
-  const [outerAxis, setOuterAxis] = useState<CoverageAxis>("case");
-  const [autoTopUp, setAutoTopUp] = useState(false);
+  const [outerAxis, setOuterAxis] = useState<CoverageAxis>(
+    DEFAULT_COVERAGE_AXIS,
+  );
+  const [autoTopUp, setAutoTopUp] = useState(DEFAULT_AUTO_TOP_UP);
   const [bufferTarget, setBufferTarget] = useState<number | null>(null);
   // Carried, never edited here — see the note on this page's purpose above.
   const [paused, setPaused] = useState(false);
@@ -233,53 +245,61 @@ export function CoveragePlanEditPage() {
             />
           </label>
 
-          <label className={exec.runCountField}>
-            <span className={exec.fieldLabel}>Runs per cell</span>
-            <input
-              className={exec.input}
-              type="number"
-              min={1}
-              max={100}
-              step={1}
-              value={runsPerCell}
-              onChange={(e) => {
-                const n = Math.floor(Number(e.target.value));
-                setRunsPerCell(
-                  Number.isFinite(n) && n >= 1 ? Math.min(n, 100) : 1,
-                );
-              }}
-            />
-          </label>
-
-          <p className={exec.sectionLabel}>Run order</p>
+          {/* Runs-per-cell sits with the feed rather than with the members it
+              multiplies: it is the target every top-up fills a cell toward, so it is
+              read alongside the buffer that decides how much of that target is asked
+              for at once. */}
+          <p className={exec.sectionLabel}>Feeding the plan</p>
+          <SettingRow
+            label="Runs per cell"
+            description="How many runs every combination does on every case in the matrix."
+            help="A cell is one combination on one case. Raising this lengthens the plan rather than starting more runs at once — the review buffer is what caps how many are outstanding."
+            modified={runsPerCell !== DEFAULT_RUNS_PER_CELL}
+            onReset={() => setRunsPerCell(DEFAULT_RUNS_PER_CELL)}
+          >
+            {(id) => (
+              <span className={styles.settingNumber}>
+                <input
+                  id={id}
+                  className={exec.input}
+                  type="number"
+                  min={1}
+                  max={100}
+                  step={1}
+                  value={runsPerCell}
+                  onChange={(e) => {
+                    const n = Math.floor(Number(e.target.value));
+                    setRunsPerCell(
+                      Number.isFinite(n) && n >= 1 ? Math.min(n, 100) : 1,
+                    );
+                  }}
+                />
+              </span>
+            )}
+          </SettingRow>
           <AxisPicker value={outerAxis} onChange={setOuterAxis} />
-
           <BufferTargetField
             value={bufferTarget}
             accountDefault={accountBuffer}
             onChange={setBufferTarget}
           />
-          <label className={styles.controlToggle}>
-            <input
-              type="checkbox"
-              checked={autoTopUp}
-              onChange={(e) => setAutoTopUp(e.target.checked)}
-            />
-            Top up this plan when I submit a review
-          </label>
-          <p className={styles.fieldHint}>
-            A top-up walks the cells in the order above, skips the ones already
-            at their target, and enqueues whole cases at a time until the buffer
-            is full, so a case&rsquo;s repeats arrive together and can be
-            reviewed against each other. Pausing and halting live on the
-            plan&rsquo;s dashboard.
-          </p>
+          <SettingRow
+            label="Top up this plan when I submit a review"
+            description="Each review submitted enqueues more of the plan, up to the review buffer."
+            help="A top-up walks the cells in the run order above, skips the ones already at their target, and enqueues whole cases at a time until the buffer is full, so a case’s repeats arrive together and can be reviewed against each other. Pausing and halting live on the plan’s dashboard."
+            modified={autoTopUp !== DEFAULT_AUTO_TOP_UP}
+            onReset={() => setAutoTopUp(DEFAULT_AUTO_TOP_UP)}
+          >
+            {(id) => (
+              <Switch id={id} checked={autoTopUp} onChange={setAutoTopUp} />
+            )}
+          </SettingRow>
 
-          <p className={exec.sectionLabel}>Model groups</p>
+          <p className={exec.sectionLabel}>Combination groups</p>
           {comboGroups.length === 0 ? (
             <p className={styles.empty}>
-              No model groups yet. Create some on the Groups tab, or pin one-off
-              combinations below.
+              No combination groups yet. Create some on the Groups tab, or pin
+              one-off combinations below.
             </p>
           ) : (
             <div className={styles.groupPicks}>
@@ -333,9 +353,7 @@ export function CoveragePlanEditPage() {
             </div>
           )}
 
-          <p className={exec.sectionLabel}>
-            One-off harness / model combinations
-          </p>
+          <p className={exec.sectionLabel}>One-off combinations</p>
           <ComboPicker combos={combos} onChange={setCombos} models={models} />
 
           <p className={exec.sectionLabel}>One-off test cases</p>

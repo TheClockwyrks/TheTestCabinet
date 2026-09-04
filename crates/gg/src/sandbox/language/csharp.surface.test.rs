@@ -35,7 +35,7 @@ use super::substrate::{
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{CallLog, FakeOperationApi, all_operations, canned_outcome};
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
-use crate::sandbox::outcome::SandboxOutcome;
+use crate::sandbox::outcome::{ProgramErrorKind, SandboxOutcome};
 use crate::sandbox::{ProgramScope, SandboxLimits, bounded_store, engine, linker};
 use crate::tools::{ToolFailure, ToolOutcome};
 
@@ -133,6 +133,11 @@ fn crossings() -> Vec<Crossing> {
             tool: "list_dir",
             statement: r#"Files.ListDir("src");"#,
             expected: || json!({ "path": "src" }),
+        },
+        Crossing {
+            tool: "tree",
+            statement: r#"Files.Tree("src", depth: 3);"#,
+            expected: || json!({ "path": "src", "depth": 3 }),
         },
         Crossing {
             tool: "search",
@@ -740,20 +745,9 @@ Console.WriteLine("carried on");
     // compiled one whose uncaught failure carries a stack at all, and the frame a model needs is the
     // SDK function that failed rather than the bridge under it, which is what
     // `Wire.Check`'s `NoInlining` buys.
-    let (outcome, _log) = run_with(
-        r####"
-using Gg;
-using System;
-
-Console.WriteLine("before");
-Files.ReadFile("gone.cs");
-Console.WriteLine("after");
-"####,
-        &all_operations(),
-        |_name: &str, _args: &Value| {
-            ToolOutcome::failed(ToolFailure::NotFound, "no such file: gone.cs".to_string())
-        },
-    );
+    let (outcome, _log) = run_with(LET_OUT, &all_operations(), |_name: &str, _args: &Value| {
+        ToolOutcome::failed(ToolFailure::NotFound, "no such file: gone.cs".to_string())
+    });
     let reported = program_error(&outcome);
     assert!(
         reported.message.contains("Gg.ApiException")
@@ -772,7 +766,100 @@ Console.WriteLine("after");
         "what ran before it still stands: {:?}",
         outcome.logs
     );
+
+    // AND IT IS CLASSED AS THE FAILED CALL IT WAS. The guest reads `ApiException.Code` off the
+    // thrown object and reports the failure class with it, so the host files the turn the way it
+    // files the identical event on every other arm whose guest reports. Reading the class rather
+    // than only the message is what the recorded data is sliced on: `program_api_error` says the
+    // model is fighting the API, `program_throw` says it wrote a bug.
+    assert_eq!(
+        reported.kind,
+        ProgramErrorKind::ToolFailure,
+        "an uncaught failed call was not classed as one: {reported:?}"
+    );
+
+    // Every class the wire carries lands there except `unavailable`, which is the one the host
+    // reads differently and is measured below. Driving more than one is what pins the ordinals:
+    // `ApiException.Code` is the wire's own `error-code` cast straight across in `Wire.Check`, so a
+    // managed enum that renumbered would send one of these to the wrong class.
+    for failure in [
+        ToolFailure::InvalidArgument,
+        ToolFailure::Conflict,
+        ToolFailure::Refused,
+        ToolFailure::LimitExceeded,
+        ToolFailure::IoError,
+    ] {
+        let (outcome, _log) = run_with(LET_OUT, &all_operations(), move |_: &str, _: &Value| {
+            ToolOutcome::failed(failure, "no such file: gone.cs".to_string())
+        });
+        assert_eq!(
+            program_error(&outcome).kind,
+            ProgramErrorKind::ToolFailure,
+            "an uncaught {failure:?} was not classed as a failed call"
+        );
+    }
+
+    // AND A THROW THE PROGRAM MADE ITSELF STILL IS ITS OWN. The guest classifies by the thrown
+    // object's type against the SDK's own image, so nothing was widened into an API failure to buy
+    // the assertions above.
+    let (outcome, _log) = run_with(
+        r####"
+using System;
+
+Console.WriteLine("before");
+throw new InvalidOperationException("the model's own");
+"####,
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(
+        program_error(&outcome).kind,
+        ProgramErrorKind::Other,
+        "a throw the program made itself was classed as a failed gg call"
+    );
+
+    // AND THE SHAPE THAT ASKS WHETHER THIS RUNTIME WRAPS. The guest reads the outermost thrown
+    // object, so an entry point the runtime reaches through machinery of its own is where a wrapper
+    // would appear and the class would fall back to `Other`. An `async Task Main` is that entry
+    // point, and it is the shape a model writes as readily as top-level statements.
+    let (outcome, _log) = run_with(
+        r####"
+using Gg;
+using System;
+using System.Threading.Tasks;
+
+class Program
+{
+    static async Task Main()
+    {
+        await Task.CompletedTask;
+        Console.WriteLine("before");
+        Files.ReadFile("gone.cs");
+    }
 }
+"####,
+        &all_operations(),
+        |_name: &str, _args: &Value| {
+            ToolOutcome::failed(ToolFailure::NotFound, "no such file: gone.cs".to_string())
+        },
+    );
+    assert_eq!(
+        program_error(&outcome).kind,
+        ProgramErrorKind::ToolFailure,
+        "an uncaught failed call let out of an async entry point was not classed as one"
+    );
+}
+
+/// The program both halves of the uncaught-failure assertions above run: one call that fails,
+/// nothing catching it.
+const LET_OUT: &str = r####"
+using Gg;
+using System;
+
+Console.WriteLine("before");
+Files.ReadFile("gone.cs");
+Console.WriteLine("after");
+"####;
 
 #[test]
 fn a_capability_this_run_withheld_is_refused_as_unavailable() {
@@ -809,11 +896,9 @@ catch (ApiException failure)
     );
 
     // AND IT LANDS ON THE TURN'S REFUSAL ROSTER, under gg's own key rather than this arm's spelling.
-    // That matters more here than on most arms: this guest reports every UNCAUGHT managed exception
-    // as `error-kind.other` with no code (`Sources/shell.c`'s `report`), so an uncaught refusal is
-    // recorded as `program_throw` and the turn error type a cross-arm study would otherwise count
-    // withheld reaches by says nothing about this arm. The roster is the source that is uniform
-    // across all eleven, and it is asserted here so that stays true. See `sandbox.test.rs`'s
+    // The roster is the source a cross-arm count of withheld reaches joins on, uniform across all
+    // eleven arms whatever each one's runtime does with the throw, and it is asserted here so that
+    // stays true. See `sandbox.test.rs`'s
     // `a_refused_call_is_the_same_turn_error_as_an_unbound_name`.
     assert_eq!(
         outcome
@@ -824,6 +909,32 @@ catch (ApiException failure)
         ["shell.shell"],
         "the refusal is recorded under gg's own identity for the call: {:?}",
         outcome.refusals
+    );
+
+    // AND AN UNCAUGHT ONE IS THE UNKNOWN NAME IT IS. This arm cannot withhold a name, so a withheld
+    // capability arrives as the host's `unavailable` rather than as a `ReferenceError`, and the two
+    // have to be counted as one event. The guest reads the code off the uncaught `ApiException` and
+    // the host reads `unavailable` out of it, which is the only route this arm has to
+    // `program_unknown_name`.
+    let (outcome, log) = run_with(
+        r####"
+using Gg;
+using System;
+
+Console.WriteLine("before");
+Shell.Run("dotnet build");
+"####,
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(
+        program_error(&outcome).kind,
+        ProgramErrorKind::UnknownName,
+        "an uncaught refusal was not classed as a name this run does not offer"
+    );
+    assert!(
+        log.names().is_empty(),
+        "a withheld tool must not reach gg's dispatch at all"
     );
 }
 
@@ -1340,7 +1451,7 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
 #[test]
 fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     let compile = |source: &str| {
-        super::compile::compile_program(source, &[], &crate::sandbox::PrepareContext::new())
+        super::compile::compile_program(source, &[], &crate::sandbox::PrepareContext::detached())
     };
 
     let bare = compile("Views.OpenText(\"t\", \"b\");\n")
@@ -1392,7 +1503,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
 fn the_bytes_the_compiler_reads_are_the_bytes_the_model_sent() {
     let source = "using Gg;\n\n// a comment gg has no business touching\n   \
                   Views.OpenText(\"t\", \"b\");";
-    let context = crate::sandbox::PrepareContext::new();
+    let context = crate::sandbox::PrepareContext::detached();
     super::compile::compile_program(source, &[], &context).expect("the subject compiles");
     let workspace = context
         .opened_workspace()
@@ -1428,7 +1539,7 @@ fn the_file_view_statements_gg_synthesizes_join_into_a_program_that_compiles() {
         arm.open_file_statement("a\"b\\c.cs", None),
     ]
     .join("\n");
-    super::compile::compile_program(&program, &[], &crate::sandbox::PrepareContext::new())
+    super::compile::compile_program(&program, &[], &crate::sandbox::PrepareContext::detached())
         .unwrap_or_else(|failure| {
             panic!("the statements gg writes into a transcript are not a program: {failure:?}")
         });

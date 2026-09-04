@@ -3,10 +3,10 @@
 //
 // WHERE THE THRESHOLD COMES FROM. specs/ui.md ("`title`"): "`menuIndex` is `0`
 // on arriving. `up` and `down` move the highlight by one item and wrap at both
-// ends", over `TITLE_ITEMS`, "`LIGHT THE LAMP`, `HOW TO PLAY`, in that order",
-// so the wrap from `0` lands on `TITLE_ITEMS.length - 1`.
+// ends", over `TITLE_ITEMS`, "`LIGHT THE LAMP`, `THE ALMANAC`, `HOW TO PLAY`,
+// in that order", so the wrap from `0` lands on `TITLE_ITEMS.length - 1`.
 // specs/controls.md ("What each screen reads"), the `title` row: "`up`, `down`
-// move the highlight, wrapping at both ends".
+// move the highlight, wrapping".
 //
 // WHY THE WORLD IS POSED AS IT IS. Nothing is posed: the screen is entered on
 // `0`, which is the item the wrap is stated from, and the index is read back

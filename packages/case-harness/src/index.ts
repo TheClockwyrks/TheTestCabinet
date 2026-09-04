@@ -64,6 +64,7 @@ export * from "./matrix";
 export * from "./pixels";
 export * from "./point";
 export * from "./pointer";
+export * from "./touch";
 export * from "./text";
 export * from "./viewport";
 

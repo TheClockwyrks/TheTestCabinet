@@ -16,11 +16,9 @@
 
 namespace gg {
 
-/// Reclaim room in the agent's own context window.
+/// Reclaim room in the context window.
 ///
-/// These are the only calls whose effect is on the conversation rather than on the workspace, and
-/// they are worth making from a program precisely because a program can decide when to: read a set
-/// of files, extract what matters, then evict the views, all in one turn.
+/// These are the calls whose effect is on the conversation rather than on the workspace.
 ///
 /// <ggmodule>context</ggmodule>
 namespace context {
@@ -41,9 +39,9 @@ struct reclaim_report {
 enum class message_role {
   /// The system prompt.
   system,
-  /// A turn's input to the agent: a result, a view, or an operator's instruction.
+  /// A turn's input: a result, a view, or an operator's instruction.
   user,
-  /// Something the agent said.
+  /// A model turn's own output.
   assistant,
   /// A tool result, on a session that made tool calls rather than writing programs.
   tool,
@@ -63,8 +61,7 @@ struct archive_hit {
 struct archive_search {
   /// Whether nothing has been archived yet, so there was nothing to search.
   ///
-  /// It is deliberately distinct from a search that ran and matched nothing, so that a first
-  /// archive is not repeated in the belief that it failed.
+  /// Distinct from a search that ran and matched nothing.
   bool archive_empty{};
   /// The matches, most recent first, at most 8.
   std::vector<context::archive_hit> hits;
@@ -72,10 +69,7 @@ struct archive_search {
 
 /// An inclusive span of turn numbers.
 ///
-/// Both ends are included, so `{.from = 4, .to = 19}` is turns 4 through 19. C++ has no value type
-/// for a closed integer range — `std::ranges::iota_view` is a sequence, which a span of turn
-/// numbers is not — so this is an ordinary aggregate, and a list of them is written the way a list
-/// of aggregates is.
+/// Both ends are included, so `{.from = 4, .to = 19}` is turns 4 through 19.
 struct turn_range {
   /// The first turn in the span.
   std::uint32_t from{};
@@ -89,7 +83,7 @@ struct turn_range {
 ///
 /// <ggop>context.evict_file_view</ggop>
 ///
-/// \param path The file whose views to drop; empty drops every file view the agent holds.
+/// \param path The file whose views to drop; empty drops every file view this session holds.
 /// \returns what the reclaim actually freed.
 /// \throws gg::core::api_error `invalid_argument` for a path that is given but empty; leaving it out
 ///   altogether is how every file view is dropped.
@@ -97,10 +91,9 @@ context::reclaim_report evict_file_view(std::optional<std::string_view> path = s
 
 /// Move whole turns out of the context window, keeping their results searchable.
 ///
-/// Every result carries a header with its turn number and roughly what holding it costs, which is
-/// what names the turns worth dropping. Both ends of a span are included, so
-/// `gg::context::archive_thread({{4, 19}})` archives turns 4 through 19. The agent's own messages in
-/// an archived turn are dropped; the results are kept and stay searchable.
+/// Every result carries a header with its turn number and roughly what holding it costs. Both ends
+/// of a span are included, so `{{4, 19}}` archives turns 4 through 19. A model turn's own messages
+/// in an archived turn are dropped; the results are kept and stay searchable.
 ///
 /// <ggop>context.archive_thread</ggop>
 ///
@@ -111,9 +104,6 @@ context::reclaim_report archive_thread(std::vector<context::turn_range> ranges);
 
 /// Search archived history for a case-insensitive substring, most recent first, up to 8 hits.
 ///
-/// Reading `archive_empty` before `hits` is what tells "nothing has been archived yet" from "the
-/// search ran and matched nothing".
-///
 /// <ggop>context.search_archive</ggop>
 ///
 /// \param query The substring to look for. Matching is case-insensitive.
@@ -123,13 +113,12 @@ context::archive_search search_archive(std::string_view query);
 
 /// Compact the context window: the detailed thread is dropped and restarted from `summary`.
 ///
-/// Each path in `files` is read afresh into the restarted window, and the agent's skills, memories
-/// and task list are kept as they are. gg asks for this call when the window is full, and refuses
-/// every other call until it arrives.
+/// Each path in `files` is read afresh into the restarted window, and this session's skills,
+/// memories and task list are kept as they are. gg asks for this call when the window is full, and
+/// refuses every other call until it arrives.
 ///
-/// It does not stop the program: it registers the request and returns, and the rewrite happens
-/// once the program has ended. Everything not in the summary and not in `files` is gone
-/// afterwards.
+/// It does not stop the program: the request is registered and the rewrite happens once the program
+/// has ended. Everything not in the summary and not in `files` is gone afterwards.
 ///
 /// <ggop>context.compact</ggop>
 ///

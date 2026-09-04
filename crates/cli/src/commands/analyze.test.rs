@@ -30,6 +30,10 @@ fn analyse(
         root: root.path(),
         seed_commit,
         tree_basis: CodeTreeBasis::PostValidation,
+        // What the command itself passes: a checkout on disk carries no engine, so the
+        // root-anchored floor is told nothing was seeded and removes nothing it is
+        // unsure of.
+        root_seeding: RootSeeding::default(),
     });
     (root, document)
 }
@@ -346,6 +350,7 @@ fn this_crate_analyses_to_a_populated_report() {
         root,
         seed_commit: None,
         tree_basis: CodeTreeBasis::PostValidation,
+        root_seeding: RootSeeding::default(),
     });
     let rendered = render_report(
         "crates/cli",
@@ -364,4 +369,23 @@ fn this_crate_analyses_to_a_populated_report() {
     assert!(rendered.contains("rust discipline"), "{rendered}");
     assert!(rendered.contains("most complex functions"), "{rendered}");
     assert!(rendered.contains("largest files"), "{rendered}");
+}
+
+/// Neither heading may read as a measurement the analyzer does not make. `notes` is the
+/// walk's diagnostics about the analysis, not code coverage — the analyzer executes nothing
+/// and cannot measure coverage — and `tests` is a static count of test code the model wrote,
+/// which sits on the same page as the executed test results the run record carries. Both
+/// strings must also match the console's `familyHeading`, modulo the lowercasing.
+#[test]
+fn no_family_is_headed_as_a_measurement_the_analyzer_does_not_make() {
+    assert_eq!(family_heading("notes"), "analysis notes");
+    assert_eq!(family_heading("tests"), "test authorship");
+    for metric in CODE_METRICS {
+        assert_ne!(
+            family_heading(metric.family),
+            "coverage",
+            "`{}` must not be headed as coverage",
+            metric.family
+        );
+    }
 }

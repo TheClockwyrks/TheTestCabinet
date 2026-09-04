@@ -1,7 +1,15 @@
 import { createCanvas } from "@napi-rs/canvas";
 import { describe, expect, it } from "vitest";
 import { Assets } from "../assets";
-import { STAGE_CX, STAGE_CY, STAGE_H, STAGE_W } from "../constants";
+import {
+  ALMANAC_ROWS,
+  HURT_FLASH,
+  STAGE_CX,
+  STAGE_CY,
+  STAGE_H,
+  STAGE_W,
+} from "../constants";
+import { ALMANAC, almanacRowRects, almanacTabRects } from "../layout";
 import { freshRun, initialState, type WickState } from "../state";
 import { spawnEnemy } from "../sim/enemies";
 import { render } from "./render";
@@ -18,6 +26,36 @@ function frame(state: WickState): Context {
 
 function pixel(ctx: Context, x: number, y: number): number[] {
   return [...ctx.getImageData(x, y, 1, 1).data];
+}
+
+/** Whether any pixel in the box differs from the same box of `other`. */
+function differs(
+  a: Context,
+  b: Context,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): boolean {
+  const da = a.getImageData(x, y, w, h).data;
+  const db = b.getImageData(x, y, w, h).data;
+  return da.some((v, i) => v !== db[i]);
+}
+
+/** A rectangle as the four arguments `differs` takes. */
+function rowBox(rect: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}): [number, number, number, number] {
+  return [rect.x, rect.y, rect.width, rect.height];
+}
+
+function almanacState(): WickState {
+  const state = initialState(1);
+  state.screen = "almanac";
+  return state;
 }
 
 function playingState(): WickState {
@@ -99,6 +137,7 @@ describe("rendering", () => {
     for (const screen of [
       "title",
       "howto",
+      "almanac",
       "playing",
       "levelup",
       "chest",
@@ -145,6 +184,51 @@ describe("rendering", () => {
     state.run.player.facing = "left";
     const lampOnLeft = pixel(frame(state), STAGE_CX - 16, STAGE_CY - 6);
     expect(lampOnLeft).toEqual(lampOnRight);
+  });
+
+  it("casts the hurt over the view while the flash runs", () => {
+    const state = playingState();
+    const calm = frame(state);
+    state.run.hurtFlash = HURT_FLASH;
+    const hurt = frame(state);
+    expect(differs(hurt, calm, 0, 0, 200, 200)).toBe(true);
+    state.run.hurtFlash = 0;
+    expect(differs(frame(state), calm, 0, 0, 200, 200)).toBe(false);
+  });
+
+  it("draws the almanac's rows from its scroll and its entry in full", () => {
+    const state = almanacState();
+    const rows = almanacRowRects(16);
+    const list = [
+      ALMANAC.listX,
+      ALMANAC.listTop,
+      ALMANAC.rowWidth,
+      ALMANAC_ROWS * ALMANAC.rowPitch,
+    ] as const;
+    const pane = [
+      ALMANAC.paneX,
+      ALMANAC.paneY,
+      ALMANAC.paneWidth,
+      ALMANAC.paneHeight,
+    ] as const;
+    const first = frame(state);
+    state.menuIndex = 1;
+    const second = frame(state);
+    expect(differs(first, second, ...rowBox(rows[0]))).toBe(true);
+    expect(differs(first, second, ...pane)).toBe(true);
+    state.menuIndex = 0;
+    state.almanacScroll = 3;
+    expect(differs(first, frame(state), ...list)).toBe(true);
+  });
+
+  it("draws the almanac's tab bar with the shown tab apart", () => {
+    const state = almanacState();
+    const tabs = almanacTabRects();
+    const first = frame(state);
+    state.almanacTab = 2;
+    const third = frame(state);
+    expect(differs(first, third, ...rowBox(tabs[0]))).toBe(true);
+    expect(differs(first, third, ...rowBox(tabs[2]))).toBe(true);
   });
 
   it("fills the health bar in proportion to hp", () => {

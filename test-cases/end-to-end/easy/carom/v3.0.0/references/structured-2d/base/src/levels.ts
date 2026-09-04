@@ -1,66 +1,38 @@
-// Carom — the level registry's two entries (src/constants.ts fixes the names):
-// `title`, the menu level the engine opens first, and `match`, the level a
-// match plays in.
+// Carom — the level registry's two entries, under the names `LEVELS` fixes.
 //
-// Each level declares the actors it places. The field furniture — the net and
-// the two obstacles — is shared: the title screen shows the court dimmed
-// behind its menu, so both levels place the same pieces and the components dim
-// themselves by the screen. The title level also places the two paddles and a
-// parked ball as furniture, each under its case-fixed tag, so the court a
-// player sees behind the menu is the same court `world.byTag` reports; in the
-// match level the paddles arrive through possession instead — the mode spawns
-// one per participant — and the mode spawns the ball last so it ticks after
-// them (src/match-mode.ts).
+// A level is not a screen here. All six screens are hosted by whichever world
+// is open (`src/carom-mode.ts`), because specs/instrumentation.md makes
+// `setScreen` an atomic pose that leaves the world alone. What the two levels
+// name is the two ways a world is STARTED, and each is an arrangement
+// specs/ui.md fixes in full:
+//
+//   * `title` — the level the engine opens first, and the level every path back
+//     to the title opens: the game on its title screen with every declared
+//     field at its title value.
+//   * `match` — the level SOLO, VERSUS, RESTART and PLAY AGAIN open: a fresh
+//     match on its pre-serve countdown, in the mode the transition names.
+//
+// Both place the same field, because both show the same court: the net and the
+// chrome that draws whichever screen is up. The paddles arrive through
+// possession, and the ball and the obstacles are spawned by the mode — they are
+// the entities `clearWorld`, `spawnBall` and `spawnObstacle` add and remove, so
+// the level cannot be the thing that decides they are there.
 
-import type { ActorSpec, LevelDefinition } from "@test-cabinet/structured-2d";
-import { Ball } from "./ball";
-import { FIELD_CX, FIELD_CY, OBSTACLE_CENTERS, TAGS } from "./constants";
+import type { LevelDefinition } from "@test-cabinet/structured-2d";
+import { MatchLevelMode, TitleLevelMode } from "./carom-mode";
 import { Hud } from "./hud";
-import { MatchMode } from "./match-mode";
-import { Paddle } from "./paddle";
-import { Net, Obstacle } from "./scenery";
-import { paddleCenterX } from "./sim";
-import { TitleDisplay, MatchChrome } from "./screens";
-import { TitleMode } from "./title-mode";
+import { Net } from "./scenery";
+import { Chrome } from "./screens";
 
-/** The net and the two obstacles, in `OBSTACLE_CENTERS` order (A then B). */
-function furniture(): ActorSpec[] {
-  return [
-    { type: Net },
-    ...OBSTACLE_CENTERS.map((center): ActorSpec<Obstacle> => ({
-      type: Obstacle,
-      transform: { x: center.x, y: center.y },
-      tags: [TAGS.obstacle],
-    })),
-  ];
-}
+/** Everything both levels place: the net, the HUD, and the screen chrome. */
+const field = [{ type: Net }, { type: Hud }, { type: Chrome }] as const;
 
 export const title: LevelDefinition = {
-  mode: TitleMode,
-  actors: [
-    ...furniture(),
-    {
-      type: Paddle,
-      transform: { x: paddleCenterX("left"), y: FIELD_CY },
-      tags: [TAGS.paddleLeft],
-      configure: (paddle: Paddle) => {
-        paddle.side = "left";
-      },
-    },
-    {
-      type: Paddle,
-      transform: { x: paddleCenterX("right"), y: FIELD_CY },
-      tags: [TAGS.paddleRight],
-      configure: (paddle: Paddle) => {
-        paddle.side = "right";
-      },
-    },
-    { type: Ball, transform: { x: FIELD_CX, y: FIELD_CY }, tags: [TAGS.ball] },
-    { type: TitleDisplay },
-  ],
+  mode: TitleLevelMode,
+  actors: [...field],
 };
 
 export const match: LevelDefinition = {
-  mode: MatchMode,
-  actors: [...furniture(), { type: Hud }, { type: MatchChrome }],
+  mode: MatchLevelMode,
+  actors: [...field],
 };

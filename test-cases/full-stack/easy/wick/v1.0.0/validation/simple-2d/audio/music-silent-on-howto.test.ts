@@ -3,9 +3,9 @@
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE.
 //   - specs/ui.md (The loops): "`music` is looping on every frame exactly when
-//     `screen` is `playing`, `levelup`, `chest`, or `paused` ... `title` and
-//     `howto` carry no music", and "Both loops are reconciled from the state on
-//     every frame".
+//     `screen` is `playing`, `levelup`, `chest`, or `paused` ... `title`,
+//     `howto`, and `almanac` carry no music", and "Both loops are reconciled
+//     from the state on every frame".
 //   - specs/instrumentation.md (`setScreen`): the `howto` row, "Enters the
 //     how-to screen exactly as confirming `HOW TO PLAY` does: the idle run".
 //

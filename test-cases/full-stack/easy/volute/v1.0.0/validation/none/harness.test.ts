@@ -350,7 +350,14 @@ it("spaces a posed run by exactly the channel spacing", async () => {
 /* ---- The audio probe ------------------------------------------------------- */
 
 it("counts the sounds the build emits, per tick", async () => {
-  await h.armAudio();
+  // The one check in this file that reads what the build SOUNDED, so the one
+  // handed the arming gesture: the shared harness is let go and a harness created
+  // armed takes its place, rather than arming every harness this file opens. The
+  // gesture is a real `KeyZ` press delivered before that harness's opening
+  // `reset`, so it costs this check nothing — and every other check here is handed
+  // none at all, which is the point of arming being asked for rather than given.
+  await h.dispose();
+  h = await createHarness({ armAudio: true });
   const cues = watchCues(h);
   await startRun(h);
   await h.step(30);

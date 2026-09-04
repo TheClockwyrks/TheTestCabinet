@@ -3,8 +3,8 @@
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/ui.md`, "`title`":
 // "`menuIndex` is `0` on arriving. `up` and `down` move the highlight by one
-// item and wrap at both ends". The menu is `TITLE_ITEMS`, two items, so an
-// `up` from `0` reads the last index, `1`.
+// item and wrap at both ends". The menu is `TITLE_ITEMS`, `LIGHT THE LAMP`,
+// `THE ALMANAC`, `HOW TO PLAY`, so an `up` from `0` reads the last index, `2`.
 //
 // THE DRIVE. `reset` to the title screen, which arrives on index `0`, and one
 // real `ArrowUp`. Nothing is pressed first, so the wrap is the only thing the

@@ -532,7 +532,7 @@ fn recorded_type(decision: &CodeTurnOutcome) -> Option<TurnErrorType> {
 /// it is handed what the compiler said; wrapping gg's prose around it, or ending the session over it,
 /// are the two ways this goes wrong. On this arm the diagnostic is the whole message, because its
 /// catalogue declares no library set — see
-/// [the two tests below](a_rejection_names_the_library_set_the_compiler_measured_the_program_against)
+/// [the two tests below](a_rejection_that_names_no_import_is_answered_with_the_whole_library_set)
 /// for the arm that does.
 #[test]
 fn a_compilers_rejection_reaches_the_model_as_the_compilers_own_words() {
@@ -555,19 +555,22 @@ fn a_compilers_rejection_reaches_the_model_as_the_compilers_own_words() {
     );
 }
 
-/// **A rejected program is answered with the library set the compiler measured it against.**
+/// **A rejected program is answered from the library set the compiler measured it against.**
 ///
 /// The set used to be a section of every compiled arm's system prompt, read on every turn of every
 /// run. It is delivered here instead because the mistake it prevents — a program written against a
 /// package this arm does not carry — is one the compiler detects, so the fact is delivered at the
 /// moment it is detected. This is the gate that keeps it delivered *somewhere*: dropping it from the
 /// prompt and never adding it here would leave the model with no way to learn what it may import.
+///
+/// A diagnostic that names no unresolved import is answered with the whole of it, because a program
+/// that named nothing recognisable is the one with most to learn from the inventory.
 #[test]
-fn a_rejection_names_the_library_set_the_compiler_measured_the_program_against() {
+fn a_rejection_that_names_no_import_is_answered_with_the_whole_library_set() {
     let decision = decision_for_arm(
         GgProgramLanguage::Rust,
         SandboxError::Prepare(PrepareError::Compile(
-            "E0432: unresolved import".to_string(),
+            "error[E0308]: mismatched types".to_string(),
         )),
     );
     let banded = banded(&decision);
@@ -576,12 +579,14 @@ fn a_rejection_names_the_library_set_the_compiler_measured_the_program_against()
     };
     assert_eq!(*source, GgContextSource::CompilerError);
     assert!(
-        body.starts_with("E0432: unresolved import\n\n"),
+        body.starts_with("error[E0308]: mismatched types\n\n"),
         "the compiler's own first line is still the message's first line: {body}"
     );
-    let expected =
-        crate::sandbox::library_set(crate::sandbox::language(GgProgramLanguage::Rust).catalogue())
-            .expect("this arm's catalogue declares a library set");
+    let expected = crate::sandbox::supporting(
+        crate::sandbox::language(GgProgramLanguage::Rust).catalogue(),
+        &[],
+    )
+    .expect("this arm's catalogue declares a library set");
     assert!(
         body.ends_with(&expected),
         "the set is quoted from the arm's own catalogue: {body}"
@@ -599,6 +604,50 @@ fn a_rejection_names_the_library_set_the_compiler_measured_the_program_against()
     }
 }
 
+/// **A diagnostic naming an unresolved import is answered with the modules that match it.**
+///
+/// The whole inventory on every rejection is what this replaces: a program that misremembered one
+/// name is answered with the name it meant, and the arms whose sets are thousands of bytes stop
+/// resending them on a diagnostic that was never about a library.
+///
+/// The arm reading its own compiler's wording is asserted against its real compiler, beside that
+/// compiler ([`imports`](crate::sandbox::language)). What is asserted here is the other half: that
+/// what the arm read decides what the model is handed.
+#[test]
+fn a_rejection_naming_an_unresolved_import_is_answered_with_the_candidates_that_match_it() {
+    let decision = decision_for_arm(
+        GgProgramLanguage::Rust,
+        SandboxError::Prepare(PrepareError::Compile(
+            "error[E0432]: unresolved import `itertool`".to_string(),
+        )),
+    );
+    let banded = banded(&decision);
+    let [(_, body)] = banded.as_slice() else {
+        panic!("a rejection is one message: {banded:?}");
+    };
+    assert!(
+        body.starts_with("error[E0432]: unresolved import `itertool`\n\n"),
+        "the compiler's own first line is still the message's first line: {body}"
+    );
+    assert!(
+        body.contains("itertools"),
+        "the crate the program meant is what the answer offers back: {body}"
+    );
+    assert!(
+        !body.contains("serde_json"),
+        "a module nothing in the diagnostic resembles is not resent: {body}"
+    );
+    let whole = crate::sandbox::supporting(
+        crate::sandbox::language(GgProgramLanguage::Rust).catalogue(),
+        &[],
+    )
+    .expect("this arm's catalogue declares a library set");
+    assert!(
+        body.len() < "error[E0432]: unresolved import `itertool`".len() + whole.len(),
+        "a matched answer is smaller than the inventory it was drawn from: {body}"
+    );
+}
+
 /// **An arm that declares no library set is answered with the diagnostic alone.**
 ///
 /// A heading over an empty list is a sentence about nothing, and a trailing blank line would say a
@@ -608,7 +657,8 @@ fn a_rejection_names_the_library_set_the_compiler_measured_the_program_against()
 fn an_arm_with_no_declared_library_set_adds_nothing_to_its_diagnostic() {
     for language in [GgProgramLanguage::TypeScript, GgProgramLanguage::JavaScript] {
         assert!(
-            crate::sandbox::library_set(crate::sandbox::language(language).catalogue()).is_none(),
+            crate::sandbox::supporting(crate::sandbox::language(language).catalogue(), &[])
+                .is_none(),
             "{language:?} has started declaring a library set; this test picked it for not having one"
         );
         let decision = decision_for_arm(
@@ -695,7 +745,7 @@ fn only_a_rejected_program_leaves_the_session_running() {
 
 /// The failure a load of `source` produced, in a language that compiles.
 fn knowledge_failure(source: &str) -> KnowledgeError {
-    KnowledgeModules::new()
+    KnowledgeModules::new(crate::sandbox::AgentWorkspace::new())
         .load(
             crate::sandbox::fixture_languages()
                 .next()

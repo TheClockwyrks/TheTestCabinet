@@ -71,6 +71,18 @@ export function effectFrame(weapon: WeaponId, t: number): number {
   return sconceFrame(t);
 }
 
+/**
+ * The seconds a weapon effect's sheet plays over, and `0` for a one-frame
+ * effect. A picture with no shape behind it, the almanac's, loops the sheet
+ * by reading it at the time modulo this.
+ */
+export function effectCycle(weapon: WeaponId): number {
+  if (EFFECT_SPRITES[weapon].frames === 1) return 0;
+  if (weapon === "spark") return SPARK_FLASH;
+  if (weapon === "flare") return FLARE_FLASH;
+  return WALK_FRAME_TIME * EFFECT_SPRITES[weapon].frames;
+}
+
 /** The effect image of `weapon` at `t` seconds of age, or `null`. */
 export function effectImage(
   assets: WickAssets,

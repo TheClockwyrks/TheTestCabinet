@@ -1,4 +1,4 @@
-// CASE-PROVIDED. Do not edit.
+// Supplied with the project. Do not edit.
 //
 // A deliberately small flat config: the ESLint and typescript-eslint recommended
 // sets, with unused bindings allowed when they are named with a leading
@@ -18,7 +18,8 @@ export default tseslint.config(
       "build/",
       "out/",
       "coverage/",
-      "proof/",
+      "specs/",
+      "engine/",
       ".tcab/",
     ],
   },

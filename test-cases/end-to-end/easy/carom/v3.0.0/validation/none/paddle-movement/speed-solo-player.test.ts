@@ -1,26 +1,34 @@
 // paddle-movement/speed-solo-player — the human paddle's speed in Solo.
 //
 // specs/playfield.md: a human-controlled paddle moves at `PADDLE_SPEED` (720
-// units per second) while a movement action is held. The match is started from
-// the title with menu keys, so the game stays under normal player control, and
-// the key is pressed through Chromium's own input pipeline the way a player's
-// is — the one route the API affords, since every posing operation
-// (`startMatch` included) hands both paddles to the debug driver and only
-// `reset` gives them back. The displacement over a window of held frames is
-// measured back into a speed. The window opens a few frames after the press,
-// so it reads a paddle in steady travel rather than the frame the press was
-// first seen on, and a paddle that integrates `vy * dt` exactly covers
-// `PADDLE_SPEED * window`; two percent is rounding room on that.
+// units per second) while a movement action is held. The match is opened through
+// the debug surface, which takes NEITHER paddle from the player: only
+// `setPaddleDriven` does that, and nothing here calls it
+// (specs/instrumentation.md). So the game is under normal player control from
+// the first frame without a menu key being pressed — a build with a broken title
+// menu and a correct paddle fails the navigation checks and passes this one. The
+// key is pressed through Chromium's own input pipeline the way a player's is,
+// and the displacement over a window of held frames is measured back into a
+// speed. The window opens a few frames after the press, so it reads a paddle in
+// steady travel rather than the frame the press was first seen on, and a paddle
+// that integrates `vy * dt` exactly covers `PADDLE_SPEED * window`; two percent
+// is rounding room on that.
+//
+// THE FIELD IS EMPTIED FIRST. A paddle's rate is about the paddle and the key
+// that moves it, so the ball and the obstacles come off the field: nothing can
+// arrive at the paddle inside the measured window, and the clip a reviewer
+// watches is the travel and nothing else.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import { PADDLE_SPEED } from "../constants";
 import {
   captureReplay,
+  clearField,
   createHarness,
   holdMove,
   speedOverTicks,
-  startWithKeys,
+  startPlaying,
   type Harness,
 } from "../harness";
 
@@ -43,7 +51,8 @@ afterEach(async () => {
 });
 
 it("moves the human paddle at the paddle speed while KeyS is held", async () => {
-  await startWithKeys(harness, "solo");
+  await startPlaying(harness, "solo");
+  await clearField(harness);
 
   const moved = await captureReplay(harness, "move", async () => {
     await harness.advance(REST_TICKS);

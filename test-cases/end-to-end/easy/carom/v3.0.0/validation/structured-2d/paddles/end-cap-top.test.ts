@@ -11,6 +11,9 @@
 // sub-step of travel while the left and right depths are the half-span plus
 // `BALL_R`. Placement is read at the end of the contact frame, within one frame
 // of travel of `cy - PADDLE_HALF - BALL_R`, on the field side of it.
+//
+// The field holds one ball and neither obstacle, and the far paddle is held off
+// the lane, so the struck cap is the only body the drop can meet.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -19,7 +22,7 @@ import {
   P1_X0,
   P1_X1,
   PADDLE_HALF,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertCloseTo,
   assertEqual,
@@ -27,11 +30,11 @@ import {
   assertLessThanOrEqual,
 } from "../assert";
 import {
+  arrangeLiveBall,
   ball0,
   captureReplay,
-  clearPaddles,
   createHarness,
-  startPlaying,
+  drivePaddle,
   TICK_HZ,
   type Harness,
 } from "../harness";
@@ -60,10 +63,10 @@ afterEach(() => {
 });
 
 it("reflects a ball dropping onto the paddle's top cap", async () => {
-  await startPlaying(h);
-  clearPaddles(h);
-  h.debug.setPaddle("left", { cy: FIELD_CY, vy: 0 });
-  h.debug.setBall(0, { x: CAP_X, y: START_Y, vx: 0, vy: SPEED, spin: 0 });
+  await arrangeLiveBall(h, { x: CAP_X, y: START_Y, vx: 0, vy: SPEED });
+  // The struck paddle stands still on the lane; `arrangeLiveBall` has already
+  // held the far one off it.
+  drivePaddle(h, "left", { cy: FIELD_CY, vy: 0 });
   const before = ball0(h.snapshot());
 
   const bounce = await captureReplay(h, "bounce", async () => {

@@ -22,8 +22,8 @@ drawn in code.
 | `draw-sheet` | A sprite sequence, one PNG per frame | The Load's idle cycles, the firing cycles, and the press cycle |
 | `particle-2d` | A particle system, as a `system.json` | Every electrical effect |
 | `sfx-synth` | A synthesized sound, as a `.wav` | The sharper cues |
-| `sfx-sample` | A sampled sound over a baked pack, as a `.wav` | The fuller cues |
-| `music` | Sequenced music over a baked bank, as a `.wav` and a `.mid` | The music bed |
+| `sfx-sample` | A sampled sound over the sample pack, as a `.wav` | The fuller cues |
+| `music` | Sequenced music over the instrument bank, as a `.wav` and a `.mid` | The music bed |
 
 Each is a command-line tool. Run `<tool> --help` for its operations, and
 `<tool> <operation> --help` for one operation's flags. In outline each records the
@@ -34,8 +34,9 @@ operations you issue and then renders the finished file to a path you name.
   one separate PNG per frame rather than a strip.
 - `particle-2d` authors a system as emitters, forces, and per-particle curves, and emits
   the `system.json` that is the asset. It bakes no frames.
-- `sfx-synth`, `sfx-sample`, and `music` render a PCM `.wav`. `sfx-sample` and `music`
-  draw on a baked pack already in the container, which their help describes.
+- `sfx-synth`, `sfx-sample`, and `music` render a PCM `.wav`. `sfx-sample` draws on
+  the `combat-core` sample pack and `music` on the `synthwave` instrument bank, both
+  present in the container and browsed with `list-samples` and `list-instruments`.
 
 ## Where the files land
 

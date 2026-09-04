@@ -110,7 +110,10 @@ const ALL_RUNS = [PUBLISHED_NEW, UNPUBLISHED, PUBLISHED_OLD, PUBLISHED_STALE];
 // A host that answers a summary query the way the backend does: the `any` slice
 // sees every run, `published` only the published ones. Records each query so a
 // test can assert what the page asked the server for.
-function galleryValue(queries: RunQuery[]): GalleryDataInput {
+function galleryValue(
+  queries: RunQuery[],
+  opts: { total?: number } = {},
+): GalleryDataInput {
   return {
     // The produced worklist the console holds locally. A listing must NOT merge
     // this in — the queried slice already carries the run.
@@ -125,7 +128,10 @@ function galleryValue(queries: RunQuery[]): GalleryDataInput {
         query.state === "any"
           ? ALL_RUNS
           : ALL_RUNS.filter((run) => run.publishedAt);
-      return runSummaryPage(rows, { ...query, state: "published" });
+      const page = runSummaryPage(rows, { ...query, state: "published" });
+      // A cabinet larger than one page: the backend's total counts every row the
+      // same query can serve, across the pages it takes to serve them.
+      return opts.total == null ? page : { ...page, total: opts.total };
     },
     testCases: TEST_CASES,
     testCasesStatus: "ready",
@@ -135,10 +141,10 @@ function galleryValue(queries: RunQuery[]): GalleryDataInput {
   } as unknown as GalleryDataInput;
 }
 
-function renderPage(queries: RunQuery[]) {
+function renderPage(queries: RunQuery[], opts: { total?: number } = {}) {
   return render(
     <MemoryRouter>
-      <GalleryDataProvider value={galleryValue(queries)}>
+      <GalleryDataProvider value={galleryValue(queries, opts)}>
         <RunsPage />
       </GalleryDataProvider>
     </MemoryRouter>,
@@ -172,6 +178,53 @@ describe("RunsPage", () => {
       sort: "date",
       dir: "desc",
     });
+  });
+
+  it("carries a coverage cell's gg configuration deep link into the query", async () => {
+    // The link a cell's "Runs" control writes. The bar offers no control for the
+    // configuration, so the URL is the only thing that can put it in the query, and
+    // a listing that dropped it would answer with every gg run of the model.
+    const queries: RunQuery[] = [];
+    render(
+      <MemoryRouter initialEntries={["/runs?ggConfigId=cfg-a"]}>
+        <GalleryDataProvider value={galleryValue(queries)}>
+          <RunsPage />
+        </GalleryDataProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(queries.length).toBeGreaterThan(0));
+    expect(queries[0]).toMatchObject({ ggConfigId: "cfg-a" });
+
+    // Nothing on screen names the configuration, so the listing has to say it is
+    // narrowed at all — and clearing has to widen it again.
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    await waitFor(() => expect(queries.at(-1)?.ggConfigId).toBeUndefined());
+  });
+
+  it("sizes the pager from the returned total and nothing else", async () => {
+    // The backend's `total` counts exactly the rows the same query can serve, so
+    // three rows over a page size of 20 is one page and the pager is absent rather
+    // than offering a second page that would render nothing.
+    const queries: RunQuery[] = [];
+    renderPage(queries);
+    await waitFor(() => expect(rowNames()).toHaveLength(3));
+
+    expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull();
+  });
+
+  it("offers every page the total covers and asks the server for its offset", async () => {
+    // The other direction of the same rule: a total spanning three pages offers
+    // exactly three, and the page the reader picks travels as the query's offset
+    // rather than being sliced out of the rows already in hand.
+    const queries: RunQuery[] = [];
+    renderPage(queries, { total: 45 });
+    await waitFor(() => expect(rowNames()).toHaveLength(3));
+
+    const third = screen.getByRole("button", { name: "Page 3" });
+    expect(screen.queryByRole("button", { name: "Page 4" })).toBeNull();
+
+    fireEvent.click(third);
+    await waitFor(() => expect(queries.at(-1)).toMatchObject({ offset: 40 }));
   });
 
   it("re-queries the server on a header sort instead of sorting the page", async () => {

@@ -57,6 +57,7 @@ fn version(root: PathBuf, items: Vec<ReviewItem>) -> TestCaseVersion {
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         common_specs: Vec::new(),
         common_workspace: Default::default(),
         init: None,
@@ -133,6 +134,7 @@ fn validation(script_rel: &str) -> ReviewValidation {
     ReviewValidation {
         script: Some(PathBuf::from(script_rel)),
         script_rel: script_rel.to_string(),
+        engines: Vec::new(),
         outputs: Vec::new(),
     }
 }
@@ -1344,5 +1346,204 @@ fn a_store_without_the_package_falls_back_to_the_checkout() {
             .iter()
             .map(PathBuf::from)
             .find(|path| path.is_dir()),
+    );
+}
+
+// --- The staged project's lifetime ------------------------------------------
+
+/// A case root carrying a `simple-2d` validator project with one suite in it, and the
+/// checklist that names that suite. The shape `run_vitest_suites` stages from.
+fn case_with_a_project(root: &Path) -> TestCaseVersion {
+    let project = root.join(VALIDATION_SCRIPT_DIR).join("simple-2d");
+    std::fs::create_dir_all(project.join("gameplay")).expect("a scratch validator project");
+    std::fs::write(project.join(VITEST_CONFIG_FILE), "export default {};").expect("the config");
+    std::fs::write(project.join("gameplay/serve-speed.test.ts"), "// a suite\n").expect("a suite");
+    version(
+        root.to_path_buf(),
+        vec![item(
+            "serve-speed",
+            "validation/simple-2d/gameplay/serve-speed.test.ts",
+        )],
+    )
+}
+
+/// Run the case's validators over `repo` with an install that succeeds and no vitest
+/// in the tree, which is the shortest path that stages the project and then fails.
+fn run_over(test_case: &TestCaseVersion, repo: &Path) -> Vec<DebugScriptResult> {
+    run_vitest_suites(
+        test_case,
+        &variant(),
+        engine().slug(),
+        &ArtifactCollection::new(repo.to_path_buf()),
+        "true",
+        &repo.join(crate::validator::VALIDATION_MEDIA_DIR),
+    )
+}
+
+#[test]
+fn the_staged_project_is_taken_back_out_when_the_run_returns() {
+    // The tree a run collects is published verbatim and the tree `tcab validate` is
+    // pointed at is committed material, so the project the runner stages lives
+    // exactly as long as the run that needs it — including a run that got no further
+    // than finding no vitest to drive.
+    let store = package_store_with_case_harness();
+    use_package_store(store.path());
+    let root = tempfile::tempdir().expect("a scratch case root");
+    let test_case = case_with_a_project(root.path());
+    let repo = tempfile::tempdir().expect("a scratch tree");
+
+    let results = run_over(&test_case, repo.path());
+
+    assert_eq!(results.len(), 1, "the declared point is still reported");
+    assert!(!results[0].ran, "there was no vitest to run it with");
+    assert!(
+        results[0]
+            .detail
+            .as_deref()
+            .unwrap_or_default()
+            .contains(VITEST_BIN),
+        "the run got as far as staging the project and looking for vitest: {:?}",
+        results[0].detail,
+    );
+    assert!(
+        !repo.path().join(VALIDATION_SCRIPT_DIR).exists(),
+        "the tree is left as validation found it",
+    );
+    assert!(
+        !repo.path().join(DISPLACED_PROJECT_DIR).exists(),
+        "nothing is held aside for a name that was free",
+    );
+}
+
+#[test]
+fn a_directory_the_build_authored_is_put_back() {
+    // The staged project needs that one name for the length of the run. What stood
+    // there is the build's own work, which the published tree and the reviewer both
+    // have a claim on, so it is held aside and put back rather than replaced.
+    let store = package_store_with_case_harness();
+    use_package_store(store.path());
+    let root = tempfile::tempdir().expect("a scratch case root");
+    let test_case = case_with_a_project(root.path());
+    let repo = tempfile::tempdir().expect("a scratch tree");
+    let authored = repo.path().join(VALIDATION_SCRIPT_DIR);
+    std::fs::create_dir_all(&authored).expect("the build's own directory");
+    std::fs::write(authored.join("mine.ts"), "// the build's own\n").expect("the build's file");
+
+    let results = run_over(&test_case, repo.path());
+
+    assert!(
+        results[0]
+            .detail
+            .as_deref()
+            .unwrap_or_default()
+            .contains(VITEST_BIN),
+        "the run got as far as staging over the build's directory: {:?}",
+        results[0].detail,
+    );
+    assert_eq!(
+        std::fs::read_to_string(authored.join("mine.ts")).expect("the build's file is back"),
+        "// the build's own\n",
+    );
+    assert!(
+        !authored.join("gameplay/serve-speed.test.ts").exists(),
+        "the case's suites went out with the staged project",
+    );
+    assert!(
+        !authored.join(CASE_HARNESS_DIR).exists(),
+        "so did the shared harness staged beside them",
+    );
+    assert!(
+        !repo.path().join(DISPLACED_PROJECT_DIR).exists(),
+        "the holding directory is gone once what it held is back",
+    );
+}
+
+#[test]
+fn a_staging_that_could_not_finish_leaves_the_tree_as_it_found_it() {
+    // The harness comes from the host rather than the case, so a host carrying
+    // neither a store nor a checkout fails staging with the case's own files already
+    // copied in. Those go too, and what stood at the name comes back.
+    let store = tempfile::tempdir().expect("an empty package store");
+    use_package_store(store.path());
+    let project = tempfile::tempdir().expect("a scratch validator project");
+    std::fs::write(project.path().join("harness.ts"), "// the case's own\n").expect("the harness");
+    let repo = tempfile::tempdir().expect("a scratch tree");
+    let authored = repo.path().join(VALIDATION_SCRIPT_DIR);
+    std::fs::create_dir_all(&authored).expect("the build's own directory");
+    std::fs::write(authored.join("mine.ts"), "// the build's own\n").expect("the build's file");
+
+    let message = StagedProject::stage(project.path(), authored.clone())
+        .err()
+        .expect("an empty store and no checkout cannot stage the harness");
+
+    assert!(message.contains(CASE_HARNESS_PACKAGE), "{message}");
+    assert_eq!(
+        std::fs::read_to_string(authored.join("mine.ts")).expect("the build's file is back"),
+        "// the build's own\n",
+    );
+    assert!(
+        !authored.join("harness.ts").exists(),
+        "the case's files the staging did copy went back out with it",
+    );
+}
+
+#[test]
+fn a_holding_directory_an_earlier_run_left_behind_is_cleared() {
+    // A validation run killed part way through can leave the holding directory on
+    // disk. What the tree carries now is the only copy worth putting back, so the
+    // stale one goes rather than standing in the way of the displacement.
+    let repo = tempfile::tempdir().expect("a scratch tree");
+    let stale = repo.path().join(DISPLACED_PROJECT_DIR);
+    std::fs::create_dir_all(&stale).expect("the stale holding directory");
+    std::fs::write(stale.join("stale.ts"), "// an earlier run\n").expect("a stale file");
+    let at = repo.path().join(VALIDATION_SCRIPT_DIR);
+    std::fs::create_dir_all(&at).expect("the build's own directory");
+    std::fs::write(at.join("mine.ts"), "// the build's own\n").expect("the build's file");
+
+    let held = displace(&at)
+        .expect("the displacement succeeds")
+        .expect("the name was taken, so something was held aside");
+
+    assert_eq!(held, stale);
+    assert!(held.join("mine.ts").is_file(), "what the tree carries now");
+    assert!(!held.join("stale.ts").exists(), "and nothing older");
+}
+
+#[test]
+fn a_point_scoped_away_from_the_run_s_engine_names_no_suite() {
+    // A validator restricted to the engineless build decides nothing on an
+    // engine-backed run: the point leaves the checklist, so no filter names its
+    // suite and no result is reported for it.
+    let mut overlay = item("debug-overlay", "hud/overlay.test.ts");
+    overlay.validation = Some(ReviewValidation {
+        engines: vec![crate::engine::NONE_SLUG.to_string()],
+        ..validation("hud/overlay.test.ts")
+    });
+    let test_case = version(
+        PathBuf::new(),
+        vec![
+            item("serve-initial", "gameplay/serve-initial.test.ts"),
+            overlay,
+        ],
+    );
+
+    let filters_for = |engine: &str| {
+        let items = test_case.review_items_for_engine(&variant(), engine);
+        let units = drive_units(&items);
+        let suites: Vec<Suite> = units.iter().map(|unit| Suite::of(unit, engine)).collect();
+        suite_filters(&suites)
+    };
+
+    assert_eq!(
+        filters_for(crate::engine::NONE_SLUG),
+        vec![
+            "validation/gameplay/serve-initial.test.ts".to_string(),
+            "validation/hud/overlay.test.ts".to_string(),
+        ],
+    );
+    assert_eq!(
+        filters_for("simple-2d"),
+        vec!["validation/gameplay/serve-initial.test.ts".to_string()],
+        "the engine-backed run never names the suite that decides a point it does not carry",
     );
 }

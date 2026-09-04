@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { FIELD_H, FIELD_W } from "./constants";
-import { deviceSize, domSurface, fitViewport } from "./viewport";
+import { deviceSize, domSurface, fitViewport, toLogical } from "./viewport";
 
 /** The fit at `cssWidth x cssHeight` CSS pixels and a pixel ratio of `dpr`. */
 function fit(cssWidth: number, cssHeight: number, dpr = 1) {
@@ -107,6 +107,43 @@ describe("deviceSize", () => {
   });
 });
 
+describe("toLogical", () => {
+  it("is the exact inverse of the fit at every point", () => {
+    const view = fit(1600, 720, 2);
+    for (const point of [
+      { x: 0, y: 0 },
+      { x: FIELD_W, y: FIELD_H },
+      { x: 317, y: 205 },
+    ]) {
+      // Forward through the map the viewport documents, and back again.
+      const cssX = (view.offsetX + point.x * view.scale) / 2;
+      const cssY = (view.offsetY + point.y * view.scale) / 2;
+      const back = toLogical(view, cssX, cssY, 2);
+      expect(back.x).toBeCloseTo(point.x, 6);
+      expect(back.y).toBeCloseTo(point.y, 6);
+    }
+  });
+
+  it("puts a point in a letterbox bar outside the field", () => {
+    const view = fit(1600, 720, 1);
+    // The left bar is (1600 - 1280) / 2 = 160 CSS px wide.
+    expect(toLogical(view, 10, 360, 1).x).toBeLessThan(0);
+    expect(toLogical(view, 1590, 360, 1).x).toBeGreaterThan(FIELD_W);
+  });
+
+  it("treats an unusable pixel ratio as one, exactly as the fit does", () => {
+    const view = fit(FIELD_W, FIELD_H, 1);
+    expect(toLogical(view, 100, 200, 0)).toEqual({ x: 100, y: 200 });
+  });
+
+  it("has no answer for a fit that has collapsed", () => {
+    const view = fit(0, 0, 1);
+    const at = toLogical(view, 10, 10, 1);
+    expect(Number.isNaN(at.x)).toBe(true);
+    expect(Number.isNaN(at.y)).toBe(true);
+  });
+});
+
 describe("domSurface", () => {
   it("reads the canvas element's laid-out size, not its backing store", () => {
     const element = {
@@ -114,9 +151,19 @@ describe("domSurface", () => {
       clientHeight: 450,
       width: 1600,
       height: 900,
+      getBoundingClientRect: () => ({ left: 12, top: 34 }),
     } as unknown as HTMLCanvasElement;
     const surface = domSurface(element);
     expect(surface.cssWidth()).toBe(800);
     expect(surface.cssHeight()).toBe(450);
+  });
+
+  it("reports the element's own corner, so a pointer is measured from it", () => {
+    const element = {
+      clientWidth: 800,
+      clientHeight: 450,
+      getBoundingClientRect: () => ({ left: 12, top: 34 }),
+    } as unknown as HTMLCanvasElement;
+    expect(domSurface(element).origin()).toEqual({ x: 12, y: 34 });
   });
 });

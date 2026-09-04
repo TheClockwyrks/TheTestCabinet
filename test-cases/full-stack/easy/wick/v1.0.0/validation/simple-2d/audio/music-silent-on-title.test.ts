@@ -3,9 +3,9 @@
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE.
 //   - specs/ui.md (The loops): "`music` is looping on every frame exactly when
-//     `screen` is `playing`, `levelup`, `chest`, or `paused` ... `title` and
-//     `howto` carry no music", and "Both loops are reconciled from the state on
-//     every frame".
+//     `screen` is `playing`, `levelup`, `chest`, or `paused` ... `title`,
+//     `howto`, and `almanac` carry no music", and "Both loops are reconciled
+//     from the state on every frame".
 //   - specs/ui.md (`title`): "The game opens here".
 //
 // WHAT IS READ. `looping("music")` after each of `LOOP_FRAMES` (60) frames of

@@ -1,24 +1,17 @@
 # frozen_string_literal: true
 
 module GG
-  # End the session, with the ending that belongs to this agent's role.
+  # End the session.
   #
-  # Under responses as code every reply is a program, so there is no prose turn that could mean "the
-  # work is done" — a model that answers "task complete" has written a reply that failed to be a
-  # program, not an ending. These are the calls that mean it, and a run binds only the group its
-  # agent's role has: an agent doing work gets the one call that reports what was done, and a
-  # reviewer gets the pair that accepts or rejects the work instead.
-  #
-  # None of them stops the program. Whatever follows an ending still runs, so an ending belongs last
-  # — and a program that then fails has its ending revoked along with everything else it decided.
+  # None of these calls stops the program: whatever follows an ending still runs. A program that
+  # then fails has its ending revoked along with everything else it decided.
   module Session
     extend Surface::Operations
 
     # End the session, reporting what was done in a sentence or two.
     #
-    # This is the only thing that ends a working agent's session. It does not stop the program —
-    # whatever follows it still runs — so it belongs last, once the tools have confirmed the work is
-    # really done. A program that then fails has the ending cancelled and gets another turn.
+    # It does not stop the program: whatever follows it still runs. A program that then fails has
+    # the ending cancelled and gets another turn.
     #
     # @param summary [String] What was done, in a sentence or two.
     # @return [nil]
@@ -31,9 +24,7 @@ module GG
 
     # Accept the work under review: it meets every completion criterion and stays in scope.
     #
-    # This ends the session. It does not stop the program — whatever follows it still runs — so it
-    # belongs last, once the change has actually been read. It takes nothing, because an approval
-    # carries no obligation beyond itself.
+    # This ends the session. It does not stop the program: whatever follows it still runs.
     #
     # @return [nil]
     def self.approve

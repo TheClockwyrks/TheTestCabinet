@@ -4,13 +4,13 @@ This repository is the starting point for building **Carom**, the game the
 specification under `specs/` describes. Read `specs/overview.md` first; it says
 how the rest of the specification is organized.
 
-In Carom three balls are in play at once. Each carries its own
-velocity, spin, hold timer, and trail, each launches at a random angle when its
-own hold timer elapses, and the balls collide with one another as well as with
-the walls, the paddles, and the obstacles. `specs/balls.md` gives the per-ball
-hold, the independent respawn, and the ball-to-ball collision. The state contract
-in `specs/state.md` and the surface in `specs/instrumentation.md` already carry
-all three balls. What is missing is the game.
+In Carom three balls are in play at once. Each carries its own velocity, spin,
+hold timer, and trail, each launches at a random angle when its own hold timer
+elapses, and the balls collide with one another as well as with the walls, the
+paddles, and the obstacles. `specs/balls.md` gives the per-ball hold, the
+independent respawn, and the ball-to-ball collision. The state contract in
+`specs/state.md` and the surface in `specs/instrumentation.md` already carry all
+three balls, and every ball operation of that surface takes a ball index.
 
 The project is already wired up. It builds on the **Structured 2D** engine,
 which is installed as an ordinary dependency and documents itself under
@@ -32,7 +32,7 @@ screens, the actors that populate the field, each carrying its tag from `TAGS`
 so `world.byTag` finds it under the names the specification uses, the
 components that draw them, and the controllers that drive the paddles. The
 instance's `initialize` registers every action in `ACTIONS` against its binding
-in `BINDINGS`, defines the four `CUES`, registers the diagnostic sources
+in `BINDINGS`, defines every cue in `CUES`, registers the diagnostic sources
 `specs/instrumentation.md` lists, and returns the debug surface.
 
 `src/game.ts` also exports `BACKGROUND`, a CSS color string: the field
@@ -44,9 +44,11 @@ The debug surface is a required deliverable. The engine hands back from
 driven from code, so it is present and exactly as `specs/instrumentation.md`
 specifies. Each of its operations is a method acting on the running game: a
 pose takes only the arguments its heading names, returns nothing, and arranges
-the live world through the same systems play uses; a reading takes none and
-returns plain data read off the world at the call, as
-`engine.debug.snapshot()`. Nothing is published to the page.
+the live world through the same systems play uses; a reading takes only the
+arguments its heading names and returns plain data read off the world at the
+call, as `engine.debug.snapshot()`. Nothing is published to the page. Where the
+surface's implementation lives under `src/` is yours to decide; the type your
+instance declares for it, the `D` of its `GameInstance<D>`, is that surface.
 
 `LEVELS` and `TAGS` **are contracts**, like every other name in
 `src/constants.ts`. Every level is registered under its name in `LEVELS`, and
@@ -70,7 +72,8 @@ testing a game this way.
 - **`index.html`** — the page and the canvas the engine fits the field into.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.
-- **`.tcab/`** — the vendored engine.
+- **The vendored engine directory** that `package.json` resolves the engine
+  dependency from.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the
 `package-lock.json` — the build is installed with `npm ci`. Leave the existing

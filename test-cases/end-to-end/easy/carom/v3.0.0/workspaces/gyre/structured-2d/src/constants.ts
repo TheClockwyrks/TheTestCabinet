@@ -21,7 +21,7 @@ import type { ActionBinding } from "@test-cabinet/structured-2d";
 export const FIELD_W = 1280;
 export const FIELD_H = 720;
 
-/** The field center — the ball's spawn point and the AI's rest position. */
+/** The field center — the ball's home point and the AI's rest position. */
 export const FIELD_CX = 640;
 export const FIELD_CY = 360;
 
@@ -46,7 +46,7 @@ export const PADDLE_MAX_CY = FIELD_H - 55; // 665
 
 export const PADDLE_SPEED = 720; // units per second while a movement action is held
 
-// ---- Obstacles (fixed, mirror-symmetric about the field center) ----------
+// ---- Obstacles (mirror-symmetric about the field center) -----------------
 
 export interface Rect {
   x0: number;
@@ -189,7 +189,7 @@ export const TAGS = {
 
 export type TagName = (typeof TAGS)[keyof typeof TAGS];
 
-// ---- Input actions (specs/modes/*.md) ------------------------------------
+// ---- Input actions (specs/ui.md) -----------------------------------------
 
 /** Carom is two paddles facing each other: one vertical slider per side. */
 export const LAYOUT = "dual-vertical";
@@ -218,9 +218,8 @@ export type ActionName = (typeof ACTIONS)[number];
  * physical key rather than a layout-dependent character; every action is
  * digital, so no binding names a kind.
  *
- * `Escape` deliberately drives TWO actions, `pause` and `back` — one key meaning
- * "get me out of here", which is a pause during a match and a step back on a
- * menu. The game reads whichever of the two the current screen calls for.
+ * `Escape` is bound to both `pause` and `back`; `specs/ui.md` states how each
+ * screen resolves the two.
  */
 export const BINDINGS: Readonly<Record<ActionName, ActionBinding>> = {
   "p1-up": { keys: ["KeyW"] },
@@ -233,9 +232,9 @@ export const BINDINGS: Readonly<Record<ActionName, ActionBinding>> = {
   mute: { keys: ["KeyM"] },
 };
 
-// ---- Audio cues (specs/ui.md) --------------------------------------------
+// ---- Audio cues (specs/audio.md) -----------------------------------------
 
-/** The four cue names, one per event. Define and play exactly these. */
+/** The cue names, one per event. `specs/audio.md` states when each plays. */
 export const CUES = {
   paddleHit: "paddle-hit",
   wallBounce: "wall-bounce",
@@ -250,5 +249,5 @@ export type CueName = (typeof CUES)[keyof typeof CUES];
 /** The version the debug surface reports as `version`. */
 export const CAROM_DEBUG_VERSION = 1;
 
-/** The seed `reset()` restores when the caller names none. */
+/** The seed the game's generator starts a fresh title screen from. */
 export const DEFAULT_SEED = 1;

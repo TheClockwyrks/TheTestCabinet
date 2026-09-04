@@ -4,20 +4,24 @@
 // WHERE THE THRESHOLD COMES FROM. `specs/ui.md`, Audio: the cue table binds
 // `menu-move` to "A menu highlight moves", and "Each is played on the tick
 // its event happens, or on the frame for a menu event, and at most once on
-// that tick." `specs/ui.md`, Menu navigation, says which menus that covers:
-// "Every move of a highlight plays `menu-move`, on the level-up overlay
-// included." One move on one frame is therefore exactly one `menu-move`.
+// that tick." `specs/ui.md`, Menu navigation, says how far that reaches:
+// "Every move of a highlight plays `menu-move`, whichever of the two moved
+// it, the level-up overlay's offers and the almanac's tab bar included." One
+// move on one frame is therefore exactly one `menu-move`.
 //
 // WHY THREE MENUS ARE DRIVEN HERE. "Every move of a highlight" is one rule
-// over every screen that carries a highlight, and `specs/controls.md`'s
-// screen table gives `title`, `levelup`, and `fallen`/`dawn` a moving
-// highlight. Driving one screen would let a build that wired the cue into one
-// menu's own code pass, so the requirement is decided on all three. Each is
-// read on its own frame with its own collector.
+// over every screen that carries a highlight, and driving one screen would
+// let a build that wired the cue into one menu's own code pass, so this point
+// decides the three menus of different kinds the specification gives a
+// keyboard highlight: the title menu, the level-up overlay, and an end
+// screen. Each is read on its own frame with its own collector. The other of
+// the two things that move a highlight, the pointer's hover, is
+// `pointer/title-hover-plays-menu-move`'s point.
 //
 // WHY THE WORLDS ARE POSED AS THEY ARE. `title` is reached by `reset`, which
 // "Restores every declared field of the game's state to its title-screen
-// value: the `title` screen with `menuIndex` `0`". `levelup` is reached from
+// value: the `title` screen with `menuIndex`, `almanacTab`, and
+// `almanacScroll` all `0`". `levelup` is reached from
 // an isolated run holding nothing with one level-up queued and the one tick
 // that opens the overlay, and `fallen` from the same isolated run with `hp`
 // posed to `0` and one tick. Every route is the screen's own real entry with

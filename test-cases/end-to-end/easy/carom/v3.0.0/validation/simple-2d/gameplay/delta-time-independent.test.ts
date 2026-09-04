@@ -31,14 +31,19 @@ import {
   SequenceClock,
   type Clock,
 } from "@test-cabinet/simple-2d";
-import { FIELD_CY, FIELD_H } from "../../src/constants";
+import { FIELD_CY, FIELD_H } from "../constants";
 import { assertEqual, assertLessThanOrEqual, assertNotNull } from "../assert";
 import {
+  aimBall,
   ball0,
   captureReplay,
   createHarness,
-  PARKED_CY,
-  startPlaying,
+  drivePaddleAt,
+  enterPlaying,
+  parkPaddle,
+  placeBall,
+  poseWorld,
+  spinBall,
   TICK_MS,
   type BallView,
   type Harness,
@@ -61,7 +66,8 @@ import {
  * Every step stays inside 2–16 ms (62–500 Hz), the range of real frame rates and
  * no wider. The point is to change the step size legitimately, not to hunt for
  * chaos: a 40 ms step would move the ball far enough between frames to start
- * deciding which side of an obstacle it passes, which says nothing about a build.
+ * deciding which side of a paddle's end cap it passes, which says nothing about a
+ * build.
  */
 const SCHEDULES: { name: string; clock: () => Clock; replay?: string }[] = [
   { name: "a steady step", clock: () => new ConstantClock(TICK_MS) },
@@ -83,9 +89,17 @@ const SCHEDULES: { name: string; clock: () => Clock; replay?: string }[] = [
 /**
  * The posed approach: the ball starts low on the right travelling down and left,
  * banks off the bottom wall almost at once, then climbs the length of the field
- * into the left paddle's face, arriving in the mid-field lane that clears both
- * obstacles. The paddle waits there, still and centred on that arrival, so the
- * ball is returned down the same clear lane and out the right goal.
+ * into the left paddle's face, arriving level with the field centre. The paddle
+ * waits there, still and centred on that arrival, so the ball is returned down
+ * the same lane and out the right goal.
+ *
+ * The field holds that one ball: both obstacles are REMOVED rather than dodged,
+ * which is what keeps the comparison honest across step sizes — a coarse step
+ * that carried the ball a few pixels wider past an obstacle than a fine one would
+ * report a divergence that belongs to the obstacle rule's own checks. The left
+ * paddle is the one the requirement needs driven, because it has to be standing
+ * exactly there when the ball arrives under every schedule; the right is driven
+ * out of the lane, since a paddle cannot be removed.
  *
  * The approach is shallow on purpose. Every quantity compared here traces back to
  * WHERE on the paddle the ball landed, and that contact point is the one thing a
@@ -93,7 +107,7 @@ const SCHEDULES: { name: string; clock: () => Clock; replay?: string }[] = [
  * its approach than a smaller one would. Keeping the approach's vertical speed
  * low (205 px/s against 600 across) holds that spread to about three pixels even
  * at the coarsest schedule — a return angle within a few degrees of straight, on
- * a flight that stays comfortably inside the clear lane.
+ * a flight that stays comfortably clear of the walls on its way out.
  */
 const BALL_START = { x: 1150, y: FIELD_H - 30, vx: -600, vy: 205, spin: 0 };
 
@@ -112,7 +126,7 @@ const POLL_FRAMES = 3;
 const LEVEL_VY = 120;
 
 /**
- * Speed only ever changes at a paddle hit, and walls and obstacles preserve it
+ * Speed only ever changes at a paddle hit, and a wall bounce preserves it
  * exactly, so the speed the ball ends at is really a count of how many times it
  * was struck — a whole-number fact, compared far tighter than one hit and far
  * looser than integration noise.
@@ -163,11 +177,13 @@ async function driveOnce(clock: Clock, replay?: string): Promise<Outcome> {
   const harness = await createHarness({ clock });
   live.push(harness);
 
-  await startPlaying(harness);
-  harness.debug.setScore(0, 0);
-  harness.debug.setPaddle("left", { cy: FIELD_CY, vy: 0 });
-  harness.debug.setPaddle("right", { cy: PARKED_CY, vy: 0 });
-  harness.debug.setBall(0, BALL_START);
+  enterPlaying(harness);
+  poseWorld(harness);
+  drivePaddleAt(harness, "left", FIELD_CY, 0);
+  parkPaddle(harness, "right");
+  placeBall(harness, BALL_START.x, BALL_START.y);
+  aimBall(harness, BALL_START.vx, BALL_START.vy);
+  spinBall(harness, BALL_START.spin);
 
   const opening = harness.snapshot();
   const startScore = opening.score;

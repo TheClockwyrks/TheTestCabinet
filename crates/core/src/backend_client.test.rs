@@ -72,6 +72,7 @@ impl BackendClient for StubBackend {
             material: None,
             particle: None,
             audio: None,
+            audio_packs: Vec::new(),
             common_specs: vec![SpecFile {
                 source_path: std::path::PathBuf::from("specs/overview.md"),
                 dest: std::path::PathBuf::from("specs/overview.md"),
@@ -130,6 +131,7 @@ impl BackendClient for StubBackend {
                     // Store-relative until materialization roots it on disk.
                     script: Some(std::path::PathBuf::from("validation/ball-spin.mjs")),
                     script_rel: "validation/ball-spin.mjs".to_string(),
+                    engines: Vec::new(),
                     outputs: vec![crate::test_case::ReviewOutput {
                         id: "spin".to_string(),
                         name: "Spin".to_string(),
@@ -465,6 +467,7 @@ fn sample_record(id: &str) -> RunRecord {
                 comparable: Some(0.0),
                 actual: Some(0.0),
             },
+            ..RunMetrics::default()
         },
         validation: ValidationSummary {
             debug_scripts: Vec::new(),

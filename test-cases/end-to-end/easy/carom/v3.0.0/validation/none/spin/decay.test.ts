@@ -8,10 +8,11 @@
 // `0.5 ^ 2.5` of the start, under a fifth.
 //
 // The decay is measured on a ball IN FLIGHT, the only state real play has. So
-// the strongly curving shot does not leave the field or meet anything, the
-// paddles are cleared and the ball's POSITION is re-centered between chunks
-// while its velocity and spin carry through untouched: only elapsed time acts
-// on the spin.
+// that the strongly curving shot meets nothing, the field is emptied to this
+// ball alone and both paddles are parked off it; and so that it does not fly
+// off the field, the ball's POSITION alone is re-centered between chunks while
+// its velocity and spin carry through untouched. Only elapsed time acts on the
+// spin.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -61,13 +62,12 @@ afterEach(async () => {
 async function flyFor(h: Harness, ticks: number): Promise<void> {
   for (let done = 0; done < ticks; done += RECENTER_CHUNK) {
     await h.advance(Math.min(RECENTER_CHUNK, ticks - done));
-    await h.debug.setBall(0, { x: FIELD_CX, y: FIELD_CY });
+    await h.debug.setBallPosition(FIELD_CX, FIELD_CY);
   }
 }
 
 it("halves the spin every half-life without changing its sign", async () => {
-  await arrangeLiveBall(harness, BALL);
-  await harness.debug.setBall(0, { spin: SPIN });
+  await arrangeLiveBall(harness, { ...BALL, spin: SPIN });
   const posed = ball0(await harness.snapshot()).spin;
   assertCloseTo(posed, SPIN, 6);
 

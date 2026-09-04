@@ -16,6 +16,12 @@
 // build that never sub-steps. The coarse step below is an ordinary bad moment
 // on a real machine (twenty frames a second), where one frame at the ceiling
 // is forty-nine units, more than twice the width of what it strikes.
+//
+// The field holds the probe ball and the struck obstacle alone. The second
+// obstacle is REMOVED rather than dodged: a build that tunnels is a build whose
+// collision is broken, and a bystander obstacle it also tunnelled would be an
+// escape this point could not tell from a clean pass. The paddles cannot be
+// removed, so both are driven clear of the probe's line and held still.
 
 import { afterEach, it } from "vitest";
 import { ConstantClock } from "@test-cabinet/simple-2d";
@@ -25,18 +31,23 @@ import {
   OBSTACLES,
   OBSTACLE_CENTERS,
   SPEED_CAP,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
 } from "../assert";
 import {
+  aimBall,
   ball0,
   captureReplay,
-  clearPaddles,
   createHarness,
-  startPlaying,
+  enterPlaying,
+  parkPaddles,
+  pinObstaclesUpright,
+  placeBall,
+  poseWorld,
+  spinBall,
   TICK_MS,
   type Harness,
 } from "../harness";
@@ -44,8 +55,10 @@ import {
 /** The suite's own cadence, and a frame that carries the ball past an obstacle. */
 const STEPS_MS = [TICK_MS, 50];
 
-const FACE_X = OBSTACLES[0].x0;
-const LANE_Y = OBSTACLE_CENTERS[0].y;
+/** Which obstacle the probe is fired at, and the face it strikes. */
+const OBSTACLE = 0;
+const FACE_X = OBSTACLES[OBSTACLE].x0;
+const LANE_Y = OBSTACLE_CENTERS[OBSTACLE].y;
 /** How far short of the face the probe starts, in logical units. */
 const RUN_UP = 360;
 
@@ -74,7 +87,7 @@ afterEach(() => {
 async function harnessAt(stepMs: number): Promise<Harness> {
   const harness = await createHarness({ clock: new ConstantClock(stepMs) });
   live.push(harness);
-  await startPlaying(harness);
+  enterPlaying(harness);
   return harness;
 }
 
@@ -84,14 +97,15 @@ it("rebounds off an obstacle at the ceiling speed", async () => {
 
   for (const stepMs of STEPS_MS) {
     const harness = await harnessAt(stepMs);
-    clearPaddles(harness);
-    harness.debug.setBall(0, {
-      x: FACE_X - RUN_UP,
-      y: LANE_Y,
-      vx: SPEED_CAP,
-      vy: 0,
-      spin: 0,
-    });
+    poseWorld(harness, { obstacles: [OBSTACLE] });
+    parkPaddles(harness);
+    // The shot's geometry is computed from the upright figures, so gyre's
+    // obstacle is held at the pose those figures describe. This poses the
+    // SUBJECT of the check; a bystander would be removed, not held.
+    pinObstaclesUpright(harness);
+    placeBall(harness, FACE_X - RUN_UP, LANE_Y);
+    aimBall(harness, SPEED_CAP, 0);
+    spinBall(harness, 0);
 
     // Both probes are recorded under the one output, so the coarse step, the
     // frame long enough to carry the ball past a whole obstacle, is the one

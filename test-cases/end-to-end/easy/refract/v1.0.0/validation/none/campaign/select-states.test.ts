@@ -8,74 +8,70 @@
 //
 // WHAT IS COMPARED, AND WHY IT IS ONE TILE. Reading three DIFFERENT tiles
 // against each other measures the digits as much as the states: board 1, board
-// 2, and board 3 draw different numbers in different places, and the mean over
-// a region dilutes an icon-and-border signal against that. So this holds the
+// 2, and board 3 draw different numbers in different places. So this holds the
 // tile fixed and moves the state instead. Board 2 is read three times in one
-// session — locked on the fresh course, unlocked once board 1 is solved, and
-// solved once board 2 itself is solved — over the SAME patch of the screen. The
-// digit, the position, and the tile's geometry are identical on all three
-// frames, so what is left between two of them is the state's own rendering.
+// session — locked on a fresh course, unlocked once board 1 is solved, and
+// solved once board 2 itself is solved — over the SAME patch of the screen,
+// and every one of the three frames is read with `selectIndex` on board 1, so
+// the highlight, which is "drawn distinctly from the rest", is in exactly the
+// same place on all three and cannot account for any difference between them.
+// The digit, the position and the tile's geometry are identical too, so what is
+// left between two readings is the state's own rendering.
 //
-// THE REGION. The tiles' bounds are the build's, so the region is derived from
-// the one thing the specified grid fixes: its pitch, which the number draws
-// give away (six columns in number order, board 2 one column right of board 1,
-// board 7 one row below it). It reaches 0.40 of the column pitch and 0.45 of
-// the row pitch either way from board 2's number — wide enough to hold the
-// whole of a tile that fills its cell, its border and any badge included, and
-// short of the neighbouring tiles, whose states change over this session too.
-// It is fixed on the FIRST frame and reused unchanged for the other two, so all
-// three readings are of one patch, and each frame is only required to keep
-// board 2's number inside it.
+// The highlight is held still by never moving it away rather than by parking it
+// on a far tile: parking spent up to ten `right` and `down` presses per reading,
+// which failed this item on a build whose `down` does not move the highlight —
+// campaign/select-move-vertical's requirement, not this one's.
 //
-// THE FIGURES. Each transition must move the region by more than 6 of 441 RGB
-// distance in mean colour AND by more than 4 of 255 in mean luminance. The
-// colour half is the "reads as one of three states" requirement; the luminance
-// half is the "without relying on hue alone" one — a build that separates the
-// states by hue at a constant brightness leaves luminance flat and fails here.
-// Which colours a build picks is its own business; that its tile changes is
-// not.
+// WHY THE UNLOCKED FRAME FIXES THE REGION, AND WHY IT IS READ FIRST. The tiles'
+// bounds are the build's, so the region is derived from the one thing the
+// specified grid fixes: its column pitch, which the number runs give away. On
+// the unlocked frame board 2 is enterable, so every build draws its number
+// there; on the locked frame a build is free to mark the tile instead, and a
+// region anchored on a number that is not drawn cannot be measured at all. So
+// the unlocked and solved readings are taken first, the region is fixed on the
+// unlocked one, and the locked reading is taken last, on a course posed fresh
+// again — a fresh course being exactly what "board 2 is locked" means.
+//
+// THE FIGURE. Each transition must move MORE THAN 0.5% of the region's pixels
+// by MORE THAN 12 of 255 in Rec. 709 luminance. Twelve of 255 is a step a
+// viewer sees, and half a percent of a tile is about a glyph stroke's worth of
+// ink, so a build that writes the state in a word beside an otherwise unchanged
+// tile passes as readily as one that repaints the whole tile — both read at a
+// glance, which is what the specification asks. A mean over the region asks
+// instead how much ink a build repaints, which the specification does not fix.
+// And because the measure is luminance, a build that separates the three states
+// by hue at a constant brightness still fails, which is the "without relying on
+// hue alone" half of the same sentence.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertDeepEqual,
-  assertEqual,
-  assertGreaterThan,
-  assertLessThanOrEqual,
-} from "../assert";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
-  colorDistance,
   createHarness,
   fireAction,
+  drawnTextRuns,
   solveCampaignBoard,
   startCampaign,
-  textDraws,
   type Harness,
-  type Rgb,
+  type TextDraw,
 } from "../harness";
-import { numberDraw } from "./reading";
+import {
+  changedFraction,
+  gridFromSolved,
+  numberRun,
+  regionLuminances,
+  type Region,
+} from "./reading";
 
-/** The specified grid: six columns wide, four rows tall. */
-const GRID_COLS = 6;
-const GRID_ROWS = 4;
+/** The region's half-extent, as a share of the grid's own column pitch. */
+const REGION_PITCH_SHARE = 0.45;
 
-/**
- * Where the highlight is parked for every reading: board 7, the first board of
- * Set B. The highlight is "drawn distinctly from the rest"
- * (specs/modes/campaign.md), a fourth look on top of the three being compared,
- * so it is kept off board 2 — and on the same board every time, so it cannot
- * account for any difference between two readings either.
- */
-const PARKED = 6;
+/** The luminance step, of 255, a pixel must move by to read as changed. */
+const LUMINANCE_STEP = 12;
 
-/** The region's half-extents, as fractions of the grid's own pitch. */
-const REGION_X = 0.4;
-const REGION_Y = 0.45;
-
-/** The change a state must make to the tile: RGB distance, of 441. */
-const COLOR_FIGURE = 6;
-/** And in luminance, of 255, which hue alone cannot supply. */
-const LUMINANCE_FIGURE = 4;
+/** The share of the region's pixels that must move by it, of 1. */
+const CHANGED_SHARE = 0.005;
 
 let h: Harness;
 
@@ -87,149 +83,41 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** Rec. 709 luminance of a sampled colour, on the same 0..255 scale. */
-function luminance(color: Rgb): number {
-  return 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b;
-}
-
-/** One tile's patch of the screen, in logical units. */
-interface Region {
-  cx: number;
-  cy: number;
-  hx: number;
-  hy: number;
+/** Draw one frame of the screen as it stands, and read its runs of text back. */
+async function drawFrame(h: Harness): Promise<TextDraw[]> {
+  return drawnTextRuns(await h.frameCalls());
 }
 
 /**
- * The mean rendered colour over a region, read at EVERY device pixel in it.
- *
- * A mean over a region is only as good as its sampling: a sparse lattice
- * aliases against a tile's border — two device pixels wide is typical, and a
- * lattice stepping several pixels at a time can land on most of it or almost
- * none of it — which moves the reading by a third either way for a tile whose
- * state lives in its border. Stepping one device pixel at a time makes the
- * reading the region's true mean, whatever the build draws in it.
+ * Board 2's patch of the screen, measured off the frame that drew `runs`: its
+ * number's centre, and a half-extent taken from the grid's column pitch, which
+ * is the distance from board 1's number to board 2's (specs/modes/campaign.md:
+ * the boards are presented in number order, six columns wide).
  */
-async function meanRegionColor(h: Harness, region: Region): Promise<Rgb> {
-  const { scale } = h.viewport();
-  const step = 1 / scale;
-  const columns = Math.max(2, Math.round((2 * region.hx) / step));
-  const rows = Math.max(2, Math.round((2 * region.hy) / step));
-  const points: { x: number; y: number }[] = [];
-  for (let i = 0; i < columns; i += 1) {
-    for (let j = 0; j < rows; j += 1) {
-      points.push({
-        x: region.cx - region.hx + step * (i + 0.5),
-        y: region.cy - region.hy + step * (j + 0.5),
-      });
-    }
-  }
-  const read = await h.pixels(points);
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  for (const [pr, pg, pb] of read) {
-    r += pr;
-    g += pg;
-    b += pb;
-  }
-  return { r: r / read.length, g: g / read.length, b: b / read.length };
-}
-
-/**
- * Board 2's tile region, measured off the grid the current frame drew: its
- * number's anchor, and half-extents taken from the grid's column and row pitch.
- */
-async function boardTwoRegion(h: Harness): Promise<Region> {
-  const draws = textDraws(await h.frameCalls());
-  const first = numberDraw(draws, 1);
-  const second = numberDraw(draws, 2);
-  const seventh = numberDraw(draws, 7);
-  // specs/modes/campaign.md: the boards are presented in number order, six
-  // columns wide and four rows tall, so board 2 is one column right of board 1
-  // and board 7 one row below it.
-  const pitchX = second.x - first.x;
-  const pitchY = seventh.y - first.y;
+function boardTwoRegion(runs: readonly TextDraw[]): Region {
+  const one = numberRun(runs, 1);
+  const two = numberRun(runs, 2);
+  const pitch = Math.abs(two.x - one.x);
   assertGreaterThan(
-    pitchX,
+    pitch,
     0,
-    "board 2 sits to the right of board 1 in the row",
+    "board 2's number drawn a column away from board 1's " +
+      "(specs/modes/campaign.md: six columns wide, in number order)",
   );
-  assertGreaterThan(pitchY, 0, "board 7 sits below board 1 in the next row");
-  return {
-    cx: second.x,
-    cy: second.y,
-    hx: pitchX * REGION_X,
-    hy: pitchY * REGION_Y,
-  };
+  return { cx: two.x, cy: two.y, half: REGION_PITCH_SHARE * pitch };
 }
 
-/**
- * The mean colour of `region` on the frame as it stands, having confirmed that
- * board 2's number is still drawn inside it — the region is board 2's tile, and
- * a build is free to move the number about within its own tile between states.
- */
-async function readRegion(
-  h: Harness,
-  region: Region,
-  state: string,
-): Promise<Rgb> {
-  const second = numberDraw(textDraws(await h.frameCalls()), 2);
-  assertLessThanOrEqual(
-    Math.abs(second.x - region.cx),
-    region.hx,
-    `board 2's number is drawn inside the region read for its tile (${state})`,
-  );
-  assertLessThanOrEqual(
-    Math.abs(second.y - region.cy),
-    region.hy,
-    `board 2's number is drawn inside the region read for its tile (${state})`,
-  );
-  return meanRegionColor(h, region);
-}
-
-/**
- * Steer the highlight onto board index `target` through the real `right` and
- * `down` actions, both of which wrap, so any board is reached from any other
- * within one lap of each. An unmet arrangement, named as one: a build whose
- * highlight will not move is failed here by the index it stopped on.
- */
-async function parkHighlight(h: Harness, target: number): Promise<void> {
-  for (let press = 0; press < GRID_COLS; press += 1) {
-    const at = (await h.snapshot()).selectIndex;
-    if (at % GRID_COLS === target % GRID_COLS) break;
-    await fireAction(h, "right");
-  }
-  for (let press = 0; press < GRID_ROWS; press += 1) {
-    const at = (await h.snapshot()).selectIndex;
-    if (Math.floor(at / GRID_COLS) === Math.floor(target / GRID_COLS)) break;
-    await fireAction(h, "down");
-  }
-  assertEqual(
-    (await h.snapshot()).selectIndex,
-    target,
-    `the highlight parked on board ${target + 1}, clear of the tile being read`,
-  );
-}
-
-it("board 2's tile changes in colour and in luminance as it unlocks and as it is solved", async () => {
-  // LOCKED. A fresh course: board 1 alone is unlocked, so board 2 is a locked
-  // tile (specs/modes/campaign.md).
+it("board 2's tile changes as it unlocks and as it is solved", async () => {
+  // UNLOCKED. A fresh course, board 1 really solved by the routes derived from
+  // specs/campaign-boards.md, and back on the grid: board 2 is reached and not
+  // yet solved, and the highlight rests on the board most recently solved.
   await startCampaign(h);
   const fresh = await h.snapshot();
-  assertEqual(fresh.screen, "select", "CAMPAIGN opens the course's grid");
   assertEqual(
     fresh.unlockedCount,
     1,
-    "a fresh course has board 1 alone unlocked, so board 2 is locked",
+    "a fresh course has board 1 alone unlocked",
   );
-  await parkHighlight(h, PARKED);
-  const region = await boardTwoRegion(h);
-  const locked = await readRegion(h, region, "locked");
-
-  // UNLOCKED. Board 1 is really solved, by the routes derived from
-  // specs/campaign-boards.md, and that solve unlocks board 2.
-  await parkHighlight(h, 0);
   await fireAction(h, "confirm");
   assertEqual(
     (await h.snapshot()).screen,
@@ -237,60 +125,85 @@ it("board 2's tile changes in colour and in luminance as it unlocks and as it is
     "board 1 opens from the grid",
   );
   await solveCampaignBoard(h, 0);
-  await fireAction(h, "back");
+  await gridFromSolved(h);
   const afterFirst = await h.snapshot();
-  assertEqual(
-    afterFirst.screen,
-    "select",
-    "back on the solved screen returns the grid",
-  );
   assertEqual(afterFirst.unlockedCount, 2, "solving board 1 unlocks board 2");
   assertDeepEqual(
     afterFirst.solvedBoards,
     [0],
-    "board 2 is unlocked and not yet solved: the second state it is read in",
+    "board 2 is unlocked and not yet solved: the state it is read in",
   );
-  await parkHighlight(h, PARKED);
-  const unlocked = await readRegion(h, region, "unlocked");
+  assertEqual(
+    afterFirst.selectIndex,
+    0,
+    "the highlight rests on board 1, the board most recently solved " +
+      "(specs/modes/campaign.md), and is read there on all three frames",
+  );
+  const region = boardTwoRegion(await drawFrame(h));
+  const unlocked = await regionLuminances(h, region);
 
-  // SOLVED. Board 2 is entered and solved in its turn.
-  await parkHighlight(h, 1);
+  // SOLVED. Board 2 is entered from the same grid and solved in its turn, and
+  // the highlight is walked back onto board 1 before the frame is read.
+  await fireAction(h, "right");
+  assertEqual(
+    (await h.snapshot()).selectIndex,
+    1,
+    "right moves the highlight along the row onto board 2",
+  );
   await fireAction(h, "confirm");
   const playing = await h.snapshot();
   assertEqual(playing.screen, "playing", "board 2, now unlocked, opens");
   assertEqual(playing.boardIndex, 1, "board 2 is the board in play");
   await solveCampaignBoard(h, 1);
-  await fireAction(h, "back");
+  await gridFromSolved(h);
   const afterSecond = await h.snapshot();
-  assertEqual(
-    afterSecond.screen,
-    "select",
-    "back on the solved screen returns the grid",
-  );
   assertDeepEqual(
     afterSecond.solvedBoards,
     [0, 1],
-    "board 2 is recorded solved: the third state it is read in",
+    "board 2 is recorded solved: the state it is read in",
   );
-  await parkHighlight(h, PARKED);
-  const solved = await readRegion(h, region, "solved");
+  await fireAction(h, "left");
+  assertEqual(
+    (await h.snapshot()).selectIndex,
+    0,
+    "the highlight is back on board 1, where the other two frames read it",
+  );
+  await drawFrame(h);
   await captureStill(h, "states");
+  const solved = await regionLuminances(h, region);
+
+  // LOCKED. A course posed fresh again: board 1 alone is unlocked, so board 2
+  // is a locked tile, in the same place on the same screen.
+  await h.debug.reset();
+  await h.advance(1);
+  await startCampaign(h);
+  const again = await h.snapshot();
+  assertEqual(
+    again.unlockedCount,
+    1,
+    "the fresh course has board 1 alone unlocked, so board 2 is locked",
+  );
+  assertDeepEqual(again.solvedBoards, [], "and nothing is solved on it");
+  assertEqual(
+    again.selectIndex,
+    0,
+    "the highlight sits on board 1 before any board has been entered " +
+      "(specs/modes/campaign.md), where the other two frames read it",
+  );
+  await drawFrame(h);
+  const locked = await regionLuminances(h, region);
 
   for (const [before, after, transition] of [
     [locked, unlocked, "locked to unlocked"],
     [unlocked, solved, "unlocked to solved"],
   ] as const) {
     assertGreaterThan(
-      colorDistance(before, after),
-      COLOR_FIGURE,
-      `board 2's tile region changes from ${transition} in mean colour ` +
-        "(RGB distance, of 441), so the two states read apart at a glance",
-    );
-    assertGreaterThan(
-      Math.abs(luminance(after) - luminance(before)),
-      LUMINANCE_FIGURE,
-      `board 2's tile region changes from ${transition} in mean luminance ` +
-        "(of 255), so the two states read apart without relying on hue alone",
+      changedFraction(before, after, LUMINANCE_STEP),
+      CHANGED_SHARE,
+      `board 2's tile changes from ${transition}: more than ` +
+        `${CHANGED_SHARE * 100}% of the region's pixels move by more than ` +
+        `${LUMINANCE_STEP} of 255 in luminance, so the two states read apart ` +
+        "at a glance and without relying on hue alone",
     );
   }
 });

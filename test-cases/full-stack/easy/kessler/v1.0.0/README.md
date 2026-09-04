@@ -121,8 +121,9 @@ The validator suites ship under `validation/<engine>/` — one Vitest project
 per engine, a suite per item at `<category>/<id>.test.ts` — and every item on
 the checklist declares its suite and the media it writes in its `validation`
 key. The suites were written to the checklist and captured against the
-reference implementations under `references/<engine>/base/`; the same relative
-suite path runs under all three engines.
+reference implementations under `references/<engine>/base/`. No item narrows
+its validation with `engines`, so the same relative suite path runs under all
+three engines.
 
 ## Versioning
 

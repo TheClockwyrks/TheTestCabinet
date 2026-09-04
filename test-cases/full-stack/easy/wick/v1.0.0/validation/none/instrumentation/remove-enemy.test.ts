@@ -30,8 +30,9 @@ const POSED_KILLS = 7;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
-  await h.armAudio();
+  // ARMED, because the reading is a silence: a page that was handed no gesture
+  // plays nothing for a reason that has nothing to do with `removeEnemy`.
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {

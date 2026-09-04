@@ -62,9 +62,10 @@ pipeline is inert. See [Observability](/development/observability/).
 The run and model list pages are server-paged. Each page issues a
 [`GET /runs?fields=summary`](/components/backend/api/#get-runs) query in
 numbered-offset mode (`offset` plus `limit`) and sizes its pager from the
-returned `total`. The debounced search field, the filters, and column-header
-sort travel as query parameters, so filtering and sorting happen in the backend;
-changing any of them re-queries and returns to page 0.
+returned `total`, which counts exactly the rows the query can serve. The
+debounced search field, the filters, and column-header sort travel as query
+parameters, so filtering and sorting happen in the backend; changing any of them
+re-queries and returns to page 0.
 
 The cross-case run listings carry the same filter bar: the free-text field, the
 equality facets its route does not already pin (test case, version, harness, and
@@ -149,8 +150,8 @@ once, on the About section's Ratings tab, and the Reviewing intro links there.
 index above and Comparisons lists the signed-in account's
 [comparisons](/comparisons/overview/), published or not; both render on every
 host, and the read-only static site lists the published set off its snapshot. The
-other three are console-only worklists whose routes the public gallery leaves
-unmounted, since it holds nothing unreviewed or unpublished.
+remaining tabs are console-only worklists whose routes the public gallery leaves
+unmounted, since it holds nothing unreviewed, unpublished, or unreadable.
 
 - Failures: the produced
   [publishable failures](/components/core/results/#publish) awaiting publish, each
@@ -164,6 +165,12 @@ unmounted, since it holds nothing unreviewed or unpublished.
 - Unpublished: runs that have cleared the publish gate but have not been released
   ([`state=publishable`](/components/backend/api/#get-runs)), which is the publish
   backlog.
+- Unreadable: runs whose stored record this build can no longer read
+  ([`GET /runs/unreadable`](/components/backend/api/#get-runsunreadable)), each
+  showing the error its record produces and a delete control, with the same
+  numbered pager the other worklists carry. The tab is present only while the
+  cabinet holds at least one such run, and it is the one surface these runs are
+  reachable from.
 
 A run with a playable build opens its detail page on the Play tab, which leads
 the tab strip: the run's [showcase](/components/core/showcase/), when its
@@ -179,7 +186,11 @@ item shows its verdict and per-verdict assertions, the failure cap and affected
 domains when a scored point fails, the validator script's detail, path, and
 ran state, and the implementation's replay beside the reference baseline's,
 scrubbed together. The browser is informational, so every visitor sees it, the
-public gallery included. The review form asks for one run-wide aesthetic tier
+public gallery included. Every run surface lists the case's checklist restricted
+to the run's engine: a point whose
+[validator does not cover that engine](/components/core/validation/) is not part
+of the run's checklist, so neither the browser nor the review form carries it.
+The review form asks for one run-wide aesthetic tier
 and the writeup, and lets the reviewer override any point's verdict inline on
 the pre-filled checklist; Publish is offered whether or not a review exists. On
 a legacy run the panel is the guided review: the checklist takes verdicts, the
@@ -219,6 +230,46 @@ and on a ladder "Rung by rung" and "Model by model"; the words depth-first and
 breadth-first appear nowhere in the console, because the choice is about what a
 reviewer wants to see side by side rather than about tree traversal.
 
+A plan's and a ladder's editors pick a case the way the new-run form does: test
+type, case, version, variant, and engine, held to what the resolved version
+declares. Declaring a run to schedule and launching one by hand name the same
+coordinate, so a scheduling editor that asked for less would leave a
+[dimension](/components/backend/coverage/#pinned-cases) unschedulable. An editor
+names the engine even where the version supports a single one, read-only, and names
+the engineless run while the catalog is still resolving: the engine is part of what
+the pin commits the plan to, and one the reviewer was never shown is one they cannot
+check against the case the editor lists. The combination
+picker beside it takes either shape a combination has: a harness with its model, or
+a saved gg configuration with a model chosen for each of its launch slots.
+
+A member is listed under the shape it takes. Harness members group by harness, one
+pill per model. Every gg member sits under a single "gg Configurations" heading as a
+row of its own, because two members of one configuration that bind different models
+are two cells the plan will run. A row names the configuration and the distinct
+models it binds on one line, shortened to a count past three, and expands to the
+model each launch slot is bound to, which is what tells two arms of one study apart.
+
+Every surface that names a pinned case names its engine too, and names it only when
+it is not `none`: a pill, a rung row, a matrix block, a cell, a review-queue row.
+Every pin has an engine, so spelling out the engineless run would add a word to
+every case on every screen and separate nothing, while two pins that differ only on
+engine are two sets of cells a reviewer has to tell apart.
+
+A dashboard's by-hand trigger launches a cell's runs on the cell's own engine, in
+both combination shapes, exactly as that plan's own top-up does. A run launched on
+another engine is counted against another cell, so the cell that asked for it stays
+short by the run just paid for and the trigger can be pressed forever.
+
+Everything else an editor sets is a column of settings rows. A row carries its name
+and a one-line description on the left and its control on the right, and any
+reasoning longer than that line sits behind a help tip on the name. Runs per cell,
+run order, the buffer-target override, and auto top-up are each a decision with a
+cost attached rather than a preference, so each is read as a labelled row. A setting
+with one answer takes a dropdown and a boolean takes a switch, so a row's control
+column reads as the value chosen. Pills are kept for the group toggles, where a plan
+or ladder may reference several groups at once and the control is a selection rather
+than a value.
+
 Because reviewing is the loop these dashboards exist to close, opening a run
 from one and pressing back returns to that dashboard rather than to the global
 run list: the shared back-return machinery records the coverage section as the
@@ -228,7 +279,10 @@ A ladder's board closes that loop on the page itself. Expanding a climber lists
 its rungs, and expanding a rung lists that rung's own runs inline, in-flight ones
 included, in the same dense run log the runs section uses. A rung's verdict is an
 argument about its runs, so the runs sit under the rung rather than behind a link
-to a pre-filtered listing. The board holds the console stream's [`runs`
+to a pre-filtered listing, and the list is narrowed by the whole cell the gate
+counted — the rung's pin, engine included, crossed with the climber's combination.
+An in-flight row is narrowed the same way, off the engine the job records when it is
+enqueued. The board holds the console stream's [`runs`
 topic](/components/backend/api/#topics) open while it is on screen, which is what
 keeps the tallies and verdicts moving as runs finish under it.
 

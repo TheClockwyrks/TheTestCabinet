@@ -7,6 +7,11 @@
 // farther than NODE_HIT_R from every center begins none. NODE_HIT_R is below
 // half CELL_PITCH (96), so no two targeting regions overlap and at most one
 // node is ever targeted.
+//
+// The MISSED press is taken FIRST, on the board as `loadBoard` left it, so
+// "the board is left unchanged" rests on a board this suite has not touched.
+// Taking it after the inside press would make it rest on what the release
+// before it left behind, which is `tracing/trace-empty-release`'s requirement.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -51,25 +56,6 @@ it("a press within NODE_HIT_R of a node's center begins a trace, and one farther
 
   const emitter = centerOf(h, { col: 0, row: 0 });
 
-  // Inside the radius: NODE_HIT_R - 2 from the emitter's center targets it,
-  // and the press begins a trace (the emitter's beam carries no segments).
-  h.debug.pointerDown(emitter.x + (NODE_HIT_R - 2), emitter.y);
-  const begun = h.snapshot();
-  assertNotNull(
-    begun.tracing,
-    "a press NODE_HIT_R - 2 from the emitter's center begins a trace",
-  );
-  assertDeepEqual(
-    begun.tracing?.live,
-    { col: 0, row: 0 },
-    "the targeted node is the emitter whose center the press sits inside",
-  );
-
-  // Evidence: the trace begun inside the hit radius.
-  await h.advance(1);
-  captureStill(h, "targeted");
-  h.debug.pointerUp();
-
   // Outside every radius: NODE_HIT_R + 2 along the same axis. The pose is
   // checked against the oracle geometry first: the point really is farther
   // than NODE_HIT_R from every cell center on the 3x3 grid.
@@ -95,5 +81,24 @@ it("a press within NODE_HIT_R of a node's center begins a trace, and one farther
     [],
     "the missed press leaves the beam untouched",
   );
+  h.debug.pointerUp();
+
+  // Inside the radius: NODE_HIT_R - 2 from the emitter's center targets it,
+  // and the press begins a trace (the emitter's beam carries no segments).
+  h.debug.pointerDown(emitter.x + (NODE_HIT_R - 2), emitter.y);
+  const begun = h.snapshot();
+  assertNotNull(
+    begun.tracing,
+    "a press NODE_HIT_R - 2 from the emitter's center begins a trace",
+  );
+  assertDeepEqual(
+    begun.tracing?.live,
+    { col: 0, row: 0 },
+    "the targeted node is the emitter whose center the press sits inside",
+  );
+
+  // Evidence: the trace begun inside the hit radius.
+  await h.advance(1);
+  captureStill(h, "targeted");
   h.debug.pointerUp();
 });

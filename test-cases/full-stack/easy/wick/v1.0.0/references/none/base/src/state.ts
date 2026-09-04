@@ -1,10 +1,11 @@
 // Wick — the game's state (specs/state.md).
 //
 // One value holds everything the specification is written against: the
-// screen and its menu highlight, the run, the seven driver switches, the
-// tick accumulator, the simulation time, the mute mirror, and the seeded
-// generator's state. The idle run is what `title` and `howto` hold; a fresh
-// run is the idle run with Taper in the first weapon slot.
+// screen with its menu highlight and the almanac's two indices, the run, the
+// seven driver switches, the tick accumulator, the simulation time, the mute
+// mirror, and the seeded generator's state. The idle run is what `title`,
+// `howto`, and `almanac` hold; a fresh run is the idle run with Taper in the
+// first weapon slot.
 
 import {
   BASE_MAX_HP,
@@ -133,6 +134,8 @@ export interface RunState {
   xp: number;
   kills: number;
   player: Player;
+  /** Seconds left of the lamplighter's hurt flash. */
+  hurtFlash: number;
   weapons: HeldWeapon[];
   passives: HeldPassive[];
   enemies: Enemy[];
@@ -181,6 +184,10 @@ export const SWITCH_NAMES: readonly SwitchName[] = [
 export interface WickState {
   screen: Screen;
   menuIndex: number;
+  /** The index into `ALMANAC_TABS` of the tab the almanac shows. */
+  almanacTab: number;
+  /** The index of the first entry row the almanac's list shows. */
+  almanacScroll: number;
   run: RunState;
   switches: Switches;
   /** Frame time waiting for the next whole tick; `0` off `playing`. */
@@ -191,7 +198,7 @@ export interface WickState {
   rngState: number;
 }
 
-/** The idle run `title` and `howto` hold. */
+/** The idle run `title`, `howto`, and `almanac` hold. */
 export function idleRun(): RunState {
   return {
     tick: 0,
@@ -199,6 +206,7 @@ export function idleRun(): RunState {
     xp: 0,
     kills: 0,
     player: { x: 0, y: 0, facing: "right", hp: BASE_MAX_HP },
+    hurtFlash: 0,
     weapons: [],
     passives: [],
     enemies: [],
@@ -244,6 +252,8 @@ export function initialState(rngState: number): WickState {
   return {
     screen: "title",
     menuIndex: 0,
+    almanacTab: 0,
+    almanacScroll: 0,
     run: idleRun(),
     switches: allSwitchesOn(),
     accumulator: 0,

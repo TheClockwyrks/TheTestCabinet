@@ -70,7 +70,7 @@ use crate::tools::ToolOutcome;
 
 /// Compile `source` with the production prepare step, or panic with what the toolchain said.
 pub(super) fn prepare(source: &str) -> Vec<u8> {
-    match compile_program(source, &[], &PrepareContext::new()) {
+    match compile_program(source, &[], &PrepareContext::detached()) {
         Ok(prepared) => {
             assert!(
                 prepared.source.is_empty(),
@@ -243,9 +243,9 @@ pub(super) fn logs(outcome: &SandboxOutcome) -> &[String] {
 ///
 /// A runtime failure on this arm arrives as a [`Trap`](SandboxError::Trap) carrying the guest's own
 /// standard error, and not as a structured [`ProgramError`]: nothing in this arm's SDK intercepts a
-/// failure to report one, so what the host has is what the runtime wrote before it died. That is the
-/// [D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) shape — capture rather than
-/// interception — and it is why these tests read a string rather than a struct.
+/// failure to report one, so what the host has is what the runtime wrote before it died. That is
+/// the [failure rule's](https://docs.testcabinet.ai/gg/responses-as-code/invariants/#failures) shape — capture rather
+/// than interception — and it is why these tests read a string rather than a struct.
 pub(super) fn trap(outcome: &SandboxOutcome) -> &str {
     match &outcome.result {
         Ok(result) => panic!(
@@ -498,7 +498,7 @@ fn the_bytes_the_compiler_reads_are_the_bytes_the_model_sent() {
         // No trailing newline, which is the shape a model's reply most often really has.
         "fn main() { let x = 1; let _ = x; }",
     ] {
-        let context = PrepareContext::new();
+        let context = PrepareContext::detached();
         compile_program(source, &[], &context).expect("this Rust compiles");
         let workspace = context
             .workspace()
@@ -580,7 +580,7 @@ fn the_compiler_tells_a_rejected_program_from_a_broken_toolchain() {
     let failure = compile_program(
         "fn main() {\n    let total: u32 = \"seventeen\";\n}\n",
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a type error is refused");
     let PrepareFailure::Program(error) = &failure else {
@@ -607,7 +607,7 @@ fn the_compiler_tells_a_rejected_program_from_a_broken_toolchain() {
     let failure = compile_program(
         "fn main() {\n    no_such_function(1);\n}\n",
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("an unresolved name is refused");
     assert!(
@@ -621,7 +621,7 @@ fn the_compiler_tells_a_rejected_program_from_a_broken_toolchain() {
     let failure = compile_program(
         "fn main() {\n    let x = ;\n}\n",
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a syntax error is refused");
     let PrepareFailure::Program(crate::sandbox::PrepareError::Compile(rendered)) = &failure else {
@@ -638,7 +638,7 @@ fn the_compiler_tells_a_rejected_program_from_a_broken_toolchain() {
     let failure = compile_program(
         "fn helper() -> u32 {\n    1\n}\n",
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a program with no entry point is refused");
     assert!(
@@ -649,7 +649,7 @@ fn the_compiler_tells_a_rejected_program_from_a_broken_toolchain() {
     // A compiler that is not there at all is the OTHER band, and the model is not blamed for it:
     // there is no diagnostic, so there is nothing for it to fix.
     let failure = temporarily_pointing_rustc_at("gg-no-such-compiler", || {
-        compile_program("fn main() {}\n", &[], &PrepareContext::new())
+        compile_program("fn main() {}\n", &[], &PrepareContext::detached())
             .expect_err("a missing compiler is refused")
     });
     let PrepareFailure::Toolchain(reported) = &failure else {
@@ -701,20 +701,26 @@ fn what_a_program_costs_and_what_it_weighs() {
     assert_eq!(logs(&outcome), ["weighed"]);
 }
 
-/// **A program reaches a code module, and a module that does not build is refused at the read.**
+/// **A program reaches a code module, and the module is compiled once for the agent.**
 ///
 /// The whole of what makes a Rust [code skill](crate::skills) work, driven end to end: the module is
-/// prepared on its own — which is where its author's diagnostic comes from — and then built into a
-/// crate of its own and *linked into the program that reads it*, because Rust has no run-time moment
-/// at which a namespace could be bound.
+/// compiled on its own at the read that binds it — which is where its author's diagnostic comes
+/// from — into a crate of its own, and every program the agent writes afterwards is *linked against*
+/// that crate, because Rust has no run-time moment at which a namespace could be bound.
+///
+/// The build count is asserted beside the behaviour, because a module rebuilt per program would pass
+/// every other assertion here while costing the turn one `rustc` per loaded module.
 ///
 /// It is the one behaviour on this arm that the interpreted arms get for free from their guests, so
 /// it is asserted here rather than trusted.
 #[test]
 fn a_program_reaches_a_code_module_that_was_linked_into_it() {
+    let agent = crate::sandbox::AgentWorkspace::new();
     let module = crate::sandbox::prepare_module(
         crate::sandbox::language(GgProgramLanguage::Rust),
+        "csv_tools",
         "pub fn shout(word: &str) -> String {\n    word.to_uppercase()\n}\n\npub const MARK: u32 = 7;\n",
+        &agent,
     )
     .expect("an ordinary Rust module compiles");
     assert_eq!(
@@ -722,6 +728,7 @@ fn a_program_reaches_a_code_module_that_was_linked_into_it() {
         vec!["shout".to_string(), "MARK".to_string()],
         "a module's crate offers every `pub` item it declares, in source order"
     );
+    assert_eq!(agent.module_builds(), 1, "the read compiled it once");
 
     let modules = [CodeModule {
         name: "csv_tools".to_string(),
@@ -732,6 +739,7 @@ fn a_program_reaches_a_code_module_that_was_linked_into_it() {
             crate::sandbox::language(GgProgramLanguage::Rust),
             program,
             &modules,
+            &agent,
         )
         .expect("a program compiles against the modules in its scope");
         let (outcome, _log) = evaluate(
@@ -775,11 +783,19 @@ fn a_program_reaches_a_code_module_that_was_linked_into_it() {
         ["OK"]
     );
 
+    assert_eq!(
+        agent.module_builds(),
+        1,
+        "three programs were compiled and none of them rebuilt the module"
+    );
+
     // And a module the compiler refuses is the module author's failure, reported at the read rather
     // than two turns later against somebody else's program.
     let failure = crate::sandbox::prepare_module(
         crate::sandbox::language(GgProgramLanguage::Rust),
+        "helpers",
         "pub fn broken() -> u32 {\n    \"seventeen\"\n}\n",
+        &crate::sandbox::AgentWorkspace::new(),
     )
     .expect_err("a module that does not type-check is refused");
     let PrepareFailure::Program(crate::sandbox::PrepareError::Compile(rendered)) = &failure else {
@@ -812,7 +828,7 @@ fn the_bytes_compiled_are_the_bytes_the_model_sent_with_a_module_in_scope() {
     let program =
         format!("fn main() {{\n    {LOG}(csv_tools::shout(\"ok\").as_str());\n}}\n// that is all");
 
-    let context = crate::sandbox::PrepareContext::new();
+    let context = crate::sandbox::PrepareContext::detached();
     super::compile::compile_program(&program, &modules, &context)
         .expect("a program compiles against the module in its scope");
     let workspace = context

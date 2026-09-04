@@ -1,24 +1,29 @@
-// audio/music-stops-on-abandon — music is not looping on the frame after back on
-// paused returns to the title.
+// audio/music-stops-on-abandon — music is not looping on the frame after
+// MAIN MENU on paused returns to the title.
 //
 // WHERE THE THRESHOLD COMES FROM. specs/ui.md ("The loops"): "`music` is looping
 // on every frame exactly when `screen` is `playing`, `levelup`, `chest`, or
 // `paused` ... and it stops on the frame the run ends, fallen or at dawn, or
-// `back` on `paused` abandons it", and "`title` and `howto` carry no music."
-// specs/ui.md ("`paused`") names the abandon: "`back` abandons the run and
-// returns to `title` with `menuIndex = 0`." specs/instrumentation.md fixes the
-// frame the reading is taken on: "Both loops are reconciled from the state on
-// every frame, so a state the debug surface posed sounds, one frame later,
-// exactly as the same state reached by play."
+// `MAIN MENU` on `paused` abandons it", and "`title`, `howto`, and `almanac`
+// carry no music." specs/ui.md ("`paused`") names the abandon: "`MAIN MENU` |
+// Abandons the run and returns to `title` with `menuIndex = 0`."
+// specs/instrumentation.md fixes the frame the reading is taken on: "Both loops
+// are reconciled from the state on every frame, so a state the debug surface
+// posed sounds, one frame later, exactly as the same state reached by play."
 //
 // WHY THE ABANDON IS PRESSED AND THE PAUSE IS POSED. The abandon is the event
-// this point is about, so it is raised the way a player raises it: `back` is
-// bound to `Escape` (specs/controls.md), and the keyboard belongs to the runtime,
-// where "a dispatched keyboard event ... works the menus exactly as a player's
-// key does" (specs/instrumentation.md). The pause it is pressed from is only the
-// way in, so it is posed through the surface, whose `setScreen("paused")` from
-// `playing` is defined as "Exactly as `pause` does" — a build with a broken pause
-// key fails `controls/`, not this.
+// this point is about, so it is raised the way a player raises it: the pause
+// menu is `PAUSE_ITEMS`, "`RESUME`, `MAIN MENU`, in that order", with
+// "`menuIndex` is `0` on arriving", so one `ArrowDown` per item above
+// `MAIN MENU` moves the highlight onto it and `Enter` takes it — `down` and
+// `confirm` are those keys in specs/controls.md, and the keyboard belongs to the
+// runtime, where "a dispatched keyboard event ... works the menus exactly as a
+// player's key does" (specs/instrumentation.md). The highlight is read back
+// before the confirm, so a build whose pause menu never moved fails on the
+// precondition rather than on the music. The pause it is pressed from is only
+// the way in, so it is posed through the surface, whose `setScreen("paused")`
+// from `playing` is defined as "Exactly as `pause` does" — a build with a broken
+// pause key fails `controls/`, not this.
 //
 // WHY THE WORLD IS POSED AS IT IS. An isolated night: every driver switch off,
 // nothing alive, nothing dropped, and no slot held, so nothing can end the run
@@ -35,16 +40,20 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { TICK_HZ } from "../constants";
+import { PAUSE_ITEMS, TICK_HZ } from "../constants";
 import {
   captureReplay,
   createHarness,
   isLooping,
   poseScreen,
-  pressBack,
+  pressConfirm,
+  pressDown,
   type Harness,
 } from "../harness";
 import { openNight, stepUntilLoop } from "./cues";
+
+/** Where `MAIN MENU` sits in `PAUSE_ITEMS`. */
+const MAIN_MENU = PAUSE_ITEMS.indexOf("MAIN MENU");
 
 /** Frames recorded on the title after the reading, for the replay. Decides nothing. */
 const TRAIL_FRAMES = TICK_HZ / 2;
@@ -52,23 +61,31 @@ const TRAIL_FRAMES = TICK_HZ / 2;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-it("stops music by the frame after back on paused abandons the run", async () => {
+it("stops music by the frame after MAIN MENU on paused abandons the run", async () => {
   await openNight(h);
   const running = await stepUntilLoop(h, "music");
   assertEqual(running, true, "music looping on playing before the pause");
 
   const paused = await poseScreen(h, "paused");
   assertEqual(paused.screen, "paused", "the screen the pause posed");
+  assertEqual(paused.menuIndex, 0, "menuIndex on arriving at paused");
+  let highlighted = paused;
+  for (let i = 0; i < MAIN_MENU; i += 1) highlighted = await pressDown(h);
+  assertEqual(
+    highlighted.menuIndex,
+    MAIN_MENU,
+    "the pause menu's highlight, on MAIN MENU",
+  );
 
   const abandoned = await captureReplay(h, "stopped", async () => {
-    const after = await pressBack(h);
+    const after = await pressConfirm(h);
     await h.step(1);
     const looping = await isLooping(h, "music");
     await h.step(TRAIL_FRAMES);
@@ -78,7 +95,7 @@ it("stops music by the frame after back on paused abandons the run", async () =>
   assertEqual(
     abandoned.after.screen,
     "title",
-    "the screen back on paused returned to",
+    "the screen MAIN MENU on paused returned to",
   );
   assertEqual(
     abandoned.looping,

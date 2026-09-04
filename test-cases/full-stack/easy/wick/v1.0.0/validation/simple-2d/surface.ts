@@ -73,6 +73,8 @@ export const REQUIRED_OPS = [
   "snapshot",
   "setScreen",
   "choose",
+  "menuRects",
+  "tabRects",
   "setSpawning",
   "setEvents",
   "setDespawning",
@@ -150,7 +152,19 @@ export const SWITCH_OPS: Readonly<Record<SwitchName, OperationName>> = {
  * current state and hand back, and which to run through `engine.apply`; the
  * surface's shape alone cannot say at runtime, so the specification names them.
  */
-export const READINGS = ["snapshot"] as const;
+export const READINGS = ["snapshot", "menuRects", "tabRects"] as const;
+
+/**
+ * One rectangle a menu reading reports, in stage coordinates, "`0` to `STAGE_W`
+ * across and `0` to `STAGE_H` down, which are the coordinates the pointer is
+ * read in" (specs/instrumentation.md, Menus).
+ */
+export interface WickRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
 
 /** `reset`'s options: the seed the generator is laid with. */
 export interface ResetOptions {
@@ -259,6 +273,8 @@ export interface RunSnapshot {
   xpToNext: number;
   kills: number;
   player: PlayerSnapshot;
+  /** Seconds left of the hurt flash; `0` while none is running. */
+  hurtFlash: number;
   maxHp: number;
   armor: number;
   /** Units per second. */
@@ -293,13 +309,18 @@ export interface RunSnapshot {
  * specs/instrumentation.md fixes it under "Snapshot shape".
  *
  * The shape is fixed and every field is present whatever the screen: `run`
- * reports the idle run on `title` and `howto` and the run that just ended on
- * `fallen` and `dawn`; the seven switches sit beside `muted`, outside `run`.
+ * reports the idle run on `title`, `howto`, and `almanac` and the run that just
+ * ended on `fallen` and `dawn`; `almanacTab` and `almanacScroll` sit beside
+ * `menuIndex`, and the seven switches beside `muted`, both outside `run`.
  */
 export interface WickSnapshot {
   version: number;
   screen: Screen;
   menuIndex: number;
+  /** The tab the almanac is showing; `0` on every other screen. */
+  almanacTab: number;
+  /** The almanac list's first visible row; `0` on every other screen. */
+  almanacScroll: number;
   spawning: boolean;
   events: boolean;
   despawning: boolean;
@@ -335,6 +356,18 @@ export interface WickDebugApi<S = unknown> {
   reset(state: DeepReadonly<S>, options?: ResetOptions): S;
   /** A pure reading of `state`. Poses nothing. */
   snapshot(state: DeepReadonly<S>): WickSnapshot;
+  /**
+   * The current screen's vertical menu, in menu order, and an empty list on
+   * `howto`, `playing`, and `chest`. On `almanac` these are the visible entry
+   * rows, "in list order from `almanacScroll` and at most `ALMANAC_ROWS` of
+   * them". Poses nothing.
+   */
+  menuRects(state: DeepReadonly<S>): readonly WickRect[];
+  /**
+   * The almanac's tab bar, one rectangle per tab in `ALMANAC_TABS` order, and
+   * an empty list on every other screen. Poses nothing.
+   */
+  tabRects(state: DeepReadonly<S>): readonly WickRect[];
 
   /** Enters `name` exactly as the real transition into it does. */
   setScreen(state: DeepReadonly<S>, name: Screen): S;

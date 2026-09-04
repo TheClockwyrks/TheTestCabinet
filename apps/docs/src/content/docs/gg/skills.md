@@ -120,6 +120,10 @@ shared rule across skills and memories, documented under
 module reaches the same surface a program does through the same line a program
 writes.
 
+The module is compiled once per agent, under that key, at the read that loads it.
+Every program the agent writes afterwards is compiled against what that compile
+produced, so the loaded set costs a turn nothing.
+
 A loaded module is not context. It costs no tokens, is never summarized, and a
 compaction boundary leaves it alone. It belongs to one agent instance: a
 [`fork`](/gg/fork-and-exec/) or a succession starts with nothing loaded, and

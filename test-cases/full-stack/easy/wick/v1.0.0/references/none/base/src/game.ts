@@ -1,22 +1,33 @@
 // Wick — the game over its state: the screens, the menus, the frame's update,
-// and the cues a frame plays (specs/ui.md, specs/controls.md,
-// specs/instrumentation.md "A deterministic core").
+// and the cues a frame plays (specs/ui.md, specs/controls.md
+// "The pointer", specs/instrumentation.md "A deterministic core").
 //
 // The simulation itself is `src/sim/`; this is the layer that decides which
-// screen ticks, which actions each screen answers, how a frame's delta time
-// becomes ticks, and which cues sound. It reads nothing from the renderer.
+// screen ticks, which actions each screen answers, what the pointer does with
+// the rectangles `src/layout.ts` fixes, how a frame's delta time becomes
+// ticks, and which cues sound. It reads nothing from the renderer.
 
+import {
+  almanacEntries,
+  clampScroll,
+  followHighlight,
+  wrapTab,
+} from "./almanac";
 import {
   CUES,
   DEFAULT_SEED,
   END_ITEMS,
+  PAUSE_ITEMS,
   TICK_DT,
   TICK_EPSILON,
   TITLE_ITEMS,
+  WHEEL_ROW,
   type Action,
   type Cue,
   type Screen,
 } from "./constants";
+import type { PointerFrame } from "./input";
+import { itemAt, tabAt } from "./layout";
 import { Rng, seedState } from "./rng";
 import { freshRun, idleRun, initialState, type WickState } from "./state";
 import {
@@ -32,10 +43,11 @@ import { tick } from "./sim/tick";
 export const SCREEN_ACTIONS: Readonly<Record<Screen, readonly Action[]>> = {
   title: ["up", "down", "confirm", "mute"],
   howto: ["back", "mute"],
-  playing: ["pause", "mute"],
+  almanac: ["up", "down", "left", "right", "back", "mute"],
+  playing: ["pause", "back", "mute"],
   levelup: ["up", "down", "confirm", "mute"],
   chest: ["confirm", "mute"],
-  paused: ["pause", "back", "mute"],
+  paused: ["up", "down", "confirm", "pause", "back", "mute"],
   fallen: ["up", "down", "confirm", "back", "mute"],
   dawn: ["up", "down", "confirm", "back", "mute"],
 };
@@ -122,57 +134,68 @@ export class Game {
 
   // ---- Transitions ---------------------------------------------------------
 
+  /**
+   * Enter `screen` with every menu index at `0`: the highlight, the almanac's
+   * tab, and its first visible row, which stand at `0` on every other screen.
+   */
+  private enter(screen: Screen): void {
+    this.state.screen = screen;
+    this.state.menuIndex = 0;
+    this.state.almanacTab = 0;
+    this.state.almanacScroll = 0;
+  }
+
   /** Begin a fresh run and enter `playing`. */
   startRun(): void {
     this.state.run = freshRun();
-    this.state.screen = "playing";
-    this.state.menuIndex = 0;
+    this.enter("playing");
     this.state.accumulator = 0;
   }
 
   /** Discard the run and return to `title`. */
   toTitle(): void {
     this.state.run = idleRun();
-    this.state.screen = "title";
-    this.state.menuIndex = 0;
+    this.enter("title");
     this.state.accumulator = 0;
   }
 
   /** Discard the run and enter `howto`. */
   toHowto(): void {
     this.state.run = idleRun();
-    this.state.screen = "howto";
-    this.state.menuIndex = 0;
+    this.enter("howto");
+    this.state.accumulator = 0;
+  }
+
+  /** Discard the run and open the almanac at its first tab and entry. */
+  toAlmanac(): void {
+    this.state.run = idleRun();
+    this.enter("almanac");
     this.state.accumulator = 0;
   }
 
   /** From `playing`, hold the world under `paused`. */
   pause(): void {
     if (this.state.screen !== "playing") return;
-    this.state.screen = "paused";
-    this.state.menuIndex = 0;
+    this.enter("paused");
     this.state.accumulator = 0;
   }
 
   /** From `paused`, return to `playing`; the run is untouched. */
   resume(): void {
     if (this.state.screen !== "paused") return;
-    this.state.screen = "playing";
-    this.state.menuIndex = 0;
+    this.enter("playing");
   }
 
   /** From `chest`, close the overlay. */
   closeChest(): void {
     if (this.state.screen !== "chest") return;
     this.state.run.chestResult = null;
-    this.state.screen = "playing";
-    this.state.menuIndex = 0;
+    this.enter("playing");
   }
 
   /** From a run screen, end the run as `ending` does, the run kept. */
   endRun(ending: "fallen" | "dawn"): void {
-    this.state.screen = ending;
-    this.state.menuIndex = 0;
+    this.enter(ending);
     this.state.accumulator = 0;
     this.cues.add(ending === "fallen" ? CUES.fallen : CUES.dawn);
   }
@@ -206,8 +229,12 @@ export class Game {
     switch (this.state.screen) {
       case "title":
         return TITLE_ITEMS.length;
+      case "almanac":
+        return almanacEntries(this.state.almanacTab).length;
       case "levelup":
         return this.state.run.offers.length;
+      case "paused":
+        return PAUSE_ITEMS.length;
       case "fallen":
       case "dawn":
         return END_ITEMS.length;
@@ -216,11 +243,41 @@ export class Game {
     }
   }
 
+  /**
+   * Put the highlight on `index` and sound `menu-move`. On `almanac` the
+   * list's window follows the highlight, as `specs/ui.md` states.
+   */
+  private setHighlight(index: number): void {
+    const { state } = this;
+    state.menuIndex = index;
+    if (state.screen === "almanac") {
+      state.almanacScroll = followHighlight(
+        state.almanacScroll,
+        index,
+        almanacEntries(state.almanacTab).length,
+      );
+    }
+    this.cues.add(CUES.menuMove);
+  }
+
   private moveHighlight(delta: number): void {
     const length = this.menuLength();
     if (length === 0) return;
-    this.state.menuIndex = (this.state.menuIndex + delta + length) % length;
+    this.setHighlight((this.state.menuIndex + delta + length) % length);
+  }
+
+  /** Show the tab at `index`, from its first entry, as `right` reaching it does. */
+  private selectTab(index: number): void {
+    const { state } = this;
+    if (state.almanacTab === index) return;
+    state.almanacTab = index;
+    state.menuIndex = 0;
+    state.almanacScroll = 0;
     this.cues.add(CUES.menuMove);
+  }
+
+  private moveTab(delta: number): void {
+    this.selectTab(wrapTab(this.state.almanacTab, delta));
   }
 
   /** Answer one press edge on the current screen. */
@@ -238,14 +295,22 @@ export class Game {
         else if (action === "confirm") {
           this.cues.add(CUES.menuConfirm);
           if (state.menuIndex === 0) this.startRun();
+          else if (state.menuIndex === 1) this.toAlmanac();
           else this.toHowto();
         }
         break;
       case "howto":
         if (action === "back") this.toTitle();
         break;
+      case "almanac":
+        if (action === "up") this.moveHighlight(-1);
+        else if (action === "down") this.moveHighlight(1);
+        else if (action === "left") this.moveTab(-1);
+        else if (action === "right") this.moveTab(1);
+        else if (action === "back") this.toTitle();
+        break;
       case "playing":
-        if (action === "pause") this.pause();
+        if (action === "pause" || action === "back") this.pause();
         break;
       case "levelup":
         if (action === "up") this.moveHighlight(-1);
@@ -256,8 +321,13 @@ export class Game {
         if (action === "confirm") this.closeChest();
         break;
       case "paused":
-        if (action === "pause") this.resume();
-        else if (action === "back") this.toTitle();
+        if (action === "up") this.moveHighlight(-1);
+        else if (action === "down") this.moveHighlight(1);
+        else if (action === "confirm") {
+          this.cues.add(CUES.menuConfirm);
+          if (state.menuIndex === 0) this.resume();
+          else this.toTitle();
+        } else if (action === "pause" || action === "back") this.resume();
         break;
       case "fallen":
       case "dawn":
@@ -270,6 +340,54 @@ export class Game {
         } else if (action === "back") this.toTitle();
         break;
     }
+  }
+
+  // ---- The pointer ---------------------------------------------------------
+
+  /**
+   * Answer the pointer as this frame read it, after the frame's press edges:
+   * the hover moves the highlight, a primary press takes what it lands in,
+   * and the wheel scrolls the almanac's list.
+   */
+  handlePointer(pointer: PointerFrame): void {
+    if (pointer.at !== null) this.hover(pointer.at.x, pointer.at.y);
+    for (const press of pointer.presses) this.click(press.x, press.y);
+    this.scroll(pointer.wheel);
+  }
+
+  /** The pointer inside an item's box highlights it; inside none, nothing. */
+  private hover(x: number, y: number): void {
+    const index = itemAt(this.state, x, y);
+    if (index === null || index === this.state.menuIndex) return;
+    this.setHighlight(index);
+  }
+
+  /** A primary press highlights what it lands in and then takes it. */
+  private click(x: number, y: number): void {
+    const { state } = this;
+    const tab = tabAt(state, x, y);
+    if (tab !== null) {
+      this.selectTab(tab);
+      return;
+    }
+    const index = itemAt(state, x, y);
+    if (index === null) return;
+    if (index !== state.menuIndex) this.setHighlight(index);
+    // Taking the item is exactly what `confirm` on it does, which on an
+    // almanac entry, the one menu that answers no `confirm`, is nothing.
+    this.handleAction("confirm");
+  }
+
+  /** A frame's wheel travel, in stage units, moves the almanac's window. */
+  private scroll(travel: number): void {
+    const { state } = this;
+    if (state.screen !== "almanac") return;
+    const rows = Math.trunc(travel / WHEEL_ROW);
+    if (rows === 0) return;
+    state.almanacScroll = clampScroll(
+      state.almanacScroll + rows,
+      almanacEntries(state.almanacTab).length,
+    );
   }
 
   // ---- The clock -----------------------------------------------------------

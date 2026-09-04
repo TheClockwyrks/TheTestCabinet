@@ -14,7 +14,10 @@ import {
   OBSTACLE_SWAY_PERIOD,
 } from "./constants";
 import {
+  fullField,
+  isObstacleIndex,
   obstaclePose,
+  placeObstacle,
   poseObstacles,
   spinAngle,
   swayOffset,
@@ -25,6 +28,7 @@ describe("sway", () => {
   it("starts both obstacles upright at their base centers", () => {
     for (const [i, base] of OBSTACLE_CENTERS.entries()) {
       const pose = obstaclePose(i, 0);
+      expect(pose.index).toBe(i);
       expect(pose.cx).toBeCloseTo(base.x, 9);
       expect(pose.cy).toBeCloseTo(base.y, 9);
       expect(pose.theta).toBeCloseTo(0, 9);
@@ -114,29 +118,62 @@ describe("spin", () => {
 });
 
 describe("poseObstacles", () => {
-  it("writes both poses in place, keeping the slots it was given", () => {
-    const out: ObstacleState[] = [
-      { cx: 0, cy: 0, theta: 0 },
-      { cx: 0, cy: 0, theta: 0 },
-    ];
-    const first = out[0];
-    poseObstacles(out, 1.1);
-    expect(out[0]).toBe(first);
-    expect(out[0]).toEqual(obstaclePose(0, 1.1));
-    expect(out[1]).toEqual(obstaclePose(1, 1.1));
+  it("writes each present pose in place, keeping the objects it was given", () => {
+    const field = fullField(0);
+    const first = field[0];
+    poseObstacles(field, 1.1);
+    expect(field[0]).toBe(first);
+    expect(field[0]).toEqual(obstaclePose(0, 1.1));
+    expect(field[1]).toEqual(obstaclePose(1, 1.1));
   });
 
-  it("fills an empty array and never grows past the obstacle count", () => {
-    const out: ObstacleState[] = [];
-    poseObstacles(out, 0.4);
-    expect(out).toHaveLength(OBSTACLE_CENTERS.length);
-    poseObstacles(out, 0.9);
-    expect(out).toHaveLength(OBSTACLE_CENTERS.length);
+  it("re-poses only what is on the field, and puts nothing back", () => {
+    // An absent obstacle stays absent: which obstacles are there is `clearWorld`
+    // and `spawnObstacle`'s business (specs/instrumentation.md).
+    const field: ObstacleState[] = [obstaclePose(1, 0)];
+    poseObstacles(field, 0.9);
+    expect(field).toHaveLength(1);
+    expect(field[0]).toEqual(obstaclePose(1, 0.9));
+
+    const empty: ObstacleState[] = [];
+    poseObstacles(empty, 0.4);
+    expect(empty).toEqual([]);
+  });
+});
+
+describe("placeObstacle", () => {
+  it("spawns into an empty field at the clock's pose", () => {
+    const field: ObstacleState[] = [];
+    placeObstacle(field, 1, 0.7);
+    expect(field).toEqual([obstaclePose(1, 0.7)]);
+  });
+
+  it("keeps the field in the order of OBSTACLE_CENTERS", () => {
+    const field: ObstacleState[] = [];
+    placeObstacle(field, 1, 0);
+    placeObstacle(field, 0, 0);
+    expect(field.map((o) => o.index)).toEqual([0, 1]);
+  });
+
+  it("returns an obstacle already there to the arrangement its row states", () => {
+    const field = fullField(0);
+    field[0].cy = -999;
+    placeObstacle(field, 0, 0);
+    expect(field).toHaveLength(2);
+    expect(field[0]).toEqual(obstaclePose(0, 0));
   });
 });
 
 describe("range", () => {
   it("refuses an obstacle index that does not exist", () => {
     expect(() => obstaclePose(2, 0)).toThrow(RangeError);
+  });
+
+  it("names the indices this field carries", () => {
+    expect(isObstacleIndex(0)).toBe(true);
+    expect(isObstacleIndex(OBSTACLE_CENTERS.length - 1)).toBe(true);
+    expect(isObstacleIndex(OBSTACLE_CENTERS.length)).toBe(false);
+    expect(isObstacleIndex(-1)).toBe(false);
+    expect(isObstacleIndex(0.5)).toBe(false);
   });
 });

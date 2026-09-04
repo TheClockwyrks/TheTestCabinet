@@ -432,21 +432,21 @@ fn compile(
     componentize(&module).map_err(PrepareFailure::Toolchain)
 }
 
-/// Prepare a **code module** — the code half of a skill or a memory — by reading it the way every
-/// program that imports it will, and read the names it offers.
+/// Prepare a **code module** — the code half of a skill or a memory — by building it into the Swift
+/// module every program that imports it resolves, and read the names it offers.
 ///
-/// What comes back is **source**, because the artifact this step could produce is one no later
-/// preparation may read: a module's own workspace is removed when the preparation that made it ends,
-/// and a Swift module built against one release of gg's SDK is not a thing to hand a compile that
-/// might be running against another. So the bytes travel and each program's compile
-/// [builds them](build_modules).
+/// This is where a module is compiled and the only place. `key` is the binding key, which on this
+/// arm is the Swift module's own name, so the `.swiftmodule` and the object land in that key's
+/// directory in the [band](crate::sandbox::Workspace::open_module) and every program the agent
+/// writes afterwards is given the `-I` that resolves them and the object to link.
 ///
-/// The check is a `-typecheck` of exactly those bytes, under a fixed
-/// [module name](super::source::CHECK_MODULE), which is the whole of what this step can decide and
-/// about a third of what a full build costs. What it buys is the **location**: a module that does not
-/// build fails on the turn that loaded it, at its author's own line, rather than on every later turn
-/// in a file the model never wrote.
+/// It is a full build at the program's own `-Osize -g`, because the object is linked into the
+/// artifact and a trap inside a skill's own code should symbolicate to the line its author wrote.
+/// What running it here buys is the **location**: a module that does not build fails on the turn
+/// that loaded it, at its author's own line, rather than on every later turn in a file the model
+/// never wrote.
 pub(super) fn compile_module(
+    key: &str,
     source: &str,
     context: &PrepareContext,
 ) -> Result<PreparedModule, PrepareFailure> {
@@ -455,21 +455,7 @@ pub(super) fn compile_module(
     let home = swift_home().map_err(PrepareFailure::Toolchain)?;
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
 
-    let file = super::source::module_file(super::source::CHECK_MODULE);
-    workspace
-        .write(&file, &super::source::module_source(source))
-        .map_err(PrepareFailure::Toolchain)?;
-
-    let sources = [file];
-    let build = Build {
-        sources: &sources,
-        output: Output::Check {
-            name: super::source::CHECK_MODULE,
-        },
-    };
-    let report = invoke_swiftc(build, guest, libraries, &home, workspace, context)
-        .map_err(PrepareFailure::Toolchain)?;
-    classify(&report)?;
+    build_module(key, source, guest, libraries, &home, workspace, context)?;
 
     Ok(PreparedModule {
         source: source.to_string(),
@@ -477,16 +463,57 @@ pub(super) fn compile_module(
     })
 }
 
-/// Build each code module in scope into a Swift module of its own, and hand back what the program's
-/// compile needs to reach them.
+/// Build one code module into a Swift module of its own, inside that key's directory in the band,
+/// and record what it produced.
+///
+/// One `swiftc`, since a `swiftc` builds one module.
+fn build_module(
+    key: &str,
+    source: &str,
+    guest: &Guest,
+    libraries: &Path,
+    home: &Path,
+    workspace: &Workspace,
+    context: &PrepareContext,
+) -> Result<(PathBuf, PathBuf), PrepareFailure> {
+    refuse_a_supplied_name(key)?;
+    let name = super::source::module_file(key);
+    let into = workspace
+        .open_module(key)
+        .map_err(PrepareFailure::Toolchain)?;
+    workspace
+        .write_module(key, &name, &super::source::module_source(source))
+        .map_err(PrepareFailure::Toolchain)?;
+
+    let object = into.join(format!("{key}.o"));
+    let sources = [workspace.module_path(key, &name)];
+    let build = Build {
+        sources: &sources,
+        output: Output::Module {
+            name: key,
+            into: &into,
+            object: &object,
+        },
+    };
+    let report = invoke_swiftc(build, guest, libraries, home, workspace, context)
+        .map_err(PrepareFailure::Toolchain)?;
+    classify(&report)?;
+    let interface = into.join(format!("{key}.swiftmodule"));
+    workspace.record_module(key, source, vec![interface, object.clone()]);
+    Ok((into, object))
+}
+
+/// What the program's compile needs to reach the code modules in scope: one `-I` per module, and the
+/// object each compiled to.
 ///
 /// `None` for an agent that has loaded nothing, so an ordinary program's command line is exactly what
 /// it was before code modules existed — which is what keeps the artifact of a program with no modules
 /// byte for byte what it was.
 ///
-/// One `swiftc` per module, since a `swiftc` builds one module. They are built at the program's own
-/// `-Osize -g`, because each one's object is linked into the artifact and a trap inside a skill's own
-/// code should symbolicate to the line its author wrote.
+/// A module reaching here was built at the read that loaded it, so this names that build. A module
+/// this agent's workspace holds no build of — the one a test or the authorship gate hands straight to
+/// the program step — is built here and recorded, so the program after it names one. A refusal of
+/// that rebuild is [gg's own](ours).
 fn build_modules(
     modules: &[CodeModule],
     guest: &Guest,
@@ -498,33 +525,57 @@ fn build_modules(
     if modules.is_empty() {
         return Ok(None);
     }
-    let into = workspace.output().join(MODULES_DIR);
-    std::fs::create_dir_all(&into).map_err(|error| {
-        PrepareFailure::Toolchain(format!("could not create {}: {error}", into.display()))
-    })?;
+    let mut search = Vec::with_capacity(modules.len());
     let mut objects = Vec::with_capacity(modules.len());
     for module in modules {
-        refuse_a_supplied_name(&module.name)?;
-        let file = super::source::module_file(&module.name);
-        workspace
-            .write(&file, &super::source::module_source(&module.source))
-            .map_err(PrepareFailure::Toolchain)?;
-        let object = into.join(format!("{}.o", module.name));
-        let sources = [file];
-        let build = Build {
-            sources: &sources,
-            output: Output::Module {
-                name: &module.name,
-                into: &into,
-                object: &object,
-            },
+        let built = match workspace.module_build(&module.name, &module.source) {
+            Some(artifacts) if artifacts.len() == 2 => {
+                (workspace.module_dir(&module.name), artifacts[1].clone())
+            }
+            _ => build_module(
+                &module.name,
+                &module.source,
+                guest,
+                libraries,
+                home,
+                workspace,
+                context,
+            )
+            .map_err(|failure| ours(&module.name, failure))?,
         };
-        let report = invoke_swiftc(build, guest, libraries, home, workspace, context)
-            .map_err(PrepareFailure::Toolchain)?;
-        classify(&report)?;
-        objects.push(object);
+        search.push(built.0);
+        objects.push(built.1);
     }
-    Ok(Some(Modules { into, objects }))
+    Ok(Some(Modules { search, objects }))
+}
+
+/// Re-attribute a [rebuilt module](build_modules)'s refusal to gg, whichever of the model-facing
+/// bands it arrived in.
+///
+/// A module is compiled at the read that binds it, so its author already read this diagnostic in
+/// their own coordinates and this arm refusing the same bytes now is this arm disagreeing with
+/// itself. The program beside it compiles, and `module_<key>.swift` is a file that program's author
+/// never wrote, so handing the diagnostic back under `Compiler error` charges a model for a program
+/// it wrote correctly and offers it nothing to change.
+///
+/// A [toolchain failure](PrepareFailure::Toolchain) passes through, already being gg's rather than
+/// the model's.
+fn ours(key: &str, failure: PrepareFailure) -> PrepareFailure {
+    match failure {
+        PrepareFailure::Program(error @ (PrepareError::Syntax(_) | PrepareError::Compile(_))) => {
+            PrepareFailure::Lowering(format!(
+                "swiftc refused the code module gg compiled as `{key}` beside the program, which \
+                 compiled on its own when it was loaded:\n{error}"
+            ))
+        }
+        PrepareFailure::Program(error @ PrepareError::Unsupported(_)) => {
+            PrepareFailure::Lowering(format!(
+                "gg could not lower the code module bound at `{key}` beside the program, which it \
+                 accepted when it was loaded:\n{error}"
+            ))
+        }
+        other => other,
+    }
 }
 
 /// Refuse a binding key that names a Swift module every compile here already supplies.
@@ -557,9 +608,6 @@ fn refuse_a_supplied_name(key: &str) -> Result<(), PrepareFailure> {
     }
 }
 
-/// Where a program's code modules are built, inside this preparation's own output directory.
-const MODULES_DIR: &str = "modules";
-
 /// The Swift module a program is compiled as, stated rather than derived from the artifact's file
 /// name — because [what a key may not be](refuse_a_supplied_name) is read off it.
 const PROGRAM_MODULE: &str = "program";
@@ -570,8 +618,8 @@ const SHELL_MODULE: &str = "GgShell";
 /// The code modules a program is compiled against: where their `.swiftmodule` files are, and the
 /// objects the link needs.
 struct Modules {
-    /// The directory named on the program's `-I`.
-    into: PathBuf,
+    /// One directory per module, each named on an `-I` of the program's own compile.
+    search: Vec<PathBuf>,
     /// One object per module, in the order the modules were handed over.
     objects: Vec<PathBuf>,
 }
@@ -602,8 +650,6 @@ enum Output<'a> {
         into: &'a Path,
         object: &'a Path,
     },
-    /// One code module, read and decided, writing nothing.
-    Check { name: &'a str },
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -694,8 +740,8 @@ fn invoke_swiftc(
             // one by writing its `import` and a program that writes none reaches nothing. Last of
             // the three, and a key that names a module the two above already carry is
             // [refused](refuse_a_supplied_name) rather than left to shadow one.
-            if let Some(modules) = modules {
-                command.arg("-I").arg(&modules.into);
+            for directory in modules.iter().flat_map(|modules| &modules.search) {
+                command.arg("-I").arg(directory);
             }
             command
                 // Size, because the engine compiles this artifact on every turn and a smaller
@@ -738,16 +784,6 @@ fn invoke_swiftc(
                 .arg("-c")
                 .arg("-o")
                 .arg(object);
-        }
-        // A code module's own check: read it and decide, then write nothing. There is nothing to
-        // optimise and nothing to link for a module that is going to be built again beside every
-        // program that uses it.
-        Output::Check { name } => {
-            command
-                .arg("-parse-as-library")
-                .arg("-module-name")
-                .arg(name)
-                .arg("-typecheck");
         }
     }
     for source in build.sources {
@@ -1156,6 +1192,20 @@ fn materialise_libraries() -> Result<PathBuf, String> {
         Ok(())
     })?;
     Ok(tree)
+}
+
+/// **The modules `swiftc` said this program could not import**, read out of the text this arm
+/// [renders](rendered).
+///
+/// `swiftc` reports an unresolved `import` at the model's own line and column as
+/// `no such module 'Algorithms'`, quoting the module and nothing else.
+pub(super) fn unresolved_imports(diagnostic: &str) -> Vec<String> {
+    diagnostic
+        .lines()
+        .flat_map(|line| {
+            crate::sandbox::language::diagnostics::named(line, "no such module '", "'")
+        })
+        .collect()
 }
 
 #[cfg(test)]

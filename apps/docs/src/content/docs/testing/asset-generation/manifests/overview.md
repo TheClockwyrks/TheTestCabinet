@@ -23,7 +23,7 @@ summary = "..."              # optional abstract for the site cards (inline; NOT
 description = "description.md" # optional site-facing prose (relative path; NOT seeded)
 changelog = "changelog.md"   # REQUIRED per-version changelog entry (relative path; NOT seeded)
 prompt = "prompt.hbs"        # the prompt template handed to the harness (required)
-max_runtime_hours = 0.5      # cap on the harness session before it's stopped (default 1)
+max_runtime_hours = 0.5      # cap on the session and on each setup step (default 1)
 type = "asset-generation"    # the test type (required for this type; defaults to "end-to-end")
 asset_kind = "sprite"        # the shape of asset the model produces (default "sprite")
 
@@ -71,9 +71,12 @@ declare `[tool]` and `[output]`, and must declare no `[build]` table, no
 `[[review_item]]` is likewise rejected, because there is no target to show as
 expected.
 
-`asset_kind` and the `[sheet]`, `[ui]`, `[material]`, `[voxel]`, `[model]`,
-`[particle]`, and `[audio]` tables are valid only for an asset-generation case.
-An explicit value on any other type is rejected.
+`asset_kind` and the `[sheet]`, `[ui]`, `[material]`, `[voxel]`, `[model]`, and
+`[particle]` tables are valid only for an asset-generation case. An explicit
+value on any other type is rejected. The `[audio]` table is also accepted on a
+[full-stack](/testing/full-stack/manifests/) or
+[game-jam](/testing/game-jam/manifests/) case, where it declares only the audio
+packs a run may reach.
 
 ## Choosing an asset kind
 

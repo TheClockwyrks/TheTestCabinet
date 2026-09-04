@@ -1,18 +1,23 @@
 // Wick — instrumentation/snapshot-shape: on a posed run holding one of
 // everything, `snapshot()` returns every field the specification documents with
-// its documented type, the nested entries included, and the values are the ones
-// that were posed.
+// its documented type, `almanacTab`, `almanacScroll` and `run.hurtFlash` among
+// them and the nested entries included, and the values are the ones that were
+// posed.
 //
 // WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — "Snapshot shape"):
 // the block itself, field for field, which `constants.ts` restates as
 // `SNAPSHOT_FIELDS`, `RUN_FIELDS`, and the per-entry lists; "The shape is fixed,
 // and every field is present whatever the screen"; "Values are plain numbers,
-// strings, booleans, and plain objects". Each posed value is read back against
-// the operation that posed it: `spawnEnemy` "centered at `(x, y)`",
-// `spawnProjectile` "centered at `(x, y)` with velocity `(vx, vy)`", `spawnGem`
-// "one unattracted gem of `tier`", `spawnPickup` "one pickup of `kind`",
-// `setWeapon` "Puts weapon `id` ... at `level` in `slot`", `setPassive` the
-// same.
+// strings, booleans, and plain objects". Three of those fields are read at the
+// value the specification fixes for a run on `playing`: "`almanacTab` and
+// `almanacScroll` sit beside `menuIndex`, outside `run`, and are `0` on every
+// screen but `almanac`", and `run.hurtFlash` is "seconds left of the hurt
+// flash", `0` on a run that has taken no contact hit (specs/state.md's idle
+// run). Each posed value is read back against the operation that posed it:
+// `spawnEnemy` "centered at `(x, y)`", `spawnProjectile` "centered at `(x, y)`
+// with velocity `(vx, vy)`", `spawnGem` "one unattracted gem of `tier`",
+// `spawnPickup` "one pickup of `kind`", `setWeapon` "Puts weapon `id` ... at
+// `level` in `slot`", `setPassive` the same.
 //
 // WHY THE WORLD IS POSED AS IT IS. A shape check over an empty run reads every
 // list off `[]` and proves nothing about the entries; so the isolated night is
@@ -116,6 +121,10 @@ it("reports the whole documented shape, with the posed values", async () => {
   assertEqual(s.version, WICK_DEBUG_VERSION, "snapshot().version");
   assertContains(SCREENS, s.screen, "snapshot().screen");
   assertEqual(typeof s.menuIndex, "number", "snapshot().menuIndex");
+  assertEqual(typeof s.almanacTab, "number", "snapshot().almanacTab");
+  assertEqual(typeof s.almanacScroll, "number", "snapshot().almanacScroll");
+  assertEqual(s.almanacTab, 0, "snapshot().almanacTab on playing");
+  assertEqual(s.almanacScroll, 0, "snapshot().almanacScroll on playing");
   assertEqual(typeof s.autoStep, "boolean", "snapshot().autoStep");
   for (const name of SWITCH_NAMES) {
     assertEqual(typeof s[name], "boolean", `snapshot().${name}`);
@@ -135,6 +144,7 @@ it("reports the whole documented shape, with the posed values", async () => {
     "xp",
     "xpToNext",
     "kills",
+    "hurtFlash",
     "maxHp",
     "armor",
     "moveSpeed",
@@ -161,6 +171,11 @@ it("reports the whole documented shape, with the posed values", async () => {
   ] as const) {
     assertTrue(Array.isArray(run[field]), `snapshot().run.${field} is a list`);
   }
+  assertEqual(
+    run.hurtFlash,
+    0,
+    "snapshot().run.hurtFlash on a run that has taken no contact hit",
+  );
   assertNull(run.nextOffers, "snapshot().run.nextOffers with nothing queued");
   assertNull(run.chestResult, "snapshot().run.chestResult with no chest open");
 

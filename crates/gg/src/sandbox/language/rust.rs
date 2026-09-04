@@ -93,11 +93,11 @@
 //! lookup: a key or a name that does not exist is a diagnostic on the turn that wrote it, where an
 //! interpreted arm finds out when the call is reached.
 //!
-//! A module is compiled **twice**, and that is deliberate rather than an oversight — once alone at
-//! the read, and once inside every preparation that links it, because a workspace belongs to one
-//! preparation and the `.rlib` goes with it. The first compile is what puts a module author's
-//! diagnostic at the read instead of against somebody else's program two turns later. See
-//! [`compile::compile_module`] and [`compile`] for what the rebuild costs.
+//! A module is compiled **once**, at the read that binds it, under the crate name a program writes.
+//! Its `.rlib` is kept in the agent's compile workspace and named on every later program's
+//! `--extern`, so a turn's `rustc` count is one however much the agent has loaded. Compiling it at
+//! the read is also what puts a module author's diagnostic there instead of against somebody else's
+//! program two turns later. See [`compile::compile_module`].
 
 use std::sync::OnceLock;
 
@@ -108,10 +108,12 @@ use crate::sandbox::signatures::SignatureCatalogue;
 use self::source::SDK_CRATE;
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, spell,
+    ProgramLanguage, WORKSPACE_TREE_VIEW, spell,
 };
 use crate::docs::MAX_SEARCH_LIMIT;
-use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::sandbox::operations::{
+    DOCS_SEARCH, FILES_TREE, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT,
+};
 
 #[path = "rust.compile.rs"]
 pub(super) mod compile;
@@ -183,6 +185,12 @@ impl ProgramLanguage for Rust {
         Some("rustc")
     }
 
+    /// [What `rustc` says a program could not import](compile::unresolved_imports), read out of the
+    /// `E0432` and `E0433` wording this arm's own diagnostics carry.
+    fn unresolved_imports(&self, diagnostic: &str) -> Vec<String> {
+        compile::unresolved_imports(diagnostic)
+    }
+
     /// Unpack the embedded library set now, so the first code turn does not.
     ///
     /// The whole of this arm's warm-up, and the smallest of any compiled arm's: there is no daemon
@@ -194,18 +202,19 @@ impl ProgramLanguage for Rust {
         compile::warm();
     }
 
-    /// The module's own `rustc`, asked for metadata rather than an artifact — and the names its
-    /// namespace offers, read from the author's own source.
+    /// The module's own `rustc`, building the `.rlib` a program links — and the names its namespace
+    /// offers, read from the author's own source.
     ///
     /// What comes back is **source**, which is what a linked language's module has to be: it is an
     /// input to the [program compile](compile::compile_program) that binds it, not something a guest
     /// could load on its own.
     fn prepare_module(
         &self,
+        key: &str,
         source: &str,
         context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {
-        compile::compile_module(source, context)
+        compile::compile_module(key, source, context)
     }
 
     /// `.rs`, and nothing else. Nothing else in the registry compiles Rust.
@@ -289,14 +298,18 @@ impl ProgramLanguage for Rust {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
     }
 
-    /// [One `fn main` holding one search, one array and one `for` loop, each call composed with
-    /// `?`](self::bootstrap_program), with both paths resolved from this language's own catalogue.
-    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+    /// [One `fn main` holding the workspace tree, one search, one array and one `for` loop, each
+    /// call composed with `?`](self::bootstrap_program), with every path resolved from this
+    /// language's own catalogue.
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str], tree: Option<u32>) -> String {
         bootstrap_program(
             &spell(self, DOCS_SEARCH),
             &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            &spell(self, FILES_TREE),
+            &spell(self, VIEWS_OPEN_TEXT),
             modules,
             docs,
+            tree,
         )
     }
 
@@ -532,12 +545,31 @@ fn main_program(body: &str) -> String {
 pub(super) fn bootstrap_program(
     search: &str,
     open_docs_view: &str,
+    tree_call: &str,
+    open_text: &str,
     modules: &[&str],
     docs: &[&str],
+    tree: Option<u32>,
 ) -> String {
     let views = open_docs_views_body(open_docs_view, docs);
+    let walked = match tree {
+        None => String::new(),
+        Some(depth) => {
+            let options = format!("{}::TreeOptions", module_of(tree_call));
+            format!(
+                "    {open_text}(\n\
+                 \x20       {},\n\
+                 \x20       &{tree_call}({options} {{\n\
+                 \x20           depth: Some({depth}),\n\
+                 \x20           ..Default::default()\n\
+                 \x20       }})?,\n\
+                 \x20   )?;\n\n",
+                serde_json::Value::String(WORKSPACE_TREE_VIEW.to_string())
+            )
+        }
+    };
     if modules.is_empty() {
-        return main_program(&views);
+        return main_program(&format!("{walked}{views}"));
     }
     let listed: Vec<String> = modules
         .iter()
@@ -552,7 +584,7 @@ pub(super) fn bootstrap_program(
          \x20   }})?;\n",
         listed.join(", ")
     );
-    main_program(&format!("{listing}\n{views}"))
+    main_program(&format!("{walked}{listing}\n{views}"))
 }
 
 /// The module a fully-qualified call is filed under, taken off the front of the call itself.

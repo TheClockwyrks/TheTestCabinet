@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import type { RunRecord } from "@test-cabinet/run-record";
+import { CODE_METRICS } from "@test-cabinet/run-record/code-metrics";
 import {
   codeFigureFamilies,
   codeMetric,
@@ -8,6 +10,8 @@ import {
   formatMetricValue,
   isApproximate,
   lookupMetric,
+  toolchainCoverage,
+  toolchainTests,
 } from "./codeFormat";
 
 describe("the metric catalog", () => {
@@ -80,7 +84,9 @@ describe("lookupMetric", () => {
   // what an absent language block looks like: a pure-Rust tree carries no `typescript`
   // block, and "TypeScript files: 0" for it would be noise dressed as a measurement.
   it("treats an absent block and an explicit null alike", () => {
-    expect(lookupMetric({ typescript: null }, "typescript.files")).toBeUndefined();
+    expect(
+      lookupMetric({ typescript: null }, "typescript.files"),
+    ).toBeUndefined();
     expect(lookupMetric({}, "typescript.files")).toBeUndefined();
   });
 });
@@ -119,5 +125,72 @@ describe("codeFigureFamilies", () => {
   it("names a family the way the CLI report does, and passes an unknown one through", () => {
     expect(familyHeading("graph")).toBe("Module graph");
     expect(familyHeading("brand-new")).toBe("brand-new");
+  });
+});
+
+describe("familyHeading", () => {
+  // The walk's diagnostics — what it truncated, what it skipped, what it refused — were
+  // headed "Coverage", which they never were. The heading collided with the console's
+  // Coverage feature area and, now that the page carries executed figures, with real code
+  // coverage.
+  it("heads the walk's own diagnostics as analysis notes", () => {
+    expect(familyHeading("notes")).toBe("Analysis notes");
+  });
+
+  // The static counts under this family are how much test code the model WROTE. Nothing
+  // under it ran, and the executed suite has the better claim to the word "Tests".
+  it("heads the static test counts as authorship, not as tests", () => {
+    expect(familyHeading("tests")).toBe("Test authorship");
+  });
+
+  // The assertion that keeps the collision from creeping back on any family at all: with
+  // executed coverage on the same page, exactly one thing may be called "Coverage", and
+  // it is not in this table.
+  it("gives no catalog family a heading that reads as executed results", () => {
+    const headings = new Set(
+      CODE_METRICS.map((metric) => familyHeading(metric.family)),
+    );
+    expect([...headings]).not.toContain("Coverage");
+    expect([...headings]).not.toContain("Tests");
+  });
+});
+
+// The gate on the two executed bands. It tests whether file-derived data was actually
+// PARSED — never whether a manifest declared a `test` command — because a case that
+// declares one but whose vitest config still writes only a terminal table produces no
+// report file, and must show nothing at all rather than an empty widget.
+describe("the executed-tier gates", () => {
+  const run = (toolchain: unknown) => ({ toolchain }) as unknown as RunRecord;
+
+  it("reports nothing for a run with no toolchain block at all", () => {
+    expect(toolchainTests(run(undefined))).toBeNull();
+    expect(toolchainCoverage(run(undefined))).toBeNull();
+  });
+
+  // The shape every case version predating the report-file contract produces: the command
+  // ran, and wrote no file for either reader to parse.
+  it("reports nothing for a test command that wrote no report files", () => {
+    const ran = run({ test: { result: { ran: true, exitCode: 0 } } });
+    expect(toolchainTests(ran)).toBeNull();
+    expect(toolchainCoverage(ran)).toBeNull();
+  });
+
+  // Two files, two gates: a config can write the test report and no coverage summary.
+  it("gates the two independently", () => {
+    const partial = run({
+      test: { result: { ran: true }, tests: { total: 3, passed: 3 } },
+    });
+    expect(toolchainTests(partial)).toMatchObject({ total: 3 });
+    expect(toolchainCoverage(partial)).toBeNull();
+  });
+
+  // A present block of zeroes is the runner saying the build shipped no tests. That is a
+  // result, and it renders — unlike an absent block, which is not a measurement at all.
+  it("distinguishes a reported zero from nothing reported", () => {
+    const none = run({
+      test: { result: { ran: true }, tests: { total: 0, succeeded: true } },
+    });
+    expect(toolchainTests(none)).not.toBeNull();
+    expect(toolchainTests(none)?.total).toBe(0);
   });
 });

@@ -4,13 +4,13 @@ This repository is the starting point for building **Carom**, the game the
 specification under `specs/` describes. Read `specs/overview.md` first; it says
 how the rest of the specification is organized.
 
-In Carom three balls are in play at once. Each carries its own
-velocity, spin, hold timer, and trail, each launches at a random angle when its
-own hold timer elapses, and the balls collide with one another as well as with
-the walls, the paddles, and the obstacles. `specs/balls.md` gives the per-ball
-hold, the independent respawn, and the ball-to-ball collision. The state contract
-in `specs/state.md` and the surface in `specs/instrumentation.md` already carry
-all three balls. What is missing is the game.
+In Carom three balls are in play at once. Each carries its own velocity, spin,
+hold timer, and trail, each launches at a random angle when its own hold timer
+elapses, and the balls collide with one another as well as with the walls, the
+paddles, and the obstacles. `specs/balls.md` gives the per-ball hold, the
+independent respawn, and the ball-to-ball collision. The state contract in
+`specs/state.md` and the surface in `specs/instrumentation.md` already carry all
+three balls, and every ball operation of that surface takes a ball index.
 
 The project is already wired up. It builds on the **Simple 2D** engine, which is
 installed as an ordinary dependency and documents itself under `engine/` — read
@@ -41,10 +41,10 @@ The debug surface is a required deliverable. The engine returns it from
 `engine.debug` exactly as `initialize` handed it over, and that is how the game
 is driven from code, so it is present and exactly as `specs/instrumentation.md`
 specifies. Because nothing holds a writable state, its operations are written in
-the shape of `update`: a pose takes the current state and returns the next, and
-a caller applies it through `engine.apply((s) => debug.serve(s))`; a reading
-takes the state and returns what it read, as `debug.snapshot(engine.state)`.
-Nothing is published to the page.
+the shape of `update`: every one takes the current state first, then the
+arguments its heading names. A pose returns the next state, applied through
+`engine.apply((s) => debug.setScreen(s, "countdown"))`; a reading returns what
+it read, as `debug.snapshot(engine.state)`. Nothing is published to the page.
 
 `CaromState` **is a contract**. Keep every field, under the name, type, and
 meaning `specs/state.md` gives it. You may add fields, but only for data you can
@@ -64,7 +64,8 @@ carries a complete worked example of testing a game this way.
 - **`index.html`** — the page and the canvas the engine fits the field into.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.
-- **`.tcab/`** — the vendored engine.
+- **The vendored engine directory** that `package.json` resolves the engine
+  dependency from.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the
 `package-lock.json` — the build is installed with `npm ci`. Leave the existing

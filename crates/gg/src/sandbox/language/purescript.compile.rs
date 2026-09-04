@@ -93,16 +93,30 @@
 //! | `ErrorParsingModule` / `ErrorParsingFFIModule` | [`PrepareError::Syntax`] — the parser could not read it |
 //! | any other `purs` error code (`TypesDoNotUnify`, `UnknownName`, `NoInstanceFound`, …) | [`PrepareError::Compile`] — read whole and rejected, which is the band a typed arm exists to produce |
 //! | `esbuild` reporting no matching export for `main` | [`PrepareError::Compile`] — the program compiled but declares no entry point |
-//! | a program header naming a [code module](compile_program)'s own `Lib.<Key>` | [`PrepareError::Compile`] — refused before the compiler runs, in a sentence naming the key |
 //! | a diagnostic in a code module and none in the program | [`PrepareFailure::Lowering`] — the module compiled on its own when it was loaded, so this is gg's |
 //! | `purs` or `esbuild` could not run, was killed, or reported nothing | [`PrepareFailure::Toolchain`] — **not** the model's, and never shown to it as its own |
 //! | the `purs` on `PATH` is not the release the shipped tree was compiled by | [`PrepareFailure::Toolchain`], refused by [`agree_on_the_compiler`] at the first compile of the process, naming both releases — because externs are a compiler-version-private format and the alternative is every program failing over gg's own library files |
 //!
 //! Diagnostics are located in the model's **own** coordinates, because the file `purs` reads is the
-//! reply and nothing else: the model declares its own module header and its own `main`, and
-//! [`module_name`] reads the header it wrote rather than replacing it. A reply with no header is
-//! `ErrorParsingModule` at line 1, which is the compiler's own answer to the compiler's own
-//! question.
+//! reply and nothing else: the model declares its own module header and its own `main`, and nothing
+//! here reads that header or replaces it. A reply with no header is `ErrorParsingModule` at line 1,
+//! which is the compiler's own answer to the compiler's own question.
+//!
+//! # Where the entry point comes from
+//!
+//! `esbuild` is pointed at a generated module that imports `main` from the JavaScript `purs` emitted
+//! for the response, and `purs` files a module's emitted JavaScript under the module's own name. So
+//! the entry point needs that name — and it is [read out of the output tree](response_module) rather
+//! than out of the reply. The library set is shipped pre-compiled and hard-linked into the workspace,
+//! and every loaded code module was compiled into the same project under `Lib.<Key>`, so the module
+//! directory neither of them claims is the response's.
+//!
+//! What makes that answer unambiguous across an agent's turns is [the
+//! sweep](clear_previous_response): the output directory is [persistent work](PROJECT_DIRS) and
+//! survives the reset the next preparation pays, so every unclaimed directory in it is removed
+//! before `purs` runs. A module name a response reuses from an earlier response therefore resolves
+//! to this response's own build, and a name colliding with a library module or with a loaded one is
+//! `DuplicateModule` in the model's own file before any of this is asked.
 //!
 //! A code module's are its author's, on the same terms. The one thing gg writes into that file is
 //! the module's name, [replaced inside the header line its author wrote](headed), so a module is
@@ -118,7 +132,9 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::sandbox::language::compile::{CompilerReport, place_tree, shared_toolchain_dir};
+use crate::sandbox::language::compile::{
+    CompilerReport, Workspace, place_tree, shared_toolchain_dir,
+};
 use crate::sandbox::language::{
     CodeModule, PrepareContext, PrepareError, PrepareFailure, PreparedProgram,
 };
@@ -170,25 +186,15 @@ const VERSION_TIMEOUT: Duration = Duration::from_secs(30);
 /// The file a program is compiled under, and the one its diagnostics are located in.
 pub(super) const PROGRAM_FILE: &str = "program.purs";
 
-/// The file a code module is compiled under **on its own**, when the skill or memory carrying it is
-/// used, and the one its author's diagnostics are located in.
-pub(super) const MODULE_FILE: &str = "module.purs";
-
-/// The name that check files the module under.
-///
-/// A name of gg's rather than the author's, because the author's own could be one the shipped
-/// library set already publishes and the check would answer `DuplicateModule` about a module that
-/// compiles perfectly well under the name a program will really reach it by. The key is not known
-/// at that step — [`prepare_module`](crate::sandbox::ProgramLanguage::prepare_module) is handed a source and
-/// nothing else — so the check uses one fixed name and the program compile uses
-/// [the real one](super::module_path).
-const MODULE_CHECK_NAME: &str = "Lib.Module";
-
 /// The entry module `esbuild` is pointed at.
 ///
-/// It is the one source in the bundle that is gg's rather than the model's or a library's, so
-/// `PureScript::locations` names it as the source whose frames are struck.
+/// One of the sources in the bundle that are gg's rather than the model's or a library's, which
+/// `PureScript::locations` strikes the frames of. The rest are this arm's SDK, named by
+/// [`ggs_own_sources`].
 pub(super) const ENTRY_FILE: &str = "entry.js";
+
+/// The namespace this arm's SDK declares every one of its modules under.
+const SDK_NAMESPACE: &str = "Gg";
 
 /// What the bundler writes, beside the model's own source in this preparation's working directory.
 ///
@@ -209,6 +215,16 @@ const OUTPUT_DIR: &str = "output";
 
 /// The tree's two top-level directories: the library sources, and what `purs` compiled them to.
 const TREE_DIRS: [&str; 2] = ["libs", OUTPUT_DIR];
+
+/// **The `purs` project's own directories**, which the agent's compile workspace keeps across its
+/// preparations rather than emptying with the rest of the working directory.
+///
+/// The same two, declared to the seam through
+/// [`persistent_work`](crate::sandbox::ProgramLanguage::persistent_work). `purs` is given a project
+/// directory and keys its own incremental work on what is in it, so re-staging it per preparation
+/// would both cost 1,430 links a turn and throw away the compiler's record of what it had already
+/// built — including the code modules this agent loaded.
+pub(super) const PROJECT_DIRS: &[&str] = &TREE_DIRS;
 
 /// What the embedded library tree was built from, and what is in it.
 #[derive(Debug, Deserialize)]
@@ -233,11 +249,8 @@ struct Manifest {
     ///
     /// Recorded rather than assumed so that [`packages`](Self::packages) stays a list of what the
     /// registry resolved: the drift gate compares that list with the tree's directories, and an SDK
-    /// filed among them would be a package no package set has ever heard of.
-    #[cfg_attr(
-        not(test),
-        allow(dead_code, reason = "read by the library set's own drift gate")
-    )]
+    /// filed among them would be a package no package set has ever heard of. It is also the name a
+    /// source map gives an SDK frame, which is how [`ggs_own_sources`] knows one.
     sdk: String,
     /// How many modules the tree carries.
     #[cfg_attr(
@@ -313,41 +326,45 @@ pub(super) fn compile_program(
     modules: &[CodeModule],
     context: &PrepareContext,
 ) -> Result<PreparedProgram, PrepareFailure> {
-    refuse_a_program_taking_a_modules_name(source, modules)?;
     let workspace = staged(context)?;
+    let claimed = claimed_modules(modules).map_err(PrepareFailure::Toolchain)?;
+    clear_previous_response(workspace, &claimed).map_err(PrepareFailure::Toolchain)?;
 
     workspace
         .write(PROGRAM_FILE, source)
         .map_err(PrepareFailure::Toolchain)?;
     let mut files = vec![PROGRAM_FILE.to_string()];
+    // Each module was compiled into this project at the read that loaded it, so `purs` finds its
+    // file unchanged and its output up to date and compiles the response alone. One this agent's
+    // workspace holds no build of is written now and compiled with the program, and recorded so the
+    // program after it does not.
+    let mut fresh: Vec<&CodeModule> = Vec::new();
     for module in modules {
-        let file = module_file(&module.name);
-        workspace
-            .write(
-                &file,
-                &headed(&module.source, &super::module_path(&module.name)),
-            )
-            .map_err(PrepareFailure::Toolchain)?;
-        files.push(file);
+        files.push(module_path(workspace, &module.name));
+        if workspace
+            .module_build(&module.name, &module.source)
+            .is_none()
+        {
+            write_module(workspace, &module.name, &module.source)?;
+            fresh.push(module);
+        }
     }
 
     let report = invoke_purs(&files, context).map_err(PrepareFailure::Toolchain)?;
     classify(&report, PROGRAM_FILE, modules)?;
+    for module in fresh {
+        record_module(workspace, &module.name, &module.source);
+    }
 
-    // Read AFTER `purs` accepted the source, so a reply gg cannot find a header in is answered by
-    // the compiler's own `ErrorParsingModule` at line 1 rather than by anything written here.
-    let module = module_name(source).ok_or_else(|| {
-        PrepareFailure::Toolchain(format!(
-            "purs {} compiled {PROGRAM_FILE} and gg could not read its module header",
-            compiler_version(),
-        ))
-    })?;
+    // Asked AFTER `purs` accepted the source, so a reply the compiler refused is answered by its own
+    // diagnostic rather than by a missing directory here.
+    let module = response_module(workspace, &claimed)?;
     workspace
-        .write(ENTRY_FILE, &entry_source(module))
+        .write(ENTRY_FILE, &entry_source(&module))
         .map_err(PrepareFailure::Toolchain)?;
 
     let report = invoke_esbuild(context).map_err(PrepareFailure::Toolchain)?;
-    classify_bundle(&report, module)?;
+    classify_bundle(&report, &module)?;
 
     let bundle = workspace.work().join(BUNDLE_FILE);
     let source = std::fs::read_to_string(&bundle).map_err(|error| {
@@ -363,36 +380,78 @@ pub(super) fn compile_program(
     })
 }
 
-/// Check a **code module** — the code half of a [skill](crate::skills) or a
-/// [memory](crate::memories) — by compiling it on its own, so an author's mistake is read at the use
-/// that loaded it rather than by the next program that has it in scope.
+/// Compile a **code module** — the code half of a [skill](crate::skills) or a
+/// [memory](crate::memories) — into the agent's `purs` project, under the name a program imports it
+/// by.
 ///
-/// Nothing is kept: what a program is compiled against is the author's source, written into that
-/// program's own project under the key the module was bound at. This is the one step that ever reads
-/// a module alone, and its whole product is the verdict.
-pub(super) fn check_module(source: &str, context: &PrepareContext) -> Result<(), PrepareFailure> {
+/// This is where a module is compiled and the only place. `key` is the binding key, so the file is
+/// headed `Lib.<Key>` and written into that key's directory in the
+/// [band](crate::sandbox::Workspace::open_module), and `purs` compiles it into the project's own
+/// `output/Lib.<Key>`. Both survive the preparation, so every program the agent writes afterwards
+/// lists the same file and `purs` finds it up to date.
+///
+/// Compiling it here is what puts an author's mistake at the use that loaded it rather than in front
+/// of the next program that has it in scope.
+pub(super) fn compile_module(
+    key: &str,
+    source: &str,
+    context: &PrepareContext,
+) -> Result<(), PrepareFailure> {
     let workspace = staged(context)?;
-    workspace
-        .write(MODULE_FILE, &headed(source, MODULE_CHECK_NAME))
-        .map_err(PrepareFailure::Toolchain)?;
-    let report =
-        invoke_purs(&[MODULE_FILE.to_string()], context).map_err(PrepareFailure::Toolchain)?;
-    classify(&report, MODULE_FILE, &[])
+    let file = write_module(workspace, key, source)?;
+    let report = invoke_purs(&[file], context).map_err(PrepareFailure::Toolchain)?;
+    classify(&report, &module_file(key), &[])?;
+    record_module(workspace, key, source);
+    Ok(())
 }
 
-/// This preparation's own tree, with the library set hard-linked into it and the compiler agreed
-/// with — everything both compiles need before they write a source file.
-fn staged(
-    context: &PrepareContext,
-) -> Result<&crate::sandbox::language::compile::Workspace, PrepareFailure> {
+/// Write one code module's headed source into its own directory in the band, and hand back the path
+/// `purs` is given.
+fn write_module(workspace: &Workspace, key: &str, source: &str) -> Result<String, PrepareFailure> {
+    workspace
+        .open_module(key)
+        .map_err(PrepareFailure::Toolchain)?;
+    workspace
+        .write_module(
+            key,
+            &module_file(key),
+            &headed(source, &super::module_path(key)),
+        )
+        .map_err(PrepareFailure::Toolchain)?;
+    Ok(module_path(workspace, key))
+}
+
+/// Record that the module bound at `key` is compiled into this project — its file, and what `purs`
+/// emitted for it.
+fn record_module(workspace: &Workspace, key: &str, source: &str) {
+    let emitted = workspace
+        .work()
+        .join(OUTPUT_DIR)
+        .join(super::module_path(key));
+    workspace.record_module(
+        key,
+        source,
+        vec![workspace.work().join(module_path(workspace, key)), emitted],
+    );
+}
+
+/// The agent's `purs` project, with the library set hard-linked into it and the compiler agreed
+/// with — everything every compile here needs before it writes a source file.
+///
+/// The staging happens **once for the agent** rather than once per preparation, which is what
+/// [`PROJECT_DIRS`] is declared for: `purs` keys its own incremental work on the project directory,
+/// so a tree re-linked every turn is a compiler told nothing it built is still there.
+fn staged(context: &PrepareContext) -> Result<&Workspace, PrepareFailure> {
     let libraries = libraries().map_err(PrepareFailure::Toolchain)?;
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
     agree_on_the_compiler(context)?;
-    stage(workspace.work(), libraries).map_err(PrepareFailure::Toolchain)?;
+    workspace
+        .stage_once(PROJECT_DIRS, || stage(workspace.work(), libraries))
+        .map_err(PrepareFailure::Toolchain)?;
     Ok(workspace)
 }
 
-/// The file one code module is compiled under, beside the program that imports it.
+/// The file one code module is compiled under.
 ///
 /// Named for the module it declares, so a run-time frame the composed source map resolves into an
 /// author's own code reads `Lib.CsvTools.purs`. It is also what tells a diagnostic in a module from
@@ -400,6 +459,12 @@ fn staged(
 /// one no library file has, and `Lib.<Key>.purs` is.
 fn module_file(key: &str) -> String {
     format!("{}.purs", super::module_path(key))
+}
+
+/// Where that file is, as `purs` is given it: inside the key's own directory in the band, relative to
+/// the working directory the compiler runs in.
+fn module_path(workspace: &Workspace, key: &str) -> String {
+    workspace.module_path(key, &module_file(key))
 }
 
 /// `source` with the name in its module header replaced by `name`.
@@ -410,38 +475,18 @@ fn module_file(key: &str) -> String {
 /// the key their skill will be bound under. It **adds no line** — the replacement happens inside the
 /// header the author wrote — so every diagnostic `purs` reports is at the line its author wrote.
 ///
+/// The header is found through [the arm's own scanner](super::modules::header_name_span), over
+/// [the code mask](super::mask) — the one that already reads a module's header for the export list
+/// it carries, so the name gg compiles a module under and the names gg reports it offers are read
+/// out of one reading of the same header.
+///
 /// A source with no header is handed over untouched, and `purs` answers `ErrorParsingModule` at
 /// line 1, which is the compiler's own answer to the compiler's own question.
 fn headed(source: &str, name: &str) -> String {
-    match module_name_span(source) {
+    let mask = super::mask::code_mask(source);
+    match super::modules::header_name_span(source, mask.as_ref()) {
         Some(span) => format!("{}{name}{}", &source[..span.start], &source[span.end..]),
         None => source.to_string(),
-    }
-}
-
-/// Refuse a program whose own header names a module this turn carries.
-///
-/// `purs` would answer it — two modules of one name is `DuplicateModule` — but it may report that
-/// against either file, and a diagnostic in a file the model did not write is read as gg's failure
-/// rather than as the model's. So the collision is answered here, in a sentence naming the key, and
-/// the model reads what it can act on.
-fn refuse_a_program_taking_a_modules_name(
-    source: &str,
-    modules: &[CodeModule],
-) -> Result<(), PrepareFailure> {
-    let Some(declared) = module_name(source) else {
-        return Ok(());
-    };
-    let taken = modules
-        .iter()
-        .find(|module| super::module_path(&module.name) == declared);
-    match taken {
-        None => Ok(()),
-        Some(module) => Err(PrepareFailure::Program(PrepareError::Compile(format!(
-            "the module header names `{declared}`, which is the code module loaded as `{}`. \
-             Name the program's module something else.",
-            module.name,
-        )))),
     }
 }
 
@@ -458,90 +503,138 @@ fn entry_source(module: &str) -> String {
     format!("import {{ main }} from {target:?};\n\nmain();\n")
 }
 
-// ---------------------------------------------------------------------------------------------
-// The module header
-// ---------------------------------------------------------------------------------------------
-
-/// The name of the module `source` declares, or `None` for a source that declares none.
+/// **The prefixes of the composed map's source names that are gg's own**, whose frames the model
+/// reads a count of rather than a location in.
 ///
-/// The model writes its own header, and the name it chose is what the bundler's entry point imports
-/// `main` from — `purs` files a module's emitted JavaScript under its own name. Nothing rewrites a
-/// program's header and nothing supplies one, so every line of what runs is a line the model wrote
-/// and every coordinate is already the model's. A code module's header is the one gg edits, through
-/// [`headed`], and that edit stays inside the line the author wrote.
+/// Three, because gg's code reaches the bundle by three routes. `esbuild`'s entry module is gg's own
+/// file. The SDK's PureScript is staged under `libs/` beside the registry packages, so `purs` maps
+/// an SDK frame to a path under the directory the manifest records the SDK's own name as. The SDK's
+/// foreign JavaScript is copied rather than compiled, so `purs` writes no mapping for it and it
+/// reaches the map under the output directory `purs` filed the module in.
 ///
-/// Read after `purs` has accepted the source, so this never has to answer for a header the compiler
-/// would have rejected. Comments before the header are skipped rather than searched through, because
-/// `--` and `{- -}` may legally precede it and a `module` inside one is not the header.
-fn module_name(source: &str) -> Option<&str> {
-    module_name_span(source).map(|span| &source[span])
+/// The output prefix carries the namespace rather than being the output directory alone: a frame in
+/// a *library's* foreign JavaScript arrives the same way and names code the model's program really
+/// was compiled against, so it is reported.
+pub(super) fn ggs_own_sources() -> Vec<String> {
+    vec![
+        ENTRY_FILE.to_string(),
+        format!("libs/{}/", manifest().sdk),
+        format!("{OUTPUT_DIR}/{SDK_NAMESPACE}."),
+    ]
 }
 
-/// The byte span of the module **name** in a source that opens with a module header, or `None` for
-/// one that does not.
-fn module_name_span(source: &str) -> Option<std::ops::Range<usize>> {
-    let bytes = source.as_bytes();
-    let mut at = skip_trivia(source, 0);
+// ---------------------------------------------------------------------------------------------
+// The response's own module
+// ---------------------------------------------------------------------------------------------
 
-    // The header keyword, which must be followed by something that is not part of an identifier —
-    // `modulename` is a name, not a header.
-    at = source[at..]
-        .strip_prefix("module")
-        .filter(|rest| rest.starts_with(|character: char| character.is_whitespace()))
-        .map(|rest| source.len() - rest.len())?;
-
-    let start = skip_trivia(source, at);
-    let mut end = start;
-    while end < bytes.len() && is_module_name_byte(bytes[end]) {
-        end += 1;
-    }
-    (end > start).then_some(start..end)
+/// **Every module directory the shipped library set already claims**, read once per process.
+///
+/// Read from the sealed shared tree rather than from an agent's copy of it, which is what makes it a
+/// per-process constant: the tree is content-keyed, placed once per machine and read-only from then
+/// on, so every agent's hard-linked copy carries exactly these directories and nothing else could
+/// have put one there.
+fn library_modules() -> Result<&'static std::collections::BTreeSet<String>, String> {
+    static MODULES: std::sync::OnceLock<Result<std::collections::BTreeSet<String>, String>> =
+        std::sync::OnceLock::new();
+    MODULES
+        .get_or_init(|| directories(&libraries()?.tree.join(OUTPUT_DIR)))
+        .as_ref()
+        .map_err(Clone::clone)
 }
 
-/// Whether a byte may appear in a qualified module name (`Data.Map.Internal`).
-fn is_module_name_byte(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'_' || byte == b'\''
+/// Every module directory in `output` that is **not** this response's: the shipped library set's,
+/// and one per code module this turn carries.
+///
+/// A loaded module is claimed by the turn's own list rather than by what the workspace has built,
+/// because that list is what `purs` is about to be given. A key the turn no longer carries is a key
+/// no program can import, so its build is the previous response's leavings and goes with them.
+fn claimed_modules(modules: &[CodeModule]) -> Result<std::collections::BTreeSet<String>, String> {
+    let mut claimed = library_modules()?.clone();
+    claimed.extend(
+        modules
+            .iter()
+            .map(|module| super::module_path(&module.name)),
+    );
+    Ok(claimed)
 }
 
-/// Advance past whitespace and comments, starting at `from`.
-fn skip_trivia(source: &str, from: usize) -> usize {
-    let mut at = from;
-    loop {
-        let rest = &source[at..];
-        let trimmed = rest.trim_start();
-        at = source.len() - trimmed.len();
-        if trimmed.starts_with("--") {
-            at += trimmed.find('\n').map_or(trimmed.len(), |end| end + 1);
+/// **Remove the previous response's build output**, so that what `purs` writes for this one is the
+/// only unclaimed module directory in the tree.
+///
+/// The output directory is [persistent work](PROJECT_DIRS) — `purs` keys its incremental work on it
+/// and the loaded modules' builds live in it — so the reset a preparation pays leaves it standing,
+/// and the module directory the previous response's header named is still there. Removing it is what
+/// makes [`response_module`] an answer rather than a guess, and it is what lets a model reuse a
+/// module name it used a turn ago.
+///
+/// Only directories are considered. The two files at the root of `output/` are `purs`'s own
+/// bookkeeping, and an entry in `cache-db.json` for a module whose directory is gone is inert:
+/// `purs` rebuilds a module whose output it cannot find whatever it believes about the source.
+fn clear_previous_response(
+    workspace: &Workspace,
+    claimed: &std::collections::BTreeSet<String>,
+) -> Result<(), String> {
+    let output = workspace.work().join(OUTPUT_DIR);
+    for name in directories(&output)? {
+        if claimed.contains(&name) {
             continue;
         }
-        if trimmed.starts_with("{-") {
-            // PureScript's block comments nest, so the first `-}` does not necessarily close the
-            // first `{-`.
-            let bytes = source.as_bytes();
-            let mut depth = 0usize;
-            let mut scan = at;
-            while scan < bytes.len() {
-                if source[scan..].starts_with("{-") {
-                    depth += 1;
-                    scan += 2;
-                } else if source[scan..].starts_with("-}") {
-                    // Saturating because this runs over a model's untrusted text on the turn path:
-                    // the scan starts at a `{-`, so a close cannot outrun an open here, but an
-                    // arithmetic panic in a prepare step would be a run ended over a comment.
-                    depth = depth.saturating_sub(1);
-                    scan += 2;
-                    if depth == 0 {
-                        break;
-                    }
-                } else {
-                    scan += 1;
-                }
-            }
-            at = scan;
-            continue;
-        }
-        return at;
+        let path = output.join(&name);
+        std::fs::remove_dir_all(&path)
+            .map_err(|error| format!("could not clear {}: {error}", path.display()))?;
     }
+    Ok(())
+}
+
+/// **The module `purs` filed this response under** — the one directory in the compiler's output that
+/// neither the library set nor a loaded code module claims.
+///
+/// The name is the model's, written in its own header, and nothing here reads that header: `purs`
+/// has already read it, accepted it and filed the emitted JavaScript under it. Asked after the
+/// compile succeeded, so a program the compiler refused never reaches this.
+///
+/// Both ways of failing are gg's rather than the model's, and are reported as such. A collision with
+/// a module of any other name is impossible here: `purs` answers two modules of one name with
+/// `DuplicateModule` against the first file it was given, which is always the program's.
+fn response_module(
+    workspace: &Workspace,
+    claimed: &std::collections::BTreeSet<String>,
+) -> Result<String, PrepareFailure> {
+    let output = workspace.work().join(OUTPUT_DIR);
+    let mut unclaimed: Vec<String> = directories(&output)
+        .map_err(PrepareFailure::Toolchain)?
+        .into_iter()
+        .filter(|name| !claimed.contains(name))
+        .collect();
+    match unclaimed.len() {
+        1 => Ok(unclaimed.remove(0)),
+        0 => Err(PrepareFailure::Toolchain(format!(
+            "purs {} compiled {PROGRAM_FILE} and wrote no module of its own into {}",
+            compiler_version(),
+            output.display(),
+        ))),
+        _ => Err(PrepareFailure::Toolchain(format!(
+            "purs {} compiled {PROGRAM_FILE} and gg cannot tell which of {unclaimed:?} in {} is the \
+             response's own module",
+            compiler_version(),
+            output.display(),
+        ))),
+    }
+}
+
+/// The names of the directories directly inside `path`, which for `output/` is one per compiled
+/// module.
+fn directories(path: &Path) -> Result<std::collections::BTreeSet<String>, String> {
+    let entries = std::fs::read_dir(path)
+        .map_err(|error| format!("could not read {}: {error}", path.display()))?;
+    let mut names = std::collections::BTreeSet::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("could not read {}: {error}", path.display()))?;
+        if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+            names.insert(entry.file_name().to_string_lossy().into_owned());
+        }
+    }
+    Ok(names)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -899,10 +992,10 @@ const NO_SUCH_MODULE: &str = "Could not resolve";
 /// declares no `main` has nothing to run, and the model is told that in a sentence rather than being
 /// shown a bundler's error about a JavaScript file it never wrote.
 ///
-/// The one below it is gg's: `purs` files a module's emitted JavaScript under the name in its header,
-/// and [`module_name`] read that name out of the same text — so a specifier that does not resolve
-/// means the two disagreed about where the header ended, which is this file's defect and is reported
-/// as one.
+/// The one below it is gg's: the entry point names the module directory
+/// [`response_module`] identified in `purs`'s own output, so a specifier that does not resolve means
+/// the directory it named is not the one holding the response's JavaScript. That is this file's
+/// defect and is reported as one.
 fn classify_bundle(report: &CompilerReport, module: &str) -> Result<(), PrepareFailure> {
     if report.ok {
         return Ok(());
@@ -916,8 +1009,8 @@ fn classify_bundle(report: &CompilerReport, module: &str) -> Result<(), PrepareF
     }
     if report.stderr.contains(NO_SUCH_MODULE) {
         return Err(PrepareFailure::Toolchain(format!(
-            "purs {} compiled the program and gg read its module header as {module:?}, which is \
-             not the name purs filed it under{}",
+            "purs {} compiled the program and gg identified its module as {module:?}, which \
+             esbuild could not resolve{}",
             compiler_version(),
             report.stderr_tail(),
         )));
@@ -1069,6 +1162,21 @@ fn link_tree(from: &Path, to: &Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// **The modules `purs` said this program could not import**, read out of the rendering
+/// [`Diagnostic::render`](Diagnostic::render) produced.
+///
+/// `purs` reports one sentence for it, under the `ModuleNotFound` code this arm renders above it:
+/// `Module Data.Argonaut was not found.` The module name is unquoted and the sentence is what
+/// bounds it.
+pub(super) fn unresolved_imports(diagnostic: &str) -> Vec<String> {
+    diagnostic
+        .lines()
+        .flat_map(|line| {
+            crate::sandbox::language::diagnostics::named(line, "Module ", " was not found")
+        })
+        .collect()
 }
 
 #[cfg(test)]

@@ -1,31 +1,46 @@
 // multi/waiting-ball-solid — a ball waiting on its home point is an immovable
 // body, and keeps its place and its hold when something hits it.
 //
-// A match is opened, which leaves all three balls waiting with a full hold, and
-// then ONE of them is posed into flight aimed straight at the next one's home
-// point. Posing a ball ends its own hold and nothing else
-// (specs/instrumentation.md), so the target is still waiting when the moving ball
-// arrives — and the whole contact happens well inside the hold, so what it meets
-// is a waiting ball rather than a launched one.
+// The field is posed with the PAIR this point is about and nothing else: two
+// balls spawned onto their home points at one instant, each with a full hold, and
+// no obstacle anywhere. One of them is then put into flight aimed straight at the
+// other's home point. Only the moving ball's own hold is ended
+// (specs/instrumentation.md: each operation sets one field), so the target is
+// still waiting when it arrives — and the whole contact happens well inside the
+// hold, so what it meets is a waiting ball rather than a launched one.
+//
+// The two paddles cannot be removed, so both are held out of the lane the moving
+// ball travels along and comes back down.
 //
 // The two halves of the rule are read on the frame of the contact: the moving
 // ball comes back off the target at the speed it arrived with, and the target has
 // not moved and is still holding. That its hold TIMER was untouched is read
 // through the launch that timer times: the target leaves on the frame its own
-// full hold elapses, counted from the frame the match opened, so a contact that
-// reset its hold would land the launch late and one that ended it would land it
-// early.
+// full hold elapses, counted from the frame the pair was spawned, so a contact
+// that reset its hold would land the launch late and one that ended it would land
+// it early.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BALL_HOMES } from "../../src/constants";
+import { BALL_HOMES } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
-import { captureReplay, createHarness, type Harness } from "../harness";
+import {
+  captureReplay,
+  createHarness,
+  isolateField,
+  openCountdown,
+  parkPaddles,
+  type Harness,
+} from "../harness";
 import {
   HOLD_TICKS,
   HOLD_TOLERANCE_TICKS,
+  ballAt,
   driveLaunch,
-  readBalls,
+  multiOps,
 } from "./harness";
+
+/** How many balls this point is about: the one moving, and the one waiting. */
+const PAIR = 2;
 
 /** Where the moving ball starts, and how fast it travels, in units per second. */
 const START_X = 400;
@@ -51,40 +66,36 @@ afterEach(() => {
 });
 
 it("bounces a moving ball off a waiting one without moving it", async () => {
-  h.debug.reset();
-  await h.advance(1);
-  h.debug.startMatch("versus");
-  // One advanced frame settles the screen change (specs/instrumentation.md),
-  // and every pose below acts on the open match.
-  await h.advance(1);
-  // The frame the match opened on: the holds run from here, and the launch the
-  // final assertion counts to is measured against it.
-  const openedAt = h.engine.frame().count;
-  // Ball one waits on its own home at the field center; ball zero is aimed
-  // straight along that line at it. Ball two waits well below the lane.
-  h.debug.setBall(0, {
-    x: START_X,
-    y: BALL_HOMES[1].y,
-    vx: APPROACH,
-    vy: 0,
-    spin: 0,
-  });
+  await openCountdown(h, "versus");
+  isolateField(h, { balls: PAIR });
+  parkPaddles(h);
+  // The instant the pair was spawned: both holds run from here, and the launch
+  // the final assertion counts to is measured against it.
+  const spawnedAt = h.engine.frame().count;
+
+  // Ball one waits on its own home at the field center; ball zero is put into
+  // flight straight along that line at it, one atomic pose at a time.
+  const ops = multiOps(h);
+  ops.setBallHeld(0, false);
+  ops.setBallPosition(0, START_X, BALL_HOMES[1].y);
+  ops.setBallVelocity(0, APPROACH, 0);
+  ops.setBallSpin(0, 0);
 
   const bounce = await captureReplay(h, "bounce", async () => {
-    const met = await h.until((s) => readBalls(s)[0].vx < 0, {
+    const met = await h.until((s) => ballAt(s, 0).vx < 0, {
       maxFrames: 100,
       poll: 1,
     });
     // Read HERE, on the frame the moving ball turned round: whether the waiting
     // ball moved is a question about that instant, and its own hold runs out
     // shortly afterwards.
-    const balls = readBalls(met.snapshot);
+    const pair = [ballAt(met.snapshot, 0), ballAt(met.snapshot, 1)];
     await h.advance(DEPARTURE_TICKS);
-    return { met, balls };
+    return { met, pair };
   });
 
   assertEqual(bounce.met.hit, true);
-  const [moving, waiting] = bounce.balls;
+  const [moving, waiting] = bounce.pair;
 
   // The waiting ball is where it was, motionless, and still holding rather than
   // having been knocked into play.
@@ -105,7 +116,7 @@ it("bounces a moving ball off a waiting one without moving it", async () => {
   const relaunch = await driveLaunch(h, 1);
   assertEqual(relaunch.hit, true);
   assertLessThanOrEqual(
-    Math.abs(h.engine.frame().count - openedAt - HOLD_TICKS),
+    Math.abs(h.engine.frame().count - spawnedAt - HOLD_TICKS),
     HOLD_TOLERANCE_TICKS,
   );
 });

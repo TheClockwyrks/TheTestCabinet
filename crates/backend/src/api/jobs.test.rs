@@ -149,6 +149,10 @@ fn queued_job(harness_slug: &str, gg_config_json: Option<&str>) -> job::Model {
         harness_slug: harness_slug.to_string(),
         model_id: "claude-sonnet-4-5".to_string(),
         gg_config_json: gg_config_json.map(str::to_string),
+        gg_preset: None,
+        gg_config_id: None,
+        engine_slug: None,
+        gg_models: None,
         job_token: "t".to_string(),
         record_id: None,
         detail: None,
@@ -182,6 +186,21 @@ fn job_summary_names_a_gg_jobs_configuration() {
     // the row degrades to its model instead.
     let corrupt = queued_job("gg", Some("{not json"));
     assert_eq!(job_summary(&corrupt).gg_preset, None);
+}
+
+/// The engine a job was enqueued on rides in its display identity, so a console can
+/// tell one cell's in-flight runs from another's before either has a record. Two rungs
+/// of a ladder that differ only by engine are two cells, and a live row filed under
+/// the wrong one is counted toward a figure it will never join.
+#[test]
+fn job_summary_carries_the_jobs_engine() {
+    // No engine on the job is the `none` engine, which the wire spells as an absent
+    // field — the same defaulting the launch request and the run record use.
+    assert_eq!(job_summary(&queued_job("claude", None)).engine, None);
+
+    let mut on_engine = queued_job("claude", None);
+    on_engine.engine_slug = Some("simple-2d".to_string());
+    assert_eq!(job_summary(&on_engine).engine.as_deref(), Some("simple-2d"));
 }
 
 // --- Attribution ------------------------------------------------------------
@@ -242,6 +261,36 @@ fn a_top_up_launch_records_the_plan_or_ladder_that_asked_for_it() {
         .expect("the fixture body is valid");
         assert_eq!(job.origin, Some(expected));
     }
+}
+
+#[test]
+fn a_launchs_engine_is_lifted_onto_the_job_the_queue_counts_by() {
+    let attribution = attribution(&account("acct-1"), &LaunchQuery::default())
+        .expect("no origin is not an error");
+    let on = |engine: Option<&str>| {
+        let body = LaunchBody {
+            engine: engine.map(str::to_string),
+            ..launch_body()
+        };
+        build_new_job(
+            &body,
+            TestType::EndToEnd,
+            "2026-08-15T00:00:00Z",
+            &attribution,
+        )
+        .expect("the fixture body is valid")
+        .engine_slug
+    };
+
+    // The engine is a segment of the job's coverage cell, and the in-flight count is a
+    // grouped query — so it has to be a column rather than something read back out of
+    // `request_json` per row.
+    assert_eq!(on(Some("simple-2d")).as_deref(), Some("simple-2d"));
+    // A launch naming no engine asks for the engineless run, which is what a `NULL`
+    // column already counts as; writing the slug out would be a second spelling of one
+    // cell.
+    assert_eq!(on(None), None);
+    assert_eq!(on(Some("  ")), None);
 }
 
 #[test]

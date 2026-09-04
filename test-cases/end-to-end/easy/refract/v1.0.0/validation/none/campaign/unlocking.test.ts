@@ -7,6 +7,13 @@
 // the state read back — `unlockedCount` 2, `solvedBoards` holding board 1
 // alone — and then solved a second time from the grid, after which both
 // fields must stand exactly as they were.
+//
+// GETTING BACK TO THE GRID. The solve leaves the game on the solved screen,
+// and specs/modes/campaign.md gives that screen two exits to `select`: its
+// third menu choice, back to select, and the `back` action. This item's
+// subject is on the far side of that step, not the step itself, so it must
+// not pin one of the two — `gridFromSolved` takes whichever the build honours,
+// and which one that is stays campaign/solved-back's verdict alone.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
@@ -18,6 +25,7 @@ import {
   solveCampaignBoard,
   type Harness,
 } from "../harness";
+import { gridFromSolved } from "./reading";
 
 let h: Harness;
 
@@ -38,7 +46,7 @@ it("unlocks board 2 on the first solve and nothing more on the replay", async ()
     "board 1 alone is recorded solved",
   );
 
-  await fireAction(h, "back");
+  await gridFromSolved(h);
   await captureStill(h, "unlocked");
 
   // Replay board 1 from the grid, where the highlight landed on it.

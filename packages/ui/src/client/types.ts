@@ -818,6 +818,12 @@ export interface ReviewItem {
   // (the item is still checked and shown). Absent/true otherwise. See
   // `applyScoreExclusions` in ratings.ts.
   scored?: boolean;
+  // The engine scoping of this point's validator, when it declares one: the engine
+  // slugs the validator decides the point on. A run built on any other engine does
+  // not carry the point at all, so a run-scoped surface filters the checklist
+  // through `reviewItemsForEngine`. Absent for a human-judged point, and for a
+  // validator the case leaves active on every engine it supports.
+  validation?: ReviewItemValidation | null;
   // Optional name-only sub-items breaking this item into independently graded
   // pass/fail points (an academic question's "2a", "2b"). When present, the
   // reviewer records a verdict per sub-item instead of one for the item; each
@@ -855,6 +861,16 @@ export interface ReviewSubItem {
   // checklist only when an erratum's `excludeFromScore` links its composite verdict
   // id (or excludes the whole category). Absent/true otherwise.
   scored?: boolean;
+  // The engine scoping of this point's validator (see `ReviewItem.validation`).
+  validation?: ReviewItemValidation | null;
+}
+
+// The part of a point's automated-validation driver a client reads: which engines
+// the validator decides the point on. The script itself and its media outputs are
+// the driver's business, so they are not modelled here. Empty/absent `engines`
+// leaves the point on every engine the case supports.
+export interface ReviewItemValidation {
+  engines?: string[];
 }
 
 // A scoring domain a test case declares; a reviewer rates each independently and
@@ -916,6 +932,43 @@ export interface StoredReview extends ReviewDocument {
   // the reviewer's avatar beside their name; the avatar falls back to initials when
   // this is absent or fails to load (the reviewer has no picture).
   reviewerPictureUrl?: string | null;
+}
+
+// One stored run the backend cannot decode: its lifted identity plus the error its
+// stored record produces against the running build's run-record contract. Carries no
+// `RunRecord` — there is no readable one, which is the whole reason the row is here.
+// Read from `GET /runs/unreadable`, the one surface such a run is reachable from,
+// since every other listing filters it out.
+export interface UnreadableRun {
+  id: string;
+  startedAt: string;
+  finishedAt: string;
+  testCaseSlug: string;
+  testCaseVersion: string;
+  variant: string;
+  // The engine the run was launched under, or null for a row whose slug was never
+  // lifted out of its record.
+  engineSlug: string | null;
+  harnessSlug: string;
+  modelId: string;
+  // The gg configuration the run was launched from, for a gg run launched from a
+  // named one; null everywhere else.
+  ggPreset: string | null;
+  testType: string;
+  // The run's terminal state as its wire token.
+  state: string;
+  published: boolean;
+  reviewCount: number;
+  // Why the stored record no longer decodes. This is what an operator reads before
+  // deciding to delete the run.
+  error: string;
+}
+
+// A page of unreadable runs with the total the cabinet holds. `total` counts every
+// unreadable run across the pages, which is what sizes the pager.
+export interface UnreadableRunPage {
+  runs: UnreadableRun[];
+  total: number;
 }
 
 // A finished run held by a runner (a worker, or the local core in Tauri),
@@ -1218,6 +1271,15 @@ export interface InProgressRun {
   variant: string;
   harnessSlug: string;
   modelId: string;
+  // The engine the run is built on, off the job's own lifted column. Absent (or
+  // `none`) is the engineless run, exactly as an absent `engine` on the launch
+  // request is — resolve it through `resolveEngineSlug` before comparing, never by
+  // equality on the raw field.
+  //
+  // It is here because a run's coverage cell includes the engine: a listing of one
+  // cell's runs — a ladder rung, a plan's cell — has to keep another engine's live
+  // rows out, and an in-flight run has no record to read the engine from.
+  engine?: string | null;
   // The gg configuration the run was launched from, off the job's stored capability
   // set. A gg run has no single harness model — `modelId` is only its representative
   // primary-slot binding — so the run log names a live gg row by its configuration
@@ -1299,6 +1361,10 @@ export interface RunLifecycleEvent {
   variant: string;
   harnessSlug: string;
   modelId: string;
+  // The engine the run is built on, as `InProgressRun.engine` carries it — the event
+  // seeds a row for a run this console has never seen, so it names the whole identity
+  // that row is filtered by.
+  engine?: string | null;
   state:
     | "queued"
     | "pending"

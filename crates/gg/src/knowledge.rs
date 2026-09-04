@@ -58,8 +58,8 @@ use std::time::{Duration, Instant};
 
 use crate::docs::LoadedDocs;
 use crate::sandbox::{
-    CodeModule, ModuleExport, PrepareFailure, PreparedProgram, ProgramLanguage, SandboxOutcome,
-    prepare_module, prepare_program,
+    AgentWorkspace, CodeModule, ModuleExport, PrepareFailure, PreparedProgram, ProgramLanguage,
+    SandboxOutcome, prepare_module, prepare_program,
 };
 
 /// Where a piece of loaded code came from — what a failure names, and what the reply to the read
@@ -132,6 +132,23 @@ struct OnUseScript {
     module: Option<CodeModule>,
 }
 
+/// **What one key's module was loaded from, and what loading it produced** — kept for the life of
+/// the agent so that reading the same thing again costs no compiler.
+///
+/// The authored bytes are held beside the prepared ones because they are what a repeat read is
+/// compared against, and they are not always the same string: the arms that compile a module into
+/// source hand back what their compiler emitted, so the prepared half of a TypeScript module is
+/// JavaScript and the authored half is what the file holds.
+#[derive(Debug, Clone)]
+struct LoadedModule {
+    /// The module's source as its author wrote it, as it stood when this was prepared.
+    authored: String,
+    /// What the language's module step handed back — what a program of this arm binds.
+    prepared: String,
+    /// What the module offers, in the order its namespace lists them.
+    exports: Vec<ModuleExport>,
+}
+
 /// One agent's loaded code, and the on-use scripts it owes.
 ///
 /// Forked with the agent (each gets its own set: what one agent has read says nothing about what
@@ -143,7 +160,7 @@ pub struct KnowledgeModules {
     /// guest is stable from turn to turn. Stability matters more than it looks: the modules are
     /// evaluated in list order, and a set that reordered itself between turns would make a
     /// program's behaviour depend on nothing the model can see.
-    loaded: BTreeMap<String, String>,
+    loaded: BTreeMap<String, LoadedModule>,
     /// Which `(origin, name)` already has a binding key, so a second use of the same skill re-uses
     /// it rather than minting `csvTools2` for the same code.
     keys: BTreeMap<(KnowledgeOrigin, String), String>,
@@ -177,6 +194,14 @@ pub struct KnowledgeModules {
     /// program may call and what a lookup will describe cannot come apart — not even within the turn
     /// that loaded it, which is exactly when a snapshot would be wrong.
     docs: LoadedDocs,
+    /// **This agent's compile workspace** — the tree every preparation the registry drives compiles
+    /// in, and the same tree the agent's own turns compile in.
+    ///
+    /// Held here rather than reached for per load because it is the agent's, allocated where the
+    /// session is driven and cloned in. A registry that made its own would compile a code skill's
+    /// module on ground the agent's programs cannot see, which on a compiled arm is a module the
+    /// program cannot link.
+    workspace: AgentWorkspace,
 }
 
 /// What loading a code skill or memory produced — the key its code got, and whether an on-use
@@ -207,9 +232,18 @@ pub struct Loaded {
 }
 
 impl KnowledgeModules {
-    /// An agent with nothing loaded.
-    pub fn new() -> Self {
-        Self::default()
+    /// An agent with nothing loaded, compiling in `workspace`.
+    pub fn new(workspace: AgentWorkspace) -> Self {
+        Self {
+            workspace,
+            ..Self::default()
+        }
+    }
+
+    /// The agent's [compile workspace](AgentWorkspace), for the turn path, which prepares this
+    /// agent's programs on the same ground its modules were prepared on.
+    pub fn workspace(&self) -> &AgentWorkspace {
+        &self.workspace
     }
 
     /// **A handle to the documentation this agent's loaded modules offer**, for the
@@ -226,9 +260,9 @@ impl KnowledgeModules {
     pub fn code_modules(&self) -> Vec<CodeModule> {
         self.loaded
             .iter()
-            .map(|(name, source)| CodeModule {
+            .map(|(name, module)| CodeModule {
                 name: name.clone(),
-                source: source.clone(),
+                source: module.prepared.clone(),
             })
             .collect()
     }
@@ -241,10 +275,12 @@ impl KnowledgeModules {
     /// instead of a silent empty `lib` entry and a `TypeError` two turns later.
     ///
     /// Loading the same thing twice re-uses the key and replaces the source (a memory can be
-    /// updated). The on-use script is queued **every** time, because using a skill is an execution
-    /// the agent asked for: an author who wrote one meant it to run when the skill is used, and a
-    /// second use is a second use. It is prepared once and re-run as prepared, so the repeat costs
-    /// no compiler.
+    /// updated). A read of bytes the key already holds is answered from the preparation that
+    /// produced them, so a module is compiled once per agent and a skill used on every turn costs
+    /// one compiler invocation for the session. The on-use script is queued **every** time, because
+    /// using a skill is an execution the agent asked for: an author who wrote one meant it to run
+    /// when the skill is used, and a second use is a second use. It too is prepared once and re-run
+    /// as prepared, so the repeat costs no compiler.
     ///
     /// Both preparations are **timed** for a language that
     /// [compiles](ProgramLanguage::prepare_compiles), and the reading is accumulated on
@@ -279,33 +315,61 @@ impl KnowledgeModules {
     ) -> Result<Loaded, KnowledgeError> {
         let mut loaded = Loaded::default();
         let identity = (origin, name.to_string());
+        // A handle rather than a borrow of `self`, because the timing wrapper below takes the
+        // registry mutably and the preparation inside it needs the workspace at the same moment.
+        let workspace = self.workspace.clone();
 
         if let Some(source) = code {
-            let prepared = self
-                .timed(language, || prepare_module(language, source))
-                .map_err(|error| KnowledgeError {
-                    origin,
-                    name: name.to_string(),
-                    half: "code",
-                    error,
-                })?;
+            // The key first, and the preparation under it. A compiled arm builds the module's crate,
+            // class, package or assembly under the name a program will reach it by, once, and keeps
+            // that build in this agent's workspace — which it cannot do for a key that does not
+            // exist yet.
             let key = match self.keys.get(&identity) {
                 Some(key) => key.clone(),
+                None => self.mint_key(language, name),
+            };
+            // A read of bytes this key already holds is answered from what that read produced. The
+            // module is compiled once per agent, so a skill an agent uses on every turn costs one
+            // compiler invocation for the session rather than one per use — and on a compiled arm
+            // preparing it again would be worse than the compile, because a module step opens by
+            // clearing that key's build out of the agent's workspace.
+            let held = self
+                .loaded
+                .get(&key)
+                .filter(|held| held.authored == source)
+                .cloned();
+            let module = match held {
+                Some(held) => held,
                 None => {
-                    let key = self.mint_key(language, name);
-                    self.keys.insert(identity.clone(), key.clone());
-                    key
+                    let prepared = self
+                        .timed(language, || {
+                            prepare_module(language, &key, source, &workspace)
+                        })
+                        .map_err(|error| KnowledgeError {
+                            origin,
+                            name: name.to_string(),
+                            half: "code",
+                            error,
+                        })?;
+                    LoadedModule {
+                        authored: source.to_string(),
+                        prepared: prepared.source,
+                        exports: prepared.exports,
+                    }
                 }
             };
-            self.loaded.insert(key.clone(), prepared.source);
+            // Claimed only now, so a module that would not prepare burns no key and the next read of
+            // the same thing is offered the same one.
+            self.keys.insert(identity.clone(), key.clone());
+            self.loaded.insert(key.clone(), module.clone());
             // Registered here, at the one moment the exports and the key are both in hand, so the
             // agent's documentation surface gains the module and its declarations as part of the
             // load rather than as a second step a caller could forget. A re-load replaces what was
             // filed under the key, which is what keeps a revised memory's documentation from
             // describing a declaration it no longer carries.
             self.docs
-                .register(language, &key, origin.noun(), name, &prepared.exports);
-            loaded.exports = prepared.exports;
+                .register(language, &key, origin.noun(), name, &module.exports);
+            loaded.exports = module.exports;
             loaded.key = Some(key);
         }
 
@@ -315,9 +379,9 @@ impl KnowledgeModules {
             // prepared without its own module in hand would be a script whose module is missing on
             // exactly the arms where it cannot be added later.
             let module = loaded.key.as_ref().and_then(|key| {
-                self.loaded.get(key).map(|source| CodeModule {
+                self.loaded.get(key).map(|held| CodeModule {
                     name: key.clone(),
-                    source: source.clone(),
+                    source: held.prepared.clone(),
                 })
             });
             let module_source = module.as_ref().map(|module| module.source.clone());
@@ -327,7 +391,9 @@ impl KnowledgeModules {
             if !prepared {
                 let modules: Vec<CodeModule> = module.iter().cloned().collect();
                 let program = self
-                    .timed(language, || prepare_program(language, source, &modules))
+                    .timed(language, || {
+                        prepare_program(language, source, &modules, &workspace)
+                    })
                     .map_err(|error| KnowledgeError {
                         origin,
                         name: name.to_string(),
@@ -517,3 +583,7 @@ impl std::fmt::Display for KnowledgeError {
 #[cfg(test)]
 #[path = "knowledge.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "knowledge.compile.test.rs"]
+mod compile_tests;

@@ -413,10 +413,27 @@ fn insert_summary(doc: &mut GgRunDoc, summary: &GgSessionSummary) {
 /// filter. The token and cost classes are already `Option`, so they answer for
 /// themselves; run time is a bare `f64`, so a positive value is the proxy for "this
 /// run genuinely probed a container".
+///
+/// The stage durations are `Option` and answer for themselves, so each is written out
+/// exactly when the run recorded it. A recorded zero is a figure rather than an
+/// absence, and is projected as one: the run reached the stage and the stage took no
+/// measurable time. `metric.sessionSeconds` is the one a question about the model
+/// asks — a study that averages `metric.runTimeSeconds` by model is averaging shared
+/// setup.
 fn insert_metrics(doc: &mut GgRunDoc, record: &RunRecord) {
     let metrics = &record.metrics;
     if metrics.run_time_seconds > 0.0 {
         doc.insert("metric.runTimeSeconds", metrics.run_time_seconds);
+    }
+    for (name, value) in [
+        ("sessionSeconds", metrics.session_seconds),
+        ("setupSeconds", metrics.setup_seconds),
+        ("teardownSeconds", metrics.teardown_seconds),
+        ("validationSeconds", metrics.validation_seconds),
+    ] {
+        if let Some(value) = value {
+            doc.insert(format!("metric.{name}"), value);
+        }
     }
     if let Some(total) = metrics.tokens.total() {
         doc.insert("metric.totalTokens", total as f64);

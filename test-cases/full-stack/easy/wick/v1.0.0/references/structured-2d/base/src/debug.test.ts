@@ -5,7 +5,19 @@
 // no pose sounds a cue.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DAWN_TIME, TICK_DT, TICK_HZ } from "./constants";
+import {
+  ALMANAC_ROWS,
+  ALMANAC_TABS,
+  DAWN_TIME,
+  END_ITEMS,
+  PASSIVE_IDS,
+  PAUSE_ITEMS,
+  STAGE_H,
+  STAGE_W,
+  TICK_DT,
+  TICK_HZ,
+  TITLE_ITEMS,
+} from "./constants";
 import { createHarness, type Harness } from "./harness";
 
 let h: Harness;
@@ -28,6 +40,9 @@ describe("the snapshot", () => {
     const snap = h.debug.snapshot();
     expect(snap.version).toBe(1);
     expect(snap.screen).toBe("title");
+    expect(snap.menuIndex).toBe(0);
+    expect(snap.almanacTab).toBe(0);
+    expect(snap.almanacScroll).toBe(0);
     for (const name of [
       "spawning",
       "events",
@@ -47,6 +62,7 @@ describe("the snapshot", () => {
       xpToNext: 5,
       kills: 0,
       player: { x: 0, y: 0, facing: "right", hp: 100 },
+      hurtFlash: 0,
       maxHp: 100,
       armor: 0,
       moveSpeed: 180,
@@ -217,11 +233,148 @@ describe("setScreen", () => {
     expect(debug.snapshot().run.kills).toBe(0);
     debug.setScreen("howto");
     expect(debug.snapshot().screen).toBe("howto");
+    debug.setScreen("almanac");
+    expect(debug.snapshot().screen).toBe("almanac");
     debug.setScreen("playing");
     debug.setScreen("dawn");
     expect(debug.snapshot().screen).toBe("dawn");
     expect(() => debug.setScreen("nowhere" as never)).toThrow();
     expect(h.cues).toEqual([]);
+  });
+});
+
+describe("the almanac readings", () => {
+  it("enters the almanac with the idle run and the three indices at zero", () => {
+    const { debug } = playing();
+    debug.setKills(5);
+    debug.setScreen("almanac");
+    const snap = debug.snapshot();
+    expect(snap.screen).toBe("almanac");
+    expect(snap.menuIndex).toBe(0);
+    expect(snap.almanacTab).toBe(0);
+    expect(snap.almanacScroll).toBe(0);
+    expect(snap.run.kills).toBe(0);
+    expect(snap.run.weapons).toEqual([]);
+    expect(h.cues).toEqual([]);
+  });
+
+  it("reports the tab and the scroll, and zero on every other screen", async () => {
+    h.debug.setScreen("almanac");
+    for (let i = 0; i < ALMANAC_ROWS; i += 1) {
+      h.tap("ArrowDown");
+      await h.step(1);
+    }
+    let snap = h.debug.snapshot();
+    expect(snap.almanacTab).toBe(0);
+    expect(snap.menuIndex).toBe(ALMANAC_ROWS);
+    expect(snap.almanacScroll).toBe(1);
+    h.tap("ArrowRight");
+    await h.step(1);
+    snap = h.debug.snapshot();
+    // The trinkets tab holds exactly ALMANAC_ROWS entries, so its list never
+    // scrolls, and the tab change put the highlight back at the top.
+    expect(snap.almanacTab).toBe(1);
+    expect(PASSIVE_IDS).toHaveLength(ALMANAC_ROWS);
+    expect(snap.menuIndex).toBe(0);
+    expect(snap.almanacScroll).toBe(0);
+    h.debug.setScreen("title");
+    snap = h.debug.snapshot();
+    expect(snap.almanacTab).toBe(0);
+    expect(snap.almanacScroll).toBe(0);
+  });
+
+  it("resets all three indices", async () => {
+    h.debug.setScreen("almanac");
+    h.tap("ArrowRight");
+    await h.step(1);
+    h.tap("ArrowDown");
+    await h.step(1);
+    h.debug.reset();
+    const snap = h.debug.snapshot();
+    expect(snap.screen).toBe("title");
+    expect(snap.menuIndex).toBe(0);
+    expect(snap.almanacTab).toBe(0);
+    expect(snap.almanacScroll).toBe(0);
+    expect(snap.run.hurtFlash).toBe(0);
+  });
+});
+
+describe("menuRects and tabRects", () => {
+  /** Whether the two rectangles share any of the stage. */
+  function meet(
+    a: { x: number; y: number; width: number; height: number },
+    b: { x: number; y: number; width: number; height: number },
+  ): boolean {
+    return (
+      a.x < b.x + b.width &&
+      b.x < a.x + a.width &&
+      a.y < b.y + b.height &&
+      b.y < a.y + a.height
+    );
+  }
+
+  /** Every rectangle sits on the stage, and no two of them meet. */
+  function disjointOnStage(
+    rects: readonly { x: number; y: number; width: number; height: number }[],
+  ): void {
+    for (const rect of rects) {
+      expect(rect.width).toBeGreaterThan(0);
+      expect(rect.height).toBeGreaterThan(0);
+      expect(rect.x).toBeGreaterThanOrEqual(0);
+      expect(rect.y).toBeGreaterThanOrEqual(0);
+      expect(rect.x + rect.width).toBeLessThanOrEqual(STAGE_W);
+      expect(rect.y + rect.height).toBeLessThanOrEqual(STAGE_H);
+    }
+    for (let i = 0; i < rects.length; i += 1) {
+      for (let j = i + 1; j < rects.length; j += 1) {
+        expect(meet(rects[i], rects[j])).toBe(false);
+      }
+    }
+  }
+
+  it("reports one rectangle per item of the menu each screen shows", () => {
+    const { debug } = h;
+    expect(debug.menuRects()).toHaveLength(TITLE_ITEMS.length);
+    disjointOnStage(debug.menuRects());
+    debug.setScreen("playing");
+    debug.setPendingLevelUps(1);
+    debug.setScreen("levelup");
+    expect(debug.menuRects()).toHaveLength(debug.snapshot().run.offers.length);
+    disjointOnStage(debug.menuRects());
+    debug.choose(0);
+    debug.setScreen("paused");
+    expect(debug.menuRects()).toHaveLength(PAUSE_ITEMS.length);
+    debug.setScreen("fallen");
+    expect(debug.menuRects()).toHaveLength(END_ITEMS.length);
+    disjointOnStage(debug.menuRects());
+  });
+
+  it("is empty on the screens with no menu", () => {
+    const { debug } = playing();
+    expect(debug.menuRects()).toEqual([]);
+    debug.setScreen("title");
+    debug.setScreen("howto");
+    expect(debug.menuRects()).toEqual([]);
+    debug.setScreen("playing");
+    debug.spawnPickup("chest", 0, 0);
+  });
+
+  it("windows the almanac's rows and lists its tabs beside them", async () => {
+    const { debug } = h;
+    debug.setScreen("almanac");
+    expect(debug.menuRects()).toHaveLength(ALMANAC_ROWS);
+    expect(debug.tabRects()).toHaveLength(ALMANAC_TABS.length);
+    disjointOnStage([...debug.menuRects(), ...debug.tabRects()]);
+    h.tap("ArrowRight");
+    await h.step(1);
+    h.tap("ArrowRight");
+    await h.step(1);
+    h.tap("ArrowRight");
+    await h.step(1);
+    expect(ALMANAC_TABS[debug.snapshot().almanacTab]).toBe("PICKUPS");
+    expect(debug.menuRects()).toHaveLength(6);
+    debug.setScreen("title");
+    expect(debug.tabRects()).toEqual([]);
   });
 });
 

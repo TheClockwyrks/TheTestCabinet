@@ -2,14 +2,18 @@
 // the first.
 //
 // specs/ui.md: on the title, `p1-down` or `p2-down` moves `menuIndex` down one,
-// wrapping from the last item to 0. Two down presses reach the last item (the
-// sibling `title-howto` reads that); the third is the wrap. The snapshot does
-// not report `menuIndex`, so the selection is read by confirming: from the
-// wrapped index 0 the entry taken is `SOLO`.
+// wrapping from the last item to 0. The wrap is the whole of the point, so the
+// selection is POSED on the last item and exactly one real `ArrowDown` is
+// pressed from there: two presses to walk down to it would fail this point
+// whenever the ordinary down edge was broken, which is `title-down`'s.
+//
+// The snapshot reports `menuIndex`, so the wrapped selection is read straight off
+// it rather than inferred by confirming.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
+import { TITLE_HOWTO, TITLE_SOLO, selectTitle } from "./screens";
 
 let h: Harness;
 
@@ -22,14 +26,12 @@ afterEach(async () => {
 });
 
 it("wraps the selection from HOW TO PLAY to SOLO on a down press", async () => {
-  await h.debug.reset();
-  await h.tap("ArrowDown"); // SOLO -> VERSUS
-  await h.tap("ArrowDown"); // VERSUS -> HOW TO PLAY
-  await h.tap("ArrowDown"); // HOW TO PLAY -> SOLO
-  await captureStill(h, "menu");
-  await h.tap("Enter");
+  await selectTitle(h, TITLE_HOWTO);
 
-  const opened = await h.snapshot();
-  assertEqual(opened.screen, "countdown");
-  assertEqual(opened.mode, "solo");
+  await h.tap("ArrowDown");
+  await captureStill(h, "menu");
+
+  const wrapped = await h.snapshot();
+  assertEqual(wrapped.screen, "title");
+  assertEqual(wrapped.menuIndex, TITLE_SOLO);
 });

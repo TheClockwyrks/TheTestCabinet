@@ -1,18 +1,18 @@
 // screens/title-confirm-how-to-play — HOW TO PLAY opens the how-to screen.
 //
-// WHAT THIS DECIDES. One thing: `confirm` on the title's second item leaves the
+// WHAT THIS DECIDES. One thing: `confirm` on the title's third item leaves the
 // game on `howto` with `menuIndex` 0.
 //
 // THE SPEC IT RESTS ON.
 //   specs/ui.md (`title`): "`HOW TO PLAY` | Sets `screen = howto` and
-//   `menuIndex = 0`", with `TITLE_ITEMS` "`LIGHT THE LAMP`, `HOW TO PLAY`, in
-//   that order".
+//   `menuIndex = 0`", with `TITLE_ITEMS` "`LIGHT THE LAMP`, `THE ALMANAC`,
+//   `HOW TO PLAY`, in that order", so `HOW TO PLAY` is the item at index `2`.
 //   specs/controls.md ("Actions and bindings"): `confirm` is `Enter`, `Space`.
 //
-// THE DRIVE. A reset to the title, then `ArrowDown` to bring the highlight onto
-// `HOW TO PLAY` and the precondition asserted, then the `Enter` this point is
-// about. The surface poses no `menuIndex`, so the menu's own key is the only
-// way to the second item.
+// THE DRIVE. A reset to the title, then `ArrowDown` pressed until the highlight
+// rests on `HOW TO PLAY` and the precondition asserted, then the `Enter` this
+// point is about. The surface poses no `menuIndex`, so the menu's own key is
+// the only way down the menu.
 //
 // THE TOLERANCE. None: a screen name and a menu index are exact.
 

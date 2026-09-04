@@ -1,11 +1,11 @@
 // paddles/rally-caps — the per-hit speed-up stops at the ceiling.
 //
-// The same REAL rally as `rally-accelerates`, run long enough to climb to the
-// ceiling: however many hits it runs, the ball plateaus at the cap and never
-// exceeds it.
+// The same REAL rally as `rally-accelerates`, on the same field holding that
+// ball alone, run long enough to climb to the ceiling: however many hits it
+// runs, the ball plateaus at the cap and never exceeds it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SPEED_CAP } from "../../src/constants";
+import { SPEED_CAP } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   arrangeRally,
@@ -33,7 +33,7 @@ afterEach(() => {
 });
 
 it("plateaus at the speed ceiling and never exceeds it", async () => {
-  await arrangeRally(harness);
+  arrangeRally(harness);
 
   const speeds = await captureReplay(harness, "ceiling", () =>
     driveRallySpeeds(harness),

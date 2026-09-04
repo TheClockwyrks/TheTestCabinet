@@ -50,11 +50,11 @@ The stages overlap — this is one continuous report, not four separate hits.
 
 ## The layers — composite from `combat-core`
 
-You mix over the baked **`combat-core`** sample pack. Browse it first with
-`sfx-sample list-samples` and `sfx-sample sample-info --name <name>` (you cannot
-audition audio, so reason from each clip's tags, duration, and description), then
-layer several clips into the effect. Useful ingredients in the pack for a
-broadside include:
+You mix over the **`combat-core`** sample pack. Browse it first with
+`sfx-sample list-samples` and `sfx-sample sample-info --name <name>` (you
+cannot audition audio, so reason from each clip's tags, duration, and
+description), then layer several clips into the effect. Useful ingredients in
+the pack for a broadside include:
 
 - **The gun body** — `cannon_body_heavy` (a heavy black-powder cannon report, a
   broadband blast with a strong low-mid body) as the core of the blast.

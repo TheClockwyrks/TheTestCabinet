@@ -16,6 +16,10 @@
 // build that never sub-steps. The coarse step below is an ordinary bad moment
 // on a real machine (twenty frames a second), where one frame at the ceiling
 // is forty-nine units, more than twice the width of what it strikes.
+//
+// The field holds one ball and neither obstacle, so the only body between the
+// probe and the goal it is fired at is the paddle this check is about: the
+// struck paddle is driven onto the lane and the far one is held off it.
 
 import { afterEach, it } from "vitest";
 import { ConstantClock } from "@test-cabinet/structured-2d";
@@ -25,7 +29,7 @@ import {
   MAX_SUBSTEP,
   P1_X1,
   SPEED_CAP,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
@@ -33,10 +37,12 @@ import {
 } from "../assert";
 import {
   ball0,
+  ballOps,
   captureReplay,
   createHarness,
-  PARKED_CY,
-  startPlaying,
+  drivePaddle,
+  openIsolatedPlay,
+  parkPaddle,
   TICK_MS,
   type Harness,
 } from "../harness";
@@ -44,7 +50,7 @@ import {
 /** The suite's own cadence, and a frame that carries the ball past a paddle. */
 const STEPS_MS = [TICK_MS, 50];
 
-/** Where the probe starts, down the mid-field lane that clears both obstacles. */
+/** Where the probe starts: down the mid-field lane, level with the paddle. */
 const START_X = 760;
 
 /** The sweep cap for a probe, at the given step size. */
@@ -61,10 +67,14 @@ afterEach(() => {
   while (live.length > 0) live.pop()?.dispose();
 });
 
+/**
+ * A harness stepping at `stepMs`, opened on live play over one ball and an
+ * otherwise empty field.
+ */
 async function harnessAt(stepMs: number): Promise<Harness> {
   const harness = await createHarness({ clock: new ConstantClock(stepMs) });
   live.push(harness);
-  await startPlaying(harness);
+  await openIsolatedPlay(harness);
   return harness;
 }
 
@@ -73,16 +83,14 @@ it("rebounds off a paddle at the ceiling speed rather than scoring through it", 
 
   for (const stepMs of STEPS_MS) {
     const harness = await harnessAt(stepMs);
-    // The far paddle is parked out of the lane so it cannot interfere.
-    harness.debug.setPaddle("left", { cy: FIELD_CY, vy: 0 });
-    harness.debug.setPaddle("right", { cy: PARKED_CY, vy: 0 });
-    harness.debug.setBall(0, {
-      x: START_X,
-      y: FIELD_CY,
-      vx: -SPEED_CAP,
-      vy: 0,
-      spin: 0,
-    });
+    // The struck paddle stands still on the lane; the far one is held off it so
+    // it cannot interfere.
+    drivePaddle(harness, "left", { cy: FIELD_CY, vy: 0 });
+    parkPaddle(harness, "right");
+    const ops = ballOps(harness);
+    ops.setBallPosition(START_X, FIELD_CY);
+    ops.setBallVelocity(-SPEED_CAP, 0);
+    ops.setBallSpin(0);
 
     const rebound = await captureReplay(harness, "fast", async () => {
       const swept = await harness.until((s) => ball0(s).vx > 0, {

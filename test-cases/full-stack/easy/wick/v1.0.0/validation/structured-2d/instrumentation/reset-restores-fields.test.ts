@@ -1,25 +1,33 @@
 // Wick — instrumentation/reset-restores-fields: from a thoroughly disturbed
-// run, `reset()` returns the game to `title` with `menuIndex` 0, the idle run,
-// and the accumulator and `simTime` at 0.
+// run, `reset()` returns the game to `title` with `menuIndex`, `almanacTab`,
+// and `almanacScroll` all 0, the idle run, and the accumulator and `simTime`
+// at 0.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`,
 // `reset(options)`: "Restores every declared field of the game's state to its
-// title-screen value: the `title` screen with `menuIndex` `0`, the idle run of
-// `specs/state.md`, the accumulator and `simTime` at `0`". `specs/state.md`,
-// "The idle run", is the table `IDLE_RUN` transcribes, derived fields included.
+// title-screen value: the `title` screen with `menuIndex`, `almanacTab`, and
+// `almanacScroll` all `0`, the idle run of `specs/state.md`, the accumulator
+// and `simTime` at `0`". `specs/state.md`, "The idle run", is the table
+// `IDLE_RUN` transcribes, derived fields included, `hurtFlash` `0` among them.
 //
-// THE DISTURBANCE. Every field the idle run names is moved off its value
-// first, so a `reset` that restored only some of them is caught: the
+// THE DISTURBANCE, IN TWO PARTS. Every field the idle run names is moved off
+// its value first, so a `reset` that restored only some of them is caught: the
 // lamplighter moved, turned, and hurt; level, xp, kills, tick, spawn timer,
 // pending level-ups, and a queued offer list posed; weapons and passives
 // held; an enemy, a bolt, a puddle, a gem, and a bread on the field; the
 // swarm event fired by carrying the clock over tick 3600 with `events` on;
 // then real ticks and a partial frame, so the accumulator and `simTime` are
-// off zero too. The switches and `muted` are other items' (`reset-restores-
+// off zero too. `almanacTab` and `almanacScroll` cannot be disturbed in that
+// same state, since they "are `0` on every screen but `almanac`"
+// (`specs/instrumentation.md`, "Snapshot shape") and the almanac holds the
+// idle run; so a second disturbance follows, on the almanac, with the tab
+// turned and the list scrolled by real presses, and `reset` is asked for the
+// title again. The switches and `muted` are other items' (`reset-restores-
 // switches`, `reset-keeps-muted`); `rngState` is `reset-seeds-rng`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual } from "../assert";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
+import { ALMANAC_ROWS } from "../constants";
 import {
   IDLE_RUN,
   advanceTicks,
@@ -34,6 +42,8 @@ import {
   placePickup,
   placeProjectile,
   placePuddle,
+  poseScreen,
+  tap,
   type Harness,
 } from "../harness";
 
@@ -83,12 +93,43 @@ it("returns every declared field to its title-screen value", async () => {
 
   h.reset();
   const after = h.snapshot();
-  await h.frameDraw();
-  captureStill(h, "reset");
 
   assertEqual(after.screen, "title", "screen after reset");
   assertEqual(after.menuIndex, 0, "menuIndex after reset");
   assertDeepEqual(after.run, IDLE_RUN, "run after reset");
   assertEqual(after.accumulator, 0, "accumulator after reset");
   assertEqual(after.simTime, 0, "simTime after reset");
+
+  // Two `right` presses reach `ENEMIES`, the thirteen of `ENEMY_IDS`
+  // (`specs/ui.md`), which is long enough for `ALMANAC_ROWS` `down` presses to
+  // carry the highlight and the window's first row off `0` together.
+  poseScreen(h, "almanac");
+  await tap(h, "ArrowRight");
+  await tap(h, "ArrowRight");
+  for (let press = 0; press < ALMANAC_ROWS; press += 1) {
+    await tap(h, "ArrowDown");
+  }
+  const browsing = h.snapshot();
+  assertGreaterThan(browsing.menuIndex, 0, "menuIndex disturbed before reset");
+  assertGreaterThan(
+    browsing.almanacTab,
+    0,
+    "almanacTab disturbed before reset",
+  );
+  assertGreaterThan(
+    browsing.almanacScroll,
+    0,
+    "almanacScroll disturbed before reset",
+  );
+
+  h.reset();
+  const restored = h.snapshot();
+  await h.frameDraw();
+  captureStill(h, "reset");
+
+  assertEqual(restored.screen, "title", "screen after reset from the almanac");
+  assertEqual(restored.menuIndex, 0, "menuIndex after reset");
+  assertEqual(restored.almanacTab, 0, "almanacTab after reset");
+  assertEqual(restored.almanacScroll, 0, "almanacScroll after reset");
+  assertDeepEqual(restored.run, IDLE_RUN, "run after reset from the almanac");
 });

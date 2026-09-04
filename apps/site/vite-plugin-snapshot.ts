@@ -403,9 +403,20 @@ interface SnapshotReviewItem {
   // version and on a snapshot written before the fields existed.
   failureCap?: string | null;
   domains?: string[];
+  // The point's automated-validation driver, carried for its ENGINE SCOPING: the
+  // engines the validator decides the point on. A run built on any other engine
+  // does not carry the point, so a run-scoped surface filters it out. Absent for a
+  // human-judged point and on snapshots written before the field existed.
+  validation?: SnapshotReviewValidation | null;
   // The sub-items this item is graded by, each an independently scored pass/fail
   // point. Absent on snapshots written before sub-items existed.
   subItems?: SnapshotSubReviewItem[];
+}
+
+// The engine scoping of a point's validator as the snapshot carries it (the
+// snapshot publishes no script or media outputs — see `CaseReviewValidationOut`).
+interface SnapshotReviewValidation {
+  engines?: string[];
 }
 
 interface SnapshotSubReviewItem {
@@ -425,6 +436,8 @@ interface SnapshotSubReviewItem {
   // failure lowers. Absent on a legacy version.
   failureCap?: string | null;
   domains?: string[];
+  // The point's validator and its engine scoping (see `SnapshotReviewItem`).
+  validation?: SnapshotReviewValidation | null;
 }
 
 interface SnapshotDomain {
@@ -561,6 +574,11 @@ interface AssembledReviewItem {
   // unless a version erratum's `excludeFromScore` links its verdict id, in which case
   // it is `false` — still shown, just not scored. Mirrors `ReviewItem.scored`.
   scored?: boolean;
+  // The engine scoping of this point's validator: the engines it decides the point
+  // on. A run built on any other engine does not carry the point, and the app drops
+  // it through `reviewItemsForEngine`. Null when the point has no validator or the
+  // validator names no engines.
+  validation?: { engines?: string[] } | null;
   subItems: AssembledSubReviewItem[];
 }
 
@@ -580,6 +598,8 @@ interface AssembledSubReviewItem {
   domains: string[];
   // Whether this sub-item contributes to the score (see `AssembledReviewItem.scored`).
   scored?: boolean;
+  // The engine scoping of this point's validator (see `AssembledReviewItem`).
+  validation?: { engines?: string[] } | null;
 }
 
 // Combine a case's common review items with a variant's own, merging by id so a
@@ -1071,6 +1091,7 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
         failureCap: item.failureCap ?? null,
         domains: item.domains ?? [],
         scored: itemExcluded ? false : undefined,
+        validation: item.validation ?? null,
         subItems: (item.subItems ?? []).map((sub) => ({
           id: sub.id,
           title: sub.title,
@@ -1084,6 +1105,7 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
             itemExcluded || excludedVerdictIds.has(`${item.id}.${sub.id}`)
               ? false
               : undefined,
+          validation: sub.validation ?? null,
         })),
       };
     });

@@ -60,6 +60,14 @@ Either side's up/down action moves a menu selection, so the menus answer to
 and the game reads whichever the current screen calls for, so it pauses in a
 match and steps back on a menu.
 
+`P` and `Esc` both open the pause menu, and either one resumes it.
+
+**The menus also take the mouse and touch.** Moving the pointer onto an item
+selects it, and pressing and releasing inside that same item confirms it; a
+touch contact that lands inside an item selects it, and lifting inside the same
+item confirms. A press and a release in different items, or an edge outside
+every item, confirm nothing.
+
 The **backtick** key (`` ` ``) toggles the engine's debug overlay. That key
 belongs to the engine, not to this game.
 
@@ -74,31 +82,43 @@ across, the top or bottom edge sends it off at up to ~55°.
 `@test-cabinet/structured-2d` supplies the gameplay framework the game is
 written _inside_, and the build's own code is the subclasses:
 
-- **Two levels**, under the names `LEVELS` fixes. `title` hosts the title and
-  how-to-play screens over a dimmed court; `match` hosts the countdown, the
-  rally, the pause menu, and the match-over screen. Every way a match starts —
-  SOLO or VERSUS on the title, RESTART, PLAY AGAIN — is one act: `world.open`
-  on the match level, whose transition rebuilds the match fresh.
-- **Two game modes.** `TitleMode` runs the menus; `MatchMode`
-  (`src/match-mode.ts`) holds the match rules — the countdown and the serve,
-  the goals, the win and deuce rules — and builds the match from its classes:
-  player one on the left paddle, and the right paddle under a second player
-  (Versus) or the AI bot (Solo).
+- **One world hosts all six screens.** The debug surface's `setScreen` is an
+  atomic pose — it sets the screen and leaves the scores, the world, and the
+  menu indices as they are — so a screen cannot be a level. `CaromMode`
+  (`src/carom-mode.ts`) therefore runs the title menu, the how-to page, the
+  countdown, the rally, the pause menu, and the match-over screen over whichever
+  world is open.
+- **Two levels**, under the names `LEVELS` fixes, naming the two ways a world is
+  _started_ rather than two halves of the state machine. `title` is the level
+  the engine opens first and the level every path back to the title opens;
+  `match` is the level SOLO, VERSUS, RESTART and PLAY AGAIN open. Each is one
+  act — `world.open` — and each is an arrangement `specs/ui.md` fixes in full.
+- **One game mode, in two openings.** `TitleLevelMode` and `MatchLevelMode`
+  differ only in the pose they open on; everything else — the countdown and the
+  serve, the goals, the win and deuce rules, and the menus under the keyboard,
+  the mouse, and a finger — is shared.
 - **Actors with components.** Each paddle is a `Paddle` **pawn** exposing one
-  `drive(vy)` interface and integrating every request through the one
-  integrator the spec fixes; the `Ball` actor runs the sub-stepped physics
+  `drive(vy)` interface and integrating every request through the one integrator
+  the spec fixes; the `Ball` actor runs the sub-stepped physics
   (`src/physics.ts`, pure) from its tick and plays the collision cues; the net,
-  obstacles, HUD, and screen chrome are draw components ordered by the layer
-  table in `src/theme.ts`.
-- **Controllers.** `PaddleController` reads the held movement actions — and,
-  as the primary seat, routes the frame's edges into its mode _before anything
-  moves_, since controllers tick first. `AiPaddleController` computes the same
-  drive from the world (`src/ai.ts`).
+  the HUD, and the screen chrome are draw components ordered by the layer table
+  in `src/theme.ts`. The ball and the obstacles are spawned and destroyed rather
+  than flagged, because _whether they are present_ is declared state — an absent
+  ball is simply an actor that is not in the world.
+- **Controllers.** One `PaddleController` per side. Which driver a seat listens
+  to is decided per frame, because both `mode` and a paddle's `driven` flag are
+  state a pose can change at any moment: a driven paddle follows the `drivenVy`
+  held for its side, the left paddle follows the movement actions, and the right
+  follows player two in Versus and the AI rule (`src/ai.ts`, pure) in Solo. The
+  primary seat also carries `simTime` and routes the frame's edges into the mode
+  _before anything moves_, since controllers tick first.
 - **State in framework objects.** The game instance (`CaromGame`) carries what
-  outlives a transition: the last mode, the seeded generator, and the debug
-  driver's hold. Each world's game state carries its level's screens and match
-  figures, with the two scores on the participants' player states. Nothing
-  lives in a module-level variable.
+  must survive a level transition — the remembered title selection, `simTime`,
+  the seeded generator, the AI's two faculties, and the surface's hold on each
+  paddle. The world's game state carries the screen, the mode, the two menu
+  figures, the winner, and the receiver, with the two scores on the player
+  states. The actors carry the field's bodies. Nothing lives in a module-level
+  variable.
 - **Audio, input, rendering, the fit, the overlay** — all the engine's. The
   build defines the four `CUES` and registers the eight `ACTIONS` once, in
   `initialize`, and draws in logical 1280×720 coordinates.
@@ -108,39 +128,50 @@ written _inside_, and the build's own code is the subclasses:
 `specs/instrumentation.md` fixes a surface for driving the game from code, and
 this build implements it in `src/debug.ts`. The instance's `initialize` builds
 the finished surface and **returns it**; the engine hands back exactly that
-object from `engine.debug`, and that is the one way a caller reaches it.
-Nothing is published on the page.
+object from `engine.debug`, and that is the one way a caller reaches it. Nothing
+is published on the page.
 
-Every operation is a method acting on the **live world** through the same
-systems play uses — it reads `engine.world` at the moment of the call, drives
-the game mode, patches the tagged actors, or opens the level a menu choice
-would open. A pose takes only its own arguments and returns nothing; a reading
-takes none and returns plain data:
+Every operation is **atomic**: it sets one field or one fixed pair of fields,
+places or removes one entity, or reads the state. There is no operation that
+merges a patch and none that arranges several unrelated things at once, so a
+scenario is a _sequence_ of them and a caller poses exactly the part of the
+world it cares about. `reset` is the sole exception, and it is a lifecycle verb
+rather than a pose: it restores every declared field at once.
+
+A pose takes only its own arguments, returns nothing, and acts on the live world
+through the same systems play uses; a reading returns plain data read off that
+world at the instant of the call:
 
 ```ts
-engine.debug.startMatch("versus");
-engine.debug.setBall(0, { x: 300, vx: 400 });
+engine.debug.setScreen("countdown");
+engine.debug.setPaddleDriven("left", true);
+engine.debug.setPaddleVy("left", 300);
+engine.debug.setBallHoldTimer(0); // ending the hold is what serving IS
 await engine.advance(30);
 const { ball } = engine.debug.snapshot();
 ```
 
-The operations are `reset(options?)` and `snapshot()`; `startMatch(mode)`,
-`serve()`, `setScore(p1, p2)`, `setPaddle(side, patch)`, and
-`setBall(index, patch)` — each takes the paddles into the debug driver's hold,
-until `reset` — and `setAiControl(enabled)`, which in Solo hands the right
-paddle back to the real AI for the rest of a driven scenario.
+| Group | Operations |
+| --- | --- |
+| The world | `clearWorld()`, `spawnBall()`, `spawnObstacle(index)`, `reset()`, `setSeed(seed)` |
+| Screens and menus | `setScreen(screen)`, `setMode(mode)`, `setMenuIndex(index)`, `setTitleIndex(index)`, `setResumeScreen(screen)` |
+| Match state | `setScore(p1, p2)`, `setWinner(side)`, `setReceiver(side)` |
+| Paddles | `setPaddleCy(side, cy)`, `setPaddleVy(side, vy)`, `setPaddleDriven(side, driven)` |
+| The ball | `setBallPosition(x, y)`, `setBallVelocity(vx, vy)`, `setBallSpin(spin)`, `setBallHeld(held)`, `setBallHoldTimer(seconds)` |
+| The AI | `setAiTracking(enabled)`, `setAiMovement(enabled)` |
+| Readings | `snapshot()`, `menuItemRect(index)` |
 
-`startMatch` opens the match level exactly as the menu does, so the transition
-lands on the next advanced frame; a pose made in the meantime is held and
-applied the moment the match's world has begun play, in call order, so the
-spec's typical scenario — `startMatch`, then `setPaddle` and `setBall`, then a
-few frames — reads back exactly what it posed.
+`snapshot()` reports every field an operation sets, so each one is verified by
+setting a value and reading it back, and `menuItemRect(index)` reports the hit
+region of a menu item in logical units — the build's own layout, reported, so a
+caller can drive a pointer at it. Both leave the game as they found it. Because
+no operation here crosses a level transition, every pose lands at the call.
 
 Everything about _driving a browser game_ rather than about Carom is the
-engine's: the scripted clocks and `engine.advance` own time, key events are
-dispatched at the engine's input seam, `cue:played` reports the audio, and the
-draw-command recorder is armed with `engine.startRecording()`. The surface
-deliberately carries no operation for any of them.
+engine's: the scripted clocks and `engine.advance` own time, key and pointer
+events are dispatched at the engine's input seam, `cue:played` reports the
+audio, and the draw-command recorder is armed with `engine.startRecording()`.
+The surface deliberately carries no operation for any of them.
 
 ## Requirements
 
@@ -219,15 +250,15 @@ src/
   theme.ts            This build's own look: palette, type, layers, HUD, copy
   game.ts             The GameDefinition, and the CaromGame instance that
                       carries the cross-level state and returns the surface
-  state.ts            The screen vocabulary and the two levels' game states
-  levels.ts           The two level definitions and the shared furniture
-  title-mode.ts       The title level: menu mode and its controller
-  match-mode.ts       The match rules, and the player and AI controllers
+  state.ts            The screen vocabulary and the world's game state
+  levels.ts           The two level definitions and the shared field
+  carom-mode.ts       The rules, the menus, and the paddle controller
+  menu.ts             Each menu's items, layout, and hit regions
   paddle.ts           The paddle pawn and its body
   ball.ts             The ball actor: physics tick, cues, trail, body
-  scenery.ts          The net and the obstacles
+  scenery.ts          The net and the obstacle actors
   hud.ts              The scores and the mode label
-  screens.ts          The title/how-to and countdown/pause/match-over chrome
+  screens.ts          The chrome for whichever of the six screens is up
   debug.ts            The debug and automation surface (specs/instrumentation.md)
   diagnostics.ts      The overlay sources
   physics.ts          The sub-stepped flight, collision, and spin (pure)

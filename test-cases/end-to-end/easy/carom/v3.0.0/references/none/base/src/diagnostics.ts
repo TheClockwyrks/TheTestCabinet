@@ -10,13 +10,16 @@
 // read at a glance while the game is running.
 
 import { ballSpeed } from "./entities";
-import type { CaromState } from "./game";
+import type { CaromState } from "./state";
 import type { InitApi } from "./runtime";
 
 /** One decimal place: enough to see motion, short enough to fit on a line. */
 function fixed(value: number): string {
   return value.toFixed(1);
 }
+
+/** What a line reads while the field has no ball on it to report. */
+const NO_BALL = "—";
 
 /** Register every diagnostic source over the live state. */
 export function registerDiagnostics(api: InitApi, state: CaromState): void {
@@ -26,17 +29,20 @@ export function registerDiagnostics(api: InitApi, state: CaromState): void {
     "score",
     () => `${state.score.p1} - ${state.score.p2}`,
   );
-  api.diagnostics.register(
-    "ball pos",
-    () => `${fixed(state.ball.x)}, ${fixed(state.ball.y)}`,
+  api.diagnostics.register("ball pos", () =>
+    state.ball === null
+      ? NO_BALL
+      : `${fixed(state.ball.x)}, ${fixed(state.ball.y)}`,
   );
-  api.diagnostics.register(
-    "ball vel",
-    () =>
-      `${fixed(state.ball.vx)}, ${fixed(state.ball.vy)} ` +
-      `(${fixed(ballSpeed(state.ball))})`,
+  api.diagnostics.register("ball vel", () =>
+    state.ball === null
+      ? NO_BALL
+      : `${fixed(state.ball.vx)}, ${fixed(state.ball.vy)} ` +
+        `(${fixed(ballSpeed(state.ball))})`,
   );
-  api.diagnostics.register("ball spin", () => fixed(state.ball.spin));
+  api.diagnostics.register("ball spin", () =>
+    state.ball === null ? NO_BALL : fixed(state.ball.spin),
+  );
   api.diagnostics.register(
     "paddle L",
     () =>

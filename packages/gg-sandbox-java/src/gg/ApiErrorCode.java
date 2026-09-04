@@ -3,8 +3,7 @@ package gg;
 /**
  * Why a gg call failed, as a value a catch site branches on rather than prose it has to match.
  *
- * <p>The set is gg's and is closed. A code this SDK has no constant for arrives as {@link #OTHER}
- * rather than as a crash, because a program that cannot name a failure can still handle it.
+ * <p>The set is gg's and is closed. A code this SDK has no constant for arrives as {@link #OTHER}.
  */
 public enum ApiErrorCode {
     /**

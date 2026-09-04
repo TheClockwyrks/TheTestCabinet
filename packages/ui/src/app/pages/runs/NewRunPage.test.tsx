@@ -501,9 +501,12 @@ describe("NewRunPage", () => {
       name: "Root",
       modelId: "openai/gpt-5.6-sol",
     });
-    // The configuration the picker opened on drove the capability set, and records
-    // itself as the run's `preset` facet.
+    // The configuration the picker opened on drove the capability set: it records its
+    // name as the run's `preset` facet, and its id as `presetId` — what the run is
+    // attributed to, so a hand-launched run counts against the same coverage cell a
+    // scheduled one does.
     expect(request.capabilitySet.preset).toBe("minimal");
+    expect(request.capabilitySet.presetId).toBe("cfg-minimal");
     const ids = request.capabilitySet.agents[0].capabilities.map(
       (c: { id: string }) => c.id,
     );
@@ -539,6 +542,9 @@ describe("NewRunPage", () => {
       variant: "base",
       harnessSlug: "gg",
       modelId: "openai/gpt-5.6-sol",
+      // The engine it was launched on, so the row is filtered with the runs of the
+      // cell it belongs to while it is still in flight.
+      engine: "none",
       ggPreset: "minimal",
       state: "queued",
     });

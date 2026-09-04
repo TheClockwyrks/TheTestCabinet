@@ -52,6 +52,7 @@ vi.mock("../../../client/auth", () => ({
 }));
 
 const createGgConfig = vi.fn().mockResolvedValue({ id: "c1" });
+const updateGgConfig = vi.fn().mockResolvedValue({ id: "cfg-1" });
 const createGgAgent = vi.fn();
 // Whether `GET /gg/agents` answers. A library that fails to load leaves every imported
 // profile looking inline, which is the one state the page must refuse to save from.
@@ -103,13 +104,23 @@ const SAVED_REVIEWER = savedAgent("saved-1", "reviewer");
 // importing it lands on the slug that profile was minted with.
 const SAVED_ROOT = savedAgent("saved-root", "Root");
 
+// The one configuration the account has stored, which the edit route opens on.
+const STORED_CONFIG = {
+  id: "cfg-1",
+  name: "Duo",
+  description: "the two-agent arm",
+  capabilitySet: capabilitySetFromDraft(emptyDraft(), "Duo"),
+  agentSources: [],
+};
+
 function backendValue(): BackendContextValue {
   return {
     client: {
       listModels: vi.fn().mockResolvedValue([]),
-      listGgConfigs: vi.fn().mockResolvedValue([]),
+      listGgConfigs: vi.fn().mockResolvedValue([STORED_CONFIG]),
       listGgAgents,
       createGgConfig,
+      updateGgConfig,
       createGgAgent,
     },
     identity: null,
@@ -147,6 +158,10 @@ function renderPage(path = "/account/gg/new") {
       <BackendProvider value={backendValue()}>
         <Routes>
           <Route path="/account/gg/new" element={<GgConfigEditPage />} />
+          <Route
+            path="/account/gg/:configId/edit"
+            element={<GgConfigEditPage />}
+          />
           <Route path="/account/gg" element={<div>{CONFIG_LIST}</div>} />
         </Routes>
       </BackendProvider>
@@ -209,7 +224,10 @@ function saveAgent() {
 describe("GgConfigEditPage", () => {
   // The save spy is module-scoped, so its call log accumulates across tests unless
   // cleared — every "called once" assertion counts from a fresh slate.
-  beforeEach(() => createGgConfig.mockClear());
+  beforeEach(() => {
+    createGgConfig.mockClear();
+    updateGgConfig.mockClear();
+  });
 
   it("renders the configuration's three sections, capabilities behind an agent", async () => {
     renderPage();
@@ -1403,5 +1421,79 @@ describe("one saved agent imported twice", () => {
     expect(input.agentSources).toEqual([
       { profileId: agents[1].id, agentId: "saved-1", overrides: [] },
     ]);
+  });
+});
+
+// A gg coverage cell and a ladder climber are identified by the configuration's id, so
+// what a saved configuration writes into its own capability set is that id. The name
+// rides beside it as display text and as the run log's slice-by facet, which is why
+// renaming costs nothing and the form asks nothing before it saves one.
+describe("GgConfigEditPage attribution", () => {
+  beforeEach(() => {
+    createGgConfig.mockClear();
+    updateGgConfig.mockClear();
+  });
+
+  async function openStored() {
+    renderPage("/account/gg/cfg-1/edit");
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText("Configuration name") as HTMLInputElement).value,
+      ).toBe("Duo"),
+    );
+  }
+
+  function save(label = "Save configuration") {
+    fireEvent.click(screen.getByRole("button", { name: label }));
+  }
+
+  it("stores the configuration's own id beside its name", async () => {
+    await openStored();
+    save();
+    await waitFor(() => expect(updateGgConfig).toHaveBeenCalledTimes(1));
+    const [, input] = updateGgConfig.mock.calls[0]!;
+    expect(input.capabilitySet.presetId).toBe("cfg-1");
+    expect(input.capabilitySet.preset).toBe("Duo");
+  });
+
+  it("renames without asking, and keeps the id the runs are attributed to", async () => {
+    await openStored();
+    fireEvent.change(screen.getByLabelText("Configuration name"), {
+      target: { value: "Duo v2" },
+    });
+    save();
+    await waitFor(() => expect(updateGgConfig).toHaveBeenCalledTimes(1));
+    const [, input] = updateGgConfig.mock.calls[0]!;
+    expect(input.name).toBe("Duo v2");
+    // The name moved; the identity did not, so every cell built on this configuration
+    // keeps the runs recorded under it.
+    expect(input.capabilitySet.presetId).toBe("cfg-1");
+    expect(input.capabilitySet.preset).toBe("Duo v2");
+  });
+
+  it("writes no id for a configuration being created, which has none yet", async () => {
+    renderPage();
+    fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
+      target: { value: "fresh" },
+    });
+    save("Create configuration");
+    await waitFor(() => expect(createGgConfig).toHaveBeenCalledTimes(1));
+    expect(createGgConfig.mock.calls[0]![0].capabilitySet.presetId).toBe(
+      undefined,
+    );
+  });
+
+  it("writes no id for a duplicate, which must not answer for its original", async () => {
+    renderPage("/account/gg/new?from=saved:cfg-1");
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText("Configuration name") as HTMLInputElement).value,
+      ).toBe("Duo (copy)"),
+    );
+    save("Create configuration");
+    await waitFor(() => expect(createGgConfig).toHaveBeenCalledTimes(1));
+    expect(createGgConfig.mock.calls[0]![0].capabilitySet.presetId).toBe(
+      undefined,
+    );
   });
 });

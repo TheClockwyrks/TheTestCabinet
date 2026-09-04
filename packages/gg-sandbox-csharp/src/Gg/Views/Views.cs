@@ -3,16 +3,9 @@ namespace Gg;
 
 /// <summary>Put a file, a computed value or an entry's documentation into the context window.</summary>
 /// <remarks>
-/// <para>
-/// A program's own output goes nowhere the model can read it. A view is how a program puts something
-/// in front of the model that wrote it: one attributable item in the next prompt, closeable once it
-/// has been read.
-/// </para>
-/// <para>
-/// There are three kinds and the list is closed: a file, a computed string, and one entry's
-/// documentation. A picture is not a fourth kind — it is a file view of an image file, and the view
+/// A view is one item in the next prompt, keyed by a selector and closeable. There are three kinds:
+/// a file, a computed string, and one entry's documentation. An image file opened as a file view
 /// carries the picture.
-/// </para>
 /// </remarks>
 /// <ggmodule>views</ggmodule>
 public static partial class Views
@@ -20,24 +13,15 @@ public static partial class Views
     /// <summary>Read a file and show it in the context window.</summary>
     /// <remarks>
     /// <para>
-    /// The read's result comes back exactly as <c>Files.ReadFile</c> returns it, and the file is
-    /// added to the window as its own item. The separation is the point: <c>Files.ReadFile</c> gets
-    /// bytes for the program, this shows a file to the model, and a program that reads forty files
-    /// to grep them still adds nothing to the window.
+    /// The read's result is returned as well as shown. A view is keyed by the path and the region
+    /// together, so two pages of one file are two views; opening the same page again replaces it.
     /// </para>
     /// <para>
-    /// The key is the path and the region together, so two pages of one file are two views and
-    /// coexist. Opening the same page again replaces it rather than piling up a duplicate.
-    /// </para>
-    /// <para>
-    /// A text view is capped at 65,536 bytes, and a file over it is refused rather than cut: the
-    /// refusal names the size, and the way in is a smaller window through
-    /// <paramref name="offset"/> and <paramref name="limit"/>, or <paramref name="maxLineChars"/>
-    /// for a file whose lines are wider than they are useful — a minified bundle, a log. Each line
-    /// of the view longer than that many characters is cut there and annotated in place as
+    /// A text view is capped at 65,536 bytes, and a file over the cap is refused rather than cut;
+    /// the refusal names the size. Each line of the view longer than
+    /// <paramref name="maxLineChars"/> characters is cut there and annotated in place as
     /// <c>foo (123 more chars...)</c>, and the cap is measured after the cut. Only the view is cut:
-    /// what this call returns, and the file itself, are untouched. A picture is not subject to the
-    /// cap.
+    /// the returned value and the file itself are untouched. A picture is not subject to the cap.
     /// </para>
     /// </remarks>
     /// <param name="path">The file to read and show, relative to the workspace or absolute.</param>
@@ -47,12 +31,12 @@ public static partial class Views
     /// The width, in characters, past which each line of the view is cut, from 1 to 65,536. Left
     /// out, lines arrive whole.
     /// </param>
-    /// <returns>the read itself, so the program can work with what the model is now being shown.</returns>
+    /// <returns>the file's text window, or the picture's description.</returns>
     /// <exception cref="ApiException">
     /// <see cref="ApiErrorCode.NotFound"/> for a missing path,
     /// <see cref="ApiErrorCode.InvalidArgument"/> for an offset past the end of the file or a
     /// width outside 1 to 65,536, and <see cref="ApiErrorCode.LimitExceeded"/>, naming the size,
-    /// for a text view over 65,536 bytes. The read is what fails, and nothing is opened when it does.
+    /// for a text view over 65,536 bytes. Nothing is opened when the read fails.
     /// </exception>
     /// <ggop>views.open_file</ggop>
     public static Files.FileRead OpenFile(
@@ -83,24 +67,9 @@ public static partial class Views
     }
 
     /// <summary>Show a computed value in the context window, under a label.</summary>
-    /// <remarks>
-    /// <para>
-    /// This is how the result of a program reaches the model that wrote it. Opening the same label
-    /// again replaces what it showed, so a label names a thing rather than a moment.
-    /// </para>
-    /// <code>
-    /// var tests = Shell.Run("cargo nextest run --workspace");
-    /// Views.OpenText("tests", tests.Output);
-    /// </code>
-    /// </remarks>
-    /// <param name="label">
-    /// What to file it under: the view's selector, so an empty label is refused — a view with no
-    /// selector could never be replaced or attributed.
-    /// </param>
-    /// <param name="body">
-    /// The text to show. Empty is allowed, and is how a program says that something it was showing
-    /// is now empty.
-    /// </param>
+    /// <remarks>Opening the same label again replaces what it showed.</remarks>
+    /// <param name="label">What to file it under: the view's selector. An empty label is refused.</param>
+    /// <param name="body">The text to show. Empty is allowed.</param>
     /// <exception cref="ApiException">
     /// <see cref="ApiErrorCode.InvalidArgument"/> for an empty label, and
     /// <see cref="ApiErrorCode.LimitExceeded"/> naming the cap a body or label went over.
@@ -119,10 +88,8 @@ public static partial class Views
     /// </remarks>
     /// <param name="name">
     /// The fully-qualified name the documentation is keyed by — <c>"Gg.Views.OpenText"</c>, or a
-    /// module's own path, <c>"Gg.Views"</c>. The name a program calls it by (<c>"OpenText"</c>) also
-    /// resolves and is a fallback rather than the form to reach for: two modules are free to declare
-    /// a <c>Close</c>, and only the qualified name says which one is meant. Searching the
-    /// documentation is what says which names exist.
+    /// module's own path, <c>"Gg.Views"</c>. The unqualified name (<c>"OpenText"</c>) also resolves,
+    /// and is ambiguous where two modules declare it.
     /// </param>
     /// <exception cref="ApiException">
     /// <see cref="ApiErrorCode.NotFound"/> for a name nothing on this surface has.
@@ -133,16 +100,13 @@ public static partial class Views
     /// <summary>Close every view whose selector matches, and hand back how many went.</summary>
     /// <remarks>
     /// For a file, every page of that path closes. Closing a selector that is not open returns zero
-    /// rather than failing. Closing a view is context management, bought by the
-    /// <c>agent-managed-context</c> capability: an agent whose run did not enable it is refused.
+    /// rather than failing.
     /// </remarks>
     /// <param name="selector">A file view's workspace path, or a text view's label.</param>
     /// <returns>how many views went, counting each page of a paged file separately.</returns>
     /// <exception cref="ApiException">
-    /// <see cref="ApiErrorCode.InvalidArgument"/> for an empty selector, which names nothing rather
-    /// than everything — no call here closes the window wholesale — and
-    /// <see cref="ApiErrorCode.Unavailable"/> for an agent whose run did not buy
-    /// <c>agent-managed-context</c>.
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for an empty selector, and
+    /// <see cref="ApiErrorCode.Unavailable"/> where this run does not offer the call.
     /// </exception>
     /// <ggop>views.close</ggop>
     public static uint Close(string selector)

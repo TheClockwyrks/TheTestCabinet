@@ -82,6 +82,19 @@ by every operation that could invalidate it. A build that caches a trail,
 remembers which screen a pause returns to, or latches input holds that data in
 a form that a single-field operation leaves consistent.
 
+### A build reports the layout a spec leaves loose
+
+A case that validates a behavior over a layout it leaves to the build carries a
+read reporting what the build chose. A case whose menus take pointer input
+specifies a read returning a menu item's hit region in logical units, so a
+validator moves the pointer onto the item as the build drew it and asserts the
+selection that follows.
+
+Such a read is a reading operation like `snapshot()`, enumerated in the
+specification by name, signature, and effect. It reports position, and the
+pointer's effect on the menu stays in the game's own input handling, which is
+what the validator decides.
+
 ### Operations stay on the precondition side
 
 Atomic operations are setup verbs, and the
@@ -236,6 +249,8 @@ When designing or revising a case's debug API and validators:
 - The shared harness owns every compound sequence, built from atomic
   operations.
 - `snapshot()` reports every field an operation can set.
+- A layout a spec leaves to the build, such as a menu item's hit region, is
+  reported by a read the validators drive.
 - Each assertion traces to a statement in the specs, not to the reference
   implementation, and every spec-honoring design passes.
 - Each validator decides one requirement in one direction, and each edge case

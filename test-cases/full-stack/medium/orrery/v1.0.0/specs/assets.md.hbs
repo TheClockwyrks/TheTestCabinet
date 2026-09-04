@@ -1,0 +1,317 @@
+# Orrery — The assets this build produces
+
+Orrery ships with no pre-made art and no pre-made sound. This machine carries
+asset tools on its `PATH`, and every sprite, sheet, glyph, effect, cue, and the
+music bed the game shows or plays is produced with them during this build,
+committed to the repository, and bundled by it. This file is the contract: what
+to produce, which tool produces it, where the file lands, and how the build
+reaches it.
+
+Production is a one-time step. The tools belong to this machine and are absent
+when the project is installed and rebuilt elsewhere, so the committed files are
+the assets: `npm ci` and `npm run build` invoke no tool, and the built site
+fetches nothing from outside its own `dist/`. A build that shells out to a
+generation tool fails wherever the tools are absent, even though the game is
+complete.
+
+## The tools
+
+| Tool | Produces | Used for |
+| --- | --- | --- |
+| `draw` | one sprite, a PNG | the motes, the filaments, the sigil glyphs, the instruction glyphs, and the part pieces |
+| `draw-sheet` | a sprite sheet, one PNG per frame | the rise and set apertures |
+| `particle-2d` | a particle system, a `system.json` | the delivery, fault, and completion effects |
+| `sfx-synth` | a procedural sound, a `.wav` | the cues |
+| `sfx-sample` | a sampled sound over the sample pack, a `.wav` | the cues, where a sampled layer suits one better |
+| `music` | sequenced music over the instrument bank, a `.wav` and a `.mid` | the music bed |
+
+Each is a command-line tool, and `<tool> --help` states its operations
+(`<tool> <operation> --help` for one operation's flags). Each records the
+operations run against it and then renders the finished file, which you commit
+at the path this file names. Produce these files with these tools; pre-made
+art, a downloaded sound, or a bundled font standing in for a produced file does
+not meet this contract.
+
+## The look
+
+The mood is a brass instrument under a night sky: worked metal, cut glass, and
+the cold light of the bodies the machine handles. Palette, type, and styling
+are yours, chosen once and held across every sprite, glyph, effect, screen, and
+sound so the game reads as one place.
+
+## Scale
+
+The `STAGE_W x STAGE_H` (`1280 x 720`) stage is fitted uniformly to the window,
+so at the reference `1280`-pixel fit one logical unit covers one screen pixel.
+Every sprite is authored at the canvas its table row states and drawn at that
+size in logical units, centered on the thing it depicts, so nothing is scaled
+at draw time. The rows that name a live angle are drawn turned to it. The
+simulation reads no image: a mote's collision radius is `MOTE_COLLIDE_R` and a
+hex's targeting radius is `HEX_HIT_R`, whatever a file decoded to.
+
+## Where the files land, and how they are loaded
+
+Every produced file sits under `assets/` at the root of this repository, at the
+path named below, and is committed.
+
+{{#if (eq engine.slug "none")}}
+The build loads them itself. Every URL it requests resolves against the page
+rather than against the origin root, so the site runs unchanged whether it is
+served from the root of a static host or mounted under a sub-path. A
+root-absolute URL such as `/assets/sprites/motes/sol.png` does not meet this:
+it resolves against the origin and fails under a sub-path. Every image is
+decoded and every sound is bound to its cue before the first frame draws.
+{{else if (eq engine.slug "simple-2d")}}
+The {{engine.name}} engine provides the asset loader and the audio cue bus,
+both documented in the `engine/` directory at the root of this repository. The
+loader resolves every path under one root, `assets/`, relative to the page the
+build is served from, so the build asks it for a path written relative to that
+root, such as `sprites/motes/sol.png` and `audio/place.wav`, rather than
+constructing a URL of its own. Each image is loaded with `api.assets.loadImage`
+and each audio cue below is bound to its produced file with `api.audio.load`
+under its name in `CUES`, awaited in `initialize`, so every asset is decoded
+before the first frame.
+{{else}}
+The {{engine.name}} engine provides the asset loader and the audio cue bus,
+both documented in the `engine/` directory at the root of this repository. The
+loader resolves every path under one root, `assets/`, relative to the page the
+build is served from, so the build asks it for a path written relative to that
+root, such as `sprites/motes/sol.png` and `audio/place.wav`, rather than
+constructing a URL of its own. Each image is loaded with `api.assets.loadImage`
+and each audio cue below is bound to its produced file with `api.audio.load`
+under its name in `CUES`, awaited in the instance's `initialize`, so every
+asset is decoded before the first frame and survives every level transition.
+{{/if}}
+
+A load that fails leaves the game running. The game still initializes, still
+ticks, still takes keyboard and pointer input, and still draws a legible field,
+tray, and tape panel when a sprite, a sheet frame, a system, or a sound is
+unavailable, so a missing file costs the game its polish rather than its
+playability.
+{{#if (ne engine.slug "none")}}
+
+### The names in `src/constants.ts`
+
+Every path, canvas, frame count, and tolerance this file fixes is exported from
+`src/constants.ts`, each path relative to the `assets/` root the loader
+resolves against.
+
+| Constant | Holds |
+| --- | --- |
+| `MOTE_SPRITE_PATHS`, `MOTE_SPRITE_SIZE` | Each mote type's path by name, and their square canvas. |
+| `FILAMENT_SPRITE_PATHS`, `FILAMENT_SPRITE_W`, `FILAMENT_SPRITE_H` | The plain and triune strips' paths, and the strip canvas. |
+| `SIGIL_GLYPH_PATHS`, `SIGIL_GLYPH_SIZE` | Each transforming sigil's path by kind, and their square canvas. |
+| `INSTRUCTION_GLYPH_PATHS`, `INSTRUCTION_GLYPH_SIZE` | Each instruction's path by name, and their square canvas. |
+| `HUB_PATHS`, `HUB_SPRITE_SIZE` | The arm and piston hub paths, and their square canvas. |
+| `GRIPPER_PATHS`, `GRIPPER_SPRITE_SIZE` | The open and closed gripper paths, and their square canvas. |
+| `WHEEL_HUB_PATH`, `FIXTURE_MOUNT_PATH`, `WHEEL_SPRITE_SIZE` | The wheel hub's and the fixture mount's paths, and their shared square canvas. |
+| `APERTURE_SHEETS`, `APERTURE_FRAMES`, `APERTURE_SPRITE_SIZE` | The rise and set sheets' directories, the frames each holds, and their square canvas. |
+| `APERTURE_FRAME_TIME` | The seconds one aperture frame is shown. |
+| `PARTICLE_PATHS` | Each particle system's file by name. |
+| `CUE_PATHS`, `MUSIC_SCORE_PATH` | Each cue's file by name, the music bed's included, and the bed's score. |
+| `MUSIC_MIN_SECONDS`, `LOOP_SEAM_TOLERANCE` | The least the bed runs, and the loop seam's tolerance. |
+
+{{/if}}
+
+## The sprites
+
+Each of these is one sprite, produced with `draw` on a transparent,
+straight-alpha canvas of exactly the size its row states, and drawn at native
+size.
+
+| Sprite | Files | Canvas | Drawn |
+| --- | --- | --- | --- |
+| Motes | `assets/sprites/motes/<type>.png`, one for each of the fifteen names in `MOTES` | `44 x 44` | centered on every mote's position, at rest and while carried, upright at every moment of a cycle |
+| Filaments | `assets/sprites/filaments/plain.png`, `triune.png` | `48 x 16` | centered on the midpoint between the two motes' centers and turned to the angle from the first to the second, with the motes drawn over its ends |
+| Sigil glyphs | `assets/sprites/sigils/<kind>.png`, one for each of the twelve transforming sigils of `PARTS` | `48 x 48` | upright and centered on the sigil's anchor hex |
+| Instruction glyphs | `assets/sprites/instructions/<name>.png`, one for each of the ten names in `INSTRUCTIONS` | `24 x 24` | centered in its tape cell |
+| Arm hubs | `assets/sprites/parts/hub-arm.png`, `hub-piston.png` | `40 x 40` | centered on the part's anchor hex and turned to its first spoke; the arm hub carried by `arm`, `biarm`, `triarm`, and `hexarm`, the piston hub by `piston` |
+| Grippers | `assets/sprites/parts/gripper-open.png`, `gripper-closed.png` | `32 x 32` | centered on each gripper's live position and turned to that spoke's live angle, the closed sprite while the gripper holds a mote and the open one whenever it holds none, so that whether a gripper is holding reads off the field as `specs/parts.md` asks |
+| Wheel hub | `assets/sprites/parts/wheel-hub.png` | `48 x 48` | centered on the wheel's anchor hex and turned to the wheel's live rotation |
+| Fixture mount | `assets/sprites/parts/fixture-mount.png` | `48 x 48` | centered on each fixture's hex, beneath its mote sprite |
+
+A filament joins motes on adjacent hexes and a constellation is rigid, so the
+strip spans exactly `HEX_PITCH` (`48`) at every moment and is drawn at native
+size.
+
+### The sheets
+
+Two sheets, produced with `draw-sheet` and emitted as separate PNGs numbered
+from `0` rather than as regions of one image, each frame on a transparent,
+straight-alpha canvas of exactly the size its row states.
+
+| Sheet | Files | Frames | Canvas |
+| --- | --- | --- | --- |
+| Rise aperture | `assets/sprites/apertures/rise/0.png` to `5.png` | `6` | `48 x 48` |
+| Set aperture | `assets/sprites/apertures/set/0.png` to `5.png` | `6` | `48 x 48` |
+
+Each rise and each set on the field draws frame
+`floor(state.simTime / APERTURE_FRAME_TIME) mod APERTURE_FRAMES` of its own
+sheet, centered on its anchor hex, under the pattern the build draws in code, so
+both apertures turn continuously. `APERTURE_FRAME_TIME` is `0.12`.
+
+The six frames are six stages of one turn, advancing by an equal step through
+exactly one period of the aperture's own motif: frame `5` runs back into frame
+`0`, and no two frames of a sheet are the same image.
+
+### The art bar
+
+- The fifteen mote sprites are pairwise distinguishable on the field without
+  reading a label, and the six planets read as one family whose rungs run in
+  the ladder order of `PLANETS`.
+- Every mote's paint stays inside `MOTE_R` (`22`) of its center, so motes on
+  adjacent hexes never blur together. The radius bounds the form drawn rather
+  than the pixels it lands on: a form drawn to `MOTE_R` meets the bound wherever
+  a hex center falls between two pixels, and paint sits outside the radius only
+  where the whole of a pixel does.
+- The triune strip reads as clearly heavier than the plain one at a glance.
+- A fixture reads as mounted on its wheel rather than as resting loose.
+- The twelve sigil glyphs are told apart from one another at `48` units.
+- The ten instruction glyphs are told apart in a `24`-unit tape cell.
+- A closed gripper reads as closed at any of the six spoke angles.
+- The piston hub reads apart from the arm hub.
+- The rise aperture reads as an entrance and the set aperture as an exit.
+- The six frames of each aperture read as one continuous turn rather than a
+  flicker.
+- Every sprite reads on the dark sky, and none of them relies on a background
+  behind it.
+
+## The particle effects
+
+Produce each of these with `particle-2d` as a `system.json`, and play it live.
+
+| System | File | Fired at |
+| --- | --- | --- |
+| Delivery | `assets/particles/deliver.json` | each set that consumed at least one accepted constellation at this boundary, on its anchor hex |
+| Fault | `assets/particles/fault.json` | the position of the mote the fault of `specs/simulation.md` names, lowest in `y` and then lowest in `x` among them, or the anchor hex of the part it names when it names no mote |
+| Completion | `assets/particles/complete.json` | hex `(0, 0)`, on the boundary the run completes |
+
+Each is authored one-shot, its timeline set with `set-timeline --loop false`,
+so it decays to empty rather than settling into a steady state, and each is
+authored radially symmetric, so an instance reads correctly wherever on the
+field it plays. The player fits a system's field to the context it is handed,
+so placing and scaling an instance at its event's position is the build's own
+code. Each play of a system varies, and that variation is correct.
+
+A play is watched rather than glimpsed: an instance fired on one frame goes on
+changing the picture at its event's position over the frames that follow it,
+decaying to empty across them rather than being over by the next frame.
+
+Play them through `@test-cabinet/particle-runtime`, an installed dependency
+imported by its bare name, using its `./canvas` binding: a player is
+constructed over a parsed system and a 2D rendering context and advanced each
+frame with that frame's delta, and it simulates the system and composites the
+particles itself. Its options carry the seed, the composite mode, and whether
+the context is cleared before compositing, and the package's own types are the
+authoritative API.
+{{#if (eq engine.slug "none")}}
+The build hands the player the same context it draws the field into, so an
+effect sits over the frame at the position of the event that raised it.
+{{else if (eq engine.slug "simple-2d")}}
+The context is the one `render` receives, so a live effect advances on the
+frame delta `update` was handed and sits over the frame at the position of the
+event that raised it.
+{{else}}
+A draw component is what puts a player's output on the field, so an effect
+takes its place in the layer order like any other picture, at the position of
+the event that raised it.
+{{/if}}
+
+## The sound
+
+Produce a distinct sound for each of the six one-shot cues below, under exactly
+these file names, with `sfx-synth` or `sfx-sample` as suits each. The event
+each cue plays on is fixed in `specs/ui.md`.
+
+| Cue | File |
+| --- | --- |
+| `place` | `assets/audio/place.wav` |
+| `erase` | `assets/audio/erase.wav` |
+| `start` | `assets/audio/start.wav` |
+| `halt` | `assets/audio/halt.wav` |
+| `constellation` | `assets/audio/constellation.wav` |
+| `complete` | `assets/audio/complete.wav` |
+
+`sfx-synth` builds a sound from synth voices alone, and `sfx-sample` layers
+over the `combat-core` sample pack, present in the container and browsed with
+`list-samples`.
+
+### The music bed
+
+Produce the `music` cue with `music`, which may sequence the `cinematic`
+instrument bank — present in the container and browsed with `list-instruments`
+— synth waveforms, or both: `assets/audio/music.wav`, with its
+`assets/audio/music.mid` committed beside it. The `.wav` is what the game
+plays, for as long as `specs/ui.md` states, and it runs at least
+`MUSIC_MIN_SECONDS` (`30`) seconds.
+
+### Loops
+
+The bed is authored to loop cleanly: the file's end runs into its start with no
+click, no gap, and no jump in level, so in every channel the last sample and
+the first sample differ by at most `LOOP_SEAM_TOLERANCE` (`0.01`) of full
+scale.
+
+{{#if (eq engine.slug "none")}}
+Play each cue on its event and run the bed as `specs/ui.md` states.
+{{else if (eq engine.slug "simple-2d")}}
+Bind each name in `CUES` to its file with `api.audio.load`, play a cue on its
+event, and run the bed through `api.audio.loop` and `api.audio.stop`.
+{{else}}
+Bind each name in `CUES` to its file through the engine's `audio.load`, play a
+cue on its event, and run the bed through the world's `audio.loop` and
+`audio.stop`.
+{{/if}}
+
+### The sound bar
+
+- The six cues and the bed sound like one instrument shop.
+- `place` and `erase` fire many times a minute while a machine is built, so
+  each is short and light, and `erase` is told from `place` by ear.
+- `start` reads as a machine taking up motion.
+- `halt` is unmistakable as failure and `complete` as success, and neither is
+  heard as the other.
+- `constellation` sits under `complete` in weight.
+- The bed sits under the cues and stays welcome across a long sitting on one
+  challenge.
+
+## What stays drawn in code
+
+No produced file covers the following. Each is rendered by the build, and the
+file named beside it fixes its behavior and what a player must read.
+
+| Drawn in code | Fixed by |
+| --- | --- |
+| The sky and the hex field's ninety-one cells | `specs/field.md` |
+| Each sigil's footprint hexes and the roles its distinguished hexes carry | `specs/sigils.md` |
+| An arm's spokes, the shaft between a base and each gripper, and the length it stands at | `specs/parts.md` |
+| The wheel's spokes out to its fixture ring | `specs/parts.md` |
+| A track's path, its ends, and whether it is closed | `specs/parts.md` |
+| The reagent pattern a rise shows and the product pattern a set shows | `specs/parts.md` |
+| The selection, the drag ghost and its legality, and the targeted hex | `specs/editor.md` |
+| The tray, its slots, names, costs, and spent entries | `specs/editor.md` |
+| The tape panel's rows, labels, cells, cursor, and length annotations | `specs/editor.md` |
+| The identifier drawn on each arm and wheel on the field | `specs/editor.md` |
+| The heading, the readout, and the editor's messages | `specs/editor.md` |
+| The marks on the parts and motes a fault names | `specs/ui.md` |
+| The title, howto, and select screens, the solved panel, and all text | `specs/ui.md` |
+| The debug overlay | `specs/instrumentation.md` |
+
+Every word the game puts on the stage is drawn as text. The screens' copy and
+the solved panel's, the heading's name, cost, and messages, the tray's names and
+costs, the readout's figures, the tape rows' labels and length annotations, the
+identifier on each arm and wheel, and the banner a fault raises all reach the
+frame as text drawn where the player reads them, rather than as shapes traced
+into the form of letters or assembled from images of glyphs. Which typeface
+carries them is yours.
+
+An arm's shaft and spokes are drawn at the angle and the length the arm stands
+at on the frame, both of which change continuously within a cycle as
+`specs/simulation.md` defines.
+
+## Genuinely produced
+
+Every mote, filament, glyph, hub, gripper, mount, and aperture on screen is a
+produced sprite; every delivery, fault, and completion is a simulated particle system;
+and every cue and the bed are produced sound. Everything the game shows and
+plays traces to a file produced here or to the chrome drawn in code above.

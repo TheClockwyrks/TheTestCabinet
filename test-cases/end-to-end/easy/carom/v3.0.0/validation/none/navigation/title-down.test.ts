@@ -2,13 +2,17 @@
 // VERSUS.
 //
 // specs/ui.md: on the title, `p1-down` or `p2-down` moves `menuIndex` down one.
-// The snapshot does not report `menuIndex`, so the selection is read the way a
-// player reads it: after the one press, confirming opens the entry the index
-// now names, which from 0 is `VERSUS` at 1.
+// The ground is posed — the title with `menuIndex` at 0 — and one real
+// `ArrowDown` is pressed through Chromium's own input pipeline.
+//
+// The snapshot reports `menuIndex`, so what the press moved is read straight off
+// it. Confirming to see which entry was taken would grade the confirm as well,
+// and that is `title-versus`'s point.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
+import { TITLE_SOLO, TITLE_VERSUS, selectTitle } from "./screens";
 
 let h: Harness;
 
@@ -21,12 +25,12 @@ afterEach(async () => {
 });
 
 it("moves the selection to VERSUS with one down press", async () => {
-  await h.debug.reset();
+  await selectTitle(h, TITLE_SOLO);
+
   await h.tap("ArrowDown");
   await captureStill(h, "menu");
-  await h.tap("Enter");
 
-  const opened = await h.snapshot();
-  assertEqual(opened.screen, "countdown");
-  assertEqual(opened.mode, "versus");
+  const moved = await h.snapshot();
+  assertEqual(moved.screen, "title");
+  assertEqual(moved.menuIndex, TITLE_VERSUS);
 });

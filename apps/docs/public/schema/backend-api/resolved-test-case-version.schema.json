@@ -110,12 +110,12 @@
         },
         {
           "const": "sfx-sample",
-          "description": "A sample-library sound effect authored with the `sfx-sample` binary. Declares\nan `[audio]` table (naming its `sample_pack`). Judged on the emitted `clip.wav`.",
+          "description": "A sample-library sound effect authored with the `sfx-sample` binary. Declares\nan `[audio]` table (naming its one pack in `audio.packs`). Judged on the\nemitted `clip.wav`.",
           "type": "string"
         },
         {
           "const": "music",
-          "description": "A short piece of music authored with the `music` sequencer binary. Declares an\n`[audio]` table (naming its `instrument_bank`). Judged on the emitted\n`clip.wav` (and portable `clip.mid`).",
+          "description": "A short piece of music authored with the `music` sequencer binary. Declares an\n`[audio]` table (naming its one pack in `audio.packs`). Judged on the emitted\n`clip.wav` (and portable `clip.mid`).",
           "type": "string"
         },
         {
@@ -148,25 +148,17 @@
       "type": "object"
     },
     "AudioSpec": {
-      "description": "The resolved `[audio]` of an audio asset-generation case: the rendered clip's\noutput format and (for the sample/instrument kinds) the baked palette.",
+      "description": "The resolved `[audio]` of an audio asset-generation case: the output format of\nthe single clip it emits.\n\nThe palette such a case plays is **not** here: a pack declaration is not an\nasset-generation concept (a full-stack case and a game jam declare one too), so\nit lives on [`TestCaseVersion::audio_packs`] for every test type alike.",
       "properties": {
         "channels": {
           "description": "Channel layout: `mono` or `stereo`.",
           "type": "string"
-        },
-        "instrumentBank": {
-          "description": "For `music`: the baked instrument bank (`name@version`). `None` otherwise.",
-          "type": ["string", "null"]
         },
         "maxDurationMs": {
           "description": "Cap on the rendered clip's length in milliseconds.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
-        },
-        "samplePack": {
-          "description": "For `sfx-sample`: the baked sample pack (`name@version`). `None` otherwise.",
-          "type": ["string", "null"]
         },
         "sampleRate": {
           "description": "Output sample rate in Hz.",
@@ -714,6 +706,13 @@
     "ReviewValidationOut": {
       "description": "A review item's automated-validation driver in the §1.2 wire shape: the\nversion-folder-relative debug `script` key the driver fetches (like an asset) and\nits declared media `outputs`.",
       "properties": {
+        "engines": {
+          "description": "The engines this validator decides its point on, by slug, in declared order.\nOmitted when the case declares no restriction, which leaves the point active\non every engine the case supports.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "outputs": {
           "items": {
             "$ref": "#/$defs/ReviewOutputOut"
@@ -721,7 +720,7 @@
           "type": "array"
         },
         "perEngine": {
-          "description": "Whether `script` names a suite inside each engine's validator project rather\nthan one file under the version folder.",
+          "description": "Whether `script` names a suite inside a validator project — one per engine,\nand it ships in the project of every engine\n[`ReviewValidationOut::engines`] covers — rather than one file under the\nversion folder.",
           "type": "boolean"
         },
         "script": {
@@ -1223,6 +1222,13 @@
         }
       ]
     },
+    "audioPacks": {
+      "description": "The audio packs a run of this version is staged with, in declaration order.\nThe driver reads it to stage the run container's palette, so it is served for\nevery test type, not just the audio kinds — always present, empty for a\nversion that declares none, like the other list-valued keys beside it.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
     "build": {
       "anyOf": [
         {
@@ -1534,6 +1540,7 @@
     "engines",
     "assetKind",
     "assetDimension",
+    "audioPacks",
     "promptTemplate",
     "commonSpecs",
     "packages",

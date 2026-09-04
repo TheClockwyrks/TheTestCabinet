@@ -223,10 +223,19 @@ it("samples pixels, reads text draws, and captures cues", async () => {
   assertTrue(drewText(title, TITLE_TEXT), `the title draws ${TITLE_TEXT}`);
   assertGreaterThan(textDraws(title).length, 0, "anchored text draws");
 
+  // The cue channel is the one thing in this file that reads what the build
+  // SOUNDED, so it is the one that needs an ARMED harness — and a harness is
+  // armed only at creation, because the gesture that opens the build's audio is
+  // delivered before the opening `reset` that puts the state back. The shared one
+  // above was created unarmed, so it is disposed and replaced here rather than
+  // arming every check in the file: a fault in the arming then cannot reach the
+  // poses, the walks, or the evidence writers, none of which are about sound.
+  await h.dispose();
+  h = await createHarness({ armAudio: true });
+
   // A cue plays from update, off the pointer samples the build's own input
   // layer hands it (specs/ui.md) — so the move is made with the REAL mouse,
-  // one driven frame per sample, after audio is armed with a real gesture.
-  await h.armAudio();
+  // one driven frame per sample.
   const board = await loadBoard(h, R3_REDRAW);
   const played = watchCues(h);
   const before = await h.sounds();

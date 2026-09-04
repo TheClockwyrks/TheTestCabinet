@@ -386,6 +386,9 @@ impl OperationApi for FakeOperationApi {
     fn list_dir(&mut self, path: Option<String>) -> ToolOutcome {
         self.call("list_dir", json!({ "path": path }))
     }
+    fn tree(&mut self, path: Option<String>, depth: Option<u32>) -> ToolOutcome {
+        self.call("tree", json!({ "path": path, "depth": depth }))
+    }
     fn search(&mut self, query: String, path: Option<String>, limit: Option<u32>) -> ToolOutcome {
         self.call(
             "search",
@@ -803,6 +806,10 @@ pub(crate) fn canned_outcome(name: &str, args: &Value) -> ToolOutcome {
                 },
             ]),
         ),
+        "tree" => {
+            let rendered = "a.ts\nb.test.ts\nsub/\n  c.ts".to_string();
+            ToolOutcome::ok(rendered.clone(), "4 entries").with_data(ApiData::TreeText(rendered))
+        }
         "search" => ToolOutcome::ok("src/a.ts:3: const answer = 42;", "1 matches").with_data(
             ApiData::SearchMatches(vec![SearchMatchData {
                 path: "src/a.ts".to_string(),

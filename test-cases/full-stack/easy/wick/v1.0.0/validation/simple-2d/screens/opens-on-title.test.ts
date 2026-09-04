@@ -9,9 +9,9 @@
 //   specs/ui.md (`title`): "The game opens here, and the debug surface's
 //   `reset` returns here", and "`menuIndex` is `0` on arriving".
 //   specs/state.md ("The idle run"): "`run` holds the values below whenever
-//   `screen` is `title` or `howto`: `initialize` and `reset` build them", with
-//   the table this check compares against, restated as `IDLE_RUN` in
-//   `constants.ts`.
+//   `screen` is `title`, `howto`, or `almanac`: `initialize` and `reset` build
+//   them", with the table this check compares against, restated as `IDLE_RUN`
+//   in `constants.ts`.
 //   specs/state.md ("The contract"): "`initialize` builds the whole state in
 //   one go, so every field is present by the time a frame can observe it."
 //

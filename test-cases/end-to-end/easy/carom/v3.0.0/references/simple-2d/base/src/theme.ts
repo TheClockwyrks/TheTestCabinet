@@ -41,3 +41,21 @@ export const TAGLINE_TEXT = "NEON PADDLE DUEL";
 
 /** The label naming the mode, drawn on the field during a match. */
 export const MODE_LABEL = { solo: "SOLO", versus: "VERSUS" } as const;
+
+/**
+ * The how-to screen's single menu item. specs/ui.md fixes that the screen shows
+ * one, at index `0`, drawn as the other menus draw the item at `menuIndex`, and
+ * leaves the copy to the build.
+ */
+export const HOWTO_ITEMS = ["BACK"] as const;
+
+// ---- The two centered panels ---------------------------------------------
+//
+// Their size is what places the menus inside them, so `src/menus.ts` reads these
+// rather than repeating the arithmetic.
+
+/** The pause panel, centered on the field. */
+export const PAUSE_PANEL = { w: 520, h: 400 } as const;
+
+/** The match-over panel, centered on the field. */
+export const MATCHOVER_PANEL = { w: 560, h: 420 } as const;

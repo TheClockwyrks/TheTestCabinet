@@ -2,17 +2,27 @@
 // the title.
 //
 // specs/ui.md: on `paused`, `confirm` on `QUIT TO MENU` returns to the title,
-// restoring every declared field to its title value: `screen = title`, both
-// scores 0, `menuIndex = 0`. The score is posed to 3-4 first so the return has
-// something to clear; the third entry is selected with two down presses. The
-// snapshot does not report `menuIndex`, so the index is read by confirming once
-// on the title: index 0 is `SOLO`, so the match that opens is Solo, not the
-// Versus match that was quit.
+// which restores every declared field to its title value — `screen = title`, both
+// scores 0 — and restores `menuIndex` from `titleIndex`. The score is posed to
+// 3-4 first so the return has something to clear.
+//
+// The pause menu is posed over a live match and `menuIndex` is posed on the third
+// entry, which is the ground the review item names; the confirm is a real
+// `Enter`. Two arrow presses to walk down to it would fail this point whenever
+// the pause menu's movement edge was broken, and that edge is graded on its own.
+//
+// The title is reached without any title item ever having been confirmed, so
+// `titleIndex` is still the `0` a fresh title carries and the `menuIndex` read
+// back is `0` — the figure the review item names. Both are read off the snapshot.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
+import { PAUSE_ITEMS } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
-import { reachPlaying } from "./screens";
+import { reachPaused } from "./screens";
+
+/** The pause menu's third entry (specs/ui.md, `PAUSE_ITEMS`). */
+const QUIT_TO_MENU = PAUSE_ITEMS.indexOf("QUIT TO MENU");
 
 let h: Harness;
 
@@ -25,22 +35,16 @@ afterEach(async () => {
 });
 
 it("returns to the title on QUIT TO MENU", async () => {
-  await reachPlaying(h, "versus");
+  await reachPaused(h, "versus");
   await h.debug.setScore(3, 4);
+  await h.debug.setMenuIndex(QUIT_TO_MENU);
 
-  await h.tap("Escape");
-  assertEqual((await h.snapshot()).screen, "paused");
-  await h.tap("ArrowDown"); // RESUME -> RESTART
-  await h.tap("ArrowDown"); // RESTART -> QUIT TO MENU
   await h.tap("Enter");
   await captureStill(h, "title");
 
   const title = await h.snapshot();
   assertEqual(title.screen, "title");
   assertDeepEqual(title.score, { p1: 0, p2: 0 });
-
-  await h.tap("Enter");
-  const opened = await h.snapshot();
-  assertEqual(opened.screen, "countdown");
-  assertEqual(opened.mode, "solo");
+  assertEqual(title.menuIndex, title.titleIndex);
+  assertEqual(title.menuIndex, 0);
 });

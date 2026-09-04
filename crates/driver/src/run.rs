@@ -80,9 +80,10 @@ impl RunFailure {
 /// failure — the caller streams the outcome to the backend instead.
 ///
 /// `resolved` is filled in the moment the definition materializes. It exists for the
-/// one path that never gets a return value: an operator cancellation drops this
-/// future mid-flight, and the caller still needs the run's real case identity and
-/// test type to build the killed run's record.
+/// one path that never gets a return value: a canceled gg session that will not wind
+/// down inside the driver's grace, where the caller stops waiting on this future and
+/// still needs the run's real case identity and test type to build the killed run's
+/// record itself.
 ///
 /// `run_id` is minted by the caller and handed to the engine, so the run tree the
 /// engine writes — including a hung run's salvaged session record — is keyed by the same
@@ -159,8 +160,8 @@ pub async fn drive(
         ))
     })?;
 
-    // Publish the resolved version for the cancellation path: from here on, a kill
-    // that drops this future can still record the run against its real case
+    // Publish the resolved version for the cancellation path: from here on, a killed gg
+    // run whose session never winds down can still be recorded against its real case
     // identity, version, and test type rather than the requested slug alone.
     if let Ok(mut slot) = resolved.lock() {
         *slot = Some(test_case.clone());
@@ -208,8 +209,12 @@ pub async fn drive(
     };
     match config.runtime {
         DriverRuntime::Cli => {
+            // Labelled with this job's id so the driver can remove the sandbox from the
+            // job id alone — the teardown a canceled run needs, which runs after the
+            // run future (and with it the container handle) has been dropped.
             let runtime = CliContainerRuntime::detect()
-                .map_err(|err| with_test_case(format!("locating a container runtime: {err}")))?;
+                .map_err(|err| with_test_case(format!("locating a container runtime: {err}")))?
+                .for_job(&config.job_id);
             let collector = CliArtifactCollector::new(runtime.clone(), artifact_dir);
             drive_engine(
                 &out_dir,

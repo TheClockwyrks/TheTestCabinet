@@ -109,6 +109,21 @@ variants = [
   "variants/base.toml",
 ]
 
+# The audio packs the run container is staged with, and the whole of what
+# `sfx-sample` and `music` may reach. A tool config that names no pack plays the
+# first pack of that kind.
+#
+# `combat-core` is the sample pack the colony's violence is layered from: the
+# gunshot, the hit, the build cue, and the raid alarm all have their material in
+# its cannon body, snaps, metal impacts, and clangs. The bed is asked to sit low
+# and sparse and then lift when a raid lands (`specs/assets.md`), so `cinematic`
+# leads the banks, because its tremolo strings, low brass, choir, and taiko are
+# what that lift is made of. `gm-lite` follows for the nylon guitar, violin, and
+# cello a frontier plays itself between raids. `synthwave` is not staged; nothing
+# on this map is electric.
+[audio]
+packs = ["combat-core@0.1.0", "cinematic@0.1.0", "gm-lite@0.1.0"]
+
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
 # repository root. `npm ci` is deliberate — it requires the build to commit a

@@ -28,12 +28,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, fail } from "../assert";
 import { MUSIC_MIN_SECONDS } from "../constants";
-import {
-  captureStill,
-  createHarness,
-  readWav,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, readWav, type Harness } from "../harness";
 import { cueFile, showWaveform } from "./sounds";
 
 const BED = cueFile("music");

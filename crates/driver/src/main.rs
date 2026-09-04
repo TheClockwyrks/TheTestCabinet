@@ -15,6 +15,9 @@ use test_cabinet_core::job_api::JobState;
 use test_cabinet_core::{RunCancellation, mint_run_id, write_failed_record};
 use time::OffsetDateTime;
 
+use test_cabinet_driver::cancel::{
+    CancelDisposition, CancelRace, cancel_disposition, race_cancellation,
+};
 use test_cabinet_driver::client::JobClient;
 use test_cabinet_driver::config::{Config, DriverRuntime};
 use test_cabinet_driver::kubernetes::KubernetesContainerRuntime;
@@ -26,16 +29,27 @@ use test_cabinet_driver::sink;
 /// negligible load on the backend for the run's duration.
 const CANCEL_POLL_INTERVAL: Duration = Duration::from_secs(3);
 
-/// How long a canceled run is given to wind down and hand back its record before the
-/// driver stops waiting on the engine.
+/// How long a canceled **gg** run is given to wind down and hand back its record before
+/// the driver stops waiting on the engine.
 ///
-/// It has to cover the whole tail of a run: the harness winding down at its next clean
-/// boundary (itself bounded, for gg, by `gg_exec`'s own grace), then collecting the
-/// produced tree out of the sandbox and uploading it. Generous, because overrunning it
-/// costs the operator the produced tree and the folded metrics — everything the
-/// cooperative path exists to save — while waiting a few extra minutes on an
-/// already-terminal job costs nothing but a pod.
+/// It has to cover the whole tail of a run: the session winding down at its next clean
+/// turn boundary (itself bounded by `gg_exec`'s own grace), then collecting the produced
+/// tree out of the sandbox and uploading it. Generous, because overrunning it costs the
+/// operator the produced tree and the folded metrics — everything the cooperative path
+/// exists to save — while waiting a few extra minutes on an already-terminal job costs
+/// nothing but a pod.
+///
+/// It bounds the gg path alone. A canceled run of any other harness is
+/// [destroyed](CancelDisposition::DestroyNow) rather than waited for, so it never reaches
+/// this grace: there is no session to wind down, and holding the driver — and with it a
+/// dispatcher scheduling slot — open for twenty minutes would buy nothing.
 const CANCEL_WINDDOWN_GRACE: Duration = Duration::from_secs(1200);
+
+/// How long a destroyed run waits before sweeping for its sandbox a second time, to
+/// catch a sandbox whose creation landed after the first sweep listed. Long enough for
+/// an in-flight create to have been persisted, short enough to keep the destroy path's
+/// promise of freeing the run's scheduling slot in seconds.
+const SANDBOX_SWEEP_INTERVAL: Duration = Duration::from_secs(2);
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -108,57 +122,120 @@ async fn main() -> ExitCode {
     let relay = tokio::spawn(sink::relay_task(client.clone(), rx));
 
     // Filled by `drive` the moment the definition materializes, so the fallback
-    // cancellation path below — the one that never gets a return value — can still
-    // record the killed run against its real case identity and test type.
+    // cancellation path below — a gg session that would not wind down inside its grace,
+    // which therefore never hands a return value back — can still record the killed run
+    // against its real case identity and test type.
     let resolved: std::sync::Mutex<Option<test_cabinet_core::TestCaseVersion>> =
         std::sync::Mutex::new(None);
 
     // Race the run against an operator cancellation. `wait_for_cancellation` resolves
-    // only when the backend reports this job `canceled`, so a cancel raises the run's
-    // cancellation latch — and then this **keeps awaiting the run**.
+    // only when the backend reports this job `canceled`, and what happens then depends
+    // on the harness — see the driver's `cancel` module for the reasoning behind the two
+    // branches.
     //
-    // Not dropping the run future is the whole point. Dropping it would not stop
-    // anything that matters (the harness is its own process inside the sandbox and
-    // would keep going regardless) and it would skip every stage that turns a session
-    // into a result: collecting the produced tree, folding the accumulated usage into
-    // metrics, writing the record. Raising the latch instead asks the session to wind
-    // down at its next clean boundary, after which the run finishes normally and hands
-    // back a complete record of everything it got through — which is what an operator
-    // killed it to look at.
+    // A **gg** run is wound down: the run's cancellation latch is raised and this keeps
+    // awaiting the run, bounded by `CANCEL_WINDDOWN_GRACE`. gg acts on the latch at its
+    // next clean turn boundary, after which the run finishes through its ordinary
+    // post-session path — collecting the produced tree, folding the accumulated usage
+    // into metrics, writing the record — and hands back a complete account of everything
+    // it got through, which is what an operator killed it to look at. Past the grace this
+    // gives up on the engine and records the run from what the driver itself still holds.
     //
-    // The wait is bounded. A session that will not wind down must not hold the driver
-    // open forever, so past `CANCEL_WINDDOWN_GRACE` this gives up on the engine and
-    // falls back to recording the run from what the driver itself still holds. This is
-    // the same both locally (a k3d cluster) and in production: both drive a run through
-    // a driver pod that polls its backend job here.
+    // A run of any **other** harness is destroyed: the run future is dropped at once and
+    // nothing is kept, wherever in the run the kill lands — mid-session or in the
+    // post-session tail. Such a harness is a CLI driven through an `exec` with no
+    // wind-down protocol to ask for, so it never observes the latch — waiting on it would
+    // not produce an early record, only a wait for a session that was always going to run
+    // to its own end. Meanwhile the driver Job stays non-terminal and the dispatcher
+    // counts non-terminal Jobs against its in-flight cap, so every minute of that wait
+    // holds a scheduling slot for a run nobody will ever read. Exiting promptly frees it.
+    // A run that reached its *own* ending before this notices the kill is not destroyed
+    // — nothing was interrupted — and is finalized below like any other finished run;
+    // the backend discards its terminal status, holding the job at `canceled`.
+    //
+    // Dropping the future stops nothing by itself — the harness is its own process inside
+    // the sandbox pod and would keep running, and keep spending — which is why the
+    // destroy path below is a drop *plus* `teardown_sandbox`, the call that actually ends
+    // it. This is the same both locally (a k3d cluster) and in production: both drive a
+    // run through a driver pod that polls its backend job here.
     let cancel = RunCancellation::new();
-    let outcome = {
-        let run = drive(&config, &run_id, &request, &tx, &client, &resolved, &cancel);
-        tokio::pin!(run);
-        let observed = tokio::select! {
-            outcome = &mut run => Some(outcome),
-            () = wait_for_cancellation(&client) => None,
-        };
-        match observed {
-            Some(outcome) => Some(outcome),
-            None => {
-                tracing::info!(
+    let disposition = cancel_disposition(&request);
+    let raced = race_cancellation(
+        drive(&config, &run_id, &request, &tx, &client, &resolved, &cancel),
+        // Announce the kill where it is observed rather than where it is acted on: the
+        // wind-down branch says nothing more for up to twenty minutes, and an operator
+        // watching the driver's logs needs to see that the kill landed now.
+        async {
+            wait_for_cancellation(&client).await;
+            match disposition {
+                CancelDisposition::WindDown => tracing::info!(
                     job_id = %config.job_id,
                     "run canceled by operator; winding the session down so its work is recorded"
-                );
-                cancel.cancel();
-                match tokio::time::timeout(CANCEL_WINDDOWN_GRACE, &mut run).await {
-                    Ok(outcome) => Some(outcome),
-                    Err(_elapsed) => {
-                        tracing::warn!(
-                            job_id = %config.job_id,
-                            seconds = CANCEL_WINDDOWN_GRACE.as_secs(),
-                            "the canceled run did not wind down in time; recording what is held",
-                        );
-                        None
-                    }
-                }
+                ),
+                CancelDisposition::DestroyNow => tracing::info!(
+                    job_id = %config.job_id,
+                    harness = request.harness.as_str(),
+                    "run canceled by operator; destroying the run, which has no wind-down to ask for"
+                ),
             }
+        },
+        &cancel,
+        disposition,
+        CANCEL_WINDDOWN_GRACE,
+    )
+    .await;
+
+    let outcome = match raced {
+        CancelRace::Finished(outcome) => Some(outcome),
+        CancelRace::WoundDown(outcome) => Some(outcome),
+        CancelRace::WindDownExpired => {
+            tracing::warn!(
+                job_id = %config.job_id,
+                seconds = CANCEL_WINDDOWN_GRACE.as_secs(),
+                "the canceled run did not wind down in time; recording what is held",
+            );
+            None
+        }
+        CancelRace::Destroyed => {
+            // The destroyed run is recorded nowhere, deliberately. The backend already
+            // holds the job in its terminal `canceled` state, so no status post is owed;
+            // with no record to attach them to, the events the relay streamed are
+            // orphaned and the run never reaches the run list — which is the point, since
+            // there is no early state to inspect for a harness that could not be asked
+            // for one.
+            //
+            // So the relay is abandoned rather than drained. Draining exists to guarantee
+            // every event reached the backend *before* the record that anchors them; with
+            // no record coming, a flush would only trade the seconds this path exists to
+            // save (a preview connection can hold the channel open for its read timeout
+            // after the run future is dropped) for events nothing will ever read.
+            drop(tx);
+            relay.abort();
+            // The teardown *is* the kill on this path, so its failure is the one
+            // cancellation failure worth reporting as one. Exiting non-zero fails the
+            // driver Job, and a failed driver Job is exactly what the dispatcher's
+            // orphan-sandbox reaper looks for — a driver that exited without taking its
+            // sandbox with it. Exiting `SUCCESS` here would instead leave a harness
+            // running, and spending, in a sandbox nothing is watching until the pod's
+            // own active deadline (hours) ends it. Nothing re-runs the Job (the
+            // dispatcher creates it with a zero backoff limit) and the backend job is
+            // already terminally `canceled`, so failing costs only the reap it buys.
+            if !teardown_sandbox(&config).await {
+                return ExitCode::FAILURE;
+            }
+            // Sweep once more, a beat later. Dropping the run future cancels whatever
+            // request it had in flight from the *client* side only: a sandbox whose
+            // creation was in flight can still be persisted by the API server just after
+            // the sweep above listed, leaving a sandbox that sweep could not see. Nothing
+            // else would ever delete it — the reaper only looks at failed driver Jobs,
+            // and this one is about to succeed — so it would run the harness until its
+            // own active deadline (hours) hit. A second pass costs a couple of seconds
+            // against a wait this path exists to cut from twenty minutes.
+            tokio::time::sleep(SANDBOX_SWEEP_INTERVAL).await;
+            if !teardown_sandbox(&config).await {
+                return ExitCode::FAILURE;
+            }
+            return ExitCode::SUCCESS;
         }
     };
 
@@ -173,7 +250,7 @@ async fn main() -> ExitCode {
 
     match outcome {
         None => {
-            // The canceled run did not wind down inside the grace, so the engine never
+            // The canceled gg run did not wind down inside the grace, so the engine never
             // reached its post-session path and there is no engine-built record. Fall
             // back to recording the run from what the driver itself holds: the killed
             // run still streamed events right up to the kill — for a gg run, the bulk
@@ -242,10 +319,12 @@ async fn main() -> ExitCode {
             // the tab degrades to the bounded summary on the record alone.
             finalize_code_analysis_backend_upload(&config, &record).await;
 
-            // A run that wound down for an operator's kill took this same path — it is
-            // an ordinary engine outcome, produced by the ordinary post-session stages,
-            // and every upload above applies to it exactly as it does to a run that
-            // finished on its own. Only the terminal status differs.
+            // A gg run that wound down for an operator's kill took this same path — it
+            // is an ordinary engine outcome, produced by the ordinary post-session
+            // stages, and every upload above applies to it exactly as it does to a run
+            // that finished on its own. Only the terminal status differs. The latch is
+            // raised on the wind-down branch alone, so this is a gg-only branch: a
+            // destroyed run returned above and never reaches here.
             //
             // The branch is on whether the run was *canceled*, not on the record's own
             // state, because those can honestly disagree: a run that reached its own
@@ -278,9 +357,12 @@ async fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some(Err(failure)) => {
-            // A run that was canceled and then errored on its way out — the sandbox
+            // A gg run that was canceled and then errored on its way out — the sandbox
             // went away under it, say — is still a canceled run, not a failure to
             // report against the model. Record it as one, from what the driver holds.
+            // Only the wind-down branch raises the latch, so only a gg run can arrive
+            // here canceled; a destroyed run's error is never observed at all, because
+            // its future was dropped before it could produce one.
             if cancel.is_canceled() {
                 tracing::warn!(
                     detail = %failure.detail,
@@ -310,6 +392,9 @@ async fn main() -> ExitCode {
 /// finishes, so it need only ever fire on a real cancellation. The first tick is
 /// one interval out, so a run that is not canceled pays a single cheap poll every
 /// few seconds and no more.
+///
+/// This only observes the kill; what the driver then does with the run in flight is the
+/// caller's branch on [`CancelDisposition`].
 async fn wait_for_cancellation(client: &JobClient) {
     loop {
         tokio::time::sleep(CANCEL_POLL_INTERVAL).await;
@@ -329,23 +414,28 @@ async fn wait_for_cancellation(client: &JobClient) {
 /// ends where it does rather than an unexplained stop.
 const CANCELED_DETAIL: &str = "canceled by operator";
 
-/// The **fallback** record for a run an operator killed: the one the driver builds itself
-/// when the engine could not hand one back.
+/// The **fallback** record for a **gg** run an operator killed: the one the driver builds
+/// itself when the engine could not hand one back.
 ///
-/// A killed run is normally recorded by the engine, through its ordinary post-session
+/// A killed gg run is normally recorded by the engine, through its ordinary post-session
 /// path — that record carries the produced tree, the folded metrics and the session
-/// summary, and is what the cooperative cancellation exists to produce. This is what
-/// happens when that does not arrive: the session would not wind down inside its grace,
-/// or it errored on the way out. The record built here is
+/// summary, and is what the cooperative wind-down exists to produce. This is what happens
+/// when that does not arrive: the session would not wind down inside its grace, or it
+/// errored on the way out. The record built here is
 /// [`RunState::Canceled`](test_cabinet_core::RunState::Canceled) all the same, carrying
 /// the resolved case identity when the definition had materialized, but it is bare —
 /// zero metrics, no tree.
 ///
-/// It is worth building anyway because of what it anchors: the run's telemetry (for a gg
-/// run, nearly all of what it produced) was streamed as it happened and is already in the
+/// It is worth building anyway because of what it anchors: the gg run's telemetry —
+/// nearly all of what it produced — was streamed as it happened and is already in the
 /// backend's hands, and without a record to attach it to the killed run never reaches the
 /// run list at all. Everything here is best-effort — the job is already terminal and the
 /// sandbox teardown still has to happen, so a failure to record is logged, never fatal.
+///
+/// Both call sites are on the wind-down branch, so this is reached for a gg run only. A
+/// canceled run of any other harness is destroyed and recorded nowhere, which is what the
+/// operator asked for: there is no early state to anchor, because there was no session
+/// that could be asked to leave one.
 #[allow(clippy::too_many_arguments)]
 async fn report_canceled(
     client: &JobClient,
@@ -395,34 +485,60 @@ async fn report_canceled(
     }
 }
 
-/// Tear down the run's sandbox on cancellation. Dropping the run future cancels the
-/// in-flight harness `exec`, but the sandbox the run created outlives it, so remove
-/// it here. Under the Kubernetes runtime — the shape both the local cluster and
-/// production use — this deletes the run's sandbox pod(s), selected by this job's
-/// id. Best-effort: a failure is logged, never fatal (the job is already terminal).
-/// A no-op under the CLI runtime, whose short-lived `docker run` container is not a
-/// dispatcher-driven concern.
-async fn teardown_sandbox(config: &Config) {
-    if config.runtime != DriverRuntime::Kubernetes {
-        return;
-    }
-    match KubernetesContainerRuntime::connect(config.kubernetes.clone()).await {
-        Ok(runtime) => match runtime.delete_run_pods_for_job().await {
-            Ok(()) => tracing::info!(
+/// Tear down the run's sandbox, reporting whether it is now gone. Called on **every**
+/// cancellation path, and the reason each of them is correct.
+///
+/// The harness is its own process inside the sandbox, so neither dropping the run future
+/// nor the engine returning ends it: the host only ever held the `exec` stream. On the
+/// destroy path this call *is* the kill — it is what stops the harness running and
+/// spending after the run future is dropped. On the wind-down path the session has
+/// already stopped itself, and this reclaims the sandbox the run left behind.
+///
+/// Both runtimes are torn down from this job's id, which is what makes the call possible
+/// at all once the run's own handle on the sandbox has been dropped: under Kubernetes
+/// the run's sandbox pod(s) carry it as a label, and under the CLI runtime so does the
+/// `docker`/`podman` container (see [`JOB_ID_LABEL`]). A sandbox that is already gone —
+/// the ordinary case on the wind-down path — is success either way.
+///
+/// The call itself is best-effort and never fatal here: it logs and returns `false` on
+/// failure. What the caller does with that differs by path, and only the destroy path
+/// treats it as a failed run — see the [`CancelRace::Destroyed`] arm.
+///
+/// [`JOB_ID_LABEL`]: test_cabinet_core::container::JOB_ID_LABEL
+async fn teardown_sandbox(config: &Config) -> bool {
+    let torn_down = match config.runtime {
+        DriverRuntime::Kubernetes => {
+            match KubernetesContainerRuntime::connect(config.kubernetes.clone()).await {
+                Ok(runtime) => runtime.delete_run_pods_for_job().await,
+                Err(err) => Err(err),
+            }
+        }
+        DriverRuntime::Cli => match test_cabinet_core::CliContainerRuntime::detect() {
+            Ok(runtime) => {
+                runtime
+                    .for_job(config.job_id.clone())
+                    .delete_run_containers_for_job()
+                    .await
+            }
+            Err(err) => Err(err),
+        },
+    };
+    match torn_down {
+        Ok(()) => {
+            tracing::info!(
                 job_id = %config.job_id,
-                "tore down the canceled run's sandbox pod"
-            ),
-            Err(err) => tracing::warn!(
+                "tore down the canceled run's sandbox"
+            );
+            true
+        }
+        Err(err) => {
+            tracing::warn!(
                 job_id = %config.job_id,
                 error = %err,
-                "could not tear down the canceled run's sandbox pod"
-            ),
-        },
-        Err(err) => tracing::warn!(
-            job_id = %config.job_id,
-            error = %err,
-            "could not connect to Kubernetes to tear down the canceled run's sandbox"
-        ),
+                "could not tear down the canceled run's sandbox"
+            );
+            false
+        }
     }
 }
 

@@ -61,6 +61,7 @@ import type {
   StoredRun,
   TestCase,
   TestType,
+  UnreadableRunPage,
   VersionInfo,
   WorkerIdentity,
 } from "../client";
@@ -1430,6 +1431,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       if (opts?.versions?.length)
         params.set("versions", opts.versions.join(","));
       if (opts?.engine) params.set("engine", opts.engine);
+      if (opts?.ggConfigId) params.set("ggConfigId", opts.ggConfigId);
       // Only sent when on: the backend defaults it off, so the common URL stays
       // free of a redundant `latestVersions=false`.
       if (opts?.latestVersions) params.set("latestVersions", "true");
@@ -1598,11 +1600,11 @@ function launchBodyOf(config: LaunchConfig): LaunchBody {
     harness: config.harness as LaunchBody["harness"],
     model: config.modelId,
     orchestrator: config.orchestrator,
-    // Omitted entirely by a caller that pins no engine — a coverage plan and a
-    // comparison arm both mean the `none` default, which the backend spells as an
-    // absent field. The run form always names one. Typing this return against the
-    // contract's own `LaunchBody` is what keeps a field the console collects from
-    // being silently dropped here.
+    // Omitted entirely by a caller that pins no engine — a comparison arm, which
+    // varies the combination and not the runtime, means the `none` default, which the
+    // backend spells as an absent field. The run form and a coverage plan's cells both
+    // name one. Typing this return against the contract's own `LaunchBody` is what
+    // keeps a field the console collects from being silently dropped here.
     ...(config.engine ? { engine: config.engine } : {}),
     ...(config.maxRuntimeOverride != null
       ? { maxRuntimeSeconds: config.maxRuntimeOverride }
@@ -2326,6 +2328,24 @@ export function createBackendExec(
         backendUrl,
         `/runs/${encodeURIComponent(id)}`,
         token,
+      );
+    },
+
+    async listUnreadableRuns(opts?: {
+      limit?: number;
+      offset?: number;
+    }): Promise<UnreadableRunPage> {
+      // `GET /runs/unreadable` is an open read like the other run reads, and is the
+      // one listing that serves the runs whose records the backend cannot decode. It
+      // carries the same numbered pager (limit + offset) as the other worklists, and
+      // its `total` counts every such run so a pager sized from it lands on rows.
+      const params = new URLSearchParams();
+      if (opts?.limit != null) params.set("limit", String(opts.limit));
+      if (opts?.offset != null) params.set("offset", String(opts.offset));
+      const query = params.toString();
+      return getJson<UnreadableRunPage>(
+        backendUrl,
+        `/runs/unreadable${query ? `?${query}` : ""}`,
       );
     },
 

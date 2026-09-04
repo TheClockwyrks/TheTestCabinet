@@ -3,10 +3,10 @@
 //
 // WHERE THE THRESHOLD COMES FROM. specs/ui.md ("`title`"): "`up` and `down`
 // move the highlight by one item and wrap at both ends", over `TITLE_ITEMS`,
-// "`LIGHT THE LAMP`, `HOW TO PLAY`, in that order" — two items, so the last
+// "`LIGHT THE LAMP`, `THE ALMANAC`, `HOW TO PLAY`, in that order", so the last
 // index is `TITLE_ITEMS.length - 1` and the wrap lands on `0`.
 // specs/controls.md ("What each screen reads"), the `title` row: "`up`, `down`
-// move the highlight, wrapping at both ends".
+// move the highlight, wrapping".
 //
 // WHY THE WORLD IS POSED AS IT IS. The surface carries no pose for `menuIndex`,
 // so the last item is reached by pressing `ArrowDown` from the `0` the screen

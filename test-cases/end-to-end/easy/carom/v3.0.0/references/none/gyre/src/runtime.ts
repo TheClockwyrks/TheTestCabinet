@@ -28,10 +28,12 @@
 import { AudioBus, type AudioContextSource, type CueSpec } from "./audio-bus";
 import { Keyboard, asKeyboardEvent } from "./keyboard";
 import { Diagnostics, OVERLAY_KEY } from "./overlay";
+import { PointerInput, type PointerSample } from "./pointer";
 import {
   deviceSize,
   domSurface,
   fitViewport,
+  toLogical,
   type Surface,
   type Viewport,
 } from "./viewport";
@@ -83,6 +85,11 @@ export interface UpdateApi {
     value(name: string): number;
     /** Whether the action went down since the last frame. Consumes the edge. */
     pressed(name: string): boolean;
+    /**
+     * What the mouse and the fingers did since the last frame, oldest first, in
+     * the field's logical units. Discarded at the end of the frame, as an edge is.
+     */
+    pointers(): readonly PointerSample[];
   };
   readonly audio: {
     /** Play a declared cue. */
@@ -176,6 +183,12 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
   let viewport = fit();
   let context: CanvasRenderingContext2D | null = null;
 
+  // Built after the fit, because a pointer position is only meaningful through
+  // it: the map below reads whatever fit the most recent frame derived.
+  const pointer = new PointerInput(surface.events(), (clientX, clientY) =>
+    toLogical(viewport, surface.origin(), surface.dpr(), clientX, clientY),
+  );
+
   let count = 0;
   let time = 0;
   let dt = 0;
@@ -247,6 +260,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
     input: {
       value: (name) => keyboard.value(name),
       pressed: (name) => keyboard.pressed(name),
+      pointers: () => pointer.pending(),
     },
     audio: {
       play: (cue) => audio.play(cue),
@@ -280,19 +294,21 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
       diagnostics.draw(ctx);
     } finally {
       // An edge nothing consumed is discarded even when the frame threw, so one
-      // bad frame cannot leave a press to surface later, out of order.
+      // bad frame cannot leave a press — or a click — to surface later, out of
+      // order.
       keyboard.endFrame();
+      pointer.endFrame();
     }
   }
 
   /**
    * Redraw the state the last frame left, advancing nothing.
    *
-   * What the loop does while the game is off the wall clock. Input edges are
-   * deliberately NOT discarded here: a key pressed between two `advance` calls
-   * belongs to the next frame that actually runs, and dropping it would make what
-   * a driven scenario sees depend on how many times the browser happened to
-   * repaint.
+   * What the loop does while the game is off the wall clock. Input edges and
+   * pointer samples are deliberately NOT discarded here: a key pressed or a
+   * button clicked between two `advance` calls belongs to the next frame that
+   * actually runs, and dropping it would make what a driven scenario sees depend
+   * on how many times the browser happened to repaint.
    */
   function present(): void {
     if (live === null) return;
@@ -416,6 +432,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
       stopLoop();
       surface.events().removeEventListener("keydown", onOverlayKey);
       keyboard.detach();
+      pointer.detach();
       audio.dispose();
       live = null;
     },

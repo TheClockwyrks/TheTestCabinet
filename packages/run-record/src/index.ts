@@ -393,9 +393,54 @@ export type CostMetrics = {
  */
 export type RunMetrics = {
   /**
-   * End-to-end wall-clock time of the run, in seconds.
+   * End-to-end wall-clock time of the whole run, in seconds, excluding any
+   * time the run's container spent queued for cluster capacity before it
+   * started.
+   *
+   * This is what the run cost in machine time. It is the sum of
+   * [`Self::setup_seconds`], [`Self::session_seconds`] and
+   * [`Self::teardown_seconds`], and a question about the model is answered by
+   * the session alone: setup is shared by every run of a test case and
+   * dominates this figure whenever the session is short.
    */
   runTimeSeconds: number;
+  /**
+   * Wall-clock time of the harness session alone, in seconds — the model's own
+   * working time, and the figure that describes a model.
+   *
+   * `None` on a record written before the stage durations were measured, which
+   * is distinct from `Some(0.0)`.
+   */
+  sessionSeconds?: number;
+  /**
+   * Wall-clock time from the start of the run until the harness session began,
+   * in seconds: rendering the case's references, seeding the workspace,
+   * starting the container, probing its environment, installing the harness,
+   * and running the test case's `init` step.
+   *
+   * The queueing wait excluded from [`Self::run_time_seconds`] is subtracted
+   * here, the stage that contains it. `None` on a record written before the
+   * stage durations were measured.
+   */
+  setupSeconds?: number;
+  /**
+   * Wall-clock time spent collecting the produced tree and stopping the
+   * container, in seconds.
+   *
+   * Taken as the remainder of [`Self::run_time_seconds`], so the three stages
+   * sum to it exactly. `None` on a record written before the stage durations
+   * were measured.
+   */
+  teardownSeconds?: number;
+  /**
+   * Wall-clock time of the [validation](crate::validation) pass, in seconds.
+   *
+   * Recorded outside [`Self::run_time_seconds`], which is frozen before
+   * validation and before every [post-run stage](crate::post_run) runs. `None`
+   * on a canceled run, which skips validation, and on a record written before
+   * the stage durations were measured.
+   */
+  validationSeconds?: number;
   /**
    * Normalized token usage.
    */
@@ -1991,13 +2036,246 @@ export type ToolchainCommandResult = {
 };
 
 /**
- * The optional `test` command's result, plus the figures its output reported.
+ * One istanbul coverage metric: how many of a thing there are and how many the tests
+ * reached.
  *
- * The counts and the coverage are parsed **defensively** out of whatever the
- * command printed: a runner that reports neither is not a failure, it is a runner
- * that reports neither, and every figure here is therefore an `Option` whose
- * absence means *not reported* rather than *zero*. A zero here is only ever a zero
- * the tool actually printed.
+ * [`covered`](Self::covered) and [`total`](Self::total) are the authority and
+ * [`pct`](Self::pct) is what istanbul itself printed, carried so a stored figure and
+ * the report it came from cannot disagree by a rounding rule. `pct` is an `Option`
+ * because istanbul does not always emit a number: a metric with a zero total is
+ * reported as the STRING `"Unknown"`, which is an absence, not a zero. A consumer
+ * that wants a percentage for a metric whose `pct` is `None` derives it from
+ * `covered`/`total`, or renders nothing when `total` is zero.
+ */
+export type CoverageMetric = {
+  /**
+   * How many of this thing the tests reached.
+   */
+  covered: number;
+  /**
+   * How many of this thing there are in the measured source.
+   */
+  total: number;
+  /**
+   * The percentage istanbul reported, when it reported one.
+   */
+  pct?: number;
+};
+
+/**
+ * The four istanbul metrics, for one file or for the whole measured source.
+ *
+ * All four are carried rather than one headline percentage, because branch and
+ * function coverage answer questions line coverage cannot: a suite that calls every
+ * function once and takes no `else` reads as well-covered on lines alone. Istanbul's
+ * `branchesTrue` extra is deliberately not carried — it is a diagnostic of
+ * istanbul's own branch bookkeeping, not a figure about the code.
+ */
+export type CoverageMetrics = {
+  /**
+   * Executable lines.
+   */
+  lines: CoverageMetric;
+  /**
+   * Statements, which a single line may hold several of.
+   */
+  statements: CoverageMetric;
+  /**
+   * Function declarations, including methods and arrow functions.
+   */
+  functions: CoverageMetric;
+  /**
+   * Branch arms: each side of an `if`, a ternary, a logical operator, a default
+   * parameter and a `switch` case.
+   */
+  branches: CoverageMetric;
+};
+
+/**
+ * One measured source file's coverage.
+ */
+export type CoverageFile = {
+  /**
+   * The file's path relative to the implementation's repository root, forward
+   * slashed. Istanbul keys its report by ABSOLUTE host path; storing that would
+   * leak the host's filesystem layout into a published record and would not join
+   * to the static analysis, whose `CodeFileEntry.path` is repo-relative. The
+   * relativisation happens once, when the report is read.
+   */
+  path: string;
+  /**
+   * Executable lines.
+   */
+  lines: CoverageMetric;
+  /**
+   * Statements, which a single line may hold several of.
+   */
+  statements: CoverageMetric;
+  /**
+   * Function declarations, including methods and arrow functions.
+   */
+  functions: CoverageMetric;
+  /**
+   * Branch arms: each side of an `if`, a ternary, a logical operator, a default
+   * parameter and a `switch` case.
+   */
+  branches: CoverageMetric;
+};
+
+/**
+ * What the coverage reporter measured, read from
+ * [`TOOLCHAIN_COVERAGE_SUMMARY_PATH`].
+ *
+ * The presence of this whole block is the signal that coverage was reported at all.
+ * A case whose config writes no summary file, a command that never ran, and a runner
+ * that produced an unreadable file all leave it absent — never present with zeroes
+ * in it.
+ */
+export type ToolchainCoverage = {
+  /**
+   * The `total` row: every measured file rolled up.
+   */
+  totals: CoverageMetrics;
+  /**
+   * Per-file rows, sorted by path, capped at [`TOOLCHAIN_COVERAGE_FILE_LIMIT`].
+   */
+  files: Array<CoverageFile>;
+  /**
+   * How many files the report actually measured, before the cap.
+   */
+  filesMeasured: number;
+  /**
+   * Whether [`files`](Self::files) was cut short by the cap.
+   */
+  filesTruncated: boolean;
+};
+
+/**
+ * One test file the runner reported on.
+ */
+export type ToolchainTestFile = {
+  /**
+   * The file's path relative to the implementation's repository root, forward
+   * slashed. The reporter names it absolutely, for the same reason and with the
+   * same fix as [`CoverageFile::path`].
+   */
+  path: string;
+  /**
+   * Tests in this file that passed.
+   */
+  passed: number;
+  /**
+   * Tests in this file that failed.
+   */
+  failed: number;
+  /**
+   * Tests in this file that were skipped, pending or todo — neither passed nor
+   * failed, and counted separately so a suite that skipped half of itself cannot
+   * read as a suite that passed all of itself.
+   */
+  skipped: number;
+  /**
+   * The file-level message, when the file failed to load and so ran no tests at
+   * all. Stack frames stripped and bounded, like every other message here.
+   */
+  message?: string;
+};
+
+/**
+ * One failing test, named and explained.
+ */
+export type ToolchainTestFailure = {
+  /**
+   * The test file's repo-relative path.
+   */
+  file: string;
+  /**
+   * The test's full name — its `describe` chain and its own title, as the reporter
+   * joined them.
+   */
+  name: string;
+  /**
+   * Why it failed: the reporter's failure messages joined by a blank line, with
+   * every stack frame dropped and the result capped at
+   * [`TOOLCHAIN_FAILURE_MESSAGE_LIMIT`] bytes. Frames carry host paths and line
+   * numbers that mean nothing to a reader of a published record.
+   */
+  message?: string;
+};
+
+/**
+ * What the runner reported, read from [`TOOLCHAIN_TEST_REPORT_PATH`].
+ *
+ * Present only when that file was written and parsed. A suite that ran and found no
+ * tests reports zeroes here — that is a figure the runner actually produced, and it
+ * is exactly the signal that a build shipped no tests. The difference between "no
+ * tests" and "not reported" is the difference between this block being present with
+ * zeroes and being absent.
+ */
+export type ToolchainTests = {
+  /**
+   * Every test the runner ran, in every file.
+   */
+  total: number;
+  /**
+   * How many of them passed.
+   */
+  passed: number;
+  /**
+   * How many of them failed.
+   */
+  failed: number;
+  /**
+   * Skipped, pending and todo together.
+   */
+  skipped: number;
+  /**
+   * Test FILES the runner loaded.
+   */
+  filesRun: number;
+  /**
+   * How many of those files had a failure in them, counting a file that failed to
+   * load at all as one.
+   */
+  filesFailed: number;
+  /**
+   * Whether the runner called the whole invocation a success.
+   */
+  succeeded: boolean;
+  /**
+   * Per-file rows, sorted by path, capped at [`TOOLCHAIN_TEST_FILE_LIMIT`].
+   */
+  files: Array<ToolchainTestFile>;
+  /**
+   * Whether [`files`](Self::files) was cut short by the cap.
+   */
+  filesTruncated: boolean;
+  /**
+   * The first [`TOOLCHAIN_TEST_FAILURE_LIMIT`] failures, in the reporter's own
+   * order, so the list reads as "what broke" rather than an arbitrary sample.
+   */
+  failures: Array<ToolchainTestFailure>;
+  /**
+   * Whether [`failures`](Self::failures) was cut short by the cap.
+   * [`failed`](Self::failed) is always the true count regardless.
+   */
+  failuresTruncated: boolean;
+};
+
+/**
+ * The optional `test` command's result, plus the figures its REPORT FILES carried.
+ *
+ * Nothing here is read from what the command printed. The case's build vitest config
+ * writes a JSON test report and an istanbul coverage summary into `coverage/`, and
+ * these two blocks are those files, parsed and bounded. A figure that no longer
+ * moves when a reporter changes its terminal layout is a figure that can be compared
+ * across runs; a scraped one is not.
+ *
+ * Both blocks are `Option` and **absence means not reported, never zero**. A case
+ * whose config writes no report files — every case version predating this contract,
+ * and any case not on the v0.7.0 shape — leaves both absent, and every consumer is
+ * required to render nothing at all rather than an empty widget. A zero inside a
+ * present block is only ever a zero the runner actually reported.
  */
 export type ToolchainTestRun = {
   /**
@@ -2005,22 +2283,13 @@ export type ToolchainTestRun = {
    */
   result: ToolchainCommandResult;
   /**
-   * How many tests ran in total, when the output said.
+   * What the runner's JSON report said, when it wrote one.
    */
-  testsTotal?: number;
+  tests?: ToolchainTests;
   /**
-   * How many passed, when the output said.
+   * What the coverage summary said, when one was written.
    */
-  testsPassed?: number;
-  /**
-   * How many failed, when the output said.
-   */
-  testsFailed?: number;
-  /**
-   * Line coverage as a percentage (`0.0..=100.0`), read from the coverage
-   * summary table's `All files` row, when the command printed one.
-   */
-  coveragePercent?: number;
+  coverage?: ToolchainCoverage;
 };
 
 /**

@@ -74,7 +74,7 @@ const RAT_OFFSET = 20;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -82,7 +82,6 @@ afterEach(async () => {
 });
 
 it("plays each of the fifteen cues from the file of its own name", async () => {
-  await h.armAudio();
   const heard = await watchNamedCues(h);
 
   /** Run one scenario and answer the sounds it produced. */

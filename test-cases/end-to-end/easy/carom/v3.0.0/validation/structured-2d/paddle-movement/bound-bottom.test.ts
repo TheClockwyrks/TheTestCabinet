@@ -5,20 +5,29 @@
 // mover integrates the same way: `next = clamp(cy + vy * dt, ...)`, and if the
 // clamp changed the value then `vy = (next - cy) / dt` (specs/playfield.md). A
 // paddle pinned against a bound with the movement still held into it therefore
-// reports `vy = 0` and `cy` exactly at the bound. The match is started from the
-// title with menu keys and a real movement key is held, so it is the build's
-// own input path that drives the paddle into the bound. The menu route is
-// load-bearing: every posing operation (`startMatch` included) hands both
-// paddles to the debug driver, and only `reset` gives them back — a match
-// posed open would leave the held key dead.
+// reports `vy = 0` and `cy` exactly at the bound.
+//
+// THE MATCH IS POSED AND THE PADDLE IS LEFT WITH THE PLAYER. The countdown is
+// opened through the debug surface — the menus are the navigation checks'
+// surface, not this one's — and nothing takes a paddle, so the key held below
+// reaches the paddle over the build's own input path exactly as a player's does.
+// That is the whole of what a scenario needs from the surface here: a screen on
+// which the paddles move, and both of them still answering the keyboard.
+//
+// THE FIELD IS EMPTY. A clamp at a bound is about a paddle and nothing else, so
+// the ball and the obstacles are taken off rather than left to wander through the
+// reading. It also steadies the screen: with no ball there is no hold to elapse,
+// so the countdown the key is held on cannot turn over partway through the
+// measurement.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_CY, PADDLE_SPEED, PADDLE_MAX_CY } from "../../src/constants";
+import { FIELD_CY, PADDLE_SPEED, PADDLE_MAX_CY } from "../constants";
 import { assertCloseTo } from "../assert";
 import {
   captureReplay,
+  clearField,
   createHarness,
-  startWithKeys,
+  openCountdown,
   TICK_HZ,
   type Harness,
 } from "../harness";
@@ -38,7 +47,8 @@ afterEach(() => {
 });
 
 it("stops at the bottom bound with vy 0 while the key is still held", async () => {
-  await startWithKeys(h, "versus");
+  await openCountdown(h, "versus");
+  clearField(h);
   assertCloseTo(h.snapshot().paddles.left.cy, FIELD_CY, 6);
 
   const pinned = await captureReplay(h, "bound", async () => {

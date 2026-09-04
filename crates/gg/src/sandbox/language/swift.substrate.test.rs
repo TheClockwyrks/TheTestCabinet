@@ -78,7 +78,7 @@ use crate::tools::ToolOutcome;
 
 /// Compile `source` with the production prepare step, or panic with what the toolchain said.
 pub(super) fn prepare(source: &str) -> Vec<u8> {
-    match compile_program(source, &[], &PrepareContext::new()) {
+    match compile_program(source, &[], &PrepareContext::detached()) {
         Ok(prepared) => {
             assert!(
                 prepared.source.is_empty(),
@@ -462,7 +462,7 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
     let syntax = compile_program(
         "import gg\n\nlet x = (1 + 2\ngg.log(\"\\(x)\")\n",
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     );
     match syntax {
         Err(PrepareFailure::Program(error)) => {
@@ -479,7 +479,11 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
         other => panic!("an unclosed parenthesis is a program failure, not {other:?}"),
     }
 
-    let typed = compile_program("let total: Int = \"twelve\"\n", &[], &PrepareContext::new());
+    let typed = compile_program(
+        "let total: Int = \"twelve\"\n",
+        &[],
+        &PrepareContext::detached(),
+    );
     match typed {
         Err(PrepareFailure::Program(error)) => {
             let rendered = error.to_string();
@@ -494,7 +498,11 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
     // A compiler that is not there at all. Never a diagnostic, because nothing was decided about
     // the program — and the message names what an operator can fix.
     let missing = temp_env(compile::SWIFT_HOME_ENV, "/nonexistent/gg-swift", || {
-        compile_program("import gg\n\ngg.log(\"hi\")\n", &[], &PrepareContext::new())
+        compile_program(
+            "import gg\n\ngg.log(\"hi\")\n",
+            &[],
+            &PrepareContext::detached(),
+        )
     });
     match missing {
         Err(PrepareFailure::Toolchain(message)) => {
@@ -518,7 +526,7 @@ fn a_swift_program_is_compiled_verbatim() {
     // out, and gg would have to subtract it everywhere — so this asserts the offset is zero by
     // making the error's line arbitrary rather than first.
     let program = "let a = 1\nlet b = 2\nlet c = 3\nlet d = 4\nlet e: Int = missingName\n";
-    match compile_program(program, &[], &PrepareContext::new()) {
+    match compile_program(program, &[], &PrepareContext::detached()) {
         Err(PrepareFailure::Program(error)) => {
             let rendered = error.to_string();
             assert!(
@@ -573,7 +581,7 @@ public func parse(_ text: String, delimiter: Character = \",\") -> Row {
     let component = match compile_program(
         "import gg\nimport csvTools\n\ngg.log(csvTools.parse(\"a,b\", delimiter: \",\").cells.joined(separator: \"|\"))\n",
         std::slice::from_ref(&module),
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     ) {
         Ok(prepared) => prepared
             .component
@@ -589,7 +597,7 @@ public func parse(_ text: String, delimiter: Character = \",\") -> Row {
     match compile_program(
         "import gg\n\ngg.log(csvTools.parse(\"a,b\").cells.joined(separator: \"|\"))\n",
         std::slice::from_ref(&module),
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     ) {
         Err(PrepareFailure::Program(error)) => {
             let rendered = error.to_string();
@@ -606,15 +614,16 @@ public func parse(_ text: String, delimiter: Character = \",\") -> Row {
 #[test]
 fn a_program_with_a_module_in_scope_is_still_compiled_verbatim() {
     // The invariant, with the one thing that could have broken it in scope: the bytes `swiftc` reads
-    // as the program are the bytes the model sent, and the only other file of the compile is the
-    // module's own. gg writes no declaration beside the program, no entry module and no import for
-    // it — which is what makes the `import` above the model's own line rather than a formality.
+    // as the program are the bytes the model sent, and the only other thing in the working directory
+    // is the loaded-module band holding the module's own file and what it compiled to. gg writes no
+    // declaration beside the program, no entry module and no import for it — which is what makes the
+    // `import` above the model's own line rather than a formality.
     let module = CodeModule {
         name: "notes".to_string(),
         source: "public func title() -> String { \"NOTES\" }\n".to_string(),
     };
     let program = "import gg\nimport notes\n\ngg.log(notes.title())\n";
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     let prepared = compile_program(program, std::slice::from_ref(&module), &context)
         .expect("a program that reads a code module compiles");
 
@@ -628,7 +637,11 @@ fn a_program_with_a_module_in_scope_is_still_compiled_verbatim() {
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
         .collect();
     written.sort();
-    assert_eq!(written, ["main.swift", "module_notes.swift"]);
+    assert_eq!(written, ["main.swift", "modules"]);
+    assert!(
+        root.join("modules/notes/module_notes.swift").exists(),
+        "the module's own file is in its key's directory in the band"
+    );
     assert_eq!(
         std::fs::read_to_string(root.join("main.swift")).expect("the program was written"),
         program,
@@ -671,7 +684,7 @@ public func show(_ path: String) throws {
     let component = match compile_program(
         "import gg\nimport notes\n\ntry notes.show(\"notes.md\")\n",
         std::slice::from_ref(&module),
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     ) {
         Ok(prepared) => prepared
             .component
@@ -698,17 +711,11 @@ public func show(_ path: String) throws {
 
     // And the same module without the line, which is the compiler saying the surface is not in
     // scope in a file that did not ask for it — at the author's own line, since nothing gg wrote
-    // stands above it.
-    let bare = CodeModule {
-        name: "notes".to_string(),
-        source: "public func show(_ path: String) throws {\n    try views.openText(path, body: \"\")\n}\n"
-            .to_string(),
-    };
-    match compile_program(
-        "import gg\nimport notes\n\ntry notes.show(\"notes.md\")\n",
-        std::slice::from_ref(&bare),
-        &PrepareContext::new(),
-    ) {
+    // stands above it. It is read at the read that binds the module, which is where its author
+    // meets it.
+    let bare =
+        "public func show(_ path: String) throws {\n    try views.openText(path, body: \"\")\n}\n";
+    match compile::compile_module("notes", bare, &PrepareContext::detached()) {
         Err(PrepareFailure::Program(error)) => {
             let rendered = error.to_string();
             assert!(
@@ -719,6 +726,24 @@ public func show(_ path: String) throws {
         }
         other => panic!("a module naming a surface it never imported does not compile: {other:?}"),
     }
+
+    // And the same bytes reaching a program's compile with no build recorded for them is gg's own
+    // failure rather than the model's: the program compiles, and the file the diagnostic names is
+    // one that program's author never wrote.
+    match compile_program(
+        "import gg\nimport notes\n\ntry notes.show(\"notes.md\")\n",
+        &[CodeModule {
+            name: "notes".to_string(),
+            source: bare.to_string(),
+        }],
+        &PrepareContext::detached(),
+    ) {
+        Err(PrepareFailure::Lowering(rendered)) => assert!(
+            rendered.contains("`notes`") && rendered.contains("module_notes.swift:2:"),
+            "the operator is not told which binding failed, or what swiftc said: {rendered}"
+        ),
+        other => panic!("a module gg rebuilt beside a program is gg's own failure, not {other:?}"),
+    }
 }
 
 #[test]
@@ -727,20 +752,22 @@ fn a_code_module_is_checked_on_its_own_and_reports_its_names() {
     // that does not build would take down every program the agent wrote from then on, with the
     // diagnostic landing against a turn's own program in a file the model never saw.
     let prepared = compile::compile_module(
+        "helpers",
         "public func parse(_ text: String) -> [String] {\n    text.split(separator: \",\").map(String.init)\n}\n\nprivate func unused() {}\n",
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect("that module checks");
     assert_eq!(export_names(&prepared.exports), ["parse"]);
 
     match compile::compile_module(
+        "helpers",
         "public func parse() -> Int {\n    \"twelve\"\n}\n",
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     ) {
         Err(PrepareFailure::Program(error)) => {
             let rendered = error.to_string();
             assert!(
-                rendered.contains("module_module.swift:2:"),
+                rendered.contains("modules/helpers/module_helpers.swift:2:"),
                 "a module's diagnostic is at the author's own line: {rendered}"
             );
         }
@@ -762,7 +789,7 @@ fn what_compiling_a_swift_program_cost_is_a_reading_the_seam_can_take() {
     let accepted = started.elapsed();
 
     let started = Instant::now();
-    let rejected = compile_program("let x: Int = \"no\"\n", &[], &PrepareContext::new());
+    let rejected = compile_program("let x: Int = \"no\"\n", &[], &PrepareContext::detached());
     let refused = started.elapsed();
 
     assert!(rejected.is_err(), "that program does not type-check");
@@ -871,6 +898,7 @@ gg.log(summary.line)
 try views.openText("notes", body: notes)
 "#,
         scope,
+        &crate::sandbox::AgentWorkspace::new(),
         SandboxLimits::AMPLE,
         None,
         api,

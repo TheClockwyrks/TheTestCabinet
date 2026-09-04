@@ -1,4 +1,5 @@
-//! Tests for the token-class totals and the comparable-cost derivation.
+//! Tests for the token-class totals, the comparable-cost derivation, and the
+//! run's stage-duration partition.
 
 use super::*;
 
@@ -104,4 +105,68 @@ fn totals_report_nothing_only_when_no_class_in_them_is_reported() {
     assert_eq!(input_only.total_input(), Some(10));
     assert_eq!(input_only.total_output(), None);
     assert_eq!(input_only.total(), Some(10));
+}
+
+/// A duration in whole seconds, so a test's arithmetic reads as its assertion.
+fn secs(seconds: u64) -> Duration {
+    Duration::from_secs(seconds)
+}
+
+#[test]
+fn the_stages_partition_the_run_exactly() {
+    // A 900s run whose session ended at 870s and whose container was never queued:
+    // 600s of setup, 270s of session, and the 30s of teardown that is left.
+    let durations = RunDurations::partition(secs(900), secs(870), secs(270), secs(0), None);
+    assert_eq!(durations.run_time_seconds, 900.0);
+    assert_eq!(durations.setup_seconds, 600.0);
+    assert_eq!(durations.session_seconds, 270.0);
+    assert_eq!(durations.teardown_seconds, 30.0);
+    assert_eq!(
+        durations.setup_seconds + durations.session_seconds + durations.teardown_seconds,
+        durations.run_time_seconds,
+        "the three stages must sum to the run's measured duration exactly",
+    );
+}
+
+#[test]
+fn the_queueing_wait_is_charged_to_neither_the_run_nor_the_setup() {
+    // 120s of the 900s wall clock was the container waiting its turn for cluster
+    // capacity. It leaves the run's measured duration, and it leaves setup, which
+    // is the stage that contained it — the session and teardown are untouched.
+    let durations = RunDurations::partition(secs(900), secs(870), secs(270), secs(120), None);
+    assert_eq!(durations.run_time_seconds, 780.0);
+    assert_eq!(durations.setup_seconds, 480.0);
+    assert_eq!(durations.session_seconds, 270.0);
+    assert_eq!(durations.teardown_seconds, 30.0);
+}
+
+#[test]
+fn validation_is_recorded_outside_the_run_and_only_when_it_ran() {
+    let validated =
+        RunDurations::partition(secs(900), secs(870), secs(270), secs(0), Some(secs(45)));
+    assert_eq!(validated.validation_seconds, Some(45.0));
+    assert_eq!(
+        validated.run_time_seconds, 900.0,
+        "validation runs after the run's wall clock is frozen, so it never joins it",
+    );
+
+    // A canceled run skips validation, and nothing measured is not zero measured.
+    let canceled = RunDurations::partition(secs(900), secs(870), secs(270), secs(0), None);
+    assert_eq!(canceled.validation_seconds, None);
+}
+
+#[test]
+fn the_partition_holds_for_durations_a_run_could_not_have_produced() {
+    // Timers that disagree — a session longer than the whole run — must still
+    // partition rather than underflow into a negative teardown, because every
+    // consumer of these figures is entitled to their sum.
+    let durations = RunDurations::partition(secs(10), secs(600), secs(500), secs(0), None);
+    assert_eq!(durations.run_time_seconds, 10.0);
+    assert!(durations.setup_seconds >= 0.0);
+    assert!(durations.session_seconds >= 0.0);
+    assert!(durations.teardown_seconds >= 0.0);
+    assert_eq!(
+        durations.setup_seconds + durations.session_seconds + durations.teardown_seconds,
+        durations.run_time_seconds,
+    );
 }

@@ -12,6 +12,15 @@
 // runtime owns and reset must not touch, required to keep whatever value the
 // press left it.
 //
+// The campaign precondition is read BEFORE the mode switch. Whether campaign
+// progress survives entering another mode is
+// `campaign/campaign-progress-persists`'s requirement, and reading
+// `solvedBoards` after the switch would make this item fail on a build that
+// misses that one. And `muted` is compared against whatever the mute toggle
+// left rather than against `true`, because the binding that turns muting on is
+// `screens/mute`'s requirement; what reset owes is that it leaves the bit
+// alone.
+//
 // THE SEED IS OBSERVED THROUGH THE ONE WINDOW THE SPEC OPENS: determinism.
 // `rngState` is not a snapshot field; what the spec fixes is that the same seed
 // and the same calls reproduce the same result exactly, and that an omitted
@@ -99,6 +108,7 @@ it("restores every declared field to its title-screen value, muted untouched", a
   assertEqual(reset.screen, "title", "the title screen");
   assertEqual(reset.menuIndex, 0, "its first menu item highlighted");
   assertEqual(reset.mode, "campaign", "mode back to campaign");
+  assertEqual(reset.board.nodes.length, 0, "no board in play");
   assertNull(reset.tracing, "no trace live");
   assertEqual(reset.pointer.down, false, "the pointer reported as up");
   assertEqual(reset.simTime, 0, "simTime at 0");

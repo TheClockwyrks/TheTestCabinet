@@ -1,10 +1,7 @@
 /**
  * The failure type, the failure codes, and the small values every other module speaks in.
  *
- * It catalogues no capability of its own. What it holds is the vocabulary the other twelve modules
- * share, gathered here so that no module has to reach into another to name a failure — and so that a
- * program catching one writes a single `import gg.core.ApiError` rather than one per module it
- * calls.
+ * Every module's failures are the one `gg.core.ApiError`.
  *
  * @ggmodule core
  */
@@ -13,37 +10,16 @@ package gg.core
 /**
  * A gg call that failed.
  *
- * Every function in this SDK raises it. A `catch` branches on [code], which is an enum entry rather
- * than free text, so the branch is checked by the compiler:
+ * Every function in this SDK raises it. It is a `RuntimeException`, so it is unchecked. A `catch`
+ * branches on [code], which is an enum entry rather than free text.
  *
- * ```
- * val name = "gg.docs.search"
- * try {
- *     gg.views.openDocsView(name)
- * } catch (failure: gg.core.ApiError) {
- *     if (failure.code != gg.core.ApiErrorCode.NOT_FOUND) throw failure
- *     gg.views.openText("docs", "nothing on this surface is called $name")
- * }
- * ```
- *
- * It is a [RuntimeException], which is what Kotlin makes every exception: this language has no
- * checked exceptions, so a composed program is not forced into a `try` around every line, and a
- * surface that returned a `Result` from each call would force a branch after every line instead.
- *
- * An unexpected one is best left to escape: the program dies the way its runtime kills it, and what
- * the model reads is the runtime's own dying words — this exception's message, then the stack, in
- * the program's own file and lines. That is why `message` is
- * **`` `operation` failed (code): what went wrong ``** rather than gg's sentence alone: an uncaught
- * failure has no second channel to carry the call's name and its class on, and every arm of a study
- * reports one in that same shape. [detail] is the sentence without them.
+ * `message` is `` `operation` failed (code): what went wrong ``. [detail] is that sentence without
+ * the operation and the code.
  *
  * @property operation The gg call that failed, under gg's own name for it (`open_text`,
  *   `open_docs_view`).
- * @property code The failure class, so a catch site branches on a value rather than on prose.
+ * @property code The failure class.
  * @property detail What went wrong, in gg's own words alone.
- *
- *   Without the call's name and its class, which `message` carries in front of them so that an
- *   uncaught failure names all three.
  */
 public class ApiError(
     public val operation: String,
@@ -54,12 +30,9 @@ public class ApiError(
 /**
  * Why a gg call failed — the [ApiError.code] a catch site branches on.
  *
- * The set is gg's own and is closed. A code this SDK has no entry for reads as [OTHER] rather than
- * failing the read, because a program handed an unclassified failure is better placed than a program
- * handed a crash.
+ * The set is gg's own and is closed. A code this SDK has no entry for reads as [OTHER].
  *
- * @property wireName gg's own spelling of the code, which a run record and the tool-calling arm both
- *   report.
+ * @property wireName gg's own spelling of the code.
  */
 public enum class ApiErrorCode(public val wireName: String) {
     /**
@@ -132,11 +105,8 @@ public enum class ApiErrorCode(public val wireName: String) {
 /**
  * One field of a revision that can be cleared as well as replaced.
  *
- * Most of what a revision takes — of a task, of a board issue — is two-way: naming a field replaces
- * it and leaving it out keeps it. A description, and an issue's epic, are three-way — kept, replaced,
- * or emptied — and `null` is already spoken for by the second of those, since leaving an argument out
- * is passing `null` in this language. So the third state is a value rather than a sentinel, which is
- * what a sealed type is for:
+ * `Patch.Replace(value)` replaces the field, `Patch.Clear` empties it, and leaving the argument out
+ * keeps what is there.
  *
  * ```
  * val rewritten = gg.core.Patch.Replace("read the manifest first")

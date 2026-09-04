@@ -159,8 +159,9 @@ pub(crate) struct SignatureCatalogue {
     /// `componentize-py` had baked a curated subset of it.
     ///
     /// What a model reads it through is a **compile failure**
-    /// ([`library_set`](super::library_set)): the set is what the compiler measured the program
-    /// against, and a program that reached outside it is answered with it on the turn that did.
+    /// ([`supporting`](super::supporting)): the set is what the compiler measured the program
+    /// against, and a program that reached outside it is answered on the turn that did, with the
+    /// modules matching what it could not import.
     ///
     /// Empty for a language whose programs get their runtime's own standard library and nothing
     /// else: `#[serde(default)]`, so an arm with nothing to declare emits a catalogue without the

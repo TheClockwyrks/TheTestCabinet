@@ -47,9 +47,13 @@ Each binary is the same tool the corresponding
 [asset-generation](/testing/asset-generation/overview/) case uses, invoked as a
 CLI whose `--help` states its operations. A run seeds no operations schema. The
 linked pages are the authoritative reference for each tool's operations, output,
-and previews. `sfx-sample` mixes over the baked `combat-core` sample pack and
-`music` sequences over the baked `gm-lite` instrument bank, exactly as their
-asset-generation counterparts do.
+and previews.
+
+The audio packs a run may use come from the case rather than the image. A
+full-stack case declares them in its manifest's `[audio] packs`, and the run
+container is staged with those packs alone. A config that names no palette gets
+the first declared pack of its kind, a sample pack for `sfx-sample` and an
+instrument bank for `music`. See [Manifests](/testing/full-stack/manifests/).
 
 The `3d` dimension covers cube-voxel models and volumetric effects. A concept
 whose art needs meshed or SDF geometry, `ui` screens, or `material` textures is

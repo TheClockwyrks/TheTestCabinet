@@ -1,13 +1,8 @@
 /**
- * The only way material enters the agent's own context window.
+ * The only way material enters the context window.
  *
- * Under responses as code a whole program's output would otherwise collapse into one anonymous blob
- * of logs, charged to one band, attributable to nothing and closable by nothing. A view restores what
- * tool calling gave for free: one message per view, carrying the band it is charged to and the
- * selector it is filed under.
- *
- * So `println` reaches the run's operator and a view reaches the model, which is the whole reason a
- * program that computes something also has to show it.
+ * Each view is its own message, carrying the band it is charged to and the selector it is filed
+ * under. Nothing a program prints is shown back.
  *
  * @ggmodule views
  */
@@ -25,19 +20,13 @@ import gg.internal.ggText
 /**
  * Read a file and show it: the read's own answer comes back, and the file becomes its own view.
  *
- * The split from `gg.files.readFile` is the point — that call gets bytes for the program, this one
- * shows a file to the model — so a program that reads forty files to grep them still places nothing
- * in the window. An image file is shown as a picture, and this is the only way to look at one.
+ * An image file is shown as a picture. Naming a window shows one page rather than the whole file.
+ * Two pages of one file are two views that coexist; re-opening the same page replaces what it showed.
  *
- * Naming a window shows one page rather than the whole file. Two pages of one file are two views that
- * coexist; re-opening the same page replaces what it showed rather than piling up a duplicate.
- *
- * A text view is capped at 65,536 bytes, and a file over it is refused rather than cut: the refusal
- * names the size, and the way in is a smaller window through `offset` and `limit`, or `maxLineChars`
- * for a file whose lines are wider than they are useful — a minified bundle, a log. Each line of the
- * view longer than that many characters is cut there and annotated in place as
- * `foo (123 more chars...)`, and the cap is measured after the cut. Only the view is cut: what this
- * call returns, and the file itself, are untouched. A picture is not subject to the cap.
+ * A text view is capped at 65,536 bytes, and a file over it is refused rather than cut, the refusal
+ * naming the size. Each line of the view longer than `maxLineChars` is cut there and annotated in
+ * place as `foo (123 more chars...)`, and the cap is measured after the cut. Only the view is cut:
+ * what this call returns, and the file itself, are untouched. A picture is not subject to the cap.
  *
  * @ggop views.open_file
  * @param path The file to open, relative to the workspace or absolute.
@@ -63,9 +52,7 @@ public fun openFile(
 /**
  * Show a value the program computed, filed under `label`.
  *
- * A directory listing, a command's output, a child agent's answer and a table the program assembled
- * are all this. Opening the same label again replaces what it showed, so a program may refine one
- * view in a loop without piling up a copy per iteration.
+ * Opening the same label again replaces what it showed.
  *
  * @ggop views.open_text
  * @param label What to file the view under: the view's selector, so opening the same label again
@@ -85,8 +72,7 @@ public fun openText(label: String, body: String) {
  * The name is the fully-qualified one this documentation is keyed by, such as `gg.views.openText`, or
  * for a module its own path, `gg.views`. What comes back is a view rather than a return value, so it
  * arrives in the next prompt under a `Documentation` heading and is not available in the turn it was
- * asked for. Opening a name that is already open does nothing at all — not a move, not a re-emit — so
- * this band only ever grows.
+ * asked for. Opening a name that is already open does nothing.
  *
  * @ggop views.open_docs_view
  * @param name What to document, by the fully-qualified name it is keyed under.
@@ -101,23 +87,17 @@ public fun openDocsView(name: String) {
  *
  * For a file that is every page of that path, for a text view the one with that label, and for the
  * results of a search the label `search results`. Closing a selector that is not open hands back `0`
- * rather than failing, so a program that tidies up unconditionally needs no guard. Closing a file
- * view forgets what was read rather than what exists; closing a text view discards the only copy of
- * what it held.
+ * rather than failing. Closing a file view forgets what was read rather than what exists; closing a
+ * text view discards the only copy of what it held.
  *
- * Documentation views are not reached from here: taking one away is bought by a capability of its
- * own, and a sweep that included them would hand back `0` for an agent that may not close one, which
- * reads as a selector that named nothing.
- *
- * Closing a view is context management, bought by the `agent-managed-context`
- * capability: an agent whose run did not enable it is refused.
+ * Documentation views are not reached from here.
  *
  * @ggop views.close
  * @param selector What the view is filed under: a file's path, a text view's label, or
  *   `search results`.
  * @return how many views were closed
- * @throws ApiError `INVALID_ARGUMENT` for an empty selector, and `UNAVAILABLE` for an agent whose
- *   run did not buy `agent-managed-context`.
+ * @throws ApiError `INVALID_ARGUMENT` for an empty selector, and `UNAVAILABLE` when this run does
+ *   not offer `agent-managed-context`.
  */
 public fun close(selector: String): Int =
     ggCall("views.close", ggText(selector)).integer()

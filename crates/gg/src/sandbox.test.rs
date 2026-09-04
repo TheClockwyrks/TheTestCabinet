@@ -69,6 +69,7 @@ fn run_with(
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
         },
+        &crate::sandbox::AgentWorkspace::new(),
         limits,
         None,
         FakeOperationApi::with(&log, responder),
@@ -93,6 +94,7 @@ fn run_with_library(program: &str, held: &[(&str, u64, &str)]) -> SandboxOutcome
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
         },
+        &crate::sandbox::AgentWorkspace::new(),
         SandboxLimits::AMPLE,
         None,
         api,
@@ -113,6 +115,7 @@ fn run_as(program: &str, role: EndingRole) -> SandboxOutcome {
             modules: &[],
             ending: RunEnding::Role(role),
         },
+        &crate::sandbox::AgentWorkspace::new(),
         SandboxLimits::AMPLE,
         None,
         FakeOperationApi::new(&log),
@@ -926,24 +929,19 @@ fn a_role_gets_only_its_own_ending_calls() {
 /// carry. The host reads the failure **code** instead, and this proves it end to end through the
 /// real component.
 ///
-/// # Two arms this invariant does NOT hold on, measured
+/// # The arms this invariant does NOT hold on, measured
 ///
-/// It is proved here on the shared ECMAScript guest and it generalises to nine of the eleven arms.
-/// It does **not** generalise to two, and the divergence is recorded here rather than only in prose
-/// because this is the test a reader of the invariant finds:
+/// It is proved here on the shared ECMAScript guest and it holds wherever a guest reports the throw
+/// at all: Python, Ruby, C++ and C# read the failure's code off the uncaught value the same way.
+/// It does **not** hold on the four whose runtime kills the program before anything can report —
+/// Rust, Swift, Kotlin and Java — and the divergence is recorded here rather than only in prose
+/// because this is the test a reader of the invariant finds. Swift is the sharpest of them: it has
+/// no top-level `throws` context its shell can wrap, so an uncaught error is not a `program-error`
+/// at all — the runtime prints to stderr and executes `unreachable`, which arrives as a trapped
+/// store (see `packages/gg-sandbox-swift/Sources/shell.swift`'s `ggRun`).
 ///
-/// * **C#** reports every uncaught managed exception with `error-kind.other` and **no code at all**
-///   (`packages/gg-sandbox-csharp/Sources/shell.c`'s `report`, which is the only path from
-///   `mono_runtime_run_main`'s `thrown` to the membrane). An uncaught refusal is therefore
-///   `program_throw`, and so is an uncaught `not-found`; that guest never classifies a
-///   `Gg.ApiException` by its code.
-/// * **Swift** has no top-level `throws` context its shell can wrap, so an uncaught error is not a
-///   `program-error` at all: the runtime prints to stderr and executes `unreachable`, which arrives
-///   as a trapped store (see `packages/gg-sandbox-swift/Sources/shell.swift`'s `ggRun`).
-///
-/// Both would need a guest rebuild to change — a Mono shell and a Swift toolchain respectively — and
-/// neither is a hole in the *measurement*, because the refusal itself is uniform on all eleven arms:
-/// it is opened and closed as an API call and lands on the turn's refusal roster
+/// None of the four is a hole in the *measurement*, because the refusal itself is uniform on all
+/// eleven arms: it is opened and closed as an API call and lands on the turn's refusal roster
 /// (a `SandboxRefusal`) under gg's own key. **That roster is what a
 /// cross-arm count of withheld reaches must join on**, not the turn's error type. `/gg/languages/static-sdks/`
 /// says the same thing to an operator.
@@ -1254,9 +1252,14 @@ fn run_with_modules_logged(program: &str, modules: &[(&str, &str)]) -> (SandboxO
         .iter()
         .map(|(name, source)| CodeModule {
             name: (*name).to_string(),
-            source: crate::sandbox::prepare_module(typescript(), source)
-                .expect("the test's module is prepared")
-                .source,
+            source: crate::sandbox::prepare_module(
+                typescript(),
+                name,
+                source,
+                &crate::sandbox::AgentWorkspace::new(),
+            )
+            .expect("the test's module is prepared")
+            .source,
         })
         .collect();
     let log = CallLog::default();
@@ -1269,6 +1272,7 @@ fn run_with_modules_logged(program: &str, modules: &[(&str, &str)]) -> (SandboxO
             modules: &bound,
             ending: RunEnding::Role(EndingRole::Standard),
         },
+        &crate::sandbox::AgentWorkspace::new(),
         SandboxLimits::AMPLE,
         None,
         FakeOperationApi::new(&log),
@@ -1382,6 +1386,7 @@ fn an_on_use_script_has_no_ending_calls_in_scope() {
             modules: &[],
             ending: RunEnding::None,
         },
+        &crate::sandbox::AgentWorkspace::new(),
         SandboxLimits::AMPLE,
         None,
         FakeOperationApi::new(&log),

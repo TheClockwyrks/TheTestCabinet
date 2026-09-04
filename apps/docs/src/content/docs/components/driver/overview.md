@@ -66,21 +66,27 @@ console asks the backend to cancel the job, the backend moves it to the terminal
 the end at once. The operator's answer is settled immediately and waits on
 nothing the run still has to do.
 
-The run itself winds down cooperatively. The driver polls its own job's state
-while the run proceeds and, on observing the cancellation, raises the run's
-cancellation latch and keeps awaiting the run, bounded by a 20-minute wind-down
-grace. The harness is its own process inside the sandbox pod, so dropping the
-run future would stop nothing that matters while skipping the stages that turn a
-session into a result: collecting the produced tree, folding the accumulated
-usage into metrics, and writing the record. The latch is a request to stop at
-the next clean boundary, after which the run finishes through its ordinary path.
+What happens to the run in flight depends on the harness. The driver polls its
+own job's state while the run proceeds, and on observing the cancellation it
+winds a [gg](/gg/overview/) session down and records what the run produced, or
+destroys a run of any other harness outright. gg is the one harness with a
+wind-down protocol to ask for: every other is a CLI the Test Cabinet drives
+through an `exec`, with no boundary at which it can be told to stop and no
+epilogue to wait for.
 
 ### gg wind-down
 
-For a [gg](/gg/overview/) run the engine races the session against the latch. On
-a kill it writes the cancellation sentinel, a file at the path gg was named in
-its invocation document, and keeps draining gg's telemetry stream for up to its
-own 10-minute grace so the session's epilogue is ingested.
+The driver raises the run's cancellation latch and keeps awaiting the run,
+bounded by a 20-minute wind-down grace. Awaiting rather than dropping is what
+preserves the stages that turn a session into a result: collecting the produced
+tree, folding the accumulated usage into metrics, and writing the record. The
+latch is a request to stop at the next clean boundary, after which the run
+finishes through its ordinary path.
+
+The engine races the session against the latch. On a kill it writes the
+cancellation sentinel, a file at the path gg was named in its invocation
+document, and keeps draining gg's telemetry stream for up to its own 10-minute
+grace so the session's epilogue is ingested.
 
 Every gg agent, the root and every subagent, checks that sentinel at its turn
 boundary, next to the run-wide deadline and cost ceilings and on the same terms
@@ -108,7 +114,7 @@ The driver then runs every artifact upload it runs for any other run and posts a
 its relay accumulated and attaches it to the already-canceled job, changing
 nothing else: no state change, no completion notification, and no retry.
 
-### Degraded fallbacks
+#### Degraded fallbacks
 
 Two paths produce a bare canceled record instead: the session does not wind down
 inside the grace, or the run errors on its way out. In both the driver builds
@@ -125,19 +131,62 @@ reaches the run list. Recording here is best-effort: the job is already terminal
 and the teardown still has to happen, so a record that cannot be built or posted
 is logged rather than fatal.
 
-Only gg has a wind-down protocol to be asked for. A third-party harness is a CLI
-the Test Cabinet drives through an `exec`, with no boundary at which it can be
-told to stop and no epilogue to wait for, so a canceled third-party run always
-takes the degraded fallback.
+### Third-party destruction
+
+A canceled run of any other harness is destroyed. The driver drops the run
+future, tears the sandbox down, and exits. It keeps nothing: no record is built,
+no artifacts are uploaded, and no terminal status is posted, so the job stays
+`canceled` with the record slot empty and the run is absent from the run list.
+The events the relay streamed before the kill are discarded with it.
+
+Destroying the run is what frees its scheduling slot promptly. Such a harness
+never observes the latch, so waiting on it yields no earlier record and only
+keeps the driver Job running until the session reaches its own end, while the
+[dispatcher](/components/dispatcher/overview/) counts running driver Jobs against
+its in-flight cap. A destroyed run's driver goes terminal promptly, so the runs
+an operator queues after a kill start straight away.
+
+The disposition is decided by harness, not by how far the run got, so a kill
+that lands in the post-session stages destroys the run just as one landing
+mid-session does. Those stages are minutes of work holding the same slot, and an
+operator who stopped the run asked for the slot back rather than for the tail to
+be finished on their behalf.
+
+"Promptly" is the [cancellation poll](#cancellation) interval plus whatever the
+run is doing when the kill lands: the driver can only abandon the run at a point
+where the run yields, and validation drives a browser synchronously, so a kill
+during it waits for that stage to return. A kill during a session — the ordinary
+case — is seconds.
+
+A run that reaches its **own** ending in the window between the kill and the
+driver's next poll is not destroyed, because nothing was interrupted: the driver
+finalizes it like any other finished run and posts its terminal status, which
+the backend discards, leaving the job `canceled`.
+
+Dropping the run future closes the host's end of the harness `exec` and nothing
+more, so deleting the sandbox is what ends the harness process and stops it
+spending.
 
 ### Teardown and late statuses
 
-Whichever path recorded the run, the driver tears its sandbox down. The sandbox
-outlives the run future, so under the Kubernetes runtime the driver deletes the
-run's sandbox pod, which it finds by the job-id label it stamped on it. The
-driver then exits successfully, so the cluster reads a canceled run as a driver
-success rather than retrying it. The killed run appears in the run list like any
-other unpublished run, with a working Events view, and is [never
+Every cancellation tears the sandbox down. The sandbox outlives the run future,
+so the driver deletes it by the job-id label it stamped on it when it started
+it: the run's sandbox pod under the Kubernetes runtime, and the run's container
+under the CLI runtime. The driver then exits successfully, so the cluster reads
+a canceled run as a driver success rather than retrying it, and its Job goes
+terminal. A gg run holds its dispatcher slot for the length of its wind-down,
+bounded by the 20-minute grace.
+
+The one exception is a destroyed run whose teardown failed. There the teardown
+*is* the kill, so the driver exits non-zero instead: a failed driver Job is what
+the dispatcher's [reaper](#sandbox-lifetime) looks for, and reporting the
+failure hands it the sandbox that is still running the harness. A destroyed run
+also sweeps twice, a couple of seconds apart, because dropping the run future
+cancels an in-flight sandbox creation on the client side only — the sandbox can
+still appear just after the first sweep looked.
+
+A wound-down gg run appears in the run list like any other unpublished run, with
+a working Events view, and is [never
 publishable](/components/core/results/#publish).
 
 Any other late status a winding-down driver posts before it notices the kill is

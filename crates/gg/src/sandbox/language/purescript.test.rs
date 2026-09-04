@@ -186,7 +186,7 @@ fn the_generated_documentation_program_is_a_purescript_module() {
 fn the_opening_program_is_a_purescript_module() {
     let limit = crate::docs::MAX_SEARCH_LIMIT;
     assert_eq!(
-        purescript().bootstrap_program(&["files", "views"], &["readFile"]),
+        purescript().bootstrap_program(&["files", "views"], &["readFile"], None),
         format!(
             "module Main where\n\
              \n\
@@ -227,7 +227,7 @@ fn the_opening_program_is_a_purescript_module() {
 #[test]
 fn an_opening_program_with_no_module_to_search_makes_no_search() {
     assert_eq!(
-        purescript().bootstrap_program(&[], &["readFile"]),
+        purescript().bootstrap_program(&[], &["readFile"], None),
         "module Main where\n\
          \n\
          import Prelude\n\

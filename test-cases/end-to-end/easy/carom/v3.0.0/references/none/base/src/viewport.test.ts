@@ -4,8 +4,8 @@
 // pure function of four numbers, so it is checked here without a browser.
 
 import { describe, expect, it } from "vitest";
-import { FIELD_H, FIELD_W } from "./constants";
-import { deviceSize, domSurface, fitViewport } from "./viewport";
+import { FIELD_CX, FIELD_CY, FIELD_H, FIELD_W } from "./constants";
+import { deviceSize, domSurface, fitViewport, logicalPoint } from "./viewport";
 
 /** The fit at `cssWidth x cssHeight` CSS pixels and a pixel ratio of `dpr`. */
 function fit(cssWidth: number, cssHeight: number, dpr = 1) {
@@ -107,6 +107,40 @@ describe("deviceSize", () => {
   });
 });
 
+describe("logicalPoint", () => {
+  it("undoes the fit, so a pointer and a reported region share one space", () => {
+    // Half size, so the field is drawn at 0.5: the element's own center is the
+    // field's center whatever the fit (specs/overview.md).
+    const view = fit(FIELD_W / 2, FIELD_H / 2);
+    const at = logicalPoint(view, 1, FIELD_W / 4, FIELD_H / 4);
+    expect(at?.x).toBeCloseTo(FIELD_CX, 9);
+    expect(at?.y).toBeCloseTo(FIELD_CY, 9);
+  });
+
+  it("takes the letterbox bars off, at any pixel density", () => {
+    // Twice as wide as the field needs: the bars are a quarter of the element
+    // each, and a point on the field's left edge is that far in.
+    const view = fit(FIELD_W * 2, FIELD_H, 2);
+    const at = logicalPoint(view, 2, FIELD_W / 2, 0);
+    expect(at?.x).toBeCloseTo(0, 9);
+    expect(at?.y).toBeCloseTo(0, 9);
+  });
+
+  it("maps a point on a letterbox bar outside the field, rather than onto it", () => {
+    const view = fit(FIELD_W * 2, FIELD_H);
+    expect(logicalPoint(view, 1, 10, 10)?.x).toBeLessThan(0);
+  });
+
+  it("maps nothing while the element has not been laid out", () => {
+    expect(logicalPoint(fit(0, 0), 1, 10, 10)).toBeNull();
+  });
+
+  it("treats an unusable pixel ratio as one, as the fit does", () => {
+    const view = fit(FIELD_W, FIELD_H);
+    expect(logicalPoint(view, 0, 100, 200)).toEqual({ x: 100, y: 200 });
+  });
+});
+
 describe("domSurface", () => {
   it("reads the canvas element's laid-out size, not its backing store", () => {
     const element = {
@@ -114,9 +148,19 @@ describe("domSurface", () => {
       clientHeight: 450,
       width: 1600,
       height: 900,
+      getBoundingClientRect: () => ({ left: 12, top: 30 }),
     } as unknown as HTMLCanvasElement;
     const surface = domSurface(element);
     expect(surface.cssWidth()).toBe(800);
     expect(surface.cssHeight()).toBe(450);
+  });
+
+  it("reads where the element sits, which is what a pointer position is from", () => {
+    const element = {
+      clientWidth: 800,
+      clientHeight: 450,
+      getBoundingClientRect: () => ({ left: 12, top: 30 }),
+    } as unknown as HTMLCanvasElement;
+    expect(domSurface(element).origin()).toEqual({ x: 12, y: 30 });
   });
 });

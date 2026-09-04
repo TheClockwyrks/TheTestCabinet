@@ -329,10 +329,25 @@ export interface GgAgentDraft {
   source: GgAgentSourceDraft | null;
 }
 
-/** The two lists of an agent's opening turn, as the editor holds them: the wire shape. */
+/**
+ * An agent's opening turn as the editor holds it: the wire shape, with the tree always
+ * present.
+ *
+ * The tree is optional on the wire — a document written before gg had a tree call carries
+ * no key — and total here, so every function below reads one value rather than branching
+ * on an absence. Its `depth` is kept while `include` is off, so switching the tree back on
+ * restores the depth that was chosen for it.
+ */
 export interface GgOpeningTurnDraft {
   modules: string[];
   functions: string[];
+  tree: GgOpeningTreeDraft;
+}
+
+/** The workspace tree an opening turn opens on: whether it is walked at all, and how deep. */
+export interface GgOpeningTreeDraft {
+  include: boolean;
+  depth: number;
 }
 
 /** A copy of the [default opening turn](DEFAULT_OPENING_TURN), free to mutate. */
@@ -340,6 +355,7 @@ export function defaultOpeningTurn(): GgOpeningTurnDraft {
   return {
     modules: [...DEFAULT_OPENING_TURN.modules],
     functions: [...DEFAULT_OPENING_TURN.functions],
+    tree: { ...DEFAULT_OPENING_TURN.tree },
   };
 }
 
@@ -922,6 +938,7 @@ function cloneAgentDraft(agent: GgAgentDraft): GgAgentDraft {
     openingTurn: {
       modules: [...agent.openingTurn.modules],
       functions: [...agent.openingTurn.functions],
+      tree: { ...agent.openingTurn.tree },
     },
     subagents: agent.subagents.map((s) => ({ ...s })),
     hooks: agent.hooks.map((h) => ({ ...h })),
@@ -1553,6 +1570,10 @@ export function agentDraftFromConfig(agent: GgAgentConfig): GgAgentDraft {
     openingTurn: {
       modules: [...agent.openingTurn.modules],
       functions: [...agent.openingTurn.functions],
+      tree: {
+        include: agent.openingTurn.tree?.include ?? false,
+        depth: agent.openingTurn.tree?.depth ?? DEFAULT_OPENING_TURN.tree.depth,
+      },
     },
     customInstructions: agent.customInstructions ?? "",
     systemPromptTemplate: agent.systemPromptTemplate ?? "",
@@ -2104,19 +2125,26 @@ export function heldOpeningTurn(agent: GgAgentDraft): GgOpeningTurn {
     functions: once(agent.openingTurn.functions, (id) =>
       operationHeld(agent, id),
     ),
+    // The tree is written as it stands, including a depth kept while the switch is off:
+    // gg drops an unheld tree at seed time with a warning, exactly as it drops an unheld
+    // module, and a depth the operator chose survives the capability going away and
+    // coming back.
+    tree: { ...agent.openingTurn.tree },
   };
 }
 
 /**
  * Whether the draft's opening turn is exactly the [default](DEFAULT_OPENING_TURN): both
- * lists, in order. What the tab's reset control shows itself on.
+ * lists, in order, and the same tree. What the tab's reset control shows itself on.
  */
 export function openingTurnIsDefault(turn: GgOpeningTurnDraft): boolean {
   const same = (a: ReadonlyArray<string>, b: ReadonlyArray<string>) =>
     a.length === b.length && a.every((v, i) => v === b[i]);
   return (
     same(turn.modules, DEFAULT_OPENING_TURN.modules) &&
-    same(turn.functions, DEFAULT_OPENING_TURN.functions)
+    same(turn.functions, DEFAULT_OPENING_TURN.functions) &&
+    turn.tree.include === DEFAULT_OPENING_TURN.tree.include &&
+    turn.tree.depth === DEFAULT_OPENING_TURN.tree.depth
   );
 }
 
@@ -2903,14 +2931,19 @@ function agentConfigFromDraft(agent: GgAgentDraft): GgAgentConfig {
 }
 
 /**
- * Serialize a draft into the wire capability set. `preset` records the name the set
- * was assembled from (a run's slice-by facet); pass `null` for a hand-assembled one.
+ * Serialize a draft into the wire capability set. `preset` records the name of the saved
+ * configuration the set was assembled from (a run's slice-by facet) and `presetId` its
+ * id — what a run is attributed to, and so what identifies the coverage cell it counts
+ * against. Pass `null` for a hand-assembled set, and for the id while a configuration is
+ * being created: the id is minted server-side, and a launch picks it up from the
+ * [offered configuration](./useGgConfigs) rather than from the stored set.
  * The agents are written root-first, which is how the draft's root *flag* becomes the
  * contract's "the root is `agents[0]`".
  */
 export function capabilitySetFromDraft(
   draft: GgConfigDraft,
   preset: string | null,
+  presetId: string | null = null,
 ): GgCapabilitySet {
   const slotNameOn = (agentId: string, slotId: string): string | null =>
     draft.agents
@@ -2936,6 +2969,7 @@ export function capabilitySetFromDraft(
   );
   return {
     ...(preset ? { preset } : {}),
+    ...(presetId ? { presetId } : {}),
     agents: agentsInWireOrder(draft).map(agentConfigFromDraft),
     ...(modelSlots.length ? { modelSlots } : {}),
     ...(limits ? { limits } : {}),

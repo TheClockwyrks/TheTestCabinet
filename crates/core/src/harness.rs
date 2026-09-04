@@ -42,8 +42,8 @@ const BASE_WASM_IMAGE_NAME: &str = "test-cabinet-base-wasm";
 const FULL_STACK_2D_IMAGE_NAME: &str = "test-cabinet-full-stack-2d";
 /// The name of the 3D full-stack run-container image, used by every full-stack run
 /// whose case declares `asset_dimension = "3d"`. It is a **superset** of the
-/// full-stack-2d image — the same six 2D binaries and the same pinned sample pack and
-/// instrument bank — plus the voxel-model and 3D-particle tooling (`voxel`,
+/// full-stack-2d image — the same six 2D binaries, and audio staged from the case's
+/// `[audio] packs` exactly as there — plus the voxel-model and 3D-particle tooling (`voxel`,
 /// `voxel-anim`, `particle-3d`) and the Mesa software-Vulkan runtime those three render
 /// their previews through. The meshed/SDF families (`mc`/`sn`/`dc` and their
 /// `-anim`/`-skin` binaries) and the Blender toolchain are deliberately not in it: they
@@ -56,7 +56,7 @@ const FULL_STACK_3D_IMAGE_NAME: &str = "test-cabinet-full-stack-3d";
 /// is a full-stack-style build (it produces its own 2D assets and ships a browser
 /// game) but is deliberately **not** a full-stack case, so it resolves its own image
 /// rather than borrowing full-stack's. The image is the full-stack-2d image (the six
-/// 2D asset-generation binaries and the audio packs on `PATH`, over the base-wasm
+/// 2D asset-generation binaries on `PATH`, over the base-wasm
 /// Rust → WebAssembly toolchain, so a jam may author its core in Rust and ship it as
 /// committed wasm) — plus nothing but its own identity, so a deployment can pin the
 /// jam image independently and coreutils `date` is present for a model to check its
@@ -651,6 +651,10 @@ pub struct HarnessOutcome {
     /// of unwinding and losing all of it. The engine reads it to mark the run
     /// [`RunState::Canceled`](crate::run_record::RunState::Canceled) and to skip
     /// validation, which would be new work on a run that was told to stop.
+    ///
+    /// A [gg](crate::gg) session is the only one that ever sets it: gg is the one harness
+    /// that can be asked to stop, and a canceled run of any other is destroyed by the
+    /// driver without an outcome ever being produced.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub canceled: bool,
 }

@@ -161,10 +161,12 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, spell,
+    ProgramLanguage, WORKSPACE_TREE_VIEW, spell,
 };
 use crate::docs::MAX_SEARCH_LIMIT;
-use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::sandbox::operations::{
+    DOCS_SEARCH, FILES_TREE, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT,
+};
 
 #[path = "csharp.compile.rs"]
 pub(super) mod compile;
@@ -259,6 +261,12 @@ impl ProgramLanguage for CSharp {
         Some("csc")
     }
 
+    /// [What Roslyn says a program could not import](compile::unresolved_imports), read out of the
+    /// `CS0246` and `CS0234` wording this arm's own diagnostics carry.
+    fn unresolved_imports(&self, diagnostic: &str) -> Vec<String> {
+        compile::unresolved_imports(diagnostic)
+    }
+
     /// The module's own `csc`, run over the class body gg wrapped it in — and the names that class
     /// offers, read from the author's own source.
     ///
@@ -268,10 +276,11 @@ impl ProgramLanguage for CSharp {
     /// the module.
     fn prepare_module(
         &self,
+        key: &str,
         source: &str,
         context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {
-        compile::compile_module(source, context)
+        compile::compile_module(key, source, context)
     }
 
     /// **`.cs`, and nothing else.**
@@ -356,12 +365,15 @@ impl ProgramLanguage for CSharp {
     /// [One search naming every module, then a `string[]` and a
     /// `foreach`](self::bootstrap_program) — both calls resolved from this language's own
     /// catalogue, and the search's filters passed by name.
-    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str], tree: Option<u32>) -> String {
         bootstrap_program(
             &spell(self, DOCS_SEARCH),
             &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            &spell(self, FILES_TREE),
+            &spell(self, VIEWS_OPEN_TEXT),
             modules,
             docs,
+            tree,
         )
     }
 
@@ -561,23 +573,34 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
 pub(super) fn bootstrap_program(
     search: &str,
     open_docs_view: &str,
+    tree_call: &str,
+    open_text: &str,
     modules: &[&str],
     docs: &[&str],
+    tree: Option<u32>,
 ) -> String {
     let opened = open_docs_views_statement(open_docs_view, docs);
-    match modules.is_empty() {
-        true => opened,
+    let walked = match tree {
+        None => String::new(),
+        Some(depth) => format!(
+            "{open_text}({}, {tree_call}(depth: {depth}));\n\n",
+            serde_json::Value::String(WORKSPACE_TREE_VIEW.to_string())
+        ),
+    };
+    let listed = match modules.is_empty() {
+        true => String::new(),
         false => {
             let paths: Vec<String> = modules
                 .iter()
                 .map(|path| serde_json::Value::String((*path).to_string()).to_string())
                 .collect();
             format!(
-                "{search}(modules: [{}], limit: {MAX_SEARCH_LIMIT});\n\n{opened}",
+                "{search}(modules: [{}], limit: {MAX_SEARCH_LIMIT});\n\n",
                 paths.join(", ")
             )
         }
-    }
+    };
+    format!("{walked}{listed}{opened}")
 }
 
 #[cfg(test)]

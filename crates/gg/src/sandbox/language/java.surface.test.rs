@@ -204,6 +204,11 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "path": "src" }),
         },
         Crossing {
+            tool: "tree",
+            statement: "Files.tree(\"src\", 3);",
+            expected: || json!({ "path": "src", "depth": 3 }),
+        },
+        Crossing {
             tool: "search",
             statement: "Files.search(\"answer\", \"src\", 5);",
             expected: || json!({ "query": "answer", "path": "src", "limit": 5 }),
@@ -812,7 +817,7 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
 #[test]
 fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     let refused = |source: &str| -> String {
-        compile_program(source, &[], &PrepareContext::new())
+        compile_program(source, &[], &PrepareContext::detached())
             .expect_err("a name nothing brought into scope is refused")
             .to_string()
     };
@@ -951,6 +956,13 @@ fn the_catalogue_carries_the_overload_groups_this_arm_exists_to_produce() {
     // only Ruby's block-or-argument pair had produced. What is asserted is that the shape is really
     // there and really carries different argument lists, because an overload group whose signatures
     // were identical would be a reflector bug that reads as a feature.
+    //
+    // The discriminator is the argument TYPES rather than the argument count, because on this arm
+    // the count is not always what separates two overloads: `files.tree` offers `tree(String path)`
+    // and `tree(int depth)` side by side, so that walking the root at a chosen depth does not have
+    // to be written `tree(null, 3)`. Two one-argument signatures are what Java's own overload
+    // resolution reads, and the catalogue has to carry both; two signatures of the same types are
+    // what nothing could choose between.
     let document: Value =
         serde_json::from_str(SIGNATURES).expect("the generated Java catalogue is valid JSON");
 
@@ -961,9 +973,16 @@ fn the_catalogue_carries_the_overload_groups_this_arm_exists_to_produce() {
             continue;
         }
         groups += 1;
-        let lists: Vec<usize> = shapes
+        let lists: Vec<Vec<&str>> = shapes
             .iter()
-            .map(|shape| shape["parameters"].as_array().expect("an array").len())
+            .map(|shape| {
+                shape["parameters"]
+                    .as_array()
+                    .expect("an array")
+                    .iter()
+                    .map(|parameter| parameter["type"].as_str().expect("a type"))
+                    .collect()
+            })
             .collect();
         let mut distinct = lists.clone();
         distinct.sort_unstable();
@@ -971,12 +990,12 @@ fn the_catalogue_carries_the_overload_groups_this_arm_exists_to_produce() {
         assert_eq!(
             distinct.len(),
             lists.len(),
-            "`{}` carries two signatures taking the same number of arguments",
+            "`{}` carries two signatures taking the same argument types: {lists:?}",
             entry["name"]
         );
     }
     assert_eq!(
-        groups, 13,
+        groups, 14,
         "the entries this arm expresses as an overload group rather than as a default argument"
     );
 
@@ -1197,7 +1216,7 @@ fn java_reaches_every_library_this_arm_says_it_may() {
     // a study has to say what each arm was NOT given. Two are packages and two are methods inside
     // packages this arm declares — the shape a "large subset" claim hides.
     for absent in ABSENT {
-        let failure = compile_program(&whole(absent), &[], &PrepareContext::new())
+        let failure = compile_program(&whole(absent), &[], &PrepareContext::detached())
             .err()
             .unwrap_or_else(|| panic!("a classlib gap is refused at compile time: {absent}"));
         assert!(
@@ -1218,10 +1237,11 @@ fn a_code_module_is_reached_from_java_as_a_name_javac_checks() {
     // a key or an export a session does not have is a diagnostic on the turn that wrote it rather
     // than a failure at run time.
     let prepared = super::compile::compile_module(
+        "helpers",
         "public static String greet(String who) { return \"hello, \" + who.toUpperCase(); }\n\
          \n\
          public static int add(int left, int right) { return left + right; }\n",
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect("the Java toolchain compiles a code module");
     assert_eq!(export_names(&prepared.exports), ["greet", "add"]);
@@ -1246,7 +1266,7 @@ fn a_code_module_is_reached_from_java_as_a_name_javac_checks() {
     let failure = compile_program(
         &whole("lib.helpers.absent();\n"),
         &modules,
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a name a module does not offer does not compile");
     assert!(failure.to_string().contains("Program.java:"), "{failure}");

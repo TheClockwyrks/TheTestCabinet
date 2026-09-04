@@ -28,8 +28,8 @@ Exactly these six binaries are on your `PATH` — no others (there is no `ui`, `
 | `draw-sheet` | a sprite sheet, **one PNG per frame** | the settlers' and raiders' animations |
 | `particle-2d` | a particle system → a `system.json` | muzzle flash, blood/impact, fire, explosion, construction dust |
 | `sfx-synth` | a procedural sound → a `.wav` | gunshot / hit / build / alarm cues from raw synthesis |
-| `sfx-sample` | a sampled sound over a baked pack → a `.wav` | richer gunshot / hit / build / alarm cues |
-| `music` | sequenced music over a baked bank → a `.wav` (+ `.mid`) | the ambient / tension music bed |
+| `sfx-sample` | a sampled sound over the sample pack → a `.wav` | richer gunshot / hit / build / alarm cues |
+| `music` | sequenced music over an instrument bank → a `.wav` (+ `.mid`) | the ambient / tension music bed |
 
 Each is a command-line tool. **Run `<tool> --help` to learn its operations** (and
 `<tool> <operation> --help` for one operation's flags) — the operation vocabulary is the
@@ -48,9 +48,9 @@ initialize / operate / render commands and how to name the output path.
   asset. You do **not** place individual particles or bake frames.
 - `sfx-synth` / `sfx-sample` / `music` record synth voices, sampled layers, or sequenced
   notes and render a PCM `.wav`; `music` also emits a portable `.mid` score alongside its
-  `.wav`. `sfx-sample` and `music` draw on a **baked sample pack / instrument bank**
-  already in the image (browse it via the tool's help); a synth from `sfx-synth` needs no
-  pack.
+  `.wav`. `sfx-sample` draws on the `combat-core` sample pack and `music` on the
+  `cinematic` and `gm-lite` instrument banks, all present in the container (browse them
+  with `list-samples` and `list-instruments`); a synth from `sfx-synth` needs no pack.
 
 ## Loading rule — page-relative, so it works under any base path
 
@@ -175,8 +175,8 @@ Web Audio API. Land them under, for example, `assets/audio/`.
 - **Sound effects** — produce at least a **gunshot** cue, a **hit/impact** cue, a
   **build/place** cue, and a **raid-alarm** cue with `sfx-synth` and/or `sfx-sample`, and
   a soft **turret hum** or **ambient wind** loop. `sfx-synth` builds a sound
-  from synth voices alone; `sfx-sample` layers over the baked sample pack (browse it via
-  its `--help`) for a richer result — use whichever suits each cue.
+  from synth voices alone; `sfx-sample` layers over the `combat-core` sample pack (browse
+  it with `list-samples`) for a richer result — use whichever suits each cue.
 - **Music** — produce an **ambient / tension music bed** with `music`: a low, sparse
   frontier atmosphere under the colony that **lifts into tension when a raid lands**
   (`specs/flow.md`) — you may produce one bed and filter/duck it, or produce a calm bed

@@ -123,7 +123,7 @@ pub(super) fn prepare(source: &str) -> Vec<u8> {
 /// [`prepare`], with the agent's loaded code modules — which on a compiled arm are inputs to the
 /// compile rather than something the guest is handed.
 pub(super) fn prepare_with(source: &str, modules: &[CodeModule]) -> Vec<u8> {
-    match compile_program(source, modules, &PrepareContext::new()) {
+    match compile_program(source, modules, &PrepareContext::detached()) {
         Ok(prepared) => {
             assert!(
                 prepared.source.is_empty(),
@@ -268,9 +268,9 @@ pub(super) fn logs(outcome: &SandboxOutcome) -> &[String] {
 /// A runtime failure on this arm arrives as a [`Trap`](SandboxError::Trap) carrying the guest's own
 /// standard error, and not as a structured `ProgramError`: nothing in this arm's SDK and nothing in
 /// gg's generated entry class intercepts a failure to report one, so what the host has is what
-/// TeaVM's runtime wrote before it aborted. That is the
-/// [D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) shape — capture rather than
-/// interception — and it is why these tests read a string rather than a struct.
+/// TeaVM's runtime wrote before it aborted. That is the [failure rule's](https://docs.testcabinet.ai/gg/responses-as-code/invariants/#failures)
+/// shape — capture rather than interception — and it is why these tests read a string rather than a
+/// struct.
 pub(super) fn trap(outcome: &SandboxOutcome) -> &str {
     match &outcome.result {
         Ok(result) => panic!(
@@ -336,7 +336,7 @@ fn the_bytes_the_compiler_reads_are_the_bytes_the_model_sent() {
                    \x20       Gg.log(String.join(\"\", WORDS));\n\
                    \x20   }\n\
                    }\n";
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     compile_program(program, &[], &context).expect("it compiles");
     let written = std::fs::read_to_string(
         context
@@ -369,7 +369,7 @@ fn the_ambient_wasi_surface_reaches_a_java_program() {
 /// **An uncaught failure reaches the model as its own runtime's dying words**, at the model's own
 /// file and lines — and gg catches nothing on the way.
 ///
-/// Two halves, and ruling D8a asks for both: **what** went wrong, which is the exception's own
+/// Two halves, and the failure rule asks for both: **what** went wrong, which is the exception's own
 /// header, and **where**, which is TeaVM's own stack trace over the model's own file. Neither
 /// reaches the model through anything gg wrote: `GgEntry` has no `catch`, and what is read here is
 /// the guest's standard error.
@@ -416,8 +416,8 @@ fn an_uncaught_failure_reaches_the_model_in_its_runtimes_own_words() {
 /// **A failure names the class it was, whatever class that is** — including one the model declared
 /// itself and one carrying no message at all.
 ///
-/// The half of [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) that says
-/// a failure names *what* went wrong, on the arm where it was hardest to get: TeaVM emits a class's
+/// The half of [the failure rule](https://docs.testcabinet.ai/gg/responses-as-code/invariants/#failures) that
+/// says a failure names *what* went wrong, on the arm where it was hardest to get: TeaVM emits a class's
 /// name string only for the classes its dependency analysis sees reaching `Class.getName()`, and it
 /// lowers `athrow` into a call long after that analysis has run. What answers it is
 /// `gg.internal.ThrowableNames`, a TeaVM plugin in this arm's SDK jar that propagates **every
@@ -490,6 +490,7 @@ fn a_failure_names_its_own_class_even_when_gg_never_heard_of_it() {
 #[test]
 fn a_code_module_is_a_class_on_the_classpath_reached_by_the_programs_own_line() {
     let prepared = compile_module(
+        "helpers",
         "/** Two exports, one field and two helpers. */\n\
          public static final String LABEL = \"first(\";\n\
          \n\
@@ -509,7 +510,7 @@ fn a_code_module_is_a_class_on_the_classpath_reached_by_the_programs_own_line() 
          public static <T> java.util.List<T> listOf(T... values) {\n\
          \x20   return java.util.List.of(values);\n\
          }\n",
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect("the module compiles");
     assert_eq!(
@@ -575,8 +576,9 @@ fn a_code_module_is_a_class_on_the_classpath_reached_by_the_programs_own_line() 
 #[test]
 fn a_program_that_writes_no_line_reaching_a_module_does_not_compile() {
     let prepared = compile_module(
+        "helpers",
         "public static String shout(String who) { return who.toUpperCase(); }\n",
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect("the module compiles");
     let modules = vec![CodeModule {
@@ -587,7 +589,7 @@ fn a_program_that_writes_no_line_reaching_a_module_does_not_compile() {
     let failure = compile_program(
         &whole(&["Gg"], "        Gg.log(helpers.shout(\"gg\"));\n"),
         &modules,
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a bare `helpers` resolves to nothing");
     let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
@@ -603,21 +605,37 @@ fn a_program_that_writes_no_line_reaching_a_module_does_not_compile() {
     compile_program(
         &whole(&["Gg"], "        Gg.log(lib.helpers.shout(\"gg\"));\n"),
         &modules,
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect("the class named in full is the name javac resolves");
 }
 
 /// **One module cannot see another**, because each is compiled against the SDK and the toolchain and
-/// nothing else — and a module that does not compile is a refusal naming the key it is bound at.
+/// nothing else — and a module that does not compile is refused in the module's own coordinates.
 ///
-/// The two claims are one compile. Modules share the package `lib`, which is what makes
-/// `lib.<key>` the name a program writes; what keeps them from being one namespace is that no
-/// module's classes are ever on another module's classpath. So a body reaching for a sibling is a
-/// body that does not compile, whatever else the session has loaded, and the agent is told which
-/// module to fix rather than being handed a diagnostic about its own program.
+/// Modules share the package `lib`, which is what makes `lib.<key>` the name a program writes; what
+/// keeps them from being one namespace is that no module's classes are ever on another module's
+/// classpath. So a body reaching for a sibling is a body that does not compile, whatever else the
+/// session has loaded.
+///
+/// Both readings of that refusal are driven. The read that binds the module hands its author the
+/// diagnostic, located in the module's own file. The same bytes reaching a program's compile with
+/// no build recorded for them is gg rebuilding a source it already accepted, so it is gg's own
+/// failure naming the key rather than a compiler error charged to a model that wrote a program
+/// which compiles.
 #[test]
 fn a_module_is_compiled_against_the_sdk_alone_and_a_broken_one_names_its_key() {
+    let sibling = "public static String call() { return helpers.shout(\"gg\"); }\n";
+    let at_the_read = compile_module("other", sibling, &PrepareContext::detached())
+        .expect_err("a module reaching for a sibling does not compile");
+    let PrepareFailure::Program(PrepareError::Compile(rendered)) = &at_the_read else {
+        panic!("a module read is the author's own compile error: {at_the_read:?}");
+    };
+    assert!(
+        rendered.contains("other.java:1"),
+        "the refusal is at the module's own line: {rendered}"
+    );
+
     let modules = vec![
         CodeModule {
             name: "helpers".to_string(),
@@ -626,17 +644,17 @@ fn a_module_is_compiled_against_the_sdk_alone_and_a_broken_one_names_its_key() {
         },
         CodeModule {
             name: "other".to_string(),
-            source: "public static String call() { return helpers.shout(\"gg\"); }\n".to_string(),
+            source: sibling.to_string(),
         },
     ];
     let failure = compile_program(
         &whole(&["Gg"], "        Gg.log(lib.other.call());\n"),
         &modules,
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a module reaching for a sibling does not compile");
-    let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
-        panic!("a code module that does not compile is the model's to act on: {failure:?}");
+    let PrepareFailure::Lowering(rendered) = &failure else {
+        panic!("a module gg rebuilt beside a program is gg's own failure, not {failure:?}");
     };
     assert!(
         rendered.contains("`other`") && rendered.contains("other.java:1"),
@@ -653,8 +671,9 @@ fn a_module_is_compiled_against_the_sdk_alone_and_a_broken_one_names_its_key() {
 #[test]
 fn a_module_in_scope_does_not_change_the_bytes_the_compiler_reads() {
     let prepared = compile_module(
+        "helpers",
         "public static String shout(String who) { return who.toUpperCase(); }\n",
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect("the module compiles");
     let modules = vec![CodeModule {
@@ -663,7 +682,7 @@ fn a_module_in_scope_does_not_change_the_bytes_the_compiler_reads() {
     }];
 
     let program = whole(&["Gg"], "        Gg.log(lib.helpers.shout(\"gg\"));\n");
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     compile_program(&program, &modules, &context).expect("it compiles");
     let workspace = context.workspace().expect("a workspace");
     let written = std::fs::read_to_string(workspace.work().join(super::compile::PROGRAM_FILE))
@@ -685,13 +704,15 @@ fn a_module_in_scope_does_not_change_the_bytes_the_compiler_reads() {
 #[test]
 fn a_module_is_refused_at_the_read_in_the_authors_own_coordinates() {
     let failure = compile_module(
+        "helpers",
         "static int helper() { return 1; }\n",
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a module that offers nothing is refused");
     assert!(failure.to_string().contains("public static"), "{failure}");
 
     let failure = compile_module(
+        "helpers",
         "public static int one() {\n\
          \x20   return 1;\n\
          }\n\
@@ -699,14 +720,14 @@ fn a_module_is_refused_at_the_read_in_the_authors_own_coordinates() {
          public static int two() {\n\
          \x20   return notAThing();\n\
          }\n",
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a module that does not compile is refused");
     let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
         panic!("a name that does not resolve is a compile error: {failure:?}");
     };
     assert!(
-        rendered.contains("Module.java:6"),
+        rendered.contains("helpers.java:6"),
         "the author's own line 6 is where `notAThing()` is: {rendered}"
     );
 }
@@ -715,8 +736,9 @@ fn a_module_is_refused_at_the_read_in_the_authors_own_coordinates() {
 /// could read is told apart from one they read and disagreed with.
 #[test]
 fn the_two_compilers_produce_two_different_model_facing_bands() {
-    let refusal =
-        |program: &str| compile_program(program, &[], &PrepareContext::new()).expect_err("refused");
+    let refusal = |program: &str| {
+        compile_program(program, &[], &PrepareContext::detached()).expect_err("refused")
+    };
 
     let syntax = refusal(&whole(&[], "        int broken = (((;\n"));
     assert!(
@@ -766,7 +788,7 @@ fn a_program_that_declares_no_program_class_is_told_so() {
          \x20   }\n\
          }\n",
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("refused");
     let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
@@ -785,7 +807,7 @@ fn a_program_that_declares_no_program_class_is_told_so() {
          \x20   }\n\
          }\n",
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("refused");
     let PrepareFailure::Program(PrepareError::Unsupported(rendered)) = &failure else {
@@ -817,7 +839,7 @@ fn what_teavm_is_not_is_recorded_rather_than_assumed() {
              \x20       }\n",
         ),
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("refused");
     let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
@@ -893,7 +915,7 @@ fn what_teavm_is_not_is_recorded_rather_than_assumed() {
     let failure = compile_program(
         &whole(&["Gg"], "        Gg.log(String.valueOf(7 / 0));\n"),
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("refused");
     let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
@@ -914,7 +936,7 @@ fn what_teavm_is_not_is_recorded_rather_than_assumed() {
              \x20               java.util.random.RandomGenerator.getDefault().nextInt(5)));\n",
         ),
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("refused");
     let rendered = format!("{failure}");
@@ -958,34 +980,33 @@ fn what_a_program_costs_and_what_it_weighs() {
 /// justifies the pool, taken through the production path rather than quoted.
 ///
 /// Shaped exactly as the Kotlin arm's copy of this is, and for the reasons written out at length
-/// there: the reuse is a **count** the pool is asked for, and the cold reading the ratio rests on is
-/// taken beside the warm ones rather than tens of seconds before them. A cold reading and a warm one
-/// inflate together only if they are readings of the same machine, and on a laptop that throttles
-/// between them they are not — which is how the Kotlin copy came back with a cold build cheaper than
-/// every warm one under a full workspace run.
+/// there. Two of them decide the shape.
+///
+/// The reuse is a **count** the pool is asked for rather than a reading of a stopwatch, because a
+/// bound in seconds is a bound on the machine.
+///
+/// The saving is a clock, and its two readings are taken next to each other. A cold reading and a
+/// warm one inflate together only while they are readings of the same machine, and taken tens of
+/// seconds apart under a full workspace run they are not. So the reading the gate rests on is a
+/// second cold build, taken after the warm ones by throwing the pool's JVM away, with further warm
+/// builds after it — and the figure it is compared with is the **cheapest** of the warm builds,
+/// since a single one that landed in a bad scheduling window is a reading of the scheduler.
 #[test]
 fn a_pooled_jvm_is_reused_and_the_first_one_is_the_expensive_one() {
     let first_cold = Instant::now();
     prepare(&whole(&["Gg"], "        Gg.log(\"warm\");\n"));
     let first_cold = first_cold.elapsed();
 
-    // Five more through the same pool. The pool has four JVMs and this is one thread, so every one
+    // Three more through the same pool. The pool has four JVMs and this is one thread, so every one
     // of these is served by the JVM the first left behind.
-    let warm = Instant::now();
-    for index in 0..5 {
-        prepare(&whole(
-            &["Gg"],
-            &format!("        Gg.log(\"warm {index}\");\n"),
-        ));
-    }
-    let warm = warm.elapsed() / 5;
+    let mut warm_builds: Vec<_> = (0..3).map(timed_build).collect();
 
-    // **The reuse itself**, which is not a measurement: six compilations on one thread, and if the
+    // **The reuse itself**, which is not a measurement: four compilations on one thread, and if the
     // pool had started a JVM for any of them there would be more than one alive.
     assert_eq!(
         super::compile::live_jvms(),
         1,
-        "six compilations on one thread went through more than one JVM, so nothing was pooled"
+        "four compilations on one thread went through more than one JVM, so nothing was pooled"
     );
 
     // **The cold reading the gate rests on**, taken here — beside the warm builds it is compared
@@ -995,13 +1016,32 @@ fn a_pooled_jvm_is_reused_and_the_first_one_is_the_expensive_one() {
     prepare(&whole(&["Gg"], "        Gg.log(\"cold again\");\n"));
     let cold = cold.elapsed();
 
+    // And one more warm build, through the JVM that cold one left behind, so the cold reading has a
+    // warm neighbour on either side and a machine that drifts drifts under both.
+    warm_builds.push(timed_build(3));
+    let steady = warm_builds
+        .iter()
+        .copied()
+        .min()
+        .expect("four warm builds were timed");
+
     assert!(
-        warm * 2 < cold,
-        "a warm build ({warm:?}) is not meaningfully cheaper than the cold one ({cold:?}, and \
-         {first_cold:?} for the first of the run): the pool is not keeping a JVM"
+        steady * 2 < cold,
+        "a warm build ({steady:?} of {warm_builds:?}) is not meaningfully cheaper than the cold \
+         one ({cold:?}, and {first_cold:?} for the first of the run): the pool is not keeping a JVM"
     );
 
-    println!("java pool: first cold {first_cold:?}, cold again {cold:?}, warm {warm:?}");
+    println!("java pool: first cold {first_cold:?}, cold again {cold:?}, warm {warm_builds:?}");
+}
+
+/// One build through the pool, and what it took.
+fn timed_build(index: usize) -> std::time::Duration {
+    let started = Instant::now();
+    prepare(&whole(
+        &["Gg"],
+        &format!("        Gg.log(\"warm {index}\");\n"),
+    ));
+    started.elapsed()
 }
 
 /// **The programs gg writes for this arm are whole programs, and they run.**
@@ -1015,7 +1055,11 @@ fn the_programs_gg_writes_for_this_arm_run() {
     let language = java_language();
 
     let (outcome, _log) = evaluate(
-        &prepare(&language.bootstrap_program(&["files", "views"], &["gg.files.Files.readFile"])),
+        &prepare(&language.bootstrap_program(
+            &["files", "views"],
+            &["gg.files.Files.readFile"],
+            None,
+        )),
         &all_operations(),
         &[],
         canned_outcome,

@@ -10,9 +10,8 @@ import java.util.List;
 /**
  * The epic and issue board, on which work is decomposed into dispatchable units.
  *
- * <p>An issue is heavyweight and self-contained: it says what is in scope, what is not, and how it
- * will be judged done, and gg dispatches it to the agent it names. That is what makes it different
- * from a task, which is a note an agent keeps for itself.
+ * <p>An issue is self-contained: it says what is in scope, what is not, and how it will be judged
+ * done, and gg dispatches it to the agent it names.
  *
  * @ggmodule board
  */
@@ -55,10 +54,10 @@ public final class Board {
      *     meant to.
      * @param completionCriteria What must be true for the issue to be done, which is what a reviewer
      *     checks the work against.
-     * @param agent The agent the issue is dispatched to. It must be one this agent may spawn.
+     * @param agent The agent the issue is dispatched to. It must be one this run may assign.
      * @return the id the board assigned, and how much of the board budget is now used
-     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} when {@code agent} is not one this
-     *     agent may assign.
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} when {@code agent} is not one this run
+     *     may assign.
      * @ggop board.create_issue
      */
     public static IssueCreated createIssue(String title, String inScope, String outOfScope,
@@ -74,12 +73,12 @@ public final class Board {
      * @param inScope What the issue covers, precisely. Part of the brief a child agent is given.
      * @param outOfScope What the issue deliberately does not cover.
      * @param completionCriteria What must be true for the issue to be done.
-     * @param agent The agent the issue is dispatched to. It must be one this agent may spawn.
+     * @param agent The agent the issue is dispatched to. It must be one this run may assign.
      * @param options The parts an issue may leave out: its description, its blockers, the epic to
      *     group it under, and the agents that must approve the work.
      * @return the id the board assigned, and how much of the board budget is now used
      * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} when {@code agent} or a reviewer is
-     *     not one this agent may assign, and {@link ApiErrorCode#CONFLICT} on a blocker edge that
+     *     not one this run may assign, and {@link ApiErrorCode#CONFLICT} on a blocker edge that
      *     would close a cycle.
      * @ggop board.create_issue
      */
@@ -154,11 +153,10 @@ public final class Board {
      * Register a wait on an issue, which suspends the session between turns rather than now.
      *
      * <p>It records the wait and returns at once, so the rest of the program still runs. Once the
-     * program ends the run suspends, freeing this agent's slot for others, until the issue is
-     * terminal — done, or failed if its assigned agent could not complete it — and then resumes on
-     * the next turn. It is how the next turn's work is sequenced behind an issue this one depends on.
+     * program ends the run suspends until the issue is terminal — done, or failed if its assigned
+     * agent could not complete it — and resumes on the next turn.
      *
-     * @param id The issue to wait on. It may not be the issue this agent was itself assigned.
+     * @param id The issue to wait on. It may not be the issue this session was itself assigned.
      * @return gg's acknowledgement that the wait is registered
      * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for an unknown id.
      * @ggop board.wait_for_issue
@@ -203,9 +201,6 @@ public final class Board {
         /**
          * Register a wait on this issue, which is {@link Board#waitForIssue} on its own id.
          *
-         * <p>It is named {@code await} rather than {@code wait} because {@code Object.wait} is final
-         * and cannot be given another meaning.
-         *
          * @return gg's acknowledgement that the wait is registered
          * @throws ApiError {@link ApiErrorCode#NOT_FOUND} when the issue has since been removed.
          * @ggalias board.wait_for_issue
@@ -231,7 +226,7 @@ public final class Board {
         }
 
         /**
-         * gg's own word for this status, which is what both execution modes report.
+         * gg's own word for this status.
          *
          * @return the name gg uses on the wire
          */
@@ -243,9 +238,8 @@ public final class Board {
     /**
      * The parts of a new issue that may be left out, built a call at a time.
      *
-     * <p>An issue's required parts are arguments of {@code Board.createIssue} itself; these four are
-     * the ones a program may say nothing about, and Java's answer to four optional fields is an
-     * object whose setters chain rather than sixteen overloads.
+     * <p>Its description, its blockers, the epic to group it under, and the agents that must
+     * approve the work. A part never named is left out.
      *
      * <pre>{@code
      * Board.createIssue(title, inScope, outOfScope, criteria, "builder",
@@ -305,7 +299,7 @@ public final class Board {
         /**
          * Name the agents that must approve the work.
          *
-         * @param reviewers The agents that must approve it, from the ones this agent may spawn.
+         * @param reviewers The agents that must approve it, from the ones this run may assign.
          *     Required where this run has reviewers on.
          * @return these options, so calls chain
          */

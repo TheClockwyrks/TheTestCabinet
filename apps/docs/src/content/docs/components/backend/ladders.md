@@ -2,8 +2,9 @@
 title: Ladders
 ---
 
-A **ladder** is an ordered series of test cases that harness+model combinations
-climb one step at a time, stopping at the first step they cannot clear. Where a
+A **ladder** is an ordered series of test cases that
+[combinations](/components/backend/coverage/#combinations) climb one step at a
+time, stopping at the first step they cannot clear. Where a
 [coverage plan](/components/backend/coverage/) asks *"have I run this yet?"* and
 treats its cells as an unordered set, a ladder asks *"how far does this model
 get?"* and treats its steps as a sequence with a meaning: rung three is harder
@@ -22,8 +23,16 @@ the difference.
 
 ## Rungs
 
-A **rung** is exactly one test case, pinned to an exact `(slug, version, variant)`.
-The rungs' order, low to high, *is* the climb.
+A **rung** is exactly one [pinned
+case](/components/backend/coverage/#pinned-cases): a slug, an exact version, a
+variant, and the engine the rung's runs are built on, with an absent engine
+meaning `none`. The rungs' order, low to high, *is* the climb.
+
+A rung's pin is its identity within the climb, so one ladder holds the same case
+at the same version and variant twice when the two pins name different engines.
+That is a real pair of steps: clearing a case with a runtime underneath is a
+different achievement from clearing it with nothing, and a climb may ask for
+both.
 
 Each rung carries a **stable opaque id**, minted when the rung is added and never
 reused — emphatically not its position. Rungs get reordered, and rungs get bumped
@@ -58,17 +67,27 @@ Both belong in a coverage plan, which wants runs to exist rather than verdicts t
 compare, and the error says so. Silently stalling would be the genuinely hard
 failure to diagnose: a ladder that looks healthy and never moves.
 
-A rung pinned to a version the backend has not ingested is *allowed* — the driver
-reports that far better than an author-time check can.
+A rung pinned to a version the backend has not ingested, or to an engine the
+pinned version does not declare, is *allowed* — the driver reports that far better
+than an author-time check can.
 
 ## Climbers
 
 The combinations that climb are called **climbers**, and they are referenced
 through the same `kind = "combo"` coverage groups a plan uses, plus any one-off
 combinations pinned on the ladder. One saved set of models therefore drives both a
-plan and a ladder, and editing the group reshapes both.
+plan and a ladder, and editing the group reshapes both. A climber is either shape a
+[combination](/components/backend/coverage/#combinations) takes, so a
+[gg configuration](/gg/configurations/) climbs beside a third-party harness and is
+measured against the same gate.
 
-**Progress is stored per combination, never as one ladder-wide pointer.** This is
+Every climber carries a **key**, the canonical text a ladder stores its steering and
+its verdicts against. A harness climber's key is its `harness|model|provider`
+triple; a gg climber's is the configuration it names and the models it binds. The
+key has to distinguish two gg climbers running one configuration on different
+models, since those are the two arms a ladder exists to separate.
+
+**Progress is stored per climber, never as one ladder-wide pointer.** This is
 not a storage detail; it is what makes a ladder a standing object rather than a
 one-shot sweep. Add a model to a ladder that has been running for a month and it
 starts at rung one while everyone else carries on from where they were. A single
@@ -106,6 +125,12 @@ act on:
 `awaitingReview` is the state a full review buffer is made of, and separating it
 from `climbing` is what lets a dashboard say "nothing will move until you look"
 instead of leaving an idle ladder looking broken.
+
+A climber whose combination
+[cannot be launched](/components/backend/coverage/#a-member-that-cannot-be-launched)
+carries that reason on the board. Such a climber stands where it is with the gate
+undecided, which is the shape of a climber waiting on capacity, so the reason travels
+with the climber rather than only with the top-up that skipped it.
 
 The board is a **read**: verdicts the gate has resolved but nobody has written down
 yet are computed live and flagged `recorded: false`. They are persisted by the next
@@ -222,12 +247,12 @@ a rung was decided.
 Every recorded verdict stores the **exact case version it was decided against**.
 That is part of the verdict's identity, not decoration.
 
-Rungs pin exact versions, and cases get revised. When a rung is bumped to a newer
-version, a verdict earned on the old one is neither erased nor silently inherited:
-it is kept, flagged `stale`, and no longer allowed to govern the climb — the rung is
-re-opened, because a model clearing v1.0.0 says nothing certain about v1.1.0.
-Re-pinning back restores it. A ladder that quietly carried old verdicts forward
-would be claiming evidence it does not have.
+Rungs pin exact versions on exact engines, and cases get revised. When a rung is
+bumped to a newer version, a verdict earned on the old one is neither erased nor
+silently inherited: it is kept, flagged `stale`, and no longer allowed to govern
+the climb — the rung is re-opened, because a model clearing v1.0.0 says nothing
+certain about v1.1.0. Re-pinning back restores it. A ladder that quietly carried
+old verdicts forward would be claiming evidence it does not have.
 
 The board also reports each rung's `latestVersion` and whether the pin has fallen
 behind, so bumping is an informed choice rather than something noticed months later.

@@ -8,7 +8,6 @@
 use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::{Did, Half, Loaded, UNCONVERTED, audit, classify, maps_back};
-use crate::sandbox::language::compile::PrepareContext;
 
 /// **Every registered arm compiles the bytes it was handed, or says in [`UNCONVERTED`] what it does
 /// instead.**
@@ -159,7 +158,6 @@ fn a_file_the_module_explains_better_is_not_read_as_the_program() {
     let program = "module Main where\n\nimport Data.Foldable (for_)\nimport Effect (Effect)\n\n                   modules :: Array String\nmodules =\n  [ \"gg.docs\" ]\n\n                   main :: Effect Unit\nmain = for_ modules openDocsView\n";
     let module = "module Main where\n\nimport Data.Foldable (for_)\nimport Effect (Effect)\n\n                  marker :: String\nmarker = \"gg-authorship-marker\"\n";
     let loaded = Loaded {
-        preparation: PrepareContext::new(),
         texts: vec![module.to_string(), module.replace("Main", "Lib.Module")],
         bound: Vec::new(),
     };

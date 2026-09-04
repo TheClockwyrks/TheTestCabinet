@@ -206,7 +206,7 @@ fn every_language_writes_the_program_that_opens_a_documentation_view() {
             );
         }
         language
-            .prepare_program(&program, &[], &PrepareContext::new())
+            .prepare_program(&program, &[], &PrepareContext::detached())
             .unwrap_or_else(|failure| {
                 panic!(
                     "{}: cannot prepare the program it generated ({failure}):\n{program}",
@@ -244,7 +244,7 @@ fn every_language_writes_the_program_that_opens_the_session() {
     const DOCS: [&str; 1] = ["gg.docs.search"];
 
     for language in all_languages().chain(crate::sandbox::fixture_languages()) {
-        let program = language.bootstrap_program(&MODULES, &DOCS);
+        let program = language.bootstrap_program(&MODULES, &DOCS, None);
         let search = written(language, DOCS_SEARCH);
         let open_docs_view = written(language, VIEWS_OPEN_DOCS_VIEW);
         for call in [&search, &open_docs_view] {
@@ -275,7 +275,7 @@ fn every_language_writes_the_program_that_opens_the_session() {
             language.display_name()
         );
         language
-            .prepare_program(&program, &[], &PrepareContext::new())
+            .prepare_program(&program, &[], &PrepareContext::detached())
             .unwrap_or_else(|failure| {
                 panic!(
                     "{}: cannot prepare the program it generated ({failure}):\n{program}",
@@ -293,7 +293,7 @@ fn every_language_writes_the_program_that_opens_the_session() {
     // does not make.
     const UNSEARCHED: [&str; 1] = ["gg.views.openDocsView"];
     for language in all_languages().chain(crate::sandbox::fixture_languages()) {
-        let program = language.bootstrap_program(&[], &UNSEARCHED);
+        let program = language.bootstrap_program(&[], &UNSEARCHED, None);
         let search = written(language, DOCS_SEARCH);
         let open_docs_view = written(language, VIEWS_OPEN_DOCS_VIEW);
         assert!(
@@ -316,7 +316,7 @@ fn every_language_writes_the_program_that_opens_the_session() {
     // every arm's compiler over this shape, since an empty collection is where a typed arm has to
     // spell an element type it could otherwise infer.
     for language in all_languages().chain(crate::sandbox::fixture_languages()) {
-        let program = language.bootstrap_program(&MODULES, &[]);
+        let program = language.bootstrap_program(&MODULES, &[], None);
         let search = written(language, DOCS_SEARCH);
         assert!(
             program.contains(&search),
@@ -336,7 +336,7 @@ fn every_language_writes_the_program_that_opens_the_session() {
     // the two calls is each language's own: a trailing options object and a `for…of` here, keyword
     // arguments and no loop at all there.
     assert_eq!(
-        typescript().bootstrap_program(&MODULES, &DOCS),
+        typescript().bootstrap_program(&MODULES, &DOCS, None),
         format!(
             "import {{ docs, views }} from \"gg\";\n\
              \n\
@@ -346,20 +346,20 @@ fn every_language_writes_the_program_that_opens_the_session() {
         )
     );
     assert_eq!(
-        typescript().bootstrap_program(&[], &DOCS),
+        typescript().bootstrap_program(&[], &DOCS, None),
         "import { views } from \"gg\";\n\nfor (const name of [\"gg.docs.search\"]) {\n  \
          views.openDocsView(name);\n}\n",
         "the search gg would have to refuse is left out, and `docs` goes out of the import with it"
     );
     assert_eq!(
-        fixture_language().bootstrap_program(&MODULES, &DOCS),
+        fixture_language().bootstrap_program(&MODULES, &DOCS, None),
         format!(
             "docs.search(modules=[\"gg.files\", \"gg.views\"], limit={MAX_SEARCH_LIMIT})\n\
              views.open_docs_view(\"gg.docs.search\")\n"
         )
     );
     assert_eq!(
-        fixture_language().bootstrap_program(&[], &DOCS),
+        fixture_language().bootstrap_program(&[], &DOCS, None),
         "views.open_docs_view(\"gg.docs.search\")\n",
         "the search gg would have to refuse is left out, and nothing else moves with it"
     );
@@ -377,9 +377,9 @@ fn every_language_writes_the_program_that_opens_the_session() {
 fn every_language_prepares_an_opening_program_that_opens_nothing() {
     const MODULES: [&str; 2] = ["gg.files", "gg.views"];
     for language in all_languages().chain(crate::sandbox::fixture_languages()) {
-        let program = language.bootstrap_program(&MODULES, &[]);
+        let program = language.bootstrap_program(&MODULES, &[], None);
         language
-            .prepare_program(&program, &[], &PrepareContext::new())
+            .prepare_program(&program, &[], &PrepareContext::detached())
             .unwrap_or_else(|failure| {
                 panic!(
                     "{}: cannot prepare the opening program that opens nothing ({failure}):\n\
@@ -470,7 +470,7 @@ fn an_arms_import_line_is_the_one_its_own_opening_program_writes() {
     let mut lines_asserted = 0usize;
     for language in all_languages() {
         let name = language.display_name();
-        let program = language.bootstrap_program(&MODULES, &DOCS);
+        let program = language.bootstrap_program(&MODULES, &DOCS, None);
         // The two modules the opening program actually calls into. Resolved through the operation
         // rather than by reading a path out of the call, because the operation is gg's identity for
         // a call and the module id is what the catalogue files it under.
@@ -946,8 +946,8 @@ fn the_javascript_arm_differs_from_typescript_only_in_the_check() {
     );
     assert_eq!(ts.lib_import("csvTools"), js.lib_import("csvTools"));
     assert_eq!(
-        ts.bootstrap_program(&["gg.docs"], &["gg.docs.search"]),
-        js.bootstrap_program(&["gg.docs"], &["gg.docs.search"]),
+        ts.bootstrap_program(&["gg.docs"], &["gg.docs.search"], None),
+        js.bootstrap_program(&["gg.docs"], &["gg.docs.search"], None),
         "gg synthesizes one opening program for the pair"
     );
 
@@ -992,13 +992,13 @@ fn the_javascript_arm_differs_from_typescript_only_in_the_check() {
     const WRONG: &str = "import * as gg from \"gg\";\ngg.views.openText(1, 2);\n";
     assert!(
         matches!(
-            ts.prepare_program(WRONG, &[], &PrepareContext::new()),
+            ts.prepare_program(WRONG, &[], &PrepareContext::detached()),
             Err(PrepareFailure::Program(PrepareError::Compile(_)))
         ),
         "TypeScript's compiler reads the program"
     );
     assert_eq!(
-        js.prepare_program(WRONG, &[], &PrepareContext::new())
+        js.prepare_program(WRONG, &[], &PrepareContext::detached())
             .expect("nothing on the JavaScript arm reads the program before it runs")
             .source,
         WRONG,
@@ -1323,7 +1323,7 @@ fn the_module_binding_name_is_the_languages_own() {
 fn preparing_a_program_is_the_languages_own() {
     let annotated = "const total: number = 1;";
     let stripped = typescript()
-        .prepare_program(annotated, &[], &PrepareContext::new())
+        .prepare_program(annotated, &[], &PrepareContext::detached())
         .expect("TypeScript prepares its own source");
     assert!(
         !stripped.source.contains(": number"),
@@ -1331,7 +1331,7 @@ fn preparing_a_program_is_the_languages_own() {
         stripped.source
     );
     let fixture = fixture_language()
-        .prepare_program(annotated, &[], &PrepareContext::new())
+        .prepare_program(annotated, &[], &PrepareContext::detached())
         .expect("the fixture has no types to erase");
     assert!(
         fixture.source.contains(": number"),
@@ -1342,14 +1342,14 @@ fn preparing_a_program_is_the_languages_own() {
     let commented = "total = 1 # the answer\n";
     assert!(
         matches!(
-            typescript().prepare_program(commented, &[], &PrepareContext::new()),
+            typescript().prepare_program(commented, &[], &PrepareContext::detached()),
             Err(PrepareFailure::Program(PrepareError::Compile(_)))
         ),
         "`#` is not TypeScript"
     );
     assert_eq!(
         fixture_language()
-            .prepare_program(commented, &[], &PrepareContext::new())
+            .prepare_program(commented, &[], &PrepareContext::detached())
             .expect("`#` is the fixture's comment")
             .source,
         "total = 1\n"
@@ -1358,11 +1358,11 @@ fn preparing_a_program_is_the_languages_own() {
     // And each refuses what its own guest cannot resolve, in its own syntax. TypeScript's refusal is
     // the compiler's, because a specifier is something a compiler resolves.
     assert!(matches!(
-        typescript().prepare_program("import fs from \"fs\";\n", &[], &PrepareContext::new()),
+        typescript().prepare_program("import fs from \"fs\";\n", &[], &PrepareContext::detached()),
         Err(PrepareFailure::Program(PrepareError::Compile(_)))
     ));
     assert!(matches!(
-        fixture_language().prepare_program("use tools\n", &[], &PrepareContext::new()),
+        fixture_language().prepare_program("use tools\n", &[], &PrepareContext::detached()),
         Err(PrepareFailure::Program(PrepareError::Unsupported(_)))
     ));
 }
@@ -1373,19 +1373,31 @@ fn preparing_a_program_is_the_languages_own() {
 #[test]
 fn preparing_a_module_is_the_languages_own() {
     let module = typescript()
-        .prepare_module("export const total = 1;\n", &PrepareContext::new())
+        .prepare_module(
+            "helpers",
+            "export const total = 1;\n",
+            &PrepareContext::detached(),
+        )
         .expect("TypeScript reads its own exports");
     assert_eq!(export_names(&module.exports), vec!["total".to_string()]);
 
     let fixture = fixture_language()
-        .prepare_module("def total\n  x = 1\n", &PrepareContext::new())
+        .prepare_module(
+            "helpers",
+            "def total\n  x = 1\n",
+            &PrepareContext::detached(),
+        )
         .expect("the fixture reads its own exports");
     assert_eq!(export_names(&fixture.exports), vec!["total".to_string()]);
 
     // Neither language finds the other's exports, because neither is looking for them.
     assert!(
         fixture_language()
-            .prepare_module("export const total = 1;\n", &PrepareContext::new())
+            .prepare_module(
+                "helpers",
+                "export const total = 1;\n",
+                &PrepareContext::detached()
+            )
             .expect("the fixture prepares it as ordinary source")
             .exports
             .is_empty()

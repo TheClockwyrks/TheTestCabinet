@@ -40,6 +40,7 @@ function run(overrides: {
   state?: string;
   cost?: number | null;
   tokens?: number;
+  sessionSeconds?: number | null;
 }): RunSummary {
   const {
     id,
@@ -51,6 +52,7 @@ function run(overrides: {
     state = "completed",
     cost = 1,
     tokens = 1000,
+    sessionSeconds = 120,
   } = overrides;
   return {
     id,
@@ -69,6 +71,7 @@ function run(overrides: {
     },
     metrics: {
       runTimeSeconds: 600,
+      ...(sessionSeconds === null ? {} : { sessionSeconds }),
       tokens: {
         uncachedInput: tokens,
         cachedInput: null,
@@ -89,8 +92,8 @@ function run(overrides: {
 // Claude runs carom twice on `base` (mean cost $5) and once on `hard-mode`, plus
 // one run of another case; two rival models sit below it on carom/base.
 const RUNS: RunSummary[] = [
-  run({ id: "a", cost: 4 }),
-  run({ id: "bb", cost: 6 }),
+  run({ id: "a", cost: 4, sessionSeconds: 90 }),
+  run({ id: "bb", cost: 6, sessionSeconds: 150 }),
   run({ id: "ccc", variant: "hard-mode", cost: 3 }),
   run({
     id: "dddd",
@@ -157,6 +160,30 @@ describe("ModelOverviewPage", () => {
     expect(labelledValue("Carom · Base", "Mean cost")).toBe("$5.00");
     expect(labelledValue("Carom · Base", "Completed")).toBe("100%");
     expect(labelledValue("Carom · Base", "Mean score")).toBe("80%");
+  });
+
+  it("reports the model's session time, not the run's whole wall clock", async () => {
+    renderPage();
+    await screen.findByText("Carom · Base");
+
+    // Every run's wall clock is 600s, almost all of it the container setup the
+    // cohort shares. The two carom/base sessions are 90s and 150s, so the tile
+    // reads their mean rather than 10m.
+    expect(labelledValue("Carom · Base", "Mean session time")).toBe("2m 0s");
+    expect(screen.queryByText("Mean run time")).toBeNull();
+  });
+
+  it("shows an em dash when no run in the cohort recorded a session", async () => {
+    // A cohort of records written before stage durations were measured. An
+    // absent duration must never render as `0s`.
+    renderPage([
+      run({ id: "a", cost: 4, sessionSeconds: null }),
+      run({ id: "bb", cost: 6, sessionSeconds: null }),
+      run({ id: "eeeee", modelId: "openai/gpt", cost: 1, sessionSeconds: null }),
+    ]);
+    await screen.findByText("Carom");
+
+    expect(labelledValue("Carom", "Mean session time")).toBe("—");
   });
 
   it("places the model against the other models on the same cohort", async () => {

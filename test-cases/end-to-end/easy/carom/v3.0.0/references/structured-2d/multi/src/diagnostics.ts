@@ -11,28 +11,29 @@
 // than closing over a world read at initialization, which would report the
 // title screen forever. Watching the overlay never changes what the simulation
 // does, and each line is short enough to read at a glance while the game runs.
-// The balls get one group of lines each, in play order, so the overlay shows
-// all three at once.
+// The balls get one group of lines each, in play order, and a ball that is not
+// on the field reports a dash rather than disappearing, so the panel's shape is
+// the same however the field was arranged.
 
 import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
 import { BALL_COUNT, TAGS } from "./constants";
-import { Ball, ballsOf } from "./ball";
+import type { Ball } from "./ball";
+import { ballAt } from "./field";
 import type { CaromGame } from "./game";
 import { Paddle } from "./paddle";
-import { MatchState, screenOf } from "./state";
+import { stateOf } from "./state";
+
+/** What a source shows for a ball or a paddle that is not on the field. */
+const ABSENT = "—";
 
 /** One decimal place: enough to see motion, short enough to fit on a line. */
 function fixed(value: number): string {
   return value.toFixed(1);
 }
 
-function ballOf(world: World, index: number): Ball | null {
-  return ballsOf(world)[index] ?? null;
-}
-
 function paddleLine(world: World, tag: string): string {
   const paddle = world.byTag(tag)[0];
-  if (!(paddle instanceof Paddle)) return "—";
+  if (!(paddle instanceof Paddle)) return ABSENT;
   return `cy ${fixed(paddle.transform.y)} vy ${fixed(paddle.vy)}`;
 }
 
@@ -44,36 +45,32 @@ export function diagnosticSources(
   game: CaromGame,
 ): Record<string, () => DiagnosticValue> {
   const world = (): World => game.engine.world;
-  const match = (): MatchState | null => {
-    const state = world().state;
-    return state instanceof MatchState ? state : null;
-  };
+  const ball = (index: number): Ball | null => ballAt(world(), index);
   const sources: Record<string, () => DiagnosticValue> = {
-    screen: () => screenOf(world()),
+    screen: () => stateOf(world()).screen,
     mode: () => game.mode,
     score: () => {
-      const state = match();
-      if (state === null) return "0 - 0";
-      return `${state.players[0]?.score ?? 0} - ${state.players[1]?.score ?? 0}`;
+      const { p1, p2 } = stateOf(world()).score;
+      return `${p1} - ${p2}`;
     },
   };
   // One group per ball, in play order (specs/instrumentation.md).
   for (let i = 0; i < BALL_COUNT; i++) {
     sources[`ball ${i} pos`] = () => {
-      const ball = ballOf(world(), i);
-      if (!ball) return "—";
-      const held = ball.held ? " held" : "";
-      return `${fixed(ball.transform.x)}, ${fixed(ball.transform.y)}${held}`;
+      const found = ball(i);
+      if (found === null) return ABSENT;
+      const held = found.held ? " held" : "";
+      return `${fixed(found.transform.x)}, ${fixed(found.transform.y)}${held}`;
     };
     sources[`ball ${i} vel`] = () => {
-      const ball = ballOf(world(), i);
-      if (!ball) return "—";
-      const speed = Math.hypot(ball.vx, ball.vy);
-      return `${fixed(ball.vx)}, ${fixed(ball.vy)} (${fixed(speed)})`;
+      const found = ball(i);
+      if (found === null) return ABSENT;
+      const speed = Math.hypot(found.vx, found.vy);
+      return `${fixed(found.vx)}, ${fixed(found.vy)} (${fixed(speed)})`;
     };
     sources[`ball ${i} spin`] = () => {
-      const ball = ballOf(world(), i);
-      return ball ? fixed(ball.spin) : "—";
+      const found = ball(i);
+      return found === null ? ABSENT : fixed(found.spin);
     };
   }
   sources["paddle L"] = () => paddleLine(world(), TAGS.paddleLeft);

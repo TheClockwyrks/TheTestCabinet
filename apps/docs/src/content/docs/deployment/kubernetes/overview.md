@@ -111,6 +111,13 @@ The two image sets reach the cluster differently and are pinned in two places.
   tracks the mutable `:latest`. Re-pin `TCAB_CONTAINER_TAG` only to a sha at
   which `build-containers` actually published, and roll staging before prod.
 
+The driver stages a run's [audio packs](/components/core/execution/#staged-audio)
+into the run container, so the `tcab-driver` image and `TCAB_CONTAINER_TAG` move
+to the same commit. Where they have to be sequenced, roll the driver first: a run
+image that does not accept the driver's staging contract fails an audio-bearing
+run at container start, before a model session is spent. End-to-end, adversarial,
+and performance runs stage no audio and are unaffected either way.
+
 ## Applying an overlay
 
 Create the environment's secrets first, from your secret manager, then apply an
@@ -153,6 +160,8 @@ The allowed flows are:
   and reporting status;
 - the backend to the auth service, for verifying every bearer token;
 - driver pods to the artifact service, for uploading the produced run tree;
+- the backend to the artifact service, for pruning a deleted run's tree and
+  sweeping the trees no run row references;
 - sandbox pods to their driver pod, for streaming live preview frames;
 - the artifact service to the backend, for verifying a driver's upload token;
 - the arena to the backend, for fetching controller inputs and persisting

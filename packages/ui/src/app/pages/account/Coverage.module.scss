@@ -124,8 +124,10 @@
 }
 
 // A checkbox + label pair (auto-top-up), laid out inline so the label reads as one
-// sentence with its box rather than as a stray caption. Also used in the plan editor's
-// settings column, which is why the alignment below is a separate class.
+// sentence with its box rather than as a stray caption. Only the plan and ladder
+// dashboards carry it, inside their control strip: an editor's settings are rows, and
+// a strip's are a line of controls beside the statement they act on, which is why the
+// alignment below is a separate class.
 .controlToggle {
   display: inline-flex;
   align-items: center;
@@ -230,8 +232,9 @@
   font-size: t.$font-sm;
 }
 
-// The explanatory line under a schedule field (the ordering hint, the buffer's
-// empty-versus-zero note).
+// The explanatory line under a field inside a member-entry stack, where there is no
+// setting row to carry a description (the gg add-row's "this configuration pins every
+// model itself" note). A setting states itself through `SettingRow` instead.
 .fieldHint {
   margin: 0 0 t.$space-md;
   max-width: 42rem;
@@ -458,6 +461,17 @@
   white-space: nowrap;
 }
 
+// Why a cell can never be launched — a gg configuration that has been deleted, a launch
+// slot nothing is bound to, a model with no resolvable context window. It spans the
+// whole row rather than trailing the count: it is a sentence a reviewer has to act on,
+// and the count's notes are sized for two words and clipped.
+.cellBlocked {
+  grid-column: 1 / -1;
+  color: t.$color-negative;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+}
+
 // The cell's "Runs" link: a quiet text control into the runs listing narrowed to
 // this cell — half of the review loop (see the run, review it, come back).
 .cellLink {
@@ -535,8 +549,10 @@
   margin-top: calc(#{t.$space-md} * 2);
 }
 
-// The pills for a section (a harness, or a test-case category) are stacked as a
-// column of groups, each a labelled header + divider over its own pill row.
+// The member sections stacked as a column of groups, each a labelled header +
+// divider over its own list. A section is a harness, a test-case category, or the
+// one gg Configurations section — and that last one lists rows rather than pills,
+// because a gg member is more than a pill holds (see `.ggMemberList`).
 .chipGroups {
   display: flex;
   flex-direction: column;
@@ -545,7 +561,7 @@
 }
 
 // A group's header row: the section title on the left, the "Clear all" action on
-// the far right, with a hairline divider underneath separating it from the pills.
+// the far right, with a hairline divider underneath separating it from the list.
 .chipGroupHead {
   display: flex;
   align-items: baseline;
@@ -641,10 +657,191 @@
   }
 }
 
-// The add-a-combination / add-a-case row on the plan editor. It already sits
-// inside the editor widget, so — unlike the batch-launch row on the new-run form
-// — it draws no panel of its own: just the fields laid out inline, aligned to
-// their bottom edge with the "+ Add" button.
+// The gg members, as rows rather than pills. A gg member carries a configuration, the
+// models it binds and the slot each is bound to, which is more than fits a pill: the
+// third of those is what tells two arms of one study apart, so it is disclosed under the
+// row instead of crowding it or being dropped.
+.ggMemberList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.ggMember {
+  display: flex;
+  flex-direction: column;
+}
+
+// One member's row: the disclosure on the left, the remove control at the trailing edge.
+// They are siblings, so the two hit areas never overlap.
+.ggMemberRow {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  padding: t.$space-2xs 0;
+}
+
+// The clickable summary — twisty, configuration, models — grown to fill the row so a
+// press anywhere left of the remove control opens the member. Same reset treatment as
+// `.groupToggle`, the matrix's case header, since both are a whole line that toggles.
+.ggMemberOpen {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  flex: 1 1 auto;
+  min-width: 0;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+
+  &:focus-visible {
+    outline: none;
+  }
+
+  &:hover .ggMemberName,
+  &:focus-visible .ggMemberName {
+    color: t.$color-accent;
+  }
+}
+
+.ggMemberName {
+  flex: none;
+  color: t.$color-text;
+  font-size: t.$font-sm;
+}
+
+// The models on one line, truncated rather than wrapped: the row exists to be scanned,
+// and the full answer is one press away in the bindings beneath it.
+.ggMemberModels {
+  min-width: 0;
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// The disclosed bindings: slot names in one column, the model each is bound to in the
+// next, so a reader compares models down a single edge instead of hunting them out of
+// a sentence. Indented to sit under the row's title rather than under its twisty.
+.ggBindings {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: t.$space-2xs t.$space-md;
+  margin: 0 0 t.$space-xs;
+  padding: 0 0 0 calc(#{t.$space-md} + #{t.$space-sm});
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+}
+
+.ggBindingSlot {
+  margin: 0;
+  color: t.$color-text-muted;
+}
+
+.ggBindingModel {
+  margin: 0;
+  min-width: 0;
+  color: t.$color-text;
+  overflow-wrap: anywhere;
+}
+
+// A slot nothing is bound to is why the cell it makes can never launch, so it takes the
+// same negative cue the matrix's blocked-cell line does.
+.ggBindingUnbound {
+  color: t.$color-negative;
+}
+
+// A configuration that pins every model itself has no binding to disclose. It still
+// opens, and says that, rather than reading as a row whose twisty does nothing.
+.ggBindingsNone {
+  margin: 0 0 t.$space-xs;
+  padding-left: calc(#{t.$space-md} + #{t.$space-sm});
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// The add-row's shape selector. A labelled field, sized like the settings selects, so it
+// reads as the first field of the row it configures; two filled pills directly under the
+// member list read as members of it.
+.kindField {
+  width: 16rem;
+  max-width: 100%;
+  margin-bottom: t.$space-md;
+}
+
+// The gg half of the add-row. A gg combination is a configuration plus a model for
+// every launch slot it declares, and a configuration declares as many as it likes —
+// laid out inline they would squeeze each model id below the width it is legible at,
+// and the row would reflow differently for every configuration. So the fields stack.
+//
+// Being a column makes the main axis the vertical one, so nothing in here may carry the
+// row classes (`RunExec`'s `.comboField` / `.comboFieldWide`): their flex basis would
+// resolve as a height and leave a 14rem hole under the control. Fields take
+// `.comboSlotField`, which is width and nothing else.
+.ggAdd {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-md;
+  max-width: 32rem;
+  width: 100%;
+}
+
+// The first slot's field: the model picker with its "stage another" button beside it,
+// so the two read as one control over a list rather than as two unrelated inputs.
+.modelStage {
+  display: flex;
+  align-items: stretch;
+  gap: t.$space-sm;
+  width: 100%;
+
+  // The combobox owns the remaining width; the button keeps its own.
+  > :first-child {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+// The panel's variant of the new-run form's Test grid (`RunExec`'s `.fields` +
+// `.testFields`), which the case and rung add-rows borrow so choosing a case reads
+// the same wherever it is done. Two things change inside an editor widget: the grid
+// there sits out on the animated backdrop and haloes its labels to lift them off it,
+// which on a panel only smears a label every other control in the same panel draws
+// plainly; and the trailing "+ Add" button is a grid cell rather than the last item
+// of a flex line, so it is told to sit at the bottom edge of its row beside the
+// controls it commits instead of stretching to fill the cell.
+//
+// The halo is dropped by element rather than by class because the class it is granted
+// through belongs to another CSS module and is not nameable from here. Every child of
+// this grid is a field label followed by its control, so the selector reaches exactly
+// the labels.
+.editorFields {
+  align-items: end;
+
+  label > span {
+    text-shadow: none;
+  }
+}
+
+.editorAdd {
+  align-self: end;
+  justify-self: start;
+}
+
+// The add-a-combination row on the plan editor. It already sits inside the editor
+// widget, so — unlike the batch-launch row on the new-run form — it draws no panel
+// of its own: just the fields laid out inline, aligned to their bottom edge with the
+// "+ Add" button.
 .inputRow {
   display: flex;
   align-items: flex-end;
@@ -779,8 +976,8 @@
   max-width: 28rem;
 }
 
-// The kind selector on the group editor: two radio pills (Models / Cases), locked
-// once the group exists (a group's kind is fixed after create).
+// The kind selector on the group editor: two radio pills (Combinations / Test cases),
+// locked once the group exists (a group's kind is fixed after create).
 .kindRow {
   display: flex;
   gap: t.$space-sm;

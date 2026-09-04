@@ -10,18 +10,18 @@
 //! # The one rule
 //!
 //! **All post-run analysis runs on the host, after the working tree is collected,
-//! before validation, and outside the harness session's runtime cap.** There is
-//! exactly one insertion point in [`RunEngine::run_resolved`](crate::RunEngine::run_resolved),
-//! and every stage goes through it. Three properties fall out of that single
+//! before validation, and outside the run's runtime cap.** There is exactly one
+//! insertion point in [`RunEngine::run_resolved`](crate::RunEngine::run_resolved), and
+//! every stage goes through it. Three properties fall out of that single
 //! placement, each of which was the reason for one of the three constraints:
 //!
 //! - **Analysis never costs the test case its budget.** The runtime cap
-//!   (`max_runtime_hours`, applied by `with_runtime_cap`) wraps only the harness
-//!   session, and the run's measured duration is frozen before this seam. A stage
-//!   can take as long as it needs without a run being scored as if the model had
-//!   spent that time. This is satisfied *by construction* rather than by policy:
-//!   there is no cap to compete with here, because the capped future has already
-//!   resolved.
+//!   (`max_runtime_hours`, applied by `with_runtime_cap`) bounds the harness session
+//!   and bounds each in-container setup step, each on its own, and the run's measured
+//!   duration is frozen before this seam. A stage can take as long as it needs without
+//!   a run being scored as if the model had spent that time. This is satisfied *by
+//!   construction* rather than by policy: there is no cap to compete with here,
+//!   because the capped future has already resolved.
 //! - **What is analysed is what the model wrote.** Validation runs the case's
 //!   install and build commands **in the produced tree itself**, so after it the
 //!   tree carries build output, a rewritten lockfile and toolchain caches — and
@@ -33,7 +33,9 @@
 //!   operator chose to stop. Analysis is not that: it reads bytes that already
 //!   exist and renders no verdict, so it runs for a canceled run exactly as for a
 //!   completed one — matching the established posture that a killed run keeps its
-//!   metrics.
+//!   metrics. Only a canceled [gg](crate::gg) run reaches here at all: gg is the one
+//!   harness that winds down for a kill, and a canceled run of any other is destroyed
+//!   without returning to this seam.
 //!
 //! # Why a trait
 //!
@@ -91,7 +93,8 @@ pub struct PostRunContext<'a> {
     /// Whether an operator canceled this run. A stage still runs for a canceled
     /// run; this tells it that the tree and any journal it reads were cut short
     /// deliberately, so a partial result can be reported as such rather than as a
-    /// complete one.
+    /// complete one. Set on a wound-down [gg](crate::gg) run alone — no other harness
+    /// returns from a kill.
     pub canceled: bool,
 }
 

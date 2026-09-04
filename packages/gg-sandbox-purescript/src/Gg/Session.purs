@@ -1,16 +1,10 @@
 -- | Ending the session, one group of calls per role.
 -- |
--- | Under responses as code every reply is a program, so there is no prose turn that could mean "the
--- | work is done" — a model that answers "task complete" has written a reply that failed to be a
--- | program, not an ending. These are the calls that mean it.
+-- | Exactly one group is bound: a working role ends the session by reporting what was done, a
+-- | reviewing one by a verdict on the work under review.
 -- |
--- | Exactly one group is bound. An agent whose role is to do work gets `finish`; a reviewer gets
--- | `approve` and `requestChanges` instead, because a reviewer's result has a shape of its own: not
--- | what was done, but whether it may stand.
--- |
--- | None of them stops the program. Whatever follows still runs, so an ending belongs last, once the
--- | calls before it have confirmed the work. A program that then fails revokes the ending and earns
--- | another turn.
+-- | None of them stops the program; whatever follows still runs. A program that then fails revokes
+-- | the ending and earns another turn.
 module Gg.Session
   ( finish
   , approve
@@ -24,9 +18,8 @@ import Gg.Internal.Wire as Wire
 
 -- | End the session, reporting what was done in a sentence or two.
 -- |
--- | This is the only thing that ends it. It does not stop the program — whatever follows still runs —
--- | so it belongs last, once the calls before it have confirmed the work is really done. A program
--- | that then fails cancels the ending and earns another turn.
+-- | It does not stop the program; whatever follows still runs. A program that then fails cancels the
+-- | ending and earns another turn.
 -- |
 -- | # Operation
 -- |
@@ -40,8 +33,7 @@ finish summary = Wire.call_ "finish" "session" "Gg.Session.finish" [ Wire.wire s
 
 -- | Accept the work under review: it meets every completion criterion and stays in scope.
 -- |
--- | This ends the session, and does not stop the program, so it belongs last — once the change has
--- | actually been read.
+-- | This ends the session and does not stop the program.
 -- |
 -- | # Operation
 -- |
@@ -49,7 +41,7 @@ finish summary = Wire.call_ "finish" "session" "Gg.Session.finish" [ Wire.wire s
 -- |
 -- | # Arguments
 -- |
--- | (none — approval carries nothing but itself)
+-- | (none)
 approve :: Effect Unit
 approve = Wire.call_ "approve" "session" "Gg.Session.approve" []
 

@@ -26,6 +26,7 @@ import {
   GateEditor,
   LadderAxisPicker,
   RungListEditor,
+  rungInput,
 } from "./ladderPickers";
 import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
@@ -109,17 +110,11 @@ export function LadderEditPage() {
           setGate(existing.gate);
           setComboGroupIds(existing.comboGroupIds);
           setCombos(existing.combos);
-          // Carried in with their ids, which is what makes a reorder or a version
-          // bump keep every climber's verdicts rather than mint fresh rungs.
-          setRungs(
-            existing.rungs.map((rung) => ({
-              id: rung.id,
-              slug: rung.slug,
-              version: rung.version,
-              variant: rung.variant,
-              ...(rung.runs === undefined ? {} : { runs: rung.runs }),
-            })),
-          );
+          // Carried in whole through the shared projection, ids included — that is
+          // what makes a reorder or a version bump keep every climber's verdicts
+          // rather than mint fresh rungs, and what stops a field this page forgot
+          // from being a field the ladder loses on the next save.
+          setRungs(existing.rungs.map(rungInput));
           setOuterAxis(existing.outerAxis);
           setAutoTopUp(existing.autoTopUp);
           setBufferTarget(existing.bufferTarget ?? null);
@@ -331,8 +326,8 @@ export function LadderEditPage() {
           </p>
           {comboGroups.length === 0 ? (
             <p className={styles.empty}>
-              No model groups yet. Create one on the Groups tab, or pin one-off
-              combinations below.
+              No combination groups yet. Create one on the Groups tab, or pin
+              one-off combinations below.
             </p>
           ) : (
             <div className={styles.groupPicks}>
@@ -356,9 +351,7 @@ export function LadderEditPage() {
             </div>
           )}
 
-          <p className={exec.sectionLabel}>
-            One-off harness / model combinations
-          </p>
+          <p className={exec.sectionLabel}>One-off combinations</p>
           <ComboPicker combos={combos} onChange={setCombos} models={models} />
 
           <SubmitNotice message={error} />

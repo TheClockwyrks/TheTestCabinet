@@ -1,9 +1,5 @@
 /// Fetch a program that already ran, and hand a patched copy back to be run.
 ///
-/// Under responses as code a reply is a whole program, so a one-character mistake in a sixty-line
-/// program costs the sixty lines again. The library makes the fix proportional to the mistake: fetch
-/// what ran, patch it with ordinary string work, hand it back.
-///
 /// ```swift
 /// let source = try programs.get("k3p9")
 /// try programs.rerun(source.replacing("views.openTex(", with: "views.openText("))
@@ -13,15 +9,12 @@
 public enum programs {
     /// List the programs this session has already run, oldest first.
     ///
-    /// Each carries its id, the turn it ran on, how big it was, and whether it ran to its end. It lists
-    /// shapes, not sources: `programs.get` is what fetches one. The list survives a compaction, so
-    /// it is also how a program whose text has left the context window is found again. A session
-    /// that has run nothing yet gets an empty array rather than an error.
+    /// Each carries its id, the turn it ran on, how big it was, and whether it ran to its end;
+    /// sources are not listed. The list survives a compaction. A session that has run nothing yet
+    /// gets an empty array.
     ///
     /// - Returns: every program this session has run, oldest first.
-    /// - Throws: `core.ApiError` with `.unavailable` when this agent keeps no program library —
-    ///   which is a different fact from an empty one, and the reason this call is `throws` rather
-    ///   than total.
+    /// - Throws: `core.ApiError` with `.unavailable` when this run keeps no program library.
     /// - ggop: programs.history
     public static func history() throws -> [ProgramSummary] {
         var ret = test_cabinet_gg_programs_list_program_summary_t()
@@ -34,11 +27,9 @@ public enum programs {
 
     /// Fetch the exact source of one program that ran, by the id its acknowledgement carried.
     ///
-    /// This is the first half of fixing a program without rewriting it: get what ran, patch it with
-    /// ordinary string work, and hand the result to `programs.rerun`. What comes back is the program
-    /// that executed, so when a submission's program was itself handed over by `programs.rerun`,
-    /// the program that ran is what arrives rather than the few lines that asked for it — and
-    /// fetch-patch-run composes turn after turn. A rerun keeps the id of the submission it replaced.
+    /// What comes back is the program that executed, so where a submission's program was itself
+    /// handed over by `programs.rerun`, the program that ran is what arrives rather than the few
+    /// lines that asked for it. A rerun keeps the id of the submission it replaced.
     ///
     /// - Parameter id: The program's id, as its acknowledgement carried it and as
     ///   `programs.history` reports it.
@@ -61,16 +52,13 @@ public enum programs {
     /// Hand gg a program to run in place of this one.
     ///
     /// The calling program finishes, then gg compiles and runs `source` as this submission's
-    /// program, under the same id. Used
-    /// with `programs.get` it fixes a program without re-emitting it. Nothing is undone: every call
-    /// the calling program already made stands, and the program that runs next sees the world it
-    /// left behind — so the hand-over belongs before work that should not happen twice.
+    /// program, under the same id. Nothing is undone: every call the calling program already made
+    /// stands, and the program that runs next sees the world it left behind.
     ///
-    /// The first call stands, because a silently replaced program is a change nobody can see. If the
-    /// calling program then fails, the hand-over is cancelled along with everything else that
-    /// program decided, and the turn ends in an ordinary error. Chains are bounded: a submission runs
-    /// at most four programs, this one plus three handed over, and the fixed program is the one
-    /// that does the work.
+    /// The first call stands; a second from the same program is refused. If the calling program
+    /// then fails, the hand-over is cancelled along with everything else that program decided, and
+    /// the turn ends in an ordinary error. A submission runs at most four programs, this one plus
+    /// three handed over.
     ///
     /// - Parameter source: The program to run in place of this one, as Swift. It may not be blank.
     /// - Throws: `core.ApiError` with `.refused` for a second hand-over from the same program, and
@@ -86,9 +74,7 @@ public enum programs {
 
     /// One program that already ran, as `programs.history` lists it.
     ///
-    /// It describes the program's shape, never its source: a directory that inlined every program
-    /// would put the whole session back in the context window, which is the one thing the library
-    /// exists to avoid. `programs.get` is what fetches a source.
+    /// It describes the program's shape, never its source.
     public struct ProgramSummary: Sendable {
         /// The id its `submit_program` acknowledgement carried — what `programs.get` takes.
         public let id: String
@@ -116,8 +102,6 @@ public enum programs {
 
 extension programs.ProgramSummary {
     /// Fetch this program's source, with its id already supplied.
-    ///
-    /// `programs.get` for the common case where the history entry is in hand.
     ///
     /// - Returns: the program's source, exactly as it ran.
     /// - Throws: `core.ApiError` with `.notFound` when the library has since dropped that program.

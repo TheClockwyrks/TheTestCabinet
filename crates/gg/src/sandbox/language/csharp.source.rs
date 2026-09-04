@@ -93,14 +93,12 @@ pub(super) fn module_file(key: &str) -> String {
     format!("{MODULE_FILE_PREFIX}{key}.cs")
 }
 
-/// The key a module is wrapped under while it is being **checked on its own**, before any program has
-/// asked for it.
+/// The key a module is bound at when its name spells no identifier at all, and the key a refusal
+/// names when it has to show what gg wraps a module in.
 ///
-/// A module's own preparation is handed no key — the seam binds one when the module is loaded, not
-/// when it is read — so the check compiles it under a fixed one. Which key it is changes nothing the
-/// check could catch: the wrap is the same shape for every key, and a member that resolves under one
-/// resolves under all of them.
-pub(super) const CHECK_KEY: &str = "Module";
+/// A skill named entirely in punctuation has to be reachable under something, and this is a proper
+/// C# identifier, which is what the binding key has to be on this arm.
+pub(super) const FALLBACK_KEY: &str = "Module";
 
 /// A code module, lowered: the compilation unit `csc` reads, and the names its class offers.
 #[derive(Debug)]
@@ -142,7 +140,7 @@ pub(super) fn binding_name(name: &str) -> String {
         }
     }
     if out.is_empty() {
-        return CHECK_KEY.to_string();
+        return FALLBACK_KEY.to_string();
     }
     if out.starts_with(|character: char| character.is_ascii_digit()) {
         out.insert(0, '_');
@@ -237,7 +235,7 @@ fn hoist(source: &str, mask: &[Mask]) -> Result<(String, Vec<(usize, String)>), 
                  nowhere to go. Remove it: everything you declare is already reached as \
                  `lib.<key>.<name>`, and a type you want to nest is an ordinary nested type.",
                 index + 1,
-                CHECK_KEY,
+                FALLBACK_KEY,
                 rest.trim_end_matches(&[';', '{'][..]).trim(),
             )));
         }

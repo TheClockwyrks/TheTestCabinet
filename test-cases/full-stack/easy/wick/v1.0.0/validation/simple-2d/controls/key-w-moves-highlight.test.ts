@@ -12,9 +12,9 @@
 //   highlight up", and "The two keys bound to an action are interchangeable:
 //   `KeyW` does exactly what `ArrowUp` does wherever `up` is read."
 //   specs/controls.md ("What each screen reads"): on `title`, "`up`, `down`
-//   move the highlight, wrapping at both ends".
+//   move the highlight, wrapping".
 //   specs/ui.md (`title`): "`up` and `down` move the highlight by one item",
-//   over the two items of `TITLE_ITEMS`, so one `up` from `1` reads `0`.
+//   over the three items of `TITLE_ITEMS`, so one `up` from `1` reads `0`.
 //
 // THE DRIVE. The item names the highlight at `1` as the starting point, and no
 // operation of the surface poses `menuIndex` (it "is `0` on entering every

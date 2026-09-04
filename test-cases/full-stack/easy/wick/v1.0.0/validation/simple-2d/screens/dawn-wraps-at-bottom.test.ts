@@ -9,7 +9,7 @@
 //   and wrap", over `END_ITEMS`, "`TRY AGAIN`, `TITLE`, in that order", so the
 //   last item's index is `END_ITEMS.length − 1`.
 //   specs/controls.md ("What each screen reads"): "`up`, `down` move the
-//   highlight, wrapping at both ends".
+//   highlight, wrapping".
 //
 // THE DRIVE. An isolated `playing` run ended through `setScreen`, which "Ends
 // the run exactly as that ending does, the run kept for the end screen to

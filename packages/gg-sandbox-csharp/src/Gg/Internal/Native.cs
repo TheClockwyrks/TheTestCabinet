@@ -85,6 +85,9 @@ internal static class Native
     [MethodImpl(MethodImplOptions.InternalCall)]
     internal static extern bool ListDir(string? path, out string[] names, out int[] kinds);
 
+    [MethodImpl(MethodImplOptions.InternalCall)]
+    internal static extern bool Tree(string? path, int depth, out string rendered);
+
     // A `list<search-match>` as one array per field, of equal length.
     [MethodImpl(MethodImplOptions.InternalCall)]
     internal static extern bool Search(

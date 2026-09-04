@@ -7,7 +7,7 @@
 // died, in `[0, PUFF_TIME)`, and is gone after. It is a picture, and it damages
 // nothing." `PUFF_TIME` is `0.4` seconds, which `specs/world.md`'s timer rule
 // ("An interval of `s` seconds anywhere in this specification is likewise
-// `round(s x TICK_HZ)` ticks") makes 24 ticks, six a frame. The sheet is the
+// `round(s × TICK_HZ)` ticks") makes 24 ticks, six a frame. The sheet is the
 // produced `assets/sprites/puff/0.png` to `3.png`, "shared by every enemy"
 // (`specs/assets.md`, "The sprites"), so a blit's file name is which frame is
 // up, and the puff has no place in the state at all: it is read off the frame

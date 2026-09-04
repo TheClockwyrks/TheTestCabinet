@@ -1,13 +1,9 @@
 /**
  * Hand scoped work to child agents, and hand this session on to another agent.
  *
- * Waiting can dominate a turn's wall clock, because it blocks while real agents run and the run's
- * budget keeps ticking. A program is therefore best shaped to spawn broadly and wait once, rather
- * than to spawn and wait in a loop.
+ * Waiting blocks while children run, and the run's wall-clock budget keeps ticking throughout.
  *
- * The brief is the one place this SDK enforces an "exactly one of" that the native tool-calling
- * schema can only check at dispatch: a child is briefed either with self-contained instructions or
- * with a board issue, and the membrane's variant makes "neither" unrepresentable.
+ * A child is briefed with exactly one of self-contained instructions or a board issue.
  */
 
 import * as raw from "test-cabinet:gg/delegation";
@@ -28,8 +24,6 @@ export interface SubagentHandle {
 
   /**
    * Deliver a message to this child's inbox, with its id already supplied.
-   *
-   * `gg.delegation.sendMessage` for the common case where the handle is in hand.
    *
    * @ggop delegation.send_message
    * @param message What to put in its inbox. The child reads it at its next turn.
@@ -59,12 +53,9 @@ function handle(spawned: raw.SubagentHandle): SubagentHandle {
 }
 
 /**
- * How a child agent's loop ended, in the six words the native path also reports.
+ * How a child agent's loop ended.
  *
- * A child stopped by a gg **defect** (`internal_error` natively) has no word here and arrives as
- * `undefined`: this vocabulary is what a program branches on, and there is no branch to write
- * against a bug in the harness running it. The defect is reported to the operator, not to the
- * program.
+ * A child stopped by a gg defect has no word here and arrives as `undefined`.
  */
 export type AgentEnding =
   /** It finished normally, and its summary is what it returned. */
@@ -150,21 +141,21 @@ function ending(status: AgentStatus | undefined): AgentEnding | undefined {
  * Delegate scoped work to a child agent, and hand back its handle at once.
  *
  * The child runs in parallel while the program continues. `agent` selects the child's model, tools
- * and instructions, and must be one of the agents this one may spawn — the system prompt lists them.
- * The brief is exactly one of self-contained instructions or a board issue. The child shares this
- * workspace.
+ * and instructions, and must be one of the agents this session may spawn — the system prompt lists
+ * them. The brief is exactly one of self-contained instructions or a board issue. The child shares
+ * this workspace.
  *
  * @ggop delegation.spawn_subagent
  * @param request The agent to run and the brief to run it on.
- * @param request.agent The agent profile to run the child as, from the ones this agent may spawn. It
- * selects the child's model, tools and instructions.
+ * @param request.agent The agent profile to run the child as, from the ones this session may spawn.
+ * It selects the child's model, tools and instructions.
  * @param request.prompt Self-contained instructions for the child. This or `issueId`, never both and
  * never neither.
  * @param request.issueId The board issue to brief the child from. This or `prompt`, never both and
  * never neither.
  * @returns the child's handle: the id to wait on or message, and the agent and model it runs as.
  * @throws `ApiError` with `limit-exceeded` at the delegation depth cap, and `invalid-argument`
- * when `agent` is not one this agent may spawn or the brief is neither a prompt nor an issue.
+ * when `agent` is not one this session may spawn or the brief is neither a prompt nor an issue.
  */
 export function spawnSubagent(
   request: { agent: string } & ({ prompt: string } | { issueId: string }),
@@ -178,7 +169,7 @@ export function spawnSubagent(
  * Block until the named children have finished, and collect their results in dispatch order.
  *
  * With no argument it waits for every child still outstanding. The run's wall-clock budget keeps
- * running throughout, so one wait for many children costs far less than one wait per child.
+ * running throughout.
  *
  * @ggop delegation.wait_for_subagents
  * @param ids The children to wait for. Omit it to wait for every one still outstanding.
@@ -209,21 +200,19 @@ export function sendMessage(agentId: string, message: string): void {
 }
 
 /**
- * Move the process this agent runs inside on to another of its states.
+ * Move the state machine driving this session on to another of its states.
  *
  * A state is named the way an agent to spawn is named, and the note is the opening message the next
- * state's agent sees. The call is bound only when a state machine is driving this session and the
- * current state has somewhere to go.
+ * state sees.
  *
- * Like a compaction it is registered rather than performed: the call validates the target, returns,
- * and the program runs on to its end, because replacing the agent and its window mid-program would
- * pull every remaining call out from under it. The first declaration stands and a second is refused.
+ * It is registered rather than performed: the call validates the target, returns, and the program
+ * runs on to its end. The first declaration stands and a second is refused.
  *
  * @ggop delegation.transition_state
  * @param state The state to move on to, named the way an agent to spawn is named.
- * @param note The opening message the next state's agent sees.
- * @throws `ApiError` with `invalid-argument` for a state this agent may not move to, and `refused`
- * for a second declaration in one turn.
+ * @param note The opening message the next state opens with.
+ * @throws `ApiError` with `invalid-argument` for a state this session may not move to, and
+ * `refused` for a second declaration in one turn.
  */
 export function transitionState(state: string, note?: string): void {
   call(() => raw.transitionState(state, note));
@@ -232,35 +221,33 @@ export function transitionState(state: string, note?: string): void {
 /**
  * Continue this session as a different agent from the next turn on.
  *
- * The named agent takes over with its own model, tools and instructions, keeping every capability the
- * two of them share — the whole conversation above all, so it needs no catching up. The prompt is its
- * opening instruction rather than a briefing.
+ * The named agent takes over with its own model, tools and instructions, keeping the whole
+ * conversation and every capability the two share. The prompt is its opening instruction rather than
+ * a briefing.
  *
- * Registered rather than performed, exactly as a state transition is and for the same reason. A
- * session makes one succession per turn, so a second one is refused. The call is bound only when this
- * agent may make agent transitions and has agents it may become, and never while a state machine is
- * driving the session.
+ * It is registered rather than performed: the program runs on to its end. A session makes one
+ * succession per turn, so a second is refused.
  *
  * @ggop delegation.exec
- * @param agent The agent to become, from the ones this agent may become.
+ * @param agent The agent to become, from the ones this session may become.
  * @param prompt Its opening message. It already holds the whole conversation, so this is the
  * instruction rather than a briefing.
- * @throws `ApiError` with `invalid-argument` for an agent this one may not become, and `refused`
- * for a second succession in one turn.
+ * @throws `ApiError` with `invalid-argument` for an agent this session may not become, and
+ * `refused` for a second succession in one turn.
  */
 export function exec(agent: string, prompt?: string): void {
   call(() => raw.exec(agent, prompt));
 }
 
 /**
- * Run a copy of this agent, in parallel, on something this one will not do itself.
+ * Run a copy of this session, in parallel, on work this one will not do itself.
  *
  * The copy has the same model, the same tools and a private copy of the whole conversation, so the
- * prompt is the *difference* rather than a briefing: everything already worked out is already there.
+ * prompt states the difference rather than a briefing.
  *
- * Its handle comes back at once, but the copy starts only once this turn's results are recorded,
- * because the conversation it inherits has to be a complete one. So it can be collected only on a
- * later turn, and waiting on it in the program that made it never returns it.
+ * Its handle comes back at once, but the copy starts only once this turn's results are recorded. It
+ * can be collected only on a later turn, and waiting on it in the program that made it never returns
+ * it.
  *
  * @ggop delegation.fork
  * @param prompt What the copy is to do instead. It holds the whole conversation already, so the

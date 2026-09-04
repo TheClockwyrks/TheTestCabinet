@@ -6,18 +6,19 @@
 // narrowest score that satisfies it.
 //
 // A point in multi does not stop the field, so what ends the match here is the
-// win rule alone — the balls are still in play right up to the frame the
-// match-over screen replaces them. The two balls this check is not about are
-// parked, so the score that reaches the win is the one this check drove.
+// win rule alone. The field is emptied down to the one ball this check drives —
+// the other two are REMOVED, and both obstacles with them — so the score that
+// reaches the win is the one this check drove and no spare can put a point on the
+// board behind it. The paddles are driven out of the lane the shot travels down.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WIN_LEAD, WIN_SCORE } from "../../src/constants";
+import { WIN_LEAD, WIN_SCORE } from "../constants";
 import { assertEqual } from "../assert";
 import {
   arrangeGoal,
   captureStill,
   createHarness,
-  startPlaying,
+  enterPlaying,
   type Harness,
 } from "../harness";
 
@@ -36,7 +37,7 @@ afterEach(() => {
 });
 
 it("ends the match on the winning point and names the winner", async () => {
-  await startPlaying(h);
+  enterPlaying(h);
   h.debug.setScore(P1_BEFORE, P2_BEFORE);
   arrangeGoal(h, "right");
 

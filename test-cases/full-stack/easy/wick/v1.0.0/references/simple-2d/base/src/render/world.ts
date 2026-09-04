@@ -1,12 +1,16 @@
 // Wick — the world under the camera (specs/world.md "The camera and the
-// view", specs/assets.md "The sprites", "Animation").
+// view", specs/ui.md "`playing`", specs/assets.md "The sprites",
+// "Animation").
 //
 // Every world point is drawn at `(wx − player.x + STAGE_CX, wy − player.y +
 // STAGE_CY)`, so the lamplighter sits at the stage center and the ground
 // pattern, fixed in world space, slides beneath it. A produced sprite is
 // drawn at one unit per pixel where it decoded; where it did not, a
 // code-drawn stand-in of the same size takes its place. Every animation is
-// counted in ticks, so it holds still on every screen but `playing`.
+// counted in ticks, so it holds still on every screen but `playing`. Each
+// enemy, gem, and pickup is drawn by a function of its own, which the almanac
+// draws its pictures with as well, so one thing looks the same wherever it is
+// shown.
 
 import {
   ENEMIES,
@@ -15,6 +19,7 @@ import {
   GEM_SPRITE_SIZES,
   GROUND_TILE_PATH,
   GROUND_TILE_SIZE,
+  HURT_FLASH,
   LAMPLIGHTER_IDLE_PATH,
   LAMPLIGHTER_SPRITE_HEIGHT,
   LAMPLIGHTER_SPRITE_WIDTH,
@@ -29,6 +34,10 @@ import {
   STAGE_H,
   STAGE_W,
   TICK_DT,
+  type EnemyId,
+  type EnemyRank,
+  type GemTier,
+  type PickupKind,
 } from "../constants";
 import { enemyFrame, sheetFrame, spriteImage } from "../assets";
 import type { RunState } from "../game";
@@ -96,49 +105,102 @@ function drawLamplight(ctx: CanvasRenderingContext2D): void {
   ctx.fillRect(STAGE_CX - reach, STAGE_CY - reach, reach * 2, reach * 2);
 }
 
+/** One gem of `tier`, centered at `(x, y)` and `size` units across. */
+export function drawGem(
+  ctx: CanvasRenderingContext2D,
+  tier: GemTier,
+  x: number,
+  y: number,
+  size: number = GEM_SPRITE_SIZES[tier],
+): void {
+  const image = spriteImage(GEM_PATHS[tier]);
+  if (image) {
+    sprite(ctx, image, x, y, size, size);
+    return;
+  }
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(Math.PI / 4);
+  centeredRect(ctx, 0, 0, size * 0.72, size * 0.72, COLORS.gem);
+  ctx.restore();
+}
+
+/** One pickup of `kind`, centered at `(x, y)` and `size` units across. */
+export function drawPickup(
+  ctx: CanvasRenderingContext2D,
+  kind: PickupKind,
+  x: number,
+  y: number,
+  size: number = PICKUP_SPRITE_SIZE,
+): void {
+  const image = spriteImage(PICKUP_PATHS[kind]);
+  if (image) {
+    sprite(ctx, image, x, y, size, size);
+    return;
+  }
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(size / PICKUP_SPRITE_SIZE, size / PICKUP_SPRITE_SIZE);
+  switch (kind) {
+    case "chest":
+      centeredRect(ctx, 0, 0, 22, 16, COLORS.chest, COLORS.lamplighterDark);
+      break;
+    case "bread":
+      circle(ctx, 0, 0, 9, COLORS.bread, COLORS.lamplighterDark);
+      break;
+    case "draft":
+      ctx.strokeStyle = COLORS.draft;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-10, -4);
+      ctx.quadraticCurveTo(0, -12, 10, -4);
+      ctx.moveTo(-10, 6);
+      ctx.quadraticCurveTo(0, -2, 10, 6);
+      ctx.stroke();
+      break;
+  }
+  ctx.restore();
+}
+
+/** The colors a stand-in enemy of each rank is drawn in. */
+const ENEMY_COLORS: Readonly<
+  Record<EnemyRank, { readonly fill: string; readonly edge: string }>
+> = {
+  common: { fill: COLORS.enemy, edge: COLORS.enemyEdge },
+  elite: { fill: COLORS.elite, edge: COLORS.enemyEdge },
+  dark: { fill: COLORS.dark, edge: COLORS.darkEdge },
+};
+
+/** One enemy of `type` at `frame` of its walk, centered at `(x, y)`. */
+export function drawEnemy(
+  ctx: CanvasRenderingContext2D,
+  type: EnemyId,
+  x: number,
+  y: number,
+  frame: number,
+  size: number = ENEMIES[type].radius * 2,
+  mirror = false,
+): void {
+  const image = spriteImage(enemyFrame(type, frame));
+  if (image) {
+    sprite(ctx, image, x, y, size, size, { mirror });
+    return;
+  }
+  const { fill, edge } = ENEMY_COLORS[ENEMIES[type].rank];
+  circle(ctx, x, y, size / 2, fill, edge);
+}
+
 function drawGems(ctx: CanvasRenderingContext2D, run: RunState): void {
   for (const gem of run.gems) {
     const [x, y] = toStage(run, gem.x, gem.y);
-    const size = GEM_SPRITE_SIZES[gem.tier];
-    const image = spriteImage(GEM_PATHS[gem.tier]);
-    if (image) {
-      sprite(ctx, image, x, y, size, size);
-      continue;
-    }
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(Math.PI / 4);
-    centeredRect(ctx, 0, 0, size * 0.72, size * 0.72, COLORS.gem);
-    ctx.restore();
+    drawGem(ctx, gem.tier, x, y);
   }
 }
 
 function drawPickups(ctx: CanvasRenderingContext2D, run: RunState): void {
   for (const pickup of run.pickups) {
     const [x, y] = toStage(run, pickup.x, pickup.y);
-    const image = spriteImage(PICKUP_PATHS[pickup.kind]);
-    if (image) {
-      sprite(ctx, image, x, y, PICKUP_SPRITE_SIZE, PICKUP_SPRITE_SIZE);
-      continue;
-    }
-    switch (pickup.kind) {
-      case "chest":
-        centeredRect(ctx, x, y, 22, 16, COLORS.chest, COLORS.lamplighterDark);
-        break;
-      case "bread":
-        circle(ctx, x, y, 9, COLORS.bread, COLORS.lamplighterDark);
-        break;
-      case "draft":
-        ctx.strokeStyle = COLORS.draft;
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(x - 10, y - 4);
-        ctx.quadraticCurveTo(x, y - 12, x + 10, y - 4);
-        ctx.moveTo(x - 10, y + 6);
-        ctx.quadraticCurveTo(x, y - 2, x + 10, y + 6);
-        ctx.stroke();
-        break;
-    }
+    drawPickup(ctx, pickup.kind, x, y);
   }
 }
 
@@ -171,22 +233,15 @@ function drawEnemies(ctx: CanvasRenderingContext2D, run: RunState): void {
   for (const enemy of run.enemies) {
     const [x, y] = toStage(run, enemy.x, enemy.y);
     const def = ENEMIES[enemy.type];
-    const frame = walkFrame(enemy.age, ENEMY_FRAMES);
-    const image = spriteImage(enemyFrame(enemy.type, frame));
-    if (image) {
-      sprite(ctx, image, x, y, def.radius * 2, def.radius * 2, {
-        mirror: enemy.heading.x < 0,
-      });
-      continue;
-    }
-    const fill =
-      def.rank === "dark"
-        ? COLORS.dark
-        : def.rank === "elite"
-          ? COLORS.elite
-          : COLORS.enemy;
-    const edge = def.rank === "dark" ? COLORS.darkEdge : COLORS.enemyEdge;
-    circle(ctx, x, y, def.radius, fill, edge);
+    drawEnemy(
+      ctx,
+      enemy.type,
+      x,
+      y,
+      walkFrame(enemy.age, ENEMY_FRAMES),
+      def.radius * 2,
+      enemy.heading.x < 0,
+    );
   }
 }
 
@@ -250,6 +305,28 @@ export function drawLamplighterAt(
   ctx.restore();
 }
 
+/**
+ * The hurt cast over the view while the flash runs: a red vignette that
+ * closes in from the edges and fades as the flash counts down, so a tick
+ * that took a hit never draws the stage a quiet one draws.
+ */
+function drawHurt(ctx: CanvasRenderingContext2D, run: RunState): void {
+  if (run.hurtFlash <= 0) return;
+  const strength = Math.min(1, run.hurtFlash / HURT_FLASH);
+  const cast = ctx.createRadialGradient(
+    STAGE_CX,
+    STAGE_CY,
+    STAGE_H / 4,
+    STAGE_CX,
+    STAGE_CY,
+    STAGE_W,
+  );
+  cast.addColorStop(0, "rgba(226, 86, 79, 0)");
+  cast.addColorStop(1, `rgba(226, 86, 79, ${0.75 * strength})`);
+  ctx.fillStyle = cast;
+  ctx.fillRect(0, 0, STAGE_W, STAGE_H);
+}
+
 /** Everything the view shows, in draw order. */
 export function drawWorld(ctx: CanvasRenderingContext2D, run: RunState): void {
   drawGround(ctx, run);
@@ -262,4 +339,5 @@ export function drawWorld(ctx: CanvasRenderingContext2D, run: RunState): void {
   drawAirZones(ctx, run);
   drawProjectiles(ctx, run);
   drawLamplighterAt(ctx, run, STAGE_CX, STAGE_CY);
+  drawHurt(ctx, run);
 }

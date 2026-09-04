@@ -1,17 +1,10 @@
 """Durable memories, which survive a context compaction.
 
-A run picks one of three memory strategies and binds only that strategy's functions, so what this
-module offers is the honest answer to what memory can do here. The scratchpad keeps every memory
-in the context window (`write_memory`, `update_memory`); the two file-shaped strategies keep the
-contents outside it (`create_memory`, `read_memory`, `edit_memory`), one behind an index that is
-always in context and one behind `search_memories`. `delete_memory` is bound under all three.
+A run picks one memory strategy and binds only that strategy's functions: one keeps every memory in
+the context window, and two keep the contents outside it, one behind an index that is always in
+context and one behind a search.
 
-Every mutation hands back the budget after it, so a program can decide whether to write another
-memory by reading numbers rather than by parsing a sentence about them.
-
-The three writes take their fields as arguments rather than as a record. The membrane declares one
-`memory-input` for all of them, and a language whose optional arguments are keyword arguments has no
-reason to make a program construct a value before it can make a call.
+Every mutation hands back the budget after it.
 """
 
 from __future__ import annotations
@@ -41,8 +34,7 @@ class MemoryUsage:
     """How much of the run's durable-memory budget is used, after the call that returned it.
 
     Every maximum is optional: each limit can be turned off, and a run's memory strategy applies only
-    some of them, so `None` means nothing bounds that axis — which is worth checking before
-    subtracting.
+    some of them, so `None` means nothing bounds that axis.
     """
 
     count: int
@@ -86,9 +78,6 @@ class MemoryHit:
     @alias("memories.read_memory")
     def read(self) -> str:
         """Read this memory's full contents, which a search hit does not carry.
-
-        `read_memory` with the slug already supplied, for the common case where the search that
-        found the memory is the thing in hand.
 
         Returns:
             The memory's body.
@@ -142,11 +131,10 @@ def write_memory(
 ) -> MemoryUsage:
     """Record a durable memory that survives a context compaction.
 
-    A memory may also carry **code**. `code` is a Python module every later program this session
-    writes reaches by writing `import lib`, so a helper got right once is never written again;
-    `on_use` is a script gg runs on every use of the memory, whose views arrive on the next turn.
-    Neither is context: they cost no window, are never shown back, and count against no body
-    limit.
+    A memory may also carry code: `code` is a Python module every later program this session writes
+    reaches by writing `import lib`, and `on_use` is a script gg runs on every use of the memory,
+    whose views arrive on the next turn. Neither is context: they cost no window, are never shown
+    back, and count against no body limit.
 
     Args:
         name: The memory's slug: letters, digits, `-`, `_` and `.`. Every other memory call takes it,
@@ -159,12 +147,11 @@ def write_memory(
         on_use: A script gg runs on every use of the memory. The default runs nothing.
 
     Returns:
-        The memory budget the write left behind. A maximum this run does not bound is `None`, which
-            is worth checking before subtracting.
+        The memory budget the write left behind. A maximum this run does not bound is `None`.
 
     Raises:
-        ApiError: `conflict` on a duplicate name, and `limit-exceeded` when the body would breach
-            the run's caps — revising or deleting a memory is the way out, rather than accruing more.
+        ApiError: `conflict` on a duplicate name, and `limit-exceeded` when the body would breach the
+            run's caps.
     """
     return _usage(_call(wire.write_memory, _input(name, description, body, code, on_use)))
 
@@ -253,8 +240,6 @@ def read_memory(name: str) -> str:
 def edit_memory(name: str, search: str, replace: str) -> MemoryUsage:
     """Revise a memory in place, replacing the one exact occurrence of `search` with `replace`.
 
-    Appending is done by quoting the last line and replacing it with itself plus what is being added.
-
     Args:
         name: The slug of the memory to revise.
         search: The exact text to find in its contents. It must appear exactly once.
@@ -266,7 +251,7 @@ def edit_memory(name: str, search: str, replace: str) -> MemoryUsage:
     Raises:
         ApiError: `not-found` when the text does not appear, `conflict` when it appears more than
             once, `limit-exceeded` when the result would be too long, and `invalid-argument` when the
-            edit would leave the memory empty — deleting it is the way to do that.
+            edit would leave the memory empty.
     """
     return _usage(
         _call(wire.edit_memory, wire.MemoryEdit(name=name, search=search, replace=replace))
@@ -278,12 +263,10 @@ def search_memories(keywords: list[str]) -> list[MemoryHit]:
     """Find the memories mentioning any of `keywords`, best first.
 
     Plain case-insensitive substring matching over each memory's slug, description and contents,
-    ranked by how many distinct keywords a memory mentions and then by how often. Several specific
-    words rank better than one sentence; `read_memory` is what fetches a hit worth having in full.
+    ranked by how many distinct keywords a memory mentions and then by how often.
 
     Args:
-        keywords: The words to look for. Several specific words rank better than one sentence,
-            because a memory is ranked by how many of them it mentions.
+        keywords: The words to look for. A memory is ranked by how many of them it mentions.
 
     Returns:
         The memories that matched, best first, each with an excerpt and the two counts it was ranked

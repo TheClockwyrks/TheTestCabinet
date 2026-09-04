@@ -4,8 +4,9 @@
 // WHAT THE SPECIFICATION FIXES, AND WHERE.
 //   - `specs/world.md` ("One tick"): phase 6, "every projectile and zone hits
 //     ... Then an enemy whose `hp` is at or below `0` dies", comes before phase
-//     7, "Contact. Every live enemy's `contactCooldown` counts down, and, while
-//     `enemyContact` is on, an overlapping enemy whose cooldown is due hits".
+//     7, "Contact. Every live enemy's `contactCooldown` and the lamplighter's
+//     `hurtFlash` count down, and, while `enemyContact` is on, an overlapping
+//     enemy whose cooldown is due hits".
 //   - `specs/world.md` ("Contact damage"): an enemy's `contactCooldown` "is
 //     `0` when the enemy spawns", and "An overlapping enemy whose
 //     `contactCooldown` is due lands a hit: `hp` falls by

@@ -142,9 +142,12 @@ struct Manifest {
     /// `"particle-3d"`).
     #[serde(default)]
     particle: Option<ManifestParticle>,
-    /// The output format of an audio case's clip (the `[audio]` table). Required for
-    /// — and only for — the three audio kinds (`asset_kind = "sfx-synth"` /
-    /// `"sfx-sample"` / `"music"`).
+    /// The audio packs a run may reach and, on an audio case, its clip's output
+    /// format (the `[audio]` table). Required for — and only for — the three audio
+    /// kinds (`asset_kind = "sfx-synth"` / `"sfx-sample"` / `"music"`), where it
+    /// carries both halves; **optional** on a full-stack case and a game jam, which
+    /// produce their own sound during the run and so declare `packs` alone; rejected
+    /// on every other type and kind.
     #[serde(default)]
     audio: Option<ManifestAudio>,
     /// The commands the validator runs to build the produced implementation as a
@@ -429,6 +432,12 @@ struct GameJamManifest {
     /// engine selection applies to it.
     #[serde(default)]
     engines: Vec<String>,
+    /// The audio packs a run of this jam may reach (see [`Manifest::audio`]). A jam
+    /// produces its own sound during the run exactly as a full-stack case does, so it
+    /// takes the identical table: `packs` alone, ordered, first of each kind the
+    /// default.
+    #[serde(default)]
+    audio: Option<ManifestAudio>,
     /// How the validator (and the per-run deploy) builds the produced game into a
     /// served static site — the same fixed build interface a full-stack case uses
     /// (the `[build]` table). **Required**: every jam ships a playable build.
@@ -481,6 +490,7 @@ impl GameJamManifest {
             init: self.init,
             packages: self.packages,
             engines: self.engines,
+            audio: self.audio,
             build: Some(self.build),
             review_items: self.review_items,
             ..Manifest::default()
@@ -948,22 +958,79 @@ struct ManifestParticle {
     background: String,
 }
 
-/// The `[audio]` table of an audio asset-generation case: the rendered clip's output
-/// format and (for the sample/instrument kinds) the baked palette it draws from.
+/// The audio packs a full-stack case or game jam that declares **no** `[audio]`
+/// table receives.
+///
+/// Fixed, in code, at the set those versions were authored and reviewed against —
+/// the four packs the full-stack run image baked when audio was delivered by the
+/// image rather than by the run. It is a version-pinned literal and never a scan of
+/// `containers/sample-packs/`, so publishing a new pack cannot change what an
+/// already frozen version is given; that silent widening is
+/// precisely the defect that moving delivery into the run fixes, and a growable
+/// default would reintroduce it.
+///
+/// Only a version that predates the key can reach it: `scripts/ci/audio-packs-check.mjs`
+/// requires an explicit `packs` on every non-frozen full-stack version and on every
+/// jam, on the commit hook and in CI. Growing or reordering this list is therefore a
+/// deliberate edit, and `crates/core/src/test_case.audio.test.rs` asserts its exact
+/// contents and order so it fails a gate.
+pub const DEFAULT_AUDIO_PACKS: [&str; 4] = [
+    "combat-core@0.1.0",
+    "gm-lite@0.1.0",
+    "cinematic@0.1.0",
+    "synthwave@0.1.0",
+];
+
+/// Whether one half of a `name@version` audio pack ref is usable.
+///
+/// Each half names a directory of the tree a run is staged with
+/// (`packs/<name>@<version>/`), so a half is held to plain name characters and may not
+/// be a dot segment: a ref carrying a separator or a `..` would place a pack's manifest
+/// somewhere other than the staged tree.
+pub fn is_pack_ref_half(half: &str) -> bool {
+    !half.is_empty()
+        && !half.starts_with('.')
+        && half
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+}
+
+/// The `[audio]` table: the audio packs a run may reach and, on an audio
+/// asset-generation case, the rendered clip's output format.
+///
+/// The table means slightly different things to the two kinds of case that may
+/// declare it, and each rejects the other's keys (see [`resolve_audio_format`] and
+/// [`resolve_audio_packs`]). An **audio asset-generation** case emits exactly one
+/// clip, so it states that clip's format and names the single pack its binary plays
+/// (none, for `sfx-synth`). A **full-stack case or game jam** emits as many clips as
+/// its game needs, in whatever format each call asks for, so it declares only
+/// `packs`.
+///
+/// Unknown keys are rejected, which is what turns a stale `sample_pack` /
+/// `instrument_bank` (the two keys `packs` replaced) into a loud parse error rather
+/// than a silently ignored line leaving a case pointing at a palette it never
+/// receives.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ManifestAudio {
-    /// Output sample rate in Hz.
-    sample_rate: u32,
-    /// Channel layout: `mono` or `stereo`.
-    channels: String,
-    /// Cap on the rendered clip's length in milliseconds.
-    max_duration_ms: u32,
-    /// For `sfx-sample`: the baked sample pack (`name@version`) the clip mixes over.
+    /// Output sample rate in Hz. Required on an audio asset-generation case,
+    /// rejected on a full-stack case or jam.
     #[serde(default)]
-    sample_pack: Option<String>,
-    /// For `music`: the baked instrument bank (`name@version`) the clip plays.
+    sample_rate: Option<u32>,
+    /// Channel layout: `mono` or `stereo`. Required on an audio asset-generation
+    /// case, rejected on a full-stack case or jam.
     #[serde(default)]
-    instrument_bank: Option<String>,
+    channels: Option<String>,
+    /// Cap on the rendered clip's length in milliseconds. Required on an audio
+    /// asset-generation case, rejected on a full-stack case or jam.
+    #[serde(default)]
+    max_duration_ms: Option<u32>,
+    /// The audio packs a run of this case may reach, as ordered `name@version` refs.
+    /// The run container is staged with these packs and nothing else, so this is the
+    /// boundary of what `list-samples` and `list-instruments` can browse, and the
+    /// first entry of each kind is that kind's default for a tool config naming none.
+    #[serde(default)]
+    packs: Vec<String>,
 }
 
 /// A single spec mapping in the manifest (`[[spec]]` or a variant's `spec`
@@ -1290,10 +1357,21 @@ struct ManifestReviewValidation {
     /// `validation/<item>.mjs`) for an engineless case, or relative to the engine's
     /// validator project (for example `gameplay/serve-speed.test.ts`) for a case
     /// that names one `[workspaces]` directory per engine and ships one validator
-    /// project per engine, where the same point is decided by the same-named suite
-    /// in each.
+    /// project per engine, where the same-named suite decides the point in the
+    /// project of every engine [`Self::engines`] covers, and ships in no other.
     /// Reporter-side — never seeded into a run.
     script: PathBuf,
+    /// The engines this validator decides its point on, by slug. Empty (the
+    /// default) leaves it active on every engine the case supports, which is what a
+    /// case that draws no distinction between them means. A non-empty list names a
+    /// subset: the point is meaningful under the engines it names and is dropped
+    /// from the checklist of a run on any other, so the same surface may be the
+    /// model's own code under one engine and the engine's under another. Each entry
+    /// must name an engine the case supports and none may repeat. Legal only on a
+    /// case that names one `[workspaces]` directory per engine — a case with a
+    /// single `workspace` has no engine to scope to.
+    #[serde(default)]
+    engines: Vec<String>,
     /// The media outputs the script produces, each captured from both the model's
     /// build and the reference implementation for the reviewer's side-by-side.
     /// Declared as an inline array of `{ id, name, kind }` tables.
@@ -1596,6 +1674,15 @@ fn manifest_file_for(folder: &str) -> &'static str {
 /// produced tree is self-contained. This is a build-host path, never referenced by
 /// the produced game.
 pub const TCAB_PACKAGES_DIR: &str = "/opt/tcab-packages";
+
+/// The host **audio store** every published audio pack is baked into on the driver
+/// image, and which a run's declared packs are staged out of at container start (see
+/// [`crate::audio_stage`]). Overridden by `TCAB_AUDIO_STORE` for a local checkout,
+/// which fetches the same store with `scripts/fetch-audio-store.sh`. Unlike
+/// [`TCAB_PACKAGES_DIR`], nothing from it is vendored into the run repository: the
+/// clips are staged outside the workspace, and the workspace is the tree collected as
+/// the run's result.
+pub const TCAB_AUDIO_STORE_DIR: &str = "/opt/tcab-audio";
 
 /// The in-repository directory a `packages`-declaring case's runtime libraries are
 /// vendored into at seed time (relative to the run root). The case's workspace
@@ -2128,10 +2215,11 @@ pub enum AssetKind {
     /// Declares an `[audio]` table. Judged on the emitted `clip.wav`.
     SfxSynth,
     /// A sample-library sound effect authored with the `sfx-sample` binary. Declares
-    /// an `[audio]` table (naming its `sample_pack`). Judged on the emitted `clip.wav`.
+    /// an `[audio]` table (naming its one pack in `audio.packs`). Judged on the
+    /// emitted `clip.wav`.
     SfxSample,
     /// A short piece of music authored with the `music` sequencer binary. Declares an
-    /// `[audio]` table (naming its `instrument_bank`). Judged on the emitted
+    /// `[audio]` table (naming its one pack in `audio.packs`). Judged on the emitted
     /// `clip.wav` (and portable `clip.mid`).
     Music,
     /// A rigged, animated **skinned character** authored by driving **headless Blender**
@@ -2966,8 +3054,12 @@ pub struct ParticleSpec {
 // rendered, never a hash key, so a manual `Eq` is sound — matching `SheetSequence`.
 impl Eq for ParticleSpec {}
 
-/// The resolved `[audio]` of an audio asset-generation case: the rendered clip's
-/// output format and (for the sample/instrument kinds) the baked palette.
+/// The resolved `[audio]` of an audio asset-generation case: the output format of
+/// the single clip it emits.
+///
+/// The palette such a case plays is **not** here: a pack declaration is not an
+/// asset-generation concept (a full-stack case and a game jam declare one too), so
+/// it lives on [`TestCaseVersion::audio_packs`] for every test type alike.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -2978,14 +3070,6 @@ pub struct AudioSpec {
     pub channels: String,
     /// Cap on the rendered clip's length in milliseconds.
     pub max_duration_ms: u32,
-    /// For `sfx-sample`: the baked sample pack (`name@version`). `None` otherwise.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub sample_pack: Option<String>,
-    /// For `music`: the baked instrument bank (`name@version`). `None` otherwise.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub instrument_bank: Option<String>,
 }
 
 /// The resolved `[model]` of a voxel-animation case: the rig the model must
@@ -3467,19 +3551,34 @@ pub struct ReviewValidation {
     /// Absolute host path to the debug-driver script, for a case that has one —
     /// an engineless case, whose single script is driven in a browser.
     ///
-    /// `None` for a case that declares its validators **per engine**: the same
-    /// point is decided by the same-named suite in each engine's validator
-    /// project, so which file on the host decides it is a property of the run's
-    /// engine rather than of the case, and the validator resolves it from
-    /// [`Self::script_rel`] against the project it staged.
+    /// `None` for a case that declares its validators **per engine**: the
+    /// same-named suite decides the point in the validator project of every engine
+    /// [`Self::engines`] covers, so which file on the host decides it is a property
+    /// of the run's engine rather than of the case, and the validator resolves it
+    /// from [`Self::script_rel`] against the project it staged.
     pub script: Option<PathBuf>,
     /// The script path as the case declared it, kept for display in the run's
     /// script list: version-folder-relative for an engineless case (for example
     /// `validation/ball-spin.mjs`), and relative to the engine's validator project
     /// for a per-engine case (for example `gameplay/serve-speed.test.ts`).
     pub script_rel: String,
+    /// The engines this validator is active on, in declared order. Empty when the
+    /// case declares no restriction, which is every engine it supports.
+    pub engines: Vec<String>,
     /// The media outputs the script produces, in declared order.
     pub outputs: Vec<ReviewOutput>,
+}
+
+impl ReviewValidation {
+    /// Whether this validator decides its point on a run built on `engine`.
+    ///
+    /// A point this returns `false` for is not part of that run's checklist at all:
+    /// it is not driven, no verdict is recorded against it, it is not shown to the
+    /// reviewer, and it carries no weight in the score (see
+    /// [`TestCaseVersion::review_items_for_engine`]).
+    pub fn covers(&self, engine: &str) -> bool {
+        self.engines.is_empty() || self.engines.iter().any(|slug| slug == engine)
+    }
 }
 
 /// A resolved media output of a [`ReviewValidation`] script.
@@ -4194,6 +4293,25 @@ pub struct TestCaseVersion {
     /// kinds ([`AssetKind::SfxSynth`] / [`AssetKind::SfxSample`] / [`AssetKind::Music`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio: Option<AudioSpec>,
+    /// The audio packs a run of this version is staged with, in declaration order
+    /// (`name@version` refs from the manifest's `[audio] packs`).
+    ///
+    /// This is the whole of what a run's audio binaries can reach: the run container
+    /// is staged with these packs and no others, so it is also the boundary
+    /// `list-samples` and `list-instruments` browse. **Order is meaningful** — the
+    /// first entry of each pack kind is that kind's default for a tool config that
+    /// names no pack, which is every full-stack and game-jam run, since the model
+    /// writes its own config.
+    ///
+    /// Populated for every test type. Empty for a version that declares no audio —
+    /// an end-to-end, adversarial, or performance case (which may not declare the
+    /// table at all), a non-audio asset-generation case, a `sfx-synth` case, and a
+    /// full-stack case or jam that deliberately declares `packs = []`. A full-stack
+    /// case or jam carrying **no** `[audio]` table at all instead receives
+    /// [`DEFAULT_AUDIO_PACKS`], the pinned set the frozen versions predating the key
+    /// were authored against.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub audio_packs: Vec<String>,
     /// Specs seeded for every variant (the common set).
     pub common_specs: Vec<SpecFile>,
     /// Starter workspace files seeded for every variant that does not override
@@ -4436,6 +4554,44 @@ impl TestCaseVersion {
     pub fn review_items_for(&self, variant: &Variant) -> Vec<ReviewItem> {
         let mut items = merge_review_items(&self.common_review_items, &variant.review_items);
         apply_score_exclusions(&mut items, &self.excluded_verdict_ids(variant));
+        items
+    }
+
+    /// The reviewer checklist for a run of `variant` built on `engine`:
+    /// [`Self::review_items_for`] with every point whose validator does not cover
+    /// the run's engine removed (see [`ReviewValidation::covers`]).
+    ///
+    /// Three things are dropped. A whole item whose own `validation` does not cover
+    /// `engine`. A sub-item whose `validation` does not cover `engine`, from its
+    /// parent. And a parent that declared sub-items and has none left once its own
+    /// are filtered, which would otherwise be a category with nothing under it.
+    ///
+    /// A dropped point is not part of the run at all: it is not driven, no verdict
+    /// is recorded against it, it is not shown to the reviewer, and it contributes
+    /// no weight to the score. That is what keeps a
+    /// [validator-rated](Self::validator_rated) case coherent — every graded point a
+    /// run carries is still decided by a validator, even when a point the case
+    /// declares is meaningless under the engine the run was built on. Use
+    /// [`Self::review_items_for`] instead wherever the question is what the case
+    /// declares rather than what one run answers for: a catalog listing, a case page.
+    pub fn review_items_for_engine(&self, variant: &Variant, engine: &str) -> Vec<ReviewItem> {
+        let mut items = self.review_items_for(variant);
+        items.retain_mut(|item| {
+            if item
+                .validation
+                .as_ref()
+                .is_some_and(|validation| !validation.covers(engine))
+            {
+                return false;
+            }
+            let declared_sub_items = !item.sub_items.is_empty();
+            item.sub_items.retain(|sub| {
+                sub.validation
+                    .as_ref()
+                    .is_none_or(|validation| validation.covers(engine))
+            });
+            !declared_sub_items || !item.sub_items.is_empty()
+        });
         items
     }
 
@@ -5214,15 +5370,28 @@ impl TestCaseCatalog {
                             .to_string(),
                     ));
                 }
-                // As are the painted / particle / audio tables.
+                // As are the painted and particle tables.
                 if manifest.ui.is_some()
                     || manifest.material.is_some()
                     || manifest.particle.is_some()
-                    || manifest.audio.is_some()
                 {
                     return Err(invalid(
-                        "the [ui], [material], [particle], and [audio] tables are only valid for \
+                        "the [ui], [material], and [particle] tables are only valid for \
                          an asset-generation case"
+                            .to_string(),
+                    ));
+                }
+                // The `[audio]` table is the exception: a full-stack case and a jam
+                // produce their own sound during the run, so they declare the packs
+                // that sound may draw on (`packs` alone — see `resolve_audio_packs`,
+                // which runs for every type below). The three types that produce no
+                // audio at all still reject it.
+                if manifest.audio.is_some()
+                    && !matches!(test_type, TestType::FullStack | TestType::GameJam)
+                {
+                    return Err(invalid(
+                        "the [audio] table is only valid for an asset-generation, full-stack \
+                         or game-jam case"
                             .to_string(),
                     ));
                 }
@@ -5689,7 +5858,7 @@ impl TestCaseCatalog {
                     ));
                 }
                 let (tool, output) = resolve_tool_output()?;
-                let audio = resolve_audio(manifest.audio.as_ref(), manifest.asset_kind, &invalid)?;
+                let audio = resolve_audio_format(manifest.audio.as_ref(), &invalid)?;
                 (
                     None,
                     Some(tool),
@@ -5842,6 +6011,18 @@ impl TestCaseCatalog {
                 )
             }
         };
+
+        // The packs a run of this version may reach are resolved for every test
+        // type, not just the audio asset-generation kinds: a full-stack case and a
+        // jam produce their own sound during the run and declare the same `packs`
+        // list, and the arms above have already rejected the table on the types that
+        // produce none (which leaves those with an empty list here).
+        let audio_packs = resolve_audio_packs(
+            manifest.audio.as_ref(),
+            test_type,
+            manifest.asset_kind,
+            &invalid,
+        )?;
 
         // Resolve the contract/sandbox tables and (for adversarial) the
         // `[simulation]`/`[match]`/`[replay]` tables, or (for performance) the
@@ -6757,14 +6938,52 @@ impl TestCaseCatalog {
                          pass/fail verdict to decide"
                     )));
                 }
+                // Which engines this validator decides its point on. Empty is the
+                // whole supported set: a case that draws no distinction between its
+                // engines validates the point on all of them. A named subset is a
+                // point that means something under one engine and nothing under
+                // another — a surface the model writes itself in an engineless build
+                // and the engine draws for it otherwise — so the point leaves the
+                // checklist of a run on any engine it does not name. Scoping needs
+                // engines to scope to, so it is refused by name on a case that
+                // names one `workspace` and no engine.
+                let engines = if v.engines.is_empty() {
+                    Vec::new()
+                } else {
+                    if !per_engine {
+                        return Err(invalid(format!(
+                            "{label} scopes its `validation` to engines, but only a case on the \
+                             engine format (`[workspaces]` / `engines`) has engines to scope to; \
+                             drop `engines` so the validator decides its point on the case's one \
+                             build"
+                        )));
+                    }
+                    let mut seen = std::collections::BTreeSet::new();
+                    for slug in &v.engines {
+                        if !engine_slugs.contains(slug) {
+                            return Err(invalid(format!(
+                                "{label} scopes its `validation` to engine `{slug}`, which this \
+                                 case does not support; name engines it supports ({})",
+                                engine_slugs.join(", ")
+                            )));
+                        }
+                        if !seen.insert(slug.clone()) {
+                            return Err(invalid(format!(
+                                "{label} names engine `{slug}` twice in its `validation` \
+                                 `engines`; each engine a validator covers is named once"
+                            )));
+                        }
+                    }
+                    v.engines.clone()
+                };
                 // Where the declared script lives depends on how the case is
                 // authored, because what it declares does. An engineless case names
                 // one script under the version folder and a browser drives it. A
                 // per-engine case names a suite inside a validator project, and it
-                // ships one project per engine, so the same declaration must resolve
-                // in EVERY engine's project — a point decided under one engine and
-                // left to the reviewer under another would be the same case graded
-                // two ways.
+                // ships one project per engine, so the declaration must resolve in
+                // the project of every engine the validator covers, and in no other:
+                // a suite sitting in an engine the validator does not name is a file
+                // nothing will ever run.
                 let script = if per_engine {
                     if escapes_folder(&v.script) {
                         return Err(invalid(format!(
@@ -6785,11 +7004,24 @@ impl TestCaseCatalog {
                                 dir = crate::validator::VALIDATION_SCRIPT_DIR
                             )));
                         }
-                        if !project.join(&v.script).is_file() {
+                        let covered = engines.is_empty() || engines.contains(engine);
+                        let present = project.join(&v.script).is_file();
+                        if covered && !present {
                             return Err(invalid(format!(
                                 "{label} validation script `{}` is not a file in engine \
                                  `{engine}`'s validator project (`{dir}/{engine}/`)",
                                 v.script.display(),
+                                dir = crate::validator::VALIDATION_SCRIPT_DIR
+                            )));
+                        }
+                        if !covered && present {
+                            return Err(invalid(format!(
+                                "{label} validation script `{}` is a file in engine \
+                                 `{engine}`'s validator project (`{dir}/{engine}/`), which its \
+                                 `engines` does not name; a scoped validator ships only in the \
+                                 projects of the engines it covers ({})",
+                                v.script.display(),
+                                engines.join(", "),
                                 dir = crate::validator::VALIDATION_SCRIPT_DIR
                             )));
                         }
@@ -6858,6 +7090,7 @@ impl TestCaseCatalog {
                 Ok(ReviewValidation {
                     script,
                     script_rel: v.script.to_string_lossy().replace('\\', "/"),
+                    engines,
                     outputs,
                 })
             };
@@ -8056,6 +8289,7 @@ impl TestCaseCatalog {
             material,
             particle,
             audio,
+            audio_packs,
             common_specs,
             common_workspace,
             init: manifest.init,
@@ -8769,81 +9003,149 @@ fn resolve_particle(
     })
 }
 
-/// Resolve and validate an audio case's required `[audio]` table into an
-/// [`AudioSpec`]. `sample_rate` must be positive; `channels` must be `mono` or
-/// `stereo`; `max_duration_ms` must be positive. A `sfx-sample`
-/// case requires `sample_pack` (and no `instrument_bank`); a `music` case requires
-/// `instrument_bank` (and no `sample_pack`); a `sfx-synth` case names neither.
+/// Resolve and validate an audio asset-generation case's clip output format out of
+/// its required `[audio]` table.
+///
+/// `sample_rate`, `channels`, and `max_duration_ms` are all required here — they fix
+/// the single clip the case emits — and each is checked: the rate and the cap must be
+/// positive, and the layout must be `mono` or `stereo`. The packs the case plays are
+/// resolved separately by [`resolve_audio_packs`], which every test type runs.
 /// `invalid` is the resolver's error constructor.
-fn resolve_audio(
+fn resolve_audio_format(
     audio: Option<&ManifestAudio>,
-    kind: AssetKind,
     invalid: &impl Fn(String) -> Error,
 ) -> Result<AudioSpec> {
     let audio =
         audio.ok_or_else(|| invalid("an audio case requires the [audio] table".to_string()))?;
-    if audio.sample_rate == 0 {
+    // The three format fields are `Option` on the manifest because a full-stack case
+    // and a jam declare the same table without them; an audio case states all three.
+    let (Some(sample_rate), Some(channels), Some(max_duration_ms)) = (
+        audio.sample_rate,
+        audio.channels.as_deref(),
+        audio.max_duration_ms,
+    ) else {
+        return Err(invalid(
+            "an audio asset-generation case requires audio.sample_rate, audio.channels \
+             and audio.max_duration_ms"
+                .to_string(),
+        ));
+    };
+    if sample_rate == 0 {
         return Err(invalid(
             "audio.sample_rate must be greater than zero".to_string(),
         ));
     }
-    if audio.channels != "mono" && audio.channels != "stereo" {
+    if channels != "mono" && channels != "stereo" {
         return Err(invalid(format!(
-            "audio.channels `{}` must be `mono` or `stereo`",
-            audio.channels
+            "audio.channels `{channels}` must be `mono` or `stereo`"
         )));
     }
-    if audio.max_duration_ms == 0 {
+    if max_duration_ms == 0 {
         return Err(invalid(
             "audio.max_duration_ms must be greater than zero".to_string(),
         ));
     }
-    // Each audio kind draws from a different palette: `sfx-sample` mixes over a baked
-    // sample pack, `music` plays a baked instrument bank, and `sfx-synth`
-    // synthesizes from oscillators alone. Require exactly the palette the kind uses
-    // and reject the other so a mistyped `[audio]` is caught here.
-    match kind {
-        AssetKind::SfxSample => {
-            if audio.sample_pack.is_none() {
-                return Err(invalid(
-                    "a `sfx-sample` case requires audio.sample_pack".to_string(),
-                ));
-            }
-            if audio.instrument_bank.is_some() {
-                return Err(invalid(
-                    "audio.instrument_bank is only valid for a `music` case".to_string(),
-                ));
-            }
+    Ok(AudioSpec {
+        sample_rate,
+        channels: channels.to_string(),
+        max_duration_ms,
+    })
+}
+
+/// Resolve and validate the audio packs a version's runs are staged with, out of the
+/// `[audio]` table's `packs` list.
+///
+/// This runs for **every** test type, because a pack declaration is not an
+/// asset-generation concept: a full-stack case and a game jam declare one too, and
+/// the resolved list is the whole of what their runs can reach. Every entry must be a
+/// fully pinned `name@version` ref, so a run's palette identity is checkable when the
+/// tool loads it, and no pack may be named twice, because a run carries one version of
+/// a pack.
+///
+/// How many packs are legal follows from the case. An audio asset-generation case
+/// emits one clip with one binary, so `sfx-sample` and `music` each declare exactly
+/// one pack and `sfx-synth` declares none (it synthesizes from oscillators alone). A
+/// full-stack case or jam produces as many sounds as its game needs and so declares
+/// any number of either kind — including none, deliberately — and, when it carries no
+/// `[audio]` table at all, receives [`DEFAULT_AUDIO_PACKS`].
+///
+/// Whether a *declared* ref names a pack that exists, at a version that exists, of the
+/// right kind, whose clips are published, is not checkable here: resolution also runs
+/// at backend ingest, where `containers/sample-packs/` is not present. That is
+/// `scripts/ci/audio-packs-check.mjs`'s job, on the commit hook and in CI, and staging
+/// then checks it a second time against the host audio store.
+///
+/// `invalid` is the resolver's error constructor.
+fn resolve_audio_packs(
+    audio: Option<&ManifestAudio>,
+    test_type: TestType,
+    kind: AssetKind,
+    invalid: &impl Fn(String) -> Error,
+) -> Result<Vec<String>> {
+    // A full-stack case and a jam produce their own sound during the run; the other
+    // types that may declare the table are the audio asset-generation kinds.
+    let produces_own_sound = matches!(test_type, TestType::FullStack | TestType::GameJam);
+    let Some(audio) = audio else {
+        return Ok(if produces_own_sound {
+            DEFAULT_AUDIO_PACKS.iter().map(|r| r.to_string()).collect()
+        } else {
+            Vec::new()
+        });
+    };
+    if produces_own_sound
+        && (audio.sample_rate.is_some()
+            || audio.channels.is_some()
+            || audio.max_duration_ms.is_some())
+    {
+        return Err(invalid(format!(
+            "a {} case's [audio] table declares only `packs`; sample_rate, channels and \
+             max_duration_ms describe an asset-generation case's single clip",
+            test_type.as_str()
+        )));
+    }
+    let mut names: Vec<&str> = Vec::with_capacity(audio.packs.len());
+    for (index, pack) in audio.packs.iter().enumerate() {
+        // Both halves are required: a version-less ref would leave the loaded pack's
+        // identity uncheckable, which is the whole point of pinning one. Both are also
+        // path components of the tree a run is staged with, so each is held to plain
+        // name characters rather than merely being non-empty.
+        let (name, version) = pack.split_once('@').unwrap_or((pack.as_str(), ""));
+        if !is_pack_ref_half(name) || !is_pack_ref_half(version) {
+            return Err(invalid(format!(
+                "audio.packs[{index}] `{pack}`: a pack ref must be `name@version`"
+            )));
         }
-        AssetKind::Music => {
-            if audio.instrument_bank.is_none() {
-                return Err(invalid(
-                    "a `music` case requires audio.instrument_bank".to_string(),
-                ));
-            }
-            if audio.sample_pack.is_some() {
-                return Err(invalid(
-                    "audio.sample_pack is only valid for a `sfx-sample` case".to_string(),
-                ));
-            }
+        if names.contains(&name) {
+            return Err(invalid(format!(
+                "audio.packs names `{name}` twice; a run carries one version of a pack"
+            )));
         }
-        // `sfx-synth` synthesizes from oscillators alone.
-        _ => {
-            if audio.sample_pack.is_some() || audio.instrument_bank.is_some() {
+        names.push(name);
+    }
+    if test_type == TestType::AssetGeneration {
+        let count = audio.packs.len();
+        match kind {
+            AssetKind::SfxSample if count != 1 => {
+                return Err(invalid(format!(
+                    "a `sfx-sample` case declares exactly one pack in audio.packs, not {count}"
+                )));
+            }
+            AssetKind::Music if count != 1 => {
+                return Err(invalid(format!(
+                    "a `music` case declares exactly one pack in audio.packs, not {count}"
+                )));
+            }
+            AssetKind::SfxSynth if count != 0 => {
                 return Err(invalid(
-                    "a `sfx-synth` case names neither audio.sample_pack nor audio.instrument_bank"
+                    "a `sfx-synth` case declares no audio.packs: it synthesizes from \
+                     oscillators alone"
                         .to_string(),
                 ));
             }
+            _ => {}
         }
     }
-    Ok(AudioSpec {
-        sample_rate: audio.sample_rate,
-        channels: audio.channels.clone(),
-        max_duration_ms: audio.max_duration_ms,
-        sample_pack: audio.sample_pack.clone(),
-        instrument_bank: audio.instrument_bank.clone(),
-    })
+    Ok(audio.packs.clone())
 }
 
 /// Recursively enumerate the files under a workspace directory into
@@ -8988,3 +9290,7 @@ mod toolchain_tests;
 #[cfg(test)]
 #[path = "test_case.showcase.test.rs"]
 mod showcase_tests;
+
+#[cfg(test)]
+#[path = "test_case.audio.test.rs"]
+mod audio_tests;

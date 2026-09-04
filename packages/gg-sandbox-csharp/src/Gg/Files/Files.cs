@@ -2,31 +2,25 @@ using System.Collections.Generic;
 
 namespace Gg;
 
-/// <summary>Read, write, edit and list the files of the workspace.</summary>
-/// <remarks>
-/// Nothing here places anything in the agent's context window: a read hands bytes to the program,
-/// and a view — the <c>Gg.Views</c> module — is what puts something in front of the model.
-/// </remarks>
+/// <summary>Read, write, edit, list and walk the files of the workspace.</summary>
+/// <remarks>Nothing here adds to the context window; a read hands bytes to the program.</remarks>
 /// <ggmodule>files</ggmodule>
 public static partial class Files
 {
     /// <summary>Read a file, as either a <see cref="TextFile"/> or a <see cref="ImageFile"/>.</summary>
     /// <remarks>
     /// <para>
-    /// Which of the two comes back is detected from the file's bytes, never from its extension, so a
-    /// mislabelled picture is still a picture. Narrow the result before use:
+    /// Which of the two comes back is detected from the file's bytes, not from its extension. A
+    /// relative path resolves against the workspace; an absolute path is read as given. Reading an
+    /// image returns its label, media type and byte size; the pixels reach neither the program nor
+    /// the context window.
     /// </para>
     /// <code>
     /// if (Files.ReadFile("logo.png") is Files.ImageFile picture)
     /// {
-    ///     Views.OpenText("logo", $"{picture.Label}, {picture.Bytes} bytes");
+    ///     Files.WriteFile("kind.txt", $"{picture.Label}, {picture.Bytes} bytes");
     /// }
     /// </code>
-    /// <para>
-    /// A relative path resolves against the workspace; an absolute one is read as given, so anything
-    /// else in this container is readable. Reading an image describes it — label, media type, byte
-    /// size — and shows nothing: the pixels reach neither the program nor the context window.
-    /// </para>
     /// </remarks>
     /// <param name="path">The file to read, relative to the workspace or absolute.</param>
     /// <param name="offset">The 1-based first line. Left out, the read starts at the first line.</param>
@@ -73,10 +67,6 @@ public static partial class Files
     }
 
     /// <summary>Replace the one exact occurrence of some text in a file with something else.</summary>
-    /// <remarks>
-    /// Widening the surrounding context until the match is unique is the way to disambiguate;
-    /// counting occurrences is not.
-    /// </remarks>
     /// <param name="path">The file to edit.</param>
     /// <param name="oldString">The exact text to find, whitespace included. It must appear once.</param>
     /// <param name="newString">The text to put in its place. An empty string deletes the match.</param>
@@ -90,16 +80,12 @@ public static partial class Files
         Internal.Wire.Check(Internal.Native.EditFile(path, oldString, newString));
 
     /// <summary>List a directory, sorted by name.</summary>
-    /// <remarks>
-    /// Each entry carries a bare <see cref="DirEntry.Name"/>, which has to be joined with the
-    /// directory that was listed. An empty directory is an empty list rather than a failure.
-    /// </remarks>
+    /// <remarks>An empty directory is an empty list rather than a failure.</remarks>
     /// <param name="path">The directory to list. Left out, the workspace root is listed.</param>
-    /// <returns>the directory's immediate entries only — nothing here descends into a subdirectory.</returns>
+    /// <returns>the directory's immediate entries only; nothing here descends into a subdirectory.</returns>
     /// <exception cref="ApiException">
     /// <see cref="ApiErrorCode.NotFound"/> for a directory that is not there, and
-    /// <see cref="ApiErrorCode.InvalidArgument"/> for a path that is given but empty — leaving it
-    /// out altogether is what lists the workspace root.
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for a path that is given but empty.
     /// </exception>
     /// <ggop>files.list_dir</ggop>
     public static IReadOnlyList<DirEntry> ListDir(string? path = null)
@@ -113,14 +99,64 @@ public static partial class Files
         return entries;
     }
 
+    /// <summary>Render the tree beneath a directory, skipping everything the ignore files exclude.</summary>
+    /// <remarks>
+    /// <para>
+    /// One block of text: the root itself unnamed, each level indented two further spaces than its
+    /// parent, every level in path order, and directories suffixed <c>/</c>. A root with nothing
+    /// beneath it renders as <c>(empty directory)</c>.
+    /// </para>
+    /// <para>
+    /// <paramref name="depth"/> counts levels of children below the root, so <c>1</c> is the root's
+    /// own entries. A directory sitting at the bound is suffixed with how many entries it holds
+    /// that were not walked, as <c>assets/ (12 entries not shown)</c>.
+    /// </para>
+    /// <para>
+    /// What <c>.gitignore</c>, <c>.ignore</c>, <c>.git/info/exclude</c> and the global ignore file
+    /// exclude is never walked and never rendered, nested ignore files and negations included, and
+    /// <c>.git</c> itself is skipped. No repository is needed for that to hold. Dotfiles are
+    /// otherwise rendered like any other entry, and symbolic links are not followed.
+    /// </para>
+    /// <para>
+    /// The rendering is bounded at 1000 lines and 16 KiB, whichever binds first, and a result cut by
+    /// either ends with a line saying so.
+    /// </para>
+    /// </remarks>
+    /// <param name="path">
+    /// The directory to walk, relative to the workspace or absolute. Left out, the workspace root is
+    /// walked.
+    /// </param>
+    /// <param name="depth">
+    /// How many levels of children below the root to render: 2 when left out, 10 at most — a larger
+    /// request is answered at 10 — and zero is refused.
+    /// </param>
+    /// <returns>the rendered tree.</returns>
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.NotFound"/> for a path that is not there, and
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for a path that is not a directory or a depth of
+    /// zero.
+    /// </exception>
+    /// <ggop>files.tree</ggop>
+    public static string Tree(string? path = null, uint? depth = null)
+    {
+        if (depth == 0)
+        {
+            throw new ApiException(
+                ApiErrorCode.InvalidArgument,
+                "tree",
+                "depth must be at least 1 (0 given); leave it out for gg's default");
+        }
+        Internal.Wire.Check(Internal.Native.Tree(path, Internal.Wire.Slot(depth), out var rendered));
+        return rendered;
+    }
+
     /// <summary>Search the workspace's files for a pattern, and hand back every line that matched it.</summary>
     /// <remarks>
     /// <para>
-    /// The query is a regular expression in Rust syntax — <c>"foo|bar"</c>, <c>@"fn\s+update"</c>,
-    /// <c>"(?i)todo"</c> for a case-insensitive match — matched against each line on its own. Each
-    /// <see cref="SearchMatch"/> carries the file's path, the 1-based line number and the line
-    /// itself, in path order and then line order, so a program can point a read or a view at
-    /// exactly the right window.
+    /// A <c>grep</c> over the workspace. The query is a regular expression in Rust syntax —
+    /// <c>"foo|bar"</c>, <c>@"fn\s+update"</c>, <c>"(?i)todo"</c> for a case-insensitive match —
+    /// matched against each line on its own. Each <see cref="SearchMatch"/> carries the file's
+    /// path, the 1-based line number and the line itself, in path order and then line order.
     /// </para>
     /// <para>
     /// The search honours ignore files: what <c>.gitignore</c>, <c>.ignore</c>,
@@ -131,9 +167,8 @@ public static partial class Files
     /// characters is cut there and annotated in place as <c>foo (123 more chars...)</c>.
     /// </para>
     /// <para>
-    /// A search is this surface's grep: it says where to look rather than reading a file. A list
-    /// exactly <paramref name="limit"/> long may have been cut, and there is no offset to page with
-    /// — the answer to a full page is a narrower query or a narrower path.
+    /// A result exactly <paramref name="limit"/> long may have been cut. There is no offset
+    /// argument.
     /// </para>
     /// </remarks>
     /// <param name="query">The regular expression to look for, in Rust syntax, matched line by line.</param>

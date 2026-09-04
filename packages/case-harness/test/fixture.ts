@@ -55,7 +55,10 @@ export interface FixtureSnapshot {
   sounds: number;
   /** Ticks that ran with at least one key held, which is what a tap makes. */
   heldTicks: number;
+  /** Presses latched in the DOM handler, the moment the event arrived. */
   clicks: number;
+  /** Pointer edges a TICK consumed, the way a buffered input layer reads them. */
+  taken: number;
   keys: string[];
   pointer: { x: number; y: number };
 }
@@ -104,3 +107,60 @@ export { kit };
 
 /** The fixture's harness, under the name a case's suites would import. */
 export type Harness = BaseHarness<FixtureSnapshot, FixtureDebug>;
+
+/* ---- Two more of the same case, each turning one option on ----------------- */
+//
+// Both build the SAME fixture build through `createCaseHarness`, differing only
+// in the one config member under test, so what a check sees is that member's
+// doing and nothing else.
+
+/**
+ * The fixture again, with `measureText` on.
+ *
+ * Its own kit rather than the one above, because measuring costs a crossing into
+ * the page per frame read, and every other check in this suite reads frames
+ * without needing a width.
+ */
+const measuringKit = createCaseHarness<FixtureSnapshot, FixtureDebug>({
+  slug: "case-harness",
+  handle: "__fixture",
+  requiredOps: REQUIRED_OPS,
+  step: { kind: "count", op: "advance" },
+  stage: STAGE,
+  arm: { kind: "key", code: "KeyZ" },
+  tickHz: TICK_HZ,
+  projectRoot: dirname(fileURLToPath(import.meta.url)),
+  measureText: true,
+});
+
+/** Open a fixture page whose frames carry a measured width per text call. */
+export const createMeasuringHarness = measuringKit.createHarness;
+
+/** What the projection below does to a snapshot, so a check can state it once. */
+export function shout(snapshot: FixtureSnapshot): FixtureSnapshot {
+  return { ...snapshot, screen: snapshot.screen.toUpperCase() };
+}
+
+/**
+ * The fixture again, narrowing every snapshot on its way out of the page.
+ *
+ * A case's own projection reads fields this package never interprets, so what is
+ * under test here is only WHERE it runs: at every point a snapshot crosses back
+ * out, and nowhere else. Upper-casing `screen` is a projection whose having run
+ * is visible in one field.
+ */
+const projectingKit = createCaseHarness<FixtureSnapshot, FixtureDebug>({
+  slug: "case-harness",
+  handle: "__fixture",
+  requiredOps: REQUIRED_OPS,
+  step: { kind: "count", op: "advance" },
+  stage: STAGE,
+  arm: { kind: "key", code: "KeyZ" },
+  tickHz: TICK_HZ,
+  projectRoot: dirname(fileURLToPath(import.meta.url)),
+  readOpeningSnapshot: true,
+  projectSnapshot: shout,
+});
+
+/** Open a fixture page whose every snapshot arrives projected. */
+export const createProjectingHarness = projectingKit.createHarness;

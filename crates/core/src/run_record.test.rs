@@ -49,6 +49,7 @@ fn sample_record() -> RunRecord {
                 comparable: Some(1.25),
                 actual: Some(1.40),
             },
+            ..RunMetrics::default()
         },
         validation: ValidationSummary {
             debug_scripts: Vec::new(),
@@ -179,6 +180,46 @@ fn round_trips_through_json() {
     let json = serde_json::to_string(&record).expect("serialize");
     let parsed: RunRecord = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(record, parsed);
+}
+
+#[test]
+fn the_stage_durations_are_omitted_when_absent_and_carried_when_measured() {
+    // A record written before the stage durations were measured deserializes with
+    // all four absent, and absent is not zero: a consumer must be able to tell a
+    // run that recorded no session from one whose session took no time.
+    let json = serde_json::to_string(&sample_record()).expect("serialize");
+    assert!(
+        !json.contains("sessionSeconds"),
+        "an unmeasured stage must not appear on the record at all",
+    );
+    let parsed: RunRecord = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(parsed.metrics.session_seconds, None);
+    assert_eq!(parsed.metrics.setup_seconds, None);
+    assert_eq!(parsed.metrics.teardown_seconds, None);
+    assert_eq!(parsed.metrics.validation_seconds, None);
+
+    let mut measured = sample_record();
+    measured.metrics.setup_seconds = Some(200.0);
+    measured.metrics.session_seconds = Some(90.0);
+    measured.metrics.teardown_seconds = Some(10.0);
+    measured.metrics.validation_seconds = Some(45.0);
+    let value = serde_json::to_value(&measured).expect("serialize");
+    assert_eq!(value["metrics"]["setupSeconds"], json!(200.0));
+    assert_eq!(value["metrics"]["sessionSeconds"], json!(90.0));
+    assert_eq!(value["metrics"]["teardownSeconds"], json!(10.0));
+    assert_eq!(value["metrics"]["validationSeconds"], json!(45.0));
+    // …and the three stages still describe the run they were partitioned from.
+    assert_eq!(
+        measured.metrics.setup_seconds.unwrap()
+            + measured.metrics.session_seconds.unwrap()
+            + measured.metrics.teardown_seconds.unwrap(),
+        measured.metrics.run_time_seconds,
+    );
+
+    let round_tripped: RunRecord =
+        serde_json::from_str(&serde_json::to_string(&measured).expect("serialize"))
+            .expect("deserialize");
+    assert_eq!(measured, round_tripped);
 }
 
 #[test]
@@ -404,6 +445,28 @@ fn gg_is_a_first_class_subject_excluded_from_the_cli_catalog() {
     }
     assert_eq!(HarnessSlug::from_wire("gg"), Some(HarnessSlug::Gg));
     assert_eq!(HarnessSlug::from_wire("nope"), None);
+}
+
+/// What the queue's per-harness caps and the coverage scheduler's capacity lanes
+/// enumerate: the CLI catalog and gg, which ships no CLI and yet occupies the queue.
+#[test]
+fn the_runnable_harnesses_are_the_catalog_plus_gg() {
+    // Derived from `ALL`, so a harness added to the catalog is queue-tunable without a
+    // second edit — this is what says the derivation actually held.
+    assert_eq!(
+        HarnessSlug::RUNNABLE.to_vec(),
+        HarnessSlug::ALL
+            .into_iter()
+            .chain(std::iter::once(HarnessSlug::Gg))
+            .collect::<Vec<_>>(),
+        "RUNNABLE is the CLI catalog in catalog order, then gg",
+    );
+    // Every variant is queueable: a harness a run can be recorded under but not capped
+    // would be a lane the scheduler could never see.
+    for slug in HarnessSlug::RUNNABLE {
+        assert_eq!(HarnessSlug::from_wire(slug.as_str()), Some(slug));
+    }
+    assert!(HarnessSlug::RUNNABLE.contains(&HarnessSlug::Gg));
 }
 
 #[test]

@@ -38,7 +38,7 @@ and can be run from anywhere, including locally:
 | `binary-smoke.sh`    | release-build, `cargo nextest run --release` + doctests, run binary | yes |
 | `smoke-binary.sh`  | run a built binary (`--version`/`--help`/commands) | yes      |
 | `web-build.sh`     | `npm ci`, type-check + `vite build` of the front ends | yes   |
-| `web-test.sh`      | `npm ci`, build the workspace runtime packages, `vitest run` across every workspace | yes |
+| `web-test.sh`      | `npm ci`, build the workspace runtime packages, `vitest run` across every workspace, `node --test` over `scripts/lib` | yes |
 | `desktop-build.sh` | `npm ci`, build the workspace runtime packages, type-check + `vite build` of the desktop UI, then clippy/rustdoc/build/test `crates/desktop` | yes |
 | `specs-lint.sh`    | markdownlint + cspell over `test-cases/**`         | no       |
 | `contract-drift.sh`| regenerate TS bindings, JSON Schemas and gg's prompt templates, fail on diff | yes |
@@ -149,6 +149,12 @@ test rather than as a failing build; and the two need different things, so they
 run in parallel — the tests need only the small workspace runtime packages built
 (`npm run build:packages`), never the app bundles.
 
+It also runs the repository scripts' own `node:test` suites, through the root
+`test:scripts`. `scripts/` is not an npm workspace, so `npm run test --workspaces`
+cannot reach it: a suite there would otherwise be executed by no gate. The suites are
+hermetic — no network, no ffmpeg, no object store — so they cost this job under a
+second and need nothing the job does not already have.
+
 `desktop-build.sh` covers the Tauri desktop app —
 both its React UI (`apps/desktop`) and its Rust shell (`crates/desktop`). It exists
 because the app used to be validated nowhere but the Release workflow, which is
@@ -178,6 +184,18 @@ binary path rather than resolving the repo root, so it does not use `lib.sh`.
 
 `lib.sh` is a sourced helper (not a standalone script): it resolves the repo root
 and provides the `log` helper.
+
+`fetch.sh` is the other sourced helper, and it has no side effect at all — not
+even a `cd` — because the six toolchain installers that source it are also run
+from inside `containers/gg-toolchains/Dockerfile`, which copies each of them into
+a `/tmp/gg-<arm>` tree that is not a checkout. Its `gg_fetch` is the one `curl` a
+large archive is fetched with: it resumes (`-C -`), retries, verifies the finished
+file against the length the server advertised, and keeps the partial file when it
+gives up, staged under `gg_fetch_dir` — `~/.cache/tcab/downloads`, which the
+service-image build already mounts a BuildKit cache over. That last part is what a
+1.05 GB Swift toolchain on a 1.5 MB/s link needs: a dropped connection costs the
+remainder of the transfer rather than all of it, and it costs the *next* run
+nothing at all.
 
 ## Scope
 

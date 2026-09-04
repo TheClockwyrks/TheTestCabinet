@@ -1,0 +1,19 @@
+[[media]]
+file = "building-a-machine.webm"
+name = "A machine built, run, and delivering"
+
+[[media]]
+file = "machine.png"
+name = "The finished machine, its five tapes written"
+
+[[media]]
+file = "field.png"
+name = "Arms carrying motes across the field mid-run"
+
+[[media]]
+file = "solved.png"
+name = "Complete, and scored on cost, cycles, and area"
+
+[[media]]
+file = "title.png"
+name = "The title screen"

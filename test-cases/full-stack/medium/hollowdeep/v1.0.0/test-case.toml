@@ -108,6 +108,20 @@ variants = [
   "variants/base.toml",
 ]
 
+# The audio packs the run container is staged with. `sfx-sample` and `music`
+# reach these alone, and a tool config that names no pack plays the first pack of
+# that kind.
+#
+# `combat-core` supplies the dug-out colony's hard sounds from its impacts,
+# clanks, rubble, servo, and diesel idle: the pick against rock, the build cue,
+# the machine hum a running generator holds, and the low-oxygen alarm. The bed is
+# a slow, low, atmospheric loop under a sealed underground
+# (`specs/assets.md`), and `cinematic`'s sustained strings, low brass, and choir
+# hold a room that size without putting a melody in it. A general-MIDI band and a
+# synth rack would each do exactly that, so neither is staged.
+[audio]
+packs = ["combat-core@0.1.0", "cinematic@0.1.0"]
+
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
 # repository root. `npm ci` is deliberate — it requires the build to commit a

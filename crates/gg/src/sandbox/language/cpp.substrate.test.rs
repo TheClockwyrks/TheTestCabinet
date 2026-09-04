@@ -70,7 +70,7 @@ use crate::tools::ToolOutcome;
 
 /// Compile `source` with the production prepare step, or panic with what the toolchain said.
 pub(super) fn prepare(source: &str) -> Vec<u8> {
-    match compile_program(source, &[], &PrepareContext::new()) {
+    match compile_program(source, &[], &PrepareContext::detached()) {
         Ok(prepared) => {
             assert!(
                 prepared.source.is_empty(),
@@ -588,7 +588,7 @@ fn a_reply_that_defines_no_main_is_refused_before_it_is_compiled() {
     let refused = compile_program(
         "#include <string>\n\nstatic std::string helper() { return \"nothing runs\"; }\n",
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     );
     match refused {
         Err(PrepareFailure::Program(PrepareError::Unsupported(message))) => {
@@ -628,10 +628,10 @@ fn a_code_module_is_linked_into_the_program_that_calls_it() {
     // the module's global module fragment — so the module has `<string>` and `<vector>` and the
     // program that binds it does not.
     let authored = "#include <string>\n#include <string_view>\n#include <vector>\n\nstd::vector<std::string> split(std::string_view text, char sep = ',') {\n                      std::vector<std::string> out;\n                      std::string current;\n                      for (const char byte : text) {\n                        if (byte == sep) {\n                          out.push_back(current);\n                          current.clear();\n                          continue;\n                        }\n                        current.push_back(byte);\n                      }\n                      out.push_back(current);\n                      return out;\n                    }\n";
-    let prepared = compile::compile_module(authored, &PrepareContext::new())
+    let prepared = compile::compile_module("csv_tools", authored, &PrepareContext::detached())
         .expect("an ordinary code module is prepared");
-    // What comes back is the AUTHOR'S OWN BYTES, because the namespace is written under the key the
-    // program knows and a module's own preparation is handed none — and the names its namespace
+    // What comes back is the AUTHOR'S OWN BYTES, because a module is an input to the program compile
+    // that binds it rather than something a guest could evaluate — and the names its namespace
     // offers, read from that same source.
     assert_eq!(prepared.source, authored);
     assert_eq!(export_names(&prepared.exports), vec!["split".to_string()]);
@@ -647,7 +647,7 @@ fn a_code_module_is_linked_into_the_program_that_calls_it() {
     let component = compile_program(
         "#include <format>\n\n#include <gg.hpp>\n\nimport lib.csv_tools;\n\nint main() {\n           const auto fields = lib::csv_tools::split(\"a;b;c\", ';');\n           gg::log(std::format(\"{} {}\", fields.size(), fields[1]));\n           gg::log(std::format(\"{}\", lib::csv_tools::split(\"x,y\").size()));\n           return 0;\n         }\n",
         &modules,
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect("a program compiles against the module in its scope")
     .component
@@ -661,7 +661,7 @@ fn a_code_module_is_linked_into_the_program_that_calls_it() {
     let located = compile_program(
         "import lib.csv_tools;\n\nint main() { return lib::csv_tools::split(1); }\n",
         &modules,
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     );
     match located {
         Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => assert!(
@@ -690,8 +690,9 @@ fn a_code_module_is_linked_into_the_program_that_calls_it() {
 fn a_module_in_scope_declares_nothing_and_changes_nothing_about_the_program() {
     compile::warm();
     let prepared = compile::compile_module(
+        "csv_tools",
         "#include <string>\n\nstd::string marker() { return \"from the module\"; }\n",
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect("an ordinary code module is prepared");
     let modules = [CodeModule {
@@ -701,7 +702,7 @@ fn a_module_in_scope_declares_nothing_and_changes_nothing_about_the_program() {
 
     let program =
         "#include <gg.hpp>\n\nint main() {\n  gg::log(lib::csv_tools::marker());\n  return 0;\n}\n";
-    match compile_program(program, &modules, &PrepareContext::new()) {
+    match compile_program(program, &modules, &PrepareContext::detached()) {
         Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => {
             assert!(
                 rendered.contains("use of undeclared identifier 'lib'"),
@@ -718,7 +719,7 @@ fn a_module_in_scope_declares_nothing_and_changes_nothing_about_the_program() {
     // The same program with the line it was missing compiles and runs, so what the refusal above is
     // about is that one line and nothing else about the program.
     let imported = format!("import lib.csv_tools;\n{program}");
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     let component = compile_program(&imported, &modules, &context)
         .expect("the program that writes the import compiles")
         .component
@@ -767,7 +768,7 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
     let syntax = compile_program(
         "int main() {\n  int x = (1 + 2;\n  return x;\n}\n",
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     );
     match syntax {
         Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => {
@@ -788,7 +789,7 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
     let typed = compile_program(
         "#include <string>\nint main() {\n  std::string total = 12;\n  return 0;\n}\n",
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     );
     match typed {
         Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => {
@@ -811,7 +812,7 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
          \x20 return 0;\n\
          }\n",
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     );
     match template {
         Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => {
@@ -840,7 +841,7 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
          \x20 return 0;\n\
          }\n",
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     );
     match voluminous {
         Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => {
@@ -880,7 +881,7 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
             compile_program(
                 "#include <gg.hpp>\n\nint main() { gg::log(\"hi\"); return 0; }\n",
                 &[],
-                &PrepareContext::new(),
+                &PrepareContext::detached(),
             )
         },
     );
@@ -912,7 +913,7 @@ fn a_cpp_program_is_compiled_verbatim() {
                    \x20 int d = missingName;\n\
                    \x20 return a + b + c + d;\n\
                    }\n";
-    match compile_program(program, &[], &PrepareContext::new()) {
+    match compile_program(program, &[], &PrepareContext::detached()) {
         Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => {
             assert!(
                 rendered.contains("main.cpp:5:11"),
@@ -962,7 +963,7 @@ fn what_compiling_a_cpp_program_cost_is_a_reading_the_seam_can_take() {
     let rejected = compile_program(
         "#include <string>\nint main() { std::string x = 12; return 0; }\n",
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     );
     let refused = started.elapsed();
 
@@ -1055,6 +1056,7 @@ int main() {
 }
 "#,
         scope,
+        &crate::sandbox::AgentWorkspace::new(),
         SandboxLimits::AMPLE,
         None,
         api,
@@ -1165,8 +1167,9 @@ fn artifact(source: &str, context: &PrepareContext) -> Result<Vec<u8>, String> {
 
 #[test]
 fn two_preparations_of_one_program_are_byte_identical() {
-    // `-ffile-prefix-map` doing what [`compile`](super::compile) says it does: the one path that is
-    // per-preparation is rewritten to a fixed name, clang stamps no per-invocation nonce beside it,
+    // `-ffile-prefix-map` doing what [`compile`](super::compile) says it does: the one path that
+    // differs between agents is rewritten to a fixed name, clang stamps no per-invocation nonce
+    // beside it,
     // and so this arm's artifact is a function of its program. It is a stronger claim than either of
     // the other compiled arms can make — Swift's artifacts differ across 1.5 MB of debug sections
     // and a random 16-byte module hash, for reasons that are the isolation contract working as
@@ -1182,8 +1185,8 @@ fn two_preparations_of_one_program_are_byte_identical() {
     let marker = "gg-isolation-identical-marker";
     let source =
         format!("#include <gg.hpp>\n\nint main() {{\n  gg::log(\"{marker}\");\n  return 0;\n}}\n");
-    let first = artifact(&source, &PrepareContext::new()).expect("the subject compiles");
-    let second = artifact(&source, &PrepareContext::new()).expect("the subject compiles");
+    let first = artifact(&source, &PrepareContext::detached()).expect("the subject compiles");
+    let second = artifact(&source, &PrepareContext::detached()).expect("the subject compiles");
     assert_eq!(
         first, second,
         "two preparations of one C++ program produced different bytes — a compiler flag started \

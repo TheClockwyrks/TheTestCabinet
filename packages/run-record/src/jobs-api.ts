@@ -215,8 +215,8 @@ export type StatusUpdate = {
   state: DriverState;
   /**
    * The produced run record, required when `state` is `succeeded` and carried on
-   * a `canceled` report too (the partial record for the killed run). Its `links`
-   * are authoritative and stored with it.
+   * a `canceled` report too (the record a killed gg run wound down to produce). Its
+   * `links` are authoritative and stored with it.
    */
   record?: RunRecord;
   /**
@@ -266,6 +266,18 @@ export type JobSummary = {
    */
   modelId: string;
   /**
+   * The [engine](crate::engine) the run is built on, as its slug. `None` is the
+   * `none` engine, exactly as an absent `engine` on the launch request is.
+   *
+   * It rides with the harness and the model because those three plus the case pin
+   * are a run's [coverage cell](https://docs.testcabinet.ai/components/backend/coverage/),
+   * and an in-flight run has no record to read one out of. A console listing the runs
+   * behind one cell — a ladder rung, a plan's cell — would otherwise show a live row
+   * from every other engine's cell of the same case, and count it toward a figure it
+   * will never join.
+   */
+  engine?: string;
+  /**
    * The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job
    * was launched from, lifted out of its stored capability set. A gg run has no
    * single harness model — [`model_id`](Self::model_id) is only its representative
@@ -311,6 +323,18 @@ export type ActiveJobOut = {
    * The opaque model id passed to the harness.
    */
   modelId: string;
+  /**
+   * The [engine](crate::engine) the run is built on, as its slug. `None` is the
+   * `none` engine, exactly as an absent `engine` on the launch request is.
+   *
+   * It rides with the harness and the model because those three plus the case pin
+   * are a run's [coverage cell](https://docs.testcabinet.ai/components/backend/coverage/),
+   * and an in-flight run has no record to read one out of. A console listing the runs
+   * behind one cell — a ladder rung, a plan's cell — would otherwise show a live row
+   * from every other engine's cell of the same case, and count it toward a figure it
+   * will never join.
+   */
+  engine?: string;
   /**
    * The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job
    * was launched from, lifted out of its stored capability set. A gg run has no
@@ -502,6 +526,18 @@ export type Notification = {
    */
   modelId: string;
   /**
+   * The [engine](crate::engine) the run is built on, as its slug. `None` is the
+   * `none` engine, exactly as an absent `engine` on the launch request is.
+   *
+   * It rides with the harness and the model because those three plus the case pin
+   * are a run's [coverage cell](https://docs.testcabinet.ai/components/backend/coverage/),
+   * and an in-flight run has no record to read one out of. A console listing the runs
+   * behind one cell — a ladder rung, a plan's cell — would otherwise show a live row
+   * from every other engine's cell of the same case, and count it toward a figure it
+   * will never join.
+   */
+  engine?: string;
+  /**
    * The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job
    * was launched from, lifted out of its stored capability set. A gg run has no
    * single harness model — [`model_id`](Self::model_id) is only its representative
@@ -589,6 +625,18 @@ export type RunEvent = {
    * The opaque model id passed to the harness.
    */
   modelId: string;
+  /**
+   * The [engine](crate::engine) the run is built on, as its slug. `None` is the
+   * `none` engine, exactly as an absent `engine` on the launch request is.
+   *
+   * It rides with the harness and the model because those three plus the case pin
+   * are a run's [coverage cell](https://docs.testcabinet.ai/components/backend/coverage/),
+   * and an in-flight run has no record to read one out of. A console listing the runs
+   * behind one cell — a ladder rung, a plan's cell — would otherwise show a live row
+   * from every other engine's cell of the same case, and count it toward a figure it
+   * will never join.
+   */
+  engine?: string;
   /**
    * The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job
    * was launched from, lifted out of its stored capability set. A gg run has no

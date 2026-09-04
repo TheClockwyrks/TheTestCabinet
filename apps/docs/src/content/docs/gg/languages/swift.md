@@ -129,11 +129,12 @@ generic parameters, `where` clauses, `throws` and overloads, because the
 author's own text is what the compiler reads. A module that calls gg's surface
 writes `import gg` exactly as a program does.
 
-A module is compiled twice: type-checked alone when it is read, so a module that
-does not build fails on the turn that loaded it, and built into its own Swift
-module beside each program that uses it. Both compiles read the file
-`-parse-as-library`, so a code module is declarations where a program is the
-file that also carries statements.
+A module is compiled once, when it is read, so a module that does not build fails
+on the turn that loaded it. What that compile writes — the `.swiftmodule` the
+`-I` resolves and the object the program links — is kept in the loaded-module
+band of the agent's compile workspace for every later program. The file is read
+`-parse-as-library`, so a code module is declarations where a program is the file
+that also carries statements.
 
 Binding keys are camelCase and ASCII only, since a key names both the Swift
 module a program imports and the file it is compiled under. A key that names a
@@ -202,7 +203,8 @@ The arm names `swiftc` as its [checker](/gg/languages/compilation/), so the
 shared body states that a program is compiled before it runs, that one `swiftc`
 refuses comes back as diagnostics at the model's own line and column instead of
 running, and that a call the run withheld compiles and fails when it runs. The
-linked library set is carried by a compile failure rather than by the prompt.
+linked library set is reached through a compile failure rather than through the
+prompt.
 
 Source gg synthesizes for this arm is written in the same idiom, under the same
 import line: `import gg` and then `try gg.views.openFile("src/main.swift")`,

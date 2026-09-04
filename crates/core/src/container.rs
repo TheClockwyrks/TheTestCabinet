@@ -19,8 +19,8 @@ use tracing::instrument;
 use crate::error::{Error, Result};
 use crate::exec_stream::drain_with_idle_timeout;
 use crate::execution::{
-    ArtifactCollection, ArtifactCollector, ContainerFile, ContainerHandle, ContainerRuntime,
-    ContainerSpec, ContainerStart, ExecOutput, OutputSink,
+    ArtifactCollection, ArtifactCollector, ContainerDir, ContainerFile, ContainerHandle,
+    ContainerRuntime, ContainerSpec, ContainerStart, ExecOutput, OutputSink,
 };
 
 /// The container working directory the seeded repository is copied into. Matches
@@ -33,11 +33,34 @@ const WORK_DIR: &str = "/work";
 /// in it regardless of how the host files were owned.
 const RUN_USER: &str = "node";
 
+/// The label stamped on a run's sandbox container, carrying the id of the job the
+/// run belongs to.
+///
+/// It exists so a container can be found and removed by *whoever holds the job id*,
+/// without holding the handle [`start`](ContainerRuntime::start) returned. That matters
+/// on exactly one path: the driver destroys a canceled third-party run by dropping the
+/// run future, which throws the handle away while the harness inside the container is
+/// still running — the label is what is left to find it by. Deliberately the CLI
+/// analogue of the Kubernetes runtime's own job-id pod label, so both runtimes are torn
+/// down the same way.
+///
+/// Reverse-DNS rather than the Kubernetes label's `tcab.dev/job-id` spelling: a
+/// container label key is a plain string, and both Docker and Podman document the
+/// reverse-DNS form, so the `/` is avoided.
+pub const JOB_ID_LABEL: &str = "dev.tcab.job-id";
+
 /// A container runtime that shells out to a Docker-compatible CLI.
 #[derive(Debug, Clone)]
 pub struct CliContainerRuntime {
     /// The runtime binary (for example `podman` or `docker`).
     binary: String,
+    /// The id of the job whose run this runtime starts containers for, stamped onto
+    /// each of them as [`JOB_ID_LABEL`]. `None` outside a job-driven run (the CLI and
+    /// desktop paths, which hold the handle for the whole run and stop it themselves),
+    /// in which case no label is written and
+    /// [`delete_run_containers_for_job`](Self::delete_run_containers_for_job) is a
+    /// no-op.
+    job_id: Option<String>,
 }
 
 impl CliContainerRuntime {
@@ -45,7 +68,72 @@ impl CliContainerRuntime {
     pub fn with_binary(binary: impl Into<String>) -> Self {
         Self {
             binary: binary.into(),
+            job_id: None,
         }
+    }
+
+    /// Label the containers this runtime starts with `job_id`, so they can be torn
+    /// down later from the job id alone — see [`JOB_ID_LABEL`].
+    ///
+    /// Only the driver sets this, because only the driver has a run it may have to
+    /// destroy without the container handle in hand.
+    #[must_use]
+    pub fn for_job(mut self, job_id: impl Into<String>) -> Self {
+        self.job_id = Some(job_id.into());
+        self
+    }
+
+    /// Remove every container this job started, whether or not its handle is still
+    /// held — the CLI analogue of the Kubernetes runtime's `delete_run_pods_for_job`,
+    /// and the teardown the driver runs when a run is **canceled**.
+    ///
+    /// The harness is its own process inside the container, so dropping the run future
+    /// ends nothing: without this, a destroyed run's harness keeps running — and keeps
+    /// spending — in a container nothing is watching any more. Removal is forced and
+    /// takes the anonymous `/work` volume with it, exactly as
+    /// [`stop`](ContainerRuntime::stop) does at a normal end of run, and a container
+    /// already gone is not an error (this is also the ordinary cleanup path). A no-op
+    /// when no job id is configured: there is no label to select on.
+    pub async fn delete_run_containers_for_job(&self) -> Result<()> {
+        let Some(job_id) = self.job_id.as_deref() else {
+            return Ok(());
+        };
+        let listed = self
+            .run(&[
+                "ps".to_string(),
+                "--all".to_string(),
+                "--quiet".to_string(),
+                "--filter".to_string(),
+                format!("label={JOB_ID_LABEL}={job_id}"),
+            ])
+            .await?;
+        if !listed.status.success() {
+            return Err(Error::ContainerRuntime(format!(
+                "listing run containers for job `{job_id}` failed: {}",
+                String::from_utf8_lossy(&listed.stderr).trim()
+            )));
+        }
+        let ids: Vec<String> = String::from_utf8_lossy(&listed.stdout)
+            .split_whitespace()
+            .map(str::to_string)
+            .collect();
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let mut args = vec![
+            "rm".to_string(),
+            "--force".to_string(),
+            "--volumes".to_string(),
+        ];
+        args.extend(ids);
+        let removed = self.run(&args).await?;
+        if !removed.status.success() {
+            return Err(Error::ContainerRuntime(format!(
+                "removing the run containers for job `{job_id}` failed: {}",
+                String::from_utf8_lossy(&removed.stderr).trim()
+            )));
+        }
+        Ok(())
     }
 
     /// Detect an available runtime, preferring Podman, then Docker.
@@ -167,6 +255,52 @@ impl CliContainerRuntime {
         Ok(())
     }
 
+    /// Materialize each host directory's contents into the started container at its
+    /// absolute path, owned by the run user.
+    ///
+    /// A run's staged audio palette is dozens of files and tens of megabytes, so it
+    /// travels as a host tree rather than as bytes on the spec and is copied in whole:
+    /// one `cp <host>/. <id>:<dest>` and one recursive `chown`, exactly as the working
+    /// tree is seeded, rather than the three round trips per file that
+    /// [`materialize_files`](Self::materialize_files) spends to keep a credential off
+    /// every argument list and tightly moded.
+    async fn materialize_dirs(
+        &self,
+        container: &ContainerHandle,
+        dirs: &[ContainerDir],
+    ) -> Result<()> {
+        for dir in dirs {
+            let source = dir.host_path.to_str().ok_or_else(|| {
+                Error::ContainerRuntime(format!(
+                    "staged directory path is not valid UTF-8: {}",
+                    dir.host_path.display()
+                ))
+            })?;
+            let output = self
+                .run(&copy_dir_args(&container.id, source, &dir.container_path))
+                .await?;
+            if !output.status.success() {
+                return Err(Error::ContainerRuntime(format!(
+                    "copying `{source}` to `{}` in the container failed: {}",
+                    dir.container_path,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                )));
+            }
+
+            let output = self
+                .run(&chown_dir_args(&container.id, &dir.container_path))
+                .await?;
+            if !output.status.success() {
+                return Err(Error::ContainerRuntime(format!(
+                    "handing `{}` to `{RUN_USER}` failed: {}",
+                    dir.container_path,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                )));
+            }
+        }
+        Ok(())
+    }
+
     /// Materialize files into the started container at their absolute paths,
     /// owned by the run user with the requested mode.
     ///
@@ -264,6 +398,34 @@ impl CliContainerRuntime {
     }
 }
 
+/// The argument vector that copies a host directory's *contents* into `dest` inside
+/// the container. The trailing `/.` is what copies the contents rather than nesting
+/// the directory itself under `dest`, exactly as `seed_workdir` copies the seeded
+/// repository into `/work`.
+fn copy_dir_args(id: &str, source: &str, dest: &str) -> Vec<String> {
+    vec![
+        "cp".to_string(),
+        format!("{source}/."),
+        format!("{id}:{dest}"),
+    ]
+}
+
+/// The argument vector that hands a materialized tree to the run user. Run as uid 0
+/// whatever the run user is, because `cp` does not set ownership consistently across
+/// runtimes and the tree must be readable by the process that reads it.
+fn chown_dir_args(id: &str, dest: &str) -> Vec<String> {
+    vec![
+        "exec".to_string(),
+        "--user".to_string(),
+        "0".to_string(),
+        id.to_string(),
+        "chown".to_string(),
+        "--recursive".to_string(),
+        format!("{RUN_USER}:{RUN_USER}"),
+        dest.to_string(),
+    ]
+}
+
 /// The parent-directory portion of an absolute container path, or `None` when it
 /// has no non-empty parent (a file at the filesystem root).
 fn parent_dir(path: &str) -> Option<&str> {
@@ -272,12 +434,13 @@ fn parent_dir(path: &str) -> Option<&str> {
         .filter(|parent| !parent.is_empty())
 }
 
-/// Build the `run` argument vector that starts a container from a spec.
+/// Build the `run` argument vector that starts a container from a spec, labelled with
+/// `job_id` when the runtime was told which job it is starting containers for.
 ///
 /// Pure given the spec, so the flags a run is launched with — in particular
 /// which of them carry environment — are unit-tested without a container
 /// runtime, the way the Kubernetes runtime's manifest construction is.
-fn run_args(spec: &ContainerSpec) -> Vec<String> {
+fn run_args(spec: &ContainerSpec, job_id: Option<&str>) -> Vec<String> {
     let mut args = vec![
         "run".to_string(),
         "--detach".to_string(),
@@ -288,6 +451,15 @@ fn run_args(spec: &ContainerSpec) -> Vec<String> {
         "--workdir".to_string(),
         WORK_DIR.to_string(),
     ];
+    // Stamp the job id on so the container can be found later from the id alone. The
+    // container is started detached and *not* `--rm`, so it outlives the process that
+    // started it: when a canceled run's future is dropped mid-session, this label is
+    // the only handle left on the harness still running inside it. See
+    // [`JOB_ID_LABEL`].
+    if let Some(job_id) = job_id {
+        args.push("--label".to_string());
+        args.push(format!("{JOB_ID_LABEL}={job_id}"));
+    }
     if !spec.network_enabled {
         args.push("--network".to_string());
         args.push("none".to_string());
@@ -334,7 +506,7 @@ impl ContainerRuntime for CliContainerRuntime {
         // comes from a registry (resolved by digest), not a prior local build, so
         // a missing image must be fetched rather than failing the run. An image
         // already pulled by an earlier run is reused (digest refs are immutable).
-        let args = run_args(spec);
+        let args = run_args(spec, self.job_id.as_deref());
 
         let output = self.run(&args).await?;
         if !output.status.success() {
@@ -355,9 +527,14 @@ impl ContainerRuntime for CliContainerRuntime {
             return Err(err);
         }
 
-        // Materialize any credential files (subscription authentication) at the
-        // paths the harness CLI reads under the run user's home, before the
-        // session. Same torn-down-on-failure contract as seeding.
+        // Materialize the staged trees (the run's audio palette) at their absolute
+        // paths, then any credential files (subscription authentication) at the paths
+        // the harness CLI reads under the run user's home, before the session. Same
+        // torn-down-on-failure contract as seeding.
+        if let Err(err) = self.materialize_dirs(&handle, &spec.dirs).await {
+            let _ = self.stop(&handle).await;
+            return Err(err);
+        }
         if let Err(err) = self.materialize_files(&handle, &spec.files).await {
             let _ = self.stop(&handle).await;
             return Err(err);

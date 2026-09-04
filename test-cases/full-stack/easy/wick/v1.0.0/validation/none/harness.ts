@@ -72,6 +72,7 @@ import {
   TICK_HZ,
   TICK_MS,
   UNBOUND_KEY,
+  WHEEL_ROW,
   type Action,
   type CanvasSize,
   type EnemyId,
@@ -241,6 +242,8 @@ export interface RunView {
   xpToNext: number;
   kills: number;
   player: PlayerView;
+  /** Seconds left of the lamplighter's hurt flash. */
+  hurtFlash: number;
   maxHp: number;
   armor: number;
   /** Units per second. */
@@ -278,6 +281,10 @@ export interface WickSnapshot {
   version: number;
   screen: ScreenName;
   menuIndex: number;
+  /** The tab the almanac is showing; `0` on every other screen. */
+  almanacTab: number;
+  /** The almanac list's first visible row; `0` on every other screen. */
+  almanacScroll: number;
   /** Whether the frame loop advances the simulation from the wall clock. */
   autoStep: boolean;
   spawning: boolean;
@@ -294,6 +301,18 @@ export interface WickSnapshot {
   /** Accumulated simulation time, in seconds. */
   simTime: number;
   rngState: number;
+}
+
+/**
+ * One rectangle of a menu, "in stage coordinates, `0` to `STAGE_W` across and
+ * `0` to `STAGE_H` down, which are the coordinates the pointer is read in"
+ * (specs/instrumentation.md — `menuRects`).
+ */
+export interface RectView {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 /**
@@ -324,6 +343,18 @@ export interface WickDebugApi {
   snapshot(): Promise<WickSnapshot>;
   /** Enter a screen exactly as the real transition into it does. */
   setScreen(name: ScreenName): Promise<void>;
+  /**
+   * The current screen's vertical menu, in menu order; empty on a screen with
+   * no menu. On `almanac` these are the visible entry rows.
+   *
+   * Prefer {@link menuRects}, which types what comes back over the wire.
+   */
+  menuRects(): Promise<RectView[]>;
+  /**
+   * The almanac's tab bar, in `ALMANAC_TABS` order; empty on every other
+   * screen. Prefer {@link tabRects}.
+   */
+  tabRects(): Promise<RectView[]>;
   /** On `levelup`, accept the offer at `index`. */
   choose(index: number): Promise<void>;
   setSpawning(on: boolean): Promise<void>;
@@ -404,15 +435,17 @@ export interface WickDebugApi {
 export const AUDIO_PROBE_GLOBAL = "__wickAudio";
 
 /**
- * How long {@link Harness.armAudio} waits for the build's fifteen cue files to
- * finish decoding before it gives up waiting.
+ * How long an ARMED {@link createHarness} waits for the build's fifteen cue
+ * files to finish decoding before it gives up waiting.
  *
  * A build decodes its audio asynchronously, and a scenario that raised an event
  * before its cue's clip arrived would read silence from a build that was
  * simply still starting up. The wait is a poll that returns the instant the
  * fifteenth file lands, so a healthy build pays nothing; a build that never
  * decodes anything spends the ceiling once per harness and then fails its cue
- * points on their own terms.
+ * points on their own terms. Only a harness that asked to be armed waits: one
+ * handed no gesture can open no audio, and would spend the whole ceiling for a
+ * check that was never going to listen.
  */
 export const AUDIO_LOAD_TIMEOUT_MS = 15_000;
 
@@ -821,11 +854,22 @@ async function settleCues(
  * attached, the sounds the probe logged during the drive are stamped with the
  * drive's frames and handed to every watcher. Nothing is read when no watcher is
  * attached, so a check that never asks about audio pays no extra crossing.
+ *
+ * AND, for a harness created with `armAudio`, the wait for the build's own cue
+ * files. The arming is the kit's: it presses `UNBOUND_KEY` before the opening
+ * `reset`, which is what lets the page open an audio context at all. What the
+ * kit cannot know is whether THIS case's fifteen produced files have arrived, so
+ * that wait belongs here, and here is the one place it costs a check nothing —
+ * before the harness is handed over, with no scenario yet posed to go stale.
+ * See {@link AUDIO_LOAD_TIMEOUT_MS}.
  */
 export async function createHarness(
   options?: HarnessOptions,
 ): Promise<Harness> {
   const base = await kit.createHarness(options);
+  // Armed, so the clips are on their way; unarmed, there is nothing to wait for
+  // and a build that decodes nothing must not cost a check the whole ceiling.
+  if (options?.armAudio ?? false) await waitForCues(base.page);
   const log: CueLog = { cursor: 0, sinks: [] };
 
   /** Run `drive`, then settle the sounds it produced onto its frames. */
@@ -872,10 +916,6 @@ export async function createHarness(
     clickPointer: (x, y, button) =>
       driven(() => base.clickPointer(x, y, button)),
     frameCalls: () => driven(() => base.frameCalls()),
-    async armAudio() {
-      await base.armAudio();
-      await waitForCues(base.page);
-    },
   };
   cueLogs.set(h, log);
   return h;
@@ -1901,6 +1941,163 @@ export async function tapDispatched(
   }
 }
 
+/* ---- The pointer ---------------------------------------------------------- */
+//
+// WHAT THE SPECIFICATION FIXES. "The pointer is read in the stage's own
+// coordinates, `0` to `STAGE_W` across and `0` to `STAGE_H` down, whatever the
+// canvas's size on the page and wherever the letterbox bars fall, and wheel
+// travel is read in those same units", and under an engineless configuration
+// "the runtime layer you write maps both the event's client position and the
+// event's wheel travel through the same fit it draws under" (specs/controls.md —
+// "The pointer"). So a check names a point in the SAME units it names a sprite's
+// position in, and the conversion into the page's CSS pixels lives here.
+//
+// A REAL MOUSE, FOR THE REASON THE KEYBOARD IS A REAL KEYBOARD. The pointer
+// belongs to the runtime layer the build wrote, and `specs/instrumentation.md`
+// carries no operation that poses one. These drive Chromium's own mouse, so a
+// build reading the pointer from its own `pointermove`, `pointerdown` and
+// `wheel` handlers sees exactly what a player's hand produces — and a build that
+// listens on its canvas rather than on the window is served too, which is why
+// the wheel helper rests the pointer on the stage before it turns.
+//
+// A FRAME IS WHERE THE RULES APPLY. The three pointer rules run "on every frame,
+// after that frame's press edges and before its update", so a move or a wheel
+// event alone changes nothing until a frame reads it. Each helper below moves
+// the mouse and then runs exactly ONE frame, and answers what that frame left.
+// A check that must read the state between the parts of a gesture drives
+// `mousePress`, `mouseGlide` and `mouseRelease` instead, a frame per part.
+
+/** Fail the point unless `value` is the rectangle list `op` owes. */
+function asRects(value: unknown, op: string): RectView[] {
+  if (!Array.isArray(value)) {
+    fail(
+      `${op} to report a list of rectangles (specs/instrumentation.md — "Menus")`,
+      value,
+    );
+  }
+  return value.map((entry) => {
+    const rect = entry as Partial<RectView> | null;
+    if (
+      typeof rect?.x !== "number" ||
+      typeof rect.y !== "number" ||
+      typeof rect.width !== "number" ||
+      typeof rect.height !== "number"
+    ) {
+      fail(
+        `every rectangle ${op} reports to carry x, y, width and height in stage coordinates`,
+        entry,
+      );
+    }
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+  });
+}
+
+/**
+ * "The rectangles of the current screen's vertical menu, in menu order" — one
+ * per item on `title`, `levelup`, `paused`, `fallen` and `dawn`, one per VISIBLE
+ * entry row on `almanac`, and an empty list on `howto`, `playing` and `chest`.
+ */
+export async function menuRects(h: Harness): Promise<RectView[]> {
+  return asRects(await h.debug.menuRects(), "menuRects()");
+}
+
+/**
+ * "The rectangles of the almanac's tab bar on `almanac`, one per tab in
+ * `ALMANAC_TABS` order"; an empty list on every other screen.
+ */
+export async function tabRects(h: Harness): Promise<RectView[]> {
+  return asRects(await h.debug.tabRects(), "tabRects()");
+}
+
+/** The middle of a rectangle: the point a hover or a click aims at. */
+export function centerOf(rect: RectView): XY {
+  return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+}
+
+/** Whether `at` lies inside `rect`, which is where it selects that item. */
+export function rectContains(rect: RectView, at: XY): boolean {
+  return (
+    at.x >= rect.x &&
+    at.x <= rect.x + rect.width &&
+    at.y >= rect.y &&
+    at.y <= rect.y + rect.height
+  );
+}
+
+/** The index of the rectangle `at` lies inside, or `-1` for none. */
+export function rectIndexAt(rects: readonly RectView[], at: XY): number {
+  return rects.findIndex((rect) => rectContains(rect, at));
+}
+
+/**
+ * A stage point inside no rectangle the current screen reports, which is where
+ * "the pointer inside no rectangle changes nothing" holds.
+ *
+ * Found by sweeping the stage rather than named as a figure, because WHERE a
+ * build lays its menu out is the build's: the specification fixes only that the
+ * items occupy disjoint rectangles, so the one thing a check may rely on is that
+ * some point of a `1280 x 720` stage is outside all of them.
+ */
+export async function pointerRest(h: Harness): Promise<XY> {
+  const claimed = [...(await menuRects(h)), ...(await tabRects(h))];
+  const stride = 16;
+  for (let y = stride / 2; y < STAGE_H; y += stride) {
+    for (let x = stride / 2; x < STAGE_W; x += stride) {
+      const at = { x, y };
+      if (rectIndexAt(claimed, at) === -1) return at;
+    }
+  }
+  fail("a stage point inside none of the screen's rectangles", claimed);
+}
+
+/**
+ * Rest the pointer on a stage point and run the one frame that reads it, and
+ * answer what that frame left.
+ */
+export async function hoverAt(h: Harness, at: XY): Promise<WickSnapshot> {
+  await h.movePointer(at.x, at.y);
+  return h.step(1);
+}
+
+/**
+ * Press the primary button at a stage point, run the one frame that reads the
+ * press, release, and answer what that frame left.
+ *
+ * The pointer is moved to the point before the press, as a hand does, so the
+ * frame carries the hover and the click together. A check that needs the click
+ * alone poses the pointer elsewhere first and drives `mousePress`.
+ */
+export function clickAt(h: Harness, at: XY): Promise<WickSnapshot> {
+  return h.clickPointer(at.x, at.y);
+}
+
+/**
+ * Turn the wheel by `rows` rows of the almanac's list, downward positive, and
+ * run the one frame that reads it.
+ *
+ * `rows` is multiplied by `WHEEL_ROW` (`100`) to give the travel in STAGE units,
+ * which "a frame's travel is ... divided by" to give the rows the list moves,
+ * and that travel is taken into the CSS pixels the page's wheel events carry
+ * through the harness's own fit — the same conversion, inverted, that the build
+ * applies to `deltaY`. Fractional `rows` is therefore how a check poses the
+ * remainder the rule discards.
+ *
+ * The pointer is rested first, on `at` or on a point inside none of the screen's
+ * rectangles, because a build is free to listen for the wheel on its canvas
+ * alone; resting it somewhere the hover rule ignores is what leaves `menuIndex`
+ * to the wheel check's own scenario.
+ */
+export async function wheelBy(
+  h: Harness,
+  rows: number,
+  at?: XY,
+): Promise<WickSnapshot> {
+  const rest = at ?? (await pointerRest(h));
+  await h.movePointer(rest.x, rest.y);
+  await h.page.mouse.wheel(0, rows * WHEEL_ROW * h.viewport().cssScale);
+  return h.step(1);
+}
+
 /* ---- The overlays and the endings ----------------------------------------- */
 //
 // Each is reached through the REAL path: a chest at the lamplighter's feet and
@@ -1988,7 +2185,8 @@ export function stepUntilScreen(
  * kills, the lamplighter at the world origin facing right with `BASE_MAX_HP`
  * (`100`) health, no weapons, no passives, nothing alive, nothing dropped, no
  * offers, no level-ups earned, no chest result, the spawn timer at `0`, no
- * events fired, and the next id `0`" — with the derived fields each formula
+ * events fired, and the next id `0`", with `hurtFlash` `0` as the idle-run table
+ * gives it — with the derived fields each formula
  * gives an empty loadout, and `weapons` as the caller says (a fresh run holds
  * "Taper at level `1` and cooldown `0` in the first weapon slot").
  */
@@ -2001,6 +2199,7 @@ export function idleRun(weapons: readonly WeaponSlotView[] = []): RunView {
     xpToNext: xpToNext(1),
     kills: 0,
     player: { x: 0, y: 0, facing: "right", hp: BASE_MAX_HP },
+    hurtFlash: 0,
     maxHp: BASE_MAX_HP,
     armor: 0,
     moveSpeed: MOVE_SPEED,

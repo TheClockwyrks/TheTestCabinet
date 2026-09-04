@@ -39,10 +39,10 @@ export const DOWN_KEY = BINDINGS.down[0];
 export const CONFIRM_KEY = BINDINGS.confirm[0];
 
 /**
- * The key `specs/controls.md` binds `back` to: "`back` | `Escape`". On
- * `paused` it "abandons the run and returns to `title`" (specs/ui.md).
+ * The key `specs/controls.md` binds `right` to first: "`right` | `ArrowRight`,
+ * `KeyD`". On `almanac` it is read as an edge and moves the tab bar.
  */
-export const BACK_KEY = BINDINGS.back[0];
+export const RIGHT_KEY = BINDINGS.right[0];
 
 /**
  * How many frames a point that reads a loop "on every frame" of a screen walks:

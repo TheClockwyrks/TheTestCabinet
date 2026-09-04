@@ -463,13 +463,17 @@ that record, also accepts a `canceled` status, and it is the only status
 accepted on a job already in the terminal `canceled` state. Every other late
 report from a winding-down driver is discarded. A `canceled` status must carry a
 run record (`422` without one), and that record is normally a complete partial
-record: the driver [winds the run down
-cooperatively](/components/driver/overview/#cancellation) and posts what the
-ordinary post-session path produced, including metrics, the collected tree and
-the session summary. The backend persists it with the events its relay
-accumulated and attaches the record id to the already-canceled job. The job
-keeps its `canceled` state and its cancellation detail, no completion
-notification fires, and no retry is enqueued.
+record: the driver [winds a gg run
+down](/components/driver/overview/#cancellation) and posts what the ordinary
+post-session path produced, including metrics, the collected tree and the
+session summary. The backend persists it with the events its relay accumulated
+and attaches the record id to the already-canceled job. The job keeps its
+`canceled` state and its cancellation detail, no completion notification fires,
+and no retry is enqueued.
+
+Only a killed gg run's driver posts this status. A killed run of any other
+harness is destroyed by its driver, which posts nothing further, so the job stays
+`canceled` with no record attached.
 
 ### `POST /runs/{id}/reviews`
 
@@ -547,18 +551,43 @@ reporting the links the run already carries, when the run is already published.
 ### `DELETE /runs/{id}`
 
 Permanently delete a run: its record, its reviews, its links, and its stored
-media. A published run is refused (`422`), because a public run is in the
-snapshot and the gallery. `404` if unknown. The response reports the run id and
-`deleted: true`.
+media. A published run whose record this build can read is refused (`422`),
+because a public run is in the snapshot and the gallery. A published run whose
+record this build cannot read is deleted, since it is already absent from both.
+`404` if unknown. The response reports the run id and `deleted: true`.
 
 The run's playable build and recorded logs live in the separate [artifact
-service](/components/artifacts/overview/), which the backend asks to prune the
-run's tree as well. That prune is best-effort and never fails the delete; it
-runs only when the artifact service URL and the service token are both
-configured.
+service](/components/artifacts/overview/), which the backend asks over
+`TCAB_ARTIFACTS_URL` to prune the run's tree as well. That prune is best-effort
+and never fails the delete; it runs only when that URL and the service token are
+both configured. A tree a failed prune leaves behind is reclaimed by the
+[sweep](/components/backend/overview/#artifact-reclamation).
 
 The consoles expose this as a Delete run control on the run detail page, shown
 only for an unpublished run.
+
+Deletion acts on the stored row rather than on the record, so it also deletes a
+run whose stored record this build cannot read. The consoles offer that from the
+runs section's Unreadable tab, which reads
+[`GET /runs/unreadable`](#get-runsunreadable).
+
+### `GET /runs/unreadable`
+
+The stored runs whose records this build cannot read, as `{ runs, total }`,
+newest first by finish time. Each row carries the run's lifted identity — its id,
+timestamps, case slug, version, variant and engine, harness, model, gg
+configuration, test type, run state, published flag and review count — together
+with the `error` its stored record produces when decoded now. An open read.
+
+`offset` and `limit` page it as the numbered mode of [`GET /runs`](#get-runs)
+does, with `limit` defaulting to 50 and clamped to 200, and `total` counts every
+unreadable run the cabinet holds, so a pager sized from it offers only pages that
+hold rows.
+
+This is how a run that appears in no listing stays reachable: an operator reads
+why the record no longer decodes and deletes the run with [`DELETE
+/runs/{id}`](#delete-runsid). A re-push of the same run with a record this build
+can read returns it to the ordinary listings.
 
 ### `GET /runs`
 
@@ -576,9 +605,9 @@ List stored runs, newest first. A `state` query parameter selects which runs:
   has reviewed yet. The automatically graded test types are excluded, since no
   reviewer can clear them from the list.
 - `state=unpublished` — every unpublished run whatever its terminal state,
-  including infrastructure failures and operator-canceled runs, ordered by
-  finish time. This is the console's produced worklist, disjoint from the
-  default published listing.
+  including infrastructure failures and the canceled gg runs that were recorded,
+  ordered by finish time. This is the console's produced worklist, disjoint from
+  the default published listing.
 - `state=publishable` — the publish worklist: the subset of `state=unpublished`
   the publish gate accepts right now, which is a validator-rated completed run,
   a reviewed legacy completed run, or one of the publishable failure tiers. This
@@ -594,9 +623,10 @@ List stored runs, newest first. A `state` query parameter selects which runs:
 `any` and `publishable` are offered only on the summary-plus-offset path below,
 since the cursor listings walk one lifecycle slice at a time.
 
-A `canceled` run, one an operator killed mid-flight, reaches `state=unpublished`
-and `state=any`. It can never be published, carries no review checklist, and is
-not a publishable failure, so the other selectors omit it.
+A `canceled` run, a gg run an operator killed mid-flight, reaches
+`state=unpublished` and `state=any`. It can never be published, carries no review
+checklist, and is not a publishable failure, so the other selectors omit it. A
+killed run of any other harness leaves no record, so it is listed by no selector.
 
 #### Two projections
 
@@ -629,6 +659,11 @@ not a publishable failure, so the other selectors omit it.
   filters, which is enough to drive a jump-to-page pager without walking the
   set. Available with `fields=summary`.
 
+Both projections and both modes serve only the runs whose stored record this
+build can read, and `total` counts exactly those rows, so a numbered pager sized
+from it offers only pages that hold rows. A run this build cannot read is listed
+by [`GET /runs/unreadable`](#get-runsunreadable) instead.
+
 The offset mode additionally accepts:
 
 - Filters `testCase`, `model`, `harness`, `variant`, `version`, and `engine`,
@@ -649,6 +684,12 @@ The offset mode additionally accepts:
   cases. It ANDs with the other filters, `testCase` included, so naming both
   narrows to their intersection, and `latestVersions` composes with it as with
   any case slice.
+- Filter `ggConfigId`, the id of a [gg configuration](/gg/configurations/),
+  narrowing to the runs launched from it. A [coverage
+  cell](/components/backend/coverage/#what-identifies-a-gg-cell) counts by the same
+  id, so a listing narrowed by it holds exactly the runs behind that cell's figure.
+  The id rather than the configuration's name, which an operator rewrites freely and
+  two configurations may share. A run launched from no configuration matches no id.
 - Filter `aesthetic`, one of the aesthetic tiers, narrowing to runs whose
   aggregate aesthetic rating, the worst run-wide tier across their reviews, is
   exactly that tier. A run no review has rated on that channel never matches.
@@ -690,6 +731,10 @@ it carries with each reviewer's identity, whether it is published, its links,
 and the run's ratings and score. Each review carries the `ratings` or the
 run-wide `aesthetic` its run's channel accepts. `404` if unknown. The same
 shape is what the default projection of [`GET /runs`](#get-runs) lists per row.
+
+This endpoint answers with the record, so a run whose stored record this build
+cannot read answers `404` here and is reached through [`GET
+/runs/unreadable`](#get-runsunreadable).
 
 - `validatorRated`: whether the run's case version is
   [validator-rated](/testing/end-to-end/evaluation/#rating-channels), so a
@@ -776,13 +821,63 @@ plan's or ladder's *declaration* and its *schedule* (`outerAxis`, `paused`,
 being written separately — an absent `schedule` on a `PUT` means "leave it alone",
 so saving an edited model list can never un-pause a running plan.
 
+### Pinned cases
+
+Every case list on this surface — a `kind: "case"` group, and a plan's or ladder's
+one-off cases — carries the same `ReviewPlanCase`: `slug`, `version`, `variant`,
+and an optional `engine`. An absent `engine` is the `none` engine, so a list
+written without the field covers the engineless run.
+
+A [cell](/components/backend/coverage/#pinned-cases) is that whole pin crossed with
+the combination, so every cell, launch, and queue entry this surface returns names
+its `engine`, and a cell counts only the runs recorded on it. A run recorded with
+no engine counts as a `none` run. A top-up launches each cell's runs on the cell's
+engine, in a harness launch and a gg launch alike.
+
+A pin naming a version the backend has not ingested, or an engine the pinned
+version does not declare, is accepted and reported by the run rather than refused
+at save time.
+
+### Combinations
+
+Every member list on this surface — a `kind: "combo"` group, a plan's or ladder's
+one-off members, and the body of `POST /ladders/{id}/climbers` — carries the same
+`ReviewPlanCombo`, which takes one of two shapes:
+
+| shape | fields |
+| --- | --- |
+| harness | `harness`, `model`, optional `provider` |
+| gg | `ggConfigId` (`saved:<id>`), `ggSlotModels` (a model per launch slot) |
+
+A member naming a `ggConfigId` is a [gg
+combination](/components/backend/coverage/#combinations) and runs the `gg` harness;
+one without it is a harness combination. The two shapes are unioned into one list
+rather than split across two fields, so a plan crossing both against its cases needs
+no second axis.
+
+Reads add the resolved facts a client would otherwise recompute: the gg
+configuration's current `ggConfigName`, and the `model` its root agent binds to.
+
+A member's runs and a run launched by hand from the same configuration share one
+[coverage cell](/components/backend/coverage/#what-identifies-a-gg-cell), so every
+endpoint that enqueues a gg run applies one rule to the capability set it carries.
+The set's `presetId` must name a gg configuration the token's account holds, or the
+launch is refused with `400`; `POST /gg/runs` and the gg runs of `POST /jobs` and
+`POST /jobs/batch` each answer to it, and a batch reports the refusal at that run's
+own index. The enqueued set records that configuration's **current** name in
+`preset`, so the label the run log slices by is the one the configuration bears
+rather than the one the client last read. A set carrying no `presetId` is enqueued
+as it arrived and belongs to no configuration's cell.
+
 ### Groups and plans
 
 - `GET|POST /coverage-groups`, `PUT|DELETE /coverage-groups/{id}` — reusable member
-  groups, each holding either harness+model combinations (`kind: "combo"`) or
-  version-pinned cases (`kind: "case"`). Plans and ladders reference them by id, so
-  editing a group reshapes everything that points at it. A plan that references a
-  deleted group ignores the dangling id at coverage time; there is no cascade.
+  groups, each holding either combinations (`kind: "combo"`) or
+  [pinned cases](#pinned-cases) (`kind: "case"`). Plans and ladders reference them
+  by id, so editing a group reshapes everything that points at it. A plan that
+  references a deleted group ignores the dangling id at coverage time; there is no
+  cascade. A `combo` member naming a gg configuration the account does not own is
+  refused with `400`.
 - `GET|POST /coverage-plans`, `PUT|DELETE /coverage-plans/{id}` — the plans
   themselves. Reads return `CoveragePlanOut` (declaration + schedule flattened).
   `runsPerCell` is clamped server-side, because a mistyped target is a mistyped
@@ -794,7 +889,8 @@ so saving an edited model list can never un-pause a running plan.
 - `GET /coverage-plans/{id}/coverage` — the full matrix: one cell per
   `case × combination` **in the plan's own emission order**, with the `outerAxis`
   echoed so a reader knows what that order means, and the `runsPending` /
-  `runsUnreviewed` / `runsOutstanding` / `bufferTarget` roll-ups. Schemas:
+  `runsUnreviewed` / `runsOutstanding` / `bufferTarget` roll-ups. A cell whose
+  combination cannot be launched carries the reason in `unlaunchable`. Schemas:
   [`coverage/coverage-plan.schema.json`](https://docs.testcabinet.ai/schema/coverage/coverage-plan.schema.json),
   [`coverage/coverage-matrix.schema.json`](https://docs.testcabinet.ai/schema/coverage/coverage-matrix.schema.json),
   [`coverage/coverage-group.schema.json`](https://docs.testcabinet.ai/schema/coverage/coverage-group.schema.json).
@@ -818,8 +914,8 @@ running", which is otherwise indistinguishable from a wedged queue.
   the ones already at target (counted **globally**), and enqueue **whole cells**
   until the requester has `bufferTarget` runs outstanding. There is no background
   daemon; this endpoint is what enqueues. It answers with the buffer target in
-  force, the occupancy it observed, and every cell it launched with its job ids, in
-  emission order.
+  force, the occupancy it observed, every cell it launched with its job ids in
+  emission order, and every cell it could not launch with why.
 
   It is **serialized per plan** by a claim on the plan row — two console tabs, or
   one fast double review-submit, would otherwise both observe the same shortfall and
@@ -860,8 +956,8 @@ before calling it and must never make it the default.
 ### Ladders
 
 A [ladder](/components/backend/ladders/) is a sibling of the coverage plan, not a
-mode of it: an ordered list of **rungs** (one version-pinned case each, addressed by
-a stable opaque id) that harness+model **climbers** ascend until a **gate** stops
+mode of it: an ordered list of **rungs** (one [pinned case](#pinned-cases) each,
+addressed by a stable opaque id) that **climbers** ascend until a **gate** stops
 them. It reuses the plan's `kind: "combo"` groups, buffer, top-up, queue, and
 halting verbatim, so only its own endpoints are listed here.
 
@@ -872,8 +968,8 @@ halting verbatim, so only its own endpoints are listed here.
   ladder enqueues nothing until it is enabled, and from then on each review feeds it
   (see [A ladder starts disabled](/components/backend/ladders/#a-ladder-starts-disabled)).
   Rungs are matched on their
-  stable ids and **reconciled, never replaced**, so a reorder or a version bump keeps
-  every climber's recorded verdicts. A rung holding a
+  stable ids and **reconciled, never replaced**, so a reorder, a version bump, or an
+  engine re-pin keeps every climber's recorded verdicts. A rung holding a
   [performance](/testing/performance/overview/) or
   [game jam](/testing/game-jam/overview/) case is refused with `400`: neither can
   ever produce a rating for the gate to read, so it would stall the climb silently.
@@ -883,7 +979,8 @@ halting verbatim, so only its own endpoints are listed here.
   stands on with the gate tally behind that answer, and its verdicts. A **read**:
   verdicts the gate has resolved but nobody has recorded are computed live and
   flagged `recorded: false`, then persisted by the next top-up — a `GET` never
-  advances a climber. Schema:
+  advances a climber. A climber whose combination cannot be launched carries the
+  reason in `unlaunchable`. Schema:
   [`coverage/ladder-progress.schema.json`](https://docs.testcabinet.ai/schema/coverage/ladder-progress.schema.json).
 - `POST /ladders/{id}/rungs/order` — reorder the climb by rung id. The body must be
   a permutation of the ladder's current rungs; adding or dropping one is an edit and
@@ -1036,6 +1133,10 @@ party on the caller's behalf, like the OpenRouter form fill.
 The cabinet's whole-of-corpus headline figures, folded over every stored run
 whatever its state or publication. An open read, backing the home page's totals
 band and activity chart.
+
+Every figure here is folded from lifted columns, so the corpus covers the runs
+whose records this build cannot read as well. This count and a listing's `total`
+therefore answer different questions.
 
 - `runs`: the total recorded run count.
 - `tokens`: the summed total tokens, with `unreportedRuns` counting the runs
@@ -1198,9 +1299,17 @@ run's identity and its state *after* the transition:
   "variant": "base",
   "harnessSlug": "claude",
   "modelId": "…",
+  "engine": "simple-2d",
   "state": "running"
 }
 ```
+
+The identity carries `engine` only when the run names one, an absent field being the
+`none` engine as it is on a launch request. It is there because the engine is a
+segment of the run's [cell](/components/backend/coverage/#pinned-cases): a client
+listing one cell's runs keeps another engine's live rows out with it, and an
+in-flight run has no record to read the engine from. `GET /jobs/active` reports the
+same identity.
 
 `kind` is `enqueued` (joined the queue), `state-changed` (moved between two
 non-terminal states), or `finished` (reached `succeeded`, `failed`, or `canceled`,

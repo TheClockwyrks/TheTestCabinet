@@ -7,8 +7,11 @@
 // goes; two degrees is rounding room. The ball is not advanced on the frame it
 // is served, so the launch frame reads the serve itself.
 //
-// Nothing about the serve is posed: `startMatch` opens the countdown and
-// `serve` ends it, and what leaves is whatever the build's own serve produced.
+// Nothing about the serve is posed. `openCountdown` opens a match on its hold
+// and `endHolds` runs that hold out; the LAUNCH is the build's own, on the frame
+// after, and what leaves is whatever its own serve produced. The field is
+// emptied to that one ball first — a serve is about the ball and its aim, and
+// nothing else on the field takes any part in it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
@@ -18,6 +21,9 @@ import {
   ball0,
   captureReplay,
   createHarness,
+  endHolds,
+  isolateBall,
+  openCountdown,
   type Harness,
 } from "../harness";
 
@@ -40,13 +46,12 @@ afterEach(async () => {
 });
 
 it("serves the ball at SERVE_ANGLE from horizontal", async () => {
-  const { debug } = harness;
-  await debug.reset();
-  await debug.startMatch("versus");
+  await openCountdown(harness, "versus");
+  await isolateBall(harness);
 
   const launched = await captureReplay(harness, "serve", async () => {
     await harness.advance(HELD_TICKS);
-    await debug.serve();
+    await endHolds(harness);
 
     const swept = await harness.until((s) => s.screen === "playing", {
       maxFrames: 60,

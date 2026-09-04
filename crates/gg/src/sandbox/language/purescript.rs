@@ -113,11 +113,13 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, LIB_ACCESS_NAME, PrepareContext, PrepareFailure, PreparedModule,
-    PreparedProgram, ProgramLanguage, spell,
+    PreparedProgram, ProgramLanguage, WORKSPACE_TREE_VIEW, spell,
 };
 use crate::docs::MAX_SEARCH_LIMIT;
 use crate::sandbox::locate::Locations;
-use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::sandbox::operations::{
+    DOCS_SEARCH, FILES_TREE, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT,
+};
 
 #[path = "purescript.compile.rs"]
 pub(super) mod compile;
@@ -199,6 +201,12 @@ impl ProgramLanguage for PureScript {
         Some("purs")
     }
 
+    /// [What `purs` says a program could not import](compile::unresolved_imports), read out of the
+    /// `ModuleNotFound` wording this arm's own diagnostics carry.
+    fn unresolved_imports(&self, diagnostic: &str) -> Vec<String> {
+        compile::unresolved_imports(diagnostic)
+    }
+
     /// Unpack the embedded library tree — 1.4 MB into 1,430 files, once per machine — so the first
     /// code turn is not charged for it.
     ///
@@ -225,14 +233,23 @@ impl ProgramLanguage for PureScript {
     /// *told*: see [`modules`].
     fn prepare_module(
         &self,
+        key: &str,
         source: &str,
         context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {
-        compile::check_module(source, context)?;
+        compile::compile_module(key, source, context)?;
         Ok(PreparedModule {
             source: source.to_string(),
             exports: modules::exports(source),
         })
+    }
+
+    /// **The `purs` project is the agent's.** The staged library set and the compiler's own output
+    /// directory are laid out once for the agent and kept across its preparations, which is what
+    /// lets a module compiled at the read that bound it stay compiled and what keeps a turn from
+    /// re-linking 1,430 library files.
+    fn persistent_work(&self) -> &'static [&'static str] {
+        compile::PROJECT_DIRS
     }
 
     /// `.purs`, and nothing else.
@@ -270,14 +287,14 @@ impl ProgramLanguage for PureScript {
     ///
     /// A frame the engine reports as a position in the bundle therefore reads back as
     /// `program.purs:11:27` — the model's own file at the line it wrote — and a frame in a library
-    /// or in this arm's SDK reads as that PureScript module's own path in the shipped tree. The name
-    /// each frame takes is the one the map itself records for the token, rather than a single name
-    /// gg picks, because a bundle is made of many sources and only the map knows which one a frame
-    /// came from.
+    /// reads as that PureScript module's own path in the shipped tree. The name each frame takes is
+    /// the one the map itself records for the token, rather than a single name gg picks, because a
+    /// bundle is made of many sources and only the map knows which one a frame came from.
     ///
-    /// Two sources in that map are neither the model's nor a library's, and their frames are struck
+    /// Some sources in that map are neither the model's nor a library's, and their frames are struck
     /// rather than reported: [the entry module](compile::ENTRY_FILE) gg generates for the bundler,
-    /// and any position in the bundle the composed map resolves nothing for.
+    /// [this arm's own SDK](compile::ggs_own_sources) under both the names it carries in the map, and
+    /// any position in the bundle the composed map resolves nothing for.
     ///
     /// One map covers every frame, code modules included: a module is compiled into the program's
     /// own project, so its JavaScript is part of the one bundle and its `Lib.<Key>.purs` is one of
@@ -288,7 +305,7 @@ impl ProgramLanguage for PureScript {
             None,
             program,
         )))
-        .map(|locations| locations.hiding([compile::ENTRY_FILE.to_string()]))
+        .map(|locations| locations.hiding(compile::ggs_own_sources()))
     }
 
     /// This language's catalogue, parsed once and checked to be **this** language's.
@@ -325,12 +342,15 @@ impl ProgramLanguage for PureScript {
     /// [A module whose `main` searches every module it was handed at once and then folds a `for_`
     /// over the names](self::bootstrap_program), with both calls resolved from this language's own
     /// catalogue and every module the program calls into imported by name.
-    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str], tree: Option<u32>) -> String {
         bootstrap_program(
             &spell(self, DOCS_SEARCH),
             &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            &spell(self, FILES_TREE),
+            &spell(self, VIEWS_OPEN_TEXT),
             modules,
             docs,
+            tree,
         )
     }
 }
@@ -505,8 +525,11 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
 pub(super) fn bootstrap_program(
     search: &str,
     open_docs_view: &str,
+    tree_call: &str,
+    open_text: &str,
     modules: &[&str],
     docs: &[&str],
+    tree: Option<u32>,
 ) -> String {
     let listed = |names: &[&str]| -> String {
         let mut entries = String::new();
@@ -521,42 +544,62 @@ pub(super) fn bootstrap_program(
         entries
     };
     let functions = listed(docs);
-    // Two calls where there is a module to search for, and on this arm each needs its own import
-    // line — unless the SDK ever files both under one module, in which case importing it twice would
-    // be the compile error rather than the program. Where there is none, there is one call, and the
-    // documentation module is not imported at all: `purs` calls a qualified import nothing names
-    // redundant and says so, which is not a thing gg's own program should be warned about.
-    let docs_module = module_of(search);
-    let views_module = module_of(open_docs_view);
-    let views_import = format!("import {views_module} as {views_module}\n");
-    let (imports, paths, main) = match modules.is_empty() {
-        true => (
-            views_import,
-            String::new(),
-            format!("main = for_ functions {open_docs_view}\n"),
+
+    // One qualified import per module the program really calls into, deduplicated and ordered:
+    // `purs` calls a qualified import nothing names redundant and says so, which is not a thing gg's
+    // own program should be warned about.
+    let mut imported: Vec<&str> = Vec::new();
+    if tree.is_some() {
+        imported.push(module_of(tree_call));
+        imported.push(module_of(open_text));
+    }
+    if !modules.is_empty() {
+        imported.push(module_of(search));
+    }
+    imported.push(module_of(open_docs_view));
+    imported.sort_unstable();
+    imported.dedup();
+    let imports: String = imported
+        .iter()
+        .map(|module| format!("import {module} as {module}\n"))
+        .collect();
+
+    let paths = match modules.is_empty() {
+        true => String::new(),
+        false => format!(
+            "modules :: Array String\n\
+             modules =\n\
+             {}  ]\n\
+             \n",
+            listed(modules)
         ),
-        false => {
-            let mut imports = format!("import {docs_module} as {docs_module}\n");
-            if views_module != docs_module {
-                imports.push_str(&views_import);
-            }
-            (
-                imports,
-                format!(
-                    "modules :: Array String\n\
-                     modules =\n\
-                     {}  ]\n\
-                     \n",
-                    listed(modules)
-                ),
-                format!(
-                    "main = do\n\
-                     \x20 void ({search} {{ modules, limit: {MAX_SEARCH_LIMIT} }})\n\
-                     \x20 for_ functions {open_docs_view}\n"
-                ),
-            )
+    };
+
+    // The statements `main` runs, in the order the model reads them.
+    let mut statements: Vec<String> = Vec::new();
+    if let Some(depth) = tree {
+        statements.push(format!(
+            "{tree_call} {{ depth: {depth} }} >>= {open_text} {}",
+            serde_json::Value::String(WORKSPACE_TREE_VIEW.to_string())
+        ));
+    }
+    if !modules.is_empty() {
+        statements.push(format!(
+            "void ({search} {{ modules, limit: {MAX_SEARCH_LIMIT} }})"
+        ));
+    }
+    statements.push(format!("for_ functions {open_docs_view}"));
+    let main = match statements.len() {
+        1 => format!("main = {}\n", statements[0]),
+        _ => {
+            let body: String = statements
+                .iter()
+                .map(|statement| format!("\x20 {statement}\n"))
+                .collect();
+            format!("main = do\n{body}")
         }
     };
+
     format!(
         "module Main where\n\
          \n\

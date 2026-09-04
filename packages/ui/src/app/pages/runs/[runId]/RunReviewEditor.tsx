@@ -54,6 +54,7 @@ import {
   isRating,
   isToolchainGated,
   reviewAesthetic,
+  reviewItemsForEngine,
   scoreChecklist,
   subItemVerdictId,
   validatorReviewScore,
@@ -386,6 +387,15 @@ export function RunReviewEditor({
   // Load the case's declared checklist items from the backend (common + this
   // variant's own), seeding verdicts from the account's own prior review so
   // re-reviewing keeps that reviewer's earlier answers.
+  //
+  // The backend serves the case's whole declared checklist, which is engine-
+  // independent; this run's checklist is that list restricted to the run's own
+  // engine. A point whose validator names a set of engines is meaningful only
+  // under those, so a run built on any other engine does not carry it: it was
+  // never driven, it must not be shown here, and a verdict recorded against it
+  // would be an override of a point the run's checklist does not carry — which
+  // `POST /runs/{id}/reviews` refuses outright (the backend validates the
+  // submitted checklist against `review_items_for_engine`).
   useEffect(() => {
     if (!backend) return;
     let cancelled = false;
@@ -396,8 +406,9 @@ export function RunReviewEditor({
         subject.testCaseVersion,
         subject.variant,
       )
-      .then((loaded) => {
+      .then((declared) => {
         if (cancelled) return;
+        const loaded = reviewItemsForEngine(declared, subject.engineSlug);
         // Verdicts are keyed by verdict id — the item's own id when it is graded
         // as a whole, or a `<item>.<sub>` composite per sub-item. Seed each draft
         // from, in precedence: the account's own prior verdict of the same id (a
@@ -446,6 +457,7 @@ export function RunReviewEditor({
     subject.testCaseSlug,
     subject.testCaseVersion,
     subject.variant,
+    subject.engineSlug,
     account?.id,
   ]);
 

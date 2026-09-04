@@ -14,12 +14,15 @@
 // (specs/instrumentation.md "Snapshot shape"), must gain 1.0 either way.
 //
 // The second takes one rules decision — a refused and an accepted segment on
-// R2_FOREIGN — twice: once with ZERO frames advanced between the pointer
-// calls, on a board that has never been rendered at all, and once with a
-// frame advanced between every call. The two runs must leave identical
-// beams, and each call's effect is asserted in its own aftermath, so the
-// decision demonstrably came from the board and the beams and not from
-// anything a frame or the renderer holds.
+// R2_FOREIGN — twice, and the contrast is whether the board has been RENDERED
+// at all: once on a board posed and never drawn, once on the same board after
+// five frames have drawn it. That is the contrast the spec sentence names,
+// since what it forbids is the decision reading anything the renderer holds.
+// No frame falls between the pointer calls in either run: specs/state.md has
+// `pointer` refreshed from the runtime layer in every update, so a frame
+// mid-gesture would grade the pointer mirror rather than the renderer. The two
+// runs must leave identical beams, and each call's effect is asserted in its
+// own aftermath.
 
 import { ConstantClock } from "@test-cabinet/simple-2d";
 import { afterEach, beforeEach, it } from "vitest";
@@ -88,16 +91,12 @@ it("adds 1.0 to simTime whether one second is one frame or sixty", async () => {
 it("decides a segment from the board and the beams alone", async () => {
   // The pointer sequence: press the triangle emitter T(0,0), move to the
   // foreign lens s(1,1) — refused by R2 — then to the own lens t(1,0) —
-  // accepted — and release. `betweenFrames` says whether a frame runs
-  // between the calls; the outcome must not depend on it.
-  const drive = async (betweenFrames: boolean): Promise<CellRef[]> => {
-    const step = async (): Promise<void> => {
-      if (betweenFrames) await h.advance(1);
-    };
+  // accepted — and release. `rendered` says whether the board was drawn
+  // before the gesture; the outcome must not depend on it.
+  const drive = async (rendered: boolean): Promise<CellRef[]> => {
     h.debug.loadBoard(ROWS);
-    await step();
+    if (rendered) await h.advance(5);
     h.debug.pointerDown(cellX(0, 3), cellY(0, 3));
-    await step();
     h.debug.pointerMove(cellX(1, 3), cellY(1, 3));
     const refused = h.snapshot();
     assertEqual(
@@ -108,16 +107,13 @@ it("decides a segment from the board and the beams alone", async () => {
       "the move onto the foreign lens is refused (specs/beams.md R2)",
     );
     assertNotNull(refused.tracing, "a refused move leaves the trace live");
-    await step();
     h.debug.pointerMove(cellX(1, 3), cellY(0, 3));
-    await step();
     h.debug.pointerUp();
-    await step();
     return h.snapshot().beams.triangle?.cells ?? [];
   };
 
-  // Zero frames between the calls, on a board never rendered at all: the
-  // rules had nothing but the board and the beams to read.
+  // On a board that has never been rendered: the rules had nothing but the
+  // board and the beams to read.
   const unrendered = await drive(false);
   assertDeepEqual(
     unrendered,
@@ -125,18 +121,18 @@ it("decides a segment from the board and the beams alone", async () => {
       { col: 0, row: 0 },
       { col: 1, row: 0 },
     ],
-    "the refused segment is absent and the accepted one drawn, with zero " +
-      "frames advanced between the pointer calls",
+    "the refused segment is absent and the accepted one drawn, on a board " +
+      "that has never been rendered",
   );
 
-  // The same calls with a frame between each resolve identically.
+  // The same calls on a board five frames have drawn resolve identically.
   const rendered = await drive(true);
   await h.advance(1);
   captureStill(h, "drive");
   assertDeepEqual(
     rendered,
     unrendered,
-    "the same pointer calls resolve identically with and without frames " +
-      "between them",
+    "the same pointer calls resolve identically on a board that has been " +
+      "rendered and on one that never has",
   );
 });

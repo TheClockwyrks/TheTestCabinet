@@ -1,7 +1,7 @@
 // Wick — the screens wrapped around the simulation (specs/ui.md,
 // specs/controls.md, specs/instrumentation.md "A deterministic core").
 //
-// The eight screens, the menus, the tick accumulator, and the routing of one
+// The nine screens, the menus, the tick accumulator, and the routing of one
 // action to what it does on the screen the game is on. Only `playing` ticks;
 // every other screen freezes the world exactly as the tick that left
 // `playing` left it. Every function here writes the world's live `WickState`
@@ -9,16 +9,20 @@
 // menu sounds goes out through the cue sink the caller hands in, so the game
 // mode binds the world's cue bus and the debug surface binds nothing, since a
 // pose sounds nothing.
+//
+// What a menu item DOES lives here once, in `confirmItem`, so the pointer's
+// click in `src/pointer.ts` takes an item exactly as `confirm` on it does.
 
 import {
+  ALMANAC_ROWS,
+  ALMANAC_TABS,
   CUES,
-  END_ITEMS,
   TICK_DT,
   TICK_EPSILON,
-  TITLE_ITEMS,
   type ActionName,
   type CueName,
 } from "./constants";
+import { menuLength } from "./menus";
 import { Rng } from "./rng";
 import { makeTickContext } from "./sim/context";
 import { acceptOffer, openLevelUp } from "./sim/progression";
@@ -41,10 +45,11 @@ export const SILENT: CueSink = () => undefined;
 export const SCREEN_ACTIONS: Readonly<Record<Screen, readonly ActionName[]>> = {
   title: ["up", "down", "confirm", "mute"],
   howto: ["back", "mute"],
-  playing: ["pause", "mute"],
+  almanac: ["up", "down", "left", "right", "back", "mute"],
+  playing: ["pause", "back", "mute"],
   levelup: ["up", "down", "confirm", "mute"],
   chest: ["confirm", "mute"],
-  paused: ["pause", "back", "mute"],
+  paused: ["up", "down", "confirm", "pause", "back", "mute"],
   fallen: ["up", "down", "confirm", "back", "mute"],
   dawn: ["up", "down", "confirm", "back", "mute"],
 };
@@ -80,10 +85,15 @@ export function wantedLoops(state: WickState): CueName[] {
   return wanted;
 }
 
-/** Enters `screen` with its top menu entry highlighted. */
+/**
+ * Enters `screen` with its top menu entry highlighted and the almanac's two
+ * indices back at `0`, which is what entering any screen leaves them at.
+ */
 function enter(state: WickState, screen: Screen): void {
   state.screen = screen;
   state.menuIndex = 0;
+  state.almanacTab = 0;
+  state.almanacScroll = 0;
 }
 
 // ---- Transitions ------------------------------------------------------------
@@ -106,6 +116,13 @@ export function toTitle(state: WickState): void {
 export function toHowto(state: WickState): void {
   state.run = idleRun();
   enter(state, "howto");
+  state.accumulator = 0;
+}
+
+/** Discard the run and enter `almanac`, on its first tab and first entry. */
+export function toAlmanac(state: WickState): void {
+  state.run = idleRun();
+  enter(state, "almanac");
   state.accumulator = 0;
 }
 
@@ -174,26 +191,110 @@ export function setSwitch(state: WickState, name: SwitchName, on: boolean) {
 
 // ---- Menus ------------------------------------------------------------------
 
-/** How many items the current screen's menu holds. */
-export function menuLength(state: WickState): number {
-  switch (state.screen) {
-    case "title":
-      return TITLE_ITEMS.length;
-    case "levelup":
-      return state.run.offers.length;
-    case "fallen":
-    case "dawn":
-      return END_ITEMS.length;
-    default:
-      return 0;
-  }
+/**
+ * Hold `almanacScroll` around the highlight: it becomes the lesser of itself
+ * and `menuIndex`, then the greater of that and the first row that keeps the
+ * highlight in view, and is held within the list. Run after every move of
+ * `menuIndex` on `almanac`, whichever moved it.
+ */
+export function followScroll(state: WickState): void {
+  const count = menuLength(state);
+  const near = Math.min(state.almanacScroll, state.menuIndex);
+  const far = Math.max(near, state.menuIndex - ALMANAC_ROWS + 1);
+  state.almanacScroll = Math.max(
+    0,
+    Math.min(far, Math.max(0, count - ALMANAC_ROWS)),
+  );
 }
 
+/** Move the almanac's list by `rows`, holding it within the shown tab. */
+export function scrollAlmanac(state: WickState, rows: number): void {
+  if (state.screen !== "almanac" || rows === 0) return;
+  const last = Math.max(0, menuLength(state) - ALMANAC_ROWS);
+  state.almanacScroll = Math.max(0, Math.min(state.almanacScroll + rows, last));
+}
+
+/** Put the highlight on `index`, sounding `menu-move` when it moved. */
+export function highlightTo(
+  state: WickState,
+  index: number,
+  sink: CueSink,
+): void {
+  if (index < 0 || index >= menuLength(state)) return;
+  if (index !== state.menuIndex) {
+    state.menuIndex = index;
+    sink(CUES.menuMove);
+  }
+  if (state.screen === "almanac") followScroll(state);
+}
+
+/** Move the highlight by `delta`, wrapping at both ends. */
 function moveHighlight(state: WickState, delta: number, sink: CueSink): void {
   const length = menuLength(state);
   if (length === 0) return;
   state.menuIndex = (state.menuIndex + delta + length) % length;
   sink(CUES.menuMove);
+  if (state.screen === "almanac") followScroll(state);
+}
+
+/** Show the tab at `index`, from the top of its list. */
+export function selectTab(
+  state: WickState,
+  index: number,
+  sink: CueSink,
+): void {
+  if (state.screen !== "almanac") return;
+  if (index < 0 || index >= ALMANAC_TABS.length) return;
+  if (index === state.almanacTab) return;
+  state.almanacTab = index;
+  state.menuIndex = 0;
+  state.almanacScroll = 0;
+  sink(CUES.menuMove);
+}
+
+/** Move the almanac's tab by `delta`, wrapping at both ends. */
+function moveTab(state: WickState, delta: number, sink: CueSink): void {
+  const length = ALMANAC_TABS.length;
+  selectTab(state, (state.almanacTab + delta + length) % length, sink);
+}
+
+/**
+ * Take the highlighted item of `onScreen`'s menu: what `confirm` does there,
+ * and what a click inside an item's rectangle does. A screen whose menu
+ * carries no confirmation, `almanac` among them, takes nothing.
+ */
+export function confirmItem(
+  state: WickState,
+  onScreen: Screen,
+  sink: CueSink,
+): void {
+  switch (onScreen) {
+    case "title":
+      sink(CUES.menuConfirm);
+      if (state.menuIndex === 0) startRun(state);
+      else if (state.menuIndex === 1) toAlmanac(state);
+      else toHowto(state);
+      return;
+    case "levelup":
+      choose(state, state.menuIndex, sink);
+      return;
+    case "chest":
+      closeChest(state);
+      return;
+    case "paused":
+      sink(CUES.menuConfirm);
+      if (state.menuIndex === 0) resume(state);
+      else toTitle(state);
+      return;
+    case "fallen":
+    case "dawn":
+      sink(CUES.menuConfirm);
+      if (state.menuIndex === 0) startRun(state);
+      else toTitle(state);
+      return;
+    default:
+      return;
+  }
 }
 
 /**
@@ -213,39 +314,41 @@ export function handleAction(
     case "title":
       if (action === "up") moveHighlight(state, -1, sink);
       else if (action === "down") moveHighlight(state, 1, sink);
-      else if (action === "confirm") {
-        sink(CUES.menuConfirm);
-        if (state.menuIndex === 0) startRun(state);
-        else toHowto(state);
-      }
+      else if (action === "confirm") confirmItem(state, onScreen, sink);
       break;
     case "howto":
       if (action === "back") toTitle(state);
       break;
+    case "almanac":
+      if (action === "up") moveHighlight(state, -1, sink);
+      else if (action === "down") moveHighlight(state, 1, sink);
+      else if (action === "left") moveTab(state, -1, sink);
+      else if (action === "right") moveTab(state, 1, sink);
+      else if (action === "back") toTitle(state);
+      break;
     case "playing":
-      if (action === "pause") pause(state);
+      if (action === "pause" || action === "back") pause(state);
       break;
     case "levelup":
       if (action === "up") moveHighlight(state, -1, sink);
       else if (action === "down") moveHighlight(state, 1, sink);
-      else if (action === "confirm") choose(state, state.menuIndex, sink);
+      else if (action === "confirm") confirmItem(state, onScreen, sink);
       break;
     case "chest":
-      if (action === "confirm") closeChest(state);
+      if (action === "confirm") confirmItem(state, onScreen, sink);
       break;
     case "paused":
-      if (action === "pause") resume(state);
-      else if (action === "back") toTitle(state);
+      if (action === "up") moveHighlight(state, -1, sink);
+      else if (action === "down") moveHighlight(state, 1, sink);
+      else if (action === "confirm") confirmItem(state, onScreen, sink);
+      else if (action === "pause" || action === "back") resume(state);
       break;
     case "fallen":
     case "dawn":
       if (action === "up") moveHighlight(state, -1, sink);
       else if (action === "down") moveHighlight(state, 1, sink);
-      else if (action === "confirm") {
-        sink(CUES.menuConfirm);
-        if (state.menuIndex === 0) startRun(state);
-        else toTitle(state);
-      } else if (action === "back") toTitle(state);
+      else if (action === "confirm") confirmItem(state, onScreen, sink);
+      else if (action === "back") toTitle(state);
       break;
   }
 }

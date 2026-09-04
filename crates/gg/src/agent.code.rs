@@ -61,7 +61,7 @@ use crate::sandbox::{
     CONTEXT_COMPACT, CONTEXT_EVICT_FILE_VIEW, CONTEXT_SEARCH_ARCHIVE, DELEGATION_EXEC,
     DELEGATION_FORK, DELEGATION_SEND_MESSAGE, DELEGATION_SPAWN_SUBAGENT,
     DELEGATION_TRANSITION_STATE, DELEGATION_WAIT_FOR_SUBAGENTS, DocSearchQuery, DocSearchResult,
-    FILES_EDIT_FILE, FILES_LIST_DIR, FILES_READ_FILE, FILES_SEARCH, FILES_WRITE_FILE,
+    FILES_EDIT_FILE, FILES_LIST_DIR, FILES_READ_FILE, FILES_SEARCH, FILES_TREE, FILES_WRITE_FILE,
     MEMORIES_CREATE_MEMORY, MEMORIES_DELETE_MEMORY, MEMORIES_EDIT_MEMORY, MEMORIES_READ_MEMORY,
     MEMORIES_SEARCH_MEMORIES, MEMORIES_UPDATE_MEMORY, MEMORIES_WRITE_MEMORY, OperationApi,
     OperationId, PreparedProgram, ProgramError, ProgramLanguage, ProgramScope, RunEnding,
@@ -75,8 +75,8 @@ use crate::tools::{
     CreateMemoryTool, DeleteMemoryTool, EditFileTool, EditMemoryTool, EvictFileViewTool,
     ListDirTool, OffloadPolicy, OwnedStructured, ReadMemoryTool, ReadSkillTool, RemoveEpicTool,
     RemoveIssueTool, RemoveTaskTool, SearchArchiveTool, SearchMemoriesTool, SearchTool,
-    SetBlockedByTool, SetIssueBlockedByTool, UpdateIssueTool, UpdateMemoryTool, UpdateTaskTool,
-    WriteFileTool, WriteMemoryTool, clip_line, read_only_refusal, run_command,
+    SetBlockedByTool, SetIssueBlockedByTool, TreeTool, UpdateIssueTool, UpdateMemoryTool,
+    UpdateTaskTool, WriteFileTool, WriteMemoryTool, clip_line, read_only_refusal, run_command,
 };
 
 // ---------------------------------------------------------------------------
@@ -790,7 +790,8 @@ fn sandbox_error_type(error: &SandboxError) -> TurnErrorType {
 ///   already accepted, or the language's **compiler** failing to finish: fatal, fed back to nobody,
 ///   charged to nothing;
 /// * the **model's program**: the language's diagnostic, verbatim, under `Compiler error`, with the
-///   arm's [library set](crate::sandbox::library_set) after it where its catalogue declares one;
+///   [supporting material](compiler_error_body) drawn from the arm's library set after it where its
+///   catalogue declares one;
 /// * a sandbox **ceiling**: the ceiling's own words under `Runtime error`.
 ///
 /// Lifted out of [`run_code_turn`] rather than left inline because the split between the compiler
@@ -856,8 +857,8 @@ fn sandbox_failure_decision(
         // `Display` prefixes it ("the program did not compile: …"), which the `Compiler error`
         // heading already says, so the inner error is what goes out.
         //
-        // The one thing that goes out beside it is the arm's library set, which is what the
-        // compiler measured the program against and is the reason no prompt carries a package
+        // The one thing that goes out beside it is drawn from the arm's library set, which is what
+        // the compiler measured the program against and is the reason no prompt carries a package
         // inventory. It is part of the diagnostic rather than advice about it: a program refused
         // for naming a package this arm does not carry is answered here or nowhere.
         error @ SandboxError::Prepare(prepare) => CodeTurnOutcome::Continue {
@@ -895,19 +896,30 @@ fn sandbox_failure_decision(
 }
 
 /// The body of a `Compiler error` message: the arm's diagnostic, and the
-/// [library set](crate::sandbox::library_set) its catalogue declares.
+/// [supporting material](crate::sandbox::supporting) drawn from the library set its catalogue
+/// declares.
 ///
 /// The set is delivered here rather than in the system prompt because the mistake it prevents — a
 /// program written against a package this arm does not carry — is one the compiler **detects**, and
 /// a detectable fact is delivered when it is detected. A model that never writes an import never
-/// reads the set; the one that did reads it beside the diagnostic that made it relevant.
+/// reads it; the one that did reads it beside the diagnostic that made it relevant.
+///
+/// Which of the set is delivered is decided from the diagnostic. The arm reads the imports its own
+/// compiler could not resolve
+/// ([`unresolved_imports`](crate::sandbox::ProgramLanguage::unresolved_imports)) and the material is
+/// the modules that match them, so an ordinary misspelling is answered with the name it meant rather
+/// than with an inventory. A diagnostic naming no import, and one whose names match nothing, is
+/// answered with the whole set. Either way the material is held to
+/// [one bound](crate::sandbox::supporting) every arm shares, so what a rejection costs the next turn
+/// is comparable across arms.
 ///
 /// It goes after the diagnostic, separated by a blank line, so the compiler's own first line is
 /// still the first line of the message. An arm whose catalogue declares no set — the two whose
 /// programs get their runtime's own standard library and nothing else — is answered with the
 /// diagnostic alone, with no trailing blank line to say a section was omitted.
 fn compiler_error_body(language: GgProgramLanguage, diagnostic: &str) -> String {
-    match sandbox::library_set(sandbox::language(language).catalogue()) {
+    let arm = sandbox::language(language);
+    match sandbox::supporting(arm.catalogue(), &arm.unresolved_imports(diagnostic)) {
         Some(libraries) => format!("{diagnostic}\n\n{libraries}"),
         None => diagnostic.to_string(),
     }
@@ -1552,6 +1564,10 @@ async fn run_code_program(
     // into the api and before a single line of the program runs, because a view the program itself
     // opens has been read by nobody.
     let documented = documented_operations(&context, &docs);
+    // The agent's compile workspace, taken off the registry before it moves into the api. Every
+    // program in the chain below prepares on it, which is the same tree the modules those programs
+    // link were prepared on.
+    let compile_workspace = knowledge.workspace().clone();
     // The production `OperationApi`: the loop's own per-turn state, servicing each typed call inline. The
     // mutable, reclaimed-after-the-turn state moves in; the rest is cloned from the turn (all
     // Arc-backed, so cheap) or captured fresh (`Handle::current()` bridges the delegation family
@@ -1614,6 +1630,7 @@ async fn run_code_program(
                     modules: &modules,
                     ending: RunEnding::Role(role),
                 },
+                &compile_workspace,
                 limits,
                 deadline,
                 api,
@@ -1963,11 +1980,13 @@ fn run_program_charged(
     language: &'static dyn ProgramLanguage,
     program: &str,
     scope: ProgramScope<'_>,
+    workspace: &crate::sandbox::AgentWorkspace,
     limits: SandboxLimits,
     deadline: Option<Instant>,
     api: LoopOperationApi,
 ) -> (SandboxOutcome, LoopOperationApi) {
-    let (mut outcome, mut api) = run_program(language, program, scope, limits, deadline, api);
+    let (mut outcome, mut api) =
+        run_program(language, program, scope, workspace, limits, deadline, api);
     outcome.compile = SandboxOutcome::summed_compile(outcome.compile, api.knowledge.take_compile());
     (outcome, api)
 }
@@ -3229,6 +3248,11 @@ impl OperationApi for LoopOperationApi {
     fn list_dir(&mut self, path: Option<String>) -> ToolOutcome {
         self.serviced(FILES_LIST_DIR, json!({ "path": path }), |api| {
             ListDirTool.list(&api.tool_ctx, path.clone())
+        })
+    }
+    fn tree(&mut self, path: Option<String>, depth: Option<u32>) -> ToolOutcome {
+        self.serviced(FILES_TREE, json!({ "path": path, "depth": depth }), |api| {
+            TreeTool.tree(&api.tool_ctx, path.clone(), depth)
         })
     }
     fn search(&mut self, query: String, path: Option<String>, limit: Option<u32>) -> ToolOutcome {

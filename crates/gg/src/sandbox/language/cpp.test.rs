@@ -182,7 +182,7 @@ fn the_generated_documentation_program_is_a_translation_unit() {
 #[test]
 fn the_opening_program_is_a_translation_unit() {
     let limit = crate::docs::MAX_SEARCH_LIMIT;
-    let program = cpp().bootstrap_program(&["files", "views"], &["read_file"]);
+    let program = cpp().bootstrap_program(&["files", "views"], &["read_file"], None);
     assert_eq!(
         program,
         format!(
@@ -200,7 +200,7 @@ fn the_opening_program_is_a_translation_unit() {
     // An agent holding neither `files` nor `shell` is handed no modules, and a search that names no
     // module and asks no question is refused — so that program makes none, and carries no include
     // for the header that declared the call it no longer writes.
-    let unfiltered = cpp().bootstrap_program(&[], &["read_file"]);
+    let unfiltered = cpp().bootstrap_program(&[], &["read_file"], None);
     assert!(
         !unfiltered.contains("gg::docs::search") && !unfiltered.contains("#include <gg/docs.hpp>"),
         "an opening program with nothing to search must not search, nor include what it would have \

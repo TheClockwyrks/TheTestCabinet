@@ -62,8 +62,8 @@
 //! Nothing. gg catches nothing, describes nothing and re-reports nothing. A program that throws dies
 //! the way TeaVM kills it — `printHeader(); printStack(); abort();` — and what the model reads is the
 //! exception's own message and the model's own file and lines, off the guest's standard error, which
-//! is where [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) says to read
-//! it. The one thing gg changed is that upstream TeaVM printed the frames and not the header; see
+//! is where [the failure rule](https://docs.testcabinet.ai/gg/responses-as-code/invariants/#failures) says to
+//! read it. The one thing gg changed is that upstream TeaVM printed the frames and not the header; see
 //! `packages/gg-sandbox-jvm/vendor/org/teavm/runtime/ExceptionHandling.java`.
 //!
 //! There is no source map on this road and no offset anywhere in this file. A location arrives in the
@@ -171,10 +171,6 @@ const SDK_FILE: &str = "gg-sdk.jar";
 /// than gg's.
 pub(super) const PROGRAM_FILE: &str = "Program.java";
 
-/// The file a code module is **checked** in at the read that binds it, named for the class that read
-/// compiles it under.
-pub(super) const MODULE_FILE: &str = "Module.java";
-
 /// The file gg's generated entry class is written into.
 const ENTRY_FILE: &str = "GgEntry.java";
 
@@ -191,20 +187,19 @@ fn module_file(key: &str) -> String {
     format!("{key}.java")
 }
 
-/// Where that file is written: a directory of the module's own, so no two modules and no program
-/// share a compile's inputs.
-fn module_source(key: &str) -> String {
-    format!("{MODULE_ROOT}/{key}/{}", module_file(key))
+/// Where that file is written: this key's own directory in the
+/// [loaded-module band](crate::sandbox::Workspace::open_module) of the agent's compile workspace,
+/// which is where a build survives the preparation that made it — named by the seam rather than
+/// spelled here, so no two modules and no program share a compile's inputs.
+fn module_source(workspace: &Workspace, key: &str) -> String {
+    workspace.module_path(key, &module_file(key))
 }
 
 /// Where its classes are written, and the path that goes on the **classpath** of every program
 /// compiled against it.
-fn module_classes(key: &str) -> String {
-    format!("{MODULE_ROOT}/{key}/{PROGRAM_CLASSES}")
+fn module_classes(workspace: &Workspace, key: &str) -> String {
+    workspace.module_path(key, PROGRAM_CLASSES)
 }
-
-/// The directory an agent's code modules are built under, inside the preparation's own workspace.
-const MODULE_ROOT: &str = "modules";
 
 /// What TeaVM is asked to write: a `wasm32` core module, which is what the `.wasm` extension selects
 /// in [the shared driver](super::super::jvm).
@@ -288,10 +283,10 @@ pub(super) fn compile_program(
 /// Compile one model program into a component, or say why it could not be.
 ///
 /// `modules` are this agent's loaded code [skills](crate::skills) and [memories](crate::memories),
-/// each already through [`compile_module`]. Every one of them is compiled **first, and on its own**
-/// ([`build_module`]), and what this compile is given is the directory of class files that compile
-/// wrote — a classpath entry, exactly as this arm's SDK jar is. The program's own compile therefore
-/// reads two files, both of which name only what the model declared.
+/// each already compiled by [`compile_module`] at the read that bound it. What this compile is
+/// given is the directory of class files that compile wrote — a classpath entry, exactly as this
+/// arm's SDK jar is. The program's own compile therefore reads two files, both of which name only
+/// what the model declared.
 fn compile(
     program: &str,
     modules: &[CodeModule],
@@ -308,7 +303,7 @@ fn compile(
 
     let mut classpath: Vec<String> = Vec::new();
     for module in modules {
-        classpath.push(build_module(workspace, module)?);
+        classpath.push(bind_module(workspace, module)?);
     }
 
     let files = [PROGRAM_FILE.to_string(), ENTRY_FILE.to_string()];
@@ -333,96 +328,117 @@ fn compile(
     jvm::component::componentize(&module).map_err(PrepareFailure::Toolchain)
 }
 
-/// Check a code [skill](crate::skills)'s or [memory](crate::memories)'s Java, and report the names
-/// its namespace offers.
+/// Compile a code [skill](crate::skills)'s or [memory](crate::memories)'s Java into the classes a
+/// program is compiled against, and report the names its namespace offers.
 ///
-/// What comes back is **the author's own source**, not an artifact, because the key the module will
-/// be bound at does not exist yet and the key is the name of the class it is compiled under. So this
-/// hands on the body, and [`build_module`] compiles it under that key for each program that uses it.
+/// This is where a module is compiled and the only place. `key` is the binding key, which on this
+/// arm is the name of the class it is compiled under, so the class files land in that key's
+/// directory in the [band](crate::sandbox::Workspace::open_module) and every program the agent
+/// writes afterwards takes that directory as a classpath entry.
 ///
-/// The compiler still runs, and what it buys is the *location*. Without it a module that does not
-/// compile would take the turn of whoever loaded it, in a file its author never wrote, for as long
-/// as it stayed loaded. Running `javac` here instead tells the author at the read, at the module's
-/// own line and column.
+/// A compile of its own, with the SDK and the toolchain on its classpath and **nothing else**: a
+/// module sees gg's surface, the library set and its own declarations, and no other module.
 ///
-/// **javac and not TeaVM**: this output is thrown away, so asking for a wasm module would be paying
-/// TeaVM for an artifact nothing reads — and everything an author can get wrong that TeaVM would
-/// catch (a classlib method that is not there) is caught again, at the same line, on the first
-/// program compiled against it.
+/// Running `javac` here is also what buys the *location*. Without it a module that does not compile
+/// would take the turn of whoever loaded it, in a file its author never wrote, for as long as it
+/// stayed loaded.
+///
+/// **javac and not TeaVM**: what a program links is class files, so asking for a wasm module here
+/// would be paying TeaVM for an artifact nothing reads.
 pub(super) fn compile_module(
+    key: &str,
     source: &str,
     context: &PrepareContext,
 ) -> Result<PreparedModule, PrepareFailure> {
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
-    let wrapped = source::wrap_module(source, source::MODULE_CHECK_CLASS)?;
-    workspace
-        .write(MODULE_FILE, &wrapped.source)
-        .map_err(PrepareFailure::Toolchain)?;
-
-    let report = request(
-        workspace,
-        PROGRAM_CLASSES,
-        &[],
-        CHECK_ONLY,
-        CHECK_ONLY,
-        &[MODULE_FILE.to_string()],
-    )?;
-    verdict(&report, MODULE_FILE)?;
+    let wrapped = source::wrap_module(source, key)?;
+    build_module(workspace, key, &wrapped.source, source)?;
     Ok(PreparedModule {
         source: source.to_string(),
         exports: wrapped.exports,
     })
 }
 
-/// Compile one loaded code module under its binding key, and hand back the classpath entry a program
-/// reaches it through.
+/// The classpath entry the module bound at `module.name` is reached through, compiling it first when
+/// this agent's workspace holds no build made from these bytes.
 ///
-/// A compile of its own, with the SDK and the toolchain on its classpath and **nothing else**: a
-/// module sees gg's surface, the library set and its own declarations, and no other module — the
-/// same scope it was checked in at the read.
-///
-/// A failure here is the model's to act on rather than the operator's, and it names the key: the
-/// module is the thing to fix or to stop loading, and a session told nothing would meet it again on
-/// every turn.
-fn build_module(workspace: &Workspace, module: &CodeModule) -> Result<String, PrepareFailure> {
+/// The build is the miss rather than the rule — a module reaching a program compile was compiled at
+/// the read that loaded it — and it is what keeps a program handed a module this workspace never saw
+/// compiling.
+fn bind_module(workspace: &Workspace, module: &CodeModule) -> Result<String, PrepareFailure> {
     let key = module.name.as_str();
-    let wrapped =
-        source::wrap_module(&module.source, key).map_err(|failure| about(key, failure))?;
+    if workspace.module_build(key, &module.source).is_some() {
+        return Ok(module_classes(workspace, key));
+    }
+    let wrapped = source::wrap_module(&module.source, key).map_err(|failure| ours(key, failure))?;
+    build_module(workspace, key, &wrapped.source, &module.source)
+        .map_err(|failure| ours(key, failure))?;
+    Ok(module_classes(workspace, key))
+}
+
+/// Compile one code module's wrapped source into its own directory in the band, and record what that
+/// produced.
+///
+/// A failure names the key: the module is the thing to fix or to stop loading, and a session told
+/// nothing would meet it again on every turn.
+fn build_module(
+    workspace: &Workspace,
+    key: &str,
+    wrapped: &str,
+    source: &str,
+) -> Result<(), PrepareFailure> {
     workspace
-        .write(&module_source(key), &wrapped.source)
+        .open_module(key)
+        .map_err(PrepareFailure::Toolchain)?;
+    workspace
+        .write_module(key, &module_file(key), wrapped)
         .map_err(PrepareFailure::Toolchain)?;
 
-    let classes = module_classes(key);
+    let classes = module_classes(workspace, key);
     let report = request(
         workspace,
         &classes,
         &[],
         CHECK_ONLY,
         CHECK_ONLY,
-        &[module_source(key)],
+        &[module_source(workspace, key)],
     )?;
-    verdict(&report, &module_file(key)).map_err(|failure| about(key, failure))?;
-    Ok(classes)
+    verdict(&report, &module_file(key))?;
+    workspace.record_module(key, source, vec![workspace.work().join(&classes)]);
+    Ok(())
 }
 
-/// One of [`build_module`]'s failures, said as something about the code this session loaded.
+/// Re-attribute a [rebuilt module](bind_module)'s refusal to gg, whichever of the model-facing
+/// bands it arrived in.
 ///
-/// Only the model-facing bands are renamed: a toolchain failure is the operator's whatever compiled
-/// when it happened, and saying a key in front of it would blame a skill for a JVM that would not
-/// start.
-fn about(key: &str, failure: PrepareFailure) -> PrepareFailure {
-    let said = match failure {
-        PrepareFailure::Program(PrepareError::Syntax(said) | PrepareError::Compile(said)) => {
-            PrepareError::Compile(format!(
-                "the code this session loaded at `{key}` does not compile: {said}"
+/// A module is compiled at the read that binds it, so its author already read this diagnostic in
+/// their own coordinates and this arm refusing the same bytes now is this arm disagreeing with
+/// itself. The program beside it compiles, and the file the diagnostic names is one that program's
+/// author never wrote, so handing it back under `Compiler error` charges a model for a program it
+/// wrote correctly and offers it nothing to change.
+///
+/// Both producers are covered because both are gg's here: the [wrap](source::wrap_module), which
+/// refuses a module whose shape this arm has no lowering for, and the compile under it, which
+/// refuses one `javac` read and disagreed with.
+///
+/// A [toolchain failure](PrepareFailure::Toolchain) passes through. A JVM that would not start is
+/// already gg's rather than the model's, and saying a key in front of it would blame a skill for it.
+fn ours(key: &str, failure: PrepareFailure) -> PrepareFailure {
+    match failure {
+        PrepareFailure::Program(error @ (PrepareError::Syntax(_) | PrepareError::Compile(_))) => {
+            PrepareFailure::Lowering(format!(
+                "javac refused the code module gg compiled as `{key}` beside the program, which \
+                 compiled on its own when it was loaded:\n{error}"
             ))
         }
-        PrepareFailure::Program(PrepareError::Unsupported(said)) => PrepareError::Unsupported(
-            format!("the code this session loaded at `{key}` cannot be built: {said}"),
-        ),
-        other => return other,
-    };
-    PrepareFailure::Program(said)
+        PrepareFailure::Program(error @ PrepareError::Unsupported(_)) => {
+            PrepareFailure::Lowering(format!(
+                "gg could not lower the code module bound at `{key}` beside the program, which it \
+                 accepted when it was loaded:\n{error}"
+            ))
+        }
+        other => other,
+    }
 }
 
 /// The main class and target file that ask [the driver](super::super::jvm) for `javac` alone.
@@ -877,6 +893,21 @@ pub(super) fn placed() -> Result<&'static Placed, String> {
         })
         .as_ref()
         .map_err(Clone::clone)
+}
+
+/// **The packages `javac` said this program could not import**, read out of the rendering
+/// [`Diagnostic::render`](Diagnostic::render) produced.
+///
+/// `javac` names the package rather than the type: an `import java.utl.List;` is reported as
+/// `package java.utl does not exist`, located at the import line. The message is taken in
+/// `Locale.ROOT`, so the sentence is the same on every machine.
+pub(super) fn unresolved_imports(diagnostic: &str) -> Vec<String> {
+    diagnostic
+        .lines()
+        .flat_map(|line| {
+            crate::sandbox::language::diagnostics::named(line, "package ", " does not exist")
+        })
+        .collect()
 }
 
 #[cfg(test)]

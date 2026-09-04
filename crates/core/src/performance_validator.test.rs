@@ -158,6 +158,7 @@ fn performance_version_with_pass_limit(
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         common_specs: Vec::new(),
         common_workspace: Default::default(),
         init: None,

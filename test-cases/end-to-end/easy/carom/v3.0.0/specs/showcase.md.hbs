@@ -1,26 +1,27 @@
 # Carom — Showcase
 
-The finished game ships a showcase: the store-page presentation a player reads
-before deciding to play. It is a `showcase/` directory at the root of this
-repository, committed with the rest of the project, holding a description of the
-game and a short carousel of captured media. This file defines its contents.
+The finished game ships a showcase: the store-page presentation of the game, in
+a `showcase/` directory at the root of this repository. This file defines its
+contents.
 
 ## Layout
 
 Every file of the showcase sits directly in `showcase/`, with no subdirectories:
 
-- `showcase/showcase.md`, the description.
-- `showcase/showcase.toml`, the carousel.
-- The media files the carousel and the description name.
+| Path | Holds |
+| --- | --- |
+| `showcase/showcase.md` | The description. |
+| `showcase/showcase.toml` | The carousel. |
+| `showcase/<file>` | Each media file the carousel and the description name. |
 
 ## The description
 
 `showcase/showcase.md` is Markdown written for a player: what Carom is, how a
-match flows from serve to match point, and how its spin and bank shots feel in
-play. Three to five short paragraphs. It is strictly about playing the game;
-implementation, architecture, and tooling stay out of it. It may embed images
-that sit beside it, referenced by bare relative path (for example
-`![The field](field.png)`); every image it embeds is a `.png` in `showcase/`.
+match plays out from the opening rally to match point, and how its spin and bank
+shots feel in play. Three to five short paragraphs, with playing the game as
+their whole subject. It may embed images that sit beside it, referenced by bare
+relative path (for example `![The field](field.png)`); every image it embeds is a
+`.png` in `showcase/`.
 
 ## The carousel
 
@@ -50,40 +51,31 @@ name = "The title screen"
 {{/if}}
 
 - `file` names a file directly in `showcase/`, with no path separators. Every
-  file the carousel names exists there, and each stays under 25 MiB.
+  file the carousel names is present there, and each stays under 25 MiB.
 - `name` is a caption of a few words.
-- The carousel holds two to four entries. The first entry leads, so it carries
-  the strongest view of live play.
+- The carousel holds two to four entries, and the first is the strongest view of
+  live play.
 
 ## Media
 
-{{#if (eq engine.slug "none")}}
 The file extension states what an entry is:
 
+{{#if (eq engine.slug "none")}}
 | Extension | Media |
 | --- | --- |
 | `.png` | A screenshot of the running game. |
 | `.webm` | A video clip of the running game, a few seconds long. |
 
-Screenshots carry most of the carousel. Where motion is worth showing, such as
-spin curving a flight into a bank shot, a short `.webm` clip carries it; how
-screenshots and clips are captured is the build's own business.
+Screenshots carry most of the carousel. Motion, such as spin curving a flight
+into a bank shot, ships as a `.webm` clip. How screenshots and clips are captured
+is yours to decide.
 {{else}}
-The file extension states what an entry is:
-
 | Extension | Media |
 | --- | --- |
 | `.png` | A screenshot of the running game. |
-| `.json.gz` | A replay: a gzipped recording of the game's own drawing, made with the engine's recorder. |
-| `.webm` | A video clip. |
+| `.json.gz` | A replay: a gzipped recording of the game's own drawing, made with the engine's recorder, which the engine documents in `engine/recording.md`. |
 
-Anything in motion ships as a replay rather than a video.
-
-## Capturing a replay
-
-A replay is a gzipped JSON recording made with the engine's recorder, which the
-engine documents in `engine/recording.md` at the root of this repository. Each
-replay holds a few seconds of live play, such as a rally banking through the
-obstacles, rather than a menu. How screenshots and replays are captured is the
-build's own business.
+Screenshots carry most of the carousel. Motion ships as a replay, and each replay
+holds a few seconds of live play, such as a rally banking through the obstacles.
+How screenshots and replays are captured is yours to decide.
 {{/if}}

@@ -6,11 +6,8 @@ module GG
   # Every task may name the tasks that must finish before it, and an edge that would close a cycle
   # is refused.
   #
-  # Two lowerings live here, both so a program writes ordinary Ruby instead of a tagged union. A
-  # patch's description is a three-way edit — leave it out to keep it, pass `nil` to clear it, pass
-  # a string to replace it — which `GG::Core::UNCHANGED` is the Ruby spelling of. And a status is a
-  # Symbol on this side and `in-progress` on the other, because a WIT identifier cannot hold an
-  # underscore; a model should never see that seam.
+  # A description is a three-way edit: leaving the argument out, or passing `GG::Core::UNCHANGED`,
+  # keeps it; `nil` clears it; a string replaces it.
   module Tasks
     extend Surface::Operations
 
@@ -115,8 +112,7 @@ module GG
 
     # Where a task stands.
     #
-    # Every arm is a Symbol, so a call may name the constant or write the literal:
-    # `GG::Tasks::TaskStatus::DONE` and `:done` are the same value.
+    # Every arm is a Symbol: `GG::Tasks::TaskStatus::DONE` and `:done` are the same value.
     module TaskStatus
       # Not started. Every task begins here.
       PENDING = :pending

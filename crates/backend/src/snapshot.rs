@@ -206,9 +206,10 @@ pub struct SnapshotBuilder {
     runs: Vec<StoredRun>,
     cases: Vec<StoredManifest>,
     store: DefinitionStore,
-    /// The artifact service's base URL, used to fall back for a run's proof/asset
-    /// media when it is absent from the local store. `None` disables the fallback
-    /// (store-only) — the dev/single-box default, and what the unit tests use.
+    /// The artifact service's **in-cluster** base URL, used to fall back for a run's
+    /// proof/asset media when it is absent from the local store. `None` disables the
+    /// fallback (store-only) — the dev/single-box default, and what the unit tests
+    /// use.
     artifacts_url: Option<String>,
     /// The HTTP client for that fallback. Unused when `artifacts_url` is `None`.
     http: reqwest::Client,
@@ -453,7 +454,8 @@ impl SnapshotBuilder {
 
     /// Enable the artifact-service fallback: when a run's proof/asset media is not in
     /// the local store, the builder fetches it from `artifacts_url` (the artifact
-    /// service's public read endpoint) using `http`.
+    /// service's in-cluster base URL, the one the backend itself can reach) using
+    /// `http`.
     ///
     /// The backend store that media is normally mirrored into is an ephemeral
     /// emptyDir in production, so it can be wiped between a run finishing and a later
@@ -1787,8 +1789,9 @@ impl SnapshotBuilder {
         self.fetch_artifact(run_id, kind, file).await
     }
 
-    /// Fetch one run media file from the artifact service's public read endpoint
-    /// (`GET {artifacts_url}/runs/{run_id}/{kind}/{file}`), or `None` when the
+    /// Fetch one run media file from the artifact service over the backend's
+    /// in-cluster URL (`GET {artifacts_url}/runs/{run_id}/{kind}/{file}`, an ungated
+    /// media read), or `None` when the
     /// fallback is disabled (`artifacts_url` unset), the file is absent (404), or the
     /// request fails. A non-404 failure is logged — it means the durable copy could
     /// not be read, so the media will be missing from the snapshot until the next
@@ -2628,6 +2631,16 @@ pub struct SubjectOut {
     /// assembled by hand rather than from a named configuration.
     #[cfg_attr(feature = "contract", ts(optional = nullable))]
     pub gg_preset: Option<String>,
+    /// The **id** of the gg configuration this run was launched from — the
+    /// [`preset_id`](test_cabinet_core::gg::GgCapabilitySet::preset_id) recorded on the
+    /// run's capability set. Lifted onto the card beside the
+    /// [name](Self::gg_preset) because it is what identifies the run's [coverage
+    /// cell](https://docs.testcabinet.ai/components/backend/coverage/), and so what a
+    /// listing narrowed to one configuration's runs matches on: a name is display text
+    /// that is rewritten freely and is unique to nothing. `None` for every
+    /// third-party-harness run and for a gg run assembled by hand.
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub gg_config_id: Option<String>,
 }
 
 impl SubjectOut {
@@ -2647,6 +2660,11 @@ impl SubjectOut {
                 .gg_capability_set
                 .as_ref()
                 .and_then(|set| set.preset.clone()),
+            gg_config_id: record
+                .subject
+                .gg_capability_set
+                .as_ref()
+                .and_then(|set| set.preset_id.clone()),
         }
     }
 }
@@ -3200,6 +3218,25 @@ pub struct CaseReviewItemOut {
     /// On a validator-rated version, the scoring domains (by id) a failure of this
     /// whole-item point lowers. Empty on a legacy version and on a sub-divided item.
     pub domains: Vec<String>,
+    /// The point's automated-validation driver, when it declares one. Absent for a
+    /// human-judged point. Carried so a run-scoped surface can drop a point the
+    /// run's engine does not carry (see [`CaseReviewValidationOut::engines`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub validation: Option<CaseReviewValidationOut>,
+}
+
+/// The part of a checklist point's automated-validation driver the case metadata
+/// exposes: which engines the validator decides the point on. The script itself and
+/// its media outputs are the driver's business and are not published here.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseReviewValidationOut {
+    /// The engines this validator decides its point on, by slug, in declared order.
+    /// Empty leaves the point on every engine the case supports; a non-empty list is
+    /// the subset that carries it, and a run on any other engine has no such point.
+    pub engines: Vec<String>,
 }
 
 /// A sub-item of a [`CaseReviewItemOut`] exposed in case metadata: one
@@ -3231,6 +3268,11 @@ pub struct CaseSubReviewItemOut {
     /// On a validator-rated version, the scoring domains (by id) a failure of this
     /// point lowers. Empty on a legacy version.
     pub domains: Vec<String>,
+    /// The point's automated-validation driver, when it declares one (see
+    /// [`CaseReviewItemOut::validation`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub validation: Option<CaseReviewValidationOut>,
 }
 
 /// A scoring domain exposed in case metadata.
@@ -3569,10 +3611,23 @@ fn case_review_item_out(item: &crate::store::StoredReviewItem) -> CaseReviewItem
                 proof: sub.proof.clone(),
                 failure_cap: sub.failure_cap,
                 domains: sub.domains.clone(),
+                validation: sub.validation.as_ref().map(case_review_validation_out),
             })
             .collect(),
         failure_cap: item.failure_cap,
         domains: item.domains.clone(),
+        validation: item.validation.as_ref().map(case_review_validation_out),
+    }
+}
+
+/// Map a stored point's validator to the case-metadata wire shape: its engine
+/// scoping alone, which is what a client needs to tell whether a run built on a
+/// given engine carries the point.
+fn case_review_validation_out(
+    validation: &crate::store::StoredReviewValidation,
+) -> CaseReviewValidationOut {
+    CaseReviewValidationOut {
+        engines: validation.engines.clone(),
     }
 }
 
@@ -3624,7 +3679,11 @@ pub(crate) fn run_summary_score(
     record: &test_cabinet_core::RunRecord,
     reviews: &[crate::db::StoredReview],
 ) -> Option<RunScoreOut> {
-    let items = review_items_for(manifest, &record.subject.variant);
+    let items = review_items_for_engine(
+        manifest,
+        &record.subject.variant,
+        &record.subject.engine_slug,
+    );
     // A validator-rated run is scored by its validators, as overridden by its
     // reviews: the score is known the moment the run completes (`reviews` is `0`,
     // the validators' own figure), and each review's overrides overlay the
@@ -3719,6 +3778,44 @@ pub(crate) fn review_items_for(
     items
 }
 
+/// The effective weighted checklist items for a run of `variant` built on `engine`:
+/// [`review_items_for`] with the points that engine does not carry removed (mirrors
+/// [`test_cabinet_core::test_case::TestCaseVersion::review_items_for_engine`]).
+///
+/// A validator scoped to a set of engines decides its point only on those, so a run
+/// on any other engine does not carry the point at all: no verdict is recorded
+/// against it, it is not shown to the reviewer, and it contributes no weight to the
+/// run's score. An item that declared sub-items and has none left after the filter
+/// goes with them.
+///
+/// This is the form every **run-scoped** caller wants. [`review_items_for`] stays the
+/// right call for a catalog listing or a case page, which describe the case rather
+/// than one run of it.
+pub(crate) fn review_items_for_engine(
+    manifest: &StoredManifest,
+    variant: &str,
+    engine: &str,
+) -> Vec<test_cabinet_core::ReviewItem> {
+    let mut items = review_items_for(manifest, variant);
+    items.retain_mut(|item| {
+        if item
+            .validation
+            .as_ref()
+            .is_some_and(|validation| !validation.covers(engine))
+        {
+            return false;
+        }
+        let declared_sub_items = !item.sub_items.is_empty();
+        item.sub_items.retain(|sub| {
+            sub.validation
+                .as_ref()
+                .is_none_or(|validation| validation.covers(engine))
+        });
+        !declared_sub_items || !item.sub_items.is_empty()
+    });
+    items
+}
+
 /// The effective scoring domains for a run of `variant`: the case's common domains
 /// followed by the selected variant's own (mirrors
 /// [`test_cabinet_core::test_case::TestCaseVersion::domains_for`], resolving from
@@ -3804,6 +3901,7 @@ fn core_review_validation(
     test_cabinet_core::ReviewValidation {
         script: (!validation.per_engine).then(|| std::path::PathBuf::from(&validation.script)),
         script_rel: validation.script.clone(),
+        engines: validation.engines.clone(),
         outputs: validation
             .outputs
             .iter()

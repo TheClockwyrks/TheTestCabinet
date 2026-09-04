@@ -7,8 +7,8 @@
 # rather than a chain: this image is the 2D image's WHOLE content — the Rust/wasm base
 # (`base-wasm`) plus `draw` and `draw-sheet` (sprites / sprite sheets), `particle-2d` (2D
 # particle systems), and the three audio tools `sfx-synth` (procedural SFX), `sfx-sample`
-# (sampled SFX) and `music` (sampled-instrument music), with the same two pinned audio
-# packs — PLUS the 3D model and effect tooling a 3D full-stack build needs: `voxel` (static
+# (sampled SFX) and `music` (sampled-instrument music), and, like it, no baked audio
+# — PLUS the 3D model and effect tooling a 3D full-stack build needs: `voxel` (static
 # voxel models), `voxel-anim` (rigged/animated voxel models) and `particle-3d` (3D particle
 # systems). A 3D game still needs sprites and sheets for its UI and its 2D overlays, and it
 # needs sound exactly as a 2D one does, so the 3D set is an ADDITION and not a replacement:
@@ -38,9 +38,12 @@
 #
 # This image inherits everything from base-wasm — the Node build toolchain, the Rust +
 # `wasm32-unknown-unknown` + `wasm-bindgen`/`wasm-pack` toolchain, the unprivileged `node`
-# run user, the `/work` working directory, and the keep-alive CMD — so it adds only the
-# nine binaries, the Mesa software-Vulkan runtime three of them render through, and the two
-# audio packs.
+# run user, the `/work` working directory, the empty `/opt/audio` staging root, and the
+# keep-alive CMD — so it adds only the nine binaries and the Mesa software-Vulkan runtime
+# three of them render through. The audio palette `sfx-sample` and `music` read is NOT
+# baked here, exactly as it is not in the 2D image: a run is staged with the packs its case
+# names in `[audio] packs`, written into the started container at `/opt/audio`, so a
+# full-stack container holds exactly the packs its manifest declares and nothing else.
 
 # `BASE_IMAGE` is the base image to extend — the Rust/wasm base (`base-wasm`), so a
 # full-stack build may author its simulation core in Rust and ship it as committed
@@ -119,71 +122,3 @@ COPY --from=tools /out/music /usr/local/bin/music
 COPY --from=tools /out/voxel /usr/local/bin/voxel
 COPY --from=tools /out/voxel-anim /usr/local/bin/voxel-anim
 COPY --from=tools /out/particle-3d /usr/local/bin/particle-3d
-
-# --- Bake in the sample pack `sfx-sample` mixes over ------------------------
-#
-# Identical mechanism to the full-stack-2d image and to the dedicated `sfx-sample` image
-# (see `containers/sfx-sample/Dockerfile`): the sample pack is a separately-versioned,
-# content-addressed object-storage tarball (the audio files are NOT committed to this
-# repo). The build PINS it BY DIGEST — `SAMPLE_PACK_SHA256`, enforced by `ADD
-# --checksum` — so the baked palette is immutable and versioned with the image; a run
-# container is offline, so the fetch happens at BUILD time, pinned. `build.sh`'s
-# `build_full_stack` presigns a short-lived R2 GET URL from the pin in
-# `containers/sample-packs/packs.lock.json` and supplies all three args (the defaults
-# are placeholders that fail the build until a real pack is pinned):
-#   --build-arg SAMPLE_PACK=combat-core@0.1.0
-#   --build-arg SAMPLE_PACK_SHA256=sha256:<digest printed by build-sample-pack.mjs>
-#   --build-arg SAMPLE_PACK_URL=<presigned R2 URL of combat-core-0.1.0.tar>
-#
-# It is the SAME pack the 2D image bakes, deliberately: the dimension changes what a case's
-# models are made of, not what its sound is made of, and two full-stack images answering
-# `sample_pack = "combat-core@0.1.0"` with different audio would be a difference no
-# manifest key describes.
-ARG SAMPLE_PACK=combat-core@0.1.0
-ARG SAMPLE_PACK_SHA256=sha256:0000000000000000000000000000000000000000000000000000000000000000
-ARG SAMPLE_PACK_URL
-
-# Fetch + verify the pinned tarball and unpack it to the path the `audio-core` loader
-# reads (`load_pack` in `crates/audio-core/src/sample.rs`: a `*.toml` manifest plus the
-# `<name>.wav` audio beside it). The dir name is pack-agnostic (the loader is pointed at
-# it by env below). Make it world-readable for the unprivileged run user.
-USER root
-ADD --checksum=${SAMPLE_PACK_SHA256} ${SAMPLE_PACK_URL} /tmp/sample-pack.tar
-RUN mkdir -p /opt/sample-packs/pack \
-	&& tar -xf /tmp/sample-pack.tar -C /opt/sample-packs/pack \
-	&& rm /tmp/sample-pack.tar \
-	&& chmod -R a+rX /opt/sample-packs
-USER node
-
-# Point `sfx-sample` at the baked pack (the run config only names it as
-# `sample_pack = "<name>@<version>"`; the image owns where it physically lives).
-ENV TCAB_SAMPLE_PACK=${SAMPLE_PACK}
-ENV TCAB_SAMPLE_PACK_DIR=/opt/sample-packs/pack
-
-# --- Bake in the instrument bank the `music` sequencer plays ----------------
-#
-# Identical mechanism to the full-stack-2d image and to the dedicated `music` image (see
-# `containers/music/Dockerfile`): a pinned, content-addressed instrument-bank tarball,
-# fetched + verified at build time. `build.sh`'s `build_full_stack` presigns it from the
-# same pin file and supplies:
-#   --build-arg INSTRUMENT_BANK=gm-lite@0.1.0
-#   --build-arg INSTRUMENT_BANK_SHA256=sha256:<digest printed by build-sample-pack.mjs>
-#   --build-arg INSTRUMENT_BANK_URL=<presigned R2 URL of gm-lite-0.1.0.tar>
-ARG INSTRUMENT_BANK=gm-lite@0.1.0
-ARG INSTRUMENT_BANK_SHA256=sha256:0000000000000000000000000000000000000000000000000000000000000000
-ARG INSTRUMENT_BANK_URL
-
-# Fetch + verify the pinned tarball and unpack it to the path the `audio-core` loader
-# reads. Make it world-readable for the unprivileged run user.
-USER root
-ADD --checksum=${INSTRUMENT_BANK_SHA256} ${INSTRUMENT_BANK_URL} /tmp/instrument-bank.tar
-RUN mkdir -p /opt/instrument-banks/gm-lite \
-	&& tar -xf /tmp/instrument-bank.tar -C /opt/instrument-banks/gm-lite \
-	&& rm /tmp/instrument-bank.tar \
-	&& chmod -R a+rX /opt/instrument-banks
-USER node
-
-# Point `music` at the baked bank (the run config only names it as
-# `instrument_bank = "<name>@<version>"`; the image owns where it physically lives).
-ENV TCAB_INSTRUMENT_BANK=${INSTRUMENT_BANK}
-ENV TCAB_INSTRUMENT_BANK_DIR=/opt/instrument-banks/gm-lite

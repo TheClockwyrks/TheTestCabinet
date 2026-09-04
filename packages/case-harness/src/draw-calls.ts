@@ -8,9 +8,23 @@
 import { apply, IDENTITY, numbers, transformed, type Matrix } from "./matrix";
 import { distance, type Point } from "./point";
 
+/**
+ * Where a `fillText`/`strokeText` call put its text, as the harness measures it
+ * after the fact.
+ *
+ * The injected recorder writes the console player's replay format and carries no
+ * measurement, so the width is taken afterwards, in the page, under the font the
+ * walk found in force at the call. Present only on a harness whose case asked
+ * for `measureText`.
+ */
+export interface TextGeometry {
+  width: number;
+  textAlign: string;
+}
+
 /** One recorded operation on the 2D context, in the order the render made it. */
 export type DrawCall =
-  | { kind: "call"; method: string; args: unknown[] }
+  | { kind: "call"; method: string; args: unknown[]; text?: TextGeometry }
   | { kind: "set"; property: string; value: unknown };
 
 /** One operation as the injected recorder writes it. */

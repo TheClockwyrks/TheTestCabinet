@@ -65,6 +65,7 @@ export {
   scoreChecklist,
   subItemVerdictId,
   verdictIdsForItem,
+  reviewItemsForEngine,
   formatPoints,
   type AggregateScore,
   aggregateScore,

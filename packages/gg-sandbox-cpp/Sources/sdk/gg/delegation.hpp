@@ -16,18 +16,14 @@ namespace gg {
 
 /// Delegate work to child agents, and hand this session on to another agent.
 ///
-/// Waiting can dominate a turn's wall clock, because it blocks while real agents run and the run's
-/// budget keeps ticking, so a program spawns broadly and waits once rather than spawning and
-/// waiting in a loop.
+/// A wait blocks while the children run, and the run's wall-clock budget keeps ticking throughout.
 ///
 /// <ggmodule>delegation</ggmodule>
 namespace delegation {
 
 /// What a child agent is briefed with: self-contained instructions, or a board issue.
 ///
-/// One value with two named factories rather than two optional arguments, so that "both" and
-/// "neither" are programs which do not compile instead of calls that fail at run time. There is
-/// nothing to read back off it: a program builds one and hands it over.
+/// Built by one of the two factories; nothing is read back off it.
 class brief {
  public:
   /// Brief the child with self-contained instructions, which it needs no other context to act on.
@@ -101,16 +97,16 @@ struct subagent_result {
 ///
 /// The child runs in parallel while the program continues, and shares the workspace. The agent
 /// profile selects its model, its tools and its instructions, and the system prompt lists the ones
-/// this agent may spawn.
+/// this run permits.
 ///
 /// <ggop>delegation.spawn_subagent</ggop>
 ///
-/// \param agent The agent profile to run the child as, from the ones this agent may spawn.
+/// \param agent The agent profile to run the child as, from the ones this run permits.
 /// \param task What the child is to do: `gg::delegation::brief::prompt` with self-contained
 ///   instructions, or `gg::delegation::brief::issue` with a board issue's id.
 /// \returns the child's handle, for waiting on it or messaging it.
 /// \throws gg::core::api_error `limit_exceeded` at the delegation depth cap, and `invalid_argument`
-///   for an agent this agent may not spawn.
+///   for an agent this run does not permit.
 delegation::subagent_handle spawn_subagent(std::string_view agent, delegation::brief task);
 
 // Two overloads rather than one function taking an optional list, because "every outstanding
@@ -125,9 +121,7 @@ std::vector<delegation::subagent_result> wait_for_subagents();
 
 /// Block until the named children have finished, and collect their results in dispatch order.
 ///
-/// Called with no arguments at all it waits for every child still outstanding, which is the usual
-/// shape: the run's wall-clock budget keeps running throughout, so one wait for many children
-/// costs less than one wait per child.
+/// Called with no arguments it waits for every child still outstanding.
 ///
 /// <ggop>delegation.wait_for_subagents</ggop>
 ///
@@ -146,40 +140,38 @@ std::vector<delegation::subagent_result> wait_for_subagents(std::vector<std::str
 ///   has already returned.
 void send_message(std::string_view agent_id, std::string_view message);
 
-/// Move the process this agent is running inside on to another of its states.
+/// Move the process this session is running inside on to another of its states.
 ///
-/// It is bound only when a state machine is driving the agent and the current state has somewhere
-/// to go. Like a compaction it is registered rather than performed: the call validates the target
-/// and returns, the program runs on to its end, and the transition happens after that — replacing
-/// the agent, and its window, mid-program would pull every remaining call out from under it. The
-/// first declaration in a turn stands.
+/// It is bound only when a state machine is driving the session and the current state has somewhere
+/// to go. It is registered rather than performed: the call validates the target and returns, the
+/// program runs on to its end, and the transition happens after that. The first declaration in a
+/// turn stands.
 ///
 /// <ggop>delegation.transition_state</ggop>
 ///
 /// \param state The state to move on to, named the way an agent to spawn is named.
 /// \param note The opening message the next state's agent sees; empty tells it nothing.
-/// \throws gg::core::api_error `invalid_argument` for a state this agent may not move to, and
+/// \throws gg::core::api_error `invalid_argument` for a state this session may not move to, and
 ///   `refused` for a second declaration in one turn.
 void transition_state(std::string_view state, std::optional<std::string_view> note = std::nullopt);
 
 /// Continue this session as a different agent from the next turn on.
 ///
 /// The named agent takes over with its own model, tools and instructions, keeping every capability
-/// the two of them share — the whole conversation above all, so it needs no catching up.
-/// Registered rather than performed, exactly as a state transition is and for the same reason, and
-/// a session makes one succession per turn. It is bound only for an agent that may make agent
-/// transitions and has agents it may become, and never while a state machine is driving it.
+/// the two share and the whole conversation. Registered rather than performed, and one succession
+/// per turn. It is bound only where this session may make agent transitions and has agents it may
+/// become, and never while a state machine is driving it.
 ///
 /// <ggop>delegation.exec</ggop>
 ///
-/// \param agent The agent to become, from the ones this agent may become.
+/// \param agent The agent to become, from the ones this session may become.
 /// \param prompt Its opening message. It already has the whole conversation, so this is the
 ///   instruction rather than a briefing; empty tells it nothing.
-/// \throws gg::core::api_error `invalid_argument` for an agent this agent may not become, and
+/// \throws gg::core::api_error `invalid_argument` for an agent this session may not become, and
 ///   `refused` for a second succession in one turn.
 void exec(std::string_view agent, std::optional<std::string_view> prompt = std::nullopt);
 
-/// Run a copy of this agent, in parallel, on something it will not do itself.
+/// Run a copy of this session, in parallel, on something it will not do itself.
 ///
 /// The copy has the same model, the same tools and a private copy of the whole conversation, so
 /// the prompt is the difference rather than a briefing. Its handle comes back immediately, but the

@@ -8,9 +8,14 @@
 // center and each paddle's. The threshold is the case's figure for "clearly
 // apart": more than 50 of the 441 the RGB cube spans.
 //
-// The scene is posed still and unobstructed first (both paddles centered, the
-// ball parked mid-field, the obstacles upright at their centers), and each sample
-// is a small cluster well inside the shape, because a rounded edge is
+// The scene is posed still and isolated first: the field is emptied and spawned
+// back holding one ball and obstacle A alone, both paddles are centered, and the
+// ball is parked in the clear for longer than its trail lives, so the sample is
+// the body rather than its wake or whatever the standard world would otherwise
+// have put under it. Neither paddle is taken from the player — this requirement
+// is about the colour the build DREW, and in a Versus match with no key held
+// nothing moves them. Each body is sampled where the snapshot says that body is,
+// as a small cluster well inside the shape, because a rounded or turned edge is
 // anti-aliased toward whatever is behind it.
 
 import { afterEach, beforeEach, it } from "vitest";

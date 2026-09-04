@@ -28,9 +28,13 @@
 #
 # This image inherits everything from base-wasm — the Node build toolchain, the Rust +
 # `wasm32-unknown-unknown` + `wasm-bindgen`/`wasm-pack` toolchain, the unprivileged
-# `node` run user, the `/work` working directory, and the keep-alive CMD — so it only
-# adds the six binaries and the two audio packs. The image a run resolves is selected
-# by its test type and, for a full-stack case, its `asset_dimension` (see crate
+# `node` run user, the `/work` working directory, the empty `/opt/audio` staging root,
+# and the keep-alive CMD — so it only adds the six binaries. The audio palette
+# `sfx-sample` and `music` read is NOT baked here: a run is staged with the packs its
+# case names in `[audio] packs`, written into the started container at `/opt/audio`, so
+# a full-stack container holds exactly the packs its manifest declares and nothing
+# else. The image a run resolves is selected by its test type and, for a full-stack
+# case, its `asset_dimension` (see crate
 # `harness::resolve_run_image`).
 
 # `BASE_IMAGE` is the base image to extend — the Rust/wasm base (`base-wasm`), so a
@@ -57,7 +61,7 @@ ARG TOOLS_IMAGE=test-cabinet-tools:latest
 # this stage.
 FROM ${TOOLS_IMAGE} AS tools
 
-# --- The run image: the base-wasm, plus the binaries + the audio packs ------
+# --- The run image: the base-wasm, plus the six 2D asset binaries -----------
 # `FROM` the base-wasm built alongside this image (the global `BASE_IMAGE` arg above).
 FROM ${BASE_IMAGE}
 
@@ -72,65 +76,3 @@ COPY --from=tools /out/particle-2d /usr/local/bin/particle-2d
 COPY --from=tools /out/sfx-synth /usr/local/bin/sfx-synth
 COPY --from=tools /out/sfx-sample /usr/local/bin/sfx-sample
 COPY --from=tools /out/music /usr/local/bin/music
-
-# --- Bake in the sample pack `sfx-sample` mixes over ------------------------
-#
-# Identical mechanism to the dedicated `sfx-sample` image (see
-# `containers/sfx-sample/Dockerfile`): the sample pack is a separately-versioned,
-# content-addressed object-storage tarball (the audio files are NOT committed to this
-# repo). The build PINS it BY DIGEST — `SAMPLE_PACK_SHA256`, enforced by `ADD
-# --checksum` — so the baked palette is immutable and versioned with the image; a run
-# container is offline, so the fetch happens at BUILD time, pinned. `build.sh`'s
-# `build_full_stack` presigns a short-lived R2 GET URL from the pin in
-# `containers/sample-packs/packs.lock.json` and supplies all three args (the defaults
-# are placeholders that fail the build until a real pack is pinned):
-#   --build-arg SAMPLE_PACK=combat-core@0.1.0
-#   --build-arg SAMPLE_PACK_SHA256=sha256:<digest printed by build-sample-pack.mjs>
-#   --build-arg SAMPLE_PACK_URL=<presigned R2 URL of combat-core-0.1.0.tar>
-ARG SAMPLE_PACK=combat-core@0.1.0
-ARG SAMPLE_PACK_SHA256=sha256:0000000000000000000000000000000000000000000000000000000000000000
-ARG SAMPLE_PACK_URL
-
-# Fetch + verify the pinned tarball and unpack it to the path the `audio-core` loader
-# reads (`load_pack` in `crates/audio-core/src/sample.rs`: a `*.toml` manifest plus the
-# `<name>.wav` audio beside it). The dir name is pack-agnostic (the loader is pointed at
-# it by env below). Make it world-readable for the unprivileged run user.
-USER root
-ADD --checksum=${SAMPLE_PACK_SHA256} ${SAMPLE_PACK_URL} /tmp/sample-pack.tar
-RUN mkdir -p /opt/sample-packs/pack \
-	&& tar -xf /tmp/sample-pack.tar -C /opt/sample-packs/pack \
-	&& rm /tmp/sample-pack.tar \
-	&& chmod -R a+rX /opt/sample-packs
-USER node
-
-# Point `sfx-sample` at the baked pack (the run config only names it as
-# `sample_pack = "<name>@<version>"`; the image owns where it physically lives).
-ENV TCAB_SAMPLE_PACK=${SAMPLE_PACK}
-ENV TCAB_SAMPLE_PACK_DIR=/opt/sample-packs/pack
-
-# --- Bake in the instrument bank the `music` sequencer plays ----------------
-#
-# Identical mechanism to the dedicated `music` image (see `containers/music/Dockerfile`):
-# a pinned, content-addressed instrument-bank tarball, fetched + verified at build time.
-# `build.sh`'s `build_full_stack` presigns it from the same pin file and supplies:
-#   --build-arg INSTRUMENT_BANK=gm-lite@0.1.0
-#   --build-arg INSTRUMENT_BANK_SHA256=sha256:<digest printed by build-sample-pack.mjs>
-#   --build-arg INSTRUMENT_BANK_URL=<presigned R2 URL of gm-lite-0.1.0.tar>
-ARG INSTRUMENT_BANK=gm-lite@0.1.0
-ARG INSTRUMENT_BANK_SHA256=sha256:0000000000000000000000000000000000000000000000000000000000000000
-ARG INSTRUMENT_BANK_URL
-
-# Fetch + verify the pinned tarball and unpack it to the path the `audio-core` loader
-# reads. Make it world-readable for the unprivileged run user.
-USER root
-ADD --checksum=${INSTRUMENT_BANK_SHA256} ${INSTRUMENT_BANK_URL} /tmp/instrument-bank.tar
-RUN mkdir -p /opt/instrument-banks/gm-lite \
-	&& tar -xf /tmp/instrument-bank.tar -C /opt/instrument-banks/gm-lite \
-	&& rm /tmp/instrument-bank.tar \
-	&& chmod -R a+rX /opt/instrument-banks
-USER node
-
-# Point `music` at the baked bank (the run config only names it as
-# `instrument_bank = "<name>@<version>"`; the image owns where it physically lives).
-ENV TCAB_INSTRUMENT_BANK=${INSTRUMENT_BANK}
-ENV TCAB_INSTRUMENT_BANK_DIR=/opt/instrument-banks/gm-lite

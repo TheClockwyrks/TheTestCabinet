@@ -17,11 +17,9 @@ namespace gg {
 
 /// Run shell commands in the workspace.
 ///
-/// One function, and the way a program reaches everything gg has no tool for: a build, a test run,
-/// `git`, `curl`, a package manager. The workspace is the working directory.
-///
-/// A non-zero exit is a result rather than a failure, because deciding whether a build or a test
-/// run passed is the single most common thing a program does with one.
+/// One function, reaching everything gg has no tool for: a build, a test run, `git`, `curl`, a
+/// package manager. The workspace is the working directory, and a non-zero exit is a result rather
+/// than a failure.
 ///
 /// <ggmodule>shell</ggmodule>
 namespace shell {
@@ -44,10 +42,9 @@ struct shell_output {
 /// A non-zero exit is not a failure: it arrives as `exit_code` on the result, and only a process
 /// that could not be launched, or one the timeout killed, throws.
 ///
-/// A run may offload shell output, and the `shell` tool's own description says which mode is in
-/// force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the
-/// two files the command's full stdout and stderr were written to. Those files are readable by
-/// absolute path, so reading one, or a grep, is cheaper than running the command again.
+/// Where the run offloads shell output, `output` holds only the tail that fits and ends with a note
+/// naming the two files the command's full stdout and stderr were written to. Those files are
+/// readable by absolute path.
 ///
 /// <ggop>shell.shell</ggop>
 ///

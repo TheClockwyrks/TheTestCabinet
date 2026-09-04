@@ -20,7 +20,7 @@ implementation untouched.
 | A member separator | The punctuation between an API object and one of its functions, `.` by default and `::` for a language whose objects are modules. Names come from the catalogue; this joins the two halves. |
 | Program preparation | Turning a model's reply into the source its guest evaluates, given the code modules already in that agent's scope. |
 | A checker name | What a program of this language is judged by, spelled as the language's own users spell it (`tsc`, `rustc`), or nothing for a prepare step that invokes no compiler. |
-| Module preparation | Turning a [code skill](/gg/skills/)'s or [code memory](/gg/memories/)'s file into the library this arm supplies to a program, the way it supplies gg's own SDK. |
+| Module preparation | Turning a [code skill](/gg/skills/)'s or [code memory](/gg/memories/)'s file into the library this arm supplies to a program, the way it supplies gg's own SDK, compiled under the key it is bound at. |
 | Module file extensions | The extensions a skills directory spells `skill.<ext>` and `on-use.<ext>` with, most preferred first, never empty. |
 | A binding name rule | A skill's authored name mapped to an identifier this language parses. Non-empty, and stable for a given name. |
 | A `lib` access form | How a program reaches one export of a loaded module, stated in the documentation view of that export. A path by default; an arm that reaches a module by string supplies its own. The arm states the line a program writes to reach the module itself on the same terms, alongside the line that reaches gg's SDK. |
@@ -149,7 +149,9 @@ below.
    a program may import is a property of the artifact, and the file that decides
    it is the one the catalogue's `libraries` section is reflected out of.
    Declaring it in a template instead produces a sentence a model reads and the
-   component contradicts.
+   component contradicts. An arm that declares a set also states how its
+   compiler names an import it could not resolve, so a rejection is answered
+   with the modules matching that name rather than the whole inventory.
 3. Hand-write the SDK, idiomatic for the language and obeying the rules every
    agent-facing surface obeys. Python's is
    `packages/gg-sandbox-python/src/gg/`, one module per capability. Which

@@ -35,6 +35,19 @@ export const ENGINES: readonly EngineOption[] = [
 ];
 
 /**
+ * An engine as recorded, resolved: the slug it names, or `none` where it names
+ * nothing.
+ *
+ * Absent, empty and `none` are one engine — the engineless run every case supports,
+ * and what a launch that predates the dimension asked for — so anything that keys,
+ * filters, or compares on the engine resolves through this first. Two spellings of
+ * the same engine would otherwise split one cell's runs in half.
+ */
+export function resolveEngineSlug(engine?: string | null): string {
+  return (engine ?? "").trim() || DEFAULT_ENGINE_SLUG;
+}
+
+/**
  * The display name for `slug`, falling back to the slug itself.
  *
  * The fallback is what keeps a console built before an engine landed from showing

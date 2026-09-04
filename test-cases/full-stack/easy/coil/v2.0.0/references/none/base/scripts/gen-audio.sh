@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Coil — produce the game's AUDIO with the on-PATH audio tools (specs/assets.md,
-# specs/ui.md). Everything here is PURE SYNTH: in this run image the baked
-# `sfx-sample` pack and the `music` instrument bank are EMPTY, so every SFX is authored
-# with `sfx-synth` (oscillator/noise voices) and the music bed uses `music`
-# synth-waveform tracks only (`define-track --instrument sine|triangle|saw|square` —
-# never a bank instrument name).
+# specs/ui.md). Everything here is PURE SYNTH: the arcade palette wants the tight
+# oscillator control, so every SFX is authored with `sfx-synth` (oscillator/noise
+# voices) and the music bed uses `music` synth-waveform tracks only (`define-track
+# --instrument sine|triangle|saw|square` — never a bank instrument name).
 #
 # Produces, under assets/audio/:
 #   eat.wav  combo-up.wav  death.wav   (sfx-synth)

@@ -8,7 +8,7 @@ floating over the top, serene, mysterious, and full of gentle wonder, with
 minimal or no percussion. The mood and role are prescribed; the key, tempo,
 structure, and instrument choices are the model's, so the case rewards
 compositional creativity. The cue is voiced as notes on instrument tracks the
-model chooses freely from the baked `gm-lite` instrument bank. The recorded
+model chooses freely from the `gm-lite` instrument bank. The recorded
 operations are regenerated into the clip, a stereo `clip.wav` beside a portable
-`clip.mid`. A reviewer plays it against the brief and weighs its calm and space,
-its wonder and mystery, and its clean loop.
+`clip.mid`. A reviewer plays it against the brief and weighs its calm and
+space, its wonder and mystery, and its clean loop.

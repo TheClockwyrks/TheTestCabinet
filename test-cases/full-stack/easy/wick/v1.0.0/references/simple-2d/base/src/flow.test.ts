@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { TICK_DT, type ActionName, type CueName } from "./constants";
+import {
+  ALMANAC_ROWS,
+  ALMANAC_TABS,
+  ENEMY_IDS,
+  TICK_DT,
+  WHEEL_ROW,
+  type ActionName,
+  type CueName,
+} from "./constants";
+import { entriesOf } from "./almanac";
 import { wantedLoops } from "./audio";
 import {
+  NO_POINTER,
+  applyPointer,
   choose,
   consumeTime,
   endRun,
@@ -10,7 +21,11 @@ import {
   pause,
   runFrame,
   startRun,
+  toAlmanac,
+  type PointerInput,
 } from "./flow";
+import type { WickRect } from "./game";
+import { menuRects, tabRects } from "./menus";
 import { idleRun, initialState, type Draft } from "./state";
 import { NOTHING_HELD } from "./sim/context";
 
@@ -19,8 +34,39 @@ interface World {
   mute: { on: boolean };
   cues: Set<CueName>;
   press(action: ActionName): void;
+  point(pointer: PointerInput): void;
   drain(): CueName[];
   update(dt: number): void;
+}
+
+/** A pointer resting on the middle of `rect`, doing what `over` says. */
+function at(rect: WickRect, over: Partial<PointerInput> = {}): PointerInput {
+  return {
+    x: rect.x + rect.width / 2,
+    y: rect.y + rect.height / 2,
+    clicked: false,
+    wheel: 0,
+    ...over,
+  };
+}
+
+/** One frame of nothing but the press edges `pressed`, in order. */
+function edges(state: Draft, pressed: ActionName[]): Draft {
+  return runFrame(state, {
+    dt: 0,
+    pressed,
+    held: NOTHING_HELD,
+    pointer: NO_POINTER,
+    toggleMute: () => {},
+  }).draft;
+}
+
+/** A run held under the pause screen, the state a pause menu is read from. */
+function pausedRun(): Draft {
+  const state = initialState();
+  startRun(state);
+  pause(state);
+  return state;
 }
 
 function world(seed = 1): World {
@@ -35,6 +81,7 @@ function world(seed = 1): World {
       handleAction(state, action, cues, () => {
         mute.on = !mute.on;
       }),
+    point: (pointer) => applyPointer(state, pointer, cues),
     drain: () => {
       const out = [...cues];
       cues.clear();
@@ -55,7 +102,7 @@ describe("the title screen", () => {
   it("wraps the highlight both ways and sounds menu-move", () => {
     const w = world();
     w.press("up");
-    expect(w.state.menuIndex).toBe(1);
+    expect(w.state.menuIndex).toBe(2);
     w.press("down");
     expect(w.state.menuIndex).toBe(0);
     w.press("down");
@@ -82,6 +129,7 @@ describe("the title screen", () => {
 
   it("opens howto on HOW TO PLAY and back returns", () => {
     const w = world();
+    w.press("down");
     w.press("down");
     w.press("confirm");
     expect(w.state.screen).toBe("howto");
@@ -117,13 +165,246 @@ describe("pause", () => {
     expect(w.state.run.tick).toBe(tick);
   });
 
-  it("abandons the run on back", () => {
+  it("resumes on back as it does on pause", () => {
+    const w = world();
+    startRun(w.state);
+    w.update(TICK_DT);
+    pause(w.state);
+    w.press("back");
+    expect(w.state.screen).toBe("playing");
+    expect(w.state.run.tick).toBe(1);
+  });
+
+  it("carries a menu that resumes or abandons the night", () => {
     const w = world();
     startRun(w.state);
     pause(w.state);
-    w.press("back");
+    expect(w.state.menuIndex).toBe(0);
+    w.press("up");
+    expect(w.state.menuIndex).toBe(1);
+    w.press("down");
+    expect(w.state.menuIndex).toBe(0);
+    w.drain();
+    w.press("confirm");
+    expect(w.state.screen).toBe("playing");
+    expect(w.drain()).toEqual(["menu-confirm"]);
+    pause(w.state);
+    w.press("down");
+    w.press("confirm");
     expect(w.state.screen).toBe("title");
     expect(w.state.run).toEqual(idleRun());
+  });
+});
+
+describe("the almanac", () => {
+  it("opens from the title with the idle run and every index at zero", () => {
+    const w = world();
+    w.press("down");
+    w.press("confirm");
+    expect(w.state.screen).toBe("almanac");
+    expect(w.state.menuIndex).toBe(0);
+    expect(w.state.almanacTab).toBe(0);
+    expect(w.state.almanacScroll).toBe(0);
+    expect(w.state.run).toEqual(idleRun());
+    expect(wantedLoops(w.state)).toEqual([]);
+  });
+
+  it("moves the entry highlight over the tab's entries, wrapping", () => {
+    const w = world();
+    toAlmanac(w.state);
+    const tools = entriesOf(0).length;
+    w.press("down");
+    expect(w.state.menuIndex).toBe(1);
+    w.press("up");
+    expect(w.state.menuIndex).toBe(0);
+    w.press("up");
+    expect(w.state.menuIndex).toBe(tools - 1);
+    expect(w.drain()).toEqual(["menu-move"]);
+  });
+
+  it("carries the window with the highlight and back to the top", () => {
+    const w = world();
+    toAlmanac(w.state);
+    // The window holds while the highlight is inside it, and follows it out.
+    for (let i = 0; i < ALMANAC_ROWS - 1; i += 1) w.press("down");
+    expect(w.state.almanacScroll).toBe(0);
+    w.press("down");
+    expect(w.state.menuIndex).toBe(ALMANAC_ROWS);
+    expect(w.state.almanacScroll).toBe(1);
+    w.press("up");
+    expect(w.state.almanacScroll).toBe(1);
+    for (let i = 0; i < ALMANAC_ROWS - 1; i += 1) w.press("up");
+    expect(w.state.menuIndex).toBe(0);
+    expect(w.state.almanacScroll).toBe(0);
+    // Wrapping to the last entry shows the end of the list.
+    w.press("up");
+    expect(w.state.almanacScroll).toBe(entriesOf(0).length - ALMANAC_ROWS);
+  });
+
+  it("moves the tab both ways, wrapping, and restarts the list", () => {
+    const w = world();
+    toAlmanac(w.state);
+    w.press("down");
+    w.press("right");
+    expect(w.state.almanacTab).toBe(1);
+    expect(w.state.menuIndex).toBe(0);
+    expect(w.state.almanacScroll).toBe(0);
+    w.press("left");
+    expect(w.state.almanacTab).toBe(0);
+    w.press("left");
+    expect(w.state.almanacTab).toBe(ALMANAC_TABS.length - 1);
+    w.press("right");
+    expect(w.state.almanacTab).toBe(0);
+    expect(w.drain()).toEqual(["menu-move"]);
+  });
+
+  it("lists the entries of every tab in the order the tables give them", () => {
+    expect(entriesOf(0).map((entry) => entry.name)).toHaveLength(16);
+    expect(entriesOf(1).map((entry) => entry.name)).toHaveLength(10);
+    expect(entriesOf(2).map((entry) => entry.name)).toHaveLength(
+      ENEMY_IDS.length,
+    );
+    expect(entriesOf(3).map((entry) => entry.name)).toEqual([
+      "Small Gem",
+      "Medium Gem",
+      "Large Gem",
+      "Chest",
+      "Bread",
+      "Draft",
+    ]);
+  });
+
+  it("answers back alone, ticks nothing, and ignores confirm", () => {
+    const w = world();
+    toAlmanac(w.state);
+    w.press("confirm");
+    w.press("pause");
+    w.update(1);
+    expect(w.state.screen).toBe("almanac");
+    expect(w.state.run.tick).toBe(0);
+    expect(w.state.accumulator).toBe(0);
+    w.press("back");
+    expect(w.state.screen).toBe("title");
+    expect(w.state.menuIndex).toBe(0);
+  });
+});
+
+describe("the pointer", () => {
+  it("moves the title highlight to the item it rests in, once", () => {
+    const w = world();
+    const rects = menuRects(w.state);
+    w.point(at(rects[1]));
+    expect(w.state.menuIndex).toBe(1);
+    expect(w.drain()).toEqual(["menu-move"]);
+    w.point(at(rects[1]));
+    expect(w.drain()).toEqual([]);
+  });
+
+  it("changes nothing while it rests in no rectangle", () => {
+    const w = world();
+    w.point({ x: 4, y: 4, clicked: true, wheel: 0 });
+    expect(w.state.menuIndex).toBe(0);
+    expect(w.state.screen).toBe("title");
+    expect(w.drain()).toEqual([]);
+  });
+
+  it("takes the item it clicks, moving the highlight there first", () => {
+    const w = world();
+    w.point(at(menuRects(w.state)[2], { clicked: true }));
+    expect(w.state.screen).toBe("howto");
+    expect(w.state.menuIndex).toBe(0);
+    expect(w.drain()).toEqual(["menu-move", "menu-confirm"]);
+    const fresh = world();
+    fresh.point(at(menuRects(fresh.state)[0], { clicked: true }));
+    expect(fresh.state.screen).toBe("playing");
+    expect(fresh.state.run.weapons).toHaveLength(1);
+  });
+
+  it("accepts a level-up offer it clicks", () => {
+    const w = world();
+    startRun(w.state);
+    w.state.run.pendingLevelUps = 1;
+    openLevelUpOverlay(w.state, w.cues);
+    const chosen = w.state.run.offers[1];
+    w.point(at(menuRects(w.state)[1], { clicked: true }));
+    expect(w.state.menuIndex).toBe(0);
+    expect(w.state.screen).toBe("playing");
+    expect(
+      [...w.state.run.weapons, ...w.state.run.passives].some(
+        (held) => held.id === chosen,
+      ),
+    ).toBe(true);
+  });
+
+  it("resumes and abandons the night from the pause menu", () => {
+    const w = world();
+    startRun(w.state);
+    pause(w.state);
+    w.point(at(menuRects(w.state)[0], { clicked: true }));
+    expect(w.state.screen).toBe("playing");
+    pause(w.state);
+    w.point(at(menuRects(w.state)[1], { clicked: true }));
+    expect(w.state.screen).toBe("title");
+    expect(w.state.run).toEqual(idleRun());
+  });
+
+  it("takes an end screen's item", () => {
+    const w = world();
+    startRun(w.state);
+    endRun(w.state, "fallen", w.cues);
+    w.point(at(menuRects(w.state)[1]));
+    expect(w.state.menuIndex).toBe(1);
+    w.point(at(menuRects(w.state)[0], { clicked: true }));
+    expect(w.state.screen).toBe("playing");
+  });
+
+  it("highlights an almanac entry without leaving the screen", () => {
+    const w = world();
+    toAlmanac(w.state);
+    w.point(at(menuRects(w.state)[2], { clicked: true }));
+    expect(w.state.menuIndex).toBe(2);
+    expect(w.state.screen).toBe("almanac");
+  });
+
+  it("reads a hovered row through the window the list shows", () => {
+    const w = world();
+    toAlmanac(w.state);
+    w.state.almanacScroll = 3;
+    w.point(at(menuRects(w.state)[2]));
+    expect(w.state.menuIndex).toBe(5);
+  });
+
+  it("selects the tab it clicks, restarting the list", () => {
+    const w = world();
+    toAlmanac(w.state);
+    w.state.menuIndex = 4;
+    w.state.almanacScroll = 2;
+    w.point(at(tabRects(w.state)[2], { clicked: true }));
+    expect(w.state.almanacTab).toBe(2);
+    expect(w.state.menuIndex).toBe(0);
+    expect(w.state.almanacScroll).toBe(0);
+    expect(w.drain()).toEqual(["menu-move"]);
+  });
+
+  it("scrolls the almanac's list by whole rows, held within the list", () => {
+    const w = world();
+    toAlmanac(w.state);
+    w.point({ x: -1, y: -1, clicked: false, wheel: WHEEL_ROW });
+    expect(w.state.almanacScroll).toBe(1);
+    expect(w.state.menuIndex).toBe(0);
+    w.point({ x: -1, y: -1, clicked: false, wheel: WHEEL_ROW - 1 });
+    expect(w.state.almanacScroll).toBe(1);
+    w.point({ x: -1, y: -1, clicked: false, wheel: WHEEL_ROW * 40 });
+    expect(w.state.almanacScroll).toBe(entriesOf(0).length - ALMANAC_ROWS);
+    w.point({ x: -1, y: -1, clicked: false, wheel: -WHEEL_ROW * 40 });
+    expect(w.state.almanacScroll).toBe(0);
+  });
+
+  it("leaves every other screen's wheel alone", () => {
+    const w = world();
+    w.point({ x: -1, y: -1, clicked: false, wheel: WHEEL_ROW * 4 });
+    expect(w.state.almanacScroll).toBe(0);
+    expect(w.state.menuIndex).toBe(0);
   });
 });
 
@@ -266,6 +547,7 @@ describe("a frame", () => {
       dt: TICK_DT,
       pressed: ["confirm"],
       held: NOTHING_HELD,
+      pointer: NO_POINTER,
       toggleMute: () => {},
     });
     expect(JSON.stringify(before)).toBe(frozen);
@@ -281,9 +563,46 @@ describe("a frame", () => {
       dt: 0,
       pressed: ["confirm", "pause"],
       held: NOTHING_HELD,
+      pointer: NO_POINTER,
       toggleMute: () => {},
     });
     expect(draft.screen).toBe("playing");
+  });
+
+  it("answers no later edge on the screen a press landed in", () => {
+    // Both edges of each pair are answered by the screen the frame began on,
+    // and the first of each changes it: the run `confirm` resumed is not
+    // paused again by `back` or by `pause`, the pause `back` opened is not
+    // resumed by `pause`, and the fresh run `TRY AGAIN` started is not paused
+    // by `back`.
+    expect(edges(pausedRun(), ["confirm", "back"]).screen).toBe("playing");
+    expect(edges(pausedRun(), ["confirm", "pause"]).screen).toBe("playing");
+
+    const running = initialState();
+    startRun(running);
+    expect(edges(running, ["back", "pause"]).screen).toBe("paused");
+
+    const fallen = initialState();
+    startRun(fallen);
+    endRun(fallen, "fallen", new Set<CueName>());
+    expect(edges(fallen, ["confirm", "back"]).screen).toBe("playing");
+  });
+
+  it("toggles mute on a frame whose earlier edge changed the screen", () => {
+    // `mute` is read on every screen and moves none, so it is answered even
+    // where the edge before it left the screen the frame began on.
+    const mute = { on: false };
+    const { draft } = runFrame(initialState(), {
+      dt: 0,
+      pressed: ["confirm", "mute"],
+      held: NOTHING_HELD,
+      pointer: NO_POINTER,
+      toggleMute: () => {
+        mute.on = !mute.on;
+      },
+    });
+    expect(draft.screen).toBe("playing");
+    expect(mute.on).toBe(true);
   });
 
   it("adds the delta to simTime on every screen and ticks on playing alone", () => {
@@ -293,6 +612,7 @@ describe("a frame", () => {
         dt,
         pressed: [],
         held,
+        pointer: NO_POINTER,
         toggleMute: () => {},
       }).draft;
     };

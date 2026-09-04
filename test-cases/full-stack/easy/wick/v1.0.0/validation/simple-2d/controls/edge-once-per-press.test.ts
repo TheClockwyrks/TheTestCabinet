@@ -15,7 +15,7 @@
 //   change takes the resolved value from `0` to non-zero", and "A press is
 //   therefore news for exactly one frame".
 //   specs/ui.md (`title`): "`up` and `down` move the highlight by one item and
-//   wrap at both ends", over the two items of `TITLE_ITEMS`, so one edge from
+//   wrap at both ends", over the three items of `TITLE_ITEMS`, so one edge from
 //   `0` reads `1` and every further edge would move it again.
 //
 // THE DRIVE. The title, reached through `reset`, with the highlight read back
@@ -24,9 +24,8 @@
 // after EVERY one of those frames rather than after the last, so the verdict
 // does not rest on where a repeating build happened to land: a build that
 // re-read the held value every frame, or fired on a timer of its own, moves
-// the highlight on some frame of the hold and that frame reads `0` on the
-// two-item menu. One edge and one alone leaves the whole run of readings at
-// `1`.
+// the highlight on some frame of the hold and that frame reads something other
+// than `1`. One edge and one alone leaves the whole run of readings at `1`.
 //
 // THE TOLERANCE. None: a menu index is a whole number, compared exactly.
 
@@ -37,7 +36,7 @@ import { captureStill, createHarness, type Harness } from "../harness";
 /** Frames the key is held across: the span the item names. */
 const HELD_FRAMES = 30;
 
-/** The highlight the one edge leaves, over the two items of `TITLE_ITEMS`. */
+/** The highlight the one edge leaves, over the items of `TITLE_ITEMS`. */
 const MOVED_INDEX = 1;
 
 let h: Harness;

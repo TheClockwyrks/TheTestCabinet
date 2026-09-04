@@ -7,6 +7,12 @@
 // its vertical velocity, and the frame that happens on is the frame the cue must
 // sound on.
 //
+// THE FIELD HOLDS THE BALL AND NOTHING ELSE. A wall bounce is about a ball and one
+// wall, so both obstacles come off the field and one ball is spawned back; the
+// paddles cannot be removed — they are furniture the game always has — so they are
+// stood out of the ball's column, and neither is taken from the player, because
+// this requirement needs no driven paddle.
+//
 // WHAT IS OBSERVED. The sound itself, not the synthesis: `audio-init.js` watches a
 // Web Audio source being started or an `<audio>` element being played, so a build
 // that makes its blips any way at all is read the same. `specs/ui.md` requires one
@@ -54,7 +60,13 @@ const DESCENT_TICKS = 90; // 0.75 s
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  // Armed at creation, because a browser opens no audio context without a user
+  // gesture and a build is free to open its own only from a real DOM event. The
+  // key goes in before the harness's opening `reset`, so the restore puts back
+  // anything the press moved and the flight below starts from the same game an
+  // unarmed harness hands over — with the user activation the build needs to make
+  // a sound at all.
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -63,9 +75,6 @@ afterEach(async () => {
 
 it("sounds a cue on the frame of the reflection, and not before it", async () => {
   await arrangeLiveBall(h, { x: FIELD_CX, y: START_Y, vx: 0, vy: -500 });
-  // A browser opens no audio context without a user gesture, and a build is free
-  // to open its own only from a real DOM event. The key is bound to nothing.
-  await h.armAudio();
 
   const played = watchCues(h);
   const bounce = await captureReplay(h, "bounce", async () => {

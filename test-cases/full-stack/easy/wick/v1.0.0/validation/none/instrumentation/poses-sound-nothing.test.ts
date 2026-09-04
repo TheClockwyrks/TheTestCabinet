@@ -70,8 +70,9 @@ const QUIET_DELTA = TICK_DT / 1000;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
-  await h.armAudio();
+  // ARMED, because every reading here is a silence: a page that was handed no
+  // gesture sounds nothing whatever the poses do, and each of them would pass.
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {

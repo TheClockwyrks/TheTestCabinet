@@ -198,7 +198,7 @@ fn every_swift_example_a_model_is_shown_compiles() {
         ));
     }
 
-    if let Err(failure) = compile_program(&program, &[], &PrepareContext::new()) {
+    if let Err(failure) = compile_program(&program, &[], &PrepareContext::detached()) {
         panic!(
             "gg shows a model Swift that does not compile. swiftc said:\n\n{failure:?}\n\nThe \
              program every example was gathered into, with a comment naming where each came \

@@ -2,22 +2,31 @@
 //
 // `KeyP` is bound to the runtime's `pause` action (specs/modes/single-player.md).
 //
-// The match is opened through the debug surface and run up to live play — past
-// the pre-serve hold, so what is paused is a match in flight rather than its
-// countdown, which is the `gameplay/pause-during-countdown` item's separate
-// point. The menus are the navigation checks' surface, not this item's: a build
-// with a broken menu and a working pause must fail those checks, not this one.
-// The posed opening hands only the PADDLES to the debug driver, so the pause
-// key still reaches the build. The key event is dispatched at the target the
-// runtime listens on, so the action is raised by the binding the case declares
-// rather than by anything this check reaches into.
+// The match is posed straight into live play — past the pre-serve hold, so what
+// is paused is a match in flight rather than its countdown, which is the
+// `gameplay/pause-during-countdown` item's separate point. The menus are the
+// navigation checks' surface, not this item's: a build with a broken menu and a
+// working pause must fail those checks, not this one. Nothing is taken from the
+// player — neither paddle is driven — so the pause key reaches the build exactly
+// as it does in a match nobody posed. The key event is dispatched at the target
+// the runtime listens on, so the action is raised by the binding the case
+// declares rather than by anything this check reaches into.
+//
+// The field holds one ball and nothing else: both obstacles are removed, and the
+// ball is aimed level down the mid-field lane so the rally recorded before the
+// press is a ball simply crossing an empty court. What is under test is a key
+// press, and a bounce off anything would only be something else for a reviewer to
+// wonder about.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { SERVE_SPEED } from "../constants";
 import { assertEqual } from "../assert";
 import {
+  aimBall,
   captureReplay,
   createHarness,
-  startPlaying,
+  enterPlaying,
+  poseWorld,
   type Harness,
 } from "../harness";
 
@@ -44,7 +53,9 @@ afterEach(() => {
 });
 
 it("pauses a live Solo match when KeyP is pressed", async () => {
-  await startPlaying(h, "solo");
+  enterPlaying(h, "solo");
+  poseWorld(h);
+  aimBall(h, -SERVE_SPEED, 0);
 
   await captureReplay(h, "pause", async () => {
     await h.advance(LIVE_TICKS);

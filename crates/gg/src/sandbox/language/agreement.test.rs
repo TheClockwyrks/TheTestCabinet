@@ -126,10 +126,15 @@ fn every_registered_language_binds_exactly_the_operations_gg_offers() {
         // program every language is required to be able to write, and a sibling gate already
         // asserts each can prepare what it generated.
         let artifact = language.compiles_component().then(|| {
-            crate::sandbox::prepare_program(language, &language.open_docs_views_statement(&[]), &[])
-                .expect("a compiled arm compiles the program its own seam generated")
-                .component
-                .expect("a compiled arm hands back the component it compiled")
+            crate::sandbox::prepare_program(
+                language,
+                &language.open_docs_views_statement(&[]),
+                &[],
+                &crate::sandbox::AgentWorkspace::new(),
+            )
+            .expect("a compiled arm compiles the program its own seam generated")
+            .component
+            .expect("a compiled arm hands back the component it compiled")
         });
         let mut bound = crate::sandbox::component_bound_operations(language, artifact)
             .expect("the guest instantiates and reports its operations");

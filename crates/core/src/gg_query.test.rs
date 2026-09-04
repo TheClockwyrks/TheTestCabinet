@@ -475,6 +475,10 @@ fn gg_record() -> RunRecord {
         },
         metrics: RunMetrics {
             run_time_seconds: 3600.0,
+            session_seconds: Some(3000.0),
+            setup_seconds: Some(540.0),
+            teardown_seconds: Some(60.0),
+            validation_seconds: Some(90.0),
             tokens: TokenCounts {
                 uncached_input: Some(110),
                 cached_input: None,
@@ -882,6 +886,34 @@ fn the_error_rollup_is_queryable_the_moment_it_exists_on_the_summary() {
 }
 
 #[test]
+fn every_stage_duration_reaches_the_document_under_its_own_name() {
+    // `metric.runTimeSeconds` covers the container setup every run of a test case
+    // shares, so a study that slices a model's speed has to be able to name the
+    // session on its own.
+    let doc = build_run_doc(&gg_record(), &GgDocLifecycle::default());
+    assert_eq!(
+        doc.get("metric.runTimeSeconds"),
+        Some(&GgValue::Number(3600.0))
+    );
+    assert_eq!(
+        doc.get("metric.sessionSeconds"),
+        Some(&GgValue::Number(3000.0))
+    );
+    assert_eq!(
+        doc.get("metric.setupSeconds"),
+        Some(&GgValue::Number(540.0))
+    );
+    assert_eq!(
+        doc.get("metric.teardownSeconds"),
+        Some(&GgValue::Number(60.0))
+    );
+    assert_eq!(
+        doc.get("metric.validationSeconds"),
+        Some(&GgValue::Number(90.0))
+    );
+}
+
+#[test]
 fn a_run_that_produced_nothing_reports_no_metrics_rather_than_zero() {
     // Rule 3. A failure record is built with default metrics, and flattening those
     // naively would drag every average toward zero with exactly the runs that burned
@@ -894,9 +926,34 @@ fn a_run_that_produced_nothing_reports_no_metrics_rather_than_zero() {
     assert!(doc.get("metric.runTimeSeconds").is_none());
     assert!(doc.get("metric.totalTokens").is_none());
     assert!(doc.get("metric.cost").is_none());
+    // The stage durations answer the same way. A run that never reached a session
+    // must contribute nothing to `median(metric.sessionSeconds)` rather than
+    // reporting a session that took no time.
+    for field in [
+        "metric.sessionSeconds",
+        "metric.setupSeconds",
+        "metric.teardownSeconds",
+        "metric.validationSeconds",
+    ] {
+        assert!(doc.get(field).is_none(), "{field} should be absent");
+    }
     // The marker is what makes the missing summary expressible as a denominator.
     assert_eq!(doc.get("has.summary"), Some(&GgValue::Bool(false)));
     assert_eq!(doc.get("has.capabilitySet"), Some(&GgValue::Bool(true)));
+}
+
+#[test]
+fn a_stage_that_took_no_measurable_time_reports_zero_rather_than_nothing() {
+    // A recorded zero is a figure: the run reached the stage and the stage was too
+    // fast to measure. Only an unrecorded stage is an absence, so the run page and a
+    // query read the same record the same way.
+    let mut record = gg_record();
+    record.metrics.validation_seconds = Some(0.0);
+    let doc = build_run_doc(&record, &GgDocLifecycle::default());
+    assert_eq!(
+        doc.get("metric.validationSeconds"),
+        Some(&GgValue::Number(0.0))
+    );
 }
 
 #[test]
@@ -961,6 +1018,10 @@ fn a_date_field_is_labelled_as_one_even_though_it_is_a_number() {
     assert_eq!(kind("finished"), Some(GgFieldKind::Date));
     assert_eq!(kind("started"), Some(GgFieldKind::Date));
     assert_eq!(kind("metric.runTimeSeconds"), Some(GgFieldKind::Number));
+    assert_eq!(kind("metric.sessionSeconds"), Some(GgFieldKind::Number));
+    assert_eq!(kind("metric.setupSeconds"), Some(GgFieldKind::Number));
+    assert_eq!(kind("metric.teardownSeconds"), Some(GgFieldKind::Number));
+    assert_eq!(kind("metric.validationSeconds"), Some(GgFieldKind::Number));
     assert_eq!(kind("case"), Some(GgFieldKind::String));
     assert_eq!(kind("cap.shell"), Some(GgFieldKind::Boolean));
 }

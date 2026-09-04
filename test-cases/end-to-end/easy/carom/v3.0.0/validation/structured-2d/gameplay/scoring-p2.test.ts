@@ -1,7 +1,13 @@
 // gameplay/scoring-p2 — a ball crossing the LEFT goal edge scores for player two.
 //
-// The mirror of `scoring-p1`: the ball is aimed at the left goal down the lane
-// that clears both obstacles, and the build's own scoring code decides the point.
+// The mirror of `scoring-p1`: the ball is aimed at the left goal down the middle
+// lane of an empty field, and the build's own scoring code decides the point.
+//
+// THE FIELD HOLDS ONE BALL AND NOTHING ELSE. `arrangeGoal` opens live play over
+// an isolated field and aims that ball down the middle lane at the goal edge,
+// with both paddles held out of it: with the obstacles off the field the flight
+// is a straight line, so the point that lands is the one this check aimed and not
+// a bank that happened to find a goal.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -10,8 +16,6 @@ import {
   captureReplay,
   createHarness,
   driveGoal,
-  receiver0,
-  startPlaying,
   type Harness,
 } from "../harness";
 
@@ -40,9 +44,9 @@ afterEach(() => {
 });
 
 it("gives player two the point when the ball leaves the left goal", async () => {
-  await startPlaying(harness);
-  harness.debug.setScore(0, 0);
-  arrangeGoal(harness, "left");
+  // Opening a match sets both scores to zero (specs/ui.md), so the point below
+  // is the first of the match and the score it produces is a count of one.
+  await arrangeGoal(harness, "left");
 
   const point = await captureReplay(harness, "goal", async () => {
     const resolved = await driveGoal(harness);
@@ -54,7 +58,7 @@ it("gives player two the point when the ball leaves the left goal", async () => 
   // After a point the ball is parked, `receiver` becomes the side scored on,
   // and the screen returns to the countdown (specs/balls.md).
   assertEqual(point.snapshot.screen, "countdown");
-  assertEqual(receiver0(harness), "left");
+  assertEqual(point.snapshot.receiver, "left");
   assertEqual(point.snapshot.score.p2, 1);
   assertEqual(point.snapshot.score.p1, 0);
 });

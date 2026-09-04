@@ -39,8 +39,16 @@ enum Mode {
 /// **A `'` is usually a prime.** `total'` is an ordinary identifier and `'a'` is a character literal,
 /// and the two are told apart the only way they can be: a quote that follows an identifier character
 /// continues a name, and one that does not opens a literal *only if* the literal closes within the
-/// handful of bytes a character literal can be. Anything else is left as code, because a mis-read
-/// quote would open a string that never closes and cost the whole source its mask.
+/// one character plus escape a character literal can be. Anything else is left as code, because a
+/// mis-read quote would open a string that never closes and cost the whole source its mask.
+///
+/// # Why it compares bytes rather than slicing the source
+///
+/// Because the scan walks one **byte** at a time and a model's reply is not ASCII. `&src[at..]`
+/// panics unless `at` falls on a character boundary, so an `é` inside a comment would take the turn
+/// down with a slice index error. Every delimiter here is ASCII, and an ASCII byte never appears
+/// inside a multi-byte UTF-8 sequence, so a byte comparison finds exactly what a string comparison
+/// would and cannot panic on the way.
 pub(super) fn code_mask(src: &str) -> Option<CodeMask> {
     let bytes = src.as_bytes();
     let mut code = vec![true; bytes.len()];
@@ -72,7 +80,7 @@ pub(super) fn code_mask(src: &str) -> Option<CodeMask> {
                     mode = if triple { Mode::Raw } else { Mode::Str };
                     index += width;
                 }
-                b'\'' => match character_literal(bytes, index) {
+                b'\'' => match character_literal(src, index) {
                     Some(end) => {
                         for slot in code.iter_mut().take(end).skip(index) {
                             *slot = false;
@@ -95,11 +103,11 @@ pub(super) fn code_mask(src: &str) -> Option<CodeMask> {
             }
             Mode::Block { depth } => {
                 code[index] = false;
-                if src[index..].starts_with("{-") {
+                if byte == b'{' && bytes.get(index + 1) == Some(&b'-') {
                     code[index + 1] = false;
                     mode = Mode::Block { depth: depth + 1 };
                     index += 2;
-                } else if src[index..].starts_with("-}") {
+                } else if byte == b'-' && bytes.get(index + 1) == Some(&b'}') {
                     code[index + 1] = false;
                     mode = match depth {
                         0 | 1 => Mode::Code,
@@ -179,16 +187,27 @@ fn opens_line_comment(bytes: &[u8], index: usize) -> bool {
 /// The end offset of the character literal opening at `index`, or `None` when this quote is a prime
 /// on an identifier or a shape this scan will not guess at.
 ///
-/// A character literal is `'x'`, `'\n'`, or one of the escapes that run to a handful of bytes
-/// (`'\x2764'`), so the search is bounded rather than open-ended: an unbounded one is how a prime
-/// swallows the rest of a program.
-fn character_literal(bytes: &[u8], index: usize) -> Option<usize> {
-    // A quote directly after an identifier character is a prime — `total'`, `x''`.
-    if index > 0 && (bytes[index - 1].is_ascii_alphanumeric() || bytes[index - 1] == b'_') {
+/// A character literal is one character between quotes — `'x'`, `'é'`, `'—'` — or one of the escapes
+/// that run to a handful of bytes (`'\x2764'`), so the search is bounded rather than open-ended: an
+/// unbounded one is how a prime swallows the rest of a program. The bound on the unescaped shape is
+/// the width of the character that follows the quote, so a literal holding a character outside ASCII
+/// closes where an ASCII one does.
+fn character_literal(src: &str, index: usize) -> Option<usize> {
+    let bytes = src.as_bytes();
+    // A quote directly after an identifier character is a prime — `total'`, `x''`, `café'`.
+    if src[..index]
+        .chars()
+        .next_back()
+        .is_some_and(|character| character.is_alphanumeric() || character == '_')
+    {
         return None;
     }
     let escaped = bytes.get(index + 1) == Some(&b'\\');
-    let limit = if escaped { 8 } else { 2 };
+    // `index + 1` is a character boundary, since the byte at `index` is the ASCII quote.
+    let limit = match escaped {
+        true => 8,
+        false => src[index + 1..].chars().next().map_or(1, char::len_utf8) + 1,
+    };
     let mut at = index + 1 + usize::from(escaped);
     let end = (index + 1 + limit).min(bytes.len());
     while at < end {
@@ -202,3 +221,7 @@ fn character_literal(bytes: &[u8], index: usize) -> Option<usize> {
     }
     None
 }
+
+#[cfg(test)]
+#[path = "purescript.mask.test.rs"]
+mod tests;

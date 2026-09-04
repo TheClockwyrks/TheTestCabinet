@@ -106,6 +106,23 @@ The supported harness slugs are `claude`, `codex`, `cline`, `antigravity`,
 tcab harnesses          # human-readable table; add --json for machine output
 ```
 
+### The audio store
+
+A run whose case declares [audio packs](/testing/full-stack/manifests/#audio) is
+staged with them when its container starts, read from a host audio store. In a
+cluster the driver image carries the store. For a local `tcab run`, fetch it
+once:
+
+```sh
+scripts/fetch-audio-store.sh
+```
+
+It pulls the published `test-cabinet-audio-store` image and extracts the tree,
+so it needs no R2 credential. The default destination is
+`~/.cache/tcab/audio-store`, and the script prints the `TCAB_AUDIO_STORE` export
+that points `tcab` at it. End-to-end, adversarial, and performance cases declare
+no packs and read no store.
+
 ## 4. A headless browser
 
 The [validator](/components/core/validation/) and the reference renderer drive a

@@ -1731,6 +1731,12 @@ struct VersionBody {
     /// The clip format of an audio case (the wire shape matches [`AudioSpec`]).
     #[serde(default)]
     audio: Option<AudioSpec>,
+    /// The audio packs a run of this version is staged with, in declaration order
+    /// (see [`TestCaseVersion::audio_packs`]). Defaulted, so a definition stored
+    /// before packs were declared per case reads as declaring none — which is why
+    /// adding the field bumps the store format, forcing a re-ingest that resolves it.
+    #[serde(default)]
+    audio_packs: Vec<String>,
     prompt_template: String,
     common_specs: Vec<SpecBody>,
     /// The starter workspace files, keyed by [engine](crate::engine) slug. A
@@ -1876,6 +1882,7 @@ impl VersionBody {
             material: self.material,
             particle: self.particle,
             audio: self.audio,
+            audio_packs: self.audio_packs,
             common_specs: self.common_specs.iter().map(spec_from).collect(),
             common_workspace: self.workspace.resolve(),
             init: self.init,
@@ -2028,6 +2035,7 @@ fn review_validation_from(validation: ReviewValidationBody) -> ReviewValidation 
         // which project's copy runs — so it carries none.
         script: (!validation.per_engine).then(|| PathBuf::from(&validation.script)),
         script_rel: validation.script,
+        engines: validation.engines,
         outputs: validation
             .outputs
             .into_iter()
@@ -2343,11 +2351,17 @@ struct InstrumentationBody {
 #[serde(rename_all = "camelCase")]
 struct ReviewValidationBody {
     script: String,
-    /// Whether `script` names a suite inside each engine's validator project rather
+    /// Whether `script` names a suite inside a validator project — one per engine,
+    /// and it ships in the project of every engine [`Self::engines`] covers — rather
     /// than one file under the version folder. Absent for a definition stored before
     /// validators were declared per engine, all of which name one file.
     #[serde(default)]
     per_engine: bool,
+    /// The engines this validator decides its point on, by slug. Absent or empty
+    /// leaves it active on every engine the case supports; a non-empty list is the
+    /// subset the point belongs to, and a run on any other engine does not carry it.
+    #[serde(default)]
+    engines: Vec<String>,
     outputs: Vec<ReviewOutputBody>,
 }
 

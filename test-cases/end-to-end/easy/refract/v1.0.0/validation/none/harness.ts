@@ -206,6 +206,70 @@ export interface RefractDebugApi {
 }
 
 /* -------------------------------------------------------------------------- */
+/* What a snapshot is compared on                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A snapshot with every beam cell narrowed to the two fields the specs fix.
+ *
+ * specs/state.md declares `interface Cell { col, row }` and
+ * specs/instrumentation.md's Snapshot shape writes `cells: [{ col, row }]`, so
+ * `col` and `row` are what a cell means. Neither says a cell may carry nothing
+ * else, and specs/state.md's contract grants the build fields that "hold derived
+ * data you can rebuild from the declared ones" — a cell that also names its
+ * node's kind or channel is exactly that. So every check compares on the two
+ * fields the specs fix, and no check grades the rest either way. A cell missing
+ * `col` or `row` still fails: the projection reads those two properties and
+ * yields `undefined`.
+ *
+ * The snapshot the page returned is never touched. Every container the
+ * projection rewrites is a fresh object, so a check holding an earlier snapshot
+ * sees what it saw.
+ *
+ * Handed to the shared harness as its `projectSnapshot`, so it runs at every
+ * point a snapshot crosses back out of the page — `h.snapshot()`,
+ * `h.debug.snapshot()`, and the states a driven run reads — and no check can
+ * hold an unprojected one. It is the same narrowing the `simple-2d` and
+ * `structured-2d` harnesses apply at their own single read point, so a build
+ * that passes there passes here.
+ */
+function projectCells(snapshot: RefractSnapshot): RefractSnapshot {
+  const projected: RefractSnapshot = { ...snapshot };
+
+  const beams: unknown = snapshot.beams;
+  if (typeof beams === "object" && beams !== null) {
+    const narrowed: Record<string, unknown> = { ...beams };
+    for (const [channel, beam] of Object.entries(narrowed)) {
+      if (typeof beam !== "object" || beam === null) continue;
+      const cells: unknown = (beam as { cells?: unknown }).cells;
+      if (!Array.isArray(cells)) continue;
+      narrowed[channel] = {
+        ...beam,
+        cells: (cells as { col: number; row: number }[]).map((cell) => ({
+          col: cell.col,
+          row: cell.row,
+        })),
+      };
+    }
+    projected.beams = narrowed as RefractSnapshot["beams"];
+  }
+
+  const tracing = snapshot.tracing;
+  if (typeof tracing === "object" && tracing !== null) {
+    const live: unknown = tracing.live;
+    if (typeof live === "object" && live !== null) {
+      const cell = live as { col: number; row: number };
+      projected.tracing = {
+        ...tracing,
+        live: { col: cell.col, row: cell.row },
+      };
+    }
+  }
+
+  return projected;
+}
+
+/* -------------------------------------------------------------------------- */
 /* The harness, bound to this case                                            */
 /* -------------------------------------------------------------------------- */
 //
@@ -244,16 +308,32 @@ const kit = createCaseHarness<RefractSnapshot, RefractDebugApi>({
   // a gesture delivered any other way would leave a perfectly good build silent.
   // Refract fixes no key binding this suite could trust to be inert — the menu
   // bindings are the build's own — so the gesture is a real mouse press in the
-  // stage's top-left corner: farther than NODE_HIT_R from every cell center of
-  // every board, so it matches no row of the grab table and begins no trace, and
-  // the pointer does not operate menus (specs/controls.md, specs/ui.md). Arming
-  // changes no game state beyond the mirrored pointer fields.
+  // stage's top-left corner.
+  //
+  // IT IS NOT INERT, AND NOTHING HERE NEEDS IT TO BE. Every screen is worked from
+  // the pointer, through targets the BUILD places (specs/controls.md), so a build
+  // that seated a control in that corner has this press arm it and its release
+  // take it. What makes the gesture safe is WHEN it is delivered: before the
+  // harness's opening `reset`, which restores every declared field of the state,
+  // so a menu it moved or a screen it left is gone before a check reads anything
+  // — while the audio it opened is a fact about the page's user activation, which
+  // no reset touches. And only a harness created with `armAudio: true` is handed
+  // the gesture, so a check that is not about sound never presses this build.
   arm: { kind: "click", x: 2, y: 2 },
   // A build installs its surface while its entry module runs, so a page that has
   // fired `load` has either installed it already or is not going to. Five seconds
   // is generous against a conformant build and bounds the cost of one with no
   // surface at all, which pays it once per harness.
   surfaceTimeoutMs: 5_000,
+  // Every beam cell narrowed to `col` and `row` before any check sees it, for
+  // the reason on {@link projectCells}.
+  projectSnapshot: projectCells,
+  // Refract reads WHERE its copy sits, not only which strings were drawn — the
+  // select grid's numbers cluster into rows and columns, a HUD figure is held
+  // beside its label and clear of the board, and a heading letter-spaced a glyph
+  // per `fillText` has to read as the one run it spells. All of that is measured
+  // extent, so the harness measures each text call in the page.
+  measureText: true,
   projectRoot: dirname(fileURLToPath(import.meta.url)),
 });
 
@@ -306,6 +386,8 @@ export {
   closeWorkerBrowser,
   colorDistance,
   drawnText,
+  drawnTextLines,
+  drawnTextRuns,
   drewText,
   mouseGlide,
   mousePress,
@@ -317,7 +399,7 @@ export {
   thinReplay,
 } from "./case-harness/index";
 
-export type { Rgb, TextDraw } from "./case-harness/index";
+export type { Rgb, TextDraw, TextGeometry } from "./case-harness/index";
 
 /* -------------------------------------------------------------------------- */
 /* Colour sampling                                                            */

@@ -1,17 +1,18 @@
 // Wick — clock/title-ticks-nothing: nothing advances on title and howto.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE.
-//   - `specs/ui.md` ("What advances on each screen"): "`title`, `howto` |
-//     Nothing."
+//   - `specs/ui.md` ("What advances on each screen"): "`title`, `howto`,
+//     `almanac` | Nothing."
 //   - `specs/instrumentation.md` ("Snapshot shape"): "`run` reports the idle
-//     run of `specs/state.md` on `title` and `howto`".
+//     run of `specs/state.md` on `title`, `howto`, and `almanac`".
 //   - `specs/state.md` ("The idle run"): "`run` holds the values below whenever
-//     `screen` is `title` or `howto`", with `tick` `0` and `enemies` empty
-//     among them.
+//     `screen` is `title`, `howto`, or `almanac`", with `tick` `0` and
+//     `enemies` empty among them.
 //   - `specs/instrumentation.md` (`reset`): restores "the `title` screen with
-//     `menuIndex` `0`, the idle run of `specs/state.md` ... and every driver
-//     switch on"; (`setScreen`): "`howto` | any | Enters the how-to screen
-//     exactly as confirming `HOW TO PLAY` does: the idle run."
+//     `menuIndex`, `almanacTab`, and `almanacScroll` all `0`, the idle run of
+//     `specs/state.md` ... and every driver switch on"; (`setScreen`):
+//     "`howto` | any | Enters the how-to screen exactly as confirming
+//     `HOW TO PLAY` does: the idle run."
 //
 // WHAT IS READ. From a reset, with every driver switch on as a reset leaves it,
 // sixty frames are delivered on `title`; then `howto` is entered through the

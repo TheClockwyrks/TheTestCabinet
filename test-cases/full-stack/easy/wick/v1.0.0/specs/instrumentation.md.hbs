@@ -259,8 +259,9 @@ that poses a partial frame.
 {{/if}}
 
 Restores every declared field of the game's state to its title-screen value:
-the `title` screen with `menuIndex` `0`, the idle run of `specs/state.md`, the
-accumulator and `simTime` at `0`, and every driver switch on. `options` is
+the `title` screen with `menuIndex`, `almanacTab`, and `almanacScroll` all `0`,
+the idle run of `specs/state.md`, the accumulator and `simTime` at `0`, and
+every driver switch on. `options` is
 optional, and `options.seed` seeds the generator, defaulting to `DEFAULT_SEED`
 (`1`): a whole number from `0` to `2^32 − 1`, which `rngState` equals once the
 call returns; any other value is invalid. `muted` stays as it is.
@@ -308,8 +309,9 @@ are.
 
 | `name` | From | What the call does |
 | --- | --- | --- |
-| `title` | any | Discards the run exactly as `TITLE` on an end screen or `back` on `paused` does: the idle run. |
+| `title` | any | Discards the run exactly as `TITLE` on an end screen or `MAIN MENU` on `paused` does: the idle run. |
 | `howto` | any | Enters the how-to screen exactly as confirming `HOW TO PLAY` does: the idle run. |
+| `almanac` | any | Enters the almanac exactly as confirming `THE ALMANAC` does: the idle run, `menuIndex` `0`, `almanacTab` `0`, `almanacScroll` `0`. |
 | `playing` | `paused` | Resumes exactly as `pause` on `paused` does; the run is untouched. |
 | `playing` | `chest` | Closes the overlay exactly as `confirm` does: `chestResult` becomes `null`. |
 | `playing` | `levelup` | Changes nothing; `choose` is the way out. |
@@ -335,6 +337,47 @@ applied, `pendingLevelUps` falls by one, and either the next queued overlay
 opens with a fresh pool or `screen` returns to `playing`. `index` is a whole
 number, and an `index` outside `offers`, a negative one included, leaves the
 state as it was rather than throwing. Sounds nothing.
+
+### Menus
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `menuRects(state)`
+{{else}}
+#### `menuRects()`
+{{/if}}
+
+Reports the rectangles of the current screen's vertical menu, in menu order,
+each a plain object carrying `x`, `y`, `width`, and `height` in stage
+coordinates, `0` to `STAGE_W` across and `0` to `STAGE_H` down, which are the
+coordinates the pointer is read in. `title`, `levelup`, `paused`, `fallen`, and
+`dawn` report one rectangle per item of the menu they show. `almanac` reports
+one rectangle per visible entry row, in list order from `almanacScroll` and at
+most `ALMANAC_ROWS` of them, so a tab holding fewer entries than that reports
+one per entry. `howto`, `playing`, and `chest` report an empty list. Each
+rectangle is the area a hover or a click selects that item inside, so what this
+reading reports is what the pointer rules of `specs/controls.md` act on.
+{{#if (eq engine.slug "simple-2d")}}
+It returns no state, because it poses nothing.
+{{else}}
+It changes nothing.
+{{/if}}
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `tabRects(state)`
+{{else}}
+#### `tabRects()`
+{{/if}}
+
+Reports the rectangles of the almanac's tab bar on `almanac`, one per tab in
+`ALMANAC_TABS` order, each a plain object carrying `x`, `y`, `width`, and
+`height` in the same stage coordinates. Every other screen reports an empty
+list. Each rectangle is the area a click selects that tab inside, and it meets
+no rectangle `menuRects` reports on that screen.
+{{#if (eq engine.slug "simple-2d")}}
+It returns no state, because it poses nothing.
+{{else}}
+It changes nothing.
+{{/if}}
 
 ### The driver switches
 
@@ -713,12 +756,19 @@ Removes every pickup; nothing is collected. Applies on a run screen.
 
 ## `WickDebugApi`
 
-`src/game.ts` declares and exports the surface's type exactly as it stands
-here, so a caller written against it drives any build the same way.
+`src/game.ts` declares and exports the surface's types exactly as they stand
+here, so a caller written against them drives any build the same way.
 `WickSnapshot` is the type of the object under Snapshot shape below, declared
 by the build to match that shape field for field.
 
 ```ts
+export interface WickRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
 export interface WickDebugApi {
   readonly version: number;
   reset(
@@ -726,6 +776,8 @@ export interface WickDebugApi {
     options?: { readonly seed?: number },
   ): WickState;
   snapshot(state: DeepReadonly<WickState>): WickSnapshot;
+  menuRects(state: DeepReadonly<WickState>): readonly WickRect[];
+  tabRects(state: DeepReadonly<WickState>): readonly WickRect[];
   setScreen(state: DeepReadonly<WickState>, name: Screen): WickState;
   choose(state: DeepReadonly<WickState>, index: number): WickState;
   setSpawning(state: DeepReadonly<WickState>, on: boolean): WickState;
@@ -844,16 +896,25 @@ export interface WickDebugApi {
 
 ## `WickDebugApi`
 
-`src/game.ts` declares and exports the surface's type exactly as it stands
-here, so a caller written against it drives any build the same way.
+`src/game.ts` declares and exports the surface's types exactly as they stand
+here, so a caller written against them drives any build the same way.
 `WickSnapshot` is the type of the object under Snapshot shape below, declared
 by the build to match that shape field for field.
 
 ```ts
+export interface WickRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
 export interface WickDebugApi {
   readonly version: number;
   reset(options?: { readonly seed?: number }): void;
   snapshot(): WickSnapshot;
+  menuRects(): readonly WickRect[];
+  tabRects(): readonly WickRect[];
   setScreen(name: Screen): void;
   choose(index: number): void;
   setSpawning(on: boolean): void;
@@ -917,9 +978,11 @@ export interface WickDebugApi {
 ```js
 {
   version: 1,
-  screen: "title" | "howto" | "playing" | "levelup"
+  screen: "title" | "howto" | "almanac" | "playing" | "levelup"
         | "chest" | "paused" | "fallen" | "dawn",
   menuIndex: <number>,
+  almanacTab: <number>,            // the tab the almanac is showing
+  almanacScroll: <number>,         // the almanac list's first visible row
 {{#if (eq engine.slug "none")}}
   autoStep: <boolean>,             // whether the frame loop advances the simulation
 {{/if}}
@@ -938,6 +1001,7 @@ export interface WickDebugApi {
     xpToNext: <number>,            // XP_BASE + XP_STEP * (level - 1)
     kills: <number>,
     player: { x, y, facing: "left" | "right", hp },
+    hurtFlash: <number>,           // seconds left of the hurt flash
     maxHp: <number>,
     armor: <number>,
     moveSpeed: <number>,           // units per second
@@ -979,12 +1043,13 @@ export interface WickDebugApi {
 ```
 
 The shape is fixed, and every field is present whatever the screen. `run`
-reports the idle run of `specs/state.md` on `title` and `howto`, and the run
-that just ended on `fallen` and `dawn`. `zones[].ttl` is `null` for a zone that
-never expires, and `width` and `height` appear on a slash alone. Every zone's
-`x`, `y` is its center; a strike's `radius` is its `area` and a burst's is its
-Flare `radius`. The seven switches sit beside `muted`, outside `run`, and a
-fresh run leaves them as they stand.
+reports the idle run of `specs/state.md` on `title`, `howto`, and `almanac`, and
+the run that just ended on `fallen` and `dawn`. `zones[].ttl` is `null` for a
+zone that never expires, and `width` and `height` appear on a slash alone. Every
+zone's `x`, `y` is its center; a strike's `radius` is its `area` and a burst's
+is its Flare `radius`. `almanacTab` and `almanacScroll` sit beside `menuIndex`,
+outside `run`, and are `0` on every screen but `almanac`. The seven switches sit
+beside `muted`, outside `run`, and a fresh run leaves them as they stand.
 {{#if (eq engine.slug "none")}}
 
 `autoStep` is `true` while the frame loop advances the simulation from the wall

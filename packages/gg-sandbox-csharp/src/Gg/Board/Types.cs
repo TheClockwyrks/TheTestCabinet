@@ -21,7 +21,7 @@ public static partial class Board
     /// <summary>How an issue's epic grouping changes: leave it, detach it, or group it.</summary>
     /// <remarks>
     /// The default is <see cref="Keep"/>, so an update that does not mention the grouping does not
-    /// change it — and detaching an issue and grouping it under nothing cannot be confused.
+    /// change it.
     /// </remarks>
     public readonly struct EpicAssignment
     {
@@ -70,15 +70,12 @@ public static partial class Board
     {
         /// <summary>Register a wait on this issue, to be resumed once it goes terminal.</summary>
         /// <remarks>
-        /// <see cref="WaitForIssue"/> with the id already supplied, for the common case where the
-        /// issue that was just filed is the one to wait on. It records the wait and returns at once,
-        /// so the rest of the program still runs and the suspension happens after it ends.
+        /// The wait is recorded and the call returns at once; the suspension happens after the
+        /// program ends.
         /// </remarks>
         /// <returns>an acknowledgement that the wait is registered.</returns>
         /// <exception cref="ApiException">
-        /// <see cref="ApiErrorCode.NotFound"/> when the board no longer holds the issue, which is
-        /// the one way this can fail: the other refusals <see cref="WaitForIssue"/> documents cannot
-        /// be reached from an issue that was just filed here.
+        /// <see cref="ApiErrorCode.NotFound"/> when the board no longer holds the issue.
         /// </exception>
         /// <ggop alias="true">board.wait_for_issue</ggop>
         public string Wait() => WaitForIssue(Id);

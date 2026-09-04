@@ -25,7 +25,7 @@ summary = "..."              # optional abstract for the site cards (inline; NOT
 description = "description.md" # optional site-facing prose (relative path; NOT seeded)
 changelog = "changelog.md"   # REQUIRED per-version changelog (relative path; NOT seeded)
 prompt = "prompt.hbs"        # the prompt template handed to the harness (required)
-max_runtime_hours = 0.5      # cap on the harness session before it is stopped (default 1)
+max_runtime_hours = 0.5      # cap on the session and on each setup step (default 1)
 experimental = false         # optional; true hides the case unless the deployment opts in
 workspace = "workspaces/base" # optional starter directory, seeded into the run root
 init = "npm install"         # optional command run after seeding, before the harness
@@ -61,7 +61,7 @@ build = "npm run build"      # static-build command (required, non-empty)
 typecheck = "npx tsc --noEmit"     # required; a non-zero exit rates the run broken
 lint = "npx eslint ."              # optional; recorded
 format = "npx prettier --check ."  # optional; recorded
-test = "npx vitest run --coverage" # optional; recorded with its test count and coverage
+test = "npx vitest run --coverage" # optional; results read from the reports it writes
 
 # Common specs, seeded for EVERY variant. Each maps a `source` inside the version
 # folder to a `dest` in the run's workspace. A `.hbs` source is rendered; any other
@@ -218,9 +218,10 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   seeded; see
   [Prompt template](/testing/end-to-end/overview/#prompt-template).
 - `max_runtime_hours` is the maximum wall-clock duration the harness session may
-  run before the container is torn down and the run aborts. It is authored in
-  hours, fractional values allowed, must be a positive finite number, and
-  defaults to `1`. A run can override it for a single invocation, for example
+  run before the container is torn down and the run aborts. It bounds each
+  in-container setup step on its own as well. It is authored in hours,
+  fractional values allowed, must be a positive finite number, and defaults to
+  `1`. A run can override it for a single invocation, for example
   `tcab run --max-runtime <hours>`.
 - `experimental` marks a case as still being iterated on and defaults to
   `false`. A deployment offers experimental cases only when it sets
@@ -419,9 +420,10 @@ does.
 
 A per-engine case declares its [validators](/components/core/validation/) per
 engine: a review item's `validation.script` is relative to the engine's validator
-project, and the case ships that suite under `validation/<engine>/` for every
-engine it supports. Resolution holds the declaration against each of them, so a
-point cannot be decided under one engine and left to the reviewer under another.
+project, and every engine the case supports has a project of its own under
+`validation/<engine>/`. A validation covers every supported engine unless its
+`engines` key names fewer, and resolution holds the declared script against the
+project of each engine it covers.
 
 The spelling also decides who rates the run. A version on the per-engine
 spelling, other than a game jam, is validator-rated: its validators decide the
@@ -508,7 +510,7 @@ test = "npx vitest run --coverage"
 | `typecheck` | Yes | Gating. A non-zero exit rates the run `broken` and scores it zero. |
 | `lint` | No | Recorded. |
 | `format` | No | Recorded. |
-| `test` | No | Recorded, with the test count and coverage it reports. |
+| `test` | No | Recorded, with the results and coverage read from the report files it writes. |
 
 Each declared command must be non-empty and runs from the implementation's
 repository root once the `[build]` install has completed, so the dependencies it
@@ -533,11 +535,39 @@ that never ran leaves the run ungated: a host that could not install dependencie
 has learned nothing about whether the code compiles. The other three commands are
 recorded and leave the run's rating and score to validation and the reviewer.
 
-`test` runs the produced implementation's own test suite. The number of tests
-that ran, the number that failed, and the coverage the command measured are read
-from what the command printed and recorded with the run, so a build that ships a
-tested implementation is distinguishable from one that ships none. A runner
-reporting no counts or no coverage records their absence.
+`test` runs the produced implementation's own test suite: the tests the model
+wrote, over the code the model wrote. Its figures are read from two report files
+the case's own build `vitest.config.ts` writes into the tree, never from what
+the command printed, so a runner restyling its terminal output cannot move a
+recorded number.
+
+The case's build config must write both files. `reporters: ["default", "json"]`
+with `outputFile: { json: "coverage/test-report.json" }` produces the run's
+results: the totals, a row per test file, and each failure with its message.
+Coverage declared as `provider: "istanbul"` with
+`reporter: ["text", "json-summary"]` produces `coverage/coverage-summary.json`,
+which carries istanbul's four metrics for the whole measured source and per
+file. `reportOnFailure: true` is what makes a failing suite write its coverage at
+all.
+
+Coverage is measured over the build's own `src/`, excluding its tests and any
+source the workspace seeded and forbade the build to edit, so the denominator is
+the code the model actually wrote. Both files land under `coverage/`, the one
+directory the seeded workspace ignores in both git and Prettier, which keeps a
+report out of the commit, out of the analyzer's authored set, and out of the
+`format` command's `prettier --check`.
+
+The toolchain stage reads both files after the command finishes and whatever it
+exited with, because a failing suite is the one whose coverage is most worth
+having. What is recorded is bounded: per-file rows are capped and flagged when
+they are cut, and every failure message has its stack frames stripped and its
+length capped, since frames carry host paths that mean nothing on a published
+record.
+
+A case whose configuration writes no report files records no figures. Absence
+means not reported, which a console renders as no widget rather than an empty
+one, while a recorded block of zeroes is the runner saying the build shipped no
+tests.
 
 The same pass builds the implementation and opens the built site in a headless
 browser as a smoke check, recording whether it booted, whether it painted a first
@@ -706,6 +736,29 @@ validation = { script = "validation/scoring-point.mjs", outputs = [
   test, both required; the optional `assert` records the checks that decide the
   verdict. A debug script is reporter-side and never seeded. Each script may
   drive at most one verdict unit across the whole checklist.
+- `engines` names the engines the validator decides its point on, in declared
+  order. Omitting the key, or giving an empty list, covers every engine the case
+  supports. Each entry must name a supported engine, a repeated slug is
+  rejected, and the key is legal only on a case that declares engines. A point
+  whose validator does not cover the run's engine is left out of that run's
+  checklist: it is not driven, no verdict is recorded against it, the reviewer
+  is not shown it, and it adds no weight to the run's score. Scope a point this
+  way when the behavior is the model's own work under one engine and the
+  engine's work under another.
+
+  ```toml
+  [[review_item]]
+  id = "debug-overlay"
+  title = "The debug overlay"
+  text = "The overlay draws the ball's velocity over the field."
+  weight = 1
+  domains = ["hud"]
+  failure_cap = "scuffed"
+  validation = { script = "hud/debug-overlay.test.ts", engines = ["none"], outputs = [
+    { id = "overlay", name = "The debug overlay over the field", kind = "image" },
+  ] }
+  ```
+
 - `outputs` declares the media the script captures, each an `{ id, name, kind }`.
   `name` defaults to a humanized `id`. At least one output is required and output
   ids must be unique within the script. Each output is served under the flat name

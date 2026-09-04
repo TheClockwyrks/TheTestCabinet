@@ -347,6 +347,9 @@ fn the_api_surface_carries_each_modules_functions_and_their_own_operations() {
             ("writeFile".to_string(), "files.write_file".to_string()),
             ("editFile".to_string(), "files.edit_file".to_string()),
             ("listDir".to_string(), "files.list_dir".to_string()),
+            // The `list-dir` capability buys two calls, and each is its own operation: one
+            // directory's entries, and the tree beneath one.
+            ("tree".to_string(), "files.tree".to_string()),
             // The `search` capability's one function lives on `gg.files` too, and it is its own
             // operation rather than a read over the files it scans.
             ("search".to_string(), "files.search".to_string()),

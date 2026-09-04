@@ -468,3 +468,22 @@
 # This is not hypothetical here: the primary development host is macOS running the tree
 # through a Linux VM's shared mount, so Finder and the builder see the same directories.
 **/.DS_Store
+
+# The staged AUDIO STORE, and the one thing under dist/ that belongs in this context.
+# The audio clips are not committed to this repository: they live in the private audio
+# object store, and `containers/build.sh` runs scripts/stage-audio-store.mjs, which
+# downloads and verifies every published pack into dist/audio-store/tree.
+# containers/audio-store/Dockerfile then `COPY`s that directory (named through the
+# AUDIO_STAGE_DIR build arg) to /opt/tcab-audio, which is the ONE image that carries
+# audio: no RUN image bakes a pack any more, a run is staged with the packs its test
+# case declares. The blanket `**/dist/` re-exclusion above would keep it out, so
+# re-include just this subtree — and only it, so every OTHER dist/ (a local
+# `npm run build`'s output) stays out as before. This re-inclusion has to come after
+# `**/dist/` to win, which is why it lives here rather than with the allowlist proper.
+#
+# The pattern names the `tree` directory rather than the whole `dist/audio-store` root,
+# which is as narrow as this file's format goes: it is exactly what the COPY reads, so
+# the stager's content-addressed DOWNLOAD CACHE at dist/audio-store/.cache — a second
+# copy of every clip it has ever verified, which no image reads — stays out, and so does
+# anything else that ends up beside the tree.
+!/dist/audio-store/tree

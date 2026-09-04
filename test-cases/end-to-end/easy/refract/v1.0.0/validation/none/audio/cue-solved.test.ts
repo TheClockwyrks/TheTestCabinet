@@ -43,7 +43,10 @@ function soundsOn(cues: readonly TimedCue[], frame: number): number {
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  // Armed at creation: this check counts what the build SOUNDED on two frames, and
+  // the gesture that opens the build's audio is delivered before the opening
+  // `reset` puts the state back. See audio/cue-connect for the whole argument.
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -56,7 +59,6 @@ it("sounds more on the solving move than on the earlier channel-completing move"
   // (specs/beams.md R9), and the triangle's last move completed a channel
   // while the board stayed open — the comparison frame.
   const board = await loadBoard(h, R2_FOREIGN);
-  await h.armAudio();
 
   const played = watchCues(h);
   const solved = await captureReplay(h, "solve", async () => {

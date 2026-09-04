@@ -15,21 +15,45 @@ import {
   SPIN_FROM_PADDLE,
   SPIN_HALFLIFE,
 } from "./constants";
-import { ballSpeed } from "./entities";
-import { step } from "./physics";
+import { allObstacles, ballSpeed } from "./entities";
+import { step as stepAgainst, type Flight } from "./physics";
 import type { BallState, PaddleState } from "./game";
 
 const FRAME = 1 / 60;
 
+/** Both obstacles in the field, which is how a match is played. */
+const FIELD_OBSTACLES = allObstacles();
+
+/** `step` against the field as a match has it: both obstacles present. */
+function step(
+  ball: BallState,
+  left: PaddleState,
+  right: PaddleState,
+  dt: number,
+): Flight {
+  return stepAgainst(ball, left, right, FIELD_OBSTACLES, dt);
+}
+
 function ball(patch: Partial<BallState> = {}): BallState {
-  return { x: 640, y: 360, vx: 0, vy: 0, spin: 0, ...patch };
+  return {
+    x: 640,
+    y: 360,
+    vx: 0,
+    vy: 0,
+    spin: 0,
+    held: false,
+    holdTimer: 0,
+    trail: [],
+    ...patch,
+  };
+}
+
+function paddle(cy: number, vy = 0): PaddleState {
+  return { cy, vy, driven: false, drivenVy: 0 };
 }
 
 function paddles(leftCy = 360, rightCy = 360): [PaddleState, PaddleState] {
-  return [
-    { cy: leftCy, vy: 0 },
-    { cy: rightCy, vy: 0 },
-  ];
+  return [paddle(leftCy), paddle(rightCy)];
 }
 
 /** The ball after `frames` steps of `dt` each against the same two paddles. */
@@ -170,7 +194,7 @@ describe("the paddle bounce", () => {
 
   it("imparts spin from the paddle's motion at contact", () => {
     const [, right] = paddles();
-    const left: PaddleState = { cy: 360, vy: 300 };
+    const left = paddle(360, 300);
     const b = step(ball({ x: 76, vx: -400 }), left, right, FRAME).ball;
     // Imparted mid-frame, so the remainder of the frame's decay has applied.
     const imparted = 300 * SPIN_FROM_PADDLE;
@@ -186,7 +210,7 @@ describe("the paddle bounce", () => {
 
   it("clamps the spin it can accumulate", () => {
     const [, right] = paddles();
-    const left: PaddleState = { cy: 360, vy: 900 };
+    const left = paddle(360, 900);
     const b = step(
       ball({ x: 76, vx: -400, spin: SPIN_CLAMP }),
       left,
@@ -262,6 +286,20 @@ describe("obstacles", () => {
     expect(events.obstacle).toBe(true);
     expect(b.vy).toBe(-300);
     expect(b.y).toBeLessThanOrEqual(obstacle.y0 - BALL_R);
+  });
+
+  it("has no collision at all once it has been taken out of the field", () => {
+    const [left, right] = paddles();
+    const { ball: b, events } = stepAgainst(
+      ball({ x: obstacle.x0 - BALL_R - 2, y: insideY, vx: 300 }),
+      left,
+      right,
+      // The field with obstacle A removed: only B is left in it.
+      FIELD_OBSTACLES.filter((o) => o.index !== 0),
+      FRAME,
+    );
+    expect(events.obstacle).toBe(false);
+    expect(b.vx).toBe(300);
   });
 
   it("never tunnels through an obstacle", () => {

@@ -14,7 +14,7 @@ use super::{
 /// at it. `manifest_extra` is spliced between the required
 /// `name`/`difficulty`/`tags`/`prompt` header and the single `base` variant, so a
 /// test can drop in a `[build]` table.
-fn catalog_with_manifest(manifest_extra: &str) -> (tempfile::TempDir, TestCaseCatalog) {
+pub(super) fn catalog_with_manifest(manifest_extra: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     let dir = tempfile::tempdir().expect("temp dir");
     let version = dir.path().join("end-to-end/easy/demo/v1.0.0");
     fs::create_dir_all(version.join("variants")).expect("create version dir");
@@ -2549,7 +2549,7 @@ fn audio_sample_resolves_its_format() {
     let manifest = format!(
         "{NEW_FAMILY_HEADER}asset_kind = \"sfx-sample\"\nvariants = [\"variants/base.toml\"]\n\
          [audio]\nsample_rate = 44100\nchannels = \"stereo\"\nmax_duration_ms = 5000\n\
-         sample_pack = \"naval-weapons@1\"\n\
+         packs = [\"naval-weapons@1.0.0\"]\n\
          [tool]\nbinary = \"sfx-sample\"\npreview = \"waveform.png\"\n\
          [output]\nactions = \"actions.json\"\n{NEW_FAMILY_TAIL}"
     );
@@ -2561,12 +2561,13 @@ fn audio_sample_resolves_its_format() {
     let audio = version.audio.as_ref().expect("audio");
     assert_eq!(audio.sample_rate, 44100);
     assert_eq!(audio.channels, "stereo");
-    assert_eq!(audio.sample_pack.as_deref(), Some("naval-weapons@1"));
-    assert!(audio.instrument_bank.is_none());
+    // The palette is not part of the clip's output format: it is one ordered list
+    // for every test type.
+    assert_eq!(version.audio_packs, vec!["naval-weapons@1.0.0".to_string()]);
 }
 
 #[test]
-fn audio_sample_requires_a_sample_pack() {
+fn audio_sample_requires_one_pack() {
     let manifest = format!(
         "{NEW_FAMILY_HEADER}asset_kind = \"sfx-sample\"\nvariants = [\"variants/base.toml\"]\n\
          [audio]\nsample_rate = 44100\nchannels = \"stereo\"\nmax_duration_ms = 5000\n\
@@ -2576,8 +2577,12 @@ fn audio_sample_requires_a_sample_pack() {
     let err = asset_catalog(&manifest)
         .1
         .resolve("sprite", "v1.0.0")
-        .expect_err("a sfx-sample case without a sample_pack is rejected");
-    assert!(format!("{err}").contains("sample_pack"), "got: {err}");
+        .expect_err("a sfx-sample case declaring no pack is rejected");
+    assert!(
+        format!("{err}")
+            .contains("a `sfx-sample` case declares exactly one pack in audio.packs, not 0"),
+        "got: {err}"
+    );
 }
 
 #[test]
@@ -2884,7 +2889,7 @@ fn a_reference_implementation_is_never_seeded_into_the_run() {
 /// `test-cases/` root with a sibling `game-jams/` folder discovery folds in — and
 /// return the temp dir (kept alive) plus the catalog rooted at `test-cases/`.
 /// `manifest` is the full `game-jam.toml` body.
-fn catalog_with_jam(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
+pub(super) fn catalog_with_jam(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     let dir = tempfile::tempdir().expect("temp dir");
     // An (empty) test-cases root so discovery has a catalog root to walk; the jam
     // lives in the sibling game-jams/ folder that `case_folders` folds in.
@@ -2905,7 +2910,7 @@ fn catalog_with_jam(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
 
 /// The smallest valid `game-jam.toml`: identity, prompt, changelog, and a `[build]`.
 /// No `difficulty`, no `variants`, none of the spec-driven tables.
-const MINIMAL_JAM: &str = "slug = \"trains\"\nname = \"Trains\"\nprompt = \"prompt.hbs\"\n\
+pub(super) const MINIMAL_JAM: &str = "slug = \"trains\"\nname = \"Trains\"\nprompt = \"prompt.hbs\"\n\
      changelog = \"changelog.md\"\nmax_runtime_hours = 8\n\
      [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n";
 
@@ -3795,6 +3800,251 @@ fn a_per_engine_validator_must_exist_in_every_engine_s_project() {
         .expect("the sub-item carries its validator");
     assert_eq!(validation.script, None);
     assert_eq!(validation.script_rel, "gameplay/serve.test.ts");
+}
+
+// --- validator engine scoping (`validation.engines`) --------------------------
+
+/// The files a per-engine scoping fixture ships: one starter workspace and one
+/// validator project per engine, with `gameplay/serve.test.ts` in both projects and
+/// `hud/overlay.test.ts` only in the engineless one.
+const SCOPED_VALIDATOR_FILES: &[(&str, &str)] = &[
+    ("workspaces/none/package.json", "{}"),
+    ("workspaces/simple-2d/package.json", "{}"),
+    ("validation/none/vitest.config.ts", "export default {}"),
+    ("validation/none/gameplay/serve.test.ts", "// check"),
+    ("validation/none/hud/overlay.test.ts", "// check"),
+    ("validation/simple-2d/vitest.config.ts", "export default {}"),
+    ("validation/simple-2d/gameplay/serve.test.ts", "// check"),
+];
+
+/// A `[[review_item]]` graded as a whole and decided by the validator at `script`,
+/// with `extra` spliced into its `validation` table (the `engines` scoping under
+/// test, or nothing at all).
+fn scoped_item(id: &str, script: &str, extra: &str) -> String {
+    format!(
+        "[[review_item]]\nid = \"{id}\"\ntitle = \"{id}\"\ntext = \"t\"\nweight = 1\n\
+         failure_cap = \"scuffed\"\ndomains = [\"gameplay\"]\n\
+         validation = {{ script = \"{script}\", {extra}outputs = [\
+         {{ id = \"{id}\", kind = \"image\" }} ] }}\n"
+    )
+}
+
+/// A `[[review_item]]` broken into sub-items, each decided by the validator at
+/// `<id>/<sub>.test.ts` with `extra` spliced into its `validation` table.
+fn scoped_sub_items(id: &str, subs: &[(&str, &str)]) -> String {
+    let mut toml = format!(
+        "[[review_item]]\nid = \"{id}\"\ntitle = \"{id}\"\ntext = \"t\"\nweight = {}\n",
+        subs.len()
+    );
+    for (sub, extra) in subs {
+        toml.push_str(&format!(
+            "[[review_item.sub_item]]\nid = \"{sub}\"\ntitle = \"{sub}\"\n\
+             failure_cap = \"scuffed\"\ndomains = [\"gameplay\"]\n\
+             validation = {{ script = \"{id}/{sub}.test.ts\", {extra}outputs = [\
+             {{ id = \"{sub}\", kind = \"image\" }} ] }}\n"
+        ));
+    }
+    toml
+}
+
+/// Resolve a per-engine manifest supporting `none` and `simple-2d` whose review
+/// block is `review`, over `files`.
+fn resolve_scoped(review: &str, files: &[(&str, &str)]) -> Result<TestCaseVersion> {
+    let manifest = engines_manifest_with(
+        "engines = [\"none\", \"simple-2d\"]\n",
+        &format!("[instrumentation]\nhandle = \"__demo\"\n{review}"),
+        &["none", "simple-2d"],
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, files);
+    catalog.resolve("demo", "v1.0.0")
+}
+
+#[test]
+fn a_validator_scoped_to_one_engine_resolves_against_that_engine_s_project_alone() {
+    // The point the scoping exists for: a debug overlay the model writes itself in an
+    // engineless build and the engine draws otherwise. The suite ships in the
+    // engineless project only, and resolution holds the declaration against exactly
+    // the engines it names.
+    let version = resolve_scoped(
+        &scoped_item("overlay", "hud/overlay.test.ts", "engines = [\"none\"], "),
+        SCOPED_VALIDATOR_FILES,
+    )
+    .expect("resolve");
+    let base = version.variant("base").expect("base");
+    let item = &version.review_items_for(base)[0];
+    let validation = item
+        .validation
+        .as_ref()
+        .expect("the item carries a validator");
+    assert_eq!(validation.engines, vec!["none".to_string()]);
+    assert!(validation.covers("none"));
+    assert!(!validation.covers("simple-2d"));
+}
+
+#[test]
+fn an_unscoped_validator_covers_every_engine_the_case_supports() {
+    // No `engines` is the whole supported set, which is what every manifest written
+    // before the key existed means.
+    let version = resolve_scoped(
+        &scoped_item("serve", "gameplay/serve.test.ts", ""),
+        SCOPED_VALIDATOR_FILES,
+    )
+    .expect("resolve");
+    let base = version.variant("base").expect("base");
+    let validation = version.review_items_for(base)[0]
+        .validation
+        .clone()
+        .expect("the item carries a validator");
+    assert!(validation.engines.is_empty());
+    assert!(validation.covers("none"));
+    assert!(validation.covers("simple-2d"));
+}
+
+#[test]
+fn a_scoped_validator_missing_from_a_covered_engine_s_project_is_rejected() {
+    // Scoping narrows which projects must ship the suite; it does not excuse one the
+    // declaration still names.
+    let err = resolve_scoped(
+        &scoped_item(
+            "overlay",
+            "hud/overlay.test.ts",
+            "engines = [\"none\", \"simple-2d\"], ",
+        ),
+        SCOPED_VALIDATOR_FILES,
+    )
+    .expect_err("a covered engine whose project lacks the suite is rejected");
+    assert!(
+        format!("{err}").contains("is not a file in engine `simple-2d`"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn a_scoped_validator_shipped_to_an_uncovered_engine_is_rejected() {
+    // A suite sitting in the project of an engine the validator does not name is a
+    // file nothing will ever run — either the scoping or the file is wrong.
+    let mut files = SCOPED_VALIDATOR_FILES.to_vec();
+    files.push(("validation/simple-2d/hud/overlay.test.ts", "// check"));
+    let err = resolve_scoped(
+        &scoped_item("overlay", "hud/overlay.test.ts", "engines = [\"none\"], "),
+        &files,
+    )
+    .expect_err("a suite in an uncovered engine's project is rejected");
+    assert!(
+        format!("{err}").contains("which its `engines` does not name"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn validation_engines_on_a_case_with_no_engine_are_rejected() {
+    // A case naming one `workspace` has no engine to scope to, so the key is refused
+    // by name rather than silently ignored.
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\n",
+        "[instrumentation]\nhandle = \"__demo\"\n\
+         [[review_item]]\nid = \"spin\"\ntitle = \"Spin\"\ntext = \"t\"\nweight = 1\n\
+         validation = { script = \"validation/spin.mjs\", engines = [\"none\"], \
+         outputs = [ { id = \"spin\", kind = \"image\" } ] }\n",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[
+            ("workspaces/base/package.json", "{}"),
+            ("validation/spin.mjs", "export default async () => ({});"),
+        ],
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a case with no engine may not scope a validator");
+    assert!(
+        format!("{err}").contains("has engines to scope to"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn a_validator_scoped_to_an_unsupported_engine_is_rejected() {
+    let err = resolve_scoped(
+        &scoped_item(
+            "overlay",
+            "hud/overlay.test.ts",
+            "engines = [\"structured-2d\"], ",
+        ),
+        SCOPED_VALIDATOR_FILES,
+    )
+    .expect_err("an engine the case does not support is a typo, not a scope");
+    assert!(
+        format!("{err}").contains("engine `structured-2d`, which this case does not support"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn a_validator_naming_the_same_engine_twice_is_rejected() {
+    let err = resolve_scoped(
+        &scoped_item(
+            "overlay",
+            "hud/overlay.test.ts",
+            "engines = [\"none\", \"none\"], ",
+        ),
+        SCOPED_VALIDATOR_FILES,
+    )
+    .expect_err("a repeated slug is rejected");
+    assert!(
+        format!("{err}").contains("names engine `none` twice"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn the_engine_aware_checklist_drops_the_points_a_run_s_engine_does_not_carry() {
+    // Four points: one whole item scoped to `none`, one unscoped whole item, a
+    // category with one scoped and one unscoped point, and a category whose only
+    // point is scoped. A run on `simple-2d` carries the second and the surviving half
+    // of the third; a run on `none` carries all four.
+    let review = format!(
+        "{}{}{}{}",
+        scoped_item("overlay", "hud/overlay.test.ts", "engines = [\"none\"], "),
+        scoped_item("serve", "gameplay/serve.test.ts", ""),
+        scoped_sub_items("hud", &[("a", "engines = [\"none\"], "), ("b", "")]),
+        scoped_sub_items("gyre", &[("sway", "engines = [\"none\"], ")]),
+    );
+    let mut files = SCOPED_VALIDATOR_FILES.to_vec();
+    files.extend([
+        ("validation/none/hud/a.test.ts", "// check"),
+        ("validation/none/hud/b.test.ts", "// check"),
+        ("validation/none/gyre/sway.test.ts", "// check"),
+        ("validation/simple-2d/hud/b.test.ts", "// check"),
+    ]);
+    let version = resolve_scoped(&review, &files).expect("resolve");
+    let base = version.variant("base").expect("base");
+
+    let ids = |items: &[super::ReviewItem]| -> Vec<String> {
+        items.iter().map(|item| item.id.clone()).collect()
+    };
+    // The case's own checklist is what the case declares, engine or no engine.
+    assert_eq!(
+        ids(&version.review_items_for(base)),
+        ["overlay", "serve", "hud", "gyre"],
+    );
+
+    let engineless = version.review_items_for_engine(base, "none");
+    assert_eq!(ids(&engineless), ["overlay", "serve", "hud", "gyre"]);
+    assert_eq!(engineless[2].sub_items.len(), 2);
+
+    let engine = version.review_items_for_engine(base, "simple-2d");
+    assert_eq!(
+        ids(&engine),
+        ["serve", "hud"],
+        "the scoped whole item goes, and so does the category left with no points",
+    );
+    let surviving: Vec<&str> = engine[1]
+        .sub_items
+        .iter()
+        .map(|sub| sub.id.as_str())
+        .collect();
+    assert_eq!(surviving, ["b"], "the scoped point leaves its category");
 }
 
 // --- validator-rated versions: `failure_cap` + `domains` ----------------------

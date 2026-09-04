@@ -10,11 +10,8 @@ import {
   DEFAULT_ORCHESTRATOR_SLUG,
   isGgOrchestrator,
 } from "../../data/orchestrators";
-import {
-  DEFAULT_ENGINE_SLUG,
-  engineName,
-  orderEngines,
-} from "../../data/engines";
+import { engineName } from "../../data/engines";
+import { useEngineChoice } from "../../data/useEngineChoice";
 import { bindModelSlots, launchModelSlots } from "./gg/ggConfigDraft";
 import { useGgConfigs } from "./gg/useGgConfigs";
 import {
@@ -157,12 +154,13 @@ export function NewRunPage() {
   // outside that set is refused, so the picker offers the resolved version's set
   // and the selection is held to it rather than trusted. Seeded from `?engine=`
   // — a case detail page's Run action carries its whole anchored coordinate, so
-  // the form opens on exactly the rendering that was being viewed; the derived
-  // `engine` below already holds an unsupported (or absent) param to what the
-  // resolved version actually offers.
-  const [engineChoice, setEngineChoice] = useState(
-    () => params.get("engine") ?? DEFAULT_ENGINE_SLUG,
-  );
+  // the form opens on exactly the rendering that was being viewed, and an engine
+  // the resolved version does not offer is held to the set like any other pick.
+  const {
+    options: engineOptions,
+    engine,
+    setEngine,
+  } = useEngineChoice(sel.versionInfo?.engines, params.get("engine"));
   const [maxRuntime, setMaxRuntime] = useState("");
   // The harness/model combinations to launch. The form starts with one empty row
   // so the single-run path is unchanged in feel; "Add combination" fans out.
@@ -309,24 +307,6 @@ export function NewRunPage() {
     );
   }, [isGg, ggOptions]);
 
-  // The engines the resolved version supports, in catalog order. Empty until the
-  // version resolves, which is also when the form cannot launch yet.
-  const engineOptions = useMemo(
-    () => orderEngines(sel.versionInfo?.engines ?? []),
-    [sel.versionInfo],
-  );
-  // The engine a launch actually carries. Derived rather than synced through an
-  // effect so switching to a case that supports a different set never leaves a
-  // render holding an engine that case would refuse: the operator's choice when the
-  // version still supports it, otherwise the engineless run, otherwise the first
-  // engine the version does support (a case built against a runtime need not offer
-  // the engineless run at all).
-  const engine =
-    engineOptions.find((slug) => slug === engineChoice) ??
-    engineOptions.find((slug) => slug === DEFAULT_ENGINE_SLUG) ??
-    engineOptions[0] ??
-    DEFAULT_ENGINE_SLUG;
-
   // Catalog versions are oldest-first; show the dropdown newest-first.
   const versions = [
     ...(sel.cases.find((c) => c.slug === sel.slug)?.versions ?? []),
@@ -427,6 +407,9 @@ export function NewRunPage() {
           variant: sel.variant,
           harnessSlug: GG_HARNESS_SLUG,
           modelId: capabilitySet.agents?.[0]?.modelId ?? "",
+          // The engine this run was launched on, so a listing narrowed to one
+          // coverage cell keeps the live row with the runs it will join.
+          engine,
           // Read off the set that was actually sent rather than the picker option,
           // so the configuration name the row shows now is byte-identical to the one
           // the backend will lift back out of the job's stored capability set when
@@ -493,6 +476,7 @@ export function NewRunPage() {
         variant: sel.variant,
         harnessSlug: combo.harness,
         modelId: combo.modelId,
+        engine,
       },
     }));
     const launched = await launchBatch(worker, token, runtime.track, items);
@@ -643,7 +627,7 @@ export function NewRunPage() {
             <select
               className={styles.select}
               value={engine}
-              onChange={(e) => setEngineChoice(e.target.value)}
+              onChange={(e) => setEngine(e.target.value)}
               title="The runtime the produced build is written against. A result is only comparable with another result on the same engine."
             >
               {engineOptions.map((slug) => (

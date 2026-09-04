@@ -14,6 +14,9 @@ import {
 // address a test-case version at all. These facets are the equality filters the
 // backend already applies server-side, surfaced as their own params so they AND
 // with each other and with `q` — and so a narrowed listing is a linkable URL.
+//
+// {@link RunFilterState.ggConfigId} rides in the URL beside them without a control of
+// its own, for the reason given on the field.
 
 /** The equality facets a run listing can be narrowed by. Each value is a recorded
  * identity (a slug, a version, or a raw model id), never a display name — the
@@ -54,6 +57,10 @@ const FACET_PARAMS: Record<RunFacetName, string> = {
 const LATEST_PARAM = "latest";
 const LATEST_OFF = "0";
 
+/** The gg-configuration key, matching the backend's `ggConfigId` query parameter so
+ * a listing narrowed by it is the same narrowing on either side of the wire. */
+const GG_CONFIG_PARAM = "ggConfigId";
+
 /** The free-text key, mirrored from {@link usePagedSearchParams} so `clear` can
  * drop it in the same write as the facets (two writes would race). */
 const QUERY_PARAM = "q";
@@ -86,12 +93,24 @@ export interface RunFilterState extends PagedSearchParams {
    */
   latestVersions: boolean;
   setLatestVersions: (on: boolean) => void;
+  /**
+   * The id of the gg configuration to narrow to, `""` when unset.
+   *
+   * A deep link's filter rather than a facet: a coverage cell's Runs link writes it
+   * so the listing holds exactly the runs behind the figure that was clicked, and the
+   * bar offers no control for it because a configuration is account-scoped tooling
+   * the public gallery has none of. It counts toward {@link activeCount} and
+   * {@link clear} drops it, so a listing narrowed by an id nothing on screen names
+   * still says it is filtered and can be widened in one click.
+   */
+  ggConfigId: string;
   /** How many filters are narrowing the listing right now (the free text counts as
    * one, and so does the version toggle when it has been turned *off*). Drives the
    * "clear" affordance and tells an over-filtered listing apart from an empty one. */
   activeCount: number;
-  /** Reset every settable filter — the text, the facets, and the version toggle —
-   * to its default, and return to the first page. Route-fixed facets stay. */
+  /** Reset every settable filter — the text, the facets, the version toggle, and the
+   * gg configuration — to its default, and return to the first page. Route-fixed
+   * facets stay. */
   clear: () => void;
 }
 
@@ -127,6 +146,7 @@ export function useRunFilters(fixed: FixedFacets = {}): RunFilterState {
   );
 
   const latestVersions = params.get(LATEST_PARAM) !== LATEST_OFF;
+  const ggConfigId = params.get(GG_CONFIG_PARAM) ?? "";
 
   const setFacet = useCallback(
     (name: RunFacetName, value: string) => {
@@ -168,6 +188,7 @@ export function useRunFilters(fixed: FixedFacets = {}): RunFilterState {
         if (!isFixed(name, fixed)) next.delete(FACET_PARAMS[name]);
       }
       next.delete(LATEST_PARAM);
+      next.delete(GG_CONFIG_PARAM);
       next.delete(QUERY_PARAM);
       next.delete(PAGE_PARAM);
       return next;
@@ -182,7 +203,8 @@ export function useRunFilters(fixed: FixedFacets = {}): RunFilterState {
     // Runs tab, which scopes versions through its anchored coordinate) ignores
     // the toggle entirely, so a stale `?latest=0` deep link must not read as an
     // active filter there.
-    (isFixed("version", fixed) || latestVersions ? 0 : 1);
+    (isFixed("version", fixed) || latestVersions ? 0 : 1) +
+    (ggConfigId ? 1 : 0);
 
   return {
     ...paged,
@@ -190,6 +212,7 @@ export function useRunFilters(fixed: FixedFacets = {}): RunFilterState {
     setFacet,
     latestVersions,
     setLatestVersions,
+    ggConfigId,
     activeCount,
     clear,
   };

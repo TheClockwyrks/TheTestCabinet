@@ -1,43 +1,36 @@
 //! The types every other module's signatures name: how a call fails.
 //!
-//! A capability module owns the types it produces, so `files::FileRead` belongs to `files` and
-//! `board::IssueCreated` to `board`. These two belong to none of them because they belong to all of
-//! them: every function in this SDK returns `Result<_, ApiError>`.
+//! Every function in this SDK returns `Result<_, ApiError>`.
 //!
-//! They are re-exported at the crate root as well as declared here, so a program reaches them as
-//! `gg::ApiError` or under a `use gg::ApiErrorCode;` of its own, whichever reads better beside the
-//! call it is matching on.
+//! Both types are re-exported at the crate root, so a program reaches them as `gg::ApiError` and
+//! `gg::ApiErrorCode` or under a `use` of its own.
 
 use crate::bindings::test_cabinet::gg::types as wire;
 
 /// A gg call that failed.
 ///
-/// Every function in this SDK returns one of these in its `Err` arm, which is what a Rust author
-/// expects of a fallible library call and what makes `?` compose: a `fn main` returning
-/// `Result<(), gg::Failure>` and this implementing [`std::error::Error`] is all it takes for an
-/// unhandled failure to end the program with the failed call named in what the model reads.
+/// Every function in this SDK returns one of these in its `Err` arm. It implements
+/// [`std::error::Error`], so `?` composes it into a `fn main` returning `Result<(), gg::Failure>`.
 ///
-/// A failure a program expects is an ordinary `match` on [`code`](Self::code):
+/// An expected failure is a `match` on [`code`](Self::code):
 ///
 /// ```ignore
-/// match skills::read_skill("testing") {
-///     Ok(body) => views::open_text("skill", &body)?,
-///     Err(failure) if failure.code == core::ApiErrorCode::NotFound => {
-///         gg::log("no such skill");
-///     }
+/// match files::write_file("notes.md", "what the program computed") {
+///     Ok(bytes) => bytes,
+///     Err(failure) if failure.code == core::ApiErrorCode::IoError => 0,
 ///     Err(failure) => return Err(failure.into()),
-/// }
+/// };
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApiError {
-    /// The failure class, so a catch site branches on a value rather than on prose.
+    /// The failure class.
     pub code: ApiErrorCode,
     /// The gg call that failed, by the key of the operation the program reached for.
     ///
     /// gg's own operation key — `read_file`, `spawn_subagent` — rather than the name of whatever
     /// ran underneath it.
     pub operation: String,
-    /// What went wrong, in gg's words. Worth showing in a view; not worth matching on.
+    /// What went wrong, in gg's words. It is prose rather than a value to match on.
     pub message: String,
 }
 
@@ -87,9 +80,8 @@ pub enum ApiErrorCode {
     Refused,
     /// The call exists and this run's capability set does not offer it.
     ///
-    /// Every name in this SDK is in scope whatever a run enables, because the crate is compiled once
-    /// and a run's capability set is decided per run — so a withheld call comes back as this rather
-    /// than as a compile error.
+    /// Every name in this SDK is in scope whatever a run enables, so a withheld call comes back as
+    /// this rather than as a compile error.
     Unavailable,
     /// A gg-side ceiling was reached.
     ///

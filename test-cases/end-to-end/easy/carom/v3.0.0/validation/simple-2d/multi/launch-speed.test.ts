@@ -3,21 +3,30 @@
 // A fresh match is opened and its hold cut short; the LAUNCH itself is the
 // build's own, on the frame after, and the speed of every ball is read the
 // instant it happens — before a wall, a paddle or another ball could change it.
-// Nothing about the launch is posed: `startMatch` opens the countdown and `serve`
-// ends it, and what leaves is whatever the build's own launch produced.
+// Nothing about the launch is posed: `openCountdown` opens the match on its
+// countdown and `stageServe` sets each waiting ball's hold timer to `0`, and what
+// leaves is whatever the build's own launch rule produced.
 //
-// All three are read, because in multi they leave together and a build that
-// launched one of them at the wrong speed would otherwise be graded on the two it
-// got right. The ANGLE is not read here: it is drawn over the full circle, which
-// is `multi/launch-angle`'s point.
+// The field is the one the build's own match start built. All three balls ARE
+// what is graded — they leave together, and a build that launched one of them at
+// the wrong speed would otherwise be graded on the two it got right — and the
+// reading is taken on the launch frame itself, before anything else on the field
+// could have touched a speed. The ANGLE is not read here: it is drawn over the
+// full circle, which is `multi/launch-angle`'s point.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SERVE_SPEED } from "../../src/constants";
+import { SERVE_SPEED } from "../constants";
 import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
-import { captureReplay, createHarness, type Harness } from "../harness";
+import {
+  captureReplay,
+  createHarness,
+  openCountdown,
+  stageServe,
+  type Harness,
+} from "../harness";
 import { readBalls } from "./harness";
 
-/** The margin the speed is allowed: 15% of the specified speed. */
+/** The review item's margin: one percent of the specified speed. */
 const SPEED_TOLERANCE = SERVE_SPEED * 0.01;
 
 /** Frames of the hold recorded before it is cut short. */
@@ -37,12 +46,11 @@ afterEach(() => {
 });
 
 it("launches every ball at the base launch speed", async () => {
-  h.debug.reset();
-  h.debug.startMatch("versus");
+  openCountdown(h, "versus");
 
   const launched = await captureReplay(h, "launch", async () => {
     await h.advance(HELD_TICKS);
-    h.debug.serve();
+    stageServe(h);
 
     const swept = await h.until((s) => s.screen === "playing", {
       maxFrames: 60,

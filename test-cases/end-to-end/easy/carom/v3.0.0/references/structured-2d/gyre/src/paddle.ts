@@ -1,19 +1,25 @@
 // Carom — the paddle: a pawn any controller can drive.
 //
 // The pawn exposes one interface, `drive(vy)`, and every driver — the player
-// controller reading held actions, the AI computing an intercept, and the
-// debug driver holding a posed velocity — finishes with that same call. The
-// pawn's own tick then integrates the request through the one integrator
-// specs/playfield.md fixes, so every mover gets the same speed, the same
-// clamp, and the same reported velocity. `vy` afterwards is the paddle's
-// ACTUAL vertical velocity for the frame, which is what the spin mechanic
-// reads at contact: a paddle pinned against a bound reports zero even while a
-// movement action is held into it.
+// controller reading held actions and the AI controller computing an intercept
+// — finishes with that same call. The pawn's own tick then integrates the
+// request through the one integrator specs/playfield.md fixes, so every mover
+// gets the same speed, the same clamp, and the same reported velocity. `vy`
+// afterwards is the paddle's ACTUAL vertical velocity for the frame, which is
+// what the spin mechanic reads at contact: a paddle pinned against a bound
+// reports zero even while a movement action is held into it.
+//
+// THE DEBUG SURFACE TAKES ONE SIDE AT A TIME (specs/instrumentation.md).
+// `driven` is that side's hold, set by `setPaddleDriven` alone, and `drivenVy`
+// the velocity `setPaddleVy` last wrote for it. While `driven` is set the pawn
+// integrates `drivenVy` and ignores whatever its controller asked for, so the
+// input actions and the AI leave it alone; while it is clear the paddle plays
+// normally. `drivenVy` keeps its value across frames either way, which is what
+// makes a driven paddle still be moving when it strikes the ball.
 //
 // The paddle simulates only on the live screens (`countdown` and `playing`,
 // specs/ui.md); on the menus and the pause screen it stands exactly where it
-// was. The title level places two unpossessed paddles as furniture, and the
-// match mode spawns one per participant through possession.
+// was.
 
 import { DrawComponent, Pawn } from "@test-cabinet/structured-2d";
 import type { DrawApi } from "@test-cabinet/structured-2d";
@@ -40,6 +46,12 @@ export class Paddle extends Pawn {
    */
   vy = 0;
 
+  /** Whether the debug surface is moving this paddle rather than its player. */
+  driven = false;
+
+  /** The velocity `setPaddleVy` last set for this side, held across frames. */
+  drivenVy = 0;
+
   /** The velocity the current driver asked for, consumed by the next tick. */
   private requested = 0;
 
@@ -50,7 +62,8 @@ export class Paddle extends Pawn {
 
   /**
    * Ask for a vertical velocity, in units per second. The whole driving
-   * interface: whoever calls this last before the tick owns the frame.
+   * interface: whoever calls this last before the tick owns the frame, unless
+   * the surface has taken this side.
    */
   drive(vy: number): void {
     this.requested = vy;
@@ -61,7 +74,8 @@ export class Paddle extends Pawn {
     this.requested = 0;
     if (!isLiveScreen(screenOf(this.world))) return;
 
-    const next = integratePaddle({ cy: this.transform.y, vy: requested }, dt);
+    const wanted = this.driven ? this.drivenVy : requested;
+    const next = integratePaddle({ cy: this.transform.y, vy: wanted }, dt);
     this.transform.y = next.cy;
     this.vy = next.vy;
   }

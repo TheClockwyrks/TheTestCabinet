@@ -13,12 +13,29 @@ import {
   PADDLE_SPEED,
 } from "./constants";
 import { updateAi } from "./ai";
-import type { BallState, PaddleState } from "./game";
+import type { AiState, BallState, PaddleState } from "./state";
 
 const FRAME = 1 / 60;
 
+/** Both faculties, which is how the AI plays and what a reset restores. */
+const WHOLE: AiState = { tracking: true, movement: true };
+
 function ball(patch: Partial<BallState> = {}): BallState {
-  return { x: 800, y: 360, vx: 300, vy: 0, spin: 0, ...patch };
+  return {
+    x: 800,
+    y: 360,
+    vx: 300,
+    vy: 0,
+    spin: 0,
+    held: false,
+    holdTimer: 0,
+    trail: [],
+    ...patch,
+  };
+}
+
+function paddleAt(cy: number, vy = 0): PaddleState {
+  return { cy, vy, driven: false, drivenVy: 0 };
 }
 
 it("is slower than the human paddle", () => {
@@ -26,16 +43,16 @@ it("is slower than the human paddle", () => {
 });
 
 it("tracks a ball coming toward it", () => {
-  const paddle: PaddleState = { cy: 360, vy: 0 };
-  updateAi(paddle, ball({ y: 200 }), true, FRAME);
+  const paddle = paddleAt(360, 0);
+  updateAi(paddle, ball({ y: 200 }), WHOLE, true, FRAME);
   expect(paddle.vy).toBe(-AI_SPEED);
   expect(paddle.cy).toBeCloseTo(360 - AI_SPEED * FRAME, 9);
 });
 
 it("never moves faster than AI_SPEED", () => {
-  const paddle: PaddleState = { cy: 360, vy: 0 };
+  const paddle = paddleAt(360, 0);
   for (let i = 0; i < 200; i++) {
-    updateAi(paddle, ball({ y: 660 }), true, FRAME);
+    updateAi(paddle, ball({ y: 660 }), WHOLE, true, FRAME);
     expect(Math.abs(paddle.vy)).toBeLessThanOrEqual(AI_SPEED);
   }
 });
@@ -43,55 +60,102 @@ it("never moves faster than AI_SPEED", () => {
 it("aims where the ball was AI_REACT seconds ago, not where it is", () => {
   // The ball sits at 200 but is diving; the lagged perception is above it, so the
   // paddle chases upward for a moment even as the ball travels down.
-  const lagging: PaddleState = { cy: 128, vy: 0 };
-  updateAi(lagging, ball({ y: 200, vy: 600 }), true, FRAME);
+  const lagging = paddleAt(128, 0);
+  updateAi(lagging, ball({ y: 200, vy: 600 }), WHOLE, true, FRAME);
   expect(lagging.cy).toBe(128); // 200 - 600 * 0.12 === 128: dead on the lag
   expect(AI_REACT).toBeGreaterThan(0);
 
-  const chasing: PaddleState = { cy: 200, vy: 0 };
-  updateAi(chasing, ball({ y: 200, vy: 600 }), true, FRAME);
+  const chasing = paddleAt(200, 0);
+  updateAi(chasing, ball({ y: 200, vy: 600 }), WHOLE, true, FRAME);
   expect(chasing.cy).toBeLessThan(200);
 });
 
 it("stops inside the deadzone rather than jittering onto a perfect line", () => {
-  const paddle: PaddleState = { cy: 200 + AI_DEADZONE, vy: -1 };
-  updateAi(paddle, ball({ y: 200 }), true, FRAME);
+  const paddle = paddleAt(200 + AI_DEADZONE, -1);
+  updateAi(paddle, ball({ y: 200 }), WHOLE, true, FRAME);
   expect(paddle.vy).toBe(0);
   expect(paddle.cy).toBe(200 + AI_DEADZONE);
 });
 
 it("returns home while the ball travels away, stopping inside AI_HOME_DEADZONE", () => {
-  const paddle: PaddleState = { cy: 600, vy: 0 };
-  updateAi(paddle, ball({ y: 660, vx: -300 }), true, FRAME);
+  const paddle = paddleAt(600, 0);
+  updateAi(paddle, ball({ y: 660, vx: -300 }), WHOLE, true, FRAME);
   expect(paddle.vy).toBe(-AI_SPEED);
   for (let i = 0; i < 120; i++) {
-    updateAi(paddle, ball({ y: 660, vx: -300 }), true, FRAME);
+    updateAi(paddle, ball({ y: 660, vx: -300 }), WHOLE, true, FRAME);
   }
   expect(Math.abs(paddle.cy - AI_HOME_Y)).toBeLessThanOrEqual(AI_HOME_DEADZONE);
   expect(paddle.vy).toBe(0);
 });
 
 it("holds still at home once inside AI_HOME_DEADZONE", () => {
-  const paddle: PaddleState = { cy: AI_HOME_Y + AI_HOME_DEADZONE, vy: -1 };
-  updateAi(paddle, ball({ y: 660, vx: -300 }), true, FRAME);
+  const paddle = paddleAt(AI_HOME_Y + AI_HOME_DEADZONE, -1);
+  updateAi(paddle, ball({ y: 660, vx: -300 }), WHOLE, true, FRAME);
   expect(paddle.vy).toBe(0);
   expect(paddle.cy).toBe(AI_HOME_Y + AI_HOME_DEADZONE);
 });
 
 it("returns home during the pre-serve hold too", () => {
-  const paddle: PaddleState = { cy: 600, vy: 0 };
+  const paddle = paddleAt(600, 0);
   for (let i = 0; i < 120; i++) {
-    updateAi(paddle, ball({ y: 660, vx: 0 }), false, FRAME);
+    updateAi(paddle, ball({ y: 660, vx: 0 }), WHOLE, false, FRAME);
   }
   expect(Math.abs(paddle.cy - AI_HOME_Y)).toBeLessThanOrEqual(AI_HOME_DEADZONE);
 });
 
 it("keeps its paddle fully on the field", () => {
-  const high: PaddleState = { cy: 100, vy: 0 };
-  for (let i = 0; i < 120; i++) updateAi(high, ball({ y: -400 }), true, FRAME);
+  const high = paddleAt(100, 0);
+  for (let i = 0; i < 120; i++)
+    updateAi(high, ball({ y: -400 }), WHOLE, true, FRAME);
   expect(high.cy).toBe(PADDLE_MIN_CY);
 
-  const low: PaddleState = { cy: 600, vy: 0 };
-  for (let i = 0; i < 120; i++) updateAi(low, ball({ y: 1200 }), true, FRAME);
+  const low = paddleAt(600, 0);
+  for (let i = 0; i < 120; i++)
+    updateAi(low, ball({ y: 1200 }), WHOLE, true, FRAME);
   expect(low.cy).toBe(PADDLE_MAX_CY);
+});
+
+// ---- The two faculties (specs/instrumentation.md) ------------------------
+
+it("leaves its paddle where it is, at rest, without movement", () => {
+  const paddle = paddleAt(600, -400);
+  updateAi(
+    paddle,
+    ball({ y: 100 }),
+    { tracking: true, movement: false },
+    true,
+    FRAME,
+  );
+  expect(paddle.cy).toBe(600);
+  expect(paddle.vy).toBe(0);
+});
+
+it("targets home, whatever the ball is doing, without tracking", () => {
+  // The ball is diving toward it, and a tracking opponent would chase; this one
+  // eases back to the vertical center instead.
+  const paddle = paddleAt(600);
+  updateAi(
+    paddle,
+    ball({ y: 660 }),
+    { tracking: false, movement: true },
+    true,
+    FRAME,
+  );
+  expect(paddle.vy).toBe(-AI_SPEED);
+  for (let i = 0; i < 120; i++) {
+    updateAi(
+      paddle,
+      ball({ y: 660 }),
+      { tracking: false, movement: true },
+      true,
+      FRAME,
+    );
+  }
+  expect(Math.abs(paddle.cy - AI_HOME_Y)).toBeLessThanOrEqual(AI_HOME_DEADZONE);
+});
+
+it("eases home with no ball on the field at all", () => {
+  const paddle = paddleAt(600);
+  for (let i = 0; i < 120; i++) updateAi(paddle, null, WHOLE, true, FRAME);
+  expect(Math.abs(paddle.cy - AI_HOME_Y)).toBeLessThanOrEqual(AI_HOME_DEADZONE);
 });

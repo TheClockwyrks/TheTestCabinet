@@ -19,7 +19,8 @@
 //
 // THE DRIVE. The title is reached through `reset` alone, so no other key is
 // pressed on the way: `reset` "Restores every declared field of the game's
-// state to its title-screen value: the `title` screen with `menuIndex` `0`"
+// state to its title-screen value: the `title` screen with `menuIndex`,
+// `almanacTab`, and `almanacScroll` all `0`"
 // (specs/instrumentation.md). The screen and the highlight are read back
 // before the press, so a build that could not be posed onto the title fails
 // here rather than deciding nothing. The press is a REAL `Space` dispatched at

@@ -56,6 +56,7 @@ gives the fully-qualified names, which are what everything gg prints uses:
 | `gg.files.writeFile(path: string, contents: string)` | `number` (bytes written) |
 | `gg.files.editFile(path: string, oldString: string, newString: string)` | `void` |
 | `gg.files.listDir(path?: string)` | `DirEntry[]` |
+| `gg.files.tree(options?: { path?: string; depth?: number })` | `string` |
 | `gg.files.search(query: string, options?: { path?: string; limit?: number })` | `SearchMatch[]` |
 | `gg.views.openText(label: string, body: string)` | `void` |
 | `gg.delegation.spawnSubagent(request: { agent: string } & ({ prompt: string } \| { issueId: string }))` | `SubagentHandle` |
@@ -73,7 +74,7 @@ states.
 ## Static binding
 
 Every function of the SDK is compiled, linked and callable in every program
-whatever the run enabled, and the SDK covers all 51 operations. Both ending
+whatever the run enabled, and the SDK covers all 52 operations. Both ending
 groups are declared on every agent, and the agent's role decides which of them
 the membrane accepts.
 
@@ -93,7 +94,7 @@ that created it.
 ## The capability gate
 
 `crates/gg/src/sandbox/operations.rs` holds this surface's whole model-facing
-vocabulary as 51 operations, and it is the only vocabulary the surface has. gg's
+vocabulary as 52 operations, and it is the only vocabulary the surface has. gg's
 tool names are the other surface's, are callable from no program, and decide
 nothing here.
 
@@ -102,7 +103,7 @@ the family it belongs to, whether the call takes input, and its `Binding`. A
 `Binding` is one of four things:
 
 - `Capability(id)`, bought by a gg capability the agent holds and named in that
-  agent's [allowlist](/gg/configurations/#granting-calls). 42 rows, and a
+  agent's [allowlist](/gg/configurations/#granting-calls). 43 rows, and a
   capability commonly buys several: `read-file` alone buys `files.read_file`
   and `views.open_file`, which are two separately documented, separately called
   and separately grantable operations over one read.

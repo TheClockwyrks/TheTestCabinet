@@ -1,9 +1,7 @@
 /**
- * Manage the agent's own context window.
+ * Manage the context window.
  *
- * These are the only calls whose effect is on the conversation rather than on the workspace, and they
- * are worth making from a program precisely because a program can decide *when*: read a set of files,
- * extract what matters, then evict the views, all in one turn.
+ * These calls act on the conversation rather than on the workspace.
  */
 
 import * as raw from "test-cabinet:gg/context";
@@ -85,10 +83,9 @@ export function evictFileView(path?: string): ReclaimReport {
 /**
  * Move whole turns out of the context window.
  *
- * Every result carries a header with its turn number and roughly what holding it costs, so the turns
- * worth dropping can be named: `ranges` is a list of inclusive spans, and one span of `{ from: 4, to:
- * 19 }` archives turns 4 through 19. The agent's own messages in an archived turn are dropped; the
- * results are kept and stay searchable with `searchArchive`.
+ * `ranges` is a list of inclusive spans, written in the turn numbers each result's header carries:
+ * one span of `{ from: 4, to: 19 }` archives turns 4 through 19. The programs submitted on an
+ * archived turn are dropped; their results are kept and stay searchable.
  *
  * @ggop context.archive_thread
  * @param ranges The inclusive spans of turn numbers to move out of the window.
@@ -124,9 +121,8 @@ export function archiveThread(ranges: TurnRange[]): ReclaimReport {
 /**
  * Search archived history for a case-insensitive substring, most recent first, up to eight hits.
  *
- * `archiveEmpty` on the result is worth checking before the hits: it distinguishes nothing having
- * been archived yet from a search that ran and matched nothing, so an empty answer is not read as a
- * failed archive.
+ * `archiveEmpty` on the result distinguishes nothing having been archived yet from a search that
+ * ran and matched nothing.
  *
  * @ggop context.search_archive
  * @param query The substring to look for. Matching is case-insensitive.
@@ -145,8 +141,7 @@ export function searchArchive(query: string): ArchiveSearch {
  * and refuses every other call until it happens.
  *
  * It does not stop the program. The request is registered, the call returns, and the rewrite happens
- * once the program has ended — so everything not in the summary and not among the named files is
- * gone. The summary is worth writing for the agent that reads it next, which is this one.
+ * once the program has ended: everything not in the summary and not among the named files is gone.
  *
  * @ggop context.compact
  * @param summary What the restarted window opens with. Everything not in it, and not re-read from the

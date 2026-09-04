@@ -32,8 +32,11 @@ import {
   TICK_DT,
 } from "../constants";
 import type {
+  EnemyId,
   EnemyState,
   GemState,
+  GemTier,
+  PickupKind,
   PickupState,
   Puff,
   RunState,
@@ -91,14 +94,20 @@ export function drawLamplight(
   ctx.fillRect(x - reach, y - reach, reach * 2, reach * 2);
 }
 
-export function drawGem(
+/**
+ * One gem's picture, centered at `(x, y)` and `scale` times its sprite's own
+ * size. The almanac draws the same picture larger than the field does.
+ */
+export function drawGemPicture(
   ctx: CanvasRenderingContext2D,
   assets: WickAssets,
-  gem: GemState,
+  tier: GemTier,
+  x: number,
+  y: number,
+  scale = 1,
 ): void {
-  const { x, y } = gem;
-  const size = GEM_SPRITE_SIZES[gem.tier];
-  const image = assets.image(GEM_PATHS[gem.tier]);
+  const size = GEM_SPRITE_SIZES[tier] * scale;
+  const image = assets.image(GEM_PATHS[tier]);
   if (image) {
     sprite(ctx, image, x, y, size, size);
     return;
@@ -110,50 +119,84 @@ export function drawGem(
   ctx.restore();
 }
 
-export function drawPickup(
+export function drawGem(
   ctx: CanvasRenderingContext2D,
   assets: WickAssets,
-  pickup: PickupState,
+  gem: GemState,
 ): void {
-  const { x, y } = pickup;
-  const image = assets.image(PICKUP_PATHS[pickup.kind]);
+  drawGemPicture(ctx, assets, gem.tier, gem.x, gem.y, 1);
+}
+
+/** One pickup's picture, centered at `(x, y)` at `scale` times its size. */
+export function drawPickupPicture(
+  ctx: CanvasRenderingContext2D,
+  assets: WickAssets,
+  kind: PickupKind,
+  x: number,
+  y: number,
+  scale = 1,
+): void {
+  const size = PICKUP_SPRITE_SIZE * scale;
+  const image = assets.image(PICKUP_PATHS[kind]);
   if (image) {
-    sprite(ctx, image, x, y, PICKUP_SPRITE_SIZE, PICKUP_SPRITE_SIZE);
+    sprite(ctx, image, x, y, size, size);
     return;
   }
-  switch (pickup.kind) {
+  switch (kind) {
     case "chest":
-      centeredRect(ctx, x, y, 22, 16, COLORS.chest, COLORS.lamplighterDark);
+      centeredRect(
+        ctx,
+        x,
+        y,
+        22 * scale,
+        16 * scale,
+        COLORS.chest,
+        COLORS.lamplighterDark,
+      );
       break;
     case "bread":
-      circle(ctx, x, y, 9, COLORS.bread, COLORS.lamplighterDark);
+      circle(ctx, x, y, 9 * scale, COLORS.bread, COLORS.lamplighterDark);
       break;
     case "draft":
       ctx.strokeStyle = COLORS.draft;
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 3 * scale;
       ctx.beginPath();
-      ctx.moveTo(x - 10, y - 4);
-      ctx.quadraticCurveTo(x, y - 12, x + 10, y - 4);
-      ctx.moveTo(x - 10, y + 6);
-      ctx.quadraticCurveTo(x, y - 2, x + 10, y + 6);
+      ctx.moveTo(x - 10 * scale, y - 4 * scale);
+      ctx.quadraticCurveTo(x, y - 12 * scale, x + 10 * scale, y - 4 * scale);
+      ctx.moveTo(x - 10 * scale, y + 6 * scale);
+      ctx.quadraticCurveTo(x, y - 2 * scale, x + 10 * scale, y + 6 * scale);
       ctx.stroke();
       break;
   }
 }
 
-export function drawEnemy(
+export function drawPickup(
   ctx: CanvasRenderingContext2D,
   assets: WickAssets,
-  enemy: EnemyState,
+  pickup: PickupState,
 ): void {
-  const { x, y } = enemy;
-  const def = ENEMIES[enemy.type];
-  const frame = walkFrame(enemy.age, ENEMY_FRAMES);
-  const image = assets.image(enemyFrame(enemy.type, frame));
+  drawPickupPicture(ctx, assets, pickup.kind, pickup.x, pickup.y, 1);
+}
+
+/**
+ * One enemy's picture, centered at `(x, y)` and `size` units across, on walk
+ * frame `frame`. The field draws it at twice the enemy's radius; the almanac
+ * draws the same sheet larger.
+ */
+export function drawEnemyPicture(
+  ctx: CanvasRenderingContext2D,
+  assets: WickAssets,
+  type: EnemyId,
+  x: number,
+  y: number,
+  size: number,
+  frame: number,
+  mirror = false,
+): void {
+  const def = ENEMIES[type];
+  const image = assets.image(enemyFrame(type, frame));
   if (image) {
-    sprite(ctx, image, x, y, def.radius * 2, def.radius * 2, {
-      mirror: enemy.heading.x < 0,
-    });
+    sprite(ctx, image, x, y, size, size, { mirror });
     return;
   }
   const fill =
@@ -163,7 +206,25 @@ export function drawEnemy(
         ? COLORS.elite
         : COLORS.enemy;
   const edge = def.rank === "dark" ? COLORS.darkEdge : COLORS.enemyEdge;
-  circle(ctx, x, y, def.radius, fill, edge);
+  circle(ctx, x, y, size / 2, fill, edge);
+}
+
+export function drawEnemy(
+  ctx: CanvasRenderingContext2D,
+  assets: WickAssets,
+  enemy: EnemyState,
+): void {
+  const def = ENEMIES[enemy.type];
+  drawEnemyPicture(
+    ctx,
+    assets,
+    enemy.type,
+    enemy.x,
+    enemy.y,
+    def.radius * 2,
+    walkFrame(enemy.age, ENEMY_FRAMES),
+    enemy.heading.x < 0,
+  );
 }
 
 export function drawPuff(

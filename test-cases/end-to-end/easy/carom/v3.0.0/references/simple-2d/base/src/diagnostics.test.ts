@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import { registerDiagnostics } from "./diagnostics";
+import { homeBall } from "./entities";
 import type { CaromState } from "./game";
 import { createInitialState } from "./match";
 import type { InitApi } from "@test-cabinet/simple-2d";
@@ -61,7 +62,7 @@ describe("registerDiagnostics", () => {
       screen: "playing",
       mode: "versus",
       score: { p1: 4, p2: 7 },
-      ball: { ...title.ball, x: 123.456, spin: -250 },
+      ball: { ...homeBall(), x: 123.456, spin: -250 },
     };
     const values = read(later);
     expect(values["screen"]).toBe("playing");
@@ -69,6 +70,18 @@ describe("registerDiagnostics", () => {
     expect(values["score"]).toBe("4 - 7");
     expect(values["ball pos"]).toBe("123.5, 360.0");
     expect(values["ball spin"]).toBe("-250.0");
+  });
+
+  it("reads a cleared field without reaching into an absent ball", () => {
+    const { api, read } = collector();
+    registerDiagnostics(api);
+    const empty: CaromState = { ...createInitialState(), ball: null };
+    const values = read(empty);
+    expect(values["ball pos"]).toBe("\u2014");
+    expect(values["ball vel"]).toBe("\u2014");
+    expect(values["ball spin"]).toBe("\u2014");
+    // The paddles are always present, so their lines still read.
+    expect(values["paddle L"]).toBe("cy 360.0 vy 0.0");
   });
 
   it("changes nothing it reads", () => {

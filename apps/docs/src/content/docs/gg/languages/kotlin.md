@@ -54,8 +54,8 @@ A build request names the directory the Kotlin compiler writes its classes into
 and the classpath entries to add to that pair, which is how a code module's
 classes reach the program compiled against them. An empty target file selects
 the Kotlin compiler alone, which is what a module is compiled with: a module is
-checked at the read that binds it, for the author's own located diagnostic, and
-compiled again under its binding key for each program that uses it.
+compiled at the read that binds it, under that key, and its classes are kept in
+the compile workspace for every program that uses it.
 
 `packages/gg-sandbox-kotlin/libraries.txt` declares in groups what a program may
 import, which is the Kotlin standard library as TeaVM is able to translate it.
@@ -201,23 +201,23 @@ The wrapper costs no line at all: gg's `package` declaration shares the author's
 own first line, so a diagnostic is the author's own coordinate with nothing
 subtracted from it. A `package` the author wrote is refused at that line.
 
-Each module is compiled on its own, into `package lib.<key>`, against the Kotlin
-standard library and gg's SDK jar and nothing else. The directory its classes
-land in goes on the `-classpath` of the program's own compile, which is how the
-SDK jar reaches a program too: a classpath entry is packaging and puts no name in
-a program's scope. So a program reaches an export the two ways it reaches gg's
-own surface. It writes the fully-qualified `lib.csvTools.slugify(…)`, or the
-module's own import line, `import lib.csvTools.*`, which the module's
-documentation view states. A key or an export the session does not have is a
-diagnostic on the turn that wrote it, and so is a program that writes neither the
-qualified name nor the import line.
+Each module is compiled on its own, once, into `package lib.<key>`, against the
+Kotlin standard library and gg's SDK jar and nothing else. The directory its
+classes land in goes on the `-classpath` of every program's own compile, which
+is how the SDK jar reaches a program too: a classpath entry is packaging and
+puts no name in a program's scope. So a program reaches an export the two ways
+it reaches gg's own surface. It writes the fully-qualified
+`lib.csvTools.slugify(…)`, or the module's own import line,
+`import lib.csvTools.*`, which the module's documentation view states. A key or
+an export the session does not have is a diagnostic on the turn that wrote it,
+and so is a program that writes neither the qualified name nor the import line.
 
 Binding names are camelCase and ASCII-only, and hold to being valid Kotlin
 identifiers: the key is a package segment the compiler resolves, so a leading
 digit and a hard keyword are each prefixed with an underscore.
 
-A module is compiled before the program that uses it, so a module that does not
-compile is a refusal naming the key it is bound at. Its file is named for that
+A module is compiled at the read that binds it, so a module that does not compile
+is a refusal on that read, naming the key. Its file is named for that
 key, so a TeaVM diagnostic about a module during a program's own build names the
 key in the file position.
 
@@ -236,5 +236,5 @@ list beside the segment carries that module's own `import` line.
 The arm names `kotlinc` as its [checker](/gg/languages/compilation/), so the
 shared body states that a program is compiled before it runs, that one the
 compiler refuses is not executed, and that a call the run withheld compiles and
-fails when it runs. The library set is carried by a compile failure rather than
-by the prompt.
+fails when it runs. The library set is reached through a compile failure rather
+than through the prompt.

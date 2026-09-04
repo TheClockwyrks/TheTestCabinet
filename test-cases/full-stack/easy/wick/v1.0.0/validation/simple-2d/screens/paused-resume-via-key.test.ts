@@ -5,9 +5,9 @@
 //
 // THE SPEC IT RESTS ON.
 //   specs/ui.md (`paused`): "`pause` returns to `playing`".
-//   specs/controls.md ("What each screen reads"): "`paused` | none | `pause`
-//   resumes `playing`; `back` abandons the run and returns to `title`; `mute`",
-//   and `pause` is `KeyP`.
+//   specs/controls.md ("What each screen reads"): "`paused` | none | `up`,
+//   `down` move the highlight, wrapping; `confirm` takes the highlighted item;
+//   `pause` resumes; `back` resumes; `mute`", and `pause` is `KeyP`.
 //   specs/instrumentation.md (`setScreen`): "`playing` | `paused` | Resumes
 //   exactly as `pause` on `paused` does; the run is untouched."
 //

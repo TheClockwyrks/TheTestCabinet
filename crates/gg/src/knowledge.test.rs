@@ -21,7 +21,7 @@ fn python() -> &'static dyn ProgramLanguage {
 
 /// A registry with `csv-tools` loaded, as most of these start.
 fn with_csv_tools() -> (KnowledgeModules, Loaded) {
-    let mut modules = KnowledgeModules::new();
+    let mut modules = KnowledgeModules::new(crate::sandbox::AgentWorkspace::new());
     let loaded = modules
         .load(
             ts(),
@@ -89,7 +89,7 @@ fn a_load_registers_the_module_and_its_declarations() {
 /// spelling quoted in a syntax the arm does not have is a binding the model has not been given.
 #[test]
 fn a_load_documents_the_module_in_the_readers_own_language() {
-    let mut modules = KnowledgeModules::new();
+    let mut modules = KnowledgeModules::new(crate::sandbox::AgentWorkspace::new());
     let loaded = modules
         .load(
             python(),
@@ -120,7 +120,7 @@ fn a_load_documents_the_module_in_the_readers_own_language() {
 /// for a model to read, because there is no code to describe.
 #[test]
 fn a_prose_skill_registers_nothing_at_all() {
-    let mut modules = KnowledgeModules::new();
+    let mut modules = KnowledgeModules::new(crate::sandbox::AgentWorkspace::new());
     let loaded = modules
         .load(ts(), KnowledgeOrigin::Skill, "prose", None, None)
         .expect("a skill with no code loads");
@@ -168,7 +168,7 @@ fn reloading_the_same_thing_reuses_its_key_and_replaces_its_source() {
 #[test]
 fn an_on_use_script_is_queued_on_every_use() {
     let script = "import * as gg from \"gg\";\ngg.views.openText(\"guide\", \"hello\");\n";
-    let mut modules = KnowledgeModules::new();
+    let mut modules = KnowledgeModules::new(crate::sandbox::AgentWorkspace::new());
     for use_number in 1..=3 {
         let loaded = modules
             .load(ts(), KnowledgeOrigin::Skill, "guide", None, Some(script))
@@ -182,7 +182,7 @@ fn an_on_use_script_is_queued_on_every_use() {
 #[test]
 fn a_repeat_use_re_runs_the_prepared_script() {
     let script = "import * as gg from \"gg\";\ngg.views.openText(\"guide\", \"hello\");\n";
-    let mut modules = KnowledgeModules::new();
+    let mut modules = KnowledgeModules::new(crate::sandbox::AgentWorkspace::new());
     let first = {
         modules
             .load(ts(), KnowledgeOrigin::Skill, "guide", None, Some(script))
@@ -201,7 +201,7 @@ fn a_repeat_use_re_runs_the_prepared_script() {
 /// A script a memory gains later runs on the use that first carries it.
 #[test]
 fn a_script_added_to_a_memory_runs_on_the_next_use() {
-    let mut modules = KnowledgeModules::new();
+    let mut modules = KnowledgeModules::new(crate::sandbox::AgentWorkspace::new());
     modules
         .load(ts(), KnowledgeOrigin::Memory, "notes", None, None)
         .expect("a plain memory loads");
@@ -222,7 +222,7 @@ fn a_script_added_to_a_memory_runs_on_the_next_use() {
 /// carries.
 #[test]
 fn a_rewritten_script_is_prepared_again() {
-    let mut modules = KnowledgeModules::new();
+    let mut modules = KnowledgeModules::new(crate::sandbox::AgentWorkspace::new());
     modules
         .load(
             ts(),
@@ -277,7 +277,7 @@ fn an_on_use_script_is_given_its_own_module_and_nothing_else() {
 
 #[test]
 fn taking_the_pending_queue_empties_it() {
-    let mut modules = KnowledgeModules::new();
+    let mut modules = KnowledgeModules::new(crate::sandbox::AgentWorkspace::new());
     modules
         .load(ts(), KnowledgeOrigin::Skill, "guide", None, Some("1;\n"))
         .expect("loads");
@@ -287,7 +287,7 @@ fn taking_the_pending_queue_empties_it() {
 
 #[test]
 fn uncompilable_code_is_refused_and_names_the_half_that_failed() {
-    let mut modules = KnowledgeModules::new();
+    let mut modules = KnowledgeModules::new(crate::sandbox::AgentWorkspace::new());
     let error = modules
         .load(
             ts(),
@@ -306,7 +306,7 @@ fn uncompilable_code_is_refused_and_names_the_half_that_failed() {
 
 #[test]
 fn an_uncompilable_on_use_script_is_refused_by_its_own_name() {
-    let mut modules = KnowledgeModules::new();
+    let mut modules = KnowledgeModules::new(crate::sandbox::AgentWorkspace::new());
     let error = modules
         .load(
             ts(),
@@ -327,7 +327,7 @@ fn keys_are_always_valid_identifiers() {
         ("9lives", "_9lives"),
         ("---", "module"),
     ] {
-        let mut modules = KnowledgeModules::new();
+        let mut modules = KnowledgeModules::new(crate::sandbox::AgentWorkspace::new());
         let loaded = modules
             .load(
                 ts(),
@@ -343,7 +343,7 @@ fn keys_are_always_valid_identifiers() {
 
 #[test]
 fn modules_are_handed_over_in_a_stable_order() {
-    let mut modules = KnowledgeModules::new();
+    let mut modules = KnowledgeModules::new(crate::sandbox::AgentWorkspace::new());
     for name in ["zeta", "alpha", "mid"] {
         modules
             .load(
@@ -384,7 +384,7 @@ fn compiling() -> &'static dyn ProgramLanguage {
 /// [`SandboxOutcome::compile`](crate::sandbox::SandboxOutcome::compile) exists to close.
 #[test]
 fn what_a_load_spent_compiling_is_charged_to_the_agent() {
-    let mut modules = KnowledgeModules::new();
+    let mut modules = KnowledgeModules::new(crate::sandbox::AgentWorkspace::new());
     modules
         .load(
             compiling(),
@@ -412,7 +412,7 @@ fn what_a_load_spent_compiling_is_charged_to_the_agent() {
 /// spent it, and the error return is what makes it the reading nothing else could take.
 #[test]
 fn a_load_that_failed_to_compile_still_reports_what_it_spent() {
-    let mut modules = KnowledgeModules::new();
+    let mut modules = KnowledgeModules::new(crate::sandbox::AgentWorkspace::new());
     modules
         .load(
             compiling(),
@@ -432,7 +432,7 @@ fn a_load_that_failed_to_compile_still_reports_what_it_spent() {
 /// TypeScript type-checks the code it prepares, so a load in it is charged like any other compile.
 #[test]
 fn a_load_in_a_language_that_does_not_compile_reports_nothing() {
-    let mut modules = KnowledgeModules::new();
+    let mut modules = KnowledgeModules::new(crate::sandbox::AgentWorkspace::new());
     modules
         .load(
             crate::sandbox::fixture::a_language_that_does_not_compile(),
@@ -459,7 +459,7 @@ fn a_load_in_typescript_reports_what_checking_the_module_cost() {
 
 /// The error a load of `source` produced.
 fn refused_load(source: &str) -> KnowledgeError {
-    KnowledgeModules::new()
+    KnowledgeModules::new(crate::sandbox::AgentWorkspace::new())
         .load(
             compiling(),
             KnowledgeOrigin::Skill,
@@ -563,7 +563,7 @@ fn a_module_gg_could_not_lower_is_not_the_authors_source() {
 /// easier to leave behind: it fails after the module has already succeeded.
 #[test]
 fn an_on_use_script_whose_compiler_crashed_is_reported_the_same_way() {
-    let error = KnowledgeModules::new()
+    let error = KnowledgeModules::new(crate::sandbox::AgentWorkspace::new())
         .load(
             compiling(),
             KnowledgeOrigin::Memory,

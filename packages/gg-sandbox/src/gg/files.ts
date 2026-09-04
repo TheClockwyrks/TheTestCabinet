@@ -1,8 +1,7 @@
 /**
- * Read, write, edit, list and search the files of the workspace.
+ * Read, write, edit, list, walk and search the files of the workspace.
  *
- * Nothing here places anything in the agent's context window: every call hands its answer to the
- * program, and a view is what puts something in front of the agent.
+ * Every call here hands its answer to the program and places nothing in the context window.
  */
 
 import * as raw from "test-cabinet:gg/files";
@@ -34,8 +33,7 @@ export interface TextFile {
 /**
  * A picture's description, as the image arm of a `FileRead` carries it.
  *
- * The pixels never enter the program. `gg.views.openFile` is what attaches the picture to the turn to
- * be looked at, which is worth far more than base64 in a variable.
+ * The pixels never enter the program: `gg.views.openFile` is what shows the picture itself.
  */
 export interface ImageFile {
   /** Names this arm of `FileRead` as the picture one. */
@@ -60,9 +58,7 @@ export interface ImageFile {
 /**
  * What a read returned: a text file's window, or a picture's description.
  *
- * A picture is a different kind of thing from text, so it is a different arm rather than a string
- * that happens to be binary. The `kind` discriminant is what narrows it, and a program that treats an
- * image as text is caught by that check instead of silently writing an empty string somewhere.
+ * The `kind` discriminant narrows it to one arm.
  */
 export type FileRead = TextFile | ImageFile;
 
@@ -96,7 +92,7 @@ export interface SearchMatch {
    * The matching line, without its line ending.
    *
    * A line longer than 200 characters is cut there and annotated in place as `foo (123 more
-   * chars...)`, so a match in a minified bundle costs a line rather than the bundle.
+   * chars...)`.
    */
   text: string;
 }
@@ -105,19 +101,12 @@ export interface SearchMatch {
  * Read a file, as either a `TextFile` or an `ImageFile`.
  *
  * Which of the two comes back is detected from the file's bytes, never from the extension, so a
- * mislabelled picture is still a picture. The two are discriminated by `kind`, so an ordinary
- * narrowing separates them:
+ * mislabelled picture is still a picture. The two are discriminated by `kind`.
  *
- * ```
- * const read = gg.files.readFile("logo.png");
- * if (read.kind === "text") gg.views.openText("logo", read.contents);
- * else gg.views.openText("logo", read.label);
- * ```
- *
- * A relative path resolves against the workspace; an absolute one is read as given, so anything else
- * in this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable. This
- * call hands bytes to the program and places nothing in the context window; reading a picture
- * describes it and shows nothing, so a file only read here is a file nobody has looked at.
+ * A relative path resolves against the workspace; an absolute one is read as given, so a file
+ * elsewhere in the container — an offloaded command's output under `/tmp/gg-shell` — is readable.
+ * The bytes go to the program and nothing is placed in the context window: reading a picture
+ * describes it and shows nothing.
  *
  * @ggop files.read_file
  * @param path The file to read, relative to the workspace or absolute.
@@ -154,9 +143,6 @@ export function writeFile(path: string, contents: string): number {
 /**
  * Replace the one exact occurrence of some text in a file with something else.
  *
- * Widening the surrounding context until the match is unique is the way to disambiguate; counting
- * occurrences is not.
- *
  * @ggop files.edit_file
  * @param path The file to edit.
  * @param oldString The exact text to find, whitespace included. It must appear exactly once.
@@ -186,22 +172,58 @@ export function listDir(path?: string): DirEntry[] {
 }
 
 /**
+ * Render the tree beneath a directory, skipping everything the ignore files exclude.
+ *
+ * One block of text: the root itself unnamed, each level indented two further spaces than its
+ * parent, every level in path order, and directories suffixed `/`. A root with nothing beneath it
+ * renders as `(empty directory)`.
+ *
+ * `depth` counts levels of children below the root, so `1` is the root's own entries. A directory
+ * sitting at the bound is suffixed with how many entries it holds that were not walked, as
+ * `assets/ (12 entries not shown)`.
+ *
+ * What `.gitignore`, `.ignore` and their kin exclude — nested files, negations and
+ * `.git/info/exclude` included, and `.git` itself — is never walked and never rendered, in a
+ * workspace that is a repository and in one that is not yet. Dotfiles are otherwise rendered like
+ * any other entry, and symbolic links are not followed.
+ *
+ * The rendering is bounded at 1000 lines and 16 KiB, whichever binds first, and a result cut by
+ * either ends with a line saying so.
+ *
+ * @ggop files.tree
+ * @param options Where to root the tree and how deep to walk it; omit it for the workspace root at
+ * depth 2.
+ * @param options.path The directory to walk, relative to the workspace or absolute. Omitted, the
+ * tree starts at the workspace root.
+ * @param options.depth How many levels of children below the root to render: 2 by default, and a
+ * request over 10 is answered at 10. It may not be zero.
+ * @returns the rendered tree.
+ * @throws `ApiError` with `not-found` for a `path` that is not there, and `invalid-argument` for a
+ * `path` that is not a directory or a `depth` of zero.
+ */
+export function tree(options?: { path?: string; depth?: number }): string {
+  const o = opts<{ path?: string; depth?: number }>("tree", options);
+  const depth = uint("tree", "depth", o?.depth, U32_MAX);
+  if (depth === 0) {
+    throw new ApiError("tree", "invalid-argument", "`depth` must be at least 1, got 0");
+  }
+  return call(() => raw.tree(o?.path, depth));
+}
+
+/**
  * Search the workspace's files for a pattern, skipping everything the ignore files exclude.
  *
  * A grep over the project rather than over the disk. `query` is a regular expression tried against
  * each line on its own, and every line it matches comes back with its path and 1-based line number,
- * in path order and then line order. What `.gitignore`, `.ignore` and their kin exclude — nested
- * files, negations and `.git/info/exclude` included, and `.git` itself — is never scanned and never
- * returned, in a workspace that is a repository and in one that is not yet, so a match list holds
- * the sources rather than `node_modules`, build output and the run's own bookkeeping. Dotfiles are
- * otherwise searched like any other file, and a file that is not text (one carrying a NUL byte) is
- * skipped rather than matched byte by byte.
+ * in path order and then line order. What
+ * `.gitignore`, `.ignore` and their kin exclude — nested files, negations and `.git/info/exclude`
+ * included, and `.git` itself — is never scanned and never returned, in a workspace that is a
+ * repository and in one that is not yet. Dotfiles are otherwise searched like any other file, and a
+ * file carrying a NUL byte is skipped.
  *
- * The result is bounded so one search cannot flood a turn: at most `limit` matches, 50 by default
- * and never more than 200, and a matching line longer than 200 characters is cut there and annotated
- * in place as `foo (123 more chars...)`. A list exactly `limit` long may have been cut, and there is
- * no offset — a search is a question about where to point the other calls, not a way of reading a
- * file — so the answer to a cut list is a narrower query or a narrower `path`.
+ * At most `limit` matches come back, 50 by default and never more than 200, and a matching line
+ * longer than 200 characters is cut there and annotated in place as `foo (123 more chars...)`. A
+ * list exactly `limit` long may have been cut. There is no offset.
  *
  * @ggop files.search
  * @param query The pattern to look for: a regular expression in Rust syntax — `foo|bar`,

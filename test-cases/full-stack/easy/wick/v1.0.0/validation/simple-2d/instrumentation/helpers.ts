@@ -15,11 +15,15 @@ import {
   holdPassive,
   holdWeapon,
   isolate,
+  openChest,
+  openLevelUp,
+  poseScene,
   spawnEnemyAt,
   spawnGemAt,
   spawnPickupAt,
   type Harness,
   type IsolateOptions,
+  type Screen,
   type WickSnapshot,
 } from "../harness";
 import type { RunSnapshot } from "../surface";
@@ -33,6 +37,8 @@ export const SNAPSHOT_FIELDS = [
   "version",
   "screen",
   "menuIndex",
+  "almanacTab",
+  "almanacScroll",
   "spawning",
   "events",
   "despawning",
@@ -56,6 +62,7 @@ export const RUN_FIELDS = [
   "xpToNext",
   "kills",
   "player",
+  "hurtFlash",
   "maxHp",
   "armor",
   "moveSpeed",
@@ -123,13 +130,59 @@ export const GEM_FIELDS = ["id", "tier", "x", "y", "attracted"] as const;
 export const PICKUP_FIELDS = ["id", "kind", "x", "y"] as const;
 export const HIT_FIELDS = ["enemy", "cooldown"] as const;
 
-/** The screens that show no menu, on which `menuIndex` "stays 0" (specs/ui.md). */
-export const MENU_FREE_SCREENS = [
-  "howto",
-  "playing",
-  "chest",
-  "paused",
-] as const;
+/**
+ * The screens that show no menu, on which `menuIndex` "stays 0" (specs/ui.md,
+ * Menu navigation) and on which `menuRects` "report an empty list"
+ * (specs/instrumentation.md, Menus). `paused` shows `PAUSE_ITEMS` and `almanac`
+ * shows its entry rows, so both carry a menu.
+ */
+export const MENU_FREE_SCREENS = ["howto", "playing", "chest"] as const;
+
+/**
+ * The nine screens of specs/ui.md, each reached THROUGH THE SURFACE ALONE, so a
+ * build whose menus cannot be walked still answers for what a screen reports.
+ * `title` is the reset; `howto`, `almanac`, `playing`, `paused`, `fallen`, and
+ * `dawn` are `setScreen` rows; `levelup` and `chest` have no row of their own
+ * and are opened by the tick that opens them.
+ */
+export const SCREEN_ROUTES: readonly [Screen, (h: Harness) => Promise<void>][] =
+  [
+    ["title", async (on) => on.reset()],
+    ["howto", async (on) => void poseScene(on, "howto")],
+    ["almanac", async (on) => void poseScene(on, "almanac")],
+    ["playing", async (on) => void poseScene(on, "playing")],
+    [
+      "levelup",
+      async (on) => {
+        poseScene(on, "playing");
+        await openLevelUp(on, 1);
+      },
+    ],
+    [
+      "chest",
+      async (on) => {
+        poseScene(on, "playing");
+        await openChest(on);
+      },
+    ],
+    ["paused", async (on) => void poseScene(on, "paused")],
+    [
+      "fallen",
+      async (on) => {
+        poseScene(on, "playing");
+        await on.tick(3);
+        on.debug.setScreen("fallen");
+      },
+    ],
+    [
+      "dawn",
+      async (on) => {
+        poseScene(on, "playing");
+        await on.tick(3);
+        on.debug.setScreen("dawn");
+      },
+    ],
+  ];
 
 /* -------------------------------------------------------------------------- */
 /* The idle run                                                               */
@@ -150,6 +203,7 @@ export const IDLE_RUN: RunSnapshot = {
   xpToNext: XP_BASE,
   kills: 0,
   player: { x: 0, y: 0, facing: "right", hp: BASE_MAX_HP },
+  hurtFlash: 0,
   maxHp: BASE_MAX_HP,
   armor: 0,
   moveSpeed: MOVE_SPEED,

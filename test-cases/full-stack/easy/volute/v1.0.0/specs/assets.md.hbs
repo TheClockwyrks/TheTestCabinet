@@ -19,8 +19,8 @@ tool, and the built site fetches nothing from outside its own `dist/`.
 | `draw-sheet` | a sprite sheet, one PNG per frame | the fire recoil, the maw swallow, the extraction flash |
 | `particle-2d` | a particle system, a `system.json` | the extraction burst, the bore detonation, the intake swallow spray, the pickup shimmer |
 | `sfx-synth` | a procedural sound, a `.wav` | the injector's cues and the pickup |
-| `sfx-sample` | a sampled sound over a baked pack, a `.wav` | the extraction steps, the intake, and the run's cues |
-| `music` | sequenced music over a baked bank, a `.wav` and a `.mid` | the two music beds |
+| `sfx-sample` | a sampled sound over the sample pack, a `.wav` | the extraction steps, the intake, and the run's cues |
+| `music` | sequenced music over the instrument bank, a `.wav` and a `.mid` | the two music beds |
 
 Each is a command-line tool, and `<tool> --help` states its operations
 (`<tool> <operation> --help` for one operation's flags). In outline, each records
@@ -30,9 +30,10 @@ the operations run against it and then renders the finished file. `draw` and
 files, one PNG per frame. `particle-2d` authors emitters, forces, and
 per-particle curves into a system that is simulated live rather than baked into
 frames. The audio tools record synth voices, sampled layers, or sequenced notes
-and render a PCM `.wav`; `sfx-sample` draws on a baked sample pack and `music` on
-a baked instrument bank, both browsed through their own help, and `music` emits a
-portable `.mid` beside the `.wav` that plays.
+and render a PCM `.wav`; `sfx-sample` draws on the `combat-core` sample pack and
+`music` on the `synthwave` instrument bank, both present in the container and
+browsed with `list-samples` and `list-instruments`, and `music` emits a portable
+`.mid` beside the `.wav` that plays.
 
 ## The hall
 

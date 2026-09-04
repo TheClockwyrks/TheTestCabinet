@@ -57,6 +57,7 @@ import {
   unexposedSurface,
 } from "./surface";
 import { toDrawCall, type DrawCall, type RecordedOp } from "./draw-calls";
+import { DEFAULT_FONT, DEFAULT_TEXT_ALIGN } from "./text";
 import { mediaDestination } from "./media";
 import { type Recording } from "./replay/format";
 import { thinReplay } from "./replay/retable";
@@ -83,6 +84,20 @@ export interface HarnessOptions {
   dpr?: number;
   /** The seed the opening `reset` is given. Defaults to the case's, if it has one. */
   seed?: number;
+  /**
+   * Give the build a real, browser-trusted gesture, so its audio can open.
+   *
+   * OPT IN, and off by default: the gesture is a genuine browser event, which is
+   * the whole point of it, so the game is free to act on it — and a check that is
+   * not about sound has nothing to gain from handing the build one. Only the
+   * suites that read what a build SOUNDED ask for it, so a fault here can only
+   * reach the checks that needed it.
+   *
+   * What it costs the checks that do ask is nothing, because of WHEN it happens:
+   * the gesture is delivered before the opening `reset`, so whatever it moved is
+   * put back before the harness is handed over. See {@link ArmGesture}.
+   */
+  armAudio?: boolean;
 }
 
 /**
@@ -351,8 +366,6 @@ export interface Harness<S, D> {
   /** The canvas's backing store size, as the build sized it. */
   surface(): Promise<{ width: number; height: number; dpr: number }>;
 
-  /** Give the build a real, browser-trusted gesture, so its audio can open. */
-  armAudio(): Promise<void>;
   /** How many sounds the build has emitted since the page loaded, in total. */
   sounds(): Promise<number>;
   /**
@@ -377,6 +390,16 @@ const harnessCues = new WeakMap<object, TimedCue[][]>();
 
 /** How far a sweep runs when the caller names no bound. */
 const DEFAULT_MAX_FRAMES = 600;
+
+/**
+ * How many frames run between the arming gesture and the opening `reset`.
+ *
+ * Not a settling time, a READING time: the frames on which a build's own input
+ * layer consumes the gesture, so that whatever it does with it is in the state
+ * the `reset` then restores. Two, because that is the most a conformant build
+ * takes to read a press and its release.
+ */
+const ARM_SETTLE_FRAMES = 2;
 
 /** The page's globals, as the shapes the evaluations below reach for. */
 type PageGlobals = Record<
@@ -422,6 +445,115 @@ async function sweep<S>(
   return swept(false, count, snapshot);
 }
 
+/* ---- Measuring the text a frame drew --------------------------------------- */
+
+/** One text call, and the text state the walk found in force at it. */
+interface PendingMeasure {
+  call: Extract<DrawCall, { kind: "call" }>;
+  text: string;
+  font: string;
+  textAlign: string;
+}
+
+/**
+ * Attach a measured width and the alignment in force to every text call of a
+ * recorded frame.
+ *
+ * The recorder records `font` and `textAlign` as ordinary property sets, and
+ * `save`/`restore` stack them exactly as they stack the transform, so the state
+ * at each call is recovered by walking the frame. The widths themselves are
+ * measured IN THE PAGE, against an offscreen 2D context, so a run is measured
+ * under the build's own loaded fonts — in ONE crossing, over the distinct
+ * (text, font) pairs the frame used, however many calls spelled them.
+ *
+ * The walk starts from the context's own defaults, because a frame's operation
+ * list holds what that frame issued and not what it inherited. A build that sets
+ * its font every frame, which is the ordinary render, is measured exactly; one
+ * that sets it once and relies on the inheritance is measured against the
+ * default font, which under-reports the width and so only ever leaves runs apart
+ * that would otherwise have joined.
+ */
+async function measureTextCalls(page: Page, calls: DrawCall[]): Promise<void> {
+  const pending: PendingMeasure[] = [];
+  const stack: { font: string; textAlign: string }[] = [];
+  let current = { font: DEFAULT_FONT, textAlign: DEFAULT_TEXT_ALIGN };
+
+  for (const call of calls) {
+    if (call.kind === "set") {
+      if (call.property === "font" && typeof call.value === "string") {
+        current = { ...current, font: call.value };
+      } else if (
+        call.property === "textAlign" &&
+        typeof call.value === "string"
+      ) {
+        current = { ...current, textAlign: call.value };
+      }
+      continue;
+    }
+    if (call.method === "save") {
+      stack.push(current);
+      continue;
+    }
+    if (call.method === "restore") {
+      const popped = stack.pop();
+      if (popped !== undefined) current = popped;
+      continue;
+    }
+    if (call.method !== "fillText" && call.method !== "strokeText") continue;
+    const text = call.args[0];
+    if (typeof text !== "string" || text.length === 0) continue;
+    pending.push({
+      call,
+      text,
+      font: current.font,
+      textAlign: current.textAlign,
+    });
+  }
+  if (pending.length === 0) return;
+
+  const distinct = new Map<string, { font: string; text: string }>();
+  for (const item of pending) {
+    distinct.set(measureKey(item.font, item.text), {
+      font: item.font,
+      text: item.text,
+    });
+  }
+  const wanted = [...distinct.values()];
+
+  const widths = (await page.evaluate((items) => {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (ctx === null) {
+      throw new Error("case-harness: no 2D context to measure text in");
+    }
+    return items.map((item) => {
+      ctx.font = item.font;
+      return ctx.measureText(item.text).width;
+    });
+  }, wanted)) as number[];
+
+  const measured = new Map<string, number>();
+  for (const [index, item] of wanted.entries()) {
+    measured.set(measureKey(item.font, item.text), widths[index] as number);
+  }
+  for (const item of pending) {
+    item.call.text = {
+      width: measured.get(measureKey(item.font, item.text)) ?? 0,
+      textAlign: item.textAlign,
+    };
+  }
+}
+
+/**
+ * One (font, text) pair as a map key.
+ *
+ * The separator is a newline, which neither a CSS font shorthand nor a run of
+ * canvas text can contain, so no two distinct pairs ever collide on one key.
+ */
+function measureKey(font: string, text: string): string {
+  return `${font}\n${text}`;
+}
+
 /**
  * Bind {@link Harness} to one case, and hand back the `createHarness` its suites
  * call.
@@ -434,9 +566,14 @@ async function sweep<S>(
  * operation, the arming gesture — arrives in one object.
  */
 export function createHarnessFactory<S, D extends object>(
-  config: CaseConfig,
+  config: CaseConfig<S>,
 ): (options?: HarnessOptions) => Promise<Harness<S, D>> {
   const resolved = resolveConfig(config);
+  // The case's own narrowing, or none. Held here rather than on `ResolvedConfig`
+  // because it is the one member of a case's config that reads the case's own
+  // snapshot type, and `ResolvedConfig` is handed to every check as `h.config`.
+  const project: (snapshot: S) => S =
+    config.projectSnapshot?.bind(config) ?? ((snapshot) => snapshot);
   const requirement = surfaceRequirement(resolved.handle, resolved.specPath);
   const failSurface = makeFailSurface(requirement);
   const tickMs = 1000 / resolved.tickHz;
@@ -449,6 +586,13 @@ export function createHarnessFactory<S, D extends object>(
     const dpr = options.dpr ?? 1;
     const clock = options.clock ?? new ConstantClock(tickMs);
     const seed = options.seed ?? resolved.defaultSeed;
+    // Both are read by the arming gesture below, which happens before the page is
+    // handed to anything else, so neither can wait until the harness is built.
+    const view = fitViewport(cssWidth, cssHeight, dpr, resolved.stage);
+    const cssPointOf = (x: number, y: number): Point => ({
+      x: view.cssOffsetX + x * view.cssScale,
+      y: view.cssOffsetY + y * view.cssScale,
+    });
     const context = await contextFor({ cssWidth, cssHeight, dpr }, resolved);
     const page = await context.newPage();
     openPages.add(page);
@@ -479,11 +623,16 @@ export function createHarnessFactory<S, D extends object>(
       args: unknown[],
     ): Promise<unknown> => {
       if (surfaceFault !== null) refuse();
-      return page.evaluate(
+      const returned = await page.evaluate(
         ([handle, name, rest]) =>
           (window as unknown as PageGlobals)[handle]![name]!(...rest),
         [resolved.handle, operation, args] as const,
       );
+      // One of the points a snapshot crosses back out of the page, and the one
+      // every read of the surface's own `snapshot` goes through — `h.snapshot()`,
+      // `h.debug.snapshot()`, the opening read, and every sweep. The driven runs
+      // below are the others.
+      return operation === "snapshot" ? project(returned as S) : returned;
     };
 
     const debug =
@@ -499,6 +648,27 @@ export function createHarnessFactory<S, D extends object>(
             },
           }) as D);
 
+    /**
+     * A GENUINE browser gesture, so the build's audio can open.
+     *
+     * A build is free to open its audio context from a real DOM event alone —
+     * both that and an explicit unlock are conformant — so a gesture delivered
+     * any other way would leave a perfectly good build silent. Which gesture it
+     * is, is the case's ({@link ArmGesture}); a press is made at the case's own
+     * LOGICAL point, taken through the fit like every other pointer operation, so
+     * it lands where the case says it does whatever shape the window is.
+     */
+    const armGesture = async (): Promise<void> => {
+      if (resolved.arm.kind === "key") {
+        await page.keyboard.press(resolved.arm.code);
+        return;
+      }
+      const at = cssPointOf(resolved.arm.x, resolved.arm.y);
+      await page.mouse.move(at.x, at.y);
+      await page.mouse.down();
+      await page.mouse.up();
+    };
+
     // What the build opened on, read before the `reset` below puts it back
     // whatever it opened on. Only when the case asked: it is a real call into
     // the build's surface.
@@ -511,6 +681,35 @@ export function createHarnessFactory<S, D extends object>(
       // Off the wall clock and back to the start before a check touches
       // anything: from here the game changes only when this harness says so.
       await call("setAutoStep", [false]);
+      // THE AUDIO GESTURE GOES IN BEFORE THAT RESTORE, which is what makes it
+      // safe to deliver one at all. It is a real browser event — it has to be, or
+      // a build that opens its context from a DOM event alone would stay silent —
+      // so the game is entitled to act on it: a press lands wherever the build
+      // chose to put its controls, and a case whose specification leaves every key
+      // binding to the build has no key that is inert by construction either.
+      // Delivered here, neither has to be. The `reset` on the next line restores
+      // every declared field of the state, so a menu the gesture took, a screen it
+      // left, or a beam it cleared is gone before a check reads anything — while
+      // the audio it opened is a fact about the page's user activation, which no
+      // reset touches.
+      if (options.armAudio ?? false) {
+        await armGesture();
+        // And the frames the build reads it on, which is the half of the ordering
+        // that is easy to miss. An input layer that BUFFERS its samples and reads
+        // them once a frame — the shape an engineless build usually writes — has
+        // not acted on the gesture yet when this line is reached, and the buffer
+        // belongs to that layer rather than to the state, so the `reset` would not
+        // empty it: the edges would still be pending, and the first frame a check
+        // drove would take them, past the restore meant to erase them. Two frames,
+        // because a build is equally free to read one sample per frame, which is
+        // what a press and its release take.
+        await call(
+          resolved.step.op,
+          resolved.step.kind === "seconds-frames"
+            ? [(ARM_SETTLE_FRAMES * tickMs) / 1000, ARM_SETTLE_FRAMES]
+            : [ARM_SETTLE_FRAMES],
+        );
+      }
       await call("reset", seed === null ? [] : [{ seed }]);
       // And a recorder over the surface before a check can arm one. A build is
       // free to ask for its 2D context on the frame it first draws rather than
@@ -529,7 +728,6 @@ export function createHarnessFactory<S, D extends object>(
         .catch(() => undefined);
     }
 
-    const view = fitViewport(cssWidth, cssHeight, dpr, resolved.stage);
     const cueSinks: TimedCue[][] = [];
     let frameCount = 0;
     let timeMs = 0;
@@ -589,6 +787,7 @@ export function createHarnessFactory<S, D extends object>(
           sample,
         ] as const,
       )) as { snapshots: S[]; sounds: number[] };
+      result.snapshots = result.snapshots.map(project);
 
       for (const [index, delta] of deltas.entries()) {
         frameCount += 1;
@@ -636,7 +835,7 @@ export function createHarnessFactory<S, D extends object>(
       )) as S;
       frameCount += count;
       timeMs += totalMs;
-      return snapshot;
+      return project(snapshot);
     };
 
     /**
@@ -708,11 +907,6 @@ export function createHarnessFactory<S, D extends object>(
       return march(frames);
     };
 
-    const cssPointOf = (x: number, y: number): Point => ({
-      x: view.cssOffsetX + x * view.cssScale,
-      y: view.cssOffsetY + y * view.cssScale,
-    });
-
     const lastCalls = async (): Promise<DrawCall[]> => {
       const ops = (await page.evaluate(
         (rec) =>
@@ -721,7 +915,9 @@ export function createHarnessFactory<S, D extends object>(
           ]!.last(),
         resolved.recorderGlobal,
       )) as RecordedOp[];
-      return ops.map(toDrawCall);
+      const calls = ops.map(toDrawCall);
+      if (resolved.measureText) await measureTextCalls(page, calls);
+      return calls;
     };
 
     const harness: Harness<S, D> = {
@@ -1030,22 +1226,6 @@ export function createHarnessFactory<S, D extends object>(
             dpr: window.devicePixelRatio,
           };
         }, resolved.slug),
-
-      async armAudio() {
-        // A GENUINE browser gesture, not a posed one: a build is free to open its
-        // audio context from a real DOM event alone (both are conformant), so a
-        // gesture delivered any other way would leave a perfectly good build
-        // silent. A case that fixes an inert key presses it; one that fixes none
-        // makes a real mouse press somewhere that operates nothing. Either way
-        // arming changes no game state.
-        if (resolved.arm.kind === "key") {
-          await page.keyboard.press(resolved.arm.code);
-          return;
-        }
-        await page.mouse.move(resolved.arm.x, resolved.arm.y);
-        await page.mouse.down();
-        await page.mouse.up();
-      },
 
       sounds: () =>
         page.evaluate(

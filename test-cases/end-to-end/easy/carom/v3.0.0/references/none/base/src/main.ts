@@ -6,13 +6,13 @@
 // state, and starts the loop.
 //
 // Everything it wires together lives elsewhere: the runtime in `src/runtime.ts`
-// and the four modules under it, the game in `src/game.ts`, the surface in
-// `src/debug.ts`.
+// and the five modules under it, the game in `src/game.ts` over the state in
+// `src/state.ts`, and the surface in `src/debug.ts`.
 
 import { FIELD_H, FIELD_W } from "./constants";
 import { installDebugApi } from "./debug";
 import { game } from "./game";
-import type { CaromState } from "./game";
+import type { CaromState } from "./state";
 import { createRuntime } from "./runtime";
 import { COLOR } from "./theme";
 

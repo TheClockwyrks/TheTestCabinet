@@ -13,6 +13,11 @@
 // the same in both places: a count is grouped, a mean keeps one decimal, a ratio is a
 // percentage, a byte count is binary.
 
+import type {
+  RunRecord,
+  ToolchainCoverage,
+  ToolchainTests,
+} from "@test-cabinet/run-record";
 import { CODE_METRICS } from "@test-cabinet/run-record/code-metrics";
 import type {
   CodeMetricDef,
@@ -123,6 +128,16 @@ export function formatMetricValue(
  * name it here. Mirrors the CLI's `family_heading` for the same reason the value
  * formatting mirrors its counterpart: two reports of one analysis should not disagree
  * about what a section is called.
+ *
+ * Two of the renames are corrections rather than tidying, and both exist because this
+ * page now also carries EXECUTED figures. `notes` was headed "Coverage", which it never
+ * was: its rows are the walk's own diagnostics (what it truncated, what it skipped, what
+ * it refused), and that heading collided with both the console's Coverage feature area
+ * and, now, with real code coverage. `tests` was headed "Tests", which is a heading the
+ * executed suite has a much better claim to — the rows under it are static counts of how
+ * much test code the model *wrote*, an authorship signal the analyzer's own contract says
+ * must never be presented as coverage. "Test authorship" says which of the two tiers a
+ * reader is looking at without having to know that one of them ran.
  */
 export function familyHeading(family: string): string {
   switch (family) {
@@ -139,11 +154,11 @@ export function familyHeading(family: string): string {
     case "complexity":
       return "Complexity";
     case "tests":
-      return "Tests";
+      return "Test authorship";
     case "duplication":
       return "Duplication";
     case "notes":
-      return "Coverage";
+      return "Analysis notes";
     case "provenance":
       return "Provenance";
     default:
@@ -183,4 +198,36 @@ export function codeFigureFamilies(
     else families.push({ family: metric.family, figures: [figure] });
   }
   return families;
+}
+
+/**
+ * The runner's own report, when this run's case wrote one — otherwise `null`.
+ *
+ * This is the ONLY gate on the Tests widget. It is deliberately a test of whether
+ * file-derived data was actually parsed, not of whether the manifest declared a `test`
+ * command: a case that declares one but whose vitest config still writes only a terminal
+ * table produces no report file, and must therefore show nothing at all rather than an
+ * empty widget. Every case version predating the report-file contract fails this test for
+ * free.
+ *
+ * What it returns describes the MODEL'S OWN suite — the `build` vitest project, whose
+ * `include` is `src/**` and whose tests the model wrote. The test case's validators are a
+ * different vitest project entirely, run by a different code path, and nothing they do
+ * reaches this block.
+ */
+export function toolchainTests(run: RunRecord): ToolchainTests | null {
+  return run.toolchain?.test?.tests ?? null;
+}
+
+/**
+ * What the coverage reporter measured, when one wrote a summary — otherwise `null`.
+ *
+ * Gated separately from the tests, because the two come from two files: a config that
+ * writes a test report but no coverage summary shows the Tests widget and no Coverage
+ * widget. Like {@link toolchainTests}, this is coverage of the code the MODEL wrote by the
+ * tests the MODEL wrote; the validators' own project has coverage disabled by design and
+ * could not contribute to it even if it were asked to.
+ */
+export function toolchainCoverage(run: RunRecord): ToolchainCoverage | null {
+  return run.toolchain?.test?.coverage ?? null;
 }

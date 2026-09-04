@@ -13,7 +13,10 @@ import { ConstantClock } from "@test-cabinet/structured-2d";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { producedImagePaths, wickAssets } from "./assets";
 import {
+  ALMANAC_ROWS,
   CUES,
+  ENEMY_IDS,
+  HURT_FLASH,
   MOVE_SPEED,
   STAGE_CX,
   STAGE_CY,
@@ -21,7 +24,10 @@ import {
   STAGE_W,
   TAGS,
   TICK_DT,
+  TICK_HZ,
   TITLE_ITEMS,
+  WALK_FRAME_TIME,
+  WHEEL_ROW,
 } from "./constants";
 import { createHarness, FRAME_MS, type Harness } from "./harness";
 import { COLORS } from "./render/theme";
@@ -41,6 +47,16 @@ async function lightTheLamp(): Promise<void> {
   await h.step(1);
   h.tap("Enter");
   await h.step(1);
+}
+
+/** Decode every produced file into the loaded set the render components read. */
+async function loadProducedImages(): Promise<void> {
+  for (const path of producedImagePaths()) {
+    const image = await loadImage(
+      new URL(`../assets/${path}`, import.meta.url),
+    );
+    wickAssets().set(path, image as unknown as ImageBitmap);
+  }
 }
 
 /** How many pixels of the frame differ from the stage background. */
@@ -90,11 +106,16 @@ describe("the keyboard path", () => {
     expect(h.debug.snapshot().menuIndex).toBe(1);
     h.tap("KeyS");
     await h.step(1);
+    expect(h.debug.snapshot().menuIndex).toBe(2);
+    h.tap("KeyS");
+    await h.step(1);
     expect(h.debug.snapshot().menuIndex).toBe(0);
     h.tap("KeyW");
     await h.step(1);
-    expect(h.debug.snapshot().menuIndex).toBe(1);
-    expect(h.cues.filter((cue) => cue === CUES.menuMove)).toHaveLength(3);
+    expect(h.debug.snapshot().menuIndex).toBe(2);
+    expect(h.cues.filter((cue) => cue === CUES.menuMove)).toHaveLength(4);
+    h.tap("KeyW");
+    await h.step(1);
     h.tap("KeyW");
     await h.step(1);
     h.tap("Space");
@@ -114,6 +135,8 @@ describe("the keyboard path", () => {
   });
 
   it("opens the how-to from the menu and returns on Escape", async () => {
+    await h.step(1);
+    h.tap("ArrowDown");
     await h.step(1);
     h.tap("ArrowDown");
     await h.step(1);
@@ -169,7 +192,7 @@ describe("the keyboard path", () => {
 });
 
 describe("pausing", () => {
-  it("freezes the simulation on KeyP, resumes intact, and abandons on Escape", async () => {
+  it("freezes the simulation on KeyP, and both keys resume it intact", async () => {
     await lightTheLamp();
     await h.step(30);
     h.tap("KeyP");
@@ -186,14 +209,190 @@ describe("pausing", () => {
     // The resume frame itself carries one tick, so play carries on from
     // exactly the frozen state.
     expect(h.debug.snapshot().run.tick).toBe(frozen.run.tick + 1);
-    h.tap("KeyP");
-    await h.step(1);
     h.tap("Escape");
+    await h.step(1);
+    expect(h.debug.snapshot().screen).toBe("paused");
+    h.tap("Escape");
+    await h.step(1);
+    expect(h.debug.snapshot().screen).toBe("playing");
+  });
+
+  it("abandons the night on MAIN MENU", async () => {
+    await lightTheLamp();
+    await h.step(30);
+    h.tap("Escape");
+    await h.step(1);
+    h.tap("ArrowDown");
+    await h.step(1);
+    expect(h.debug.snapshot().menuIndex).toBe(1);
+    h.tap("Enter");
     await h.step(1);
     const snap = h.debug.snapshot();
     expect(snap.screen).toBe("title");
     expect(snap.run.tick).toBe(0);
     expect(snap.run.weapons).toEqual([]);
+    expect(h.cues).toContain(CUES.menuConfirm);
+  });
+});
+
+describe("the pointer path", () => {
+  /** The center of the rectangle `menuRects` reports for item `index`. */
+  function center(index: number): [number, number] {
+    const rect = h.debug.menuRects()[index];
+    return [rect.x + rect.width / 2, rect.y + rect.height / 2];
+  }
+
+  /** A point inside that rectangle, clear of the centered label. */
+  function inside(index: number): [number, number] {
+    const rect = h.debug.menuRects()[index];
+    return [rect.x + 8, rect.y + rect.height / 2];
+  }
+
+  it("draws the highlighted item inside the rectangle it is clicked in", async () => {
+    await h.step(1);
+    h.hover(...center(1));
+    await h.step(1);
+    expect(h.debug.snapshot().menuIndex).toBe(1);
+    // COLORS.highlight fills the highlighted item's rectangle, and only it.
+    expect(h.pixel(...inside(1))).toEqual([0xff, 0xcf, 0x5c]);
+    expect(h.pixel(...inside(0))).not.toEqual([0xff, 0xcf, 0x5c]);
+    expect(h.pixel(...inside(2))).not.toEqual([0xff, 0xcf, 0x5c]);
+  });
+
+  it("moves the title highlight on hover, sounding menu-move once", async () => {
+    await h.step(1);
+    h.hover(...center(1));
+    await h.step(1);
+    expect(h.debug.snapshot().menuIndex).toBe(1);
+    expect(h.cues.filter((cue) => cue === CUES.menuMove)).toHaveLength(1);
+    await h.step(3);
+    expect(h.cues.filter((cue) => cue === CUES.menuMove)).toHaveLength(1);
+  });
+
+  it("leaves the highlight alone outside every rectangle", async () => {
+    await h.step(1);
+    h.hover(STAGE_W - 4, 4);
+    await h.step(1);
+    expect(h.debug.snapshot().menuIndex).toBe(0);
+    expect(h.cues).not.toContain(CUES.menuMove);
+  });
+
+  it("moves the highlight and takes the item on a click", async () => {
+    await h.step(1);
+    h.click(...center(2));
+    await h.step(1);
+    const snap = h.debug.snapshot();
+    expect(snap.screen).toBe("howto");
+    expect(h.cues).toContain(CUES.menuConfirm);
+    expect(h.cues).toContain(CUES.menuMove);
+  });
+
+  it("takes nothing on a click outside every rectangle", async () => {
+    await h.step(1);
+    h.click(STAGE_W - 4, STAGE_H - 4);
+    await h.step(1);
+    expect(h.debug.snapshot().screen).toBe("title");
+    expect(h.debug.snapshot().menuIndex).toBe(0);
+    expect(h.cues).toEqual([]);
+  });
+
+  it("selects a tab on a click and scrolls the list on the wheel", async () => {
+    h.debug.setScreen("almanac");
+    await h.step(1);
+    const tab = h.debug.tabRects()[2];
+    h.click(tab.x + tab.width / 2, tab.y + tab.height / 2);
+    await h.step(1);
+    let snap = h.debug.snapshot();
+    expect(snap.almanacTab).toBe(2);
+    expect(snap.menuIndex).toBe(0);
+    expect(snap.almanacScroll).toBe(0);
+    h.click(...center(2));
+    await h.step(1);
+    snap = h.debug.snapshot();
+    expect(snap.screen).toBe("almanac");
+    expect(snap.menuIndex).toBe(2);
+    h.scroll(WHEEL_ROW);
+    await h.step(1);
+    snap = h.debug.snapshot();
+    expect(snap.almanacScroll).toBe(1);
+    expect(snap.menuIndex).toBe(2);
+    h.scroll(WHEEL_ROW * 50);
+    await h.step(1);
+    expect(h.debug.snapshot().almanacScroll).toBe(
+      ENEMY_IDS.length - ALMANAC_ROWS,
+    );
+  });
+});
+
+describe("the almanac", () => {
+  /** Show the tab at `index`, one press edge per frame. */
+  async function toTab(index: number): Promise<void> {
+    for (let i = 0; i < index; i += 1) {
+      h.tap("ArrowRight");
+      await h.step(1);
+    }
+  }
+
+  it("browses the night with the idle run, ticking nothing", async () => {
+    await h.step(1);
+    h.tap("ArrowDown");
+    await h.step(1);
+    h.tap("Enter");
+    await h.step(1);
+    const snap = h.debug.snapshot();
+    expect(snap.screen).toBe("almanac");
+    expect(snap.run.tick).toBe(0);
+    expect(snap.run.weapons).toEqual([]);
+    expect(h.loops).toEqual([]);
+    await h.step(30);
+    expect(h.debug.snapshot().run.tick).toBe(0);
+  });
+
+  it("draws a different picture as the tab changes", async () => {
+    h.debug.setScreen("almanac");
+    await h.step(1);
+    const tools = h.ctx.getImageData(0, 0, STAGE_W, STAGE_H).data.slice();
+    await toTab(2);
+    expect(h.debug.snapshot().almanacTab).toBe(2);
+    const enemies = h.ctx.getImageData(0, 0, STAGE_W, STAGE_H).data;
+    expect(Buffer.from(enemies).equals(Buffer.from(tools))).toBe(false);
+  });
+
+  it("walks the enemy picture from simTime, which no tick advances", async () => {
+    await loadProducedImages();
+    h.debug.setScreen("almanac");
+    await h.step(1);
+    await toTab(2);
+    const before = h.ctx.getImageData(0, 0, STAGE_W, STAGE_H).data.slice();
+    await h.step(Math.round(WALK_FRAME_TIME * TICK_HZ));
+    const after = h.ctx.getImageData(0, 0, STAGE_W, STAGE_H).data;
+    expect(h.debug.snapshot().run.tick).toBe(0);
+    expect(Buffer.from(after).equals(Buffer.from(before))).toBe(false);
+  });
+});
+
+describe("the hurt flash", () => {
+  it("arms on a contact hit, counts down, and casts over the view", async () => {
+    await lightTheLamp();
+    h.debug.setSpawning(false);
+    h.debug.setEnemyMotion(false);
+    h.debug.setWeaponFire(false);
+    const clear = h.ctx.getImageData(0, 0, STAGE_W, STAGE_H).data.slice();
+    h.debug.spawnEnemy("moth", 0, 0);
+    await h.step(1);
+    expect(h.debug.snapshot().run.hurtFlash).toBe(HURT_FLASH);
+    const cast = h.ctx.getImageData(0, 0, STAGE_W, STAGE_H).data;
+    expect(Buffer.from(cast).equals(Buffer.from(clear))).toBe(false);
+    await h.step(1);
+    expect(h.debug.snapshot().run.hurtFlash).toBeCloseTo(
+      HURT_FLASH - TICK_DT,
+      9,
+    );
+    await h.step(Math.round(HURT_FLASH * TICK_HZ) - 1);
+    expect(h.debug.snapshot().run.hurtFlash).toBe(0);
+    h.debug.setScreen("title");
+    h.debug.setScreen("playing");
+    expect(h.debug.snapshot().run.hurtFlash).toBe(0);
   });
 });
 
@@ -263,7 +462,9 @@ describe("the loops", () => {
     expect(h.loops).toEqual([CUES.music]);
     h.tap("KeyP");
     await h.step(1);
-    h.tap("Escape");
+    h.tap("ArrowDown");
+    await h.step(1);
+    h.tap("Enter");
     await h.step(1);
     expect(h.stops).toEqual([CUES.music]);
   });
@@ -361,12 +562,7 @@ describe("the picture", () => {
     await lightTheLamp();
     h.debug.setSpawning(false);
     h.debug.setWeaponFire(false);
-    for (const path of producedImagePaths()) {
-      const image = await loadImage(
-        new URL(`../assets/${path}`, import.meta.url),
-      );
-      wickAssets().set(path, image as unknown as ImageBitmap);
-    }
+    await loadProducedImages();
     h.debug.spawnEnemy("dark", 200, 0);
     h.debug.setEnemyMotion(false);
     h.debug.spawnGem("large", 0, 200);

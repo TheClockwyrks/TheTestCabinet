@@ -97,7 +97,7 @@ pub(super) fn prepare(source: &str) -> Vec<u8> {
 /// [`prepare`], with the agent's loaded code modules — which on a compiled arm are inputs to the
 /// compile rather than something the guest is handed.
 pub(super) fn prepare_with(source: &str, modules: &[CodeModule]) -> Vec<u8> {
-    match compile_program(source, modules, &PrepareContext::new()) {
+    match compile_program(source, modules, &PrepareContext::detached()) {
         Ok(prepared) => {
             assert!(
                 prepared.source.is_empty(),
@@ -268,9 +268,9 @@ pub(super) fn logs(outcome: &SandboxOutcome) -> &[String] {
 /// A runtime failure on this arm arrives as a [`Trap`](SandboxError::Trap) carrying the guest's own
 /// standard error, and not as a structured `ProgramError`: nothing in this arm's SDK and nothing in
 /// gg's generated entry class intercepts a failure to report one, so what the host has is what
-/// TeaVM's runtime wrote before it aborted. That is the
-/// [D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) shape — capture rather than
-/// interception — and it is why these tests read a string rather than a struct.
+/// TeaVM's runtime wrote before it aborted. That is the [failure rule's](https://docs.testcabinet.ai/gg/responses-as-code/invariants/#failures)
+/// shape — capture rather than interception — and it is why these tests read a string rather than a
+/// struct.
 pub(super) fn trap(outcome: &SandboxOutcome) -> &str {
     match &outcome.result {
         Ok(result) => panic!(
@@ -431,7 +431,7 @@ fn the_bytes_the_compiler_reads_are_the_bytes_the_model_sent() {
                    fun main() {\n\
                    \x20   gg.log(words.joinToString(\"\") + abs(-1))\n\
                    }\n";
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     compile_program(program, &[], &context).expect("it compiles");
     let written = std::fs::read_to_string(
         context
@@ -466,7 +466,7 @@ fn the_ambient_wasi_surface_reaches_a_kotlin_program() {
 /// **An uncaught failure reaches the model as its own runtime's dying words**, at the model's own
 /// file and lines — and gg catches nothing on the way.
 ///
-/// Two halves, and ruling D8a asks for both: **what** went wrong, which is the exception's own
+/// Two halves, and the failure rule asks for both: **what** went wrong, which is the exception's own
 /// header, and **where**, which is TeaVM's own stack trace over the model's own file. Neither
 /// reaches the model through anything gg wrote: `GgEntry` has no `catch`, and what is read here is
 /// the guest's standard error.
@@ -546,8 +546,8 @@ fn an_uncaught_failure_reaches_the_model_in_its_runtimes_own_words() {
     );
 
     // AND A CLASS THE MODEL DECLARED ITSELF, thrown with no message at all — the case no list gg
-    // carried could ever have covered, and the one that decides whether ruling D8a's *what* is
-    // answered for a program's own exception type or only for the ones somebody enumerated.
+    // carried could ever have covered, and the one that decides whether the failure rule's *what*
+    // is answered for a program's own exception type or only for the ones somebody enumerated.
     let outcome = evaluate(
         &prepare(
             "class OutOfCoffee : RuntimeException()\n\
@@ -587,6 +587,7 @@ fn an_uncaught_failure_reaches_the_model_in_its_runtimes_own_words() {
 #[test]
 fn a_code_module_is_a_library_the_program_reaches_through_its_own_line() {
     let prepared = compile_module(
+        "helpers",
         "import kotlin.math.abs\n\
          \n\
          fun slugify(title: String): String =\n\
@@ -597,7 +598,7 @@ fn a_code_module_is_a_library_the_program_reaches_through_its_own_line() {
          private fun hidden(): String = \"not offered\"\n\
          \n\
          internal fun alsoHidden(): String = \"not offered either\"\n",
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect("a module of public top-level functions compiles");
     assert_eq!(
@@ -666,7 +667,7 @@ fn a_code_module_is_a_library_the_program_reaches_through_its_own_line() {
     let failure = compile_program(
         &whole("", "    gg.log(slugify(\"Some Title Here\"))\n"),
         &modules,
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a name nothing brought into scope does not resolve");
     let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
@@ -693,8 +694,9 @@ fn a_code_module_is_a_library_the_program_reaches_through_its_own_line() {
 #[test]
 fn a_module_in_scope_adds_nothing_to_the_program_the_compiler_reads() {
     let prepared = compile_module(
+        "helpers",
         "fun slugify(title: String): String = title.lowercase()\n",
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect("a module of public top-level functions compiles");
     let modules = vec![CodeModule {
@@ -706,7 +708,7 @@ fn a_module_in_scope_adds_nothing_to_the_program_the_compiler_reads() {
         "import lib.helpers.*",
         "    gg.log(lib.helpers.slugify(\"Some Title Here\"))\n",
     );
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     compile_program(&program, &modules, &context).expect("compiled");
     let read = std::fs::read_to_string(
         context
@@ -739,8 +741,9 @@ fn a_module_in_scope_adds_nothing_to_the_program_the_compiler_reads() {
 #[test]
 fn a_module_is_refused_at_the_read_in_the_authors_own_coordinates() {
     let failure = compile_module(
+        "helpers",
         "private fun helper(): Int = 1\nval limit = 3\n",
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a module that offers nothing is refused");
     assert!(
@@ -749,19 +752,20 @@ fn a_module_is_refused_at_the_read_in_the_authors_own_coordinates() {
     );
 
     let failure = compile_module(
+        "helpers",
         "fun one(): Int = 1\n\
          \n\
          fun two(): Int {\n\
          \x20   return notAThing()\n\
          }\n",
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a module that does not compile is refused");
     let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
         panic!("a name that does not resolve is a compile error: {failure:?}");
     };
     assert!(
-        rendered.contains("Module.kt:4"),
+        rendered.contains("helpers.kt:4"),
         "the author's own line 4 is where `notAThing()` is: {rendered}"
     );
 }
@@ -770,8 +774,9 @@ fn a_module_is_refused_at_the_read_in_the_authors_own_coordinates() {
 /// read is told apart from one they read and disagreed with.
 #[test]
 fn the_compilers_produce_four_model_facing_bands() {
-    let refusal =
-        |program: &str| compile_program(program, &[], &PrepareContext::new()).expect_err("refused");
+    let refusal = |program: &str| {
+        compile_program(program, &[], &PrepareContext::detached()).expect_err("refused")
+    };
 
     // 1. THE PARSER COULD NOT READ IT. Kotlin reports every parse failure under one diagnostic name
     //    (`SYNTAX`), which is the compiler's own grouping and exactly the distinction gg bands on.
@@ -860,7 +865,8 @@ fn the_compilers_produce_four_model_facing_bands() {
 #[test]
 fn a_program_that_declares_no_main_is_told_so() {
     let refused = |program: &str| {
-        let failure = compile_program(program, &[], &PrepareContext::new()).expect_err("refused");
+        let failure =
+            compile_program(program, &[], &PrepareContext::detached()).expect_err("refused");
         let PrepareFailure::Program(PrepareError::Unsupported(rendered)) = failure else {
             panic!("a program with no entry point is a shape refusal: {failure:?}");
         };
@@ -904,7 +910,7 @@ fn a_program_that_declares_no_main_is_told_so() {
          \x20   gg.log(GgEntry().hello())\n\
          }\n",
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("the name gg's entry class has is refused");
     let rendered = failure.to_string();
@@ -988,7 +994,7 @@ fn what_this_toolchain_is_not_is_recorded_rather_than_assumed() {
             "    val broken = 7 / 0\n\x20   gg.log(broken.toString())\n",
         ),
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("refused");
     let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
@@ -1036,7 +1042,7 @@ fn what_this_toolchain_is_not_is_recorded_rather_than_assumed() {
             "    gg.log(java.io.StringReader(\"x\").use { it.readText() })\n",
         ),
         &[],
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("`use` reaches a classlib the wasm backend does not carry");
     assert!(
@@ -1184,7 +1190,7 @@ fn the_programs_gg_writes_for_this_arm_run() {
     let language = kotlin_language();
 
     let (outcome, _log) = evaluate(
-        &prepare(&language.bootstrap_program(&["files", "views"], &["gg.files.readFile"])),
+        &prepare(&language.bootstrap_program(&["files", "views"], &["gg.files.readFile"], None)),
         &all_operations(),
         &[],
         canned_outcome,

@@ -1,9 +1,9 @@
 # CLAUDE.md
 
-This file is a **map**, not a manual. It points to where authoritative
-information lives so there is a single source of truth for each topic. When a
-pointer here and a linked document disagree, the linked document wins — and this
-file should be corrected.
+This file is a map, not a manual. It points to where authoritative information
+lives so there is a single source of truth for each topic. When a pointer here
+and a linked document disagree, the linked document wins and this file should be
+corrected.
 
 ## Start here
 
@@ -57,31 +57,6 @@ and `packages/browser-driver/` (the Playwright driver the
 [validator](apps/docs/src/content/docs/components/core/validation.md) shells out
 to).
 
-**Reviewer scheduling (coverage plans & ladders):** the per-account planning
-surface — what runs a reviewer wants to exist and how fast they arrive — is
-documented at
-[`components/backend/coverage.md`](apps/docs/src/content/docs/components/backend/coverage.md)
-(plans, the outer axis, the review buffer, top-up, pause/halt) and
-[`components/backend/ladders.md`](apps/docs/src/content/docs/components/backend/ladders.md)
-(rungs, climbers, the gate rule). The code is `crates/backend/src/api/coverage.rs`
-and `.../ladders.rs` over two pure cores in `crates/backend/src/coverage/`
-(`schedule.rs` is the top-up algorithm, `gate.rs` the rung rule); the console pages
-are under `packages/ui/src/app/pages/account/`. Beware that **"coverage" now names
-two things** — the measurement (a plan's matrix) and the whole surface (which
-includes ladders, which have no matrix); the
-[glossary](apps/docs/src/content/docs/terminology.md) disambiguates them.
-
-**Adversarial (Foray) crates:** the [adversarial](apps/docs/src/content/docs/testing/adversarial/)
-test type's engine and host live in their own crates under `crates/`, documented
-in the case's
-[architecture doc](apps/docs/src/content/docs/testing/adversarial/foray/architecture.md):
-`foray-core/` (the authoritative rules engine; compiles natively *and* to
-`wasm32-unknown-unknown` for browser replay playback), `foray-host/` (the reusable
-`wasmtime` host — the per-tick controller loop + fuel/memory sandbox — reused by
-both the CLI and `core`'s `AdversarialValidator`), `foray-cli/` (the `foray`
-binary), `foray-controller-sdk/` (the controller-authoring SDK), and the three
-`foray-ref-*/` baseline controllers.
-
 ## Repository layout, building & testing
 
 The canonical repo layout and the build/format/lint/test commands for both the
@@ -92,9 +67,8 @@ deployment):
 [`development/running.md`](apps/docs/src/content/docs/development/running.md).
 Releasing the `tcab` binary and the static sites (docs, per-run builds):
 [`development/releasing.md`](apps/docs/src/content/docs/development/releasing.md).
-Deploying the always-on **services** (backend + workers) as **remote**
-staging/prod environments — with runnable templates in
-[`deployments/`](deployments/):
+Deploying the always-on services (backend + workers) as remote staging/prod
+environments, with runnable templates in [`deployments/`](deployments/):
 [`deployment/`](apps/docs/src/content/docs/deployment/).
 Telemetry/observability (opt-in OpenTelemetry, the local Grafana LGTM stack, and
 prod config):
@@ -114,99 +88,39 @@ Task-oriented walkthroughs:
   machine that will actually run test cases (container runtime, run-container
   image, credentials).
 
-## Working in this repo (skills)
+## Issue board
 
-- **Writing code:** read the [`coding`](.claude/skills/coding/SKILL.md) skill
-  first — it defines the repo's code policies.
-- **Authoring or revising a test case, or adding a variant:** the procedures now
-  live in the documentation site (so they serve developers browsing the Starlight
-  site *and* agents), not in per-task skills. Read the
-  [`authoring-test-cases`](.claude/skills/authoring-test-cases/SKILL.md) skill,
-  which points to the right
-  [quickstart](apps/docs/src/content/docs/quickstarts/) and
-  [user guide](apps/docs/src/content/docs/guides/) for the test type and
-  [`asset_kind`](apps/docs/src/content/docs/testing/asset-generation/manifests/overview.md)
-  you are working on. The [`testing/`](apps/docs/src/content/docs/testing/) pages
-  remain authoritative for what each manifest field means.
+[`tasks/`](tasks/) is the issue board — one file per issue, sorted into a
+subfolder by area, with completed ones moved into a `done/` folder beside them.
+Nothing here is authoritative; when an issue lands, its durable conclusions
+belong in `apps/docs/`.
 
 ## Definitions & assets
 
-- **Test cases:** [`test-cases/`](test-cases/) — organized by two grouping
-  levels, the test **type** and **difficulty**, then the case slug and version
-  (e.g. `test-cases/end-to-end/easy/carom/v1.0.0/`) with its `test-case.toml`
-  manifest, specs, prompt, and reference mockups. The grouping directories are
-  organizational only; a case's identity, type, and difficulty come from its
-  manifest. **A version directory that has runs recorded against it is frozen**
-  (a `.frozen` marker; a commit hook and CI reject any change to it) — to revise
-  a case, add a new version, never edit one that has been run. See
-  [`development/frozen-versions.md`](apps/docs/src/content/docs/development/frozen-versions.md).
-  The test types and their manifest formats are
-  documented under
-  [`testing/`](apps/docs/src/content/docs/testing/) — today's cases are the
-  [end-to-end](apps/docs/src/content/docs/testing/end-to-end/) type, whose
-  manifest format is at
-  [`testing/end-to-end/manifests.md`](apps/docs/src/content/docs/testing/end-to-end/manifests.md).
-- **Game jams:** [`game-jams/`](game-jams/) — a sibling top-level folder (laid out
-  `game-jams/<slug>/<version>/`, no type/difficulty grouping) holding
-  [game-jam](apps/docs/src/content/docs/testing/game-jam/overview.md) cases:
-  full-stack-style builds given only a **theme** (no spec, no reference mockups) and
-  reviewed on a **graded** category scale (💩→💎) rather than pass/fail. A jam is
-  **not** a test case: it is authored through its own `game-jam.toml`
-  ([manifest format](apps/docs/src/content/docs/testing/game-jam/manifests.md)), which
-  has **no `difficulty`** (a jam is unclassified) and **no `variants`** (a jam is one
-  theme), and it runs in its **own** image (`test-cabinet-game-jam`, Rust+wasm+`date`,
-  overridable via `TCAB_CONTAINER_IMAGE_GAME_JAM`). Discovery folds this folder into
-  the same catalog as `test-cases/`, and they surface on the console's
-  **Other → Game Jams** section, not the Test Cases page.
-- **Test-case groups:** [`test-case-groups/`](test-case-groups/) — one
-  `test-case-group.toml` per group (`test-case-groups/<slug>/`) declaring a
-  global, ordered set of related test-case/jam slugs, rendered on the home page
-  as one leaderboard per group. Not the per-account coverage "case group"
-  (`/coverage-groups`); the type is `TestCaseGroup`. See
-  [`test-case-groups/README.md`](test-case-groups/README.md) and
-  [`components/core/test-case-groups.md`](apps/docs/src/content/docs/components/core/test-case-groups.md).
-- **Models:** the model catalog is **owned by the backend** (SeaORM `model` /
-  `model_alias` / `model_price` tables), served at `GET /models`, and baked into
-  the public R2 snapshot as `models.json`. There is no `models/` directory. Any
-  model with a recorded run appears automatically (derived); curated models
-  (display name, aliases, provider, svgl logo, description, OpenRouter slug) are
-  edited **in the app** (web console / desktop Models section, requires sign-in) —
-  no `tcab catalog`, `scripts/add-model.mjs`, or recompile. The steps are in
-  [`quickstarts/add-or-update-a-model.md`](apps/docs/src/content/docs/quickstarts/devops/add-or-update-a-model.md)
-  (and the fuller
-  [`guides/adding-or-updating-a-model.md`](apps/docs/src/content/docs/guides/devops/adding-or-updating-a-model.md)).
-- **Harnesses:** [`harnesses/`](harnesses/) — one `harness.toml` per harness
-  (`harnesses/<slug>/`) declaring its name, CLI binary, and the command that
-  installs the CLI into the run container at run time. See
-  [`harnesses/README.md`](harnesses/README.md) and
-  [`components/core/harnesses.md`](apps/docs/src/content/docs/components/core/harnesses.md).
-- **Orchestrators:** [`orchestrators/`](orchestrators/) — one `orchestrator.toml`
-  + a runner script per built-in (`orchestrators/<slug>/`), the data-driven,
-  externally-extensible strategy that decides how a run's harness sessions are
-  conducted (today just the single-session `one-shot`; a multi-session strategy
-  can be supplied externally). See
-  [`orchestrators/README.md`](orchestrators/README.md) and the contract doc
-  [`components/core/orchestrators.md`](apps/docs/src/content/docs/components/core/orchestrators.md).
-- **Engines:** [`engines/`](engines/) — one `engine.toml` per engine
-  (`engines/<slug>/`) declaring the runtime a produced game is built on (frame
-  loop and delta time, input actions, audio, assets, diagnostics; some also own
-  rendering and a gameplay framework). An engine is a **run dimension selected
-  independently of the test case**: a case only declares which engines it
-  *supports*, and the engine's own docs are seeded from its package rather than
-  restated in a case's specs. The runtime itself is an npm package
-  (`packages/simple-2d/` for `simple-2d`, `packages/structured-2d/` for
-  `structured-2d`), staged into the host package store and
-  vendored into the run repo at seed time. See
-  [`engines/README.md`](engines/README.md), the contract doc
-  [`components/core/engines.md`](apps/docs/src/content/docs/components/core/engines.md),
-  and the catalogue [`engines/`](apps/docs/src/content/docs/engines/). Beware that
-  **"engine" now names two things** — this runtime, and the wasm module a model
-  submits for a
-  [performance](apps/docs/src/content/docs/testing/performance/overview.md) case;
-  the [glossary](apps/docs/src/content/docs/terminology.md) disambiguates them.
-- **Run-container image:** [`containers/`](containers/) — the single shared base
-  image every run executes in (harnesses install into it at run time). See
-  [`containers/README.md`](containers/README.md).
+### [Test Cases](test-cases/)
+
+Specification-based tests used to evaluate models. Test cases with runs recorded
+against it on production have a `.frozen` marker file added to the folder.
+Modifications to test cases with the marker file are refused via a commit hook
+and CI. See [`development/frozen-versions.md`](apps/docs/src/content/docs/development/frozen-versions.md).
+
+### [Game Jams](game-jams/)
+
+An alternate form of test case. These are intentionally open-ended and provide
+models with a theme to build against rather than a spec.
+
+### [Engines](engines/)
+
+Authored frameworks that provide functionality to models. These are used to both
+evaluate how well a model can work with existing code and to avoid
+implementations being utterly broken because models fail to account for basic
+implementation details.
+
+Engines were introduced in v0.7.0. All non-experimental test cases must support
+engines. Test cases should either support the 2D engines or the 3D engines, and
+most should support the "none" engine. The "none" engine provides no extra
+engine files and is critical for evaluating how well a model does when provided
+zero assistance whatsoever.
   
 ## Subagents
 
@@ -220,7 +134,7 @@ Reach for one whenever the work genuinely suits it; work inline only when it doe
 not. The bar is low — a task a single edit finishes does not need a workflow, but
 most things larger than that do.
 
-**Two reasons to run one, and parallelism is only the second.**
+Two reasons to run one:
 
 1. **A fresh context window per step.** A strictly sequential chain is a perfectly
    good workflow: each stage starts clean instead of inheriting the accumulated
@@ -249,5 +163,7 @@ functionality*, not by reading the diff. Two consequences:
 
 ## Changelog
 
-Released-version notes:
-[`changelogs/`](apps/docs/src/content/docs/changelogs/).
+App-level changelogs are located under [`changelogs/`](apps/docs/src/content/docs/changelogs/).
+Do not write changelogs except when asked. Changelogs are expected to only be
+written immediately prior to creating a release, not continuously over the
+course of development.

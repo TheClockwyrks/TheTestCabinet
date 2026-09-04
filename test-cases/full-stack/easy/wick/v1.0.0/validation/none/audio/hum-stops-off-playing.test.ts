@@ -60,7 +60,7 @@ const TRAIL_FRAMES = TICK_HZ / 4;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {

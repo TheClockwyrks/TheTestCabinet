@@ -7,9 +7,14 @@
 // paddle pose and the contact height are the preconditions; the outgoing velocity
 // is what the real bounce produced. The steep cases are the siblings
 // `hit-top-edge` and `hit-bottom-edge`.
+//
+// The field holds that ball alone: both obstacles are removed, so nothing on
+// the approach can turn the ball before it reaches the paddle. Only the struck
+// paddle is taken from the player — `setPaddleDriven` changes one side — and
+// the far one, which cannot be removed, is driven out of the lane.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_CY } from "../../src/constants";
+import { FIELD_CY } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
@@ -22,7 +27,7 @@ import {
   captureReplay,
   createHarness,
   drivePaddleHit,
-  startPlaying,
+  enterPlaying,
   type Harness,
 } from "../harness";
 
@@ -60,7 +65,7 @@ afterEach(() => {
 });
 
 it("returns the ball level from the centre of a still paddle", async () => {
-  await startPlaying(harness);
+  enterPlaying(harness);
   arrangePaddleHit(harness, "left", {
     cy: FIELD_CY,
     vy: 0,

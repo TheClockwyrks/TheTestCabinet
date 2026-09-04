@@ -31,6 +31,7 @@ import {
   excludedVerdictIds,
   gradePoints,
   mergeReviewItems,
+  reviewItemsForEngine,
   scoreChecklist,
   subItemVerdictId,
   verdictIdsForItem,
@@ -218,6 +219,80 @@ describe("mergeReviewItems", () => {
     mergeReviewItems(common, variant);
     expect(common[0]!.subItems).toHaveLength(1);
     expect(common[0]!.weight).toBe(1);
+  });
+});
+
+// Mirrors the Rust core's `TestCaseVersion::review_items_for_engine`
+// (crates/core/src/test_case.rs): a point whose validator names a set of engines is
+// decided only under those, and a run built on any other engine does not carry it.
+describe("reviewItemsForEngine", () => {
+  it("keeps a point whose validator names no engines", () => {
+    const items = [
+      { id: "hud", weight: 1, validation: { engines: [] } },
+      { id: "menu", weight: 1, validation: {} },
+      { id: "audio", weight: 1 },
+    ];
+    expect(reviewItemsForEngine(items, "simple-2d").map((i) => i.id)).toEqual([
+      "hud",
+      "menu",
+      "audio",
+    ]);
+  });
+
+  it("drops a whole item its validator does not cover", () => {
+    const items = [
+      { id: "overlay", weight: 1, validation: { engines: ["none"] } },
+      { id: "serve", weight: 1, validation: { engines: ["none", "simple-2d"] } },
+    ];
+    expect(reviewItemsForEngine(items, "simple-2d").map((i) => i.id)).toEqual([
+      "serve",
+    ]);
+    expect(reviewItemsForEngine(items, "none").map((i) => i.id)).toEqual([
+      "overlay",
+      "serve",
+    ]);
+  });
+
+  it("drops an uncovered sub-item from its parent, keeping the rest", () => {
+    const items = [
+      {
+        id: "gameplay",
+        weight: 2,
+        subItems: [
+          { id: "scoring", validation: { engines: ["none"] } },
+          { id: "serve", validation: { engines: ["simple-2d"] } },
+        ],
+      },
+    ];
+    const kept = reviewItemsForEngine(items, "simple-2d");
+    expect(kept).toHaveLength(1);
+    expect(kept[0]!.subItems?.map((s) => s.id)).toEqual(["serve"]);
+  });
+
+  it("drops an item whose sub-items are all uncovered", () => {
+    const items = [
+      {
+        id: "gameplay",
+        weight: 1,
+        subItems: [{ id: "scoring", validation: { engines: ["none"] } }],
+      },
+    ];
+    expect(reviewItemsForEngine(items, "simple-2d")).toEqual([]);
+  });
+
+  it("does not mutate the input", () => {
+    const items = [
+      {
+        id: "gameplay",
+        weight: 1,
+        subItems: [
+          { id: "scoring", validation: { engines: ["none"] } },
+          { id: "serve" },
+        ],
+      },
+    ];
+    reviewItemsForEngine(items, "simple-2d");
+    expect(items[0]!.subItems).toHaveLength(2);
   });
 });
 

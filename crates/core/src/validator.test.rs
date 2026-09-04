@@ -53,6 +53,7 @@ fn validated_item(id: &str, script_rel: &str) -> crate::test_case::ReviewItem {
         validation: Some(crate::test_case::ReviewValidation {
             script: None,
             script_rel: script_rel.to_string(),
+            engines: Vec::new(),
             outputs: Vec::new(),
         }),
     }
@@ -485,6 +486,7 @@ fn asset_version() -> TestCaseVersion {
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         common_specs: Vec::new(),
         common_workspace: Default::default(),
         init: None,
@@ -737,6 +739,7 @@ fn dispatch_adversarial_version(root: std::path::PathBuf, module_rel: &str) -> T
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         common_specs: Vec::new(),
         common_workspace: Default::default(),
         init: None,

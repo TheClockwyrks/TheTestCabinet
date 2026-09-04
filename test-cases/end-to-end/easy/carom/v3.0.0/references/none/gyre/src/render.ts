@@ -15,18 +15,22 @@ import {
   FIELD_H,
   FIELD_W,
   HOLD_TIME,
-  MATCHOVER_ITEMS,
   NET_X,
   OBSTACLE_HH,
   OBSTACLE_HW,
   PADDLE_HALF,
   PADDLE_W,
-  PAUSE_ITEMS,
-  TITLE_ITEMS,
   TITLE_TEXT,
 } from "./constants";
 import { paddleBounds } from "./entities";
-import type { CaromState } from "./game";
+import type { BallState, CaromState } from "./game";
+import {
+  MATCHOVER_PANEL,
+  PAUSE_PANEL,
+  menuLayout,
+  panelTop,
+  type MenuLayout,
+} from "./menu";
 import {
   COLOR,
   MODE_LABEL,
@@ -209,12 +213,12 @@ function drawPaddles(ctx: Ctx, state: CaromState): void {
  * streak rather than as discrete dots. Its length is proportional to speed,
  * because the samples span a fixed slice of time.
  */
-function drawTrail(ctx: Ctx, state: CaromState): void {
+function drawTrail(ctx: Ctx, ball: BallState): void {
   // Newest first, and the newest sample IS where the ball is: the update records
   // the ball's position at the end of every frame, and the frame the runtime draws
   // is the frame it just updated. There is no interpolation to do — a variable
   // step means the renderer never draws between two simulation states.
-  const pts = ribbon(state.trail);
+  const pts = ribbon(ball.trail);
   if (pts.length < 2) return;
 
   const head = pts[0];
@@ -273,8 +277,11 @@ function drawBall(ctx: Ctx, x: number, y: number): void {
 }
 
 /**
- * The field furniture (net, obstacles, paddles). `alpha` dims it behind a menu
- * overlay.
+ * The field furniture (net, obstacles, paddles, and the ball where there is one).
+ * `alpha` dims it behind a menu overlay.
+ *
+ * An absent ball and an absent obstacle are simply not drawn, which is what
+ * `specs/instrumentation.md` means by a body that takes no part in a frame.
  */
 function drawField(ctx: Ctx, state: CaromState, alpha = 1): void {
   ctx.save();
@@ -282,6 +289,7 @@ function drawField(ctx: Ctx, state: CaromState, alpha = 1): void {
   drawNet(ctx);
   drawObstacles(ctx, state);
   drawPaddles(ctx, state);
+  if (state.ball !== null) drawBall(ctx, state.ball.x, state.ball.y);
   ctx.restore();
 }
 
@@ -314,33 +322,32 @@ function drawHud(ctx: Ctx, state: CaromState): void {
  * A vertical menu with a highlighted selection. The selected item is bright and
  * flanked by triangle markers in the accent color; the others are dim. Markers are
  * drawn beside the measured text so they never overlap it.
+ *
+ * The captions land at the centers of the very regions `src/menu.ts` reports
+ * through `menuItemRect`, because both come from the same layout — which is what
+ * makes a pointer aimed at a reported region land on the word a player can see.
  */
 function drawMenu(
   ctx: Ctx,
-  items: readonly string[],
+  layout: MenuLayout,
   selected: number,
-  centerX: number,
-  startY: number,
-  spacing: number,
-  itemSize: number,
-  letterSpacing: number,
   accent: string,
 ): void {
-  for (let i = 0; i < items.length; i++) {
-    const y = startY + i * spacing;
+  for (let i = 0; i < layout.items.length; i++) {
+    const y = layout.startY + i * layout.spacing;
     const isSel = i === selected;
     const opts: TextOpts = {
-      size: itemSize,
+      size: layout.fontPx,
       color: isSel ? COLOR.text : COLOR.textDim,
-      spacing: letterSpacing,
+      spacing: layout.letterSpacing,
       align: "center",
       baseline: "middle",
     };
-    drawText(ctx, items[i], centerX, y, opts);
+    drawText(ctx, layout.items[i], layout.centerX, y, opts);
     if (!isSel) continue;
-    const w = measure(ctx, items[i], opts) - centerShift(opts);
+    const w = measure(ctx, layout.items[i], opts) - centerShift(opts);
     const markerOpts: TextOpts = {
-      size: itemSize,
+      size: layout.fontPx,
       color: accent,
       align: "center",
       baseline: "middle",
@@ -348,18 +355,21 @@ function drawMenu(
       glowBlur: 12,
     };
     const gap = 26;
-    drawText(ctx, "▸", centerX - w / 2 - gap, y, markerOpts);
-    drawText(ctx, "◂", centerX + w / 2 + gap, y, markerOpts);
+    drawText(ctx, "▸", layout.centerX - w / 2 - gap, y, markerOpts);
+    drawText(ctx, "◂", layout.centerX + w / 2 + gap, y, markerOpts);
   }
+}
+
+/** The menu the screen shows, drawn at `selected`. A screen with none draws none. */
+function drawScreenMenu(ctx: Ctx, state: CaromState, accent: string): void {
+  const layout = menuLayout(state.screen);
+  if (layout !== null) drawMenu(ctx, layout, state.menuIndex, accent);
 }
 
 // ---- Screens ------------------------------------------------------------
 
 function drawTitle(ctx: Ctx, state: CaromState): void {
   drawField(ctx, state, 0.28);
-  // A posed decorative ball, off in the open field to the lower right so it clears
-  // the title, the tagline, and the menu text.
-  drawBall(ctx, 968, 470);
 
   drawText(ctx, TITLE_TEXT, FIELD_CX, 246, {
     size: 132,
@@ -369,22 +379,12 @@ function drawTitle(ctx: Ctx, state: CaromState): void {
     glow: "rgba(58, 231, 196, 0.55)",
     glowBlur: 24,
   });
-  drawText(ctx, TAGLINE_TEXT, FIELD_CX, 344, {
+  drawText(ctx, TAGLINE_TEXT, FIELD_CX, 322, {
     size: 22,
     color: COLOR.textDim,
     spacing: 14,
   });
-  drawMenu(
-    ctx,
-    TITLE_ITEMS,
-    state.menuIndex,
-    FIELD_CX,
-    430,
-    52,
-    30,
-    10,
-    COLOR.p1,
-  );
+  drawScreenMenu(ctx, state, COLOR.p1);
 
   const hint = state.muted
     ? "▲ ▼ MOVE    ENTER SELECT    M UNMUTE"
@@ -445,19 +445,24 @@ function drawHowTo(ctx: Ctx, state: CaromState): void {
     y += label ? 58 : 40;
   }
 
-  drawText(ctx, "ESC / ENTER  —  BACK", FIELD_CX, FIELD_H - 44, {
-    size: 18,
+  drawText(ctx, "ESC OR ENTER", FIELD_CX, FIELD_H - 92, {
+    size: 16,
     color: COLOR.textFaint,
     spacing: 8,
   });
+  drawScreenMenu(ctx, state, COLOR.p1);
 }
 
 function drawMatchScene(ctx: Ctx, state: CaromState): void {
   // The field is one flat color out to its edges, so the letterbox bars the
   // runtime clears to the same color continue it seamlessly (specs/overview.md).
-  drawField(ctx, state);
-  drawTrail(ctx, state);
-  drawBall(ctx, state.ball.x, state.ball.y);
+  drawNet(ctx);
+  drawObstacles(ctx, state);
+  drawPaddles(ctx, state);
+  if (state.ball !== null) {
+    drawTrail(ctx, state.ball);
+    drawBall(ctx, state.ball.x, state.ball.y);
+  }
   drawHud(ctx, state);
 }
 
@@ -473,8 +478,9 @@ export function countdownPhase(holdTimer: number): number {
 }
 
 function drawCountdownOverlay(ctx: Ctx, state: CaromState): void {
-  const num = countdownNumber(state.holdTimer);
-  const phase = countdownPhase(state.holdTimer); // 1 -> 0 across each digit
+  const holdTimer = state.ball?.holdTimer ?? 0;
+  const num = countdownNumber(holdTimer);
+  const phase = countdownPhase(holdTimer); // 1 -> 0 across each digit
   const pop = 0.7 + 0.3 * phase; // a gentle scale-in per digit
   const alpha = 0.35 + 0.65 * Math.min(1, phase * 1.6);
 
@@ -501,7 +507,9 @@ function drawCountdownOverlay(ctx: Ctx, state: CaromState): void {
 
 function drawPanel(ctx: Ctx, w: number, h: number): { x: number; y: number } {
   const x = FIELD_CX - w / 2;
-  const y = FIELD_CY - h / 2;
+  // The same top edge `src/menu.ts` lays the panel's menu out from, so the two
+  // cannot drift apart.
+  const y = panelTop(h);
   ctx.save();
   ctx.shadowColor = "rgba(0, 0, 0, 0.55)";
   ctx.shadowBlur = 60;
@@ -530,7 +538,7 @@ function drawPause(ctx: Ctx, state: CaromState): void {
   drawMatchScene(ctx, state);
   drawOverlay(ctx, 0.72);
 
-  const { y } = drawPanel(ctx, 520, 400);
+  const { y } = drawPanel(ctx, PAUSE_PANEL.w, PAUSE_PANEL.h);
   drawText(ctx, "PAUSED", FIELD_CX, y + 56, {
     size: 18,
     color: COLOR.textDim,
@@ -546,24 +554,14 @@ function drawPause(ctx: Ctx, state: CaromState): void {
     glowBlur: 16,
     baseline: "middle",
   });
-  drawMenu(
-    ctx,
-    PAUSE_ITEMS,
-    state.menuIndex,
-    FIELD_CX,
-    y + 200,
-    52,
-    26,
-    6,
-    COLOR.p1,
-  );
+  drawScreenMenu(ctx, state, COLOR.p1);
 }
 
 function drawMatchOver(ctx: Ctx, state: CaromState): void {
   drawField(ctx, state, 0.32);
   drawOverlay(ctx, 0.72);
 
-  const { y } = drawPanel(ctx, 560, 420);
+  const { y } = drawPanel(ctx, MATCHOVER_PANEL.w, MATCHOVER_PANEL.h);
 
   const winnerIsP1 = state.winner === "left";
   const winColor = winnerIsP1 ? COLOR.p1 : COLOR.p2;
@@ -598,17 +596,7 @@ function drawMatchOver(ctx: Ctx, state: CaromState): void {
     spacing: 10,
     baseline: "middle",
   });
-  drawMenu(
-    ctx,
-    MATCHOVER_ITEMS,
-    state.menuIndex,
-    FIELD_CX,
-    y + 268,
-    52,
-    26,
-    6,
-    winColor,
-  );
+  drawScreenMenu(ctx, state, winColor);
 }
 
 // ---- Entry point --------------------------------------------------------

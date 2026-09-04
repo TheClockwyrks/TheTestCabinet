@@ -13,6 +13,7 @@ import type {
   GgTransitionModule,
 } from "@test-cabinet/run-record/gg";
 import type { RunRecord } from "@test-cabinet/run-record";
+import type { SystemStage, SystemStatus } from "@test-cabinet/run-record/event";
 import type { HarnessEvent } from "../../../../client/types";
 import {
   WorkersProvider,
@@ -114,6 +115,17 @@ function gg(kind: GgTelemetryKind): HarnessEvent {
     timestamp: TS,
     event: { timestamp: TS, sessionId: "s1", ...kind } as GgTelemetryEvent,
   };
+}
+
+// One of the orchestrator's own setup/teardown events — the stream a gg run carries
+// BEFORE gg says anything. `message` is the orchestrator's wording for the stage at its
+// status, exactly as `SystemStage::describe` in crates/core produces it.
+function system(
+  stage: SystemStage,
+  status: SystemStatus,
+  message: string,
+): HarnessEvent {
+  return { type: "system", timestamp: TS, stage, status, message };
 }
 
 // Wrap a gg payload attributed to a specific agent — the Phase-4 agent identity
@@ -735,6 +747,63 @@ describe("GgRunMonitorPage", () => {
     // A single-agent run's overview lists the one (root) agent.
     expect(screen.getByText("Agents · 1")).toBeInTheDocument();
     expect(screen.getAllByText("root").length).toBeGreaterThan(0);
+  });
+
+  // What the pill says before gg has spoken. A gg run is silent until it is set up, so
+  // this whole span is reported from the orchestrator's setup stages — and the three
+  // cases below are three genuinely different situations that used to read identically
+  // as "waiting for a runner and container".
+  it("says it is waiting for a runner only while nothing has been allocated", () => {
+    // An empty stream is the one case the wording is true of: the dispatcher has not
+    // claimed the run, so there is no container and nothing has begun.
+    renderMonitor([]);
+    expect(screen.getByText("Queued")).toBeInTheDocument();
+    expect(
+      screen.getByText("waiting for a runner and container"),
+    ).toBeInTheDocument();
+  });
+
+  it("names the setup stage the orchestrator is on once one has been reported", () => {
+    // The container is up and the test case's init command is running — a stage that
+    // legitimately takes many minutes (installing a browser, say). The pill reports THAT,
+    // not a wait for a runner that already arrived.
+    renderMonitor([
+      system("pull_image", "completed", "Run-container image ready"),
+      system("start_container", "completed", "Run container started"),
+      system("init_test_case", "started", "Preparing the test case workspace"),
+    ]);
+    expect(screen.getByText("Setting up")).toBeInTheDocument();
+    expect(
+      screen.getAllByText("Preparing the test case workspace").length,
+    ).toBeGreaterThan(0);
+    // And the misleading wording is gone: nothing is being waited on that is not here.
+    expect(
+      screen.queryByText("waiting for a runner and container"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("reports a failed setup stage rather than glowing on as though queued", () => {
+    renderMonitor([
+      system("pull_image", "completed", "Run-container image ready"),
+      system("start_container", "failed", "Failed to start the run container"),
+    ]);
+    expect(screen.getByText("Setting up")).toBeInTheDocument();
+    expect(
+      screen.getAllByText("Failed to start the run container").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("drops the setup read-out the moment gg opens its session", () => {
+    // `session_started` is gg's first event, and from it on the run is executing — so the
+    // last setup stage stops being the run's status even though it is still the newest
+    // one folded.
+    renderMonitor([
+      system("init_test_case", "completed", "Test case workspace ready"),
+      sessionStarted(),
+    ]);
+    expect(screen.getByText("Running")).toBeInTheDocument();
+    expect(screen.queryByText("Setting up")).not.toBeInTheDocument();
+    expect(screen.queryByText("Queued")).not.toBeInTheDocument();
   });
 
   it("charts the caching and reasoning token splits as rings with the raw counts", () => {

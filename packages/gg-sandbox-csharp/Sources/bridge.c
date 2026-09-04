@@ -336,6 +336,24 @@ static MonoBoolean gg_list_dir(MonoString *path, MonoArray **names, MonoArray **
   return 1;
 }
 
+static MonoBoolean gg_tree(MonoString *path, int32_t depth, MonoString **rendered) {
+  char *utf8 = lift(path);
+  sandbox_string_t owned = borrow(utf8);
+  uint32_t depth_storage = 0;
+  sandbox_string_t result;
+  test_cabinet_gg_files_api_error_t failure;
+  const bool ok = test_cabinet_gg_files_tree(utf8 == NULL ? NULL : &owned,
+                                             maybe_u32(depth, &depth_storage), &result, &failure);
+  if (utf8 != NULL) mono_free(utf8);
+  if (!ok) {
+    park(&failure);
+    return 0;
+  }
+  *rendered = lower(&result);
+  sandbox_string_free(&result);
+  return 1;
+}
+
 static MonoBoolean gg_search(MonoString *query, MonoString *path, int32_t limit, MonoArray **paths,
                              MonoArray **lines, MonoArray **texts) {
   char *query_utf8 = lift(query);
@@ -1271,7 +1289,7 @@ static MonoBoolean gg_rerun(MonoString *source) {
 // ---------------------------------------------------------------------------------------------
 
 /// One row of the registration table: the `Namespace.Class::Method` Mono resolves by, the C function
-/// that answers it, and — for the thirty-six that dispatch a gg tool — that tool's name.
+/// that answers it, and — for the thirty-seven that dispatch a gg tool — that tool's name.
 ///
 /// The tool name lives here rather than in a second list so that `bound-operations` and the
 /// bindings are one statement. A row with no tool name is one of the model-facing carve-outs that
@@ -1291,6 +1309,7 @@ static const binding_t bindings[] = {
     {"Gg.Internal.Native::WriteFile", (const void *)gg_write_file, "write_file"},
     {"Gg.Internal.Native::EditFile", (const void *)gg_edit_file, "edit_file"},
     {"Gg.Internal.Native::ListDir", (const void *)gg_list_dir, "list_dir"},
+    {"Gg.Internal.Native::Tree", (const void *)gg_tree, "tree"},
     {"Gg.Internal.Native::Search", (const void *)gg_search, "search"},
     {"Gg.Internal.Native::ReadSkill", (const void *)gg_read_skill, "read_skill"},
     {"Gg.Internal.Native::ReadMemory", (const void *)gg_read_memory, "read_memory"},

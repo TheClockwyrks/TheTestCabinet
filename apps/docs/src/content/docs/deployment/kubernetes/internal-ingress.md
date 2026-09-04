@@ -63,9 +63,10 @@ on the VPN cannot resolve. Each overlay therefore patches:
 - the `tcab-web` pod's `TCAB_WEB_BACKEND_URL` and `TCAB_WEB_AUTH_URL` to the
   `api.` and `auth.` hostnames.
 
-`TCAB_BACKEND_AUTH_URL` is the backend's server-side token-verify URL and stays
-the in-cluster `http://tcab-auth:8789`. Only the client-facing URLs move to the
-https hostnames.
+`TCAB_BACKEND_AUTH_URL` and `TCAB_ARTIFACTS_URL` are the backend's own
+server-side call URLs and stay in-cluster, at `http://tcab-auth:8789` and
+`http://tcab-artifacts:8790`. Only the client-facing URLs move to the https
+hostnames.
 
 ## Prerequisites
 

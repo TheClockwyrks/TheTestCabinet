@@ -11,9 +11,9 @@ warm JVM that gg keeps between preparations. An agent selects the arm with the
 ## Preparation
 
 A program is a whole Java compilation unit. The reply is written to
-`Program.java` in the preparation's own workspace exactly as the model sent it,
-so the file javac reads and the file the model sent are the same bytes and every
-diagnostic and every stack frame is already in the model's own coordinates.
+`Program.java` in the compile workspace exactly as the model sent it, so the file
+javac reads and the file the model sent are the same bytes and every diagnostic
+and every stack frame is already in the model's own coordinates.
 
 gg writes one more file beside it. `GgEntry.java` carries the component's two
 exports and calls `Program.main(new String[0])`, and it declares no `main` of its
@@ -46,13 +46,14 @@ Anything else the model declares goes beside `Program` in the same file, without
 ## Compilation
 
 The warm JVMs are a pool of four processes, each lent to one preparation at a
-time. A build writes into the calling preparation's own workspace, the daemon
-stands on ground of its own, and each request builds through a fresh build
-strategy. A JVM is retired after 64 builds, because every build makes a fresh
-class loader over the toolchain's jars. A build may take 180 seconds and a JVM
-start 120 seconds; past either the failure is reported as a toolchain failure,
-and a JVM that did not answer its build is retired. Warming starts one JVM and
-places the driver and the SDK jar, so the first code turn pays for neither.
+time. A build writes into the compile workspace of the agent whose preparation
+called it, the daemon stands on ground of its own, and each request builds
+through a fresh build strategy. A JVM is retired after 64 builds, because every
+build makes a fresh class loader over the toolchain's jars. A build may take 180
+seconds and a JVM start 120 seconds; past either the failure is reported as a
+toolchain failure, and a JVM that did not answer its build is retired. Warming
+starts one JVM and places the driver and the SDK jar, so the first code turn pays
+for neither.
 
 Three TeaVM settings are required, and each fails silently when it is missing.
 `setStrict(true)`, without which TeaVM omits the null and bounds checks that make
@@ -70,9 +71,9 @@ rewrites that module to `test-cabinet:gg/math`, which gg's own host answers.
 A build request names the directory javac writes its classes into and the
 classpath entries to add to the toolchain's own, which is how a code module's
 classes reach the program compiled against them. An empty target file selects
-`javac` alone, which is what a module is compiled with: a module is checked at
-the read that binds it, for the author's own located diagnostic, and compiled
-again under its binding key for each program that uses it.
+`javac` alone, which is what a module is compiled with: a module is compiled at
+the read that binds it, under that key, and its classes are kept in the compile
+workspace for every program that uses it.
 
 ## Toolchain and build outputs
 
@@ -241,8 +242,8 @@ beside the segment carries that module's own `import` line.
 The arm names `javac` as its [checker](/gg/languages/compilation/), so the
 shared body states that a program is compiled before it runs, that one the
 compiler refuses is not executed, and that a call the run withheld compiles and
-fails when it runs. The library set TeaVM can translate is carried by a compile
-failure rather than by the prompt.
+fails when it runs. The library set TeaVM can translate is reached through a
+compile failure rather than through the prompt.
 
 ## Code modules
 
@@ -258,9 +259,9 @@ front of the file, blanked where they stood, and the `package lib;` and the clas
 header share the author's own first line, so a diagnostic is the author's own
 coordinate with nothing subtracted from it.
 
-Each module is compiled on its own, into package `lib` under a class named by its
-binding key, against the SDK jar and the toolchain and nothing else. The
-directory its classes land in goes on the `-classpath` of the program's own
+Each module is compiled on its own, once, into package `lib` under a class named
+by its binding key, against the SDK jar and the toolchain and nothing else. The
+directory its classes land in goes on the `-classpath` of every program's own
 compile, which is how the SDK jar reaches a program too: a classpath entry is
 packaging and puts no name in a program's scope. A program reaches an export in
 full, `lib.csvTools.parse(…)`, or under the line the module's documentation view
@@ -273,12 +274,11 @@ identifiers: the key is the class's own name and a path segment javac resolves,
 so a leading digit and a reserved word are each prefixed with an underscore. The
 arm reads `.java` files and nothing else.
 
-A module is compiled before the program that uses it, so a module that does not
-compile is a refusal naming the key it is bound at. Its file is named for that
-key, so a TeaVM diagnostic about a module during a program's own build names the
-key in the file position.
+A module is compiled at the read that binds it, so a module that does not compile
+is a refusal on that read, naming the key. Its file is named for that key, so a
+TeaVM diagnostic about a module during a program's own build names the key in the
+file position.
 
 A module body may not write the name of the class gg wraps it in, and the read
-refuses one that does at the author's own line. That name is `Module` while the
-read checks it and the binding key in a program, and a constructor is the one
-declaration Java has whose meaning turns on it.
+refuses one that does at the author's own line. That name is the binding key, and
+a constructor is the one declaration Java has whose meaning turns on it.

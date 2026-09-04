@@ -31,9 +31,15 @@
 // own cadence, and a ping in the unmuted window would let a build that never
 // sounded the pulse pass on somebody else's noise.
 //
-// THE AUDIO IS ARMED WITH A REAL GESTURE first. Sound starts only once the player
-// has interacted with the page (specs/progression.md), and the key used carries no
-// binding, so arming changes nothing about the game.
+// THE HARNESS IS CREATED ARMED, and both halves of the count turn on it. Sound
+// starts only once the player has interacted with the page (specs/progression.md),
+// so on a page nothing ever interacted with the unmuted window would be silent on
+// every build — failing one that mutes exactly as specified — and the muted
+// window's zero would be a reading of a page that could not have sounded anyway.
+// The gesture is a real press of a key that carries no binding, delivered before
+// the harness's opening `reset`: what it bought is the page's user activation,
+// which is not game state and which no reset touches, while anything it might have
+// moved was put back before this check was handed the game.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -89,7 +95,11 @@ const CUE_WINDOW_TICKS = 30;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  // Created armed, for the reason at the top of the file: without a real gesture
+  // the unmuted window would be silent on every build. Asked for here rather than
+  // handed to every harness, so a fault in the gesture can only reach the points
+  // that are about sound.
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -102,7 +112,6 @@ it("toggles mute on KeyM, and a muted dive sounds nothing", async () => {
   await parkForager(h, run.start);
   await h.debug.setBrightness(LIT);
   await h.debug.setBrightHold(BRIGHT_HOLD);
-  await h.armAudio();
   const guard = await sceneGuard(h);
 
   const opening = await h.snapshot();

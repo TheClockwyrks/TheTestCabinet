@@ -6,9 +6,13 @@
 // collision are compared. Sampled every frame, so the outgoing speed is read at
 // the instant of the rebound, and the review item's 0.1 percent is a float
 // margin rather than slack.
+//
+// The field holds obstacle A and one ball, and nothing else: the second
+// obstacle is off the field rather than parked out of the way, so the only
+// speed change the sweep can read is the one the struck face made.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { OBSTACLES, OBSTACLE_CENTERS } from "../../src/constants";
+import { OBSTACLES, OBSTACLE_CENTERS } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   arrangeObstacleBounce,
@@ -16,12 +20,13 @@ import {
   captureReplay,
   createHarness,
   driveObstacleBounce,
-  startPlaying,
   type Harness,
 } from "../harness";
 
-const FACE_X = OBSTACLES[0].x0;
-const LANE_Y = OBSTACLE_CENTERS[0].y;
+/** Obstacle A, in the order of `OBSTACLE_CENTERS`: the only one on field. */
+const OBSTACLE = 0;
+const FACE_X = OBSTACLES[OBSTACLE].x0;
+const LANE_Y = OBSTACLE_CENTERS[OBSTACLE].y;
 const APPROACH_SPEED = 600;
 /** The review item's margin: a tenth of a percent of the approach speed. */
 const SPEED_TOLERANCE = APPROACH_SPEED * 0.001;
@@ -52,8 +57,8 @@ afterEach(() => {
 });
 
 it("leaves the ball's speed unchanged through an obstacle bounce", async () => {
-  await startPlaying(harness);
-  arrangeObstacleBounce(harness, {
+  await arrangeObstacleBounce(harness, {
+    obstacle: OBSTACLE,
     faceX: FACE_X,
     y: LANE_Y,
     from: "left",

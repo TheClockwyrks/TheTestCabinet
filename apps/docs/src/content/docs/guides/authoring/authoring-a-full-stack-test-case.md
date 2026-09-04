@@ -49,8 +49,8 @@ binaries on `PATH`.
 | `draw-sheet` | a sprite sheet → per-frame PNGs | frames the game animates |
 | `particle-2d` | a particle system → `system.json` | played live via `@test-cabinet/particle-runtime`'s `./canvas` binding |
 | `sfx-synth` | a procedural sound effect → `.wav` | played via Web Audio |
-| `sfx-sample` | a sampled effect over the baked `combat-core` pack → `.wav` | played via Web Audio |
-| `music` | sequenced music over the baked `gm-lite` bank → `.wav` + `.mid` | played via Web Audio |
+| `sfx-sample` | a sampled effect over a declared sample pack → `.wav` | played via Web Audio |
+| `music` | sequenced music over a declared instrument bank → `.wav` + `.mid` | played via Web Audio |
 
 `asset_dimension = "3d"` carries those six and three more.
 
@@ -115,6 +115,10 @@ the game needs, state:
 - the quality bar in real, testable terms, covering art direction, motion, the
   feel of the effects, and the character of the sound.
 
+Where the game needs sound, name the packs the manifest declares and state that
+they are already present in the container, browsable with `list-samples` and
+`list-instruments`.
+
 Follow the general
 [asset-brief craft](/guides/authoring/authoring-an-asset-generation-test-case/):
 set mood and tone, and leave the creative decisions to the model. Keep
@@ -132,9 +136,14 @@ Author `test-case.toml` per the
   tooling. Both are root keys, so they sit above the first table header.
 - The `assets` list is omitted. A full-stack case produces its own art.
 - The asset-generation tables are omitted. `asset_kind`, `[sheet]`, `[canvas]`,
-  `[tool]`, `[output]`, `[voxel]`, `[model]`, `[ui]`, `[material]`,
-  `[particle]`, and `[audio]` are all rejected at resolution. Everything about
-  the produced assets belongs in `specs/assets.md`.
+  `[tool]`, `[output]`, `[voxel]`, `[model]`, `[ui]`, `[material]`, and
+  `[particle]` are all rejected at resolution. Everything about the produced
+  assets belongs in `specs/assets.md`.
+- `[audio] packs` declares the audio packs the run may reach, as a list of
+  `name@version` refs. It is required, and the run container carries exactly
+  what it names, so declare the full published set unless the case's brief calls
+  for a narrower palette. Order fixes the defaults; see
+  [`[audio]`](/testing/full-stack/manifests/#audio).
 - `[build]` is required and works exactly as end-to-end: explicit `install` and
   `build`, emitting a static site into `dist/`, `build/`, or `out/`. The build
   must bundle the committed asset files and run with the generation binaries
@@ -172,10 +181,12 @@ tcab seed   --test-case <slug> --version <version> --variant <variant>
 ```
 
 `prompt` catches strict-mode template errors and manifest problems, including a
-forbidden asset-generation table. `seed` writes the seeded repository to disk so
-you can confirm the seeded set, `specs/assets.md` included, is complete and
-self-contained and that no pre-provided `assets/` leaked in. Lint the specs and
-prose with `npm run lint:specs`.
+forbidden asset-generation table and a malformed pack ref. `seed` writes the
+seeded repository to disk so you can confirm the seeded set, `specs/assets.md`
+included, is complete and self-contained and that no pre-provided `assets/`
+leaked in. Resolve the declared packs against the registry with
+`node scripts/ci/audio-packs-check.mjs`. Lint the specs and prose with
+`npm run lint:specs`.
 
 When the case is ready, exercise it with
 [Run a Test Case](/quickstarts/development/run-a-test-case/); a full-stack run is

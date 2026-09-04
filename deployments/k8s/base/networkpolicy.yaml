@@ -88,10 +88,15 @@ spec:
         - protocol: TCP
           port: 8791
 ---
-# Let a driver Job pod reach the artifact service to upload its produced run tree.
+# Let the artifact service's two callers in: a driver Job pod uploading its produced
+# run tree, and the backend managing that tree's lifetime (pruning a deleted run's
+# tree, and listing + sweeping the trees no run row references).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  # Named for the driver flow it was created for. Keep the name: a rename strands the
+  # old object in every live cluster (a kustomize apply does not prune) and breaks the
+  # local overlay's delete patch, which targets this policy by name.
   name: tcab-allow-artifacts-from-drivers
   namespace: tcab-prod
 spec:
@@ -101,9 +106,17 @@ spec:
   policyTypes: ["Ingress"]
   ingress:
     - from:
+        # Every driver Job pod (the dispatcher labels them managed-by itself).
         - podSelector:
             matchLabels:
               app.kubernetes.io/managed-by: tcab-dispatcher
+        # The backend, over TCAB_ARTIFACTS_URL. Without this the prune and the sweep
+        # are refused by the default-deny ingress as a connection timeout, which reads
+        # as an artifact-service outage rather than a policy refusal, and a deleted
+        # run's tree occupies the volume forever.
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tcab-backend
 ---
 # Let a driver reach its sandbox pods (the live asset-preview stream): the sandbox
 # pod connects back to the driver pod's IP, so the driver pod is the ingress target.

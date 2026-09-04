@@ -1,13 +1,9 @@
 """Delegate work to child agents, and hand this session's own turn to another agent.
 
-`wait_for_subagents` can dominate a turn's wall clock — it blocks while real agents run — and the
-run's budget keeps ticking while it does. A program should therefore spawn broadly and wait once,
-rather than spawn-and-wait in a loop.
+`wait_for_subagents` blocks while children run, and the run's budget keeps ticking while it does.
 
-The brief is the one place this SDK enforces an "exactly one of" the native tool-calling schema can
-only check at dispatch: a child is briefed either with a self-contained `prompt` or with a board
-`issue_id`, both of them keyword arguments, and the wrapper refuses "neither" and "both" by name
-rather than letting the membrane's variant decide which one it saw first.
+A child is briefed with exactly one of a self-contained `prompt` or a board `issue_id`; neither and
+both are refused.
 """
 
 from __future__ import annotations
@@ -50,9 +46,6 @@ class SubagentHandle:
     def send(self, message: str) -> None:
         """Deliver a message to this child's inbox, which it reads at its next turn.
 
-        `send_message` with the id already supplied, for the common case where the handle the spawn
-        returned is still in hand.
-
         Args:
             message: What to put in its inbox.
 
@@ -63,7 +56,7 @@ class SubagentHandle:
 
 
 class AgentEnding(Enum):
-    """How a child agent's loop ended — gg's own six words, as the tool-calling path reports them."""
+    """How a child agent's loop ended."""
 
     COMPLETED = "completed"
     """It finished normally, ending its own session, and its summary is what it returned."""
@@ -129,13 +122,13 @@ def spawn_subagent(
 ) -> SubagentHandle:
     """Delegate scoped work to a child agent, which runs in parallel while the program continues.
 
-    `agent` names one of the agent profiles this agent may spawn — the system prompt lists them,
+    `agent` names one of the agent profiles this session may spawn — the system prompt lists them,
     and the profile selects the child's model, tools and instructions. The brief is exactly one of
     `prompt` and `issue_id`. The child shares the workspace.
 
     Args:
-        agent: The agent profile to run the child as, from the ones this agent may spawn. It selects
-            the child's model, tools and instructions.
+        agent: The agent profile to run the child as, from the ones this session may spawn. It
+            selects the child's model, tools and instructions.
         prompt: Self-contained instructions for the child. Give this or `issue_id`, never both and
             never neither.
         issue_id: The board issue to brief the child from. Give this or `prompt`, never both and
@@ -147,7 +140,7 @@ def spawn_subagent(
 
     Raises:
         ApiError: `limit-exceeded` at the delegation depth cap, and `invalid-argument` when `agent`
-            is not one this agent may spawn.
+            is not one this session may spawn.
     """
     return _handle(
         _call(
@@ -162,7 +155,7 @@ def wait_for_subagents(ids: list[str] | None = None) -> list[SubagentResult]:
     """Block until the named children have finished and collect their results in dispatch order.
 
     The default waits for every outstanding child. The run's wall-clock budget keeps running
-    throughout, so one wait for many children costs far less than one wait per child.
+    throughout.
 
     Args:
         ids: The children to wait for, as `spawn_subagent` returned them. The default waits for every
@@ -173,7 +166,7 @@ def wait_for_subagents(ids: list[str] | None = None) -> list[SubagentResult]:
             child that produced no return value at all has no `status`.
 
     Raises:
-        ApiError: `not-found` for an id this agent did not spawn.
+        ApiError: `not-found` for an id this session did not spawn.
     """
     waited = None if ids is None else _strings("wait_for_subagents", "ids", ids)
     return [
@@ -207,9 +200,8 @@ def transition_state(state: str, note: str | None = None) -> None:
 
     The state is named the way an agent to spawn is named. It is bound only when a state machine is
     driving the session and the current state has somewhere to go. It is registered rather than
-    performed: the call validates the target, returns, and the program runs on to its end, because
-    replacing the agent — and its window — mid-program would pull every remaining call out from under
-    it. The first declaration in a turn is the one that stands.
+    performed: the call validates the target, returns, and the program runs on to its end. The first
+    declaration in a turn is the one that stands.
 
     Args:
         state: The state to move on to, named the way an agent to spawn is named.
@@ -217,8 +209,8 @@ def transition_state(state: str, note: str | None = None) -> None:
 
     Raises:
         ApiError: `invalid-argument` for a state this session may not move to, `refused` for a
-            second declaration in one turn, and `unavailable` when this agent is not running inside a
-            state machine at all.
+            second declaration in one turn, and `unavailable` when this session is not running inside
+            a state machine at all.
     """
     _call(wire.transition_state, state, note)
 
@@ -228,36 +220,32 @@ def exec(agent: str, prompt: str | None = None) -> None:
     """Continue this session as a different agent, from the next turn.
 
     The named agent takes over with its own model, tools and instructions, keeping every capability
-    the two of them share — the whole conversation above all, so it needs no catching up. Registered
-    rather than performed: the call validates the target, returns, and the program runs on to its
-    end, because the window would otherwise be pulled out from under the program still composing into
-    it. A session makes one succession per turn. It is bound only when this agent may make agent transitions and has agents
-    it may become, and never while a state machine is driving the session.
+    the two of them share and the whole conversation. Registered rather than performed: the call
+    validates the target, returns, and the program runs on to its end. A session makes one succession
+    per turn, and none at all while a state machine is driving the session.
 
     Args:
-        agent: The agent to become, from the ones this agent may become.
+        agent: The agent to become, from the ones this session may become.
         prompt: Its opening message. It already has the whole conversation, so this is the
             instruction rather than a briefing. The default tells it nothing.
 
     Raises:
         ApiError: `invalid-argument` for an agent this session may not become, `refused` for a
-            second succession in one turn, and `unavailable` when this agent is running inside a
-            machine, which is left by moving it on to another of its states instead.
+            second succession in one turn, and `unavailable` when this session is running inside a
+            state machine, which is left by moving it on to another of its states instead.
     """
     _call(wire.exec, agent, prompt)
 
 
 @operation("delegation.fork")
 def fork(prompt: str) -> SubagentHandle:
-    """Run a copy of this agent, in parallel, on something it will not do itself.
+    """Run a copy of this session, in parallel, on something it will not do itself.
 
     The copy has the same model, the same tools and a private copy of the whole conversation, so
-    `prompt` is the *difference* rather than a briefing — everything already worked out is already
-    there.
+    `prompt` is the difference rather than a briefing.
 
-    The copy itself starts once this turn's results are recorded, because the conversation it
-    inherits has to be a complete one. So a later turn is the earliest a wait can collect it, and
-    waiting on it in the program that made it never returns it.
+    The copy starts once this turn's results are recorded, so a later turn is the earliest a wait can
+    collect it, and waiting on it in the program that made it never returns it.
 
     Args:
         prompt: What the copy is to do instead. It has the whole conversation already, so this is the
@@ -268,7 +256,7 @@ def fork(prompt: str) -> SubagentHandle:
 
     Raises:
         ApiError: `invalid-argument` for a blank prompt, `limit-exceeded` at the delegation depth
-            cap, and `unavailable` when the run has no delegation runtime to copy this agent into.
+            cap, and `unavailable` when the run has no delegation runtime to run the copy in.
     """
     return _handle(_call(wire.fork, prompt))
 

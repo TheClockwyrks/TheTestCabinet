@@ -173,7 +173,7 @@ fn a_documentation_program_with_no_names_is_still_a_program() {
 fn the_opening_program_is_top_level_statements() {
     let limit = crate::docs::MAX_SEARCH_LIMIT;
     assert_eq!(
-        csharp().bootstrap_program(&["files", "views"], &["ReadFile"]),
+        csharp().bootstrap_program(&["files", "views"], &["ReadFile"], None),
         format!(
             "Gg.Docs.Search(modules: [\"files\", \"views\"], limit: {limit});\n\
              \n\
@@ -191,7 +191,7 @@ fn the_opening_program_is_top_level_statements() {
 /// is what the second half of every opening program already is.
 #[test]
 fn an_opening_program_with_no_modules_writes_no_search() {
-    let program = csharp().bootstrap_program(&[], &["ReadFile"]);
+    let program = csharp().bootstrap_program(&[], &["ReadFile"], None);
     assert_eq!(program, csharp().open_docs_views_statement(&["ReadFile"]));
     assert!(
         !program.contains("Gg.Docs.Search"),
@@ -211,7 +211,7 @@ fn the_isolation_subject_for_a_module_is_a_public_member() {
         module,
         "public static string Marker() => \"gg-isolation-000-marker\";\n"
     );
-    let wrapped = source::wrap_module(&module, source::CHECK_KEY)
+    let wrapped = source::wrap_module(&module, &csharp().binding_name("gg-isolation"))
         .expect("the isolation subject is a module this arm can wrap");
     assert_eq!(export_names(&wrapped.exports), vec!["Marker".to_string()]);
 }

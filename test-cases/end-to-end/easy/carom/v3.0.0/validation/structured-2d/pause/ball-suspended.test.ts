@@ -1,11 +1,16 @@
 // Carom — pause/ball-suspended: a ball in flight hangs exactly where it was while
 // the game is paused.
 //
-// The ball is posed in mid-flight, clear of both obstacles so its path is a
-// straight line, and allowed to travel far enough that it is demonstrably moving.
-// The game is then paused with a real key event and left there for far longer
-// than the flight took. A build that kept integrating behind the pause menu
-// drifts; a build that froze the field does not move at all.
+// The ball is posed in mid-flight over a field holding that ball ALONE — both
+// obstacles are off it, so the path is a straight line with nothing on it to
+// strike — and allowed to travel far enough that it is demonstrably moving. The
+// game is then paused with a real key event and left there for far longer than
+// the flight took. A build that kept integrating behind the pause menu drifts; a
+// build that froze the field does not move at all.
+//
+// The two paddles are the one piece of furniture no operation removes, so they
+// are held out of the lane at PARKED_CY. Neither is otherwise part of this
+// point: nothing here presses a movement key.
 //
 // The tolerance is a single logical pixel, because "suspended" admits no drift:
 // at the posed speed one frame of leaked simulation is already more than three

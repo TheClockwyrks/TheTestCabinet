@@ -4,11 +4,10 @@ This repository is the starting point for building **Carom**, the game the
 specification under `specs/` describes. Read `specs/overview.md` first; it says
 how the rest of the specification is organized.
 
-In Carom the two mid-field obstacles are live: they sway and rotate,
-and the ball bounces off their tilted faces. `specs/playfield.md` gives the pose
+In Carom the two mid-field obstacles are live: they sway and rotate, and the
+ball bounces off their tilted faces. `specs/playfield.md` gives the pose
 formulas and the oriented collision, and `specs/instrumentation.md` covers the
-`setObstacleClock` operation and the obstacle poses a snapshot reports. What is
-missing is the game.
+two obstacle-clock operations and the obstacle poses a snapshot reports.
 
 The project is already wired up. It builds on the **Structured 2D** engine,
 which is installed as an ordinary dependency and documents itself under
@@ -30,7 +29,7 @@ screens, the actors that populate the field, each carrying its tag from `TAGS`
 so `world.byTag` finds it under the names the specification uses, the
 components that draw them, and the controllers that drive the paddles. The
 instance's `initialize` registers every action in `ACTIONS` against its binding
-in `BINDINGS`, defines the four `CUES`, registers the diagnostic sources
+in `BINDINGS`, defines every cue in `CUES`, registers the diagnostic sources
 `specs/instrumentation.md` lists, and returns the debug surface.
 
 `src/game.ts` also exports `BACKGROUND`, a CSS color string: the field
@@ -42,9 +41,11 @@ The debug surface is a required deliverable. The engine hands back from
 driven from code, so it is present and exactly as `specs/instrumentation.md`
 specifies. Each of its operations is a method acting on the running game: a
 pose takes only the arguments its heading names, returns nothing, and arranges
-the live world through the same systems play uses; a reading takes none and
-returns plain data read off the world at the call, as
-`engine.debug.snapshot()`. Nothing is published to the page.
+the live world through the same systems play uses; a reading takes only the
+arguments its heading names and returns plain data read off the world at the
+call, as `engine.debug.snapshot()`. Nothing is published to the page. Where the
+surface's implementation lives under `src/` is yours to decide; the type your
+instance declares for it, the `D` of its `GameInstance<D>`, is that surface.
 
 `LEVELS` and `TAGS` **are contracts**, like every other name in
 `src/constants.ts`. Every level is registered under its name in `LEVELS`, and
@@ -68,7 +69,8 @@ testing a game this way.
 - **`index.html`** — the page and the canvas the engine fits the field into.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.
-- **`.tcab/`** — the vendored engine.
+- **The vendored engine directory** that `package.json` resolves the engine
+  dependency from.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the
 `package-lock.json` — the build is installed with `npm ci`. Leave the existing

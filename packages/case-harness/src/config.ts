@@ -105,9 +105,18 @@ export interface Stage {
  * A build is free to open its audio from a real DOM event alone — both that and
  * an explicit unlock are conformant — so the gesture has to be a GENUINE browser
  * event, and the two shapes here are the two the cases actually use. Carom,
- * Fathom and Volute each fix one key their bindings leave inert and press it;
- * Refract fixes no such key (its menu bindings are the build's own) and instead
- * makes a real mouse press in a corner of the stage that hits nothing.
+ * Fathom, Volute, Wick and Orrery each name one key their specification binds to
+ * nothing and press it; Refract, whose menu bindings are the build's own and
+ * whose every screen is worked from the pointer, makes a real mouse press in a
+ * corner of the stage instead.
+ *
+ * NEITHER SHAPE HAS TO BE INERT, and Refract's cannot be: a build chooses where
+ * its own controls sit, so a press in any corner is a press a build may have put
+ * something under. What makes the gesture safe is when it is delivered — before
+ * the harness's opening `reset`, which restores every declared field of the
+ * state, so whatever the gesture moved is gone before a check reads anything.
+ * It is delivered only for a harness that asked (`HarnessOptions.armAudio`), so
+ * a build that is not being graded on its sound is handed no gesture at all.
  */
 export type ArmGesture =
   | { readonly kind: "key"; readonly code: string }
@@ -138,8 +147,14 @@ export type StepCall =
   /** `op(count)` — a number of whole ticks of the build's own length. */
   | { readonly kind: "count"; readonly op: string };
 
-/** Everything the shared harness needs to know about one case. */
-export interface CaseConfig {
+/**
+ * Everything the shared harness needs to know about one case.
+ *
+ * Generic in the case's SNAPSHOT only because one member reads one: everything
+ * else here is a plain value, and a case that narrows nothing may go on writing
+ * the bare `CaseConfig`.
+ */
+export interface CaseConfig<S = unknown> {
   /** The case's slug, which prefixes every message the harness prints. */
   readonly slug: string;
   /** The page global an engineless build installs its debug surface on. */
@@ -205,6 +220,50 @@ export interface CaseConfig {
   readonly specPath?: string;
   /** The surface probe's wait. Defaults to {@link DEFAULT_SURFACE_TIMEOUT_MS}. */
   readonly surfaceTimeoutMs?: number;
+  /**
+   * Whether the browser context reports a touchscreen.
+   *
+   * Off by default, because it is a property of the DEVICE a build believes it
+   * is running on: with it on, `navigator.maxTouchPoints` is non-zero and a
+   * pointer event arrives as `pointerType: "touch"`, so a build that offers
+   * touch controls only on a touch device draws a different screen. A case
+   * turns it on when its specification requires touch input, and a case that
+   * does not stays on exactly the context it recorded its baselines against.
+   */
+  readonly hasTouch?: boolean;
+  /**
+   * Whether a frame's text calls carry a measured width and the alignment that
+   * was in force at them.
+   *
+   * Off by default, because it costs one crossing into the page per frame read:
+   * the widths are measured IN THE PAGE, against an offscreen 2D context, so a
+   * run is measured under the build's own loaded fonts. A case turns it on when
+   * a check reads where a run of text SITS — its extent, or the logical run a
+   * letter-spaced heading spells — rather than only which strings were drawn.
+   *
+   * With it off, {@link DrawCall}'s `text` is absent, a text draw's extent is
+   * the point its anchor names, and no two draws ever coalesce into one run.
+   */
+  readonly measureText?: boolean;
+  /**
+   * Narrow every snapshot the surface hands back to the fields the case's own
+   * specification fixes.
+   *
+   * A specification declares what a snapshot REPORTS, and a build is commonly
+   * free to carry more — a beam's cell that also names its node's kind is
+   * derived data the case's own state contract grants. A check that compares
+   * snapshots structurally would charge that reporting choice at every call
+   * site, so a case that has such a field hands the narrowing in here and every
+   * comparison is made on the fields the specification fixes.
+   *
+   * Applied at every point a snapshot crosses back out of the page — the
+   * `snapshot` operation itself, however it is reached, and the states a driven
+   * run reads — so no check can hold an unprojected one. The object the page
+   * returned is never mutated: a projection returns fresh containers.
+   *
+   * Declared as a METHOD so a case may hand in one typed over its own snapshot.
+   */
+  projectSnapshot?(snapshot: S): S;
   /** Further init scripts to inject, resolved against {@link projectRoot}. */
   readonly extraInitScripts?: readonly string[];
   /** The recorder's page global. Defaults to {@link RECORDER_GLOBAL}. */
@@ -229,6 +288,8 @@ export interface ResolvedConfig {
   readonly replayBackground: string;
   readonly specPath: string;
   readonly surfaceTimeoutMs: number;
+  readonly hasTouch: boolean;
+  readonly measureText: boolean;
   readonly extraInitScripts: readonly string[];
   readonly recorderGlobal: string;
   readonly audioGlobal: string;
@@ -251,6 +312,8 @@ export function resolveConfig(config: CaseConfig): ResolvedConfig {
     replayBackground: config.replayBackground ?? DEFAULT_REPLAY_BACKGROUND,
     specPath: config.specPath ?? DEFAULT_SPEC_PATH,
     surfaceTimeoutMs: config.surfaceTimeoutMs ?? DEFAULT_SURFACE_TIMEOUT_MS,
+    hasTouch: config.hasTouch ?? false,
+    measureText: config.measureText ?? false,
     extraInitScripts: config.extraInitScripts ?? [],
     recorderGlobal: config.recorderGlobal ?? RECORDER_GLOBAL,
     audioGlobal: config.audioGlobal ?? AUDIO_GLOBAL,

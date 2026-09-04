@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { registerDiagnostics } from "./diagnostics";
+import { parkedBall } from "./entities";
 import { createInitialState, type CaromState } from "./game";
 import type { DeepReadonly } from "ts-essentials";
 import type { InitApi } from "@test-cabinet/simple-2d";
@@ -62,7 +63,7 @@ describe("registerDiagnostics", () => {
       screen: "playing",
       mode: "versus",
       score: { p1: 4, p2: 7 },
-      ball: { ...opening.ball, x: 123.456, spin: -250 },
+      ball: { ...parkedBall(), x: 123.456, spin: -250 },
     };
 
     const values = read(later);
@@ -73,6 +74,18 @@ describe("registerDiagnostics", () => {
     expect(values["ball spin"]).toBe("-250.0");
     // The opening state reads as it did: no source remembers anything.
     expect(read(opening)["screen"]).toBe("title");
+  });
+
+  it("reports a dash for every ball figure while the field carries none", () => {
+    const { api, read } = collector();
+    registerDiagnostics(api);
+    const empty: CaromState = { ...createInitialState(), ball: null };
+    const values = read(empty);
+    expect(values["ball pos"]).toBe("\u2014");
+    expect(values["ball vel"]).toBe("\u2014");
+    expect(values["ball spin"]).toBe("\u2014");
+    // The paddles are field furniture the game always has.
+    expect(values["paddle L"]).toBe("cy 360.0 vy 0.0");
   });
 
   it("changes nothing it reads", () => {

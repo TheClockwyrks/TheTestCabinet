@@ -5,21 +5,23 @@
 // second takes it two clear, which must. Both outcomes resolve through the
 // build's own win rule, never a fabricated end state.
 //
-// Between the two points the scored ball is holding on its home rather than
-// waiting behind a countdown, so the second point is set up by cutting that hold
-// short and re-aiming the ball once it is in flight again.
+// Each point is staged by `arrangeGoal`, which empties the field down to the one
+// ball it drives — the other two are removed and both obstacles with them — and
+// drives the paddles out of the lane. Staging the second point that way is also
+// what puts the scored ball back in flight: the ball is spawned, taken out of its
+// hold, and aimed down the lane, each by an operation that sets one field, so
+// there is no waiting on a respawn's hold between the two points.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WIN_LEAD, WIN_SCORE } from "../../src/constants";
+import { WIN_LEAD, WIN_SCORE } from "../constants";
 import { assertEqual, assertNull } from "../assert";
 import {
   arrangeGoal,
   captureReplay,
   createHarness,
-  startPlaying,
+  enterPlaying,
   type Harness,
 } from "../harness";
-import { readBalls } from "./harness";
 
 /** 10-10: the tie one point below the win score, where the deuce rule applies. */
 const TIED_AT = WIN_SCORE - 1;
@@ -38,7 +40,7 @@ afterEach(() => {
 });
 
 it("plays on at a one-point lead and ends at two", async () => {
-  await startPlaying(h);
+  enterPlaying(h);
   h.debug.setScore(TIED_AT, TIED_AT);
 
   // First real point: 11-10, a one-point lead, so play continues.
@@ -54,16 +56,7 @@ it("plays on at a one-point lead and ends at two", async () => {
   assertEqual(oneClear.snapshot.score.p1, TIED_AT + 1);
   assertEqual(oneClear.snapshot.score.p2, TIED_AT);
 
-  // Second real point: 12-10, now the required lead, so the match ends. `serve`
-  // ends the scored ball's hold; the launch is the build's own, so the scenario
-  // is re-aimed once that ball is flying again.
-  h.debug.serve();
-  const live = await h.until((s) => readBalls(s)[0].held === false, {
-    maxFrames: 60,
-    poll: 1,
-  });
-  assertEqual(live.hit, true);
-
+  // Second real point: 12-10, now the required lead, so the match ends.
   arrangeGoal(h, "right");
   // The deciding point, and only it: the one before it is the arrangement that
   // put the match at a one-point lead.

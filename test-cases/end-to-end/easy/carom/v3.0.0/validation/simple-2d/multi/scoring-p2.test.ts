@@ -2,14 +2,15 @@
 // and the field keeps running.
 //
 // The mirror of `multi/scoring-p1`, so a build that scores on only one edge fails
-// the side it gets wrong rather than passing on an average. The two balls this
-// check is not about are re-parked in the RIGHT goal channel first: the shared
-// park is the left one, which is exactly where this scenario sends its ball.
+// the side it gets wrong rather than passing on an average. There is nothing to
+// move out of the left goal channel first: the two balls this check is not about
+// are REMOVED from the field along with both obstacles, so the only thing that
+// can cross an edge here is the ball this check drove.
 //
 // What differs from a single-ball build is what does NOT happen: nothing freezes.
-// The screen is still `playing` on the frame the score turns over, because the
-// other balls are still in play and there is no post-point countdown to return
-// to.
+// The screen is still `playing` on the frame the score turns over, because a
+// point in multi takes one ball out of play rather than returning the match to a
+// countdown.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -17,11 +18,10 @@ import {
   arrangeGoal,
   captureReplay,
   createHarness,
-  parkSpares,
-  startPlaying,
+  enterPlaying,
   type Harness,
 } from "../harness";
-import { RIGHT_PARKS, readBalls } from "./harness";
+import { ballAt } from "./harness";
 
 /** Frames recorded after the point resolves, so the clip shows a point SCORED. */
 const AFTERMATH_TICKS = 60; // 0.5 s
@@ -37,9 +37,7 @@ afterEach(() => {
 });
 
 it("gives player two the point when a ball leaves the left goal", async () => {
-  await startPlaying(h);
-  parkSpares(h, RIGHT_PARKS);
-  h.debug.setScore(0, 0);
+  enterPlaying(h);
   arrangeGoal(h, "left");
 
   const point = await captureReplay(h, "goal", async () => {
@@ -57,5 +55,5 @@ it("gives player two the point when a ball leaves the left goal", async () => {
   // The field carries on: the ball that crossed is the only thing the point
   // changed.
   assertEqual(point.snapshot.screen, "playing");
-  assertEqual(readBalls(point.snapshot)[0].held, true);
+  assertEqual(ballAt(point.snapshot, 0).held, true);
 });

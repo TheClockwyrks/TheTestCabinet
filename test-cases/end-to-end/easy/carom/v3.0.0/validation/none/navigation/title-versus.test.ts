@@ -2,12 +2,15 @@
 //
 // specs/ui.md: on the title, `confirm` on `VERSUS` starts a Versus match, which
 // sets `mode`, `screen = countdown`, both scores 0 and `winner` null. The
-// selection is moved to `VERSUS` with one real down press and confirmed with a
-// real Enter.
+// selection is posed on `VERSUS` and the confirm is a real `Enter` pressed
+// through Chromium's own input pipeline: the down edge that would otherwise have
+// reached the item is `title-down`'s point, and posing the selection keeps this
+// point on the confirm alone.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNull } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
+import { TITLE_VERSUS, selectTitle } from "./screens";
 
 let h: Harness;
 
@@ -20,8 +23,8 @@ afterEach(async () => {
 });
 
 it("starts a Versus match on its countdown", async () => {
-  await h.debug.reset();
-  await h.tap("ArrowDown");
+  await selectTitle(h, TITLE_VERSUS);
+
   await h.tap("Enter");
   await captureStill(h, "countdown");
 

@@ -27,9 +27,11 @@ import { useTestCaseName } from "../../data/useTestCaseName";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import { useLiveRunUpdates } from "../../runtime/useLiveRunUpdates";
 import { routes } from "../../routes";
-import { ReviewQueue } from "./CoveragePlanPage";
+import { ReviewQueue, describeUnlaunchable } from "./CoveragePlanPage";
+import { comboLabel } from "./comboLabels";
+import { caseLabel } from "./caseLabels";
 import { RungRuns } from "./LadderRungRuns";
-import { ladderAxisLabel } from "./ladderPickers";
+import { ladderAxisLabel, rungInput } from "./ladderPickers";
 import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
@@ -172,7 +174,9 @@ export function describeTally(tally: RungTally): string {
  * are kept apart on purpose, because the *reason* a ladder enqueued nothing is often
  * different in kind — every climber may be walled or held, which is a finished ladder
  * rather than a satisfied one, and telling a reviewer their plan is "at its target"
- * when in truth every model has stopped would be actively misleading.
+ * when in truth every model has stopped would be actively misleading. The climbers
+ * nothing could launch trail every outcome the scheduler reached, exactly as they do
+ * on a plan.
  */
 export function describeLadderTopUp(result: TopUpResult): string {
   if (result.skipped === "paused") {
@@ -181,17 +185,21 @@ export function describeLadderTopUp(result: TopUpResult): string {
   if (result.skipped === "busy") {
     return "A top-up for this ladder was already running, so nothing was enqueued twice.";
   }
+  const blocked = describeUnlaunchable(result.unlaunchable);
   if (result.enqueued > 0) {
     const runs = `${result.enqueued} run${result.enqueued === 1 ? "" : "s"}`;
     const rungs = `${result.cells.length} rung${result.cells.length === 1 ? "" : "s"}`;
-    return `Enqueued ${runs} across ${rungs}, in the order this ladder climbs them.`;
+    return `Enqueued ${runs} across ${rungs}, in the order this ladder climbs them.${blocked}`;
   }
   const outstanding = result.outstanding ?? 0;
   if (outstanding >= result.bufferTarget) {
     return (
       `Nothing enqueued: your review buffer is full (${outstanding} of ` +
-      `${result.bufferTarget} outstanding). Review some runs and top up again.`
+      `${result.bufferTarget} outstanding). Review some runs and top up again.${blocked}`
     );
+  }
+  if (blocked) {
+    return `Nothing enqueued: every climber is stopped, satisfied, or unlaunchable.${blocked}`;
   }
   return (
     "Nothing left to enqueue: every climber is at its rung's target, walled, " +
@@ -228,10 +236,20 @@ export function ladderStatusNote(
   progress: LadderProgress,
   paused: boolean,
 ): string | null {
+  // A climber nothing can launch keeps its rung and its "climbing" status forever, so
+  // on a board it is indistinguishable from one merely waiting its turn for capacity —
+  // and unlike a plan's cell it is never re-counted as satisfied or missing. It is
+  // therefore named alongside every other outcome, exactly as `planStatusNote` names a
+  // plan's blocked cells; the reason itself lives on the climber's own row.
+  const stuck = progress.climbers.filter((c) => c.unlaunchable).length;
+  const blocked =
+    stuck > 0
+      ? ` ${stuck} climber${stuck === 1 ? " cannot" : "s cannot"} be launched at all — the reason is on each row, and until you fix or drop the combination it will not move again.`
+      : "";
   if (paused) {
     return (
       "Disabled: this ladder will not enqueue anything until you enable it, which a " +
-      "new ladder never has been. Whatever is already queued is untouched."
+      `new ladder never has been. Whatever is already queued is untouched.${blocked}`
     );
   }
   const climbing = progress.climbers.filter(
@@ -242,7 +260,7 @@ export function ladderStatusNote(
       `Nobody is climbing: ${progress.climbersWalled} walled, ` +
       `${progress.climbersToppedOut} topped out, and the rest held. This ladder has ` +
       "answered its question. Promote a climber past a wall, release a hold, or add " +
-      "rungs to ask a harder one."
+      `rungs to ask a harder one.${blocked}`
     );
   }
   if (
@@ -253,18 +271,32 @@ export function ladderStatusNote(
       `Waiting on you: ${progress.runsOutstanding} of ${progress.bufferTarget} ` +
       "buffered runs are outstanding (in flight, or finished and unreviewed), so a " +
       "top-up deliberately enqueues nothing until you review some. A rung's verdict " +
-      "is your review, and nothing else can decide it."
+      `is your review, and nothing else can decide it.${blocked}`
     );
   }
-  return null;
+  return blocked.trim() || null;
 }
 
-/** The combination a steering or override call names, rebuilt from a climber. */
-function climberCombo(climber: LadderClimber): ReviewPlanCombo {
+/**
+ * The combination a steering or override call names, rebuilt from a climber.
+ *
+ * A gg climber carries its configuration and the models bound to that configuration's
+ * launch slots through unchanged, because those are what its key is built from: send
+ * only the harness and the model and the call would address whichever gg climber
+ * happened to share the root model, or none at all.
+ *
+ * The derived fields a read filled in — the root `model`, the configuration's current
+ * `ggConfigName` — are handed back as they arrived. Storage normalizes them away on a
+ * gg member, so echoing them changes nothing about which climber is addressed.
+ */
+export function climberCombo(climber: LadderClimber): ReviewPlanCombo {
   return {
     harness: climber.harness,
     model: climber.model,
     ...(climber.provider ? { provider: climber.provider } : {}),
+    ...(climber.ggConfigId ? { ggConfigId: climber.ggConfigId } : {}),
+    ...(climber.ggConfigName ? { ggConfigName: climber.ggConfigName } : {}),
+    ...(climber.ggSlotModels ? { ggSlotModels: climber.ggSlotModels } : {}),
   };
 }
 
@@ -299,8 +331,11 @@ function RungRow({
       className={`${ladderStyles.rungRow} ${current ? ladderStyles.rungRowCurrent : ""}`}
     >
       <span className={ladderStyles.rungIndex}>{rung.position + 1}</span>
+      {/* Through the shared pin label, so a rung reads the way the plan's cells and
+          the ladder editor's rung list do. Two rungs of one case on two engines are
+          two rows, and this is what tells them apart. */}
       <span className={ladderStyles.rungName}>
-        {testCaseName(rung.slug)} · {rung.variant} · {rung.version}
+        {caseLabel(testCaseName(rung.slug), rung)}
       </span>
 
       {effective ? (
@@ -450,6 +485,10 @@ export function ClimberRow({
   const cleared = climber.currentRung?.position ?? rungs.length;
   const views = buildRungViews(climber, rungs);
   const status = climberStatusLabel(climber, rungs.length);
+  // Read off the climber, never off its rung: a topped out or walled climber has no
+  // `currentRung` at all, and the rung-scoped copy would silently vanish for exactly
+  // the climbers whose fault is easiest to leave standing.
+  const blocked = climber.unlaunchable;
 
   return (
     <section className={ladderStyles.climber}>
@@ -464,10 +503,24 @@ export function ClimberRow({
             {open ? "▾" : "▸"}
           </span>
           <span className={ladderStyles.climberTitle}>
-            {climber.harness} · {climber.model}
+            {comboLabel(climber)}
           </span>
           {climber.provider && (
             <span className={ladderStyles.climberMeta}>{climber.provider}</span>
+          )}
+          {/* Keyed off the reason and not off the status, because the two disagree
+              exactly where it matters: a climber whose configuration was deleted still
+              reports "climbing" and still stands on a rung — it simply never enqueues
+              again — so the status alone shows a dead arm as a live one. It rides
+              beside the status pill rather than replacing it: being blocked is a fault
+              in the membership, not a sixth thing the climb can be doing. */}
+          {blocked && (
+            <span
+              className={`${ladderStyles.statusPill} ${ladderStyles.statusBlocked}`}
+              title={blocked}
+            >
+              Blocked
+            </span>
           )}
           {/* Only the states that say something the track cannot: a wall, a hold, a
               rung waiting on the reviewer, a finished climb. */}
@@ -513,10 +566,13 @@ export function ClimberRow({
               climber.focused ? ladderStyles.focusOn : ""
             }`}
             aria-pressed={climber.focused}
+            // Named by the whole combination, not by the model alone: two gg climbers
+            // of different configurations can share a root model, and a screen reader
+            // would otherwise be offered two identical controls.
             aria-label={
               climber.focused
-                ? `Stop watching ${climber.model}`
-                : `Watch ${climber.model}`
+                ? `Stop watching ${comboLabel(climber)}`
+                : `Watch ${comboLabel(climber)}`
             }
             title="Watch this one. Also the tiebreak between climbers of equal priority."
             disabled={busy}
@@ -540,6 +596,13 @@ export function ClimberRow({
           </button>
         </span>
       </div>
+
+      {/* The reason gets a line of its own under the header, as a blocked cell's does
+          on the plan matrix: it is a sentence naming a configuration and a slot, not a
+          badge, and a reviewer cannot act on it truncated into the header's row. Shown
+          collapsed, because the whole failure of this state is that it is invisible
+          until somebody thinks to look. */}
+      {blocked && <p className={ladderStyles.climberBlocked}>{blocked}</p>}
 
       {open && (
         <ol className={ladderStyles.rungList}>
@@ -606,7 +669,7 @@ function PriorityField({
         min={0}
         max={99}
         step={1}
-        aria-label={`Climb priority for ${climber.model}`}
+        aria-label={`Climb priority for ${comboLabel(climber)}`}
         title="Higher climbs first. Pushes one model to the front without reordering the ladder, which would change what every other climber is measured against."
         disabled={busy}
         value={draft ?? String(climber.priority)}
@@ -950,10 +1013,11 @@ export function LadderPage() {
           },
           token,
         );
+        const named = comboLabel(climber);
         setNote(
           outcome === null
-            ? `Override cleared. ${climber.model} is back to whatever the gate says on that rung.`
-            : `${climber.model} ${outcome === "advanced" ? "promoted past" : "walled at"} that rung by hand. The gate's own verdict is kept beside yours.`,
+            ? `Override cleared. ${named} is back to whatever the gate says on that rung.`
+            : `${named} ${outcome === "advanced" ? "promoted past" : "walled at"} that rung by hand. The gate's own verdict is kept beside yours.`,
         );
         await refresh();
       } catch (e) {
@@ -995,12 +1059,13 @@ export function LadderPage() {
             gate: ladder.gate,
             comboGroupIds: ladder.comboGroupIds,
             combos: ladder.combos,
+            // Every rung rewritten as it stands, through the same projection the
+            // editor loads with — the version of the one being bumped is the only
+            // thing that changes. Anything else this list forgot (the engine, a run
+            // override) would be dropped from the ladder by the save.
             rungs: ladder.rungs.map((r) => ({
-              id: r.id,
-              slug: r.slug,
+              ...rungInput(r),
               version: r.id === rung.id ? rung.latestVersion : r.version,
-              variant: r.variant,
-              ...(r.runs === undefined ? {} : { runs: r.runs }),
             })),
             // No schedule: bumping a pin is not a decision to enable a disabled ladder.
           },

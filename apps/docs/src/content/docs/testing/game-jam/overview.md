@@ -40,8 +40,11 @@ tooling of its own, so a deployment can pin the jam image on its own while a jam
 keeps the same capabilities:
 
 - the six 2D asset-generation binaries on `PATH` (`draw`, `draw-sheet`,
-  `particle-2d`, `sfx-synth`, `sfx-sample`, `music`) and the two baked audio
-  packs, so a model produces its own art, effects, and sound during the run;
+  `particle-2d`, `sfx-synth`, `sfx-sample`, `music`), so a model produces its own
+  art, effects, and sound during the run. The audio packs `sfx-sample` and
+  `music` play are the ones the jam declares in its
+  [`[audio]` table](/testing/game-jam/manifests/), staged into the container per
+  run;
 - the Rust, `wasm32-unknown-unknown`, and `wasm-bindgen`/`wasm-pack` toolchain,
   so a model may author its game's core in Rust and ship it as a committed
   `.wasm` build input. The compiled wasm is a build input, so `npm run build`

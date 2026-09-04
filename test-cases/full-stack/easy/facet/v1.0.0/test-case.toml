@@ -206,6 +206,21 @@ none = "workspaces/none"
 "simple-2d" = "workspaces/simple-2d"
 "structured-2d" = "workspaces/structured-2d"
 
+# The audio packs the run container is staged with, and the whole of what
+# `sfx-sample` and `music` may reach. A tool config that names no pack plays the
+# first pack of that kind, so `combat-core` serves `sfx-sample` and `gm-lite`
+# serves `music`.
+#
+# `specs/assets.md` names both and writes the bench's sound around what each one
+# carries. `combat-core` holds the glass, debris, and metal the shatter body
+# under the `clear` cue is layered from, and it holds no tuned material at all,
+# which is why the pitched cues and the eight-tone chain ladder are synthesized
+# instead. `gm-lite` carries the `music_box`, `glockenspiel`, `vibraphone`, and
+# `marimba` the title theme and the play bed are sequenced on. Staging a further
+# bank would offer the build timbres the spec has already ruled off this bench.
+[audio]
+packs = ["combat-core@0.1.0", "gm-lite@0.1.0"]
+
 # How validation (and the per-run static deploy) turns a produced implementation
 # into a served site. These run verbatim from the build's repository root:
 # dependencies are installed, then the static build is produced into `dist/`,

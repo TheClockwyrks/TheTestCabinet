@@ -86,10 +86,6 @@ use super::super::{ModuleExport, ModuleExportKind, PrepareError, PrepareFailure}
 /// model beyond "write Kotlin".
 pub(super) const PROGRAM_CLASS: &str = "ProgramKt";
 
-/// The package a code module is **checked** under at the read that binds it, before any program has
-/// named a key for it.
-pub(super) const MODULE_CHECK_PACKAGE: &str = "lib.module";
-
 /// The package one code module's file is compiled into, given its binding key — which is what makes
 /// a program reach it at `lib.<key>.<name>` and import it at `import lib.<key>.*`.
 ///

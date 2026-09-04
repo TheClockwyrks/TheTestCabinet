@@ -44,6 +44,7 @@ import type {
   Specification,
   StoredRun,
   TestCase,
+  UnreadableRunPage,
   VersionInfo,
   WorkerIdentity,
 } from "./types";
@@ -318,7 +319,10 @@ export interface BackendClient {
    * - The **numbered-pager** window (console listings): pass an `offset` (0-based;
    *   its presence selects this mode) with an optional `limit`, `state` (including
    *   `any`, the published + unpublished union the console listings draw from), the
-   *   equality filters (`testCase`/`model`/`harness`/`variant`/`version`/`engine`),
+   *   equality filters
+   *   (`testCase`/`model`/`harness`/`variant`/`version`/`engine`/`ggConfigId`,
+   *   the last narrowing to the runs launched from one gg configuration by its
+   *   id),
    *   the `versions` list (exact versions, any of which match — the case-detail
    *   Runs tab's anchored version scope; like `version` it silences
    *   `latestVersions`), the `testCases` list (case slugs, any of which match —
@@ -341,6 +345,7 @@ export interface BackendClient {
     version?: string;
     versions?: string[];
     engine?: string;
+    ggConfigId?: string;
     latestVersions?: boolean;
     aesthetic?: string;
     q?: string;
@@ -1148,6 +1153,21 @@ export interface WorkerClient {
    * delete affordance where it is absent.
    */
   deleteRun?(id: string, token: string): Promise<void>;
+
+  /**
+   * One page of the stored runs whose records the backend cannot decode (`GET
+   * /runs/unreadable`), with the total the cabinet holds. Every other listing
+   * filters these out, so this is the only surface they are reachable from; the
+   * console's Unreadable tab reads it and offers {@link deleteRun} per row.
+   * `limit` and `offset` page it, and `total` counts every unreadable run, so a
+   * pager sized from it offers only pages that hold rows.
+   * Optional: a read-only transport with no such listing omits it, and the console
+   * hides the tab where it is absent.
+   */
+  listUnreadableRuns?(opts?: {
+    limit?: number;
+    offset?: number;
+  }): Promise<UnreadableRunPage>;
 
   /**
    * Kill an in-flight run (`POST /jobs/{id}/cancel`, Bearer): the backend moves it

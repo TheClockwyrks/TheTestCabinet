@@ -112,9 +112,11 @@ struct SummaryState {
     /// [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events — the one place a rejected
     /// call's spend appears, since it is deliberately excluded from the run's own usage.
     rejected: GgRejectedResponses,
-    /// The longest reply, in characters, of any turn whose outcome **worked** (progressed or
-    /// finished) — a maximum over the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events'
-    /// `response_chars`, the datum a later output ceiling would be judged against.
+    /// The longest reply of any turn the provider did not cut off at its output cap, in
+    /// characters — the model's raw text plus the `program` string of every `submit_program` call
+    /// the turn made. A maximum over the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events'
+    /// `response_chars`, folded whatever the turn's outcome, so it is the datum a later output
+    /// ceiling is judged against.
     max_response_chars: u64,
     /// The same maximum in the provider's own unit: completion tokens (output plus reasoning).
     max_response_output_tokens: u64,
@@ -299,8 +301,15 @@ impl SummaryState {
     ///   counts**, not a streak this tracker keeps. The count is per agent and this stream is
     ///   run-wide, so a streak folded here would be an artefact of how two agents' turns happened to
     ///   interleave;
-    /// * a fatal turn is counted in `turns` and **nowhere else**: gg's own machinery failing is not
-    ///   charged to the model's error budget, exactly as no ceiling ever observes one;
+    /// * a fatal turn advances `turns` and no other counter of the error rollup: gg's own
+    ///   machinery failing is not charged to the model's error budget, exactly as no ceiling ever
+    ///   observes one. Its reply still sets the response maxima, which measure how much the model
+    ///   wrote rather than what the run made of it;
+    /// * the response maxima fold over every turn but the one recorded
+    ///   [`ModelLengthCapped`](GgTurnErrorType::ModelLengthCapped), whatever the outcome. A reply
+    ///   the provider cut off at its own output cap is the reply an output ceiling exists to cut;
+    ///   every other reply was generated whole and says how much the model writes, whether or not
+    ///   gg could then use it;
     /// * [`loop_aborts`](GgErrorSummary::loop_aborts) is a plain sum, and is not an error count —
     ///   the discarded attempt was retried and this very turn is the retry's outcome. The two
     ///   sizes beside it are plain sums for the same reason, and are deliberately not folded into
@@ -324,7 +333,6 @@ impl SummaryState {
     #[allow(clippy::too_many_arguments)]
     fn fold_turn_outcome(
         &mut self,
-        outcome: GgTurnOutcome,
         error: Option<GgTurnErrorKind>,
         error_type: Option<GgTurnErrorType>,
         consecutive_errors: u64,
@@ -334,11 +342,23 @@ impl SummaryState {
         response_chars: u64,
         response_output_tokens: u64,
     ) {
-        // The maxima are taken over the turns that **worked**: a progressed or finished outcome.
-        // An errored turn's reply is exactly the thing an output ceiling should be free to cut
-        // short, so folding it in would let one degenerate reply set the figure the ceiling is
-        // meant to be chosen from.
-        if matches!(outcome, GgTurnOutcome::Progressed | GgTurnOutcome::Finished) {
+        // The maxima are taken over every turn but one: the length-capped turn, whose reply the
+        // provider cut off at its own output cap. That reply is exactly the thing an output
+        // ceiling is meant to cut, so a ceiling chosen from it would be chosen from itself. Every
+        // other reply was generated whole and is data about how much the model writes, whatever
+        // gg then made of it — the outcome is a judgement on the *work*, and a program long enough
+        // to matter here is more likely to fail than a short one, so gating on the outcome would
+        // under-report exactly the arms that write the most.
+        //
+        // gg's own emitter already records a length-capped turn with no size at all, so this guard
+        // is the rule stated rather than the rule relied upon: a stream gg did not write, or an
+        // emitter later taught to carry the rejected reply's real size, lands on the same answer.
+        //
+        // The type is the only thing the guard can read, and one path drops it: an errored turn
+        // taken on a run gg itself broke is attributed as fatal, and a fatal turn's wire form
+        // carries no error type. A length-capped turn that met a gg fault therefore reaches here
+        // untyped — and carries no size either, so the maxima are unmoved.
+        if error_type != Some(GgTurnErrorType::ModelLengthCapped) {
             self.max_response_chars = self.max_response_chars.max(response_chars);
             self.max_response_output_tokens =
                 self.max_response_output_tokens.max(response_output_tokens);
@@ -568,7 +588,6 @@ impl SessionSummaryTracker {
                 ..
             } => {
                 state.fold_turn_outcome(
-                    *outcome,
                     *error,
                     *error_type,
                     *consecutive_errors,

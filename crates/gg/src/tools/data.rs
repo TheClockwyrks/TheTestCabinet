@@ -120,6 +120,12 @@ pub enum ApiData {
     BytesWritten(u64),
     /// What a `list_dir` found, in the order it reported them.
     DirEntries(Vec<DirEntryData>),
+    /// The tree a `tree` rendered, exactly as the prose carries it — including the bound markers and
+    /// the line that says the size bounds cut it.
+    ///
+    /// Text rather than a structure because the membrane admits no recursive type, so the rendering
+    /// is what a program receives and there is nothing to reassemble it from.
+    TreeText(String),
     /// What a `search` matched, in path order and then line order — empty when nothing did.
     SearchMatches(Vec<SearchMatchData>),
     /// How full the memory store is after any memory mutation.

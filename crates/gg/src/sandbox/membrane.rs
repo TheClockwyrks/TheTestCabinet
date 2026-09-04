@@ -1176,15 +1176,12 @@ impl<A: OperationApi> MembraneState<A> {
     /// # Which record a cross-arm count must join on
     ///
     /// **The refusal roster, not the turn's error type.** The line above holds only for a guest
-    /// that hands the failure's code up with the throw — Python, Ruby, C++ and the three
-    /// ECMAScript-engine arms — and the other five do not. Measured: the C# guest reports every
-    /// uncaught managed exception as `error-kind.other` with no code at all
-    /// (`packages/gg-sandbox-csharp/Sources/shell.c`'s `report`), so an uncaught refusal there is
-    /// `program_throw` — and so is an uncaught `not-found`; Swift's top-level code is not a
-    /// `throws` context its shell can wrap, so an uncaught gg failure is not a program error at all
-    /// but a trapped store, and Rust, Kotlin and Java die the same way. Counting
-    /// `program_unknown_name` across arms therefore reads correct on six and silently wrong on the
-    /// other five.
+    /// that hands the failure's code up with the throw — Python, Ruby, C++, C# and the three
+    /// ECMAScript-engine arms — and the other four do not. Measured: Swift's top-level code is not
+    /// a `throws` context its shell can wrap, so an uncaught gg failure is not a program error at
+    /// all but a trapped store, and Rust, Kotlin and Java die the same way. Counting
+    /// `program_unknown_name` across arms therefore reads correct on seven and silently wrong on
+    /// the other four.
     ///
     /// What **is** uniform on all eleven is [`record_refusal`](Self::record_refusal) just below:
     /// every refusal is opened and closed as an API call and lands on the turn's roster under gg's
@@ -1405,6 +1402,7 @@ fn data_kind(data: &ApiData) -> &'static str {
         ApiData::FileImage(_) => "fileImage",
         ApiData::BytesWritten(_) => "bytesWritten",
         ApiData::DirEntries(_) => "dirEntries",
+        ApiData::TreeText(_) => "treeText",
         ApiData::SearchMatches(_) => "searchMatches",
         ApiData::MemoryUsage(_) => "memoryUsage",
         ApiData::MemoryHits(_) => "memoryHits",

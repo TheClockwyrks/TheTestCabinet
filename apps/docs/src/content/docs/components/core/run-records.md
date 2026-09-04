@@ -89,7 +89,8 @@ The harness version lives in the subject rather than here.
 
 ### Metrics
 
-- Run time, as defined in [Metrics](/components/core/metrics/#run-time).
+- Run time and the setup, session, teardown and validation durations, as defined
+  in [Metrics](/components/core/metrics/#durations).
 - The four token classes, as defined in
   [Metrics](/components/core/metrics/#tokens).
 - Comparable cost and actual cost, as defined in
@@ -195,20 +196,28 @@ The run's terminal state, with enough detail to understand a failure. One of:
   seeding or the case's init step. Retained with a diagnostic detail, never
   publishable, and excluded from every model statistic. A harness that exited
   non-zero is a `harness_error` and one that stopped responding is `hung`.
-- `canceled`: an operator killed the run before it finished. Retained, visible,
-  and inspectable, never publishable, and excluded from every model statistic,
-  because nothing about the model can be concluded from a run a human ended.
+- `canceled`: an operator killed a [gg](/gg/overview/) run before it finished.
+  Retained, visible, and inspectable, never publishable, and excluded from every
+  model statistic, because nothing about the model can be concluded from a run a
+  human ended.
 
-A kill is a request to wind down rather than a teardown, so a canceled
-[gg](/gg/overview/) run is recorded through the same post-session path as any
-other run. It carries its real [metrics](#metrics), the collected working tree
-as it stood at the last completed turn, its session summary, and everything it
-streamed before the kill. Its [validation](/components/core/validation/) summary
-is empty rather than failed, because validation is fresh work on an
-implementation the run was told to stop writing. Two degraded paths yield a bare
-record instead: a session that will not wind down inside its grace period, and a
-run that errors on the way out. A third-party harness always takes one of them
-(see the [driver](/components/driver/overview/#cancellation)).
+A kill is a request to a gg session to wind down rather than a teardown, so a
+canceled gg run is recorded through the same post-session path as any other run.
+It carries its real [metrics](#metrics), the collected working tree as it stood
+at the last completed turn, its session summary, and everything it streamed
+before the kill. Its [validation](/components/core/validation/) summary is empty
+rather than failed, because validation is fresh work on an implementation the
+run was told to stop writing. Two degraded paths yield a bare record instead: a
+session that will not wind down inside its grace period, and a run that errors
+on the way out.
+
+Killing a run of any other harness produces no record. Such a harness has no
+wind-down to ask for, so the [driver](/components/driver/overview/#cancellation)
+destroys the run instead of waiting on it, and a `canceled` record exists for a
+gg run alone. A run that reached its own ending before its driver noticed the
+kill is not destroyed, but it still records nothing: the backend accepts no
+terminal status on a canceled job other than a driver's `canceled`
+acknowledgement, so the record it posts is turned away.
 
 ### Recorded context
 

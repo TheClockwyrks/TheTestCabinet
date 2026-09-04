@@ -230,7 +230,8 @@ export type GgAgentConfig = {
 
 /**
  * **What a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent's window opens holding** — the
- * two lists gg's synthesized opening turn is generated from, per agent.
+ * two lists and the [tree](GgOpeningTree) gg's synthesized opening turn is generated from, per
+ * agent.
  *
  * A code agent's first turn is a program gg writes in the agent's own language and runs before the
  * model has said a word: it searches the documentation of the modules named here, together, in one
@@ -256,9 +257,10 @@ export type GgAgentConfig = {
  * opened once. Two lists that come out empty seed no program at all, which is a valid choice
  * rather than a defect.
  *
- * **Required** on every agent, and always written: a document without it does not read. The
- * authored default a fresh profile is seeded with is [`GgAgentConfig::root`]'s —
- * [`DEFAULT_OPENING_MODULES`] and [`DEFAULT_OPENING_FUNCTIONS`].
+ * **Required** on every agent, and always written: a document without it does not read. Its
+ * [`tree`](Self::tree) is the one part a document may leave out. The authored default a fresh
+ * profile is seeded with is [`GgAgentConfig::root`]'s — [`DEFAULT_OPENING_MODULES`],
+ * [`DEFAULT_OPENING_FUNCTIONS`] and a tree at [`DEFAULT_OPENING_TREE_DEPTH`].
  */
 export type GgOpeningTurn = {
   /**
@@ -271,6 +273,46 @@ export type GgOpeningTurn = {
    * `docs.search`, `views.open_file`, ….
    */
   functions: Array<string>;
+  /**
+   * Whether the opening program opens a [tree](GgOpeningTree) of the workspace, and how deep.
+   *
+   * Optional in a document, unlike the two lists, because every capability set written before
+   * gg had a tree call left it out and those documents open the window they always opened:
+   * [`GgOpeningTree::default`] is the tree switched off. A fresh profile is seeded with it on
+   * ([`GgOpeningTurn::seeded`]).
+   */
+  tree?: GgOpeningTree;
+};
+
+/**
+ * **The workspace tree a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent's window opens
+ * holding** — whether gg's synthesized opening turn calls `files.tree` at all, and the depth it
+ * calls it with.
+ *
+ * A model that opens a window on the prompt alone has to guess at paths, and a guess that names a
+ * file the workspace does not hold costs the whole program the turn was spent on. The opening
+ * tree answers the question those guesses ask, and it is configuration rather than gg's choice
+ * for the same reason the two lists beside it are: what a window opens on is an operator's
+ * decision about the agent.
+ *
+ * [`include`](Self::include) and [`depth`](Self::depth) are independent, so a study that switches
+ * the tree off and on again gets the depth it chose back rather than gg's.
+ *
+ * The tree is dropped at seed time for an agent that does not hold `files.tree`, on the same terms
+ * a listed module or function it does not hold is. A [`depth`](Self::depth) gg cannot honour
+ * refuses the launch whether or not `include` is set, because a document holding a number gg would
+ * not honour is refused where it is written.
+ */
+export type GgOpeningTree = {
+  /**
+   * Whether the opening program calls `files.tree` at all.
+   */
+  include: boolean;
+  /**
+   * The depth that call names: levels of children below the workspace root, `1` being the root's
+   * own entries. Held to `1..=`[`MAX_OPENING_TREE_DEPTH`] at launch.
+   */
+  depth: number;
 };
 
 /**
@@ -634,12 +676,35 @@ export type GgCapabilityConfig = {
  */
 export type GgCapabilitySet = {
   /**
-   * The name of a saved preset this set was assembled from (for example
-   * `"minimal"`, `"full"`, or `"planning-A"`), when it is a named preset rather
-   * than a hand-assembled configuration. A study is a sweep over presets, so this
-   * records which one produced a run.
+   * The **name** a saved configuration carried at launch (for example `"minimal"`,
+   * `"full"`, or `"planning-A"`), when this set was launched from one rather than
+   * assembled by hand. A study is a sweep over configurations, so this records which
+   * one produced a run.
+   *
+   * Display text and a slicing key: it is what the run log shows, what the
+   * [query language](https://docs.testcabinet.ai/gg/analysis/query-language/) reads as
+   * `preset`, and what a comparison groups by. It is not identity — a name is rewritten
+   * freely and two configurations may share one, so what a run is *attributed* to is
+   * [`preset_id`](Self::preset_id).
    */
   preset?: string;
+  /**
+   * The **id** of the saved configuration this set was launched from, when it was
+   * launched from one rather than assembled by hand.
+   *
+   * This is what identifies a run's
+   * [coverage cell](https://docs.testcabinet.ai/components/backend/coverage/), and
+   * [`preset`](Self::preset) beside it is what a person reads: the id is minted once and
+   * never rewritten, so renaming a configuration costs a plan nothing and two
+   * configurations that happen to agree on a name stay two cells.
+   *
+   * Recording it is consistent with gg's rule that launching resolves a configuration's
+   * internal ids away. That rule covers the ids of [agent profiles](GgAgentConfig::id),
+   * which are references the model reads back by slug, and nothing in a launched set
+   * points at the configuration's own id — the model is never shown it. It rides along
+   * as provenance, so a run can be attributed to the configuration that produced it.
+   */
+  presetId?: string;
   /**
    * The agent profiles this run is configured with, each with its own capabilities,
    * model binding, and delegation graph. **The first is the [root](Self::root)** — it
@@ -2769,18 +2834,25 @@ export type GgSessionSummary = {
    */
   rejectedResponses?: GgRejectedResponses;
   /**
-   * The longest reply, in characters, of any turn that **worked** (a progressed or finished
-   * outcome) — folded as a maximum over the
-   * [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events' `response_chars`. Recorded so an
-   * output ceiling can later be chosen from data rather than guessed: a cap below this figure
-   * would have truncated a reply that was doing its job. `0` — and omitted — for a run with no
-   * successful turn.
+   * The longest reply the run produced, in characters: the model's raw text plus, on a
+   * responses-as-code turn, the `program` string of each `submit_program` call it made. Folded
+   * as a maximum over the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events'
+   * `response_chars`, over every turn but the one recorded
+   * [`ModelLengthCapped`](GgTurnErrorType::ModelLengthCapped), whatever the turn's outcome.
+   *
+   * Recorded so an output ceiling can later be chosen from data rather than guessed: a cap
+   * below this figure would have truncated a reply the model generated whole. The one excluded
+   * turn is the one whose reply the provider had already cut off at its own output cap, which
+   * is the reply such a ceiling exists to cut. An errored turn is folded in, since a program
+   * long enough to matter here is the one most likely to fail, and dropping it would
+   * under-report exactly the runs that write the most. `0` — and omitted — for a run whose
+   * turns reported no reply at all.
    */
   maxResponseChars?: number;
   /**
    * The same maximum in the provider's own unit: **completion tokens** (output plus reasoning,
-   * the figure an output cap is measured in). `0` — and omitted — for a run whose successful
-   * turns reported no usage.
+   * the figure an output cap is measured in). `0` — and omitted — for a run whose turns
+   * reported no usage.
    */
   maxResponseOutputTokens?: number;
   /**
@@ -3997,11 +4069,10 @@ export type GgTelemetryKind =
       /**
        * The reply's length in characters — the model's raw text plus, on a
        * responses-as-code turn, the `program` string of each `submit_program` call it made.
-       * Carried on
-       * every outcome so [`GgSessionSummary::max_response_chars`] can be folded as a maximum
-       * over the turns that **worked** (a progressed or finished outcome): the figure a later
-       * output ceiling would have to accommodate. `0` — and omitted — for a turn whose reply
-       * carried no text at all.
+       * Carried on every outcome so [`GgSessionSummary::max_response_chars`] can be folded as a
+       * maximum over every turn but the length-capped one: the figure a later output ceiling
+       * would have to accommodate. `0` — and omitted — for a turn whose reply carried no text
+       * at all.
        */
       responseChars?: number;
       /**
@@ -5231,11 +5302,10 @@ export type GgTelemetryEvent = {
       /**
        * The reply's length in characters — the model's raw text plus, on a
        * responses-as-code turn, the `program` string of each `submit_program` call it made.
-       * Carried on
-       * every outcome so [`GgSessionSummary::max_response_chars`] can be folded as a maximum
-       * over the turns that **worked** (a progressed or finished outcome): the figure a later
-       * output ceiling would have to accommodate. `0` — and omitted — for a turn whose reply
-       * carried no text at all.
+       * Carried on every outcome so [`GgSessionSummary::max_response_chars`] can be folded as a
+       * maximum over every turn but the length-capped one: the figure a later output ceiling
+       * would have to accommodate. `0` — and omitted — for a turn whose reply carried no text
+       * at all.
        */
       responseChars?: number;
       /**

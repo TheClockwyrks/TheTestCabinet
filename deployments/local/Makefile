@@ -169,17 +169,16 @@ RUN_IMAGE_TAG    := local
 #     handles it) and never imported on its own;
 #   - full-stack runs execute in one of the two full-stack images, chosen by the case's
 #     `asset_dimension`: `full-stack-2d` (the default) is base-wasm plus the six 2D
-#     asset-generation binaries and the two audio packs they need, and `full-stack-3d`
-#     is its SIBLING (also FROM base-wasm, not FROM the 2D image) carrying the same six
-#     plus `voxel`, `voxel-anim`, `particle-3d` and the Mesa software-Vulkan runtime
-#     those three render previews through. Both bake the same two packs, so building
-#     either needs the R2 PRESIGN credentials in .env, like the sfx-sample/music
-#     images — and BOTH are built and imported, because which one a run resolves is a
-#     property of the case, not of this Makefile;
+#     asset-generation binaries, and `full-stack-3d` is its SIBLING (also FROM base-wasm,
+#     not FROM the 2D image) carrying the same six plus `voxel`, `voxel-anim`,
+#     `particle-3d` and the Mesa software-Vulkan runtime those three render previews
+#     through. Neither bakes any audio — a run is staged with the packs its test case
+#     declares when its container starts, so neither build reads the audio object store
+#     nor needs a credential. BOTH are built and imported, because which one a run
+#     resolves is a property of the case, not of this Makefile;
 #   - game-jam runs execute in the `game-jam` image, built `FROM` the full-stack-2d
-#     image (it inherits those six binaries + baked audio packs + the Rust/wasm
-#     toolchain and adds nothing but its own identity, so it needs no R2 credentials
-#     of its own — but its full-stack-2d parent must already be built, which does);
+#     image (it inherits those six binaries + the Rust/wasm toolchain and adds nothing
+#     but its own identity — but its full-stack-2d parent must already be built);
 #   - asset-generation runs each execute in their own per-kind image;
 #   - adversarial and performance runs each execute in their own image;
 #   - a `gg` run executes in the `-gg` VARIANT of the image its test type resolves —
@@ -264,7 +263,8 @@ LOAD_ENV  := if [ -f '$(ENV_FILE)' ]; then set -a; . '$(ENV_FILE)'; set +a; fi
 # dev-containers credential helper) that the BuildKit builder invokes even for the
 # PUBLIC base-image pulls and which errors hard in here — the legacy builder
 # tolerated it, BuildKit does not. The service-image Dockerfiles only ever pull
-# public docker.io images, so an empty auth set is correct. Pointing DOCKER_CONFIG
+# public images (docker.io bases, plus the published audio store the driver stage
+# copies in from ghcr), so an empty auth set is correct. Pointing DOCKER_CONFIG
 # here also pins buildx to its `default` (docker-driver) builder, which loads the
 # result into the daemon image store so the `docker save`/`k3d image import` below
 # can find it — sidestepping any `docker-container` builder a host might default to.
@@ -542,21 +542,18 @@ run-images-e2e:
 	$(call build_import_run_images,$(E2E_IMAGE_NAMES),$(call run_image_refs,$(E2E_IMAGE_NAMES)))
 
 # `-full-stack` rebuilds BOTH full-stack images — full-stack-2d (base-wasm plus the six
-# 2D asset binaries + the two audio packs) and full-stack-3d (the same, plus `voxel`,
-# `voxel-anim`, `particle-3d` and the Mesa runtime they render previews through). They are
-# siblings, not a chain, so neither is a by-product of building the other and a local
-# cluster missing one cannot schedule a case that resolves it. Building either presigns
-# the packs from R2, so this needs the PRESIGN credentials in .env (as the sfx-sample/music
-# asset images do).
+# 2D asset binaries) and full-stack-3d (the same, plus `voxel`, `voxel-anim`,
+# `particle-3d` and the Mesa runtime they render previews through). They are siblings, not
+# a chain, so neither is a by-product of building the other and a local cluster missing one
+# cannot schedule a case that resolves it. Neither bakes audio, so neither needs a
+# credential.
 run-images-full-stack: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 run-images-full-stack:
 	$(call build_import_run_images,$(FULL_STACK_IMAGE_NAMES),$(call run_image_refs,$(FULL_STACK_IMAGE_NAMES)))
 
 # `-game-jam` rebuilds the game-jam image, which is built `FROM` the full-stack-2d image.
-# build.sh (re)builds full-stack-2d first when it is missing — and that parent build
-# presigns the two audio packs from R2, so it needs the PRESIGN credentials in .env the
-# first time (a rebuild against an already-present full-stack-2d does not). Only the
-# game-jam ref is imported; its full-stack-2d parent's layers are baked into it.
+# build.sh (re)builds full-stack-2d first when it is missing. Only the game-jam ref is
+# imported; its full-stack-2d parent's layers are baked into it.
 run-images-game-jam: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 run-images-game-jam:
 	$(call build_import_run_images,$(GAME_JAM_IMAGE_NAMES),$(call run_image_refs,$(GAME_JAM_IMAGE_NAMES)))
@@ -576,10 +573,9 @@ run-images-performance:
 # `-gg` rebuilds the gg variants: every run image, plus the language toolchains a
 # responses-as-code program is compiled with. build.sh builds the shared toolchain
 # builder first (always — it carries the compilers, so a stale one would bake yesterday's
-# toolchain in) and each variant's parent when that is missing, which for the
-# full-stack-2d, full-stack-3d, game-jam, sfx-sample and music variants means the R2
-# PRESIGN credentials in .env the first time. Only the variant refs are imported; their parents' layers are
-# in them. This is the whole set — `make run-image-sprite-gg` rebuilds one.
+# toolchain in) and each variant's parent when that is missing. Only the variant refs are
+# imported; their parents' layers are in them. This is the whole set —
+# `make run-image-sprite-gg` rebuilds one.
 run-images-gg: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 run-images-gg:
 	$(call build_import_run_images,$(GG_IMAGE_NAMES),$(call run_image_refs,$(GG_IMAGE_NAMES)))
@@ -621,11 +617,10 @@ run-images-gg:
 # `gg-reference`/`gg-artifacts` land, rather than into a temporary directory — it is ~750 MB
 # and rebuilding it for every check is the slow half of this target.
 #
-# ONE OF THE FIVE PARENTS NEEDS THE R2 CREDENTIALS. `full-stack-3d` bakes the same two audio
-# packs the 2D image does, so build.sh presigns them when it has to build that parent — which
-# it does the first time this target runs. Without the PRESIGN values in .env the gate stops
-# there with a presign error rather than a toolchain one; that is deliberate (an image is
-# never shipped with an empty audio palette), but it is a confusing place to meet it.
+# NONE OF THE FIVE PARENTS NEEDS A CREDENTIAL. `full-stack-3d` bakes no audio, as the 2D
+# image does not — the packs a run may reach are staged into its container at start time
+# from what its test case declares — so build.sh needs nothing from the audio object store
+# to build that parent, which it does the first time this target runs.
 run-images-gg-selfcheck: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 run-images-gg-selfcheck:
 	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'

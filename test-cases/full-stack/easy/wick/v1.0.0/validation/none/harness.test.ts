@@ -552,7 +552,15 @@ it("walks the camera formula both ways", () => {
 /* ---- The audio probe ------------------------------------------------------- */
 
 it("names the cues the build plays, and stamps them with the frame", async () => {
-  await h.armAudio();
+  // ONE OF THE TWO CHECKS IN THIS FILE THAT READ WHAT THE BUILD SOUNDED, so one
+  // of the two that ask for the arming gesture — and asking is a creation, not a
+  // call. The gesture is a real browser event the build is entitled to act on,
+  // and what makes it safe is that it lands before the harness's opening
+  // `reset`; past that there is no restore left to put back what it touched. So
+  // the shared harness goes and an armed one takes its place. Every other
+  // harness in this file is handed no gesture at all.
+  await h.dispose();
+  h = await createHarness({ armAudio: true });
   // The probe saw the build's produced files decode, by name: road one works
   // end to end, from the fetch to the buffer.
   const decoded = await decodedCues(h);
@@ -591,7 +599,11 @@ it("names the cues the build plays, and stamps them with the frame", async () =>
 });
 
 it("stamps a single-frame drive with exactly that frame", async () => {
-  await h.armAudio();
+  // The other one, armed the same way and for the same reason as above. The
+  // frame counter is untouched by it: the gesture's settling frames run before
+  // the opening `reset`, so the tap below is still this harness's frame 1.
+  await h.dispose();
+  h = await createHarness({ armAudio: true });
   const cues = await watchNamedCues(h);
   // A tap is down, ONE frame, up: whatever it made the build play carries that
   // one frame as both ends of its span.

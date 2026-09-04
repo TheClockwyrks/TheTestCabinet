@@ -10,6 +10,13 @@
 //   2. solving board 1 and returning arrives on selectIndex 0 — the solve is
 //      seen landing on the grid;
 //   3. entering board 2 and backing out arrives on selectIndex 1.
+//
+// GETTING BACK TO THE GRID. The solve leaves the game on the solved screen,
+// and specs/modes/campaign.md gives that screen two exits to `select`: its
+// third menu choice, back to select, and the `back` action. This item's
+// subject is on the far side of that step, not the step itself, so it must
+// not pin one of the two — `gridFromSolved` takes whichever the build honours,
+// and which one that is stays campaign/solved-back's verdict alone.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -21,6 +28,7 @@ import {
   tapAction,
   type Harness,
 } from "../harness";
+import { gridFromSolved } from "./support";
 
 let h: Harness;
 
@@ -45,12 +53,7 @@ it("lands on the board most recently entered or solved", async () => {
   await tapAction(h, "confirm"); // enter board 1
   solveCampaignBoard(h, 0);
   await h.advance(1);
-  await tapAction(h, "back"); // back on solved goes to select
-  assertEqual(
-    h.snapshot().screen,
-    "select",
-    "back on solved returns to select",
-  );
+  await gridFromSolved(h);
   assertEqual(
     h.snapshot().selectIndex,
     0,

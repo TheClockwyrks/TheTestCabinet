@@ -1,33 +1,80 @@
 // Refract — campaign/helpers: what the campaign suites share. PRIVATE to this
 // category; the shared harness poses and drives, and these READ — where each
 // board's number sits in one rendered select frame, how those numbers cluster
-// into rows and columns, what color a tile region averages — plus the two
-// small arrangements several suites repeat (walking the title highlight back
-// to its first item, holding every beam empty).
+// into rows and columns, how much of one tile's patch of the screen changed
+// between two frames — plus the one arrangement several suites repeat (holding
+// every beam empty).
 //
 // Everything here derives from specs/modes/campaign.md: the grid presents all
 // CAMPAIGN_LENGTH (24) boards in number order, six columns wide and four rows
-// tall, one row per set. Nothing reads the build's own modules: the numbers
-// are found among the frame's text draws (through the harness's recorder) and
-// the clusters in their drawn positions, so the same geometry is measured the
-// same way by every suite that needs it.
+// tall, one row per set, and each board "shows its number". Nothing reads the
+// build's own modules: the numbers are found among the frame's text draws
+// (through the harness's recorder) and the clusters in their drawn positions,
+// so the same geometry is measured the same way by every suite that needs it.
+//
+// THE NUMBERS ARE READ AS LOGICAL RUNS. A number is looked for among
+// `drawnTextRuns`, not among the raw `fillText` calls: how a build spaces its
+// letters is a font choice ("Palettes, fonts, layouts, and styling are the
+// build's choices"), and letter spacing on a canvas is drawn a glyph per call,
+// so a heading reading `1 OF 24 SOLVED` puts a lone `"2"` and a lone `"4"`
+// among the raw draws. The runs are a PARTITION, so those glyphs sit inside
+// their heading's run and no longer read as a board's number.
+//
+// This file, structured-2d/campaign/support.ts and none/campaign/reading.ts
+// carry the same readers under the same names, with the same failure messages,
+// so one condition reports identically whichever engine the build was written
+// for (README.md: the three run the same scenarios and differ only in how they
+// reach the build). Only `regionLuminances` differs, because `none` reaches the
+// pixels through the page rather than through a context it holds.
 
-import { assertEqual, assertLength, fail } from "../assert";
+import { assertLength, fail } from "../assert";
 import {
-  drawnTextSpans,
   tapAction,
   type Harness,
   type RefractSnapshot,
-  type Rgb,
+  type TextSpan,
 } from "../harness";
 import { CAMPAIGN_LENGTH } from "../notation";
 
+/** The select grid's shape, from specs/modes/campaign.md: six by four. */
+export const GRID_COLS = 6;
+export const GRID_ROWS = 4;
+
 /** Where one board's number was drawn, in logical units. */
-export interface GridPoint {
+export interface NumberPoint {
   /** The board's number, 1-based, as the grid shows it. */
   board: number;
+  /** The centre of the run's horizontal extent. */
   x: number;
+  /** The run's baseline. */
   y: number;
+}
+
+/**
+ * Where board `board`'s number sits among one frame's runs of text.
+ *
+ * A number is the run that IS that number once trimmed — substring matching
+ * would put board 1 inside `"12"` — and a build that draws a number more than
+ * once (a shadow pass, a highlight redraw) draws the passes within a couple of
+ * pixels of each other, so the mean of the matches names the tile's spot.
+ */
+export function numberRun(
+  runs: readonly TextSpan[],
+  board: number,
+): NumberPoint {
+  const matches = runs.filter((run) => run.text.trim() === String(board));
+  if (matches.length === 0) {
+    fail(
+      `the select frame drawing the number ${board} as a run of its own ` +
+        "(specs/modes/campaign.md: each board in the grid shows its number)",
+      runs.map((run) => run.text),
+    );
+  }
+  const x =
+    matches.reduce((sum, run) => sum + (run.left + run.right) / 2, 0) /
+    matches.length;
+  const y = matches.reduce((sum, run) => sum + run.y, 0) / matches.length;
+  return { board, x, y };
 }
 
 /**
@@ -39,45 +86,14 @@ export interface GridPoint {
  */
 const CLUSTER_GAP = 24;
 
-/**
- * The centre of each board number's drawn text, one point per board.
- *
- * A number is the run of text that IS that number once trimmed — substring
- * matching would put board 1 inside "12" — and a build that draws a number
- * more than once (a shadow pass, a highlight redraw) draws the passes within
- * a couple of pixels of each other, so the mean of the matches names the
- * tile's spot.
- */
-export function numberCenters(h: Harness): GridPoint[] {
-  const spans = drawnTextSpans(h);
-  const centers: GridPoint[] = [];
-  for (let board = 1; board <= CAMPAIGN_LENGTH; board += 1) {
-    const matches = spans.filter((span) => span.text.trim() === String(board));
-    if (matches.length === 0) {
-      fail(
-        `the select frame drawing the number ${board} ` +
-          "(specs/modes/campaign.md: the grid presents all 24 boards, " +
-          "each showing its number)",
-        spans.map((span) => span.text),
-      );
-    }
-    const x =
-      matches.reduce((sum, span) => sum + (span.left + span.right) / 2, 0) /
-      matches.length;
-    const y = matches.reduce((sum, span) => sum + span.y, 0) / matches.length;
-    centers.push({ board, x, y });
-  }
-  return centers;
-}
-
 /** `points` grouped along one axis: sorted, split where a gap opens. */
-export function clusterBy(
-  points: readonly GridPoint[],
+function clusterBy(
+  points: readonly NumberPoint[],
   axis: "x" | "y",
-): GridPoint[][] {
+): NumberPoint[][] {
   const sorted = [...points].sort((a, b) => a[axis] - b[axis]);
-  const clusters: GridPoint[][] = [];
-  let current: GridPoint[] = [];
+  const clusters: NumberPoint[][] = [];
+  let current: NumberPoint[] = [];
   let previous = Number.NEGATIVE_INFINITY;
   for (const point of sorted) {
     if (current.length > 0 && point[axis] - previous > CLUSTER_GAP) {
@@ -91,205 +107,91 @@ export function clusterBy(
   return clusters;
 }
 
-/** The select grid as one frame drew it, read off the number draws. */
+/** The select grid as one frame drew it, read off the board-number runs. */
 export interface SelectGrid {
-  /** One point per board, 1 through 24. */
-  centers: GridPoint[];
+  /** One point per board, 1 through 24, in number order. */
+  numbers: NumberPoint[];
   /** Rows top to bottom, each sorted left to right. */
-  rows: GridPoint[][];
-  /** The mean y of each row, top to bottom. */
-  rowY: number[];
+  rows: NumberPoint[][];
   /** Columns left to right, each sorted top to bottom. */
-  columns: GridPoint[][];
-  /** The mean x of each column, left to right. */
-  colX: number[];
-}
-
-function mean(values: readonly number[]): number {
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-/** Read the grid off the CURRENT frame's draws (clear `h.calls`, render one
- * frame, then call this). Asserts nothing beyond every number being drawn:
- * the shape checks belong to the suites. */
-export function readSelectGrid(h: Harness): SelectGrid {
-  const centers = numberCenters(h);
-  const rows = clusterBy(centers, "y").map((row) =>
-    [...row].sort((a, b) => a.x - b.x),
-  );
-  const columns = clusterBy(centers, "x").map((column) =>
-    [...column].sort((a, b) => a.y - b.y),
-  );
-  return {
-    centers,
-    rows,
-    rowY: rows.map((row) => mean(row.map((point) => point.y))),
-    columns,
-    colX: columns.map((column) => mean(column.map((point) => point.x))),
-  };
+  columns: NumberPoint[][];
 }
 
 /**
- * A grid that clustered into the specified six columns and four rows, for the
- * suites that MEASURE against the grid (label alignment, tile color) rather
- * than assert its shape: their precondition, named when it is unmet.
+ * Read the grid off one frame's runs of text. Asserts nothing beyond every
+ * number being drawn: the shape checks belong to the suite that asked.
  */
-export function requireSixByFour(grid: SelectGrid): void {
-  if (
-    grid.rows.length !== 4 ||
-    grid.columns.length !== 6 ||
-    grid.rows.some((row) => row.length !== 6)
-  ) {
-    fail(
-      "the 24 board numbers clustering into six columns and four rows " +
-        "(specs/modes/campaign.md), as this measurement's frame of reference",
-      {
-        rows: grid.rows.map((row) => row.map((point) => point.board)),
-        columns: grid.columns.length,
-      },
-    );
-  }
+export function readSelectGrid(runs: readonly TextSpan[]): SelectGrid {
+  const numbers = Array.from({ length: CAMPAIGN_LENGTH }, (_, index) =>
+    numberRun(runs, index + 1),
+  );
+  return {
+    numbers,
+    rows: clusterBy(numbers, "y").map((row) =>
+      [...row].sort((a, b) => a.x - b.x),
+    ),
+    columns: clusterBy(numbers, "x").map((column) =>
+      [...column].sort((a, b) => a.y - b.y),
+    ),
+  };
 }
 
-/** A logical-rectangle region, centred, with half-extents. */
+/** A square patch of the screen, in logical units. */
 export interface Region {
   cx: number;
   cy: number;
-  halfW: number;
-  halfH: number;
+  /** Half the square's side. */
+  half: number;
 }
 
 /**
- * The bounding box of `board`'s number draw, in logical units: the run's
- * measured width, and its em box placed under the `textBaseline` the context
- * held at the call. This is the "tile region around the number draw" the
- * select-states item measures mean color over — the exact patch of tile the
- * number occupies, locatable on any build's layout because the number draw
- * itself names it.
- *
- * The font and baseline are read the way the anchor is: walked out of the
- * frame's recorded calls, `save`/`restore` honoured, so the em height is the
- * one the drawing context really held. A number drawn more than once (a
- * shadow pass) unions its boxes.
+ * The Rec. 709 luminance, on the same 0..255 scale, of every device pixel the
+ * region covers — every one of them, in the backing store's own order, so two
+ * reads of one region on two frames line up pixel for pixel.
  */
-export function numberDrawBox(h: Harness, board: number): Region {
-  const view = h.engine.viewport();
-  const wanted = String(board);
-  interface TextState {
-    font: string;
-    baseline: string;
-  }
-  let current: TextState = { font: "", baseline: "alphabetic" };
-  const stack: TextState[] = [];
-  let x0 = Number.POSITIVE_INFINITY;
-  let y0 = Number.POSITIVE_INFINITY;
-  let x1 = Number.NEGATIVE_INFINITY;
-  let y1 = Number.NEGATIVE_INFINITY;
-
-  for (const call of h.calls) {
-    if (call.kind === "set") {
-      if (call.property === "font") {
-        current = { ...current, font: String(call.value) };
-      } else if (call.property === "textBaseline") {
-        current = { ...current, baseline: String(call.value) };
-      }
-      continue;
-    }
-    if (call.method === "save") {
-      stack.push(current);
-      continue;
-    }
-    if (call.method === "restore") {
-      const restored = stack.pop();
-      if (restored !== undefined) current = restored;
-      continue;
-    }
-    if (call.text === undefined) continue;
-    const [text, ax, ay] = call.args;
-    if (typeof text !== "string" || text.trim() !== wanted) continue;
-    if (typeof ax !== "number" || typeof ay !== "number") continue;
-
-    const sizeMatch = /(\d+(?:\.\d+)?)px/.exec(current.font);
-    if (sizeMatch === null) {
-      fail(
-        `a px font size on the context that drew the number ${board}, ` +
-          "to place its em box",
-        current.font,
-      );
-    }
-    const { transform: m, width, textAlign } = call.text;
-    // Device-space anchor, then back through the engine's fit, exactly as
-    // drawnTextSpans reads it.
-    const x = (m.a * ax + m.c * ay + m.e - view.offsetX) / view.scale;
-    const y = (m.b * ax + m.d * ay + m.f - view.offsetY) / view.scale;
-    const w = (width * Math.hypot(m.a, m.b)) / view.scale;
-    const size = (Number(sizeMatch[1]) * Math.hypot(m.c, m.d)) / view.scale;
-    const before =
-      textAlign === "center"
-        ? w / 2
-        : textAlign === "right" || textAlign === "end"
-          ? w
-          : 0;
-    // The em box about the baseline: how far the box reaches above the
-    // anchor, per the baseline the context held.
-    const above =
-      current.baseline === "middle"
-        ? size / 2
-        : current.baseline === "top"
-          ? 0
-          : current.baseline === "hanging"
-            ? size * 0.2
-            : current.baseline === "bottom" ||
-                current.baseline === "ideographic"
-              ? size
-              : size * 0.8; // alphabetic, the canvas default
-    x0 = Math.min(x0, x - before);
-    x1 = Math.max(x1, x - before + w);
-    y0 = Math.min(y0, y - above);
-    y1 = Math.max(y1, y - above + size);
-  }
-
-  if (!Number.isFinite(x0)) {
-    fail(
-      `the select frame drawing the number ${board} ` +
-        "(specs/modes/campaign.md: each board in the grid shows its number)",
-      "no draw of it found",
-    );
-  }
-  return {
-    cx: (x0 + x1) / 2,
-    cy: (y0 + y1) / 2,
-    halfW: (x1 - x0) / 2,
-    halfH: (y1 - y0) / 2,
-  };
-}
-
-/** The mean rendered color over a logical-rectangle region. */
-export function meanColor(
-  h: Harness,
-  cx: number,
-  cy: number,
-  halfW: number,
-  halfH: number,
-): Rgb {
-  const a = h.device(cx - halfW, cy - halfH);
-  const b = h.device(cx + halfW, cy + halfH);
-  const image = h.ctx.getImageData(
+export function regionLuminances(h: Harness, region: Region): number[] {
+  const a = h.device(region.cx - region.half, region.cy - region.half);
+  const b = h.device(region.cx + region.half, region.cy + region.half);
+  const { data } = h.ctx.getImageData(
     a.x,
     a.y,
     Math.max(1, b.x - a.x),
     Math.max(1, b.y - a.y),
   );
-  let r = 0;
-  let g = 0;
-  let bl = 0;
-  const pixels = image.width * image.height;
-  for (let i = 0; i < image.data.length; i += 4) {
-    r += image.data[i];
-    g += image.data[i + 1];
-    bl += image.data[i + 2];
+  const luminances: number[] = [];
+  for (let i = 0; i < data.length; i += 4) {
+    luminances.push(
+      0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2],
+    );
   }
-  return { r: r / pixels, g: g / pixels, b: bl / pixels };
+  return luminances;
+}
+
+/**
+ * The share of a region's pixels whose luminance moved by more than `step`
+ * between two readings of it, on 0..1.
+ *
+ * A COUNT, never a mean: a mean measures how much ink a build repaints, so a
+ * build that states a tile's condition in a word beside an unchanged tile
+ * dilutes to nothing, while the same reading is obvious to a player. Counting
+ * the pixels that moved reads that build and a build that repaints the whole
+ * tile alike. The two readings must be of one region on one canvas, so a
+ * mismatch in length is a fault in the caller, named as one.
+ */
+export function changedFraction(
+  before: readonly number[],
+  after: readonly number[],
+  step: number,
+): number {
+  assertLength(after, before.length, "two readings of one tile region");
+  if (before.length === 0) {
+    fail("a tile region covering at least one device pixel", before.length);
+  }
+  let changed = 0;
+  for (let i = 0; i < before.length; i += 1) {
+    if (Math.abs(after[i] - before[i]) > step) changed += 1;
+  }
+  return changed / before.length;
 }
 
 /**
@@ -313,20 +215,30 @@ export function assertBeamsEmpty(
 }
 
 /**
- * Walk the title highlight back to its first item, CAMPAIGN.
+ * Leave the solved screen for the grid.
  *
- * A fresh title arrives with its first item highlighted, but a title RETURNED
- * to may keep whatever the player last left it on, so the suites that come
- * back to the title walk the highlight up — three items, so at most two taps —
- * before the confirm that must name CAMPAIGN.
+ * specs/modes/campaign.md gives that screen two exits to `select`: its third
+ * and last menu choice, back to select, and the `back` action. A suite that
+ * only needs to be standing on the grid again must not pin one of the two —
+ * WHICH of them a build honours is campaign/solved-back's question — so the
+ * menu is walked, its third choice taken when the highlight got there, and the
+ * `back` action used when it did not. A build that honours neither cannot be
+ * posed onto the grid at all, and the check that needed the grid FAILS here,
+ * naming the screen it stopped on: a verdict reached rather than deferred,
+ * which is what a build that leaves no way off the solved screen has earned.
  */
-export async function titleMenuToFirst(h: Harness): Promise<void> {
-  for (let guard = 0; guard < 3 && h.snapshot().menuIndex !== 0; guard += 1) {
-    await tapAction(h, "up");
+export async function gridFromSolved(h: Harness): Promise<void> {
+  if (h.snapshot().screen !== "solved") {
+    fail("the solve landing on the solved screen", h.snapshot().screen);
   }
-  assertEqual(
-    h.snapshot().menuIndex,
-    0,
-    "the title highlight walked to TITLE_ITEMS[0], CAMPAIGN (specs/ui.md)",
-  );
+  await tapAction(h, "down");
+  await tapAction(h, "down");
+  await tapAction(h, h.snapshot().menuIndex === 2 ? "confirm" : "back");
+  if (h.snapshot().screen !== "select") {
+    fail(
+      "the solved screen returning to the grid by either exit " +
+        "specs/modes/campaign.md gives it",
+      h.snapshot().screen,
+    );
+  }
 }

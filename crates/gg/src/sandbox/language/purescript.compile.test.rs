@@ -1,6 +1,6 @@
-//! The host-side PureScript compile: the module header it reads out of the reply, the two verdicts it
-//! tells apart, and the agreement between the compiled library tree this build cut and the manifest
-//! that describes it.
+//! The host-side PureScript compile: the module it derives the bundler's entry point from, the two
+//! verdicts it tells apart, and the agreement between the compiled library tree this build cut and
+//! the manifest that describes it.
 //!
 //! These spawn a real `purs` and a real `esbuild`, so they are seconds rather than microseconds — but
 //! they stop at the JavaScript. What that JavaScript *does* inside the guest is
@@ -11,7 +11,7 @@ use crate::sandbox::PrepareContext;
 
 /// Compile `source` as a program, or panic with what the toolchain said.
 fn program(source: &str) -> String {
-    match compile_program(source, &[], &PrepareContext::new()) {
+    match compile_program(source, &[], &PrepareContext::detached()) {
         Ok(prepared) => prepared.source,
         Err(failure) => panic!("purs did not compile this PureScript: {failure}"),
     }
@@ -19,7 +19,7 @@ fn program(source: &str) -> String {
 
 /// The same, for a turn carrying code modules — which are compiled into the program's own project.
 fn program_with(source: &str, modules: &[CodeModule]) -> String {
-    match compile_program(source, modules, &PrepareContext::new()) {
+    match compile_program(source, modules, &PrepareContext::detached()) {
         Ok(prepared) => prepared.source,
         Err(failure) => panic!("purs did not compile this PureScript: {failure}"),
     }
@@ -32,7 +32,7 @@ fn refusal(source: &str) -> PrepareFailure {
 
 /// The same, for a turn carrying code modules.
 fn refusal_with(source: &str, modules: &[CodeModule]) -> PrepareFailure {
-    match compile_program(source, modules, &PrepareContext::new()) {
+    match compile_program(source, modules, &PrepareContext::detached()) {
         Ok(_) => panic!("expected this PureScript to be refused, and it compiled"),
         Err(failure) => failure,
     }
@@ -58,56 +58,9 @@ const HELLO: &str = "module Main where\n\
                      main = Console.log \"hello\"\n";
 
 #[test]
-fn the_module_header_the_model_wrote_is_the_one_the_entry_point_imports() {
-    // Nothing rewrites the header and nothing supplies one, so the name `purs` files the emitted
-    // JavaScript under is the name gg reads here — and every coordinate stays the model's.
-    assert_eq!(module_name("module Solve where\nmain = 1\n"), Some("Solve"));
-
-    // A qualified name is one name, not a name and two dots.
-    assert_eq!(
-        module_name("module My.Deeply.Nested where\nx = 1\n"),
-        Some("My.Deeply.Nested")
-    );
-
-    // An export list ends the name, and primes and underscores are part of one.
-    assert_eq!(
-        module_name("module Solve\n  ( main\n  ) where\nmain = 1\n"),
-        Some("Solve")
-    );
-    assert_eq!(
-        module_name("module Solve_1' where\nx = 1\n"),
-        Some("Solve_1'")
-    );
-
-    assert_eq!(module_name(HELLO), Some("Main"));
-}
-
-#[test]
-fn comments_before_the_header_are_skipped_rather_than_searched() {
-    // A line comment, a block comment, and a NESTED block comment — PureScript's nest — each of
-    // which may legally precede the header and each of which may contain the word `module`.
-    assert_eq!(
-        module_name("-- module NotThisOne where\nmodule Solve where\nx = 1\n"),
-        Some("Solve")
-    );
-    assert_eq!(
-        module_name("{- a note -}\nmodule Solve where\nx = 1\n"),
-        Some("Solve")
-    );
-    assert_eq!(
-        module_name("{- outer {- inner -} still outer -}\nmodule Solve where\nx = 1\n"),
-        Some("Solve")
-    );
-}
-
-#[test]
 fn a_reply_with_no_header_is_the_compiler_s_own_refusal() {
     // What a model that thought it was writing a script produces. gg supplies nothing: `purs` cannot
     // read it, says so at line 1, and that is what the model reads.
-    assert_eq!(module_name("import Prelude\nmain = 1\n"), None);
-    // `modulesomething` is an identifier, not a header keyword.
-    assert_eq!(module_name("moduleName = 1\n"), None);
-
     let failure = refusal("import Prelude\nmain :: Int\nmain = 1\n");
     let PrepareFailure::Program(PrepareError::Syntax(message)) = &failure else {
         panic!("expected a syntax error, got {failure:?}");
@@ -133,6 +86,92 @@ fn a_program_names_its_own_module_and_runs_from_it() {
          main = Console.log \"solved\"\n",
     );
     assert!(bundled.contains("console.log"), "the FFI came with it");
+}
+
+/// One preparation of `agent`, on the ground a turn is given: a context of this agent's, keeping
+/// this arm's own project directories across the reset. Hands back the bundle and the `purs` output
+/// directory the compile wrote into.
+fn turn(agent: &crate::sandbox::AgentWorkspace, source: &str) -> (String, PathBuf) {
+    let context = crate::sandbox::PrepareContext::for_agent(agent, PROJECT_DIRS);
+    let bundled = match compile_program(source, &[], &context) {
+        Ok(prepared) => prepared.source,
+        Err(failure) => panic!("purs did not compile this PureScript: {failure}"),
+    };
+    let output = context
+        .opened_workspace()
+        .expect("the compile opened this agent's tree")
+        .join("work")
+        .join(OUTPUT_DIR);
+    (bundled, output)
+}
+
+/// A program logging `line`, under the module header `header`.
+fn logging(header: &str, line: &str) -> String {
+    format!(
+        "{header}\n\
+         \n\
+         import Prelude\n\
+         import Effect (Effect)\n\
+         import Effect.Class.Console as Console\n\
+         \n\
+         main :: Effect Unit\n\
+         main = Console.log \"{line}\"\n",
+    )
+}
+
+#[test]
+fn a_response_may_reuse_the_module_name_an_earlier_response_used() {
+    // The same name, twice, in one agent's tree — which is what a model that calls every program
+    // `Main` produces. The output directory is persistent work and survives the reset between the
+    // two, so the first response's `output/Solve` is still there when the second compiles; the sweep
+    // is what stops the bundler picking it up.
+    let agent = crate::sandbox::AgentWorkspace::new();
+    let (first, _) = turn(&agent, &logging("module Solve where", "first"));
+    assert!(first.contains("first"), "the first response's own bundle");
+
+    let (second, _) = turn(&agent, &logging("module Solve where", "second"));
+    assert!(
+        second.contains("second") && !second.contains("\"first\""),
+        "the second response's bundle carries the second response: {second}"
+    );
+}
+
+#[test]
+fn a_response_that_renames_its_module_leaves_the_old_one_behind() {
+    // The sweep, asserted on disk rather than through the bundle: a name a response used and the
+    // next one did not is not still in the compiler's output afterwards. Without this the test above
+    // would pass for the wrong reason — two directories, and the right one chosen by luck.
+    let agent = crate::sandbox::AgentWorkspace::new();
+    turn(&agent, &logging("module Solve where", "first"));
+    let (bundled, output) = turn(&agent, &logging("module Main where", "second"));
+    assert!(bundled.contains("second"), "the renamed module compiled");
+
+    assert!(output.join("Main").is_dir(), "this response's module");
+    assert!(
+        !output.join("Solve").exists(),
+        "the previous response's module went with the previous response"
+    );
+}
+
+#[test]
+fn a_leading_block_comment_may_hold_text_outside_ascii() {
+    // A model writing about the game it is building writes an em-dash, an accent and an emoji. The
+    // reply is UTF-8 and `purs` reads all of it, so nothing here may read less.
+    let bundled = program(&format!(
+        "{}{}",
+        "{- Snake — a naïve grid. Ship it 🚀 -}\n",
+        logging("module Solve where", "solved"),
+    ));
+    assert!(bundled.contains("solved"), "it compiled and bundled");
+}
+
+#[test]
+fn a_module_name_outside_ascii_is_the_name_purs_filed_it_under() {
+    // `purs` accepts a Unicode proper name and files the emitted JavaScript under it, so the entry
+    // point resolves it too — which it can, because the name comes back from the output tree rather
+    // than from a scan that only knew about ASCII.
+    let bundled = program(&logging("module Ünicode where", "solved"));
+    assert!(bundled.contains("solved"), "it compiled and bundled");
 }
 
 #[test]
@@ -372,9 +411,9 @@ fn a_code_module_is_checked_on_its_own_and_compiled_with_the_program_that_import
                            greet :: String -> String\n\
                            greet who = \"hello, \" <> who\n";
 
-    // The use that loads it compiles it alone, under gg's own name for it, and keeps nothing: the
-    // whole product is the verdict.
-    check_module(HELPERS, &PrepareContext::new()).expect("purs checks a code module");
+    // The use that loads it compiles it alone, under the name a program will import it by.
+    compile_module("helpers", HELPERS, &PrepareContext::detached())
+        .expect("purs compiles a code module");
 
     // The program then reaches it the way it reaches any other module — an `import` line the model
     // wrote, checked by `purs` against the author's own signature.
@@ -451,35 +490,47 @@ fn a_modules_header_is_rewritten_in_place_and_a_diagnostic_stays_on_the_authors_
     // A source with no header is handed over as it stands, for `purs` to answer.
     assert_eq!(headed("greet = 1\n", "Lib.CsvTools"), "greet = 1\n");
 
+    // The header is found through the arm's code mask, so a `module` an author wrote inside a
+    // comment above it is comment, and a comment holding text outside ASCII is read past rather than
+    // stumbled over.
+    assert_eq!(
+        headed(
+            "{- Helpers — see `module Prelude` 🚀 -}\nmodule Helpers where\ngreet = 1\n",
+            "Lib.CsvTools",
+        ),
+        "{- Helpers — see `module Prelude` 🚀 -}\nmodule Lib.CsvTools where\ngreet = 1\n"
+    );
+
     // Which is what the check really reports — at line 1, in the author's own file.
-    let failure =
-        check_module("greet = ((\n", &PrepareContext::new()).expect_err("a broken module");
+    let failure = compile_module("helpers", "greet = ((\n", &PrepareContext::detached())
+        .expect_err("a broken module");
     assert!(
-        failure.to_string().contains("module.purs:1:"),
+        failure.to_string().contains("Lib.Helpers.purs:1:"),
         "located in the author's own file: {failure}"
     );
 
     // And a mistake four lines down is at line four, because the rewrite added no line.
-    let failure = check_module(
+    let failure = compile_module(
+        "helpers",
         "module Helpers where\n\
          import Prelude\n\
          \n\
          greet :: String -> String\n\
          greet who = who + 1\n",
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a broken module");
     assert!(
-        failure.to_string().contains("module.purs:5:"),
+        failure.to_string().contains("Lib.Helpers.purs:5:"),
         "at the line the author wrote it on: {failure}"
     );
 }
 
 #[test]
-fn a_program_may_not_take_a_loaded_modules_own_name() {
-    // `purs` would answer this — two modules of one name — but it may report it against either file,
-    // and a diagnostic in a file the model did not write reads as gg's failure. So the model is told
-    // in a sentence naming the key it loaded.
+fn a_module_name_two_files_share_is_the_compilers_own_diagnostic() {
+    // Nothing refuses a name before the compiler runs. `purs` is given the program first and reports
+    // `DuplicateModule` against the first file it was given, so the collision arrives located at
+    // line 1 of the model's own file and in the compiler's own words.
     let failure = refusal_with(
         "module Lib.CsvTools where\n\
          \n\
@@ -497,8 +548,27 @@ fn a_program_may_not_take_a_loaded_modules_own_name() {
         panic!("expected a compile error, got {failure:?}");
     };
     assert!(
-        message.contains("Lib.CsvTools") && message.contains("CsvTools"),
-        "it names what collided: {message}"
+        message.contains("program.purs:1:1: DuplicateModule"),
+        "located at line 1 of the model's own file: {message}"
+    );
+
+    // A name the shipped library set publishes is the same answer, and it is the case nothing ever
+    // guarded: the program is still the first file `purs` was given.
+    let failure = refusal(
+        "module Data.Maybe where\n\
+         \n\
+         import Prelude\n\
+         import Effect (Effect)\n\
+         \n\
+         main :: Effect Unit\n\
+         main = pure unit\n",
+    );
+    let PrepareFailure::Program(PrepareError::Compile(message)) = &failure else {
+        panic!("expected a compile error, got {failure:?}");
+    };
+    assert!(
+        message.contains("program.purs:1:1: DuplicateModule"),
+        "located at line 1 of the model's own file: {message}"
     );
 }
 
@@ -610,7 +680,8 @@ fn a_purs_that_did_not_compile_the_tree_is_refused_by_name() {
 
     // And the compiler this suite is actually running against is the pinned one — which is the same
     // check the first compile of a run makes, made here against the developer's or CI's toolchain.
-    check_purs_version(&PrepareContext::new()).expect("the `purs` on PATH is the pinned release");
+    check_purs_version(&PrepareContext::detached())
+        .expect("the `purs` on PATH is the pinned release");
 }
 
 // WHAT USED TO BE HERE: `the_shipped_sdk_is_the_sdk_in_the_working_tree`, and the `sdk_sources`
@@ -661,12 +732,35 @@ fn the_shared_tree_is_sealed_and_each_preparation_gets_its_own() {
 
     // And two preparations compiling the same source get two trees, which is the property the
     // isolation gate drives at sixteen.
-    let first = PrepareContext::new();
-    let second = PrepareContext::new();
+    let first = PrepareContext::detached();
+    let second = PrepareContext::detached();
     assert!(compile_program(HELLO, &[], &first).is_ok());
     assert!(compile_program(HELLO, &[], &second).is_ok());
     assert_ne!(
         first.opened_workspace().expect("the compile opened one"),
         second.opened_workspace().expect("the compile opened one"),
     );
+}
+
+/// **An unresolved import is answered with the modules of this arm's set that match it.**
+///
+/// The one cell of the [cross-arm gate](crate::sandbox::language::imports) that needs `purs`: it
+/// drives a program importing a near-miss of a module this arm really carries through this arm's
+/// real preparation, and holds what comes back to the name the program wrote. What it catches is a
+/// compiler that reworded its own sentence, which is silent otherwise — the arm recovers nothing,
+/// every rejection falls back to the whole inventory, and nothing reports it.
+#[test]
+fn an_unresolved_import_is_answered_with_the_candidates_that_match_it() {
+    crate::sandbox::language::imports::gate(test_cabinet_core::gg::GgProgramLanguage::PureScript);
+}
+
+/// **A code module gg rebuilt beside a program is gg's own failure and never the model's.**
+///
+/// The one cell of the [cross-arm gate](crate::sandbox::language::rebuilds) that needs purs: it
+/// hands this arm's program step a module this workspace holds no build of and that purs refuses,
+/// and reads the band of what comes back. What it catches is a rebuild's diagnostic reaching a model
+/// under `Compiler error`, over a program that compiles and a file the model never wrote.
+#[test]
+fn a_code_module_refused_beside_a_program_is_ggs_failure() {
+    crate::sandbox::language::rebuilds::gate(test_cabinet_core::gg::GgProgramLanguage::PureScript);
 }

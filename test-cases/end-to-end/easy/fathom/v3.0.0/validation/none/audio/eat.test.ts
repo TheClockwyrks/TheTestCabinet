@@ -56,7 +56,16 @@ const TAIL_TICKS = ticksFor(0.5);
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  // ARMED, because this check reads what the build SOUNDED: an engineless build
+  // owns its own audio layer and is entitled to open it on the player's first
+  // interaction alone (`specs/progression.md`), so a cue driven before one would
+  // leave a perfectly good build silent. The harness makes that interaction — a
+  // real press of the key this case arms with, which is bound to nothing — before
+  // its opening `reset`, so it is spent and behind the restore by the time the
+  // check is handed the game, while the user activation it bought is not state
+  // and no reset undoes it. Asked for here rather than handed to every harness,
+  // so a fault in the gesture can only reach the points that are about sound.
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -64,11 +73,6 @@ afterEach(async () => {
 });
 
 it("sounds on the tick the forager eats a plankton, and not before", async () => {
-  // A real, browser-trusted gesture first: an engineless build owns its own audio
-  // layer and is entitled to open it on the player's first interaction alone
-  // (`specs/progression.md`), so a cue driven before one would leave a perfectly
-  // good build silent. The key is bound to nothing, so this changes no state.
-  await h.armAudio();
   await startPlaying(h);
   const run = await poseMoveKeyRun(h, "right");
   // A plankton on every corridor tile but the forager's own, as a laid-out maze

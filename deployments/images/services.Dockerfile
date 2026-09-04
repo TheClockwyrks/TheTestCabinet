@@ -45,6 +45,11 @@
 # `ARG WRANGLER_VERSION` inherits this default.
 ARG WRANGLER_VERSION=4.40.3
 
+# The published audio store the driver stage copies in. Declared here, before the
+# first FROM, because that is the only scope a `FROM` can resolve an ARG from; a
+# deployment overrides it with a digest to pin the store alongside its other images.
+ARG AUDIO_STORE_IMAGE=ghcr.io/theclockwyrks/test-cabinet-audio-store:latest
+
 # ── Shared build stage ───────────────────────────────────────────────────────
 # Compiles every service binary in ONE cargo invocation. The cargo registry/git, the
 # rustup toolchain and the build's target/ are BuildKit cache mounts, so a source
@@ -186,6 +191,15 @@ ENV PATH=/root/.local/bin:$PATH
 # one prefix, which is what makes a single mount enough; ~/.cache carries uv's own
 # downloads (a CPython and the pinned griffe) and /root/.npm the npm cache, for the same
 # reason.
+#
+# THE ~/.cache MOUNT EARNS ITS KEEP A SECOND WAY, and it is the reason it is worth
+# knowing it is here: `gg_fetch` (scripts/ci/fetch.sh) stages every large toolchain
+# archive under ~/.cache/tcab/downloads and leaves the PARTIAL file there when a transfer
+# is cut short. So a build that dies eight hundred megabytes into the 1.05 GB Swift
+# toolchain — which is what a flaky link does to a twelve-minute download — resumes on the
+# next `make images` instead of starting that download again. The installers delete their
+# own archives once the tree they feed has verified itself, so a build that succeeds
+# leaves the mount holding nothing but the caches named above.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/usr/local/rustup,id=rustup-gg,sharing=locked \
@@ -262,6 +276,22 @@ COPY . .
 RUN --mount=type=cache,target=/root/.npm \
     npm ci \
     && node scripts/stage-tcab-packages.mjs /opt/tcab-packages
+
+# ── Audio store stage (driver only) ──────────────────────────────────────────
+# The driver stages each run's declared audio packs into its run container out of a
+# host audio store (crates/core `audio_stage` → `/opt/audio`), so the driver image
+# carries one. The store is assembled by scripts/stage-audio-store.mjs, which reads
+# the private audio object store with the read-scoped R2 presign credentials, so it
+# is published ONCE as its own data-only image (containers/audio-store/Dockerfile)
+# and copied in from there. `COPY --from=` reads no build context, so this build
+# needs no audio credential, no Node step and no npm install, and a clean clone can
+# build every service image.
+#
+# `AUDIO_STORE_IMAGE` is declared globally above, because an ARG a `FROM` resolves
+# has to be. A tag that cannot be pulled fails the build here rather than shipping a
+# driver whose every full-stack, game-jam, sfx-sample and music run fails at
+# container start.
+FROM ${AUDIO_STORE_IMAGE} AS audio-store
 
 # ── Shared slim runtime ──────────────────────────────────────────────────────
 # The base for the four services that render nothing and shell out to nothing:
@@ -466,6 +496,12 @@ RUN chmod 0755 /usr/local/lib/tcab/gg
 # unprivileged `node` user below can read it during seeding.
 COPY --from=tcab-packages /opt/tcab-packages /opt/tcab-packages
 RUN chmod -R a+rX /opt/tcab-packages
+
+# The host audio store a run's declared audio packs are staged out of (crates/core
+# `TCAB_AUDIO_STORE`). World-readable for the same reason as the package store: the
+# driver reads it as the unprivileged `node` user below while starting a run.
+COPY --from=audio-store /opt/tcab-audio /opt/tcab-audio
+RUN chmod -R a+rX /opt/tcab-audio
 
 # Run as an unprivileged user: the Kubernetes runtime needs only API access (its
 # ServiceAccount token), never host privileges. The Node base already ships a

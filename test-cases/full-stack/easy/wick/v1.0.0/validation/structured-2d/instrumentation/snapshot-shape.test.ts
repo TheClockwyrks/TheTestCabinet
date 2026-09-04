@@ -1,6 +1,7 @@
 // Wick — instrumentation/snapshot-shape: on a posed run holding one of
 // everything, `snapshot()` reports every documented field with its documented
-// type, nested entries included, with the values that were posed.
+// type, `almanacTab`, `almanacScroll`, and `run.hurtFlash` among them, nested
+// entries included, with the values that were posed.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`,
 // "Snapshot shape": the block that lists every field of the object and of each
@@ -54,6 +55,8 @@ const SNAPSHOT_FIELDS = [
   "version",
   "screen",
   "menuIndex",
+  "almanacTab",
+  "almanacScroll",
   "spawning",
   "events",
   "despawning",
@@ -77,6 +80,7 @@ const RUN_FIELDS = [
   "xpToNext",
   "kills",
   "player",
+  "hurtFlash",
   "maxHp",
   "armor",
   "moveSpeed",
@@ -108,6 +112,7 @@ const RUN_NUMBERS = [
   "xp",
   "xpToNext",
   "kills",
+  "hurtFlash",
   "maxHp",
   "armor",
   "moveSpeed",
@@ -197,6 +202,10 @@ it("reports the whole documented shape from a posed run", async () => {
   assertEqual(s.version, WICK_DEBUG_VERSION, "snapshot().version");
   assertTypeOf(s.screen, "string", "snapshot().screen");
   assertTypeOf(s.menuIndex, "number", "snapshot().menuIndex");
+  for (const field of ["almanacTab", "almanacScroll"] as const) {
+    assertTypeOf(s[field], "number", `snapshot().${field}`);
+    assertEqual(s[field], 0, `snapshot().${field} on playing`);
+  }
   for (const flag of [
     "spawning",
     "events",
@@ -230,6 +239,7 @@ it("reports the whole documented shape from a posed run", async () => {
   assertEqual(run.player.y, 0, "run.player.y");
   assertEqual(run.player.facing, "right", "run.player.facing");
   assertEqual(run.player.hp, POSED_HP, "run.player.hp");
+  assertEqual(run.hurtFlash, 0, "run.hurtFlash on a run that has taken no hit");
 
   // The loadout.
   assertDeepEqual(

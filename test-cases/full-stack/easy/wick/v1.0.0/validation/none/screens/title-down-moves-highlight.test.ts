@@ -4,7 +4,7 @@
 // WHERE THE THRESHOLD COMES FROM. specs/ui.md ("`title`"): "`menuIndex` is `0`
 // on arriving. `up` and `down` move the highlight by one item and wrap at both
 // ends". specs/controls.md ("What each screen reads"), the `title` row: "`up`,
-// `down` move the highlight, wrapping at both ends", read as press edges.
+// `down` move the highlight, wrapping", read as press edges.
 // specs/controls.md ("Actions and bindings"): "`down` | `ArrowDown`, `KeyS`".
 //
 // WHY THE WORLD IS POSED AS IS. Nothing is posed. The harness's opening reset

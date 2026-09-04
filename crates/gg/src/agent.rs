@@ -153,8 +153,8 @@ use test_cabinet_core::gg::{
     GgCapabilitySet, GgContextAction, GgContextSource, GgHookAgentKind, GgHookEvent,
     GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgProgramLanguage, GgReviewer, GgRosterEntry,
     GgRunLimits, GgSlotBinding, GgSubagentScope, GgTelemetryKind, GgUndocumentedCalls,
-    PARAM_SIGNAL_THRESHOLD_PERCENT, PARAM_SKILLS_DIR, PARAM_TOP_FILE_VIEWS, PARAM_WINDOW_LIMIT,
-    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
+    MAX_OPENING_TREE_DEPTH, PARAM_SIGNAL_THRESHOLD_PERCENT, PARAM_SKILLS_DIR, PARAM_TOP_FILE_VIEWS,
+    PARAM_WINDOW_LIMIT, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
 };
 use test_cabinet_core::gg_session_journal::GG_SESSION_JOURNAL_PATH;
 use test_cabinet_core::gg_session_record::{
@@ -6481,7 +6481,14 @@ impl Agent {
         // Built **before** the documentation runtime because it owns the other half of that runtime's
         // answer: a used module and its declarations join this agent's documentation surface, and the
         // runtime reads them through a handle to this registry rather than through a copy of it.
-        let mut knowledge = crate::knowledge::KnowledgeModules::new();
+        // The ground every program this agent compiles stands on: one private tree, created when
+        // this agent starts and removed when it ends. `drive` holds a handle of its own for the
+        // whole session so the tree's life is exactly the agent's, whatever happens to the registry
+        // the turn path moves in and out of the loop's api.
+        let compile_workspace = crate::sandbox::AgentWorkspace::new();
+        #[cfg(test)]
+        record_compile_workspace(&compile_workspace);
+        let mut knowledge = crate::knowledge::KnowledgeModules::new(compile_workspace.clone());
         let mut docs = crate::docs::DocsRuntime::new(
             granted_capabilities.clone(),
             ending_role,
@@ -6615,6 +6622,7 @@ impl Agent {
                 &mut programs,
                 crate::bootstrap::BootstrapAgent {
                     opening_turn: &profile.opening_turn,
+                    tool_ctx,
                     capabilities: &granted_capabilities,
                     operations: &granted_operations,
                     role: ending_role,
@@ -7429,8 +7437,9 @@ impl Agent {
             // recorded at whichever of this loop's exits the turn eventually takes — and is empty
             // on a run that left the capability disarmed, which is the default.
             let loop_aborts = response.loop_aborts;
-            // The reply's size — its raw text, exactly as sent — threaded to every
-            // record_turn of this turn so the outcome event carries it; see [`ResponseSize`].
+            // The reply's size — its text plus every submitted program, exactly as sent —
+            // threaded to every record_turn of this turn so the outcome event carries it; see
+            // [`ResponseSize`].
             let response_size = ResponseSize::of(&response);
             if loop_aborts.any() {
                 // Said out loud, and said as a `warn`: every one of those replies was generated,
@@ -8738,8 +8747,8 @@ impl Agent {
             loop_abort_words: loop_aborts.words,
             loop_abort_chars: loop_aborts.chars,
             // The reply's size, in the two units an output ceiling would be judged in. Ridden on
-            // the outcome event because the summary folds its maxima over exactly the turns that
-            // worked, and the outcome is the only event that knows which those were.
+            // the outcome event because the summary folds its maxima over every turn but the
+            // length-capped one, and the outcome is the only event that names which turn that was.
             response_chars: response.chars,
             response_output_tokens: response.output_tokens,
         });
@@ -11291,6 +11300,20 @@ fn check_opening_turn(profile: &GgAgentConfig, report: &mut crate::validate::Lau
             ),
         ));
     }
+    // The depth is refused where it is written rather than where it would be honoured, and whether
+    // or not the tree is switched on: a document holding a number gg would not honour is a document
+    // whose author is owed the refusal now, not on the day somebody flips the switch.
+    let depth = profile.opening_turn.tree.depth;
+    if !(1..=MAX_OPENING_TREE_DEPTH).contains(&depth) {
+        report.report(crate::validate::LaunchDefect::run_level(
+            "openingTurn.tree.depth",
+            depth.to_string(),
+            format!(
+                "an opening turn's workspace tree is walked between 1 and {MAX_OPENING_TREE_DEPTH} \
+                 levels below the workspace root; `{depth}` is not a depth gg would honour."
+            ),
+        ));
+    }
 }
 
 /// The capability modules a code program has this run, in the catalogue's own order, each with the
@@ -12389,11 +12412,13 @@ fn record_usage(response: &ModelResponse, emitter: &Emitter, profile_id: &str, m
 /// Threaded into [`record_turn`](Agent::record_turn) so the turn's outcome event carries it and
 /// [`GgSessionSummary::max_response_chars`](test_cabinet_core::gg::GgSessionSummary) /
 /// [`max_response_output_tokens`](test_cabinet_core::gg::GgSessionSummary) can be folded as maxima
-/// over the turns that **worked** — the datum the owner reads before choosing an output ceiling,
-/// which must accommodate every reply that was doing its job.
+/// over every turn the provider did not cut off at its output cap, whatever gg made of the turn —
+/// the datum the owner reads before choosing an output ceiling, which must accommodate every reply
+/// the model generated whole.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct ResponseSize {
-    /// The reply's raw text, in characters.
+    /// The reply's generated characters: its raw text plus the `program` string of every
+    /// `submit_program` call it carried.
     chars: u64,
     /// The reply's completion tokens (output plus reasoning), when the provider reported usage.
     output_tokens: u64,
@@ -12545,6 +12570,32 @@ use transitions::{
 mod teardown;
 
 use teardown::{AgentTeardown, SpawnerLink};
+
+/// **Every compile workspace a session has allocated in this process**, oldest first.
+///
+/// An agent's tree is allocated inside [`Agent::drive`] and reachable from nowhere the loop hands
+/// back, so the gate that drives a real session and counts what that session compiled reads it from
+/// here. nextest runs one process per test, so what this holds is one test's own sessions.
+#[cfg(test)]
+static DRIVEN_WORKSPACES: Mutex<Vec<crate::sandbox::AgentWorkspace>> = Mutex::new(Vec::new());
+
+/// File the tree a session is about to compile in.
+#[cfg(test)]
+fn record_compile_workspace(workspace: &crate::sandbox::AgentWorkspace) {
+    DRIVEN_WORKSPACES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .push(workspace.clone());
+}
+
+/// The compile workspaces the sessions driven in this process were given, oldest first.
+#[cfg(test)]
+fn driven_workspaces() -> Vec<crate::sandbox::AgentWorkspace> {
+    DRIVEN_WORKSPACES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+}
 
 #[cfg(test)]
 #[path = "agent.test.rs"]

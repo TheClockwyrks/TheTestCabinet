@@ -16,30 +16,56 @@
 // the build wrote are what run from there.
 //
 // WHY THE DEBUG SURFACE RATHER THAN RAW ASSIGNMENT. specs/instrumentation.md
-// fixes its operations, so they mean the same thing in every build: `startMatch`
-// opens on the pre-serve countdown, a control op takes the paddles from the
-// player and the AI, a posed `vy` persists across frames, and `reset` gives
-// everything back. Posing through it is how a scenario is reproducible, and it
-// is the seam the case's specification documents. `surface.ts` is that
-// specification as types, and it is the only description of the surface this
-// harness reads: the build's own module for it is never imported.
+// fixes its operations, so they mean the same thing in every build: a screen is
+// set by `setScreen`, a paddle is taken from the player by `setPaddleDriven`,
+// and `reset` gives everything back. Posing through it is how a scenario is
+// reproducible, and it is the seam the case's specification documents.
+// `surface.ts` is that specification as types, and it is the only description of
+// the surface this harness reads: the build's own module for it is never
+// imported.
 //
-// WHERE THE SURFACE COMES FROM. Off `engine.debug`, never built here. The game
-// instance's `initialize` returns it, the engine holds that same object, and
-// reading it back off the engine is the only way a surface reaches a check —
-// so a build that returned no surface, or a surface missing an operation, fails
-// the checks that reach the game through it. See `readDebugSurface`.
+// EVERY OPERATION IS ATOMIC, AND THE SEQUENCES LIVE HERE. Each operation sets
+// one field or one fixed pair, places or removes one entity, reads the state, or
+// moves the clock; `reset` alone restores everything at once. The surface carries
+// nothing that starts a match, reaches a screen, or stages a rally, because a
+// sequence of atomic operations is exactly what this file is for: the SCENARIO
+// HELPERS below are those sequences, written once and shared by every check. A
+// check that needs the whole of a sequence calls the helper, and a check that
+// needs only part of it calls the operations it needs. That distinction is what
+// the retired `startMatch` destroyed — it took both paddles from the player on
+// its way to the countdown, so no check could open a match and then press a
+// movement key — and it is why every helper below is assembled from parts a
+// check can call on its own.
+//
+// A CHECK POSES AN ISOLATED WORLD. `clearWorld`, `spawnBall` and `spawnObstacle`
+// are what let a check hold only what its requirement concerns: it clears the
+// field and spawns back exactly what the check is about. Nothing here parks a
+// spare ball in a corner or pins an obstacle still to keep it quiet —
+// containment leans on the game's own rules holding, and a broken build is
+// broken in exactly those rules, so a contained bystander makes one check report
+// another check's defect. The paddles are the one exception the specification
+// names: they are field furniture the game always has and no operation removes,
+// so a check that must keep one out of the way takes it from the player with
+// `setPaddleDriven` and holds it there.
 //
 // HOW THE SURFACE IS DRIVEN. Directly. Each operation is a method that acts on
 // the live world at the moment of the call — the instance holds the engine, and
-// `engine.world` follows transitions — so a pose is `h.debug.serve()` and a
-// reading is `h.debug.snapshot()`, with nothing in between. One consequence is
-// worth stating once, here: a SCREEN-CHANGING pose (`startMatch`, a `reset`
+// `engine.world` follows transitions — so a pose is `h.debug.setScreen("paused")`
+// and a reading is `h.debug.snapshot()`, with nothing in between. One consequence
+// is worth stating once, here: a SCREEN-CHANGING pose (`setScreen`, a `reset`
 // away from the title) may land at the call or as late as the end of the next
 // advanced frame — the spec fixes the arrangement, not the moment, and both
 // designs are conformant — so a scenario poses, advances a frame, and then
-// reads, which is correct under either design. The scenario helpers below
-// carry those advances so a check does not have to.
+// reads, which is correct under either design. The scenario helpers below carry
+// those advances so a check does not have to.
+//
+// THE KEYBOARD, THE MOUSE AND THE FINGER. specs/ui.md drives the menus with all
+// three, so this harness dispatches all three at the event target the engine
+// listens on: a `KeyboardEvent`-shaped event for a key, and a
+// `PointerEvent`-shaped event carrying `pointerType` for a mouse, a pen or a
+// touch contact. Everything past the dispatch — the mapping onto logical units,
+// the edges, the contacts — is the engine's own, so what a check drives is the
+// pipeline a player drives.
 //
 // THE CLOCK. `ConstantClock(TICK_MS)` is the default, so one frame is one
 // 120 Hz tick and every duration below is a whole number of them, which is the
@@ -66,6 +92,8 @@ import {
   type GameDefinition,
   type GameInstance,
   type GameState,
+  type PointerButton,
+  type PointerDevice,
   type RecordedFrame,
   type Recording,
   type Resource,
@@ -74,38 +102,79 @@ import {
   type World,
 } from "@test-cabinet/structured-2d";
 import {
+  BALL_COUNT,
   BALL_R,
   FIELD_CX,
   FIELD_CY,
   FIELD_H,
   FIELD_W,
+  HOLD_TIME,
   LAYOUT,
+  OBSTACLES,
   P1_X1,
   P2_X0,
-} from "../src/constants";
+  WIN_SCORE,
+} from "./constants";
 import { BACKGROUND, game as build } from "../src/game";
-import { assertEqual, assertNotEqual, assertTruthy, fail } from "./assert";
+import { assertEqual, assertTruthy, fail } from "./assert";
 import type {
   BallSnapshot,
   CaromDebugApi,
   CaromSnapshot,
+  MenuRect,
   Mode,
+  MultiBallOps,
+  ResumeScreen,
+  Screen,
   Side,
+  SingleBallOps,
 } from "./surface";
 
-export type { Mode, Side };
+export type { MenuRect, Mode, ResumeScreen, Screen, Side };
 
-/** The case's surface, exactly as `surface.ts` specifies it. */
-export type CaromSurface = CaromDebugApi;
+/* -------------------------------------------------------------------------- */
+/* The two typed views of one surface                                         */
+/* -------------------------------------------------------------------------- */
+//
+// A BALL INDEX IS A `multi` CONCEPT. `base` and `gyre` play with one ball and
+// none of their ball operations takes an index; `multi` plays with three and
+// every one of its ball operations takes `index` FIRST. `surface.ts` writes the
+// two shapes out as {@link SingleBallOps} and {@link MultiBallOps} and makes
+// `CaromDebugApi` generic over them, so ONE object is described by two types and
+// a caller says which variant it is driving by which type it holds.
+//
+// Both views are exposed here, over the same object, so neither a `base` check
+// nor a `multi` check needs a cast: `h.debug.setBallPosition(x, y)` under `base`
+// and `gyre`, `h.debugMulti.setBallPosition(index, x, y)` under `multi`. They
+// are NOT unioned, because a union is what forces the cast back on every call
+// site.
+//
+// A check that runs under EVERY variant — most of this suite — holds neither
+// view for a ball operation. It goes through {@link ballOps}, which binds one
+// ball's operations into the no-index shape whichever variant is underneath, and
+// which is the single place in this file that has to know that the two exist.
+// Every operation that is NOT a ball operation is identical in both views, so a
+// shared check reaches those through `h.debug` like any other.
+
+/** The surface as `base` and `gyre` carry it: one ball, no index anywhere. */
+export type CaromSurface = CaromDebugApi<SingleBallOps>;
+
+/**
+ * The same object as `multi` carries it: `index` first on every ball operation.
+ *
+ * Reached through `h.debugMulti`, which is `h.debug` under this type rather than
+ * a second object.
+ */
+export type CaromMultiSurface = CaromDebugApi<MultiBallOps>;
 
 /**
  * The surface as every check drives it.
  *
  * Under this engine the raw surface IS imperative — a pose takes only its own
- * arguments and returns nothing, a reading takes nothing and returns plain
- * data — so no wrapper stands between a check and the object the build
- * returned, and the driver type is the surface type itself. The alias is kept
- * so a check reads the same way it does under an engine whose surface needs
+ * arguments and returns nothing, a reading takes only its own arguments and
+ * returns plain data — so no wrapper stands between a check and the object the
+ * build returned, and the driver type is the surface type itself. The alias is
+ * kept so a check reads the same way it does under an engine whose surface needs
  * driving.
  */
 export type CaromDriver = CaromSurface;
@@ -125,7 +194,7 @@ const game = build as unknown as GameDefinition<CaromSurface>;
 /**
  * The frame the suite steps in, in milliseconds.
  *
- * This is the SUITE's choice, not the game's: `src/constants.ts` deliberately
+ * This is the SUITE's choice, not the game's: the case's own `validation/constants.ts` deliberately
  * fixes no timestep, because the engine hands the game whatever elapsed time a
  * frame really took. Fixing it here makes a duration a whole number of frames, so
  * a tolerance can be stated in ticks and mean the same thing on every machine.
@@ -162,8 +231,9 @@ export type BallView = BallSnapshot;
  * The variants agree about what a ball IS and disagree only about how many there
  * are, so a check about the ball — its bounce, its spin, its speed off a paddle —
  * is the same check under all three, driven against ball zero. What makes that
- * sound under `multi` is {@link parkSpares}, which puts the other two balls out
- * of the scenario before it is posed, so the reading is of the driven ball alone.
+ * sound under `multi` is isolation: a shared scenario clears the field and spawns
+ * ONE ball back (see {@link isolateField}), so the reading is of the driven ball
+ * and the other two are not on the field to interfere.
  *
  * `CaromSnapshot` declares both shapes as optional, because which one a build
  * reports is its variant's to decide. A build reporting neither fails by
@@ -180,91 +250,71 @@ export function ball0(snapshot: CaromSnapshot): BallView {
   return one as BallView;
 }
 
-/** Every ball a snapshot reports, in play order. */
+/**
+ * Every ball a snapshot reports, in play order.
+ *
+ * A cleared field reports `balls: []` under `multi` and `ball: null` under the
+ * other two, so both read back as no balls at all — which is what makes
+ * {@link isolateField} verifiable by reading it.
+ */
 export function allBalls(snapshot: CaromSnapshot): BallView[] {
   if (snapshot.balls !== undefined) return snapshot.balls;
-  return snapshot.ball === undefined ? [] : [snapshot.ball];
-}
-
-/* -------------------------------------------------------------------------- */
-/* Readings off the open world's game state                                   */
-/* -------------------------------------------------------------------------- */
-//
-// The game's state lives in the framework objects the engine owns
-// (specs/state.md), and its arrangement is the build's — EXCEPT where the
-// specification itself names a field of `state`. specs/ui.md and specs/balls.md
-// state their rules against `state.menuIndex`, `state.resumeScreen`,
-// `state.receiver`, and `state.holdTimer`, so those four are readable off
-// `world.state` of the open world in every conformant build, and the helpers
-// below are that reading. Each asserts the field's presence with the spec that
-// names it, so a build that kept the value elsewhere fails on the naming rather
-// than on a `TypeError` downstream.
-//
-// (`receiver` and a single match-wide `holdTimer` belong to the one-ball
-// variants alone: under `multi` each ball carries its own hold and no receiver
-// exists, and no field of `state` is fixed for them — a multi check reads a
-// ball's `held` flag through `snapshot()` instead.)
-
-/** The open world's game state, read loosely for the spec-named fields. */
-function stateRecord(h: Harness): Record<string, unknown> {
-  return h.state as unknown as Record<string, unknown>;
-}
-
-/** The highlighted menu item, read off the open world's game state. */
-export function menuIndex0(h: Harness): number {
-  const value = stateRecord(h).menuIndex;
-  assertEqual(
-    typeof value,
-    "number",
-    "the open world's game state must hold the highlighted item as " +
-      "`menuIndex`; see specs/ui.md",
-  );
-  return value as number;
-}
-
-/** The screen the pause menu resumes to, read off the game state. */
-export function resumeScreen0(h: Harness): string {
-  const value = stateRecord(h).resumeScreen;
-  assertEqual(
-    typeof value,
-    "string",
-    "the match's game state must hold the screen the pause menu resumes to " +
-      "as `resumeScreen`; see specs/ui.md",
-  );
-  return value as string;
+  const one = snapshot.ball;
+  return one === undefined || one === null ? [] : [one];
 }
 
 /**
- * The side the next serve travels toward: `base` and `gyre` only, where
- * specs/balls.md states the serve against `state.receiver`.
+ * Whether the build underneath plays with INDEXED balls.
+ *
+ * The discriminator is the one specs/instrumentation.md fixes: `multi` reports
+ * its balls as `balls`, each entry under its own `index`, and `base` and `gyre`
+ * report the single ball as `ball` with no index on it. It is read off the
+ * snapshot rather than off the shape of the build's functions, so it says what
+ * the specification says and not what a build's argument list happens to look
+ * like, and it answers on a CLEARED field too: `multi` reports `balls: []` where
+ * `base` and `gyre` report `ball: null`.
  */
-export function receiver0(h: Harness): Side {
-  const value = stateRecord(h).receiver;
-  assertNotEqual(
-    value,
-    undefined,
-    "the match's game state must hold the next serve's side as `receiver`; " +
-      "see specs/balls.md",
-  );
-  return value as Side;
+export function isMultiBall(h: Harness): boolean {
+  return h.snapshot().balls !== undefined;
 }
 
 /**
- * Seconds remaining of the pre-serve hold: `base` and `gyre` only, where
- * specs/balls.md counts the one match-wide `state.holdTimer` down. Under
- * `multi` each ball carries a hold of its own and no field of `state` is
- * fixed for it, so a multi check reads the driven ball's `held` flag through
- * `snapshot()` instead of coming here.
+ * One ball's six operations in the no-index shape, whichever variant is
+ * underneath.
+ *
+ * This is the ONLY place in the suite that has to know that the two ball shapes
+ * exist. A `base` or `gyre` check drives `h.debug` directly and a `multi` check
+ * drives `h.debugMulti` directly, each in its own variant's slice with no cast;
+ * a SHARED check — one that runs under all three — cannot name either, so it
+ * comes here and drives ball `index` through a facade that is `SingleBallOps`
+ * under both.
+ *
+ * Under `base` and `gyre` the facade IS the surface, so nothing stands between
+ * the check and the build's own method. Under `multi` each call forwards with
+ * `index` in front. Asking for an index other than `0` of a single-ball build is
+ * a fault in the CHECK rather than in the build, and it fails here naming the
+ * ball asked for, rather than reaching a build operation that has no such
+ * argument.
  */
-export function holdTimer0(h: Harness): number {
-  const value = stateRecord(h).holdTimer;
-  assertEqual(
-    typeof value,
-    "number",
-    "the match's game state must hold the pre-serve hold as `holdTimer`; " +
-      "see specs/balls.md",
-  );
-  return value as number;
+export function ballOps(h: Harness, index = 0): SingleBallOps {
+  if (!isMultiBall(h)) {
+    assertEqual(
+      index,
+      0,
+      "the ball asked for: base and gyre play with one ball, so ball 0 is " +
+        "the only one there is (specs/instrumentation.md)",
+    );
+    return h.debug;
+  }
+  const many = h.debugMulti;
+  return {
+    spawnBall: () => many.spawnBall(index),
+    setBallPosition: (x, y) => many.setBallPosition(index, x, y),
+    setBallVelocity: (vx, vy) => many.setBallVelocity(index, vx, vy),
+    setBallSpin: (spin) => many.setBallSpin(index, spin),
+    setBallHeld: (held) => many.setBallHeld(index, held),
+    setBallHoldTimer: (seconds) => many.setBallHoldTimer(index, seconds),
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -320,6 +370,58 @@ export interface HarnessOptions {
   dpr?: number;
 }
 
+/**
+ * Which pointer a dispatched event comes from, and what it is holding.
+ *
+ * The engine reads `pointerType`, `pointerId`, `isPrimary`, `button` and
+ * `buttons` off a pointer event and nothing else (the engine's `input.md`), so
+ * these are exactly the facts a check can vary. Every one of them has a default
+ * that describes an ordinary left mouse button, which is what most menu checks
+ * want.
+ */
+export interface PointerOptions {
+  /**
+   * Which kind of device drove it, carried as `pointerType`.
+   *
+   * `"touch"` is a finger and `"mouse"` is a mouse, and the engine reports the
+   * difference to the game as `device`. It is what lets one check drive a menu
+   * with a mouse and its sibling drive the same menu with a finger, over the
+   * same helpers.
+   */
+  device?: PointerDevice;
+  /**
+   * Which pointer, carried as `pointerId`. A mouse keeps one id for the life of
+   * the page, and each touch contact gets its own — so a check about a second
+   * finger landing gives it an id of its own.
+   */
+  id?: number;
+  /** Whether this is the primary pointer, the one the snapshot and edges follow. */
+  primary?: boolean;
+  /** The button a press or a release names. Defaults to the primary button. */
+  button?: PointerButton;
+  /**
+   * The buttons the pointer holds once the event has been applied.
+   *
+   * Left out, the harness keeps the count itself: a press adds its button, a
+   * release drops it, and a move reports whatever the pointer is still holding.
+   * Stating it is for a check that is about the mask itself.
+   */
+  buttons?: readonly PointerButton[];
+}
+
+/** How a drag is dispatched: where it stops on the way, and how long it takes. */
+export interface DragOptions extends PointerOptions {
+  /** How many moves the travel is dispatched as. Defaults to four. */
+  steps?: number;
+  /** Frames advanced after the press and after each move. Defaults to one. */
+  framesPerStep?: number;
+  /**
+   * Whether the drag ends with a release at `to`. Defaults to `true`; `false`
+   * leaves the pointer down, for a check about a gesture still in progress.
+   */
+  release?: boolean;
+}
+
 /** How far a sweep may run, and how many frames separate two samples. */
 export interface UntilOptions {
   maxFrames?: number;
@@ -344,8 +446,9 @@ export interface Harness {
   readonly world: World;
   /**
    * The open world's game state, read fresh on every access. Its arrangement
-   * is the build's (specs/state.md); the spec-named fields on it are read
-   * through {@link menuIndex0} and its siblings.
+   * is the build's to design (specs/state.md), so nothing here reads a field
+   * off it: every value the specification names is reported by `snapshot()`,
+   * and that is where a check reads it.
    */
   readonly state: GameState;
   /** The game instance, the one framework object that outlives every level. */
@@ -354,8 +457,26 @@ export interface Harness {
    * The debug surface the BUILD's instance returned from `initialize`, read
    * off `engine.debug` — see {@link readDebugSurface} — and driven directly:
    * each operation acts on the live world at the moment of the call.
+   *
+   * Typed as `base` and `gyre` carry it, which is the shape every operation
+   * that is NOT a ball operation has in all three variants. A `multi` check
+   * reaches the indexed ball operations through {@link debugMulti}, and a check
+   * that runs under every variant reaches one ball's through {@link ballOps}.
    */
   readonly debug: CaromDriver;
+  /**
+   * The SAME object, typed as `multi` carries it: `index` first on every ball
+   * operation.
+   *
+   * Not a second surface and not a copy — `h.debug` and `h.debugMulti` are one
+   * object under two types, so a `multi` check writes
+   * `setBallPosition(index, x, y)` and a `base` check writes
+   * `setBallPosition(x, y)`, each without a cast. Reaching for it from a check
+   * that is not multi's compiles and then drives the build's single-ball
+   * operation with an index as its first coordinate, so a variant slice holds
+   * the view its own specification names and no other.
+   */
+  readonly debugMulti: CaromMultiSurface;
   /** The real 2D context, for `getImageData`. Draw calls also reach it. */
   readonly ctx: SKRSContext2D;
   /**
@@ -398,6 +519,44 @@ export interface Harness {
    */
   tap(code: string): Promise<void>;
 
+  /**
+   * Move the pointer to a logical point, with no button pressed.
+   *
+   * Every pointer method below dispatches a `PointerEvent`-shaped event at the
+   * target the engine listens on and lets the ENGINE do the rest — the mapping
+   * onto logical units, the contacts, the edges — so what a check drives is the
+   * pipeline a player drives. The position is given in the same logical units
+   * `menuItemRect` reports, and the harness converts it back to the client
+   * position an event carries.
+   */
+  pointerMove(x: number, y: number, options?: PointerOptions): void;
+  /** Press a button at a logical point, bringing the pointer into contact. */
+  pointerDown(x: number, y: number, options?: PointerOptions): void;
+  /** Release a button at a logical point, ending the contact it was holding. */
+  pointerUp(x: number, y: number, options?: PointerOptions): void;
+  /** End a contact the way the browser does when it takes the gesture back. */
+  pointerCancel(x: number, y: number, options?: PointerOptions): void;
+  /**
+   * Press and release at one logical point, then run the one frame that reads
+   * both edges.
+   *
+   * A press and the release that follows it may arrive on one frame, and that
+   * frame is the one specs/ui.md says confirms.
+   */
+  pointerTap(x: number, y: number, options?: PointerOptions): Promise<void>;
+  /**
+   * Press at `from`, travel to `to` over driven frames, and release there.
+   *
+   * The travel is dispatched as separate moves with a frame between them, so
+   * the game reads the gesture as a player's rather than as a teleport, and a
+   * build that resolves each sample sees the path the drag took.
+   */
+  pointerDrag(
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    options?: DragOptions,
+  ): Promise<void>;
+
   /** Where a logical point lands in the canvas's backing store. */
   device(x: number, y: number): { x: number; y: number };
   /** The device pixel under a logical point, as `[r, g, b, a]`. */
@@ -420,9 +579,106 @@ class KeyEvent extends Event {
 }
 
 /**
+ * A `PointerEvent`-shaped event: the engine reads exactly these six fields.
+ *
+ * A class rather than an object literal over `new Event(...)` so every
+ * dispatched pointer carries the whole set and none of them can be forgotten at
+ * one call site. `clientX` and `clientY` are CSS pixels from the canvas's
+ * top-left corner, which is what a surface with no `origin` reads them as (the
+ * engine's `input.md`).
+ */
+class PointerShapedEvent extends Event {
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly pointerId: number;
+  readonly pointerType: string;
+  readonly isPrimary: boolean;
+  readonly button: number;
+  readonly buttons: number;
+
+  constructor(
+    type: PointerEventType,
+    fields: {
+      clientX: number;
+      clientY: number;
+      pointerId: number;
+      pointerType: string;
+      isPrimary: boolean;
+      button: number;
+      buttons: number;
+    },
+  ) {
+    super(type);
+    this.clientX = fields.clientX;
+    this.clientY = fields.clientY;
+    this.pointerId = fields.pointerId;
+    this.pointerType = fields.pointerType;
+    this.isPrimary = fields.isPrimary;
+    this.button = fields.button;
+    this.buttons = fields.buttons;
+  }
+}
+
+/** The four pointer events the engine listens for. */
+type PointerEventType =
+  "pointerdown" | "pointermove" | "pointerup" | "pointercancel";
+
+/**
+ * The browser's own numbering for `PointerEvent.button`, which the engine reads
+ * a button's name out of. `-1` is the value a move carries: the field saying the
+ * event is about position rather than about a button.
+ */
+const BUTTON_INDEX: Readonly<Record<PointerButton, number>> = {
+  primary: 0,
+  auxiliary: 1,
+  secondary: 2,
+  back: 3,
+  forward: 4,
+};
+
+/** The bit each button occupies in the `PointerEvent.buttons` mask. */
+const BUTTON_BIT: Readonly<Record<PointerButton, number>> = {
+  primary: 1,
+  secondary: 2,
+  auxiliary: 4,
+  back: 8,
+  forward: 16,
+};
+
+/** The `buttons` mask a set of held buttons makes. */
+function buttonMask(held: Iterable<PointerButton>): number {
+  let mask = 0;
+  for (const button of held) mask |= BUTTON_BIT[button];
+  return mask;
+}
+
+/**
+ * The client position a logical point sits at, which is what a dispatched
+ * pointer event carries.
+ *
+ * The inverse of the conversion the engine documents: it takes a client
+ * position, subtracts the surface's origin (`(0, 0)` here, because the harness
+ * declares none), multiplies by the device pixel ratio, and maps it through the
+ * inverse viewport. Going the other way is the viewport map followed by a
+ * division by the ratio, so a check names a point in the units
+ * `menuItemRect` reports and the game reads that same point back.
+ */
+function toClient(
+  view: Viewport,
+  dpr: number,
+  x: number,
+  y: number,
+): { x: number; y: number } {
+  return {
+    x: (view.offsetX + x * view.scale) / dpr,
+    y: (view.offsetY + y * view.scale) / dpr,
+  };
+}
+
+/**
  * A logical point's device pixel, through the world's camera and the engine's
  * fit. The camera opens at the defaults — world and logical coordinates
- * coincide, which is the space every figure in `src/constants.ts` is stated
+ * coincide, which is the space every figure the specification fixes is stated
  * in — so the projection is the identity unless the build moved it, and
  * mapping through it keeps the reading honest either way.
  */
@@ -640,6 +896,68 @@ export async function createHarness(
     keys.dispatchEvent(new KeyEvent(type, code));
   };
 
+  /**
+   * What each pointer id is holding, so a move dispatched mid-drag reports the
+   * mask a real one would and a check never has to state it.
+   *
+   * The engine keeps a contact for as long as a pointer holds a button, so the
+   * mask is what says whether a drag is still in progress; keeping the count
+   * here is what lets `pointerMove` be a one-argument call during one.
+   */
+  const held = new Map<number, Set<PointerButton>>();
+
+  const heldBy = (id: number): Set<PointerButton> => {
+    const existing = held.get(id);
+    if (existing !== undefined) return existing;
+    const created = new Set<PointerButton>();
+    held.set(id, created);
+    return created;
+  };
+
+  const point = (
+    type: PointerEventType,
+    x: number,
+    y: number,
+    options: PointerOptions,
+    button: PointerButton | null,
+  ): void => {
+    const id = options.id ?? 0;
+    const at = toClient(engine.viewport(), dpr, x, y);
+    const mask =
+      options.buttons === undefined
+        ? buttonMask(heldBy(id))
+        : buttonMask(options.buttons);
+    keys.dispatchEvent(
+      new PointerShapedEvent(type, {
+        clientX: at.x,
+        clientY: at.y,
+        pointerId: id,
+        pointerType: options.device ?? "mouse",
+        isPrimary: options.primary ?? true,
+        // A move is about position rather than about a button, which the field
+        // says with -1 (the engine's `input.md`).
+        button: button === null ? -1 : BUTTON_INDEX[button],
+        buttons: mask,
+      }),
+    );
+  };
+
+  const move = (x: number, y: number, options: PointerOptions): void => {
+    point("pointermove", x, y, options, null);
+  };
+
+  const down = (x: number, y: number, options: PointerOptions): void => {
+    const button = options.button ?? "primary";
+    heldBy(options.id ?? 0).add(button);
+    point("pointerdown", x, y, options, button);
+  };
+
+  const up = (x: number, y: number, options: PointerOptions): void => {
+    const button = options.button ?? "primary";
+    heldBy(options.id ?? 0).delete(button);
+    point("pointerup", x, y, options, button);
+  };
+
   const harness: Harness = {
     engine,
     get world() {
@@ -650,6 +968,7 @@ export async function createHarness(
     },
     instance,
     debug,
+    debugMulti: debug as unknown as CaromMultiSurface,
     ctx,
     canvas,
     calls,
@@ -692,6 +1011,38 @@ export async function createHarness(
       dispatch("keydown", code);
       dispatch("keyup", code);
       await engine.advance(1);
+    },
+
+    pointerMove: (x, y, options = {}) => move(x, y, options),
+    pointerDown: (x, y, options = {}) => down(x, y, options),
+    pointerUp: (x, y, options = {}) => up(x, y, options),
+    pointerCancel: (x, y, options = {}) => {
+      heldBy(options.id ?? 0).clear();
+      point("pointercancel", x, y, options, options.button ?? null);
+    },
+    async pointerTap(x, y, options = {}) {
+      down(x, y, options);
+      up(x, y, options);
+      await engine.advance(1);
+    },
+    async pointerDrag(from, to, options = {}) {
+      const steps = Math.max(1, options.steps ?? 4);
+      const perStep = Math.max(1, options.framesPerStep ?? 1);
+      down(from.x, from.y, options);
+      await engine.advance(perStep);
+      for (let step = 1; step <= steps; step += 1) {
+        const t = step / steps;
+        move(
+          from.x + (to.x - from.x) * t,
+          from.y + (to.y - from.y) * t,
+          options,
+        );
+        await engine.advance(perStep);
+      }
+      if (options.release !== false) {
+        up(to.x, to.y, options);
+        await engine.advance(perStep);
+      }
     },
 
     device: (x, y) => toDevice(engine.world, engine.viewport(), x, y),
@@ -1144,178 +1495,619 @@ export function captureStill(h: Harness, outputId: string): void {
 /* Scenario helpers                                                           */
 /* -------------------------------------------------------------------------- */
 //
-// Each of these poses a situation through the debug surface and then lets the real
-// simulation run. They fix only geometry: where a ball or a paddle is put. Every
-// threshold a check asserts is stated in the check itself, derived from the
-// figure or rule specs/ states for it.
+// THE SEQUENCES THE SURFACE NO LONGER CARRIES. Every operation on the surface is
+// atomic, so opening a match, reaching a screen or staging a rally is a SEQUENCE
+// of them — and this is where those sequences live, written once and shared by
+// every check (see the header). Each is built from parts a check can call on its
+// own, so a check that wants only half of one takes the half it wants: a check
+// about the real input pipeline opens a match and never calls
+// {@link takePaddles}, and its paddles answer the keyboard exactly as a
+// player's do.
+//
+// THE WORLD EACH ONE POSES HOLDS ONLY WHAT THE CHECK CONCERNS. The isolation
+// helpers below clear the field and spawn back what a scenario is about — one
+// ball, one obstacle, or neither — so a bystander is ABSENT rather than parked
+// out of the way. Nothing here contains an entity it could remove.
+//
+// They fix only geometry: where a ball or a paddle is put. Every threshold a
+// check asserts is stated in the check itself, derived from the figure or rule
+// specs/ states for it.
+
+/* ---- The world ------------------------------------------------------------ */
+
+/** Every obstacle index the field can hold, in the order of `OBSTACLE_CENTERS`. */
+export const ALL_OBSTACLES: readonly number[] = OBSTACLES.map(
+  (_rect, index) => index,
+);
+
+/** How many balls the variant underneath plays with: one, or three under multi. */
+export function ballCount(h: Harness): number {
+  return isMultiBall(h) ? BALL_COUNT : 1;
+}
+
+/**
+ * Take every ball and every obstacle off the field, leaving it empty.
+ *
+ * The paddles stay, because no operation removes them: they are field furniture
+ * the game always has (specs/instrumentation.md), and a check that must keep one
+ * out of its scenario takes it from the player with {@link parkPaddle}.
+ */
+export function clearField(h: Harness): void {
+  h.debug.clearWorld();
+}
+
+/**
+ * Place balls `0 .. count - 1` at their home points, held, each with a full
+ * hold timer and an empty trail.
+ *
+ * `count` defaults to one, which is the world nearly every shared scenario
+ * wants: one ball is what a check about a bounce, a spin or a paddle contact is
+ * about, and under `multi` the other two are simply not on the field.
+ */
+export function spawnBalls(h: Harness, count = 1): void {
+  for (let index = 0; index < count; index += 1) {
+    ballOps(h, index).spawnBall();
+  }
+}
+
+/** Place each named obstacle at its base centre, upright. */
+export function spawnObstacles(
+  h: Harness,
+  indices: readonly number[] = ALL_OBSTACLES,
+): void {
+  for (const index of indices) h.debug.spawnObstacle(index);
+}
+
+/** What a scenario leaves on the field. */
+export interface FieldContents {
+  /** How many balls, from ball zero up. Defaults to one. */
+  balls?: number;
+  /** Which obstacles, by index. Defaults to none. */
+  obstacles?: readonly number[];
+}
+
+/**
+ * Clear the field and spawn back exactly what `contents` names.
+ *
+ * This is the isolation the policy asks for, in one call: a check on a wall
+ * bounce runs against one ball and nothing else, a check on an obstacle face
+ * runs against one ball and that one obstacle, and a check on a menu runs
+ * against an empty field. Everything a scenario does not name is REMOVED rather
+ * than parked in a corner or pinned still, so nothing on the field can escape a
+ * containment and report another check's defect as this one's.
+ *
+ * The default — one ball, no obstacles — is the world most of this suite wants.
+ */
+export function isolateField(h: Harness, contents: FieldContents = {}): void {
+  clearField(h);
+  spawnBalls(h, contents.balls ?? 1);
+  spawnObstacles(h, contents.obstacles ?? []);
+}
+
+/* ---- The paddles ---------------------------------------------------------- */
 
 /** Off-lane parking height for a paddle a scenario must keep out of the way. */
 export const PARKED_CY = 150;
 
-/** The lane down the middle of the field that clears both obstacles. */
-export const CLEAR_LANE_Y = FIELD_CY;
-
 /**
- * How far in front of a paddle contact the ball is posed, in frames of approach.
+ * Take `side`'s paddle from the player and hold it where the options say.
  *
- * The contact itself is the same one a zero-lead pose makes immediately; the
- * run-up buys the scenario a real approach, and — because a posed `vy` persists —
- * it is also what lets a SWINGING paddle be moving at the moment it strikes,
- * having travelled the same distance the ball did.
+ * Three atomic operations, in the order that leaves the paddle standing exactly
+ * where it is put: its centre, the velocity it travels at while driven, and then
+ * the flag that takes it from the player and the AI. A driven paddle moves at
+ * its `drivenVy` alone, so `vy: 0` is a paddle that does not move at all.
  */
-export const LEAD_TICKS = 60; // 0.5 s at 120 Hz
-
-/**
- * Park both paddles out of the mid-field lane so a shot down it is unobstructed,
- * and hold the obstacles upright.
- *
- * Under `gyre` the obstacles sway and turn with a clock that runs during the
- * countdown, so by the time a scenario is posed they are a fraction of a degree
- * off upright. `setObstacleClock(0)` puts them at their base centres, upright,
- * and holds them there (specs/instrumentation.md), which is the pose at which
- * gyre's oriented rule "reduces to the upright case" (specs/playfield.md) and a
- * shared check about an obstacle face means the same thing in every variant.
- * The operation is gyre's alone; the other variants' obstacles never move.
- */
-export function clearPaddles(h: Harness): void {
-  h.debug.setPaddle("left", { cy: PARKED_CY, vy: 0 });
-  h.debug.setPaddle("right", { cy: PARKED_CY, vy: 0 });
-  h.debug.setObstacleClock?.(0);
+export function drivePaddle(
+  h: Harness,
+  side: Side,
+  options: { cy?: number; vy?: number } = {},
+): void {
+  if (options.cy !== undefined) h.debug.setPaddleCy(side, options.cy);
+  h.debug.setPaddleVy(side, options.vy ?? 0);
+  h.debug.setPaddleDriven(side, true);
 }
 
 /**
- * Where a scenario parks the balls it is not about, in logical units.
+ * Put `side`'s paddle at `cy` and leave it under whoever was moving it.
  *
- * `multi` puts three balls on the field and every shared check is about one of
- * them, so the other two are moved off the scenario before it is posed. These are
- * the two corners of the LEFT goal channel: inside the field, so a parked ball
- * scores nothing; behind the left paddle and clear of its x range at every
- * height, so it is never struck; and hard against two walls, which is the one
- * part of the field a driven ball does not cross. The shared scenarios aim down
- * the mid-field lane at `FIELD_CY`, at a paddle face, or at an obstacle, and the
- * one thing any of them sends past a goal edge leaves by the RIGHT one.
- *
- * A scenario that does drive a ball out of the left goal passes its own pair to
- * {@link parkSpares} instead; see `multi/harness.ts`.
+ * The counterpart to {@link drivePaddle} for a scenario that has to start a
+ * paddle somewhere without taking it: the AI's paddle at a chosen height, or a
+ * player's paddle at the top of its travel before a key is held.
  */
-export const SPARE_PARKS: readonly { x: number; y: number }[] = [
-  { x: BALL_R + 2, y: BALL_R + 2 },
-  { x: BALL_R + 2, y: FIELD_H - BALL_R - 2 },
-];
+export function placePaddle(h: Harness, side: Side, cy: number): void {
+  h.debug.setPaddleCy(side, cy);
+}
+
+/** Take the named paddles from the player, leaving each where it stands. */
+export function takePaddles(
+  h: Harness,
+  sides: readonly Side[] = ["left", "right"],
+): void {
+  for (const side of sides) h.debug.setPaddleDriven(side, true);
+}
+
+/** Hand the named paddles back to the player and the AI. */
+export function releasePaddles(
+  h: Harness,
+  sides: readonly Side[] = ["left", "right"],
+): void {
+  for (const side of sides) h.debug.setPaddleDriven(side, false);
+}
 
 /**
- * Take every ball but the first out of the scenario, and report how many there
- * were.
+ * Hold one paddle still, out of the mid-field lane.
  *
- * Under `base` and `gyre` there is one ball and this does nothing. Under `multi`
- * it poses balls one and two at {@link SPARE_PARKS}, motionless and spinless,
- * which `specs/instrumentation.md` says of `setBall` is what takes a ball into
- * live play and out of its hold — so they neither launch nor move again, and the
- * check that follows reads a field with one moving ball on it, exactly as it does
- * under the other two variants.
+ * The paddles cannot be removed, so this is how a check keeps the one it is not
+ * about out of its scenario: taken from the player and the AI, standing at
+ * {@link PARKED_CY} with nothing to move it. It is the one containment this
+ * suite performs, and it is the one specs/instrumentation.md provides an
+ * operation for.
  */
-export function parkSpares(
+export function parkPaddle(h: Harness, side: Side): void {
+  drivePaddle(h, side, { cy: PARKED_CY, vy: 0 });
+}
+
+/** Hold both paddles still and out of the lane, so a shot down it is clear. */
+export function parkPaddles(h: Harness): void {
+  parkPaddle(h, "left");
+  parkPaddle(h, "right");
+}
+
+/** Put both paddles at the field's centre height, still. */
+export function centerPaddles(h: Harness): void {
+  h.debug.setPaddleCy("left", FIELD_CY);
+  h.debug.setPaddleCy("right", FIELD_CY);
+  h.debug.setPaddleVy("left", 0);
+  h.debug.setPaddleVy("right", 0);
+}
+
+/* ---- The AI's faculties --------------------------------------------------- */
+
+/**
+ * Gate the AI's two faculties, each on its own.
+ *
+ * A single switch cannot express a check on what the opponent SENSES while its
+ * body is held still, so specs/instrumentation.md splits them: `tracking` is
+ * whether it senses the ball and chooses a target, `movement` is whether its
+ * paddle travels toward that target. Both start `true` and `reset` returns both
+ * to `true`, so a scenario names only the faculty it is holding.
+ */
+export function gateAi(
   h: Harness,
-  parks: readonly { x: number; y: number }[] = SPARE_PARKS,
-): number {
-  const balls = allBalls(h.snapshot());
-  for (let index = 1; index < balls.length; index += 1) {
-    const park = parks[(index - 1) % parks.length];
-    h.debug.setBall(index, { ...park, vx: 0, vy: 0, spin: 0 });
+  faculties: { tracking?: boolean; movement?: boolean },
+): void {
+  if (faculties.tracking !== undefined) {
+    h.debug.setAiTracking(faculties.tracking);
   }
-  return balls.length;
+  if (faculties.movement !== undefined) {
+    h.debug.setAiMovement(faculties.movement);
+  }
 }
 
+/* ---- The obstacle clock: gyre alone --------------------------------------- */
+
 /**
- * Open a driven match, put every ball but the first out of the way, and run it up
- * to live play.
+ * `gyre`: stop the obstacle clock and hold it at `t` seconds.
  *
- * The transitions are advanced through here so a caller never counts them:
- * `reset` away from the title and `startMatch` each land no later than the end
- * of the frame after the call (the harness header), so each is followed by one
- * advanced frame, and every pose after that acts on the live match world the
- * countdown is running in.
+ * Under `gyre` the obstacles sway and turn with a clock that advances with the
+ * frame, so by the time a scenario is posed they are a fraction of a degree off
+ * upright. Stopping the clock and setting it to `0` puts them at their base
+ * centres, upright and still, which is the pose at which gyre's oriented rule
+ * "reduces to the upright case" (specs/playfield.md) and a shared check about an
+ * obstacle face means the same thing in every variant.
  *
- * `serve()` only expires the pre-serve hold; the LAUNCH is the build's own, on
- * the frame after. So this sweeps until the game reports live play, which is the
- * state every posed scenario below assumes — posing a ball while the game is
- * still counting down would have the build's serve overwrite the pose.
- *
- * The spares are parked between the match opening and the hold expiring, so under
- * `multi` the one ball that launches is the one the scenario is about.
- *
- * Under `gyre` the obstacle clock is posed at `0` before the hold expires, so a
- * scenario opens on upright obstacles at their base centres rather than on
- * whatever fraction of a turn the countdown's frames happened to run; see
- * {@link clearPaddles}. The operation is gyre's alone.
+ * The clock is the only thing this sets: the POSES are the build's own,
+ * recomputed from it on the next frame, so a caller advances one frame before it
+ * reads or aims at a face. Both operations are gyre's alone and the other two
+ * variants' obstacles never move, so this does nothing there.
  */
-export async function startPlaying(
-  h: Harness,
-  mode: Mode = "versus",
-): Promise<UntilResult> {
+export function holdObstacleClock(h: Harness, t = 0): void {
+  h.debug.setObstacleClockRunning?.(false);
+  h.debug.setObstacleClock?.(t);
+}
+
+/* ---- Opening a match ------------------------------------------------------ */
+
+/**
+ * The title screen, with the standard world and every declared field at its
+ * title value.
+ *
+ * `reset` is the one operation that arranges more than one thing, and it is a
+ * lifecycle verb rather than a pose: it is how a check gets back to a known
+ * start. It may rebuild its screen even when called on the title, so one frame
+ * is advanced before anything else is posed or pressed.
+ */
+export async function openTitle(h: Harness): Promise<void> {
   h.debug.reset();
   await h.advance(1);
-  h.debug.startMatch(mode);
+}
+
+/**
+ * Arrange everything specs/ui.md's "Starting a match" fixes, on the countdown.
+ *
+ * The screen is posed FIRST and a frame is advanced before anything else, which
+ * is the discipline the header states: a screen-changing pose may ride a level
+ * transition the engine honors at the end of the frame, so every field posed
+ * after that frame is posed into the match world the transition opened rather
+ * than into the world it left.
+ *
+ * WHAT IT DOES NOT DO IS TAKE THE PADDLES. Both are left under the player and
+ * the AI, so a check that presses a movement key gets a paddle that answers it.
+ * A scenario that needs them held calls {@link takePaddles},
+ * {@link drivePaddle} or {@link parkPaddles} afterwards, and pays for exactly
+ * what it asked for.
+ */
+export async function stageMatchStart(h: Harness, mode: Mode): Promise<void> {
+  h.debug.setScreen("countdown");
   await h.advance(1);
-  parkSpares(h);
-  h.debug.setObstacleClock?.(0);
-  h.debug.serve();
-  return h.until((s) => s.screen === "playing", { maxFrames: 60, poll: 1 });
+  h.debug.setMode(mode);
+  h.debug.setResumeScreen("playing");
+  h.debug.setMenuIndex(0);
+  h.debug.setScore(0, 0);
+  h.debug.setWinner(null);
+  h.debug.setReceiver?.("left");
+  centerPaddles(h);
+  spawnBalls(h, ballCount(h));
+}
+
+/**
+ * Open a match on its pre-serve countdown through the debug surface alone.
+ *
+ * This is how a countdown scenario reaches its ground without driving the menus
+ * — a build with a broken menu and a working countdown must fail the navigation
+ * checks and pass the countdown ones — and it is the base every scenario below
+ * is built on. A check that wants to arrive the way a player does enters with
+ * {@link startWithKeys} instead.
+ */
+export async function openCountdown(
+  h: Harness,
+  mode: Mode = "versus",
+): Promise<void> {
+  await openTitle(h);
+  await stageMatchStart(h, mode);
+}
+
+/**
+ * Stage one ball's serve: at its home point, held, with `seconds` of hold left.
+ *
+ * `serve()` is gone from the surface, because ending a hold is what serving IS:
+ * the game's own rule launches the ball on the first frame its timer, after
+ * subtracting the frame's time, is `<= 0` (specs/balls.md), and the launch that
+ * follows is the build's own. A check that wants to WATCH a serve stages it with
+ * a full hold and counts the frames; one that wants to be past it ends the hold
+ * outright with {@link endHolds}.
+ *
+ * `receiver` is `base` and `gyre`'s: `multi`'s balls launch independently of one
+ * another and declare no receiver, so a multi check never names one.
+ */
+export function stageServe(
+  h: Harness,
+  options: { ball?: number; receiver?: Side; seconds?: number } = {},
+): void {
+  const ops = ballOps(h, options.ball ?? 0);
+  ops.spawnBall();
+  if (options.receiver !== undefined) {
+    assertEqual(
+      typeof h.debug.setReceiver,
+      "function",
+      "base and gyre require setReceiver on the debug surface " +
+        "(specs/instrumentation.md)",
+    );
+    h.debug.setReceiver?.(options.receiver);
+  }
+  ops.setBallHoldTimer(options.seconds ?? HOLD_TIME);
+}
+
+/**
+ * End every present ball's hold, so the game's own rule launches it on the next
+ * frame it runs.
+ *
+ * Every ball on the field, because the screen becomes `playing` only once no
+ * ball is held: under `multi` a scenario that isolated the field to one ball
+ * ends one hold, and one that left all three ends three.
+ */
+export function endHolds(h: Harness): void {
+  const balls = allBalls(h.snapshot());
+  balls.forEach((ball, position) => {
+    ballOps(h, ball.index ?? position).setBallHoldTimer(0);
+  });
+}
+
+/**
+ * End the holds and run the frames that carry the game into live play.
+ *
+ * The launch is the build's own, on the frame after the hold elapses, so this
+ * sweeps until the game reports `playing` rather than counting frames. That is
+ * the state every posed scenario below assumes: posing a ball while the game is
+ * still counting down would have the build's own launch overwrite the pose.
+ */
+export function reachPlay(
+  h: Harness,
+  options: UntilOptions = {},
+): Promise<UntilResult> {
+  endHolds(h);
+  return h.until((s) => s.screen === "playing", {
+    maxFrames: options.maxFrames ?? 60,
+    poll: options.poll ?? 1,
+  });
+}
+
+/** Open a match and run it up to live play, with the standard world on the field. */
+export async function openPlaying(
+  h: Harness,
+  mode: Mode = "versus",
+  options: UntilOptions = {},
+): Promise<UntilResult> {
+  await openCountdown(h, mode);
+  return reachPlay(h, options);
+}
+
+/** What a scenario opens live play over. */
+export interface IsolatedPlayOptions {
+  mode?: Mode;
+  /** The field the scenario runs on. Defaults to one ball and no obstacles. */
+  contents?: FieldContents;
+  /** How far the launch sweep may run. */
+  launch?: UntilOptions;
+}
+
+/**
+ * Live play over a field holding only what the scenario is about.
+ *
+ * The three steps every posed scenario below shares: open the countdown, clear
+ * the field and spawn back what the check concerns, then end the holds and let
+ * the build's own launch carry the game into `playing`. Isolating BEFORE the
+ * launch is what keeps the count honest under `multi` — the screen turns over
+ * when no ball is held, and the balls a scenario removed are not there to hold.
+ */
+export async function openIsolatedPlay(
+  h: Harness,
+  options: IsolatedPlayOptions = {},
+): Promise<UntilResult> {
+  await openCountdown(h, options.mode ?? "versus");
+  isolateField(h, options.contents);
+  return reachPlay(h, options.launch);
+}
+
+/**
+ * Open the how-to screen.
+ *
+ * The screen is posed and a frame advanced before `menuIndex`, for the reason
+ * {@link stageMatchStart} states.
+ */
+export async function openHowTo(h: Harness): Promise<void> {
+  await openTitle(h);
+  h.debug.setScreen("howto");
+  await h.advance(1);
+  h.debug.setMenuIndex(0);
+}
+
+/** What a scenario opens the pause menu over. */
+export interface PauseOptions {
+  mode?: Mode;
+  /** The screen the pause resumes to, and the one it is opened from. */
+  resumeTo?: ResumeScreen;
+  /** The highlighted pause item. Defaults to `RESUME`. */
+  menuIndex?: number;
+}
+
+/**
+ * Reach the pause menu over a real match, from `countdown` or from `playing`.
+ *
+ * The field behind the menu is the STANDARD one the match was on, frozen, which
+ * is what specs/ui.md says the pause screen shows. `resumeScreen` is posed
+ * rather than inferred, so a check about resuming reads the field it set rather
+ * than the one the build happened to leave.
+ *
+ * A check that needs the pause menu over an ISOLATED field takes the parts
+ * instead: {@link openIsolatedPlay}, then `setScreen("paused")` and one advanced
+ * frame.
+ */
+export async function openPaused(
+  h: Harness,
+  options: PauseOptions = {},
+): Promise<void> {
+  const resumeTo = options.resumeTo ?? "playing";
+  const mode = options.mode ?? "versus";
+  if (resumeTo === "playing") await openPlaying(h, mode);
+  else await openCountdown(h, mode);
+  h.debug.setScreen("paused");
+  await h.advance(1);
+  h.debug.setResumeScreen(resumeTo);
+  h.debug.setMenuIndex(options.menuIndex ?? 0);
+}
+
+/** What a scenario opens the match-over screen over. */
+export interface MatchOverOptions {
+  mode?: Mode;
+  /** The winning side. Defaults to the left. */
+  winner?: Side;
+  /** The final scores. Each defaults to a clean win for `winner`. */
+  p1?: number;
+  p2?: number;
+  /** The highlighted item. Defaults to `PLAY AGAIN`. */
+  menuIndex?: number;
+}
+
+/**
+ * Reach the match-over screen with a stated winner and final score.
+ *
+ * Posed rather than played out: driving eleven real points to reach the screen
+ * would put every rule of the game between a check and the screen it is about.
+ * A check that is about the WIN RULE itself takes the parts instead — it poses a
+ * score one point short over {@link arrangeGoal} and lets the real scoring
+ * resolve the last point.
+ */
+export async function openMatchOver(
+  h: Harness,
+  options: MatchOverOptions = {},
+): Promise<void> {
+  const winner = options.winner ?? "left";
+  await openCountdown(h, options.mode ?? "versus");
+  h.debug.setScreen("matchover");
+  await h.advance(1);
+  h.debug.setScore(
+    options.p1 ?? (winner === "left" ? WIN_SCORE : 0),
+    options.p2 ?? (winner === "right" ? WIN_SCORE : 0),
+  );
+  h.debug.setWinner(winner);
+  h.debug.setMenuIndex(options.menuIndex ?? 0);
 }
 
 /**
  * Start a match from the title the way a player does: menu keys only.
  *
- * `reset` from a match world may land as late as the end of the next advanced
- * frame (the harness header), so one frame is advanced before the first tap —
- * otherwise that tap's edge could be consumed by the world the reset is
- * leaving.
+ * `reset` may land as late as the end of the next advanced frame, so one frame
+ * is advanced before the first tap — otherwise that tap's edge could be consumed
+ * by the world the reset is leaving.
  */
 export async function startWithKeys(h: Harness, mode: Mode): Promise<void> {
-  h.debug.reset();
-  await h.advance(1);
+  await openTitle(h);
   // SOLO is the first entry; VERSUS is one down.
   if (mode === "versus") await h.tap("ArrowDown");
   await h.tap("Enter");
 }
 
+/* ---- The menus, through the mouse and the finger --------------------------- */
+//
+// specs/ui.md drives every menu screen with a pointer and with touch as well as
+// with the keyboard, over regions the BUILD lays out. The case does not fix
+// where a menu is drawn — appearance is loose and reviewed — so a check asks the
+// build where it put an item through `menuItemRect` and drives the pointer
+// there. What is asserted is the selection that follows, which is the game's own
+// input handling.
+
 /**
- * Open a match on its pre-serve countdown through the debug surface alone:
- * `reset` to a clean title, `startMatch` onto the countdown, nothing else. This
- * is how a countdown scenario reaches its ground without driving the menus — a
- * build with a broken menu and a working countdown must fail the navigation
- * checks and pass the countdown ones. Because `startMatch` is a posing
- * operation, the opened match's paddles belong to the debug driver: a scenario
- * about the real input pipeline enters with {@link startWithKeys} instead, and
- * one that needs the hold already expired opens with {@link startPlaying}.
+ * The hit region of item `index` on the menu the current screen shows.
  *
- * Both operations may land as late as the end of the next advanced frame (see
- * the harness header), so each is followed by one frame — the countdown is
- * open, and reads, when this returns.
+ * Fails naming the reading when the build reports none: `menuItemRect` returns
+ * `null` on `countdown` and `playing`, which show no menu, and for an index that
+ * names no item — so a `null` here means the check asked about an item the
+ * current screen does not have, or that the build does not report its layout.
  */
-export async function openCountdown(h: Harness, mode: Mode): Promise<void> {
-  h.debug.reset();
-  await h.advance(1);
-  h.debug.startMatch(mode);
+export function menuRect(h: Harness, index: number): MenuRect {
+  const rect = h.debug.menuItemRect(index);
+  assertTruthy(
+    rect,
+    `menuItemRect(${index}) must report the hit region of item ${index} on ` +
+      `the menu the current screen shows (specs/instrumentation.md)`,
+  );
+  return rect as MenuRect;
+}
+
+/** The centre of item `index`'s hit region, in logical units. */
+export function menuCenter(
+  h: Harness,
+  index: number,
+): { x: number; y: number } {
+  const rect = menuRect(h, index);
+  return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+}
+
+/**
+ * Move the pointer onto item `index` and run the frame that reads it.
+ *
+ * A move alone, with no button: specs/ui.md makes a pointer arriving over an
+ * item's region select it, which is the hover a mouse does and the reason this
+ * is separate from a click.
+ */
+export async function hoverMenuItem(
+  h: Harness,
+  index: number,
+  options: PointerOptions = {},
+): Promise<void> {
+  const at = menuCenter(h, index);
+  h.pointerMove(at.x, at.y, options);
   await h.advance(1);
 }
 
-/* ---- Goals --------------------------------------------------------------- */
+/**
+ * Click item `index`: move onto it, press, release, and run the frame.
+ *
+ * Both edges fall inside the one region, which is what specs/ui.md requires of a
+ * confirm. The press and its release arrive on one frame, and that frame
+ * confirms.
+ */
+export async function clickMenuItem(
+  h: Harness,
+  index: number,
+  options: PointerOptions = {},
+): Promise<void> {
+  const at = menuCenter(h, index);
+  h.pointerMove(at.x, at.y, options);
+  h.pointerDown(at.x, at.y, options);
+  h.pointerUp(at.x, at.y, options);
+  await h.advance(1);
+}
 
 /**
- * Aim the ball at one goal edge, down the lane that clears both obstacles.
- * `edge` is the edge the ball exits: "right" scores for player one, "left" for
- * player two.
+ * Tap item `index` with a finger: land on it, lift off it, and run the frame.
+ *
+ * No move in front of the landing, because a finger does not hover — which is
+ * why specs/ui.md makes the LANDING select the item as well as confirm it. The
+ * contact carries `pointerType: "touch"`, so a build that reads the device sees
+ * a finger rather than a mouse.
  */
-export function arrangeGoal(h: Harness, edge: Side): void {
-  clearPaddles(h);
-  h.debug.setBall(0, {
-    x: FIELD_CX,
-    y: CLEAR_LANE_Y,
-    vx: edge === "right" ? 600 : -600,
-    vy: 0,
-    spin: 0,
-  });
+export async function touchMenuItem(
+  h: Harness,
+  index: number,
+  options: PointerOptions = {},
+): Promise<void> {
+  const at = menuCenter(h, index);
+  const touch: PointerOptions = { device: "touch", ...options };
+  h.pointerDown(at.x, at.y, touch);
+  h.pointerUp(at.x, at.y, touch);
+  await h.advance(1);
+}
+
+/**
+ * Press on item `from`, travel onto item `to`, and release there.
+ *
+ * The ordinary affordance that lets a player slide off a control to cancel: two
+ * edges in different regions confirm nothing (specs/ui.md). Driven over separate
+ * frames so the press, the travel and the release are each read.
+ */
+export async function dragBetweenMenuItems(
+  h: Harness,
+  from: number,
+  to: number,
+  options: PointerOptions = {},
+): Promise<void> {
+  const start = menuCenter(h, from);
+  const end = menuCenter(h, to);
+  h.pointerDown(start.x, start.y, options);
+  await h.advance(1);
+  h.pointerMove(end.x, end.y, options);
+  await h.advance(1);
+  h.pointerUp(end.x, end.y, options);
+  await h.advance(1);
+}
+
+/* ---- Goals ---------------------------------------------------------------- */
+
+/** The lane down the middle of the field, level with the ball's home point. */
+export const CLEAR_LANE_Y = FIELD_CY;
+
+/**
+ * Live play over one ball and an empty field, with that ball aimed at one goal
+ * edge down the middle lane and both paddles held out of it.
+ *
+ * `edge` is the edge the ball exits: "right" scores for player one, "left" for
+ * player two. The obstacles are not on the field, so the flight is a straight
+ * line and nothing but the goal edge can end it.
+ */
+export async function arrangeGoal(
+  h: Harness,
+  edge: Side,
+  options: { mode?: Mode; speed?: number } = {},
+): Promise<void> {
+  await openIsolatedPlay(h, { mode: options.mode });
+  parkPaddles(h);
+  const speed = options.speed ?? 600;
+  const ops = ballOps(h);
+  ops.setBallPosition(FIELD_CX, CLEAR_LANE_Y);
+  ops.setBallVelocity(edge === "right" ? speed : -speed, 0);
+  ops.setBallSpin(0);
 }
 
 /**
@@ -1332,14 +2124,26 @@ export function driveGoal(
   });
 }
 
-/* ---- Paddle contact ------------------------------------------------------ */
+/* ---- Paddle contact ------------------------------------------------------- */
 
 /** Where a ball is posed to sit just off a paddle's front face. */
 export function nearBallX(side: Side): number {
   return side === "left" ? P1_X1 + BALL_R + 10 : P2_X0 - BALL_R - 10;
 }
 
+/**
+ * How far in front of a paddle contact the ball is posed, in frames of approach.
+ *
+ * The contact itself is the same one a zero-lead pose makes immediately; the
+ * run-up buys the scenario a real approach, and — because a driven paddle's
+ * `drivenVy` persists — it is also what lets a SWINGING paddle be moving at the
+ * moment it strikes, having travelled the same distance the ball did.
+ */
+export const LEAD_TICKS = 60; // 0.5 s at 120 Hz
+
 export interface PaddleHitOptions {
+  /** The mode the match is opened in. Defaults to Versus. */
+  mode?: Mode;
   /** Where the struck paddle is when the ball arrives. */
   cy?: number;
   /** The velocity it holds through the run-up and the contact, in px/s. */
@@ -1355,18 +2159,19 @@ export interface PaddleHitOptions {
 }
 
 /**
- * Pose a contact on `side`: that paddle at `cy` moving at `vy`, the other parked,
- * and a ball aimed straight at the struck paddle's front face at `ballY`.
+ * Pose a contact on `side` over an isolated field: that paddle at `cy` moving at
+ * `vy`, the other parked, and one ball aimed straight at the struck paddle's
+ * front face at `ballY`.
  *
  * With a lead, the paddle starts the run-up's worth of travel UPSTREAM so it
  * arrives at `cy` as the ball does — which is what lets a swinging paddle really
  * be moving at contact rather than pinned against a bound.
  */
-export function arrangePaddleHit(
+export async function arrangePaddleHit(
   h: Harness,
   side: Side,
   options: PaddleHitOptions = {},
-): void {
+): Promise<void> {
   const {
     cy = FIELD_CY,
     vy = 0,
@@ -1376,21 +2181,20 @@ export function arrangePaddleHit(
     leadTicks = 0,
   } = options;
 
+  await openIsolatedPlay(h, { mode: options.mode });
+
   const other: Side = side === "left" ? "right" : "left";
   const lead = seconds(leadTicks);
-  h.debug.setPaddle(side, { cy: cy - vy * lead, vy });
-  h.debug.setPaddle(other, { cy: PARKED_CY, vy: 0 });
+  drivePaddle(h, side, { cy: cy - vy * lead, vy });
+  parkPaddle(h, other);
 
   const near = nearBallX(side);
   const runUp = approachSpeed * lead;
   const x = startX ?? (side === "left" ? near + runUp : near - runUp);
-  h.debug.setBall(0, {
-    x,
-    y: ballY,
-    vx: side === "left" ? -approachSpeed : approachSpeed,
-    vy: 0,
-    spin: 0,
-  });
+  const ops = ballOps(h);
+  ops.setBallPosition(x, ballY);
+  ops.setBallVelocity(side === "left" ? -approachSpeed : approachSpeed, 0);
+  ops.setBallSpin(0);
 }
 
 export interface PaddleHitResult {
@@ -1425,20 +2229,26 @@ export async function drivePaddleHit(
   };
 }
 
-/* ---- Rally speed --------------------------------------------------------- */
+/* ---- Rally speed ---------------------------------------------------------- */
 
-/** Two still, centred paddles and a ball launched level down the middle. */
-export async function arrangeRally(h: Harness): Promise<void> {
-  await startPlaying(h);
-  h.debug.setPaddle("left", { cy: FIELD_CY, vy: 0 });
-  h.debug.setPaddle("right", { cy: FIELD_CY, vy: 0 });
-  h.debug.setBall(0, {
-    x: FIELD_CX,
-    y: FIELD_CY,
-    vx: -500,
-    vy: 0,
-    spin: 0,
-  });
+/**
+ * Two still, centred paddles and one ball launched level down the middle, over
+ * an otherwise empty field.
+ *
+ * The obstacles are off the field, so every direction reversal the rally sees is
+ * a paddle hit and the speeds read back are the ones the paddle rule set.
+ */
+export async function arrangeRally(
+  h: Harness,
+  options: { mode?: Mode; speed?: number } = {},
+): Promise<void> {
+  await openIsolatedPlay(h, { mode: options.mode });
+  drivePaddle(h, "left", { cy: FIELD_CY, vy: 0 });
+  drivePaddle(h, "right", { cy: FIELD_CY, vy: 0 });
+  const ops = ballOps(h);
+  ops.setBallPosition(FIELD_CX, FIELD_CY);
+  ops.setBallVelocity(-(options.speed ?? 500), 0);
+  ops.setBallSpin(0);
 }
 
 /**
@@ -1477,12 +2287,12 @@ export async function driveRallySpeeds(
   return speeds;
 }
 
-/* ---- Held movement ------------------------------------------------------- */
+/* ---- Held movement -------------------------------------------------------- */
 
 export interface MoveResult {
   start: number;
   end: number;
-  /** The struck paddle's Δcy: negative is upward. */
+  /** The moved paddle's Δcy: negative is upward. */
   delta: number;
   /** Each paddle's Δcy, so a check can also confirm the other stayed still. */
   otherDelta: { left: number; right: number };
@@ -1490,8 +2300,12 @@ export interface MoveResult {
 
 /**
  * Hold a movement key for `ticks` frames and report how far each paddle moved.
- * Nothing here calls a control op, so the game stays under normal player control
- * and the paddles respond exactly as they do for a player.
+ *
+ * Nothing here takes a paddle from the player, so the paddles respond exactly as
+ * they do for one. A scenario reaching this point through
+ * {@link stageMatchStart} has left both under player control, which is the whole
+ * reason the surface no longer carries an operation that opens a match AND seizes
+ * them.
  */
 export async function holdMove(
   h: Harness,
@@ -1515,12 +2329,17 @@ export async function holdMove(
   };
 }
 
-/* ---- The Solo AI --------------------------------------------------------- */
+/* ---- The Solo AI ---------------------------------------------------------- */
 
 /**
- * A live Solo match with the human paddle parked, ball 0 posed by `ball`, the AI
- * paddle started at `paddleCy`, and the AI handed control of it. Running time
- * forward from here pits the real opponent against the posed shot.
+ * A live Solo match over one ball and an empty field, with the human paddle
+ * parked, the ball posed by `ball`, and the AI's paddle started at `paddleCy`
+ * and left under the AI.
+ *
+ * The AI's paddle is RELEASED rather than driven, and its two faculties are left
+ * where `reset` put them — both on. What runs from here is the real opponent
+ * against the posed shot. A check about one faculty alone holds the other with
+ * {@link gateAi}.
  */
 export async function arrangeAiScenario(
   h: Harness,
@@ -1529,11 +2348,14 @@ export async function arrangeAiScenario(
     ball: { x: number; y: number; vx: number; vy?: number };
   },
 ): Promise<void> {
-  await startPlaying(h, "solo");
-  h.debug.setPaddle("left", { cy: PARKED_CY, vy: 0 });
-  h.debug.setPaddle("right", { cy: scenario.paddleCy, vy: 0 });
-  h.debug.setBall(0, { vy: 0, spin: 0, ...scenario.ball });
-  h.debug.setAiControl(true);
+  await openIsolatedPlay(h, { mode: "solo" });
+  parkPaddle(h, "left");
+  releasePaddles(h, ["right"]);
+  placePaddle(h, "right", scenario.paddleCy);
+  const ops = ballOps(h);
+  ops.setBallPosition(scenario.ball.x, scenario.ball.y);
+  ops.setBallVelocity(scenario.ball.vx, scenario.ball.vy ?? 0);
+  ops.setBallSpin(0);
 }
 
 export type AiOutcome = "blocked" | "scored" | "timeout";
@@ -1581,17 +2403,10 @@ export async function arrangeAiChase(
   h: Harness,
   options: { paddleCy?: number; ballY?: number } = {},
 ): Promise<void> {
-  await startPlaying(h, "solo");
-  h.debug.setPaddle("left", { cy: PARKED_CY, vy: 0 });
-  h.debug.setPaddle("right", { cy: options.paddleCy ?? 120, vy: 0 });
-  h.debug.setBall(0, {
-    x: FIELD_CX,
-    y: options.ballY ?? 650,
-    vx: 200,
-    vy: 0,
-    spin: 0,
+  await arrangeAiScenario(h, {
+    paddleCy: options.paddleCy ?? 120,
+    ball: { x: FIELD_CX, y: options.ballY ?? 650, vx: 200 },
   });
-  h.debug.setAiControl(true);
 }
 
 /** How fast the AI paddle travels while it is chasing, in px/s. */
@@ -1614,32 +2429,52 @@ export async function driveAiChaseSpeed(
  * AI is still sweeping down through the lane, so it strikes while moving.
  */
 export async function arrangeAiMovingHit(h: Harness): Promise<void> {
-  await startPlaying(h, "solo");
-  h.debug.setPaddle("left", { cy: PARKED_CY, vy: 0 });
-  h.debug.setPaddle("right", { cy: 180, vy: 0 }); // above the lane
-  h.debug.setBall(0, { x: 1072, y: FIELD_CY, vx: 500, vy: 0, spin: 0 });
-  h.debug.setAiControl(true);
+  await arrangeAiScenario(h, {
+    paddleCy: 180, // above the lane
+    ball: { x: 1072, y: FIELD_CY, vx: 500 },
+  });
 }
 
-/* ---- Obstacle bank shots -------------------------------------------------- */
+/* ---- Obstacle bank shots --------------------------------------------------- */
 
 /**
- * Line the ball up 180 px short of `faceX`, level with the obstacle at `y`,
- * travelling straight at that face. `from` is the side it approaches from.
+ * Line one ball up 180 px short of `faceX`, level with the obstacle at `y`,
+ * travelling straight at that face, over a field holding that obstacle alone.
+ *
+ * `from` is the side the ball approaches from. The other obstacle is off the
+ * field, so a shot that missed the struck face cannot bank off it instead and
+ * read as this check's rebound.
  */
-export function arrangeObstacleBounce(
+export async function arrangeObstacleBounce(
   h: Harness,
-  shot: { faceX: number; y: number; from: Side; speed?: number },
-): void {
-  const speed = shot.speed ?? 600;
-  clearPaddles(h);
-  h.debug.setBall(0, {
-    x: shot.from === "left" ? shot.faceX - 180 : shot.faceX + 180,
-    y: shot.y,
-    vx: shot.from === "left" ? speed : -speed,
-    vy: 0,
-    spin: 0,
+  shot: {
+    /** Which obstacle stays on the field, in the order of `OBSTACLE_CENTERS`. */
+    obstacle?: number;
+    faceX: number;
+    y: number;
+    from: Side;
+    speed?: number;
+    mode?: Mode;
+  },
+): Promise<void> {
+  const obstacle = shot.obstacle ?? 0;
+  await openIsolatedPlay(h, {
+    mode: shot.mode,
+    contents: { balls: 1, obstacles: [obstacle] },
   });
+  holdObstacleClock(h, 0);
+  // One frame, so a gyre build has recomputed the obstacle's pose from the held
+  // clock before the shot is aimed at where the case says the face is.
+  await h.advance(1);
+  parkPaddles(h);
+  const speed = shot.speed ?? 600;
+  const ops = ballOps(h);
+  ops.setBallPosition(
+    shot.from === "left" ? shot.faceX - 180 : shot.faceX + 180,
+    shot.y,
+  );
+  ops.setBallVelocity(shot.from === "left" ? speed : -speed, 0);
+  ops.setBallSpin(0);
 }
 
 /** Run the real collision until the ball reflects off the struck face. */
@@ -1658,20 +2493,30 @@ export function driveObstacleBounce(
   });
 }
 
-/* ---- A ball in open flight ------------------------------------------------ */
+/* ---- A ball in open flight ------------------------------------------------- */
 
 /**
- * A live match with the ball posed in mid-flight, clear of the obstacles so a
- * short flight is a straight line. Spin is zeroed so the path is predictable.
+ * A live match with one ball posed in mid-flight over an otherwise empty field,
+ * so a short flight is a straight line. Spin is zeroed so the path is
+ * predictable, and both paddles are held out of the lane.
+ *
+ * A scenario that needs an obstacle on the field names it in `contents` and
+ * holds the obstacle clock itself.
  */
 export async function arrangeLiveBall(
   h: Harness,
   ball: { x: number; y: number; vx: number; vy?: number },
-  mode: Mode = "versus",
+  options: { mode?: Mode; contents?: FieldContents } = {},
 ): Promise<void> {
-  await startPlaying(h, mode);
-  clearPaddles(h);
-  h.debug.setBall(0, { spin: 0, vy: 0, ...ball });
+  await openIsolatedPlay(h, {
+    mode: options.mode,
+    contents: options.contents,
+  });
+  parkPaddles(h);
+  const ops = ballOps(h);
+  ops.setBallPosition(ball.x, ball.y);
+  ops.setBallVelocity(ball.vx, ball.vy ?? 0);
+  ops.setBallSpin(0);
 }
 
 /* ========================================================================== */
@@ -1687,7 +2532,7 @@ export async function arrangeLiveBall(
 // what was painted against what else was painted. They are gathered here rather
 // than folded in above so the two halves of this file stay separable.
 
-import { OBSTACLE_CENTERS, P1_X0, P2_X1, TRAIL_TIME } from "../src/constants";
+import { OBSTACLE_CENTERS, P1_X0, P2_X1, TRAIL_TIME } from "./constants";
 
 /* ---- Controls tolerances -------------------------------------------------- */
 
@@ -1873,9 +2718,16 @@ export function sampleScene(
 }
 
 /**
- * Pose a clean, static colour scene and paint it: a live match with both paddles
- * centred and the ball parked at the mid-field sample point, so each sample
- * point renders an unobstructed, solid body.
+ * Pose a clean, static colour scene and paint it: a live match over one ball and
+ * both obstacles, with the paddles centred and held still and the ball parked at
+ * the mid-field sample point, so each sample point renders an unobstructed,
+ * solid body.
+ *
+ * The field holds exactly what {@link COLOR_POINTS} samples and nothing else:
+ * one ball rather than `multi`'s three, so the two the scene is not about cannot
+ * drift across a sample point. The obstacle clock is held at `0`, so under
+ * `gyre` the obstacle sits at the base centre the sample point names rather than
+ * a fraction of a sway away from it.
  *
  * The settle is longer than the trail's own life on purpose. Posing the ball
  * teleports it, and the samples it left along the way would otherwise still be
@@ -1883,16 +2735,17 @@ export function sampleScene(
  * every one of them, so what is sampled is the ball rather than its wake.
  */
 export async function arrangeColorScene(h: Harness): Promise<void> {
-  await startPlaying(h, "versus");
-  h.debug.setPaddle("left", { cy: FIELD_CY, vy: 0 });
-  h.debug.setPaddle("right", { cy: FIELD_CY, vy: 0 });
-  h.debug.setBall(0, {
-    x: COLOR_POINTS.ball.x,
-    y: COLOR_POINTS.ball.y,
-    vx: 0,
-    vy: 0,
-    spin: 0,
+  await openIsolatedPlay(h, {
+    mode: "versus",
+    contents: { balls: 1, obstacles: ALL_OBSTACLES },
   });
+  holdObstacleClock(h, 0);
+  drivePaddle(h, "left", { cy: FIELD_CY, vy: 0 });
+  drivePaddle(h, "right", { cy: FIELD_CY, vy: 0 });
+  const ops = ballOps(h);
+  ops.setBallPosition(COLOR_POINTS.ball.x, COLOR_POINTS.ball.y);
+  ops.setBallVelocity(0, 0);
+  ops.setBallSpin(0);
   await h.advance(Math.ceil(TRAIL_TIME * TICK_HZ) + 4);
 }
 
@@ -2058,11 +2911,10 @@ export async function arrangeAiHome(
   h: Harness,
   options: { paddleCy: number },
 ): Promise<void> {
-  await startPlaying(h, "solo");
-  h.debug.setPaddle("left", { cy: PARKED_CY, vy: 0 });
-  h.debug.setPaddle("right", { cy: options.paddleCy, vy: 0 });
-  h.debug.setBall(0, { x: 1100, y: 200, vx: -300, vy: 0, spin: 0 });
-  h.debug.setAiControl(true);
+  await arrangeAiScenario(h, {
+    paddleCy: options.paddleCy,
+    ball: { x: 1100, y: 200, vx: -300 },
+  });
 }
 
 /* ---- A shot at one obstacle face ------------------------------------------ */
@@ -2071,18 +2923,32 @@ export async function arrangeAiHome(
 export type Face = "left" | "right" | "top" | "bottom";
 
 /**
- * Pose a straight shot at the midpoint of `face` of the axis-aligned obstacle
- * `rect`, starting `runUp` units short of it and travelling at `speed`, with
- * both paddles parked out of the way.
+ * Live play over one ball and obstacle `obstacle` alone, with a straight shot
+ * posed at the midpoint of that obstacle's `face`, starting `runUp` units short
+ * of it and travelling at `speed`, and both paddles held out of the way.
+ *
+ * The rectangle is the case's own `OBSTACLES[obstacle]` rather than one the
+ * caller passes, so the face a shot is aimed at is the face specs/playfield.md
+ * puts there, and the obstacle spawned is the one the shot is aimed at. The
+ * other obstacle is off the field, so a shot that missed cannot bank off it and
+ * read as this check's rebound.
+ *
+ * The obstacle clock is held at `0` and one frame advanced before the ball is
+ * posed, so under `gyre` the obstacle is standing at that rectangle rather than
+ * partway through a sway.
+ *
+ * Returns the velocity the shot leaves at, which is what a check compares the
+ * rebound against.
  */
-export function arrangeFaceShot(
+export async function arrangeFaceShot(
   h: Harness,
-  rect: { x0: number; y0: number; x1: number; y1: number },
+  obstacle: number,
   face: Face,
-  options: { runUp?: number; speed?: number } = {},
-): { vx: number; vy: number } {
+  options: { runUp?: number; speed?: number; mode?: Mode } = {},
+): Promise<{ vx: number; vy: number }> {
   const runUp = options.runUp ?? 180;
   const speed = options.speed ?? 600;
+  const rect = OBSTACLES[obstacle];
   const cx = (rect.x0 + rect.x1) / 2;
   const cy = (rect.y0 + rect.y1) / 2;
   const shot =
@@ -2093,8 +2959,18 @@ export function arrangeFaceShot(
         : face === "top"
           ? { x: cx, y: rect.y0 - runUp, vx: 0, vy: speed }
           : { x: cx, y: rect.y1 + runUp, vx: 0, vy: -speed };
-  clearPaddles(h);
-  h.debug.setBall(0, { ...shot, spin: 0 });
+
+  await openIsolatedPlay(h, {
+    mode: options.mode,
+    contents: { balls: 1, obstacles: [obstacle] },
+  });
+  holdObstacleClock(h, 0);
+  await h.advance(1);
+  parkPaddles(h);
+  const ops = ballOps(h);
+  ops.setBallPosition(shot.x, shot.y);
+  ops.setBallVelocity(shot.vx, shot.vy);
+  ops.setBallSpin(0);
   return { vx: shot.vx, vy: shot.vy };
 }
 
@@ -2177,13 +3053,10 @@ export async function driveTrail(
     const [r, g, b] = h.pixel(x, TRAIL_LANE_Y);
     bare.set(x, { r, g, b });
   }
-  h.debug.setBall(0, {
-    x: TRAIL_START_X,
-    y: TRAIL_LANE_Y,
-    vx: speed,
-    vy: 0,
-    spin: 0,
-  });
+  const ops = ballOps(h);
+  ops.setBallPosition(TRAIL_START_X, TRAIL_LANE_Y);
+  ops.setBallVelocity(speed, 0);
+  ops.setBallSpin(0);
   await h.advance(TRAIL_FILL_TICKS);
   h.calls.length = 0;
   await h.advance(1);

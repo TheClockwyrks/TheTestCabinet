@@ -31,7 +31,6 @@ fn parses_full_config_with_live_and_pack() {
         "wav": "c.wav",
         "mid": "c.mid",
         "sample_pack": "naval-weapons@1",
-        "pack_dir": "/packs/naval",
         "live": { "endpoint": "host.docker.internal:7000", "token": "abc" }
     }"#;
     let cfg: AudioConfig = serde_json::from_str(json).unwrap();
@@ -44,39 +43,41 @@ fn parses_full_config_with_live_and_pack() {
 }
 
 #[test]
-fn select_pack_dir_picks_the_named_subdir_when_present() {
-    let root = tempfile::tempdir().unwrap();
-    // A multi-bank image bakes each bank as a per-name subdir carrying `pack.toml`.
-    let cinematic = root.path().join("cinematic");
-    std::fs::create_dir_all(&cinematic).unwrap();
-    std::fs::write(cinematic.join("pack.toml"), "name = \"cinematic\"\n").unwrap();
-
-    // `name@version` selects the `<root>/<name>` subdir.
+fn pack_ref_reads_the_config_alone() {
+    // A palette is never inherited from the environment: a run reads the packs it was
+    // staged with, and the config selects among those by ref.
+    unsafe { std::env::set_var("TCAB_SAMPLE_PACK", "combat-core@0.2.0") };
+    unsafe { std::env::set_var("TCAB_INSTRUMENT_BANK", "gm-lite@0.1.0") };
+    let cfg: AudioConfig = serde_json::from_str(r#"{ "sample_pack": "naval@1.0.0" }"#).unwrap();
     assert_eq!(
-        select_pack_dir(root.path().to_path_buf(), Some("cinematic@0.1.0")),
-        cinematic
+        cfg.pack_ref(PackKind::SamplePack).as_deref(),
+        Some("naval@1.0.0")
     );
-    // A bare name (no `@version`) also selects it.
-    assert_eq!(
-        select_pack_dir(root.path().to_path_buf(), Some("cinematic")),
-        cinematic
-    );
+    assert_eq!(cfg.pack_ref(PackKind::InstrumentBank), None);
 }
 
 #[test]
-fn select_pack_dir_falls_back_to_root_for_a_single_palette_image() {
-    let root = tempfile::tempdir().unwrap();
-    // Original single-bank layout: the pack.toml sits directly at the root, no subdir.
-    std::fs::write(root.path().join("pack.toml"), "name = \"gm-lite\"\n").unwrap();
+fn pack_ref_is_none_when_the_config_names_none() {
+    // Every full-stack and game-jam run: the model writes its own config and names no
+    // pack, which takes the staged default rather than an image's.
+    let cfg: AudioConfig = serde_json::from_str("{}").unwrap();
+    assert_eq!(cfg.pack_ref(PackKind::SamplePack), None);
+    assert_eq!(cfg.pack_ref(PackKind::InstrumentBank), None);
+}
 
-    // A requested bank with no matching subdir resolves to the root itself.
+#[test]
+fn an_empty_ref_names_no_pack() {
+    let cfg: AudioConfig = serde_json::from_str(r#"{ "sample_pack": "" }"#).unwrap();
+    assert_eq!(cfg.pack_ref(PackKind::SamplePack), None);
+}
+
+#[test]
+fn each_kind_reads_only_its_own_config_field() {
+    let cfg: AudioConfig =
+        serde_json::from_str(r#"{ "instrument_bank": "gm-lite@0.2.0" }"#).unwrap();
     assert_eq!(
-        select_pack_dir(root.path().to_path_buf(), Some("gm-lite@0.1.0")),
-        root.path()
+        cfg.pack_ref(PackKind::InstrumentBank).as_deref(),
+        Some("gm-lite@0.2.0")
     );
-    // No name at all -> the root.
-    assert_eq!(
-        select_pack_dir(root.path().to_path_buf(), None),
-        root.path()
-    );
+    assert_eq!(cfg.pack_ref(PackKind::SamplePack), None);
 }

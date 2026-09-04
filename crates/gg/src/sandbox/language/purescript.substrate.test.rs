@@ -39,7 +39,7 @@ use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 use super::super::g8::{self, Answered, Case, Located, Shape};
 use crate::limits::TurnErrorType;
 
-use super::compile::{self, check_module, compile_program};
+use super::compile::{self, compile_module, compile_program};
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{
     CallLog, FakeOperationApi, all_capabilities, all_operations, all_operations_without,
@@ -65,7 +65,7 @@ fn prepare(source: &str) -> String {
 
 /// The same, for a turn carrying code modules — which the entry module gg generates imports.
 fn prepare_with(source: &str, modules: &[CodeModule]) -> String {
-    match compile_program(source, modules, &PrepareContext::new()) {
+    match compile_program(source, modules, &PrepareContext::detached()) {
         Ok(prepared) => prepared.source,
         Err(failure) => panic!("purs did not compile this PureScript: {failure}"),
     }
@@ -293,6 +293,53 @@ main = do
   Console.log (show (view (prop (Proxy :: Proxy "count")) (over (prop (Proxy :: Proxy "count")) (_ + 41) record)))
 "#);
     assert_eq!(logs(&outcome), ["10", "42"]);
+
+    // A reply whose comments and whose module name are not ASCII compiles and runs. `purs` reads a
+    // proper name over the whole of Unicode and files the emitted JavaScript under it, and the entry
+    // point gg generates names the module directory the compiler wrote rather than a name gg
+    // scanned out of the reply.
+    let outcome = run(r#"{- Snake — a naïve grid. Ship it 🚀 -}
+module Ünicode where
+
+import Prelude
+import Effect (Effect)
+import Effect.Class.Console as Console
+
+label :: String
+label = "café ☕"
+
+main :: Effect Unit
+main = Console.log label
+"#);
+    assert_eq!(logs(&outcome), ["café ☕"]);
+
+    // Two responses of one agent under one module name — what a model that calls every program
+    // `Main` produces. The compiler's output directory survives the reset between the two
+    // preparations, so each turn has to run the build its own preparation made.
+    let agent = crate::sandbox::AgentWorkspace::new();
+    let turn = |line: &str| {
+        let context = PrepareContext::for_agent(&agent, purescript().persistent_work());
+        let source = format!(
+            "module Solve where\n\
+             \n\
+             import Prelude\n\
+             import Effect (Effect)\n\
+             import Effect.Class.Console as Console\n\
+             \n\
+             main :: Effect Unit\n\
+             main = Console.log \"{line}\"\n",
+        );
+        match compile_program(&source, &[], &context) {
+            Ok(prepared) => prepared.source,
+            Err(failure) => panic!("purs did not compile this PureScript: {failure}"),
+        }
+    };
+    let first = turn("first");
+    let second = turn("second");
+    let outcome = evaluate_js(&first, &[], &[], canned_outcome).0;
+    assert_eq!(logs(&outcome), ["first"]);
+    let outcome = evaluate_js(&second, &[], &[], canned_outcome).0;
+    assert_eq!(logs(&outcome), ["second"]);
 }
 
 #[test]
@@ -441,6 +488,101 @@ fn a_located_failure_names_the_model_s_own_purescript() {
         reported.contains("… and 1 more frame,"),
         "and the one frame that was struck is counted rather than silently dropped: {reported}"
     );
+
+    // A gg call the host fails, through the real membrane and through this arm's own SDK. The SDK is
+    // compiled into the same bundle the program is, so the crossing's frame resolves to one of the
+    // SDK's own sources and is struck; and the crossing costs ONE engine frame, which is what leaves
+    // the model's own frame inside the guest's ten-frame capture. Both halves are asserted here,
+    // because either one alone leaves the model reading a count and nothing else.
+    let (outcome, _log) = run_with(
+        "module Main where\n\
+         \n\
+         import Prelude\n\
+         \n\
+         import Effect (Effect)\n\
+         import Effect.Class.Console as Console\n\
+         import Gg.Files as Gg.Files\n\
+         \n\
+         main :: Effect Unit\n\
+         main = do\n\
+         \x20 Console.log \"starting\"\n\
+         \x20 _ <- Gg.Files.readFile \"missing.md\" {}\n\
+         \x20 Console.log \"read it\"\n",
+        &all_operations(),
+        &[],
+        |_name: &str, _args: &Value| {
+            ToolOutcome::failed(
+                crate::tools::ToolFailure::NotFound,
+                "no such file: missing.md".to_string(),
+            )
+        },
+    );
+    let reported = trapped(&outcome);
+    assert!(
+        reported.contains("at __do (program.purs:12:"),
+        "a failed gg call names the model's own line, on a call whose result the SDK converts: \
+         {reported}"
+    );
+    for sdk in ["output/Gg.", "libs/gg-sdk/"] {
+        assert!(
+            !reported.contains(sdk),
+            "and no frame in gg's own SDK is reported under `{sdk}`: {reported}"
+        );
+    }
+    assert!(
+        reported.contains("more frames, in code this program was compiled into"),
+        "and what was struck is counted: {reported}"
+    );
+    // The crossing itself, measured rather than inferred. A conversion mapped over the effect
+    // instead of carried across the bridge lands in `Effect`'s own foreign module: `map` for
+    // `Effect` is `liftA1`, so one lift is two `bindE` applications and costs four of the ten frames
+    // the engine captures, which is how the model's own frame came to be pushed off the end of a
+    // report that was otherwise entirely correct.
+    assert!(
+        !reported.contains("output/Effect/foreign.js"),
+        "and the crossing spends one engine frame rather than lifting over the effect: {reported}"
+    );
+
+    // The same, for a call whose answer is nothing worth having: it crosses the bridge by the same
+    // one frame, and nothing else in the tree drives that half of it.
+    let (outcome, _log) = run_with(
+        "module Main where\n\
+         \n\
+         import Prelude\n\
+         \n\
+         import Effect (Effect)\n\
+         import Effect.Class.Console as Console\n\
+         import Gg.Files as Gg.Files\n\
+         \n\
+         main :: Effect Unit\n\
+         main = do\n\
+         \x20 Console.log \"starting\"\n\
+         \x20 Gg.Files.editFile \"notes.md\" \"before\" \"after\"\n\
+         \x20 Console.log \"edited\"\n",
+        &all_operations(),
+        &[],
+        |_name: &str, _args: &Value| {
+            ToolOutcome::failed(
+                crate::tools::ToolFailure::NotFound,
+                "that text is not in notes.md".to_string(),
+            )
+        },
+    );
+    let reported = trapped(&outcome);
+    assert!(
+        reported.contains("at __do (program.purs:12:"),
+        "a failed gg call that answers with nothing names the model's own line too: {reported}"
+    );
+    assert!(
+        !reported.contains("output/Effect/foreign.js"),
+        "and it spends one engine frame too: {reported}"
+    );
+    for sdk in ["output/Gg.", "libs/gg-sdk/"] {
+        assert!(
+            !reported.contains(sdk),
+            "and no frame in gg's own SDK is reported under `{sdk}`: {reported}"
+        );
+    }
 }
 
 #[test]
@@ -457,9 +599,10 @@ fn a_code_module_is_a_purescript_module_the_program_imports() {
                            add :: Int -> Int -> Int\n\
                            add left right = left + right\n";
 
-    // The use that loaded it checked it on its own; what travels to the program is the author's
-    // source, under the key it was bound at.
-    check_module(HELPERS, &PrepareContext::new()).expect("purs checks a code module");
+    // The use that loaded it compiled it on its own, under the key it was bound at; what travels to
+    // the program is the author's source.
+    compile_module("Helpers", HELPERS, &PrepareContext::detached())
+        .expect("purs compiles a code module");
     let modules = [CodeModule {
         name: "Helpers".to_string(),
         source: HELPERS.to_string(),
@@ -493,7 +636,7 @@ fn a_code_module_is_a_purescript_module_the_program_imports() {
             "import Effect (Effect)\nimport Effect.Class.Console as Console\n",
         ),
         &modules,
-        &PrepareContext::new(),
+        &PrepareContext::detached(),
     )
     .expect_err("a program that never imported the module");
     assert!(
@@ -507,10 +650,14 @@ fn a_code_module_is_a_purescript_module_the_program_imports() {
 
     // A module whose PureScript does not compile is refused by the prepare step, with the author's
     // own coordinates — it never reaches a program at all.
-    let failure = check_module("module Helpers where\ngreet = ((\n", &PrepareContext::new())
-        .expect_err("a broken module is refused");
+    let failure = compile_module(
+        "Helpers",
+        "module Helpers where\ngreet = ((\n",
+        &PrepareContext::detached(),
+    )
+    .expect_err("a broken module is refused");
     assert!(
-        failure.to_string().contains("module.purs:"),
+        failure.to_string().contains("Lib.Helpers.purs:"),
         "located in the author's own file: {failure}"
     );
 }
@@ -544,7 +691,7 @@ fn a_module_in_scope_changes_nothing_about_the_program_gg_compiles() {
 
     // What the seam handed the arm is what the arm wrote into the file `purs` read: the source is
     // never edited, prefixed or appended to.
-    let context = PrepareContext::new();
+    let context = PrepareContext::detached();
     compile_program(source, &modules, &context).expect("it compiles");
     let compiled = std::fs::read_to_string(
         context
@@ -757,6 +904,11 @@ fn crossings() -> Vec<Crossing> {
             tool: "list_dir",
             statement: "_ <- Gg.Files.listDir { path: \"src\" }",
             expected: || json!({ "path": "src" }),
+        },
+        Crossing {
+            tool: "tree",
+            statement: "_ <- Gg.Files.tree { path: \"src\", depth: 3 }",
+            expected: || json!({ "path": "src", "depth": 3 }),
         },
         Crossing {
             tool: "search",
@@ -1437,7 +1589,7 @@ fn every_optional_argument_is_a_field_of_a_record() {
         .filter(|field| field["optional"] == json!(true))
         .count();
     assert_eq!(
-        optional, 42,
+        optional, 44,
         "the optional record fields the surface declares"
     );
 }
@@ -1537,15 +1689,16 @@ import Prelude
 
 import Effect (Effect)
 import Effect.Class.Console as Console
-import Gg.Skills as Gg.Skills
+import Gg.Files as Gg.Files
 
 main :: Effect Unit
 main = do
-  text <- Gg.Skills.readSkill
+  _ <- Gg.Files.readFile
     "missing.md"
-  Console.log text
+    {}
+  Console.log "read it"
 "#,
-                names: &["read_skill", "not-found", "missing.md"],
+                names: &["read_file", "not-found", "missing.md"],
                 located: Located::At("program.purs:14:5"),
                 answered: Answered::AtRuntime,
                 // The SDK's `ApiError` carries the wire's code and the guest reports it, so the

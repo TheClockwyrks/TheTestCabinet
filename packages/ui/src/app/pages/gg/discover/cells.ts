@@ -28,7 +28,7 @@ const COMPACT = new Intl.NumberFormat("en-US", {
  * A field's value as a table cell.
  *
  * The formatting is chosen by **field name**, not by value, because a bare number carries
- * no unit: `1800` under `metric.runTimeSeconds` is half an hour and under
+ * no unit: `1800` under `metric.sessionSeconds` is half an hour and under
  * `metric.totalTokens` it is nothing at all. The rules are deliberately few — a unit for
  * the handful of namespaces that have one, and the value's own rendering otherwise — so a
  * field a feature adds tomorrow is legible without anyone teaching this function about it.
@@ -41,7 +41,7 @@ export function formatFieldValue(field: string, value: GgValue | undefined): str
   if (GG_DATE_FIELDS.includes(field)) return formatTimestamp(value);
   if (field === "score") return value.toFixed(2);
   if (/(^|\.)cost/i.test(field)) return `$${value.toFixed(2)}`;
-  if (/runTimeSeconds$/.test(field)) return formatDuration(value);
+  if (/Seconds$/.test(field)) return formatDuration(value);
   if (/tokens$/i.test(field)) return COMPACT.format(value);
   return formatNumber(value);
 }
@@ -113,6 +113,6 @@ export function rawValue(value: GgValue | undefined): string {
  *  precision. Rates and scores keep two decimals; a duration or a token count is rounded
  *  by its own formatter, so this only has to stop `3.0000000000000004` reaching the DOM. */
 function roundForDisplay(field: string, value: number): number {
-  if (/runTimeSeconds$/.test(field) || /tokens$/i.test(field)) return value;
+  if (/Seconds$/.test(field) || /tokens$/i.test(field)) return value;
   return Math.round(value * 1000) / 1000;
 }

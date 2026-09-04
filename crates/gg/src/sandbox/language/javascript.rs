@@ -122,6 +122,7 @@ impl ProgramLanguage for JavaScript {
     /// [TypeScript's](super::typescript).
     fn prepare_module(
         &self,
+        _key: &str,
         source: &str,
         _context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {
@@ -203,8 +204,8 @@ impl ProgramLanguage for JavaScript {
 
     /// [One named `import`, one search over every granted module at once, and a `for…of` opening a
     /// documentation view apiece](super::typescript::bootstrap_program).
-    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
-        typescript::bootstrap_program(self, modules, docs)
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str], tree: Option<u32>) -> String {
+        typescript::bootstrap_program(self, modules, docs, tree)
     }
 }
 

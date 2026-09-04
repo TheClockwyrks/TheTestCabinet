@@ -5,7 +5,8 @@
 // "`menuIndex` is `0` on arriving. `up` and `down` move the highlight by one
 // item and wrap at both ends". `specs/controls.md` binds `down` to
 // `ArrowDown` and `KeyS` and reads it as a press EDGE off `playing`, and the
-// title menu's two items are `TITLE_ITEMS`, so index `0` moves to index `1`.
+// title menu's three items are `TITLE_ITEMS`, so index `0` moves to index `1`,
+// `THE ALMANAC`.
 //
 // THE DRIVE. `reset` to the title screen, which the specification puts
 // `menuIndex` `0` on, then one real `ArrowDown` dispatched at the engine's

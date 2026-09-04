@@ -32,7 +32,7 @@ fn a_program_crosses_as_the_model_wrote_it() {
         "",
     ] {
         let prepared = python()
-            .prepare_program(source, &[], &PrepareContext::new())
+            .prepare_program(source, &[], &PrepareContext::detached())
             .expect("this arm prepares every reply, because nothing on the host reads it");
         assert_eq!(prepared.source, source);
     }
@@ -60,7 +60,7 @@ fn a_module_keeps_its_source_and_names_what_it_defined() {
     let source =
         "HEADER = 'name,size'\n\n\ndef widen(text, width):\n    return text.ljust(width)\n";
     let prepared = python()
-        .prepare_module(source, &PrepareContext::new())
+        .prepare_module("helpers", source, &PrepareContext::detached())
         .expect("this arm prepares every module");
     assert_eq!(prepared.source, source);
     assert_eq!(export_names(&prepared.exports), ["HEADER", "widen"]);
@@ -84,7 +84,7 @@ fn a_module_in_scope_leaves_the_program_byte_identical() {
         "print(1)\n",
     ] {
         let prepared = python()
-            .prepare_program(source, &modules, &PrepareContext::new())
+            .prepare_program(source, &modules, &PrepareContext::detached())
             .expect("this arm prepares every reply, because nothing on the host reads it");
         assert_eq!(prepared.source, source);
         assert!(prepared.component.is_none());
@@ -214,7 +214,7 @@ fn the_generated_documentation_program_is_python() {
          for name in functions:\n    gg.views.open_docs_view(name)\n"
     );
     python()
-        .prepare_program(&program, &[], &PrepareContext::new())
+        .prepare_program(&program, &[], &PrepareContext::detached())
         .expect("this arm prepares the program it generated");
 }
 
@@ -232,6 +232,7 @@ fn the_opening_program_is_python() {
     let program = python().bootstrap_program(
         &["gg.files", "gg.shell"],
         &["gg.docs.search", "gg.views.open_docs_view"],
+        None,
     );
     assert_eq!(
         program,
@@ -244,7 +245,7 @@ fn the_opening_program_is_python() {
         )
     );
     python()
-        .prepare_program(&program, &[], &PrepareContext::new())
+        .prepare_program(&program, &[], &PrepareContext::detached())
         .expect("this arm prepares the program it generated");
 }
 
@@ -257,7 +258,7 @@ fn the_opening_program_is_python() {
 /// left out and the documentation views stand alone.
 #[test]
 fn the_opening_program_omits_a_search_that_would_ask_for_nothing() {
-    let program = python().bootstrap_program(&[], &["gg.docs.search"]);
+    let program = python().bootstrap_program(&[], &["gg.docs.search"], None);
     assert_eq!(
         program,
         "import gg\n\n\
@@ -269,7 +270,7 @@ fn the_opening_program_omits_a_search_that_would_ask_for_nothing() {
         "the opening program searches with nothing to search for:\n{program}"
     );
     python()
-        .prepare_program(&program, &[], &PrepareContext::new())
+        .prepare_program(&program, &[], &PrepareContext::detached())
         .expect("this arm prepares the program it generated");
 }
 

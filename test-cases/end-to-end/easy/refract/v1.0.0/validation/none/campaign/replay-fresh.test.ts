@@ -6,6 +6,13 @@
 // is never partially banked." Board 1 is really solved, and re-entered from
 // the grid: the beams it was solved with must be gone, every beam empty and
 // none complete, exactly as a first attempt starts.
+//
+// GETTING BACK TO THE GRID. The solve leaves the game on the solved screen,
+// and specs/modes/campaign.md gives that screen two exits to `select`: its
+// third menu choice, back to select, and the `back` action. This item's
+// subject is on the far side of that step, not the step itself, so it must
+// not pin one of the two — `gridFromSolved` takes whichever the build honours,
+// and which one that is stays campaign/solved-back's verdict alone.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
@@ -16,6 +23,7 @@ import {
   fireAction,
   type Harness,
 } from "../harness";
+import { gridFromSolved } from "./reading";
 
 let h: Harness;
 
@@ -29,7 +37,7 @@ afterEach(async () => {
 
 it("re-enters a solved board with every beam empty", async () => {
   await driveCourse(h, 1);
-  await fireAction(h, "back"); // solved → select
+  await gridFromSolved(h);
 
   await fireAction(h, "confirm"); // board 1, solved, reopens
   await captureStill(h, "fresh");

@@ -640,6 +640,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         material: resolved.material.clone(),
         particle: resolved.particle.clone(),
         audio: resolved.audio.clone(),
+        audio_packs: resolved.audio_packs.clone(),
         prompt_template,
         common_specs,
         workspace,
@@ -759,6 +760,7 @@ fn stored_validation(validation: &test_cabinet_core::ReviewValidation) -> Stored
     StoredReviewValidation {
         script: validation.script_rel.clone(),
         per_engine: validation.script.is_none(),
+        engines: validation.engines.clone(),
         outputs: validation
             .outputs
             .iter()

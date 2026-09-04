@@ -4,12 +4,29 @@
 // The AI is part of the simulation, so pausing must stop it exactly as it stops a
 // held key and the ball. This poses the one situation in which a frozen AI and a
 // running one look different — a ball crossing the field toward it, far from
-// where its paddle is — and hands the right paddle back to the real opponent with
-// `setAiControl`, so what is frozen is the build's own AI rather than a driver's
-// held velocity.
+// where its paddle is — and leaves the right paddle with the REAL opponent:
+// `placePaddle` sets a centre and takes nothing, so what freezes is the build's
+// own AI rather than a driven paddle's held velocity.
+//
+// Both of the AI's faculties are on. They are gated separately now
+// (specs/instrumentation.md) — `setAiTracking` for what it senses,
+// `setAiMovement` for whether its paddle travels — and this point is about the
+// whole opponent standing still, so it gives it both and watches it play.
+//
+// The field holds the ball the AI is chasing and nothing else. `arrangeAiChase`
+// empties it with `clearWorld` and spawns back that one ball, so both obstacles
+// are gone rather than dodged and nothing can deflect the approach the AI is
+// reacting to. The human's paddle is the field furniture no operation removes, so
+// it is DRIVEN out of the lane instead — the exception specs/instrumentation.md
+// names.
+//
+// The pause is POSED rather than pressed. `setScreen("paused")` puts the game on
+// the screen and touches nothing else, which is the precondition this point
+// names; whether a key opens the pause menu is the controls category's point.
 //
 // The chase is watched running first. Without that, a build whose AI never moved
-// at all would pass the freeze for the wrong reason.
+// at all would pass the freeze for the wrong reason. The frozen stretch is held
+// to exact equality, because "nothing advances" admits no drift.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -17,6 +34,7 @@ import {
   arrangeAiChase,
   captureReplay,
   createHarness,
+  openPause,
   type Harness,
 } from "../harness";
 
@@ -48,17 +66,21 @@ afterEach(() => {
 });
 
 it("holds the AI paddle still while paused", async () => {
-  await arrangeAiChase(h, { paddleCy: 200, ballY: 620 });
+  arrangeAiChase(h, { paddleCy: 200, ballY: 620 });
 
-  // The precondition: the real opponent is chasing, so a still paddle later is
-  // the pause's doing.
-  const start = h.snapshot().paddles.right.cy;
+  // The precondition: the right paddle is still the AI's, and the real opponent
+  // is chasing, so a still paddle later is the pause's doing.
+  const opened = h.snapshot();
+  assertEqual(opened.paddles.right.driven, false);
+  assertEqual(opened.ai.tracking, true);
+  assertEqual(opened.ai.movement, true);
+  const start = opened.paddles.right.cy;
 
   const held = await captureReplay(h, "frozen", async () => {
     await h.advance(CHASING_TICKS);
     const chasing = h.snapshot().paddles.right.cy;
 
-    await h.tap("Escape");
+    openPause(h, "playing");
     const screen = h.snapshot().screen;
     const paused = h.snapshot().paddles.right.cy;
 

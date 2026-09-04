@@ -10,12 +10,17 @@ import {
   CodeFigures,
   CodeOutliers,
   CodeProvenanceStrip,
+  ToolchainCoverage,
+  ToolchainTests,
   formatCodeNumber,
+  toolchainCoverage,
+  toolchainTests,
 } from "../code";
 import styles from "../code/CodePanels.module.scss";
 
-// The Code tab (`/runs/:runId/code`): a deterministic, execute-nothing static read of the
-// source the run's model wrote.
+// The Code tab (`/runs/:runId/code`): what the run's model built, read two ways.
+//
+// Most of the page is a deterministic, execute-nothing static read of the source itself.
 //
 // It answers the question no other measurement in The Test Cabinet touches — not what the
 // run cost or whether it worked, but *how the model built it*: did it split the work or
@@ -30,9 +35,28 @@ import styles from "../code/CodePanels.module.scss";
 // are built from. A transport that cannot reach per-run media (the static site) simply
 // never gets the second tier, and the page says so rather than looking broken.
 //
+// The page also carries a second, EXECUTED tier, in the two bands the toolchain block
+// feeds: the tests the model wrote, and what they covered of the code the model wrote.
+// Those figures did not come from reading the source — they came from running it, host
+// side, after the container was gone — and they belong here rather than on a page of
+// their own because they answer the same question the static half asks and cannot: "how
+// much test code did the model write" and "did any of it exercise anything" are the two
+// halves of one judgement, and separating them is what let a reader read the static
+// counts as coverage in the first place. Each band renders only when the run's case
+// actually wrote a report file, so a run that carries none shows no band at all rather
+// than an empty one, and the static tier is unchanged for it.
+//
+// The two tiers are labelled so they cannot be confused with each other, and — the thing
+// that matters most on this page — neither can be confused with the test case's
+// VALIDATORS, whose verdicts a reviewer sees on the same run. The validators are The Test
+// Cabinet's own graders, a separate vitest project run by a separate code path with its
+// own coverage deliberately disabled. Nothing they execute contributes a number to this
+// page.
+//
 // Nothing here is a score. A run is judged on what it built, never on what a metric said
 // about it — the polarity the catalog carries orients a sort and picks an arrow, and that
-// is the whole of its authority.
+// is the whole of its authority. That holds for the executed tier too: a red suite and
+// thin coverage are recorded and shown, and gate no rating, no verdict and no point.
 export function RunCodePage() {
   return (
     <RunDetailLayout tab="code">
@@ -52,6 +76,10 @@ type LoadState =
 
 function RunCodeBody({ run }: { run: RunRecord }) {
   const summary = run.codeAnalysis;
+  // The executed tier. Both gates test whether file-derived data was actually parsed —
+  // never whether the manifest declared a `test` command — so a case that declares one
+  // but still writes only a terminal table shows nothing at all.
+  const coverage = toolchainCoverage(run);
   // A host hook, not a client call: a console reads the backend route, the static site
   // fetches the snapshot object the publish emitted, and the site mounts no backend
   // provider at all — so reaching for one here would throw on the very host this tier
@@ -92,6 +120,12 @@ function RunCodeBody({ run }: { run: RunRecord }) {
             a run recorded before the analyzer shipped has none.
           </p>
         </Panel>
+        {/* The executed tier does not depend on the static one — they are read by
+            different stages from different inputs — so it still renders here. In
+            practice this pairing barely occurs, because the tab is only offered for a
+            run that has an analysis; it is what makes the page honest for one reached by
+            typing its URL. */}
+        <ExecutedTier run={run} />
       </section>
     );
   }
@@ -132,13 +166,21 @@ function RunCodeBody({ run }: { run: RunRecord }) {
         />
       </div>
 
-      {/* Each band is its heading and the widgets under it, held together — the heading
-          is the only thing on this page that sits out on the backdrop, and it wears the
-          halo for it. */}
+      {/* The executed tier, above the static bands: what the model's tests did is the
+          first thing a reader wants after the headline figures, and putting it here is
+          also what makes the coverage column in the explorer below read as a follow-on
+          rather than as an unexplained column. */}
+      <ExecutedTier run={run} />
+
+      {/* Each band is its heading and the widgets under it, held together — the heading,
+          and the lead sentence the executed bands carry, are the only things on this page
+          that sit out on the backdrop, and they wear the halo for it. */}
       <div className={styles.band}>
         <h3 className={styles.sectionHeading}>Where the code went</h3>
         <DetailTier load={load}>
-          {(document) => <CodeExplorer document={document} />}
+          {(document) => (
+            <CodeExplorer document={document} coverage={coverage} />
+          )}
         </DetailTier>
       </div>
 
@@ -159,6 +201,67 @@ function RunCodeBody({ run }: { run: RunRecord }) {
         <CodeFigures summary={summary} />
       </div>
     </section>
+  );
+}
+
+/**
+ * The two executed bands: the model's own test suite, and its coverage of the model's own
+ * code.
+ *
+ * Each band — heading, lead sentence and widget together — lives wholly inside its own
+ * `!== null` conditional, because "the case wrote no report file" is not a state with an
+ * empty widget for it. A run whose case is not on the report-file contract, or whose
+ * config still only printed a terminal table, gets neither band: no heading, no card, no
+ * placeholder, no zero. Absence of the widget is the correct rendering. A block that IS
+ * present with zeroes in it does render — `total: 0` is the runner saying the build
+ * shipped no tests, which is a result worth showing.
+ *
+ * The two are gated independently because they come from two files, and a config can
+ * write one without the other.
+ *
+ * The lead sentences are the most important copy on this page. A reviewer looking at a
+ * run sees the test case's validator verdicts on a sibling surface, and must never be
+ * able to read these figures as those. So each band states, in words, that this is the
+ * suite the MODEL wrote over the code the MODEL wrote, and that the validators contribute
+ * nothing to it.
+ */
+function ExecutedTier({ run }: { run: RunRecord }) {
+  const tests = toolchainTests(run);
+  const coverage = toolchainCoverage(run);
+  return (
+    <>
+      {tests && (
+        <div className={styles.band}>
+          <h3 className={styles.sectionHeading}>Tests the model wrote</h3>
+          <p className={styles.bandLead}>
+            The build&rsquo;s own suite, executed: the tests the model wrote,
+            run over the code the model wrote by the case&rsquo;s{" "}
+            <code>test</code> command, and read from the report file that run
+            produced. The test case&rsquo;s validators are a separate suite that
+            grades this run &mdash; nothing they do is counted here, and nothing
+            here affects this run&rsquo;s rating, score or verdict.
+          </p>
+          <ToolchainTests tests={tests} />
+        </div>
+      )}
+
+      {coverage && (
+        <div className={styles.band}>
+          <h3 className={styles.sectionHeading}>
+            Coverage of the code the model wrote
+          </h3>
+          <p className={styles.bandLead}>
+            What the model&rsquo;s own tests reached in the model&rsquo;s own{" "}
+            <code>src/</code>, measured by istanbul during that same run. The
+            validators&rsquo; suite has coverage disabled by design &mdash; a
+            grader&rsquo;s tests cannot flatter the build&rsquo;s coverage
+            &mdash; so nothing it executed appears in these figures. Descriptive
+            only: coverage gates nothing.
+          </p>
+          <ToolchainCoverage coverage={coverage} />
+        </div>
+      )}
+    </>
   );
 }
 

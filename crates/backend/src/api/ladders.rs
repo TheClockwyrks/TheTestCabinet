@@ -1,11 +1,15 @@
 //! Ladders: an **ordered, gated** climb through a series of test cases, and the
-//! harness+model combinations that climb it.
+//! combinations that climb it.
 //!
 //! A [coverage plan](super::coverage) asks "run every one of these cases on every one
 //! of these models until each cell has N runs". A ladder asks a different question:
 //! *how far up does this model get?* Its cases are an ordered series of **rungs**, its
 //! combinations are **climbers**, and a climber only reaches the next rung by clearing
-//! the current one. It is a sibling of a plan, not a mode of one — it shares the
+//! the current one. A climber is either shape a
+//! [combination](super::coverage::ReviewPlanCombo) takes, so a saved gg configuration
+//! climbs beside a third-party harness and is measured against the same gate — which is
+//! why every climber is resolved into a [`PlanMember`] before anything counts, launches,
+//! or queues it. It is a sibling of a plan, not a mode of one — it shares the
 //! groups, the resolver, the matrix counts, the review buffer, the top-up scheduler,
 //! and the halting controls, and differs in the one thing that matters: a plan spends
 //! its whole budget on every cell, a ladder spends it only where a model is still
@@ -33,6 +37,10 @@
 //! the case **version** it was decided against, so bumping a rung's pin neither erases
 //! the verdict earned on the old content nor silently inherits it.
 //!
+//! Both are keyed by the climber's [`climber_key`]: `harness|model|provider` for a
+//! harness climber, and the configuration plus its slot bindings for a gg one, so two
+//! climbers running one configuration on different models keep separate histories.
+//!
 //! Steering — climb this one first, watch it, stop it — is stored separately
 //! ([`crate::db::StoredLadderClimber`]) precisely so it can never be confused with
 //! progress. Manual verdict overrides live beside the automatic outcome rather than
@@ -57,7 +65,7 @@
 //!
 //! Console-only reviewer tooling, like the rest of the coverage surface.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -71,17 +79,19 @@ use crate::auth::AuthUser;
 use crate::coverage::gate::{self, Gate, GateOutcome, GateTally, GateThreshold, RungRun};
 use crate::coverage::schedule::{CellDemand, top_up as decide_top_up};
 use crate::db::{
-    JobOrigin, LadderOutcomeKind, StoredLadder, StoredLadderClimber, StoredLadderOutcome,
+    CellKey, JobOrigin, LadderOutcomeKind, StoredLadder, StoredLadderClimber, StoredLadderOutcome,
     StoredLadderRung, combination_key,
 };
 use crate::error::ApiError;
 
 use super::AppState;
 use super::coverage::{
-    CoverageCell, CoverageQueue, HaltResult, MatrixCtx, PauseInput, QueueCell, ReviewPlanCase,
-    ReviewPlanCombo, TopUpCell, TopUpResult, TopUpSkipped, cell_key, clamp_buffer_target,
-    clamp_runs_per_cell, collect_queue, enqueue_top_up, group_index, halt_jobs, new_id, now,
-    resolve_buffer_target, resolve_combos,
+    CoverageCell, CoverageQueue, GgLibrary, HaltResult, MatrixCtx, PauseInput, PlanMember,
+    QueueCell, ReviewPlanCase, ReviewPlanCombo, TopUpBlocked, TopUpCell, TopUpResult, TopUpSkipped,
+    blocked_cell, cell_key, clamp_buffer_target, clamp_runs_per_cell, collect_queue,
+    enqueue_top_up, for_read, for_storage, gg_library, group_index, halt_jobs, launchable_demand,
+    new_id, now, read_gg_library, reject_unstorable_members, resolve_buffer_target, resolve_combos,
+    resolve_member,
 };
 
 /// The most rungs one ladder may hold. A ladder is a curated progression a reviewer
@@ -218,7 +228,8 @@ impl LadderSchedule {
     }
 }
 
-/// One rung: exactly one test case, pinned to an exact version and variant.
+/// One rung: exactly one [pinned case](ReviewPlanCase) — a slug, an exact version, a
+/// variant, and the engine its runs are built on.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -237,6 +248,15 @@ pub struct LadderRung {
     pub version: String,
     /// The variant to climb.
     pub variant: String,
+    /// The engine to climb on, or null for the `none` engine.
+    ///
+    /// Part of the rung's identity within the climb, because clearing a case with a
+    /// runtime underneath is a different achievement from clearing it with nothing: one
+    /// ladder holds the same case at the same version and variant twice when the two
+    /// pins name different engines.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub engine: Option<String>,
     /// This rung's override of the ladder's runs-per-cell target, or null to inherit
     /// it — so one pivotal step can demand more evidence without making the whole
     /// climb more expensive.
@@ -262,6 +282,10 @@ pub struct LadderRungInput {
     pub version: String,
     /// The variant to climb.
     pub variant: String,
+    /// The engine to climb on, or null for the `none` engine.
+    #[serde(default)]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub engine: Option<String>,
     /// This rung's override of the ladder's runs-per-cell target, or null to inherit.
     #[serde(default)]
     #[cfg_attr(feature = "contract", ts(optional))]
@@ -504,17 +528,40 @@ pub struct LadderRungOutcome {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct LadderClimber {
-    /// The combination's canonical key (`harness|model|provider`), which is how
-    /// steering and verdicts reference it.
+    /// The combination's canonical key — the text this ladder's steering and every one of
+    /// its verdicts is stored against.
+    ///
+    /// Its shape follows the shape of the combination: a harness climber's key is its
+    /// `harness|model|provider` triple, and a gg climber's names the configuration and the
+    /// models it binds, because two climbers running one configuration on different models
+    /// are exactly the two arms a ladder exists to separate. It is written and compared,
+    /// never parsed — a client reproduces it by echoing this field, not by assembling one.
     pub key: String,
-    /// The harness.
+    /// The harness the climber runs — `gg` on a gg climber.
     pub harness: HarnessSlug,
-    /// The canonical model id.
+    /// The model the climber's runs are attributed to: the harness climber's own, and for a
+    /// gg climber the model its bound configuration's root agent runs.
     pub model: String,
     /// The provider for a provider-routed harness, or null.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub provider: Option<String>,
+    /// The gg configuration this climber runs (`saved:<id>`), or null on a harness climber.
+    /// This is what makes a climber a gg climber.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub gg_config_id: Option<String>,
+    /// That configuration's current display name, or null on a harness climber. Resolved on
+    /// every read rather than stored, so a renamed configuration renames its climbers at
+    /// once.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub gg_config_name: Option<String>,
+    /// The model bound to each of the configuration's launch slots, keyed by slot name.
+    /// Empty on a harness climber. These are half of what the key distinguishes, so a board
+    /// can label two climbers of one configuration without re-deriving them.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub gg_slot_models: BTreeMap<String, String>,
     /// Climb-order weight; higher goes first, zero is the default. Pushes one model to
     /// the front without reordering the ladder — which would change what every *other*
     /// climber is measured against.
@@ -524,6 +571,16 @@ pub struct LadderClimber {
     pub focused: bool,
     /// Whether the climber is stopped by hand.
     pub held: bool,
+    /// Why this climber cannot be launched at all, or null when it can.
+    ///
+    /// A ladder is where an unlaunchable member is hardest to see: a climber that cannot
+    /// launch simply stops moving, and a rung it is stuck on looks exactly like one still
+    /// waiting on its runs — for as long as anyone leaves it there. So the reason is carried on
+    /// the climber itself rather than only on the rung it happens to stand on, which a topped
+    /// out or walled climber does not have at all.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub unlaunchable: Option<String>,
     /// Where the climber stands.
     pub status: ClimberStatus,
     /// The rung it stands on, or null once it has topped out.
@@ -598,6 +655,10 @@ pub struct LadderProgress {
 pub struct LadderClimberInput {
     /// Which combination to steer. Identified by the combination itself rather than by
     /// its key, because a model id contains slashes and has no business in a URL path.
+    ///
+    /// A climber read off the board can be handed straight back: the key is taken from the
+    /// member as it would be stored, so the derived fields a read filled in
+    /// (`model`, `ggConfigName`) make no difference to which climber is addressed.
     pub combination: ReviewPlanCombo,
     /// Climb-order weight; higher goes first.
     #[serde(default)]
@@ -618,7 +679,8 @@ pub struct LadderClimberInput {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct LadderOverrideInput {
-    /// Which combination.
+    /// Which combination, in either shape and either — stored or read — form; the same
+    /// normalization [`LadderClimberInput::combination`] describes applies.
     pub combination: ReviewPlanCombo,
     /// Which rung, by its stable id.
     pub rung_id: String,
@@ -657,11 +719,17 @@ pub async fn list(
         .list_ladders(&user.0.id)
         .await
         .map_err(ApiError::from)?;
+    let library = read_gg_library(
+        &state,
+        &user.0.id,
+        stored.iter().flat_map(|ladder| ladder.combos.iter()),
+    )
+    .await?;
     let mut out = Vec::with_capacity(stored.len());
     for ladder in stored {
         let schedule = schedule_of(&state, &user.0.id, &ladder.id).await?;
         out.push(LadderOut {
-            ladder: ladder_to_wire(ladder),
+            ladder: ladder_to_wire(ladder, &library),
             schedule,
         });
     }
@@ -677,8 +745,9 @@ pub async fn get(
 ) -> Result<Json<LadderOut>, ApiError> {
     let stored = load_ladder(&state, &user.0.id, &id).await?;
     let schedule = schedule_of(&state, &user.0.id, &id).await?;
+    let library = read_gg_library(&state, &user.0.id, stored.combos.iter()).await?;
     Ok(Json(LadderOut {
-        ladder: ladder_to_wire(stored),
+        ladder: ladder_to_wire(stored, &library),
         schedule,
     }))
 }
@@ -686,6 +755,11 @@ pub async fn get(
 /// `POST /ladders` — create a ladder. Targets are clamped, the gate is sanitized, and
 /// every rung's case type is checked so a rung that could never resolve is refused up
 /// front rather than stalling a climb weeks later.
+///
+/// A climber is refused on the same terms a plan's member is (`400`, naming the
+/// configuration and the slot): a gg climber pointing at a configuration the account does
+/// not own, or leaving one of its launch slots unbound, could never produce a run, and a
+/// ladder is precisely where that would be invisible — the climber would simply never move.
 ///
 /// Creating a ladder enqueues **nothing**: an absent schedule is
 /// [`LadderSchedule::default`], which is disabled. Saving a climb is describing the
@@ -697,6 +771,7 @@ pub async fn create(
     Json(input): Json<LadderInput>,
 ) -> Result<Json<LadderOut>, ApiError> {
     let schedule = input.schedule.clone().unwrap_or_default();
+    let library = reject_unstorable_members(&state, &user.0.id, &input.combos, &[]).await?;
     let stored = ladder_from_input(new_id(), input, &now()?)?;
     reject_ineligible_rungs(&state, &stored.rungs)?;
     state
@@ -705,7 +780,7 @@ pub async fn create(
         .await
         .map_err(ApiError::from)?;
     Ok(Json(LadderOut {
-        ladder: ladder_to_wire(stored),
+        ladder: ladder_to_wire(stored, &library),
         schedule,
     }))
 }
@@ -717,6 +792,8 @@ pub async fn create(
 /// still present keeps its recorded verdicts, a new one is inserted, and only a rung
 /// genuinely dropped from the climb takes its verdicts with it — which is what
 /// dropping it means. The schedule is written only when the body carried one.
+///
+/// `400` for a climber the account cannot launch, exactly as [`create`] refuses one.
 pub async fn update(
     State(state): State<AppState>,
     user: AuthUser,
@@ -724,6 +801,17 @@ pub async fn update(
     Json(input): Json<LadderInput>,
 ) -> Result<Json<LadderOut>, ApiError> {
     let requested_schedule = input.schedule.clone();
+    // The climbers already on the ladder, exempt from re-judgement — see
+    // [`reject_unstorable_members`]. A ladder is the place a member sits longest, so a
+    // configuration gaining a launch slot must not make the whole ladder unsavable.
+    let climbing = state
+        .db
+        .get_ladder(&user.0.id, &id)
+        .await
+        .map_err(ApiError::from)?
+        .map(|ladder| ladder.combos)
+        .unwrap_or_default();
+    let library = reject_unstorable_members(&state, &user.0.id, &input.combos, &climbing).await?;
     let stored = ladder_from_input(id.clone(), input, &now()?)?;
     reject_ineligible_rungs(&state, &stored.rungs)?;
     let updated = state
@@ -746,7 +834,7 @@ pub async fn update(
         None => schedule_of(&state, &user.0.id, &id).await?,
     };
     Ok(Json(LadderOut {
-        ladder: ladder_to_wire(stored),
+        ladder: ladder_to_wire(stored, &library),
         schedule,
     }))
 }
@@ -927,11 +1015,33 @@ async fn top_up_locked(
     // here is to write down the verdicts that let climbers move up.
     let board = load_board(state, user, id, true).await?;
 
-    let demands: Vec<CellDemand> = board
-        .active
-        .iter()
-        .map(|active| board.ctx.demand(active.target, &active.case, &active.combo))
-        .collect();
+    let mut demands: Vec<CellDemand> = Vec::with_capacity(board.active.len());
+    // Climbers whose member never resolved. A ladder is where this is easiest to miss —
+    // a climber that cannot launch simply stops moving, and the rung it is stuck on looks
+    // exactly like one still waiting on its runs — so the reason is reported beside the
+    // launches rather than left to be inferred from a board that stopped advancing.
+    let mut unlaunchable: Vec<TopUpBlocked> = Vec::new();
+    for active in &board.active {
+        let demand = board
+            .ctx
+            .demand(active.target, &active.case, &active.member);
+        // Only worth reporting on a rung that actually wanted runs: a rung already at its
+        // target is not being held up by anything.
+        if let Some(reason) = &active.member.unlaunchable
+            && demand.missing() > 0
+        {
+            unlaunchable.push(blocked_cell(
+                Some(active.rung_id.clone()),
+                &active.case,
+                &active.member,
+                reason.clone(),
+            ));
+        }
+        // Zeroed rather than dropped, so the buffer this climber's already-launched runs
+        // occupy still counts against the target and the rest of the budget goes to the
+        // climbers that can still move.
+        demands.push(launchable_demand(demand, &active.member));
+    }
     // The buffer is occupied by every run the reviewer owes attention to, which is a
     // wider set than the rungs this top-up may feed — a rung the gate has decided keeps
     // whatever completed runs nobody has reviewed. Taking the board's total rather than
@@ -952,19 +1062,21 @@ async fn top_up_locked(
             TopUpCell {
                 rung_id: Some(active.rung_id.clone()),
                 case: &active.case,
-                combo: &active.combo,
+                member: &active.member,
                 runs: launch.runs,
             }
         })
         .collect();
-    let launched = enqueue_top_up(state, user, &JobOrigin::Ladder(id.to_string()), &cells).await?;
+    let enqueued = enqueue_top_up(state, user, &JobOrigin::Ladder(id.to_string()), &cells).await?;
+    unlaunchable.extend(enqueued.blocked);
 
     Ok(TopUpResult {
         skipped: None,
         buffer_target,
         outstanding: Some(outstanding),
-        enqueued: launched.iter().map(|cell| cell.runs).sum(),
-        cells: launched,
+        enqueued: enqueued.launched.iter().map(|cell| cell.runs).sum(),
+        cells: enqueued.launched,
+        unlaunchable,
     })
 }
 
@@ -989,8 +1101,8 @@ pub async fn queue(
         .map(|cell| QueueCell {
             rung_id: Some(cell.rung_id.clone()),
             case: &cell.case,
-            combo: &cell.combo,
-            unreviewed: board.ctx.unreviewed_for(&cell.case, &cell.combo),
+            member: &cell.member,
+            unreviewed: board.ctx.unreviewed_for(&cell.case, &cell.member),
         })
         .collect();
     Ok(Json(collect_queue(&state, &user.0.id, &cells).await?))
@@ -1099,7 +1211,7 @@ pub async fn set_climber(
     // child tables are keyed by ladder id alone and inherit the ladder's ownership.
     load_ladder(&state, &user.0.id, &id).await?;
     let climber = StoredLadderClimber {
-        combination_key: combination_key(&input.combination),
+        combination_key: climber_key(&input.combination),
         priority: input.priority,
         focused: input.focused,
         held: input.held,
@@ -1160,7 +1272,7 @@ pub async fn set_outcome(
         .iter()
         .find(|rung| rung.id == input.rung_id)
         .ok_or_else(|| ApiError::not_found("rung not found on this ladder"))?;
-    let key = combination_key(&input.combination);
+    let key = climber_key(&input.combination);
     let now = now()?;
 
     // A verdict the gate has resolved but no top-up has written down yet has nothing to
@@ -1180,7 +1292,14 @@ pub async fn set_outcome(
         .map_err(ApiError::from)?
     {
         let case = rung_case(rung);
-        let runs = rung_runs(&state, &user.0.id, &case, &input.combination).await?;
+        // The override names one member, so it is resolved on its own rather than through a
+        // whole board: the gate reads the runs of that member's cell, which for a gg member
+        // is not a cell the stored combination alone identifies. A harness member needs no
+        // configuration at all, and the read is skipped for it.
+        let library =
+            read_gg_library(&state, &user.0.id, std::iter::once(&input.combination)).await?;
+        let member = resolve_member(&input.combination, &library);
+        let runs = rung_runs(&state, &user.0.id, &case, &member).await?;
         let target = rung.runs_override.unwrap_or(ladder.runs_per_cell);
         let decided = LadderOutcomeKind::from_gate(gate::evaluate(&runs, target, &ladder.gate))
             .ok_or_else(|| {
@@ -1231,8 +1350,8 @@ struct RungCell {
     rung_id: String,
     /// The rung's case, at its pinned version.
     case: ReviewPlanCase,
-    /// The combination climbing it.
-    combo: ReviewPlanCombo,
+    /// The resolved climber working it.
+    member: PlanMember,
     /// How many runs the rung wants (its override, else the ladder's target).
     target: u32,
 }
@@ -1275,7 +1394,14 @@ async fn load_board(
     let buffer_target = resolve_buffer_target(state, &user.0.id, schedule.buffer_target).await?;
 
     let groups = group_index(state, &user.0.id).await?;
-    let combos = resolve_combos(&ladder.combo_group_ids, &ladder.combos, &groups);
+    let library = gg_library(state, &user.0.id).await?;
+    let mut combos = resolve_combos(&ladder.combo_group_ids, &ladder.combos, &groups, &library);
+    // Only when this read is about to launch. A board that is merely being looked at does not
+    // resolve model facts: the resolution can reach out to OpenRouter, and nothing on a read
+    // spends a buffer slot that a failure would have to be refunded from.
+    if record {
+        super::coverage::resolve_gg_launch_facts(state, &mut combos).await;
+    }
     let steering: HashMap<String, StoredLadderClimber> = state
         .db
         .list_ladder_climbers(id)
@@ -1306,16 +1432,17 @@ async fn load_board(
     let mut climbers: Vec<LadderClimber> = Vec::with_capacity(combos.len());
     // Where each climber ended up, kept so both cell sets are built from the whole
     // board at once — in the ladder's order rather than the walk's.
-    let mut standings: Vec<(ReviewPlanCombo, ClimberStatus, Option<usize>, Vec<usize>)> =
+    let mut standings: Vec<(usize, ClimberStatus, Option<usize>, Vec<usize>)> =
         Vec::with_capacity(combos.len());
     let mut climbers_topped_out = 0u32;
     let mut climbers_walled = 0u32;
     for index in order {
-        let combo = &combos[index];
-        let key = combination_key(combo);
+        let member = &combos[index];
+        let combo = &member.combo;
+        let key = climber_key(combo);
         let steer = steering.get(&key);
         let held = steer.map(|s| s.held).unwrap_or(false);
-        let climb = walk_climb(state, user, id, &ladder, combo, &recorded, &ctx, record).await?;
+        let climb = walk_climb(state, user, id, &ladder, member, &recorded, &ctx, record).await?;
 
         let status = if held {
             ClimberStatus::Held
@@ -1328,30 +1455,26 @@ async fn load_board(
             _ => {}
         }
         standings.push((
-            combo.clone(),
+            index,
             status,
             climb.current.as_ref().map(|current| current.position),
             climb.reached,
         ));
 
-        climbers.push(LadderClimber {
+        climbers.push(climber_row(
             key,
-            harness: combo.harness,
-            model: combo.model.clone(),
-            provider: combo.provider.clone(),
-            priority: steer.map(|s| s.priority).unwrap_or(0),
-            focused: steer.map(|s| s.focused).unwrap_or(false),
-            held,
+            member,
+            steer,
             status,
-            current_rung: climb.current.map(|current| current.cell),
-            outcomes: climb.outcomes,
-        });
+            climb.current.map(|current| current.cell),
+            climb.outcomes,
+        ));
     }
 
     let standings: Vec<ClimberStanding<'_>> = standings
         .iter()
-        .map(|(combo, status, current, reached)| ClimberStanding {
-            combo,
+        .map(|(index, status, current, reached)| ClimberStanding {
+            member: &combos[*index],
             status: *status,
             current: *current,
             reached,
@@ -1363,7 +1486,7 @@ async fn load_board(
     // ladder has moved past is not missing anything, whatever its runs came back as.
     let mut runs_missing = 0u32;
     for cell in &active {
-        runs_missing += ctx.demand(cell.target, &cell.case, &cell.combo).missing();
+        runs_missing += ctx.demand(cell.target, &cell.case, &cell.member).missing();
     }
     // The buffer, in contrast, is measured over everything the reviewer may be asked to
     // judge. A decided rung's unreviewed runs are still work waiting on them, and a
@@ -1373,7 +1496,7 @@ async fn load_board(
     let mut runs_unreviewed = 0u32;
     let mut runs_outstanding = 0u32;
     for cell in &reviewable {
-        let demand = ctx.demand(cell.target, &cell.case, &cell.combo);
+        let demand = ctx.demand(cell.target, &cell.case, &cell.member);
         runs_unreviewed += demand.unreviewed;
         runs_outstanding += demand.outstanding();
     }
@@ -1416,8 +1539,8 @@ async fn load_board(
 /// One climber's resolved standing, as the pure cell-set builder needs it: where it
 /// stands and everywhere it has been, both as positions in the ladder's rungs.
 struct ClimberStanding<'a> {
-    /// The combination that climbed.
-    combo: &'a ReviewPlanCombo,
+    /// The resolved climber.
+    member: &'a PlanMember,
     /// Where it stands, after any manual hold.
     status: ClimberStatus,
     /// The rung it stands on, or `None` once every rung is cleared.
@@ -1460,14 +1583,14 @@ fn cell_sets(
         ) && let Some(position) = standing.current
             && let Some(rung) = ladder.rungs.get(position)
         {
-            active.push((position, rung_cell(ladder, rung, standing.combo)));
+            active.push((position, rung_cell(ladder, rung, standing.member)));
         }
         // Everywhere it has been, whatever stopped it. A held climber's runs are still
         // the reviewer's to judge — a hold stops spending, not reviewing — and a walled
         // one's are the very runs a re-review would unwall it with.
         for &position in standing.reached {
             if let Some(rung) = ladder.rungs.get(position) {
-                reviewable.push((position, rung_cell(ladder, rung, standing.combo)));
+                reviewable.push((position, rung_cell(ladder, rung, standing.member)));
             }
         }
     }
@@ -1489,16 +1612,80 @@ fn order_cells(mut cells: Vec<(usize, RungCell)>, axis: LadderAxis) -> Vec<RungC
     cells
         .into_iter()
         .map(|(_, cell)| cell)
-        .filter(|cell| seen.insert(cell_key(&cell.case, &cell.combo)))
+        .filter(|cell| seen.insert(repeat_key(cell)))
         .collect()
 }
 
+/// What makes one cell a repeat of another, for [`order_cells`].
+///
+/// A cell's runs are counted by its [`cell_key`], which is the identity two rungs pinning
+/// one case share. A member that could not be resolved has no launch identity at all, so
+/// every unresolvable member of a case carries the same cell key while having no runs for
+/// that key to protect. Such a member is kept apart by its own climber key, so a rung
+/// carrying two broken configurations is reported as the two climbers it is stuck on
+/// rather than as one.
+fn repeat_key(cell: &RungCell) -> (CellKey, String) {
+    let climber = match &cell.member.unlaunchable {
+        Some(_) => climber_key(&cell.member.combo),
+        None => String::new(),
+    };
+    (cell_key(&cell.case, &cell.member), climber)
+}
+
+/// The key a climber's steering and its verdicts are stored against.
+///
+/// Always taken from the member as it would be **stored**, never from the shape a request
+/// happened to arrive in. A read hands a client back a gg climber with its configuration's
+/// name and its root model filled in ([`ReviewPlanCombo::for_storage`] describes the pair),
+/// and echoing that straight back into `POST /ladders/{id}/climbers` or `.../outcomes` has to
+/// address the very climber it was read from — otherwise steering a climber the board just
+/// showed you would silently mint a second one nothing on the ladder refers to.
+///
+/// The one function every ladder key goes through, so the board's key, the steering row's,
+/// and the verdict's cannot drift apart.
+fn climber_key(combo: &ReviewPlanCombo) -> String {
+    combination_key(&combo.for_storage())
+}
+
+/// One climber's row on the board: its combination, the reviewer's steering, and where the
+/// walk left it.
+///
+/// The row carries the member's [`unlaunchable`](PlanMember::unlaunchable) reason from the
+/// same resolution a plan's cells carry it from, so a climber a top-up can never feed says
+/// so wherever it is shown.
+fn climber_row(
+    key: String,
+    member: &PlanMember,
+    steer: Option<&StoredLadderClimber>,
+    status: ClimberStatus,
+    current_rung: Option<LadderCell>,
+    outcomes: Vec<LadderRungOutcome>,
+) -> LadderClimber {
+    let combo = &member.combo;
+    LadderClimber {
+        key,
+        harness: combo.harness,
+        model: combo.model.clone(),
+        provider: combo.provider.clone(),
+        gg_config_id: combo.gg_config_id.clone(),
+        gg_config_name: combo.gg_config_name.clone(),
+        gg_slot_models: combo.gg_slot_models.clone(),
+        priority: steer.map(|s| s.priority).unwrap_or(0),
+        focused: steer.map(|s| s.focused).unwrap_or(false),
+        held: steer.map(|s| s.held).unwrap_or(false),
+        unlaunchable: member.unlaunchable.clone(),
+        status,
+        current_rung,
+        outcomes,
+    }
+}
+
 /// One rung, resolved into the cell its runs are counted, launched, and queued under.
-fn rung_cell(ladder: &StoredLadder, rung: &StoredLadderRung, combo: &ReviewPlanCombo) -> RungCell {
+fn rung_cell(ladder: &StoredLadder, rung: &StoredLadderRung, member: &PlanMember) -> RungCell {
     RungCell {
         rung_id: rung.id.clone(),
         case: rung_case(rung),
-        combo: combo.clone(),
+        member: member.clone(),
         target: rung.runs_override.unwrap_or(ladder.runs_per_cell),
     }
 }
@@ -1511,12 +1698,12 @@ fn rung_cell(ladder: &StoredLadder, rung: &StoredLadderRung, combo: &ReviewPlanC
 /// sorts as priority `0`, unfocused — which is how a model added to a standing ladder
 /// takes its place at the back without anyone writing a row for it.
 fn climb_order(
-    combos: &[ReviewPlanCombo],
+    combos: &[PlanMember],
     steering: &HashMap<String, StoredLadderClimber>,
 ) -> Vec<usize> {
     let mut order: Vec<usize> = (0..combos.len()).collect();
     order.sort_by_key(|&index| {
-        let steer = steering.get(&combination_key(&combos[index]));
+        let steer = steering.get(&climber_key(&combos[index].combo));
         (
             std::cmp::Reverse(steer.map(|s| s.priority).unwrap_or(0)),
             std::cmp::Reverse(steer.map(|s| s.focused).unwrap_or(false)),
@@ -1575,12 +1762,12 @@ async fn walk_climb(
     user: &AuthUser,
     ladder_id: &str,
     ladder: &StoredLadder,
-    combo: &ReviewPlanCombo,
+    member: &PlanMember,
     recorded: &[StoredLadderOutcome],
     ctx: &MatrixCtx,
     record: bool,
 ) -> Result<Climb, ApiError> {
-    let key = combination_key(combo);
+    let key = climber_key(&member.combo);
     let mine: Vec<&StoredLadderOutcome> = recorded
         .iter()
         .filter(|outcome| outcome.combination_key == key)
@@ -1613,7 +1800,7 @@ async fn walk_climb(
                     ladder,
                     position,
                     rung,
-                    combo,
+                    member,
                     ctx,
                     GateOutcome::Wall,
                 )
@@ -1623,7 +1810,7 @@ async fn walk_climb(
         }
 
         let case = rung_case(rung);
-        let runs = rung_runs(state, &user.0.id, &case, combo).await?;
+        let runs = rung_runs(state, &user.0.id, &case, member).await?;
         let target = rung.runs_override.unwrap_or(ladder.runs_per_cell);
         let tally = gate::tally(&runs, target, &ladder.gate);
         let outcome = gate::evaluate(&runs, target, &ladder.gate);
@@ -1650,7 +1837,7 @@ async fn walk_climb(
             cell: LadderCell {
                 rung_id: rung.id.clone(),
                 position: position as u32,
-                cell: ctx.cell(target, &case, combo),
+                cell: ctx.cell(target, &case, member),
                 tally: RungTally::from_gate(tally),
                 outcome,
             },
@@ -1687,19 +1874,19 @@ async fn rung_state(
     ladder: &StoredLadder,
     position: usize,
     rung: &StoredLadderRung,
-    combo: &ReviewPlanCombo,
+    member: &PlanMember,
     ctx: &MatrixCtx,
     outcome: GateOutcome,
 ) -> Result<CurrentRung, ApiError> {
     let case = rung_case(rung);
-    let runs = rung_runs(state, &user.0.id, &case, combo).await?;
+    let runs = rung_runs(state, &user.0.id, &case, member).await?;
     let target = rung.runs_override.unwrap_or(ladder.runs_per_cell);
     Ok(CurrentRung {
         position,
         cell: LadderCell {
             rung_id: rung.id.clone(),
             position: position as u32,
-            cell: ctx.cell(target, &case, combo),
+            cell: ctx.cell(target, &case, member),
             tally: RungTally::from_gate(gate::tally(&runs, target, &ladder.gate)),
             outcome,
         },
@@ -1715,11 +1902,11 @@ async fn rung_runs(
     state: &AppState,
     user_id: &str,
     case: &ReviewPlanCase,
-    combo: &ReviewPlanCombo,
+    member: &PlanMember,
 ) -> Result<Vec<RungRun>, ApiError> {
     Ok(state
         .db
-        .cell_run_ratings(&cell_key(case, combo), user_id)
+        .cell_run_ratings(&cell_key(case, member), user_id)
         .await
         .map_err(ApiError::from)?
         .iter()
@@ -1763,6 +1950,7 @@ fn rung_case(rung: &StoredLadderRung) -> ReviewPlanCase {
         slug: rung.slug.clone(),
         version: rung.version.clone(),
         variant: rung.variant.clone(),
+        engine: rung.engine.clone(),
     }
 }
 
@@ -1773,19 +1961,24 @@ fn rung_to_wire(rung: &StoredLadderRung) -> LadderRung {
         slug: rung.slug.clone(),
         version: rung.version.clone(),
         variant: rung.variant.clone(),
+        engine: rung.engine.clone(),
         runs: rung.runs_override,
     }
 }
 
-/// A stored ladder on the wire.
-fn ladder_to_wire(stored: StoredLadder) -> Ladder {
+/// A stored ladder on the wire, its one-off climbers filled in from `configs`.
+///
+/// What is stored is a pointer — a configuration id and its slot bindings — so every read
+/// resolves it, which is what lets a client that has never fetched `/gg/configs` render a
+/// climber and what makes a renamed configuration rename it everywhere at once.
+fn ladder_to_wire(stored: StoredLadder, library: &GgLibrary) -> Ladder {
     Ladder {
         id: stored.id,
         name: stored.name,
         runs_per_cell: stored.runs_per_cell,
         gate: stored.gate,
         combo_group_ids: stored.combo_group_ids,
-        combos: stored.combos,
+        combos: for_read(&stored.combos, library),
         rungs: stored.rungs.iter().map(rung_to_wire).collect(),
         updated_at: stored.updated_at,
     }
@@ -1869,6 +2062,7 @@ fn ladder_from_input(
             slug: rung.slug,
             version: rung.version,
             variant: rung.variant,
+            engine: rung.engine,
             runs_override: rung.runs.map(clamp_runs_per_cell),
         });
     }
@@ -1879,7 +2073,11 @@ fn ladder_from_input(
         runs_per_cell: clamp_runs_per_cell(input.runs_per_cell),
         gate: sanitize_gate(input.gate.unwrap_or_default()),
         combo_group_ids: input.combo_group_ids,
-        combos: input.combos,
+        // Normalized on the way in, exactly as a group's and a plan's members are: a gg
+        // climber is the configuration it names and the models it binds, and a console that
+        // saved back what it had just read would otherwise store the name and the root model
+        // as they stood at that moment and go on reporting them forever.
+        combos: for_storage(input.combos),
         rungs,
         updated_at: updated_at.to_string(),
     })

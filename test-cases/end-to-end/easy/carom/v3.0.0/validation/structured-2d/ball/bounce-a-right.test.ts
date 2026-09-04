@@ -7,13 +7,17 @@
 // three faces are the sibling checks, so a build that resolves only some of them
 // fails exactly the ones it gets wrong.
 //
+// The field holds obstacle A and one ball, and nothing else: the other
+// obstacle is off the field rather than parked out of the way, so a shot
+// that missed the struck face cannot bank off it and read as this rebound.
+//
 // Placement is read at the end of the frame of the contact. The frame is cut
 // into sub-steps (specs/balls.md), and a sub-step that follows the one that
 // struck carries the ball on from the face, so the center is read within one
 // frame of travel of the face, on the near side of it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BALL_R, OBSTACLES } from "../../src/constants";
+import { BALL_R, OBSTACLES } from "../constants";
 import {
   assertCloseTo,
   assertEqual,
@@ -26,12 +30,13 @@ import {
   captureReplay,
   createHarness,
   driveFaceShot,
-  startPlaying,
   TICK_HZ,
   type Harness,
 } from "../harness";
 
-const RECT = OBSTACLES[0];
+/** Obstacle A, in the order of `OBSTACLE_CENTERS`: the only one on field. */
+const OBSTACLE = 0;
+const RECT = OBSTACLES[OBSTACLE];
 /** Where the center lands off the struck face. */
 const PLACED = RECT.x1 + BALL_R;
 /** The approach, in units per second; one frame of it bounds the placement. */
@@ -56,8 +61,9 @@ afterEach(() => {
 });
 
 it("banks the ball off obstacle A's right face", async () => {
-  await startPlaying(harness);
-  const shot = arrangeFaceShot(harness, RECT, "right", { speed: SPEED });
+  const shot = await arrangeFaceShot(harness, OBSTACLE, "right", {
+    speed: SPEED,
+  });
 
   const bank = await captureReplay(harness, "bank", async () => {
     const rebound = await driveFaceShot(harness, "right");

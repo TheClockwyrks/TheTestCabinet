@@ -22,9 +22,10 @@ an **obstacle clock** (`src/obstacles.ts`). The ball therefore bounces off an
 **oriented** rectangle rather than an axis-aligned box — the collision in
 `src/physics.ts` works in each obstacle's own frame and carries only the contact
 normal back out to the world. The clock advances with the frame through a live
-match, is frozen while paused, resets at the start of each match, and is held
-still while the debug driver holds the paddles, which is what lets a check face
-one chosen, known orientation.
+match, is frozen while paused, and resets at the start of each match. Freezing it
+deliberately is its **own** gate — `setObstacleClockRunning(false)` on the debug
+surface — so a check can face one chosen, known orientation without taking
+anything else away.
 
 ---
 
@@ -70,9 +71,21 @@ layout, bound to these keys:
 
 Either side's up/down action moves a menu selection, so the menus answer to
 `W`/`S` and `↑`/`↓` alike. `Esc` drives **two** actions — `pause` and `back` —
-and the game reads whichever the current screen calls for, so it pauses in a
-match, resumes from the pause menu, and returns to the title from the how-to
-and match-over screens.
+and the game reads whichever the current screen calls for: a single `Esc` opens
+the pause menu during a match and closes it again from the pause menu, and it
+returns to the title from the how-to and match-over screens. `P` does the same
+opening and closing.
+
+**The menus also take a mouse and a finger.** Moving the pointer onto an item
+highlights it, and a press and release inside that one item chooses it; a finger
+highlights the item it lands on and chooses it by lifting there. Sliding off the
+item you pressed and releasing somewhere else chooses nothing, which is the usual
+way to change your mind mid-press. Each item's hit region is `src/menus.ts`'s
+one table, which is also what `src/render.ts` draws from and what the debug
+surface's `menuItemRect` reports — so the item highlighted is always the item
+chosen.
+
+Returning to the title always highlights the entry that led away from it.
 
 The **backtick** key (`` ` ``) toggles the engine's debug overlay. That key
 belongs to the engine, not to this game.
@@ -118,11 +131,12 @@ transition that returns the next one, and the compiler is what says so.
 
 Every simulation function is therefore written in the same shape — current
 value in, next value out, built with spreads and `map` — whether it is the whole
-state (`serve`, `startMatch`, `toTitle`, `recordTrail`) or a slice of it
+state (`serve`, `startMatch`, `toTitle`, `resolvePointer`) or a slice of it
 (`step(ball, left, right, obstacles, dt)` returns `{ ball, events }`;
-`integratePaddle` and `updateAi` return the next paddle; `nextSign(rngState)`
-returns `[sign, nextRngState]`). The diagnostic sources the overlay shows are
-registered as `(state) => value` and read whatever state the engine hands them
+`integratePaddle` and `updateAi` return the next paddle; `recordTrail` returns the
+next ball; `nextSign(rngState)` returns `[sign, nextRngState]`). The diagnostic sources the
+overlay shows are registered as `(state) => value` and read whatever state the
+engine hands them
 at the moment of the read, so the overlay can never report a frame the game has
 moved on from.
 
@@ -143,29 +157,44 @@ a caller drives it through `engine.apply`, which replaces the engine's state wit
 what the pose returned so the next frame's `update` receives it:
 
 ```ts
-engine.apply((s) => engine.debug.startMatch(s, "versus"));
-engine.apply((s) => engine.debug.setBall(s, 0, { x: 300, vx: 400 }));
+engine.apply((s) => engine.debug.setScreen(s, "countdown"));
+engine.apply((s) => engine.debug.setBallPosition(s, 300, 360));
 ```
 
 A **reading** takes the state and returns what it read:
 
 ```ts
 const { ball } = engine.debug.snapshot(engine.state);
+const rect = engine.debug.menuItemRect(engine.state, 1);
 ```
 
-The operations are:
+**Every operation is atomic**: each one sets one field, or one fixed pair of
+fields, or places or removes one entity, or reads the state. None of them takes a
+partial object and merges it, and none arranges several unrelated things at once,
+so a check assembles exactly the arrangement its requirement needs and nothing
+else happens. `reset` is the one exception, and it is a lifecycle verb rather
+than a pose: it restores every declared field at once.
 
-- `reset(state, options?)` and `snapshot(state)` — the title screen (seedable)
-  and a JSON-serializable view of the full state.
-- `startMatch(state, mode)`, `serve(state)`, `setScore(state, p1, p2)`,
-  `setPaddle(state, side, patch)`, and `setBall(state, index, patch)` — a
-  scenario set up through the game's own state; any of them hands paddle control
-  to the caller until `reset()`.
-- `setAiControl(state, enabled)` — in Solo, hand the AI's paddle back to the
-  computer opponent for the rest of a driven scenario, so a check can exercise
-  the real AI against a posed shot.
-- `setObstacleClock(state, t)` — this variant's own: pose the obstacle clock and
-  hold it there, so a check faces one chosen, known orientation.
+- **The world** — `clearWorld(state)`, `spawnBall(state)`,
+  `spawnObstacle(state, index)`, `reset(state)`, `setSeed(state, seed)`.
+- **Screens and menus** — `setScreen`, `setMode`, `setMenuIndex`,
+  `setTitleIndex`, `setResumeScreen`.
+- **The match** — `setScore(state, p1, p2)`, `setWinner`, `setReceiver`.
+- **The paddles** — `setPaddleCy(state, side, cy)`,
+  `setPaddleVy(state, side, vy)` (the velocity a **driven** paddle travels at),
+  and `setPaddleDriven(state, side, driven)`, which takes **one** side and leaves
+  the other under its player or the AI.
+- **The ball** — `setBallPosition`, `setBallVelocity`, `setBallSpin`,
+  `setBallHeld`, `setBallHoldTimer`. Gyre plays with one ball, so none of them
+  takes an index.
+- **The AI** — `setAiTracking` and `setAiMovement`, one per faculty: sensing the
+  ball and travelling toward the target are gated separately.
+- **The obstacle clock** — this variant's own: `setObstacleClock(state, t)` poses
+  it, and `setObstacleClockRunning(state, running)` decides whether it advances
+  with the frame.
+- **Readings** — `snapshot(state)`, a JSON-serializable view of the whole
+  declared state, and `menuItemRect(state, index)`, the hit region of an item on
+  the menu the current screen shows.
 
 `version` is a plain number. Every operation arranges the world and fabricates
 no outcome: the game's own `update` is what runs from there when the engine
@@ -174,7 +203,7 @@ advances a frame.
 Everything about _driving a browser game_ rather than about Carom is the
 engine's. The clock, the exact frames, and the registered actions are driven by
 constructing an engine directly (which is what `src/engine.test.ts` does), so the
-surface deliberately carries no `step`, `setAutoStep`, `keyDown`, `keyUp`, or
+surface deliberately carries no `advance`, `setAutoStep`, `keyDown`, `keyUp`, or
 `press`. A check that wants the frames a scenario drew arms the engine's
 draw-command recorder around that section and keeps the recording.
 
@@ -257,8 +286,12 @@ src/
                       returned beside the opening state by game.ts's initialize
   game.ts             The (readonly) state contract, the state machine as
                       transitions, and the three functions the engine drives
-  match.ts            The title and match-opening poses the menus and the
-                      debug surface share
+  screens.ts          The title, match-opening, pause and confirm transitions
+                      the menus and the debug surface share
+  menus.ts            One table per menu: the items, where each row is drawn,
+                      and the region a pointer selects it from
+  pointer.ts          The mouse and touch rule over that table, pure over one
+                      frame's pointer samples
   rng.ts              The seeded generator: a draw returns [value, nextState]
   entities.ts         Paddle and ball arithmetic and geometry
   trail.ts            The ball's motion trail, a fixed slice of time

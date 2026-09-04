@@ -5,9 +5,9 @@ title: "Rust"
 ## Preparation
 
 An agent whose responses-as-code capability names `rust` answers each turn with
-a whole Rust program. The reply is written to `program.rs` in the preparation's
-own workspace exactly as the model sent it and compiled by one `rustc`
-invocation into a `wasm32-wasip1` core module. gg then encodes that module into
+a whole Rust program. The reply is written to `program.rs` in the compile
+workspace exactly as the model sent it and compiled by one `rustc` invocation
+into a `wasm32-wasip1` core module. gg then encodes that module into
 a WebAssembly component in process, with the pinned `wasi_snapshot_preview1`
 reactor adapter, validating it on the way out. The component is what the turn
 evaluates.
@@ -167,17 +167,12 @@ program writes as a path segment, and a key that would collide with the SDK, a
 crate in the library set, the program's own crate name or a sysroot crate takes
 a leading underscore.
 
-The `.rlib` is built in the program preparation's own workspace, immediately
-before the program's own invocation, since a workspace belongs to one
-preparation and is removed when it ends. Each module in scope therefore costs
-one further `rustc` per program compiled, and nothing one preparation produced
-is reachable from another.
-
-A module's own preparation compiles the author's bytes alone under that same
-invocation, so a module accepted at the read is a module that links, and its
-author reads a located diagnostic at the read rather than against somebody
-else's program two turns later. It hands back source, which is the input the
-program compile builds the `.rlib` from.
+The `.rlib` is built at the read that binds the module, under the binding key, by
+the same invocation a program's own compile would have used, so a module accepted
+at the read is a module that links and its author reads a located diagnostic
+there rather than against somebody else's program two turns later. It is kept in
+the loaded-module band of the agent's compile workspace, so every later program
+names it and compiles the response alone.
 
 A module is a crate of its own. It reaches gg's surface through the same
 `use gg::<module>;` lines a program writes, it names no other module, and the
@@ -239,5 +234,5 @@ own.
 The arm names `rustc` as its [checker](/gg/languages/compilation/), so the
 shared body states that a program is compiled before it runs, that one `rustc`
 refuses is not executed, and that a call the run withheld compiles and fails
-when it runs. The library set is carried by a compile failure rather than by the
-prompt.
+when it runs. The library set is reached through a compile failure rather than
+through the prompt.

@@ -6,12 +6,31 @@
 // direction for both obstacles, upright at 0, so each reported angle is held to
 // the formula within the review item's 0.01 radians, modulo a full turn. The
 // center stays where it is: a rotation walks nothing across the field.
+//
+// The field is posed to hold BOTH OBSTACLES AND NOTHING ELSE. The rate is the
+// same for both and the point is about both, so both are the subject; the ball is
+// removed rather than left parked somewhere, because a ball loose on the field
+// could reach an obstacle and push it nowhere but would still be one more thing
+// between the pose and the reading. Nothing here drives a paddle: the requirement
+// concerns no paddle, and a shot is never fired.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { OBSTACLE_CENTERS, OBSTACLE_SPIN_RATE } from "../../src/constants";
+import { OBSTACLE_CENTERS, OBSTACLE_SPIN_RATE } from "../constants";
 import { assertDeepEqual, assertLessThanOrEqual } from "../assert";
-import { captureReplay, createHarness, type Harness } from "../harness";
-import { angleDelta, poseObstacles, type ObstaclePose } from "./harness";
+import {
+  captureReplay,
+  createHarness,
+  enterPlaying,
+  poseWorld,
+  type Harness,
+} from "../harness";
+import {
+  angleDelta,
+  obstaclePose,
+  poseObstacles,
+  thetaOf,
+  type ObstaclePose,
+} from "./harness";
 
 /** The three clock times the obstacles are posed at, in seconds. */
 const TIMES = [0, 0.5, 1.0];
@@ -39,9 +58,8 @@ afterEach(() => {
 });
 
 it("rotates both obstacles about their own centers at OBSTACLE_SPIN_RATE", async () => {
-  const { debug } = harness;
-  debug.reset();
-  debug.startMatch("versus");
+  enterPlaying(harness);
+  poseWorld(harness, { balls: [], obstacles: [0, 1] });
 
   const samples: ObstaclePose[][] = [];
   await captureReplay(harness, "spin", async () => {
@@ -55,9 +73,9 @@ it("rotates both obstacles about their own centers at OBSTACLE_SPIN_RATE", async
 
   for (const [k, t] of TIMES.entries()) {
     for (const [i, base] of OBSTACLE_CENTERS.entries()) {
-      const pose = samples[k]![i]!;
+      const pose = obstaclePose(samples[k]!, i);
       assertLessThanOrEqual(
-        Math.abs(angleDelta(pose.theta, OBSTACLE_SPIN_RATE * t)),
+        Math.abs(angleDelta(thetaOf(pose), OBSTACLE_SPIN_RATE * t)),
         ANGLE_TOLERANCE,
         `obstacle ${i} at t=${t}: theta is OBSTACLE_SPIN_RATE * t`,
       );

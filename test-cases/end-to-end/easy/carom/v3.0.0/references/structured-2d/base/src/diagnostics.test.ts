@@ -64,10 +64,12 @@ it("reports the title screen from a fresh boot", () => {
   expect(sources["paddle R"]()).toBe(`cy ${FIELD_CY}.0 vy 0.0`);
 });
 
-it("follows the live world into a match, across the level transition", async () => {
-  engine.debug.startMatch("versus");
+it("follows the live world as the game is posed into a match", async () => {
+  engine.debug.setMode("versus");
+  engine.debug.setScreen("countdown");
   engine.debug.setScore(3, 4);
-  engine.debug.setBall(0, { x: 500, y: 300, vx: 300, vy: 400 });
+  engine.debug.setBallPosition(500, 300);
+  engine.debug.setBallVelocity(300, 400);
   await engine.advance(1);
 
   expect(sources["screen"]()).toBe("countdown");
@@ -77,9 +79,18 @@ it("follows the live world into a match, across the level transition", async () 
   expect(sources["ball vel"]()).toBe("300.0, 400.0 (500.0)");
 });
 
+it("answers with a dash for a ball that is not on the field", () => {
+  engine.debug.clearWorld();
+  expect(sources["ball pos"]()).toBe("\u2014");
+  expect(sources["ball vel"]()).toBe("\u2014");
+  expect(sources["ball spin"]()).toBe("\u2014");
+  // The paddles are never removed, so their lines still read.
+  expect(sources["paddle L"]()).toBe(`cy ${FIELD_CY}.0 vy 0.0`);
+});
+
 it("reads and formats without disturbing the simulation", async () => {
-  engine.debug.startMatch("versus");
-  engine.debug.serve();
+  engine.debug.setScreen("countdown");
+  engine.debug.setBallHoldTimer(0);
   await engine.advance(10);
 
   const before = engine.debug.snapshot();

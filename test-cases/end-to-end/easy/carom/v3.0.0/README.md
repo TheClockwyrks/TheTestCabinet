@@ -41,6 +41,7 @@ differs.
 | `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.                                                      |
 | `validation/`          | No             | The case's Vitest validators, one project per engine (`<engine>/`).                                |
 | `references/`          | No             | The authored, correct build, `<engine>/<variant>/`. Never seeded.                                  |
+| `showcase/`            | No             | The case's own presentation, `<variant>/`, captured from a reference and shown on the case page.   |
 | `validation-baseline/` | No             | The validators' media captured against the reference, `<engine>/<variant>/`, shown beside a run's. |
 | `test-case.toml`       | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items.                            |
 | `variants/`            | No             | One TOML file per variant (listed in `variants`).                                                  |
@@ -58,6 +59,7 @@ for every variant:
 - `modes/single-player.md` and `modes/versus.md` — the two ways to play, with
   their controls, HUD, and the AI in Solo.
 - `state.md` — the shape of the game's state.
+- `audio.md` — the cues, when each plays, and muting.
 - `instrumentation.md`
 - `showcase.md` — the player-facing description and captured carousel the
   finished game ships beside its source.
@@ -121,6 +123,8 @@ The reviewer's judgement lives in the per-domain ratings.
 ## Assets and media
 
 This version has no assets and declares no reference mockups or proof captures.
+Each variant declares a `showcase`, the case's own presentation captured from its
+reference, and each reference ships the `showcase/` a conformant build produces.
 The specs fix behavior exactly and leave the look to the build: the palette,
 type, glow, HUD layout and trail styling are the model's, and a reviewer rates
 them through the domains. Every checklist point is decided by the validators

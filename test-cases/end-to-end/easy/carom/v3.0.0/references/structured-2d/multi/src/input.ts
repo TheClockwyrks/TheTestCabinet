@@ -1,10 +1,11 @@
-// Carom — input, as engine actions.
+// Carom — input, as engine actions and as the engine's pointer.
 //
-// The game never sees a KeyboardEvent. It declares NAMED ACTIONS with the keys
-// that drive them, once, in the game instance's `initialize`, and the engine
-// does the listening, the edge detection, and the binding. Every read after
-// that goes through a player controller's `InputReader` — the one place the
-// engine hands input out. Two consequences shape this file:
+// The game never sees a KeyboardEvent or a PointerEvent. It declares NAMED
+// ACTIONS with the keys that drive them, once, in the game instance's
+// `initialize`, and the engine does the listening, the edge detection, the
+// binding, and the mapping of every pointer into the field's own logical units.
+// Every read after that goes through a player controller's `InputReader` — the
+// one place the engine hands input out. Two consequences shape this file:
 //
 //   * A held read (`value`) is what drives continuous paddle motion; an edge
 //     read (`pressed`) is what drives a menu move, a confirm, a pause, or a
@@ -21,6 +22,13 @@
 
 import type { InitApi, InputReader } from "@test-cabinet/structured-2d";
 import { ACTIONS, BINDINGS, LAYOUT, type ActionName } from "./constants";
+import {
+  menuOf,
+  readPointerMenu,
+  type PressOrigins,
+  type PointerMenuInput,
+} from "./menus";
+import type { CaromState, Screen } from "./state";
 
 /**
  * Register every action, bound to its keys.
@@ -82,22 +90,83 @@ export function soloAxis(input: InputReader): number {
   return axis(input, ["p1-up", "p2-up"], ["p1-down", "p2-down"]);
 }
 
-/**
- * Either side's up action moves a menu selection up.
- *
- * Both are read and neither is short-circuited: an edge left unconsumed here
- * would be discarded at the end of the frame anyway, and reading both keeps
- * this frame's input fully accounted for.
- */
-export function menuUp(input: InputReader): boolean {
-  const p1 = input.pressed("p1-up");
-  const p2 = input.pressed("p2-up");
-  return p1 || p2;
+/* ---- The menus ------------------------------------------------------------ */
+
+/** One menu screen's whole frame of input, keyboard and pointer together. */
+export interface MenuFrame {
+  up: boolean;
+  down: boolean;
+  confirm: boolean;
+  pointer: PointerMenuInput;
 }
 
-/** Either side's down action moves a menu selection down. */
-export function menuDown(input: InputReader): boolean {
-  const p1 = input.pressed("p1-down");
-  const p2 = input.pressed("p2-down");
-  return p1 || p2;
+/**
+ * Read every edge a menu screen answers to, once, before any of them is acted
+ * on.
+ *
+ * Both sides' movement actions are read and neither is short-circuited: an edge
+ * left unconsumed here would be discarded at the end of the frame anyway, and
+ * reading both keeps this frame's input fully accounted for.
+ */
+export function readMenuFrame(
+  input: InputReader,
+  screen: Screen,
+  origins: PressOrigins,
+): MenuFrame {
+  const p1Up = input.pressed("p1-up");
+  const p2Up = input.pressed("p2-up");
+  const p1Down = input.pressed("p1-down");
+  const p2Down = input.pressed("p2-down");
+  const confirm = input.pressed("confirm");
+  return {
+    up: p1Up || p2Up,
+    down: p1Down || p2Down,
+    confirm,
+    pointer: readPointerMenu(input.pointerSamples(), screen, origins),
+  };
+}
+
+/**
+ * Apply one frame of menu input to `state`, and confirm an item if the frame
+ * asked for one.
+ *
+ * The order is the one specs/ui.md fixes: up before down, movement before
+ * `confirm` — so a frame carrying both an up edge and a down edge moves up
+ * only, and one carrying a movement edge and a `confirm` edge moves only — and
+ * the pointer is applied AFTER the frame's keyboard edges, so a frame carrying
+ * a keyboard movement edge together with a pointer or touch selection leaves
+ * `menuIndex` at the item the pointer named. Whatever raised the confirm, the
+ * item confirmed is the one at `menuIndex` once the frame's selections have
+ * landed, and a frame carrying both a keyboard confirm and a pointer confirm
+ * confirms once.
+ */
+export function driveMenu(
+  state: CaromState,
+  frame: MenuFrame,
+  onConfirm: (index: number) => void,
+): void {
+  const count = menuOf(state.screen)?.items.length ?? 0;
+  if (count === 0) return;
+
+  let moved = false;
+  if (frame.up) {
+    state.menuIndex = (state.menuIndex + count - 1) % count;
+    moved = true;
+  } else if (frame.down) {
+    state.menuIndex = (state.menuIndex + 1) % count;
+    moved = true;
+  }
+
+  if (frame.pointer.selected !== null) {
+    state.menuIndex = frame.pointer.selected;
+  }
+
+  if (!moved && frame.confirm) {
+    onConfirm(state.menuIndex);
+    return;
+  }
+  if (frame.pointer.confirmed !== null) {
+    state.menuIndex = frame.pointer.confirmed;
+    onConfirm(state.menuIndex);
+  }
 }

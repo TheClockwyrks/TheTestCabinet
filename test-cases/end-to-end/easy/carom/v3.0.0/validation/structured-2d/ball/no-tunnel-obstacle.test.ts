@@ -16,6 +16,12 @@
 // build that never sub-steps. The coarse step below is an ordinary bad moment
 // on a real machine (twenty frames a second), where one frame at the ceiling
 // is forty-nine units, more than twice the width of what it strikes.
+//
+// The field holds obstacle A and one ball, and nothing else: the second
+// obstacle is off the field rather than parked out of the way, so the only
+// body the probe can meet is the one it was fired at. The obstacle clock is
+// held at 0 and a frame advanced before the probe is aimed, so under `gyre`
+// the face is standing where `OBSTACLES` puts it.
 
 import { afterEach, it } from "vitest";
 import { ConstantClock } from "@test-cabinet/structured-2d";
@@ -25,7 +31,7 @@ import {
   OBSTACLES,
   OBSTACLE_CENTERS,
   SPEED_CAP,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
@@ -33,10 +39,12 @@ import {
 } from "../assert";
 import {
   ball0,
+  ballOps,
   captureReplay,
-  clearPaddles,
   createHarness,
-  startPlaying,
+  holdObstacleClock,
+  openIsolatedPlay,
+  parkPaddles,
   TICK_MS,
   type Harness,
 } from "../harness";
@@ -44,8 +52,10 @@ import {
 /** The suite's own cadence, and a frame that carries the ball past an obstacle. */
 const STEPS_MS = [TICK_MS, 50];
 
-const FACE_X = OBSTACLES[0].x0;
-const LANE_Y = OBSTACLE_CENTERS[0].y;
+/** Obstacle A, in the order of `OBSTACLE_CENTERS`: the only one on field. */
+const OBSTACLE = 0;
+const FACE_X = OBSTACLES[OBSTACLE].x0;
+const LANE_Y = OBSTACLE_CENTERS[OBSTACLE].y;
 /** How far short of the face the probe starts, in logical units. */
 const RUN_UP = 360;
 
@@ -71,10 +81,19 @@ afterEach(() => {
   while (live.length > 0) live.pop()?.dispose();
 });
 
+/**
+ * A harness stepping at `stepMs`, opened on live play over one ball and
+ * obstacle A alone, with both paddles held out of the probe's lane.
+ */
 async function harnessAt(stepMs: number): Promise<Harness> {
   const harness = await createHarness({ clock: new ConstantClock(stepMs) });
   live.push(harness);
-  await startPlaying(harness);
+  await openIsolatedPlay(harness, {
+    contents: { balls: 1, obstacles: [OBSTACLE] },
+  });
+  holdObstacleClock(harness, 0);
+  await harness.advance(1);
+  parkPaddles(harness);
   return harness;
 }
 
@@ -84,14 +103,10 @@ it("rebounds off an obstacle at the ceiling speed", async () => {
 
   for (const stepMs of STEPS_MS) {
     const harness = await harnessAt(stepMs);
-    clearPaddles(harness);
-    harness.debug.setBall(0, {
-      x: FACE_X - RUN_UP,
-      y: LANE_Y,
-      vx: SPEED_CAP,
-      vy: 0,
-      spin: 0,
-    });
+    const ops = ballOps(harness);
+    ops.setBallPosition(FACE_X - RUN_UP, LANE_Y);
+    ops.setBallVelocity(SPEED_CAP, 0);
+    ops.setBallSpin(0);
 
     // Both probes are recorded under the one output, so the coarse step, the
     // frame long enough to carry the ball past a whole obstacle, is the one

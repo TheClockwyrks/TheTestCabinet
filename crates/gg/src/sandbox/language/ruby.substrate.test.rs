@@ -69,7 +69,7 @@ fn component() -> &'static Component {
 
 /// Compile `ruby` with the production prepare step, or panic with what the compiler said.
 fn prepare(ruby: &str) -> String {
-    match compile_program(ruby, &PrepareContext::new()) {
+    match compile_program(ruby, &PrepareContext::detached()) {
         Ok(prepared) => prepared.source,
         Err(failure) => panic!("the embedded Opal did not compile this Ruby: {failure}"),
     }
@@ -77,7 +77,7 @@ fn prepare(ruby: &str) -> String {
 
 /// Compile `ruby` as a code module, or panic with what the compiler said.
 fn prepare_module(ruby: &str) -> String {
-    match compile_module(ruby, &PrepareContext::new()) {
+    match compile_module(ruby, &PrepareContext::detached()) {
         Ok(source) => source,
         Err(failure) => panic!("the embedded Opal did not compile this Ruby module: {failure}"),
     }
@@ -848,7 +848,7 @@ end
         ("y = 2 +* 3\n", "module.rb:1:"),
         ("ok = 1\ny = 2 +* 3\n", "module.rb:2:"),
     ] {
-        let failure = compile_module(source, &PrepareContext::new())
+        let failure = compile_module(source, &PrepareContext::detached())
             .expect_err("the module does not compile");
         assert!(
             failure.to_string().contains(at),
@@ -903,6 +903,11 @@ fn crossings() -> Vec<Crossing> {
             tool: "list_dir",
             program: "GG::Files.list_dir(\"src\")",
             expected: || json!({ "path": "src" }),
+        },
+        Crossing {
+            tool: "tree",
+            program: "GG::Files.tree(path: \"src\", depth: 3)",
+            expected: || json!({ "path": "src", "depth": 3 }),
         },
         Crossing {
             tool: "search",
@@ -2343,6 +2348,7 @@ GG::Views.open_text("notes", JSON.parse(%({"label": "notes"}))["label"] + " #{re
         crate::sandbox::language(GgProgramLanguage::Ruby),
         program,
         scope,
+        &crate::sandbox::AgentWorkspace::new(),
         SandboxLimits::AMPLE,
         None,
         api,

@@ -95,6 +95,13 @@ struck. What survives is every frame in `program.js` and in a loaded code
 module, which on the TypeScript and PureScript arms the host then reads back
 through the compiler's own map.
 
+The engine captures the innermost ten frames of a stack and discards the rest,
+and the striking above happens after the capture, so every frame an SDK spends
+comes out of the same ten. gg's SDK spends four of them raising a failure from a
+membrane call. An arm that compiles a second SDK into the program keeps that
+SDK's crossing to one engine frame, which leaves the program's own innermost
+frame inside the capture.
+
 ### A rejection is read after the queue drains
 
 The engine's tracker fires the instant a promise rejects with nothing attached to

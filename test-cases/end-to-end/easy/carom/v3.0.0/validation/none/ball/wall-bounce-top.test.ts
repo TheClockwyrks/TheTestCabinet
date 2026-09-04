@@ -11,8 +11,8 @@
 // read on the frame the reflection resolves on, so it is the placement plus
 // whatever of that frame's travel came after it: within one frame of travel of
 // `BALL_R` off the wall, as the review item states, however the build divided
-// the frame. The path is down the middle of the field, clear of both
-// obstacles and the parked paddles.
+// the frame. The field is emptied to this ball alone and both paddles are
+// parked out of the lane, so the wall is the only body the flight meets.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {

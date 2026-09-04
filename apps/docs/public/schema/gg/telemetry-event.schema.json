@@ -2602,7 +2602,7 @@
           "description": "How the turn ended. [`Error`](GgTurnOutcome::Error) is the only outcome the error\nceilings count."
         },
         "responseChars": {
-          "description": "The reply's length in characters — the model's raw text plus, on a\nresponses-as-code turn, the `program` string of each `submit_program` call it made.\nCarried on\nevery outcome so [`GgSessionSummary::max_response_chars`] can be folded as a maximum\nover the turns that **worked** (a progressed or finished outcome): the figure a later\noutput ceiling would have to accommodate. `0` — and omitted — for a turn whose reply\ncarried no text at all.",
+          "description": "The reply's length in characters — the model's raw text plus, on a\nresponses-as-code turn, the `program` string of each `submit_program` call it made.\nCarried on every outcome so [`GgSessionSummary::max_response_chars`] can be folded as a\nmaximum over every turn but the length-capped one: the figure a later output ceiling\nwould have to accommodate. `0` — and omitted — for a turn whose reply carried no text\nat all.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"

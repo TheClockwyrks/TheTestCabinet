@@ -4,21 +4,35 @@
 // goal: the first takes it one clear, which must NOT end the match, and the
 // second takes it two clear, which must. Both outcomes resolve through the
 // build's own win rule, never a fabricated end state.
+//
+// THE FIELD HOLDS ONE BALL AND NOTHING ELSE. `arrangeGoal` opens live play over
+// an isolated field and aims that ball straight down the middle lane at the goal
+// edge, with both paddles held out of it: the obstacles are off the field, so
+// each point is a straight flight that only the goal edge can end, and neither
+// point can be lost to a bank the scenario never asked for. Between the two
+// points the field is left exactly as it stands — the build's own scoring parks
+// the ball at its home point and reopens the countdown — so the second point is
+// played on the same isolated field as the first.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WIN_LEAD, WIN_SCORE } from "../../src/constants";
+import { FIELD_CX, WIN_LEAD, WIN_SCORE } from "../constants";
 import { assertEqual, assertNotEqual, assertNull } from "../assert";
 import {
   arrangeGoal,
+  ballOps,
   captureReplay,
+  CLEAR_LANE_Y,
   createHarness,
   driveGoal,
-  startPlaying,
+  reachPlay,
   type Harness,
 } from "../harness";
 
 /** 10-10: the tie one point below the win score, where the deuce rule applies. */
 const TIED_AT = WIN_SCORE - 1;
+
+/** The speed `arrangeGoal` sends the ball down the lane at, in px/s. */
+const GOAL_SPEED = 600;
 
 /**
  * Frames recorded after the deciding point resolves.
@@ -41,12 +55,31 @@ afterEach(() => {
   harness?.dispose();
 });
 
+/**
+ * Re-aim the ball down the same clear lane at the right goal, from the countdown
+ * the last point reopened.
+ *
+ * The hold is ended and the build's own launch carries the game back into live
+ * play; only then is the ball posed, because posing it while the countdown still
+ * ran would have that launch overwrite the pose. The paddles are already held out
+ * of the lane by `arrangeGoal` and stay there.
+ */
+async function aimNextPoint(): Promise<void> {
+  const live = await reachPlay(harness);
+  assertEqual(live.hit, true);
+  const ops = ballOps(harness);
+  ops.setBallPosition(FIELD_CX, CLEAR_LANE_Y);
+  ops.setBallVelocity(GOAL_SPEED, 0);
+  ops.setBallSpin(0);
+}
+
 it("plays on at a one-point lead and ends at two", async () => {
-  await startPlaying(harness);
+  await arrangeGoal(harness, "right", { speed: GOAL_SPEED });
+  // Posed after the arrangement: opening a match sets both scores to zero
+  // (specs/ui.md), so the tie is posed onto the live match it is played out from.
   harness.debug.setScore(TIED_AT, TIED_AT);
 
   // First real point: 11-10, a one-point lead, so play continues.
-  arrangeGoal(harness, "right");
   const oneClear = await driveGoal(harness);
 
   assertEqual(oneClear.hit, true);
@@ -55,17 +88,9 @@ it("plays on at a one-point lead and ends at two", async () => {
   assertEqual(oneClear.snapshot.score.p1, TIED_AT + 1);
   assertEqual(oneClear.snapshot.score.p2, TIED_AT);
 
-  // Second real point: 12-10, now the required lead, so the match ends. `serve`
-  // leaves the post-point countdown; the launch is the build's own, so the
-  // scenario is re-aimed once play is live again.
-  harness.debug.serve();
-  const live = await harness.until((s) => s.screen === "playing", {
-    maxFrames: 60,
-    poll: 1,
-  });
-  assertEqual(live.hit, true);
+  // Second real point: 12-10, now the required lead, so the match ends.
+  await aimNextPoint();
 
-  arrangeGoal(harness, "right");
   // The deciding point, and only it: the one before it is the arrangement that
   // put the match at a one-point lead.
   const twoClear = await captureReplay(harness, "deuce", async () => {

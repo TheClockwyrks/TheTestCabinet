@@ -279,10 +279,13 @@ fn generate_baseline(test_case: &TestCaseVersion, target: Target<'_>, out: &Path
         // so it is an error.
         None => {
             let has_units = test_case.instrumentation.is_some()
-                && test_case.review_items_for(variant).iter().any(|item| {
-                    item.validation.is_some()
-                        || item.sub_items.iter().any(|sub| sub.validation.is_some())
-                });
+                && test_case
+                    .review_items_for_engine(variant, target.engine)
+                    .iter()
+                    .any(|item| {
+                        item.validation.is_some()
+                            || item.sub_items.iter().any(|sub| sub.validation.is_some())
+                    });
             if has_units {
                 bail!(
                     "could not drive the reference implementation for `{}` to \

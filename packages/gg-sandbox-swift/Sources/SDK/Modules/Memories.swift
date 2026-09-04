@@ -1,13 +1,6 @@
 /// Durable memories, which survive a context compaction.
 ///
-/// A run picks one of three memory strategies and binds only that strategy's functions, so what
-/// this module offers is the honest answer to what memory can do here. The scratchpad keeps every
-/// memory in the context window (`writeMemory`, `updateMemory`); the two file-shaped strategies keep
-/// the contents outside it (`createMemory`, `readMemory`, `editMemory`), one behind an index that is
-/// always in context and one behind `searchMemories`. `deleteMemory` is bound under all three.
-///
-/// Every mutation hands back the budget after it, so a program can decide whether to write another
-/// memory by reading numbers rather than by parsing a sentence about them.
+/// Every mutation hands back the memory budget after it.
 ///
 /// - ggmodule: memories
 public enum memories {
@@ -37,8 +30,7 @@ public enum memories {
     ///   - onUse: A program to run on every use of this memory. Left out, the memory carries none.
     /// - Returns: the memory budget after the write.
     /// - Throws: `core.ApiError` with `.conflict` on a duplicate name, and `.limitExceeded` when
-    ///   the body would breach the run's caps — revising or deleting a memory is the way out, rather
-    ///   than accruing more.
+    ///   the body would breach the run's caps.
     /// - ggop: memories.write_memory
     @discardableResult
     public static func writeMemory(
@@ -142,9 +134,6 @@ public enum memories {
     /// Revise a memory in place, replacing the one exact occurrence of some text with something
     /// else.
     ///
-    /// Appending is done by quoting the last line and replacing it with itself plus what is being
-    /// added.
-    ///
     /// - Parameters:
     ///   - name: The slug of the memory to revise.
     ///   - replacing: The exact text to find in its contents. It must appear exactly once.
@@ -152,8 +141,7 @@ public enum memories {
     /// - Returns: the memory budget after the edit.
     /// - Throws: `core.ApiError` with `.notFound` when the text does not appear, `.conflict` when
     ///   it appears more than once, `.limitExceeded` when the result would be too long, and
-    ///   `.invalidArgument` when the edit would leave the memory empty — deleting it is the way to
-    ///   do that.
+    ///   `.invalidArgument` when the edit would leave the memory empty.
     /// - ggop: memories.edit_memory
     @discardableResult
     public static func editMemory(
@@ -173,12 +161,11 @@ public enum memories {
     /// Find the memories mentioning any of `keywords`, best first.
     ///
     /// Plain case-insensitive substring matching over each memory's slug, description and contents,
-    /// ranked by how many distinct keywords a memory mentions and then by how often. Several
-    /// specific words rank better than one sentence; `memories.readMemory` is what fetches a hit
-    /// worth having in full. A search that matches nothing is an empty array.
+    /// ranked by how many distinct keywords a memory mentions and then by how often. A search that
+    /// matches nothing is an empty array.
     ///
-    /// - Parameter keywords: The words to look for. Several specific words rank better than one
-    ///   sentence, because a memory is ranked by how many of them it mentions.
+    /// - Parameter keywords: The words to look for. A memory is ranked by how many of them it
+    ///   mentions.
     /// - Returns: the matching memories, best first.
     /// - Throws: `core.ApiError` with `.invalidArgument` when every keyword is empty.
     /// - ggop: memories.search_memories
@@ -215,8 +202,7 @@ public enum memories {
     /// How much of the run's durable-memory budget is used, after the call that returned it.
     ///
     /// Every maximum is optional: each limit can be turned off, and a run's memory strategy applies
-    /// only some of them, so `nil` means nothing bounds that axis — which is worth checking before
-    /// subtracting.
+    /// only some of them, so `nil` means nothing bounds that axis.
     public struct MemoryUsage: Sendable {
         /// Memories currently held.
         public let count: Int
@@ -266,8 +252,6 @@ public enum memories {
 
 extension memories.MemoryHit {
     /// Read this hit's memory in full, with its slug already supplied.
-    ///
-    /// `memories.readMemory` for the common case where the search result is in hand.
     ///
     /// - Returns: the memory's contents.
     /// - Throws: `core.ApiError` with `.notFound` when the memory has since been deleted.

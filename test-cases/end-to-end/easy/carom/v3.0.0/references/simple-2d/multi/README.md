@@ -75,9 +75,19 @@ layout, bound to these keys:
 | `mute`              | `M`                | Toggles mute, on any screen.                                                                             |
 
 Either side's up/down action moves a menu selection, so the menus answer to
-`W`/`S` and `↑`/`↓` alike. `Esc` drives **two** actions — `pause` and `back` —
-and the game reads whichever the current screen calls for, so it pauses in a
-match and steps back on a menu.
+`W`/`S` and `↑`/`↓` alike. `Esc` drives **two** actions — `pause` and `back` — and
+raises both on the same frame; `pause` is read on the countdown, on the live game,
+**and on the pause menu**, so one `Esc` opens the pause menu and leaves it open,
+and one `Esc` on the pause menu resumes exactly once. `P` does the same on both
+sides of the pause.
+
+The menus also answer to a **mouse and to touch**. Each item occupies a hit region
+the build lays out (`src/menu.ts`), which `menuItemRect` on the debug surface
+reports in logical units, so what a pointer selects is exactly what is drawn.
+Moving onto an item highlights it, a finger's landing does the same (a finger
+cannot hover), and an item is confirmed when a press and the release that follows
+it both fall inside that one item — a press begun on one item and released on
+another confirms nothing.
 
 The **backtick** key (`` ` ``) toggles the engine's debug overlay. That key
 belongs to the engine, not to this game.
@@ -106,7 +116,9 @@ game, and none of it is written here:
   ratio, and the resync when any of them changes. `src/render.ts` draws in logical
   `1280x720` coordinates and never reads the canvas element's size.
 - **Input.** Named actions over `KeyboardEvent.code` bindings, with edge detection
-  done once and correctly.
+  done once and correctly, and the pointer — mouse, pen, or finger — mapped
+  through the same letterboxed fit the game draws under, so a position `update`
+  reads and a region `menuItemRect` reports lie in one coordinate space.
 - **Audio.** The Web Audio graph, cue synthesis, mute, and the first-gesture
   unlock. The game declares five cues and plays them by name.
 - **The debug overlay.** The panel, the toggle key, and its read-only-ness; the
@@ -133,26 +145,45 @@ next frame receives; a **reading** takes the state and returns what it read, and
 caller hands it `engine.state`.
 
 ```ts
-engine.apply((s) => engine.debug.startMatch(s, "versus"));
-engine.apply((s) => engine.debug.setBall(s, 0, { x: 300, vx: 400 }));
+engine.apply((s) => engine.debug.setScreen(s, "countdown"));
+engine.apply((s) => engine.debug.setBallPosition(s, 0, 300, 360));
+engine.apply((s) => engine.debug.setBallVelocity(s, 0, 400, 0));
 await engine.advance(6);
 const { balls } = engine.debug.snapshot(engine.state);
 ```
 
-The operations are:
+**Every operation is atomic.** Each one sets one field, or one fixed pair of
+fields, or places or removes one entity — there is no patch object and nothing
+that arranges several unrelated things at once, so a scenario is built by saying
+what it wants one fact at a time and nothing it did not ask for moves. `reset` is
+the sole exception, and it is a lifecycle verb rather than a pose: it restores
+every declared field at once, leaving only the mute bit alone.
 
-- `reset(state, options?)` and `snapshot(state)` — the title screen (seedable),
-  and a JSON-serializable view of the full state.
-- `startMatch(state, mode)`, `serve(state)`, `setScore(state, p1, p2)`,
-  `setPaddle(state, side, patch)`, and `setBall(state, index, patch)` — set up a
-  scenario through the game's own state; each returns a state in which the driver
-  holds the paddles, until `reset`. `setBall` addresses one of the three balls by
-  its play-order index and takes it into live play, so a scenario can drive one
-  ball with the other two parked; `serve` ends the hold of every ball still
-  waiting at its home point.
-- `setAiControl(state, enabled)` — in Solo, hand the AI's paddle back to the
-  computer opponent for the rest of a driven scenario, so a check can exercise the
-  real AI against a posed shot.
+- **The world.** `clearWorld(state)` empties the field of every ball and every
+  obstacle; `spawnBall(state, index)` and `spawnObstacle(state, index)` put one
+  back, in play order. An absent ball takes no part in a frame — it is not
+  advanced, not drawn, collides with nothing, and scores nothing. `reset(state)`
+  and `setSeed(state, seed)` complete the group.
+- **Screens and menus.** `setScreen`, `setMode`, `setMenuIndex`, `setTitleIndex`,
+  and `setResumeScreen`, each setting its own field alone.
+- **Match state.** `setScore(state, p1, p2)` and `setWinner(state, side)`. The win
+  and deuce rules still resolve through real play.
+- **Paddles.** `setPaddleCy(state, side, cy)`, `setPaddleVy(state, side, vy)`, and
+  `setPaddleDriven(state, side, driven)`. Each side is taken **on its own**, so a
+  scenario can drive one paddle and leave the other to a real player or to the
+  real AI. `drivenVy` is the velocity a driven paddle travels at and holds across
+  frames; `vy` is what the last frame actually integrated, which is what the spin
+  mechanic reads at contact.
+- **Balls.** `setBallPosition`, `setBallVelocity`, `setBallSpin`, `setBallHeld`,
+  and `setBallHoldTimer`, each taking the ball's play-order **`index` first**.
+  An operation naming an absent ball does nothing at all.
+- **The AI.** `setAiTracking(state, enabled)` and `setAiMovement(state, enabled)`
+  gate the opponent's two faculties separately: sensing the balls, and travelling
+  toward the target.
+- **Readings.** `snapshot(state)` returns the whole declared state as plain JSON —
+  every field an operation sets appears there — and `menuItemRect(state, index)`
+  returns the hit region of an item on the menu the current screen shows, or
+  `null` on the countdown and the live game, which show none.
 - `version` — a plain number.
 
 Every one of those is a read or a pose of `CaromState`: they arrange the world,
@@ -160,13 +191,13 @@ and the game's own `update` is what runs from there when the engine advances a
 frame. None of them writes to the state it is handed.
 
 Everything about _driving a browser game_ rather than about Carom is the
-engine's. The clock, the exact frames, and the registered actions are driven by
-constructing an engine directly (which is what `src/engine.test.ts` does), so the
-surface deliberately carries no `step`, `setAutoStep`, `keyDown`, `keyUp`, or
-`press`. A check that wants the frames a scenario drew arms the engine's
-draw-command recorder around that section and keeps the recording.
+engine's. The clock, the exact frames, the registered actions, and the pointer are
+driven by constructing an engine directly (which is what `src/engine.test.ts`
+does), so the surface deliberately carries no `advance`, `setAutoStep`, `keyDown`,
+`keyUp`, or `press`. A check that wants the frames a scenario drew arms the
+engine's draw-command recorder around that section and keeps the recording.
 
-Both surfaces are inert during normal play.
+The surface is inert during normal play.
 
 ## How the code is shaped
 
@@ -181,6 +212,14 @@ ball with a longer trail, and a draw from `src/rng.ts` returns
 state type declares every field `readonly` and every array as a readonly array,
 so the `DeepReadonly<CaromState>` view the engine hands out and `CaromState` are
 the same shape, and a spread of one is the other with no cast.
+
+The one value that is neither authoritative game state nor derivable from it is
+the pointer presses the menus are waiting on a release for: specs/ui.md confirms
+an item only when a press and its release both fall inside it, and the two edges
+may arrive on different frames. It lives in `CaromState` all the same, because
+every value the game carries from one frame to the next belongs there rather than
+in a module-level variable or a closure. Nothing in the snapshot reports it and no
+operation of the debug surface poses it.
 
 The diagnostic sources (`src/diagnostics.ts`) are registered once, in
 `initialize`, as functions of the state the engine hands them at each read — the
@@ -261,14 +300,19 @@ src/
                       seeded by the case
   theme.ts            This build's own look: palette, type, HUD layout, tagline
   flow.ts             The poses a match moves between: the title, the opening
-                      of a match, and the parked balls
+                      of a match, and the complete initial state
+  menu.ts             The menus' layout: where each item is drawn, and the hit
+                      region a pointer or a finger selects it from
+  pointer.ts          The menus under a mouse and a finger: selection on a move
+                      or a landing, confirmation on a press and its release
   debug.ts            The debug surface: poses and readings over CaromState,
                       returned beside the state by game.ts's initialize
   game.ts             The state contract, the state machine, and the three
                       functions the engine drives
   rng.ts              The seeded generator: a draw from CaromState.rngState
                       returns the value beside the next state
-  entities.ts         Paddle and ball arithmetic, geometry, and the home points
+  entities.ts         Paddle, ball, and obstacle arithmetic, geometry, and the
+                      home points
   trail.ts            One ball's motion trail, a fixed slice of time
   physics.ts          Delta-time integration, collision (walls, paddles,
                       obstacles, and ball against ball), the spin mechanic

@@ -20,7 +20,8 @@ export interface GgConfigOption {
   description: string;
   /**
    * The capability set a run launched from it carries (before the model binds), with
-   * every [imported agent](./ggAgentLibrary) resolved against the library as it stands.
+   * every [imported agent](./ggAgentLibrary) resolved against the library as it stands,
+   * and `presetId` set to this configuration's id.
    */
   capabilitySet: GgCapabilitySet;
   /** The same configuration in editable form (what the editor mounts). */
@@ -30,6 +31,30 @@ export interface GgConfigOption {
 /** The picker value for a saved configuration. */
 export function savedKey(id: string): string {
   return `saved:${id}`;
+}
+
+/**
+ * The offered configuration a stored reference names, or undefined when the account no
+ * longer holds it.
+ *
+ * A stored reference keeps whatever arrived — a picker's `saved:<id>` key, or the bare
+ * id a client built by hand — so both spellings resolve. The exact key wins over the
+ * prefixed one, so an option is never matched by a spelling the list also holds
+ * literally.
+ *
+ * One lookup for every surface that resolves a reference back to a configuration (a
+ * coverage cell's trigger, the combination picker's slots), because a surface that
+ * resolved a reference its neighbour could not would report the operator's own
+ * configuration as deleted on one screen and offer it on the next.
+ */
+export function findGgConfig(
+  options: GgConfigOption[],
+  reference: string,
+): GgConfigOption | undefined {
+  return (
+    options.find((o) => o.key === reference) ??
+    options.find((o) => o.key === savedKey(reference))
+  );
 }
 
 /**
@@ -97,14 +122,23 @@ export function useGgConfigs() {
       libraryLoading
         ? []
         : saved.map((config) => {
-            const capabilitySet = resolveCapabilitySet(config, library);
+            const resolved = resolveCapabilitySet(config, library);
+            // Every launch reads its set from here — the new-run form, a coverage
+            // cell's trigger, a comparison arm — so stamping the id on the offered
+            // option is what attributes each of those runs to the configuration that
+            // produced it. It is written after the imports resolve, because a
+            // resolution rebuilds the set and would otherwise drop it.
+            const capabilitySet: GgCapabilitySet = {
+              ...resolved,
+              presetId: config.id,
+            };
             return {
               key: savedKey(config.id),
               name: config.name,
               description: config.description,
               capabilitySet,
               draft: attachAgentSources(
-                draftFromCapabilitySet(capabilitySet),
+                draftFromCapabilitySet(resolved),
                 config.agentSources,
                 library,
               ),

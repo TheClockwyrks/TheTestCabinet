@@ -186,11 +186,12 @@ fn a_diagnostic_is_the_compiler_s_own_uncorrected_coordinate() {
         "Program.kt:9: something was wrong"
     );
 
-    // A module's diagnostics say `Module.kt`, so an author of a code skill is not told the line is
-    // in a program.
+    // A module's diagnostics say the file its own key names, so an author of a code skill is not
+    // told the line is in a program.
+    let module = source::module_file("csvTools");
     assert_eq!(
-        diagnostic("kotlinc", None, Some(MODULE_FILE), 2).render(MODULE_FILE),
-        "Module.kt:2:5: something was wrong",
+        diagnostic("kotlinc", None, Some(&module), 2).render(&module),
+        "csvTools.kt:2:5: something was wrong",
     );
 }
 
@@ -295,43 +296,47 @@ fn a_refusal_about_gg_s_own_entry_class_quotes_the_convention_back() {
 #[test]
 fn a_refusal_about_a_code_module_names_the_key_and_one_about_nobody_s_file_does_not() {
     // A code module is compiled in a build of its own, whose file is the module's, so the verdict
-    // that reads it is located in the module's own coordinates. The model is told which key to fix
-    // or to stop loading, because reporting it to the operator alone would take every turn from
-    // then on with nothing said.
-    let failure = about(
-        "helpers",
-        verdict(
-            &Report {
-                internal: None,
-                diagnostics: vec![diagnostic("kotlinc", None, Some("helpers.kt"), 3)],
-            },
-            &source::module_file("helpers"),
-        )
-        .expect_err("refused"),
+    // that reads it is located in the module's own coordinates and its author reads it there. A
+    // rebuild of the same bytes beside a program is gg disagreeing with itself over a file the
+    // model never wrote, so it is gg's own failure and names the key an operator can act on.
+    let read = verdict(
+        &Report {
+            internal: None,
+            diagnostics: vec![diagnostic("kotlinc", None, Some("helpers.kt"), 3)],
+        },
+        &source::module_file("helpers"),
+    )
+    .expect_err("refused");
+    assert!(
+        matches!(&read, PrepareFailure::Program(PrepareError::Compile(rendered))
+            if rendered.contains("helpers.kt:3")),
+        "a module read is the author's own compile error: {read:?}"
     );
-    let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
-        panic!("a code module that does not compile is the model's to act on: {failure:?}");
+    let failure = ours("helpers", read);
+    let PrepareFailure::Lowering(rendered) = &failure else {
+        panic!(
+            "a module gg rebuilt beside a program is gg's own failure, not {failure:?}. The model \
+             wrote a program that compiles and is being handed a diagnostic in a file it never saw."
+        );
     };
     assert!(rendered.contains("`helpers`"), "{rendered}");
     assert!(rendered.contains("helpers.kt:3"), "{rendered}");
 
-    // A module refused for what it offers rather than for what it says is the same sentence with
-    // the band the model can act on kept.
-    let refusal = about(
+    // A module refused for what it offers rather than for what it says is gg's on the same terms.
+    let refusal = ours(
         "helpers",
         PrepareFailure::Program(PrepareError::Unsupported(
             "this module offers nothing".to_string(),
         )),
     );
     assert!(
-        matches!(refusal, PrepareFailure::Program(PrepareError::Unsupported(ref said)) if said
-            .contains("`helpers`")),
+        matches!(refusal, PrepareFailure::Lowering(ref said) if said.contains("`helpers`")),
         "{refusal:?}",
     );
 
     // A toolchain failure is the operator's whatever compiled when it happened, so no key is said
     // in front of it.
-    let drift = about(
+    let drift = ours(
         "helpers",
         PrepareFailure::Toolchain("the JVM would not start".to_string()),
     );
@@ -430,4 +435,27 @@ fn the_entry_class_calls_the_model_s_own_main_and_carries_nothing_else() {
             "{name} is still in the entry class:\n{entry}"
         );
     }
+}
+
+/// **An unresolved import is answered with the modules of this arm's set that match it.**
+///
+/// The one cell of the [cross-arm gate](crate::sandbox::language::imports) that needs `kotlinc`: it
+/// drives a program importing a near-miss of a module this arm really carries through this arm's
+/// real preparation, and holds what comes back to the name the program wrote. What it catches is a
+/// compiler that reworded its own sentence, which is silent otherwise — the arm recovers nothing,
+/// every rejection falls back to the whole inventory, and nothing reports it.
+#[test]
+fn an_unresolved_import_is_answered_with_the_candidates_that_match_it() {
+    crate::sandbox::language::imports::gate(test_cabinet_core::gg::GgProgramLanguage::Kotlin);
+}
+
+/// **A code module gg rebuilt beside a program is gg's own failure and never the model's.**
+///
+/// The one cell of the [cross-arm gate](crate::sandbox::language::rebuilds) that needs the Kotlin compiler: it
+/// hands this arm's program step a module this workspace holds no build of and that the Kotlin compiler refuses,
+/// and reads the band of what comes back. What it catches is a rebuild's diagnostic reaching a model
+/// under `Compiler error`, over a program that compiles and a file the model never wrote.
+#[test]
+fn a_code_module_refused_beside_a_program_is_ggs_failure() {
+    crate::sandbox::language::rebuilds::gate(test_cabinet_core::gg::GgProgramLanguage::Kotlin);
 }

@@ -6,6 +6,9 @@
 // is flown into the top wall, and its spin on the frame of the bounce is read
 // against its posed spin decayed over exactly the frames flown. Two percent is
 // rounding room: the product of the per-step factors is the same number.
+//
+// The field is emptied to this ball alone and both paddles are parked off the
+// flight, so the wall is the only thing the spin is carried through.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
@@ -39,8 +42,7 @@ afterEach(async () => {
 });
 
 it("keeps the spin, less the decay, through a wall bounce", async () => {
-  await arrangeLiveBall(harness, BALL);
-  await harness.debug.setBall(0, { spin: SPIN });
+  await arrangeLiveBall(harness, { ...BALL, spin: SPIN });
   const posed = ball0(await harness.snapshot()).spin;
 
   const bounce = await captureReplay(harness, "bounce", async () => {

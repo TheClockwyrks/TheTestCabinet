@@ -17,6 +17,13 @@ import {
 } from "./constants";
 import type { ObstacleState } from "./game";
 
+/** Whether `index` names one of the obstacles this field carries. */
+export function isObstacleIndex(index: number): boolean {
+  return (
+    Number.isInteger(index) && index >= 0 && index < OBSTACLE_CENTERS.length
+  );
+}
+
 /**
  * The signed sway offset shared by both obstacles at clock `t`, in px.
  *
@@ -39,6 +46,7 @@ export function obstaclePose(index: number, t: number): ObstacleState {
   // A is displaced by +sway, B by -sway. The x never moves.
   const sign = index === 0 ? 1 : -1;
   return {
+    index,
     cx: base.x,
     cy: base.y + sign * swayOffset(t),
     theta: spinAngle(t),
@@ -46,23 +54,43 @@ export function obstaclePose(index: number, t: number): ObstacleState {
 }
 
 /**
- * Write both obstacles' poses for clock `t` into `out`, in place.
+ * Re-pose every obstacle PRESENT in `field` for clock `t`, in place.
  *
- * In place because the poses are declared state: the array identity is part of
- * what `initialize` built, and rebuilding it every frame would churn objects the
- * renderer and the collision both hold for the length of a frame.
+ * In place because the poses are declared state and an absent obstacle must stay
+ * absent: the array is the field's contents, and re-posing it is not the same as
+ * rebuilding it. Which obstacles are there is `clearWorld` and `spawnObstacle`'s
+ * business (specs/instrumentation.md); this only moves the ones that are.
  */
-export function poseObstacles(out: ObstacleState[], t: number): void {
-  for (let i = 0; i < OBSTACLE_CENTERS.length; i++) {
-    const pose = obstaclePose(i, t);
-    const slot = out[i];
-    if (slot) {
-      slot.cx = pose.cx;
-      slot.cy = pose.cy;
-      slot.theta = pose.theta;
-    } else {
-      out[i] = pose;
-    }
+export function poseObstacles(field: ObstacleState[], t: number): void {
+  for (const obstacle of field) {
+    const pose = obstaclePose(obstacle.index, t);
+    obstacle.cx = pose.cx;
+    obstacle.cy = pose.cy;
+    obstacle.theta = pose.theta;
   }
-  out.length = OBSTACLE_CENTERS.length;
+}
+
+/** Every obstacle, present and posed for clock `t`, in index order. */
+export function fullField(t: number): ObstacleState[] {
+  return OBSTACLE_CENTERS.map((_, index) => obstaclePose(index, t));
+}
+
+/**
+ * Place obstacle `index` at clock `t`, replacing it if it is already there.
+ *
+ * The field stays in the order of `OBSTACLE_CENTERS`, which is the order
+ * `snapshot().obstacles` reports and the order the collision resolves in.
+ */
+export function placeObstacle(
+  field: ObstacleState[],
+  index: number,
+  t: number,
+): void {
+  const pose = obstaclePose(index, t);
+  const at = field.findIndex((obstacle) => obstacle.index === index);
+  if (at >= 0) field[at] = pose;
+  else {
+    field.push(pose);
+    field.sort((a, b) => a.index - b.index);
+  }
 }

@@ -10,10 +10,11 @@
 #   * sfx-synth — PURE SYNTH (oscillator/noise voices): the tonal / mechanical-texture cues
 #     that want tight control — the drill grind, the burner loop, the ore blip, the material
 #     chime, and the two alarms.
-#   * sfx-sample — SAMPLED over the baked `combat-core@0.1.0` pack (engine idle, servo, metal
+#   * sfx-sample — SAMPLED over the `combat-core@0.1.0` pack (engine idle, servo, metal
 #     impacts, booms, debris, mech clanks, fire crackle): the RICHER, weightier one-shots —
 #     the impact thud, the fabricate confirm, the launch roar, the gas blast, the lava sizzle,
-#     and the death cue. The `music` bed sequences the baked `gm-lite@0.1.0` instrument bank.
+#     and the death cue. The `music` bed sequences the `gm-lite@0.1.0` instrument bank. Both
+#     are declared in this case's `[audio] packs`.
 #
 # Produces, under assets/audio/, exactly the cues the game loads (ASSET-LAYOUT.md §Audio):
 #   drill.wav          — grinding drill loop        (the miner is drilling; specs/character.md)
@@ -51,17 +52,14 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 CFG="$TMP/cfg.json"
 
-# The baked sample pack / instrument bank live at env-pointed dirs on the run image
-# (TCAB_SAMPLE_PACK_DIR / TCAB_INSTRUMENT_BANK_DIR, set by containers/full-stack-2d/Dockerfile),
-# and `audio-core`'s resolve_pack_dir() reads those envs. In THIS dev container they are
-# usually unset, so fall back to the repo's checked-in pack tarballs under dist/sample-packs
-# ONLY when the env is empty — on the run image the `:=`-guarded assignment never fires.
-REPO="$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null || true)"
-if [ -z "${TCAB_SAMPLE_PACK_DIR:-}" ] && [ -n "$REPO" ] && [ -d "$REPO/dist/sample-packs/combat-core-0.1.0" ]; then
-  export TCAB_SAMPLE_PACK_DIR="$REPO/dist/sample-packs/combat-core-0.1.0"
-fi
-if [ -z "${TCAB_INSTRUMENT_BANK_DIR:-}" ] && [ -n "$REPO" ] && [ -d "$REPO/dist/sample-packs/gm-lite-0.1.0" ]; then
-  export TCAB_INSTRUMENT_BANK_DIR="$REPO/dist/sample-packs/gm-lite-0.1.0"
+# A run container is staged with the packs this case declares and the tools find them
+# with no configuration. On a host they read an audio store instead, pointed at by
+# TCAB_AUDIO_DIR; `scripts/fetch-audio-store.sh` fetches one. Fall back to the store's
+# default location ONLY when the variable is empty, so a run container never takes this
+# branch.
+STORE="${TCAB_AUDIO_STORE:-${HOME:-}/.cache/tcab/audio-store}"
+if [ -z "${TCAB_AUDIO_DIR:-}" ] && [ -d "$STORE/packs" ]; then
+  export TCAB_AUDIO_DIR="$STORE"
 fi
 
 # --- sfx-synth helpers (pure synth) ------------------------------------------
@@ -74,7 +72,7 @@ newsfx() {
 x() { sfx-synth "$@" --config "$CFG" >/dev/null; }
 
 # --- sfx-sample helpers (sampled over combat-core@0.1.0) ---------------------
-# newsmp <channels> <max_ms> <out.wav> : seed a fresh sampled run over the baked pack.
+# newsmp <channels> <max_ms> <out.wav> : seed a fresh sampled run over the declared pack.
 newsmp() {
   printf '{ "sample_rate": 44100, "channels": "%s", "max_duration_ms": %s, "seed": 1337, "sample_pack": "combat-core@0.1.0", "actions": "%s", "preview": "%s", "wav": "%s" }\n' \
     "$1" "$2" "$TMP/smp.actions.json" "$TMP/smp.preview.png" "$3" > "$CFG"
@@ -315,7 +313,7 @@ x render
 # ==================================== MUSIC ==================================
 # The LONELY INDUSTRIAL DESCENT BED — a low, atmospheric loop under the mine for a solitary
 # miner far underground (specs/assets.md "Music"; specs/overview.md "a lone prospector").
-# Sequenced over the baked `gm-lite@0.1.0` bank. In D MINOR, slow and mournful, over a
+# Sequenced over the `gm-lite@0.1.0` bank. In D MINOR, slow and mournful, over a
 # DESCENDING lament bass (roots D · C · Bb · A — the ground literally sinking under the loop):
 #   * pad   — a low synth_pad drone holding the chord, cold and wide (the cavern air).
 #   * cello — a sustained mournful fifth above the pad, the loneliness.

@@ -25,7 +25,7 @@ import {
 } from "../harness";
 
 const START_CY = 600;
-/** A ball heading away from the AI, down the lane that clears both obstacles. */
+/** A ball heading away from the AI, down a field emptied to that ball alone. */
 const BALL = { x: FIELD_CX, y: FIELD_CY, vx: -300, vy: 0 };
 
 const RETURN_TICKS = 90; // 0.75 s

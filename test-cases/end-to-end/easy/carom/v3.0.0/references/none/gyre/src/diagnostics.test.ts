@@ -57,8 +57,8 @@ describe("registerDiagnostics", () => {
     state.mode = "versus";
     state.score.p1 = 4;
     state.score.p2 = 7;
-    state.ball.x = 123.456;
-    state.ball.spin = -250;
+    state.ball!.x = 123.456;
+    state.ball!.spin = -250;
 
     const values = read();
     expect(values["screen"]).toBe("playing");
@@ -66,6 +66,18 @@ describe("registerDiagnostics", () => {
     expect(values["score"]).toBe("4 - 7");
     expect(values["ball pos"]).toBe("123.5, 360.0");
     expect(values["ball spin"]).toBe("-250.0");
+  });
+
+  it("reports a dash for a ball that is not on the field", () => {
+    const state = createInitialState();
+    state.ball = null;
+    const { api, read } = collector();
+    registerDiagnostics(api, state);
+
+    const values = read();
+    expect(values["ball pos"]).toBe("—");
+    expect(values["ball vel"]).toBe("—");
+    expect(values["ball spin"]).toBe("—");
   });
 
   it("changes nothing it reads", () => {

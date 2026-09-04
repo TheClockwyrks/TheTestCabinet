@@ -4,14 +4,14 @@
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/ui.md`, "`title`": "`up` and
 // `down` move the highlight by one item and wrap at both ends".
 // `specs/controls.md`, "What each screen reads", says the same of the title
-// row: "`up`, `down` move the highlight, wrapping at both ends". The menu is
-// `TITLE_ITEMS`, two items, so the last index is `1` and a `down` there reads
-// `0`.
+// row: "`up`, `down` move the highlight, wrapping". The menu is `TITLE_ITEMS`,
+// `LIGHT THE LAMP`, `THE ALMANAC`, `HOW TO PLAY`, so the last index is `2` and
+// a `down` there reads `0`.
 //
-// THE DRIVE. `reset` to the title screen, one `ArrowDown` onto the last item,
-// read back as the precondition, then the `ArrowDown` that must wrap. The
-// edge case is its own point: a build that moves the highlight correctly and
-// clamps at the bottom fails here alone.
+// THE DRIVE. `reset` to the title screen, one `ArrowDown` per item down to the
+// last one, read back as the precondition, then the `ArrowDown` that must wrap.
+// The edge case is its own point: a build that moves the highlight correctly
+// and clamps at the bottom fails here alone.
 //
 // THE TOLERANCE. None: an index is exact.
 
@@ -35,7 +35,10 @@ afterEach(() => {
 
 it("reads menuIndex 0 after ArrowDown on the last title item", async () => {
   h.reset();
-  const posed = await tap(h, "ArrowDown");
+  let posed = h.snapshot();
+  for (let press = 0; press < LAST_ITEM; press += 1) {
+    posed = await tap(h, "ArrowDown");
+  }
   assertEqual(posed.screen, "title", "the screen the press is made on");
   assertEqual(posed.menuIndex, LAST_ITEM, "menuIndex before the press");
 

@@ -57,9 +57,18 @@
       /** Ticks that ran with at least one key held, which is what a tap makes. */
       heldTicks: 0,
       clicks: 0,
+      taken: 0,
       pointer: { x: -1, y: -1 },
     };
     const held = new Set();
+
+    // The two conformant ways a build reads a press, side by side. `clicks` is
+    // latched in the handler the moment the event arrives; `pending` is the other
+    // shape — the samples an input layer buffers and reads once a frame, which is
+    // what an engineless build usually writes — and `taken` counts the edges a
+    // TICK consumed out of it. `pending` belongs to the input layer rather than to
+    // the game, so `reset` does not clear it, exactly as a real one does not.
+    const pending = [];
 
     let audio = null;
     function blip() {
@@ -129,6 +138,8 @@
     }
 
     function tick() {
+      state.taken += pending.length;
+      pending.length = 0;
       state.frames += 1;
       state.x = (state.x + 2) % STAGE_W;
       if (held.size > 0) state.heldTicks += 1;
@@ -150,6 +161,10 @@
     });
     window.addEventListener("mousedown", () => {
       state.clicks += 1;
+      pending.push("down");
+    });
+    window.addEventListener("mouseup", () => {
+      pending.push("up");
     });
 
     window.__fixture = {
@@ -164,6 +179,7 @@
         state.sounds = 0;
         state.heldTicks = 0;
         state.clicks = 0;
+        state.taken = 0;
         state.seed = options?.seed ?? null;
         held.clear();
         bedSource?.stop();
@@ -189,6 +205,7 @@
           sounds: state.sounds,
           heldTicks: state.heldTicks,
           clicks: state.clicks,
+          taken: state.taken,
           keys: [...held].sort(),
           pointer: { ...state.pointer },
         };

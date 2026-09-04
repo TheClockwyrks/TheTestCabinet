@@ -14,6 +14,10 @@
 // returns down the path it arrived on instead of banking off the face. Only the
 // component normal to the struck face may reverse, so `vy` KEEPING ITS SIGN
 // through the contact is the property under test.
+//
+// Each graze is posed onto a field emptied and given back the ONE obstacle it
+// grazes, so the corner under test is the only corner on the field and the
+// reading cannot be a second body's doing.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
@@ -29,6 +33,8 @@ import {
   captureReplay,
   clearPaddles,
   createHarness,
+  isolateBall,
+  placeBall,
   startPlaying,
   type Harness,
 } from "../harness";
@@ -75,6 +81,8 @@ const DEPARTURE_TICKS = 30; // 0.25 s
 
 interface Graze {
   label: string;
+  /** The obstacle grazed, and the only one the field holds for that graze. */
+  obstacle: number;
   faceX: number;
   endY: number;
   fromLeft: boolean;
@@ -91,6 +99,7 @@ interface Graze {
 const GRAZES: Graze[] = [
   {
     label: "obstacle A, top-left corner",
+    obstacle: 0,
     faceX: OBSTACLES[0].x0,
     endY: OBSTACLE_CENTERS[0].y - OBSTACLE_HH,
     fromLeft: true,
@@ -98,6 +107,7 @@ const GRAZES: Graze[] = [
   },
   {
     label: "obstacle A, bottom-left corner",
+    obstacle: 0,
     faceX: OBSTACLES[0].x0,
     endY: OBSTACLE_CENTERS[0].y + OBSTACLE_HH,
     fromLeft: true,
@@ -105,6 +115,7 @@ const GRAZES: Graze[] = [
   },
   {
     label: "obstacle B, top-right corner",
+    obstacle: 1,
     faceX: OBSTACLES[1].x1,
     endY: OBSTACLE_CENTERS[1].y - OBSTACLE_HH,
     fromLeft: false,
@@ -154,8 +165,9 @@ it("reverses only the component normal to the face it grazed", async () => {
   await captureReplay(harness, "graze", async () => {
     for (const graze of GRAZES) {
       const shot = shotFor(graze);
+      await isolateBall(harness, 0, [graze.obstacle]);
       await clearPaddles(harness);
-      await harness.debug.setBall(0, { ...shot, spin: 0 });
+      await placeBall(harness, shot);
 
       const banked = await harness.until(
         (s) => Math.sign(ball0(s).vx) !== Math.sign(shot.vx),

@@ -22,6 +22,7 @@
     "lint:specs": "npm run lint:md && npm run spell",
     "spell": "cspell lint --no-progress --cache",
     "test": "npm run test --workspaces --if-present",
+    "test:scripts": "node --test scripts/lib/*.test.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {

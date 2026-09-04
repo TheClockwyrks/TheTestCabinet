@@ -81,7 +81,7 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, spell,
+    ProgramLanguage, WORKSPACE_TREE_VIEW, spell,
 };
 
 /// The one line a program writes to reach gg's surface, and the line every module of this arm's
@@ -106,7 +106,9 @@ pub(super) const SURFACE_IMPORT: &str = "import gg";
 /// the moment it matters.
 pub(super) const LIB_IMPORT: &str = "import lib";
 use crate::docs::MAX_SEARCH_LIMIT;
-use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::sandbox::operations::{
+    DOCS_SEARCH, FILES_TREE, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT,
+};
 
 #[path = "python.modules.rs"]
 mod modules;
@@ -179,8 +181,8 @@ impl ProgramLanguage for Python {
     /// for why a second Python grammar on the host would be a liability rather than a feature.
     ///
     /// It takes no [context](PrepareContext) because it opens nothing: this arm creates no
-    /// workspace and spawns no process, so the seam's per-preparation ground costs it not one
-    /// syscall and the isolation gate (`language/isolation.rs`) has nothing to catch it doing.
+    /// workspace and spawns no process, so the ground the seam offers a preparation costs it not
+    /// one syscall and the isolation gate (`language/isolation.rs`) has nothing to catch it doing.
     fn prepare_program(
         &self,
         source: &str,
@@ -210,6 +212,7 @@ impl ProgramLanguage for Python {
     /// deliberately does not report.
     fn prepare_module(
         &self,
+        _key: &str,
         source: &str,
         _context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {
@@ -293,14 +296,18 @@ impl ProgramLanguage for Python {
         Some(LIB_IMPORT.to_string())
     }
 
-    /// [One search and one `for` over a list](self::bootstrap_program), with both calls resolved
-    /// from this language's own catalogue and the module filter written as a keyword argument.
-    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+    /// [One tree in a text view, one search and one `for` over a list](self::bootstrap_program),
+    /// with every call resolved from this language's own catalogue and the module filter written as
+    /// a keyword argument.
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str], tree: Option<u32>) -> String {
         bootstrap_program(
             &spell(self, DOCS_SEARCH),
             &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            &spell(self, FILES_TREE),
+            &spell(self, VIEWS_OPEN_TEXT),
             modules,
             docs,
+            tree,
         )
     }
 }
@@ -415,10 +422,20 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
 pub(super) fn bootstrap_program(
     search: &str,
     open_docs_view: &str,
+    tree_call: &str,
+    open_text: &str,
     modules: &[&str],
     docs: &[&str],
+    tree: Option<u32>,
 ) -> String {
     let quoted = |name: &str| serde_json::Value::String(name.to_string()).to_string();
+    let walked = match tree {
+        None => String::new(),
+        Some(depth) => format!(
+            "{open_text}({}, {tree_call}(depth={depth}))\n\n",
+            quoted(WORKSPACE_TREE_VIEW)
+        ),
+    };
     let listing = if modules.is_empty() {
         String::new()
     } else {
@@ -436,7 +453,7 @@ pub(super) fn bootstrap_program(
     format!(
         "{SURFACE_IMPORT}\n\
          \n\
-         {listing}functions = [\n{functions}]\nfor name in functions:\n    \
+         {walked}{listing}functions = [\n{functions}]\nfor name in functions:\n    \
          {open_docs_view}(name)\n"
     )
 }

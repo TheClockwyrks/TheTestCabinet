@@ -40,5 +40,12 @@ export const SCORE_FONT_PX = 76;
 
 export const TAGLINE_TEXT = "NEON PADDLE DUEL";
 
+/**
+ * The how-to screen's single menu item (specs/ui.md leaves its copy to the
+ * build). It is drawn exactly as the other menus draw the item at `menuIndex`,
+ * and confirming it returns to the title.
+ */
+export const HOWTO_ITEMS = ["BACK"] as const;
+
 /** The label naming the mode during a match. */
 export const MODE_LABEL = { solo: "SOLO", versus: "VERSUS" } as const;

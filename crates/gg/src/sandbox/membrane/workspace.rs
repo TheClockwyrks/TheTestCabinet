@@ -22,7 +22,8 @@ use super::test_cabinet::gg::types::{ApiError, ErrorCode};
 use super::{MembraneState, OperationApi};
 use crate::sandbox::operations::OperationId;
 use crate::sandbox::operations::{
-    FILES_EDIT_FILE, FILES_LIST_DIR, FILES_READ_FILE, FILES_SEARCH, FILES_WRITE_FILE, SHELL_SHELL,
+    FILES_EDIT_FILE, FILES_LIST_DIR, FILES_READ_FILE, FILES_SEARCH, FILES_TREE, FILES_WRITE_FILE,
+    SHELL_SHELL,
 };
 use crate::tools::{ApiData, DirEntryData, DirEntryKind, SearchMatchData};
 
@@ -133,6 +134,18 @@ impl<A: OperationApi> FilesHost for MembraneState<A> {
             match outcome.data {
                 Some(ApiData::DirEntries(entries)) => Ok(entries.into_iter().map(entry).collect()),
                 other => Err(state.missing_data(FILES_LIST_DIR, other.as_ref())),
+            }
+        })
+    }
+
+    /// Render the tree beneath a directory under the ignore files — `files.tree`. The tool decides
+    /// the root, the depth bound and the size bounds; this lifts the rendering it produced.
+    fn tree(&mut self, path: Option<String>, depth: Option<u32>) -> Result<String, ApiError> {
+        self.recorded(FILES_TREE, |state, rec| {
+            let outcome = state.call(rec, FILES_TREE, |api| api.tree(path, depth))?;
+            match outcome.data {
+                Some(ApiData::TreeText(text)) => Ok(text),
+                other => Err(state.missing_data(FILES_TREE, other.as_ref())),
             }
         })
     }

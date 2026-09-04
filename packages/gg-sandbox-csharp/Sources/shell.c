@@ -177,6 +177,18 @@ static bool register_assemblies(const char *text, size_t length) {
   return any;
 }
 
+/// One of gg's SDK's own classes, or `NULL` when this manifest carried no SDK at all — which is not
+/// an error: the substrate's own tests compile programs against nothing.
+///
+/// The class is reached through the SDK's own image rather than by name across the whole domain, so
+/// a program that declared `namespace Gg { class ApiException }` of its own resolves to its own type
+/// and never to gg's.
+static MonoClass *sdk_class(const char *name_space, const char *name) {
+  MonoAssembly *sdk = mono_wasm_assembly_load(GG_SDK_ASSEMBLY);
+  if (sdk == NULL) return NULL;
+  return mono_class_from_name(mono_assembly_get_image(sdk), name_space, name);
+}
+
 /// Call one of gg's SDK's own no-argument statics, if this manifest carried the SDK at all.
 ///
 /// Two of them are called from here. `Install` puts `Console.Out` on gg's feedback channel, and it is
@@ -184,14 +196,8 @@ static bool register_assemblies(const char *text, size_t length) {
 /// SDK's own module is first touched: a program whose first line is `Console.WriteLine` would
 /// otherwise write it before anything had reached gg. `FlushPending` sends whatever the program
 /// wrote and never terminated with a newline.
-///
-/// A manifest with no SDK in it simply has no such class, which is not an error: the substrate's own
-/// tests compile programs against nothing at all.
 static void sdk_console(const char *method) {
-  MonoAssembly *sdk = mono_wasm_assembly_load(GG_SDK_ASSEMBLY);
-  if (sdk == NULL) return;
-  MonoClass *klass = mono_class_from_name(mono_assembly_get_image(sdk), "Gg.Internal",
-                                          "OperatorConsole");
+  MonoClass *klass = sdk_class("Gg.Internal", "OperatorConsole");
   if (klass == NULL) return;
   MonoMethod *found = mono_class_get_method_from_name(klass, method, 0);
   if (found == NULL) return;
@@ -219,11 +225,65 @@ void exports_sandbox_bound_operations(sandbox_list_string_t *ret) {
   }
 }
 
-/// Report something that went wrong *inside* the guest as a model-facing program error.
+/// Report something that went wrong *inside* the guest, or the status the program's entry point
+/// returned, as a model-facing program error.
+///
+/// Neither is a failed call, so neither carries a code. An exception that reached the entry point
+/// uncaught goes through `report_uncaught` below instead.
 static void report(const char *message) {
   test_cabinet_gg_feedback_program_error_t error;
   error.kind = TEST_CABINET_GG_FEEDBACK_ERROR_KIND_OTHER;
   error.code.is_some = false;
+  error.location.is_some = false;
+  sandbox_string_set(&error.message, message);
+  test_cabinet_gg_feedback_report_error(&error);
+}
+
+/// **The failure class an uncaught `Gg.ApiException` carries**, written into `code`, or `false` for
+/// a thrown object that is not one.
+///
+/// `ApiException.Code` is the wire's own `error-code` and not a second vocabulary: the SDK builds
+/// the exception by casting the ordinal the bridge parked straight to `Gg.ApiErrorCode`
+/// (`src/Gg/Internal/Wire.cs`), so the two enumerations are one list read twice. The ordinal is
+/// range-checked on the way back rather than trusted, because a value outside the wire's cases is a
+/// managed enum that has drifted and would otherwise be reported as a case gg does have.
+///
+/// The type is compared by identity against the class in the SDK's own image, so a program that
+/// declared a `Gg.ApiException` of its own is reported as the ordinary throw it is. `ApiException`
+/// is sealed, so identity is the whole test. Only the outermost thrown object is read: an exception
+/// that wrapped one is the program's own, which is what every other reporting guest says of the
+/// same shape.
+///
+/// Reading the property runs managed code after an unhandled exception, which this runtime allows
+/// and `run` below already relies on for the SDK's `FlushPending`.
+static bool api_failure_code(MonoObject *thrown, test_cabinet_gg_types_error_code_t *code) {
+  MonoClass *failure = sdk_class("Gg", "ApiException");
+  if (failure == NULL || mono_object_get_class(thrown) != failure) return false;
+  MonoProperty *property = mono_class_get_property_from_name(failure, "Code");
+  if (property == NULL) return false;
+  MonoObject *while_reading = NULL;
+  MonoObject *boxed = mono_property_get_value(property, thrown, NULL, &while_reading);
+  if (boxed == NULL || while_reading != NULL) return false;
+  const int32_t ordinal = *(int32_t *)mono_object_unbox(boxed);
+  if (ordinal < 0 || ordinal > TEST_CABINET_GG_TYPES_ERROR_CODE_OTHER) return false;
+  *code = (test_cabinet_gg_types_error_code_t)ordinal;
+  return true;
+}
+
+/// Report the exception that reached the entry point uncaught, carrying its failure class when it
+/// was a gg call's.
+///
+/// The class is what the host files the turn by: an uncaught refusal is an unknown name and any
+/// other uncaught failed call an API error, which is how every arm whose guest reports files the
+/// same event. Anything the program threw itself carries no code and is its own failure.
+static void report_uncaught(const char *message, MonoObject *thrown) {
+  test_cabinet_gg_feedback_program_error_t error;
+  test_cabinet_gg_types_error_code_t code = TEST_CABINET_GG_TYPES_ERROR_CODE_OTHER;
+  const bool failed_call = api_failure_code(thrown, &code);
+  error.kind = failed_call ? TEST_CABINET_GG_FEEDBACK_ERROR_KIND_API_FAILURE
+                           : TEST_CABINET_GG_FEEDBACK_ERROR_KIND_OTHER;
+  error.code.is_some = failed_call;
+  error.code.val = code;
   error.location.is_some = false;
   sandbox_string_set(&error.message, message);
   test_cabinet_gg_feedback_report_error(&error);
@@ -250,7 +310,8 @@ static bool started = false;
 /// An unhandled managed exception is caught by `mono_runtime_run_main` and reported by its own type
 /// and message, which is what a C# programmer would have seen printed. It is a recoverable
 /// model-facing error, not a trap: this arm has a real exception mechanism because the interpreter
-/// has one, and nothing in the guest has to unwind wasm frames to use it.
+/// has one, and nothing in the guest has to unwind wasm frames to use it. A `Gg.ApiException` is
+/// reported with the failure class it carries, which is what the host files the turn by.
 ///
 /// **A status is a failure too, and it is read rather than discarded.** `mono_runtime_run_main`
 /// hands back the entry point's own return value, which is the one way a C# program reports failure
@@ -325,10 +386,10 @@ void exports_sandbox_run(sandbox_string_t *program, sandbox_list_code_module_t *
     char message[512];
     snprintf(message, sizeof message, "uncaught %s.%s", mono_class_get_namespace(klass),
              mono_class_get_name(klass));
-    report(message);
+    report_uncaught(message, thrown);
     return;
   }
   char *utf8 = mono_string_to_utf8(rendered);
-  report(utf8);
+  report_uncaught(utf8, thrown);
   mono_free(utf8);
 }

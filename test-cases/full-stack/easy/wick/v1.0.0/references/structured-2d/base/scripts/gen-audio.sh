@@ -5,8 +5,8 @@
 # noise puffs, so the fourteen cues and the bed sound like one night.
 #
 # Production lanes: every cue is pure synth through `sfx-synth` (the contract
-# allows `sfx-synth` or `sfx-sample` per cue; the baked sample pack on this
-# machine is empty, and the warm palette wants the oscillator control anyway).
+# allows `sfx-synth` or `sfx-sample` per cue, and the warm palette wants the
+# oscillator control).
 # The bed is sequenced with `music` on synth-waveform tracks
 # (`define-track --instrument sine|triangle|saw|square`), which the contract
 # allows beside the instrument bank.

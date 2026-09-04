@@ -10,7 +10,7 @@ while the key, tempo, structure, and instrument choices are the model's, so the
 case rewards compositional creativity.
 
 The clip is voiced as notes on instrument tracks the model chooses freely from
-the baked `synthwave` instrument bank. The recorded operations are regenerated
-into a stereo `clip.wav` beside a portable `clip.mid`, which a reviewer plays
-against the brief, weighing its arcade energy, its chiptune flavor, its driving
-groove, and its clean loop.
+the `synthwave` instrument bank. The recorded operations are regenerated into a
+stereo `clip.wav` beside a portable `clip.mid`, which a reviewer plays against
+the brief, weighing its arcade energy, its chiptune flavor, its driving groove,
+and its clean loop.

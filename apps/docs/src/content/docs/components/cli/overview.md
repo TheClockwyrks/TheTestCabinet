@@ -42,7 +42,9 @@ needs a reachable backend (`TCAB_BACKEND_URL`) and a logged-in account. See
 - `prompt` renders and prints the prompt a run would hand the harness for a
   given variant, without seeding or launching anything.
 - `validate` runs [validation](/components/core/validation/) over a produced
-  implementation.
+  implementation. It leaves the directory as it found it, apart from the install
+  and build it runs there and the media it synthesizes under `.tcab/`, so it is
+  safe to point at a case's committed reference implementation.
 - `harnesses` lists the supported agent harnesses and whether each one's
   resolved authentication mode has the credentials it needs.
 - `orchestrators` lists the built-in orchestrators and what each one does.

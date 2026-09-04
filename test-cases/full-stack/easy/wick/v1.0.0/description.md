@@ -17,6 +17,11 @@ twenty-window schedule, and seven scripted events run over it: three gnat
 swarms, two mothwings, an owl, and, at nine minutes, the Dark, a pursuer the
 lamplighter outruns until dawn.
 
+Nine screens carry the night. Every menu answers the keyboard and the mouse
+alike, the title opens an almanac listing every tool, trinket, enemy and
+pickup with its picture, its figures and a line of its own, and the pause
+screen holds the world under a menu of its own.
+
 Wick is a full-stack case with a 2D asset contract. The build draws every
 sprite and sheet with the asset tools, from the lamplighter's walk cycle to
 twenty-seven icons and a ground tile, produces fourteen cues and a looping

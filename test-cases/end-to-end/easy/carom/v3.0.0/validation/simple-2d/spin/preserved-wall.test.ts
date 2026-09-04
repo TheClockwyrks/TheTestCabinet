@@ -1,19 +1,25 @@
 // spin/preserved-wall — spin survives a wall bounce, less only its decay.
 //
-// "A wall bounce leaves speed and spin unchanged" (specs/balls.md). So across the bounce the spin changes by
-// the decay alone: `spin_after = spin_before * 0.5 ^ (elapsed / SPIN_HALFLIFE)`,
+// "A wall bounce leaves speed and spin unchanged" (specs/balls.md). So across
+// the bounce the spin changes by the decay alone:
+// `spin_after = spin_before * 0.5 ^ (elapsed / SPIN_HALFLIFE)`,
 // with `elapsed` the simulation time between the two readings, which the
-// snapshot's own `simTime` gives. A spinning ball is posed on a climb into the top wall, clear of the obstacles, and the spin
-// is read on the frame the normal component reverses.
+// snapshot's own `simTime` gives.
+//
+// A spinning ball is posed on a climb into the top wall on a field holding that
+// ball alone: both obstacles are removed rather than climbed past, and both
+// paddles are driven off the line, so the only thing the flight meets is the
+// wall. The spin is read on the frame the normal component reverses.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SPIN_HALFLIFE } from "../../src/constants";
+import { SPIN_HALFLIFE } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   arrangeLiveBall,
   ball0,
   captureReplay,
   createHarness,
+  spinBall,
   type Harness,
 } from "../harness";
 
@@ -34,8 +40,8 @@ afterEach(() => {
 });
 
 it("keeps the spin through a wall bounce, less the decay", async () => {
-  await arrangeLiveBall(harness, { x: 300, y: 150, vx: 300, vy: -400 });
-  harness.debug.setBall(0, { spin: POSED_SPIN });
+  arrangeLiveBall(harness, { x: 300, y: 150, vx: 300, vy: -400 });
+  spinBall(harness, POSED_SPIN);
   const before = harness.snapshot();
 
   const bounce = await captureReplay(harness, "bounce", async () => {

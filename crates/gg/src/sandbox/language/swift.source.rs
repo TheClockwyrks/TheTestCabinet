@@ -72,14 +72,6 @@ pub(super) fn module_file(key: &str) -> String {
 /// told from a diagnostic located in gg's own inputs.
 pub(super) const MODULE_FILE_PREFIX: &str = "module_";
 
-/// The Swift module name a code module is **checked under**, before any program has asked for it.
-///
-/// A module's own preparation is handed no key — the seam binds one when the module is loaded, not
-/// when it is read — so the check compiles it under a fixed one. Which name it is changes nothing it
-/// could catch: the file is the same bytes either way, and a declaration that type-checks under one
-/// module name type-checks under all of them.
-pub(super) const CHECK_MODULE: &str = "module";
-
 /// A code module's own file: the author's source with `public` written in front of each top-level
 /// declaration that carries no access level of its own.
 ///

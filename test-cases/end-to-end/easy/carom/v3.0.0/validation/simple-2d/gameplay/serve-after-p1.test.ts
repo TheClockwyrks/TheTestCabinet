@@ -1,12 +1,18 @@
 // gameplay/serve-after-p1 — after a point is scored ON player one, the next
 // serve travels toward player one.
 //
-// The point is a real one: the ball is aimed down the clear lane at the LEFT
+// The point is a real one: the ball is aimed down the mid-field lane at the LEFT
 // goal and the build's own simulation carries it out, scoring for player two.
 // The serve that follows is then expired and its direction read on the launch
 // frame. Nothing is posed about the serve itself, and the score is asserted
 // alongside the direction so a build that never scored the point cannot pass by
 // serving left out of a countdown it never left.
+//
+// The point runs down an isolated lane. `arrangeGoal` empties the field and
+// spawns back the one ball it fires, so both obstacles are gone rather than
+// dodged, and it drives both paddles out of the mid-field lane. The serve that
+// answers the point leaves the same field: nothing respawns what was cleared, so
+// the launch that is read is the ball on an otherwise empty court.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertLessThan } from "../assert";
@@ -16,7 +22,9 @@ import {
   captureReplay,
   createHarness,
   driveGoal,
-  startPlaying,
+  driveServe,
+  enterPlaying,
+  stageServe,
   type Harness,
 } from "../harness";
 
@@ -42,7 +50,7 @@ afterEach(() => {
 });
 
 it("serves toward player one after player two scores", async () => {
-  await startPlaying(harness);
+  enterPlaying(harness);
   harness.debug.setScore(0, 0);
   arrangeGoal(harness, "left");
 
@@ -54,11 +62,10 @@ it("serves toward player one after player two scores", async () => {
     assertEqual(point.snapshot.score.p2, 1);
     assertEqual(point.snapshot.screen, "countdown");
 
-    harness.debug.serve();
-    const launched = await harness.until((s) => s.screen === "playing", {
-      maxFrames: 60,
-      poll: 1,
-    });
+    // The hold is cut to nothing; the LAUNCH is the build's own, on the frame
+    // after, and `receiver` is not touched by either pose.
+    stageServe(harness);
+    const launched = await driveServe(harness);
     await harness.advance(FLIGHT_TICKS);
 
     assertEqual(launched.hit, true);

@@ -53,6 +53,26 @@ A hardcoded floor applies on top, and everything it removes is counted:
 dependency and vendored trees, the build-output directory names the validator
 looks for, minified and generated files, binaries, and files over 8 MiB.
 
+Two further names are floored only when they are the tree's own top-level
+directory. The anchoring is what makes the rule safe: a model's own
+`src/engine/` is exactly the directory a build writing its own frame loop
+creates, so the check tests the tree's first path segment rather than a name at
+any depth.
+
+`.tcab/` is floored on every tree and wholesale. It is a namespace the host owns
+outright, holding the vendored engine runtime, the case's vendored packages and
+its validation media, so a child added to it later stays out of the authored set
+without a second edit.
+
+`engine/` is floored only on a run whose engine seeded its documentation there.
+The same path means the opposite on every other run: an engineless run has
+nothing seeded at the root, and a case may seed a skeleton at `engine/src/lib.rs`
+and make filling it in the whole task, so the directory holds the model's entire
+submission. A seeded tree cannot answer the question for itself, because the seed
+commit is made after the documentation is copied. The analyzer therefore reads
+the answer from the engine the run resolved, and an analysis with no run behind
+it, such as `tcab analyze` over a checkout, floors nothing there.
+
 A file too large to parse is still counted for size. A 300 KB god-file is
 precisely the interesting case, and dropping it entirely would bias every size
 metric against the worst outcomes.
@@ -154,11 +174,16 @@ metric that catches a model copy-pasting the enemy AI five times.
 Changing the window length changes what duplication means, so it requires an
 analyzer version bump.
 
-### Tests
+### Test authorship
 
 Test files, test functions and test code lines are static counts of the test
 code the model chose to write, computed by parsing and executing nothing. They
 are an authorship signal and must never be presented as coverage.
+
+What those tests actually ran and covered is a different measurement entirely.
+It rides on the run record's toolchain block, read from the report files the
+case's test command produced, and is documented in [the manifest's TypeScript
+toolchain](/testing/end-to-end/manifests/#the-typescript-toolchain).
 
 ## Two tiers
 
@@ -191,23 +216,26 @@ must resolve against a serialized summary, so renaming a field fails the suite.
 ## Where it runs
 
 The analyzer is a post-run stage: on the host, after the tree is collected and
-before validation, outside the harness session's runtime cap.
+before validation, outside the run's runtime cap.
 
-The run's timer is already stopped and the cap wraps the harness session alone,
-so the analysis costs the test case nothing. The validator runs the case's
+The run's timer is already stopped and the cap bounds the harness session and
+each in-container setup step, each on its own, so the analysis costs the test
+case nothing. The validator runs the case's
 install and build commands in the produced tree itself, so after validation the
 tree carries build output, a rewritten lockfile and toolchain caches, in amounts
 that vary with how far validation got. Running before it is what makes
 `treeBasis: preValidation` literally true, and the ordering is asserted end to
 end.
 
-A canceled run is analysed like any other. Validation is skipped for a
+A canceled gg run is analysed like any other. Validation is skipped for a
 cancellation because it is fresh work that judges output; analysis reads bytes
-that already exist and renders no verdict.
+that already exist and renders no verdict. A killed run of another harness is
+destroyed by the [driver](/components/driver/overview/#cancellation) and reaches
+no post-session stage.
 
-The stage runs for every harness, since analysing a directory involves no
-harness-specific work. A run whose tree never reached the host is not analysed
-at all, and its record carries no summary.
+The stage runs for every completed run whatever its harness, since analysing a
+directory involves no harness-specific work. A run whose tree never reached the
+host is not analysed at all, and its record carries no summary.
 
 ## Offline analysis
 
@@ -284,6 +312,13 @@ licenses improving the analyzer at all.
 Bump the generation when an existing metric's definition changes, or when any
 cap changes, since a cap change decides which files contribute. A purely
 additive metric needs no bump; older records simply lack it.
+
+The one exception is an empty corpus. The generation exists to make a mixed
+corpus visible, and this analyzer has never run on staging or on production, so
+there are no stored results for a bump to hold apart. A definition change made
+while that holds is exempt, which is how the root-anchored floor entries landed
+without a bump. The rule above applies again from the first analysed run recorded
+on a remote environment.
 
 Three ranking-relevant figures are lifted onto a run's public summary card: code
 lines, the size Gini and mean cognitive complexity. An ordering can then be

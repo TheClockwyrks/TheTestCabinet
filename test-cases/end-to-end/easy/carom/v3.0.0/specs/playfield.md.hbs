@@ -1,20 +1,16 @@
-# Carom — Playfield, paddles, obstacles, and ball
+# Carom — The field, the paddles, and the obstacles
 
-This file defines the geometry of the field and the objects in it, including how
-the ball collides with the obstacles. All positions and sizes are in the field's
-logical units, and every figure below carries the name this specification gives
-it.
+This file defines the walls and goals of the field, the paddles, and the
+obstacles, including how a ball is resolved against an obstacle. All positions
+and sizes are in the field's logical units, and every figure below carries the
+name this specification gives it.
 
-## Playfield
+## Walls and goals
 
-- The field spans the full `FIELD_W x FIELD_H` (`1280 x 720`) area.
-- The top wall (`y = 0`) and the bottom wall (`y = FIELD_H`) are solid, and the
+- The top wall (`y = 0`) and the bottom wall (`y = FIELD_H`) are solid, and a
   ball reflects off them.
-- The left and right edges are goals. A ball whose `x + BALL_R < 0` scores for
-  player two (right); a ball whose `x - BALL_R > FIELD_W` scores for player one
-  (left).
-- A dashed center net is drawn at `x = NET_X` (`640`) for decoration and has no
-  collision.
+- The left and right edges are goals. `specs/balls.md` states when a ball has
+  passed one and what it scores.
 
 ## Paddles
 
@@ -37,10 +33,8 @@ it.
 - A paddle's `vy` after integration is its actual vertical velocity for the
   frame, which is what the spin mechanic reads at contact. A paddle pinned against
   a bound therefore carries `vy = 0` while the action is held into the bound.
-- A paddle is movable on every `countdown` frame as on every `playing` frame:
-  the pre-serve hold locks the ball, not the paddles. Movement actions held while
-  the countdown runs move the paddle at `PADDLE_SPEED` exactly as they do in a
-  rally, and the AI paddle runs its rule through the countdown too.
+
+`specs/balls.md` states how both paddles move while a ball is held.
 
 ## Obstacles
 {{#if (eq variant.slug "gyre")}}
@@ -48,9 +42,7 @@ it.
 Two obstacles sit in the field. Each is a rounded bar `OBSTACLE_W` wide by
 `OBSTACLE_H` tall (`20 x 140`), placed mirror-symmetrically through the field
 center `(FIELD_CX, FIELD_CY)`, with base centers `OBSTACLE_CENTERS[0] = (490, 220)`
-and `OBSTACLE_CENTERS[1] = (790, 500)`. They sway up and down and spin in place,
-presenting tilted faces the ball bounces off at angles unrelated to the
-axis-aligned walls.
+and `OBSTACLE_CENTERS[1] = (790, 500)`. They sway up and down and spin in place.
 
 ### Moving, rotating obstacles
 
@@ -72,23 +64,22 @@ rate `OBSTACLE_SPIN_RATE` (`60 deg/s`, held in radians per second), in the same
 direction for both, with angle `theta(t) = OBSTACLE_SPIN_RATE * t`. At `t = 0`
 both obstacles are upright, their long axes vertical.
 
-The obstacle clock `t` advances by the frame's delta time on every frame of a live
-match, including during the pre-serve countdown, so the obstacles are already
-moving when a ball is served. It is frozen while the game is paused, and it resets
-to `0` at the start of each match, so every match opens with both obstacles
-upright at their base centers.
+The obstacle clock `t` advances by the frame's delta time. `specs/ui.md` states
+which screens advance it and what starting a match sets it to.
 
 The obstacles are drawn rotated and shifted to match their current pose.
 
 ### Collision with oriented obstacles
 
-Treat the ball as a circle of radius `BALL_R` (`11`) and each obstacle as a
-rectangle with half-extents `(OBSTACLE_HW, OBSTACLE_HH)` (`10, 70`), the rounded
-corners cosmetic. That rectangle is oriented at the obstacle's current angle
-`theta(t)` and centered at its current center `C = (cx, cy)`.
+Treat the ball as a circle of radius `BALL_R` and each obstacle as a rectangle
+with half-extents `(OBSTACLE_HW, OBSTACLE_HH)` (`10, 70`), the rounded corners
+cosmetic. That rectangle is oriented at the obstacle's current angle `theta(t)`
+and centered at its current center `C = (cx, cy)`.
 
-Each frame, after advancing the ball, resolve it against each obstacle at that
-obstacle's current pose (`C`, `theta`):
+A ball is resolved against each obstacle in the sub-step order
+`specs/balls.md` fixes, against the pose (`C`, `theta`) the obstacle clock's
+value at the start of the frame gives. The clock advances once per frame, after
+the ball has taken every sub-step, so all of a frame's sub-steps face one pose:
 
 1. Into the obstacle's local frame. Translate and un-rotate the ball center
    `P = (px, py)` into the obstacle's local axes, rotating by `-theta` about `C`:
@@ -113,16 +104,12 @@ obstacle's current pose (`C`, `theta`):
    - `ny = nlx * sin(theta) + nly * cos(theta)`
 5. Reflect. While the ball is moving into the surface (`v . n < 0`), reflect the
    velocity about the world normal: `v' = v - 2 * (v . n) * n`. Speed is unchanged
-   and spin is preserved, so the spin keeps curving the ball after the bounce.
-   Then push the ball out along `n` until it no longer overlaps, placing its
-   center `BALL_R` off the contact face.
+   and spin is preserved. Then push the ball out along `n` until it no longer
+   overlaps, placing its center `BALL_R` off the contact face.
 
-At `theta = 0` this reduces to the upright case: a hit on a vertical face flips
-`vx` and a hit on a horizontal face flips `vy`. At any other angle the ball leaves
-along the reflected direction off the tilted face.
-
-An obstacle's own motion changes where and at what angle the ball is struck. The
-ball's speed and spin are governed by the paddle bounce and the spin decay alone.
+At `theta = 0` a hit on a vertical face flips `vx` and a hit on a horizontal face
+flips `vy`. At any other angle the ball leaves along the reflected direction off
+the tilted face.
 {{else}}
 
 Two obstacles sit in the field, fixed in place. Each is a rounded bar
@@ -132,38 +119,16 @@ through the field center `(FIELD_CX, FIELD_CY)`:
 - Obstacle A is centered at `OBSTACLE_CENTERS[0]` (`490, 220`).
 - Obstacle B is centered at `OBSTACLE_CENTERS[1]` (`790, 500`).
 
+{{#unless (eq engine.slug "none")}}
 `OBSTACLES` holds the same two obstacles as axis-aligned rectangles, which is what
 the collision below resolves against.
 
+{{/unless}}
 ### Collision
 
-Treat each obstacle as an axis-aligned rectangle with half-extents
-`(OBSTACLE_HW, OBSTACLE_HH)` (`10, 70`), centered at its fixed center, the rounded
-corners cosmetic. A ball is resolved against an obstacle by the following
-rule:
-
-1. Expand the rectangle `[x0, x1] x [y0, y1]` by `BALL_R` on every side. The ball
-   overlaps the obstacle when its center is strictly inside the expanded
-   rectangle.
-2. Compute the four penetration depths: `left = x - (x0 - BALL_R)`,
-   `right = (x1 + BALL_R) - x`, `top = y - (y0 - BALL_R)`,
-   `bottom = (y1 + BALL_R) - y`. The struck face is the one with the smallest
-   depth; on a tie the first of left, right, top, bottom wins.
-3. Place the ball with its center `BALL_R` off the struck face: `x = x0 - BALL_R`
-   for the left face, `x = x1 + BALL_R` for the right, `y = y0 - BALL_R` for the
-   top, `y = y1 + BALL_R` for the bottom.
-4. Reverse the velocity component normal to the struck face if it points into the
-   face (`vx > 0` into the left face, `vx < 0` into the right, `vy > 0` into the
-   top, `vy < 0` into the bottom); otherwise leave the velocity as it is.
-
-An obstacle bounce leaves speed and spin unchanged, so the spin keeps curving the
-ball after the bounce.
+Each obstacle is an axis-aligned rectangle with half-extents
+`(OBSTACLE_HW, OBSTACLE_HH)` (`10, 70`) centered on its fixed center, the rounded
+corners cosmetic. A ball is resolved against it by the circle against an
+axis-aligned rectangle rule `specs/balls.md` states, and the bounce leaves speed
+and spin unchanged.
 {{/if}}
-
-## Ball
-
-- Every ball is a circle of radius `BALL_R` (`11`).
-- Serve speed is `SERVE_SPEED` (`520`) units per second. Each paddle hit
-  multiplies a ball's speed by `SPEED_MULT` (`1.04`), up to the speed cap
-  `SPEED_CAP` (`980`) units per second. Wall and obstacle bounces leave speed
-  unchanged.

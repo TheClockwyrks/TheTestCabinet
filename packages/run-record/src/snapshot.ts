@@ -116,6 +116,17 @@ export type SubjectOut = {
    * assembled by hand rather than from a named configuration.
    */
   ggPreset?: string | null;
+  /**
+   * The **id** of the gg configuration this run was launched from — the
+   * [`preset_id`](test_cabinet_core::gg::GgCapabilitySet::preset_id) recorded on the
+   * run's capability set. Lifted onto the card beside the
+   * [name](Self::gg_preset) because it is what identifies the run's [coverage
+   * cell](https://docs.testcabinet.ai/components/backend/coverage/), and so what a
+   * listing narrowed to one configuration's runs matches on: a name is display text
+   * that is rewritten freely and is unique to nothing. `None` for every
+   * third-party-harness run and for a gg run assembled by hand.
+   */
+  ggConfigId?: string | null;
 };
 
 /**
@@ -516,6 +527,20 @@ export type CaseErratumOut = {
 };
 
 /**
+ * The part of a checklist point's automated-validation driver the case metadata
+ * exposes: which engines the validator decides the point on. The script itself and
+ * its media outputs are the driver's business and are not published here.
+ */
+export type CaseReviewValidationOut = {
+  /**
+   * The engines this validator decides its point on, by slug, in declared order.
+   * Empty leaves the point on every engine the case supports; a non-empty list is
+   * the subset that carries it, and a run on any other engine has no such point.
+   */
+  engines: Array<string>;
+};
+
+/**
  * A reviewer checklist item exposed in case metadata, carrying its point weight
  * and optional scoring domain so the site can compute and break down run scores.
  */
@@ -552,6 +577,12 @@ export type CaseReviewItemOut = {
    * whole-item point lowers. Empty on a legacy version and on a sub-divided item.
    */
   domains: Array<string>;
+  /**
+   * The point's automated-validation driver, when it declares one. Absent for a
+   * human-judged point. Carried so a run-scoped surface can drop a point the
+   * run's engine does not carry (see [`CaseReviewValidationOut::engines`]).
+   */
+  validation?: CaseReviewValidationOut;
 };
 
 /**
@@ -592,6 +623,11 @@ export type CaseSubReviewItemOut = {
    * point lowers. Empty on a legacy version.
    */
   domains: Array<string>;
+  /**
+   * The point's automated-validation driver, when it declares one (see
+   * [`CaseReviewItemOut::validation`]).
+   */
+  validation?: CaseReviewValidationOut;
 };
 
 /**

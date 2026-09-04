@@ -26,8 +26,15 @@ import {
   SPIN_HALFLIFE,
   type Rect,
 } from "./constants";
-import { ballSpeed, clamp, paddleFrontX, paddleRect } from "./entities";
-import type { BallState, ObstacleState, PaddleState, Side } from "./game";
+import {
+  ballSpeed,
+  clamp,
+  paddleFrontX,
+  paddleRect,
+  type Kinematics,
+  type PaddleMotion,
+} from "./entities";
+import type { ObstacleState, Side } from "./game";
 import type { DeepReadonly } from "ts-essentials";
 
 /** What one step's collisions did, so the caller can play a cue per event. */
@@ -39,7 +46,7 @@ export interface StepEvents {
 
 /** What `step` returns: the ball after the step, and what it collided with. */
 export interface StepResult {
-  ball: BallState;
+  ball: Kinematics;
   events: StepEvents;
 }
 
@@ -80,7 +87,7 @@ function collideCircleRect(
  * One collision's outcome: the ball it left behind and the event it was, or
  * `null` when nothing was struck and the ball is as it was.
  */
-type Contact = { ball: BallState; event: keyof StepEvents } | null;
+type Contact = { ball: Kinematics; event: keyof StepEvents } | null;
 
 /**
  * The signature paddle bounce (specs/balls.md): the outgoing angle comes from the
@@ -88,10 +95,10 @@ type Contact = { ball: BallState; event: keyof StepEvents } | null;
  * vertical motion at contact imparts spin.
  */
 function bounceOffPaddle(
-  ball: BallState,
-  paddle: DeepReadonly<PaddleState>,
+  ball: Kinematics,
+  paddle: DeepReadonly<PaddleMotion>,
   side: Side,
-): BallState {
+): Kinematics {
   const offset = clamp((ball.y - paddle.cy) / PADDLE_HALF, -1, 1);
   const theta = offset * MAX_BOUNCE_ANGLE;
   const speed = Math.min(ballSpeed(ball) * SPEED_MULT, SPEED_CAP);
@@ -112,8 +119,8 @@ function bounceOffPaddle(
 }
 
 function resolvePaddle(
-  ball: BallState,
-  paddle: DeepReadonly<PaddleState>,
+  ball: Kinematics,
+  paddle: DeepReadonly<PaddleMotion>,
   side: Side,
 ): Contact {
   const hit = collideCircleRect(
@@ -162,7 +169,7 @@ function resolvePaddle(
  * WHERE and at what angle the ball is struck.
  */
 function resolveObstacle(
-  ball: BallState,
+  ball: Kinematics,
   obstacle: DeepReadonly<ObstacleState>,
 ): Contact {
   const cos = Math.cos(obstacle.theta);
@@ -226,7 +233,7 @@ function resolveObstacle(
   };
 }
 
-function resolveWalls(ball: BallState): Contact {
+function resolveWalls(ball: Kinematics): Contact {
   if (ball.y - BALL_R < 0 && ball.vy < 0) {
     return { ball: { ...ball, y: BALL_R, vy: -ball.vy }, event: "wall" };
   }
@@ -245,7 +252,7 @@ function resolveWalls(ball: BallState): Contact {
  */
 function resolve(
   current: StepResult,
-  collide: (ball: BallState) => Contact,
+  collide: (ball: Kinematics) => Contact,
 ): StepResult {
   const contact = collide(current.ball);
   if (!contact) return current;
@@ -256,7 +263,7 @@ function resolve(
 }
 
 /** Spin curves the flight and decays, then the position advances: one sub-step. */
-function move(ball: BallState, h: number, decay: number): BallState {
+function move(ball: Kinematics, h: number, decay: number): Kinematics {
   // 1. Spin curves the flight. Rotating the velocity vector at an angular rate
   //    of `spin / speed` turns the path without changing the speed, which is
   //    exactly what a lateral acceleration of magnitude |spin| does. A ball at
@@ -282,9 +289,9 @@ function move(ball: BallState, h: number, decay: number): BallState {
  * the events those collisions were.
  */
 export function step(
-  ball: DeepReadonly<BallState>,
-  left: DeepReadonly<PaddleState>,
-  right: DeepReadonly<PaddleState>,
+  ball: DeepReadonly<Kinematics>,
+  left: DeepReadonly<PaddleMotion>,
+  right: DeepReadonly<PaddleMotion>,
   obstacles: DeepReadonly<readonly ObstacleState[]>,
   dt: number,
 ): StepResult {
@@ -303,7 +310,7 @@ export function step(
   const decay = Math.pow(0.5, h / SPIN_HALFLIFE);
 
   let current: StepResult = {
-    ball: { ...ball },
+    ball: { x: ball.x, y: ball.y, vx: ball.vx, vy: ball.vy, spin: ball.spin },
     events: { paddle: false, wall: false, obstacle: false },
   };
   for (let i = 0; i < substeps; i++) {

@@ -1,11 +1,12 @@
 // ruleset/r8-crystals — R8: a crystal is satisfied when all of its charges
 // are spent and every crossing begun across it has been completed.
 //
-// The manifest item's two clauses cannot hold at once — a beam that ends on a
-// crystal has an end that is not an emitter, so its own channel's beam can
-// never report complete (R6) while it stands there — so the suite asserts the
-// two halves on the two boards that pose each purely, and both refute the
-// same shortcut: computing `solved` without the crystals' full satisfaction.
+// The item names three observations, and no single board holds all of them: a
+// beam ending on a crystal is by R6 not complete itself, so a board cannot at
+// once report every beam complete and stand a crossing begun-and-not-left.
+// Each half is therefore posed on the board that holds it purely, and both
+// refute the same shortcut — computing `solved` without the crystals' full
+// satisfaction.
 //
 //   1. EVERY BEAM COMPLETE, STILL UNSOLVED: on `T2T` the beam T-2-T crosses
 //      the 2-charge crystal once, completely. Every channel present reports
@@ -17,6 +18,11 @@
 //      not completed, and leaves that crystal unsatisfied" — so `solved` is
 //      false; completing the crossing (resuming and leaving to the far
 //      emitter) flips `solved` true on that move (specs/beams.md R8, R9).
+//
+// The final press lands on the sole beam's end, so the multi-beam grab rows of
+// specs/controls.md's table — `tracing/grab-end-wins-over-mid`'s requirement —
+// are not in play, and the resume this check depends on is the plain
+// press-on-an-end row.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";

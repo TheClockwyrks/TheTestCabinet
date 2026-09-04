@@ -1,11 +1,9 @@
 # frozen_string_literal: true
 
 module GG
-  # Manage the agent's own context window.
+  # Manage this session's context window.
   #
-  # These are the only calls whose effect is on the conversation rather than on the workspace. They
-  # are worth making from a program precisely because a program can decide *when* to: read a set of
-  # files, extract what matters, then evict the views, all in one turn.
+  # These are the only calls whose effect is on the conversation rather than on the workspace.
   module Context
     extend Surface::Operations
 
@@ -41,11 +39,10 @@ module GG
 
     # Move whole turns out of the context window and report what that reclaimed.
     #
-    # Every result carries a header with its turn number and roughly what holding it costs, which is
-    # what names the turns worth dropping. A span is a Ruby `Range` and both ends are included, so
-    # `GG::Context.archive_thread(4..19)` archives turns 4 through 19; an exclusive range means the
-    # same thing and is read the same way. The agent's own messages in an archived turn are dropped;
-    # the results are kept and stay searchable with `GG::Context.search_archive`.
+    # Every result carries a header with its turn number and roughly what holding it costs. A span
+    # is a Ruby `Range` and both ends are included, so `GG::Context.archive_thread(4..19)` archives
+    # turns 4 through 19; an exclusive range means the same thing and is read the same way.
+    # Assistant messages in an archived turn are dropped; the results are kept and stay searchable.
     #
     # @param ranges [Array<GG::Context::TurnRange>] The inclusive spans of turn numbers to move out
     #   of the window, splatted: `GG::Context.archive_thread(4..19, 30..35)`.
@@ -63,9 +60,8 @@ module GG
 
     # Search archived history for a case-insensitive substring, most recent first, up to 8 hits.
     #
-    # `archive_empty?` is worth checking before `hits`: it distinguishes "nothing has been archived
-    # yet" from "the search ran and matched nothing", so a program does not archive again believing
-    # the first archive failed.
+    # `archive_empty?` distinguishes "nothing has been archived yet" from "the search ran and
+    # matched nothing".
     #
     # @param query [String] The substring to look for. Matching is case-insensitive.
     # @return [GG::Context::ArchiveSearch] whether anything is archived at all, and what matched
@@ -92,8 +88,7 @@ module GG
     # every other call until it arrives.
     #
     # It does not stop the program: it registers the request and returns, and the rewrite happens
-    # once the program has ended. Everything not in the summary and not in `files` is gone, so the
-    # summary is written for the agent that comes after and `files` names what it will need in hand.
+    # once the program has ended. Everything not in the summary and not in `files` is gone.
     #
     # @param summary [String] What the restarted window opens with. Everything not in it and not
     #   re-read from `files` is gone.
@@ -143,16 +138,15 @@ module GG
 
     # Who said an archived message.
     #
-    # Every arm is a Symbol, so a comparison may name the constant or write the literal:
-    # `GG::Context::MessageRole::USER` and `:user` are the same value.
+    # Every arm is a Symbol: `GG::Context::MessageRole::USER` and `:user` are the same value.
     module MessageRole
       # The system prompt.
       SYSTEM = :system
 
-      # A turn's input to the agent — a result, a view, or an operator's instruction.
+      # A turn's input — a result, a view, or an operator's instruction.
       USER = :user
 
-      # Something the agent said.
+      # An assistant message.
       ASSISTANT = :assistant
 
       # A tool result, on a session that made tool calls rather than writing programs.
@@ -197,8 +191,7 @@ module GG
 
       # Nothing has been archived yet, so there was nothing to search.
       #
-      # Deliberately distinct from a search that ran and matched nothing, so a program does not
-      # archive again believing the first archive failed.
+      # Distinct from a search that ran and matched nothing.
       #
       # @return [Boolean]
       def archive_empty?

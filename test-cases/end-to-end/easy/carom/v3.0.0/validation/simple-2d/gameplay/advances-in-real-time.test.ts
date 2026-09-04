@@ -11,12 +11,28 @@
 // TWO INDEPENDENT WITNESSES. The game's own accumulated `simTime`, which says the
 // build integrated the elapsed seconds it was handed, and the distance the ball
 // covered, which says the SIMULATION ran rather than a counter ticking up.
+//
+// THE FIELD HOLDS THE BALL AND NOTHING ELSE. The travel below is a straight-line
+// displacement, so anything that could turn the ball around would read as a
+// build that advanced LESS than it did. Both obstacles are removed and both
+// paddles are driven out of the lane, which leaves the served ball a clear
+// second of flight — it covers under 520 units, and the goal edges are 640 away.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { WallClock } from "@test-cabinet/simple-2d";
-import { SERVE_SPEED } from "../../src/constants";
-import { assertGreaterThan } from "../assert";
-import { ball0, captureStill, createHarness, type Harness } from "../harness";
+import { SERVE_SPEED } from "../constants";
+import { assertEqual, assertGreaterThan } from "../assert";
+import {
+  ball0,
+  captureStill,
+  createHarness,
+  driveServe,
+  openCountdown,
+  parkPaddles,
+  poseWorld,
+  stageServe,
+  type Harness,
+} from "../harness";
 
 /** The real-time window the loop is left to run for. */
 const RUN_MS = 1000;
@@ -46,15 +62,18 @@ afterEach(() => {
 });
 
 it("advances on the runtime's frame loop with nothing stepping it", async () => {
-  const { debug } = harness;
-  debug.startMatch("solo");
-  debug.serve();
-  // One frame to let the build's own serve launch the ball, so the travel below
-  // is measured on a ball already in flight.
-  await harness.advance(1);
+  openCountdown(harness, "solo");
+  poseWorld(harness, { live: false });
+  parkPaddles(harness);
+
+  // The hold is cut to nothing and the build's own serve rule launches the ball,
+  // so the flight measured below is a real one on a field holding only it.
+  stageServe(harness);
+  const launched = await driveServe(harness);
 
   const before = harness.snapshot();
   captureStill(harness, "before");
+  assertEqual(launched.hit, true);
   assertGreaterThan(ball0(before).speed, 1);
 
   await harness.runFor(RUN_MS);

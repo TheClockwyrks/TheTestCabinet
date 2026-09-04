@@ -4,6 +4,10 @@
 // SPIN_FROM_PADDLE, ...)`. A spinless ball struck by a paddle whose integrated
 // `vy` is 0 leaves with spin exactly 0; the margin is rounding room. The
 // paddle pose is the precondition; the bounce is the build's own.
+//
+// The field is emptied to this ball alone, and both paddles are taken from the
+// player: the paddles are the instrument of the contact being measured, so a
+// paddle the AI or a stray key could still move would make the reading theirs.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual } from "../assert";

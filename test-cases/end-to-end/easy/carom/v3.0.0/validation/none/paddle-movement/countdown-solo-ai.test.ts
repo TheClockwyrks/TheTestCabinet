@@ -9,10 +9,22 @@
 // countdown moves toward home at `AI_SPEED` and stops within the deadzone. The
 // match is opened on its countdown through the debug surface so the build's own
 // countdown is what runs; the AI paddle is then posed near the bottom bound and
-// handed back to the real AI, and half a second later — with the hold still
-// running — it is read: back within the deadzone of home, and the screen still
-// the countdown with the ball still held. A build that leaves the AI idle until
-// the serve reads the posed height instead.
+// half a second later — with the hold still running — it is read: back within the
+// deadzone of home, and the screen still the countdown with the ball still held.
+// A build that leaves the AI idle until the serve reads the posed height instead.
+//
+// THE PADDLE IS POSED WITH BOTH FACULTIES. The AI senses and the AI travels are
+// two gates now (`setAiTracking`, `setAiMovement`), and this point is about the
+// paddle actually MOVING toward the target the rule names, so both are on. The
+// paddle itself is left with the AI: `setPaddleCy` moves it without taking it,
+// and a paddle taken by `setPaddleDriven` would be moved by this check rather
+// than by the opponent it is measuring.
+//
+// THE FIELD HOLDS THE HELD BALL AND THE PADDLES. The ball stays because it is
+// this point's witness — a countdown is a countdown because the ball is still
+// waiting on it, and it is also what the AI is NOT tracking, since a held ball
+// is not coming toward it — and the obstacles come off, because the AI's rule
+// never reads them.
 //
 // From `PADDLE_MAX_CY - 20` (645) the trip home is 285 units, 0.51 s at
 // `AI_SPEED`; a quarter of a second more sees it stop, and the whole window
@@ -30,6 +42,8 @@ import {
   ball0,
   captureReplay,
   createHarness,
+  enableAi,
+  isolateBall,
   openCountdown,
   TICK_HZ,
   type Harness,
@@ -53,13 +67,20 @@ afterEach(async () => {
 
 it("returns the AI paddle home while the countdown runs (Solo)", async () => {
   await openCountdown(harness, "solo");
+  await isolateBall(harness);
   const opened = await harness.snapshot();
   assertEqual(opened.screen, "countdown");
   assertEqual(ball0(opened).held, true);
 
-  await harness.debug.setPaddle("right", { cy: START_CY, vy: 0 });
-  await harness.debug.setAiControl(true);
-  assertCloseTo((await harness.snapshot()).paddles.right.cy, START_CY, 6);
+  await harness.debug.setPaddleCy("right", START_CY);
+  await enableAi(harness);
+  const posed = await harness.snapshot();
+  assertCloseTo(posed.paddles.right.cy, START_CY, 6);
+  // Posed, not driven: what moves the paddle from here is the opponent's own
+  // rule, and the surface is holding nothing.
+  assertEqual(posed.paddles.right.driven, false);
+  assertEqual(posed.ai.tracking, true);
+  assertEqual(posed.ai.movement, true);
 
   const settled = await captureReplay(harness, "home", async () => {
     await harness.advance(SETTLE_TICKS);

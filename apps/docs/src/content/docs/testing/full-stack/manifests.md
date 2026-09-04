@@ -79,6 +79,52 @@ A `3d` case that ships a produced voxel model declares
 [`@test-cabinet/voxel-runtime`](/components/voxel-runtime/overview/) the same
 way, so the game can decode each part's `.glb` and pose the produced rig.
 
+## `[audio]`
+
+A full-stack run produces its own sound with `sfx-synth`, `sfx-sample`, and
+`music`, and `[audio]` declares the audio packs those binaries may reach. The
+run container is staged with the declared packs and no others, so the table is
+the boundary of what `list-samples` and `list-instruments` browse. Every version
+declares it, either the full published set or the subset the case needs:
+
+```toml
+[audio]
+packs = [
+  "combat-core@0.1.0",
+  "gm-lite@0.1.0",
+  "cinematic@0.1.0",
+  "synthwave@0.1.0",
+]
+```
+
+`packs` is the only key the table takes here. Each entry is a `name@version` ref
+naming a [published pack](/testing/asset-generation/audio-binaries/#the-sample-library),
+both halves required, and naming one pack twice is an error. `sample_rate`,
+`channels`, and `max_duration_ms` are rejected: they fix the single clip an
+[audio asset-generation case](/testing/asset-generation/manifests/audio-cases/)
+emits, while a full-stack run emits as many clips as its game needs.
+
+A version carrying no `[audio]` table at all receives a fixed set pinned in
+`crates/core`: `combat-core@0.1.0`, `gm-lite@0.1.0`, `cinematic@0.1.0`, and
+`synthwave@0.1.0`, in that order. The set is pinned by ref rather than read from
+`containers/sample-packs/`, so publishing a pack leaves it unchanged and a
+[frozen](/development/frozen-versions/) version keeps the palette it was
+authored and reviewed against. `scripts/ci/audio-packs-check.mjs` requires the
+table on every version that is not frozen, so a frozen version is the only thing
+that reaches the pinned set.
+
+Order decides defaults. The model writes its own tool config during the run and
+usually names no pack, and a config that names none plays the first declared
+pack of its kind. Listing the pack a case wants an unqualified `sfx-sample` or
+`music` invocation to play ahead of the others of its kind is what fixes that.
+
+`scripts/ci/audio-packs-check.mjs` resolves every ref against
+`containers/sample-packs/` on the commit hook and in CI, and prints the defaults
+each version's order resolves to.
+
+A case's [`specs/`](/testing/full-stack/overview/) name the packs it declares,
+because the packs the run holds are the packs the model may browse.
+
 ## Forbidden asset-generation tables
 
 A full-stack case produces its assets at run time with the on-`PATH` binaries,
@@ -87,7 +133,7 @@ asset-generation-only surface, exactly as it does on an end-to-end case:
 
 - the `asset_kind` key and the `[sheet]` table;
 - `[canvas]`, `[tool]`, and `[output]`;
-- `[voxel]`, `[model]`, `[ui]`, `[material]`, `[particle]`, and `[audio]`.
+- `[voxel]`, `[model]`, `[ui]`, `[material]`, and `[particle]`.
 
 `asset_dimension` is a full-stack key of its own, unrelated to `asset_kind`: it
 picks the tooling the run carries rather than an asset to generate.

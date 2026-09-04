@@ -10,10 +10,11 @@ and the lamplighter has fallen.
 
 The engine (`@test-cabinet/simple-2d`) owns the frame loop and the delta
 time, the letterboxed fit of the fixed 1280 x 720 logical stage, the keyboard
-actions, the audio cue bus with its two looping cues, the asset loader, and
-the debug overlay. The game owns everything else: its fixed 60 Hz tick built
-over the engine's delta, the simulation, the eight screens, the drawing, and
-the produced sprites and sounds it plays.
+actions, the pointer in the stage's own coordinates, the audio cue bus with
+its two looping cues, the asset loader, and the debug overlay. The game owns
+everything else: its fixed 60 Hz tick built over the engine's delta, the
+simulation, the nine screens, the drawing, and the produced sprites and
+sounds it plays.
 
 ## Install
 
@@ -52,17 +53,21 @@ npm test            # vitest run, with coverage
 
 ## Controls
 
-The game is keyboard only. Keys are bound by physical position
-(`KeyboardEvent.code`), so they hold on any layout.
+The night is played from the keyboard, and every menu answers the mouse as
+well. Keys are bound by physical position (`KeyboardEvent.code`), so they
+hold on any layout.
 
 | Action | Keys | Does |
 | --- | --- | --- |
-| Move | `ArrowUp` / `KeyW`, `ArrowDown` / `KeyS`, `ArrowLeft` / `KeyA`, `ArrowRight` / `KeyD` (held) | Moves the lamplighter; up and down also move a menu highlight |
+| Move | `ArrowUp` / `KeyW`, `ArrowDown` / `KeyS`, `ArrowLeft` / `KeyA`, `ArrowRight` / `KeyD` (held) | Moves the lamplighter; up and down also move a menu highlight, and left and right the almanac's tab |
 | Confirm | `Enter` / `Space` | Accepts the highlighted item; closes the chest overlay |
-| Back | `Escape` | Leaves the how-to screen; abandons a paused run; returns to the title from an end screen |
+| Back | `Escape` | Leaves the how-to screen and the almanac; pauses the night and resumes it; returns to the title from an end screen |
 | Pause | `KeyP` | Pauses the night; resumes it |
 | Mute | `KeyM` | Toggles sound, on every screen |
 | Debug overlay | `` ` `` (backquote) | Shows and hides the engine's overlay: the screen, the clock, the loadout, the switches, and the mute bit |
+
+The pointer moves the highlight to whatever it rests on, a click takes that
+item, and the wheel scrolls the almanac's list.
 
 ## The source, file by file
 
@@ -83,8 +88,13 @@ is the engine binding and the drawing.
 - `src/sim/` — one tick, phase by phase: the lamplighter, the enemies, the
   weapons' firing and the placement of the permanent shapes, the projectiles
   and zones, the hits, the drops, the spawn director, and progression.
-- `src/flow.ts` — the screens, the menus, the tick accumulator, and the frame:
-  every edge answered against the screen the frame began on.
+- `src/flow.ts` — the screens, the menus, the pointer's three rules, the tick
+  accumulator, and the frame: every edge answered against the screen the frame
+  began on.
+- `src/menus.ts` — where every menu sits on the stage, drawn and clicked from
+  the one definition.
+- `src/almanac.ts` — what the almanac browses: every tool, trinket, enemy, and
+  pickup with its picture, its figures, and its line.
 - `src/debug.ts` — the debug surface: a pure `snapshot` reading and
   loud-validating poses, each written in the shape of `update`.
 - `src/diagnostics.ts` — the read-only sources the engine's overlay reports.
@@ -99,14 +109,15 @@ is the engine binding and the drawing.
   a module table the renderer reads; a load that fails leaves a code-drawn
   stand-in.
 - `src/render/` — the palette, the drawing helpers, the world under the
-  camera, the effects over each hitbox, the HUD, and the screens.
+  camera, the effects over each hitbox, the HUD, the screens, and the
+  almanac.
 - `src/main.ts` — the fixed entry point (supplied with the project).
 
 Tests sit beside what they test as `src/**/*.test.ts` and run in Node with no
 browser: the simulation over drafts, the surface over states, the renderer
 over an `@napi-rs/canvas` canvas, and `src/engine.test.ts`, which stands a
 real engine up over that canvas and a `ConstantClock` and drives it with
-dispatched keyboard events and poses through `engine.apply`.
+dispatched keyboard and pointer events and poses through `engine.apply`.
 
 ## The art and the sound
 

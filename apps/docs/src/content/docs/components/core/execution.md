@@ -53,6 +53,10 @@ asset-generation binaries of its dimension. The Blender kinds are the exception,
 running in a self-contained image built from Ubuntu that carries headless
 Blender.
 
+The audio packs an audio binary reads are [staged](#staged-audio) into the
+container per run rather than carried by any image, so a run's palette is fixed
+by its test case rather than by the image it resolves.
+
 The selected harness's CLI is installed into the container at run time (see
 [Harness install](#harness-install)), so no image is per-harness.
 [`gg`](/gg/overview/) is the exception: a gg run resolves the `-gg` variant of
@@ -137,6 +141,42 @@ torn down as part of a run, so its contents are never visible on their own. The
 receives can be inspected without launching a container. `tcab prompt` renders
 and prints the instruction a run would hand the harness for a given variant.
 
+## Staged audio
+
+A test case declares the audio packs its run may use, and the run container is
+staged with those packs and nothing else. The
+[audio binaries](/testing/asset-generation/audio-binaries/) read their palette
+from `/opt/audio`, which staging writes once the container has started.
+
+- Each declared `name@version` ref is resolved against the host audio store,
+  located by `TCAB_AUDIO_STORE` and defaulting to `/opt/tcab-audio`. The driver
+  image carries the store; a local checkout fetches it with
+  `scripts/fetch-audio-store.sh`. A ref the store does not hold, or one whose
+  stored pack disagrees with the pinned name, version, or kind, fails the run
+  before the container starts.
+- The store's `objects.lock.json` records every published object with its sha256
+  and byte length. Every clip a declared pack names is checked against it before
+  the clip is carried in, so a run is rendered only against audio that was
+  published. A clip the lock does not record, one whose bytes disagree with it,
+  and a store carrying no lock at all each fail the run.
+- Staging materializes one `packs/<name>@<version>/pack.toml` per declared pack,
+  the union of those packs' clip files under `clips/`, and a `packs.json`
+  recording what the run was given and the default pack for each kind. The
+  default is the first pack of that kind in declaration order, resolved on the
+  host, so a run's palette is readable in the container as data rather than
+  recomputed from a rule.
+- The staged tree lands outside the seeded repository, so nothing staging writes
+  is collected as the run's result: the raw clips stay out of the model's
+  workspace and its git history.
+- A run image declares that it accepts staged audio, and a run that stages audio
+  reads that declaration back out of the started container. A mismatch fails the
+  run at container start, before a harness session is spent, and names the image
+  and the pin that selected it. A run that stages nothing is never asked, so
+  every non-audio run is untouched by the handshake.
+- Because staging needs a running container, it is excluded from `tcab seed`,
+  which materializes the seeded workspace alone. A case that declares no packs
+  stages no audio.
+
 ## Harness install
 
 The base image ships no agent harness. Once the container starts, the run
@@ -204,24 +244,29 @@ exit code `-1` and the run is misattributed. Because the watchdog always fires
 first, a hang is attributed accurately and promptly, and a case's maximum
 runtime is reachable however long it is set.
 
-These two are the only terminations the Test Cabinet decides on a timer. A run
-an operator kills from the live monitor is recorded as
-[`canceled`](/components/core/run-records/#status). A canceled run crossed no
-bound and carries no fault to attribute, so it is retained for inspection only
-and stays unpublishable.
+These two are the only terminations the Test Cabinet decides on a timer. An
+operator can also kill a run from the live monitor, and what the
+[driver](/components/driver/overview/#cancellation) does with it then depends on
+the harness.
 
-A kill also winds the run down cooperatively. The
-[driver](/components/driver/overview/#cancellation) raises a cancellation latch
-and keeps awaiting the run rather than dropping it. A [gg](/gg/overview/)
+A kill winds a [gg](/gg/overview/) run down cooperatively. The driver raises a
+cancellation latch and keeps awaiting the run rather than dropping it. The
 session sees the latch at its next turn boundary, finishes the turn in flight,
 runs its epilogue, and hands back everything it accumulated, so the run
 completes tree collection, metrics, and the record, and skips only validation.
 The wait is bounded at every layer: a grace on the session's wind-down and a
 longer one on the driver's. A run that overruns those graces falls back to a
-bare record.
+bare record. Either way the run is recorded as
+[`canceled`](/components/core/run-records/#status): it crossed no bound and
+carries no fault to attribute, so it is retained for inspection only and stays
+unpublishable.
+
+A kill destroys a run of any other harness. It has no wind-down protocol to be
+asked for, so the driver abandons the run and records it nowhere.
 
 `timed_out` and `hung` unwind the run instead of asking it to stop, so both are
-recorded without a collected tree or folded metrics.
+recorded without a collected tree or folded metrics. A destroyed run is the
+sharper case: the run leaves no record at all.
 
 ## Model authored tests
 

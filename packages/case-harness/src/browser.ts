@@ -81,8 +81,9 @@ export const openPages = new Set<Page>();
  * as well as the shape's, and a key that named only the shape would hand a second
  * case's harness a context instrumented for the first.
  */
-function shapeKey(slug: string, shape: WindowShape): string {
-  return `${slug}:${shape.cssWidth}x${shape.cssHeight}@${shape.dpr}`;
+function shapeKey(slug: string, shape: WindowShape, hasTouch: boolean): string {
+  const touch = hasTouch ? "+touch" : "";
+  return `${slug}:${shape.cssWidth}x${shape.cssHeight}@${shape.dpr}${touch}`;
 }
 
 /** Every script a context injects, in the order it injects them. */
@@ -99,7 +100,7 @@ export async function contextFor(
   shape: WindowShape,
   config: ResolvedConfig,
 ): Promise<BrowserContext> {
-  const key = shapeKey(config.slug, shape);
+  const key = shapeKey(config.slug, shape, config.hasTouch);
   const existing = contexts.get(key);
   if (existing !== undefined) return existing;
 
@@ -107,6 +108,7 @@ export async function contextFor(
   const context = await browser.newContext({
     viewport: { width: shape.cssWidth, height: shape.cssHeight },
     deviceScaleFactor: shape.dpr,
+    hasTouch: config.hasTouch,
   });
   for (const path of initScripts(config)) {
     await context.addInitScript(readFileSync(path, "utf8"));

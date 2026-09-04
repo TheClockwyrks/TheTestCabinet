@@ -18,9 +18,10 @@
 // than on how many frames have gone by: the same second of play reaches the same
 // state whether it arrived as one long step, as a hundred short ones, or as an
 // uneven mixture. That is the property specs/balls.md requires and the property
-// the debug API in `src/debug.ts` leans on.
+// the debug surface in `src/debug.ts` leans on.
 //
-// THE STATE SHAPE BELOW IS A CONTRACT. It is what the debug API reads and poses,
+// THE STATE SHAPE BELOW IS A CONTRACT. specs/state.md declares it and this module
+// carries that declaration verbatim: it is what the debug surface reads and poses,
 // and what this case's checks read back. So:
 //
 //   * Every field is declared here, under its declared name, with its declared
@@ -30,8 +31,8 @@
 //     present.
 //   * Nothing authoritative lives anywhere else. There is no module-level game
 //     state in this build and no closure over mutable data — every module beside
-//     this one is arithmetic over the record below. `reset()` on the debug API
-//     restores exactly these fields, so a scenario replays identically.
+//     this one is arithmetic over the record below. `reset()` on the debug
+//     surface restores exactly these fields, so a scenario replays identically.
 //   * Every field is `readonly` and every array is a `readonly` array, so the
 //     declared type and the `DeepReadonly` view the engine hands out are the same
 //     shape: a transition spreads a state into the next one without a cast.
@@ -40,20 +41,15 @@ import {
   BALL_R,
   CUES,
   FIELD_W,
-  MATCHOVER_ITEMS,
   PADDLE_SPEED,
-  PAUSE_ITEMS,
-  SERVE_ANGLE,
-  SERVE_SPEED,
-  TITLE_ITEMS,
   WIN_LEAD,
   WIN_SCORE,
 } from "./constants";
 import { defineCues } from "./audio";
 import { createDebugApi, type CaromDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
-import { integratePaddle, parkedBall } from "./entities";
-import { updateAi } from "./ai";
+import { integratePaddle } from "./entities";
+import { aiPaddle } from "./ai";
 import {
   back,
   confirm,
@@ -66,15 +62,22 @@ import {
   registerActions,
   soloAxis,
 } from "./input";
+import { itemAt, menuFor } from "./menus";
 import { step } from "./physics";
-import { createInitialState, respawn, startMatch, toTitle } from "./match";
+import {
+  createInitialState,
+  respawn,
+  startMatch,
+  toTitle,
+  serveBall,
+} from "./match";
 import { renderGame } from "./render";
-import { nextSign } from "./rng";
 import { COLOR } from "./theme";
 import { recordTrail } from "./trail";
 import type {
   Game,
   InitApi,
+  PointerSample,
   RenderApi,
   UpdateApi,
 } from "@test-cabinet/simple-2d";
@@ -97,6 +100,9 @@ export const BACKGROUND: string = COLOR.bg;
 export type Screen =
   "title" | "howto" | "countdown" | "playing" | "paused" | "matchover";
 
+/** The two screens a pause can resume to. */
+export type ResumeScreen = "countdown" | "playing";
+
 /** The two ways to play (specs/modes/). */
 export type Mode = "solo" | "versus";
 
@@ -105,28 +111,34 @@ export type Side = "left" | "right";
 
 /** One paddle. `x` is fixed by the side, so only the vertical axis is state. */
 export interface PaddleState {
-  /** Center y, in logical pixels. Clamped to [PADDLE_MIN_CY, PADDLE_MAX_CY]. */
+  /** Center y, in logical units. Clamped to [PADDLE_MIN_CY, PADDLE_MAX_CY]. */
   readonly cy: number;
   /**
-   * The paddle's actual vertical velocity this frame, in units per second. This is what the
-   * spin mechanic reads at contact, so a paddle pinned against a bound reports
-   * zero even while a movement action is held.
+   * The paddle's actual vertical velocity this frame, in units per second, after
+   * the integration specs/playfield.md fixes. This is what the spin mechanic
+   * reads at contact, so a paddle pinned against a bound reports zero even while
+   * a movement action is held.
    */
-  readonly vy: number;
-}
-
-/** The ball. `speed` is derived (`hypot(vx, vy)`) and is not stored. */
-export interface BallState {
-  readonly x: number;
-  readonly y: number;
-  readonly vx: number;
   readonly vy: number;
   /**
-   * The signed lateral-curvature scalar (magnitude in units per second squared). Positive and
-   * negative curve the flight opposite ways; it decays by half every
-   * SPIN_HALFLIFE seconds and changes otherwise only on a paddle hit.
+   * Whether the debug surface is moving this paddle rather than the player or
+   * the AI. `setPaddleDriven` is the only pose that changes it.
    */
-  readonly spin: number;
+  readonly driven: boolean;
+  /**
+   * The velocity a driven paddle moves at, in units per second. `setPaddleVy` is
+   * the only pose that sets it, it holds its value across frames whether or not
+   * the paddle is driven, and it is a separate field from `vy`.
+   */
+  readonly drivenVy: number;
+}
+
+/** The AI's two faculties, each gated on its own (specs/instrumentation.md). */
+export interface AiState {
+  /** Whether the AI senses the ball and chooses a target. */
+  readonly tracking: boolean;
+  /** Whether the AI's paddle travels toward that target. */
+  readonly movement: boolean;
 }
 
 /** One recorded ball position, used to draw the motion trail. */
@@ -137,26 +149,52 @@ export interface TrailSample {
   readonly t: number;
 }
 
-/**
- * Who is driving the paddles.
- *
- * Inert during normal play: `paddles` is false, the registered actions move the
- * human paddles and, in Solo, the AI moves the right one. A control operation on
- * the debug surface sets `paddles` to true, after which BOTH paddles follow `vy`
- * and neither the input actions nor the AI move them — until `reset()`. That is
- * what lets a scenario be posed and replayed exactly (specs/instrumentation.md).
- */
-export interface DriverState {
-  /** True once a control operation has taken the paddles from the player. */
-  readonly paddles: boolean;
+/** The ball. `speed` is derived (`hypot(vx, vy)`) and is not stored. */
+export interface BallState {
+  readonly x: number;
+  readonly y: number;
+  readonly vx: number;
+  readonly vy: number;
   /**
-   * Solo only: hand the right paddle back to the computer opponent for the rest
-   * of a driven scenario, so the real AI plays against the posed ball while the
-   * left paddle and the ball stay under the caller's control.
+   * The signed lateral-curvature scalar (magnitude in units per second squared).
+   * Positive and negative curve the flight opposite ways; it decays by half every
+   * SPIN_HALFLIFE seconds and changes otherwise only on a paddle hit.
    */
-  readonly ai: boolean;
-  /** The vertical velocity each paddle holds while `paddles` is true, in units per second. */
-  readonly vy: { readonly left: number; readonly right: number };
+  readonly spin: number;
+  /** True while the ball waits at its home point rather than flying. */
+  readonly held: boolean;
+  /** Seconds remaining of that wait. */
+  readonly holdTimer: number;
+  /** The ball's trail samples, oldest first. */
+  readonly trail: readonly TrailSample[];
+}
+
+/** One obstacle present in the field, at its fixed center. */
+export interface ObstacleState {
+  /** Its index in the order of OBSTACLE_CENTERS. */
+  readonly index: number;
+  readonly cx: number;
+  readonly cy: number;
+}
+
+/**
+ * Where one pointer's current press began.
+ *
+ * Bookkeeping for the pointer rule specs/ui.md fixes — a confirm takes BOTH its
+ * edges inside one item's region, so the release has to know where the press
+ * landed, and a press and its release are frames apart. It is not part of the
+ * declared state: nothing poses it, nothing reads it back, and it is rebuilt
+ * from the pointer stream alone. It lives in `CaromState` rather than in a
+ * module-level variable because specs/state.md requires every value the game
+ * carries between frames to live in the state.
+ */
+export interface PressAnchor {
+  /** The pointer the press came from, so several contacts are told apart. */
+  readonly id: number;
+  /** The screen the press landed on. */
+  readonly screen: Screen;
+  /** The menu item it landed in, or `-1` for a press outside every region. */
+  readonly index: number;
 }
 
 /**
@@ -173,31 +211,29 @@ export interface CaromState {
   readonly mode: Mode;
   /** The highlighted item on whichever menu `screen` is showing. */
   readonly menuIndex: number;
+  /** The title menu's remembered selection. */
+  readonly titleIndex: number;
   /** The screen the pause menu resumes to: `countdown` or `playing`. */
-  readonly resumeScreen: Screen;
+  readonly resumeScreen: ResumeScreen;
 
   /** The two scores. First to WIN_SCORE, winning by at least WIN_LEAD. */
   readonly score: { readonly p1: number; readonly p2: number };
   /** The winning side once the match is over, and null until then. */
   readonly winner: Side | null;
 
+  readonly paddles: { readonly left: PaddleState; readonly right: PaddleState };
+  /** The AI's two faculties. */
+  readonly ai: AiState;
+
   /**
    * The side the next serve travels toward: the player who was just scored on.
    * The first serve of a match always travels toward player one ("left").
    */
   readonly receiver: Side;
-  /**
-   * Seconds remaining of the pre-serve hold. HOLD_TIME at the start of a match
-   * and after each point, counting down to 0, at which point the ball is served.
-   * 0 during a live rally.
-   */
-  readonly holdTimer: number;
-
-  readonly paddles: { readonly left: PaddleState; readonly right: PaddleState };
-  /** The single ball in play (specs/balls.md). */
-  readonly ball: BallState;
-  /** Recent ball positions, oldest first, for the motion trail. */
-  readonly trail: readonly TrailSample[];
+  /** The single ball, or null while no ball is present. */
+  readonly ball: BallState | null;
+  /** Every obstacle present, in the order of OBSTACLE_CENTERS. */
+  readonly obstacles: readonly ObstacleState[];
 
   /** Accumulated simulation time, in seconds. */
   readonly simTime: number;
@@ -207,43 +243,16 @@ export interface CaromState {
    * copy of it, and it is what `snapshot()` reports.
    */
   readonly muted: boolean;
-  /**
-   * The state of the game's seeded random generator. `reset({ seed })` sets it,
-   * so reseeding and replaying the same calls reproduces the same result. A
-   * build that uses no randomness simply never reads it.
-   */
+  /** The seed the game's random generator was last seeded from. */
+  readonly seed: number;
+  /** The whole state of that generator, as a single number. */
   readonly rngState: number;
 
-  /** The debug driver's hold on the paddles. Inert during normal play. */
-  readonly driver: DriverState;
+  /** The presses in flight. Derived bookkeeping; see {@link PressAnchor}. */
+  readonly presses: readonly PressAnchor[];
 }
 
-// ---- Serving ------------------------------------------------------------
-
-/**
- * Launch the ball toward the receiver at SERVE_SPEED.
- *
- * The serve leaves at exactly SERVE_ANGLE from horizontal (specs/balls.md); the
- * SIGN of its vertical component is the one draw this game makes from its
- * seeded generator, and the generator's next state is stored beside the ball it
- * aimed.
- */
-function serve(state: CaromState): CaromState {
-  const dir = state.receiver === "left" ? -1 : 1;
-  const [sign, rngState] = nextSign(state.rngState);
-  return {
-    ...state,
-    ball: {
-      ...parkedBall(),
-      vx: dir * SERVE_SPEED * Math.cos(SERVE_ANGLE),
-      vy: sign * SERVE_SPEED * Math.sin(SERVE_ANGLE),
-    },
-    rngState,
-    trail: [],
-    holdTimer: 0,
-    screen: "playing",
-  };
-}
+// ---- Screen moves -------------------------------------------------------
 
 function pauseMatch(state: CaromState): CaromState {
   return {
@@ -258,66 +267,22 @@ function resumeMatch(state: CaromState): CaromState {
   return { ...state, screen: state.resumeScreen };
 }
 
-// ---- Edge input (once per frame) ----------------------------------------
+// ---- Menus --------------------------------------------------------------
 
-/**
- * Read this frame's one-shot actions and act on them.
- *
- * Every edge read in Carom happens here, once, which is what the engine's
- * consume-on-read edges ask for: two readers of the same action in one frame would
- * split one press between them.
- */
-function handleInput(state: CaromState, api: UpdateApi): CaromState {
-  // Mute works on every screen, so it is read before the per-screen switch.
-  if (mute(api)) api.audio.setMuted(!api.audio.muted());
-
-  switch (state.screen) {
-    case "title":
-      return menuInput(state, api, TITLE_ITEMS.length, selectTitle);
-    case "howto": {
-      // `back` and `confirm` both leave; read both so neither is left armed.
-      const accepted = confirm(api);
-      const left = back(api);
-      return accepted || left ? toTitle(state) : state;
-    }
-    case "countdown":
-    case "playing":
-      // A match is live, so Escape means `pause` rather than `back`.
-      return pause(api) ? pauseMatch(state) : state;
-    case "paused":
-      // A menu is up, so Escape means `back` — which here is "resume".
-      return back(api)
-        ? resumeMatch(state)
-        : menuInput(state, api, PAUSE_ITEMS.length, selectPause);
-    case "matchover":
-      // A menu is up, so Escape means `back` — which here is "to the title".
-      return back(api)
-        ? toTitle(state)
-        : menuInput(state, api, MATCHOVER_ITEMS.length, selectMatchOver);
-  }
-}
-
-function menuInput(
-  state: CaromState,
-  api: UpdateApi,
-  count: number,
-  onConfirm: (state: CaromState, index: number) => CaromState,
-): CaromState {
-  // All three are read before any is acted on, so exactly one press moves the
-  // selection or accepts it and nothing is left armed for a later frame.
-  const up = menuUp(api);
-  const down = menuDown(api);
-  const accepted = confirm(api);
-  if (up) return { ...state, menuIndex: (state.menuIndex + count - 1) % count };
-  if (down) return { ...state, menuIndex: (state.menuIndex + 1) % count };
-  if (accepted) return onConfirm(state, state.menuIndex);
-  return state;
-}
+/** What confirming the item at `index` does on the screen the state is on. */
+type Select = (state: CaromState, index: number) => CaromState;
 
 function selectTitle(state: CaromState, index: number): CaromState {
-  if (index === 0) return startMatch(state, "solo");
-  if (index === 1) return startMatch(state, "versus");
-  return { ...state, screen: "howto", menuIndex: 0 };
+  // Confirming a title item is what sets the remembered selection, from the
+  // keyboard, a pointer and a touch contact alike (specs/ui.md).
+  const remembered = { ...state, titleIndex: index };
+  if (index === 0) return startMatch(remembered, "solo");
+  if (index === 1) return startMatch(remembered, "versus");
+  return { ...remembered, screen: "howto", menuIndex: 0 };
+}
+
+function selectHowTo(state: CaromState, _index: number): CaromState {
+  return toTitle(state);
 }
 
 function selectPause(state: CaromState, index: number): CaromState {
@@ -331,46 +296,210 @@ function selectMatchOver(state: CaromState, index: number): CaromState {
   return toTitle(state);
 }
 
+/** The number of items on the menu the current screen shows. */
+function menuCount(state: CaromState): number {
+  return menuFor(state.screen)?.items.length ?? 0;
+}
+
+/**
+ * One frame of a menu screen: this frame's keyboard edges, then this frame's
+ * pointer and touch.
+ *
+ * All three keyboard edges are read before any is acted on, so exactly one press
+ * is consumed per action and none is left armed for a later frame. The order
+ * specs/ui.md fixes is up before down and movement before `confirm`, and the
+ * pointer is applied after every keyboard edge.
+ */
+function menuFrame(
+  state: CaromState,
+  api: UpdateApi,
+  select: Select,
+): CaromState {
+  const count = menuCount(state);
+  const up = menuUp(api);
+  const down = menuDown(api);
+  const accepted = confirm(api);
+
+  if (up) {
+    return pointerFrame(
+      { ...state, menuIndex: (state.menuIndex + count - 1) % count },
+      api,
+      select,
+      false,
+    );
+  }
+  if (down) {
+    return pointerFrame(
+      { ...state, menuIndex: (state.menuIndex + 1) % count },
+      api,
+      select,
+      false,
+    );
+  }
+  if (accepted) {
+    // A frame carrying a keyboard confirm together with a pointer confirm
+    // confirms the keyboard's item alone (specs/ui.md), so the pointer pass runs
+    // for its bookkeeping and confirms nothing.
+    return pointerFrame(select(state, state.menuIndex), api, select, true);
+  }
+  return pointerFrame(state, api, select, false);
+}
+
+/** The item one pointer sample landed in, or `null` for a miss. */
+function sampleItem(state: CaromState, sample: PointerSample): number | null {
+  const menu = menuFor(state.screen);
+  return menu ? itemAt(menu, sample.x, sample.y) : null;
+}
+
+/**
+ * This frame's pointer and touch, applied after the keyboard edges.
+ *
+ * Every sample the input frame collected is replayed in arrival order, which is
+ * what makes a sweep that crossed several items select the last one it entered
+ * rather than only the position it ended at. A press records where it landed, a
+ * move selects the item it moves onto, and a release confirms only when it falls
+ * inside the very item its own press did (specs/ui.md).
+ */
+function pointerFrame(
+  state: CaromState,
+  api: UpdateApi,
+  select: Select,
+  keyboardConfirmed: boolean,
+): CaromState {
+  const samples = api.input.pointerSamples();
+  if (samples.length === 0) return state;
+
+  let next = state;
+  let presses = state.presses;
+  let spent = keyboardConfirmed;
+
+  for (const sample of samples) {
+    const index = sampleItem(next, sample);
+    if (sample.type === "down") {
+      presses = [
+        ...presses.filter((press) => press.id !== sample.id),
+        { id: sample.id, screen: next.screen, index: index ?? -1 },
+      ];
+      // A finger does not hover, so a landing is what selects under touch.
+      if (!spent && sample.device === "touch" && index !== null) {
+        next = { ...next, menuIndex: index };
+      }
+      continue;
+    }
+    if (sample.type === "move") {
+      if (!spent && index !== null) next = { ...next, menuIndex: index };
+      continue;
+    }
+    const anchor = presses.find((press) => press.id === sample.id);
+    presses = presses.filter((press) => press.id !== sample.id);
+    if (
+      !spent &&
+      anchor !== undefined &&
+      index !== null &&
+      anchor.index === index &&
+      anchor.screen === next.screen
+    ) {
+      next = select({ ...next, menuIndex: index }, index);
+      spent = true;
+    }
+  }
+
+  return { ...next, presses };
+}
+
+// ---- Edge input (once per frame) ----------------------------------------
+
+/**
+ * Read this frame's one-shot actions and act on them.
+ *
+ * Every edge read in Carom happens here, once, which is what the engine's
+ * consume-on-read edges ask for: two readers of the same action in one frame
+ * would split one press between them.
+ */
+function handleInput(state: CaromState, api: UpdateApi): CaromState {
+  // Mute works on every screen, so it is read before the per-screen switch.
+  if (mute(api)) api.audio.setMuted(!api.audio.muted());
+
+  switch (state.screen) {
+    case "title": {
+      // `back` is read on the title and does nothing there (specs/ui.md).
+      back(api);
+      return menuFrame(state, api, selectTitle);
+    }
+    case "howto":
+      // `back` and `confirm` both leave; `back` is read first, and the menu pass
+      // reads `confirm` and drives the single item a pointer can also confirm.
+      return back(api) ? toTitle(state) : menuFrame(state, api, selectHowTo);
+    case "countdown":
+    case "playing":
+      // `pause` is read here and `back` is not, so one Escape opens the pause
+      // menu and leaves it open (specs/ui.md).
+      return pause(api) ? pauseMatch(state) : state;
+    case "paused": {
+      // `pause` and `back` are read before the menu edges, and a frame carrying
+      // either resumes and does nothing else. Escape raises both, so one Escape
+      // resumes once.
+      const paused = pause(api);
+      const left = back(api);
+      return paused || left
+        ? resumeMatch(state)
+        : menuFrame(state, api, selectPause);
+    }
+    case "matchover":
+      return back(api)
+        ? toTitle(state)
+        : menuFrame(state, api, selectMatchOver);
+  }
+}
+
 // ---- Simulation ---------------------------------------------------------
 
 /**
- * Both paddles after this frame's movement.
+ * One paddle after this frame's movement.
  *
- * The debug driver's hold is checked first: once a control operation has taken the
- * paddles (`driver.paddles`), both follow the driver's held velocities through the
- * real integrator and neither the input actions nor the AI move them. Inert during
- * normal play.
+ * A driven paddle moves at its own `drivenVy` and neither the input actions nor
+ * the AI touch it; the AI plays the right paddle in Solo; every other paddle is a
+ * player's. Whoever moved it, the integration and the clamp are the one rule
+ * specs/playfield.md fixes.
  */
+function updatePaddle(
+  state: CaromState,
+  api: UpdateApi,
+  side: Side,
+  dt: number,
+): PaddleState {
+  const paddle = state.paddles[side];
+  if (paddle.driven) return integratePaddle(paddle, paddle.drivenVy, dt);
+
+  if (side === "right" && state.mode === "solo") {
+    return aiPaddle(
+      paddle,
+      state.ball,
+      state.ai,
+      state.screen === "playing",
+      dt,
+    );
+  }
+
+  // Player one (left). Solo has no player two, so both sliders drive that paddle.
+  const axis = playerAxis(state, api, side);
+  return integratePaddle(paddle, axis * PADDLE_SPEED, dt);
+}
+
+/** The held axis driving one side's paddle, in `{-1, 0, 1}` (specs/modes/). */
+function playerAxis(state: CaromState, api: UpdateApi, side: Side): number {
+  if (side === "right") return p2Axis(api);
+  return state.mode === "solo" ? soloAxis(api) : p1Axis(api);
+}
+
 function updatePaddles(
   state: CaromState,
   api: UpdateApi,
   dt: number,
 ): CaromState["paddles"] {
-  const live = state.screen === "playing";
-  const { left, right } = state.paddles;
-
-  if (state.driver.paddles) {
-    // In Solo a scenario can hand the right paddle back to the AI, so the computer
-    // opponent plays its own side against the posed ball while the left paddle and
-    // the ball stay driver-posed. Otherwise the driver moves the right paddle too.
-    return {
-      left: integratePaddle({ cy: left.cy, vy: state.driver.vy.left }, dt),
-      right:
-        state.driver.ai && state.mode === "solo"
-          ? updateAi(right, state.ball, live, dt)
-          : integratePaddle({ cy: right.cy, vy: state.driver.vy.right }, dt),
-    };
-  }
-
-  // Player one (left). Solo has no player two, so both sliders drive this paddle.
-  const p1 = state.mode === "solo" ? soloAxis(api) : p1Axis(api);
   return {
-    left: integratePaddle({ cy: left.cy, vy: p1 * PADDLE_SPEED }, dt),
-    // The right paddle: the AI in Solo, a second human in Versus.
-    right:
-      state.mode === "solo"
-        ? updateAi(right, state.ball, live, dt)
-        : integratePaddle({ cy: right.cy, vy: p2Axis(api) * PADDLE_SPEED }, dt),
+    left: updatePaddle(state, api, "left", dt),
+    right: updatePaddle(state, api, "right", dt),
   };
 }
 
@@ -390,6 +519,7 @@ function score(state: CaromState, api: UpdateApi, scorer: Side): CaromState {
 
   const winner = checkWin(tally);
   if (winner) {
+    // The ball is left exactly where it was when it crossed the goal.
     return {
       ...state,
       score: tally,
@@ -407,34 +537,45 @@ function score(state: CaromState, api: UpdateApi, scorer: Side): CaromState {
 
 /** A point is scored the moment the ball has fully passed a goal edge. */
 function checkGoals(state: CaromState, api: UpdateApi): CaromState {
-  if (state.ball.x - BALL_R > FIELD_W) return score(state, api, "left");
-  if (state.ball.x + BALL_R < 0) return score(state, api, "right");
+  const ball = state.ball;
+  if (ball === null) return state;
+  if (ball.x - BALL_R > FIELD_W) return score(state, api, "left");
+  if (ball.x + BALL_R < 0) return score(state, api, "right");
   return state;
 }
 
 /** One frame of the live rally: the ball's flight, its cues, and any goal. */
 function playRally(state: CaromState, api: UpdateApi, dt: number): CaromState {
-  const { ball, events } = step(
-    state.ball,
+  const ball = state.ball;
+  if (ball === null) return state;
+
+  const flight = step(
+    ball,
     state.paddles.left,
     state.paddles.right,
+    state.obstacles,
     dt,
   );
   // One cue per event that actually happened. A frame long enough to contain two
   // different kinds of bounce plays both, because each is its own event and each
-  // has its own cue (specs/ui.md).
-  if (events.paddle) api.audio.play(CUES.paddleHit);
-  if (events.wall) api.audio.play(CUES.wallBounce);
-  if (events.obstacle) api.audio.play(CUES.obstacleBounce);
-  return checkGoals(recordTrail({ ...state, ball }), api);
+  // has its own cue (specs/audio.md).
+  if (flight.events.paddle) api.audio.play(CUES.paddleHit);
+  if (flight.events.wall) api.audio.play(CUES.wallBounce);
+  if (flight.events.obstacle) api.audio.play(CUES.obstacleBounce);
+  const flown = { ...state, ball: recordTrail(flight.ball, state.simTime) };
+  return checkGoals(flown, api);
 }
 
 /** One frame of the pre-serve hold: the countdown, and the serve when it ends. */
 function holdBall(state: CaromState, dt: number): CaromState {
-  // The ball is held at the center; record so the (collapsed) trail stays in
-  // sync with the simulation clock.
-  const held = recordTrail({ ...state, holdTimer: state.holdTimer - dt });
-  return held.holdTimer <= 0 ? serve(held) : held;
+  const ball = state.ball;
+  if (ball === null) return state;
+
+  const counted = { ...ball, holdTimer: ball.holdTimer - dt };
+  // The ball is not advanced on the frame it is served, so the serve is applied
+  // to the counted-down ball and the trail is recorded either way.
+  if (counted.holdTimer <= 0) return serveBall({ ...state, ball: counted });
+  return { ...state, ball: recordTrail(counted, state.simTime) };
 }
 
 /**
@@ -488,10 +629,10 @@ export const game: Game<CaromState, CaromDebugApi> = {
   /**
    * Runs once per frame, before `render`: the next state, from the current one.
    *
-   * The order matters. Edges are news for exactly one frame — the engine discards
-   * whatever was not consumed — so they are read first, at the top of the frame
-   * they belong to, and the state they may have changed is the state the rest of
-   * the frame advances.
+   * The order matters. Edges are news for exactly one frame — the engine
+   * discards whatever was not consumed — so they are read first, at the top of
+   * the frame they belong to, and the state they may have changed is the state
+   * the rest of the frame advances.
    */
   update(
     state: DeepReadonly<CaromState>,
@@ -499,8 +640,8 @@ export const game: Game<CaromState, CaromDebugApi> = {
     dt: number,
   ): CaromState {
     const advanced = advance(handleInput(state, api), api, dt);
-    // The engine owns the mute bit; this is the game's readable copy of it, so the
-    // HUD hint and `snapshot()` cannot drift from what the player actually hears.
+    // The engine owns the mute bit; this is the game's readable copy of it, so
+    // the HUD hint and `snapshot()` cannot drift from what the player hears.
     return { ...advanced, muted: api.audio.muted() };
   },
 

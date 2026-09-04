@@ -1,4 +1,4 @@
-// Carom — bootstrap. CASE-PROVIDED. Do not edit.
+// Carom — bootstrap. Supplied with the project. Do not edit.
 //
 // This is the build's fixed entry point, and it is deliberately the whole of the
 // wiring. Everything that is the same in every browser game is the engine's: the

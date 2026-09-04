@@ -1,20 +1,35 @@
-// Carom — pause/paddle-solo-player: while the game is paused, the human's paddle does not move, even with a
-// movement key held.
+// Carom — pause/paddle-solo-player: while the game is paused, the human's paddle
+// does not move, even with a movement key held.
 //
 // Pausing freezes the simulation, not just the ball: a paddle under a held key is
-// as much a part of the frozen field as the ball in flight (specs/ui.md — "the
-// field is visible but frozen behind the pause menu"). So this check holds the
-// key on both sides of the pause. The same hold that moves the paddle in live
-// play is repeated once the pause menu is up, and the second one must do nothing
-// — which is what tells a build that stopped updating apart from one that merely
-// stopped drawing the ball.
+// as much a part of the frozen field as the ball in flight (specs/ui.md — nothing
+// advances on `paused`, and the field is visible and frozen behind the menu). So
+// this check holds the key on BOTH sides of the pause. The same hold that moves
+// the paddle in live play is repeated once the pause menu is up, and the second
+// one must do nothing — which is what tells a build that stopped updating apart
+// from one that merely stopped drawing, and apart from one whose key never
+// worked at all.
 //
-// Everything here goes through the keyboard: the match is started from the title
-// with real key events, paused with one, and driven with one. No control
-// operation is involved, so the paddle is under normal player control throughout.
-// The menu route is load-bearing: every posing operation (`startMatch` included)
-// hands both paddles to the debug driver, and only `reset` gives them back —
-// posed open, the held key could not move the paddle in live play at all.
+// The paddle stays the PLAYER's throughout. `enterPlaying` opens a solo match on
+// `playing` and takes nothing from anyone — no operation here drives a paddle —
+// so the key moves the paddle exactly as it moves it for a player. That is the
+// whole point of taking a paddle one side at a time, and it is why this check no
+// longer has to walk the title menu to find a match nothing had seized.
+//
+// The field is emptied. This point is about a paddle under a key, so it concerns
+// no ball and no obstacle, and a ball left standing could score during the live
+// stretch and put the game on a screen this reading was never about. The paddles
+// are the field furniture no operation removes, and neither of them is parked
+// here: the one under test has to be free to move, and the other is not read.
+//
+// The pause is POSED rather than pressed. `setScreen("paused")` puts the game on
+// the screen and touches nothing else, which is the precondition this point
+// names; whether a key opens the pause menu is the controls category's point.
+//
+// MOVE_MIN is the live stretch's bound: at PADDLE_SPEED the 12-frame hold travels
+// 72 units, which clears it several times over and which no build that failed to
+// move the paddle reaches. The frozen stretch is held to exact equality, because
+// "nothing advances" admits no drift.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -22,12 +37,11 @@ import {
   MOVE_MIN,
   captureReplay,
   createHarness,
-  startWithKeys,
+  enterPlaying,
+  openPause,
+  poseWorld,
   type Harness,
 } from "../harness";
-
-/** Past the 1.0 s pre-serve hold and into a live rally: 1.3 s at 120 Hz. */
-const RALLY_TICKS = 156;
 
 /**
  * The frames of live movement recorded before the pause, and the frozen ones
@@ -46,6 +60,9 @@ const RALLY_TICKS = 156;
 const MOVING_TICKS = 12; // 0.1 s of live travel
 const FROZEN_TICKS = 96; // 0.8 s of the key held against a paused game
 
+/** The key this control context moves the paddle with (specs/ui.md). */
+const KEY = "KeyS";
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -57,27 +74,28 @@ afterEach(() => {
 });
 
 it("holds the human's paddle still while paused", async () => {
-  await startWithKeys(h, "solo");
-  await h.advance(RALLY_TICKS);
+  enterPlaying(h, "solo");
+  poseWorld(h, { balls: [], obstacles: [] });
   assertEqual(h.snapshot().screen, "playing");
+  assertEqual(h.snapshot().paddles.left.driven, false);
 
   // The precondition: this key really does move this paddle in live play, so the
   // freeze below is the pause's doing rather than a key that never worked.
   const start = h.snapshot().paddles.left.cy;
 
   const held = await captureReplay(h, "frozen", async () => {
-    h.hold("KeyS");
+    h.hold(KEY);
     await h.advance(MOVING_TICKS);
-    h.release("KeyS");
+    h.release(KEY);
     const moving = h.snapshot().paddles.left.cy;
 
-    await h.tap("Escape");
+    openPause(h, "playing");
     const screen = h.snapshot().screen;
     const paused = h.snapshot().paddles.left.cy;
 
-    h.hold("KeyS");
+    h.hold(KEY);
     await h.advance(FROZEN_TICKS);
-    h.release("KeyS");
+    h.release(KEY);
     return { moving, screen, paused };
   });
 

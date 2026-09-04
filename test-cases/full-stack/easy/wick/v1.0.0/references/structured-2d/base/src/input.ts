@@ -1,9 +1,12 @@
-// Wick — input, as engine actions (specs/controls.md).
+// Wick — input, as engine actions and the pointer (specs/controls.md).
 //
-// The game never sees a `KeyboardEvent`. It registers the eight named actions
-// with the keys that drive them, and the engine does the listening, the edge
-// detection, and the binding, so a dispatched keyboard event moves the
-// lamplighter exactly as a player's key does because there is only one path.
+// The game never sees a `KeyboardEvent` or a `PointerEvent`. It registers the
+// eight named actions with the keys that drive them, and the engine does the
+// listening, the edge detection, and the binding, so a dispatched keyboard
+// event moves the lamplighter exactly as a player's key does because there is
+// only one path. The pointer arrives the same way, already in the stage's own
+// coordinates whatever the canvas's size on the page, so nothing here maps a
+// client position.
 //
 // The four movement actions are read as held values through `input.value` on
 // `playing`; every action is a press edge on the menus. The engine's edges
@@ -43,4 +46,36 @@ export function heldMovement(input: InputReader): Held {
  */
 export function pressedActions(input: InputReader): ActionName[] {
   return ACTIONS.filter((action) => input.pressed(action));
+}
+
+/** The pointer as one frame delivered it, in stage coordinates. */
+export interface PointerFrame {
+  /** Where the pointer rests, which is what a hover reads. */
+  readonly x: number;
+  readonly y: number;
+  /** Where this frame's primary press edge landed, or `null` for none. */
+  readonly press: { readonly x: number; readonly y: number } | null;
+  /** The frame's wheel travel down the stage, in stage units. */
+  readonly wheel: number;
+}
+
+/**
+ * This frame's pointer, read once from the single player controller. The
+ * press is placed at the `down` sample that armed it rather than at the
+ * pointer's resting position, so a click acts where the button went down even
+ * on a frame that moved on afterwards; past the reader's sample cap the
+ * resting position stands in.
+ */
+export function pointerFrame(input: InputReader): PointerFrame {
+  const at = input.pointer();
+  let press: { x: number; y: number } | null = null;
+  if (input.pointerPressed()) {
+    press = { x: at.x, y: at.y };
+    for (const sample of input.pointerSamples()) {
+      if (sample.type !== "down") continue;
+      if (!sample.primary || sample.button !== "primary") continue;
+      press = { x: sample.x, y: sample.y };
+    }
+  }
+  return { x: at.x, y: at.y, press, wheel: input.wheel().y };
 }

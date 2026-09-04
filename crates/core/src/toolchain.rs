@@ -21,6 +21,22 @@
 //! layered over the aggregate, so an implementation that later typechecks re-derives
 //! its real score from reviews that were never overwritten.
 //!
+//! # Figures come from files, never from what a command printed
+//!
+//! The `test` command's results and its coverage are read from the two report files
+//! the case's own build `vitest.config.ts` writes —
+//! [`TOOLCHAIN_TEST_REPORT_PATH`] and [`TOOLCHAIN_COVERAGE_SUMMARY_PATH`] — and never
+//! from the command's terminal output. A printed table is a layout a runner is free
+//! to restyle; a JSON report is a contract. Scraping made every recorded figure
+//! hostage to that layout, so the same tree run under two vitest versions could
+//! disagree about how many tests it had, for no reason a reader could see. Reading
+//! the files also carries detail no table ever did: per-file results, per-file
+//! coverage across all four istanbul metrics, and the failures themselves.
+//!
+//! The bounded [excerpt](ToolchainCommandResult::output) stays exactly as it was. It
+//! is the transcript a reviewer reads to see what the command said, and it is no
+//! longer a data source for anything.
+//!
 //! # Bounded by construction
 //!
 //! Every retained excerpt is capped at [`TOOLCHAIN_OUTPUT_LIMIT`] bytes per command.
@@ -49,6 +65,68 @@ pub const TOOLCHAIN_OUTPUT_LIMIT: usize = 16 * 1024;
 /// The marker written between the head and the tail of a truncated excerpt.
 const TRUNCATION_MARKER: &str = "\n… output truncated …\n";
 
+/// Where the case's build vitest config writes the JSON test report, relative to the
+/// produced implementation's repository root.
+///
+/// The path is a contract between the seeded `vitest.config.ts` and this crate: the
+/// config's `outputFile` names it and the [toolchain stage](crate::toolchain_stage)
+/// reads it back. It sits under `coverage/`, the one directory the seeded workspace
+/// both `.gitignore`s and `.prettierignore`s, so the report is invisible to git, to
+/// the static analyzer's walk, and to the `format` command's `prettier --check`.
+///
+/// The stage owns this path outright while its `test` command runs: it clears the file
+/// beforehand so a figure can only ever describe the invocation that just happened, and
+/// removes it again once it has been read. The published `implementation/` tree is a
+/// copy of what the model produced, and this file is the host's writing — it carries
+/// istanbul's whole instrumentation map keyed by absolute host paths, and failure
+/// messages with the stack frames the record itself strips.
+pub const TOOLCHAIN_TEST_REPORT_PATH: &str = "coverage/test-report.json";
+
+/// Where istanbul's `json-summary` reporter writes the coverage totals, relative to
+/// the produced implementation's repository root. `coverage/` is the reporter's own
+/// default directory, so this is where it lands with no override.
+///
+/// Cleared and removed around the `test` command for the same two reasons as
+/// [`TOOLCHAIN_TEST_REPORT_PATH`]: every recorded figure describes the invocation that
+/// produced it, and the published tree carries only the model's own files. Istanbul
+/// keys this document by absolute host path too.
+pub const TOOLCHAIN_COVERAGE_SUMMARY_PATH: &str = "coverage/coverage-summary.json";
+
+/// The most per-file coverage rows retained on the record.
+///
+/// A produced implementation's `src/` is tens of files, not hundreds: the largest
+/// reference solution in the repository carries well under thirty. 100 therefore
+/// holds every real build whole, with enough headroom that truncation is a genuinely
+/// exceptional event rather than a routine one — and the flag beside the array says
+/// so when it happens, so a reader never mistakes a clipped list for a short one. The
+/// bound exists because this rides on the run record, which is deserialized on every
+/// run listing (see [`TOOLCHAIN_OUTPUT_LIMIT`]): at roughly 250 bytes of JSON per
+/// row, 100 rows is ~25 KB, which keeps the whole toolchain block in the same order
+/// of magnitude it already occupies.
+pub const TOOLCHAIN_COVERAGE_FILE_LIMIT: usize = 100;
+
+/// The most per-file test rows retained on the record. Same reasoning and the same
+/// number as [`TOOLCHAIN_COVERAGE_FILE_LIMIT`]: the two lists are indexed by the same
+/// tree, and a different cap on each would let the coverage list and the test list
+/// disagree about how big the build is.
+pub const TOOLCHAIN_TEST_FILE_LIMIT: usize = 100;
+
+/// The most individual test failures retained on the record.
+///
+/// A reader looking at a red suite wants to know what broke first, not to read all
+/// four hundred assertions a single broken import can fail. Ten failures is enough to
+/// see the shape of the breakage; the totals beside the list say how many there
+/// really were.
+pub const TOOLCHAIN_TEST_FAILURE_LIMIT: usize = 10;
+
+/// The most bytes retained of one failure message, after stack frames are stripped.
+///
+/// A vitest diff of two large objects runs to kilobytes. 1 KiB carries the assertion
+/// and the head of its diff, and ten of them is 10 KB on a record every listing
+/// deserializes. Truncation keeps the HEAD and appends `…`: an assertion message
+/// leads with what it required, and the tail is the part that repeats.
+pub const TOOLCHAIN_FAILURE_MESSAGE_LIMIT: usize = 1024;
+
 /// The commands a case's `[toolchain]` table declares, resolved onto
 /// [`TestCaseVersion`](crate::test_case::TestCaseVersion).
 ///
@@ -71,8 +149,8 @@ pub struct ToolchainCommands {
     /// The optional format check. Recorded, never gating.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub format: Option<String>,
-    /// The optional test command. Recorded, never gating, together with the test
-    /// count and coverage it reports.
+    /// The optional test command. Recorded, never gating, together with the results
+    /// and coverage read from the report files it writes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub test: Option<String>,
 }
@@ -168,36 +246,197 @@ impl From<&ToolchainCommandResult> for crate::validation::StepResult {
     }
 }
 
-/// The optional `test` command's result, plus the figures its output reported.
+/// One istanbul coverage metric: how many of a thing there are and how many the tests
+/// reached.
 ///
-/// The counts and the coverage are parsed **defensively** out of whatever the
-/// command printed: a runner that reports neither is not a failure, it is a runner
-/// that reports neither, and every figure here is therefore an `Option` whose
-/// absence means *not reported* rather than *zero*. A zero here is only ever a zero
-/// the tool actually printed.
+/// [`covered`](Self::covered) and [`total`](Self::total) are the authority and
+/// [`pct`](Self::pct) is what istanbul itself printed, carried so a stored figure and
+/// the report it came from cannot disagree by a rounding rule. `pct` is an `Option`
+/// because istanbul does not always emit a number: a metric with a zero total is
+/// reported as the STRING `"Unknown"`, which is an absence, not a zero. A consumer
+/// that wants a percentage for a metric whose `pct` is `None` derives it from
+/// `covered`/`total`, or renders nothing when `total` is zero.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CoverageMetric {
+    /// How many of this thing the tests reached.
+    pub covered: u32,
+    /// How many of this thing there are in the measured source.
+    pub total: u32,
+    /// The percentage istanbul reported, when it reported one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub pct: Option<f64>,
+}
+
+/// The four istanbul metrics, for one file or for the whole measured source.
+///
+/// All four are carried rather than one headline percentage, because branch and
+/// function coverage answer questions line coverage cannot: a suite that calls every
+/// function once and takes no `else` reads as well-covered on lines alone. Istanbul's
+/// `branchesTrue` extra is deliberately not carried — it is a diagnostic of
+/// istanbul's own branch bookkeeping, not a figure about the code.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CoverageMetrics {
+    /// Executable lines.
+    pub lines: CoverageMetric,
+    /// Statements, which a single line may hold several of.
+    pub statements: CoverageMetric,
+    /// Function declarations, including methods and arrow functions.
+    pub functions: CoverageMetric,
+    /// Branch arms: each side of an `if`, a ternary, a logical operator, a default
+    /// parameter and a `switch` case.
+    pub branches: CoverageMetric,
+}
+
+/// One measured source file's coverage.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CoverageFile {
+    /// The file's path relative to the implementation's repository root, forward
+    /// slashed. Istanbul keys its report by ABSOLUTE host path; storing that would
+    /// leak the host's filesystem layout into a published record and would not join
+    /// to the static analysis, whose `CodeFileEntry.path` is repo-relative. The
+    /// relativisation happens once, when the report is read.
+    pub path: String,
+    /// What the four metrics said for this file.
+    #[serde(flatten)]
+    pub metrics: CoverageMetrics,
+}
+
+/// What the coverage reporter measured, read from
+/// [`TOOLCHAIN_COVERAGE_SUMMARY_PATH`].
+///
+/// The presence of this whole block is the signal that coverage was reported at all.
+/// A case whose config writes no summary file, a command that never ran, and a runner
+/// that produced an unreadable file all leave it absent — never present with zeroes
+/// in it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ToolchainCoverage {
+    /// The `total` row: every measured file rolled up.
+    pub totals: CoverageMetrics,
+    /// Per-file rows, sorted by path, capped at [`TOOLCHAIN_COVERAGE_FILE_LIMIT`].
+    pub files: Vec<CoverageFile>,
+    /// How many files the report actually measured, before the cap.
+    pub files_measured: u32,
+    /// Whether [`files`](Self::files) was cut short by the cap.
+    pub files_truncated: bool,
+}
+
+/// One test file the runner reported on.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ToolchainTestFile {
+    /// The file's path relative to the implementation's repository root, forward
+    /// slashed. The reporter names it absolutely, for the same reason and with the
+    /// same fix as [`CoverageFile::path`].
+    pub path: String,
+    /// Tests in this file that passed.
+    pub passed: u32,
+    /// Tests in this file that failed.
+    pub failed: u32,
+    /// Tests in this file that were skipped, pending or todo — neither passed nor
+    /// failed, and counted separately so a suite that skipped half of itself cannot
+    /// read as a suite that passed all of itself.
+    pub skipped: u32,
+    /// The file-level message, when the file failed to load and so ran no tests at
+    /// all. Stack frames stripped and bounded, like every other message here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub message: Option<String>,
+}
+
+/// One failing test, named and explained.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ToolchainTestFailure {
+    /// The test file's repo-relative path.
+    pub file: String,
+    /// The test's full name — its `describe` chain and its own title, as the reporter
+    /// joined them.
+    pub name: String,
+    /// Why it failed: the reporter's failure messages joined by a blank line, with
+    /// every stack frame dropped and the result capped at
+    /// [`TOOLCHAIN_FAILURE_MESSAGE_LIMIT`] bytes. Frames carry host paths and line
+    /// numbers that mean nothing to a reader of a published record.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub message: Option<String>,
+}
+
+/// What the runner reported, read from [`TOOLCHAIN_TEST_REPORT_PATH`].
+///
+/// Present only when that file was written and parsed. A suite that ran and found no
+/// tests reports zeroes here — that is a figure the runner actually produced, and it
+/// is exactly the signal that a build shipped no tests. The difference between "no
+/// tests" and "not reported" is the difference between this block being present with
+/// zeroes and being absent.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ToolchainTests {
+    /// Every test the runner ran, in every file.
+    pub total: u32,
+    /// How many of them passed.
+    pub passed: u32,
+    /// How many of them failed.
+    pub failed: u32,
+    /// Skipped, pending and todo together.
+    pub skipped: u32,
+    /// Test FILES the runner loaded.
+    pub files_run: u32,
+    /// How many of those files had a failure in them, counting a file that failed to
+    /// load at all as one.
+    pub files_failed: u32,
+    /// Whether the runner called the whole invocation a success.
+    pub succeeded: bool,
+    /// Per-file rows, sorted by path, capped at [`TOOLCHAIN_TEST_FILE_LIMIT`].
+    pub files: Vec<ToolchainTestFile>,
+    /// Whether [`files`](Self::files) was cut short by the cap.
+    pub files_truncated: bool,
+    /// The first [`TOOLCHAIN_TEST_FAILURE_LIMIT`] failures, in the reporter's own
+    /// order, so the list reads as "what broke" rather than an arbitrary sample.
+    pub failures: Vec<ToolchainTestFailure>,
+    /// Whether [`failures`](Self::failures) was cut short by the cap.
+    /// [`failed`](Self::failed) is always the true count regardless.
+    pub failures_truncated: bool,
+}
+
+/// The optional `test` command's result, plus the figures its REPORT FILES carried.
+///
+/// Nothing here is read from what the command printed. The case's build vitest config
+/// writes a JSON test report and an istanbul coverage summary into `coverage/`, and
+/// these two blocks are those files, parsed and bounded. A figure that no longer
+/// moves when a reporter changes its terminal layout is a figure that can be compared
+/// across runs; a scraped one is not.
+///
+/// Both blocks are `Option` and **absence means not reported, never zero**. A case
+/// whose config writes no report files — every case version predating this contract,
+/// and any case not on the v0.7.0 shape — leaves both absent, and every consumer is
+/// required to render nothing at all rather than an empty widget. A zero inside a
+/// present block is only ever a zero the runner actually reported.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct ToolchainTestRun {
     /// The command, its exit status and its bounded output.
     pub result: ToolchainCommandResult,
-    /// How many tests ran in total, when the output said.
+    /// What the runner's JSON report said, when it wrote one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
-    pub tests_total: Option<u32>,
-    /// How many passed, when the output said.
+    pub tests: Option<ToolchainTests>,
+    /// What the coverage summary said, when one was written.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
-    pub tests_passed: Option<u32>,
-    /// How many failed, when the output said.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub tests_failed: Option<u32>,
-    /// Line coverage as a percentage (`0.0..=100.0`), read from the coverage
-    /// summary table's `All files` row, when the command printed one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub coverage_percent: Option<f64>,
+    pub coverage: Option<ToolchainCoverage>,
 }
 
 /// The build smoke check: does the site the build produced actually boot?
@@ -320,7 +559,7 @@ pub fn bounded_output(raw: &str) -> (String, bool) {
 }
 
 /// The largest char boundary at or below `index`.
-fn floor_boundary(text: &str, index: usize) -> usize {
+pub(crate) fn floor_boundary(text: &str, index: usize) -> usize {
     let mut index = index.min(text.len());
     while index > 0 && !text.is_char_boundary(index) {
         index -= 1;
@@ -335,153 +574,6 @@ fn ceil_boundary(text: &str, index: usize) -> usize {
         index += 1;
     }
     index
-}
-
-/// Strip ANSI SGR/CSI escape sequences from `raw`.
-///
-/// Test runners colorize by default even when their output is a pipe, so the
-/// summary line the parsers below look for arrives wrapped in escapes. Stripping
-/// them is what makes "the line starts with `Tests`" true of real output rather
-/// than only of output captured with color forced off.
-fn strip_ansi(raw: &str) -> String {
-    let mut out = String::with_capacity(raw.len());
-    let mut chars = raw.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch != '\u{1b}' {
-            out.push(ch);
-            continue;
-        }
-        // `ESC [ … <final>`: consume up to and including the final byte in `@`..`~`.
-        if chars.peek() == Some(&'[') {
-            chars.next();
-            for next in chars.by_ref() {
-                if ('\u{40}'..='\u{7e}').contains(&next) {
-                    break;
-                }
-            }
-        } else {
-            // A non-CSI escape: drop the escape and the single byte that follows.
-            chars.next();
-        }
-    }
-    out
-}
-
-/// The test counts a runner reported: `(total, passed, failed)`, each `None` when
-/// the output did not say.
-///
-/// Recognizes the summary line vitest and jest both print — `Tests  12 passed | 1
-/// failed (13)` — in any order of its `<n> <state>` pairs, with or without the
-/// parenthesized total. **Every failure to parse is an absence**, never an error: a
-/// runner that prints nothing recognizable leaves all three `None`, which the record
-/// reports as *not reported*.
-///
-/// The last matching line wins, so a run that prints a per-file summary before its
-/// final one is read from the final one.
-pub fn parse_test_counts(raw: &str) -> (Option<u32>, Option<u32>, Option<u32>) {
-    let clean = strip_ansi(raw);
-    let mut found: Option<(Option<u32>, u32, u32)> = None;
-    for line in clean.lines() {
-        let line = line.trim();
-        // `Tests` (vitest) / `Tests:` (jest). `Test Files` is a different figure —
-        // how many files ran — and must not be read as a test count.
-        let Some(rest) = line
-            .strip_prefix("Tests:")
-            .or_else(|| line.strip_prefix("Tests "))
-        else {
-            continue;
-        };
-        let mut passed = 0u32;
-        let mut failed = 0u32;
-        let mut saw_state = false;
-        let mut total: Option<u32> = None;
-        let tokens: Vec<&str> = rest.split_whitespace().collect();
-        for (index, token) in tokens.iter().enumerate() {
-            // `(13)` — the parenthesized grand total vitest closes the line with.
-            if let Some(inner) = token.strip_prefix('(').and_then(|t| t.strip_suffix(')')) {
-                if let Ok(value) = inner.parse::<u32>() {
-                    total = Some(value);
-                }
-                continue;
-            }
-            let Ok(count) = token.trim_end_matches(',').parse::<u32>() else {
-                continue;
-            };
-            match tokens.get(index + 1).map(|t| t.trim_end_matches(',')) {
-                Some("passed") => {
-                    passed += count;
-                    saw_state = true;
-                }
-                Some("failed") => {
-                    failed += count;
-                    saw_state = true;
-                }
-                // `skipped` / `todo` are neither passed nor failed but do count
-                // toward the total when no parenthesized one was printed.
-                Some("skipped") | Some("todo") => saw_state = true,
-                _ => {}
-            }
-        }
-        if saw_state {
-            found = Some((total, passed, failed));
-        }
-    }
-    match found {
-        // With no parenthesized total, the total is what the line accounted for.
-        Some((total, passed, failed)) => (
-            Some(total.unwrap_or(passed + failed)),
-            Some(passed),
-            Some(failed),
-        ),
-        None => (None, None, None),
-    }
-}
-
-/// The line-coverage percentage a coverage reporter printed, or `None` when the
-/// output carried no coverage table.
-///
-/// Reads the `All files` row of the istanbul-style text summary that vitest (v8 and
-/// istanbul providers alike), jest and nyc all emit, taking the column the header
-/// labels `% Lines`. When the header cannot be read, it falls back to the fourth
-/// numeric cell, which is where `% Lines` sits in that table's fixed column order.
-/// Anything unparseable is an absence.
-pub fn parse_coverage_percent(raw: &str) -> Option<f64> {
-    let clean = strip_ansi(raw);
-    let cells = |line: &str| -> Vec<String> {
-        line.split('|')
-            .map(|cell| cell.trim().to_string())
-            .collect()
-    };
-    let mut lines_column: Option<usize> = None;
-    for line in clean.lines() {
-        if !line.contains('|') {
-            continue;
-        }
-        let row = cells(line);
-        if lines_column.is_none()
-            && let Some(index) = row
-                .iter()
-                .position(|cell| cell.eq_ignore_ascii_case("% Lines"))
-        {
-            lines_column = Some(index);
-        }
-        if !row.first().is_some_and(|first| first == "All files") {
-            continue;
-        }
-        // Prefer the labelled column; fall back to the table's fixed fourth
-        // numeric column (`% Stmts`, `% Branch`, `% Funcs`, `% Lines`).
-        let value = lines_column
-            .and_then(|index| row.get(index))
-            .and_then(|cell| cell.parse::<f64>().ok())
-            .or_else(|| {
-                row.iter()
-                    .skip(1)
-                    .filter_map(|cell| cell.parse::<f64>().ok())
-                    .nth(3)
-            })?;
-        return value.is_finite().then_some(value);
-    }
-    None
 }
 
 #[cfg(test)]

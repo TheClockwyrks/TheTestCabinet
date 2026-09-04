@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { FIELD_H, FIELD_W } from "./constants";
-import { deviceSize, domSurface, fitViewport } from "./viewport";
+import { deviceSize, domSurface, fitViewport, toLogical } from "./viewport";
 
 /** The fit at `cssWidth x cssHeight` CSS pixels and a pixel ratio of `dpr`. */
 function fit(cssWidth: number, cssHeight: number, dpr = 1) {
@@ -107,6 +107,55 @@ describe("deviceSize", () => {
   });
 });
 
+describe("toLogical", () => {
+  const NO_OFFSET = { x: 0, y: 0 };
+
+  it("is the exact inverse of the fit, at every corner", () => {
+    for (const [w, h, dpr] of [
+      [FIELD_W, FIELD_H, 1],
+      [1920, 1080, 2],
+      [800, 900, 1], // taller than 16:9: bars top and bottom
+      [1600, 500, 3], // wider than 16:9: bars left and right
+    ] as const) {
+      const view = fit(w, h, dpr);
+      const cssScale = view.scale / dpr;
+      for (const [x, y] of [
+        [0, 0],
+        [FIELD_W, FIELD_H],
+        [FIELD_W / 2, FIELD_H / 3],
+      ] as const) {
+        const client = {
+          x: view.offsetX / dpr + x * cssScale,
+          y: view.offsetY / dpr + y * cssScale,
+        };
+        const back = toLogical(view, NO_OFFSET, dpr, client.x, client.y);
+        expect(back.x).toBeCloseTo(x, 6);
+        expect(back.y).toBeCloseTo(y, 6);
+      }
+    }
+  });
+
+  it("takes the surface's own corner off the page position first", () => {
+    const view = fit(FIELD_W, FIELD_H);
+    expect(toLogical(view, { x: 40, y: 12 }, 1, 140, 112)).toEqual({
+      x: 100,
+      y: 100,
+    });
+  });
+
+  it("reads a point inside a letterbox bar as outside the field", () => {
+    // 800x900 letterboxes top and bottom, so the very top of the element is
+    // above the field's own y = 0.
+    const view = fit(800, 900);
+    expect(toLogical(view, NO_OFFSET, 1, 400, 0).y).toBeLessThan(0);
+  });
+
+  it("collapses to the field's origin where there is no fit to invert", () => {
+    // A zero-sized element, which is what a canvas reports before layout.
+    expect(toLogical(fit(0, 0), NO_OFFSET, 1, 10, 10)).toEqual({ x: 0, y: 0 });
+  });
+});
+
 describe("domSurface", () => {
   it("reads the canvas element's laid-out size, not its backing store", () => {
     const element = {
@@ -114,9 +163,19 @@ describe("domSurface", () => {
       clientHeight: 450,
       width: 1600,
       height: 900,
+      getBoundingClientRect: () => ({ left: 0, top: 0 }),
     } as unknown as HTMLCanvasElement;
     const surface = domSurface(element);
     expect(surface.cssWidth()).toBe(800);
     expect(surface.cssHeight()).toBe(450);
+  });
+
+  it("reads the element's corner in the page, which a pointer is relative to", () => {
+    const element = {
+      clientWidth: 800,
+      clientHeight: 450,
+      getBoundingClientRect: () => ({ left: 12, top: 34 }),
+    } as unknown as HTMLCanvasElement;
+    expect(domSurface(element).origin()).toEqual({ x: 12, y: 34 });
   });
 });

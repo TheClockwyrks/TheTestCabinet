@@ -129,8 +129,8 @@ use super::signatures::SignatureCatalogue;
 pub mod compile;
 
 pub use compile::{
-    CompilerCommand, CompilerDaemon, CompilerPool, CompilerReport, PrepareContext, Workspace,
-    daemon, place, place_tree, shared_toolchain_dir,
+    AgentWorkspace, CompilerCommand, CompilerDaemon, CompilerPool, CompilerReport, PrepareContext,
+    Workspace, daemon, place, place_tree, shared_toolchain_dir,
 };
 
 #[path = "language/diagnostics.rs"]
@@ -146,7 +146,7 @@ mod comments;
 #[path = "language/heads.rs"]
 mod heads;
 
-pub use diagnostics::library_set;
+pub use diagnostics::supporting;
 
 /// The shared [code-mask](mask::CodeMask) vocabulary the per-language byte lexers fill in.
 #[path = "language/mask.rs"]
@@ -275,6 +275,24 @@ mod docs;
 #[path = "language/g8.rs"]
 mod g8;
 
+/// **The gate that holds every arm's module rebuild to one band** — a code module an arm refuses
+/// beside a program is gg's own failure rather than the model's.
+///
+/// `#[cfg(test)]` because each cell drives one real compiler. Its module documentation carries the
+/// row every registered arm answers with.
+#[cfg(test)]
+#[path = "language/rebuilds.rs"]
+mod rebuilds;
+
+/// **The gate that holds every arm's unresolved-import answer to one shape** — the modules of its
+/// own library set that match what the program could not import, within the bound every arm shares.
+///
+/// `#[cfg(test)]` because each cell drives one real compiler. Its module documentation carries the
+/// row every registered arm answers with.
+#[cfg(test)]
+#[path = "language/imports.rs"]
+mod imports;
+
 /// A **second implementation of this trait, for tests only** — the thing that makes the seam an
 /// abstraction rather than one implementation wearing a trait.
 ///
@@ -296,6 +314,14 @@ pub(crate) use fixture::fixture_languages;
 /// `every_language_says_how_a_bound_module_is_reached` holds every arm to writing it, so an arm that
 /// spelled the placeholder some other way would produce a member line with no name in it.
 pub const LIB_ACCESS_NAME: &str = "<name>";
+
+/// The label the [opening program](ProgramLanguage::bootstrap_program) opens the workspace tree
+/// under.
+///
+/// A constant rather than the walked path, for the reason the opening listing's selector is one:
+/// what the window opens holding is superseded by a later view of the same subject rather than
+/// stacked beside it, and every arm has to write the same label for that to hold.
+pub const WORKSPACE_TREE_VIEW: &str = "workspace tree";
 
 /// One program language gg can drive a responses-as-code agent in.
 ///
@@ -523,6 +549,31 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// without answering.
     fn checker(&self) -> Option<&'static str>;
 
+    /// **The library names this arm's own compiler said a program could not import**, read out of a
+    /// diagnostic this arm rendered.
+    ///
+    /// What a rejection carries beside the diagnostic is drawn from this arm's library set by
+    /// matching these names ([`supporting`]), so a program that misremembered one name is answered
+    /// with the modules that resemble it rather than with the whole inventory.
+    ///
+    /// The arm answers rather than the seam, for the reason [`shown`](diagnostics) is the arm's
+    /// number: the words are its compiler's. `rustc` writes ``unresolved import `serd` ``, `javac`
+    /// writes `package java.utl does not exist`, `swiftc` writes `no such module 'Algorithm'`, and
+    /// a shared parser over the union of those sentences would be gg guessing at eight compilers at
+    /// once. It reads this arm's **own rendering** — the string the model is about to be handed —
+    /// so what it parses is text this arm's tests already pin.
+    ///
+    /// The default is empty, which is the answer for an arm whose catalogue declares no library set
+    /// and for an arm whose compiler reports an unresolved import in no wording of its own. Such an
+    /// arm is answered with the whole set, as is any diagnostic whose names match nothing.
+    ///
+    /// A name may be any depth and carry the punctuation its compiler quoted it with; matching
+    /// normalises both sides.
+    fn unresolved_imports(&self, diagnostic: &str) -> Vec<String> {
+        let _ = diagnostic;
+        Vec::new()
+    }
+
     /// Whether this language's [prepare step](Self::prepare_program) invokes a compiler — which is
     /// to say whether it [names one](Self::checker). Derived rather than declared, so the two can
     /// never disagree.
@@ -552,13 +603,55 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// step does not is the [export list](PreparedModule::exports), and it reads that off the
     /// module the author wrote rather than off a namespace gg wrapped around it.
     ///
-    /// It is not a lesser path: a turn that reads three code skills compiles three modules beside
-    /// its own program, and every one of those compilations is concurrent with every other agent's.
+    /// It is not a lesser path: a turn that reads three code skills compiles three modules, and
+    /// every one of those compilations is concurrent with every other agent's.
+    ///
+    /// # This is where a module is compiled, and the only place
+    ///
+    /// `key` is the binding key the module is loaded under — the `<key>` of this arm's
+    /// [access spelling](Self::lib_access) — so a compiled arm builds the crate, class, package,
+    /// module or assembly under the name a program will really reach it by, once. What that build
+    /// produced goes into [`Workspace::open_module`](compile::Workspace::open_module) and is
+    /// [recorded](compile::Workspace::record_module) against the source it read, and the
+    /// [program step](Self::prepare_program) names it rather than building it again. A turn's
+    /// compile therefore covers the response however much the agent has loaded.
+    ///
+    /// The key is minted before this is called and is claimed only if this succeeds, so a module
+    /// that fails to prepare burns no key and the next read of the same thing gets the same one. A
+    /// read of bytes the key already holds is answered from the preparation that produced them, so
+    /// this is reached once per key per agent and a skill an agent uses on every turn costs one
+    /// compile for the session.
+    ///
+    /// A module is compiled against gg's surface and this arm's library set, so what it sees is
+    /// those and its own declarations. One loaded module reaches another the way any other caller
+    /// does, by being written to take what it needs as an argument.
+    ///
+    /// A build is recorded against the source this hands **back** — what
+    /// [`PreparedModule::source`] carries — because that is what a program's preparation is given
+    /// for the key. Every compiled arm hands back the author's own bytes, so for them the two are
+    /// one string.
     fn prepare_module(
         &self,
+        key: &str,
         source: &str,
         context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure>;
+
+    /// **The entries under the compile workspace's working directory this language's toolchain lays
+    /// out once for the agent**, which a preparation's reset leaves standing.
+    ///
+    /// Empty for every arm whose compiler is handed a set of files, which is all but one. It exists
+    /// for a toolchain that owns a *build tree* and keys its own incremental work on what is in it:
+    /// [PureScript](purescript)'s `purs` is given a project directory and a `--output` inside it,
+    /// and staging that project on every preparation would both cost 1,430 links a turn and throw
+    /// away the compiler's own record of what it had already built.
+    ///
+    /// What a language names here it lays out through
+    /// [`Workspace::stage_once`](compile::Workspace::stage_once), so the two facts — that it
+    /// is kept, and that it is made once — are declared in one place each and cannot come apart.
+    fn persistent_work(&self) -> &'static [&'static str] {
+        &[]
+    }
 
     /// The file extensions a code [skill](crate::skills) directory spells this language's module and
     /// on-use script with — `skill.<ext>`, `on-use.<ext>` — **most preferred first**, and never
@@ -762,8 +855,9 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// writing it out, for the same reason nothing else does.
     fn open_docs_views_statement(&self, names: &[&str]) -> String;
 
-    /// A whole **program** that lists each module in `modules` and opens a documentation view of
-    /// each name in `docs`, as this language spells and structures it.
+    /// A whole **program** that opens a `tree` of the workspace where `tree` names a depth, lists
+    /// each module in `modules`, and opens a documentation view of each name in `docs`, as this
+    /// language spells and structures it.
     ///
     /// It is gg's [opening turn](crate::bootstrap): the program is pushed into the agent's window as
     /// the assistant message the session opens on, and *then* prepared and run. That order is the
@@ -773,8 +867,16 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// documentation beside it was placed by that program's own calls rather than by gg reaching
     /// around it.
     ///
-    /// Two groups, in the order the model reads them: one search first, then every documentation
-    /// view. That search is a **whole-directory lookup** rather than a query — no query at all,
+    /// Three groups, in the order the model reads them: the workspace tree first, then one search,
+    /// then every documentation view — so the transcript reads as *here is where I am, here is what
+    /// I can call, here is how each call is spelled*.
+    ///
+    /// `tree` is `Some(depth)` when this agent's opening turn asks for a tree and holds the call.
+    /// The tree is opened as a text view under [`WORKSPACE_TREE_VIEW`], a constant rather than a
+    /// path, so a later program re-opening that label supersedes gg's rather than stacking a second
+    /// copy beside it. `None` emits no tree statement at all.
+    ///
+    /// Then the search. That search is a **whole-directory lookup** rather than a query — no query at all,
     /// every module in `modules` named at once as the filter, and an explicit limit of
     /// [`MAX_SEARCH_LIMIT`](crate::docs::MAX_SEARCH_LIMIT), because the default page would silently
     /// truncate the listing of a large module and a truncated listing is a function the agent never
@@ -802,7 +904,7 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     ///
     /// Not a concatenation of two generated statements: on several arms a program is one module,
     /// one `main` or one translation unit, so two programs do not add up to one.
-    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String;
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str], tree: Option<u32>) -> String;
 
     /// A **code module** in this language's own syntax, carrying `name` somewhere its prepared
     /// artifact will still hold it — the subject the gates over this seam drive this language's
@@ -1374,3 +1476,7 @@ pub fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::Launc
 #[cfg(test)]
 #[path = "language.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "language.reuse.test.rs"]
+mod reuse_tests;

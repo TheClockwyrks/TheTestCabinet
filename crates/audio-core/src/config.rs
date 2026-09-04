@@ -4,15 +4,20 @@
 //! `sfx-sample.config.json`, or `music.config.json`) so an operation and `render` need
 //! no format or path flags: the config fixes the clip's `sample_rate`, `channels`, and
 //! `max_duration_ms`, the fixed synthesis `seed`, the op-log/preview/output paths, the
-//! baked sample-pack or instrument-bank location, and an optional live-preview
-//! endpoint. One shape serves all three binaries — the sample-pack/bank fields are
-//! simply unset for the tools that do not use them.
+//! `name@version` of the sample pack or instrument bank the run plays, and an optional
+//! live-preview endpoint. One shape serves all three binaries, and the pack fields are
+//! unset for the tools that do not use them.
+//!
+//! A pack is addressed by ref alone. The bytes behind it come from the
+//! [staged palette](crate::staged) the run was given, so a config can only ever reach
+//! a pack the run's test case declared.
 
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
 use crate::format::{Channels, RenderParams};
+use crate::staged::PackKind;
 
 /// The fixed synthesis seed used when a config sets none, so a render is reproducible
 /// out of the box.
@@ -58,16 +63,12 @@ pub struct AudioConfig {
     /// Run-workspace-relative path the portable `.mid` is written to (`music` only).
     #[serde(default = "default_mid")]
     pub mid: PathBuf,
-    /// The baked sample pack this run mixes over (`name@version`), for `sfx-sample`.
+    /// The sample pack this run mixes over (`name@version`), for `sfx-sample`.
     #[serde(default)]
     pub sample_pack: Option<String>,
-    /// The baked instrument bank this run plays (`name@version`), for `music`.
+    /// The instrument bank this run plays (`name@version`), for `music`.
     #[serde(default)]
     pub instrument_bank: Option<String>,
-    /// The directory the baked sample/instrument audio and its manifest live in. Absent
-    /// when no pack is baked; the library then degrades to empty.
-    #[serde(default)]
-    pub pack_dir: Option<PathBuf>,
     /// The live-preview endpoint, when a viewer is observing this run.
     #[serde(default)]
     pub live: Option<LiveConfig>,
@@ -89,55 +90,21 @@ impl AudioConfig {
         self.channels.count() as u16
     }
 
-    /// The directory the baked sample/instrument audio lives in, resolving the
-    /// explicit [`Self::pack_dir`] first and otherwise falling back to the
-    /// `TCAB_INSTRUMENT_BANK_DIR` / `TCAB_SAMPLE_PACK_DIR` environment variable the
-    /// `music` / `sfx-sample` run-container images bake in.
+    /// The palette ref this run reads for `kind`: the config's own `sample_pack` or
+    /// `instrument_bank`, absent when the config names neither.
     ///
-    /// Core seeds only the pack/bank *name* (`sample_pack`/`instrument_bank`) into the
-    /// config, not the on-disk directory, so without this fallback the baked pack would
-    /// never load and the library would silently degrade to empty. A `music` run
-    /// prefers the instrument-bank dir; an `sfx-sample` run the sample-pack dir.
-    ///
-    /// A `music` image bakes **every** instrument bank as a per-name subdirectory under
-    /// the env var's root (`<root>/gm-lite/`, `<root>/cinematic/`, …), so the requested
-    /// `instrument_bank` selects which one this run plays (see `select_pack_dir`). An
-    /// image that bakes a single palette directly at the root still resolves correctly.
-    pub fn resolve_pack_dir(&self) -> Option<PathBuf> {
-        if let Some(dir) = &self.pack_dir {
-            return Some(dir.clone());
-        }
-        let (env_key, name) = if let Some(bank) = &self.instrument_bank {
-            ("TCAB_INSTRUMENT_BANK_DIR", Some(bank.as_str()))
-        } else if let Some(pack) = &self.sample_pack {
-            ("TCAB_SAMPLE_PACK_DIR", Some(pack.as_str()))
-        } else {
-            return None;
+    /// Core seeds the ref into an asset-generation run's config, so the one pack that
+    /// case declares is the pack the binary must load and is checked against. A
+    /// full-stack or game-jam run authors its own config; naming a pack there selects
+    /// one of the packs its case declares, and naming none takes that kind's
+    /// [staged default](crate::staged::StagedPacks::select).
+    pub fn pack_ref(&self, kind: PackKind) -> Option<String> {
+        let configured = match kind {
+            PackKind::SamplePack => &self.sample_pack,
+            PackKind::InstrumentBank => &self.instrument_bank,
         };
-        let root = std::env::var_os(env_key)
-            .filter(|v| !v.is_empty())
-            .map(PathBuf::from)?;
-        Some(select_pack_dir(root, name))
+        configured.as_ref().filter(|name| !name.is_empty()).cloned()
     }
-}
-
-/// Resolve the concrete pack directory within a baked palette `root`. A run-container
-/// image may bake several palettes as per-name subdirectories (`<root>/<name>/`); when
-/// the requested pack/bank `name` (`name@version`, so the part before `@`) has such a
-/// subdirectory carrying the loader's `pack.toml`, that subdirectory is selected.
-/// Otherwise the `root` itself is the pack directory — a single-palette image, the
-/// original layout — so an older image (or one that bakes just one bank) still works.
-fn select_pack_dir(root: PathBuf, name: Option<&str>) -> PathBuf {
-    if let Some(name) = name {
-        let bank = name.split('@').next().unwrap_or(name);
-        if !bank.is_empty() {
-            let sub = root.join(bank);
-            if sub.join("pack.toml").is_file() {
-                return sub;
-            }
-        }
-    }
-    root
 }
 
 fn default_sample_rate() -> u32 {

@@ -2,9 +2,9 @@
 //
 // WHERE THE THRESHOLD COMES FROM. `specs/ui.md`, The loops: "`music` is
 // looping on every frame exactly when `screen` is `playing`, `levelup`,
-// `chest`, or `paused` ... `title` and `howto` carry no music." "Exactly
-// when" makes the rule two-sided, and `howto` falls on the silent side, so
-// the threshold is `false` on every frame of it.
+// `chest`, or `paused` ... `title`, `howto`, and `almanac` carry no music."
+// "Exactly when" makes the rule two-sided, and `howto` falls on the silent
+// side, so the threshold is `false` on every frame of it.
 //
 // WHY THE WORLD IS POSED AS IT IS. `reset` to the title, then `howto` posed,
 // which `specs/instrumentation.md` makes the screen's own real entry:

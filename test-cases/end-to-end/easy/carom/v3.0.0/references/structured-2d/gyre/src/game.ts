@@ -5,11 +5,20 @@
 // level as the one the engine opens first, and `CaromGame` as the instance
 // class. The instance is the ONE framework object that outlives every level
 // transition (the engine constructs it once and keeps it), so it carries
-// exactly the state specs/state.md and specs/instrumentation.md need to
-// survive a transition — the last match's mode, the seeded generator, and the
-// debug driver's hold — and nothing that belongs to a level: the menus, the
-// match, and the field's bodies live in the worlds and actors the levels
-// build (src/state.ts).
+// exactly the state specs/state.md says must survive one — the mode of the
+// current or most recent match, the title menu's remembered selection, the
+// simulation clock, and the seeded generator — plus, while a transition is in
+// flight, the carry the incoming world is dressed from (`src/carry.ts`).
+// Everything scoped to the open world lives on that world's game state and its
+// actors (`src/state.ts`).
+//
+// THE FOUR ACTS THAT CROSS A LEVEL. Carom's six screens are split across two
+// levels, so starting a match, returning to the title, resetting, and setting a
+// screen the other level hosts are all level transitions — and each keeps a
+// different part of the state (specs/ui.md, specs/instrumentation.md). Each is
+// one method here: it builds the carry that says what survives and asks the
+// engine to open the level, and `worldOpened` writes that carry onto the world
+// the engine built. Nothing else in the build opens a level.
 //
 // `initialize` declares the cross-level surface once, before the start level
 // opens: every action in `ACTIONS` against its binding in `BINDINGS`, the four
@@ -25,25 +34,32 @@ import type {
 } from "@test-cabinet/structured-2d";
 import { DEFAULT_SEED, LEVELS } from "./constants";
 import { defineCues } from "./audio";
+import {
+  applyCarry,
+  captureCarry,
+  matchStartCarry,
+  titleCarry,
+  type CaromCarry,
+} from "./carry";
 import { createDebugSurface, type CaromDebug } from "./debug";
 import { diagnosticSources } from "./diagnostics";
 import { registerActions } from "./input";
 import { match, title } from "./levels";
-import { MatchMode } from "./match-mode";
 import { nextSign } from "./rng";
-import { MatchState, type Mode } from "./state";
+import { CaromState, levelOf, type Mode, type Screen } from "./state";
 import { COLOR } from "./theme";
 
 // The surface's types are part of the module contract, declared beside the
 // game that returns it, so they are exported from here whichever module
 // implements them.
 export type {
-  BallPatch,
   BallSnapshot,
   CaromDebug,
   CaromSnapshot,
+  MenuRect,
   ObstacleSnapshot,
-  PaddlePatch,
+  PaddleSnapshot,
+  TrailSampleSnapshot,
 } from "./debug";
 
 /**
@@ -52,57 +68,41 @@ export type {
  */
 export const BACKGROUND: string = COLOR.bg;
 
-/**
- * Who is driving the paddles (specs/instrumentation.md, "The driver").
- *
- * Inert during normal play: `holding` is false, the registered actions move
- * the human paddles and, in Solo, the AI moves the right one. Every pose on
- * the debug surface sets `holding`, after which BOTH paddles follow `vy`
- * through the real integrator and neither the input actions nor the AI move
- * them — until `reset()`. That is what lets a scenario be posed and replayed
- * exactly. The hold also pins the obstacle clock: while it lasts the
- * obstacles keep the pose the scenario chose rather than sweeping through the
- * shot (src/scenery.ts, specs/instrumentation.md). `ai` is the one exception:
- * in Solo it hands the right paddle back to the computer opponent for the
- * rest of the driven scenario.
- */
-export interface DriverState {
-  holding: boolean;
-  ai: boolean;
-  /** The vertical velocity held for each paddle, in units per second. */
-  vy: { left: number; right: number };
-}
-
-/** One pose held while the match level is still opening (src/debug.ts). */
-type HeldPose = (world: World) => void;
-
 export class CaromGame extends GameInstance<CaromDebug> {
   /**
-   * The mode the current match is played in. It survives the match-over
-   * screen (PLAY AGAIN keeps it) and returns to its title-screen value, Solo,
-   * whenever the title level opens.
+   * The mode the current or most recent match is played in. It survives the
+   * match-over screen (PLAY AGAIN keeps it) and returns to its title-screen
+   * value, Solo, whenever the game returns to the title.
    */
   mode: Mode = "solo";
 
   /**
-   * The seeded generator's whole state (src/rng.ts). `reset({ seed })` seeds
-   * it; every draw stores the follow-on state back here.
+   * The title menu's remembered selection: the entry that led away from the
+   * title, which every way back selects again (specs/ui.md). It survives a
+   * return to the title, which is the whole point of it.
    */
-  rngState: number = DEFAULT_SEED;
-
-  /** The debug driver's hold on the paddles. */
-  readonly driver: DriverState = {
-    holding: false,
-    ai: false,
-    vy: { left: 0, right: 0 },
-  };
+  titleIndex = 0;
 
   /**
-   * Poses made between `startMatch` and the match world beginning play,
-   * applied in call order by `worldOpened`. `null` while no debug-driven
-   * match open is pending.
+   * Accumulated simulation time, in seconds. Every update adds its delta,
+   * whatever the screen — the paused screen and the menus included — and only
+   * `reset` returns it to zero (specs/state.md).
    */
-  private heldPoses: HeldPose[] | null = null;
+  simTime = 0;
+
+  /** The seed the generator was last seeded from (src/rng.ts). */
+  seed: number = DEFAULT_SEED;
+
+  /** That generator's whole state. Every draw stores the follow-on state back. */
+  rngState: number = DEFAULT_SEED;
+
+  /**
+   * The state the next world to open is dressed from. It is set by whichever
+   * act asked for the transition and consumed by `worldOpened`, so it is live
+   * only for the length of one transition. The start level is dressed from the
+   * title-screen carry, which is what puts the game on its opening state.
+   */
+  private carried: CaromCarry = titleCarry(0);
 
   override initialize(api: InitApi): CaromDebug {
     registerActions(api);
@@ -114,31 +114,73 @@ export class CaromGame extends GameInstance<CaromDebug> {
   }
 
   /**
-   * Seed the incoming world: bind the instance into a match's state (the
-   * controllers and mode reach the driver and the generator through it),
-   * remember the mode the match plays in, and land any poses a scenario made
-   * while this world was opening.
+   * Dress the incoming world: bind the instance into its state — the world's
+   * controllers, mode, and components reach the state that outlives a world
+   * through it — and write the carry the act that opened this level built.
    */
   override worldOpened(world: World): void {
     const state = world.state;
-    if (!(state instanceof MatchState)) {
-      // Returning to the title restores every match figure to its
-      // title-screen value (specs/ui.md), and the mode's is Solo. The title
-      // also satisfies no held match poses; a menu-driven transition clears
-      // anything stale.
-      this.mode = "solo";
-      this.heldPoses = null;
-      return;
-    }
+    if (!(state instanceof CaromState)) return;
     state.game = this;
-    if (world.mode instanceof MatchMode) this.mode = world.mode.modeName;
-
-    const held = this.heldPoses;
-    this.heldPoses = null;
-    if (held !== null) for (const pose of held) pose(world);
+    applyCarry(world, this.carried);
   }
 
-  // ---- The primitives the debug surface (src/debug.ts) drives -------------
+  // ---- The four acts that open a level -----------------------------------
+
+  /**
+   * Start a match, exactly as SOLO and VERSUS on the title, RESTART on the
+   * pause menu, and PLAY AGAIN after a match all start one (specs/ui.md).
+   */
+  startMatch(mode: Mode): void {
+    this.mode = mode;
+    this.open(matchStartCarry(this.engine.world));
+  }
+
+  /**
+   * Return to the title, restoring every declared field to its title-screen
+   * value except the five that are kept, with `menuIndex` from `titleIndex`
+   * (specs/ui.md).
+   */
+  returnToTitle(): void {
+    this.mode = "solo";
+    this.open(titleCarry(this.titleIndex));
+  }
+
+  /**
+   * Return the whole game to its title-screen state, the five kept figures
+   * included — the surface's one lifecycle verb (specs/instrumentation.md).
+   * The mute bit is the engine's and is deliberately left alone.
+   */
+  reset(): void {
+    this.mode = "solo";
+    this.titleIndex = 0;
+    this.simTime = 0;
+    this.reseed(DEFAULT_SEED);
+    this.open(titleCarry(0));
+  }
+
+  /**
+   * Show `screen`, and change nothing else. Within one level that is a field on
+   * the game state; across the split it is a level transition carrying the
+   * whole of the live state, so the scores, the world, and the menu indices are
+   * as they were (specs/instrumentation.md).
+   */
+  setScreen(screen: Screen): void {
+    const world = this.engine.world;
+    if (levelOf(screen) === world.level) {
+      (world.state as CaromState).screen = screen;
+      return;
+    }
+    this.open(captureCarry(world, screen));
+  }
+
+  /** Hold the carry and ask the engine for the level its screen is hosted by. */
+  private open(carry: CaromCarry): void {
+    this.carried = carry;
+    this.engine.world.open(levelOf(carry.screen));
+  }
+
+  // ---- The seeded generator ----------------------------------------------
 
   /** Draw the serve's vertical sign from the seeded generator. */
   drawServeSign(): 1 | -1 {
@@ -147,65 +189,10 @@ export class CaromGame extends GameInstance<CaromDebug> {
     return sign;
   }
 
-  /** Reseed the generator, as `reset({ seed })` does. */
+  /** Seed the generator, as `setSeed` does (specs/instrumentation.md). */
   reseed(seed: number): void {
+    this.seed = seed;
     this.rngState = seed;
-  }
-
-  /** Take the paddles from the player and the AI, for a posed scenario. */
-  takeControl(): void {
-    this.driver.holding = true;
-  }
-
-  /** Hand the paddles back: `reset()`'s half of the driver contract. */
-  releaseControl(): void {
-    this.driver.holding = false;
-    this.driver.ai = false;
-    this.driver.vy.left = 0;
-    this.driver.vy.right = 0;
-  }
-
-  /**
-   * Open the match level, as choosing a mode from the menu does, and start
-   * holding poses for the world it will build.
-   */
-  openMatch(mode: Mode): void {
-    this.heldPoses = [];
-    this.engine.world.open(LEVELS.match, { mode });
-  }
-
-  /**
-   * Drop any held poses and pending match open. Returns whether one was
-   * pending, so `reset()` can route through the title transition instead.
-   */
-  cancelPendingMatch(): boolean {
-    const wasPending = this.heldPoses !== null;
-    this.heldPoses = null;
-    return wasPending;
-  }
-
-  /**
-   * A pose against the field's tagged actors: applied to the open world at
-   * once, or held for the opening match world.
-   */
-  poseField(pose: HeldPose): void {
-    if (this.heldPoses !== null) {
-      this.heldPoses.push(pose);
-      return;
-    }
-    pose(this.engine.world);
-  }
-
-  /**
-   * A pose that needs the match's state: applied at once when a match is
-   * open, held while one is opening, and dropped on the menus — where there
-   * is no match to pose.
-   */
-  poseMatch(pose: (state: MatchState) => void): void {
-    this.poseField((world) => {
-      const state = world.state;
-      if (state instanceof MatchState) pose(state);
-    });
   }
 }
 

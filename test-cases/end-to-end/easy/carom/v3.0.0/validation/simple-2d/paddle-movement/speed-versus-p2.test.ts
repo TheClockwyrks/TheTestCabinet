@@ -1,13 +1,17 @@
 // paddle-movement/speed-versus-p2 — player two's paddle speed in Versus.
 //
 // The mirror of `speed-versus-p1`: player two's movement key drives the right
-// paddle at the paddle speed, and leaves player one's alone. The menu route is
-// load-bearing: every posing operation (`startMatch` included) hands both
-// paddles to the debug driver, and only `reset` gives them back — a match
-// posed open would leave the held key dead.
+// paddle at the paddle speed, and leaves player one's alone.
+//
+// A match is opened on its countdown through the debug surface, which sets the
+// mode and the screen and takes NOTHING from the player, so the paddles respond
+// to held input exactly as they do for a player and no control operation is ever
+// called. The field is then emptied outright — no ball, no obstacles — because
+// the rate a held key moves a paddle at is the whole of what this decides; with
+// no ball to serve, the countdown runs on for the whole of the measured span.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PADDLE_SPEED } from "../../src/constants";
+import { PADDLE_SPEED } from "../constants";
 import {
   assertGreaterThan,
   assertLessThan,
@@ -17,8 +21,9 @@ import {
   captureReplay,
   createHarness,
   holdMove,
+  openCountdown,
+  poseWorld,
   speedOverTicks,
-  startWithKeys,
   type Harness,
 } from "../harness";
 
@@ -40,9 +45,10 @@ const STILL_MAX = 6;
  * before the key goes down and a paddle at rest after it comes up is what makes
  * the span between them read as the key's doing rather than as a jump cut.
  *
- * Both stretches fall inside the pre-serve countdown, so nothing else on the
- * field is moving while they run and nothing they do can reach an assertion —
- * `holdMove` takes its own before-and-after readings across the hold alone.
+ * Both stretches fall inside the countdown, on a field holding nothing but the
+ * two paddles, so nothing else is moving while they run and nothing they do can
+ * reach an assertion — `holdMove` takes its own before-and-after readings across
+ * the hold alone.
  */
 const REST_TICKS = 12; // 0.1 s at rest before the hold
 const SETTLED_TICKS = 24; // 0.2 s at rest after the release
@@ -58,7 +64,8 @@ afterEach(() => {
 });
 
 it("moves player two's paddle at the paddle speed, and only that paddle", async () => {
-  await startWithKeys(harness, "versus");
+  openCountdown(harness, "versus");
+  poseWorld(harness, { balls: [] });
 
   const moved = await captureReplay(harness, "move", async () => {
     await harness.advance(REST_TICKS);

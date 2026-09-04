@@ -9,12 +9,14 @@
 //! ```no_run
 //! use std::path::Path;
 //! use test_cabinet_code_analysis::{AnalysisRequest, analyze};
+//! use test_cabinet_code_analysis::walk::RootSeeding;
 //! use test_cabinet_core::CodeTreeBasis;
 //!
 //! let analysis = analyze(&AnalysisRequest {
 //!     root: Path::new("/runs/abc123/implementation"),
 //!     seed_commit: Some("6f03bfee…"),
 //!     tree_basis: CodeTreeBasis::PreValidation,
+//!     root_seeding: RootSeeding { engine_docs: true },
 //! });
 //! println!("{} files, {} cycles", analysis.summary.size.files, analysis.summary.graph.cycles);
 //! ```
@@ -85,6 +87,15 @@ pub struct AnalysisRequest<'a> {
     /// tree can only ever be [`PostValidation`](CodeTreeBasis::PostValidation), and saying
     /// so is what keeps a mixed corpus sliceable rather than silently incomparable.
     pub tree_basis: CodeTreeBasis,
+    /// What the host wrote into the tree's own root, which the tree cannot say for itself —
+    /// see [`RootSeeding`](walk::RootSeeding).
+    ///
+    /// The only caller that can answer is one that knows the run's engine, so
+    /// [`RootSeeding::default`](walk::RootSeeding::default) — floor nothing that cannot be
+    /// established — is what an ad-hoc analysis of a checkout passes. The cost of that
+    /// default is bounded: on the exact rung of the authored-set ladder, seeded material the
+    /// model never touched is excluded anyway.
+    pub root_seeding: walk::RootSeeding,
 }
 
 /// One authored file, as the analysis holds it between the walk and the rollup.
@@ -122,7 +133,7 @@ impl AnalyzedFile {
 /// error, because the caller is a post-run stage whose failure would leave a finished run
 /// with no analysis and no explanation of why.
 pub fn analyze(request: &AnalysisRequest<'_>) -> CodeAnalysisDocument {
-    let walk = walk::walk(request.root);
+    let walk = walk::walk(request.root, request.root_seeding);
     let authored = authored::resolve(request.root, request.seed_commit);
 
     let mut files = Vec::new();

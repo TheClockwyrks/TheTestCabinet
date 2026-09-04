@@ -1,7 +1,10 @@
-// Wick — the screens, menus, and overlays (specs/ui.md).
+// Wick — the screens, menus, and overlays (specs/ui.md). The almanac is
+// `src/render/almanac.ts`.
 //
 // Every piece of copy the specification fixes is drawn from `constants.ts`;
-// the layout and the styling are this build's.
+// the layout and the styling are this build's. Every menu is drawn over the
+// rectangles `src/menus.ts` gives it, which are the rectangles the pointer
+// answers, so the highlight a player sees is the target a click takes.
 
 import type { DeepReadonly } from "ts-essentials";
 import {
@@ -10,24 +13,39 @@ import {
   DAWN_TEXT,
   END_ITEMS,
   FALLEN_TEXT,
+  LAMP_OIL_DESCRIPTION,
   LAMP_OIL_ID,
   LAMP_OIL_NAME,
   LEVEL_LABEL,
   LEVEL_UP_TEXT,
   OFFER_NEW_TEXT,
   PASSIVES,
+  PASSIVE_DESCRIPTIONS,
   PAUSED_TEXT,
+  PAUSE_ITEMS,
   STAGE_CX,
   STAGE_H,
   STAGE_W,
   TAGLINE_TEXT,
   TITLE_ITEMS,
   TITLE_TEXT,
+  WEAPON_DESCRIPTIONS,
   WEAPON_NAMES,
   type OfferId,
 } from "../constants";
 import { formatClock } from "../diagnostics";
-import type { RunState, WickState } from "../game";
+import type { RunState, WickRect, WickState } from "../game";
+import {
+  END_MENU_Y,
+  MENU_TEXT_DROP,
+  PAUSE_MENU_Y,
+  TITLE_MENU_Y,
+  descriptionBaseline,
+  levelUpPanel,
+  offerBaseline,
+  offerRects,
+  stackRects,
+} from "../menus";
 import { runTime } from "../sim/enemies";
 import { isHeld, isPassiveId } from "../sim/progression";
 import { isBaseWeapon } from "../sim/weapons";
@@ -37,8 +55,6 @@ import { COLORS } from "./theme";
 import { drawLamplighterAt } from "./world";
 
 type View = DeepReadonly<WickState>;
-
-const MENU_LINE = 44;
 
 /** Quiet the world beneath a menu or an overlay. */
 export function dim(ctx: CanvasRenderingContext2D): void {
@@ -60,27 +76,33 @@ function panel(
   ctx.strokeRect(x, y, width, height);
 }
 
-/** A vertical menu, the item at `index` drawn distinctly. */
+/** A vertical menu over its rectangles, the item at `index` drawn distinctly. */
 function menu(
   ctx: CanvasRenderingContext2D,
   items: readonly string[],
   index: number,
-  y: number,
+  rects: readonly WickRect[],
 ): void {
   items.forEach((item, i) => {
+    const rect = rects[i];
     const active = i === index;
-    const line = y + i * MENU_LINE;
     if (active) {
       ctx.fillStyle = COLORS.highlight;
-      ctx.fillRect(STAGE_CX - 180, line - 26, 360, 36);
+      ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
     }
-    text(ctx, active ? `> ${item} <` : item, STAGE_CX, line, {
-      size: 24,
-      color: active ? COLORS.stage : COLORS.text,
-      bold: active,
-      align: "center",
-      shadow: !active,
-    });
+    text(
+      ctx,
+      active ? `> ${item} <` : item,
+      STAGE_CX,
+      rect.y + MENU_TEXT_DROP,
+      {
+        size: 24,
+        color: active ? COLORS.stage : COLORS.text,
+        bold: active,
+        align: "center",
+        shadow: !active,
+      },
+    );
   });
 }
 
@@ -107,7 +129,12 @@ export function drawTitle(ctx: CanvasRenderingContext2D, state: View): void {
     align: "center",
     spacing: 6,
   });
-  menu(ctx, TITLE_ITEMS, state.menuIndex, 420);
+  menu(
+    ctx,
+    TITLE_ITEMS,
+    state.menuIndex,
+    stackRects(TITLE_MENU_Y, TITLE_ITEMS.length),
+  );
 }
 
 const HOWTO_LINES = [
@@ -124,8 +151,11 @@ const HOWTO_LINES = [
   "",
   "The night ends at dawn, 10:00 on the clock. Reach it and you have won.",
   "",
-  "Move with the arrows or WASD. Enter or Space confirms, Escape goes back,",
-  "P pauses, and M mutes.",
+  "The almanac, opened from the title, lists every tool, trinket, enemy, and",
+  "pickup the night holds.",
+  "",
+  "Move with the arrows or WASD. Enter or Space confirms, Escape goes back or",
+  "pauses, P pauses, and M mutes. Every menu answers the mouse as well.",
 ];
 
 export function drawHowto(ctx: CanvasRenderingContext2D): void {
@@ -138,7 +168,7 @@ export function drawHowto(ctx: CanvasRenderingContext2D): void {
     spacing: 6,
   });
   HOWTO_LINES.forEach((line, i) => {
-    text(ctx, line, STAGE_CX, 170 + i * 28, {
+    text(ctx, line, STAGE_CX, 164 + i * 26, {
       size: 20,
       color: COLORS.text,
       align: "center",
@@ -158,6 +188,13 @@ function offerName(id: OfferId): string {
   return WEAPON_NAMES[id];
 }
 
+/** The line beneath the offer list: what the highlighted offer does. */
+function offerDescription(id: OfferId): string {
+  if (id === LAMP_OIL_ID) return LAMP_OIL_DESCRIPTION;
+  if (isPassiveId(id)) return PASSIVE_DESCRIPTIONS[id];
+  return WEAPON_DESCRIPTIONS[id];
+}
+
 function offerTag(run: RunState, id: OfferId): string {
   if (!isHeld(run, id)) return OFFER_NEW_TEXT;
   const level = isPassiveId(id)
@@ -170,8 +207,8 @@ export function drawLevelUp(ctx: CanvasRenderingContext2D, state: View): void {
   dim(ctx);
   const { run } = state;
   const rows = run.offers.length;
-  const height = 120 + rows * 72;
-  const top = (STAGE_H - height) / 2;
+  const { top, height } = levelUpPanel(rows);
+  const rects = offerRects(rows);
   panel(ctx, STAGE_CX - 300, top, 600, height);
   text(ctx, LEVEL_UP_TEXT, STAGE_CX, top + 52, {
     size: 30,
@@ -181,11 +218,12 @@ export function drawLevelUp(ctx: CanvasRenderingContext2D, state: View): void {
     spacing: 3,
   });
   run.offers.forEach((id, i) => {
-    const y = top + 96 + i * 72;
+    const y = offerBaseline(top, i);
+    const rect = rects[i];
     const active = i === state.menuIndex;
     if (active) {
       ctx.fillStyle = COLORS.highlight;
-      ctx.fillRect(STAGE_CX - 270, y - 8, 540, 60);
+      ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
     }
     drawIcon(ctx, id, offerName(id), STAGE_CX - 230, y + 22, 40);
     text(ctx, offerName(id), STAGE_CX - 190, y + 30, {
@@ -201,6 +239,15 @@ export function drawLevelUp(ctx: CanvasRenderingContext2D, state: View): void {
       shadow: !active,
     });
   });
+  const highlighted = run.offers[state.menuIndex];
+  if (highlighted === undefined) return;
+  text(
+    ctx,
+    offerDescription(highlighted),
+    STAGE_CX,
+    descriptionBaseline(top, rows),
+    { size: 18, color: COLORS.textDim, align: "center" },
+  );
 }
 
 export function drawChest(ctx: CanvasRenderingContext2D, state: View): void {
@@ -243,20 +290,21 @@ export function drawChest(ctx: CanvasRenderingContext2D, state: View): void {
   });
 }
 
-export function drawPaused(ctx: CanvasRenderingContext2D): void {
+export function drawPaused(ctx: CanvasRenderingContext2D, state: View): void {
   dim(ctx);
-  text(ctx, PAUSED_TEXT, STAGE_CX, 360, {
+  text(ctx, PAUSED_TEXT, STAGE_CX, 300, {
     size: 64,
     color: COLORS.highlight,
     bold: true,
     align: "center",
     spacing: 10,
   });
-  text(ctx, "P resumes, Escape abandons the night", STAGE_CX, 410, {
-    size: 20,
-    color: COLORS.textDim,
-    align: "center",
-  });
+  menu(
+    ctx,
+    PAUSE_ITEMS,
+    state.menuIndex,
+    stackRects(PAUSE_MENU_Y, PAUSE_ITEMS.length),
+  );
 }
 
 export function drawEnd(ctx: CanvasRenderingContext2D, state: View): void {
@@ -281,5 +329,10 @@ export function drawEnd(ctx: CanvasRenderingContext2D, state: View): void {
       align: "center",
     });
   });
-  menu(ctx, END_ITEMS, state.menuIndex, 450);
+  menu(
+    ctx,
+    END_ITEMS,
+    state.menuIndex,
+    stackRects(END_MENU_Y, END_ITEMS.length),
+  );
 }

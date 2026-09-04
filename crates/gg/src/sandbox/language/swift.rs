@@ -126,11 +126,11 @@
 //! See [`source`] for the `public` gg writes into a module's own file, which is the whole of what it
 //! writes there.
 //!
-//! A module is compiled **twice**, and that is deliberate rather than an oversight — once alone when
-//! it is read, only to be checked, and once as its own module beside every program that uses it.
-//! Without the first compile, a module that does not build would take down every program the agent
-//! wrote from then on, with the diagnostic landing against the turn's own program in a file the model
-//! never saw. See [`compile::compile_module`].
+//! A module is compiled **once**, at the read that binds it, into a Swift module named for the key.
+//! Its `.swiftmodule` and its object are kept in the agent's compile workspace, and every later
+//! program is given the `-I` that resolves them and the object to link. Compiling it at the read is
+//! what puts a module author's diagnostic there rather than against the turn's own program in a file
+//! the model never saw. See [`compile::compile_module`].
 
 use std::sync::OnceLock;
 
@@ -140,10 +140,12 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, LIB_ACCESS_NAME, PrepareContext, PrepareFailure, PreparedModule,
-    PreparedProgram, ProgramLanguage, spell,
+    PreparedProgram, ProgramLanguage, WORKSPACE_TREE_VIEW, spell,
 };
 use crate::docs::MAX_SEARCH_LIMIT;
-use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::sandbox::operations::{
+    DOCS_SEARCH, FILES_TREE, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT,
+};
 
 #[path = "swift.compile.rs"]
 pub(super) mod compile;
@@ -212,6 +214,12 @@ impl ProgramLanguage for Swift {
         Some("swiftc")
     }
 
+    /// [What `swiftc` says a program could not import](compile::unresolved_imports), read out of the
+    /// `no such module` wording this arm's own diagnostics carry.
+    fn unresolved_imports(&self, diagnostic: &str) -> Vec<String> {
+        compile::unresolved_imports(diagnostic)
+    }
+
     /// Unpack the embedded guest archive and library set now, so the first code turn does not.
     ///
     /// The whole of this arm's warm-up: 185 KB and 3.4 MB decompressed, once per machine. There is
@@ -231,10 +239,11 @@ impl ProgramLanguage for Swift {
     /// guest could load on its own.
     fn prepare_module(
         &self,
+        key: &str,
         source: &str,
         context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {
-        compile::compile_module(source, context)
+        compile::compile_module(key, source, context)
     }
 
     /// `.swift`, and nothing else. Nothing else in the registry compiles Swift.
@@ -323,12 +332,15 @@ impl ProgramLanguage for Swift {
     /// [One search, one array and one `for` loop, every call written with
     /// `try`](self::bootstrap_program), with both calls resolved from this language's own
     /// catalogue.
-    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str], tree: Option<u32>) -> String {
         bootstrap_program(
             &spell(self, DOCS_SEARCH),
             &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            &spell(self, FILES_TREE),
+            &spell(self, VIEWS_OPEN_TEXT),
             modules,
             docs,
+            tree,
         )
     }
 
@@ -510,9 +522,19 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
 pub(super) fn bootstrap_program(
     search: &str,
     open_docs_view: &str,
+    tree_call: &str,
+    open_text: &str,
     modules: &[&str],
     docs: &[&str],
+    tree: Option<u32>,
 ) -> String {
+    let walked = match tree {
+        None => String::new(),
+        Some(depth) => format!(
+            "try {open_text}({}, body: {tree_call}(depth: {depth}))\n\n",
+            serde_json::Value::String(WORKSPACE_TREE_VIEW.to_string())
+        ),
+    };
     let paths: Vec<String> = modules
         .iter()
         .map(|path| serde_json::Value::String((*path).to_string()).to_string())
@@ -535,7 +557,7 @@ pub(super) fn bootstrap_program(
     format!(
         "{SURFACE_IMPORT}\n\
          \n\
-         {lookup}{functions}for name in functions {{\n    try {open_docs_view}(name)\n}}\n"
+         {walked}{lookup}{functions}for name in functions {{\n    try {open_docs_view}(name)\n}}\n"
     )
 }
 

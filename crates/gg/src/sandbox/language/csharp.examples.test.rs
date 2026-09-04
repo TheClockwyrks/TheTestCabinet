@@ -182,13 +182,21 @@ fn every_csharp_example_a_model_is_shown_compiles() {
     // worked programs were exactly what that rewrite removed. The prompt now writes no ```csharp
     // fence at all, so every example counted here comes from the **catalogue**, whose fences are the
     // `<code>` elements on the SDK and are the code a model is shown when it opens a documentation
-    // view. That half is untouched by the rewrite, and it is what this number is a floor on: ten is
-    // exactly what the catalogue carries today, so deleting the last one fails the gate.
+    // view. That half is what this number is a floor on.
+    //
+    // It came down again, from ten to six, when the [SDK documentation
+    // policies](.claude/skills/gg-sdk-documentation/SKILL.md) were applied to this arm. Four of the
+    // ten were deleted outright — `Views.OpenText`'s, `Docs.Search`'s, `Shell.Run`'s and
+    // `ApiException`'s — because each one's body called INTO ANOTHER MODULE to show its result, and
+    // a documentation view for a module a run did not bind is a page the model was never given.
+    // None of the four taught an idiom its own prose did not already state, so none was replaced.
+    // `Files.ReadFile`'s was kept and rewritten to stay inside `Files`, because that one carries the
+    // closed-union narrowing the register gate names as real teaching.
     //
     // Lowering a floor is the right move only when the examples were deliberately deleted in the
     // same change, as they were here; read the templates before touching this number again.
     assert!(
-        snippets.len() >= 10,
+        snippets.len() >= 6,
         "only {} fenced C# examples were found across the prompt, the notice and the catalogue. A \
          ```csharp fence lost its tag, or an SDK `<code>` element lost its example — either way \
          this gate is no longer reading what a model is shown.",
@@ -217,7 +225,7 @@ fn every_csharp_example_a_model_is_shown_compiles() {
         ));
     }
 
-    if let Err(failure) = compile_program(&program, &[], &PrepareContext::new()) {
+    if let Err(failure) = compile_program(&program, &[], &PrepareContext::detached()) {
         panic!(
             "gg shows a model C# that does not compile. csc said:\n\n{failure:?}\n\nThe program \
              every example was gathered into, with a comment naming where each came \

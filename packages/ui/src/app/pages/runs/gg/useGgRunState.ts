@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useWorkers } from "../../../../client/context";
 import type { HarnessEvent, RunOutcome } from "../../../../client/types";
+import type { SystemStage, SystemStatus } from "@test-cabinet/run-record/event";
 import type { CostMetrics, TokenMetrics } from "@test-cabinet/run-record";
 import type {
   GgAgentApi,
@@ -62,6 +63,28 @@ import { apiCallSpellings } from "./ggSurfaceCalls";
 export type GgMonitorStatus =
   | { kind: "running" }
   | { kind: "done"; outcome: RunOutcome };
+
+// The setup stage the orchestrator has most recently reported — the image pull, the
+// container start, the harness install and probe, and the test case's own init command,
+// each of which announces itself `started` and then `completed`/`failed`.
+//
+// It exists because a gg run is silent until it is set up: `session_started` is gg's
+// FIRST event, so everything before it belongs to the orchestrator, and a monitor that
+// reads only gg's stream cannot tell "the dispatcher has not claimed this yet" from
+// "the test case's init command is nine minutes into installing a browser". Both look
+// like an empty gg stream, and only the second is worth waiting through. `message` is the
+// orchestrator's own wording for the stage at its status (`SystemStage::describe` in
+// crates/core), carried verbatim so the phrasing has one source rather than a copy here
+// that drifts from it.
+//
+// Teardown is deliberately NOT folded in: it is the one system stage that follows the
+// session rather than preceding it, so letting it land here would make a finishing run
+// read as a starting one.
+export interface SetupStage {
+  stage: SystemStage;
+  status: SystemStatus;
+  message: string;
+}
 
 // The visual tone of a feed row, driving the label/body accent in the monitor's
 // stylesheet so a glance reads the shape of the run (agent talk vs tool calls vs
@@ -956,6 +979,9 @@ export interface GgRunState {
   // the runtime read-out empty rather than counting the image pull against a limit that
   // is not yet ticking.
   executionStartedAt: string | null;
+  // How far the orchestrator has got in setting the run up (see {@link SetupStage}) — what
+  // the monitor reports while gg itself has said nothing yet.
+  setupStage: SetupStage | null;
 
   // --- Per-agent slices ----------------------------------------------------
   // The same fold run over each agent's own slice of the stream, keyed by agent id
@@ -1388,6 +1414,11 @@ export interface DerivedGgState {
   // When setup ended and the run began executing — the origin the wall clock is measured
   // from, matching the host's runtime cap. Null while the run is still in setup.
   executionStartedAt: string | null;
+  // The newest setup stage the orchestrator reported (see {@link SetupStage}); null before
+  // the first one arrives, which is the only moment at which nothing at all is known about
+  // the run. It keeps its last value once the run is executing, so read it against
+  // `sawSession` rather than on its own.
+  setupStage: SetupStage | null;
   // How many turns this partition took — one per `turn_started` event, which gg
   // emits once per model request/response cycle whatever the capabilities are (so it
   // is always available). Over the whole stream it is the run's total turns; over one
@@ -1863,6 +1894,9 @@ export function reduceGgEvents(
   // the moment setup finished, which is a truer origin than that first event: gg downloads
   // its own release inside the capped future, before it can emit anything.
   let lastSetupTimestamp: string | null = null;
+  // That same event's stage and status, which is what a monitor reports while the run is
+  // still being set up and gg has yet to emit anything of its own.
+  let setupStage: SetupStage | null = null;
   // Each agent's stream span — the first and last event it emitted — and, separately, the
   // moment it *ended* (its `agent_returned`, or the `agent_status` that took it terminal).
   // The two are distinct: an agent's last event is not its end (a returned agent emits
@@ -2069,6 +2103,11 @@ export function reduceGgEvents(
     // one `system` stage that is not, and it only ever follows the drive.
     if (event.type === "system" && event.stage !== "teardown") {
       lastSetupTimestamp = event.timestamp;
+      setupStage = {
+        stage: event.stage,
+        status: event.status,
+        message: event.message,
+      };
     } else if (executionStartedAt == null) {
       executionStartedAt = lastSetupTimestamp ?? event.timestamp;
     }
@@ -2702,6 +2741,7 @@ export function reduceGgEvents(
     firstTimestamp,
     lastTimestamp,
     executionStartedAt,
+    setupStage,
     turnCount,
     errors,
     usage,

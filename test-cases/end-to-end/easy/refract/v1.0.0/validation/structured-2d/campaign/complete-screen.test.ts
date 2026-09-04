@@ -10,6 +10,15 @@
 // re-solving board 24 leaves no board unsolved, so it lands on `complete`
 // again, which is also how the screen's own entry rule is held a second and
 // third time. Every board stays unlocked and solved throughout.
+//
+// THE ORDER OF THE TWO EXITS. `back` is read before the second choice, so the
+// whole walk stays inside the campaign and never passes through the title. Read
+// the other way round, the `back` reading has to come back from the title
+// through the menu and a confirm, which is not this item's surface: a build that
+// clears campaign progress on entering a mode has board 24 locked again by then,
+// its confirm is refused, and the item fails for campaign-progress-persists's
+// defect rather than its own. simple-2d and none already order the two exits
+// this way.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { CAMPAIGN_LENGTH } from "../../src/constants";
@@ -23,7 +32,7 @@ import {
   tapAction,
   type Harness,
 } from "../harness";
-import { moveHighlightTo, moveTitleMenuTo } from "./support";
+import { moveHighlightTo } from "./support";
 
 let h: Harness;
 
@@ -93,6 +102,12 @@ it("ends on complete, offers select then title, and keeps every board solved", a
     "every board stays solved",
   );
 
+  // The back action goes to select, read on a complete screen of its own.
+  await resolveLastBoard(h);
+  await tapAction(h, "back");
+  await h.advance(1);
+  assertEqual(h.snapshot().screen, "select", "back on complete goes to select");
+
   // Second choice: back to title. Reached on a fresh complete screen; the
   // menu holds exactly two choices, so down wraps after the second.
   await resolveLastBoard(h);
@@ -108,16 +123,6 @@ it("ends on complete, offers select then title, and keeps every board solved", a
   await tapAction(h, "confirm");
   await h.advance(1);
   assertEqual(h.snapshot().screen, "title", "the second choice goes to title");
-
-  // The back action goes to select.
-  await moveTitleMenuTo(h, 0); // CAMPAIGN is the first title item
-  await tapAction(h, "confirm");
-  await h.advance(1);
-  assertEqual(h.snapshot().screen, "select");
-  await resolveLastBoard(h);
-  await tapAction(h, "back");
-  await h.advance(1);
-  assertEqual(h.snapshot().screen, "select", "back on complete goes to select");
 
   // And afterward the course is still whole.
   assertEqual(h.snapshot().unlockedCount, CAMPAIGN_LENGTH);

@@ -13,6 +13,13 @@
 // declared state in `src/game.ts`. That matters: `reset()` restores the declared
 // fields and knows nothing about a filter, so a remembered perception would
 // survive a reset and stop a scenario replaying identically.
+//
+// ITS TWO FACULTIES ARE THEMSELVES DECLARED STATE (specs/state.md), each gated on
+// its own by the debug surface. Tracking is what SENSES the ball and chooses a
+// target: without it the AI targets `AI_HOME_Y` whatever the ball is doing, so a
+// scenario can watch a body that moves but does not see. Movement is what TRAVELS
+// toward that target: without it the paddle stands still with a `vy` of zero, so a
+// scenario can watch a mind that sees but does not move.
 
 import {
   AI_DEADZONE,
@@ -22,25 +29,34 @@ import {
   AI_SPEED,
 } from "./constants";
 import { integratePaddle } from "./entities";
-import type { BallState, PaddleState } from "./game";
+import type { AiState, BallState, PaddleState } from "./game";
 
 /**
  * Move the AI's paddle for one frame.
  *
  * `ball` is the one ball the AI is defending, `null` when nothing threatens its
- * goal. `active` is true only while the field is live — while the balls are
- * waiting on their home points there is nothing to track, so the paddle eases
- * home.
+ * goal. `live` is true only while the screen is `playing`; during the opening
+ * countdown there is nothing to defend, so the paddle eases home.
  */
 export function updateAi(
   paddle: PaddleState,
   ball: BallState | null,
-  active: boolean,
+  live: boolean,
+  ai: AiState,
   dt: number,
 ): void {
+  // Without the movement faculty the paddle simply does not travel: it is left
+  // exactly where it is, reporting the zero velocity that is the truth about it.
+  if (!ai.movement) {
+    paddle.vy = 0;
+    return;
+  }
+
   let target = AI_HOME_Y;
   let deadzone = AI_HOME_DEADZONE;
-  if (active && ball !== null && ball.vx > 0) {
+  // Without the tracking faculty the ball is not sensed at all, so the target
+  // stays home however the ball is flying.
+  if (ai.tracking && live && ball !== null) {
     // The lagged perception: the ball as it was AI_REACT seconds ago.
     target = ball.y - ball.vy * AI_REACT;
     deadzone = AI_DEADZONE;

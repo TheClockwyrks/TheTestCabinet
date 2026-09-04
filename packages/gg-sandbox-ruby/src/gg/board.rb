@@ -3,16 +3,11 @@
 module GG
   # The epic and issue board, on which work is decomposed into dispatchable units.
   #
-  # An issue is heavyweight and self-contained: its scope, non-scope and completion criteria are
-  # exactly what a delegated child agent is briefed from, which is why `create_issue` asks for more
-  # than a task does. Its five required arguments are positional and the four that shape it are
-  # keywords, which is what a call with this many strings in it should look like in Ruby.
+  # An issue is self-contained: it carries its own scope, non-scope and completion criteria, which
+  # is what a child agent is briefed from.
   #
-  # Three lowerings live here, all of one kind: a program writes `GG::Core::UNCHANGED`, `nil` or a
-  # value and the wrapper turns that into the membrane's tagged variant. A description is a
-  # three-way text edit, an epic id is a three-way assignment — leave it out to keep the grouping,
-  # `nil` to ungroup, an id to regroup — and a status is a Symbol on this side and `in-progress` on
-  # the other.
+  # A description is a three-way edit and an epic id a three-way assignment: `GG::Core::UNCHANGED`,
+  # or leaving the argument out, keeps what is there; `nil` clears it; a value replaces it.
   module Board
     extend Surface::Operations
 
@@ -65,33 +60,28 @@ module GG
     end
     operation :create_epic, "board.create_epic", tool: "create_epic"
 
-    # Create a self-contained, dispatchable issue, and hand back the id the board **assigned** it.
+    # Create a self-contained, dispatchable issue, and hand back the id the board assigned it.
     #
     # The id is numbered under its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it
-    # has no epic; it is the board's to choose, so the returned one is what blocks a later issue on
-    # this one or waits for it. The scope, non-scope and completion criteria are what a child agent
-    # is briefed from, so they are written for a reader with no other context.
+    # has no epic. It is the board's to choose.
     #
     # @param title [String] A short line naming the work.
     # @param in_scope [String] What the issue covers, precisely. Part of the brief a child agent is
     #   given.
-    # @param out_of_scope [String] What the issue deliberately does not cover, so the work stops
-    #   where it was meant to.
-    # @param completion_criteria [String] What must be true for the issue to be done. It is what a
-    #   reviewer checks the work against.
-    # @param agent [String] The agent the issue is dispatched to. It must be one this agent may
-    #   spawn.
-    # @param description [String, nil] What the work is, written for a child agent with no other
-    #   context.
+    # @param out_of_scope [String] What the issue deliberately does not cover.
+    # @param completion_criteria [String] What must be true for the issue to be done.
+    # @param agent [String] The agent profile the issue is dispatched to, from the ones the system
+    #   prompt lists.
+    # @param description [String, nil] What the work is.
     # @param blocked_by [Array<String>] The ids of every issue that must be done before this one.
     #   Defaults to none.
     # @param epic_id [String, nil] The id of an existing epic to group it under. Leave it out to
     #   leave it ungrouped and numbered under `ISSUE`.
-    # @param reviewers [Array<String>] The agents that must approve the work, from the same set this
-    #   agent may spawn. Required when this run's reviewers feature is on.
+    # @param reviewers [Array<String>] The agent profiles that must approve the work, from the same
+    #   set. Required when this run's reviewers feature is on.
     # @return [GG::Board::IssueCreated] the id the board assigned, and the board budget
-    # @raise [GG::Core::ApiError] `:invalid_argument` when `agent` or a reviewer is not one to
-    #   assign, and `:conflict` on a blocker edge that would close a cycle.
+    # @raise [GG::Core::ApiError] `:invalid_argument` when `agent` or a reviewer is not one this run
+    #   declares, and `:conflict` on a blocker edge that would close a cycle.
     def self.create_issue(title, in_scope, out_of_scope, completion_criteria, agent,
                           description: nil, blocked_by: [], epic_id: nil, reviewers: [])
       created = Wire.call("create_issue", "board", "createIssue", [
@@ -185,13 +175,11 @@ module GG
 
     # Register a wait on an issue and hand back an acknowledgement.
     #
-    # It does not block inside the program — it records the wait and returns at once, so the rest of
-    # the program still runs; the suspension happens after the program ends, between turns. The run
-    # then suspends, freeing this agent's slot for others, until the issue is terminal — done, or
-    # failed if its assigned agent could not complete it — and resumes on the next turn. It is how
-    # the next turn's work is sequenced behind an issue this session depends on.
+    # It does not block inside the program: it records the wait and returns at once, so the rest
+    # of the program still runs. The run suspends once the program ends, until the issue is
+    # terminal — done, or failed — and resumes on the next turn.
     #
-    # @param id [String] The issue to wait on. It may not be the issue this agent was assigned to
+    # @param id [String] The issue to wait on. It may not be the issue this session was assigned to
     #   implement.
     # @return [String] the acknowledgement, which says what happens once the program ends
     # @raise [GG::Core::ApiError] `:not_found` for an unknown id.
@@ -202,8 +190,7 @@ module GG
 
     # Where an issue stands.
     #
-    # Every arm is a Symbol, so a call may name the constant or write the literal:
-    # `GG::Board::IssueStatus::DONE` and `:done` are the same value.
+    # Every arm is a Symbol: `GG::Board::IssueStatus::DONE` and `:done` are the same value.
     module IssueStatus
       # Not started, and dispatchable once its blockers are done.
       OPEN = :open
@@ -289,10 +276,10 @@ module GG
         freeze
       end
 
-      # Register a wait on this issue, which suspends the agent between turns until it is terminal.
+      # Register a wait on this issue, which suspends the session between turns until it is
+      # terminal.
       #
-      # `GG::Board.wait_for_issue` with the id already supplied, for the common case where the issue
-      # was just created and the next turn's work is sequenced behind it.
+      # The wait is recorded and the program runs on; the suspension happens once the program ends.
       #
       # @return [String] the acknowledgement, which says what happens once the program ends
       # @raise [GG::Core::ApiError] `:not_found` when the issue has since been removed.

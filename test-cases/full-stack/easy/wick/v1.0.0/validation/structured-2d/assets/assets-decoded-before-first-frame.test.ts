@@ -76,7 +76,11 @@ it("decodes every produced file during initialization", async () => {
   captureStill(h, "ready");
 
   assertEqual(framesDrawn, 0, "frames the build had drawn when this was read");
-  assertLength(failures, 0, `produced files the build failed to load: ${failures.join("; ")}`);
+  assertLength(
+    failures,
+    0,
+    `produced files the build failed to load: ${failures.join("; ")}`,
+  );
   for (const file of REQUIRED) {
     if (!loaded.has(file)) {
       fail(

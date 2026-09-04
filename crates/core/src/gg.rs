@@ -1822,13 +1822,36 @@ pub fn is_valid_agent_slug(slug: &str) -> bool {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgCapabilitySet {
-    /// The name of a saved preset this set was assembled from (for example
-    /// `"minimal"`, `"full"`, or `"planning-A"`), when it is a named preset rather
-    /// than a hand-assembled configuration. A study is a sweep over presets, so this
-    /// records which one produced a run.
+    /// The **name** a saved configuration carried at launch (for example `"minimal"`,
+    /// `"full"`, or `"planning-A"`), when this set was launched from one rather than
+    /// assembled by hand. A study is a sweep over configurations, so this records which
+    /// one produced a run.
+    ///
+    /// Display text and a slicing key: it is what the run log shows, what the
+    /// [query language](https://docs.testcabinet.ai/gg/analysis/query-language/) reads as
+    /// `preset`, and what a comparison groups by. It is not identity — a name is rewritten
+    /// freely and two configurations may share one, so what a run is *attributed* to is
+    /// [`preset_id`](Self::preset_id).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub preset: Option<String>,
+    /// The **id** of the saved configuration this set was launched from, when it was
+    /// launched from one rather than assembled by hand.
+    ///
+    /// This is what identifies a run's
+    /// [coverage cell](https://docs.testcabinet.ai/components/backend/coverage/), and
+    /// [`preset`](Self::preset) beside it is what a person reads: the id is minted once and
+    /// never rewritten, so renaming a configuration costs a plan nothing and two
+    /// configurations that happen to agree on a name stay two cells.
+    ///
+    /// Recording it is consistent with gg's rule that launching resolves a configuration's
+    /// internal ids away. That rule covers the ids of [agent profiles](GgAgentConfig::id),
+    /// which are references the model reads back by slug, and nothing in a launched set
+    /// points at the configuration's own id — the model is never shown it. It rides along
+    /// as provenance, so a run can be attributed to the configuration that produced it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub preset_id: Option<String>,
     /// The agent profiles this run is configured with, each with its own capabilities,
     /// model binding, and delegation graph. **The first is the [root](Self::root)** — it
     /// drives the top-level session and is the default profile for issue dispatch and
@@ -1897,6 +1920,7 @@ impl Default for GgCapabilitySet {
     fn default() -> Self {
         Self {
             preset: None,
+            preset_id: None,
             agents: default_agents(),
             model_slots: Vec::new(),
             limits: GgRunLimits::authored(),
@@ -1921,6 +1945,7 @@ impl GgCapabilitySet {
     pub fn minimal(model_id: impl Into<String>) -> Self {
         Self {
             preset: Some("minimal".to_string()),
+            preset_id: None,
             agents: vec![GgAgentConfig {
                 model_id: model_id.into(),
                 ..GgAgentConfig::root()
@@ -2158,6 +2183,98 @@ impl GgCapabilitySet {
             }
         }
         out
+    }
+
+    /// This set with every deferred binding resolved to the model the launcher collected for
+    /// the [launch input](Self::launch_slots) that fills its slot, and every slot declaration
+    /// dropped — the **launched** form of a configuration's model bindings.
+    ///
+    /// `models` is the launcher's answer to [`launch_slots`](Self::launch_slots), keyed by input
+    /// name. Three things move: an agent whose binding is
+    /// [deferred](GgAgentConfig::model_slot) takes the model its slot was filled with,
+    /// [compaction](COMPACTION_PARAM_MODEL_SLOT)'s handoff param is rewritten to the
+    /// [`model`](COMPACTION_PARAM_MODEL) key gg actually reads, and both levels of
+    /// [declaration](GgModelSlot) go. What comes back is a fully pinned set, which is the only
+    /// shape a run records: nothing downstream of a launch has a deferral left to resolve.
+    ///
+    /// A binding the configuration **pinned itself** is untouched — it was decided when the
+    /// configuration was written and is never asked about again — and an input the launcher left
+    /// blank binds *nothing* rather than a model id of `""`: the agent stays
+    /// [unresolved](GgCapabilitySet::unresolved_agents), which is the launch refusal it should be,
+    /// and an unfilled handoff param goes back to being absent, which is the documented arm where
+    /// the agent condenses on its own model. Deciding which of those two an empty answer means is
+    /// the caller's, not this function's.
+    ///
+    /// Mirrors the console's `bindModelSlots`, so a run the scheduler enqueues and a run an
+    /// operator launches from the same configuration and the same models are the same run.
+    pub fn bind_launch_slots(&self, models: &BTreeMap<String, String>) -> GgCapabilitySet {
+        // Which model fills each agent slot, resolved through the one set of inputs the launcher
+        // was asked for, so a slot reached by a configuration slot and one reached on its own are
+        // bound by exactly the same rule.
+        let mut model_for: BTreeMap<(&str, &str), &str> = BTreeMap::new();
+        let slots = self.launch_slots();
+        for input in &slots {
+            let model = models
+                .get(&input.name)
+                .map(|model| model.trim())
+                .unwrap_or_default();
+            for target in &input.targets {
+                model_for.insert((target.agent.as_str(), target.slot.trim()), model);
+            }
+        }
+        let agents = self
+            .agents
+            .iter()
+            .map(|agent| {
+                // A target names the profile's internal id, falling back to the slug for a set
+                // that carries none — the same key a passthrough input is filled by.
+                let key = agent.id.as_deref().unwrap_or(&agent.slug);
+                let model_of = |slot: &str| {
+                    model_for
+                        .get(&(key, slot.trim()))
+                        .copied()
+                        .unwrap_or_default()
+                        .to_string()
+                };
+                let mut bound = agent.clone();
+                for capability in &mut bound.capabilities {
+                    if capability.id != CAPABILITY_COMPACTION {
+                        continue;
+                    }
+                    let Some(params) = capability.params.as_object_mut() else {
+                        continue;
+                    };
+                    let slot = params
+                        .get(COMPACTION_PARAM_MODEL_SLOT)
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .unwrap_or_default()
+                        .to_string();
+                    if slot.is_empty() {
+                        continue;
+                    }
+                    params.remove(COMPACTION_PARAM_MODEL_SLOT);
+                    let model = model_of(&slot);
+                    if model.is_empty() {
+                        params.remove(COMPACTION_PARAM_MODEL);
+                    } else {
+                        params.insert(COMPACTION_PARAM_MODEL.to_string(), Value::String(model));
+                    }
+                }
+                if let Some(slot) = bound.model_slot.take()
+                    && !slot.trim().is_empty()
+                {
+                    bound.model_id = model_of(&slot);
+                }
+                bound.model_slots = Vec::new();
+                bound
+            })
+            .collect();
+        GgCapabilitySet {
+            agents,
+            model_slots: Vec::new(),
+            ..self.clone()
+        }
     }
 
     /// Every profile [slug](GgAgentConfig::slug) this set declares more than once, in
@@ -2413,6 +2530,43 @@ impl GgCapabilitySet {
         ids
     }
 
+    /// The models this set binds, as one comparable string: every binding written as
+    /// `<agent slug>=<model id>` — with a [handoff](GgAgentConfig::handoff_model_id) written as
+    /// `<agent slug>:compaction=<model id>` — sorted, de-duplicated and joined with commas.
+    ///
+    /// This is the gg half of a [coverage cell](https://docs.testcabinet.ai)'s identity. A
+    /// configuration can run several models at once, so two members of one configuration that
+    /// agree on the root agent's model and differ on a reviewer's are two arms of a study, and a
+    /// cell keyed on the root model alone would merge them.
+    ///
+    /// It names **which agent runs which model** rather than the bare set of models, because the
+    /// bare set does not separate every pair of arms it is asked to: two members that swap one
+    /// configuration's two models between its two launch slots bind the same models and are
+    /// exactly the A/B a study is made of. A key that collapsed them would have one arm's runs
+    /// satisfy the other's target, and the comparison would quietly run half.
+    ///
+    /// **Sorted** because it is compared, not read: the set a run recorded and the set a queued
+    /// job was lifted from must produce the same string whatever order their agents happen to be
+    /// declared in. Nothing parses it, so a slug carrying a character the grammar did not expect
+    /// costs a possible collision with another such set and never a misreading.
+    ///
+    /// It exists here, on the contract, rather than at either end, because the run lift and the job
+    /// lift both write it and a cell only counts while the two agree.
+    pub fn bound_model_key(&self) -> String {
+        let mut bindings: Vec<String> = Vec::new();
+        for agent in &self.agents {
+            if let Some(model) = agent.resolved_model_id() {
+                bindings.push(format!("{}={model}", agent.slug));
+            }
+            if let Some(model) = agent.handoff_model_id() {
+                bindings.push(format!("{}:compaction={model}", agent.slug));
+            }
+        }
+        bindings.sort_unstable();
+        bindings.dedup();
+        bindings.join(",")
+    }
+
     /// The agents whose model binding is still [deferred](GgAgentConfig::model_slot) to a
     /// [model slot](GgModelSlot) the launch has not filled in — the launch inputs a
     /// configuration is still waiting on, in agent order (by agent name).
@@ -2487,7 +2641,8 @@ impl fmt::Display for GgDispatchError<'_> {
 }
 
 /// **What a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent's window opens holding** — the
-/// two lists gg's synthesized opening turn is generated from, per agent.
+/// two lists and the [tree](GgOpeningTree) gg's synthesized opening turn is generated from, per
+/// agent.
 ///
 /// A code agent's first turn is a program gg writes in the agent's own language and runs before the
 /// model has said a word: it searches the documentation of the modules named here, together, in one
@@ -2513,9 +2668,10 @@ impl fmt::Display for GgDispatchError<'_> {
 /// opened once. Two lists that come out empty seed no program at all, which is a valid choice
 /// rather than a defect.
 ///
-/// **Required** on every agent, and always written: a document without it does not read. The
-/// authored default a fresh profile is seeded with is [`GgAgentConfig::root`]'s —
-/// [`DEFAULT_OPENING_MODULES`] and [`DEFAULT_OPENING_FUNCTIONS`].
+/// **Required** on every agent, and always written: a document without it does not read. Its
+/// [`tree`](Self::tree) is the one part a document may leave out. The authored default a fresh
+/// profile is seeded with is [`GgAgentConfig::root`]'s — [`DEFAULT_OPENING_MODULES`],
+/// [`DEFAULT_OPENING_FUNCTIONS`] and a tree at [`DEFAULT_OPENING_TREE_DEPTH`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -2526,6 +2682,71 @@ pub struct GgOpeningTurn {
     /// The operation ids whose documentation view the opening program opens, in this order:
     /// `docs.search`, `views.open_file`, ….
     pub functions: Vec<String>,
+    /// Whether the opening program opens a [tree](GgOpeningTree) of the workspace, and how deep.
+    ///
+    /// Optional in a document, unlike the two lists, because every capability set written before
+    /// gg had a tree call left it out and those documents open the window they always opened:
+    /// [`GgOpeningTree::default`] is the tree switched off. A fresh profile is seeded with it on
+    /// ([`GgOpeningTurn::seeded`]).
+    #[serde(default, skip_serializing_if = "GgOpeningTree::is_default")]
+    pub tree: GgOpeningTree,
+}
+
+/// **The workspace tree a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent's window opens
+/// holding** — whether gg's synthesized opening turn calls `files.tree` at all, and the depth it
+/// calls it with.
+///
+/// A model that opens a window on the prompt alone has to guess at paths, and a guess that names a
+/// file the workspace does not hold costs the whole program the turn was spent on. The opening
+/// tree answers the question those guesses ask, and it is configuration rather than gg's choice
+/// for the same reason the two lists beside it are: what a window opens on is an operator's
+/// decision about the agent.
+///
+/// [`include`](Self::include) and [`depth`](Self::depth) are independent, so a study that switches
+/// the tree off and on again gets the depth it chose back rather than gg's.
+///
+/// The tree is dropped at seed time for an agent that does not hold `files.tree`, on the same terms
+/// a listed module or function it does not hold is. A [`depth`](Self::depth) gg cannot honour
+/// refuses the launch whether or not `include` is set, because a document holding a number gg would
+/// not honour is refused where it is written.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgOpeningTree {
+    /// Whether the opening program calls `files.tree` at all.
+    #[serde(default)]
+    pub include: bool,
+    /// The depth that call names: levels of children below the workspace root, `1` being the root's
+    /// own entries. Held to `1..=`[`MAX_OPENING_TREE_DEPTH`] at launch.
+    #[serde(default = "default_opening_tree_depth")]
+    pub depth: u32,
+}
+
+/// [`GgOpeningTree::depth`]'s default, as a function serde can name.
+fn default_opening_tree_depth() -> u32 {
+    DEFAULT_OPENING_TREE_DEPTH
+}
+
+impl Default for GgOpeningTree {
+    /// The tree switched off, at the authored depth — what a document written without a `tree` key
+    /// reads as.
+    fn default() -> Self {
+        Self {
+            include: false,
+            depth: DEFAULT_OPENING_TREE_DEPTH,
+        }
+    }
+}
+
+impl GgOpeningTree {
+    /// Whether this is the [default](Self::default) — no tree, at the authored depth — which is
+    /// what a document that names no tree at all reads as and what one is written back without.
+    ///
+    /// A depth kept across the switch going off is *not* default, so an operator's chosen depth
+    /// survives a round trip through a stored document.
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 impl GgOpeningTurn {
@@ -2544,12 +2765,17 @@ impl GgOpeningTurn {
                 .iter()
                 .map(|id| id.to_string())
                 .collect(),
+            tree: GgOpeningTree {
+                include: true,
+                depth: DEFAULT_OPENING_TREE_DEPTH,
+            },
         }
     }
 
-    /// Whether both lists are empty — an agent whose window opens on the build prompt alone.
+    /// Whether both lists are empty and no tree is asked for — an agent whose window opens on the
+    /// build prompt alone.
     pub fn is_empty(&self) -> bool {
-        self.modules.is_empty() && self.functions.is_empty()
+        self.modules.is_empty() && self.functions.is_empty() && !self.tree.include
     }
 }
 
@@ -3354,6 +3580,7 @@ const DEFAULT_TOOLS: &[&str] = &[
     "write_file",
     "edit_file",
     "list_dir",
+    "tree",
     "search",
     "read_skill",
     "write_memory",
@@ -3381,6 +3608,9 @@ const DEFAULT_OPERATIONS: &[&str] = &[
     "files.write_file",
     "files.edit_file",
     "files.list_dir",
+    // The list-dir capability's second row: a directory's entries and the tree beneath one are two
+    // separately granted calls over one capability.
+    "files.tree",
     "files.search",
     "skills.read_skill",
     "memories.write_memory",
@@ -3409,6 +3639,17 @@ const DEFAULT_OPERATIONS: &[&str] = &[
 ///
 /// The authored default and nothing more: gg reads an agent's own list, never this one.
 pub const DEFAULT_OPENING_MODULES: &[&str] = &["files", "shell"];
+
+/// The **depth** a fresh profile's [opening tree](GgOpeningTree::depth) is walked to, and the depth
+/// a document that names none reads as.
+///
+/// Two levels answer the question a model's opening guesses ask — what a named directory holds —
+/// without walking a monorepo, which is what a deeper default would spend on every run.
+pub const DEFAULT_OPENING_TREE_DEPTH: u32 = 2;
+
+/// The deepest [opening tree](GgOpeningTree::depth) a configuration may name. A larger value refuses
+/// the launch rather than being clamped, because the number is authored rather than computed.
+pub const MAX_OPENING_TREE_DEPTH: u32 = 10;
 
 /// The **functions** a fresh profile's [opening turn](GgOpeningTurn::functions) opens the
 /// documentation of: the calls discovery and showing are made of, and nothing else.
@@ -6724,18 +6965,25 @@ pub struct GgSessionSummary {
     #[serde(default, skip_serializing_if = "GgRejectedResponses::is_empty")]
     #[cfg_attr(feature = "contract", ts(optional = nullable))]
     pub rejected_responses: GgRejectedResponses,
-    /// The longest reply, in characters, of any turn that **worked** (a progressed or finished
-    /// outcome) — folded as a maximum over the
-    /// [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events' `response_chars`. Recorded so an
-    /// output ceiling can later be chosen from data rather than guessed: a cap below this figure
-    /// would have truncated a reply that was doing its job. `0` — and omitted — for a run with no
-    /// successful turn.
+    /// The longest reply the run produced, in characters: the model's raw text plus, on a
+    /// responses-as-code turn, the `program` string of each `submit_program` call it made. Folded
+    /// as a maximum over the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events'
+    /// `response_chars`, over every turn but the one recorded
+    /// [`ModelLengthCapped`](GgTurnErrorType::ModelLengthCapped), whatever the turn's outcome.
+    ///
+    /// Recorded so an output ceiling can later be chosen from data rather than guessed: a cap
+    /// below this figure would have truncated a reply the model generated whole. The one excluded
+    /// turn is the one whose reply the provider had already cut off at its own output cap, which
+    /// is the reply such a ceiling exists to cut. An errored turn is folded in, since a program
+    /// long enough to matter here is the one most likely to fail, and dropping it would
+    /// under-report exactly the runs that write the most. `0` — and omitted — for a run whose
+    /// turns reported no reply at all.
     #[serde(default, skip_serializing_if = "is_zero_u64")]
     #[cfg_attr(feature = "contract", ts(optional = nullable))]
     pub max_response_chars: u64,
     /// The same maximum in the provider's own unit: **completion tokens** (output plus reasoning,
-    /// the figure an output cap is measured in). `0` — and omitted — for a run whose successful
-    /// turns reported no usage.
+    /// the figure an output cap is measured in). `0` — and omitted — for a run whose turns
+    /// reported no usage.
     #[serde(default, skip_serializing_if = "is_zero_u64")]
     #[cfg_attr(feature = "contract", ts(optional = nullable))]
     pub max_response_output_tokens: u64,
@@ -8136,11 +8384,10 @@ pub enum GgTelemetryKind {
         loop_abort_chars: u64,
         /// The reply's length in characters — the model's raw text plus, on a
         /// responses-as-code turn, the `program` string of each `submit_program` call it made.
-        /// Carried on
-        /// every outcome so [`GgSessionSummary::max_response_chars`] can be folded as a maximum
-        /// over the turns that **worked** (a progressed or finished outcome): the figure a later
-        /// output ceiling would have to accommodate. `0` — and omitted — for a turn whose reply
-        /// carried no text at all.
+        /// Carried on every outcome so [`GgSessionSummary::max_response_chars`] can be folded as a
+        /// maximum over every turn but the length-capped one: the figure a later output ceiling
+        /// would have to accommodate. `0` — and omitted — for a turn whose reply carried no text
+        /// at all.
         #[serde(default, skip_serializing_if = "is_zero_u64")]
         #[cfg_attr(feature = "contract", ts(optional = nullable))]
         response_chars: u64,

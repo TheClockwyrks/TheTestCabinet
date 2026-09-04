@@ -8,6 +8,10 @@
 // `FACE_SHOT_SPEED`, one sub-step per frame, so the frame of the rebound ends
 // with exactly the velocity the bounce formula produced; the margin of a degree
 // is rounding room, since `sin(0)` is exact.
+//
+// The field is emptied to this ball alone, and both paddles are taken from the
+// player: the paddles are the instrument of the contact being measured, so a
+// paddle the AI or a stray key could still move would make the reading theirs.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {

@@ -2,12 +2,13 @@
 //
 // Both live in `CaromState` as plain data (`src/game.ts`), so this module holds no
 // state of its own: it is the arithmetic that reads and writes those records, plus
-// the fixed geometry each side's paddle occupies. The obstacles are static and are
-// named in `src/constants.ts`.
+// the fixed geometry each side's paddle occupies. The obstacle poses are
+// `src/obstacles.ts`.
 
 import {
   FIELD_CX,
   FIELD_CY,
+  HOLD_TIME,
   P1_X0,
   P1_X1,
   P2_X0,
@@ -39,6 +40,17 @@ export function paddleRect(side: Side, cy: number): Rect {
   return { x0, y0: cy - PADDLE_HALF, x1, y1: cy + PADDLE_HALF };
 }
 
+/** A paddle at rest in the middle of the field, under nobody's control. */
+export function createPaddle(): PaddleState {
+  return { cy: FIELD_CY, vy: 0, drivenVy: 0, driven: false };
+}
+
+/** Put a paddle back at the vertical center, stationary. Leaves who drives it. */
+export function centerPaddle(paddle: PaddleState): void {
+  paddle.cy = FIELD_CY;
+  paddle.vy = 0;
+}
+
 /**
  * Advance a paddle by its current velocity and clamp it fully onto the field.
  *
@@ -63,11 +75,36 @@ export function ballSpeed(ball: BallState): number {
   return Math.hypot(ball.vx, ball.vy);
 }
 
-/** Park the ball at its spawn point, motionless and with no spin. */
-export function parkBall(ball: BallState): void {
+/**
+ * Park the ball at its home point, waiting out a full pre-serve hold.
+ *
+ * The one arrangement `spawnBall`, the start of a match, and the respawn after a
+ * point all put the ball into (specs/balls.md, specs/instrumentation.md): at the
+ * field center, motionless, unspun, held, with a full `holdTimer` and no trail.
+ */
+export function restBall(ball: BallState): void {
   ball.x = FIELD_CX;
   ball.y = FIELD_CY;
   ball.vx = 0;
   ball.vy = 0;
   ball.spin = 0;
+  ball.held = true;
+  ball.holdTimer = HOLD_TIME;
+  ball.trail.length = 0;
+}
+
+/** A new ball, in the arrangement {@link restBall} describes. */
+export function createBall(): BallState {
+  const ball: BallState = {
+    x: FIELD_CX,
+    y: FIELD_CY,
+    vx: 0,
+    vy: 0,
+    spin: 0,
+    held: true,
+    holdTimer: HOLD_TIME,
+    trail: [],
+  };
+  restBall(ball);
+  return ball;
 }

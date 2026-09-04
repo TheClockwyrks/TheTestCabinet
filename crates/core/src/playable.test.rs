@@ -490,6 +490,7 @@ fn run_dir_with_validation(validation: ValidationSummary, media: &[(&str, &[u8])
                 comparable: Some(0.0),
                 actual: Some(0.0),
             },
+            ..RunMetrics::default()
         },
         validation,
         links: RunLinks {

@@ -16,8 +16,12 @@
       ]
     },
     "ReviewPlanCase": {
-      "description": "One test case in a plan or a case group, pinned to an exact version (and\nvariant). Coverage is counted against exactly this version; the matrix flags it\nwhen a newer version has since been ingested.",
+      "description": "One **pinned case** in a plan or a case group: a slug, an exact version, a variant,\nand the [engine](test_cabinet_core::engine) its runs are built on. Coverage is counted\nagainst exactly this pin; the matrix flags it when a newer version has since been\ningested.",
       "properties": {
+        "engine": {
+          "description": "The engine to cover (e.g. `simple-2d`), or null for the `none` engine — the\nengineless run every case supports, and exactly what a plan scheduled before the\npin carried an engine asked for.\n\nThe engine is in the pin because a result is only comparable with another result\non the same engine: a model handed a runtime and a documented API is doing\ndifferent work from the same model starting from nothing, so one case at one\nversion and variant on two engines is two pinned cases and two sets of cells.\n\nA pin naming an engine the version does not declare support for is accepted here\nand reported by the run, exactly as an uningested version is. The catalogue moves\nunder a standing plan, so the check belongs where a run executes.",
+          "type": ["string", "null"]
+        },
         "slug": {
           "description": "The test-case slug (e.g. `caldera`).",
           "type": "string"
@@ -35,14 +39,30 @@
       "type": "object"
     },
     "ReviewPlanCombo": {
-      "description": "One harness+model combination in a plan or a combo group. The optional provider\nmirrors the new-run form's per-combination provider for provider-routed\nharnesses.",
+      "description": "One **combination** in a plan, a ladder, or a combo group: what a cell's runs are\nexecuted by.\n\nOne type carrying two shapes, exactly as\n[`ComparisonArm`](test_cabinet_core::comparison::ComparisonArm) already does. A\nmember naming a [`gg_config_id`](Self::gg_config_id) is a **gg combination** — a\nsaved [gg configuration](https://docs.testcabinet.ai/gg/configurations/) plus a model\nfor each launch slot it declares — and one without it is a **harness combination**:\na harness, the model it runs, and a provider for a provider-routed harness. They are\nunioned into one list rather than split across two, so a plan crossing both against\nits cases needs no second axis.",
       "properties": {
+        "ggConfigId": {
+          "description": "The launcher's key for the gg configuration this member runs (`saved:<id>`), or\nnull on a harness member. This is what makes a member a gg member.",
+          "type": ["string", "null"]
+        },
+        "ggConfigName": {
+          "description": "The configuration's current display name, filled on read and **never stored**.\n\nA configuration is renamed in one place, and a member that had stored the name it\nbore at the time would go on showing the old one forever.",
+          "type": ["string", "null"]
+        },
+        "ggSlotModels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "A model per [launch slot](https://docs.testcabinet.ai/gg/configurations/) the\nconfiguration declares, keyed by slot name. Empty on a harness member.\n\nOrdered (a `BTreeMap`) because it is compared and keyed, not merely read: two\nmembers binding the same slots must produce the same\n[`combination_key`] whatever order they arrived in.",
+          "type": "object"
+        },
         "harness": {
           "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/HarnessSlug",
-          "description": "The agent harness to drive."
+          "description": "The agent harness to drive — `gg` on a gg member."
         },
         "model": {
-          "description": "The opaque model id passed to the harness.",
+          "default": "",
+          "description": "The opaque model id passed to the harness. Empty in storage on a gg member,\nwhich binds a model per agent instead; a read fills it with the model the bound\nset's root agent runs on, so a client with no configuration in hand still has\nsomething to show.",
           "type": "string"
         },
         "provider": {
@@ -50,7 +70,7 @@
           "type": ["string", "null"]
         }
       },
-      "required": ["harness", "model"],
+      "required": ["harness"],
       "type": "object"
     }
   },

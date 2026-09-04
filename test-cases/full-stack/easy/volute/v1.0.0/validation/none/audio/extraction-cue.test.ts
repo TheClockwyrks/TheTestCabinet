@@ -122,7 +122,12 @@ const AFTERMATH_TICKS = 36;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  // Armed at creation, because the only check in this file reads what the build
+  // SOUNDED. The gesture is a real `KeyZ` press — a key `specs/controls.md` binds
+  // to nothing — delivered before the harness's opening `reset`, so whatever it
+  // moved is put back before the hall below is posed, while the audio context it
+  // opened stays open because user activation is not state a reset restores.
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -130,7 +135,6 @@ afterEach(async () => {
 });
 
 it("sounds a cue on the tick the run is drawn out", async () => {
-  await h.armAudio();
   await startRun(h);
 
   // The music bed's own start is a sound; letting it get up BEFORE the scenario

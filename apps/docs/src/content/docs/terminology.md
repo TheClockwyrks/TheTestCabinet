@@ -45,25 +45,27 @@ the thing that actually does the climbing. Each climber's progress is tracked
 separately, so a model added to a standing ladder starts at [rung](#rung) one
 while the others carry on from wherever they had reached. A climber is climbing,
 awaiting review, [walled](#wall), held (stopped by hand), or [topped
-out](#topped-out). Climber and combination name the same harness and model pair:
-the first is the role it plays on a ladder, the second is what it is.
+out](#topped-out). Climber and combination name the same thing: the first is the
+role it plays on a ladder, the second is what it is.
 
 ## Combination
 
-A combination is one harness and model pair, plus a provider for a
-provider-routed harness: the thing a run is executed by, as opposed to the test
-case it is executed on. It is the unit a [coverage](#coverage) plan crosses with
+A combination is the thing a run is executed by, as opposed to the test case it
+is executed on. It takes one of two shapes: a harness and model pair, plus a
+provider for a provider-routed harness; or a
+[gg configuration](/gg/configurations/) and a model for each launch slot that
+configuration asks for. It is the unit a [coverage](#coverage) plan crosses with
 its cases to form a cell, the unit a [ladder](#ladder) enrolls as a
 [climber](#climber), and the unit a reusable coverage group holds.
 
 ## Coverage
 
-Coverage carries two meanings in The Test Cabinet, and they are not the same
+Coverage carries three meanings in The Test Cabinet, and they are not the same
 thing:
 
 1. The measurement: how much of a declared matrix actually has runs. A coverage
-   plan declares version-pinned test cases crossed with
-   [combinations](#combination) and a target run count per cell, and its
+   plan declares test cases pinned to a version, variant and engine, crossed
+   with [combinations](#combination) and a target run count per cell, and its
    coverage is how many of those cells have met their target. This is the older
    and narrower sense. See [Coverage plans](/components/backend/coverage/).
 2. The feature area: the reviewer scheduling surface as a whole, which is plans,
@@ -72,11 +74,22 @@ thing:
    controls. This is the sense in which the console has a Coverage section and
    the backend a coverage API, and it takes in ladders, which are not plans and
    aim at no matrix at all.
+3. Code coverage: how much of a produced implementation's own `src/` the tests
+   the model wrote reached when they ran. It is measured by istanbul while the
+   case's [`[toolchain]` test
+   command](/testing/end-to-end/manifests/#the-typescript-toolchain) runs, and
+   recorded on the run record's `toolchain.test.coverage` block.
 
 So "a ladder is part of coverage" and "a ladder has no coverage target" are both
-true, in the two different senses. When it matters, say coverage plan for the
-first and the coverage surface for the second. Neither sense has anything to do
-with code coverage, which The Test Cabinet does not measure.
+true, in the first two senses. When it matters, say coverage plan for the first,
+the coverage surface for the second, and code coverage for the third.
+
+Code coverage shares only the word with the other two. It is a property of one
+run's produced tree, it measures the model's own code with the tests the model
+wrote, and the test case's validators contribute nothing to it because their own
+suite has coverage disabled. The static analyzer's walk diagnostics on a run's
+Code tab are headed Analysis notes rather than Coverage, since they describe the
+analysis and measure nothing about the code.
 
 ## Dispatcher
 

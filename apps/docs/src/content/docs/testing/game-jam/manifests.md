@@ -37,12 +37,13 @@ folder.
 | `tags` | — | Free-form tags for browsing and search. |
 | `summary` | — | One- or two-sentence abstract on the jam card. Not seeded. |
 | `description` | — | Site-facing prose (a Markdown file). Not seeded. |
-| `max_runtime_hours` | — | Wall-clock cap for the session, defaulted when omitted. Also the model's stated time budget. |
+| `max_runtime_hours` | — | Wall-clock cap for the session and for each setup step, defaulted when omitted. Also the model's stated time budget. |
 | `experimental` | — | Hide the version until a deployment opts in. |
 | `workspace` | — | Starter workspace directory seeded into the run root. |
 | `init` | — | Command run once after the workspace is seeded, before the harness starts. |
 | `packages` | — | The `@test-cabinet/*` runtime libraries the build imports, as on a full-stack case. |
 | `engines` | — | The [engines](/components/core/engines/) a run of this jam may select, as on a test case. Defaults to `["none"]`. |
+| `[audio]` | — | The audio packs a run may reach. See below. |
 | `[[review_item]]` | — | Graded review categories. See below. |
 
 ### No `difficulty`, no `variants`
@@ -70,6 +71,27 @@ Alongside `{{workspace}}` (the absolute in-container project root), a prompt may
 reference `{{time_limit_hours}}`, the run's wall-clock budget in hours derived
 from `max_runtime_hours`. State the budget so the model can pace itself, and
 tell it to run `date` in the container to read the current time.
+
+### The audio packs (`[audio]`)
+
+A jam produces its own sound during the run, and `[audio]` declares the packs
+`sfx-sample` and `music` may reach. It behaves exactly as it does on a
+[full-stack case](/testing/full-stack/manifests/#audio): `packs` is the only key,
+each entry is a `name@version` ref, the run container is staged with those packs
+alone, and the first declared pack of each kind is what a tool config naming none
+plays. A jam declares the full published set unless its theme calls for less:
+
+```toml
+[audio]
+packs = [
+  "combat-core@0.1.0",
+  "gm-lite@0.1.0",
+  "cinematic@0.1.0",
+  "synthwave@0.1.0",
+]
+```
+
+`scripts/ci/audio-packs-check.mjs` requires the declaration on every jam version.
 
 ## Review categories
 

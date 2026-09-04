@@ -82,6 +82,7 @@ fn run_scoped(
             modules,
             ending: RunEnding::Role(EndingRole::Standard),
         },
+        &crate::sandbox::AgentWorkspace::new(),
         SandboxLimits::AMPLE,
         None,
         FakeOperationApi::with(&log, canned_outcome),
@@ -143,7 +144,7 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
     assert!(log.calls().is_empty(), "no tool was called");
     assert_eq!(
         javascript()
-            .prepare_program(program, &[], &crate::sandbox::PrepareContext::new())
+            .prepare_program(program, &[], &crate::sandbox::PrepareContext::detached())
             .expect("nothing reads a program on this arm")
             .source,
         program,
@@ -491,7 +492,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     // The authorship rule under those same conditions: a module in scope changes nothing about the
     // bytes this arm hands the guest, because this arm hands over the reply and does nothing else.
     let prepared = javascript()
-        .prepare_program(written, &modules, &PrepareContext::new())
+        .prepare_program(written, &modules, &PrepareContext::detached())
         .expect("this arm prepares whatever it is handed");
     assert_eq!(
         prepared.source, written,
@@ -632,8 +633,8 @@ console.log(text);
                 located: Located::At("program.js:6:3"),
                 answered: Answered::AtRuntime,
                 // The guest reads the `code` off the uncaught `ApiError` and reports it, so the
-                // turn is filed as the program fighting the API — as on Python, Ruby and C++ —
-                // and never as a sandbox trap.
+                // turn is filed as the program fighting the API — as on every arm whose guest sees
+                // the throw — and never as a sandbox trap.
                 recorded: Some(TurnErrorType::ProgramApiError),
             },
             Case {

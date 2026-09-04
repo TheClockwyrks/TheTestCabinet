@@ -1,7 +1,8 @@
 // screens/title-up-moves-highlight — up moves the title highlight up.
 //
 // WHAT THIS DECIDES. One thing, in one direction: on `title` with the second
-// item highlighted, one `up` press leaves the highlight on the first item.
+// of the three items highlighted, one `up` press leaves the highlight on the
+// first item.
 //
 // THE SPEC IT RESTS ON.
 //   specs/ui.md (`title`): "`up` and `down` move the highlight by one item and

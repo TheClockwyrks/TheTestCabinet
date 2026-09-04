@@ -1,12 +1,7 @@
 """The types every other module's signatures name: how a call fails, and what a patch leaves alone.
 
-A capability module owns the types it produces, so `FileRead` belongs to `gg.files` and
-`IssueCreated` to `gg.board`. The three here belong to none of them because they belong to all of
-them: every function in this SDK raises `ApiError`, and `UNCHANGED` is the default of every patch
-argument that can also be cleared.
-
-They are written the way every other name in this package is written: `import gg` and then
-`gg.core.ApiError`, which is the same path the documentation files them under.
+Every function in this SDK raises `ApiError`, and `UNCHANGED` is the default of every patch argument
+that can also be cleared.
 """
 
 from __future__ import annotations
@@ -86,30 +81,23 @@ class ApiErrorCode(Enum):
 class ApiError(Exception):
     """A gg call that failed.
 
-    WIT models a failure as `result<T, api-error>`, and a surface that handed that back as a pair
-    would force a branch after every line. Python's own answer is an exception, so that is what this
-    SDK raises: the happy path is already unwrapped, and a failure that nobody expected ends the
-    program with gg told which call failed and on which line.
-
     A failure that is expected is an ordinary `except` on `code`:
 
     ```python
     import gg
 
     try:
-        gg.views.open_text("build log", log)
+        gg.docs.search(query="memory")
     except gg.core.ApiError as failure:
-        if failure.code is not gg.core.ApiErrorCode.LIMIT_EXCEEDED:
+        if failure.code is not gg.core.ApiErrorCode.INVALID_ARGUMENT:
             raise
-        gg.views.open_text("build log (tail)", log[-40_000:])
     ```
     """
 
     operation: str
     """The gg call that failed, under gg's own name for it (`read_file`, `spawn_subagent`).
 
-    It is gg's name for the capability rather than this SDK's spelling of it, so it is the same word
-    in every language a program may be written in.
+    It is gg's name for the capability rather than this SDK's spelling of it.
     """
 
     code: ApiErrorCode
