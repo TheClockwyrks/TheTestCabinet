@@ -88,9 +88,12 @@ den.
 
 A single open chamber near the grid center holds the predators between releases.
 
-- The chamber is made of den-interior tiles and covers around columns `15`
-  through `20` and rows `7` through `9`.
-- It has exactly one gate tile, on its top edge.
+- The chamber is made of den-interior tiles and covers columns `16` through `19`
+  and rows `7` through `9`, all four bounds inclusive, so it is `4` tiles wide
+  and `3` tiles tall.
+- It has exactly one gate tile. Every tile of the chamber is den interior, so the
+  gate sits in row `6`, directly above the chamber's top row, and it is the one
+  opening on the chamber's top edge.
 - It is enclosed. No den-interior tile has a corridor neighbor, so the gate is
   the chamber's only opening onto the corridors.
 - The gate is the predators' door, crossed leaving the den and crossed again

@@ -98,7 +98,7 @@ const DEPTH = 1;
  * it itself. Every hunter is left with its mind running and its travel held.
  */
 export async function poseDenSchedule(h: Harness, seed: number): Promise<Tile> {
-  h.debug.reset({ seed });
+  h.debug.reset(seed);
   const board = await poseMaze(h, BOARD);
   // The roster this point is about, laid out in the chamber the fixture carries.
   h.debug.setDepth(DEPTH);

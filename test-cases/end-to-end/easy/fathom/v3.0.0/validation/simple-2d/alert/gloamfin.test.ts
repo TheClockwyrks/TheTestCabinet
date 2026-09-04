@@ -7,9 +7,11 @@
 // fog would otherwise hide of it. Refreshing a fix a predator is already chasing on
 // is not an acquisition and fires nothing."
 //
-// Three readings, then, and the scenario is built so that each of them says
-// something: how long `alert` runs, that `lit` runs with it, and that a fix held
-// and refreshed step after step fires nothing more.
+// Two readings, then, and the scenario is built so that each of them says
+// something: how long `alert` runs, and that `lit` runs with it. That a fix held
+// and refreshed step after step fires nothing more is
+// `alert.refresh-fires-nothing`, which reads the Gloamfin and the Flarefish
+// together.
 //
 // THE HUNTER STANDS WHERE NOTHING ELSE COULD LIGHT IT. `lit` is true whenever a
 // predator's body is drawn — by the forager's light, by a sonar mark, by a flare,
@@ -34,7 +36,7 @@
 // the measurement.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { ALERT_TIME, GLOAMFIN_HEAR } from "../constants";
 import { poseOccludedPair, spawnPredator } from "../fixtures";
 import {
@@ -113,18 +115,6 @@ const INSIDE_TICKS: readonly number[] = Array.from(
  */
 const AFTER_TICKS = WINDOW_TICKS + GRACE_TICKS;
 
-/**
- * How long the refresh is watched, in ticks, once the first window has closed.
- *
- * Eight tenths of a second, longer than a whole `ALERT_TIME`, with the hunter still
- * inside hearing and its fix therefore refreshed on every step of it. A build that
- * treats each refresh as an acquisition fires again inside that stretch.
- */
-const REFRESH_TICKS = ticks(0.8);
-
-/** How often the refresh watch reads, in ticks. */
-const REFRESH_POLL = 3;
-
 /** Ticks run after the readings, purely so the clip carries a tail. */
 const CLIP_TICKS = 36;
 
@@ -199,15 +189,8 @@ it("The Gloamfin fires the alert on a fresh fix", async () => {
     }
     const after = await at(AFTER_TICKS);
 
-    const refreshed: { t: number; alert: boolean; state: string }[] = [];
-    for (let step = 0; step < REFRESH_TICKS; step += REFRESH_POLL) {
-      await h.advance(REFRESH_POLL);
-      spent += REFRESH_POLL;
-      const p = h.snapshot().predators[index];
-      refreshed.push({ t: seconds(spent), alert: p.alert, state: p.state });
-    }
     await h.advance(CLIP_TICKS);
-    return { acquired, fired, inside, after, refreshed, end: h.snapshot() };
+    return { acquired, fired, inside, after, end: h.snapshot() };
   });
 
   requireSceneHeld(read.end, watch);
@@ -253,21 +236,5 @@ it("The Gloamfin fires the alert on a fresh fix", async () => {
     false,
     `the alert ${seconds(AFTER_TICKS).toFixed(2)} s in — ALERT_TIME (${ALERT_TIME} s) ` +
       "and the item's tenth of a second past it",
-  );
-
-  // And the refresh: the fix is held and re-taken step after step, and nothing
-  // fires for it.
-  assertTrue(
-    read.refreshed.every((one) => one.state === "chase"),
-    "the Gloamfin held its fix throughout the refresh watch, so what was " +
-      "watched is a fix being refreshed rather than one being dropped — it read " +
-      `[${[...new Set(read.refreshed.map((one) => one.state))].join(", ")}]`,
-  );
-  const again = read.refreshed.filter((one) => one.alert);
-  assertTrue(
-    again.length === 0,
-    `every reading of the alert across the ${seconds(REFRESH_TICKS).toFixed(2)} s ` +
-      "the Gloamfin spent refreshing a fix it was already chasing on is false — " +
-      `it read true at ${again.map((one) => `${one.t.toFixed(2)} s`).join(", ") || "no sample"}`,
   );
 });

@@ -94,8 +94,19 @@ radius and life, the drifter cadence, and the scoring figures above.
 {{#if (eq engine.slug "none")}}
 The audio layer is part of the runtime you write. Every cue is synthesized with
 the Web Audio API, and the build ships no audio files. Define and play exactly
-the seven cues in `CUES`, under exactly these names, one per event:
-{{else if (eq engine.slug "simple-2d")}}
+the seven cues below, under exactly these names, one per event:
+
+| Cue | Played when |
+| --- | --- |
+| `eat` | The forager eats a plankton. |
+| `sonar` | The forager emits a sonar pulse. |
+| `ink` | The forager releases an ink cloud. |
+| `predator-ping` | A Gloamfin emits one of its own sonar pings. |
+| `flare` | A Flarefish's bloom begins. |
+| `caught` | A predator makes contact with the forager. |
+| `descend` | A maze is cleared. |
+{{else}}
+{{#if (eq engine.slug "simple-2d")}}
 Audio plays through the engine's cue bus. Every cue is synthesized from its
 declaration, and the build ships no audio files. Define and play exactly the
 seven cues in `CUES`, under exactly these names, one per event:
@@ -114,6 +125,7 @@ audio inside a tick, under exactly these names, one per event:
 | `flare` | `CUES.flare` | A Flarefish's bloom begins. |
 | `caught` | `CUES.caught` | A predator makes contact with the forager. |
 | `descend` | `CUES.descend` | A maze is cleared. |
+{{/if}}
 
 Each is a distinct short sound, so the seven events are told apart by ear. Each
 is played on the tick its event happens, and at most once on that tick: a tick

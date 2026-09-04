@@ -274,9 +274,9 @@ it("Its ping reveals nothing", async () => {
     const drawn: { tick: number; kinds: string[] }[] = [];
     let ticks = 0;
     let flying = true;
-    // A chunk of ticks per crossing into the page, still one tick a step: the
-    // wavefront is read on every tick of its flight, and what is saved is the
-    // round trip between them.
+    // The wavefront is read on every tick of its flight, and `scan` polls at one
+    // tick a step, so a crossing into the page is what each tick costs. The chunk
+    // is what bounds one `scan` call rather than what one crossing covers.
     while (flying && ticks < FLIGHT_BUDGET) {
       const chunk = Math.min(FLIGHT_CHUNK, FLIGHT_BUDGET - ticks);
       for (const reading of await h.scan(chunk, 1)) {

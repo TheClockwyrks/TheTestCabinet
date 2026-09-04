@@ -7,9 +7,12 @@
 // life in reserve ends the dive instead: `lives` is already `0`, and `screen`
 // becomes `"gameover"`."
 //
-// FOUR CATCHES, EACH ONE POSED. The hunter is put on the forager's own tile, which
-// is the contact condition specs/gameplay.md states, so nothing here waits on a
-// chase closing a gap — that is `gloamfin/*`'s to grade.
+// FOUR CATCHES, EACH ONE POSED ON AN EMPTY BOARD. The roster comes off the board
+// and one hunter is stood on the forager's own tile, which is the contact
+// condition specs/gameplay.md states — so nothing here waits on a chase closing a
+// gap, and no second hunter can take one of the lives this point is counting.
+// Each attempt lays the depth's roster out afresh (specs/progression.md), so the
+// staging is done again every time round.
 //
 // THE COUNTDOWN BETWEEN LIVES IS ENDED RATHER THAN WAITED OUT.
 // `setScreen("playing")` sets the screen and lets the game carry on under its own
@@ -26,7 +29,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { START_LIVES } from "../constants";
-import { holdPredators } from "../fixtures";
+import { stageCatch } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -84,9 +87,10 @@ async function takeALife(h: Harness): Promise<Catch> {
     // could not be staged.
     return { before, after: before, hit: false, resumed: false };
   }
-  await holdPredators(h);
-  h.debug.setPredatorTile(0, before.forager.tx, before.forager.ty);
-  h.debug.setPredatorState(0, "chase");
+  await stageCatch(h, {
+    tx: before.forager.tx,
+    ty: before.forager.ty,
+  });
   const contact = await h.until(
     (s) => s.lives < before.lives || s.screen === "gameover",
     { maxFrames: CATCH_BUDGET, poll: 1 },

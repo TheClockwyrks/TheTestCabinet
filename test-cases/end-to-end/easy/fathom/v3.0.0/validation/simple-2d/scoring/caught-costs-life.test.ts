@@ -30,7 +30,17 @@
 //
 // NO SCENE GUARD. The guard's first finding is a screen that changed under the
 // measurement, which here is the subject.
-
+//
+// A DELIBERATE DEPARTURE FROM THIS SUITE'S ISOLATION RULE, recorded rather than
+// hidden. Everywhere else in this project a scenario empties the board and spawns
+// back exactly what its requirement concerns, because a frozen bystander is still
+// a body the game's own rules could set moving. Here the roster IS half the
+// requirement — what a catch does to every hunter on the board is what this point
+// reads — so it cannot be cleared, and the whole roster is held in place instead.
+// What that buys is the reading; what it costs is that a build whose
+// `setPredatorTravel` does not hold a body could have a second hunter take the
+// life this point staged, and would fail here as well as at
+// `instrumentation.surface-present`.
 import { afterEach, beforeEach, it } from "vitest";
 import {
   assertDeepEqual,

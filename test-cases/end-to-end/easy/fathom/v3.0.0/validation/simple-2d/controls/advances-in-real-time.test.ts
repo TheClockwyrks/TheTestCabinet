@@ -41,7 +41,7 @@
 import { WallClock } from "@test-cabinet/simple-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { BRIGHT_HOLD, DRIFTER_SPEED } from "../constants";
+import { ARROW_KEY, BRIGHT_HOLD, DRIFTER_SPEED } from "../constants";
 import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureStill,
@@ -64,7 +64,7 @@ import { requireSceneHeld, sceneGuard } from "../scene";
 const BOARD = ["P" + ".".repeat(15) + "F" + ".".repeat(10)];
 
 /** The key held for the camera. Nothing asserted below reads the forager. */
-const KEY = "ArrowRight";
+const KEY = ARROW_KEY.right;
 
 /** Brightness posed for the picture alone, so the stills show lit corridor. */
 const LIT = 1;

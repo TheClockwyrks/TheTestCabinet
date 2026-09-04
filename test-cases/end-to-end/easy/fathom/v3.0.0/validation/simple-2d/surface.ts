@@ -42,16 +42,26 @@
 
 import type { DeepReadonly } from "ts-essentials";
 
-/**
- * The surface's version, reported as `version`.
- *
- * `src/constants.ts` states the same figure as `FATHOM_DEBUG_VERSION`, because
- * the build needs it and this module imports nothing of the build.
- */
-export const FATHOM_DEBUG_VERSION = 1;
+import { DEFAULT_SEED, FATHOM_DEBUG_VERSION } from "./constants";
 
-/** The seed `reset()` restores when the caller names none. */
-export const DEFAULT_SEED = 1;
+// The two figures this module states about the surface are the specification's
+// like every other figure in this project, so they live in `constants.ts` with
+// the rest and are re-exported here for the checks that already name them off
+// the surface description.
+export { DEFAULT_SEED, FATHOM_DEBUG_VERSION };
+
+/**
+ * A menu item's hit region, as `menuItemRect` reports it (specs/instrumentation.md).
+ *
+ * `x` and `y` are the region's top-left corner and `w` and `h` its size, all in
+ * the logical units specs/overview.md fixes the stage in.
+ */
+export interface MenuRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 /** The screens the state machine moves between. */
 export type Screen =
@@ -180,6 +190,19 @@ export interface GridSnapshot {
 export interface FathomSnapshot {
   version: number;
   screen: Screen;
+  /**
+   * The highlighted item on the menu the current screen shows, counted from `0`
+   * over the items specs/ui.md lists for that menu.
+   *
+   * `null` on `"howto"`, `"countdown"`, `"playing"` and `"cleared"`, which show
+   * no menu (specs/state.md).
+   */
+  menuIndex: number | null;
+  /**
+   * The title menu's remembered selection: the index of the item last confirmed
+   * there, `0` before any of them has been. Never `null` (specs/state.md).
+   */
+  titleIndex: number;
   /** The current maze's depth, from `1`. */
   depth: number;
   score: number;
@@ -241,9 +264,19 @@ export interface FathomSnapshot {
  */
 export interface FathomDebugApi<S = unknown> {
   version: number;
-  reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
+  reset(state: DeepReadonly<S>, seed?: number): S;
   snapshot(state: DeepReadonly<S>): FathomSnapshot;
+  /**
+   * The hit region of item `index` on the menu the current screen shows, and
+   * `null` on the four screens that show no menu or for an index that menu does
+   * not hold. A pure reading: it changes nothing.
+   */
+  menuItemRect(state: DeepReadonly<S>, index: number): MenuRect | null;
   setScreen(state: DeepReadonly<S>, s: Screen): S;
+  /** Highlights item `index` of the current screen's menu, and nothing else. */
+  setMenuIndex(state: DeepReadonly<S>, index: number): S;
+  /** Sets the title menu's remembered selection, and nothing else. */
+  setTitleIndex(state: DeepReadonly<S>, index: number): S;
   setScore(state: DeepReadonly<S>, points: number): S;
   setLives(state: DeepReadonly<S>, n: number): S;
   setDepth(state: DeepReadonly<S>, d: number): S;
@@ -310,13 +343,16 @@ export interface FathomDebugApi<S = unknown> {
  * current state and hand back, and which to run through `engine.apply`; the
  * surface's shape alone cannot say at runtime, so the specification names them.
  */
-export const READINGS = ["snapshot"] as const;
+export const READINGS = ["snapshot", "menuItemRect"] as const;
 
 /** Every operation the surface must carry in every variant. */
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "menuItemRect",
   "setScreen",
+  "setMenuIndex",
+  "setTitleIndex",
   "setScore",
   "setLives",
   "setDepth",

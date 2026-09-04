@@ -51,6 +51,7 @@ import type { Burst } from "./effects";
 import type { Mover, Predator } from "./entities";
 import type { FathomState } from "./game";
 import { Maze } from "./maze";
+import { itemBaseline } from "./menu";
 import { FLARE_FADE, isBlooming } from "./predators";
 import {
   countdownNumber,
@@ -799,7 +800,7 @@ function drawTitle(state: FathomState, ctx: CanvasRenderingContext2D): void {
   ctx.fillText(TAGLINE_TEXT, STAGE_W / 2, 306);
   ctx.restore();
 
-  drawMenu(state, ctx, 420, 60);
+  drawMenu(state, ctx);
   drawFooter(ctx, "UP DOWN  MOVE     ENTER  SELECT");
 }
 
@@ -912,7 +913,7 @@ function drawPaused(state: FathomState, ctx: CanvasRenderingContext2D): void {
   ctx.font = `700 52px ${MONO}`;
   ctx.fillText("PAUSED", STAGE_W / 2, STAGE_H / 2 - 66);
   ctx.restore();
-  drawMenu(state, ctx, STAGE_H / 2 + 10, 50);
+  drawMenu(state, ctx);
 }
 
 function drawCleared(state: FathomState, ctx: CanvasRenderingContext2D): void {
@@ -951,21 +952,23 @@ function drawGameOver(state: FathomState, ctx: CanvasRenderingContext2D): void {
   ctx.font = `20px ${MONO}`;
   ctx.fillText(`REACHED DEPTH ${state.depth}`, STAGE_W / 2, STAGE_H / 2 + 12);
   ctx.restore();
-  drawMenu(state, ctx, STAGE_H / 2 + 66, 48);
+  drawMenu(state, ctx);
 }
 
-/** The current screen's menu, with its selected item drawn distinctly. */
-function drawMenu(
-  state: FathomState,
-  ctx: CanvasRenderingContext2D,
-  top: number,
-  gap: number,
-): void {
+/**
+ * The current screen's menu, with its selected item drawn distinctly.
+ *
+ * Each item is drawn on the baseline `src/menu.ts` gives it, which is the same
+ * table the debugging surface answers `menuItemRect` from and the same one a
+ * pointer sample is resolved against — so what a player sees, what a click acts
+ * on, and what the surface reports are one layout rather than three.
+ */
+function drawMenu(state: FathomState, ctx: CanvasRenderingContext2D): void {
   ctx.save();
   ctx.textAlign = "center";
   ctx.font = `30px ${MONO}`;
   menuItems(state.screen).forEach((item, index) => {
-    const y = top + index * gap;
+    const y = itemBaseline(state.screen, index);
     if (index === state.menu) {
       ctx.fillStyle = COLOR.text;
       ctx.fillText(`> ${item} <`, STAGE_W / 2, y);

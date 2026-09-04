@@ -36,7 +36,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
-import { MENU_DOWN_KEY, assertDrew, frameOps, opDiff } from "./screens";
+import { assertDrew, frameOps, opDiff } from "./screens";
 
 /**
  * How much more of the frame must change when the selection moves than when it
@@ -74,14 +74,23 @@ it("opens on the title, draws its copy, and shows which item is selected", async
   // The same screen again, nothing pressed: what one frame of this screen costs
   // the next all by itself.
   const unmoved = await frameOps(h);
-  // And the same screen with the selection moved off the first item.
-  await h.tap(MENU_DOWN_KEY);
+  // And the same screen with the selection moved off the first item. It is
+  // moved with `setMenuIndex` rather than with a key (specs/instrumentation.md):
+  // which key moves a selection is `controls`' point, and a build with a broken
+  // `down` action must still pass this one.
+  h.debug.setMenuIndex(1);
   const moved = await frameOps(h);
 
   assertEqual(
     opened.screen,
     "title",
     "the screen a fresh game opens on (specs/ui.md)",
+  );
+  assertEqual(
+    opened.menuIndex,
+    0,
+    `the title menu's selection as the game opens, which is ${TITLE_ITEMS[0]} ` +
+      "(specs/state.md, specs/ui.md)",
   );
 
   assertDrew(

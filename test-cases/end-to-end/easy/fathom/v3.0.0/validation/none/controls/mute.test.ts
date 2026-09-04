@@ -43,7 +43,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { BRIGHT_HOLD } from "../constants";
+import { BINDINGS, BRIGHT_HOLD } from "../constants";
 import { poseStraightRun } from "../fixtures";
 import {
   captureStill,
@@ -55,10 +55,10 @@ import {
 import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /** The key specs/movement.md binds the `mute` action to. */
-const MUTE_KEY = "KeyM";
+const MUTE_KEY = BINDINGS.mute[0];
 
 /** The key specs/movement.md binds the `a` action to, which emits the pulse. */
-const SONAR_KEY = "Space";
+const SONAR_KEY = BINDINGS.a[0];
 
 /** A corridor long enough that the lit pocket in the still reads as maze. */
 const RUN_TILES = 12;

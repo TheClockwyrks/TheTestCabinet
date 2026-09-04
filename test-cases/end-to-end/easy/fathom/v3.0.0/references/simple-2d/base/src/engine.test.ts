@@ -339,7 +339,13 @@ describe("the screens", () => {
     h.tap("Escape");
     await h.advance(0.05);
     expect(h.snapshot().screen).toBe("title");
+    // The return lands on the entry the player left the title by, which
+    // confirming HOW TO PLAY recorded (`specs/ui.md`).
+    expect(h.snapshot().menuIndex).toBe(1);
+    expect(h.snapshot().titleIndex).toBe(1);
 
+    h.tap("ArrowUp");
+    await h.advance(0.05);
     h.tap("Enter");
     await h.advance(0.05);
     expect(h.snapshot().screen).toBe("countdown");
@@ -896,7 +902,7 @@ describe("the run", () => {
 
   it("reaches the same state from the same seed and the same calls", async () => {
     const run = async (): Promise<FathomSnapshot> => {
-      h.pose((s) => h.debug.reset(s, { seed: 4242 }));
+      h.pose((s) => h.debug.reset(s, 4242));
       h.pose((s) => h.debug.setScreen(s, "playing"));
       h.hold("ArrowRight");
       await h.advance(6);
@@ -913,7 +919,7 @@ describe("the run", () => {
 
 describe("the rendering", () => {
   it("draws an unrevealed tile as flat darkness", async () => {
-    h.pose((s) => h.debug.reset(s, { seed: 9 }));
+    h.pose((s) => h.debug.reset(s, 9));
     h.pose((s) => h.debug.setScreen(s, "playing"));
     await h.advance(0.25);
     const shown = h.snapshot();

@@ -28,6 +28,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertNotEqual } from "../assert";
+import { BINDINGS } from "../constants";
 import { poseStraightRun } from "../fixtures";
 import {
   captureReplay,
@@ -38,7 +39,7 @@ import {
 import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /** The key specs/movement.md binds the `a` action to. */
-const KEY = "Space";
+const KEY = BINDINGS.a[0];
 
 /**
  * The corridor the pulse floods, in tiles.

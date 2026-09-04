@@ -23,21 +23,6 @@ import type { Tile } from "../maze";
 import { fromForager } from "../scene";
 
 /**
- * The vision circle's radius at `G = 0` and how much a full `G` adds, in logical
- * units.
- *
- * specs/sensing.md: "Its radius is `R = KINDLE_VISION_MIN + KINDLE_VISION_GAIN *
- * G`, with `KINDLE_VISION_MIN` (`192`) and `KINDLE_VISION_GAIN` (`128`) in
- * logical units". Stated on the validator's side of the line, like every other
- * figure a check grades by: the build writes its own `src/constants.ts` and a
- * check that read these back off it would be asking the build to agree with
- * itself. They sit here rather than in `../constants` because they are the Kindle
- * dive's alone, and this one project is staged into both variants.
- */
-export const KINDLE_VISION_MIN = 192;
-export const KINDLE_VISION_GAIN = 128;
-
-/**
  * How far a sample may sit from the build's own fog and still read as "painted
  * back to fog", as an RGB distance out of the `441` that spans black to white.
  *

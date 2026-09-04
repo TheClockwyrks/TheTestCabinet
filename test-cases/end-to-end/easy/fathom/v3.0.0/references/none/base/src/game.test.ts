@@ -136,7 +136,10 @@ describe("the screens", () => {
     h.press("back");
     h.advance(1);
     expect(h.state.screen).toBe("title");
-    expect(h.state.menu).toBe(0);
+    // The return lands on the entry the player left the title by, which
+    // confirming HOW TO PLAY recorded (`specs/ui.md`).
+    expect(h.state.titleIndex).toBe(1);
+    expect(h.state.menu).toBe(1);
   });
 
   it("holds everything still while the countdown runs, but for the light", () => {

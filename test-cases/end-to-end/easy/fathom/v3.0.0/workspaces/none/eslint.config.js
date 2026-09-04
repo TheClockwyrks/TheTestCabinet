@@ -11,15 +11,7 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: [
-      "node_modules/",
-      "dist/",
-      "build/",
-      "out/",
-      "coverage/",
-      "proof/",
-      ".tcab/",
-    ],
+    ignores: ["node_modules/", "dist/", "build/", "out/", "coverage/"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

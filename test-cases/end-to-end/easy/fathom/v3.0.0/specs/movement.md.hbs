@@ -89,13 +89,13 @@ of the other.
 ## Controls
 
 {{#if (eq engine.slug "none")}}
-Keyboard only. This game stands on no engine, so the input layer beneath the game
-is yours to write, and what the game reads from that layer is the actions below.
-`ACTIONS` holds their names, in the order given here, and `BINDINGS` maps each
-action to the `KeyboardEvent.code` values that fire it, so a binding is a physical
-key rather than a layout-dependent character.
+Keyboard. This game stands on no engine, so the input layer beneath the game is
+yours to write, and what the game reads from that layer is the ten actions
+below, under the names and in the order given here. Each action is fired by the
+`KeyboardEvent.code` values beside it, so a binding is a physical key rather
+than a layout-dependent character.
 {{else if (eq engine.slug "simple-2d")}}
-Keyboard only, through actions the game registers with the engine. The actions are
+Keyboard, through actions the game registers with the engine. The actions are
 the vocabulary of the `LAYOUT` (`dpad-4-two-buttons`) touch layout the engine is
 built with: register exactly the ten names in `ACTIONS`, in the order given here,
 each bound to the keys `BINDINGS` gives it. The engine owns the keyboard and
@@ -103,7 +103,7 @@ resolves each action, so the game reads the actions rather than key events. The
 keys are `KeyboardEvent.code` values, so a binding is a physical key rather than a
 layout-dependent character.
 {{else}}
-Keyboard only, through actions the game registers with the engine. The actions are
+Keyboard, through actions the game registers with the engine. The actions are
 the vocabulary of the `LAYOUT` (`dpad-4-two-buttons`) touch layout the engine is
 built with: register exactly the ten names in `ACTIONS`, in the order given here,
 each bound to the keys `BINDINGS` gives it. The engine owns the keyboard and
@@ -122,8 +122,11 @@ physical key rather than a layout-dependent character.
 | `b` | `ShiftLeft`, `ShiftRight` | Releases an ink cloud. |
 | `confirm` | `Enter`, `Space` | Accepts the highlighted menu item. |
 | `back` | `Escape` | Leaves the current screen. |
-| `pause` | `Escape`, `KeyP` | Pauses live play. |
+| `pause` | `Escape`, `KeyP` | Opens the pause menu during live play, and resumes from it. |
 | `mute` | `KeyM` | Toggles the game's sound. |
+
+Beside these actions the menus, and the how-to-play screen, take the pointer and
+touch, on the terms `specs/ui.md` fixes.
 
 ### Where each action is read
 
@@ -134,7 +137,9 @@ thing on any given screen.
 | Screen | Actions read |
 | --- | --- |
 | `"playing"` | The four movement actions, held; `a`; `b`; `pause`; `mute`. |
-| `"title"`, `"howto"`, `"paused"`, `"gameover"` | `up` and `down`, as press edges; `confirm`; `back`; `mute`. |
+| `"title"`, `"gameover"` | `up` and `down`, as press edges; `confirm`; `back`; `mute`. |
+| `"paused"` | `up` and `down`, as press edges; `confirm`; `back`; `pause`; `mute`. |
+| `"howto"` | `confirm`; `back`; `mute`. |
 | `"countdown"`, `"cleared"` | `mute`. |
 
 The four movement actions are read as held values, so the forager travels while

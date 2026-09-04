@@ -70,7 +70,8 @@ carries a complete worked example of testing a game this way.
 - **`index.html`** — the page and the canvas the engine fits the stage into.
 - **`assets/`** — the art seeded with the project.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
-  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.
+  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
+  and `.gitignore`.
 - **`.tcab/`** — the vendored engine.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the
@@ -87,7 +88,7 @@ entries alone.
 - `npm run format` — Prettier, in check mode.
 - `npm test` — Vitest over `src/**/*.test.ts`, with coverage.
 
-## Before you finish
+## What the finished repository satisfies
 
 - `npm run build` produces `dist/` with `index.html` at its root, and that
   directory runs as-is on any static host.

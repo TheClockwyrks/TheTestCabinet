@@ -72,7 +72,7 @@ afterEach(async () => {
 });
 
 it("releases the den one predator at a time, DEN_RELEASE_GAP apart, in DEN_ORDER, and none during the countdown", async () => {
-  await h.debug.reset({ seed: SEED });
+  await h.debug.reset(SEED);
   await poseDenBoard(h);
   await h.debug.setScreen("countdown");
 

@@ -12,12 +12,12 @@ which is installed as an ordinary dependency and documents itself under
 
 **`src/game.ts`, and any new files you add beside it.**
 
-Start by declaring and exporting `FathomState`, exactly as `specs/state.md`
-fixes it — a class extending the engine's `GameState` — and `FathomDebugApi`,
-the debug and automation surface `specs/instrumentation.md` specifies. The stub
-in `src/game.ts` is written against both names, so the project does not compile
-until they exist — a fresh workspace failing `npm run typecheck` is the starting
-point, not a broken seed.
+Start by declaring and exporting two names. `FathomState` is a class extending
+the engine's `GameState`, carrying exactly the state `specs/state.md` fixes.
+`FathomDebugApi` is the debug and automation surface `specs/instrumentation.md`
+specifies. The stub in `src/game.ts` is written against both names, so the
+project does not compile until they exist — a fresh workspace failing
+`npm run typecheck` is the starting point, not a broken seed.
 
 `src/game.ts` then exports `game`, a `GameDefinition<FathomDebugApi>`: the game
 instance class, a level registry holding the single level the game runs in, and
@@ -75,7 +75,8 @@ every piece of that recipe.
 - **`index.html`** — the page and the canvas the engine fits the stage into.
 - **`assets/`** — the art seeded with the project.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
-  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.
+  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
+  and `.gitignore`.
 - **`.tcab/`** — the vendored engine.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the
@@ -92,7 +93,7 @@ entries alone.
 - `npm run format` — Prettier, in check mode.
 - `npm test` — Vitest over `src/**/*.test.ts`, with coverage.
 
-## Before you finish
+## What the finished repository satisfies
 
 - `npm run build` produces `dist/` with `index.html` at its root, and that
   directory runs as-is on any static host.
