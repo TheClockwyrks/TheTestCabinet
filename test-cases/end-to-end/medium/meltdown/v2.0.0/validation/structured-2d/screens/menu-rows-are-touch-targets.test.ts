@@ -15,6 +15,11 @@
 // ALL SEVEN MENU SCREENS, because the rule is stated of every menu in the game.
 // The failure names the screen and the row.
 //
+// WHATEVER THE BUILD REPORTS IS WHAT IS READ. This check does not decide how many
+// rectangles a menu ought to report, so it makes no claim about the count and
+// measures the ones it is handed. A build that reports the wrong number of rows
+// loses `screens.menu-rows-reported` and loses it once.
+//
 // THE FIGURE IS THIS PROJECT'S OWN TRANSCRIPTION of `MIN_TOUCH_TARGET`, which
 // `specs/hud.md` states and `specs/screens.md` names again for a menu row, so one
 // transcription carries both.
@@ -26,15 +31,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
-import {
-  DIFFICULTY_ITEMS,
-  ENDING_ITEMS,
-  HOWTO_ITEMS,
-  MIN_TOUCH_TARGET,
-  MODE_ITEMS,
-  PAUSE_ITEMS,
-  TITLE_ITEMS,
-} from "../constants";
+import { MIN_TOUCH_TARGET } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -45,20 +42,19 @@ import {
 } from "../harness";
 
 /**
- * The seven screens that show a menu, and the rows `specs/screens.md` gives each,
- * top to bottom.
+ * The seven screens that show a menu.
  *
  * `playing` is the eighth screen and the one with no menu, so it is read below on
  * its own: `specs/instrumentation.md` leaves `menu` empty there.
  */
-const MENUS: readonly { screen: Screen; items: readonly string[] }[] = [
-  { screen: "title", items: TITLE_ITEMS },
-  { screen: "modeselect", items: MODE_ITEMS },
-  { screen: "difficultyselect", items: DIFFICULTY_ITEMS },
-  { screen: "howto", items: HOWTO_ITEMS },
-  { screen: "paused", items: PAUSE_ITEMS },
-  { screen: "victory", items: ENDING_ITEMS },
-  { screen: "gameover", items: ENDING_ITEMS },
+const MENUS: readonly Screen[] = [
+  "title",
+  "modeselect",
+  "difficultyselect",
+  "howto",
+  "paused",
+  "victory",
+  "gameover",
 ];
 
 /** The screens a menu is drawn over a live run on, which have to be opened as one. */
@@ -104,17 +100,10 @@ async function open(screen: Screen, index = 0): Promise<void> {
 }
 
 it("reports rows at least MIN_TOUCH_TARGET on a side that do not overlap", async () => {
-  for (const { screen, items } of MENUS) {
+  for (const screen of MENUS) {
     await open(screen);
     const rows = h.snapshot().menu;
     if (screen === "modeselect") captureStill(h, "rows");
-
-    assertEqual(
-      rows.length,
-      items.length,
-      `precondition: the rectangles ${screen} reports for its ` +
-        `${items.length} rows (specs/screens.md, Menus)`,
-    );
 
     for (const row of rows) {
       const where =
