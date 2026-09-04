@@ -29,7 +29,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { MAX_POSED_TICK, spawnWindowIndex } from "../constants";
+import { MAX_POSED_TICK, spawnWindowIndex, TICK_HZ } from "../constants";
 import { captureStill, createHarness, isolate, type Harness } from "../harness";
 
 /** The four clocks read: two either side of a boundary, and two far up. */
@@ -58,7 +58,7 @@ it("reads 0 at tick 1799, 1 at 1800, 9 at 17999 and 19 at 35999", async () => {
   for (const [at, tick] of TICKS.entries()) {
     assertEqual(
       read[at],
-      spawnWindowIndex(tick / 60),
+      spawnWindowIndex(tick / TICK_HZ),
       `spawnWindow with the clock posed to tick ${tick}`,
     );
   }

@@ -6,7 +6,7 @@
 // switches `specs/instrumentation.md` defines gate one each: despawning runs
 // while `despawning` is on, the scripted events fire while `events` is on, and
 // the spawn timer counts and spawns while `spawning` is on". Every check here
-// opens with `isolate`, an empty `playing` run with all seven switches off, and
+// opens with `isolate`, an empty `playing` run with all nine switches off, and
 // turns on the one switch its requirement is about, so nothing arrives, moves,
 // hits, or fires except the thing under test.
 //

@@ -38,7 +38,7 @@ import {
   ENEMIES,
   GEM_SPRITE_SIZES,
   GEM_PATHS,
-  ISOLATE_LEVEL,
+  GEM_VALUES,
   LAMPLIGHTER_IDLE_PATH,
   LAMPLIGHTER_SPRITE_HEIGHT,
   LAMPLIGHTER_SPRITE_WIDTH,
@@ -348,13 +348,13 @@ it("maps a stage point through a surface that is not one to one", async () => {
 /* Isolation and the posed screens                                            */
 /* -------------------------------------------------------------------------- */
 
-it("isolates: a fresh playing screen holding nothing, every switch off", () => {
+it("isolates: the playing screen over an idle run, every switch off", () => {
   const posed = isolate(h, { seed: 3 });
 
   expect(posed.screen).toBe("playing");
   expect(posed.run.tick).toBe(0);
-  expect(posed.run.level).toBe(ISOLATE_LEVEL);
-  expect(posed.run.xpToNext).toBe(xpToNext(ISOLATE_LEVEL));
+  expect(posed.run.level).toBe(1);
+  expect(posed.run.xpToNext).toBe(xpToNext(1));
   expect(posed.run.xp).toBe(0);
   expect(posed.run.kills).toBe(0);
   expect(posed.run.player).toEqual({
@@ -404,12 +404,36 @@ it("leaves an isolated world exactly as posed across a drive", async () => {
   expect(after.run.zones).toEqual([]);
   expect(after.run.pickups).toEqual([]);
   expect(after.run.kills).toBe(0);
-  expect(after.run.level).toBe(ISOLATE_LEVEL);
+  expect(after.run.level).toBe(1);
 });
 
-it("keeps Taper in an isolated world only when asked to", () => {
+it("holds a kill's drop and a gain's level while the two switches are off", async () => {
+  // The faculties `drops` and `progression` name, gated rather than outrun: a
+  // kill leaves nothing on the field, and a gem collected raises `xp` past
+  // `xpToNext(1)` (`5`) without a level or a queued level-up following it.
+  isolate(h);
+  enable(h, "weaponFire");
+  const slot = holdWeapon(h, "taper", 1);
+  h.debug.setWeaponCooldown(slot, 0);
+  placeEnemyNear(h, "moth", 20, 0);
+  const killed = await advanceTicks(h, 2);
+  expect(killed.run.kills).toBe(1);
+  expect(killed.run.gems).toEqual([]);
+  expect(killed.run.pickups).toEqual([]);
+
+  isolate(h);
+  placeGem(h, "large", 0, 0);
+  const collected = await advanceTicks(h, 2);
+  expect(collected.run.gems).toEqual([]);
+  expect(collected.run.xp).toBe(GEM_VALUES.large);
+  expect(collected.run.level).toBe(1);
+  expect(collected.run.pendingLevelUps).toBe(0);
+  expect(collected.screen).toBe("playing");
+});
+
+it("holds Taper out of an isolated world unless it is asked for", () => {
   expect(isolate(h).run.weapons).toEqual([]);
-  expect(isolate(h, { keepTaper: true }).run.weapons).toEqual([
+  expect(isolate(h, { taper: true }).run.weapons).toEqual([
     { id: "taper", level: 1, cooldown: 0 },
   ]);
   expect(isolate(h, { level: 7 }).run.level).toBe(7);
@@ -426,6 +450,8 @@ it("turns the driver switches on and off one at a time", () => {
     enemyContact: false,
     weaponFire: true,
     effectMotion: false,
+    drops: false,
+    progression: false,
   });
   disable(h, "weaponFire");
   expect(h.snapshot().weaponFire).toBe(false);
@@ -452,7 +478,7 @@ it("holds a weapon and a passive in the first free slot, and arms the weapon", a
   expect(projectilesOf(fired, "pin")).toHaveLength(PIN_LEVELS[0].amount);
 });
 
-it("begins a fresh run through the surface with Taper and the switches on", () => {
+it("composes a fresh run out of atomic poses, with the switches left on", () => {
   const run = freshRun(h, 5);
   expect(run.screen).toBe("playing");
   expect(run.run.tick).toBe(0);

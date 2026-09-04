@@ -1,4 +1,4 @@
-// Wick — clock/title-ticks-nothing: nothing advances on title and howto.
+// Wick — clock/title-ticks-nothing: nothing advances on title.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE.
 //   - `specs/ui.md` ("What advances on each screen"): "`title`, `howto`,
@@ -27,12 +27,14 @@
 // fails the menu points and not this one.
 //
 // TOLERANCE. None: the run is compared structurally and the tick is exact.
+//
+// The other screen is `clock/howto-ticks-nothing`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 
-/** How many frames are delivered on each screen: one second of them. */
+/** How many frames are delivered on the screen: one second of them. */
 const IDLE_FRAMES = 60;
 
 let h: Harness;
@@ -45,35 +47,17 @@ afterEach(() => {
   h.dispose();
 });
 
-it("keeps the idle run at tick 0 across frames on title and howto", async () => {
+it("keeps the idle run at tick 0 across frames on title", async () => {
   h.reset();
-  const title = h.snapshot();
-  assertEqual(title.screen, "title", "the screen a reset leaves");
+  const before = h.snapshot();
+  assertEqual(before.screen, "title", "the screen the frames run on");
+
   await h.tick(IDLE_FRAMES);
-  const idleOnTitle = h.snapshot();
+  const held = h.snapshot();
   captureStill(h, "idle");
 
-  assertEqual(idleOnTitle.screen, "title", "screen after frames on title");
-  assertEqual(idleOnTitle.run.tick, 0, "run.tick after frames on title");
-  assertEqual(
-    idleOnTitle.run.enemies.length,
-    0,
-    "enemies after frames on title",
-  );
-  assertDeepEqual(idleOnTitle.run, title.run, "run after frames on title");
-
-  h.debug.setScreen("howto");
-  const howto = h.snapshot();
-  assertEqual(howto.screen, "howto", "the screen the pose entered");
-  await h.tick(IDLE_FRAMES);
-  const idleOnHowto = h.snapshot();
-
-  assertEqual(idleOnHowto.screen, "howto", "screen after frames on howto");
-  assertEqual(idleOnHowto.run.tick, 0, "run.tick after frames on howto");
-  assertEqual(
-    idleOnHowto.run.enemies.length,
-    0,
-    "enemies after frames on howto",
-  );
-  assertDeepEqual(idleOnHowto.run, howto.run, "run after frames on howto");
+  assertEqual(held.screen, "title", "screen after frames on title");
+  assertEqual(held.run.tick, 0, "run.tick after frames on title");
+  assertEqual(held.run.enemies.length, 0, "enemies after frames on title");
+  assertDeepEqual(held.run, before.run, "run after frames on title");
 });

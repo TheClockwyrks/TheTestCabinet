@@ -16,9 +16,12 @@
 // (`specs/enemies.md`, "Drops": a moth's death drops a `small` gem), and no
 // `kill` cue on the bus, which `specs/ui.md` plays when "An enemy dies".
 //
-// THE DRIVE. The isolated world with `despawning` alone on and one tick.
+// THE DRIVE. The isolated world with `despawning` and `drops` on and one tick.
 // `enemyMotion` stays off, so the moth is exactly where it was posed when the
 // distance is tested, and nothing else in the night can account for its going.
+// `drops` is on because "no gem" is one of the three readings: with it off a
+// death leaves nothing either (`specs/instrumentation.md`, the switch table),
+// and the reading would pass for a build that despawned the moth as a kill.
 //
 // THE TOLERANCE. None: the enemy is in the snapshot or it is not, and the
 // counts beside it are whole.

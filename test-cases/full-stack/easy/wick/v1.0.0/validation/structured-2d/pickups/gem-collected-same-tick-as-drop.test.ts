@@ -43,6 +43,7 @@ import {
   advanceTicks,
   captureStill,
   createHarness,
+  enable,
   isolate,
   placeEnemy,
   placePuddle,
@@ -66,7 +67,11 @@ afterEach(() => {
 });
 
 it("leaves no gem and raises xp by the moth's tier on the tick of the kill", async () => {
-  const opened = isolate(h);
+  // `drops` is the faculty this point is about — the gem a death leaves —
+  // so it is the one switch turned back on (`specs/instrumentation.md`).
+  isolate(h);
+  enable(h, "drops");
+  const opened = h.snapshot();
   const at = opened.run.player;
   const moth = placeEnemy(h, "moth", at.x, at.y);
   h.debug.setEnemyHp(moth, Math.min(PULSE_DAMAGE, ENEMIES.moth.hp));

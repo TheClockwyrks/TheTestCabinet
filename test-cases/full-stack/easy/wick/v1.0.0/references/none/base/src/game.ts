@@ -27,7 +27,7 @@ import {
   type Screen,
 } from "./constants";
 import type { PointerFrame } from "./input";
-import { itemAt, tabAt } from "./layout";
+import { contains, menuRects, tabRects, type Rect } from "./layout";
 import { Rng, seedState } from "./rng";
 import { freshRun, idleRun, initialState, type WickState } from "./state";
 import {
@@ -38,6 +38,15 @@ import {
 } from "./sim/context";
 import { acceptOffer, openLevelUp } from "./sim/progression";
 import { tick } from "./sim/tick";
+
+/** `LIGHT THE LAMP`, the title entry a run leads away from and back to. */
+const TITLE_LIGHT_THE_LAMP = TITLE_ITEMS.indexOf("LIGHT THE LAMP");
+
+/** `THE ALMANAC`, the entry `back` on the almanac returns to. */
+const TITLE_THE_ALMANAC = TITLE_ITEMS.indexOf("THE ALMANAC");
+
+/** `HOW TO PLAY`, the entry `back` on the how-to screen returns to. */
+const TITLE_HOW_TO_PLAY = TITLE_ITEMS.indexOf("HOW TO PLAY");
 
 /** The actions each screen answers as press edges. */
 export const SCREEN_ACTIONS: Readonly<Record<Screen, readonly Action[]>> = {
@@ -76,6 +85,23 @@ export class Game {
   readonly rng: Rng;
   private readonly cues = new Set<Cue>();
   private readonly hooks: GameHooks;
+  /**
+   * What the last press edge armed, or `null`.
+   *
+   * "A primary press edge inside the rectangle of the item at `menuIndex` `i`
+   * ... arms that item. That press's release edge inside the same rectangle
+   * takes the armed item" (specs/controls.md). The rectangle is held with it,
+   * because the release is only the same gesture's if it lifts inside the box
+   * the press landed in, and the screen with it, because leaving the screen
+   * takes the gesture's target away. It is input state rather than game state,
+   * so no declared field carries it and every pose leaves it disarmed.
+   */
+  private armed: {
+    readonly screen: Screen;
+    readonly rect: Rect;
+    readonly kind: "item" | "tab";
+    readonly index: number;
+  } | null = null;
 
   constructor(hooks: GameHooks, seed: number = DEFAULT_SEED) {
     this.hooks = hooks;
@@ -127,6 +153,7 @@ export class Game {
    */
   reset(seed: number = DEFAULT_SEED): void {
     const muted = this.state.muted;
+    this.armed = null;
     this.state = initialState(seedState(seed));
     this.state.muted = muted;
     this.cues.clear();
@@ -145,6 +172,17 @@ export class Game {
     this.state.almanacScroll = 0;
   }
 
+  /**
+   * Set `screen` and nothing else, as the surface's `setScreen` poses it: the
+   * run, the loadout, the overlays' fields, and the switches all stand, and a
+   * pose that leaves `playing` discards the accumulator.
+   */
+  poseScreen(screen: Screen): void {
+    const leaving = this.state.screen === "playing" && screen !== "playing";
+    this.enter(screen);
+    if (leaving) this.state.accumulator = 0;
+  }
+
   /** Begin a fresh run and enter `playing`. */
   startRun(): void {
     this.state.run = freshRun();
@@ -152,10 +190,16 @@ export class Game {
     this.state.accumulator = 0;
   }
 
-  /** Discard the run and return to `title`. */
-  toTitle(): void {
+  /**
+   * Discard the run and return to `title` with `selected` highlighted:
+   * "Arriving here selects the entry the arriving transition led away from"
+   * (specs/ui.md). `LIGHT THE LAMP` is the default, the entry every transition
+   * but the two menu screens' `back` leads away from.
+   */
+  toTitle(selected: number = TITLE_LIGHT_THE_LAMP): void {
     this.state.run = idleRun();
     this.enter("title");
+    this.state.menuIndex = selected;
     this.state.accumulator = 0;
   }
 
@@ -300,14 +344,14 @@ export class Game {
         }
         break;
       case "howto":
-        if (action === "back") this.toTitle();
+        if (action === "back") this.toTitle(TITLE_HOW_TO_PLAY);
         break;
       case "almanac":
         if (action === "up") this.moveHighlight(-1);
         else if (action === "down") this.moveHighlight(1);
         else if (action === "left") this.moveTab(-1);
         else if (action === "right") this.moveTab(1);
-        else if (action === "back") this.toTitle();
+        else if (action === "back") this.toTitle(TITLE_THE_ALMANAC);
         break;
       case "playing":
         if (action === "pause" || action === "back") this.pause();
@@ -351,31 +395,75 @@ export class Game {
    */
   handlePointer(pointer: PointerFrame): void {
     if (pointer.at !== null) this.hover(pointer.at.x, pointer.at.y);
-    for (const press of pointer.presses) this.click(press.x, press.y);
+    for (const press of pointer.presses) this.press(press.x, press.y);
+    for (const lift of pointer.releases) this.release(lift.x, lift.y);
     this.scroll(pointer.wheel);
+  }
+
+  /** The `menuIndex` the box at `position` belongs to on the current screen. */
+  private indexOfPosition(position: number): number {
+    const { state } = this;
+    return state.screen === "almanac"
+      ? state.almanacScroll + position
+      : position;
   }
 
   /** The pointer inside an item's box highlights it; inside none, nothing. */
   private hover(x: number, y: number): void {
-    const index = itemAt(this.state, x, y);
-    if (index === null || index === this.state.menuIndex) return;
+    const { state } = this;
+    const position = menuRects(state).findIndex((rect) => contains(rect, x, y));
+    if (position < 0) return;
+    const index = this.indexOfPosition(position);
+    if (index === this.state.menuIndex) return;
     this.setHighlight(index);
   }
 
-  /** A primary press highlights what it lands in and then takes it. */
-  private click(x: number, y: number): void {
+  /** A primary press highlights what it lands in and arms it. */
+  private press(x: number, y: number): void {
     const { state } = this;
-    const tab = tabAt(state, x, y);
-    if (tab !== null) {
-      this.selectTab(tab);
+    this.armed = null;
+    const screen = state.screen;
+    const tabs = tabRects(state);
+    const tab = tabs.findIndex((rect) => contains(rect, x, y));
+    if (tab >= 0) {
+      this.armed = { screen, rect: tabs[tab]!, kind: "tab", index: tab };
       return;
     }
-    const index = itemAt(state, x, y);
-    if (index === null) return;
+    // The box is found before the highlight moves, because moving it on the
+    // almanac can move the window under the very box the press landed in.
+    const rects = menuRects(state);
+    const position = rects.findIndex((rect) => contains(rect, x, y));
+    if (position < 0) return;
+    const index = this.indexOfPosition(position);
+    const rect = rects[position]!;
     if (index !== state.menuIndex) this.setHighlight(index);
-    // Taking the item is exactly what `confirm` on it does, which on an
-    // almanac entry, the one menu that answers no `confirm`, is nothing.
-    this.handleAction("confirm");
+    this.armed = { screen, rect, kind: "item", index };
+  }
+
+  /**
+   * A primary release inside the box its press armed takes what it armed;
+   * anywhere else it disarms and takes nothing.
+   */
+  private release(x: number, y: number): void {
+    const armed = this.armed;
+    this.armed = null;
+    if (armed === null) return;
+    if (armed.screen !== this.state.screen) return;
+    if (!contains(armed.rect, x, y)) return;
+    if (armed.kind === "tab") {
+      this.selectTab(armed.index);
+      return;
+    }
+    this.take();
+  }
+
+  /**
+   * Take the armed item: exactly what `confirm` on it does, which on an
+   * almanac entry, the one menu that answers no `confirm`, is nothing, and on
+   * `howto`, which answers no `confirm` either, is exactly what `back` does.
+   */
+  private take(): void {
+    this.handleAction(this.state.screen === "howto" ? "back" : "confirm");
   }
 
   /** A frame's wheel travel, in stage units, moves the almanac's window. */

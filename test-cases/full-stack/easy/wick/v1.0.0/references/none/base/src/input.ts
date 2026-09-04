@@ -145,10 +145,17 @@ export interface StageMapping {
 
 /** What the pointer did over one frame, in stage units. */
 export interface PointerFrame {
-  /** Where the pointer rests, or `null` while it is off the canvas. */
+  /**
+   * Where a device that reports a position out of contact rests, or `null`.
+   *
+   * A touch contact never lands here: it reports a position only while it is
+   * down, and "a touch contact never hovers" (specs/controls.md).
+   */
   at: StagePoint | null;
-  /** The points of the primary presses since the last read, in order. */
+  /** The points of the primary press edges since the last read, in order. */
   presses: StagePoint[];
+  /** The points of the primary release edges since the last read, in order. */
+  releases: StagePoint[];
   /** Vertical wheel travel since the last read, downward positive. */
   wheel: number;
 }
@@ -163,10 +170,23 @@ interface ClientPoint {
 const PRIMARY_BUTTON = 0;
 
 export class Pointer {
-  /** Where the pointer rests, in client CSS pixels, or `null` while it is off. */
+  /**
+   * Where a device last reported itself OUT of contact, or `null`.
+   *
+   * The hover position, and nothing else: "only a device reporting a position
+   * while out of contact moves the highlight this way" (specs/controls.md). A
+   * mouse reports moves whether or not it is held, so only the ones it made
+   * out of contact land here; a finger reports a position only while it is
+   * down, so nothing of it ever does, which is what makes a contact never
+   * hover.
+   */
   private at: ClientPoint | null = null;
-  /** The client positions of the primary presses since the last read. */
+  /** Whether the pointer is in contact, which is what silences the hover. */
+  private down = false;
+  /** The client positions of the primary press edges since the last read. */
   private readonly presses: ClientPoint[] = [];
+  /** The client positions of the primary release edges since the last read. */
+  private readonly releases: ClientPoint[] = [];
   private travel = 0;
   private detach: (() => void) | null = null;
 
@@ -178,11 +198,20 @@ export class Pointer {
     };
     const onDown = (event: Event): void => {
       const pointer = event as PointerEvent;
-      this.moveTo(pointer.clientX, pointer.clientY);
       if (pointer.button === PRIMARY_BUTTON) {
         this.pressAt(pointer.clientX, pointer.clientY);
       }
     };
+    const onUp = (event: Event): void => {
+      const pointer = event as PointerEvent;
+      if (pointer.button === PRIMARY_BUTTON) {
+        this.releaseAt(pointer.clientX, pointer.clientY);
+      }
+    };
+    // A cancelled contact never lifts inside anything, so it disarms whatever
+    // the press armed: a release "anywhere else disarms it and takes nothing"
+    // (specs/controls.md).
+    const onCancel = (): void => this.releaseAt(-1, -1);
     const onLeave = (): void => this.leave();
     const onWheel = (event: Event): void => {
       const wheel = event as WheelEvent;
@@ -191,11 +220,15 @@ export class Pointer {
     };
     target.addEventListener("pointermove", onMove);
     target.addEventListener("pointerdown", onDown);
+    target.addEventListener("pointerup", onUp);
+    target.addEventListener("pointercancel", onCancel);
     target.addEventListener("pointerleave", onLeave);
     target.addEventListener("wheel", onWheel, { passive: false });
     this.detach = () => {
       target.removeEventListener("pointermove", onMove);
       target.removeEventListener("pointerdown", onDown);
+      target.removeEventListener("pointerup", onUp);
+      target.removeEventListener("pointercancel", onCancel);
       target.removeEventListener("pointerleave", onLeave);
       target.removeEventListener("wheel", onWheel);
     };
@@ -207,14 +240,24 @@ export class Pointer {
     this.detach = null;
   }
 
-  /** The pointer rests at a client position. */
+  /** The pointer reports a position; it hovers only while out of contact. */
   moveTo(clientX: number, clientY: number): void {
+    if (this.down) return;
     this.at = { x: clientX, y: clientY };
   }
 
-  /** One primary press at a client position. */
+  /** One primary press edge at a client position, which takes the hover away. */
   pressAt(clientX: number, clientY: number): void {
+    this.down = true;
+    this.at = null;
     this.presses.push({ x: clientX, y: clientY });
+  }
+
+  /** One primary release edge at a client position. */
+  releaseAt(clientX: number, clientY: number): void {
+    this.down = false;
+    this.at = null;
+    this.releases.push({ x: clientX, y: clientY });
   }
 
   /** The pointer has left the canvas, so it rests on nothing. */
@@ -232,9 +275,11 @@ export class Pointer {
     const frame: PointerFrame = {
       at: this.at === null ? null : mapping.point(this.at.x, this.at.y),
       presses: this.presses.map((press) => mapping.point(press.x, press.y)),
+      releases: this.releases.map((lift) => mapping.point(lift.x, lift.y)),
       wheel: mapping.travel(this.travel),
     };
     this.presses.length = 0;
+    this.releases.length = 0;
     this.travel = 0;
     return frame;
   }

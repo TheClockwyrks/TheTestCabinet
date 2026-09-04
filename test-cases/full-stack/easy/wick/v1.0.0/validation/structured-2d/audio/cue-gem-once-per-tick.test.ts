@@ -15,9 +15,10 @@
 // playing the cue per gem from one playing it per tick. No enemy, pickup, or
 // weapon is in the world, so nothing else raises a cue on that tick.
 //
-// The run is posed at `ISOLATE_LEVEL` (50), whose `xpToNext` is `495`
-// (`specs/progression.md`), so the `5` experience five small gems carry
-// queues no level-up and the tick opens no overlay.
+// The isolation leaves the `progression` switch off, so the `5` experience
+// five small gems carry is banked as `xp` and spent on no level
+// (`specs/instrumentation.md`, the switch table): the tick queues no level-up
+// and opens no overlay.
 //
 // THE TOLERANCE. None: the count is fixed at one by the stated rule, and the
 // collector reads whole frames.

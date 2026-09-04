@@ -82,6 +82,8 @@ export const REQUIRED_OPS = [
   "setEnemyContact",
   "setWeaponFire",
   "setEffectMotion",
+  "setDrops",
+  "setProgression",
   "setTick",
   "setSpawnTimer",
   "setPlayerPosition",
@@ -120,7 +122,7 @@ export const REQUIRED_OPS = [
 export type OperationName = (typeof REQUIRED_OPS)[number];
 
 /**
- * The seven driver switches, each set by its own operation and reported by the
+ * The nine driver switches, each set by its own operation and reported by the
  * snapshot under the same name (specs/instrumentation.md, The driver switches).
  */
 export const SWITCH_NAMES = [
@@ -131,6 +133,8 @@ export const SWITCH_NAMES = [
   "enemyContact",
   "weaponFire",
   "effectMotion",
+  "drops",
+  "progression",
 ] as const;
 export type SwitchName = (typeof SWITCH_NAMES)[number];
 
@@ -143,6 +147,8 @@ export const SWITCH_OPS: Readonly<Record<SwitchName, OperationName>> = {
   enemyContact: "setEnemyContact",
   weaponFire: "setWeaponFire",
   effectMotion: "setEffectMotion",
+  drops: "setDrops",
+  progression: "setProgression",
 };
 
 /**
@@ -311,7 +317,7 @@ export interface RunSnapshot {
  * The shape is fixed and every field is present whatever the screen: `run`
  * reports the idle run on `title`, `howto`, and `almanac` and the run that just
  * ended on `fallen` and `dawn`; `almanacTab` and `almanacScroll` sit beside
- * `menuIndex`, and the seven switches beside `muted`, both outside `run`.
+ * `menuIndex`, and the nine switches beside `muted`, both outside `run`.
  */
 export interface WickSnapshot {
   version: number;
@@ -328,6 +334,8 @@ export interface WickSnapshot {
   enemyContact: boolean;
   weaponFire: boolean;
   effectMotion: boolean;
+  drops: boolean;
+  progression: boolean;
   run: RunSnapshot;
   muted: boolean;
   /** Frame time waiting for the next tick, in seconds. */
@@ -369,7 +377,10 @@ export interface WickDebugApi<S = unknown> {
    */
   tabRects(state: DeepReadonly<S>): readonly WickRect[];
 
-  /** Enters `name` exactly as the real transition into it does. */
+  /**
+   * Sets `screen`, with `menuIndex`, `almanacTab`, and `almanacScroll` all
+   * `0`. Nothing else changes: no run is begun, discarded, ended, or grown.
+   */
   setScreen(state: DeepReadonly<S>, name: Screen): S;
   /** On `levelup`, accepts the offer at `index`; out of range leaves the state. */
   choose(state: DeepReadonly<S>, index: number): S;
@@ -381,6 +392,8 @@ export interface WickDebugApi<S = unknown> {
   setEnemyContact(state: DeepReadonly<S>, on: boolean): S;
   setWeaponFire(state: DeepReadonly<S>, on: boolean): S;
   setEffectMotion(state: DeepReadonly<S>, on: boolean): S;
+  setDrops(state: DeepReadonly<S>, on: boolean): S;
+  setProgression(state: DeepReadonly<S>, on: boolean): S;
 
   /** Sets `tick`, 0 to `DAWN_TIME × TICK_HZ − 1`; nothing else changes. */
   setTick(state: DeepReadonly<S>, tick: number): S;

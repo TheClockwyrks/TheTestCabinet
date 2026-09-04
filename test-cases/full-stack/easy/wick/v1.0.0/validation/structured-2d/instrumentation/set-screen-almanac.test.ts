@@ -1,19 +1,19 @@
-// Wick — instrumentation/set-screen-almanac: `setScreen('almanac')` enters the
-// almanac with the idle run and `menuIndex`, `almanacTab`, and `almanacScroll`
-// all `0`.
+// Wick — instrumentation/set-screen-almanac: `setScreen('almanac')` shows the
+// almanac with `menuIndex`, `almanacTab`, and `almanacScroll` all `0` and the
+// run standing as it was.
 //
-// WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`, the
-// `setScreen` table, row `almanac` from any: "Enters the almanac exactly as
-// confirming `THE ALMANAC` does: the idle run, `menuIndex` `0`, `almanacTab`
-// `0`, `almanacScroll` `0`." `specs/state.md`, "The idle run", is the table
-// `IDLE_RUN` transcribes.
+// WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`,
+// `setScreen`: "Sets `screen` to `name`, one of the `Screen` values, with
+// `menuIndex`, `almanacTab`, and `almanacScroll` all `0`. Nothing else
+// changes: the run ... stands exactly as it was", and "Applies on every
+// screen". The almanac is the one screen all three indices can be non-zero on,
+// so it is where the zeroing half of that sentence is decidable.
 //
-// WHAT IS READ, AND WHY. The screen, the three indices, and the whole run,
-// compared field by field against the idle run. The row says "from any", so
-// the call is made twice: once from a `playing` run disturbed enough that a
-// kept run is told from a discarded one, and once from the almanac itself with
-// the tab turned and the list scrolled, which is the only state the two
-// almanac indices can be off `0` in.
+// WHAT IS READ, AND WHY. The screen, the three indices, and the whole run
+// compared field by field against the run standing before the call. "Applies
+// on every screen", so the call is made twice: once from a `playing` run
+// disturbed enough that a run left alone is told from one rebuilt, and once
+// from the almanac itself with the tab turned and the list scrolled.
 //
 // THE DRIVE. An isolated run with kills, a moved lamplighter, an enemy and a
 // gem on the field, then the call. Then `right` and `down` presses on the
@@ -26,7 +26,6 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import { ALMANAC_ROWS } from "../constants";
 import {
-  IDLE_RUN,
   captureStill,
   createHarness,
   isolate,
@@ -39,7 +38,11 @@ import {
 } from "../harness";
 
 /** The almanac state after the call, whatever it was called from. */
-function assertEnteredAlmanac(s: WickSnapshot, from: string): void {
+function assertEnteredAlmanac(
+  s: WickSnapshot,
+  before: WickSnapshot,
+  from: string,
+): void {
   assertEqual(s.screen, "almanac", `screen after setScreen('almanac') ${from}`);
   assertEqual(s.menuIndex, 0, `menuIndex after setScreen('almanac') ${from}`);
   assertEqual(s.almanacTab, 0, `almanacTab after setScreen('almanac') ${from}`);
@@ -48,7 +51,11 @@ function assertEnteredAlmanac(s: WickSnapshot, from: string): void {
     0,
     `almanacScroll after setScreen('almanac') ${from}`,
   );
-  assertDeepEqual(s.run, IDLE_RUN, `run after setScreen('almanac') ${from}`);
+  assertDeepEqual(
+    s.run,
+    before.run,
+    `run after setScreen('almanac') ${from}, against the run before it`,
+  );
 }
 
 let h: Harness;
@@ -61,14 +68,19 @@ afterEach(() => {
   h.dispose();
 });
 
-it("enters the almanac with the idle run and the three indices at 0", async () => {
+it("shows the almanac with the three indices at 0 and the run as it stood", async () => {
   isolate(h);
   h.debug.setKills(5);
   h.debug.setPlayerPosition(300, -120);
   placeEnemy(h, "moth", 200, 0);
   placeGem(h, "small", 100, 100);
+  const disturbed = h.snapshot();
 
-  assertEnteredAlmanac(poseScreen(h, "almanac"), "from a disturbed run");
+  assertEnteredAlmanac(
+    poseScreen(h, "almanac"),
+    disturbed,
+    "from a disturbed run",
+  );
 
   // Two `right` presses reach `ENEMIES`, the thirteen of `ENEMY_IDS`
   // (`specs/ui.md`), which is long enough for `ALMANAC_ROWS` `down` presses to
@@ -99,5 +111,5 @@ it("enters the almanac with the idle run and the three indices at 0", async () =
   const again = poseScreen(h, "almanac");
   await h.frameDraw();
   captureStill(h, "almanac");
-  assertEnteredAlmanac(again, "from the almanac itself");
+  assertEnteredAlmanac(again, browsed, "from the almanac itself");
 });

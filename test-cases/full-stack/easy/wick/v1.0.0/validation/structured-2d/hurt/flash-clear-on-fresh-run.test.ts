@@ -2,14 +2,13 @@
 // when the run it replaced ended with one running.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/ui.md`, "A fresh run":
-// "`LIGHT THE LAMP`, `TRY AGAIN`, and the debug surface's
-// `setScreen("playing")` each begin a fresh run, and whatever the previous run
-// held is discarded. A fresh run has the run clock at `0:00`, the lamplighter
-// at the world origin `(0, 0)` with `hp = BASE_MAX_HP` (`100`),
+// "`LIGHT THE LAMP` and `TRY AGAIN` each begin a fresh run, and whatever the
+// previous run held is discarded. A fresh run has the run clock at `0:00`, the
+// lamplighter at the world origin `(0, 0)` with `hp = BASE_MAX_HP` (`100`),
 // `facing = "right"`, and `hurtFlash` at `0`". `specs/world.md`, Contact
-// damage, says the same of the timer: "It is `0` on the idle run and on a
-// fresh run." `specs/ui.md`, "`fallen` and `dawn`", makes `TRY AGAIN` the item
-// the arrival highlights, and `specs/controls.md` binds `confirm` to `Enter`.
+// damage, says the same of the timer: "It is `0` on the idle run and on a fresh
+// run." `specs/ui.md`, "`fallen` and `dawn`", makes `TRY AGAIN` the item the
+// arrival highlights, and `specs/controls.md` binds `confirm` to `Enter`.
 //
 // WHAT IS READ, AND WHY. `run.hurtFlash` on the fresh run the confirmation
 // began. The reading only decides anything if the run it replaced was carrying

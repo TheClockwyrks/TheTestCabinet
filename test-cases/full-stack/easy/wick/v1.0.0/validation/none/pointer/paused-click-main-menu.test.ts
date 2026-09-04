@@ -22,8 +22,8 @@
 // experience, kills, a health short of full, a lamplighter off the origin, a
 // loadout, an enemy, a gem and a pickup, because "abandons the run" is only
 // visible against a run that has something in it. The pause is posed through
-// `setScreen("paused")`, which specs/instrumentation.md defines as "Exactly as
-// `pause` does".
+// `setScreen("paused")`, which specs/instrumentation.md defines as setting
+// `screen` and nothing else.
 //
 // HOW THE GESTURE IS POSED. `menuRects()` reports where this build drew the two
 // pause items, and the primary button is pressed at the middle of the SECOND,

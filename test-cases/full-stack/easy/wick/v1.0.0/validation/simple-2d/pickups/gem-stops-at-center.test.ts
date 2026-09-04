@@ -19,9 +19,9 @@
 // but the flight step can move the gem and nothing but the collection can
 // remove it. The gem is latched attracted with `setGemAttracted`, so the tick
 // it takes is a flight step rather than the tick that attracts it, and it lies
-// along `+x` alone so the step is one axis wide. `isolate` poses
-// `ISOLATE_LEVEL` (50), whose `xpToNext` is 495, so the collection opens no
-// overlay over the reading.
+// along `+x` alone so the step is one axis wide. `progression` is one of the
+// switches `isolate` holds off, so the collection opens no overlay over the
+// reading.
 //
 // WHAT IS READ. After one tick: no gem left on the field, and `xp` risen by the
 // tier's own figure, which together say the step ended on the center and the

@@ -81,7 +81,7 @@ export function attractAndCollectGems(ctx: TickContext): void {
       }
     }
     if (distance(gem, player) > COLLECT_RADIUS) return true;
-    gainXp(run, GEM_VALUES[gem.tier] * multiplier);
+    gainXp(run, GEM_VALUES[gem.tier] * multiplier, ctx.state.progression);
     ctx.cues.add(CUES.gem);
     return false;
   });

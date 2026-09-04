@@ -13,9 +13,10 @@
 // in an isolated run holding nothing else, with every driver switch off. A
 // distance of `0` is inside the collection distance whatever the build's
 // pickup radius, so the collection lands on the first tick. `hp` is posed
-// below `maxHp` so the heal the collection carries is a real one, and the run
-// is at `ISOLATE_LEVEL` (50) with no gem on the field, so no level-up, no
-// death, no contact hit, and no chest lands on the tick beside it.
+// below `maxHp` so the heal the collection carries is a real one, and the
+// isolation leaves no gem on the field and the `progression` switch off, so no
+// level-up, no death, no contact hit, and no chest lands on the tick beside
+// it.
 //
 // THE TOLERANCE. None: the specification fixes the cue to the tick of the
 // collection and to at most one play on it, and the collector reads whole

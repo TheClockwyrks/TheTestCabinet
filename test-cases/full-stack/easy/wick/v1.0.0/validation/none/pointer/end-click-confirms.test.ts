@@ -6,9 +6,8 @@
 // `menuIndex` to `i` ... and then takes that item exactly as `confirm` on it
 // does." specs/ui.md ("`fallen` and `dawn`"): "`confirm` takes the highlighted
 // item: `TRY AGAIN` starts a fresh run and sets `screen = playing`", the first
-// of `END_ITEMS`. specs/ui.md ("A fresh run"): "`LIGHT THE LAMP`, `TRY AGAIN`,
-// and the debug surface's `setScreen("playing")` each begin a fresh run, and
-// whatever the previous run held is discarded", the idle run with "Taper at
+// of `END_ITEMS`. specs/ui.md ("A fresh run"): "`LIGHT THE LAMP` and `TRY AGAIN`
+// each begin a fresh run, and whatever the previous run held is discarded", the idle run with "Taper at
 // level `1` alone in the first weapon slot". specs/controls.md adds what the
 // clicking frame itself does: "a frame whose press enters `playing` ... runs
 // that frame's ticks", so the run is read one tick old.

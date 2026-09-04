@@ -6,9 +6,8 @@
 // sets `screen = playing`", over "Menu | `END_ITEMS`: `TRY AGAIN`, `TITLE`, in
 // that order" with "`menuIndex` is `0` on arriving", so the highlighted item on
 // arrival is `TRY AGAIN`. specs/ui.md ("A fresh run") fixes what it starts:
-// "`LIGHT THE LAMP`, `TRY AGAIN`, and the debug surface's
-// `setScreen("playing")` each begin a fresh run, and whatever the previous run
-// held is discarded", the idle run with "Taper at level `1` alone in the first
+// "`LIGHT THE LAMP` and `TRY AGAIN` each begin a fresh run, and whatever the
+// previous run held is discarded", the idle run with "Taper at level `1` alone in the first
 // weapon slot". specs/controls.md adds what the confirming frame does: "a frame
 // whose press enters `playing` ... runs that frame's ticks", so the run is read
 // one tick old.

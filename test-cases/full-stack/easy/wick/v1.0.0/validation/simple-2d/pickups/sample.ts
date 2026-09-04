@@ -48,6 +48,7 @@ import { assertEqual, assertLength } from "../assert";
 import { DROP_SAMPLE, PICKUP_KINDS, type PickupKind } from "../constants";
 import {
   captureStill,
+  enable,
   isolate,
   type Harness,
   type WickSnapshot,
@@ -110,6 +111,9 @@ export async function drawDrops(
   outputId: string,
 ): Promise<DropSample> {
   isolate(h);
+  // The drop roll is the requirement this sample decides, so `drops` is the
+  // one faculty turned back on.
+  enable(h, "drops");
   const points = new Set<string>();
   const pickups: SampledPickup[] = [];
   const perPoint = new Map<string, number>();

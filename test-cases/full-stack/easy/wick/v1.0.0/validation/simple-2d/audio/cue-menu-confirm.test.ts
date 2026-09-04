@@ -24,9 +24,10 @@
 // taken.
 //
 // WHY THE SCREENS ARE REACHED AS THEY ARE. Each is entered through the debug
-// surface, "exactly as the real transition into it enters it"
-// (specs/instrumentation.md, `setScreen`), so no unrelated menu stands between
-// the point and its frame. On the title the highlight is walked down to
+// surface alone, so no unrelated menu stands between the point and its frame:
+// the title by `setScreen`, and the end screen by the ending that reaches it,
+// "the fallen ending is `setHp` at `0` and one tick"
+// (specs/instrumentation.md). On the title the highlight is walked down to
 // `HOW TO PLAY` before the recording opens, so the `menu-move` each of those
 // moves sounds belongs to the other point and not to this one; on `fallen` the
 // item confirmed is the one `menuIndex` `0` already holds, so no move is needed
@@ -40,6 +41,8 @@ import { TITLE_ITEMS } from "../constants";
 import {
   captureReplay,
   createHarness,
+  endFallen,
+  isolate,
   onCue,
   poseScene,
   tap,
@@ -77,7 +80,8 @@ it("plays menu-confirm on the frame HOW TO PLAY and TRY AGAIN are confirmed", as
     "menu-confirm cues on the title's frame",
   );
 
-  poseScene(h, "fallen");
+  isolate(h, { keepTaper: true });
+  await endFallen(h);
   const onFallen = onCue(h);
 
   const fallen = await tap(h, CONFIRM_KEY);

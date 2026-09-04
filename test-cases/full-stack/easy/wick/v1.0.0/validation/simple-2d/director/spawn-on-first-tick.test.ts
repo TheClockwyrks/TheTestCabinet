@@ -10,17 +10,16 @@
 //     it is set again."
 //   - `specs/enemies.md` ("Windows"): row 0 applies from 0:00 and lists `moth`
 //     alone, so the type chosen on the first tick is a moth whatever the draw.
-//   - `specs/instrumentation.md` (`setScreen`): `playing` from any other screen
-//     "Begins a fresh run exactly as `LIGHT THE LAMP` and `TRY AGAIN` do".
+//   - `specs/instrumentation.md` (`setScreen`): the pose to `playing` is what
+//     `isolate` enters the run on, and it "sets the screen and nothing else".
 //
 // WHAT IS READ. The field after the run's first tick: exactly one enemy, and a
 // moth. A build whose timer starts anywhere but zero leaves the field empty on
 // that tick.
 //
-// WHY THE NIGHT IS POSED AS IT IS. The fresh run is entered through the
-// surface and emptied, and `spawning` alone is on, so the enemy on the field
-// after one tick came from the timer being due on the run's first tick and from
-// nothing else.
+// WHY THE NIGHT IS POSED AS IT IS. The run is entered through the surface and
+// emptied, and `spawning` alone is on, so the enemy on the field after one tick
+// came from the timer being due on the run's first tick and from nothing else.
 //
 // THE PICTURE. What the director spawns lands 760 units out, past the edge of
 // the view, so the still is taken after a closing drift that lets it travel in.

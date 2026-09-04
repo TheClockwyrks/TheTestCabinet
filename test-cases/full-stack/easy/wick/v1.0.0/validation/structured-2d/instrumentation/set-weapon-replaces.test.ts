@@ -31,7 +31,7 @@ afterEach(() => {
 });
 
 it("replaces Taper with Pin at level 2 in slot 0", async () => {
-  const start = isolate(h, { keepTaper: true });
+  const start = isolate(h, { taper: true });
   assertDeepEqual(start.run.weapons, FRESH_WEAPONS, "weapons before the pose");
 
   h.debug.setWeapon(0, "pin", 2);

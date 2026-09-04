@@ -21,9 +21,10 @@
 // THE DRIVE. An isolated `playing` world holding one moth, the lamplighter
 // posed away from the origin and the clock posed off `0`, so a resume that
 // restarted or discarded anything is unmistakable; the pause posed through
-// `setScreen("paused")` — "exactly as `pause` does"
-// (`specs/instrumentation.md`) — and the run read there; then a primary press
-// and release in the middle of `RESUME`'s own rectangle, read off `menuRects`.
+// `setScreen("paused")` — by setting `screen` alone, with the run left as it
+// stands (`specs/instrumentation.md`) — and the run read there; then a primary
+// press and release in the middle of `RESUME`'s own rectangle, read off
+// `menuRects`.
 //
 // THE TOLERANCE. None: the whole run is compared field for field.
 

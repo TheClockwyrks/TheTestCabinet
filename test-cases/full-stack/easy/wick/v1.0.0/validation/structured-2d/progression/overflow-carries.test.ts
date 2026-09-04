@@ -13,8 +13,9 @@
 // which passes `xpToNext(1)` by `2`, and `2` is below `xpToNext(2)`, so
 // exactly one level is taken and `2` is left standing. A build that zeroes
 // `xp` on a level-up reads `0` here; a build that subtracts nothing reads `7`.
-// Every driver switch is off and the world is otherwise empty, so the only
-// gain is that gem's.
+// `progression` is the one driver switch turned on, since spending a gain on
+// a level is what this point decides; the other eight are off and the world is
+// otherwise empty, so the only gain is that gem's.
 //
 // THE TOLERANCE. `REAL_EPS` on `xp`, a real number that is here a difference
 // of whole numbers; `level` is whole and exact.
@@ -26,6 +27,7 @@ import {
   advanceTicks,
   captureStill,
   createHarness,
+  enable,
   isolate,
   placeGem,
   type Harness,
@@ -47,7 +49,11 @@ afterEach(() => {
 });
 
 it("leaves 2 experience on level 2 when a medium gem passes the threshold by 2", async () => {
+  // `progression`, the faculty that spends a gain on levels, is the one
+  // switch this point is about, so it is turned back on and the other eight
+  // stay held (`specs/instrumentation.md`, the switch table).
   const { player } = isolate(h).run;
+  enable(h, "progression");
   h.debug.setLevel(LEVEL);
   h.debug.setXp(XP_BEFORE);
   placeGem(h, "medium", player.x, player.y);

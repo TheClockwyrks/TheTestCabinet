@@ -26,6 +26,7 @@ import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
+  endFallen,
   isolate,
   tap,
   type Harness,
@@ -43,7 +44,7 @@ afterEach(() => {
 
 it("moves the fallen highlight from the first item to the second", async () => {
   isolate(h);
-  h.debug.setScreen("fallen");
+  await endFallen(h);
   const before = h.snapshot();
   assertEqual(before.screen, "fallen", "the screen ArrowDown is pressed on");
   assertEqual(before.menuIndex, 0, "the highlight before ArrowDown");

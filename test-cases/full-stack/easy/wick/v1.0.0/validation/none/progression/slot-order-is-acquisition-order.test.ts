@@ -56,7 +56,7 @@ afterEach(async () => {
 });
 
 it("keeps Taper, Ember, and Pin in acquisition order across two levels", async () => {
-  await isolate(h, { keepTaper: true });
+  await isolate(h, { taper: true });
   await h.debug.setNextOffers([ACCEPTED[0]!]);
 
   let overlay = await openLevelUp(h, ACCEPTED.length);

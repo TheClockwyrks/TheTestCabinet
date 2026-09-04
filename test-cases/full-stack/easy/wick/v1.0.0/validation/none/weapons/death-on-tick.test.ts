@@ -13,8 +13,9 @@
 //
 // THE POSE. A moth at `(150, 0)` and a level-1 Ember bolt posed on its center
 // with zero velocity, so the next tick's hit is the only thing that happens to
-// it. Every faculty is held: `enemyMotion` so the moth dies exactly where it
-// was posed, and the rest so nothing else lands in the night. The moth stands
+// it. Every faculty is held but `drops`, which is what the death leaves and so
+// what this reads: `enemyMotion` is off so the moth dies exactly where it was
+// posed, and the rest so nothing else lands in the night. The moth stands
 // `150` from the lamplighter, beyond the `48` pickup radius, so its gem is not
 // attracted on the tick it drops and lies where the moth died. The kill's
 // bread and draft draws may leave a pickup beside the gem; the gem is read by
@@ -54,7 +55,7 @@ afterEach(async () => {
 });
 
 it("removes a moth taken below 0, counts the kill, and drops its gem where it died", async () => {
-  await isolate(h);
+  await isolate(h, { on: ["drops"] });
   const moth = await placeEnemy(h, "moth", MOTH.x, MOTH.y);
   await placeProjectile(h, "ember", MOTH.x, MOTH.y, 0, 0, 0);
   const before = await h.snapshot();

@@ -148,10 +148,28 @@ describe("a frame", () => {
   it("takes an item on a click where the picture is", () => {
     const { runtime, game, pointer } = build();
     const item = titleRects()[0];
-    pointer.pressAt(item.x + item.width / 2, item.y + item.height / 2);
+    const x = item.x + item.width / 2;
+    const y = item.y + item.height / 2;
+    // The press arms the item and the lift inside the same box takes it, both
+    // on one frame, as a real click between two frames arrives
+    // (specs/controls.md, "Press and release").
+    pointer.pressAt(x, y);
+    pointer.releaseAt(x, y);
     runtime.step(1);
     expect(game.state.screen).toBe("playing");
     expect(game.state.run.tick).toBe(1);
+  });
+
+  it("takes nothing when the lift falls outside the box the press armed", () => {
+    const { runtime, game, pointer } = build();
+    const item = titleRects()[0];
+    pointer.pressAt(item.x + item.width / 2, item.y + item.height / 2);
+    runtime.step(1);
+    expect(game.state.screen).toBe("title");
+    pointer.releaseAt(4, 4);
+    runtime.step(1);
+    expect(game.state.screen).toBe("title");
+    expect(game.state.menuIndex).toBe(0);
   });
 
   it("mirrors the mute bit and toggles the overlay on the backtick", () => {

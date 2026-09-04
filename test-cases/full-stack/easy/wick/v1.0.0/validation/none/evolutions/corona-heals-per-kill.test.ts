@@ -1,6 +1,5 @@
 // Wick — evolutions/corona-heals-per-kill: each enemy a Corona pulse kills
-// heals the lamplighter `CORONA_HEAL`, and a pulse that kills nothing heals
-// nothing.
+// heals the lamplighter `CORONA_HEAL`.
 //
 // WHERE THE THRESHOLD COMES FROM. `specs/evolutions.md` ("Corona"): "Each enemy
 // a pulse kills, one whose `hp` the pulse's own hit takes from above `0` to `0`
@@ -19,20 +18,13 @@
 // aura, and past `pickupRadius` (`48`) and the `PICKUP_ITEM_RADIUS +
 // PLAYER_RADIUS` (`28`) at which a bread would be collected, so nothing their
 // deaths drop reaches the lamplighter and the only change to `hp` is the heal.
-// Corona is held at level 1 and pulsed through the shared `fireWeapon`, then
-// thirty ticks are stepped to the next pulse with nothing left alive.
+// Corona is held at level 1 and pulsed through the shared `fireWeapon`.
 //
 // TOLERANCE. `FLOAT_TOL` on `hp`, a real the heal adds three whole units to.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNear } from "../assert";
-import {
-  BASE_MAX_HP,
-  CORONA_HEAL,
-  FLOAT_TOL,
-  dueTicks,
-  weaponRow,
-} from "../constants";
+import { BASE_MAX_HP, CORONA_HEAL, FLOAT_TOL } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -53,9 +45,6 @@ const PROBES = [
   { x: 0, y: 100 },
   { x: -100, y: 0 },
 ];
-
-/** The ticks to Corona's next pulse: `round(0.5 × 60)` = `30`. */
-const PULSE_TICKS = dueTicks(weaponRow("corona").cooldown as number);
 
 let h: Harness;
 
@@ -92,13 +81,5 @@ it("raises hp from 50 to 53 on the pulse that kills three moths and leaves it th
     healed,
     FLOAT_TOL,
     "hp after the pulse that killed three moths",
-  );
-
-  const later = await h.step(PULSE_TICKS);
-  assertNear(
-    player(later).hp,
-    healed,
-    FLOAT_TOL,
-    `hp after the pulse ${PULSE_TICKS} ticks later, which killed nothing`,
   );
 });

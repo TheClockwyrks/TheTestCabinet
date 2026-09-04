@@ -26,6 +26,7 @@ import { XP_BASE } from "../constants";
 import {
   captureStill,
   createHarness,
+  enable,
   isolate,
   spawnGemAt,
   type Harness,
@@ -49,6 +50,8 @@ afterEach(() => {
 
 it("ends the gem's own tick on levelup with menuIndex 0", async () => {
   isolate(h);
+  // Spending experience on levels is the requirement, so `progression` is the one faculty turned back on.
+  enable(h, "progression");
   h.debug.setLevel(POSED_LEVEL);
   h.debug.setXp(POSED_XP);
   const { player } = h.snapshot().run;

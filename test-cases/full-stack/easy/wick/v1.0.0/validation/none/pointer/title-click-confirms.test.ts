@@ -33,7 +33,7 @@
 // WHY EVERY DRIVER SWITCH IS OFF FIRST. The clicking frame is itself the run's
 // first tick, and a tick with the game's faculties running spawns, fires, and
 // drops as `specs/enemies.md` and `specs/weapons.md` state, none of which is
-// what a fresh run holds. The seven switches "stay as they are" across a screen
+// what a fresh run holds. The nine switches "stay as they are" across a screen
 // change (specs/instrumentation.md), so holding them all off leaves that first
 // tick moving the clock alone, and the run the click began can be read field for
 // field against the fresh run the specification states.

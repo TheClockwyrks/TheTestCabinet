@@ -214,7 +214,9 @@ export type SwitchName =
   | "enemyMotion"
   | "enemyContact"
   | "weaponFire"
-  | "effectMotion";
+  | "effectMotion"
+  | "drops"
+  | "progression";
 
 export const SWITCH_NAMES: readonly SwitchName[] = [
   "spawning",
@@ -224,6 +226,8 @@ export const SWITCH_NAMES: readonly SwitchName[] = [
   "enemyContact",
   "weaponFire",
   "effectMotion",
+  "drops",
+  "progression",
 ];
 
 /** The idle run `title`, `howto`, and `almanac` hold. */
@@ -285,6 +289,8 @@ export class WickState extends GameState {
   enemyContact = true;
   weaponFire = true;
   effectMotion = true;
+  drops = true;
+  progression = true;
   /**
    * The movement actions as the current frame read them, written by the
    * player controller and read by every tick the frame runs. Rebuilt every

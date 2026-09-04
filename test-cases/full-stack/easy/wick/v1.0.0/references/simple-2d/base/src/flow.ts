@@ -21,7 +21,7 @@ import {
   type CueName,
 } from "./constants";
 import { entriesOf, maxScroll, scrollToShow } from "./almanac";
-import type { Screen, WickState } from "./game";
+import type { Screen, WickRect, WickState } from "./game";
 import { hitRect, menuRects, tabRects } from "./menus";
 import { Rng } from "./rng";
 import { cloneState, freshRun, idleRun, type Draft } from "./state";
@@ -29,6 +29,15 @@ import { NOTHING_HELD, makeTickContext, type Held } from "./sim/context";
 import { acceptOffer, openLevelUp } from "./sim/progression";
 import { tick } from "./sim/tick";
 import type { DeepReadonly } from "ts-essentials";
+
+/** `LIGHT THE LAMP`, the title entry a run leads away from and back to. */
+const TITLE_LIGHT_THE_LAMP = TITLE_ITEMS.indexOf("LIGHT THE LAMP");
+
+/** `THE ALMANAC`, the entry `back` on the almanac returns to. */
+const TITLE_THE_ALMANAC = TITLE_ITEMS.indexOf("THE ALMANAC");
+
+/** `HOW TO PLAY`, the entry `back` on the how-to screen returns to. */
+const TITLE_HOW_TO_PLAY = TITLE_ITEMS.indexOf("HOW TO PLAY");
 
 /** The actions each screen answers as press edges. */
 export const SCREEN_ACTIONS: Readonly<Record<Screen, readonly ActionName[]>> = {
@@ -72,11 +81,20 @@ export function startRun(draft: Draft): void {
   enter(draft, "playing");
 }
 
-/** Discard the run and return to `title`. */
-export function toTitle(draft: Draft): void {
+/**
+ * Discard the run and return to `title` with `selected` highlighted:
+ * `menuIndex` is `0` "on entering every screen but `title`, which selects the
+ * entry that led away from it" (specs/ui.md). `LIGHT THE LAMP` is the default,
+ * the entry every transition but the two menu screens' `back` leads away from.
+ */
+export function toTitle(
+  draft: Draft,
+  selected: number = TITLE_LIGHT_THE_LAMP,
+): void {
   draft.run = idleRun();
   draft.accumulator = 0;
   enter(draft, "title");
+  draft.menuIndex = selected;
 }
 
 /** Discard the run and enter `howto`. */
@@ -263,14 +281,14 @@ export function handleAction(
       else if (action === "confirm") takeMenuItem(draft, cues);
       break;
     case "howto":
-      if (action === "back") toTitle(draft);
+      if (action === "back") toTitle(draft, TITLE_HOW_TO_PLAY);
       break;
     case "almanac":
       if (action === "up") moveHighlight(draft, -1, cues);
       else if (action === "down") moveHighlight(draft, 1, cues);
       else if (action === "left") moveTab(draft, -1, cues);
       else if (action === "right") moveTab(draft, 1, cues);
-      else if (action === "back") toTitle(draft);
+      else if (action === "back") toTitle(draft, TITLE_THE_ALMANAC);
       break;
     case "playing":
       if (action === "pause" || action === "back") pause(draft);
@@ -301,25 +319,63 @@ export function handleAction(
 
 // ---- The pointer -----------------------------------------------------------
 
+/** A point on the stage, as a pointer sample reports one. */
+export interface StagePoint {
+  x: number;
+  y: number;
+}
+
 /** This frame's pointer, in the stage's own coordinates. */
 export interface PointerInput {
-  /** Where the primary pointer rests, across the stage. */
-  x: number;
-  /** Where it rests, down the stage. */
-  y: number;
-  /** Whether the primary button's press edge fell on this frame. */
-  clicked: boolean;
+  /**
+   * Where a device reporting a position OUT of contact rests, or `null`.
+   *
+   * The hover position and nothing else: "only a device reporting a position
+   * while out of contact moves the highlight this way" (specs/controls.md), so
+   * a finger, which reports a position only while it is down, never lands here.
+   */
+  at: StagePoint | null;
+  /** The frame's primary press edges, in arrival order. */
+  presses: readonly StagePoint[];
+  /** The frame's primary release edges, in arrival order. */
+  releases: readonly StagePoint[];
   /** The frame's wheel travel down the stage, in stage units. */
   wheel: number;
 }
 
 /** A pointer that rests off the stage and did nothing, for a driven frame. */
 export const NO_POINTER: PointerInput = {
-  x: -1,
-  y: -1,
-  clicked: false,
+  at: null,
+  presses: [],
+  releases: [],
   wheel: 0,
 };
+
+/**
+ * What a press armed, or `null`: the box its release has to lift inside.
+ *
+ * "A primary press edge inside the rectangle of the item at `menuIndex` `i` ...
+ * arms that item. That press's release edge inside the same rectangle takes the
+ * armed item" (specs/controls.md). The box is held with the target, because the
+ * release only belongs to the same gesture when it lifts where the press
+ * landed, and the screen with it, because leaving the screen takes the target
+ * away. Like the contact in `src/input.ts` this is the DEVICE's state across
+ * frames rather than the game's, so `WickState`, which `specs/state.md`
+ * declares in full, does not carry it.
+ */
+interface Armed {
+  readonly screen: Screen;
+  readonly rect: WickRect;
+  readonly kind: "item" | "tab";
+  readonly index: number;
+}
+
+let armed: Armed | null = null;
+
+/** Forget any armed gesture, so a fresh game starts with nothing armed. */
+export function resetGesture(): void {
+  armed = null;
+}
 
 /** The `menuIndex` the rectangle at `position` belongs to on this screen. */
 function itemAt(draft: Draft, position: number): number {
@@ -338,29 +394,87 @@ function scrollList(draft: Draft, travel: number): void {
   );
 }
 
+/** Rule 1: a device out of contact inside an item's box highlights that item. */
+function hover(draft: Draft, at: StagePoint, cues: Set<CueName>): void {
+  const hovered = hitRect(menuRects(draft), at.x, at.y);
+  if (hovered >= 0) highlight(draft, itemAt(draft, hovered), cues);
+}
+
+/** Rule 2, first half: a press highlights the box it lands in and arms it. */
+function press(draft: Draft, at: StagePoint, cues: Set<CueName>): void {
+  armed = null;
+  const screen = draft.screen;
+  const tabs = tabRects(draft);
+  const tab = hitRect(tabs, at.x, at.y);
+  if (tab >= 0) {
+    armed = { screen, rect: tabs[tab]!, kind: "tab", index: tab };
+    return;
+  }
+  // The box is found before the highlight moves, because moving it on the
+  // almanac can move the window under the very box the press landed in.
+  const rects = menuRects(draft);
+  const position = hitRect(rects, at.x, at.y);
+  if (position < 0) return;
+  const index = itemAt(draft, position);
+  const rect = rects[position]!;
+  highlight(draft, index, cues);
+  armed = { screen, rect, kind: "item", index };
+}
+
 /**
- * The three pointer rules, in the order `specs/controls.md` gives them: the
- * hover moves the highlight onto the item it rests in, a primary click takes
- * that item as `confirm` would (or, on the almanac's tab bar, shows that
- * tab), and the wheel moves the almanac's window. Applied on every frame,
- * after that frame's press edges and before its update.
+ * Take what a release inside its armed box armed: exactly what `confirm` on it
+ * does, which on an almanac entry, the one menu that answers no `confirm`, is
+ * nothing, and on `howto`, which answers no `confirm` either, is what `back`
+ * there does.
+ */
+function take(draft: Draft, cues: Set<CueName>): void {
+  if (draft.screen === "howto") {
+    toTitle(draft, TITLE_HOW_TO_PLAY);
+    return;
+  }
+  if (draft.screen === "chest") {
+    closeChest(draft);
+    return;
+  }
+  if (draft.screen === "almanac") return;
+  takeMenuItem(draft, cues);
+}
+
+/**
+ * Rule 2, second half: a release inside the box its press armed takes what it
+ * armed; a release anywhere else disarms and takes nothing.
+ */
+function release(draft: Draft, at: StagePoint, cues: Set<CueName>): void {
+  const gesture = armed;
+  armed = null;
+  if (gesture === null) return;
+  if (gesture.screen !== draft.screen) return;
+  if (hitRect([gesture.rect], at.x, at.y) < 0) return;
+  if (gesture.kind === "tab") {
+    selectTab(draft, gesture.index, cues);
+    return;
+  }
+  take(draft, cues);
+}
+
+/**
+ * The pointer rules, in the order `specs/controls.md` gives them: the hover
+ * moves the highlight onto the item it rests in, a press arms the box it lands
+ * in, a release inside that same box takes what it armed as `confirm` would (or,
+ * on the almanac's tab bar, shows that tab), and the wheel moves the almanac's
+ * window. Applied on every frame, after that frame's press edges and before its
+ * update. A touch contact reaches the same rules: its landing is the press edge
+ * and its lift is the release edge, and it never hovers, because it reports no
+ * position out of contact.
  */
 export function applyPointer(
   draft: Draft,
   pointer: PointerInput,
   cues: Set<CueName>,
 ): void {
-  const hovered = hitRect(menuRects(draft), pointer.x, pointer.y);
-  if (hovered >= 0) highlight(draft, itemAt(draft, hovered), cues);
-  if (pointer.clicked) {
-    const tab = hitRect(tabRects(draft), pointer.x, pointer.y);
-    // The hover above has already moved the highlight onto the row the click
-    // landed in, so the click's own part is taking that item.
-    if (tab >= 0) selectTab(draft, tab, cues);
-    else if (hovered >= 0 && draft.screen !== "almanac") {
-      takeMenuItem(draft, cues);
-    }
-  }
+  if (pointer.at !== null) hover(draft, pointer.at, cues);
+  for (const at of pointer.presses) press(draft, at, cues);
+  for (const at of pointer.releases) release(draft, at, cues);
   scrollList(draft, pointer.wheel);
 }
 

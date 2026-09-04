@@ -21,9 +21,11 @@
 // whole ticks and partial frames in both orders, is read against the identity
 // above. Then the run is paused through the surface, which discards the
 // accumulator "as on any frame that leaves `playing`", and the same mix is
-// delivered on `paused`; then the title, the idle run, with the mix again.
-// Each screen's frames must raise `simTime` by exactly their deltas, tick
-// nothing, and leave the accumulator at `0`.
+// delivered on `paused`; then the title, with the mix again. Each screen's
+// frames must raise `simTime` by exactly their deltas, tick nothing, and leave
+// the accumulator at `0`. The clock is read against the tick each screen was
+// ENTERED on rather than against `0`, because the pose sets the screen and
+// leaves the run standing (`specs/instrumentation.md`, `setScreen`).
 //
 // TOLERANCE. `REAL_EPS` on the sums: each side is a handful of stated reals
 // added together, which floating point rounds by ulps. `0` on the accumulator
@@ -106,6 +108,10 @@ it("accounts every frame's delta as ticks and remainder, or as simTime alone", a
     REAL_EPS,
     "the simTime gained by the frames on title",
   );
-  assertEqual(title.run.tick, 0, "run.tick after frames on title");
+  assertEqual(
+    title.run.tick,
+    titleAt.run.tick,
+    "run.tick after frames on title",
+  );
   assertEqual(title.accumulator, 0, "accumulator after frames on title");
 });

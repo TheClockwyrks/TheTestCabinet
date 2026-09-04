@@ -9,8 +9,8 @@
 // seconds (specs/world.md — "Fallen and dawn").
 //
 // WHY THE WORLD IS POSED AS IT IS. Nothing but the screen: `setScreen("howto")`
-// "Enters the how-to screen exactly as confirming `HOW TO PLAY` does", so no
-// menu is touched on the way, and one frame is run and read.
+// "Sets `screen` to `name`" and nothing else, so no menu is touched on the way,
+// and one frame is run and read.
 //
 // THE TOLERANCE. The words around it are the build's, so only the figure is
 // looked for, folded and across consecutive runs of text. `10:00` carries its

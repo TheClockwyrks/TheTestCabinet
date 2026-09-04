@@ -302,7 +302,7 @@ source = "specs/controls.md.hbs"
 source = "specs/state.md.hbs"
 
 # The debugging and automation surface every build must expose: a deterministic,
-# seedable core, the seven driver switches, an API to pose and inspect the game
+# seedable core, the nine driver switches, an API to pose and inspect the game
 # from code, and a read-only debug overlay. It branches on the engine, for how the
 # surface is reached, what shape its operations take, and the `setAutoStep`,
 # `step`, and `advance` trio only an engineless build carries (under an engine the
@@ -323,6 +323,15 @@ source = "specs/ui.md.hbs"
 # This is the defining spec of a full-stack case.
 [[spec]]
 source = "specs/assets.md.hbs"
+
+# The showcase the finished game ships beside its source: a player-facing
+# description and a short ordered carousel of captured media under `showcase/`,
+# framed as the game's store-page presentation. It branches on the engine for
+# how motion is captured (a gzipped recording from the engine's own draw-command
+# recorder on an engine run, screenshots and a short clip under `none`); it
+# seeds to `specs/showcase.md`.
+[[spec]]
+source = "specs/showcase.md.hbs"
 
 # No `[[reference]]`, no `[[check]]`, and no `[[proof]]`. Wick fixes no palette,
 # no sprite artwork, and no screen styling: every build is expected to look
@@ -410,10 +419,10 @@ format = 2
 # --- Instrumentation ----------------------------------------------------------
 # The surface every other point is driven through, and a deliverable of the
 # case in its own right. Each operation is posed and read back one at a time,
-# each row of setScreen is its own point, each of the seven driver switches is
-# checked alone, each refusal the specification states is a point of its own,
-# the two rectangle readings are decided on what they report rather than on
-# what the pointer does with them, and the four overlay points close the
+# each screen setScreen reaches is its own point, each of the nine driver
+# switches is checked alone, each refusal the specification states is a point of
+# its own, the two rectangle readings are decided on what they report rather
+# than on what the pointer does with them, and the four overlay points close the
 # category, so a surface that is missing, hollow, or wired to nothing fails
 # here by name rather than only as every other suite failing to run. Under an
 # engine the clock is the harness's ConstantClock and the overlay's toggle is
@@ -442,7 +451,7 @@ validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [ { 
 [[review.categories.items]]
 id = "snapshot-fixed-shape"
 title = "The snapshot shape is fixed on every screen"
-description = "The snapshot carries every documented field on each of the nine screens, almanacTab, almanacScroll, and run.hurtFlash among them, run reporting the idle run of specs/state.md on title, howto, and almanac and the run that just ended on fallen and dawn, pool empty on every screen but levelup, and menuIndex resting at 0 on a screen with no menu."
+description = "The snapshot carries every documented field with its documented type on whichever of the nine screens the game stands on, so the shape a reader reads is the same one everywhere: no field appears only on some screens and none is dropped on others."
 domains = ["survival", "arsenal", "progression", "presentation"]
 failure_cap = "passable"
 validation = { script = "instrumentation/snapshot-fixed-shape.test.ts", outputs = [ { id = "screens", name = "The screen sweep", kind = "image" } ] }
@@ -456,12 +465,28 @@ failure_cap = "passable"
 validation = { script = "instrumentation/snapshot-derived-stats.test.ts", outputs = [ { id = "stats", name = "The derived stats read off the posed loadout", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "snapshot-derived-clock"
-title = "The snapshot derives time, spawnWindow, and aliveCommons"
-description = "With the tick posed to 4500 and a moth, two gnats, and a mothwing alive, the snapshot reads time 75, spawnWindow 2, and aliveCommons 1, the count that excludes gnats, elites, and the Dark."
+id = "snapshot-derives-time"
+title = "The snapshot derives time from the clock"
+description = "With the tick posed to 4500, the snapshot reads time 75, the tick over TICK_HZ."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "instrumentation/snapshot-derived-clock.test.ts", outputs = [ { id = "clock", name = "The derived clock fields", kind = "image" } ] }
+validation = { script = "instrumentation/snapshot-derives-time.test.ts", outputs = [ { id = "time", name = "time derived from the posed tick", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "snapshot-derives-spawn-window"
+title = "The snapshot derives spawnWindow from the clock"
+description = "With the tick posed to 4500, the snapshot reads spawnWindow 2, min(19, floor(time / SPAWN_WINDOW))."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/snapshot-derives-spawn-window.test.ts", outputs = [ { id = "window", name = "spawnWindow derived from the posed tick", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "snapshot-derives-alive-commons"
+title = "The snapshot derives aliveCommons from the field"
+description = "With a moth, two gnats, and a mothwing alive, the snapshot reads aliveCommons 1, the count that excludes gnats, elites, and the Dark."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/snapshot-derives-alive-commons.test.ts", outputs = [ { id = "commons", name = "aliveCommons over a posed field", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "snapshot-pool-on-levelup"
@@ -472,12 +497,20 @@ failure_cap = "passable"
 validation = { script = "instrumentation/snapshot-pool-on-levelup.test.ts", outputs = [ { id = "pool", name = "The pool beside the offers drawn from it", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "snapshot-almanac-fields"
-title = "The snapshot reports the almanac's tab and its scroll"
-description = "On almanac, almanacTab reads the tab the screen shows and almanacScroll reads the list's first visible row, both read back after a tab change and after the highlight has scrolled the list."
+id = "snapshot-reports-almanac-tab"
+title = "The snapshot reports the almanac's tab"
+description = "On almanac, almanacTab reads the tab the screen shows, 0 on arriving and the tab reached after a real tab change."
 domains = ["survival", "arsenal", "progression", "presentation"]
 failure_cap = "passable"
-validation = { script = "instrumentation/snapshot-almanac-fields.test.ts", outputs = [ { id = "fields", name = "The almanac fields read back", kind = "image" } ] }
+validation = { script = "instrumentation/snapshot-reports-almanac-tab.test.ts", outputs = [ { id = "tab", name = "The almanac tab read back", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "snapshot-reports-almanac-scroll"
+title = "The snapshot reports the almanac's scroll"
+description = "On almanac, almanacScroll reads the list's first visible row, 0 on arriving and the row the window rests on after the highlight has walked past the last visible entry."
+domains = ["survival", "arsenal", "progression", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/snapshot-reports-almanac-scroll.test.ts", outputs = [ { id = "scroll", name = "The almanac scroll read back", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "snapshot-hurt-flash"
@@ -504,12 +537,20 @@ failure_cap = "passable"
 validation = { script = "instrumentation/menu-rects-almanac-window.test.ts", outputs = [ { id = "window", name = "The window of rows the almanac reports", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "menu-rects-empty-without-menu"
-title = "menuRects is empty on a screen carrying no menu"
-description = "menuRects() reports an empty list on howto, playing, and chest."
+id = "menu-rects-empty-on-playing"
+title = "menuRects is empty on the run screen"
+description = "menuRects() reports an empty list on playing, the one screen no gesture reaches a menu on."
 domains = ["survival", "arsenal", "progression", "presentation"]
 failure_cap = "passable"
-validation = { script = "instrumentation/menu-rects-empty-without-menu.test.ts", outputs = [ { id = "empty", name = "No rectangles where there is no menu", kind = "image" } ] }
+validation = { script = "instrumentation/menu-rects-empty-on-playing.test.ts", outputs = [ { id = "empty", name = "No rectangles on the run screen", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "menu-rects-one-box-without-menu"
+title = "menuRects reports one box on a screen carrying no menu"
+description = "menuRects() reports exactly one rectangle on howto and on chest, the area the screen's way out is taken in, each with a positive extent lying on the stage."
+domains = ["survival", "arsenal", "progression", "presentation"]
+failure_cap = "scuffed"
+validation = { script = "instrumentation/menu-rects-one-box-without-menu.test.ts", outputs = [ { id = "boxes", name = "The one box each screen without a menu reports", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "tab-rects-reported"
@@ -538,10 +579,10 @@ validation = { script = "instrumentation/reset-restores-fields.test.ts", outputs
 [[review.categories.items]]
 id = "reset-restores-switches"
 title = "reset turns every driver switch back on"
-description = "With all seven driver switches posed off, reset() leaves spawning, events, despawning, enemyMotion, enemyContact, weaponFire, and effectMotion all true."
+description = "With all nine driver switches posed off, reset() leaves spawning, events, despawning, enemyMotion, enemyContact, weaponFire, effectMotion, drops, and progression all true."
 domains = ["survival", "arsenal"]
 failure_cap = "passable"
-validation = { script = "instrumentation/reset-restores-switches.test.ts", outputs = [ { id = "switches", name = "The seven switches after reset", kind = "image" } ] }
+validation = { script = "instrumentation/reset-restores-switches.test.ts", outputs = [ { id = "switches", name = "The nine switches after reset", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "reset-seeds-rng"
@@ -609,11 +650,19 @@ validation = { script = "instrumentation/frame-off-playing-ticks-nothing.test.ts
 
 [[review.categories.items]]
 id = "frame-consumes-whole-ticks"
-title = "A longer frame consumes whole ticks and keeps the remainder"
-description = "On playing, one frame worth 0.04 s (advance(0.04) under none, a 40 ms clock under an engine) consumes exactly 2 ticks and leaves accumulator at 0.04 − 2 × TICK_DT."
+title = "A longer frame consumes whole ticks"
+description = "On playing, one frame worth 0.04 s (advance(0.04) under none, a 40 ms clock under an engine) consumes exactly 2 ticks."
 domains = ["survival", "arsenal", "progression", "presentation"]
 failure_cap = "passable"
-validation = { script = "instrumentation/frame-consumes-whole-ticks.test.ts", outputs = [ { id = "partial", name = "Two ticks and a remainder from one frame", kind = "image" } ] }
+validation = { script = "instrumentation/frame-consumes-whole-ticks.test.ts", outputs = [ { id = "partial", name = "Two ticks from one frame", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "frame-keeps-remainder"
+title = "A longer frame keeps its remainder"
+description = "On playing, one frame worth 0.04 s leaves accumulator at 0.04 minus 2 x TICK_DT, the part of the frame short of a whole tick waiting for the next."
+domains = ["survival", "arsenal", "progression", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/frame-keeps-remainder.test.ts", outputs = [ { id = "remainder", name = "The remainder waiting in the accumulator", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "frame-off-playing-keeps-accumulator-zero"
@@ -665,123 +714,131 @@ validation = { script = "instrumentation/set-spawn-timer.test.ts", outputs = [ {
 
 [[review.categories.items]]
 id = "set-screen-title"
-title = "setScreen('title') discards the run"
-description = "setScreen('title') from playing enters title with menuIndex 0 and the idle run, exactly as MAIN MENU on paused does."
+title = "setScreen('title') stands the game on the title screen"
+description = "setScreen('title') stands the game on title with menuIndex 0, discarding no run of its own."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-screen-title.test.ts", outputs = [ { id = "title", name = "The title screen after setScreen", kind = "image" } ] }
+validation = { script = "instrumentation/set-screen-title.test.ts", outputs = [ { id = "title", name = "The title screen the pose stands on", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "set-screen-howto"
-title = "setScreen('howto') enters the how-to screen"
-description = "setScreen('howto') from title enters howto with menuIndex 0 and the idle run, exactly as confirming HOW TO PLAY does."
+title = "setScreen('howto') stands the game on the how-to screen"
+description = "setScreen('howto') stands the game on howto with menuIndex 0 and the run standing as it was."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-screen-howto.test.ts", outputs = [ { id = "howto", name = "The how-to screen after setScreen", kind = "image" } ] }
+validation = { script = "instrumentation/set-screen-howto.test.ts", outputs = [ { id = "howto", name = "The how-to screen the pose stands on", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "set-screen-almanac"
-title = "setScreen('almanac') enters the almanac"
-description = "setScreen('almanac') from playing enters almanac with the idle run and menuIndex, almanacTab, and almanacScroll all 0, exactly as confirming THE ALMANAC does."
+title = "setScreen('almanac') stands the game on the almanac"
+description = "setScreen('almanac') stands the game on almanac with menuIndex, almanacTab, and almanacScroll all 0 and the run standing as it was."
 domains = ["survival", "arsenal", "progression", "presentation"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-screen-almanac.test.ts", outputs = [ { id = "almanac", name = "The almanac entered by setScreen", kind = "image" } ] }
+validation = { script = "instrumentation/set-screen-almanac.test.ts", outputs = [ { id = "almanac", name = "The almanac the pose stands on", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "set-screen-playing-fresh"
-title = "setScreen('playing') begins a fresh run"
-description = "setScreen('playing') from title, howto, fallen, or dawn begins a fresh run exactly as LIGHT THE LAMP and TRY AGAIN do: the idle run with Taper at level 1 and cooldown 0 alone in the first weapon slot, screen playing, menuIndex 0."
+id = "set-screen-playing"
+title = "setScreen('playing') stands the game on playing"
+description = "setScreen('playing') from title, howto, fallen, or dawn stands the game on playing with menuIndex 0, beginning no run of its own."
 domains = ["survival", "progression"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-screen-playing-fresh.test.ts", outputs = [ { id = "fresh", name = "The fresh run", kind = "image" } ] }
+validation = { script = "instrumentation/set-screen-playing.test.ts", outputs = [ { id = "playing", name = "The playing screen the pose stands on", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "set-screen-playing-keeps-rng-and-sim-time"
-title = "setScreen('playing') leaves rngState and simTime as they are"
-description = "rngState and simTime hold the same values after setScreen('playing') as before it, so a run from a known seed is reset followed by setScreen('playing')."
+id = "set-screen-playing-keeps-rng"
+title = "setScreen('playing') leaves rngState as it is"
+description = "rngState holds the same value after setScreen('playing') as before it, so a run from a known seed is reset followed by setScreen('playing')."
 domains = ["survival", "progression"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-screen-playing-keeps-rng-and-sim-time.test.ts", outputs = [ { id = "kept", name = "The generator and simTime across a fresh run", kind = "image" } ] }
+validation = { script = "instrumentation/set-screen-playing-keeps-rng.test.ts", outputs = [ { id = "kept", name = "The generator across the pose", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-screen-playing-keeps-sim-time"
+title = "setScreen('playing') leaves simTime as it is"
+description = "simTime holds the same value after setScreen('playing') as before it, the pose restarting no clock."
+domains = ["survival", "progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-screen-playing-keeps-sim-time.test.ts", outputs = [ { id = "kept", name = "simTime across the pose", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "set-screen-playing-keeps-switches"
 title = "setScreen('playing') leaves the driver switches as they stand"
-description = "With spawning and weaponFire posed off, setScreen('playing') begins a fresh run with both still off, because the switches are held outside the run."
+description = "With spawning and weaponFire posed off, setScreen('playing') leaves both off, because the switches are held outside the run."
 domains = ["survival", "arsenal"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-screen-playing-keeps-switches.test.ts", outputs = [ { id = "switches", name = "The switches across a fresh run", kind = "image" } ] }
+validation = { script = "instrumentation/set-screen-playing-keeps-switches.test.ts", outputs = [ { id = "switches", name = "The switches across the pose", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "set-screen-playing-resumes"
 title = "setScreen('playing') from paused resumes the run"
-description = "setScreen('playing') on paused returns to playing with the run untouched, every entity, timer, and figure exactly as the pause left it, exactly as pause on paused does."
+description = "setScreen('playing') on paused returns to playing with the run untouched, every entity, timer, and figure exactly as the pause left it."
 domains = ["survival"]
 failure_cap = "passable"
 validation = { script = "instrumentation/set-screen-playing-resumes.test.ts", outputs = [ { id = "resumed", name = "The run resumed from paused", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "set-screen-playing-closes-chest"
-title = "setScreen('playing') from chest closes the overlay"
-description = "setScreen('playing') on chest returns to playing with chestResult null and the run otherwise untouched, exactly as confirm on the overlay does."
+id = "set-screen-keeps-chest-result"
+title = "setScreen leaves the chest result standing"
+description = "On chest, setScreen('playing') stands the game on playing with chestResult and the rest of the run exactly as the overlay left them; clearing the result is confirm's."
 domains = ["progression"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-screen-playing-closes-chest.test.ts", outputs = [ { id = "closed", name = "The chest overlay closed by setScreen", kind = "image" } ] }
+validation = { script = "instrumentation/set-screen-keeps-chest-result.test.ts", outputs = [ { id = "kept", name = "The chest result standing across the pose", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "set-screen-playing-inert-on-levelup"
-title = "setScreen('playing') on levelup changes nothing"
-description = "setScreen('playing') on levelup leaves the state exactly as it was, the overlay open with its offers, because choose is the way out."
+id = "set-screen-keeps-offers"
+title = "setScreen leaves the offers and the queue standing"
+description = "On levelup, setScreen('playing') stands the game on playing with offers and pendingLevelUps exactly as the overlay left them; resolving a level-up is choose's."
 domains = ["progression"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-screen-playing-inert-on-levelup.test.ts", outputs = [ { id = "inert", name = "The overlay still open", kind = "image" } ] }
+validation = { script = "instrumentation/set-screen-keeps-offers.test.ts", outputs = [ { id = "kept", name = "The offers and the queue standing across the pose", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "set-screen-levelup"
-title = "setScreen('levelup') opens the level-up overlay"
-description = "On playing with pendingLevelUps posed to 1, setScreen('levelup') opens the overlay exactly as the end of a playing tick does: screen levelup with menuIndex 0, pool computed from the slots, and offers filled from a posed nextOffers or by the draw."
+title = "setScreen('levelup') stands the game on the level-up screen"
+description = "setScreen('levelup') from playing stands the game on levelup with menuIndex 0, drawing no offers and spending nothing from the generator; opening the overlay for real is a queued level-up and a tick."
 domains = ["progression"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-screen-levelup.test.ts", outputs = [ { id = "overlay", name = "The overlay opened by setScreen", kind = "image" } ] }
+validation = { script = "instrumentation/set-screen-levelup.test.ts", outputs = [ { id = "levelup", name = "The level-up screen the pose stands on", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "set-screen-levelup-needs-pending"
-title = "setScreen('levelup') with nothing queued changes nothing"
-description = "On playing with pendingLevelUps 0, setScreen('levelup') leaves the state exactly as it was, still on playing with no offers."
-domains = ["progression"]
+id = "set-screen-leaves-the-run-standing"
+title = "setScreen leaves the whole run standing"
+description = "A run holding a clock, a spawn timer, a hurt lamplighter, a loadout with a counting timer, a level, experience, kills, a queued level-up, and one entity of every kind crosses setScreen('title') and setScreen('playing') field for field unchanged."
+domains = ["survival", "arsenal", "progression"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-screen-levelup-needs-pending.test.ts", outputs = [ { id = "inert", name = "The run untouched by an unqueued setScreen('levelup')", kind = "image" } ] }
+validation = { script = "instrumentation/set-screen-leaves-the-run-standing.test.ts", outputs = [ { id = "standing", name = "The run standing across a pose and back", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "set-screen-paused"
 title = "setScreen('paused') pauses the run"
-description = "setScreen('paused') on playing enters paused with menuIndex 0, the run untouched and accumulator 0, exactly as pause does."
+description = "setScreen('paused') on playing stands the game on paused with menuIndex 0, the run untouched and the accumulator discarded to 0."
 domains = ["survival"]
 failure_cap = "passable"
 validation = { script = "instrumentation/set-screen-paused.test.ts", outputs = [ { id = "paused", name = "The run paused by setScreen", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "set-screen-fallen"
-title = "setScreen('fallen') ends the run fallen"
-description = "setScreen('fallen') on playing or paused ends the run exactly as falling does: screen fallen with menuIndex 0 and the run kept, its tick, level, and kills reported for the end screen."
+title = "setScreen('fallen') stands the game on the fallen screen"
+description = "setScreen('fallen') from playing and from paused stands the game on fallen with menuIndex 0, ending no run: the run stands exactly as it did."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-screen-fallen.test.ts", outputs = [ { id = "fallen", name = "The fallen screen after setScreen", kind = "image" } ] }
+validation = { script = "instrumentation/set-screen-fallen.test.ts", outputs = [ { id = "fallen", name = "The fallen screen the pose stands on", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "set-screen-dawn"
-title = "setScreen('dawn') ends the run at dawn"
-description = "setScreen('dawn') on playing or paused ends the run exactly as dawn does: screen dawn with menuIndex 0 and the run kept for the end screen to report."
+title = "setScreen('dawn') stands the game on the dawn screen"
+description = "setScreen('dawn') from playing and from paused stands the game on dawn with menuIndex 0, ending no run: the run stands exactly as it did."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-screen-dawn.test.ts", outputs = [ { id = "dawn", name = "The dawn screen after setScreen", kind = "image" } ] }
+validation = { script = "instrumentation/set-screen-dawn.test.ts", outputs = [ { id = "dawn", name = "The dawn screen the pose stands on", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "set-screen-unlisted-inert"
-title = "An unlisted setScreen row changes nothing"
-description = "setScreen('chest') from playing, setScreen('levelup') from title, and setScreen('paused') from title each leave the state exactly as it was, because no row of the table lists them."
-domains = ["survival", "progression"]
+id = "set-screen-chest"
+title = "setScreen('chest') stands the game on the chest screen"
+description = "setScreen('chest') from playing stands the game on chest with menuIndex 0 and chestResult still null, filling no result of its own."
+domains = ["progression"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-screen-unlisted-inert.test.ts", outputs = [ { id = "inert", name = "The state untouched by unlisted rows", kind = "image" } ] }
+validation = { script = "instrumentation/set-screen-chest.test.ts", outputs = [ { id = "chest", name = "The chest screen the pose stands on", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "choose-applies"
@@ -864,12 +921,28 @@ failure_cap = "passable"
 validation = { script = "instrumentation/switch-effect-motion.test.ts", outputs = [ { id = "held", name = "The effects held in place", kind = "image" } ] }
 
 [[review.categories.items]]
+id = "switch-drops"
+title = "The drops switch holds what a death leaves"
+description = "With setDrops(false) a moth killed by a weapon still dies, still counts as a kill, and leaves no gem and no pickup; with the switch back on the same kill leaves its gem where it died."
+domains = ["survival", "progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/switch-drops.test.ts", outputs = [ { id = "held", name = "A kill leaving nothing", kind = "image" }, { id = "dropped", name = "The gem a kill left", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "switch-progression"
+title = "The progression switch holds the levels a gain earns"
+description = "With setProgression(false) a gain that reaches xpToNext raises xp and leaves level and pendingLevelUps where they stand; with the switch back on the next gain is spent, the level rises, and one level-up is queued."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/switch-progression.test.ts", outputs = [ { id = "held", name = "A gain spending no level", kind = "image" }, { id = "spent", name = "The level the gain spent", kind = "image" } ] }
+
+[[review.categories.items]]
 id = "switch-changes-only-itself"
 title = "A switch changes nothing but its own flag"
-description = "setDespawning(false) issued on title reads back false in the snapshot, leaves the other six switches and the idle run exactly as they were, and is still false after setScreen('playing')."
+description = "setDespawning(false) issued on title reads back false in the snapshot, leaves the other eight switches and the idle run exactly as they were, and is still false after setScreen('playing')."
 domains = ["survival", "arsenal"]
 failure_cap = "passable"
-validation = { script = "instrumentation/switch-changes-only-itself.test.ts", outputs = [ { id = "one", name = "One switch off, six on", kind = "image" } ] }
+validation = { script = "instrumentation/switch-changes-only-itself.test.ts", outputs = [ { id = "one", name = "One switch off, eight on", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "switches-resume-without-catch-up"
@@ -1000,12 +1073,36 @@ failure_cap = "passable"
 validation = { script = "instrumentation/set-next-offers-lamp-oil-alone.test.ts", outputs = [ { id = "oil", name = "Lamp oil presented from the posed list", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "set-next-offers-shape-invalid"
-title = "setNextOffers throws on a malformed list"
-description = "setNextOffers with an empty list, with four ids, with a repeated id, or with a string that is no OfferId throws and leaves nextOffers as it was."
+id = "set-next-offers-empty-list"
+title = "setNextOffers throws on an empty list"
+description = "setNextOffers with an empty list throws and leaves nextOffers as it was, the domain being 1 to OFFER_COUNT ids."
 domains = ["progression"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-next-offers-shape-invalid.test.ts", outputs = [ { id = "refused", name = "The refused lists", kind = "image" } ] }
+validation = { script = "instrumentation/set-next-offers-empty-list.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-offers-too-many-ids"
+title = "setNextOffers throws on more ids than OFFER_COUNT"
+description = "setNextOffers with four ids throws and leaves nextOffers as it was, the domain being 1 to OFFER_COUNT ids."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-offers-too-many-ids.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-offers-repeated-id"
+title = "setNextOffers throws on a repeated id"
+description = "setNextOffers with a repeated id throws and leaves nextOffers as it was, the ids being distinct."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-offers-repeated-id.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-offers-unknown-id"
+title = "setNextOffers throws on a string that is no OfferId"
+description = "setNextOffers with a string that names no offer throws and leaves nextOffers as it was."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-offers-unknown-id.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "set-weapon-appends"
@@ -1048,12 +1145,20 @@ failure_cap = "passable"
 validation = { script = "instrumentation/set-weapon-rejects-held-id.test.ts", outputs = [ { id = "refused", name = "The refused pose", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "set-weapon-rejects-evolution-pair"
-title = "setWeapon throws on a base whose evolution is held, and the reverse"
-description = "With Pyre held in slot 0, setWeapon(1, 'taper', 1) throws; with Taper held in slot 0, setWeapon(1, 'pyre', 1) throws; each leaves the loadout as it was."
+id = "set-weapon-rejects-base-under-evolution"
+title = "setWeapon throws on a base whose evolution is held"
+description = "With Pyre held in slot 0, setWeapon(1, 'taper', 1) throws and leaves the loadout as it was."
 domains = ["arsenal", "progression"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-weapon-rejects-evolution-pair.test.ts", outputs = [ { id = "refused", name = "The refused pairs", kind = "image" } ] }
+validation = { script = "instrumentation/set-weapon-rejects-base-under-evolution.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-weapon-rejects-evolution-over-base"
+title = "setWeapon throws on an evolution whose base is held"
+description = "With Taper held in slot 0, setWeapon(1, 'pyre', 1) throws and leaves the loadout as it was."
+domains = ["arsenal", "progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-weapon-rejects-evolution-over-base.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "set-weapon-cooldown"
@@ -1168,12 +1273,20 @@ failure_cap = "passable"
 validation = { script = "instrumentation/set-enemy-hp.test.ts", outputs = [ { id = "posed", name = "The posed health", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "set-enemy-hp-rejects-out-of-range"
-title = "setEnemyHp throws at 0 and above maxHp"
-description = "On a hound with maxHp 120, setEnemyHp(id, 0) and setEnemyHp(id, 121) each throw and leave hp as it was, because death is decided by the tick."
+id = "set-enemy-hp-rejects-zero"
+title = "setEnemyHp throws at 0"
+description = "On a hound, setEnemyHp(id, 0) throws and leaves hp as it was, because death is decided by the tick."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-enemy-hp-rejects-out-of-range.test.ts", outputs = [ { id = "refused", name = "The refused poses", kind = "image" } ] }
+validation = { script = "instrumentation/set-enemy-hp-rejects-zero.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-enemy-hp-rejects-above-max"
+title = "setEnemyHp throws above maxHp"
+description = "On a hound with maxHp 120, setEnemyHp(id, 121) throws and leaves hp as it was."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-enemy-hp-rejects-above-max.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "set-enemy-heading"
@@ -1224,12 +1337,52 @@ failure_cap = "passable"
 validation = { script = "instrumentation/clear-enemies.test.ts", outputs = [ { id = "cleared", name = "The emptied field", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "enemy-id-unknown-invalid"
-title = "An unknown enemy id throws"
-description = "setEnemyPosition, setEnemyHp, setEnemyHeading, setEnemyAge, setEnemyContactCooldown, and removeEnemy each throw when given an id that names no live enemy, leaving the state as it was."
+id = "set-enemy-position-unknown-id"
+title = "setEnemyPosition throws on an unknown enemy id"
+description = "setEnemyPosition throws when given an id that names no live enemy, leaving the state as it was."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "instrumentation/enemy-id-unknown-invalid.test.ts", outputs = [ { id = "refused", name = "The refused ids", kind = "image" } ] }
+validation = { script = "instrumentation/set-enemy-position-unknown-id.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-enemy-hp-unknown-id"
+title = "setEnemyHp throws on an unknown enemy id"
+description = "setEnemyHp throws when given an id that names no live enemy, leaving the state as it was."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-enemy-hp-unknown-id.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-enemy-heading-unknown-id"
+title = "setEnemyHeading throws on an unknown enemy id"
+description = "setEnemyHeading throws when given an id that names no live enemy, leaving the state as it was."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-enemy-heading-unknown-id.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-enemy-age-unknown-id"
+title = "setEnemyAge throws on an unknown enemy id"
+description = "setEnemyAge throws when given an id that names no live enemy, leaving the state as it was."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-enemy-age-unknown-id.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-enemy-contact-cooldown-unknown-id"
+title = "setEnemyContactCooldown throws on an unknown enemy id"
+description = "setEnemyContactCooldown throws when given an id that names no live enemy, leaving the state as it was."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-enemy-contact-cooldown-unknown-id.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "remove-enemy-unknown-id"
+title = "removeEnemy throws on an unknown enemy id"
+description = "removeEnemy throws when given an id that names no live enemy, leaving the state as it was."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/remove-enemy-unknown-id.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "spawn-projectile"
@@ -1336,20 +1489,220 @@ failure_cap = "passable"
 validation = { script = "instrumentation/clear-pickups.test.ts", outputs = [ { id = "cleared", name = "The pickups removed", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "invalid-argument-throws"
-title = "An argument outside its domain throws"
-description = "setTick(36000), setTick(-1), setLevel(0), setXp(-1), setKills(1.5), setSpawnTimer(-1), setFacing('up'), spawnEnemy('ghost', 0, 0), setWeapon(0, 'taper', 9), setWeapon(0, 'pyre', 2), setPassive(0, 'brass', 4), spawnGem('huge', 0, 0), setWeapon(3, 'pin', 1) with one weapon held, setWeaponCooldown(3, 0) and removeWeapon(3) on an empty slot, removePassive(0) with no passive held, setGemAttracted on an id that names no gem, spawnPickup('coin', 0, 0), spawnProjectile('taper', 0, 0, 1, 0, 0), spawnPuddle('halo', 0, 0), and, in an engineless build, step(0) and advance(0), each throw and leave the state exactly as it was, and no operation rounds or clamps an argument into range."
+id = "set-screen-unknown-name"
+title = "setScreen refuses a name that is no Screen"
+description = "setScreen('nowhere') throws and leaves the state exactly as it was, name being one of the Screen values."
 domains = ["survival", "arsenal", "progression", "presentation"]
 failure_cap = "passable"
-validation = { script = "instrumentation/invalid-argument-throws.test.ts", outputs = [ { id = "refused", name = "The state untouched by every refused call", kind = "image" } ] }
+validation = { script = "instrumentation/set-screen-unknown-name.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "off-screen-call-inert"
-title = "A run-screen operation called off a run screen changes nothing"
-description = "setHp(10), spawnEnemy('moth', 0, 0), setTick(100), and setWeapon(0, 'pin', 1) issued on title, and setPlayerPosition(5, 5) issued on levelup, each leave the state exactly as it was."
+id = "set-tick-out-of-range"
+title = "setTick refuses a tick outside its range"
+description = "setTick(36000) and setTick(-1) each throw and leave the state exactly as it was, the domain being 0 to 35999."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-tick-out-of-range.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-level-below-one"
+title = "setLevel refuses a level below 1"
+description = "setLevel(0) throws and leaves the state exactly as it was, the domain being at least 1."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-level-below-one.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-xp-negative"
+title = "setXp refuses negative experience"
+description = "setXp(-1) throws and leaves the state exactly as it was, the domain being at least 0."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-xp-negative.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-kills-fractional"
+title = "setKills refuses a fractional count"
+description = "setKills(1.5) throws and leaves the state exactly as it was, the domain being a whole number."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-kills-fractional.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-spawn-timer-negative"
+title = "setSpawnTimer refuses a negative timer"
+description = "setSpawnTimer(-1) throws and leaves the state exactly as it was, the domain being at least 0."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-spawn-timer-negative.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-facing-unknown"
+title = "setFacing refuses a facing that is neither left nor right"
+description = "setFacing('up') throws and leaves the state exactly as it was, the domain being left or right."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-facing-unknown.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "spawn-enemy-unknown-type"
+title = "spawnEnemy refuses a type that is no EnemyId"
+description = "spawnEnemy('ghost', 0, 0) throws and leaves the state exactly as it was, type being an EnemyId."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/spawn-enemy-unknown-type.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-weapon-level-above-max"
+title = "setWeapon refuses a base weapon above its top level"
+description = "setWeapon(0, 'taper', 9) throws and leaves the state exactly as it was, a base weapon's level running 1 to MAX_WEAPON_LEVEL."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-weapon-level-above-max.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-weapon-evolved-above-one"
+title = "setWeapon refuses an evolved weapon above level 1"
+description = "setWeapon(0, 'pyre', 2) throws and leaves the state exactly as it was, an evolved weapon's only level being 1."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-weapon-evolved-above-one.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-passive-above-max-level"
+title = "setPassive refuses a passive above its own top level"
+description = "setPassive(0, 'brass', 4) throws and leaves the state exactly as it was, Brass's maxLevel being 3."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-passive-above-max-level.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "spawn-gem-unknown-tier"
+title = "spawnGem refuses a tier that is no GemTier"
+description = "spawnGem('huge', 0, 0) throws and leaves the state exactly as it was, tier being a GemTier."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/spawn-gem-unknown-tier.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-weapon-slot-out-of-range"
+title = "setWeapon refuses a slot past the end of the loadout"
+description = "With one weapon held, setWeapon(3, 'pin', 1) throws and leaves the state exactly as it was, slot running 0 to weapons.length."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-weapon-slot-out-of-range.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-weapon-cooldown-unheld-slot"
+title = "setWeaponCooldown refuses a slot holding no weapon"
+description = "With one weapon held, setWeaponCooldown(3, 0) throws and leaves the state exactly as it was, slot being a held slot."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-weapon-cooldown-unheld-slot.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "remove-weapon-unheld-slot"
+title = "removeWeapon refuses a slot holding no weapon"
+description = "With one weapon held, removeWeapon(3) throws and leaves the state exactly as it was, slot being a held slot."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "instrumentation/remove-weapon-unheld-slot.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "remove-passive-unheld-slot"
+title = "removePassive refuses a slot holding no passive"
+description = "With no passive held, removePassive(0) throws and leaves the state exactly as it was, slot being a held slot."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "instrumentation/remove-passive-unheld-slot.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-gem-attracted-unknown-id"
+title = "setGemAttracted refuses an id that names no gem"
+description = "setGemAttracted on an id above every id the run has handed out throws and leaves the state exactly as it was."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-gem-attracted-unknown-id.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "spawn-pickup-unknown-kind"
+title = "spawnPickup refuses a kind that is no PickupKind"
+description = "spawnPickup('coin', 0, 0) throws and leaves the state exactly as it was, kind being a PickupKind."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/spawn-pickup-unknown-kind.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "spawn-projectile-unknown-weapon"
+title = "spawnProjectile refuses a weapon that fires no projectile"
+description = "spawnProjectile('taper', 0, 0, 1, 0, 0) throws and leaves the state exactly as it was, weapon being one of ember, pin, shard, sconce, beacon, and hail."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "instrumentation/spawn-projectile-unknown-weapon.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "spawn-puddle-unknown-weapon"
+title = "spawnPuddle refuses a weapon that leaves no puddle"
+description = "spawnPuddle('halo', 0, 0) throws and leaves the state exactly as it was, weapon being one of oil-splash and blaze."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "instrumentation/spawn-puddle-unknown-weapon.test.ts", outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "step-below-one"
+title = "step refuses a count below one frame"
+description = "step(0) throws and leaves the state exactly as it was, the domain being a whole number of at least 1."
 domains = ["survival", "arsenal", "progression", "presentation"]
 failure_cap = "passable"
-validation = { script = "instrumentation/off-screen-call-inert.test.ts", outputs = [ { id = "inert", name = "The state untouched by off-screen calls", kind = "image" } ] }
+validation = { script = "instrumentation/step-below-one.test.ts", engines = ["none"], outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "advance-not-above-zero"
+title = "advance refuses a delta that is not above zero"
+description = "advance(0) throws and leaves the state exactly as it was, the domain being a real number above 0."
+domains = ["survival", "arsenal", "progression", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/advance-not-above-zero.test.ts", engines = ["none"], outputs = [ { id = "refused", name = "The state across the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-hp-off-a-run-screen-inert"
+title = "setHp called off a run screen changes nothing"
+description = "setHp(10) issued on title leaves the state exactly as it was, setHp applying on a run screen alone."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-hp-off-a-run-screen-inert.test.ts", outputs = [ { id = "inert", name = "The state untouched by the off-screen call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "spawn-enemy-off-a-run-screen-inert"
+title = "spawnEnemy called off a run screen changes nothing"
+description = "spawnEnemy('moth', 0, 0) issued on title leaves the state exactly as it was, spawnEnemy applying on playing and paused alone."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/spawn-enemy-off-a-run-screen-inert.test.ts", outputs = [ { id = "inert", name = "The state untouched by the off-screen call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-tick-off-a-run-screen-inert"
+title = "setTick called off a run screen changes nothing"
+description = "setTick(100) issued on title leaves the state exactly as it was, setTick applying on a run screen alone."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-tick-off-a-run-screen-inert.test.ts", outputs = [ { id = "inert", name = "The state untouched by the off-screen call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-weapon-off-a-run-screen-inert"
+title = "setWeapon called off a run screen changes nothing"
+description = "setWeapon(0, 'pin', 1) issued on title leaves the state exactly as it was, setWeapon applying on a run screen alone."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-weapon-off-a-run-screen-inert.test.ts", outputs = [ { id = "inert", name = "The state untouched by the off-screen call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-player-position-off-a-run-screen-inert"
+title = "setPlayerPosition called off a run screen changes nothing"
+description = "setPlayerPosition(5, 5) issued on levelup leaves the state exactly as it was, setPlayerPosition applying on a run screen alone."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-player-position-off-a-run-screen-inert.test.ts", outputs = [ { id = "inert", name = "The state untouched by the off-screen call", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "poses-sound-nothing"
@@ -1362,18 +1715,26 @@ validation = { script = "instrumentation/poses-sound-nothing.test.ts", outputs =
 [[review.categories.items]]
 id = "overlay-sources"
 title = "The overlay shows the registered diagnostics"
-description = "The debug overlay, once shown, reports at least the current screen, the run clock, the level with xp over xpToNext, hp over maxHp, the kill count, the lamplighter's position and facing, the enemy count with the spawn window, the projectile and zone counts, the gem count, the held weapons with levels and cooldowns, the held passives with levels, pendingLevelUps, and the seven driver switches, each with the live value the snapshot reports."
+description = "The debug overlay, once shown, reports at least the current screen, the run clock, the level with xp over xpToNext, hp over maxHp, the kill count, the lamplighter's position and facing, the enemy count with the spawn window, the projectile and zone counts, the gem count, the held weapons with levels and cooldowns, the held passives with levels, pendingLevelUps, and the nine driver switches, each with the live value the snapshot reports."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "instrumentation/overlay-sources.test.ts", outputs = [ { id = "sources", name = "The overlay reporting the registered diagnostics", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "overlay-toggle"
-title = "Backquote shows and hides the overlay"
-description = "Pressing the backtick key (KeyboardEvent.code Backquote) shows the debug overlay, and pressing it again hides it."
+id = "overlay-shown-on-toggle"
+title = "Backquote shows the overlay"
+description = "Pressing the backtick key (KeyboardEvent.code Backquote) shows the debug overlay: the frame after the press draws text the frame before it did not."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "instrumentation/overlay-toggle.test.ts", outputs = [ { id = "shown", name = "The overlay shown by the backtick key", kind = "image" } ] }
+validation = { script = "instrumentation/overlay-shown-on-toggle.test.ts", engines = ["none"], outputs = [ { id = "shown", name = "The overlay shown by the backtick key", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "overlay-hidden-on-second-toggle"
+title = "Backquote hides the overlay again"
+description = "Pressing the backtick key a second time hides the debug overlay: the frame after the second press draws what the frame before any press drew, with the overlay's text gone."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/overlay-hidden-on-second-toggle.test.ts", engines = ["none"], outputs = [ { id = "hidden", name = "The overlay hidden by the second press", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "overlay-off-at-start"
@@ -1449,12 +1810,20 @@ failure_cap = "passable"
 validation = { script = "clock/accumulator-discarded-on-ending.test.ts", outputs = [ { id = "discarded", name = "The remainder discarded at the ending", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "overlays-tick-nothing"
-title = "The overlays tick nothing"
-description = "Across 60 frames on levelup and 60 frames on chest, run.tick, every entity, every timer, and every cooldown hold exactly where the tick that opened the overlay left them."
+id = "levelup-ticks-nothing"
+title = "The level-up overlay ticks nothing"
+description = "Across 60 frames on levelup, run.tick, every entity, every timer, and every cooldown hold exactly where the tick that opened the overlay left them."
 domains = ["survival", "progression"]
 failure_cap = "scuffed"
-validation = { script = "clock/overlays-tick-nothing.test.ts", outputs = [ { id = "frozen", name = "The world frozen under an overlay", kind = "image" } ] }
+validation = { script = "clock/levelup-ticks-nothing.test.ts", outputs = [ { id = "frozen", name = "The world frozen under the level-up overlay", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "chest-ticks-nothing"
+title = "The chest overlay ticks nothing"
+description = "Across 60 frames on chest, run.tick, every entity, every timer, and every cooldown hold exactly where the tick that opened the overlay left them."
+domains = ["survival", "progression"]
+failure_cap = "scuffed"
+validation = { script = "clock/chest-ticks-nothing.test.ts", outputs = [ { id = "frozen", name = "The world frozen under the chest overlay", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "paused-ticks-nothing"
@@ -1466,19 +1835,35 @@ validation = { script = "clock/paused-ticks-nothing.test.ts", outputs = [ { id =
 
 [[review.categories.items]]
 id = "title-ticks-nothing"
-title = "Nothing advances on title and howto"
-description = "Across 60 frames on title and 60 on howto, the run stays the idle run with tick 0 and nothing spawns."
+title = "Nothing advances on title"
+description = "Across 60 frames on title, the run stays the idle run with tick 0 and nothing spawns."
 domains = ["survival"]
 failure_cap = "passable"
 validation = { script = "clock/title-ticks-nothing.test.ts", outputs = [ { id = "idle", name = "The idle run held on title", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "ended-run-ticks-no-further"
-title = "An ended run ticks no further"
-description = "Across 60 frames on fallen and 60 on dawn, run.tick and every entity hold exactly where the ending tick left them."
+id = "howto-ticks-nothing"
+title = "Nothing advances on howto"
+description = "Across 60 frames on howto, the run stays the idle run with tick 0 and nothing spawns."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "clock/ended-run-ticks-no-further.test.ts", outputs = [ { id = "ended", name = "The ended run held on the end screen", kind = "image" } ] }
+validation = { script = "clock/howto-ticks-nothing.test.ts", outputs = [ { id = "idle", name = "The idle run held on howto", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "fallen-ticks-no-further"
+title = "A run ended by falling ticks no further"
+description = "Across 60 frames on fallen, run.tick and every entity hold exactly where the ending tick left them."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "clock/fallen-ticks-no-further.test.ts", outputs = [ { id = "ended", name = "The ended run held on fallen", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "dawn-ticks-no-further"
+title = "A run ended at dawn ticks no further"
+description = "Across 60 frames on dawn, run.tick and every entity hold exactly where the ending tick left them."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "clock/dawn-ticks-no-further.test.ts", outputs = [ { id = "ended", name = "The ended run held on dawn", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "timer-due-after-round"
@@ -1489,9 +1874,17 @@ failure_cap = "scuffed"
 validation = { script = "clock/timer-due-after-round.test.ts", outputs = [ { id = "due", name = "The timer counted to its firing tick", kind = "replay" } ] }
 
 [[review.categories.items]]
+id = "timer-reaches-zero"
+title = "A timer counts down to exactly 0"
+description = "A contact cooldown set to 0.5 reads exactly 0 on the 30th tick, not a residue below TICK_DT / 2."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "clock/timer-reaches-zero.test.ts", outputs = [ { id = "zero", name = "The timer reaching exactly zero", kind = "image" } ] }
+
+[[review.categories.items]]
 id = "timer-holds-at-zero"
-title = "A timer counts down to exactly 0 and stays due"
-description = "A contact cooldown set to 0.5 reads exactly 0 on the 30th tick, not a residue below TICK_DT / 2, and an overlapping enemy with enemyContact off keeps its cooldown at exactly 0 across further ticks."
+title = "A timer that has reached 0 stays due"
+description = "An overlapping enemy with enemyContact off keeps its contact cooldown at exactly 0 across further ticks, a due timer staying due until it is set again."
 domains = ["survival"]
 failure_cap = "passable"
 validation = { script = "clock/timer-holds-at-zero.test.ts", outputs = [ { id = "zero", name = "The timer resting at exactly zero", kind = "image" } ] }
@@ -2005,6 +2398,126 @@ domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "pointer/almanac-wheel-clamped.test.ts", outputs = [ { id = "clamped", name = "The scroll held at the end of the list", kind = "image" } ] }
 
+[[review.categories.items]]
+id = "howto-click-returns"
+title = "A click inside the how-to screen's box returns to the title"
+description = "On howto, a primary press and release inside the one rectangle menuRects reports reads screen title with HOW TO PLAY selected."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/howto-click-returns.test.ts", outputs = [ { id = "returned", name = "The title returned to by a click", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "howto-touch-returns"
+title = "A touch contact on the how-to screen's box returns to the title"
+description = "On howto, a touch contact landing and lifting inside the one rectangle menuRects reports reads screen title with HOW TO PLAY selected."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/howto-touch-returns.test.ts", outputs = [ { id = "returned", name = "The title returned to by a contact", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "chest-click-closes"
+title = "A click inside the chest overlay's box closes it"
+description = "On chest, a primary press and release inside the one rectangle menuRects reports reads screen playing with chestResult null."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "pointer/chest-click-closes.test.ts", outputs = [ { id = "closed", name = "The overlay closed by a click", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "chest-touch-closes"
+title = "A touch contact on the chest overlay's box closes it"
+description = "On chest, a touch contact landing and lifting inside the one rectangle menuRects reports reads screen playing with chestResult null."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "pointer/chest-touch-closes.test.ts", outputs = [ { id = "closed", name = "The overlay closed by a contact", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "title-touch-selects"
+title = "A touch contact landing on a title item selects it"
+description = "On title with menuIndex 0, a touch contact landing inside the second title item's rectangle and held there reads menuIndex 1 with screen still title."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/title-touch-selects.test.ts", outputs = [ { id = "landed", name = "The title item a contact landed on", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "title-touch-confirms"
+title = "A touch contact landing and lifting on a title item takes it"
+description = "On title with menuIndex 0, a touch contact landing and lifting inside HOW TO PLAY's rectangle reads screen howto."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/title-touch-confirms.test.ts", outputs = [ { id = "taken", name = "The how-to screen opened by a contact", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "title-touch-outside-inert"
+title = "A touch contact landing inside no rectangle does nothing"
+description = "On title with menuIndex 0, a touch contact landing and lifting at a stage point inside no menu rectangle reads screen title with menuIndex 0."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/title-touch-outside-inert.test.ts", outputs = [ { id = "outside", name = "The title untouched by a contact outside the menu", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "touch-never-hovers"
+title = "A touch contact never hovers"
+description = "On title, a contact that lands in the second title item's rectangle and then travels into the first reads menuIndex 1, the item it landed in, the travel moving no highlight."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/touch-never-hovers.test.ts", outputs = [ { id = "held", name = "The highlight held under a travelling contact", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "title-touch-lift-outside-inert"
+title = "A touch contact lifting outside the item it landed in takes nothing"
+description = "On title, a contact landing in HOW TO PLAY's rectangle, travelling into LIGHT THE LAMP's and lifting there reads screen title with menuIndex 2, the item it landed in still selected."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/title-touch-lift-outside-inert.test.ts", outputs = [ { id = "lifted", name = "The item left selected by a contact that lifted elsewhere", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "title-press-lift-outside-inert"
+title = "A pointer dragged off the item it pressed takes nothing"
+description = "On title, a primary press inside HOW TO PLAY's rectangle, dragged into LIGHT THE LAMP's and released there reads screen title with menuIndex 2, the item the press armed still selected."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/title-press-lift-outside-inert.test.ts", outputs = [ { id = "lifted", name = "The item left selected by a release outside it", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "levelup-touch-accepts"
+title = "A touch contact accepts a level-up offer"
+description = "On levelup holding three offers with pendingLevelUps 1, a touch contact landing and lifting inside the second offer's rectangle applies that offer and reads screen playing."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "pointer/levelup-touch-accepts.test.ts", outputs = [ { id = "accepted", name = "The offer accepted by a contact", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "paused-touch-resumes"
+title = "A touch contact on RESUME returns to the run"
+description = "On paused, a touch contact landing and lifting inside RESUME's rectangle reads screen playing with the run exactly as the pause left it."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "pointer/paused-touch-resumes.test.ts", outputs = [ { id = "resumed", name = "The run resumed by a contact", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "end-touch-confirms"
+title = "A touch contact on TRY AGAIN starts a fresh run"
+description = "On fallen, a touch contact landing and lifting inside TRY AGAIN's rectangle reads screen playing with a fresh run."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/end-touch-confirms.test.ts", outputs = [ { id = "again", name = "The run restarted by a contact", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-entry-touch-highlights"
+title = "A touch contact on an almanac entry only moves the highlight"
+description = "On almanac with almanacScroll 0 and menuIndex 0, a touch contact landing and lifting inside the third visible entry row's rectangle reads menuIndex 2 with screen still almanac."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/almanac-entry-touch-highlights.test.ts", outputs = [ { id = "entry", name = "The almanac entry highlighted by a contact", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-tab-touch-selects"
+title = "A touch contact on an almanac tab selects it"
+description = "On almanac with almanacTab 0, a touch contact landing and lifting inside the third tab's rectangle reads almanacTab 2, exactly as right reaching that tab does."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/almanac-tab-touch-selects.test.ts", outputs = [ { id = "tab", name = "The tab selected by a contact", kind = "image" } ] }
+
 # --- Contact and Endings ------------------------------------------------------
 # How the night hurts and how it ends: the overlap rule, the contact
 # cooldown and its schedule, the floor every hit respects, recovery and its
@@ -2095,12 +2608,28 @@ failure_cap = "passable"
 validation = { script = "contact/recovery-caps-at-max-hp.test.ts", outputs = [ { id = "capped", name = "Recovery capped at maxHp", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "heal-caps-at-max-hp"
-title = "Every heal caps hp at the maxHp in force"
-description = "Bread collected at hp 90, lamp-oil accepted at hp 90, and a chest heal at hp 90 each leave hp at exactly 100 with maxHp 100."
+id = "bread-heal-caps"
+title = "Bread's heal caps hp at the maxHp in force"
+description = "Bread collected at hp 90 leaves hp at exactly 100 with maxHp 100."
 domains = ["survival", "progression"]
 failure_cap = "passable"
-validation = { script = "contact/heal-caps-at-max-hp.test.ts", outputs = [ { id = "capped", name = "Heals capped at maxHp", kind = "image" } ] }
+validation = { script = "contact/bread-heal-caps.test.ts", outputs = [ { id = "capped", name = "Bread's heal capped at maxHp", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "lamp-oil-heal-caps"
+title = "Lamp oil's heal caps hp at the maxHp in force"
+description = "Lamp oil accepted at hp 90 leaves hp at exactly 100 with maxHp 100."
+domains = ["survival", "progression"]
+failure_cap = "passable"
+validation = { script = "contact/lamp-oil-heal-caps.test.ts", outputs = [ { id = "capped", name = "Lamp oil's heal capped at maxHp", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "chest-heal-caps"
+title = "A chest's heal caps hp at the maxHp in force"
+description = "A chest heal at hp 90 leaves hp at exactly 100 with maxHp 100."
+domains = ["survival", "progression"]
+failure_cap = "passable"
+validation = { script = "contact/chest-heal-caps.test.ts", outputs = [ { id = "capped", name = "A chest heal capped at maxHp", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "fallen-at-zero"
@@ -2292,12 +2821,20 @@ failure_cap = "scuffed"
 validation = { script = "weapons/hit-removes-damage.test.ts", outputs = [ { id = "hit", name = "The hit's damage removed", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "damage-real-valued"
-title = "Damage and health are real numbers"
-description = "With Wick 1 held, a level-1 Ember bolt reads damage 11 and a rat with hp 15 reads hp 4 after the hit; with Wick 3 held a level-1 Taper slash reads damage 13 and a rat reads hp 2 after the hit, nothing rounded."
+id = "damage-real-valued-on-a-dart"
+title = "A dart's damage and the hp it removes are real numbers"
+description = "With Wick 1 held, a posed level-1 Pin dart reads damage 6.6, the table's 6 times damageMul 1.1, and the enemy it hits loses exactly 6.6 hp, nothing rounded."
 domains = ["arsenal"]
 failure_cap = "passable"
-validation = { script = "weapons/damage-real-valued.test.ts", outputs = [ { id = "real", name = "Real-valued damage", kind = "image" } ] }
+validation = { script = "weapons/damage-real-valued-on-a-dart.test.ts", outputs = [ { id = "real", name = "Real-valued damage on a dart", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "damage-real-valued-on-a-slash"
+title = "A slash's damage and the hp it removes are real numbers"
+description = "With Wick 3 held, the slash a level-2 Taper firing creates reads damage 19.5, the table's 15 times damageMul 1.3, and the hound it hits loses exactly 19.5 hp, nothing rounded."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "weapons/damage-real-valued-on-a-slash.test.ts", outputs = [ { id = "real", name = "Real-valued damage on a slash", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "damage-fixed-at-creation"
@@ -3942,10 +4479,18 @@ validation = { script = "evolutions/corona-pulse-interval.test.ts", outputs = [ 
 [[review.categories.items]]
 id = "corona-heals-per-kill"
 title = "Each enemy a Corona pulse kills heals CORONA_HEAL"
-description = "With hp posed to 50 and three moths with hp 5 inside the aura, hp reads 53 after the pulse that kills them, and a pulse that kills nothing heals nothing."
+description = "With hp posed to 50 and three moths with hp 5 inside the aura, hp reads 53 after the pulse that kills them, one CORONA_HEAL for each kill."
 domains = ["arsenal", "survival"]
 failure_cap = "passable"
 validation = { script = "evolutions/corona-heals-per-kill.test.ts", outputs = [ { id = "healed", name = "Three kills, three health", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "corona-heals-nothing-without-a-kill"
+title = "A Corona pulse that kills nothing heals nothing"
+description = "With hp posed to 50 and a hound inside the aura, the pulse takes the hound's hp down and leaves the lamplighter's at 50, the heal being per kill rather than per pulse."
+domains = ["arsenal", "survival"]
+failure_cap = "passable"
+validation = { script = "evolutions/corona-heals-nothing-without-a-kill.test.ts", outputs = [ { id = "unhealed", name = "A pulse that hit and healed nothing", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "corona-ignores-amount"
@@ -4014,12 +4559,20 @@ failure_cap = "scuffed"
 validation = { script = "passives/oil-cooldown-mul.test.ts", outputs = [ { id = "cooldown", name = "The Oil-shortened cooldown", kind = "replay" } ] }
 
 [[review.categories.items]]
-id = "oil-scales-pulse-and-burst"
-title = "Oil shortens Halo's pulse and Flare's burst interval"
-description = "With Oil 5 held, Halo's timer reads 0.6 after a level-1 pulse and Flare's reads 36 after a level-1 burst."
+id = "oil-scales-halo-pulse"
+title = "Oil shortens Halo's pulse interval"
+description = "With Oil 5 held, Halo's timer reads 0.6 after a level-1 pulse, the table's 1.00 times cooldownMul 0.6."
 domains = ["arsenal"]
 failure_cap = "passable"
-validation = { script = "passives/oil-scales-pulse-and-burst.test.ts", outputs = [ { id = "intervals", name = "The scaled pulse and burst intervals", kind = "image" } ] }
+validation = { script = "passives/oil-scales-halo-pulse.test.ts", outputs = [ { id = "interval", name = "The scaled pulse interval", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "oil-scales-flare-burst"
+title = "Oil shortens Flare's burst interval"
+description = "With Oil 5 held, Flare's timer reads 36 after a level-1 burst, the table's 60 times cooldownMul 0.6."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "passives/oil-scales-flare-burst.test.ts", outputs = [ { id = "interval", name = "The scaled burst interval", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "cooldown-floor"
@@ -4047,19 +4600,35 @@ validation = { script = "passives/glass-scales-slash.test.ts", outputs = [ { id 
 
 [[review.categories.items]]
 id = "glass-scales-bolt-radius"
-title = "Glass scales a bolt's and a dart's radius"
-description = "With Glass 2 held, a level-1 Ember bolt reads radius 9.6 and a level-1 Pin dart reads radius 7.2."
+title = "Glass scales a bolt's radius"
+description = "With Glass 2 held, a level-1 Ember bolt reads radius 9.6, the table's 8 times areaMul 1.2."
 domains = ["arsenal"]
 failure_cap = "scuffed"
-validation = { script = "passives/glass-scales-bolt-radius.test.ts", outputs = [ { id = "bolt", name = "The scaled bolt and dart", kind = "image" } ] }
+validation = { script = "passives/glass-scales-bolt-radius.test.ts", outputs = [ { id = "bolt", name = "The scaled bolt", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "glass-scales-lantern-orbit-and-radius"
-title = "Glass scales a lantern set's orbit and radius"
-description = "With Glass 2 held, a level-1 Lantern set's lantern reads radius 16.8 on a circle of radius 108 about the lamplighter."
+id = "glass-scales-dart-radius"
+title = "Glass scales a dart's radius"
+description = "With Glass 2 held, a level-1 Pin dart reads radius 7.2, the table's 6 times areaMul 1.2."
 domains = ["arsenal"]
 failure_cap = "scuffed"
-validation = { script = "passives/glass-scales-lantern-orbit-and-radius.test.ts", outputs = [ { id = "lantern", name = "The scaled set", kind = "image" } ] }
+validation = { script = "passives/glass-scales-dart-radius.test.ts", outputs = [ { id = "dart", name = "The scaled dart", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "glass-scales-lantern-radius"
+title = "Glass scales a lantern's radius"
+description = "With Glass 2 held, a level-1 Lantern set's lantern reads radius 16.8, the table's 14 times areaMul 1.2."
+domains = ["arsenal"]
+failure_cap = "scuffed"
+validation = { script = "passives/glass-scales-lantern-radius.test.ts", outputs = [ { id = "lantern", name = "The scaled lantern", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "glass-scales-lantern-orbit"
+title = "Glass scales a lantern set's orbit"
+description = "With Glass 2 held, a level-1 Lantern set's lantern rides a circle of radius 108 about the lamplighter, the table's 90 times areaMul 1.2."
+domains = ["arsenal"]
+failure_cap = "scuffed"
+validation = { script = "passives/glass-scales-lantern-orbit.test.ts", outputs = [ { id = "lantern", name = "The scaled orbit", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "glass-scales-aura-radius"
@@ -4086,12 +4655,20 @@ failure_cap = "scuffed"
 validation = { script = "passives/glass-scales-strike-area.test.ts", outputs = [ { id = "strike", name = "The scaled strike", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "glass-scales-shard-and-sconce-radius"
-title = "Glass scales a shard's and a sconce's radius"
-description = "With Glass 2 held, a level-1 shard reads radius 9.6 and a level-1 sconce reads radius 14.4."
+id = "glass-scales-shard-radius"
+title = "Glass scales a shard's radius"
+description = "With Glass 2 held, a level-1 shard reads radius 9.6, the table's 8 times areaMul 1.2."
 domains = ["arsenal"]
 failure_cap = "scuffed"
-validation = { script = "passives/glass-scales-shard-and-sconce-radius.test.ts", outputs = [ { id = "shard", name = "The scaled shard and sconce", kind = "image" } ] }
+validation = { script = "passives/glass-scales-shard-radius.test.ts", outputs = [ { id = "shard", name = "The scaled shard", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "glass-scales-sconce-radius"
+title = "Glass scales a sconce's radius"
+description = "With Glass 2 held, a level-1 sconce reads radius 14.4, the table's 12 times areaMul 1.2."
+domains = ["arsenal"]
+failure_cap = "scuffed"
+validation = { script = "passives/glass-scales-sconce-radius.test.ts", outputs = [ { id = "sconce", name = "The scaled sconce", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "glass-scales-burst-radius"
@@ -4118,12 +4695,20 @@ failure_cap = "passable"
 validation = { script = "passives/glass-resizes-aura-per-tick.test.ts", outputs = [ { id = "resized", name = "The aura resized by Glass", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "glass-resizes-chandelier-per-tick"
-title = "Chandelier's orbit and radius follow areaMul every tick"
-description = "Chandelier's lanterns read radius 20 on an orbit of 120, and radius 24 on an orbit of 144 on the tick after Glass rises to 2."
+id = "glass-resizes-chandelier-radius"
+title = "Chandelier's lantern radius follows areaMul every tick"
+description = "Chandelier's lanterns read radius 20, and radius 24 on the tick after Glass rises to 2."
 domains = ["arsenal"]
 failure_cap = "passable"
-validation = { script = "passives/glass-resizes-chandelier-per-tick.test.ts", outputs = [ { id = "resized", name = "The set resized by Glass", kind = "image" } ] }
+validation = { script = "passives/glass-resizes-chandelier-radius.test.ts", outputs = [ { id = "resized", name = "The lanterns resized by Glass", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "glass-resizes-chandelier-orbit"
+title = "Chandelier's orbit follows areaMul every tick"
+description = "Chandelier's lanterns ride an orbit of 120, and an orbit of 144 on the tick after Glass rises to 2."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "passives/glass-resizes-chandelier-orbit.test.ts", outputs = [ { id = "resized", name = "The orbit resized by Glass", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "brass-armor-derived"
@@ -4134,17 +4719,60 @@ failure_cap = "scuffed"
 validation = { script = "passives/brass-armor-derived.test.ts", outputs = [ { id = "armor", name = "The derived armor", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "mirror-adds-to-amount"
-title = "Mirror adds 1 per level to every amount"
-description = "With Mirror 2 held, a level-1 firing creates 3 Ember bolts, 3 Pin darts, 3 lanterns, 3 puddles, 3 strikes, 3 shards, and 3 sconces."
+id = "mirror-adds-to-ember-amount"
+title = "Mirror adds 1 per level to ember's amount"
+description = "With Mirror 2 held, a level-1 firing creates 3 Ember bolts, the table's amount of 1 plus amountBonus 2."
 domains = ["arsenal"]
 failure_cap = "scuffed"
-validation = { script = "passives/mirror-adds-to-amount.test.ts", outputs = [ { id = "amount", name = "The amounts raised by Mirror", kind = "image" } ] }
+validation = { script = "passives/mirror-adds-to-ember-amount.test.ts", outputs = [ { id = "amount", name = "The Ember bolts raised by Mirror", kind = "image" } ] }
 
+[[review.categories.items]]
+id = "mirror-adds-to-pin-amount"
+title = "Mirror adds 1 per level to pin's amount"
+description = "With Mirror 2 held, a level-1 firing creates 3 Pin darts, the table's amount of 1 plus amountBonus 2."
+domains = ["arsenal"]
+failure_cap = "scuffed"
+validation = { script = "passives/mirror-adds-to-pin-amount.test.ts", outputs = [ { id = "amount", name = "The Pin darts raised by Mirror", kind = "image" } ] }
 
+[[review.categories.items]]
+id = "mirror-adds-to-shard-amount"
+title = "Mirror adds 1 per level to shard's amount"
+description = "With Mirror 2 held, a level-1 firing creates 3 shards, the table's amount of 1 plus amountBonus 2."
+domains = ["arsenal"]
+failure_cap = "scuffed"
+validation = { script = "passives/mirror-adds-to-shard-amount.test.ts", outputs = [ { id = "amount", name = "The shards raised by Mirror", kind = "image" } ] }
 
+[[review.categories.items]]
+id = "mirror-adds-to-sconce-amount"
+title = "Mirror adds 1 per level to sconce's amount"
+description = "With Mirror 2 held, a level-1 firing creates 3 sconces, the table's amount of 1 plus amountBonus 2."
+domains = ["arsenal"]
+failure_cap = "scuffed"
+validation = { script = "passives/mirror-adds-to-sconce-amount.test.ts", outputs = [ { id = "amount", name = "The sconces raised by Mirror", kind = "image" } ] }
 
+[[review.categories.items]]
+id = "mirror-adds-to-lantern-amount"
+title = "Mirror adds 1 per level to lantern's amount"
+description = "With Mirror 2 held, a level-1 firing creates 3 lanterns, the table's amount of 1 plus amountBonus 2."
+domains = ["arsenal"]
+failure_cap = "scuffed"
+validation = { script = "passives/mirror-adds-to-lantern-amount.test.ts", outputs = [ { id = "amount", name = "The lanterns raised by Mirror", kind = "image" } ] }
 
+[[review.categories.items]]
+id = "mirror-adds-to-oil-splash-amount"
+title = "Mirror adds 1 per level to oil-splash's amount"
+description = "With Mirror 2 held, a level-1 firing creates 3 puddles, the table's amount of 1 plus amountBonus 2."
+domains = ["arsenal"]
+failure_cap = "scuffed"
+validation = { script = "passives/mirror-adds-to-oil-splash-amount.test.ts", outputs = [ { id = "amount", name = "The puddles raised by Mirror", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "mirror-adds-to-spark-amount"
+title = "Mirror adds 1 per level to spark's amount"
+description = "With Mirror 2 held, a level-1 firing creates 3 strikes, the table's amount of 1 plus amountBonus 2."
+domains = ["arsenal"]
+failure_cap = "scuffed"
+validation = { script = "passives/mirror-adds-to-spark-amount.test.ts", outputs = [ { id = "amount", name = "The strikes raised by Mirror", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "bellows-speed-mul"
@@ -4267,35 +4895,61 @@ failure_cap = "passable"
 validation = { script = "passives/speed-fixed.test.ts", outputs = [ { id = "speed", name = "The speed left as written", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "duration-fixed"
-title = "Projectile and zone duration is unchanged by any passive"
-description = "With Glass 5, Oil 5, Wick 5, and Mirror 2 held, a level-1 Ember bolt reads ttl 2.0 and a level-1 Oil Splash puddle reads ttl 2.5."
+id = "duration-fixed-on-projectiles"
+title = "A projectile's duration is unchanged by any passive"
+description = "With Glass 5, Oil 5, Wick 5, and Mirror 2 held, a level-1 Ember bolt reads ttl 2.0, the table figure as written."
 domains = ["arsenal"]
 failure_cap = "passable"
-validation = { script = "passives/duration-fixed.test.ts", outputs = [ { id = "duration", name = "The durations left as written", kind = "image" } ] }
+validation = { script = "passives/duration-fixed-on-projectiles.test.ts", outputs = [ { id = "duration", name = "The bolt's duration left as written", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "intervals-fixed"
-title = "Pulse and re-hit intervals are unchanged by any passive"
-description = "With Oil 5 held, a puddle still pulses every 18 ticks and a shard still re-hits every 30."
+id = "duration-fixed-on-zones"
+title = "A zone's duration is unchanged by any passive"
+description = "With Glass 5, Oil 5, Wick 5, and Mirror 2 held, a level-1 Oil Splash puddle reads ttl 2.5, the table figure as written."
 domains = ["arsenal"]
 failure_cap = "passable"
-validation = { script = "passives/intervals-fixed.test.ts", outputs = [ { id = "intervals", name = "The intervals left as written", kind = "replay" } ] }
+validation = { script = "passives/duration-fixed-on-zones.test.ts", outputs = [ { id = "duration", name = "The puddle's duration left as written", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "spreads-and-ranges-fixed"
-title = "Spreads, scatter, and range are unchanged by any passive"
-description = "With Glass 5 held, Pin's darts are still spread 10 apart, Spark still strikes nothing at distance 601, and every Oil Splash puddle still lands within 400."
+id = "pulse-interval-fixed"
+title = "A pulse interval is unchanged by any passive"
+description = "With Oil 5 held, a puddle still pulses every 18 ticks, OIL_PULSE as written."
 domains = ["arsenal"]
 failure_cap = "passable"
-validation = { script = "passives/spreads-and-ranges-fixed.test.ts", outputs = [ { id = "fixed", name = "The spreads and ranges left as written", kind = "image" } ] }
+validation = { script = "passives/pulse-interval-fixed.test.ts", outputs = [ { id = "interval", name = "The pulse interval left as written", kind = "replay" } ] }
 
-# --- Progression --------------------------------------------------------------
-# Experience, levels, and the level-up economy: the curve, the queue, when
-# the overlay opens and when it does not, each rule of the candidate pool,
-# the draw, the fallback, and what accepting each kind of offer does. Gains
-# are real, through a gem collected by a tick; pools are read off the
-# snapshot's pool field.
+[[review.categories.items]]
+id = "rehit-interval-fixed"
+title = "A re-hit interval is unchanged by any passive"
+description = "With Oil 5 held, a shard still re-hits every 30 ticks, SHARD_REHIT as written."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "passives/rehit-interval-fixed.test.ts", outputs = [ { id = "interval", name = "The re-hit interval left as written", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "spread-fixed"
+title = "A spread is unchanged by any passive"
+description = "With Glass 5 held, Pin's darts are still spread PIN_SPREAD (10) apart about the lamplighter's y."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "passives/spread-fixed.test.ts", outputs = [ { id = "fixed", name = "The spread left as written", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "range-fixed"
+title = "A range is unchanged by any passive"
+description = "With Glass 5 held, Spark still strikes nothing with its only enemy at distance 601, one unit past SPARK_RANGE."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "passives/range-fixed.test.ts", outputs = [ { id = "fixed", name = "The range left as written", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "scatter-fixed"
+title = "A scatter is unchanged by any passive"
+description = "With Glass 5 held, every Oil Splash puddle still lands within OIL_SCATTER (400) of the lamplighter's center."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "passives/scatter-fixed.test.ts", outputs = [ { id = "fixed", name = "The scatter left as written", kind = "image" } ] }
+
 [[review.categories]]
 id = "progression"
 title = "Progression"
@@ -4750,11 +5404,19 @@ validation = { script = "enemies/hp-scaling-kept-for-life.test.ts", outputs = [ 
 
 [[review.categories.items]]
 id = "enemy-ids-ascend"
-title = "Enemy ids ascend in spawn order and are never reused"
-description = "Three enemies spawned in turn read ascending ids, and a fourth spawned after the first is removed reads an id above all three."
+title = "Enemy ids ascend in spawn order"
+description = "Three enemies spawned in turn read strictly ascending ids, each the next from nextId."
 domains = ["survival"]
 failure_cap = "passable"
 validation = { script = "enemies/enemy-ids-ascend.test.ts", outputs = [ { id = "ids", name = "The ids in spawn order", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "enemy-ids-never-reused"
+title = "An id a removal frees is never handed out again"
+description = "An enemy spawned after an earlier one is removed reads an id above every id already handed out, so no id is used twice in a run."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "enemies/enemy-ids-never-reused.test.ts", outputs = [ { id = "ids", name = "The id a spawn after a removal took", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "age-counts-per-tick"
@@ -4869,12 +5531,28 @@ failure_cap = "passable"
 validation = { script = "enemies/dark-drops-nothing.test.ts", outputs = [ { id = "nothing", name = "The field after the Dark's death", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "kill-count-all-ranks"
-title = "Every rank's death raises the kill count"
-description = "kills rises by one on a moth's death, by one on a mothwing's, and by one on the Dark's."
+id = "kill-count-common"
+title = "A common's death raises the kill count"
+description = "kills rises by one on the tick a moth dies."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "enemies/kill-count-all-ranks.test.ts", outputs = [ { id = "kills", name = "Three kills of three ranks", kind = "image" } ] }
+validation = { script = "enemies/kill-count-common.test.ts", outputs = [ { id = "kills", name = "A common's death counted", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "kill-count-elite"
+title = "An elite's death raises the kill count"
+description = "kills rises by one on the tick a mothwing dies."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "enemies/kill-count-elite.test.ts", outputs = [ { id = "kills", name = "An elite's death counted", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "kill-count-dark"
+title = "The Dark's death raises the kill count"
+description = "kills rises by one on the tick the Dark dies."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "enemies/kill-count-dark.test.ts", outputs = [ { id = "kills", name = "The Dark's death counted", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "dark-flare-immune"
@@ -5520,12 +6198,20 @@ failure_cap = "passable"
 validation = { script = "pickups/draft-gems-move-same-tick.test.ts", outputs = [ { id = "moved", name = "The gem moved on the draft's tick", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "all-bread-and-drafts-collected"
-title = "Every bread and draft meeting the condition is collected that tick"
-description = "With two bread pickups and a draft posed at the lamplighter's center, one tick collects all three."
+id = "all-bread-collected"
+title = "Every bread meeting the condition is collected that tick"
+description = "With two bread posed at the lamplighter's center, one tick collects both."
 domains = ["progression"]
 failure_cap = "passable"
-validation = { script = "pickups/all-bread-and-drafts-collected.test.ts", outputs = [ { id = "all", name = "Three pickups collected at once", kind = "image" } ] }
+validation = { script = "pickups/all-bread-collected.test.ts", outputs = [ { id = "all", name = "Two bread collected at once", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "all-drafts-collected"
+title = "Every draft meeting the condition is collected that tick"
+description = "With two drafts posed at the lamplighter's center, one tick collects both."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "pickups/all-drafts-collected.test.ts", outputs = [ { id = "all", name = "Two drafts collected at once", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "drop-at-most-one"
@@ -5536,12 +6222,20 @@ failure_cap = "passable"
 validation = { script = "pickups/drop-at-most-one.test.ts", outputs = [ { id = "one", name = "At most one pickup per kill", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "drop-kinds-occur"
-title = "Bread and drafts both drop"
-description = "Over 4000 seeded common kills, at least one bread and at least one draft are dropped."
+id = "bread-drops"
+title = "Bread drops"
+description = "Over 4000 seeded common kills, at least one bread is dropped."
 domains = ["progression"]
 failure_cap = "scuffed"
-validation = { script = "pickups/drop-kinds-occur.test.ts", outputs = [ { id = "kinds", name = "Both pickup kinds dropped", kind = "image" } ] }
+validation = { script = "pickups/bread-drops.test.ts", outputs = [ { id = "bread", name = "The bread the sweep dropped", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "drafts-drop"
+title = "Drafts drop"
+description = "Over 4000 seeded common kills, at least one draft is dropped."
+domains = ["progression"]
+failure_cap = "scuffed"
+validation = { script = "pickups/drafts-drop.test.ts", outputs = [ { id = "drafts", name = "The drafts the sweep dropped", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "bread-rate"
@@ -5590,7 +6284,7 @@ id = "title-copy"
 title = "The title screen draws its copy"
 description = "The title frame draws WICK, KEEP THE LIGHT, LIGHT THE LAMP, THE ALMANAC, and HOW TO PLAY, the three menu items stacked one above the next."
 domains = ["presentation"]
-failure_cap = "great"
+failure_cap = "passable"
 validation = { script = "screens/title-copy.test.ts", outputs = [ { id = "title", name = "The title screen", kind = "image" } ] }
 
 [[review.categories.items]]
@@ -5676,23 +6370,31 @@ validation = { script = "screens/howto-names-dawn.test.ts", outputs = [ { id = "
 [[review.categories.items]]
 id = "howto-back-returns"
 title = "back returns from the how-to screen"
-description = "On howto, pressing Escape reads screen title with menuIndex 0."
+description = "On howto, pressing Escape reads screen title with HOW TO PLAY selected."
 domains = ["survival"]
 failure_cap = "passable"
 validation = { script = "screens/howto-back-returns.test.ts", outputs = [ { id = "back", name = "The title returned to", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "almanac-copy"
-title = "The almanac draws its heading and its tabs"
-description = "The almanac frame draws THE ALMANAC and every name in ALMANAC_TABS: TOOLS, TRINKETS, ENEMIES, and PICKUPS, in that order."
+id = "almanac-draws-heading"
+title = "The almanac draws its heading"
+description = "The almanac frame draws ALMANAC_TEXT (THE ALMANAC)."
 domains = ["presentation"]
 failure_cap = "great"
-validation = { script = "screens/almanac-copy.test.ts", outputs = [ { id = "almanac", name = "The almanac screen", kind = "image" } ] }
+validation = { script = "screens/almanac-draws-heading.test.ts", outputs = [ { id = "heading", name = "The almanac's heading", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-draws-tabs"
+title = "The almanac draws its tab bar"
+description = "The almanac frame draws every name in ALMANAC_TABS: TOOLS, TRINKETS, ENEMIES, and PICKUPS, in that order."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/almanac-draws-tabs.test.ts", outputs = [ { id = "tabs", name = "The almanac's tab bar", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "almanac-back-returns"
 title = "back returns from the almanac"
-description = "On almanac, pressing Escape reads screen title with menuIndex 0."
+description = "On almanac, pressing Escape reads screen title with THE ALMANAC selected."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "screens/almanac-back-returns.test.ts", outputs = [ { id = "back", name = "The title returned to from the almanac", kind = "image" } ] }
@@ -5784,6 +6486,22 @@ description = "On the almanac's TOOLS tab, ten ArrowDown presses followed by ten
 domains = ["survival"]
 failure_cap = "passable"
 validation = { script = "screens/almanac-scroll-clamped-at-top.test.ts", outputs = [ { id = "top", name = "The list back at its first row", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-scroll-clamped-at-end"
+title = "The almanac list stops at the end of its entries"
+description = "On the almanac's TOOLS tab, fifteen ArrowDown presses read menuIndex 15 with almanacScroll 6, the tab's sixteen entries less ALMANAC_ROWS (10)."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-scroll-clamped-at-end.test.ts", outputs = [ { id = "end", name = "The list held at its last window of rows", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-scroll-resets-on-wrap"
+title = "The almanac list returns to its top when the highlight wraps"
+description = "On the almanac's TOOLS tab with menuIndex 15 and almanacScroll 6, pressing ArrowDown reads menuIndex 0 with almanacScroll 0."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-scroll-resets-on-wrap.test.ts", outputs = [ { id = "wrapped", name = "The list back at its first row after the wrap", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "almanac-confirm-inert"
@@ -5926,7 +6644,7 @@ id = "paused-copy"
 title = "The pause screen draws PAUSED over the held world"
 description = "The paused frame draws PAUSED with the pause menu beneath it and the HUD over the world exactly as the pause left it."
 domains = ["presentation"]
-failure_cap = "great"
+failure_cap = "passable"
 validation = { script = "screens/paused-copy.test.ts", outputs = [ { id = "paused", name = "The pause screen", kind = "image" } ] }
 
 [[review.categories.items]]
@@ -6162,12 +6880,20 @@ failure_cap = "scuffed"
 validation = { script = "screens/chest-confirm-closes.test.ts", outputs = [ { id = "closed", name = "The chest overlay closed", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "chest-up-down-inert"
-title = "up and down do nothing on the chest overlay"
-description = "On chest, pressing ArrowUp and ArrowDown leaves screen chest with menuIndex 0."
+id = "chest-up-inert"
+title = "up does nothing on the chest overlay"
+description = "On chest, pressing ArrowUp leaves screen chest with menuIndex 0."
 domains = ["progression"]
 failure_cap = "passable"
-validation = { script = "screens/chest-up-down-inert.test.ts", outputs = [ { id = "inert", name = "The chest overlay untouched by up and down", kind = "image" } ] }
+validation = { script = "screens/chest-up-inert.test.ts", outputs = [ { id = "inert", name = "The chest overlay untouched by up", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "chest-down-inert"
+title = "down does nothing on the chest overlay"
+description = "On chest, pressing ArrowDown leaves screen chest with menuIndex 0."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "screens/chest-down-inert.test.ts", outputs = [ { id = "inert", name = "The chest overlay untouched by down", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "chest-back-inert"
@@ -6323,11 +7049,11 @@ validation = { script = "screens/dawn-back.test.ts", outputs = [ { id = "back", 
 
 [[review.categories.items]]
 id = "menu-index-resets-on-entry"
-title = "Arriving on any screen sets menuIndex to 0"
-description = "Entering howto, almanac, playing, levelup, chest, paused, fallen, dawn, and title each from a screen whose menuIndex was 1 reads menuIndex 0 on arrival."
+title = "Arriving on a screen sets the highlight the rule gives it"
+description = "Entering howto, almanac, playing, levelup, chest, paused, fallen, and dawn each from a screen whose highlight had been moved off 0 reads menuIndex 0 on arrival, and arriving at title from an end screen's TITLE reads LIGHT THE LAMP selected."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "screens/menu-index-resets-on-entry.test.ts", outputs = [ { id = "reset", name = "menuIndex reset on every arrival", kind = "image" } ] }
+validation = { script = "screens/menu-index-resets-on-entry.test.ts", outputs = [ { id = "reset", name = "The highlight on every arrival", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "menu-highlight-distinct"
@@ -7324,3 +8050,32 @@ description = "On the first frame the build draws, every produced image is alrea
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "assets/assets-decoded-before-first-frame.test.ts", outputs = [ { id = "ready", name = "The first frame with every asset decoded", kind = "image" } ] }
+
+# --- Showcase (read off the produced tree, not off the running game) ----------
+# The showcase is the store-page presentation of the finished game: a
+# player-facing description and an ordered carousel of captured media, shipped
+# in a `showcase/` directory at the root of the produced repository, which
+# `specs/showcase.md` defines. It is worth THREE points rather than one, because
+# it is a deliverable of its own — a whole file of the specification, and the
+# one piece of a run a person meets before they meet the game — where every
+# other point on this checklist is one behavior of the game itself.
+#
+# Its cap is `great` all the same: a build that shipped no showcase plays
+# exactly as well as one that did.
+#
+# NOTHING ABOUT THE MEDIA IS GRADED HERE, and no other item on this checklist
+# says anything about it. Whether the description reads like a game worth
+# playing, and whether the carousel opens on the strongest view of the night,
+# is the reviewer's judgement and is rated through the domains.
+[[review.categories]]
+id = "showcase"
+title = "Showcase"
+
+[[review.categories.items]]
+id = "exists"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, and at least one file the carousel names is present in showcase/."
+weight = 3
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "showcase/exists.test.ts", outputs = [ { id = "carousel", name = "A screenshot from the build's showcase", kind = "image" } ] }

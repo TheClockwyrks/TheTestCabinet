@@ -12,12 +12,11 @@
 // surface posed sounds, one frame later, exactly as the same state reached by
 // play."
 //
-// WHY THE PAUSE AND THE RESUME ARE POSED. specs/instrumentation.md defines both
-// poses to be the played transitions: `setScreen("paused")` from `playing` is
-// "Exactly as `pause` does", and `setScreen("playing")` from `paused` "Resumes
-// exactly as `pause` on `paused` does; the run is untouched." A key press would
-// put the pause control's own correctness between this point and the loop it
-// reads, and that control is `controls/`'s.
+// WHY THE PAUSE AND THE RESUME ARE POSED. specs/instrumentation.md has both
+// poses set `screen` alone: "Nothing else changes: the run, the loadout ...
+// stand exactly as they were", so the run crosses the pause untouched. A key
+// press would put the pause control's own correctness between this point and
+// the loop it reads, and that control is `controls/`'s.
 //
 // WHY THE WORLD IS POSED AS IT IS. An isolated night: every driver switch off,
 // nothing alive, nothing dropped, and no slot held but the Halo this point needs,

@@ -76,6 +76,8 @@ export interface WickSnapshot {
   enemyContact: boolean;
   weaponFire: boolean;
   effectMotion: boolean;
+  drops: boolean;
+  progression: boolean;
   run: {
     tick: number;
     time: number;
@@ -177,6 +179,8 @@ export interface WickDebugApi {
   setEnemyContact(on: boolean): void;
   setWeaponFire(on: boolean): void;
   setEffectMotion(on: boolean): void;
+  setDrops(on: boolean): void;
+  setProgression(on: boolean): void;
   setTick(tick: number): void;
   setSpawnTimer(seconds: number): void;
   setPlayerPosition(x: number, y: number): void;
@@ -429,36 +433,7 @@ export function createApi(game: Game, clock: Clock): WickDebugApi {
       "dawn",
       "chest",
     ] as const);
-    const from = state().screen;
-    switch (target) {
-      case "title":
-        game.toTitle();
-        break;
-      case "howto":
-        game.toHowto();
-        break;
-      case "almanac":
-        game.toAlmanac();
-        break;
-      case "playing":
-        if (from === "paused") game.resume();
-        else if (from === "chest") game.closeChest();
-        else if (from === "levelup") return;
-        else game.startRun();
-        break;
-      case "levelup":
-        game.openLevelUp();
-        break;
-      case "paused":
-        game.pause();
-        break;
-      case "fallen":
-      case "dawn":
-        if (onRunScreen()) game.endRun(target);
-        break;
-      case "chest":
-        return;
-    }
+    game.poseScreen(target);
     game.discardCues();
   };
 
@@ -502,6 +477,8 @@ export function createApi(game: Game, clock: Clock): WickDebugApi {
     setEnemyContact: (on) => setSwitch("enemyContact", on),
     setWeaponFire: (on) => setSwitch("weaponFire", on),
     setEffectMotion: (on) => setSwitch("effectMotion", on),
+    setDrops: (on) => setSwitch("drops", on),
+    setProgression: (on) => setSwitch("progression", on),
 
     setTick(tick) {
       const value = whole(tick, "tick", 0, DAWN_TICK - 1);

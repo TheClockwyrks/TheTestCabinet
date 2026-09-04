@@ -5,6 +5,7 @@ import {
   ALMANAC_TABS,
   END_ITEMS,
   HURT_FLASH,
+  OFFER_COUNT,
   PAUSE_ITEMS,
   TICK_DT,
   TITLE_ITEMS,
@@ -57,9 +58,14 @@ function build(): Drive {
   return new Drive();
 }
 
+/**
+ * A fresh run, the sequence `specs/instrumentation.md` names: this pose to
+ * `playing`, then Taper in the first slot. `setScreen` sets the screen alone.
+ */
 function playing(): Drive {
   const d = build();
   d.pose((s) => d.api.setScreen(s, "playing"));
+  d.pose((s) => d.api.setWeapon(s, 0, "taper", 1));
   return d;
 }
 
@@ -128,7 +134,7 @@ describe("the snapshot", () => {
     expect("cooldownSet" in snap.run.weapons[0]).toBe(false);
     expect("movedTicks" in snap.run).toBe(false);
     d.pose((s) => d.api.setPendingLevelUps(s, 1));
-    d.pose((s) => d.api.setScreen(s, "levelup"));
+    d.step();
     const onOverlay = d.snap();
     expect(onOverlay.run.pool.length).toBeGreaterThan(3);
     for (const id of onOverlay.run.offers) {
@@ -191,17 +197,18 @@ describe("reset", () => {
 });
 
 describe("the almanac readings", () => {
-  it("enters the almanac with the idle run and every index at zero", () => {
+  it("enters the almanac with every index at zero, the run left alone", () => {
     const d = playing();
     d.pose((s) => d.api.setKills(s, 4));
+    d.state = { ...d.state, almanacTab: 2, almanacScroll: 1 };
     d.pose((s) => d.api.setScreen(s, "almanac"));
     const snap = d.snap();
     expect(snap.screen).toBe("almanac");
     expect(snap.menuIndex).toBe(0);
     expect(snap.almanacTab).toBe(0);
     expect(snap.almanacScroll).toBe(0);
-    expect(snap.run.kills).toBe(0);
-    expect(snap.run.tick).toBe(0);
+    // The pose sets the screen and the cursors; the run stands as it was.
+    expect(snap.run.kills).toBe(4);
   });
 
   it("reports the tab and the window it holds, and zero off the screen", () => {
@@ -258,20 +265,33 @@ describe("the rectangle readings", () => {
 });
 
 describe("setScreen", () => {
-  it("begins a fresh run from title, keeping rng and simTime and the switches", () => {
+  it("sets the screen and the cursors alone, leaving the run as it stands", () => {
     const d = build();
     d.pose((s) => d.api.setWeaponFire(s, false));
     d.state = { ...d.state, simTime: 3, rngState: 12345 };
     d.pose((s) => d.api.setScreen(s, "playing"));
     const snap = d.snap();
     expect(snap.screen).toBe("playing");
-    expect(snap.run.weapons).toEqual([{ id: "taper", level: 1, cooldown: 0 }]);
+    expect(snap.menuIndex).toBe(0);
+    // No run is begun: the idle run's empty loadout stands.
+    expect(snap.run.weapons).toEqual([]);
     expect(snap.simTime).toBe(3);
     expect(snap.rngState).toBe(12345);
     expect(snap.weaponFire).toBe(false);
   });
 
-  it("resumes from paused, closes the chest, and is inert on levelup", () => {
+  it("is the pose a fresh run is composed from", () => {
+    const d = build();
+    d.pose((s) => d.api.reset(s));
+    d.pose((s) => d.api.setScreen(s, "playing"));
+    d.pose((s) => d.api.setWeapon(s, 0, "taper", 1));
+    const snap = d.snap();
+    expect(snap.screen).toBe("playing");
+    expect(snap.run.weapons).toEqual([{ id: "taper", level: 1, cooldown: 0 }]);
+    expect(snap.run.tick).toBe(0);
+  });
+
+  it("leaves the run, the overlay, and the chest result where they stand", () => {
     const d = playing();
     d.pose((s) => d.api.setTick(s, 10));
     d.pose((s) => d.api.setScreen(s, "paused"));
@@ -286,23 +306,30 @@ describe("setScreen", () => {
       item: "taper",
       level: 2,
     });
+    // The pose moves the screen; `confirm` is what closes the overlay.
     d.pose((s) => d.api.setScreen(s, "playing"));
     expect(d.snap().screen).toBe("playing");
-    expect(d.snap().run.chestResult).toBeNull();
-    expect(d.snap().run.tick).toBe(11);
+    expect(d.snap().run.chestResult).toEqual({
+      kind: "level",
+      item: "taper",
+      level: 2,
+    });
     d.pose((s) => d.api.setPendingLevelUps(s, 1));
-    d.pose((s) => d.api.setScreen(s, "levelup"));
+    d.step();
     expect(d.snap().screen).toBe("levelup");
-    d.pose((s) => d.api.setScreen(s, "playing"));
-    expect(d.snap().screen).toBe("levelup");
+    expect(d.snap().run.offers.length).toBe(OFFER_COUNT);
     d.pose((s) => d.api.choose(s, 0));
     expect(d.snap().screen).toBe("playing");
   });
 
-  it("needs a pending level-up to open the overlay", () => {
+  it("opens no overlay of its own: the pose draws nothing", () => {
     const d = playing();
+    const before = d.snap().rngState;
     d.pose((s) => d.api.setScreen(s, "levelup"));
-    expect(d.snap().screen).toBe("playing");
+    const snap = d.snap();
+    expect(snap.screen).toBe("levelup");
+    expect(snap.run.offers).toEqual([]);
+    expect(snap.rngState).toBe(before);
   });
 
   it("discards the accumulator on the way to paused", () => {
@@ -313,26 +340,35 @@ describe("setScreen", () => {
     expect(d.snap().accumulator).toBe(0);
   });
 
-  it("ends the run kept for the end screens, and leaves unlisted rows inert", () => {
+  it("reaches every screen from every screen, and refuses a name it has not", () => {
     const d = playing();
     d.pose((s) => d.api.setKills(s, 3));
     d.pose((s) => d.api.setScreen(s, "fallen"));
     expect(d.snap().screen).toBe("fallen");
+    // The run the end screen reports is the run that was: the pose ends nothing.
     expect(d.snap().run.kills).toBe(3);
     d.pose((s) => d.api.setScreen(s, "chest"));
-    expect(d.snap().screen).toBe("fallen");
-    d.pose((s) => d.api.setScreen(s, "levelup"));
-    expect(d.snap().screen).toBe("fallen");
-    d.pose((s) => d.api.setScreen(s, "paused"));
-    expect(d.snap().screen).toBe("fallen");
+    expect(d.snap().screen).toBe("chest");
     d.pose((s) => d.api.setScreen(s, "title"));
-    expect(d.snap().run.kills).toBe(0);
+    expect(d.snap().screen).toBe("title");
+    expect(d.snap().run.kills).toBe(3);
     d.pose((s) => d.api.setScreen(s, "howto"));
     expect(d.snap().screen).toBe("howto");
-    d.pose((s) => d.api.setScreen(s, "playing"));
     d.pose((s) => d.api.setScreen(s, "dawn"));
     expect(d.snap().screen).toBe("dawn");
     expect(() => d.api.setScreen(d.state, "nowhere" as never)).toThrow();
+  });
+
+  it("is not how a run ends: the endings come from the ticks after the pose", () => {
+    const fallen = playing();
+    fallen.pose((s) => fallen.api.setHp(s, 0));
+    fallen.step();
+    expect(fallen.snap().screen).toBe("fallen");
+
+    const dawn = playing();
+    dawn.pose((s) => dawn.api.setTick(s, DAWN_TICK - 1));
+    dawn.step();
+    expect(dawn.snap().screen).toBe("dawn");
   });
 });
 
@@ -440,7 +476,7 @@ describe("the lamplighter and progression poses", () => {
     d.pose((s) => d.api.setNextOffers(s, ["pyre"]));
     expect(d.snap().run.nextOffers).toEqual(["pyre"]);
     d.pose((s) => d.api.setPendingLevelUps(s, 1));
-    d.pose((s) => d.api.setScreen(s, "levelup"));
+    d.step();
     expect(d.snap().run.offers).not.toContain("pyre");
     expect(d.snap().run.offers).toHaveLength(3);
     expect(d.snap().run.nextOffers).toBeNull();
@@ -449,7 +485,7 @@ describe("the lamplighter and progression poses", () => {
   it("accepts nextOffers on levelup for the queued overlay", () => {
     const d = playing();
     d.pose((s) => d.api.setPendingLevelUps(s, 2));
-    d.pose((s) => d.api.setScreen(s, "levelup"));
+    d.step();
     d.pose((s) => d.api.setNextOffers(s, ["lure"]));
     d.pose((s) => d.api.choose(s, 0));
     expect(d.snap().screen).toBe("levelup");

@@ -2,14 +2,15 @@
 // carry the stage's background color.
 //
 // WHERE THE THRESHOLD COMES FROM. specs/overview.md ("Units, ticks, the world,
-// and the camera"): "the letterbox bars carry the stage's background color",
-// and, under What you implement: "src/game.ts also exports BACKGROUND, a CSS
-// color string: the stage background. src/main.ts hands it to the engine as the
-// color the canvas is cleared to each frame, so the letterbox bars around the
-// stage match the night. The seeded stub exports a placeholder; replace it with
-// the color your night uses." The color itself is the build's ("Wick fixes no
-// palette", specs/ui.md), so what a check decides is that the bars really are
-// THAT color once the build's frame has been drawn.
+// and the camera"): "The stage has one background color, painted across the
+// whole stage before anything else is drawn, and the letterbox bars carry that
+// color", and, under What you implement: "src/game.ts also exports BACKGROUND,
+// a CSS color string: the stage background. src/main.ts hands it to the engine
+// as the color the canvas is cleared to each frame, so the letterbox bars
+// around the stage match the night. The seeded stub exports a placeholder;
+// replace it with the color your night uses." The color itself is the build's
+// ("Wick fixes no palette", specs/ui.md), so what a check decides is that the
+// bars really are THAT color once the build's frame has been drawn.
 //
 // THE WORLD. An isolated playing run (`isolate`) over a surface wider than the
 // stage's ratio, so a bar of 160 CSS pixels stands at each side. `playing` is

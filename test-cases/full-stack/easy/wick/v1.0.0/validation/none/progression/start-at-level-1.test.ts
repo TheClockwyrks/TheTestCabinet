@@ -7,9 +7,9 @@
 // specs/state.md's idle run gives the other two readings: "no kills" and "no
 // level-ups earned", so `kills` and `pendingLevelUps` are `0`.
 //
-// WHY THE WORLD IS POSED AS IT IS. Nothing is posed at all: a `reset` and the
-// transition into `playing`, which "Begins a fresh run exactly as `LIGHT THE
-// LAMP` and `TRY AGAIN` do" (specs/instrumentation.md). The reading is taken
+// WHY THE WORLD IS POSED AS IT IS. Nothing is posed at all: the fresh run
+// specs/instrumentation.md spells out under `setScreen`, "`reset`, this pose to
+// `playing`, and `setWeapon(0, \"taper\", 1)`", which `startRun` is. The reading is taken
 // before any tick runs, so what it reports is the start of a run and not the
 // state a tick left. The title menu is not pressed, because a build with a
 // broken menu and a correct run start fails the menu points and passes this

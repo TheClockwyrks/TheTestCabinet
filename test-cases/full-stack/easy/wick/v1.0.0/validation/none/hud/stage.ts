@@ -3,7 +3,7 @@
 //
 // THE NIGHT. `isolate` from the harness opens a fresh run, empties the world of
 // every enemy, projectile, zone, gem, and pickup, drops the Taper a run starts
-// with, and holds all seven driver switches, so nothing moves, nothing fires,
+// with, and holds all nine driver switches, so nothing moves, nothing fires,
 // nothing spawns, and nothing is drawn over the world but the HUD itself. Each
 // point then poses back exactly the one figure it is about.
 //

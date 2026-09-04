@@ -29,8 +29,9 @@
 // entry rectangles and tab rectangles alike, so the pointer rests somewhere
 // this build itself says holds no item.
 //
-// THE DRIVE. The title through `setScreen`, "exactly as the real transition
-// into it enters it" (specs/instrumentation.md); then the pointer to the
+// THE DRIVE. The title through `setScreen`, which "sets `screen` to `name` ...
+// with `menuIndex` ... `0`" (specs/instrumentation.md); then the pointer to
+// the
 // derived point and one frame, since the rules are "applied on every frame,
 // after that frame's press edges and before its update" (specs/controls.md).
 //

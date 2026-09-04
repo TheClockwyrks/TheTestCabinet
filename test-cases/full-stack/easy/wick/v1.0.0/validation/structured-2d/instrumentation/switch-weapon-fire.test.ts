@@ -52,7 +52,7 @@ afterEach(() => {
 });
 
 it("holds the timers, fires nothing, pulses nothing, and counts on again", async () => {
-  isolate(h, { keepTaper: true });
+  isolate(h, { taper: true });
   h.debug.setWeaponCooldown(TAPER_SLOT, POSED_COOLDOWN);
   holdWeapon(h, "halo");
   const moth = placeEnemyNear(h, "moth", 30, 0);

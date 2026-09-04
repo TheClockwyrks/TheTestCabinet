@@ -209,6 +209,16 @@ function snap() {
   return h.debug.snapshot(h.engine.state);
 }
 
+/**
+ * A fresh run on `h`: the pose to `playing`, then Taper in the first slot,
+ * which is the sequence `specs/instrumentation.md` names now that `setScreen`
+ * sets the screen and nothing else.
+ */
+function startRun(): void {
+  h.pose((s) => h.debug.setScreen(s, "playing"));
+  h.pose((s) => h.debug.setWeapon(s, 0, "taper", 1));
+}
+
 describe("initialization", () => {
   it("opens on the title with the surface beside the state", () => {
     expect(h.state.screen).toBe("title");
@@ -417,7 +427,7 @@ describe("the clock the engine owns", () => {
 
 describe("the cue bus", () => {
   it("loops the hum while Halo is held on playing, and stops it when it is gone", async () => {
-    h.pose((s) => h.debug.setScreen(s, "playing"));
+    startRun();
     h.pose((s) => h.debug.setWeapon(s, 1, "halo", 1));
     await h.engine.advance(1);
     expect(h.loops).toEqual([CUES.music, CUES.hum]);
@@ -456,15 +466,15 @@ describe("the cue bus", () => {
   });
 
   it("sounds nothing for a pose, and the tick after sounds what it would", async () => {
-    h.pose((s) => h.debug.setScreen(s, "playing"));
+    startRun();
     await h.engine.advance(1);
     h.cues.length = 0;
     h.pose((s) => h.debug.setPendingLevelUps(s, 1));
-    h.pose((s) => h.debug.setScreen(s, "levelup"));
     expect(h.cues).toEqual([]);
     await h.engine.advance(1);
-    expect(h.cues).toEqual([]);
+    expect(h.cues).toEqual([CUES.levelUp]);
     expect(snap().screen).toBe("levelup");
+    h.cues.length = 0;
     h.pose((s) => h.debug.choose(s, 0));
     await h.engine.advance(1);
     expect(h.cues).toEqual([]);
@@ -533,7 +543,7 @@ describe("the diagnostics", () => {
       new Map(h.engine.diagnostics().map((r) => [r.name, r.value]));
     expect(read().get("screen")).toBe("title");
     expect(read().get("weapons")).toBe("none");
-    h.pose((s) => h.debug.setScreen(s, "playing"));
+    startRun();
     h.pose((s) => h.debug.setSpawning(s, false));
     await h.engine.advance(90);
     const live = read();
@@ -549,7 +559,7 @@ describe("the diagnostics", () => {
 
 describe("a stretch of the night", () => {
   it("runs the director, the weapons, and the drops for ten seconds without a throw", async () => {
-    h.pose((s) => h.debug.setScreen(s, "playing"));
+    startRun();
     await h.engine.advance(600);
     const s = snap();
     expect(["playing", "fallen", "levelup"]).toContain(s.screen);

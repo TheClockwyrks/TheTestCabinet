@@ -7,9 +7,9 @@
 // of the `paused` row: "`up`, `down` move the highlight, wrapping". The menu
 // is `PAUSE_ITEMS`, two items, so an `up` from `0` reads the last index, `1`.
 //
-// THE DRIVE. An isolated `playing` world, paused through
-// `setScreen("paused")` — which `specs/instrumentation.md` says enters the
-// screen "exactly as `pause` does" — and one real `ArrowUp`. Nothing is
+// THE DRIVE. An isolated `playing` world, paused through `setScreen("paused")`
+// — which `specs/instrumentation.md` says enters the screen by setting `screen`
+// alone, with the run left as it stands — and one real `ArrowUp`. Nothing is
 // pressed first, so the wrap is the only thing the reading can be about.
 //
 // THE TOLERANCE. None: an index is exact.

@@ -1,15 +1,15 @@
 // Wick — instrumentation/switch-changes-only-itself: `setDespawning(false)`
-// issued on `title` reads back false, leaves the other six switches and the
+// issued on `title` reads back false, leaves the other eight switches and the
 // idle run exactly as they were, and is still false after
 // `setScreen('playing')`.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`, "The
-// seven switch operations": "Each applies on every screen and changes nothing
+// nine switch operations": "Each applies on every screen and changes nothing
 // but its switch"; "The driver switches": "A switch changes only what it
 // names" and "each is left as it stands by `setScreen`".
 //
 // THE POSE. `reset` to the title, the call, and the whole snapshot compared
-// with the one before it save `despawning`; then the fresh run.
+// with the one before it save `despawning`; then a pose to `playing`.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
@@ -25,7 +25,7 @@ afterEach(() => {
   h.dispose();
 });
 
-it("flips one flag and nothing else, and keeps it across a fresh run", async () => {
+it("flips one flag and nothing else, and keeps it across a posed screen", async () => {
   h.reset();
   const before = h.snapshot();
 
@@ -43,8 +43,8 @@ it("flips one flag and nothing else, and keeps it across a fresh run", async () 
   );
 
   h.debug.setScreen("playing");
-  const fresh = h.snapshot();
+  const posed = h.snapshot();
   await h.frameDraw();
   captureStill(h, "one");
-  assertEqual(fresh.despawning, false, "despawning after setScreen('playing')");
+  assertEqual(posed.despawning, false, "despawning after setScreen('playing')");
 });

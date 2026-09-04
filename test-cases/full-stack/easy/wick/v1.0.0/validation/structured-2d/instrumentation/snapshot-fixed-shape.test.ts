@@ -52,6 +52,8 @@ const SNAPSHOT_FIELDS = [
   "enemyContact",
   "weaponFire",
   "effectMotion",
+  "drops",
+  "progression",
   "run",
   "muted",
   "accumulator",

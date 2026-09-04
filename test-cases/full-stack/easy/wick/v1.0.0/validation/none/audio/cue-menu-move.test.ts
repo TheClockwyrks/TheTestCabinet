@@ -29,9 +29,9 @@
 //     candidate and the overlay carries `OFFER_COUNT` (`3`) offers; one queued
 //     level-up and one tick open it, which is the real route
 //     specs/progression.md states.
-//   - THE END SCREEN. `setScreen("fallen")` from `playing` "Ends the run exactly
-//     as that ending does" (specs/instrumentation.md), and specs/ui.md gives it
-//     `END_ITEMS`, two items, with "`menuIndex` is `0` on arriving".
+//   - THE END SCREEN. `setScreen("fallen")` "Sets `screen` to `name`" and
+//     nothing else (specs/instrumentation.md), and specs/ui.md gives that
+//     screen `END_ITEMS`, two items, with "`menuIndex` is `0` on arriving".
 // Each move is asserted off `menuIndex` before its cue is read, so a build whose
 // highlight never moved reports that rather than a missing cue.
 //

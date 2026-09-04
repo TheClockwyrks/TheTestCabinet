@@ -12,8 +12,8 @@
 // for three ticks with `right` held, which `specs/world.md` makes a tick with a
 // non-zero movement direction, and a moth is given an `age` of `0.25`, which
 // `specs/assets.md` puts on sheet frame `2`. The pause is then entered through
-// `setScreen("paused")`, which `specs/instrumentation.md` says enters the screen
-// "Exactly as `pause` does".
+// `setScreen("paused")`, which `specs/instrumentation.md` defines as setting
+// `screen` and nothing else.
 //
 // WHAT IS READ. Which produced file each of the two was drawn from, on the last
 // `playing` frame and then on each of sixty `paused` frames. Both halves are the

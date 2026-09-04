@@ -1,9 +1,9 @@
-// instrumentation/reset-restores-switches — with all seven driver switches
+// instrumentation/reset-restores-switches — with all nine driver switches
 // posed off, `reset()` leaves every one true.
 //
 // WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, "The driver
 // switches": each "is restored to on by `reset`"; and `reset`: "every driver
-// switch on". The seven are named by SWITCH_NAMES and read off the snapshot
+// switch on". The nine are named by SWITCH_NAMES and read off the snapshot
 // under the same names.
 //
 // THE POSE. `isolate` is exactly the disturbance: an empty run with every

@@ -14,9 +14,12 @@
 // snapshot that tick leaves holds no gem, and `xp` has risen by
 // `GEM_VALUES.small` (`1`), the moth's tier in specs/enemies.md.
 //
-// WHY THE WORLD IS POSED AS IT IS. An isolated night: every driver switch off,
-// nothing alive, nothing dropped, and no slot held, so no Soot scales the gain
-// and no other kill lands in the tick that is read. The kill is the real one:
+// WHY THE WORLD IS POSED AS IT IS. An isolated night with `drops` alone turned
+// back on, since the drop is what the rule is about: every other driver switch
+// off, nothing alive, nothing dropped, and no slot held, so no Soot scales the
+// gain and no other kill lands in the tick that is read. `progression` stays
+// off, so the gain is read as the rise in `xp` it is and no threshold opens an
+// overlay over the reading. The kill is the real one:
 // specs/enemies.md gives a moth `5` hp at the run clock's opening multiplier,
 // and a level-1 Ember bolt carries `10` (specs/weapons.md), posed on the moth's
 // center so the next tick's hit is the only thing that happens to it — a hit
@@ -53,7 +56,7 @@ afterEach(async () => {
 });
 
 it("leaves no gem and raises xp by the moth's tier on the tick of the kill", async () => {
-  const opened = await isolate(h);
+  const opened = await isolate(h, { on: ["drops"] });
   assertEqual(
     ENEMIES.moth.drop,
     MOTH_TIER,

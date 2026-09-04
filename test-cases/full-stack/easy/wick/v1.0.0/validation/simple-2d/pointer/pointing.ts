@@ -33,6 +33,7 @@ import {
   tabRects,
   tap,
   type Harness,
+  type PointerInit,
   type WickRect,
   type WickSnapshot,
 } from "../harness";
@@ -222,4 +223,136 @@ export async function moveHighlightDown(
     after = await tap(h, BINDINGS.down[0]);
   }
   return after;
+}
+
+/* -------------------------------------------------------------------------- */
+/* The parts of a gesture, on frames that consume no tick                     */
+/* -------------------------------------------------------------------------- */
+//
+// A GESTURE IS TWO EDGES, AND SOMETIMES THEY BELONG TO DIFFERENT FRAMES.
+// specs/controls.md, rule 2, arms an item on the press and takes it on the
+// release, and rule 3 makes a contact's landing the press edge and its lift the
+// release edge. A point about a drag, a lift somewhere else, or a contact that
+// travels needs the edges APART, so each helper below delivers one edge and
+// runs one frame of half a tick — the same short frame `clickAtWithoutTick`
+// uses, and for the same reason.
+
+/** Press the primary button at a stage point and leave it down. */
+export function pressAtWithoutTick(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.pressPointer(x, y);
+  return h.frameOf(TICK_DT / 2);
+}
+
+/** Press the middle of a reported rectangle, leaving the button down. */
+export function pressRectWithoutTick(
+  h: Harness,
+  rect: WickRect,
+): Promise<WickSnapshot> {
+  const at = centerOf(rect);
+  return pressAtWithoutTick(h, at.x, at.y);
+}
+
+/** Travel the held mouse to a stage point: a move carrying the primary mask. */
+export function glideToWithoutTick(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.movePointer(x, y, { button: -1, buttons: 1 });
+  return h.frameOf(TICK_DT / 2);
+}
+
+/** Lift the primary button at a stage point. */
+export function liftAtWithoutTick(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.releasePointer(x, y);
+  return h.frameOf(TICK_DT / 2);
+}
+
+/** Lift the primary button in the middle of a reported rectangle. */
+export function liftRectWithoutTick(
+  h: Harness,
+  rect: WickRect,
+): Promise<WickSnapshot> {
+  const at = centerOf(rect);
+  return liftAtWithoutTick(h, at.x, at.y);
+}
+
+/** What a contact's events carry: the device, and the mask while it travels. */
+const CONTACT: PointerInit = { pointerType: "touch" };
+const CONTACT_HELD: PointerInit = {
+  pointerType: "touch",
+  button: -1,
+  buttons: 1,
+};
+
+/** Land a contact at a stage point. There is no move before it: a finger
+ * reports no position before it touches the glass. */
+export function touchLandAtWithoutTick(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.pressPointer(x, y, CONTACT);
+  return h.frameOf(TICK_DT / 2);
+}
+
+/** Land a contact in the middle of a reported rectangle. */
+export function touchLandRectWithoutTick(
+  h: Harness,
+  rect: WickRect,
+): Promise<WickSnapshot> {
+  const at = centerOf(rect);
+  return touchLandAtWithoutTick(h, at.x, at.y);
+}
+
+/** Travel the held contact to a stage point. */
+export function touchGlideToWithoutTick(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.movePointer(x, y, CONTACT_HELD);
+  return h.frameOf(TICK_DT / 2);
+}
+
+/** Lift the contact at a stage point. */
+export function touchLiftAtWithoutTick(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.releasePointer(x, y, CONTACT);
+  return h.frameOf(TICK_DT / 2);
+}
+
+/** Lift the contact in the middle of a reported rectangle. */
+export function touchLiftRectWithoutTick(
+  h: Harness,
+  rect: WickRect,
+): Promise<WickSnapshot> {
+  const at = centerOf(rect);
+  return touchLiftAtWithoutTick(h, at.x, at.y);
+}
+
+/**
+ * Tap the middle of a reported rectangle: land the contact, then lift it, two
+ * frames of half a tick each.
+ *
+ * The landing and the lift are separately observable, so the tap runs a frame
+ * for each, and neither consumes a tick.
+ */
+export async function touchTapRectWithoutTick(
+  h: Harness,
+  rect: WickRect,
+): Promise<WickSnapshot> {
+  await touchLandRectWithoutTick(h, rect);
+  return touchLiftRectWithoutTick(h, rect);
 }

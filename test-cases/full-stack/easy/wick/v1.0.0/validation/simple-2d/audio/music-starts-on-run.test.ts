@@ -5,8 +5,8 @@
 //   - specs/ui.md (The loops): "`music` is looping on every frame exactly when
 //     `screen` is `playing`, `levelup`, `chest`, or `paused`. It starts on the
 //     frame a fresh run starts".
-//   - specs/ui.md (A fresh run): "`LIGHT THE LAMP`, `TRY AGAIN`, and the debug
-//     surface's `setScreen("playing")` each begin a fresh run".
+//   - specs/ui.md (A fresh run): "`LIGHT THE LAMP` and `TRY AGAIN` each begin
+//     a fresh run".
 //   - specs/ui.md (Audio): "`api.audio.loop` starts a cue looping ... and
 //     `api.audio.looping` reports whether it is; ... a cue is either looping or
 //     not".

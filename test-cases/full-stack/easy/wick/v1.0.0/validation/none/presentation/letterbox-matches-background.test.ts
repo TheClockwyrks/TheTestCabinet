@@ -2,21 +2,22 @@
 // carry the stage's own background colour.
 //
 // WHERE THE THRESHOLD COMES FROM. `specs/overview.md` — "Units, ticks, the world,
-// and the camera": "The HUD, the menus, and the overlays are laid out in logical
-// stage units, and the letterbox bars carry the stage's background color." The
-// colour itself is the build's, since "Wick fixes no palette, no font, no layout,
-// and no styling for any screen" (`specs/ui.md`), so what a check decides is that
-// the bars really are THAT colour rather than which colour it is.
+// and the camera": "The stage has one background color, painted across the whole
+// stage before anything else is drawn, and the letterbox bars carry that color."
+// The colour itself is the build's, since "Wick fixes no palette, no font, no
+// layout, and no styling for any screen" (`specs/ui.md`), so what a check decides
+// is that the bars really are THAT colour rather than which colour it is.
 //
-// WHERE THE COLOUR IS READ FROM. The frame's own opening paint. An engineless
-// build exports nothing a check could ask, so the only place the stage's
-// background colour exists is the operation that lays it down: the run of fills
-// a frame opens with, each covering the whole stage, before it draws anything
-// smaller. `stageBackground` in `./fit` reads the colour left standing at the end
-// of that run, so a build that clears to one colour and paints its background
-// over it is read at the background rather than at the clear. A frame that opens
-// with no such fill has no background colour to carry, which is what this point
-// fails on.
+// WHERE THE COLOUR IS READ FROM. The frame's own opening paint, which is the
+// clause the reading rests on: the background is "painted across the whole stage
+// BEFORE ANYTHING ELSE is drawn". An engineless build exports nothing a check
+// could ask, so that opening paint is the only place the stage's background
+// colour exists — the run of fills a frame opens with, each covering the whole
+// stage, before it draws anything smaller. `stageBackground` in `./fit` reads the
+// colour left standing at the end of that run, so a build that clears to one
+// colour and paints its background over it is read at the background rather than
+// at the clear. A frame that opens with no such fill has no background colour to
+// carry, which is what this point fails on.
 //
 // WHERE THE BARS ARE. The seeded `index.html`, which `specs/overview.md` lists
 // under "What stays as it is" ("the page and the canvas the stage is fitted

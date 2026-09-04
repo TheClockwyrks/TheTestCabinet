@@ -1,4 +1,4 @@
-// clock/title-ticks-nothing — nothing advances on title and howto.
+// clock/title-ticks-nothing — nothing advances on title.
 //
 // WHERE THE THRESHOLD COMES FROM. specs/ui.md ("What advances on each screen"):
 // on `title` and `howto`, "Nothing." specs/state.md: "Off the run, on `title`
@@ -20,6 +20,8 @@
 // THE TOLERANCE. None: an idle run that ticked nothing holds identical
 // numbers, so the comparison is `assertDeepEqual` over the whole of `run`,
 // with the tick and the empty world read out by name.
+//
+// The other screen is `clock/howto-ticks-nothing`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertTrue } from "../assert";
@@ -28,12 +30,11 @@ import {
   captureStill,
   createHarness,
   enable,
-  poseScreen,
   worldIsEmpty,
   type Harness,
 } from "../harness";
 
-/** The frames run on each screen: a second of wall-clock frames. */
+/** The frames run on the screen: a second of wall-clock frames. */
 const HELD_FRAMES = 60;
 
 let h: Harness;
@@ -46,40 +47,25 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("advances nothing across 60 frames on title and 60 on howto", async () => {
+it("advances nothing across 60 frames on title", async () => {
   await h.debug.reset({ seed: DEFAULT_SEED });
   await enable(h, "spawning");
-  const title = await h.snapshot();
-  const titleHeld = await h.step(HELD_FRAMES);
+  const before = await h.snapshot();
+  assertEqual(before.screen, "title", "the screen the frames run on");
+  assertEqual(before.run.tick, 0, "the idle run's tick on title");
+
+  const held = await h.step(HELD_FRAMES);
   await captureStill(h, "idle");
 
-  const howto = await poseScreen(h, "howto");
-  const howtoHeld = await h.step(HELD_FRAMES);
-
-  assertEqual(title.screen, "title", "the screen a reset stands on");
-  assertEqual(title.run.tick, 0, "the idle run's tick on title");
-  assertEqual(titleHeld.screen, "title", "the screen after 60 frames on title");
-  assertEqual(titleHeld.run.tick, 0, "run.tick after 60 frames on title");
+  assertEqual(held.screen, "title", "the screen after 60 frames on title");
+  assertEqual(held.run.tick, 0, "run.tick after 60 frames on title");
   assertTrue(
-    worldIsEmpty(titleHeld),
+    worldIsEmpty(held),
     "nothing alive and nothing dropped after 60 frames on title",
   );
   assertDeepEqual(
-    titleHeld.run,
-    title.run,
+    held.run,
+    before.run,
     "the run after 60 frames on title, against the idle run",
-  );
-
-  assertEqual(howto.screen, "howto", "the screen setScreen('howto') entered");
-  assertEqual(howtoHeld.screen, "howto", "the screen after 60 frames on howto");
-  assertEqual(howtoHeld.run.tick, 0, "run.tick after 60 frames on howto");
-  assertTrue(
-    worldIsEmpty(howtoHeld),
-    "nothing alive and nothing dropped after 60 frames on howto",
-  );
-  assertDeepEqual(
-    howtoHeld.run,
-    howto.run,
-    "the run after 60 frames on howto, against the idle run",
   );
 });

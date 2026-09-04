@@ -28,7 +28,7 @@
 // fires on is the business of `swarm-1-00`, `swarm-4-00` and `swarm-7-00`.
 
 import { assertEqual } from "../assert";
-import { SWARM_SIZE } from "../constants";
+import { EVENTS, SWARM_SIZE } from "../constants";
 import {
   player,
   unitToward,
@@ -39,11 +39,14 @@ import {
 } from "../harness";
 import { carryAcross, isolateForEvents } from "./events";
 
-/** The run-clock second of the swarm every swarm check reads: `EVENTS`' first row. */
-export const SWARM_SECONDS = 60;
+/** The swarm every swarm check reads: the earliest `EVENTS` row of its kind. */
+const SWARM_EVENT = EVENTS.find((event) => event.kind === "swarm")!;
 
-/** The tick it fires on: `seconds × TICK_HZ`. */
-export const SWARM_TICK = SWARM_SECONDS * 60;
+/** The run-clock second it fires on, from that row. */
+export const SWARM_SECONDS = SWARM_EVENT.seconds;
+
+/** The tick it fires on: `seconds × TICK_HZ`, from that row. */
+export const SWARM_TICK = SWARM_EVENT.tick;
 
 /** One spawned swarm, with the direction recovered from its own gnats. */
 export interface Swarm {

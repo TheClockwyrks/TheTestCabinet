@@ -23,14 +23,14 @@
 //
 // THE ICON, READ AS A DIFFERENCE. The leveled weapon also sits in a HUD slot,
 // and the same produced file serves both, so the count is taken on the overlay
-// and again after `setScreen("playing")` closes it, which "Closes the overlay
-// exactly as `confirm` does" (specs/instrumentation.md) over the same loadout.
+// and again after `setScreen("playing")`, which "sets the screen and nothing
+// else" (specs/instrumentation.md), over the same loadout.
 // The overlay must paint the icon more times than the world beneath it does.
 //
 // THE TOLERANCE. The name and the label are matched as words in order through
 // `drewPhrase`, which admits two runs or a marker between them. The run's own
-// level, posed far from the tag's number by `isolate`, cannot supply the
-// reading.
+// level is posed to `RUN_LEVEL`, far from the tag's number, so the HUD's level
+// cannot supply the reading.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
@@ -53,6 +53,9 @@ const ITEM = "taper";
 const HELD_LEVEL = 3;
 const BECAME = HELD_LEVEL + 1;
 
+/** The run's own level, far from `BECAME`, so the HUD cannot supply the tag. */
+const RUN_LEVEL = 17;
+
 /** How many times the frame just drawn painted the produced icon of the item. */
 async function iconBlits(harness: Harness): Promise<number> {
   const { blits } = await harness.frameDraw();
@@ -68,7 +71,7 @@ afterEach(() => {
 });
 
 it("shows the leveled item's icon, name, and new level", async () => {
-  isolate(h);
+  isolate(h, { level: RUN_LEVEL });
   holdWeapon(h, ITEM, HELD_LEVEL);
 
   const opened = await openChest(h);

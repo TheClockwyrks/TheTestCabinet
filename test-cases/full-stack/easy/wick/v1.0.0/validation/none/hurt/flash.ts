@@ -13,7 +13,7 @@
 //
 // THE NIGHT. `isolate` from the harness opens a fresh run, empties the world of
 // every enemy, projectile, zone, gem, and pickup, drops the Taper a run starts
-// with, and holds all seven driver switches; `enemyContact` alone is turned back
+// with, and holds all nine driver switches; `enemyContact` alone is turned back
 // on, because a contact hit is the one thing these points are about. With
 // `enemyMotion` held, an enemy is tested at exactly the point it was posed, and
 // with no passive held `armor` is `0` and `recovery` is `BASE_RECOVERY` (`0`),

@@ -33,8 +33,11 @@ import {
 } from "../constants";
 import { formatClock } from "../diagnostics";
 import {
+  DISMISS_BASELINE,
   MENU_BASELINE,
+  chestRects,
   endRects,
+  howtoRects,
   levelUpLayout,
   pauseRects,
   titleRects,
@@ -93,6 +96,28 @@ function menu(
   });
 }
 
+/**
+ * The one box a screen with no menu is left by, with its line inside it.
+ *
+ * `specs/controls.md` gives `howto` and `chest` a single rectangle each, "the
+ * area the screen's way out is taken in, which the screen shows", so the box is
+ * drawn as well as answered.
+ */
+function dismissBox(
+  ctx: CanvasRenderingContext2D,
+  rect: Rect,
+  label: string,
+): void {
+  ctx.strokeStyle = COLORS.panelEdge;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+  text(ctx, label, STAGE_CX, rect.y + DISMISS_BASELINE, {
+    size: 18,
+    color: COLORS.textFaint,
+    align: "center",
+  });
+}
+
 export function drawTitle(
   ctx: CanvasRenderingContext2D,
   state: WickState,
@@ -141,7 +166,7 @@ const HOWTO_LINES = [
   "pickup the night holds.",
   "",
   "Move with the arrows or WASD. Enter or Space confirms, Escape goes back or",
-  "pauses, P pauses, and M mutes. Every menu answers the mouse as well.",
+  "pauses, P pauses, and M mutes. Every menu answers the mouse and touch too.",
 ];
 
 export function drawHowto(ctx: CanvasRenderingContext2D): void {
@@ -160,11 +185,7 @@ export function drawHowto(ctx: CanvasRenderingContext2D): void {
       align: "center",
     });
   });
-  text(ctx, "Escape returns to the title", STAGE_CX, STAGE_H - 60, {
-    size: 18,
-    color: COLORS.textFaint,
-    align: "center",
-  });
+  dismissBox(ctx, howtoRects()[0]!, "BACK  —  Escape, or click or tap here");
 }
 
 function offerName(id: OfferId): string {
@@ -278,11 +299,7 @@ export function drawChest(
       align: "center",
     });
   }
-  text(ctx, "Enter to continue", STAGE_CX, 450, {
-    size: 18,
-    color: COLORS.textFaint,
-    align: "center",
-  });
+  dismissBox(ctx, chestRects()[0]!, "CONTINUE  —  Enter, or click or tap here");
 }
 
 export function drawPaused(

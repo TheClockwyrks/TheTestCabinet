@@ -18,8 +18,8 @@
 // shows exactly ten rows.
 //
 // THE DRIVE. `setScreen("almanac")`, which `specs/instrumentation.md` makes
-// enter the almanac "exactly as confirming `THE ALMANAC` does: the idle run,
-// `menuIndex` `0`, `almanacTab` `0`, `almanacScroll` `0`"; the third visible
+// enter the almanac by setting `screen` with `menuIndex`, `almanacTab`, and
+// `almanacScroll` all `0` and the run left as it stands; the third visible
 // row's rectangle read off `menuRects`; and the pointer moved to its middle for
 // one frame. The point is the build's own: the specification fixes no layout
 // for the list.

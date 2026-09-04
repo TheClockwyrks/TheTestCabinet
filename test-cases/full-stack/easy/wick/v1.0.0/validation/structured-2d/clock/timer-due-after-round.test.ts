@@ -99,7 +99,7 @@ async function ticksUntilFiring(maxTicks: number): Promise<{
 }
 
 it("fires Taper again on the 81st tick after a firing, and 30 ticks after a posed 0.5", async () => {
-  isolate(h, { keepTaper: true });
+  isolate(h, { taper: true });
   armWeapon(h, TAPER_SLOT);
 
   const due = await captureReplay(h, "due", async () => {

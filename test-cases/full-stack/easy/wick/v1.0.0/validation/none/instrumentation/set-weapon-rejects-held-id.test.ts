@@ -26,7 +26,7 @@ afterEach(async () => {
 });
 
 it("throws on an id held in another slot and leaves the loadout as it was", async () => {
-  await isolate(h, { keepTaper: true });
+  await isolate(h, { taper: true });
   await h.debug.setWeapon(1, "ember", 1);
   const before = await h.snapshot();
 

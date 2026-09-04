@@ -23,9 +23,9 @@
 // WHY THE NIGHT IS POSED AS IT IS. An isolated night with nothing on the field
 // and every driver switch off, holding Halo alone, and one tick before the
 // pause so the run the pause holds is a settled one. Both screen changes go
-// through the surface, "exactly as the real transition into it enters it", so a
-// build with a broken `pause` binding fails the controls point rather than this
-// one.
+// through the surface, which "sets `screen` to `name`" and leaves the run as it
+// stands, so a build with a broken `pause` binding fails the controls point
+// rather than this one.
 //
 // TOLERANCE. None. Both readings are booleans.
 

@@ -16,11 +16,14 @@
 // read as `true` on `playing`, so what this point decides is a STOP and not a
 // bed that never started. Then `paused` posed, which is where the abandon is
 // reached from, and then `title` posed, which `specs/instrumentation.md`
-// makes exactly the abandon: "`title` from any: Discards the run exactly as
-// `TITLE` on an end screen or `MAIN MENU` on `paused` does: the idle run."
-// Posing both keeps the pause menu and its keys out of an audio point, so a
-// build that cannot reach or work that menu fails the screen points and is
-// decided here on its audio alone.
+// makes "Sets `screen` to `name` ... with `menuIndex`, `almanacTab`, and
+// `almanacScroll` all `0`". The rule this point reads is about the SCREEN the
+// abandon lands on, and `title` is not one of the four the loop names, so the
+// pose reaches exactly the state the abandon leaves; what the abandon does to
+// the RUN is `screens/paused-confirm-main-menu`'s point. Posing both keeps the
+// pause menu and its keys out of an audio point, so a build that cannot reach
+// or work that menu fails the screen points and is decided here on its audio
+// alone.
 //
 // The bed is read on `playing` rather than on `paused`, so that a build which
 // wrongly drops the bed under the pause fails `music-through-pause`, which is

@@ -14,9 +14,10 @@
 // WHY THE WORLD IS POSED AS IT IS. An isolated night: every driver switch off,
 // nothing alive, nothing else dropped, and no slot held. Soot is the only term
 // that scales a gain (`specs/passives.md`) and no passive is held, so `xpMul`
-// is `1` and the gain read here is the tier's own figure. `isolate` poses
-// `ISOLATE_LEVEL` (`50`), whose `xpToNext` is `495`, so the gain crosses no
-// threshold and no level-up overlay opens on top of the reading. The gem is
+// is `1` and the gain read here is the tier's own figure. `isolate` holds the
+// `progression` switch off, so the gain is spent on no level and no level-up
+// overlay opens on top of the reading (`specs/instrumentation.md`, the switch
+// table). The gem is
 // posed on the lamplighter's own center and taken by one real tick, the only
 // path experience arrives by: distance `0` is at most `pickupRadius`, so the
 // tick attracts it; the flight step moves it nowhere; and `0` is at most

@@ -24,9 +24,10 @@
 //     move only if something else went wrong.
 //
 // Nothing here overlaps anything, nothing is due within the ticks the checks
-// run, and the level is `ISOLATE_LEVEL`, so the opening tick of an overlay and
-// the ending tick of a run leave a run in progress rather than a second event
-// on top of the one under test.
+// run, and the isolation holds `drops` and `progression` off, so no death
+// leaves anything on the field and no gain is spent on a level: the opening
+// tick of an overlay and the ending tick of a run leave a run in progress
+// rather than a second event on top of the one under test.
 
 import {
   holdWeapon,

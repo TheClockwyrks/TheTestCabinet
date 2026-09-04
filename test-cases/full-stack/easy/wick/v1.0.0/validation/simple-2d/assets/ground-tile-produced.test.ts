@@ -29,12 +29,7 @@
 
 import { it } from "vitest";
 import { captureCanvas } from "../harness";
-import {
-  GROUND_SPRITE,
-  assertProduced,
-  readSprite,
-  sheetOf,
-} from "./produced";
+import { GROUND_SPRITE, assertProduced, readSprite, sheetOf } from "./produced";
 
 it("commits the ground tile at 64 x 64, carrying paint", async () => {
   const read = await readSprite(GROUND_SPRITE);

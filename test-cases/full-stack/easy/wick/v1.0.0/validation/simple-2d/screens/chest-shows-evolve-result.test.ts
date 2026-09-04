@@ -24,9 +24,9 @@
 // same produced file serves both, so counting blits of it on the overlay's
 // frame alone would pass a build that drew the slot and nothing else. The count
 // is therefore taken twice: once on the overlay, and once on the frame after
-// `setScreen("playing")` closes it, which "Closes the overlay exactly as
-// `confirm` does" (specs/instrumentation.md) and leaves the same loadout in the
-// same world. The overlay must paint the icon MORE times than the world beneath
+// `setScreen("playing")`, which "sets the screen and nothing else"
+// (specs/instrumentation.md) and so leaves the same loadout in the same world
+// with the overlay no longer drawn over it. The overlay must paint the icon MORE times than the world beneath
 // it does, which is exactly what "shows the evolved weapon's icon" asks.
 //
 // THE TOLERANCE. None on identity: a blit either painted the produced file for

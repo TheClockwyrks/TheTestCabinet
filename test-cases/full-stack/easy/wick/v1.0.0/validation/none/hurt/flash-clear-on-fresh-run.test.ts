@@ -1,8 +1,8 @@
 // hurt/flash-clear-on-fresh-run — a fresh run starts with no hurt flash.
 //
 // WHERE THE THRESHOLD COMES FROM. specs/ui.md ("A fresh run"): "`LIGHT THE
-// LAMP`, `TRY AGAIN`, and the debug surface's `setScreen("playing")` each begin
-// a fresh run, and whatever the previous run held is discarded. A fresh run has
+// LAMP` and `TRY AGAIN` each begin a fresh run, and whatever the previous run
+// held is discarded. A fresh run has
 // the run clock at `0:00`, the lamplighter at the world origin `(0, 0)` with
 // `hp = BASE_MAX_HP` (`100`), `facing = "right"`, and `hurtFlash` at `0`".
 // specs/world.md ("Contact damage") says the same of the timer: "It is `0` on

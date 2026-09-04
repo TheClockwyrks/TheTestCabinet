@@ -31,7 +31,7 @@ afterEach(() => {
 });
 
 it("appends Ember at level 3 after Taper", async () => {
-  const start = isolate(h, { keepTaper: true });
+  const start = isolate(h, { taper: true });
   assertDeepEqual(start.run.weapons, FRESH_WEAPONS, "weapons before the pose");
 
   h.debug.setWeapon(1, "ember", 3);

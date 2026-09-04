@@ -87,7 +87,7 @@ export type ProjectileWeapon =
 /** The weapons `spawnPuddle` takes. */
 export type PuddleWeapon = "oil-splash" | "blaze";
 
-/** The seven driver switches, by the snapshot field each reports under. */
+/** The nine driver switches, by the snapshot field each reports under. */
 export const SWITCH_NAMES = [
   "spawning",
   "events",
@@ -96,6 +96,8 @@ export const SWITCH_NAMES = [
   "enemyContact",
   "weaponFire",
   "effectMotion",
+  "drops",
+  "progression",
 ] as const;
 export type SwitchName = (typeof SWITCH_NAMES)[number];
 
@@ -118,6 +120,8 @@ export const REQUIRED_OPS = [
   "setEnemyContact",
   "setWeaponFire",
   "setEffectMotion",
+  "setDrops",
+  "setProgression",
   "setTick",
   "setSpawnTimer",
   "setPlayerPosition",
@@ -327,6 +331,8 @@ export interface WickSnapshot {
   enemyContact: boolean;
   weaponFire: boolean;
   effectMotion: boolean;
+  drops: boolean;
+  progression: boolean;
   run: SnapshotRun;
   /** The game's readable copy of the engine's mute bit. */
   muted: boolean;
@@ -381,10 +387,11 @@ export interface WickDebugApi {
    */
   tabRects(): readonly WickRect[];
   /**
-   * Enters screen `name` exactly as the real transition into it from the
-   * current screen enters it, with `menuIndex` `0`, per the table
-   * `specs/instrumentation.md` gives; an unlisted row leaves the state as it
-   * was. No cue sounds; the switches stay as they are.
+   * Sets `screen` to `name`, with `menuIndex`, `almanacTab`, and
+   * `almanacScroll` all `0`. Nothing else changes: the run, the loadout,
+   * `offers`, `nextOffers`, `chestResult`, `pendingLevelUps`, `rngState`,
+   * `simTime`, and the switches all stand as they were, and no cue sounds. A
+   * call that leaves `playing` discards the accumulator. Every screen.
    */
   setScreen(name: Screen): void;
   /**
@@ -400,6 +407,8 @@ export interface WickDebugApi {
   setEnemyContact(on: boolean): void;
   setWeaponFire(on: boolean): void;
   setEffectMotion(on: boolean): void;
+  setDrops(on: boolean): void;
+  setProgression(on: boolean): void;
 
   /** Sets `tick`, `0` to `DAWN_TIME × TICK_HZ − 1`; nothing else changes. A run screen. */
   setTick(tick: number): void;

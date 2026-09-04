@@ -49,7 +49,8 @@ import { LamplighterController } from "./controller";
 import { createDebugApi, type WickDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
 import { runFrame } from "./flow";
-import { registerActions } from "./input";
+import { registerActions, resetPointer } from "./input";
+import { resetGesture } from "./pointer";
 import { COLORS } from "./render/theme";
 import { WickState, wickState } from "./state";
 
@@ -99,6 +100,10 @@ export const BACKGROUND: string = COLORS.stage;
 class WickInstance extends GameInstance<WickDebugApi> {
   override async initialize(api: InitApi): Promise<WickDebugApi> {
     registerActions(api);
+    // The pointing device's contact and any armed gesture belong to the device
+    // rather than to the state, so a fresh game starts them fresh here.
+    resetPointer();
+    resetGesture();
     await Promise.all([defineCues(api), loadAssets(api)]);
     return createDebugApi(() => this.engine.world);
   }

@@ -13,7 +13,8 @@
 // `19`, and one small gem on the lamplighter's own center. `19 + 1` is `20`,
 // which is `xpToNext(1)` plus `xpToNext(2)` exactly: the loop runs twice and
 // stops with nothing left. A build that applies the rule once reads level `2`
-// with `xp` `15` and one queued.
+// with `xp` `15` and one queued. `progression` is the one driver switch turned
+// on, since spending a gain on levels is what this point decides.
 //
 // THE TOLERANCE. `level` and `pendingLevelUps` are whole and exact; `REAL_EPS`
 // on `xp`, a real number that is here a difference of whole numbers.
@@ -25,6 +26,7 @@ import {
   advanceTicks,
   captureStill,
   createHarness,
+  enable,
   isolate,
   placeGem,
   type Harness,
@@ -48,7 +50,11 @@ it("takes two levels and queues two level-ups from one small gem", async () => {
   if (XP_BEFORE + 1 !== xpToNext(LEVEL) + xpToNext(LEVEL + 1)) {
     throw new Error("the posed experience must reach exactly two thresholds");
   }
+  // `progression`, the faculty that spends a gain on levels, is the one
+  // switch this point is about, so it is turned back on and the other eight
+  // stay held (`specs/instrumentation.md`, the switch table).
   const { player } = isolate(h).run;
+  enable(h, "progression");
   h.debug.setLevel(LEVEL);
   h.debug.setXp(XP_BEFORE);
   placeGem(h, "small", player.x, player.y);

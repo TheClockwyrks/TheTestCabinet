@@ -11,13 +11,13 @@
 //
 // THE DRIVE. A `playing` run posed through the debug surface and one frame,
 // which is the frame the loops are "reconciled from the state on every frame",
-// then `setScreen("almanac")`, which `specs/instrumentation.md` says enters
-// the almanac "exactly as confirming `THE ALMANAC` does". Arriving from
-// `playing` is what makes the point a real one: a build that starts the bed
-// and never stops it is caught here, where a build reaching the almanac from
-// the title alone would never have started it. Whether the bed was up on
-// `playing` at all belongs to the audio category, so it is recorded into the
-// replay and decided nowhere here.
+// then `setScreen("almanac")`, which `specs/instrumentation.md` says enters the
+// almanac by setting `screen` with the three menu indices at `0` and the run
+// left as it stands. Arriving from `playing` is what makes the point a real
+// one: a build that starts the bed and never stops it is caught here, where a
+// build reaching the almanac from the title alone would never have started it.
+// Whether the bed was up on `playing` at all belongs to the audio category, so
+// it is recorded into the replay and decided nowhere here.
 //
 // THE TOLERANCE. None: a boolean on every frame, with no gap granted after
 // the transition.

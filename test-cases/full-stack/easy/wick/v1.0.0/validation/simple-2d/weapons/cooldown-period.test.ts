@@ -26,7 +26,7 @@
 // another. Over the 81 ticks after the first firing, no new slash may appear on
 // the first 80 and one must appear on the 81st.
 //
-// WHY THE NIGHT IS POSED AS IT IS. The fresh run's Taper alone, nothing on the
+// WHY THE NIGHT IS POSED AS IT IS. Taper at level 1 alone, nothing on the
 // field, every switch off but `weaponFire`. Taper needs no target, so the field
 // stays empty and nothing else can create a zone.
 //

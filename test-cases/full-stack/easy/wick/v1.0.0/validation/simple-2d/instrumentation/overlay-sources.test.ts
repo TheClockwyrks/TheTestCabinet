@@ -7,7 +7,7 @@
 // position and facing, the enemy count with the spawn window index, the
 // projectile and zone counts, the gem count, the held weapons with their
 // levels and cooldowns, the held passives with their levels,
-// `pendingLevelUps`, and the seven driver switches, the same facts the
+// `pendingLevelUps`, and the nine driver switches, the same facts the
 // snapshot reports".
 //
 // HOW IT IS READ. The overlay is text the frame draws, so the panel's

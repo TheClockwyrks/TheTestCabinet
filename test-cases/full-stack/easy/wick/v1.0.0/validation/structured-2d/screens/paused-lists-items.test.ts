@@ -14,10 +14,10 @@
 // the heading, the HUD and the frozen world are drawn is
 // `screens/paused-copy`'s point.
 //
-// THE DRIVE. An isolated `playing` world, paused through
-// `setScreen("paused")` — which `specs/instrumentation.md` says enters the
-// screen "exactly as `pause` does" — and one frame. Nothing is pressed: the
-// menu is what the screen draws on arriving.
+// THE DRIVE. An isolated `playing` world, paused through `setScreen("paused")`
+// — which `specs/instrumentation.md` says enters the screen by setting `screen`
+// alone, with the run left as it stands — and one frame. Nothing is pressed:
+// the menu is what the screen draws on arriving.
 //
 // THE TOLERANCE. The strings are exact, ignoring case and surrounding
 // characters. The stacking is strict: the first item's topmost anchor is

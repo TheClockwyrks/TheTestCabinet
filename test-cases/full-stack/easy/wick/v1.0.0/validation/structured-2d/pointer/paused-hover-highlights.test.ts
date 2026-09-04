@@ -16,10 +16,10 @@
 //
 // THE DRIVE. An isolated `playing` world holding nothing with every driver
 // switch off, paused through `setScreen("paused")` — which
-// `specs/instrumentation.md` says enters it "exactly as `pause` does" — then
-// `MAIN MENU`'s rectangle read off `menuRects` and the pointer moved to its
-// middle for one frame. The point is the build's own: the specification fixes
-// no layout for the pause menu.
+// `specs/instrumentation.md` says enters it by setting `screen` alone, with the
+// run left as it stands — then `MAIN MENU`'s rectangle read off `menuRects` and
+// the pointer moved to its middle for one frame. The point is the build's own:
+// the specification fixes no layout for the pause menu.
 //
 // THE TOLERANCE. None on the index. The point is the rectangle's centre, the
 // one point inside it that no padding, border, or rounding can put outside.

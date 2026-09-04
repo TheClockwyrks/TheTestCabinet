@@ -12,7 +12,7 @@
 // arrangement lamp-oil is offered under, and none of its six passives touches
 // `maxHp`, so the ceiling is `BASE_MAX_HP` and the posed `50` is far enough
 // under it that the heal is not clipped: the cap is
-// `contact/heal-caps-at-max-hp`'s point, not this one. `hp` is posed with
+// `contact/lamp-oil-heal-caps`'s point, not this one. `hp` is posed with
 // `setHp`, "a real number at most `maxHp`", and the acceptance goes through
 // `choose` rather than a key press, so a build with a broken menu fails the menu
 // points instead of this one.

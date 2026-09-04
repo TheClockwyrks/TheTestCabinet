@@ -11,7 +11,8 @@
 //
 // THE POSE. An isolated `playing` run holding nothing, at level `1` with `xp`
 // `4`, and one small gem on the lamplighter's own center, so the gain is real
-// rather than a posed queue. Three ticks are run: the gain lands on the first,
+// rather than a posed queue, with `progression` the one driver switch turned
+// on so that gain is spent. Three ticks are run: the gain lands on the first,
 // and two more follow, which is the latest the overlay can have opened by and
 // still be in play at all. Further ticks change nothing either way, since "the
 // simulation does not tick while it is open"; the exact tick the overlay opens
@@ -29,6 +30,7 @@ import {
   advanceTicks,
   captureStill,
   createHarness,
+  enable,
   isolate,
   placeGem,
   type Harness,
@@ -48,7 +50,11 @@ afterEach(() => {
 });
 
 it("stands on levelup with its offers drawn within three ticks of the gain", async () => {
+  // `progression`, the faculty that spends a gain on levels, is the one
+  // switch this point is about, so it is turned back on and the other eight
+  // stay held (`specs/instrumentation.md`, the switch table).
   const { player } = isolate(h).run;
+  enable(h, "progression");
   h.debug.setLevel(LEVEL);
   h.debug.setXp(XP_BEFORE);
   placeGem(h, "small", player.x, player.y);

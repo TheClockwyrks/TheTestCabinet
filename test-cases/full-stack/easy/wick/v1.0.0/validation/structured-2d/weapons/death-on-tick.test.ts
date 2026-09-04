@@ -45,6 +45,7 @@ import {
   captureReplay,
   createHarness,
   distance,
+  enable,
   enemyById,
   isolate,
   placeEnemyNear,
@@ -75,6 +76,9 @@ it("removes a moth a hit takes to exactly 0 hp, counts the kill, and drops its g
     );
   }
   isolate(h);
+  // The gem a death leaves is half of what this point decides, so `drops` is
+  // turned back on; everything else stays held.
+  enable(h, "drops");
   const moth = placeEnemyNear(h, "moth", MOTH.x, MOTH.y);
   h.debug.setEnemyHp(moth, DAMAGE);
   const posed = h.snapshot();

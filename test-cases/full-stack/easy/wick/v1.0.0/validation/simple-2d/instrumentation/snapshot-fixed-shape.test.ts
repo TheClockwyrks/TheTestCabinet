@@ -16,17 +16,20 @@
 //
 // EACH SCREEN IS REACHED THROUGH THE SURFACE ALONE, so a build whose menus
 // cannot be walked still answers for its shape, and a broken shape names its
-// screen. `title` is the reset; `howto`, `almanac`, `playing`, `paused`,
-// `fallen`, and `dawn` are `setScreen` rows; `levelup` and `chest` have no row
-// of their own and are opened by the tick that opens them, with a queued
-// level-up and a chest under the lamplighter. Whether a value is RIGHT on a
-// screen belongs to the points about that screen's transition.
+// screen. `title` is the reset; `howto`, `almanac`, and `paused` are the
+// atomic `setScreen`; `playing` is the composed fresh run; `levelup`, `chest`,
+// `fallen`, and `dawn` are opened by the ticks that open them, with a queued
+// level-up, a chest under the lamplighter, `hp` at `0`, and the clock at the
+// tick before dawn. Whether a value is RIGHT on a screen belongs to the points
+// about that screen's transition.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertHasProperty, assertLength } from "../assert";
+import { DAWN_TICK } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import {
   assertIdleRun,
+  FALLEN_TICK,
   MENU_FREE_SCREENS,
   RUN_FIELDS,
   SCREEN_ROUTES,
@@ -71,7 +74,7 @@ it("carries the whole documented shape on every screen", async () => {
     if (screen === "fallen" || screen === "dawn") {
       assertEqual(
         s.run.tick,
-        3,
+        screen === "fallen" ? FALLEN_TICK : DAWN_TICK,
         `run.tick on ${screen}: the run that just ended`,
       );
       assertLength(s.run.weapons, 1, `run.weapons on ${screen}: the run kept`);

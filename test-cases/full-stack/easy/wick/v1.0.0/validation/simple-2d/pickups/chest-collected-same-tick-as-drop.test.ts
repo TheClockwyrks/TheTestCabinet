@@ -34,7 +34,13 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertNotNull } from "../assert";
-import { captureStill, createHarness, isolate, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  enable,
+  isolate,
+  type Harness,
+} from "../harness";
 import { armKill } from "./night";
 
 /** The elite whose drop is read: specs/enemies.md gives an elite a chest. */
@@ -52,6 +58,8 @@ afterEach(() => {
 
 it("leaves no chest and ends on the chest overlay on the tick a mothwing dies at the lamplighter", async () => {
   isolate(h);
+  // The chest the elite drops is what this tick is about.
+  enable(h, "drops");
   armKill(h, TYPE, 0, 0);
   assertLength(h.snapshot().run.pickups, 0, "pickups before the killing tick");
 

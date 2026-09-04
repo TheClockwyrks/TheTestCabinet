@@ -15,8 +15,8 @@
 // WHY THE WORLD IS POSED AS IT IS. An isolated night: every driver switch off,
 // nothing alive, nothing else dropped, and no slot held, so the chest is the
 // only thing the tick can act on and nothing else opens or blocks an overlay.
-// `isolate` poses `ISOLATE_LEVEL` (`50`), whose `xpToNext` is `495`, and no gem
-// is on the field, so no level-up is queued to compete for the end of the tick.
+// `isolate` holds the `progression` switch off and leaves no gem on the field,
+// so no level-up is queued to compete for the end of the tick.
 // The chest is reached the real way, by `spawnPickup("chest", ...)` at the
 // lamplighter's center and one tick, which `specs/instrumentation.md` names as
 // "the real collection path"; no `setScreen` is used, because the requirement

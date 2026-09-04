@@ -4,9 +4,9 @@
 // night's scripted spawns in time order. Each fires once per run, on exactly
 // the tick the run clock equals its time ... `firedEvents` lists the times
 // that have fired". Once per RUN, so a new run fires it again:
-// `specs/instrumentation.md` (`setScreen`) makes `playing` from the title
-// "Begin a fresh run", and `specs/state.md` gives a fresh run an empty
-// `firedEvents`.
+// `specs/state.md` gives a fresh run an empty `firedEvents`, and
+// `specs/instrumentation.md` composes one out of `reset`, `setScreen`, and
+// `setWeapon`, which is what `isolate` does at the head of each pass.
 //
 // WHAT THE CLOCK CAN AND CANNOT DO. `setTick` "Sets `tick` to `tick`. Nothing
 // else changes: `spawnTimer`, `firedEvents`, and every live entity stay as

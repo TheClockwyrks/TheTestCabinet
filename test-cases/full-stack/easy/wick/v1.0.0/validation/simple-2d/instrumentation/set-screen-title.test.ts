@@ -1,23 +1,24 @@
-// instrumentation/set-screen-title — `setScreen('title')` from playing enters
-// title with menuIndex 0 and the idle run, exactly as `back` on paused does.
+// instrumentation/set-screen-title — `setScreen('title')` from playing stands
+// the game on title with menuIndex 0.
 //
-// WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, `setScreen`'s row
-// for `title`: from "any", "Discards the run exactly as `TITLE` on an end
-// screen or `MAIN MENU` on `paused` does: the idle run", "with `menuIndex`
-// `0`". The idle run is specs/state.md's table, `hurtFlash` `0` among its rows,
-// restated as `IDLE_RUN`. `almanacTab` and `almanacScroll` "are `0` on every
-// screen but `almanac`" (specs/instrumentation.md, Snapshot shape), so the
-// title carries both at `0`.
+// WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, `setScreen`: "Sets
+// `screen` to `name`, one of the `Screen` values, with `menuIndex`,
+// `almanacTab`, and `almanacScroll` all `0`", and "Applies on every screen".
+// What the pose leaves standing beside the screen is
+// `set-screen-leaves-the-run-standing`; what this decides is that the named
+// screen is the one the game stands on afterwards. Whether `MAIN MENU` on
+// paused reaches the title is a screens point.
 //
-// THE POSE. The busy night, so "the idle run" is read against a run whose
-// every region would betray a `setScreen` that merely flipped the screen
-// field. The route is the surface alone: whether `MAIN MENU` on paused reaches
-// the title is a screens point.
+// THE POSE. The call is made from `playing`, a screen the game is not already
+// on, so the `title` it reports is the call's. The night is isolated, so no
+// tick runs between the pose and the reading and nothing else could have moved
+// the screen.
+//
+// THE TOLERANCE. None: a screen name and a menu index.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { captureStill, createHarness, type Harness } from "../harness";
-import { assertIdleRun, poseBusyNight } from "./helpers";
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
 
 let h: Harness;
 
@@ -29,18 +30,15 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("enters the title with the idle run over a disturbed run", async () => {
-  poseBusyNight(h);
-  await h.tick(1);
+it("stands the game on title", async () => {
+  const playing = isolate(h);
+  assertEqual(playing.screen, "playing", "the screen the call is made from");
 
   h.debug.setScreen("title");
-  const s = h.snapshot();
-  await h.tick(1);
+  const title = h.snapshot();
+  await h.frameDraw();
   captureStill(h, "title");
 
-  assertEqual(s.screen, "title", "the screen");
-  assertEqual(s.menuIndex, 0, "menuIndex on arriving");
-  assertEqual(s.almanacTab, 0, "almanacTab on the title");
-  assertEqual(s.almanacScroll, 0, "almanacScroll on the title");
-  assertIdleRun(s.run, "run on the title: the idle run");
+  assertEqual(title.screen, "title", "the screen after setScreen('title')");
+  assertEqual(title.menuIndex, 0, "menuIndex on entering title");
 });

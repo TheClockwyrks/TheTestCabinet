@@ -1,17 +1,19 @@
-// Wick — instrumentation/set-screen-dawn: `setScreen("dawn")` on `playing` or
-// `paused` ends the run exactly as dawn does: `screen` `dawn` with `menuIndex`
-// `0` and the run kept for the end screen to report.
+// Wick — instrumentation/set-screen-dawn: `setScreen("dawn")` from `playing`
+// and from `paused` stands the game on `dawn` with `menuIndex` `0`, ending
+// nothing.
 //
 // WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — `setScreen(name)`):
-// the `fallen, dawn | playing, paused` row: "Ends the run exactly as that
-// ending does, the run kept for the end screen to report." specs/ui.md: the
-// end screens show "The run clock at the end", "The level reached", and "The
-// kill count"; `run` "reports ... the run that just ended on `fallen` and
-// `dawn`" (specs/instrumentation.md).
+// "Sets `screen` to `name`, one of the `Screen` values, with `menuIndex`,
+// `almanacTab`, and `almanacScroll` all `0`", and "Applies on every screen".
+// The pose ends no run: "a run is never begun, discarded, ended, or grown by
+// it", and "the dawn ending is `setTick` at `DAWN_TIME x TICK_HZ - 1` (`35999`)
+// and one tick", which is the ending rule of specs/world.md and what
+// `screens/dawn-copy` and the rest of the end-screen points drive.
 //
-// WHY THE WORLD IS POSED AS IT IS. The run is given a clock, a level, and a
-// kill count that are not the idle values, so "kept" is told from "discarded";
-// the call is made from both screens the row lists.
+// WHY THE WORLD IS POSED AS IT IS. The run is given a clock well short of dawn,
+// a level, and a kill count that are not the idle values, so a build that ran
+// its ending rule out of this pose is read on the clock it did not reach. The
+// call is made from both run screens.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -37,8 +39,8 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** Pose the run's figures, enter `from`, and end the run at dawn. */
-async function endDawnFrom(from: "playing" | "paused"): Promise<void> {
+/** Pose the run's figures, stand on `from`, and pose `dawn` over it. */
+async function poseDawnFrom(from: "playing" | "paused"): Promise<void> {
   await isolate(h);
   await h.debug.setTick(TICK);
   await h.debug.setLevel(LEVEL);
@@ -51,14 +53,13 @@ async function endDawnFrom(from: "playing" | "paused"): Promise<void> {
     `the screen after setScreen('dawn') from ${from}`,
   );
   assertEqual(dawn.menuIndex, 0, `menuIndex on dawn from ${from}`);
-  assertEqual(dawn.run.tick, TICK, `the ended run's tick from ${from}`);
-  assertEqual(dawn.run.level, LEVEL, `the ended run's level from ${from}`);
-  assertEqual(dawn.run.kills, KILLS, `the ended run's kills from ${from}`);
-  assertEqual(dawn.accumulator, 0, `the accumulator on dawn from ${from}`);
+  assertEqual(dawn.run.tick, TICK, `the run's tick from ${from}`);
+  assertEqual(dawn.run.level, LEVEL, `the run's level from ${from}`);
+  assertEqual(dawn.run.kills, KILLS, `the run's kills from ${from}`);
 }
 
-it("ends the run at dawn from playing and from paused, keeping the run", async () => {
-  await endDawnFrom("playing");
-  await endDawnFrom("paused");
+it("stands the game on dawn from playing and from paused", async () => {
+  await poseDawnFrom("playing");
+  await poseDawnFrom("paused");
   await captureStill(h, "dawn");
 });

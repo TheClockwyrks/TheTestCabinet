@@ -24,8 +24,8 @@
 // something to be silent about: a build with no music at all would pass a bare
 // silent stretch while failing every other music point, and the stretch would
 // have decided nothing. So once the almanac has been read, `setScreen("playing")`
-// begins a fresh run — specs/instrumentation.md: "Begins a fresh run exactly as
-// `LIGHT THE LAMP` and `TRY AGAIN` do" — and the loop is waited for and asserted.
+// stands the game on `playing`, which specs/ui.md is where `music` loops, and
+// the loop is waited for and asserted.
 // That guard is a precondition rather than a second requirement: whether the loop
 // starts with a run is `audio/music-starts-on-run`'s point.
 //

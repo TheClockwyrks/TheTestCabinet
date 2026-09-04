@@ -39,7 +39,7 @@ export type Zone = DeepWritable<ZoneState>;
 export type Gem = DeepWritable<GemState>;
 export type Pickup = DeepWritable<PickupState>;
 
-/** The seven driver switches, by the field each lives under. */
+/** The nine driver switches, by the field each lives under. */
 export const SWITCH_NAMES = [
   "spawning",
   "events",
@@ -48,6 +48,8 @@ export const SWITCH_NAMES = [
   "enemyContact",
   "weaponFire",
   "effectMotion",
+  "drops",
+  "progression",
 ] as const;
 
 export type SwitchName = (typeof SWITCH_NAMES)[number];
@@ -111,6 +113,8 @@ export function initialState(seed: number = DEFAULT_SEED): Draft {
     enemyContact: true,
     weaponFire: true,
     effectMotion: true,
+    drops: true,
+    progression: true,
   };
 }
 
@@ -192,5 +196,7 @@ export function cloneState(view: DeepReadonly<WickState>): Draft {
     enemyContact: view.enemyContact,
     weaponFire: view.weaponFire,
     effectMotion: view.effectMotion,
+    drops: view.drops,
+    progression: view.progression,
   };
 }

@@ -1,5 +1,4 @@
-// Wick — clock/timer-holds-at-zero: a timer counts down to exactly 0 and stays
-// due.
+// Wick — clock/timer-holds-at-zero: a timer that has reached 0 stays due.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE.
 //   - `specs/world.md` ("Timers"): "On every tick a timer counts down by
@@ -19,10 +18,9 @@
 //
 // WHAT IS READ. A moth overlapping the lamplighter has its contact cooldown
 // posed to 0.5 s with `enemyContact` off, so the timer counts and nothing sets
-// it again. round(0.5 × 60) is 30: on each of the first 29 ticks the reading
-// is above 0, and on the 30th it is exactly 0, not the residue of thirty
-// floating-point subtractions of 1 / 60 from 0.5. Across twenty further ticks
-// it stays exactly 0.
+// it again. round(0.5 × 60) is 30, so the 30th tick brings it due; that it
+// reads exactly 0 there is `clock/timer-reaches-zero`'s. Across twenty further
+// ticks it must stay exactly 0.
 //
 // WHY THE NIGHT IS POSED AS IT IS. The contact cooldown is the one timer the
 // surface can pose, read on every tick, and leave untouched by anything but
@@ -34,7 +32,7 @@
 // build that reports a residue has kept the residue.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan } from "../assert";
+import { assertEqual } from "../assert";
 import { CONTACT_COOLDOWN, ticksFor } from "../constants";
 import {
   captureStill,
@@ -69,27 +67,13 @@ function exact(value: number): number {
   return value === 0 ? 0 : value;
 }
 
-it("reads exactly 0 on the due tick and stays there", async () => {
+it("holds a due timer at exactly 0", async () => {
   isolate(h);
   const id = spawnEnemyNear(h, "moth", MOTH_DX, 0);
   h.debug.setEnemyContactCooldown(id, POSED);
   const dueTick = ticksFor(POSED);
 
-  const counting = await h.trace(dueTick - 1);
-  counting.forEach((snapshot, i) => {
-    assertGreaterThan(
-      enemyById(snapshot, id)?.contactCooldown ?? Number.NaN,
-      0,
-      `contactCooldown on tick ${i + 1} of ${dueTick}`,
-    );
-  });
-
-  const due = await h.tick(1);
-  assertEqual(
-    exact(enemyById(due, id)?.contactCooldown ?? Number.NaN),
-    0,
-    `contactCooldown on tick ${dueTick}, the due tick`,
-  );
+  await h.tick(dueTick);
 
   const held = await h.trace(HELD_TICKS);
   captureStill(h, "zero");

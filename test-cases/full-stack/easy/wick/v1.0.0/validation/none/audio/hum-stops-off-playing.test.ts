@@ -27,7 +27,7 @@
 // nothing and no other cue rides on the frames the loop is read. The overlay is
 // opened the way specs/progression.md states — one queued level-up and the tick
 // that ends with it — and the pause is posed through the surface, whose
-// `setScreen("paused")` from `playing` is "Exactly as `pause` does"
+// `setScreen("paused")` sets `screen` and nothing else
 // (specs/instrumentation.md), so the pause control's own correctness is
 // `controls/`'s rather than this point's.
 //

@@ -20,10 +20,10 @@
 // `screen` for what the click did NOT do: a build that wired the almanac's rows
 // to the same confirm the title's items carry leaves `almanac` here and fails.
 //
-// THE DRIVE. `setScreen("almanac")` — "exactly as confirming `THE ALMANAC`
-// does" (`specs/instrumentation.md`) — and a primary press and release in the
-// middle of the third visible row's own rectangle, read off `menuRects`, before
-// the frame that reads the edge.
+// THE DRIVE. `setScreen("almanac")` — by setting `screen` with the three menu
+// indices at `0` and the run left as it stands (`specs/instrumentation.md`) —
+// and a primary press and release in the middle of the third visible row's own
+// rectangle, read off `menuRects`, before the frame that reads the edge.
 //
 // THE TOLERANCE. None: two indices and a screen name.
 

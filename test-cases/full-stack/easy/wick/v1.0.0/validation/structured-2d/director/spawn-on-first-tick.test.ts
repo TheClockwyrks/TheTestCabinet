@@ -11,10 +11,10 @@
 //
 // WHY THE TIMER IS NOT POSED. The requirement is that a RUN begins with the
 // timer at 0, so posing it would decide the thing under test. `isolate` opens
-// a fresh run through `setScreen("playing")`, which "Begins a fresh run
-// exactly as `LIGHT THE LAMP` ... do" (`specs/instrumentation.md`), and the
-// clears that follow it touch no timer; the check reads the timer the fresh
-// run left and then runs one tick.
+// with `reset`, which restores "the idle run of `specs/state.md`"
+// (`specs/instrumentation.md`), whose `spawnTimer` the idle-run table gives as
+// `0`; `setScreen("playing")` and the clears that follow touch no timer. The
+// check reads the timer `reset` left and then runs one tick.
 //
 // THE DRIVE. One tick, with `spawning` alone on over an empty world at tick 0.
 // A build whose timer starts anywhere above 0 spawns nothing on it.

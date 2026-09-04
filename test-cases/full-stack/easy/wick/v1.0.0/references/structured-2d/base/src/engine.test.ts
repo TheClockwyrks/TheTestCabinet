@@ -59,6 +59,18 @@ async function loadProducedImages(): Promise<void> {
   }
 }
 
+/**
+ * Whether two frames' pixel bytes are identical, byte for byte.
+ *
+ * A plain comparison over the arrays themselves, so the check needs nothing
+ * from outside the browser lib this project type-checks against.
+ */
+function sameBytes(a: Uint8ClampedArray, b: Uint8ClampedArray): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 /** How many pixels of the frame differ from the stage background. */
 function painted(): number {
   const { data } = h.ctx.getImageData(0, 0, STAGE_W, STAGE_H);
@@ -355,7 +367,7 @@ describe("the almanac", () => {
     await toTab(2);
     expect(h.debug.snapshot().almanacTab).toBe(2);
     const enemies = h.ctx.getImageData(0, 0, STAGE_W, STAGE_H).data;
-    expect(Buffer.from(enemies).equals(Buffer.from(tools))).toBe(false);
+    expect(sameBytes(enemies, tools)).toBe(false);
   });
 
   it("walks the enemy picture from simTime, which no tick advances", async () => {
@@ -367,7 +379,7 @@ describe("the almanac", () => {
     await h.step(Math.round(WALK_FRAME_TIME * TICK_HZ));
     const after = h.ctx.getImageData(0, 0, STAGE_W, STAGE_H).data;
     expect(h.debug.snapshot().run.tick).toBe(0);
-    expect(Buffer.from(after).equals(Buffer.from(before))).toBe(false);
+    expect(sameBytes(after, before)).toBe(false);
   });
 });
 
@@ -382,7 +394,7 @@ describe("the hurt flash", () => {
     await h.step(1);
     expect(h.debug.snapshot().run.hurtFlash).toBe(HURT_FLASH);
     const cast = h.ctx.getImageData(0, 0, STAGE_W, STAGE_H).data;
-    expect(Buffer.from(cast).equals(Buffer.from(clear))).toBe(false);
+    expect(sameBytes(cast, clear)).toBe(false);
     await h.step(1);
     expect(h.debug.snapshot().run.hurtFlash).toBeCloseTo(
       HURT_FLASH - TICK_DT,

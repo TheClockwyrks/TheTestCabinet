@@ -51,6 +51,43 @@ export function stackRects(y: number, count: number): WickRect[] {
   }));
 }
 
+// ---- The way out of `howto` and `chest` ------------------------------------
+//
+// Neither shows a menu, and each answers the pointer and touch on one box:
+// "the area the screen's way out is taken in, which the screen shows"
+// (specs/controls.md). `src/render/screens.ts` draws its line inside that box,
+// so what is clicked or tapped is what the player sees.
+
+const DISMISS_W = 340;
+const DISMISS_H = 38;
+
+/** The baseline of the line drawn inside a dismiss box, from its top. */
+export const DISMISS_TEXT_DROP = 25;
+
+/** The tops of the two boxes: at the how-to's foot, inside the chest panel. */
+export const HOWTO_DISMISS_TOP = STAGE_H - 84;
+export const CHEST_DISMISS_TOP = 426;
+
+/** A dismiss box, centered on the stage, whose top is `top`. */
+function dismissRect(top: number): WickRect {
+  return {
+    x: STAGE_CX - DISMISS_W / 2,
+    y: top,
+    width: DISMISS_W,
+    height: DISMISS_H,
+  };
+}
+
+/** The one box on `howto`, which `back` is taken in. */
+export function howtoRects(): WickRect[] {
+  return [dismissRect(HOWTO_DISMISS_TOP)];
+}
+
+/** The one box on `chest`, which `confirm` is taken in. */
+export function chestRects(): WickRect[] {
+  return [dismissRect(CHEST_DISMISS_TOP)];
+}
+
 // ---- The level-up overlay --------------------------------------------------
 
 /** Stage units between one offer and the next, and the row each covers. */
@@ -135,12 +172,17 @@ export function almanacRowRects(rows: number): WickRect[] {
 /**
  * The rectangles of the current screen's vertical menu, in menu order. The
  * almanac's are the visible entry rows, at most `ALMANAC_ROWS` of them, from
- * `almanacScroll`; a screen with no menu reports none.
+ * `almanacScroll`. `howto` and `chest` show no menu and report the one box
+ * their way out is taken in; `playing` reports none.
  */
 export function menuRects(state: View): WickRect[] {
   switch (state.screen) {
     case "title":
       return stackRects(TITLE_MENU_Y, TITLE_ITEMS.length);
+    case "howto":
+      return howtoRects();
+    case "chest":
+      return chestRects();
     case "almanac":
       return almanacRowRects(
         visibleRows(entriesOf(state.almanacTab).length, state.almanacScroll),

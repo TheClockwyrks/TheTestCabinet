@@ -1,15 +1,14 @@
 // Wick — instrumentation/set-screen-playing-keeps-switches: with `spawning`
-// and `weaponFire` posed off, `setScreen('playing')` begins a fresh run with
-// both still off.
+// and `weaponFire` posed off, `setScreen('playing')` leaves both off.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`,
-// `setScreen(name)`: "The driver switches stay as they are"; "The driver
-// switches": "each is left as it stands by `setScreen`"; "Snapshot shape":
-// "The seven switches sit beside `muted`, outside `run`, and a fresh run leaves
-// them as they stand."
+// `setScreen`: "Nothing else changes: ... the driver switches all stand
+// exactly as they were"; "The driver switches": "each is left as it stands by
+// `setScreen`"; "Snapshot shape": "The nine switches sit beside `muted`,
+// outside `run`, and a fresh run leaves them as they stand."
 //
 // THE POSE. `reset` (every switch on), two turned off, the pose, read at the
-// call: the two off, the other five on.
+// call: the two off, the other seven on.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
@@ -31,7 +30,7 @@ afterEach(() => {
   h.dispose();
 });
 
-it("leaves the switches as they stand across a fresh run", async () => {
+it("leaves the switches as they stand across the pose", async () => {
   h.reset();
   disable(h, "spawning", "weaponFire");
 
@@ -51,7 +50,9 @@ it("leaves the switches as they stand across a fresh run", async () => {
       enemyContact: true,
       weaponFire: false,
       effectMotion: true,
+      drops: true,
+      progression: true,
     },
-    "the seven switches after setScreen('playing')",
+    "the nine switches after setScreen('playing')",
   );
 });

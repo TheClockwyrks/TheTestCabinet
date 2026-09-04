@@ -25,7 +25,7 @@
 // something in it. Every driver switch is off, so the one tick the resuming
 // frame runs moves the clock and nothing else, and anything else that changed
 // came from the resume. The pause itself is posed through `setScreen("paused")`,
-// which specs/instrumentation.md defines as "Exactly as `pause` does".
+// which specs/instrumentation.md defines as setting `screen` and nothing else.
 //
 // HOW THE GESTURE IS POSED. `menuRects()` reports where this build drew the two
 // pause items, and the primary button is pressed at the middle of the FIRST,

@@ -20,14 +20,13 @@
 //   `paused` alone".
 //
 // THE DRIVE. `reset` puts the game on the title with `menuIndex` `0`; a REAL
-// `KeyP` is dispatched at the engine's input seam and delivered by one
-// frame, and the screen and index are read back. The how-to screen is then
-// posed through the surface, which enters it "exactly as confirming
-// `HOW TO PLAY` does", so no title key is on the path; a REAL `Enter` is
-// delivered by one frame there and the screen and index read back again. A
-// build that paused from the title, or that took `confirm` on `howto` as a
-// menu confirm and left the screen, reads another screen on the line that
-// names it.
+// `KeyP` is dispatched at the engine's input seam and delivered by one frame,
+// and the screen and index are read back. The how-to screen is then posed
+// through the surface, which enters it by setting `screen` with `menuIndex` `0`
+// and the run left as it stands, so no title key is on the path; a REAL `Enter`
+// is delivered by one frame there and the screen and index read back again. A
+// build that paused from the title, or that took `confirm` on `howto` as a menu
+// confirm and left the screen, reads another screen on the line that names it.
 //
 // THE TOLERANCE. None: a screen name and a menu index are exact comparisons.
 

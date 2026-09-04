@@ -26,10 +26,10 @@
 // beside the chest, and `weaponFire` off means the Taper of the first leg fires
 // nothing. Each chest is posed on the lamplighter's center, at distance `0`,
 // inside `PICKUP_ITEM_RADIUS` (`16`) plus `PLAYER_RADIUS` (`12`), so the next
-// tick collects it. Between the legs the overlay is closed through
-// `setScreen("playing")`, which specs/instrumentation.md defines from `chest` as
-// "Closes the overlay exactly as `confirm` does", and the leveled Taper is taken
-// out of the loadout so the second chest reaches rule 3.
+// tick collects it. Between the legs the game is stood back on `playing` through
+// `setScreen("playing")`, which "Sets `screen` to `name` ... Nothing else
+// changes" (specs/instrumentation.md), and the leveled Taper is taken out of the
+// loadout so the second chest reaches rule 3.
 //
 // THE TOLERANCE. None: a count of cues on one tick is a whole number, and the
 // specification fixes it at zero on both ticks.

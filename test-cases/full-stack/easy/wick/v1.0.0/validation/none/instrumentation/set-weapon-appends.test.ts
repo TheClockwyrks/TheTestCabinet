@@ -33,7 +33,7 @@ afterEach(async () => {
 });
 
 it("appends a weapon in the next slot", async () => {
-  const posed = await isolate(h, { keepTaper: true });
+  const posed = await isolate(h, { taper: true });
   assertDeepEqual(
     posed.run.weapons,
     [FRESH_TAPER],

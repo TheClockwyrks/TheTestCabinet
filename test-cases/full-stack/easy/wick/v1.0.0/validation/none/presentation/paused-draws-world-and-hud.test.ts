@@ -13,8 +13,9 @@
 // player: a pause is a screen you read your health and your slots on.
 //
 // HOW THE PAUSE IS REACHED. `setScreen("paused")`, which
-// `specs/instrumentation.md` enters "Exactly as `pause` does; the accumulator is
-// discarded as on any frame that leaves `playing`". No key is pressed on the way,
+// `specs/instrumentation.md` defines as setting `screen` and nothing else, with
+// "the accumulator ... discard[ed], as every frame and pose that leaves
+// `playing` does". No key is pressed on the way,
 // because a build with a broken `KeyP` and a working pause screen must fail the
 // key's point and pass this one.
 //

@@ -8,6 +8,7 @@ import {
   BASE_WEAPON_IDS,
   EVOLUTION_IDS,
   TICK_DT,
+  TITLE_ITEMS,
   type ActionName,
   type CueName,
 } from "./constants";
@@ -97,7 +98,8 @@ describe("the title screen", () => {
     expect(wantedLoops(b.state)).toEqual([]);
     b.act("back");
     expect(b.state.screen).toBe("title");
-    expect(b.state.menuIndex).toBe(0);
+    // Returning selects the entry that led away (specs/ui.md, `almanac`).
+    expect(b.state.menuIndex).toBe(TITLE_ITEMS.indexOf("THE ALMANAC"));
   });
 
   it("opens howto on HOW TO PLAY and back returns", () => {
@@ -109,6 +111,8 @@ describe("the title screen", () => {
     expect(b.state.menuIndex).toBe(0);
     b.act("back");
     expect(b.state.screen).toBe("title");
+    // Returning selects the entry that led away (specs/ui.md, `howto`).
+    expect(b.state.menuIndex).toBe(TITLE_ITEMS.indexOf("HOW TO PLAY"));
     expect(wantedLoops(b.state)).toEqual([]);
   });
 

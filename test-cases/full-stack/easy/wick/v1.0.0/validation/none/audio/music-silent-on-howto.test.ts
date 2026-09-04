@@ -15,9 +15,9 @@
 // makes this the stronger reading, of a bed that was running and had to stop
 // rather than of one that was never asked for.
 //
-// WHY THE SCREEN IS POSED. specs/instrumentation.md defines the pose to be the
-// played transition: `setScreen("howto")` from any screen "Enters the how-to
-// screen exactly as confirming `HOW TO PLAY` does: the idle run." A key press
+// WHY THE SCREEN IS POSED. specs/instrumentation.md has `setScreen("howto")`
+// "Set[] `screen` to `name`" and nothing else, which reaches the screen without
+// a menu. A key press
 // would put the title menu's own correctness between this point and the loop it
 // reads, and that menu is `audio/cue-menu-confirm`'s and `screens/`'s.
 //

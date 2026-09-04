@@ -3,10 +3,10 @@
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`, "The
 // driver switches": "each is restored to on by `reset`", and `reset(options)`:
-// "every driver switch on". `specs/state.md`: the seven "each `true` from
+// "every driver switch on". `specs/state.md`: the nine "each `true` from
 // `initialize` and after `reset`".
 //
-// THE POSE. `isolate` turns all seven off (the harness self-test proves it);
+// THE POSE. `isolate` turns all nine off (the harness self-test proves it);
 // `reset` is the whole operation under test, read back before any frame.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -30,12 +30,12 @@ afterEach(() => {
   h.dispose();
 });
 
-it("leaves all seven switches true after reset from all seven false", async () => {
+it("leaves all nine switches true after reset from all nine false", async () => {
   const off = isolate(h);
   assertDeepEqual(
     Object.values(switchesOf(off)),
     SWITCH_NAMES.map(() => false),
-    "the seven switches posed off before reset",
+    "the nine switches posed off before reset",
   );
 
   h.reset();
@@ -53,7 +53,9 @@ it("leaves all seven switches true after reset from all seven false", async () =
       enemyContact: true,
       weaponFire: true,
       effectMotion: true,
+      drops: true,
+      progression: true,
     },
-    "the seven switches after reset",
+    "the nine switches after reset",
   );
 });
