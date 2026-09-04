@@ -8429,27 +8429,36 @@ domains = ["presentation", "workshop"]
 failure_cap = "passable"
 validation = { script = "presentation/repeating-set-shows-its-repeated-copy.test.ts", outputs = [ { id = "repeat", name = "A repeating set and its translated copy", kind = "image" } ] }
 # The stage, its text, and the two panels drawn over a run.
+#
+# The three fit points below are scoped to `none`. `specs/overview.md` gives the
+# fit — the uniform scale that preserves the aspect ratio, the letterboxed
+# centering, and the device pixel ratio — to the runtime, and under an engine that
+# runtime is the engine: the seeded `src/main.ts` hands it the 1280 x 720 stage
+# and is marked not to be edited, and the seeded `index.html` sizes the canvas by
+# CSS alone. Under `none` the runtime is the layer the build writes, so that is
+# where these three are decided. The bars' color below stays unscoped, because
+# `BACKGROUND` is the build's own under every engine.
 [[review.categories.items]]
 id = "stage-fits-a-wide-window"
 title = "The whole stage fits a window wider than 16:9"
 description = "Over a surface wider than the stage's aspect ratio the complete STAGE_W x STAGE_H (1280 x 720) stage is on screen at that ratio, centered, with even bars to left and right."
 domains = ["presentation", "workshop"]
 failure_cap = "passable"
-validation = { script = "presentation/stage-fits-a-wide-window.test.ts", outputs = [ { id = "wide", name = "The stage fitted in a wide surface", kind = "image" } ] }
+validation = { script = "presentation/stage-fits-a-wide-window.test.ts", engines = ["none"], outputs = [ { id = "wide", name = "The stage fitted in a wide surface", kind = "image" } ] }
 [[review.categories.items]]
 id = "stage-fits-a-tall-window"
 title = "The whole stage fits a window taller than 16:9"
 description = "Over a surface taller than the stage's aspect ratio the complete 1280 x 720 stage is on screen at that ratio, centered, with even bars above and below."
 domains = ["presentation", "workshop"]
 failure_cap = "passable"
-validation = { script = "presentation/stage-fits-a-tall-window.test.ts", outputs = [ { id = "tall", name = "The stage fitted in a tall surface", kind = "image" } ] }
+validation = { script = "presentation/stage-fits-a-tall-window.test.ts", engines = ["none"], outputs = [ { id = "tall", name = "The stage fitted in a tall surface", kind = "image" } ] }
 [[review.categories.items]]
 id = "stage-fits-a-raised-device-pixel-ratio"
 title = "The whole stage fits at a raised pixel density"
 description = "At a raised device pixel ratio the complete 1280 x 720 stage is still on screen at its own aspect ratio, and the game still draws in logical units."
 domains = ["presentation", "workshop"]
 failure_cap = "passable"
-validation = { script = "presentation/stage-fits-a-raised-device-pixel-ratio.test.ts", outputs = [ { id = "dpr", name = "The stage at a raised device pixel ratio", kind = "image" } ] }
+validation = { script = "presentation/stage-fits-a-raised-device-pixel-ratio.test.ts", engines = ["none"], outputs = [ { id = "dpr", name = "The stage at a raised device pixel ratio", kind = "image" } ] }
 [[review.categories.items]]
 id = "letterbox-bars-carry-the-sky"
 title = "The letterbox bars carry the stage's background"
