@@ -79,8 +79,8 @@ for every variant and every engine. Each rule lives in exactly one file.
 | `collision.md`       | Every impact and what it does, including both fragment kicks and the ship's slide along the core.                                                                                                  |
 | `progression.md`     | Lives, what costs one, the respawn and its grace window, game over, and the wave loop and its banner.                                                                                              |
 | `scoring.md`         | Every score figure and the extra ship.                                                                                                                                                             |
-| `controls.md`        | Every action the game answers to and the keys bound to it.                                                                                                                                         |
-| `ui.md`              | The five screens and their menus, what the paused screen holds still, the HUD, and the wave banner.                                                                                                |
+| `controls.md`        | Every action the game answers to, the keys bound to it, and that the menus take a mouse and touch as well.                                                                                         |
+| `ui.md`              | The five screens and their menus, how a mouse and a touch contact drive them, what the paused screen holds still, the HUD, and the wave banner.                                                    |
 | `audio.md`           | The six cues, the mute toggle, and that the game runs whether or not audio started.                                                                                                                |
 | `state.md`           | What the game's state carries, in the shape the selected engine holds it in.                                                                                                                       |
 | `instrumentation.md` | The deterministic core, every operation of the debug and automation surface, the world gates and per-entity faculties, the snapshot shape, and the debug overlay.                                  |
@@ -177,7 +177,7 @@ exempt, because it is the transcription, and `harness.ts` may name the build ent
 it stands the build up through and nothing else.
 
 Each point declares one output. Most are a single captured frame, the right
-evidence for a posed scenario read once; the twenty-two points whose requirement
+evidence for a posed scenario read once; the twenty-five points whose requirement
 _is_ motion declare a replay instead, and a replay ends on the outcome rather than
 on the instant of measurement, so a reviewer sees the fragments come apart or the
 wave arrive after the reading the verdict rests on was taken.
@@ -190,7 +190,7 @@ lives and grace around it), `arcade` (the rocks, the waves, the saucer and the
 score) and `presentation` (the screens, the HUD, the legibility of what was drawn,
 and the audio) — and its overall rating is the worst of the four.
 
-The 236 common points sit in fifteen categories. The warhead ruleset adds 54
+The 236 common points sit in eighteen categories. The warhead ruleset adds 54
 across six blocks: four fold into the common `Instrumentation`, `The rocks`,
 `Screens and menus` and `Look and readouts` categories by id, and two are
 categories of its own, `Homing torpedo` and `Detonation`. Each point names the

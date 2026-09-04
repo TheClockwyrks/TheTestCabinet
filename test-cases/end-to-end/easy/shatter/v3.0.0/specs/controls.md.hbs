@@ -32,9 +32,12 @@ layout-dependent character.
 | `Escape` | Pause | Leave the screen |
 | `KeyM` | Toggle sound | Toggle sound |
 
-`Space` fires while the game is being played and confirms on a screen showing a
-menu, and `Escape` pauses while the game is being played and leaves the screen
-otherwise. The screen decides which meaning applies.
+`Escape` pauses on `playing` and leaves the screen on `title`, `howto`, `paused`,
+and `gameover`. `KeyP` is read on `playing` and on `paused` alone, pausing on the
+first and resuming on the second, and doing nothing on the other three screens. On
+`paused`, leaving the screen and pausing again are read before the menu edges, so a
+frame carrying either resumes and does nothing else. `Space` fires while the game is
+being played and confirms on a screen showing a menu.
 {{else}}
 ## How input reaches the game
 
