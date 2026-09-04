@@ -33,7 +33,7 @@
 
 import { assertMatches } from "../assert";
 import { ARROW_KEY, BINDINGS } from "../constants";
-import { holdPredators } from "../fixtures";
+import { stageCatch } from "../fixtures";
 import type { DrawCall, FathomSnapshot, Harness } from "../harness";
 import { callsTo } from "../harness";
 
@@ -211,9 +211,12 @@ const MAX_ATTEMPTS = 8;
  * whatever it is doing", and `specs/state.md` fixes index `0` as the first of the
  * release order at every depth.
  *
- * EVERY ATTEMPT OPENS BY HOLDING THE WHOLE ROSTER. A catch here is a contact rule
- * rather than a chase, so no hunter needs to travel, and a den emptying behind the
- * staged contact is a second hunter that could take the life instead.
+ * EVERY ATTEMPT STAGES ITS CATCH ON AN EMPTY BOARD. A catch here is a contact rule
+ * rather than a chase, so the world each attempt runs in holds exactly one hunter
+ * and every other body comes off it: a den emptying behind the staged contact is
+ * a second hunter that could take the life instead. The roster comes back with
+ * each attempt's fresh board, so {@link stageCatch} is called again every time
+ * round.
  */
 export async function loseEveryLife(h: Harness): Promise<FathomSnapshot> {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
@@ -226,9 +229,10 @@ export async function loseEveryLife(h: Harness): Promise<FathomSnapshot> {
     if (snapshot.screen !== "playing") return snapshot;
 
     const lives = snapshot.lives;
-    await holdPredators(h);
-    await h.debug.setPredatorTile(0, snapshot.forager.tx, snapshot.forager.ty);
-    await h.debug.setPredatorState(0, "chase");
+    await stageCatch(h, {
+      tx: snapshot.forager.tx,
+      ty: snapshot.forager.ty,
+    });
     const taken = await h.until(
       (s) => s.lives < lives || s.screen === "gameover",
       { maxTicks: CATCH_TICKS, poll: 2 },

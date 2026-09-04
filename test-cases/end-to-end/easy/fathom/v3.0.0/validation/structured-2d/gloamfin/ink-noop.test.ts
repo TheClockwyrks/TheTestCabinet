@@ -45,7 +45,7 @@ import {
   assertGreaterThanOrEqual,
   fail,
 } from "../assert";
-import { GLOAMFIN_HEAR, INK_LIFE, TICK_HZ, TILE } from "../constants";
+import { BINDINGS, GLOAMFIN_HEAR, INK_LIFE, TICK_HZ, TILE } from "../constants";
 import { placePredator, poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,
@@ -69,7 +69,7 @@ import { apart, gloamfinOf, sweep } from "./pings";
 const STANDOFF = ["..I" + ".".repeat(15) + "P"];
 
 /** The key `specs/movement.md` binds the `b` action, which releases ink, to. */
-const INK_KEY = "ShiftLeft";
+const INK_KEY = BINDINGS.b[0];
 
 /**
  * How long each half of the scenario is watched for, in ticks.

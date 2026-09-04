@@ -38,12 +38,14 @@ the forager's own light and through the sonar pulse.
 | --- | --- | --- |
 | `"title"` | `DIVE` confirmed | `"countdown"`, at the start of a fresh dive |
 | `"title"` | `HOW TO PLAY` confirmed | `"howto"` |
+| `"title"` | `back` | `"title"`. Nothing changes. |
 | `"howto"` | `confirm` or `back` | `"title"` |
 | `"countdown"` | The countdown running out | `"playing"` |
 | `"playing"` | The pause control | `"paused"` |
 | `"playing"` | The forager eating the maze's last plankton | `"cleared"` |
 | `"playing"` | Contact with a predator while `lives` is above `0` | `"countdown"`, for another attempt at the same maze and the same depth |
 | `"playing"` | Contact with a predator while `lives` is `0` | `"gameover"` |
+| `"paused"` | The pause control | `"playing"` |
 | `"paused"` | `RESUME` confirmed, or `back` | `"playing"` |
 | `"paused"` | `RESTART` confirmed | `"countdown"`, at the start of a fresh dive |
 | `"paused"` | `QUIT TO MENU` confirmed | `"title"` |
@@ -57,14 +59,23 @@ before the descent. Both are timed on the simulation's own accumulated time
 rather than on the wall clock, so each gives way after that much game time
 however the frames that carried it were drawn.
 
+`Escape` raises `back` and `pause` together on one frame, so `"paused"` reads
+`pause` and `back` before the menu's own edges, and a frame carrying either
+resumes once and does nothing else. A single `Escape` press on `"playing"`
+therefore opens the pause menu and leaves it open, and a single `Escape` press
+on `"paused"` resumes play.
+
 ## The menus
 
 Each menu is a vertical list of its items, in the order given, stacked one above
 the next. One item is selected at a time and the selected item is drawn
 distinctly from the others, so a player always sees which item `confirm`
-would take. The selection sits on the first item on arriving at a menu. The `up`
-and `down` controls move the selection by one item and wrap at both ends, and
-`confirm` takes the selected item.
+would take. `menuIndex` is that item's index, as `specs/state.md` reports it.
+Arriving at the pause menu or at the game-over menu selects that menu's first
+item, and arriving at `"title"` selects the entry `titleIndex` holds, which
+Returning to the title below fixes. The `up` and `down` controls move the
+selection by one item and wrap at both ends, and `confirm` takes the selected
+item.
 
 | Menu | Items, in order |
 | --- | --- |
@@ -72,9 +83,34 @@ and `down` controls move the selection by one item and wrap at both ends, and
 | The pause menu | `RESUME`, `RESTART`, `QUIT TO MENU` |
 | The game-over menu | `PLAY AGAIN`, `MENU` |
 
-What each item does is in the transition table above. The menus are keyboard
-only, through the controls `specs/movement.md` defines, and the `mute` control
-is read on every screen.
+What each item does is in the transition table above. The menus take the
+controls `specs/movement.md` defines, and the `mute` control is read on every
+screen.
+
+### Pointer and touch
+
+Each menu item occupies a rectangular hit region the build lays out.
+`specs/instrumentation.md` states the reading through which the build reports an
+item's region in logical units, so the menus keep the layout the build chose.
+
+| Input | Effect |
+| --- | --- |
+| A pointer moves onto an item's region | That item becomes the selected one. |
+| A pointer is pressed and released inside one item's region | That item becomes the selected one, and it is confirmed. |
+| A touch contact lands inside an item's region | That item becomes the selected one. |
+| A touch contact lands and lifts inside one item's region | That item becomes the selected one, and it is confirmed. |
+
+A confirm takes both of its edges inside one item's region: the press and its
+release for a pointer, the landing and the lift for a touch contact. Two edges
+that fall in different regions, and an edge that falls outside every region,
+confirm no item. The item a confirm acts on is the selected one, whichever input
+raised it, and what confirming it does is what the transition table above gives
+that item.
+
+The how-to-play screen shows no menu, so it carries no item regions. A pointer
+pressed and released anywhere on `"howto"`, or a touch contact landing and
+lifting anywhere on it, returns to `"title"`, exactly as `confirm` and `back` do,
+so the screen is left by hand as well as by key.
 
 ## Beginning a dive
 
@@ -84,8 +120,21 @@ is laid out afresh with a plankton on every corridor tile outside the den and
 its fog fully unrevealed, every predator is in the den and unreleased, both
 cooldowns are ready, and the screen becomes `"countdown"`.
 
+## Returning to the title
+
+Leaving the how-to-play screen, `QUIT TO MENU` on the pause menu, and `MENU` or
+`back` on the game-over screen all return to `"title"`.
+
+Confirming an item on the title menu records that item's index as `titleIndex`,
+from the keyboard, from a pointer and from a touch contact alike. `titleIndex`
+is `0` until an item has been confirmed there, so the game opens with `DIVE`
+selected. Every arrival at `"title"` selects the recorded entry: `menuIndex`
+becomes `titleIndex`, so each of the three returns above lands on the entry the
+player left the title from rather than on the first item.
+
 Returning to `"title"` restores the score, the lives, the depth and the maze to
-the values a dive begins from.
+the values a dive begins from. `titleIndex` is the exception and keeps its value
+across the return.
 
 ## What advances on each screen
 

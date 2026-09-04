@@ -19,7 +19,8 @@
 // so there is no bus to subscribe to and no name to read — `specs/progression.md`
 // fixes the seven names inside the build's own code and says nothing about how a
 // build makes a sound. What is observable here is that a sound was emitted and on
-// which tick, which `validation/audio-init.js` obtains by watching the two doors a
+// which tick, which the shared harness's own
+// `case-harness/src/page/audio-init.js` obtains by watching the two doors a
 // browser can emit sound through. Two consequences follow, and both are honest
 // reductions rather than choices:
 //

@@ -7,11 +7,12 @@
 // life in reserve ends the dive instead: `lives` is already `0`, and `screen`
 // becomes `"gameover"`."
 //
-// FOUR CATCHES, EACH ONE POSED. The hunter is put on the forager's own tile, which
-// is the contact condition specs/gameplay.md states, so nothing here waits on a
-// chase closing a gap — that is `gloamfin/*`'s to grade. And because no catch
-// here is travelled to, every hunter's body is held: the four catches this counts
-// are the four it staged, and no fifth arrives on its own.
+// FOUR CATCHES, EACH ONE POSED ON AN EMPTY BOARD. The roster comes off the board
+// and one hunter is stood on the forager's own tile, which is the contact
+// condition specs/gameplay.md states — so nothing here waits on a chase closing a
+// gap, and no second hunter can take one of the lives this point is counting.
+// Each attempt lays the depth's roster out afresh (specs/progression.md), so the
+// staging is done again every time round.
 //
 // THE COUNTDOWN BETWEEN LIVES IS ENDED RATHER THAN WAITED OUT.
 // `setScreen("playing")` puts the game straight into live play
@@ -28,6 +29,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, fail } from "../assert";
 import { START_LIVES } from "../constants";
+import { stageCatch } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -71,27 +73,8 @@ interface Catch {
  * Resume play if the previous catch left a countdown, put the first predator of
  * the roster on the forager, and let the game resolve the contact.
  */
-/**
- * Hold every hunter of the roster where it stands, minds running.
- *
- * This point runs on the build's OWN board, so it cannot empty the roster the way
- * a posed fixture does — the arrangement it reads is the one a catch sets up, and
- * that arrangement is about the whole roster. What it can do is exercise none of
- * their bodies: every catch below is POSED onto the forager's own tile, and a
- * hunter whose travel is off still makes contact (`specs/instrumentation.md`), so
- * no hunter can take a life this point did not stage. Called again after each
- * catch, in case the attempt it set up handed the den fresh bodies.
- */
-function holdRoster(h: Harness): void {
-  const roster = h.snapshot().predators;
-  for (let index = 0; index < roster.length; index += 1) {
-    h.debug.setPredatorTravel(index, false);
-  }
-}
-
 async function takeALife(h: Harness): Promise<Catch> {
   if (h.snapshot().screen === "countdown") h.debug.setScreen("playing");
-  holdRoster(h);
   const before = h.snapshot();
   if (before.screen !== "playing") {
     // Deliberately NOT a precondition. Which catch the run ends on is exactly
@@ -100,8 +83,10 @@ async function takeALife(h: Harness): Promise<Catch> {
     // could not be staged.
     return { before, after: before, hit: false, resumed: false };
   }
-  h.debug.setPredatorTile(0, before.forager.tx, before.forager.ty);
-  h.debug.setPredatorState(0, "chase");
+  await stageCatch(h, {
+    tx: before.forager.tx,
+    ty: before.forager.ty,
+  });
   const contact = await h.until(
     (s) => s.lives < before.lives || s.screen === "gameover",
     { maxFrames: CATCH_BUDGET, poll: 1 },

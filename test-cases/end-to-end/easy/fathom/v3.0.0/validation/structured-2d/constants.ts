@@ -27,6 +27,8 @@
 // space `specs/overview.md` defines (origin top-left, x right, y down), every
 // rate is per second, and every duration is in seconds.
 
+import type { Dir } from "./maze";
+
 // ---- The stage and the tile grid (specs/overview.md) ----------------------
 
 export const STAGE_W = 1280;
@@ -39,6 +41,17 @@ export const TILE = 32;
 /** Column 0's left edge and row 0's top edge, in logical units. */
 export const GRID_ORIGIN_X = 64;
 export const GRID_ORIGIN_Y = 80;
+
+/** The strip specs/ui.md keeps the score and the dive label in: y in [0, 80]. */
+export const TOP_STRIP = { y0: 0, y1: GRID_ORIGIN_Y };
+
+/**
+ * The strip it keeps the lives, the depth and the two gauges in: y in [656, 720].
+ */
+export const BOTTOM_STRIP = {
+  y0: GRID_ORIGIN_Y + GRID_ROWS * TILE,
+  y1: STAGE_H,
+};
 
 // ---- The clock (specs/movement.md, specs/instrumentation.md) --------------
 
@@ -65,6 +78,19 @@ export const MAZE_MAZING_MAX = 8.0;
 export const MAZE_DENSITY_MIN = 0.4;
 export const MAZE_DENSITY_MAX = 1.0;
 
+/** The rows the forager's start tile is drawn from, both ends in. */
+export const START_TILE_ROW_MIN = 9;
+export const START_TILE_ROW_MAX = 16;
+
+/** The den chamber's own bounds, all four ends in (specs/maze.md, "The den"). */
+export const DEN_COL_MIN = 16;
+export const DEN_COL_MAX = 19;
+export const DEN_ROW_MIN = 7;
+export const DEN_ROW_MAX = 9;
+
+/** The row the one gate tile sits in, directly above the chamber's top row. */
+export const DEN_GATE_ROW = 6;
+
 // ---- Movement (specs/movement.md) ----------------------------------------
 
 /** Logical units per second, four tiles per second, constant everywhere. */
@@ -75,6 +101,14 @@ export const FORAGER_SPEED = 128;
 /** `V = VISION_MIN + VISION_GAIN * G`: 96 at G 0, 160 at G 1. */
 export const VISION_MIN = 96;
 export const VISION_GAIN = 64;
+
+/**
+ * `R = KINDLE_VISION_MIN + KINDLE_VISION_GAIN * G`: the kindle variant's outer
+ * vision circle, 192 at G 0 and 320 at G 1. It is a rendering mask that senses
+ * nothing. The base variant has no such circle, so no base check reads these.
+ */
+export const KINDLE_VISION_MIN = 192;
+export const KINDLE_VISION_GAIN = 128;
 
 /** Brightness: what one plankton adds, how long it holds, how it decays. */
 export const BRIGHT_PER_EAT = 0.34;
@@ -88,6 +122,11 @@ export const SONAR_RANGE_MIN = 5;
 export const SONAR_WAVE_SPEED = 14;
 export const SONAR_MARK_TIME = 1.5;
 
+/** `E = max(SONAR_RANGE_MIN, SONAR_RANGE_BASE - (d - 1))` (specs/progression.md). */
+export function sonarRange(depth: number): number {
+  return Math.max(SONAR_RANGE_MIN, SONAR_RANGE_BASE - (depth - 1));
+}
+
 /** The ink cloud. */
 export const INK_COOLDOWN = 8;
 export const INK_RADIUS = 80;
@@ -96,6 +135,7 @@ export const INK_LIFE = 3;
 // ---- What lives in the corridors (specs/gameplay.md) ---------------------
 
 export const DRIFTER_INTERVAL = 25;
+export const DRIFTER_MAX = 2;
 /** The drifter's speed, and a DISGUISED Lanternjaw's (specs/predators/lanternjaw.md). */
 export const DRIFTER_SPEED = 64;
 
@@ -116,12 +156,16 @@ export const DEN_RELEASE_GAP = 5;
 /** The order the den releases in, which is the order a snapshot lists in. */
 export const DEN_ORDER = ["lanternjaw", "gloamfin", "flarefish"] as const;
 
-/** The order deeper mazes add predators in. */
+/** The order deeper mazes add predators in, and where the roster stops. */
 export const ROSTER_ADD_ORDER = [
   "gloamfin",
   "lanternjaw",
   "flarefish",
 ] as const;
+export const ROSTER_CAP_DEPTH = 4;
+export const ROSTER_CAP = 6;
+/** The ceiling per kind, which `ROSTER_CAP` is three of (specs/predators.md). */
+export const ROSTER_PER_KIND_CAP = 2;
 
 /** `R = LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * G`: 128 at G 0, 320 at G 1. */
 export const LANTERN_RANGE_BASE = 128;
@@ -150,6 +194,14 @@ export const SCORE_DRIFTER = 200;
 export const SCORE_CLEAR = 500;
 export const START_LIVES = 3;
 
+/** The seed `reset()` takes when a caller names none. */
+export const DEFAULT_SEED = 1;
+
+// ---- The debugging surface (specs/instrumentation.md) --------------------
+
+/** The version the surface reports as `version`. */
+export const FATHOM_DEBUG_VERSION = 1;
+
 // ---- Screen copy (specs/ui.md) -------------------------------------------
 
 export const TITLE_TEXT = "FATHOM";
@@ -157,6 +209,14 @@ export const TAGLINE_TEXT = "HUNT IN THE DARK";
 export const TITLE_ITEMS = ["DIVE", "HOW TO PLAY"] as const;
 export const PAUSE_ITEMS = ["RESUME", "RESTART", "QUIT TO MENU"] as const;
 export const GAMEOVER_ITEMS = ["PLAY AGAIN", "MENU"] as const;
+
+/** The dive label the HUD carries, which is the one thing the variants differ on. */
+export const DIVE_LABEL_BASE = "STANDARD";
+export const DIVE_LABEL_KINDLE = "KINDLE";
+
+/** Both the countdown and the cleared interstitial hold this long, in seconds. */
+export const HOLD_MIN = 1;
+export const HOLD_MAX = 3;
 
 // ---- Input (specs/movement.md) -------------------------------------------
 
@@ -194,6 +254,28 @@ export const BINDINGS = {
   pause: ["Escape", "KeyP"],
   mute: ["KeyM"],
 } as const;
+
+/**
+ * The arrow key that drives each direction, and its WASD counterpart, split out
+ * of `BINDINGS` so a check that is about one of the two binding sets names the
+ * set rather than an index into the pair.
+ */
+export const ARROW_KEY: Readonly<Record<Dir, string>> = {
+  up: BINDINGS.up[0],
+  down: BINDINGS.down[0],
+  left: BINDINGS.left[0],
+  right: BINDINGS.right[0],
+};
+
+export const WASD_KEY: Readonly<Record<Dir, string>> = {
+  up: BINDINGS.up[1],
+  down: BINDINGS.down[1],
+  left: BINDINGS.left[1],
+  right: BINDINGS.right[1],
+};
+
+/** The key that shows and hides the debug overlay (specs/instrumentation.md). */
+export const OVERLAY_KEY = "Backquote";
 
 // ---- The seven audio cues (specs/progression.md) -------------------------
 //

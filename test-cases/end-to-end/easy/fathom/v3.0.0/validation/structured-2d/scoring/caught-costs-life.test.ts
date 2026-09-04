@@ -32,7 +32,17 @@
 //
 // NO SCENE GUARD. The guard's first finding is a screen that changed under the
 // measurement, which here is the subject.
-
+//
+// A DELIBERATE DEPARTURE FROM THIS SUITE'S ISOLATION RULE, recorded rather than
+// hidden. Everywhere else in this project a scenario empties the board and spawns
+// back exactly what its requirement concerns, because a frozen bystander is still
+// a body the game's own rules could set moving. Here the roster IS half the
+// requirement — what a catch does to every hunter on the board is what this point
+// reads — so it cannot be cleared, and the whole roster is held in place instead.
+// What that buys is the reading; what it costs is that a build whose
+// `setPredatorTravel` does not hold a body could have a second hunter take the
+// life this point staged, and would fail here as well as at
+// `instrumentation.surface-present`.
 import { afterEach, beforeEach, it } from "vitest";
 import {
   assertDeepEqual,
@@ -41,6 +51,7 @@ import {
   fail,
 } from "../assert";
 import { BRIGHT_HOLD, INK_COOLDOWN, SONAR_COOLDOWN } from "../constants";
+import { holdPredators } from "../fixtures";
 import {
   captureReplay,
   centerOf,
@@ -50,7 +61,6 @@ import {
   type Harness,
 } from "../harness";
 import { corridorDirs, corridorTiles, type Dir, type Tile } from "../maze";
-import {} from "../scene";
 
 /** One step each way, for moving the forager off the tile it opened on. */
 const STEP: Readonly<Record<Dir, { dx: number; dy: number }>> = {
@@ -88,24 +98,6 @@ const SETTLE_TICKS = ticksFor(0.1);
 /** Ticks past the reading, purely so the clip shows the board coming back. */
 const TAIL_TICKS = ticksFor(0.75);
 
-/**
- * Hold every hunter of the roster where it stands, minds running.
- *
- * This point runs on the build's OWN board, so it cannot empty the roster the way
- * a posed fixture does — the arrangement it reads is the one a catch sets up, and
- * that arrangement is about the whole roster. What it can do is exercise none of
- * their bodies: every catch below is POSED onto the forager's own tile, and a
- * hunter whose travel is off still makes contact (`specs/instrumentation.md`), so
- * no hunter can take a life this point did not stage. Called again after each
- * catch, in case the attempt it set up handed the den fresh bodies.
- */
-function holdRoster(h: Harness): void {
-  const roster = h.snapshot().predators;
-  for (let index = 0; index < roster.length; index += 1) {
-    h.debug.setPredatorTravel(index, false);
-  }
-}
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -127,7 +119,7 @@ it("Contact costs a life and sets the board up again", async () => {
     );
   }
 
-  holdRoster(h);
+  await holdPredators(h);
 
   // Off the start tile, so the reading below is a real question rather than a
   // forager that never left. It is CARRIED off it rather than driven: what this

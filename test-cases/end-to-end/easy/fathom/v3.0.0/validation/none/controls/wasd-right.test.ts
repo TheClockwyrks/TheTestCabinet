@@ -42,7 +42,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
-import { TICK_HZ, TILE } from "../constants";
+import { TICK_HZ, TILE, WASD_KEY } from "../constants";
 import { poseMoveKeyRun } from "../fixtures";
 import {
   captureReplay,
@@ -53,7 +53,7 @@ import {
 import { requireSceneHeld, sceneGuard } from "../scene";
 
 /** The second key specs/movement.md binds the `right` action to. */
-const KEY = "KeyD";
+const KEY = WASD_KEY.right;
 
 /**
  * The held window the verdict is read at the end of, in ticks.

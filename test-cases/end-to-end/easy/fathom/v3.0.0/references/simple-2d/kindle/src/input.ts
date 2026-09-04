@@ -18,7 +18,11 @@
 import { ACTIONS, BINDINGS, LAYOUT, type ActionName } from "./constants";
 import { DIRS } from "./grid";
 import type { Dir, Heading } from "./state";
-import type { InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type {
+  InitApi,
+  PointerSample,
+  UpdateApi,
+} from "@test-cabinet/simple-2d";
 
 /**
  * Register every action, bound to its keys.
@@ -73,6 +77,19 @@ export function desiredDirection(
   if (desired !== null && now.includes(desired)) return desired;
   if (now.length > 0) return now[0];
   return desired;
+}
+
+/**
+ * What the pointer and the finger did this frame, in the game's own logical
+ * units, in arrival order.
+ *
+ * A LIST rather than a position, because the two menu gestures `specs/ui.md`
+ * fixes are about ORDER: a press and a release inside one item's region confirm
+ * it, and the same two edges in different regions confirm nothing. Reading the
+ * current position alone would lose the region the press landed in.
+ */
+export function pointerSamples(api: UpdateApi): readonly PointerSample[] {
+  return api.input.pointerSamples();
 }
 
 function pressed(api: UpdateApi, action: ActionName): boolean {

@@ -42,6 +42,8 @@ field below. It is a pure read that changes nothing.
 {
   version: 1,
   screen: "title" | "howto" | "countdown" | "playing" | "paused" | "cleared" | "gameover",
+  menuIndex: <number | null>,    // the highlighted item on the current menu
+  titleIndex: <number>,          // the title menu's remembered selection
   depth: <number>,               // the current maze's depth, from 1
   score: <number>,
   lives: <number>,
@@ -143,6 +145,17 @@ shows and how the game moves between them.
 | `"paused"` | Paused over a frozen maze. |
 | `"cleared"` | On the interstitial after a maze is cleared. |
 | `"gameover"` | On the game-over screen after the last life is lost. |
+
+## The menus
+
+- `menuIndex` is the index of the highlighted item on the menu the current
+  screen shows, counted from `0` over the items `specs/ui.md` lists for that
+  menu. It is `null` on `"howto"`, `"countdown"`, `"playing"` and `"cleared"`,
+  which show no menu.
+- `titleIndex` is the title menu's remembered selection: the index of the item
+  last confirmed on that menu, `0` before any of them has been. It is never
+  `null`, and `specs/ui.md` states what sets it and which arrivals at `"title"`
+  take `menuIndex` from it.
 
 ## The run
 

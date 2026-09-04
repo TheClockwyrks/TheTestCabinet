@@ -17,9 +17,10 @@
 import { PlayerController } from "@test-cabinet/structured-2d";
 import { noCues, playCues } from "./audio";
 import { GAMEOVER_ITEMS, PAUSE_ITEMS, TITLE_ITEMS } from "./constants";
-import { beginDive, toTitle } from "./flow";
+import { beginDive, openMenu, toTitle } from "./flow";
 import type { Dir } from "./grid";
 import { MOVE_ACTIONS } from "./input";
+import { itemAt } from "./menu";
 import { emitSonar, releaseInk } from "./sim";
 import { fathomState, type FathomState } from "./game";
 
@@ -27,6 +28,9 @@ import { fathomState, type FathomState } from "./game";
 function wrap(index: number, delta: number, count: number): number {
   return (index + delta + count) % count;
 }
+
+/** What a press on a screen with no item regions is remembered as. */
+const SCREEN_PRESS = 0;
 
 export class FathomController extends PlayerController {
   override tick(): void {
@@ -41,18 +45,24 @@ export class FathomController extends PlayerController {
     switch (state.screen) {
       case "title":
         this.menu(state, TITLE_ITEMS.length, (index) => {
+          // Confirming an entry here records it, from the keyboard, a pointer
+          // and a contact alike, and every later arrival at the title lands on
+          // it (`specs/ui.md`).
+          state.titleIndex = index;
           if (index === 0) beginDive(state);
-          else {
-            state.screen = "howto";
-            state.menuIndex = 0;
-          }
+          else openMenu(state, "howto");
         });
         return;
-      case "howto":
+      case "howto": {
         // Both the confirmation and the back control leave for the title, and
-        // both edges are read so neither is left armed for a later frame.
-        if (this.leaves()) toTitle(state);
+        // the screen shows no menu, so a gesture completed anywhere on it
+        // returns too (`specs/ui.md`). All three are read before any is acted
+        // on, so none is left armed for a later frame.
+        const left = this.leaves();
+        const tapped = this.screenGesture(state);
+        if (left || tapped) toTitle(state);
         return;
+      }
       case "paused":
         this.pauseMenu(state);
         return;
@@ -84,8 +94,7 @@ export class FathomController extends PlayerController {
     this.steer(state);
 
     if (pause) {
-      state.screen = "paused";
-      state.menuIndex = 0;
+      openMenu(state, "paused");
       return;
     }
 
@@ -115,17 +124,24 @@ export class FathomController extends PlayerController {
     state.heldDirs = held;
   }
 
-  /** The pause menu, which `back` leaves the same way `RESUME` does. */
+  /**
+   * The pause menu, which the pause control leaves the same way `RESUME` does.
+   *
+   * `Escape` raises `back` and `pause` on the one frame, and the paused screen
+   * reads both BEFORE the menu's own edges, so a frame carrying either resumes
+   * once and does nothing else (`specs/ui.md`). Both are read so neither is left
+   * armed for the frame after.
+   */
   private pauseMenu(state: FathomState): void {
-    if (this.input.pressed("back")) {
-      state.screen = "playing";
-      state.menuIndex = 0;
+    const back = this.input.pressed("back");
+    const paused = this.input.pressed("pause");
+    if (back || paused) {
+      openMenu(state, "playing");
       return;
     }
     this.menu(state, PAUSE_ITEMS.length, (index) => {
       if (index === 0) {
-        state.screen = "playing";
-        state.menuIndex = 0;
+        openMenu(state, "playing");
       } else if (index === 1) {
         beginDive(state);
       } else {
@@ -152,11 +168,63 @@ export class FathomController extends PlayerController {
     count: number,
     onConfirm: (index: number) => void,
   ): void {
+    // The pointer is read first, because a gesture selects the item it is over
+    // before it confirms one and the confirm it raises acts on that selection.
+    const pointed = this.menuPointer(state, count);
     const moveUp = this.input.pressed("up");
     const moveDown = this.input.pressed("down");
     const accepted = this.input.pressed("confirm");
-    if (moveUp) state.menuIndex = wrap(state.menuIndex, -1, count);
+    if (pointed !== null) onConfirm(pointed);
+    else if (moveUp) state.menuIndex = wrap(state.menuIndex, -1, count);
     else if (moveDown) state.menuIndex = wrap(state.menuIndex, 1, count);
     else if (accepted) onConfirm(state.menuIndex);
+  }
+
+  /**
+   * The pointer and the finger over the current menu (`specs/ui.md`), and the
+   * item a gesture confirmed, or `null` where none did.
+   *
+   * A sample that lands on an item selects it, which is what makes a mouse move
+   * select and a contact select on its landing, since a finger never hovers. A
+   * confirm takes both of its edges inside ONE item's region, so the release
+   * confirms only where it lands on the item the press landed on: two edges in
+   * different regions, and an edge outside every region, confirm nothing.
+   */
+  private menuPointer(state: FathomState, count: number): number | null {
+    let confirmed: number | null = null;
+    for (const sample of this.input.pointerSamples()) {
+      const over = itemAt(state.screen, sample.x, sample.y);
+      if (over !== null && over < count) state.menuIndex = over;
+      if (sample.type === "down") {
+        state.pressedItem = over;
+        continue;
+      }
+      if (sample.type !== "up") continue;
+      if (over !== null && over === state.pressedItem) confirmed = over;
+      state.pressedItem = null;
+    }
+    return confirmed;
+  }
+
+  /**
+   * A gesture completed on a screen that shows no menu: a pointer pressed and
+   * released on it, or a contact landed and lifted on it (`specs/ui.md`).
+   *
+   * The screen carries no item regions, so the press is remembered as
+   * `SCREEN_PRESS` rather than as an item, and the release completes the gesture
+   * wherever on the screen it lands.
+   */
+  private screenGesture(state: FathomState): boolean {
+    let tapped = false;
+    for (const sample of this.input.pointerSamples()) {
+      if (sample.type === "down") {
+        state.pressedItem = SCREEN_PRESS;
+        continue;
+      }
+      if (sample.type !== "up") continue;
+      if (state.pressedItem === SCREEN_PRESS) tapped = true;
+      state.pressedItem = null;
+    }
+    return tapped;
   }
 }

@@ -79,6 +79,22 @@ export class FathomState extends GameState {
   screen: Screen = "title";
   /** The highlighted item of whichever menu the screen is showing. */
   menuIndex = 0;
+  /**
+   * The title menu's remembered selection: the item last confirmed there, `0`
+   * until one has been. Every arrival at the title takes `menuIndex` from it
+   * (`specs/ui.md`), and it survives the return a dive is put back by.
+   */
+  titleIndex = 0;
+  /**
+   * The menu item a pointer or a finger is currently pressed on, or `null`.
+   *
+   * A confirm takes both of its edges inside ONE region (`specs/ui.md`), so the
+   * region the press landed in has to outlive the frame it landed on. It is
+   * derived from the gesture in flight and nothing else, and every arrival at a
+   * menu drops it, so no pose can leave a press latched over a menu it was not
+   * made on.
+   */
+  pressedItem: number | null = null;
 
   depth = 1;
   score = 0;

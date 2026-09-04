@@ -33,7 +33,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
-import { TICK_HZ, TILE } from "../constants";
+import { ARROW_KEY, TICK_HZ, TILE } from "../constants";
 import { poseMoveKeyRun } from "../fixtures";
 import {
   captureReplay,
@@ -44,7 +44,7 @@ import {
 import { requireSceneHeld, sceneGuard } from "../scene";
 
 /** The key `specs/movement.md` binds the `right` action to. */
-const KEY = "ArrowRight";
+const KEY = ARROW_KEY.right;
 
 /**
  * The held window the verdict is read at the end of, in ticks.

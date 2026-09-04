@@ -29,11 +29,26 @@
 // declared optional here so one harness serves both workspaces, and the kindle
 // slice under `kindle/` requires it before a check reads it.
 
-/** The surface's version, reported as `version` (`FATHOM_DEBUG_VERSION`). */
-export const FATHOM_DEBUG_VERSION = 1;
+import { DEFAULT_SEED, FATHOM_DEBUG_VERSION } from "./constants";
 
-/** The seed `reset()` restores when the caller names none (`DEFAULT_SEED`). */
-export const DEFAULT_SEED = 1;
+// The two figures this module states about the surface are the specification's
+// like every other figure in this project, so they live in `constants.ts` with
+// the rest and are re-exported here for the checks that already name them off
+// the surface description.
+export { DEFAULT_SEED, FATHOM_DEBUG_VERSION };
+
+/**
+ * A menu item's hit region, as `menuItemRect` reports it (specs/instrumentation.md).
+ *
+ * `x` and `y` are the region's top-left corner and `w` and `h` its size, all in
+ * the logical units specs/overview.md fixes the stage in.
+ */
+export interface MenuRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 /** The screens the state machine moves between (specs/state.md). */
 export type Screen =
@@ -199,6 +214,19 @@ export interface InkSnapshot {
 export interface FathomSnapshot {
   version: number;
   screen: Screen;
+  /**
+   * The highlighted item on the menu the current screen shows, counted from `0`
+   * over the items specs/ui.md lists for that menu.
+   *
+   * `null` on `"howto"`, `"countdown"`, `"playing"` and `"cleared"`, which show
+   * no menu (specs/state.md).
+   */
+  menuIndex: number | null;
+  /**
+   * The title menu's remembered selection: the index of the item last confirmed
+   * there, `0` before any of them has been. Never `null` (specs/state.md).
+   */
+  titleIndex: number;
   /** The current maze's depth, a whole number from `1`. */
   depth: number;
   score: number;
@@ -249,11 +277,21 @@ export interface FathomSnapshot {
 export interface FathomDebugApi {
   version: number;
   /** Restores every observable field to its title-screen value. */
-  reset(options?: { seed?: number }): void;
+  reset(seed?: number): void;
   /** A pure read of the game. */
   snapshot(): FathomSnapshot;
+  /**
+   * The hit region of item `index` on the menu the current screen shows, and
+   * `null` on the four screens that show no menu or for an index that menu does
+   * not hold. A pure reading: it changes nothing.
+   */
+  menuItemRect(index: number): MenuRect | null;
   /** Sets `screen`, and changes no other field. */
   setScreen(s: Screen): void;
+  /** Highlights item `index` of the current screen's menu, and nothing else. */
+  setMenuIndex(index: number): void;
+  /** Sets the title menu's remembered selection, and nothing else. */
+  setTitleIndex(index: number): void;
   /** Sets the running score to a whole number of at least `0`. */
   setScore(points: number): void;
   /** Sets the lives held in reserve, the one being played not among them. */
@@ -325,13 +363,16 @@ export interface FathomDebugApi {
  * sweeps the surface (instrumentation/surface-present) calls a reading for its
  * value and a pose for its effect.
  */
-export const READINGS = ["snapshot"] as const;
+export const READINGS = ["snapshot", "menuItemRect"] as const;
 
 /** Every operation the surface must carry, in both variants. */
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "menuItemRect",
   "setScreen",
+  "setMenuIndex",
+  "setTitleIndex",
   "setScore",
   "setLives",
   "setDepth",

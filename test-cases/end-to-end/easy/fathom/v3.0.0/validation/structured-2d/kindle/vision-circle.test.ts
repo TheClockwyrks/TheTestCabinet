@@ -52,11 +52,11 @@ import {
   startPlaying,
   visibilityAt,
 } from "../harness";
+import { KINDLE_VISION_MIN } from "../constants";
 import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import {
   FOG_MATCH,
   MASKED_MATCH,
-  KINDLE_VISION_MIN,
   tileFromForager,
   windowRadius,
 } from "./circle";

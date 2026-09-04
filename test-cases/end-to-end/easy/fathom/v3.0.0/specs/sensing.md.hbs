@@ -94,7 +94,8 @@ one that reveals and the one that draws predators.{{/if}}
 
 - Its radius is `V = VISION_MIN + VISION_GAIN * G`, with `VISION_MIN` (`96`)
   and `VISION_GAIN` (`64`) in logical units, so `V` is `96` (3 tiles) at
-  `G = 0` and `160` (5 tiles) at `G = 1`.{{#if (eq variant.slug "kindle")}} `V` is smaller than `R` at every brightness.{{/if}}
+  `G = 0` and `160` (5 tiles) at `G = 1`.{{#if (eq variant.slug "kindle")}}
+  `V` is smaller than `R` at every brightness.{{/if}}
 - The light travels straight. A tile is lit by it when the tile's center lies
   within `V` of the forager's center and the segment joining those two centers
   crosses no rock tile other than that tile itself.
@@ -207,7 +208,7 @@ forager.
   tiles it lit stay revealed.
 {{/if}}
 - The Gloamfin's ping reveals nothing. Its wavefront is drawn sweeping outward
-  through the corridors{{#if (eq variant.slug "kindle")}}, beyond the vision circle included{{/if}}, in the tint `specs/predators/gloamfin.md`
-  fixes for the ping that cast it. It draws no tile, reveals and remembers no
-  tile, and marks no predator and no drifter, the Gloamfin that cast it
-  included.
+  through the corridors{{#if (eq variant.slug "kindle")}}, beyond the vision circle
+  included{{/if}}, in the tint `specs/predators/gloamfin.md` fixes for the
+  ping that cast it. It draws no tile, reveals and remembers no tile, and marks
+  no predator and no drifter, the Gloamfin that cast it included.

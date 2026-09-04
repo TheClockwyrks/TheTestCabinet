@@ -498,6 +498,45 @@ export async function holdPredators(h: FixtureHost): Promise<number> {
 }
 
 /**
+ * Empty the roster and stand ONE hunter on `tile`, holding its body there.
+ *
+ * The staged catch, for the points whose requirement is what a CONTACT costs
+ * rather than what the roster does. `specs/gameplay.md` costs a life for contact
+ * "whatever that predator's kind and whatever it is doing", so the world those
+ * points concern holds exactly one hunter, and every other body comes off the
+ * board rather than being frozen on it: a held bystander is still a body the
+ * game's own rules could set moving again, and one that escaped would take the
+ * very life the point is counting.
+ *
+ * Its travel is held and its mind left running, which is the pair that makes a
+ * posed contact stand still long enough to be resolved
+ * (`specs/instrumentation.md`), and it is posed into `"chase"` so the hunter that
+ * takes the life is a hunter that has the forager rather than one that wandered
+ * onto it.
+ *
+ * CALL IT AGAIN FOR EVERY ATTEMPT. A lost life sets the maze up afresh
+ * (`specs/progression.md`), which lays the depth's whole roster back out, so the
+ * one hunter this staged is gone by the time the next attempt opens.
+ */
+export async function stageCatch(h: FixtureHost, tile: Tile): Promise<number> {
+  await h.debug.clearPredators();
+  return spawnPredator(h, CATCH_KIND, tile, {
+    state: "chase",
+    travel: false,
+  });
+}
+
+/**
+ * The kind {@link stageCatch} stands on the forager.
+ *
+ * Deliberately a NAMED kind rather than the roster's index `0`: with the roster
+ * emptied there is no release order left to index into, and `specs/gameplay.md`
+ * makes contact cost a life whatever the kind, so which one it is says nothing
+ * about the reading.
+ */
+const CATCH_KIND = "lanternjaw";
+
+/**
  * Add one bonus drifter and hand back its index, on the same reading.
  *
  * Its two faculties are posed separately, as a hunter's are. `mind: false`

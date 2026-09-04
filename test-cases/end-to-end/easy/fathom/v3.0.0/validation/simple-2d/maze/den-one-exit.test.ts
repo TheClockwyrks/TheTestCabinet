@@ -8,13 +8,12 @@
 // carries, which must be one; and where that one sits, which must be the top of
 // the chamber.
 //
-// WHAT "ON ITS TOP EDGE" IS READ AS, and why it is read that way. The
-// specification places the chamber "around columns `15` through `20` and rows `7`
-// through `9`" and does not say whether the gate replaces a chamber tile in its
-// top row or sits in the rock immediately above it. Both are the chamber's top
-// edge and both leave the predators one door upward, so this point accepts
-// either, and asks the two things that separate a top-edge gate from a side or
-// bottom one under both readings:
+// WHAT "ON ITS TOP EDGE" IS READ AS. The specification makes the chamber den
+// interior throughout, over "columns `16` through `19` and rows `7` through `9`",
+// and puts the one gate in row `6` directly above it. So the gate is never a
+// chamber tile, and what separates that gate from a side or a bottom one is the
+// pair of readings below. WHERE the chamber itself sits is `maze/den-bounds`, so
+// this point asks only about the door:
 //
 //   * the tile directly BELOW the gate is den interior, so the door opens onto
 //     the chamber from above rather than from a flank; and

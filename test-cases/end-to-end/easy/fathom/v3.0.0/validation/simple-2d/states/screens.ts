@@ -35,7 +35,7 @@
 
 import { assertMatches } from "../assert";
 import { BINDINGS } from "../constants";
-import { holdPredators } from "../fixtures";
+import { stageCatch } from "../fixtures";
 import {
   DIR_KEY,
   drawnText as textRuns,
@@ -234,9 +234,10 @@ export async function loseEveryLife(h: Harness): Promise<FathomSnapshot> {
     if (snapshot.screen !== "playing") return snapshot;
 
     const lives = snapshot.lives;
-    await holdPredators(h);
-    h.debug.setPredatorTile(0, snapshot.forager.tx, snapshot.forager.ty);
-    h.debug.setPredatorState(0, "chase");
+    await stageCatch(h, {
+      tx: snapshot.forager.tx,
+      ty: snapshot.forager.ty,
+    });
     const taken = await h.until(
       (s) => s.lives < lives || s.screen === "gameover",
       { maxFrames: CATCH_TICKS, poll: 2 },

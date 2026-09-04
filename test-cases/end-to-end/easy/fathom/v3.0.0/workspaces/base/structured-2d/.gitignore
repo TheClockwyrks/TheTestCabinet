@@ -13,7 +13,7 @@ node_modules/
 # Coverage reports — produced by `npm test`.
 coverage/
 
-# Playwright verification scratch.
+# Playwright's report and the per-test output beside it.
 test-results/
 playwright-report/
 

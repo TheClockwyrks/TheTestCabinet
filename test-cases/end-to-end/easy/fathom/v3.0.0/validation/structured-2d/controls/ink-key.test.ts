@@ -31,7 +31,13 @@ import {
   assertGreaterThan,
   assertNotEqual,
 } from "../assert";
-import { FORAGER_SPEED, INK_LIFE, INK_RADIUS, TICK_DT } from "../constants";
+import {
+  BINDINGS,
+  FORAGER_SPEED,
+  INK_LIFE,
+  INK_RADIUS,
+  TICK_DT,
+} from "../constants";
 import { poseStraightRun } from "../fixtures";
 import {
   captureReplay,
@@ -42,7 +48,7 @@ import {
 import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /** The first key specs/movement.md binds the `b` action to. */
-const KEY = "ShiftLeft";
+const KEY = BINDINGS.b[0];
 
 /** A corridor wide enough to hold the whole `INK_RADIUS` cloud in the clip. */
 const RUN_TILES = 12;

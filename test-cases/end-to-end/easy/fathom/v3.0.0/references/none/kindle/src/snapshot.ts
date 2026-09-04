@@ -24,6 +24,7 @@ import type { FathomState } from "./game";
 import { lightDetectRange, isBlooming, isCharging } from "./predators";
 import {
   drifterLit,
+  menuItems,
   predatorLit,
   sonarRange,
   visionRadius,
@@ -99,6 +100,10 @@ export interface InkCloudSnapshot {
 export interface FathomSnapshot {
   version: number;
   screen: Screen;
+  /** The highlighted item, `null` on the four screens that show no menu. */
+  menuIndex: number | null;
+  /** The title menu's remembered selection, never `null`. */
+  titleIndex: number;
   depth: number;
   score: number;
   lives: number;
@@ -163,6 +168,8 @@ export function snapshot(
   return {
     version: FATHOM_DEBUG_VERSION,
     screen: state.screen,
+    menuIndex: menuItems(state.screen).length > 0 ? state.menu : null,
+    titleIndex: state.titleIndex,
     depth: state.depth,
     score: state.score,
     lives: state.lives,

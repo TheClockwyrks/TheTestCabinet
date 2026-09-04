@@ -1,24 +1,21 @@
-// amber/drifter-permanent — a drifter stays, at its own pace, until it is eaten.
+// amber/drifter-permanent — a drifter stays in the maze until it is eaten.
 //
-// `specs/gameplay.md`: "A drifter stays in the maze until it is eaten, holding its
-// glow and its pace for as long as that takes", travelling "at `DRIFTER_SPEED`
-// (`64` logical units per second, half the forager's speed)". So a drifter neither
-// fades on a timer nor slows: it is still there long after the `DRIFTER_INTERVAL`
-// (`25 s`) cadence that admitted it would have come round again, and it leaves the
-// list only when the forager reaches it.
+// specs/gameplay.md: "A drifter stays in the maze until it is eaten, holding its
+// glow and its pace for as long as that takes." So a drifter neither fades on a
+// timer nor is swept up by the cadence that admitted it: it is still there long
+// after `DRIFTER_INTERVAL` (`25 s`) would have come round again, and it leaves
+// the list only when the forager reaches it.
 //
-// THE PACE IS MEASURED AS PATH, NOT AS DISPLACEMENT. A drifter "changes direction
-// at tile centers", so a straight line between two samples taken a second apart
-// cuts every corner it turned. Each window here sums the ground covered tick by
-// tick over `PACE_TICKS`, which at `DRIFTER_SPEED` is one `TILE` of travel and so
-// spans at most one turn; the corner a single right-angle turn cuts is under half
-// a percent of that path, well inside the two percent this point allows.
+// WHAT THIS POINT READS, AND WHAT IT NO LONGER DOES. The PACE a drifter holds is
+// `amber.drifter-speed`, measured over a straight run of its own; this point is
+// the permanence alone — still on the board after a stretch past the cadence, and
+// gone on the bite.
 //
 // THE WORLD HOLDS THE FORAGER AND ONE DRIFTER. `poseApart` empties the board, so
-// the roster is gone, no plankton stand on it, and — because `specs/gameplay.md`
+// the roster is gone, no plankton stand on it, and — because specs/gameplay.md
 // admits drifters at the gate only "while plankton remain in the maze" — the
-// cadence lets none in. The drifter followed below is therefore the one this
-// check spawned and the only one there is.
+// cadence lets none in. The drifter followed below is therefore the one this check
+// spawned and the only one there is.
 //
 // THE DRIFTER PATROLS A RING OF ITS OWN. `poseApart` puts the forager in one room
 // and the ring across solid rock, so over half a minute of wandering the drifter
@@ -29,26 +26,22 @@
 // drifter still drifting, half a minute after it appeared, and then taken.
 
 import { afterEach, beforeEach, it } from "vitest";
+
 import {
   assertEqual,
   assertGreaterThan,
   assertGreaterThanOrEqual,
-  assertLessThanOrEqual,
 } from "../assert";
-import { DRIFTER_INTERVAL, DRIFTER_SPEED, TICK_HZ } from "../constants";
+import { DRIFTER_INTERVAL } from "../constants";
 import { poseApart, spawnDrifter } from "../fixtures";
 import {
   captureReplay,
   createHarness,
-  ticks,
-  type FathomSnapshot,
-  type Harness,
   startPlaying,
+  type Harness,
 } from "../harness";
 import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
-
-/** One bonus drifter, as the snapshot reports it. */
-type Drifter = FathomSnapshot["drifters"][number];
+import { ticksFor } from "../constants";
 
 /** The ring the drifter patrols, in tiles along its top edge. */
 const RING = 4;
@@ -56,78 +49,17 @@ const RING = 4;
 /** How far that sealed ring stands from the forager's room, in tiles. */
 const APART = 12;
 
-/**
- * Ticks each pace window covers.
- *
- * Half a second, which at `DRIFTER_SPEED` (64) is exactly one `TILE` (32) of
- * travel and so spans at most one turn — a drifter "changes direction at tile
- * centers" (`specs/gameplay.md`).
- */
-const PACE_TICKS = ticks(0.5);
+/** Ticks of wandering between the presence checks, run off camera. */
+const GAP_TICKS = ticksFor(12);
 
-/** Ticks of wandering between the pace windows, run off camera. */
-const GAP_TICKS = ticks(12);
+/** How many of those checks the stretch is broken into. */
+const CHECKPOINTS = 3;
 
-/** Ticks of wandering after the third window, taking the stretch past the cadence. */
-const TAIL_GAP_TICKS = ticks(6);
-
-/** Ticks of the drifter simply drifting that the clip shows, after the last window. */
-const WATCH_TICKS = ticks(2);
+/** Ticks of the drifter simply drifting that the clip shows, at the end. */
+const WATCH_TICKS = ticksFor(2);
 
 /** Ticks allowed for the bite once the forager stands on the drifter's tile. */
-const EAT_TICKS = ticks(0.25);
-
-/**
- * How far a measured pace may sit from `DRIFTER_SPEED`, in logical units per
- * second.
- *
- * The review item's own bound: two percent of the `64` `specs/gameplay.md` fixes.
- */
-const PACE_TOLERANCE = DRIFTER_SPEED * 0.02;
-
-/** The drifter nearest a point, which is the one a previous sample followed. */
-function drifterNear(
-  snapshot: FathomSnapshot,
-  to: { x: number; y: number } | null,
-): Drifter | null {
-  if (snapshot.drifters.length === 0) return null;
-  if (to === null) return snapshot.drifters[0];
-  return snapshot.drifters.reduce((best, one) =>
-    Math.hypot(one.x - to.x, one.y - to.y) <
-    Math.hypot(best.x - to.x, best.y - to.y)
-      ? one
-      : best,
-  );
-}
-
-/** One pace window: the ground covered per second, and whether the drifter held. */
-interface Pace {
-  speed: number;
-  at: Drifter | null;
-  held: boolean;
-}
-
-/** Follow the drifter tick by tick and report the pace it kept over the window. */
-async function pace(
-  h: Harness,
-  from: { x: number; y: number } | null,
-): Promise<Pace> {
-  let previous = drifterNear(await h.snapshot(), from);
-  let path = 0;
-  let held = previous !== null;
-  for (let tick = 0; tick < PACE_TICKS; tick += 1) {
-    await h.advance(1);
-    const now = drifterNear(await h.snapshot(), previous);
-    if (now === null || previous === null) {
-      held = false;
-      previous = now;
-      continue;
-    }
-    path += Math.hypot(now.x - previous.x, now.y - previous.y);
-    previous = now;
-  }
-  return { speed: (path * TICK_HZ) / PACE_TICKS, at: previous, held };
-}
+const EAT_TICKS = ticksFor(0.25);
 
 let h: Harness;
 
@@ -139,7 +71,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("keeps a drifter in the maze at its own pace until the forager eats it", async () => {
+it("keeps a drifter in the maze until the forager eats it", async () => {
   await startPlaying(h);
   const rooms = await poseApart(h, APART, { ring: RING });
   await parkForager(h, rooms.near);
@@ -147,66 +79,54 @@ it("keeps a drifter in the maze at its own pace until the forager eats it", asyn
   const guard = await sceneGuard(h);
   const opened = await h.snapshot();
 
-  // The long stretch, off camera.
-  const first = await pace(h, null);
-  await h.skip(GAP_TICKS);
-  const second = await pace(h, first.at);
-  await h.skip(GAP_TICKS);
-  const third = await pace(h, second.at);
-  await h.skip(TAIL_GAP_TICKS);
-
-  const watched = await captureReplay(h, "permanent", async () => {
-    const last = await pace(h, third.at);
-    await h.advance(WATCH_TICKS);
-    const still = await h.snapshot();
-    return { last, still };
-  });
-
-  requireSceneHeld(watched.still, guard);
   assertEqual(
     opened.drifters.length,
     1,
     "the bonus drifters on the board once one was spawned onto the sealed ring",
   );
+
+  // The long stretch, off camera, with the list read at each checkpoint so a
+  // drifter that vanished halfway names the moment rather than the end.
+  for (let checkpoint = 1; checkpoint <= CHECKPOINTS; checkpoint += 1) {
+    await h.skip(GAP_TICKS);
+    const seen = await h.snapshot();
+    assertGreaterThanOrEqual(
+      seen.drifters.length,
+      1,
+      `the bonus drifters in the maze ${(seen.simTime - opened.simTime).toFixed(1)} s ` +
+        "after one was spawned, which stays until it is eaten (specs/gameplay.md)",
+    );
+  }
+
+  const watched = await captureReplay(h, "permanent", async () => {
+    await h.advance(WATCH_TICKS);
+    return await h.snapshot();
+  });
+
+  requireSceneHeld(watched, guard);
   assertGreaterThan(
-    watched.still.simTime - opened.simTime,
+    watched.simTime - opened.simTime,
     DRIFTER_INTERVAL,
     "the seconds of simulation the drifter was watched over, against the " +
       "DRIFTER_INTERVAL cadence it has to outlast",
   );
   assertGreaterThanOrEqual(
-    watched.still.drifters.length,
+    watched.drifters.length,
     1,
     "the bonus drifters still in the maze at the end of that stretch",
   );
 
-  const windows = [first, second, third, watched.last];
-  for (const [index, window] of windows.entries()) {
-    assertEqual(
-      window.held,
-      true,
-      `the drifter was in the list at every tick of pace window ${index + 1}`,
-    );
-    assertLessThanOrEqual(
-      Math.abs(window.speed - DRIFTER_SPEED),
-      PACE_TOLERANCE,
-      `how far the drifter's pace over window ${index + 1} sits from ` +
-        `DRIFTER_SPEED (${DRIFTER_SPEED}), measured as ground covered along ` +
-        `its own path over ${PACE_TICKS} ticks`,
-    );
-  }
-
   // And it leaves the list only when the forager reaches it. The drifter is held
   // where it stands and the forager put on its tile, which is the contact
-  // `specs/gameplay.md` defines; what the bite PAYS is amber/drifter-score's.
-  const taken = watched.still.drifters[0];
+  // specs/gameplay.md defines; what the bite PAYS is amber.drifter-score's.
+  const taken = watched.drifters[0];
   await h.debug.setDrifterMind(drifter, false);
   await h.debug.setForagerTile(taken.tx, taken.ty);
   await h.advance(EAT_TICKS);
   assertEqual(
     (await h.snapshot()).drifters.length,
-    watched.still.drifters.length - 1,
-    `the bonus drifters left once the forager stood on the drifter's tile ` +
-      `(${taken.tx}, ${taken.ty})`,
+    watched.drifters.length - 1,
+    "the bonus drifters left once the forager stood on the drifter's tile " +
+      `(${String(taken.tx)}, ${String(taken.ty)})`,
   );
 });

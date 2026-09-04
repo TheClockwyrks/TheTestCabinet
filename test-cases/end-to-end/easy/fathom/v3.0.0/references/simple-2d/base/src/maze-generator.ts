@@ -36,11 +36,20 @@ const CELL_ROWS: readonly number[] = [1, 3, 5, 7, 9, 11, 13, 15];
  */
 const AXIS_COL = 17;
 
-/** The den chamber, and the gate on its top edge. */
-const DEN_X0 = 15;
-const DEN_X1 = 20;
+/**
+ * The den chamber `specs/maze.md` fixes, and the gate on its top edge.
+ *
+ * The chamber itself is columns `16` through `19`, rows `7` through `9`. The
+ * lattice gives up a wider box than that — a column of it on each side — because
+ * the chamber has to be walled: a corridor cell at column `15` would sit against
+ * den interior at column `16`, and the den is enclosed.
+ */
+const DEN_X0 = 16;
+const DEN_X1 = 19;
 const DEN_Y0 = 7;
 const DEN_Y1 = 9;
+const WALL_X0 = DEN_X0 - 1;
+const WALL_X1 = DEN_X1 + 1;
 const GATE_X = 17;
 const GATE_Y = DEN_Y0 - 1;
 
@@ -60,8 +69,9 @@ interface Link {
   readonly ty: number;
 }
 
+/** Inside the box the lattice gives up: the chamber and the wall around it. */
 function inDen(tx: number, ty: number): boolean {
-  return tx >= DEN_X0 && tx <= DEN_X1 && ty >= DEN_Y0 && ty <= DEN_Y1;
+  return tx >= WALL_X0 && tx <= WALL_X1 && ty >= DEN_Y0 && ty <= DEN_Y1;
 }
 
 /** Every cell of the left half, with the ones the den chamber swallows dropped. */

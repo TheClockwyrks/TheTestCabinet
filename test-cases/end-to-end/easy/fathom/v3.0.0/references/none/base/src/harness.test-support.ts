@@ -20,6 +20,7 @@ import {
   poseMaze,
   type FathomState,
 } from "./game";
+import type { PointerSample, PointerSampleType } from "./pointer";
 import type { Game, InitApi, TickApi } from "./runtime";
 
 /**
@@ -62,6 +63,16 @@ export interface Harness {
   release(action: string): void;
   /** Press and release an action, arming one edge. */
   press(action: string): void;
+  /**
+   * Deliver one pointer sample at a logical point, as the runtime's pointer
+   * layer would. It is read by the next tick and dropped with it.
+   */
+  point(
+    type: PointerSampleType,
+    x: number,
+    y: number,
+    device?: PointerSample["device"],
+  ): void;
   /** Run whole ticks. */
   advance(ticks: number): void;
   /** Draw one frame through a real 2D context, at the given interpolation. */
@@ -78,6 +89,8 @@ export function harness(): Harness {
   const diagnostics = new Map<string, () => unknown>();
   let muted = false;
   let stepping = true;
+  /** What the pointer did this tick, as a check hands it in through `point`. */
+  let pointerSamples: PointerSample[] = [];
 
   const canvas = createCanvas(1280, 720);
   const ctx = canvas.getContext("2d") as unknown as CanvasRenderingContext2D;
@@ -98,6 +111,7 @@ export function harness(): Harness {
         edges.delete(name);
         return true;
       },
+      pointer: () => pointerSamples,
     },
     audio: {
       play: (cue) => void cues.push(cue),
@@ -114,8 +128,10 @@ export function harness(): Harness {
   function advance(ticks: number): void {
     for (let i = 0; i < ticks; i += 1) {
       game.tick(state, tickApi, TICK_DT);
-      // Edges are news for exactly one tick, as they are under the runtime.
+      // Edges and pointer samples are news for exactly one tick, as they are
+      // under the runtime.
       edges.clear();
+      pointerSamples = [];
     }
   }
 
@@ -140,6 +156,9 @@ export function harness(): Harness {
     },
     press(action) {
       edges.add(action);
+    },
+    point(type, x, y, device = "mouse") {
+      pointerSamples.push({ type, x, y, device });
     },
     advance,
     draw(alpha = 0) {

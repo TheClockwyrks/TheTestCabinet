@@ -37,6 +37,14 @@ export const MAZE_Y0 = GRID_ORIGIN_Y;
 export const MAZE_X1 = GRID_ORIGIN_X + GRID_COLS * TILE;
 export const MAZE_Y1 = GRID_ORIGIN_Y + GRID_ROWS * TILE;
 
+/** The strip specs/ui.md keeps the score and the dive label in: y in [0, 80]. */
+export const TOP_STRIP = { y0: 0, y1: GRID_ORIGIN_Y };
+
+/**
+ * The strip it keeps the lives, the depth and the two gauges in: y in [656, 720].
+ */
+export const BOTTOM_STRIP = { y0: MAZE_Y1, y1: STAGE_H };
+
 /** The center of tile `(tx, ty)`, in logical units (specs/overview.md). */
 export function tileCenter(tx: number, ty: number): { x: number; y: number } {
   return {
@@ -82,6 +90,15 @@ export const MAZE_INTERIOR_CELLS = (GRID_COLS - 2) * (GRID_ROWS - 2);
 /** The rows the forager's start tile is drawn from, both ends in. */
 export const START_TILE_ROW_MIN = 9;
 export const START_TILE_ROW_MAX = 16;
+
+/** The den chamber's own bounds, all four ends in (specs/maze.md, "The den"). */
+export const DEN_COL_MIN = 16;
+export const DEN_COL_MAX = 19;
+export const DEN_ROW_MIN = 7;
+export const DEN_ROW_MAX = 9;
+
+/** The row the one gate tile sits in, directly above the chamber's top row. */
+export const DEN_GATE_ROW = 6;
 
 // ---- Movement (specs/movement.md) ----------------------------------------
 
@@ -165,6 +182,8 @@ export const ROSTER_ADD_ORDER = [
 ] as const;
 export const ROSTER_CAP_DEPTH = 4;
 export const ROSTER_CAP = 6;
+/** The ceiling per kind, which `ROSTER_CAP` is three of (specs/predators.md). */
+export const ROSTER_PER_KIND_CAP = 2;
 
 /** `R = LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * G`: 128 at G 0, 320 at G 1. */
 export const LANTERN_RANGE_BASE = 128;
@@ -197,6 +216,11 @@ export const START_LIVES = 3;
 
 /** The seed `reset()` takes when a caller names none. */
 export const DEFAULT_SEED = 1;
+
+// ---- The debugging surface (specs/instrumentation.md) --------------------
+
+/** The version the surface reports as `version`. */
+export const FATHOM_DEBUG_VERSION = 1;
 
 // ---- Screen copy (specs/ui.md) -------------------------------------------
 

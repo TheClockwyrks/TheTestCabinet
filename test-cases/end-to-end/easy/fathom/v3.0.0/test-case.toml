@@ -438,7 +438,8 @@ description = "The look of the trench, which this case leaves to the build apart
 # EVERY point on this checklist carries a validation script, and every point is
 # one observable behavior, so a build fails exactly the rule it breaks (the
 # Lanternjaw's light sense and the Flarefish's are two points, not one). Each
-# script is a vitest suite under `validation/<engine>/<category>/<item id>.test.ts`.
+# script is a vitest suite under `validation/<engine>/<category>/`, named for the
+# point it decides.
 # The `<engine>` level is the ENGINE the suite is written against — a validator
 # speaks one engine's vocabulary, so this case, which supports three, ships one
 # directory per engine: `validation/none/` drives the build in Chromium through
@@ -487,8 +488,9 @@ description = "The look of the trench, which this case leaves to the build apart
 # validator-rated: a point's validator, not a reviewer, decides the functional
 # rating. `domains` names the scoring domains a failure lowers, and a point that
 # straddles two names both — ink blinding a Lanternjaw is as much a sensing rule
-# as a predator one. An instrumentation point, which every suite in every domain
-# drives through, lowers all five. `failure_cap` is the highest functional rating
+# as a predator one. An instrumentation point every suite in every domain drives
+# through lowers all five; the menu reading, which only the menu points rest on,
+# lowers the two it serves. `failure_cap` is the highest functional rating
 # those domains may reach while the point fails; each domain gets the LOWEST cap
 # among its failing points, and a domain with no failing point is flawless. The
 # caps are graded by how much of the game a failure takes away: `broken` where the
@@ -518,11 +520,12 @@ title = "Instrumentation"
 [[review.categories.items]]
 id = "surface-present"
 title = "The debug and automation surface is present"
-description = "Every operation specs/instrumentation.md names is present as a function on the surface — reached on the page as window.__fathom in an engineless build and off engine.debug in an engine build — version reports FATHOM_DEBUG_VERSION (1), and the surface is live: setMaze poses a board, setForagerTile moves the forager onto it, and both the snapshot and the rendered canvas change."
+description = "Every operation specs/instrumentation.md names is present as a function on the surface — the menu trio setMenuIndex, setTitleIndex and menuItemRect among them — reached on the page as window.__fathom in an engineless build and off engine.debug in an engine build; version reports FATHOM_DEBUG_VERSION (1), and the surface is live: setMaze poses a board, setForagerTile moves the forager onto it, and both the snapshot and the rendered canvas change."
 domains = ["navigation", "sensing", "predators", "progression", "presentation"]
 failure_cap = "broken"
 # Automated validation: reflect that every required operation is installed as a
-# function (setAutoStep and advance under `none` alone), then prove liveness by
+# function (setAutoStep and advance under `none` alone; setMenuIndex,
+# setTitleIndex and menuItemRect on every engine), then prove liveness by
 # posing a board, placing the forager on it, and reading both the snapshot and the
 # canvas back. See validation/<engine>/instrumentation/surface-present.test.ts.
 validation = { script = "instrumentation/surface-present.test.ts", outputs = [
@@ -531,7 +534,7 @@ validation = { script = "instrumentation/surface-present.test.ts", outputs = [
 [[review.categories.items]]
 id = "snapshot-shape"
 title = "Snapshot reports the full documented shape"
-description = "In live play on a posed board carrying a drifter, a pulse in flight, an ink cloud, and one predator of each kind, the snapshot reports every field specs/state.md lists with its documented type — version, the screen, depth, score, lives, muted (and autoStep on an engineless build), planktonRemaining, brightness, brightHold, visionRadius, the sonar and ink pairs, the grid block, tiles, plankton and visibility, the forager block, drifters, one predators entry per predator with every per-kind field present or null, pulses, inkClouds and simTime — with tiles, plankton and visibility all GRID_ROWS (18) strings of GRID_COLS (36) characters and every tile coordinate agreeing with the position it is derived from."
+description = "In live play on a posed board carrying a drifter, a pulse in flight, an ink cloud, and one predator of each kind, the snapshot reports every field specs/state.md lists with its documented type — version, the screen, menuIndex, titleIndex, depth, score, lives, muted (and autoStep on an engineless build), planktonRemaining, brightness, brightHold, visionRadius, the sonar and ink pairs, the grid block, tiles, plankton and visibility, the forager block, drifters, one predators entry per predator with every per-kind field present or null, pulses, inkClouds and simTime — with tiles, plankton and visibility all GRID_ROWS (18) strings of GRID_COLS (36) characters and every tile coordinate agreeing with the position it is derived from."
 domains = ["navigation", "sensing", "predators", "progression", "presentation"]
 failure_cap = "broken"
 # Automated validation: pose a board exercising every branch of the shape, then
@@ -541,11 +544,39 @@ validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [
   { id = "posed", name = "The posed board the snapshot reports", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "menu-rect"
+title = "The surface reports where each menu item was drawn"
+description = "specs/ui.md leaves the menu layout to the build and specs/instrumentation.md makes the build report it: on the title, on the pause menu and on the game-over menu, menuItemRect(index) returns an { x, y, w, h } region in logical units that lies inside the 1280 x 720 stage, contains the point that item's own text was drawn at, and overlaps no other item's region of the same menu; and it returns null on \"howto\", \"countdown\", \"playing\" and \"cleared\", which show no menu, and for an index the current menu does not hold."
+domains = ["presentation", "progression"]
+failure_cap = "scuffed"
+# The cap is `scuffed`, level with the six `pointer` and `touch` points this
+# reading gates rather than above them. `menuItemRect` is a pure debug read and
+# the pointer's effect on a menu stays in the game's own input handling, so a
+# build whose menus work perfectly on a mouse and whose region reading is wrong
+# costs a player nothing directly. What it costs is the six points it hides, and
+# each of those is `scuffed` on the manifest's own reading: a menu a mouse cannot
+# work is a whole input the player has, unusable, while the keyboard still opens
+# every screen. A gate is not held above what it gates. It lowers `presentation`
+# and `progression` alone, because the menus are all it serves.
+# Automated validation: read the region back for every item of each of the three
+# menus, hold it against the stage, against the text the draw recorder saw that
+# item written at, and against the other items' regions, then read it again on
+# the four screens that show no menu and for an index past the menu's end. See
+# validation/<engine>/instrumentation/menu-rect.test.ts.
+validation = { script = "instrumentation/menu-rect.test.ts", outputs = [
+  { id = "regions", name = "The title menu beside the regions it reports", kind = "image" },
+] }
+[[review.categories.items]]
 id = "manual-clock"
 title = "The game holds still on the driver's clock"
 description = "The other half of the deterministic-core contract: with the simulation taken off the wall clock, nothing advances between steps — simTime does not move and no predator moves over a second of real time — while a step of n ticks advances simTime by exactly n * TICK_DT (1/120 s) within one tick, and covering one second of game time as one step and as sixty steps leaves simTime the same either way."
 domains = ["navigation", "sensing", "predators", "progression", "presentation"]
-failure_cap = "scuffed"
+failure_cap = "broken"
+# The cap sits level with `surface-present` and `snapshot-shape` rather than a
+# step below them, because the three are one deliverable: a core that will not
+# hold still is a core no scenario can be posed against, so every point on this
+# checklist ends up decided against a game that moved under the reading. That is
+# the same loss to a player as a surface that was never installed.
 # Automated validation: take the clock (setAutoStep(false) under `none`; the
 # harness's own ConstantClock under an engine), let real time pass with nothing
 # stepping the game, then cover the same second of game time under two step sizes.
@@ -708,6 +739,64 @@ failure_cap = "great"
 validation = { script = "controls/mute.test.ts", outputs = [
   { id = "mute", name = "A muted dive, mid sonar pulse", kind = "image" },
 ] }
+# TWO KEYS DO TWO JOBS EACH, and specs/movement.md settles them by screen rather
+# than by key: `Space` fires `a` and `confirm`, `Escape` fires `back` and
+# `pause`, and each screen's row in "Where each action is read" names which of
+# the pair it reads. The four points below are that table's boundaries — the
+# places a build that wired a key straight to an effect does the wrong one of the
+# two, or both at once. Each drives one press on one screen and reads what did
+# NOT happen beside what did, because a press that does both is the failure worth
+# naming and it passes every point that only looks at the half it got right.
+[[review.categories.items]]
+id = "space-confirms-not-pulses"
+title = "Space confirms on a menu screen and emits no pulse"
+description = "A menu screen reads `confirm` and not `a`: pressing Space on the title with DIVE selected sets screen to countdown while pulses stays empty, sonar.cooldown stays 0 and sonar.ready stays true, so the same press that took the menu item did not also spend the pulse."
+domains = ["sensing", "progression"]
+failure_cap = "passable"
+# Automated validation: open the title with the sonar ready, press Space once,
+# and read the screen beside the pulse list and the cooldown. See
+# validation/<engine>/controls/space-confirms-not-pulses.test.ts.
+validation = { script = "controls/space-confirms-not-pulses.test.ts", outputs = [
+  { id = "confirmed", name = "The dive opened by Space, with no pulse spent", kind = "image" },
+] }
+[[review.categories.items]]
+id = "space-pulses-not-confirms"
+title = "Space emits a pulse in live play and confirms nothing"
+description = "The other half of the same key: pressing Space while screen is playing puts a pulse in flight and leaves screen at playing over the steps that follow, so the `confirm` the same press raises reaches no menu and opens no screen."
+domains = ["sensing", "progression"]
+failure_cap = "passable"
+# Automated validation: open live play with the cooldown at 0, press Space once,
+# and read the pulse list beside the screen a stretch later. See
+# validation/<engine>/controls/space-pulses-not-confirms.test.ts.
+validation = { script = "controls/space-pulses-not-confirms.test.ts", outputs = [
+  { id = "pulsed", name = "A pulse emitted with the dive still running", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "escape-pauses-once"
+title = "Escape opens the pause menu and leaves it open"
+description = "specs/ui.md has `\"playing\"` read `pause` and not `back`: with one Escape pressed while screen is playing and nothing pressed after it, the screen is still paused a stretch of steps later, rather than the same press pausing and resuming."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: open live play on an emptied board, press Escape once, run
+# a second of steps with no key touched, and read the screen. That Escape pauses
+# AT ALL is `controls.pause-esc`; the reading here is only that the pause stayed,
+# so the two verdicts name different requirements. See
+# validation/<engine>/controls/escape-pauses-once.test.ts.
+validation = { script = "controls/escape-pauses-once.test.ts", outputs = [
+  { id = "paused", name = "The pause menu still open a stretch after one Escape", kind = "image" },
+] }
+[[review.categories.items]]
+id = "countdown-ignores-confirm"
+title = "The countdown reads nothing but mute"
+description = "specs/movement.md has `\"countdown\"` read the mute action alone: Space and Enter pressed while screen is countdown put no pulse in flight and shorten the countdown by nothing, so screen becomes playing at the same simulated time as it does with no key touched."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: time an untouched countdown, then run it again pressing
+# Space and Enter through it, and compare the moment play begins and the pulse
+# list at it. See validation/<engine>/controls/countdown-ignores-confirm.test.ts.
+validation = { script = "controls/countdown-ignores-confirm.test.ts", outputs = [
+  { id = "ignored", name = "The countdown running its own length under a pressed key", kind = "replay" },
+] }
 [[review.categories.items]]
 id = "advances-in-real-time"
 title = "The game advances itself in real time"
@@ -750,6 +839,12 @@ title = "The forager travels at a constant speed"
 description = "Running a straight corridor, the forager covers ground at FORAGER_SPEED (128 logical units per second) within 2 percent, measured over a stretch of at least four tiles, with no ramp at the start and no drift over the run, and the same figure on a corridor running down as on one running right."
 domains = ["navigation"]
 failure_cap = "scuffed"
+# ONE RULE, ONE POINT, deliberately. specs/movement.md fixes FORAGER_SPEED as
+# constant "wherever it is in the maze", so a corridor running right and one
+# running down are two readings of the same rule rather than two rules, and a
+# build whose figure is wrong is wrong on both axes at once. Splitting them would
+# record one fault twice and make the grade say "the vertical axis is wrong"
+# where what is wrong is the speed.
 # Automated validation: pose a long straight corridor, hold the direction along
 # it, and measure the distance covered against the simulated time it took; then
 # the same reading on a corridor running down. See
@@ -819,6 +914,24 @@ validation = { script = "maze-movement/wrap-tunnel.test.ts", outputs = [
   { id = "wrap", name = "The forager wrapping through the tunnel", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "predator-wrap"
+title = "A predator crosses the tunnel on the same terms"
+description = "specs/maze.md gives the tunnel to every body, not the forager alone: on the build's own board, a released predator traveling off one mouth of the pierced row arrives on the other mouth of the same row, covering TILE (32) units for the crossing within 2 units at the speed it was already making, with its center staying inside the maze region x in [64, 1216] throughout."
+domains = ["navigation", "predators"]
+failure_cap = "passable"
+# Automated validation: find the pierced row in the build's own layout, stand a
+# released hunter one tile inland of one mouth, stand the forager past the far
+# mouth, and pose the hunter into chase so the build's own shortest-route rule
+# carries it through the seam — three steps across the tunnel against thirty-odd
+# the long way round — then measure the ticks between the two mouth centers at the
+# pace it was already making, and the row it arrives on. A mind-off hunter decides
+# nothing and so never travels (specs/instrumentation.md), which is why the route
+# is a chase rather than a held facing.
+# See validation/<engine>/maze-movement/predator-wrap.test.ts.
+validation = { script = "maze-movement/predator-wrap.test.ts", outputs = [
+  { id = "wrap", name = "A hunter wrapping through the tunnel", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "no-den-gate"
 title = "The forager cannot cross the den gate"
 description = "The gate is the predators' door alone: holding the direction into the den gate from the corridor outside it leaves the forager on the corridor side, never standing on the gate tile or on a den-interior tile."
@@ -862,6 +975,18 @@ validation = { script = "maze/symmetry.test.ts", outputs = [
   { id = "board", name = "The maze board", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "solid-border"
+title = "The border is solid but for the tunnel"
+description = "Row 0, row 17, column 0 and column 35 carry rock at every position except the two mouths of the wrap tunnel, so the tunnel is the only way off the grid."
+domains = ["navigation"]
+failure_cap = "scuffed"
+# Automated validation: walk the four border lines of the reported layout and
+# count everything on them that is not rock, across several freshly seeded
+# mazes. See validation/<engine>/maze/solid-border.test.ts.
+validation = { script = "maze/solid-border.test.ts", outputs = [
+  { id = "board", name = "The maze board", kind = "image" },
+] }
+[[review.categories.items]]
 id = "connected"
 title = "One connected region"
 description = "Every corridor tile is reachable from every other by moving between corridor neighbors — the wrap tunnel's two mouths counting as neighbors — so the forager's start tile, both mouths, and every plankton lie in one region."
@@ -898,6 +1023,20 @@ validation = { script = "maze/proportions.test.ts", outputs = [
   { id = "board", name = "The maze board", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "den-bounds"
+title = "The den chamber is where the specification puts it"
+description = "The den-interior tiles of every maze the game lays out are exactly the four-by-three block covering columns 16 through 19 and rows 7 through 9, all four bounds inclusive: no den-interior tile lies outside it, and every tile of it is den interior."
+domains = ["navigation"]
+failure_cap = "passable"
+# Automated validation: read the den-interior tiles out of the reported layout and
+# hold them against the rectangle those four bounds name, in both directions,
+# across several freshly seeded mazes. The GATE is den-one-exit's, the wall around
+# the chamber is den-enclosed's, and whether the chamber leads anywhere is
+# den-reachable's. See validation/<engine>/maze/den-bounds.test.ts.
+validation = { script = "maze/den-bounds.test.ts", outputs = [
+  { id = "board", name = "The den chamber and the corridor outside its gate", kind = "image" },
+] }
+[[review.categories.items]]
 id = "den-enclosed"
 title = "The den chamber is enclosed"
 description = "No den-interior tile has a corridor neighbor, so the chamber's only opening onto the corridors is its gate."
@@ -932,6 +1071,47 @@ failure_cap = "broken"
 # across several freshly seeded mazes. See validation/<engine>/maze/den-reachable.test.ts.
 validation = { script = "maze/den-reachable.test.ts", outputs = [
   { id = "board", name = "The maze board", kind = "image" },
+] }
+[[review.categories.items]]
+id = "one-pierced-row"
+title = "Exactly one row is pierced"
+description = "One row and no other carries a corridor tile in both column 0 and column 35, every other row carries rock in both border columns, and the pierced row holds no den-interior tile and no den gate."
+domains = ["navigation"]
+failure_cap = "scuffed"
+# Automated validation: count the rows whose two border tiles are both open in
+# the reported layout and read what the one pierced row holds, across several
+# freshly seeded mazes. See validation/<engine>/maze/one-pierced-row.test.ts.
+validation = { script = "maze/one-pierced-row.test.ts", outputs = [
+  { id = "board", name = "The maze board and its pierced row", kind = "image" },
+] }
+# THE START TILE IS TWO RULES FROM TWO FILES, and a build can break either alone:
+# where specs/maze.md allows the tile to sit, and whether specs/progression.md's
+# return to it happens after a catch. A build that opens on row 3 and respawns
+# correctly and one that opens on row 12 and respawns at the den gate are
+# different faults, so they are different points.
+[[review.categories.items]]
+id = "start-tile-in-range"
+title = "The start tile sits in the lower half"
+description = "The tile the forager begins a maze on is a corridor tile in rows 9 through 16 inclusive, across several freshly laid out mazes."
+domains = ["navigation"]
+failure_cap = "passable"
+# Automated validation: lay out several fresh mazes and read the forager's tile
+# at the top of each. See validation/<engine>/maze/start-tile-in-range.test.ts.
+validation = { script = "maze/start-tile-in-range.test.ts", outputs = [
+  { id = "start", name = "The forager on its start tile", kind = "image" },
+] }
+[[review.categories.items]]
+id = "start-tile-respawn"
+title = "A lost life returns the forager to the start tile"
+description = "Losing a life returns the forager to the tile that maze began on rather than to another one, across several freshly laid out mazes."
+domains = ["navigation"]
+failure_cap = "passable"
+# Automated validation: read the forager's tile at the top of a fresh maze, take
+# a life by placing the roster's first hunter on that tile and posing it into
+# chase, and read the tile again once the board is set up for the next attempt.
+# See validation/<engine>/maze/start-tile-respawn.test.ts.
+validation = { script = "maze/start-tile-respawn.test.ts", outputs = [
+  { id = "respawn", name = "The forager back on its start tile", kind = "image" },
 ] }
 
 # --- Fog of war ---------------------------------------------------------------
@@ -1541,12 +1721,12 @@ title = "Detection alert"
 [[review.categories.items]]
 id = "gloamfin"
 title = "The Gloamfin fires the alert on a fresh fix"
-description = "A Gloamfin acquiring the forager reports alert true from that step and for ALERT_TIME (0.5 s) within a tenth of a second, lit true for that whole window wherever it stands, and alert false thereafter, and refreshing a fix it is already chasing on fires nothing."
+description = "A Gloamfin acquiring the forager reports alert true from that step and for ALERT_TIME (0.5 s) within a tenth of a second, lit true for that whole window wherever it stands, and alert false thereafter."
 domains = ["predators"]
 failure_cap = "passable"
-# Automated validation: earn a fresh acquisition beyond the forager's light, sample
-# `alert` and `lit` across the window, then refresh the same fix and confirm
-# nothing fires. See validation/<engine>/alert/gloamfin.test.ts.
+# Automated validation: earn a fresh acquisition beyond the forager's light and
+# sample `alert` and `lit` across the window. What a REFRESHED fix does is
+# `refresh-fires-nothing` below. See validation/<engine>/alert/gloamfin.test.ts.
 validation = { script = "alert/gloamfin.test.ts", outputs = [
   { id = "alert", name = "The Gloamfin's detection alert", kind = "replay" },
 ] }
@@ -1567,12 +1747,30 @@ id = "lanternjaw-none"
 title = "The Lanternjaw fires no alert"
 description = "A Lanternjaw reports alert false at every moment, through an acquisition and across the ALERT_TIME (0.5 s) window after it, because its standing bulb is its tell."
 domains = ["predators"]
-failure_cap = "great"
+failure_cap = "passable"
+# The cap is `passable` rather than `great`: a spurious flash over a Lanternjaw
+# is not a stray decoration, it resolves the one hunter whose whole design is
+# that it hides among the amber lights, and the player who learns to read it
+# never has to commit to a glimmer again. `amber.lookalikes` caps the same bluff
+# at `scuffed` from the look's side, and this is the same bluff from the alert's.
 # Automated validation: earn a fresh Lanternjaw acquisition and sample `alert`
 # every step across the window that would carry one. See
 # validation/<engine>/alert/lanternjaw-none.test.ts.
 validation = { script = "alert/lanternjaw-none.test.ts", outputs = [
   { id = "none", name = "The Lanternjaw acquiring with no alert", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "refresh-fires-nothing"
+title = "A refreshed fix fires no second alert"
+description = "The alert marks an acquisition rather than a chase: a Gloamfin already chasing that takes its fix again without letting it lapse, and a Flarefish already chasing that does the same, both report alert false across the ALERT_TIME (0.5 s) window a fresh acquisition would have carried."
+domains = ["predators"]
+failure_cap = "passable"
+# Automated validation: earn each hunter its fix, let the alert window run out,
+# then refresh the fix without letting the sense lapse and sample `alert` every
+# step across the window that a fresh one would fill. See
+# validation/<engine>/alert/refresh-fires-nothing.test.ts.
+validation = { script = "alert/refresh-fires-nothing.test.ts", outputs = [
+  { id = "refresh", name = "A refreshed fix passing without an alert", kind = "replay" },
 ] }
 
 # --- Amber look-alikes --------------------------------------------------------
@@ -1598,14 +1796,58 @@ validation = { script = "amber/lookalikes.test.ts", outputs = [
 [[review.categories.items]]
 id = "drifter-permanent"
 title = "A drifter stays until it is eaten"
-description = "A spawned drifter is still in drifters after a stretch far longer than DRIFTER_INTERVAL (25 s), holding its pace at DRIFTER_SPEED (64) within 2 percent throughout, and it leaves the list only when the forager eats it."
+description = "A spawned drifter is still in drifters after a stretch far longer than DRIFTER_INTERVAL (25 s), and it leaves the list only when the forager eats it — nothing else times it out, expires it or takes it off the board."
 domains = ["progression"]
 failure_cap = "passable"
 # Automated validation: spawn a drifter, run the maze on for well over a cadence
-# with the forager parked clear of it, then eat it. See
+# with the forager parked clear of it, then eat it. What pace it holds while it
+# waits is `drifter-speed` below. See
 # validation/<engine>/amber/drifter-permanent.test.ts.
 validation = { script = "amber/drifter-permanent.test.ts", outputs = [
   { id = "permanent", name = "A drifter persisting over time", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "drifter-speed"
+title = "A drifter travels at DRIFTER_SPEED"
+description = "A wandering drifter covers ground at DRIFTER_SPEED (64 logical units per second) within 2 percent, half the forager's FORAGER_SPEED (128), measured over a stretch of at least four tiles."
+domains = ["progression"]
+failure_cap = "scuffed"
+# The cap is `scuffed` rather than `passable` because the pace is half of the
+# bluff: specs/gameplay.md has a wandering Lanternjaw drift at this same figure
+# so the two amber lights are alike "in look and in motion", and a drifter moving
+# at any other rate is told from a Lanternjaw across the maze without committing
+# to it. `amber.lookalikes` caps the look at `scuffed` for the same reason.
+# Automated validation: spawn a drifter on a posed corridor with a long straight
+# run and measure the ground it covers against the simulated time it took. See
+# validation/<engine>/amber/drifter-speed.test.ts.
+validation = { script = "amber/drifter-speed.test.ts", outputs = [
+  { id = "pace", name = "A drifter holding its pace along a corridor", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "drifter-cadence"
+title = "Drifters are admitted on the DRIFTER_INTERVAL cadence"
+description = "With plankton still in the maze, consecutive admissions at the den gate arrive DRIFTER_INTERVAL (25 s) apart within a tenth of a second, over at least two of them, with the maze emptied of drifters after each admission so the DRIFTER_MAX ceiling never stops the cadence."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: on a board that still holds plankton, record the simulated
+# time each admission arrives and take it off the maze with `clearDrifters` before
+# the next is due — which specs/instrumentation.md has leave the cadence's own
+# clock untouched, and which does not depend on the tile the den gate admits onto.
+# See validation/<engine>/amber/drifter-cadence.test.ts.
+validation = { script = "amber/drifter-cadence.test.ts", outputs = [
+  { id = "cadence", name = "A drifter admitted at the den gate", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "drifter-cap"
+title = "The maze holds no more than DRIFTER_MAX drifters"
+description = "A maze already holding DRIFTER_MAX (2) drifters admits none over a stretch far longer than DRIFTER_INTERVAL (25 s), and admits one on the next cadence once the forager has eaten one of the two."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: spawn the ceiling's worth, watch `drifters` over several
+# cadences, then eat one and watch the next arrive. See
+# validation/<engine>/amber/drifter-cap.test.ts.
+validation = { script = "amber/drifter-cap.test.ts", outputs = [
+  { id = "cap", name = "A maze holding its two drifters and no more", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "drifter-score"
@@ -1675,18 +1917,45 @@ failure_cap = "broken"
 validation = { script = "scoring/descend-on-clear.test.ts", outputs = [
   { id = "descend", name = "Descending to a deeper maze", kind = "replay" },
 ] }
+# Depth scales two things and nothing else, and each of the three is its own
+# point: a build that adds hunters but never shortens the pulse must grade apart
+# from one that does neither, and the "nothing else" is a rule of its own rather
+# than a footnote on either.
 [[review.categories.items]]
-id = "depth-scaling"
-title = "Depth adds hunters and shortens the pulse"
-description = "At depths 1 through 5 the roster holds the counts specs/predators.md tabulates — one of each kind at depth 1, adding a Gloamfin, then a Lanternjaw, then a Flarefish, and holding at ROSTER_CAP (two of each, six in all) from ROSTER_CAP_DEPTH (4) on — listed in release order, while sonar.range is max(SONAR_RANGE_MIN (5), SONAR_RANGE_BASE (9) - (d - 1)) and a pulse emitted at that depth carries exactly that range. No predator speed changes with depth."
-domains = ["progression", "predators", "sensing"]
+id = "roster-by-depth"
+title = "Deeper mazes hold more hunters"
+description = "At depths 1 through 5 the roster holds the counts specs/predators.md tabulates — one of each kind at depth 1, adding a Gloamfin, then a Lanternjaw, then a Flarefish, and holding at ROSTER_CAP (two of each, six in all) from ROSTER_CAP_DEPTH (4) on — listed in the release order the snapshot reports them in."
+domains = ["predators"]
 failure_cap = "scuffed"
-# Automated validation: pose each depth in turn, read the roster's kinds in order
-# and `sonar.range`, emit a pulse and read its own `range`, and compare a
-# wandering hunter's speed at depth 1 and at depth 5. See
-# validation/<engine>/scoring/depth-scaling.test.ts.
-validation = { script = "scoring/depth-scaling.test.ts", outputs = [
-  { id = "scale", name = "Depth scaling the dive", kind = "replay" },
+# Automated validation: pose each depth in turn and read the roster's kinds in
+# the order the snapshot lists them. See
+# validation/<engine>/scoring/roster-by-depth.test.ts.
+validation = { script = "scoring/roster-by-depth.test.ts", outputs = [
+  { id = "roster", name = "The roster a deep maze is laid out with", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sonar-range-by-depth"
+title = "The pulse's range shrinks with depth"
+description = "sonar.range is max(SONAR_RANGE_MIN (5), SONAR_RANGE_BASE (9) - (d - 1)) at every depth — 9, 8, 7, 6 and then 5 from depth 5 on — and a pulse emitted at that depth reports exactly that figure as its own range."
+domains = ["sensing"]
+failure_cap = "scuffed"
+# Automated validation: pose each depth in turn, read `sonar.range` against the
+# formula, and emit a pulse and read its own `range`. See
+# validation/<engine>/scoring/sonar-range-by-depth.test.ts.
+validation = { script = "scoring/sonar-range-by-depth.test.ts", outputs = [
+  { id = "range", name = "A pulse carrying the depth's own range", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "depth-scales-nothing-else"
+title = "Nothing else scales with depth"
+description = "Between depth 1 and depth 5 nothing but the roster and the pulse's range moves: a wandering hunter of each kind reports the same speed and the same detectRange at both, and SONAR_COOLDOWN (1.5 s), INK_COOLDOWN (8 s), INK_RADIUS (80), INK_LIFE (3 s), DRIFTER_INTERVAL (25 s) and the three scoring figures all read the same at both."
+domains = ["predators"]
+failure_cap = "passable"
+# Automated validation: pose depth 1 and depth 5, and read each figure above off
+# the same posed board at each. See
+# validation/<engine>/scoring/depth-scales-nothing-else.test.ts.
+validation = { script = "scoring/depth-scales-nothing-else.test.ts", outputs = [
+  { id = "unchanged", name = "A deep maze playing by the same figures", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "three-lives"
@@ -1702,10 +1971,15 @@ validation = { script = "scoring/three-lives.test.ts", outputs = [
 ] }
 
 # --- Game screens -------------------------------------------------------------
-# Each screen is reached the way a player reaches it — through the menus, through
-# play, or through the transition that leads to it — and each point asserts the
-# copy the specification fixes for that screen, so a screen that exists as a value
-# of `screen` but draws nothing fails.
+# One point per thing a screen is: that it is reached, what it draws, how long it
+# holds, and what it leaves alone. A screen that exists as a value of `screen`
+# but draws nothing fails the drawing point while passing the arrival one, which
+# is what lets a grade say which half a build got wrong. Each point reaches its
+# screen the shortest way the surface allows — `setScreen`, or the one confirm
+# the point is about with the selection posed by `setMenuIndex` — because walking
+# a menu with the arrow keys on the way in adds a failure that belongs to
+# `controls`. Where a screen is reached BY a transition, that transition is the
+# `navigation` category's point, not this one's.
 [[review.categories]]
 id = "states"
 title = "Game screens"
@@ -1721,39 +1995,134 @@ validation = { script = "states/title.test.ts", outputs = [
   { id = "title", name = "The title menu", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "howto"
-title = "How to play is reachable and covers the game"
-description = "HOW TO PLAY confirmed from the title menu sets screen to howto, whose drawn text names a key for each of the controls specs/movement.md binds, names all three predators, and describes reading the dark by the forager's light and by the sonar pulse; confirm or back returns to title."
+id = "howto-reachable"
+title = "How to play is reachable from the title"
+description = "HOW TO PLAY confirmed on the title menu sets screen to howto."
 domains = ["progression"]
 failure_cap = "passable"
-# Automated validation: walk the title menu to the second item, confirm, read the
-# drawn text off the recorder, and go back. See validation/<engine>/states/howto.test.ts.
-validation = { script = "states/howto.test.ts", outputs = [
+# Automated validation: pose the title's selection onto HOW TO PLAY with
+# setMenuIndex, confirm, and read the screen. Nothing walks the menu with the
+# arrow keys to get there: which key moves a selection is `controls`' point, and
+# a build with a broken `down` action must still pass this one. See
+# validation/<engine>/states/howto-reachable.test.ts.
+validation = { script = "states/howto-reachable.test.ts", outputs = [
   { id = "howto", name = "The how-to-play screen", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "countdown"
-title = "A dive opens on the countdown"
-description = "DIVE confirmed sets screen to countdown with the maze and the HUD drawn behind it, the countdown holds for at least 1 s and at most 3 s of simulated time before screen becomes playing, and nothing but the countdown's own time and the forager's light advances while it runs."
+id = "howto-covers-the-game"
+title = "How to play covers the game"
+description = "The text drawn on the howto screen names a key for each of the controls specs/movement.md binds, names all three predators, and describes reading the dark both by the forager's own light and by the sonar pulse."
 domains = ["progression"]
 failure_cap = "passable"
-# Automated validation: confirm DIVE, then advance a step at a time reading the
-# screen, the simulated time and every mover's position until play begins. See
-# validation/<engine>/states/countdown.test.ts.
-validation = { script = "states/countdown.test.ts", outputs = [
+# Automated validation: pose the screen straight through setScreen, read the
+# drawn text off the recorder, and hold it against the three lists. See
+# validation/<engine>/states/howto-covers-the-game.test.ts.
+validation = { script = "states/howto-covers-the-game.test.ts", outputs = [
+  { id = "howto", name = "The how-to-play screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-return-confirm"
+title = "Confirm leaves how to play"
+description = "The confirm action pressed on the howto screen sets screen to title."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: pose the screen, press Enter, and read the screen. See
+# validation/<engine>/states/howto-return-confirm.test.ts.
+validation = { script = "states/howto-return-confirm.test.ts", outputs = [
+  { id = "title", name = "The title, back from how to play", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-return-back"
+title = "Back leaves how to play"
+description = "The back action pressed on the howto screen sets screen to title, so the screen has two ways out and a build that wired only one fails exactly the one it missed."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: pose the screen, press Escape, and read the screen. See
+# validation/<engine>/states/howto-return-back.test.ts.
+validation = { script = "states/howto-return-back.test.ts", outputs = [
+  { id = "title", name = "The title, back from how to play", kind = "image" },
+] }
+[[review.categories.items]]
+id = "dive-opens-countdown"
+title = "A dive opens on the countdown"
+description = "DIVE confirmed on the title sets screen to countdown rather than straight to playing, with the maze and the HUD drawn behind it."
+domains = ["progression"]
+failure_cap = "passable"
+# The miss this catches is a dive that opens straight into live play, which costs
+# the run-up rather than the dive, so the cap sits at `passable` even though the
+# point sits on the one route into the game.
+# Automated validation: pose the title's selection onto DIVE, confirm, and read
+# the screen beside the maze and the HUD the recorder saw drawn. See
+# validation/<engine>/states/dive-opens-countdown.test.ts.
+validation = { script = "states/dive-opens-countdown.test.ts", outputs = [
   { id = "countdown", name = "The dive countdown", kind = "image" },
+] }
+[[review.categories.items]]
+id = "countdown-duration"
+title = "The countdown holds between 1 s and 3 s"
+description = "From the moment screen becomes countdown, it holds for at least 1 s and at most 3 s of simulated time before screen becomes playing, timed on the simulation's own accumulated time rather than on the wall clock."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: pose the countdown, advance a step at a time reading the
+# screen and simTime, and record the simulated time play begins at. See
+# validation/<engine>/states/countdown-duration.test.ts.
+validation = { script = "states/countdown-duration.test.ts", outputs = [
+  { id = "countdown", name = "The dive countdown", kind = "image" },
+] }
+[[review.categories.items]]
+id = "countdown-freeze"
+title = "Nothing but the light advances during the countdown"
+description = "Across the whole countdown the forager, every predator, every drifter, both cooldowns, every wavefront and every ink cloud hold exactly where they stood, while simTime accumulates and the forager's light goes on revealing the maze around it."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: pose a countdown over a board carrying a drifter, a
+# hunter, a pulse in flight and a cloud, hold the whole snapshot against itself
+# across the hold, and read the visibility around the forager at both ends. See
+# validation/<engine>/states/countdown-freeze.test.ts.
+validation = { script = "states/countdown-freeze.test.ts", outputs = [
+  { id = "held", name = "The maze held still under the countdown", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "paused"
 title = "The pause screen freezes the dive"
-description = "Pausing live play sets screen to paused and draws a menu of RESUME, RESTART and QUIT TO MENU over a maze that stays visible, and nothing advances behind it: over a stretch of simulated time no position, cooldown or brightness changes, and RESUME returns to playing."
+description = "While screen is paused nothing behind the menu advances: over a long stretch of simulated time no position, no cooldown, no brightness and no wavefront changes, and the maze is still drawn behind the menu rather than blanked."
 domains = ["progression"]
 failure_cap = "scuffed"
-# Automated validation: pause a live dive, hold the snapshot against itself across
-# a long stretch, read the drawn menu items, and resume. See
+# Automated validation: pause a live dive carrying movers and a pulse in flight,
+# hold the whole snapshot against itself across a long stretch, and sample the
+# maze behind the menu. What pauses the dive is `controls.pause-esc` and
+# `controls.pause-p`; what the menu draws is `pause-menu-items`. See
 # validation/<engine>/states/paused.test.ts.
 validation = { script = "states/paused.test.ts", outputs = [
-  { id = "paused", name = "The pause menu", kind = "image" },
+  { id = "paused", name = "The pause menu over a frozen maze", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-menu-items"
+title = "The pause menu draws its three items"
+description = "The paused screen draws RESUME, RESTART and QUIT TO MENU, in that order, over a maze that stays visible, with one of the three drawn distinctly from the other two as the selected item."
+domains = ["progression"]
+failure_cap = "scuffed"
+# The cap is `scuffed` because RESTART and QUIT TO MENU are the only routes out
+# of a dive, and a menu that draws nothing leaves a player who paused with
+# nothing to read and nothing to aim at.
+# Automated validation: pause a live dive and read the drawn text off the
+# recorder beside the maze behind it. See
+# validation/<engine>/states/pause-menu-items.test.ts.
+validation = { script = "states/pause-menu-items.test.ts", outputs = [
+  { id = "menu", name = "The pause menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "resume-from-pause"
+title = "RESUME returns to live play"
+description = "RESUME confirmed on the pause menu sets screen to playing, and the dive carries on from exactly the arrangement it was frozen in."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: pause a live dive, pose the selection onto RESUME, press
+# Enter, and read the screen beside the snapshot the pause froze. Escape and KeyP
+# resuming are `navigation.pause-back` and `navigation.pause-p-resumes`. See
+# validation/<engine>/states/resume-from-pause.test.ts.
+validation = { script = "states/resume-from-pause.test.ts", outputs = [
+  { id = "resumed", name = "The dive resumed where it was frozen", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "cleared"
@@ -1768,15 +2137,442 @@ validation = { script = "states/cleared.test.ts", outputs = [
   { id = "cleared", name = "The maze-cleared screen", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "gameover"
-title = "Game over reports the run and offers the menu"
-description = "The catch taken with lives 0 sets screen to gameover, whose drawn text carries the score the run finished on and the depth it reached, over a menu of PLAY AGAIN then MENU; PLAY AGAIN opens a fresh dive on the countdown at depth 1 with score 0 and lives START_LIVES (3)."
+id = "gameover-reports-the-run"
+title = "Game over reports the run"
+description = "The text drawn on the gameover screen carries the score the run finished on and the depth it reached, both as the snapshot reports them at that moment."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: pose a score and a depth, run the lives out, and hold the
+# drawn text against the two figures. What sets the screen is
+# `scoring.three-lives`. See
+# validation/<engine>/states/gameover-reports-the-run.test.ts.
+validation = { script = "states/gameover-reports-the-run.test.ts", outputs = [
+  { id = "gameover", name = "The game-over screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-menu-items"
+title = "The game-over menu draws its two items"
+description = "The gameover screen draws PLAY AGAIN then MENU, in that order, with one of the two drawn distinctly from the other as the selected item."
 domains = ["progression"]
 failure_cap = "scuffed"
-# Automated validation: run the lives out, read the screen and the drawn text, and
-# confirm PLAY AGAIN. See validation/<engine>/states/gameover.test.ts.
-validation = { script = "states/gameover.test.ts", outputs = [
-  { id = "gameover", name = "The game-over screen", kind = "image" },
+# The cap matches `pause-menu-items`: these two entries are the whole of what a
+# finished run offers, and a screen that draws neither leaves the player reading
+# a dead end.
+# Automated validation: pose the screen and read the drawn text off the recorder.
+# See validation/<engine>/states/gameover-menu-items.test.ts.
+validation = { script = "states/gameover-menu-items.test.ts", outputs = [
+  { id = "menu", name = "The game-over menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "play-again"
+title = "PLAY AGAIN opens a fresh dive"
+description = "PLAY AGAIN confirmed on the gameover screen sets screen to countdown at depth 1 with score 0 and lives START_LIVES (3), on a maze laid out afresh with a plankton on every corridor tile outside the den."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: pose the gameover screen with a score and a depth on it,
+# pose the selection onto PLAY AGAIN, confirm, and read the screen, the depth,
+# the score, the lives and the plankton count. See
+# validation/<engine>/states/play-again.test.ts.
+validation = { script = "states/play-again.test.ts", outputs = [
+  { id = "fresh", name = "A fresh dive opened from game over", kind = "image" },
+] }
+
+# --- Navigation ---------------------------------------------------------------
+# The edges between the screens: which input on which screen leads where. The
+# `states` category asks what a screen IS; this one asks how a player gets from
+# one to the next, which is the other half of specs/ui.md's transition table and
+# the half a build most often leaves half-wired. Each point drives ONE input on
+# ONE screen and reads the screen it reached, with the selection posed by
+# `setMenuIndex` rather than walked to with the arrow keys, so a broken `down`
+# action fails `controls` and nothing here. The transitions the rest of the
+# checklist already decides are deliberately absent: opening the pause menu is
+# `controls.pause-esc` and `controls.pause-p`, the catch that ends a run is
+# `scoring.three-lives`, the descent is `scoring.descend-on-clear`, and reaching
+# how to play is `states.howto-reachable`.
+[[review.categories]]
+id = "navigation"
+title = "Screen navigation"
+[[review.categories.items]]
+id = "pause-restart"
+title = "RESTART begins a fresh dive"
+description = "RESTART confirmed on the pause menu sets screen to countdown at depth 1 with score 0 and lives START_LIVES (3), on a maze laid out afresh with a plankton on every corridor tile outside the den."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: pause a dive posed away from its opening figures, pose
+# the selection onto RESTART, confirm, and read the screen, depth, score, lives
+# and plankton count. See validation/<engine>/navigation/pause-restart.test.ts.
+validation = { script = "navigation/pause-restart.test.ts", outputs = [
+  { id = "restarted", name = "A fresh dive opened from the pause menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-quit"
+title = "QUIT TO MENU returns to the title"
+description = "QUIT TO MENU confirmed on the pause menu sets screen to title."
+domains = ["progression"]
+failure_cap = "scuffed"
+# The cap is `scuffed` because this is the only way out of a dive that is not
+# ending one: a build that never honors it leaves a player who opened a dive with
+# no route back to the title short of reloading the page.
+# Automated validation: pause a live dive, pose the selection onto QUIT TO MENU,
+# confirm, and read the screen. What the return RESTORES is
+# `title-resets-the-dive`; which entry it lands on is `title-remembers-dive`. See
+# validation/<engine>/navigation/pause-quit.test.ts.
+validation = { script = "navigation/pause-quit.test.ts", outputs = [
+  { id = "title", name = "The title, quit to from a dive", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-back"
+title = "Escape resumes the paused dive"
+description = "Escape pressed while screen is paused sets screen to playing, and once only: the frame carrying it resumes and does nothing else, so the dive is playing on the step the press lands and still playing over the steps after it."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: pause a live dive, press Escape once, and read the screen
+# on that step and across the steps after it. See
+# validation/<engine>/navigation/pause-back.test.ts.
+validation = { script = "navigation/pause-back.test.ts", outputs = [
+  { id = "resumed", name = "The dive resumed with Escape", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-p-resumes"
+title = "KeyP resumes the paused dive"
+description = "KeyP pressed while screen is paused sets screen to playing, exactly as Escape does, so the key that opened the pause menu closes it again."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: pause a live dive with KeyP, press KeyP again, and read
+# the screen. See validation/<engine>/navigation/pause-p-resumes.test.ts.
+validation = { script = "navigation/pause-p-resumes.test.ts", outputs = [
+  { id = "resumed", name = "The dive resumed with KeyP", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-menu"
+title = "MENU returns to the title"
+description = "MENU confirmed on the gameover screen sets screen to title."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: pose the gameover screen, pose the selection onto MENU,
+# confirm, and read the screen. See
+# validation/<engine>/navigation/gameover-menu.test.ts.
+validation = { script = "navigation/gameover-menu.test.ts", outputs = [
+  { id = "title", name = "The title, back from game over", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-back"
+title = "Escape leaves the game-over screen"
+description = "Escape pressed on the gameover screen sets screen to title, so the screen has two ways out and a build that wired only the menu entry fails exactly this one."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: pose the gameover screen, press Escape, and read the
+# screen. See validation/<engine>/navigation/gameover-back.test.ts.
+validation = { script = "navigation/gameover-back.test.ts", outputs = [
+  { id = "title", name = "The title, backed out of game over", kind = "image" },
+] }
+[[review.categories.items]]
+id = "back-on-title-does-nothing"
+title = "Back on the title changes nothing"
+description = "The title is where back stops: Escape pressed on the title leaves screen at title with menuIndex, titleIndex, the score, the lives and the depth all exactly as they stood, rather than leaving the screen or moving the selection."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: pose the title with the selection off its first item,
+# press Escape, and hold the whole snapshot against what it was. See
+# validation/<engine>/navigation/back-on-title-does-nothing.test.ts.
+validation = { script = "navigation/back-on-title-does-nothing.test.ts", outputs = [
+  { id = "title", name = "The title unmoved by Escape", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-resets-the-dive"
+title = "Returning to the title puts the dive back"
+description = "The return is a reset, not a screen change: with the score, the lives, the depth and the maze all posed away from the values a dive begins from, QUIT TO MENU confirmed on the pause menu returns to title with score 0, lives START_LIVES (3), depth 1 and a maze laid out afresh with a plankton on every corridor tile outside the den."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: pose a dive well into itself, quit to the menu, and read
+# the score, lives, depth and plankton count off the title. That the quit reaches
+# the title at all is `pause-quit`. See
+# validation/<engine>/navigation/title-resets-the-dive.test.ts.
+validation = { script = "navigation/title-resets-the-dive.test.ts", outputs = [
+  { id = "reset", name = "The title with the dive put back", kind = "image" },
+] }
+# THE REMEMBERED TITLE SELECTION, graded once per path back to the title
+# (specs/ui.md, "Returning to the title"): confirming an entry on the title menu
+# records it as `titleIndex`, and every arrival at the title takes `menuIndex`
+# from it, so the title comes back on the entry the player left it by. Each point
+# drives one path and reads both halves — what the confirm remembered, and what
+# the return restored. Between them the two cover both title entries, which is
+# what says the restored selection follows the entry confirmed rather than a
+# constant. The DIVE path poses its non-zero starting value with `setTitleIndex`,
+# the operation specs/instrumentation.md gives for the remembered selection, so it
+# does not walk the how-to screen `states.howto-reachable` and
+# `states.howto-return-back` decide on its way in.
+[[review.categories.items]]
+id = "title-remembers-howto"
+title = "The title returns to HOW TO PLAY from the how-to screen"
+description = "Confirming HOW TO PLAY on the title sets titleIndex to 1, and back pressed on the howto screen returns to title with menuIndex 1."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: pose the selection onto HOW TO PLAY, confirm, read
+# titleIndex, press Escape, and read menuIndex on the title. See
+# validation/<engine>/navigation/title-remembers-howto.test.ts.
+validation = { script = "navigation/title-remembers-howto.test.ts", outputs = [
+  { id = "title", name = "The title back on HOW TO PLAY", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-remembers-dive"
+title = "The title returns to DIVE after quitting a dive"
+description = "With titleIndex already carrying 1, confirming DIVE on the title sets titleIndex to 0, and QUIT TO MENU confirmed on that dive's pause menu returns to title with menuIndex 0."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: pose titleIndex to 1 with `setTitleIndex`, pose the
+# selection onto DIVE, confirm, read titleIndex, then pause and quit and read
+# menuIndex on the title. See
+# validation/<engine>/navigation/title-remembers-dive.test.ts.
+validation = { script = "navigation/title-remembers-dive.test.ts", outputs = [
+  { id = "title", name = "The title back on DIVE after quitting", kind = "image" },
+] }
+
+# --- Pointer ------------------------------------------------------------------
+# specs/ui.md drives every menu with a mouse as well as with the keyboard, over
+# item regions the BUILD lays out and reports through `menuItemRect`. The case
+# fixes no menu geometry, so each point below asks the build where it put the
+# item and drives the real pointer at the middle of that region: any layout
+# passes, and a build that reports a region it does not answer on fails. The
+# first three points are three of the behaviors specs/ui.md gives the pointer — a
+# move selects, a press and its release inside one item confirms that item, and
+# two edges in different items confirm nothing — and the fourth is the way back
+# off the screen the second of them opens. The keyboard's own edges are
+# `navigation`'s points, not these.
+#
+# WHICH MENU EACH POINT IS GRADED ON, and why. The first three are read on the
+# title menu alone, where every entry confirms to a screen a check reads straight
+# off `screen`, and the pause and the game-over menus are not read again. The
+# reason is that specs/ui.md gives the pointer rules to "Each menu item" as one
+# rule over one code path: a build reads a gesture against the region its own
+# `menuItemRect` reports, and `instrumentation.menu-rect` is the point that reads
+# all three menus' geometry, expressly because a build may report the pause menu's
+# from the title's table. What is left ungraded is a build that wired its gesture
+# handling per screen and wired only one of them, which is a shape no rule of this
+# specification suggests.
+#
+# WHICH HALF OF THE BOUNDARY SENTENCE IS GRADED. specs/ui.md says two edges in
+# different regions AND an edge outside every region confirm no item.
+# `slide-off-cancels` decides the first. The second is not graded on its own: a
+# release off the menu entirely is the same comparison the first makes — the
+# released item against the pressed one — with `null` on one side, so a build that
+# fails it fails `slide-off-cancels` too unless it bounds-checks the release
+# alone, and that build still confirms nothing a player did not aim at.
+#
+# The cap is `scuffed` throughout, on the same reading of this case's rubric that
+# puts the alternate key bindings there: a menu a mouse cannot work is a whole
+# input the player has, unusable, while the keyboard still opens every screen.
+[[review.categories]]
+id = "pointer"
+title = "Pointer"
+[[review.categories.items]]
+id = "hover-selects"
+title = "Moving the pointer onto an item selects it"
+description = "On the title with menuIndex 0, moving the pointer onto the region menuItemRect reports for HOW TO PLAY sets menuIndex to 1, with screen still title."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: read the second title item's region off the build, move
+# the real pointer to its middle, and read menuIndex and the screen. See
+# validation/<engine>/pointer/hover-selects.test.ts.
+validation = { script = "pointer/hover-selects.test.ts", outputs = [
+  { id = "menu", name = "The title menu with the hovered item selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "click-confirms"
+title = "A press and release inside one item confirms it"
+description = "On the title with menuIndex 0, pressing and releasing the pointer inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: press and release the real pointer inside the second
+# title item's reported region and read the screen it confirmed to. See
+# validation/<engine>/pointer/click-confirms.test.ts.
+validation = { script = "pointer/click-confirms.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen opened by a click", kind = "image" },
+] }
+[[review.categories.items]]
+id = "slide-off-cancels"
+title = "A press and release in different items confirms nothing"
+description = "On the title, pressing the pointer inside HOW TO PLAY's region and releasing it inside DIVE's leaves screen at title, confirming neither item, with menuIndex 0 where the pointer came to rest."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: press inside the second title item's region, slide to the
+# first, release there, and read the screen beside menuIndex — the screen says no
+# item was confirmed, and menuIndex says the pointer was read at all. See
+# validation/<engine>/pointer/slide-off-cancels.test.ts.
+validation = { script = "pointer/slide-off-cancels.test.ts", outputs = [
+  { id = "title", name = "The title still showing after the pointer slid off", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-returns"
+title = "A click on the how-to screen returns to the title"
+description = "The how-to-play screen shows no menu and so no item regions, and a pointer pressed and released anywhere on it sets screen back to title, with no key pressed."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: pose the screen to howto, press and release the real
+# pointer at the middle of the stage, and read the screen. The point exists
+# because the title menu opens this screen to a hand: without it a player with no
+# keyboard reaches a screen with no way out. See
+# validation/<engine>/pointer/howto-returns.test.ts.
+validation = { script = "pointer/howto-returns.test.ts", outputs = [
+  { id = "title", name = "The title returned to from the how-to screen", kind = "image" },
+] }
+
+# --- Touch --------------------------------------------------------------------
+# specs/ui.md gives every menu a finger as well as the keyboard and the mouse,
+# and a finger is not a small mouse: it never hovers, so the first the build
+# hears of it is the contact LANDING, and the landing is what selects. Each point
+# drives one real touch contact at the middle of the region the build reports
+# through `menuItemRect`, so any layout passes and only the handling is graded.
+# The first three are three of the behaviors specs/ui.md gives a contact: a
+# landing selects, a lift inside the region it landed in confirms that item, and a
+# lift in a different region confirms nothing while the selection follows the
+# finger. The fourth is the way back off the screen the second of them opens,
+# without which a player with no keyboard is stranded there. The mouse's edges are
+# `pointer`'s points and the keyboard's are `navigation`'s.
+#
+# The first three are graded on the title menu alone, where a confirm that should
+# not have happened is loud — a dive opens — and one that should have is silent.
+# Why the pause and game-over menus are not read again, and which half of
+# specs/ui.md's boundary sentence is graded, are both set out above the `pointer`
+# category; the reasoning is the same for a finger.
+[[review.categories]]
+id = "touch"
+title = "Touch"
+[[review.categories.items]]
+id = "landing-selects"
+title = "A touch contact selects the item it lands on"
+description = "On the title with menuIndex 0, a touch contact landing inside the region menuItemRect reports for HOW TO PLAY, and not lifted, sets menuIndex to 1."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: land a real touch contact in the region the build reports
+# for the second title item, leave it down so no lift can confirm, and read
+# menuIndex back. See validation/<engine>/touch/landing-selects.test.ts.
+validation = { script = "touch/landing-selects.test.ts", outputs = [
+  { id = "selected", name = "The title menu with the item the contact landed on selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tap-confirms"
+title = "A contact that lifts where it landed confirms that item"
+description = "On the title with menuIndex 0, a touch contact landing and lifting inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: land and lift a real touch contact inside the second
+# title item's reported region, with no key pressed, and read the screen it
+# confirmed to. See validation/<engine>/touch/tap-confirms.test.ts.
+validation = { script = "touch/tap-confirms.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen opened by a tap", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drag-cancels"
+title = "A contact that lifts on a different item confirms nothing"
+description = "On the title, a touch contact landing inside DIVE's region, travelling onto HOW TO PLAY's and lifting there leaves screen at title, with menuIndex 1."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: slide one real touch contact from the first title item to
+# the second and lift it there — the screen must stay on the title, and the
+# selection must have followed the finger, which is what says the contact was
+# read at all. See validation/<engine>/touch/drag-cancels.test.ts.
+validation = { script = "touch/drag-cancels.test.ts", outputs = [
+  { id = "title", name = "The title still showing after the contact slid off", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-returns"
+title = "A tap on the how-to screen returns to the title"
+description = "The how-to-play screen shows no menu and so no item regions, and a touch contact landing and lifting anywhere on it sets screen back to title, with no key pressed."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: pose the screen to howto, land and lift a real touch
+# contact at the middle of the stage, and read the screen. Graded apart from the
+# mouse's because a finger is read on a different path — it never hovers, so its
+# landing and its lift are all the build hears. See
+# validation/<engine>/touch/howto-returns.test.ts.
+validation = { script = "touch/howto-returns.test.ts", outputs = [
+  { id = "title", name = "The title returned to from the how-to screen", kind = "image" },
+] }
+
+# --- The HUD ------------------------------------------------------------------
+# specs/ui.md fixes six things as present and readable whenever a maze is on
+# screen, in two strips that leave the maze itself clear: the top strip, `y` in
+# `[0, 80]`, and the bottom strip, `y` in `[656, 720]`. Each of the six is its
+# own point, so a build that drew the score and forgot the gauges fails exactly
+# the gauges.
+#
+# WHAT IS AND IS NOT ASSERTED. That the element is drawn, that it is drawn in the
+# strip specs/ui.md gives it, that it reports the figure the snapshot reports at
+# the same moment, and that it is legible where it stands — its own pixels more
+# than 50 of 441 in RGB distance from the strip behind them, sampled well inside
+# a stroke. Where inside its strip it sits, what color it is, what type it is set
+# in and how it is styled are the build's, and specs/ui.md says so in as many
+# words, so nothing here reads a position or a hue. How good the HUD LOOKS is the
+# aesthetic rating's.
+#
+# The sixth element, the dive label, is the one thing on screen the two dives
+# disagree about, so it lives in `variants/base.toml` and `variants/kindle.toml`
+# rather than here.
+[[review.categories]]
+id = "hud"
+title = "The HUD"
+[[review.categories.items]]
+id = "score"
+title = "The score is on the top strip"
+description = "While a maze is on screen the running score is drawn legibly in the top strip, y in [0, 80], reading the figure the snapshot reports, and it reads the new figure once the forager has eaten a plankton."
+domains = ["progression", "presentation"]
+failure_cap = "passable"
+# Automated validation: open a dive with a posed score, read the drawn text and
+# where it landed off the recorder, sample it against the strip behind it, then
+# eat a plankton and read it again. See validation/<engine>/hud/score.test.ts.
+validation = { script = "hud/score.test.ts", outputs = [
+  { id = "hud", name = "The score on the HUD", kind = "image" },
+] }
+[[review.categories.items]]
+id = "lives"
+title = "The lives are on the bottom strip"
+description = "While a maze is on screen the lives in reserve are drawn legibly in the bottom strip, y in [656, 720], as that many small forager icons, and one icon fewer is drawn for each life fewer the reserve holds."
+domains = ["progression", "presentation"]
+failure_cap = "passable"
+# Automated validation: open a dive with an emptied board, pose the reserve down
+# one life at a time with `setLives`, and count what is drawn in the bottom strip
+# off the recorder at each. What a CATCH costs is `scoring.three-lives`'s. See
+# validation/<engine>/hud/lives.test.ts.
+validation = { script = "hud/lives.test.ts", outputs = [
+  { id = "hud", name = "The lives on the HUD", kind = "image" },
+] }
+[[review.categories.items]]
+id = "depth"
+title = "The depth is on the bottom strip"
+description = "While a maze is on screen the current depth is drawn legibly in the bottom strip, y in [656, 720], as DEPTH 1, DEPTH 2 and so on for the depth the snapshot reports, and it names the deeper figure once the depth has moved on."
+domains = ["progression", "presentation"]
+failure_cap = "passable"
+# Automated validation: open a dive at a posed depth, read the drawn text and
+# where it landed, then pose a deeper one with `setDepth` and read it again. What
+# a DESCENT does is `scoring.descend-on-clear`'s. See
+# validation/<engine>/hud/depth.test.ts.
+validation = { script = "hud/depth.test.ts", outputs = [
+  { id = "hud", name = "The depth on the HUD", kind = "image" },
+] }
+[[review.categories.items]]
+id = "sonar-gauge"
+title = "The sonar gauge is on the bottom strip"
+description = "While a maze is on screen a gauge drawn legibly in the bottom strip, y in [656, 720], reports whether the sonar pulse is ready: it is drawn at its full extent while sonar.ready is true, drawn short of full on the step a pulse is emitted, and drawn longer again as sonar.cooldown runs down."
+domains = ["sensing", "progression"]
+failure_cap = "passable"
+# Automated validation: open live play with the pulse ready, measure what the
+# gauge draws, emit a pulse, and measure it again at several points down the
+# cooldown. See validation/<engine>/hud/sonar-gauge.test.ts.
+validation = { script = "hud/sonar-gauge.test.ts", outputs = [
+  { id = "gauge", name = "The sonar gauge filling back up", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "ink-gauge"
+title = "The ink gauge is on the bottom strip"
+description = "While a maze is on screen a gauge drawn legibly in the bottom strip, y in [656, 720], reports whether ink is ready: it is drawn at its full extent while ink.ready is true, drawn short of full on the step a cloud is released, and drawn longer again as ink.cooldown runs down."
+domains = ["sensing", "progression"]
+failure_cap = "passable"
+# Automated validation: open live play with ink ready, measure what the gauge
+# draws, release a cloud, and measure it again at several points down the
+# cooldown. See validation/<engine>/hud/ink-gauge.test.ts.
+validation = { script = "hud/ink-gauge.test.ts", outputs = [
+  { id = "gauge", name = "The ink gauge filling back up", kind = "replay" },
 ] }
 
 # --- Audio --------------------------------------------------------------------
@@ -1784,6 +2580,24 @@ validation = { script = "states/gameover.test.ts", outputs = [
 # it omits. What a cue SOUNDS like is the build's; the check reads the cue bus for
 # the name the specification fixes, played on the tick its event happens and at
 # most once on that tick. The mute toggle is `controls.mute`.
+#
+# HOW MUCH OF THAT SENTENCE EACH ENGINE CAN DECIDE, recorded here once rather
+# than hedged in seven descriptions. specs/progression.md fixes two things about
+# every cue: that it is played ON the tick its event happens, and that it is
+# played AT MOST ONCE on that tick. Under `simple-2d` and `structured-2d` the
+# game asks the engine's cue bus for a cue BY NAME and the bus announces the
+# play, so a suite reads both halves exactly. Under `none` the build writes the
+# whole audio layer itself and specs/progression.md fixes the seven names inside
+# the build's own code without saying how a build makes a sound, so what is
+# observable in a browser is that a sound was emitted and on which tick — not
+# which cue it was, and not how many plays one blip was made of, since a cue may
+# honestly be a tone and a noise burst together. The seven points below therefore
+# decide the ON-THE-TICK half on every engine and the AT-MOST-ONCE half under the
+# two engines alone; each `none` scenario stages exactly one event with
+# everything else held still, so the reading stays honest rather than lenient.
+# `one-per-tick`, whose whole claim is the second half, names its two engines
+# and leaves the checklist of a `none` run rather than pretending to decide
+# there.
 [[review.categories]]
 id = "audio"
 title = "Audio"
@@ -1869,6 +2683,88 @@ failure_cap = "passable"
 validation = { script = "audio/descend.test.ts", outputs = [
   { id = "descend", name = "The maze clear whose cue is checked", kind = "replay" },
 ] }
+[[review.categories.items]]
+id = "one-per-tick"
+title = "A tick sounds each cue it raises exactly once"
+description = "The half of specs/progression.md's audio rule the seven points above share: the mouthful that clears a maze raises eat and descend on the one tick, and that tick sounds each of the two exactly once."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: leave one plankton on the tile ahead of the forager, swim
+# into it so the mouthful is both an eat and the maze cleared, and count the plays
+# of `eat` and of `descend` on that tick. Scoped to the two engines, for the reason
+# set out above this category: an engineless build's sounds carry no names, so the
+# count this point is entirely about is not decidable there.
+#
+# The same rule over ONE name — two Gloamfins casting on a single tick — is not
+# graded, because nothing in the rendered specs fixes the value a Gloamfin's ping
+# timer opens on, so a build that arms each hunter's opening phase independently
+# honors every stated requirement and would never produce the coincident tick.
+# See validation/<engine>/audio/one-per-tick.test.ts.
+validation = { script = "audio/one-per-tick.test.ts", engines = [
+  "simple-2d",
+  "structured-2d",
+], outputs = [
+  { id = "once", name = "The tick whose cues are counted", kind = "replay" },
+] }
+
+# --- Diagnostics --------------------------------------------------------------
+# The debug overlay specs/instrumentation.md requires, framed there as the
+# developer affordance it is. It is two separate deliverables and so two points:
+# what the game REGISTERS with it, which is Fathom's part under every engine, and
+# whether the overlay itself starts hidden and toggles, which is Fathom's part
+# under `none` alone and the engine's under the other two — so the second point
+# names `none` and leaves the checklist of an engine run rather than grading the
+# engine's work as the build's.
+#
+# Both cap at `great`: an overlay is a developer's window onto a running game and
+# a player never opens it, so a build that shipped none plays exactly as well as
+# one that did.
+[[review.categories]]
+id = "diagnostics"
+title = "Diagnostics"
+[[review.categories.items]]
+id = "sources-registered"
+title = "The game registers the diagnostics it owes"
+description = "The diagnostic sources specs/instrumentation.md's Diagnostics section names are registered and read the running game: the screen, the depth, the score, the lives, the plankton remaining, the forager's tile and facing, and for each predator its kind, state and tile, each reporting the figure the snapshot reports for it at the same moment, and reading one changes nothing about the game."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: pose a live dive carrying a hunter of each kind, each on
+# a tile of its own, at figures well off their opening values, read what the
+# sources report, and hold each against the snapshot taken at the same moment;
+# then hold the whole snapshot against itself across the reads. Under an engine
+# the registry is read off the engine and only what a source REPORTS is matched,
+# never the name it was registered under; under `none` the frame is read with the
+# overlay shut and again with it open, and only the runs the second frame added
+# are the overlay's, so a build's own HUD does not answer for it.
+#
+# THE ITEM NAMES FEWER FACTS THAN THE SPECIFICATION DOES, and deliberately. The
+# brightness G, the light radius V, the two cooldowns, a predator's speed and
+# whether its alert is firing are continuous or derived figures a source renders
+# however it likes — `G 0.42`, `G 42%` and `G .42` all report the same brightness
+# honestly — so matching them would grade the formatting rather than the
+# registry. The facts above are the ones whose reading is exact whatever the
+# formatting, and the description says so rather than promising a verdict on the
+# rest. See validation/<engine>/diagnostics/sources-registered.test.ts.
+validation = { script = "diagnostics/sources-registered.test.ts", outputs = [
+  { id = "sources", name = "The diagnostics over a live dive", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overlay-toggle"
+title = "The overlay starts hidden and toggles on the backtick"
+description = "The overlay draws nothing until it is asked for: on a live dive nothing of it is on the canvas, a Backquote press draws it over the running game, a second Backquote press takes it away again, and the game underneath is unchanged across both — no position, cooldown or score moves because the overlay was opened."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: sample the canvas over a live dive, press Backquote and
+# sample again, press it once more and sample a third time, holding the snapshot
+# against itself throughout. Scoped to `none`, where the overlay and its toggle
+# are the build's to write; under the two engines the engine draws and toggles
+# it, so the point would grade the engine rather than the build. See
+# validation/none/diagnostics/overlay-toggle.test.ts.
+validation = { script = "diagnostics/overlay-toggle.test.ts", engines = [
+  "none",
+], outputs = [
+  { id = "overlay", name = "The diagnostics overlay over a live dive", kind = "image" },
+] }
 
 # --- Presentation -------------------------------------------------------------
 # The two things about the look this specification actually fixes: that the whole
@@ -1904,4 +2800,52 @@ failure_cap = "scuffed"
 # validation/<engine>/presentation/provided-art.test.ts.
 validation = { script = "presentation/provided-art.test.ts", outputs = [
   { id = "art", name = "The maze and its creatures drawn from the seeded sheets", kind = "image" },
+] }
+
+# --- Showcase (read off the produced tree, not off the running game) ----------
+# The showcase is the store-page presentation of the finished game: a
+# player-facing description and an ordered carousel of captured media, shipped in
+# a `showcase/` directory at the root of the produced repository, which
+# `specs/showcase.md` defines. It is worth THREE points rather than one, because
+# it is a deliverable of its own — a whole file of the specification, and the one
+# piece of a run a person meets before they meet the game — where every other
+# point on this checklist is one behavior of the game itself. It is the only
+# weight declared anywhere in this file; every other point takes the default one.
+#
+# Its cap is `great` all the same: a build that shipped no showcase dives exactly
+# as well as one that did, so the miss costs the presentation and leaves the
+# standard flow of gameplay untouched. The weight and the cap say different
+# things on purpose — how much of the score the point carries, and how far a
+# failure may drag the ratings down.
+#
+# ONE point, and it grades EXISTENCE alone. Whether the description reads like
+# something a player would want to play, whether the carousel opens on the
+# strongest view of a dive, and whether the media is worth looking at is a
+# reviewer's judgement and belongs to the AESTHETIC half of the domains rather
+# than to an assertion. The validator's whole verdict is that the two files are
+# there and that the carousel points at a file that is there with them: not a
+# dimension, not a byte of a picture, not a word of the prose.
+#
+# The script drives nothing. It reads the produced tree with `node:fs`, so one
+# suite stands unchanged in all three engine directories and the point means the
+# same thing whichever engine the run selected. What it hands back as evidence is
+# a `.png` copied out of the build's own showcase, so a reviewer sees the picture
+# the build chose to present its game with beside the verdict.
+[[review.categories]]
+id = "showcase"
+title = "Showcase"
+[[review.categories.items]]
+id = "present"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, and at least one file the carousel names is present in showcase/."
+weight = 3
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: read the produced tree, confirm the description and the
+# carousel are both there, and confirm the carousel names a file present beside
+# them; the still handed back is a `.png` copied out of the showcase itself.
+# Nothing about the media is checked beyond its being there. See
+# validation/<engine>/showcase/exists.test.ts.
+validation = { script = "showcase/exists.test.ts", outputs = [
+  { id = "showcase", name = "A screenshot from the build's showcase", kind = "image" },
 ] }

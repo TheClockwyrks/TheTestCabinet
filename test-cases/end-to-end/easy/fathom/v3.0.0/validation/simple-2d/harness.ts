@@ -87,7 +87,12 @@ import { assertTruthy, fail } from "./assert";
 import { BINDINGS, LAYOUT, STAGE_H, STAGE_W, TICK_HZ } from "./constants";
 import { tileCenter, type Dir, type Tile } from "./maze";
 import { MOTION_EPS } from "./scene";
-import { READINGS, type FathomDebugApi, type FathomSnapshot } from "./surface";
+import {
+  READINGS,
+  type FathomDebugApi,
+  type FathomSnapshot,
+  type MenuRect,
+} from "./surface";
 
 export type { Dir, Tile };
 
@@ -105,18 +110,29 @@ export type FathomSurface = FathomDebugApi<FathomState>;
  */
 const game = build as unknown as Game<FathomState, FathomSurface>;
 
+/** The names `surface.ts` marks as readings rather than poses. */
+type ReadingName = (typeof READINGS)[number];
+
 /**
  * A member of a pure surface, as a check calls it.
  *
  * A pose `(state, ...args) => S` becomes `(...args) => void`: the driver runs it
  * through `engine.apply`, so the state it returns is the state the next frame
- * receives. A reading `(state) => R` becomes `() => R`: the driver hands it
- * `engine.state`. Anything else (`version`) is carried as it is.
+ * receives. A reading `(state, ...args) => R` becomes `(...args) => R`: the
+ * driver hands it `engine.state` and returns what it read. Anything else
+ * (`version`) is carried as it is.
+ *
+ * Which of the two a member is comes from `READINGS` rather than from its return
+ * type, because a reading is not told from a pose by its shape: `menuItemRect`
+ * takes an index beside the state exactly as `setMenuIndex` does, and the
+ * specification is what says one reads and the other arranges.
  */
-type Driven<S, M> = M extends (state: DeepReadonly<S>, ...args: infer A) => S
-  ? (...args: A) => void
-  : M extends (state: DeepReadonly<S>) => infer R
-    ? () => R
+type Driven<S, K, M> = K extends ReadingName
+  ? M extends (state: DeepReadonly<S>, ...args: infer A) => infer R
+    ? (...args: A) => R
+    : M
+  : M extends (state: DeepReadonly<S>, ...args: infer A) => S
+    ? (...args: A) => void
     : M;
 
 /**
@@ -127,7 +143,7 @@ type Driven<S, M> = M extends (state: DeepReadonly<S>, ...args: infer A) => S
  * `h.debug.op?.(...)`.
  */
 export type Driver<S, D> = {
-  [K in keyof D]: Driven<S, NonNullable<D[K]>>;
+  [K in keyof D]: Driven<S, K, NonNullable<D[K]>>;
 };
 
 /** The surface as every check drives it. */
@@ -310,6 +326,24 @@ export interface Harness {
    */
   tap(code: string): Promise<void>;
 
+  /**
+   * Move the pointer to a logical stage point, and run the frame that reads it.
+   *
+   * `device` is what separates a finger from a mouse: specs/ui.md gives a touch
+   * contact a rule of its own — a landing selects, because a finger does not
+   * hover — so a check about touch drives `"touch"` and the engine reports the
+   * contact to the game as one.
+   */
+  movePointer(x: number, y: number, device?: PointerDeviceName): Promise<void>;
+  /** Press the pointer at a logical stage point, and run the frame that reads it. */
+  pressPointer(x: number, y: number, device?: PointerDeviceName): Promise<void>;
+  /** Release the pointer at a logical stage point, and run the frame that reads it. */
+  releasePointer(
+    x: number,
+    y: number,
+    device?: PointerDeviceName,
+  ): Promise<void>;
+
   /** Where a logical point lands in the canvas's backing store. */
   device(x: number, y: number): { x: number; y: number };
   /** The device pixel under a logical point, as `[r, g, b, a]`. */
@@ -329,6 +363,91 @@ class KeyEvent extends Event {
     this.code = code;
     this.repeat = repeat;
   }
+}
+
+/** The devices a menu gesture is driven by (specs/ui.md). */
+export type PointerDeviceName = "mouse" | "touch";
+
+/** The bit `PointerEvent.buttons` gives the primary button. */
+const PRIMARY_BUTTON_BIT = 1;
+
+/** The index `PointerEvent.button` gives the primary button. */
+const PRIMARY_BUTTON = 0;
+
+/** What `PointerEvent.button` carries on an event about position alone. */
+const NO_BUTTON = -1;
+
+/** The pointer id each device drives under: one mouse, one finger. */
+const POINTER_ID: Readonly<Record<PointerDeviceName, number>> = {
+  mouse: 1,
+  touch: 2,
+};
+
+/** Exactly the fields the engine's pointer listeners read off an event. */
+interface PointerEventFields {
+  clientX: number;
+  clientY: number;
+  pointerId: number;
+  pointerType: PointerDeviceName;
+  isPrimary: boolean;
+  /** The button the event is ABOUT, as `PointerEvent.button` numbers them. */
+  button: number;
+  /** Every button held once the event has been applied, as a bit mask. */
+  buttons: number;
+}
+
+/**
+ * A `PointerEvent`-shaped event, carrying the seven fields the engine reads and
+ * nothing else.
+ *
+ * A shim rather than a real `PointerEvent`, for the same reason {@link KeyEvent}
+ * is one: this suite runs over a canvas with no document behind it, so there is
+ * no `PointerEvent` constructor to call and no element to dispatch from. The
+ * engine narrows structurally — it reads `clientX`, `clientY`, `pointerId`,
+ * `pointerType`, `isPrimary`, `button` and `buttons` off whatever arrives — so an
+ * event carrying those drives the pointer exactly as a player's does.
+ */
+class PointerEventShim extends Event {
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly pointerId: number;
+  readonly pointerType: PointerDeviceName;
+  readonly isPrimary: boolean;
+  readonly button: number;
+  readonly buttons: number;
+
+  constructor(
+    type: "pointermove" | "pointerdown" | "pointerup",
+    fields: PointerEventFields,
+  ) {
+    super(type);
+    this.clientX = fields.clientX;
+    this.clientY = fields.clientY;
+    this.pointerId = fields.pointerId;
+    this.pointerType = fields.pointerType;
+    this.isPrimary = fields.isPrimary;
+    this.button = fields.button;
+    this.buttons = fields.buttons;
+  }
+}
+
+/**
+ * Where a logical stage point lands in the CSS pixels a pointer event reports.
+ *
+ * The inverse of the engine's own placement: it takes `clientX`/`clientY`
+ * through the device pixel ratio and the letterboxed fit to reach a logical
+ * point, so a check aiming a gesture at a logical point goes the other way.
+ */
+function toClient(
+  view: Viewport,
+  dpr: number,
+  x: number,
+  y: number,
+): { x: number; y: number } {
+  return {
+    x: (view.offsetX + x * view.scale) / dpr,
+    y: (view.offsetY + y * view.scale) / dpr,
+  };
 }
 
 function toDevice(
@@ -519,7 +638,8 @@ function driveSurface(
         ...args: unknown[]
       ) => unknown;
       if (readings.includes(property)) {
-        return (): unknown => op.call(raw, engine.state);
+        return (...args: unknown[]): unknown =>
+          op.call(raw, engine.state, ...args);
       }
       return (...args: unknown[]): void => {
         engine.apply((state) => op.call(raw, state, ...args) as FathomState);
@@ -595,6 +715,35 @@ export async function createHarness(
     keys.dispatchEvent(new KeyEvent(type, code));
   };
 
+  /**
+   * The buttons the driven pointer holds, kept as a browser keeps them: a press
+   * adds one, a release drops one, and every event reports the set as it stands
+   * once the event has been applied. Without it a move issued in the middle of a
+   * drag would report no button held and the engine would read the contact as
+   * lifted.
+   */
+  const heldButtons = new Set<PointerDeviceName>();
+
+  const dispatchPointer = (
+    type: "pointermove" | "pointerdown" | "pointerup",
+    x: number,
+    y: number,
+    button: number,
+    device: PointerDeviceName,
+  ): void => {
+    const at = toClient(engine.viewport(), dpr, x, y);
+    keys.dispatchEvent(
+      new PointerEventShim(type, {
+        clientX: at.x,
+        clientY: at.y,
+        pointerId: POINTER_ID[device],
+        pointerType: device,
+        isPrimary: true,
+        button,
+        buttons: heldButtons.has(device) ? PRIMARY_BUTTON_BIT : 0,
+      }),
+    );
+  };
   const harness: Harness = {
     engine,
     get state() {
@@ -647,6 +796,20 @@ export async function createHarness(
       await engine.advance(1);
     },
 
+    async movePointer(x, y, device = "mouse") {
+      dispatchPointer("pointermove", x, y, NO_BUTTON, device);
+      await engine.advance(1);
+    },
+    async pressPointer(x, y, device = "mouse") {
+      heldButtons.add(device);
+      dispatchPointer("pointerdown", x, y, PRIMARY_BUTTON, device);
+      await engine.advance(1);
+    },
+    async releasePointer(x, y, device = "mouse") {
+      heldButtons.delete(device);
+      dispatchPointer("pointerup", x, y, PRIMARY_BUTTON, device);
+      await engine.advance(1);
+    },
     device: (x, y) => toDevice(engine.viewport(), x, y),
     pixel: (x, y) => {
       const point = toDevice(engine.viewport(), x, y);
@@ -1118,11 +1281,155 @@ export async function startPlaying(
   h: Harness,
   options: { seed?: number } = {},
 ): Promise<FathomSnapshot> {
-  h.debug.reset(
-    options.seed === undefined ? undefined : { seed: options.seed },
-  );
+  h.debug.reset(options.seed);
   h.debug.setScreen("playing");
   return h.snapshot();
+}
+
+/* -------------------------------------------------------------------------- */
+/* Menus, driven by a real pointer and a real finger                          */
+/* -------------------------------------------------------------------------- */
+//
+// The menus take a pointer and a touch contact as well as the keyboard
+// (specs/ui.md), and WHERE a build lays the items out is the build's own — so a
+// check asks the build where it put an item, through `menuItemRect`
+// (specs/instrumentation.md), and drives a real pointer event at that region.
+// Nothing here poses a pointer through the surface: a pose would tell the build
+// where the pointer is without making the engine's own input layer deliver a
+// press, a travel and a release the way a hand does, and what those checks are
+// about is precisely that the game reads them.
+//
+// Each part of a gesture runs exactly ONE frame, so a caller counting frames can
+// add them up.
+
+/** Return the game to its title screen: `reset`, and nothing else. */
+export function openTitle(h: Harness, seed?: number): void {
+  h.debug.reset(seed);
+}
+
+/**
+ * Where the build put item `index` of the menu the current screen shows.
+ *
+ * Fails by assertion when the build reports no region for an item its own menu
+ * shows, so the point names that fault rather than dividing by a `null` several
+ * lines later. A check that is ABOUT the reading returning `null` — on the four
+ * screens that show no menu, or past the end of a menu — calls
+ * `h.debug.menuItemRect` directly.
+ */
+export function menuRect(h: Harness, index: number): MenuRect {
+  const rect = h.debug.menuItemRect(index);
+  assertTruthy(
+    rect,
+    `menuItemRect(${index}) to report the hit region of item ${index} on the ` +
+      "menu the current screen shows (specs/instrumentation.md)",
+  );
+  return rect as MenuRect;
+}
+
+/** The middle of a hit region: where a gesture aimed at that item lands. */
+export function rectCenter(rect: MenuRect): { x: number; y: number } {
+  return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+}
+
+/** Move the pointer onto item `index`, and run the frame that reads it. */
+export async function pointerOntoItem(
+  h: Harness,
+  index: number,
+): Promise<void> {
+  const at = rectCenter(menuRect(h, index));
+  await h.movePointer(at.x, at.y);
+}
+
+/** Press and release the pointer inside item `index`'s region: two frames. */
+export async function clickItem(h: Harness, index: number): Promise<void> {
+  const at = rectCenter(menuRect(h, index));
+  await h.pressPointer(at.x, at.y);
+  await h.releasePointer(at.x, at.y);
+}
+
+/**
+ * Press on one item, travel to another, and release there: three frames.
+ *
+ * The two edges fall in different regions, so this confirms nothing — the
+ * affordance that lets a player slide off a control to cancel, which
+ * specs/ui.md states and a check reads back as a screen that did not change.
+ */
+export async function dragBetweenItems(
+  h: Harness,
+  from: number,
+  to: number,
+): Promise<void> {
+  const start = rectCenter(menuRect(h, from));
+  const end = rectCenter(menuRect(h, to));
+  await h.pressPointer(start.x, start.y);
+  await h.movePointer(end.x, end.y);
+  await h.releasePointer(end.x, end.y);
+}
+
+/**
+ * Land a touch contact inside item `index`'s region and LEAVE IT DOWN.
+ *
+ * A confirm takes both of its edges inside one region and the lift is the second
+ * of them (specs/ui.md), so a gesture that stops at the landing is the one
+ * gesture that isolates what the landing alone did.
+ */
+export async function touchOntoItem(h: Harness, index: number): Promise<void> {
+  const at = rectCenter(menuRect(h, index));
+  await h.pressPointer(at.x, at.y, "touch");
+}
+
+/**
+ * Land a touch contact inside item `index`'s region and lift it there.
+ *
+ * The landing selects the item as well as confirming it, because a finger does
+ * not hover (specs/ui.md) — which is the difference between this and
+ * {@link clickItem}, and the reason both exist.
+ */
+export async function tapItem(h: Harness, index: number): Promise<void> {
+  const at = rectCenter(menuRect(h, index));
+  await h.pressPointer(at.x, at.y, "touch");
+  await h.releasePointer(at.x, at.y, "touch");
+}
+
+/**
+ * Press and release the pointer at one point of the stage: two frames.
+ *
+ * For a screen that carries no item regions. specs/ui.md gives a gesture
+ * completed on `"howto"` its effect anywhere on the screen rather than over a
+ * region the build laid out, so there is nothing to ask `menuItemRect` for.
+ */
+export async function clickScreenAt(
+  h: Harness,
+  at: { x: number; y: number },
+): Promise<void> {
+  await h.pressPointer(at.x, at.y);
+  await h.releasePointer(at.x, at.y);
+}
+
+/**
+ * Land and lift a touch contact at one point of the stage: two frames.
+ *
+ * The counterpart of {@link clickScreenAt} for a finger, and for the same reason.
+ */
+export async function tapScreenAt(
+  h: Harness,
+  at: { x: number; y: number },
+): Promise<void> {
+  await h.pressPointer(at.x, at.y, "touch");
+  await h.releasePointer(at.x, at.y, "touch");
+}
+
+/** Land a contact on one item, travel to another, and lift there: confirms nothing. */
+export async function touchBetweenItems(
+  h: Harness,
+  from: number,
+  to: number,
+): Promise<void> {
+  const start = rectCenter(menuRect(h, from));
+  const end = rectCenter(menuRect(h, to));
+  await h.pressPointer(start.x, start.y, "touch");
+  await h.movePointer(end.x, end.y, "touch");
+  await h.releasePointer(end.x, end.y, "touch");
 }
 
 /**
@@ -1178,9 +1485,7 @@ export async function openCountdown(
   h: Harness,
   options: { seed?: number } = {},
 ): Promise<FathomSnapshot> {
-  h.debug.reset(
-    options.seed === undefined ? undefined : { seed: options.seed },
-  );
+  h.debug.reset(options.seed);
   h.debug.setScreen("countdown");
   return h.snapshot();
 }

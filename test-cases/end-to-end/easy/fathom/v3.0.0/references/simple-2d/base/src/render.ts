@@ -47,6 +47,7 @@ import {
 import { COUNTDOWN_BEAT } from "./flow";
 import { centerX, centerY, tileIndex } from "./grid";
 import { isGate, isRock, wallMask } from "./maze";
+import { itemBaseline } from "./menu";
 import { FLARE_FADE } from "./predators";
 import { drifterLit, visionRadius } from "./sensing";
 import {
@@ -77,6 +78,7 @@ import type {
   MazeState,
   PredatorState,
   PulseState,
+  Screen,
   Tile,
 } from "./state";
 import type { DeepReadonly } from "ts-essentials";
@@ -807,15 +809,14 @@ function panel(ctx: Ctx, height: number): void {
  */
 function drawMenu(
   ctx: Ctx,
+  screen: Screen,
   items: readonly string[],
   selected: number,
-  top: number,
-  gap: number,
 ): void {
   ctx.textAlign = "center";
   ctx.font = `28px ${MONO}`;
   items.forEach((item, index) => {
-    const y = top + index * gap;
+    const y = itemBaseline(screen, index);
     if (index === selected) {
       ctx.fillStyle = COLOR.text;
       ctx.fillText(`> ${item} <`, STAGE_W / 2, y);
@@ -863,7 +864,7 @@ function drawTitle(state: State, ctx: Ctx): void {
   ctx.font = `22px ${MONO}`;
   ctx.fillStyle = COLOR.textDim;
   ctx.fillText(TAGLINE_TEXT, STAGE_W / 2, 300);
-  drawMenu(ctx, TITLE_ITEMS, state.menuIndex, 420, 58);
+  drawMenu(ctx, "title", TITLE_ITEMS, state.menuIndex);
   ctx.font = `16px ${MONO}`;
   ctx.fillStyle = COLOR.textFaint;
   ctx.fillText("UP / DOWN  MOVE     ENTER  SELECT", STAGE_W / 2, STAGE_H - 48);
@@ -956,7 +957,7 @@ function drawPaused(state: State, ctx: Ctx): void {
   ctx.fillStyle = COLOR.forager;
   ctx.font = `700 48px ${MONO}`;
   ctx.fillText("PAUSED", STAGE_W / 2, STAGE_H / 2 - 56);
-  drawMenu(ctx, PAUSE_ITEMS, state.menuIndex, STAGE_H / 2 + 16, 48);
+  drawMenu(ctx, "paused", PAUSE_ITEMS, state.menuIndex);
   ctx.restore();
 }
 
@@ -999,6 +1000,6 @@ function drawGameOver(state: State, ctx: Ctx): void {
   ctx.fillStyle = COLOR.textDim;
   ctx.font = `20px ${MONO}`;
   ctx.fillText(`REACHED DEPTH ${state.depth}`, STAGE_W / 2, STAGE_H / 2 + 10);
-  drawMenu(ctx, GAMEOVER_ITEMS, state.menuIndex, STAGE_H / 2 + 68, 48);
+  drawMenu(ctx, "gameover", GAMEOVER_ITEMS, state.menuIndex);
   ctx.restore();
 }

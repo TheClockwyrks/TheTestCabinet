@@ -39,6 +39,8 @@ import {
   toTitle,
   type FathomState,
 } from "./game";
+import { itemRect, type Rect } from "./menu";
+import { menuItems } from "./readings";
 import { tileKey } from "./sensing";
 import { snapshot, type FathomSnapshot } from "./snapshot";
 import {
@@ -76,9 +78,12 @@ export interface FathomDebugApi {
   version: number;
   setAutoStep(enabled: boolean): void;
   advance(ticks: number): void;
-  reset(options?: { seed?: number }): void;
+  reset(seed?: number): void;
   snapshot(): FathomSnapshot;
+  menuItemRect(index: number): Rect | null;
   setScreen(s: Screen): void;
+  setMenuIndex(index: number): void;
+  setTitleIndex(index: number): void;
   setScore(points: number): void;
   setLives(n: number): void;
   setDepth(d: number): void;
@@ -224,10 +229,12 @@ export function createDebugApi(
      * runtime owns, and a reset is not a reason to start making noise again.
      * Manual stepping is re-armed, so the game comes back off the wall clock.
      */
-    reset(options) {
-      const seed = options?.seed ?? DEFAULT_SEED;
+    reset(seed = DEFAULT_SEED) {
       if (!Number.isFinite(seed)) invalid(`a seed must be finite, got ${seed}`);
       state.rng.reseed(seed);
+      // The remembered title selection is a field of the declared state like any
+      // other, so a reset puts it back to `0` and the title comes up on `DIVE`.
+      state.titleIndex = 0;
       toTitle(state);
       state.simTime = 0;
       clock.setAutoStep(false);
@@ -236,6 +243,17 @@ export function createDebugApi(
     /** A pure read. It changes nothing. */
     snapshot() {
       return snapshot(state, clock.autoStep());
+    },
+
+    /**
+     * Where this build drew item `index` of the menu the current screen shows,
+     * in logical units. A pure read: it changes nothing.
+     *
+     * `null` on the four screens that show no menu, and for an index the current
+     * menu does not hold, which is what `specs/instrumentation.md` fixes.
+     */
+    menuItemRect(index) {
+      return itemRect(state.screen, index);
     },
 
     /**
@@ -249,6 +267,41 @@ export function createDebugApi(
         invalid(`a screen is one of ${SCREENS.join(", ")}, got ${s}`);
       }
       poseScreen(state, s);
+    },
+
+    /**
+     * Highlight one item of whichever menu the current screen shows, and change
+     * nothing else: the screen, the maze and every body stay exactly as they
+     * stand, and a `confirm` from there takes the item this named.
+     */
+    setMenuIndex(index) {
+      const items = menuItems(state.screen);
+      if (items.length === 0) {
+        invalid(`the ${state.screen} screen shows no menu to highlight`);
+      }
+      if (!Number.isInteger(index) || index < 0 || index >= items.length) {
+        invalid(
+          `menu index ${index} is outside the ${items.length} items the ` +
+            `${state.screen} menu holds`,
+        );
+      }
+      state.menu = index;
+    },
+
+    /**
+     * Set the title menu's remembered selection, and nothing else: the screen
+     * and the highlighted item stay as they stand, so the value set here is the
+     * one the next arrival at the title selects.
+     */
+    setTitleIndex(index) {
+      const items = menuItems("title");
+      if (!Number.isInteger(index) || index < 0 || index >= items.length) {
+        invalid(
+          `title index ${index} is outside the ${items.length} items the ` +
+            "title menu holds",
+        );
+      }
+      state.titleIndex = index;
     },
 
     /** Set the running score. Play carries on from that figure. */

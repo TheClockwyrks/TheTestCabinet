@@ -106,18 +106,16 @@ are, the code quality the build is held to, and the commands that run over the
 finished repository. It also lists the other files of the specification and what
 each one fixes.
 
-This run is the **{{variant.name}}** dive. {{variant.description}}
+This build is the **{{variant.name}}** dive.
+{{variant.description}}
 
 The specification you have been given is written for that dive alone, so build
 what it says without looking for an alternative.
 
 ## The art
 
-The game's art is seeded under `{{workspace}}/assets/`: sprite sheets for the
-forager, the three predators and the bonus drifter, the flare bloom effect, and
-the maze tileset. `specs/assets.md` is the contract for every sheet's frame
-layout and how the game draws it, and for the short list of things the game draws
-in code instead.
+The game's art is seeded under `{{workspace}}/assets/`, and `specs/assets.md` is
+its contract.
 
 ## The build interface
 
@@ -132,9 +130,8 @@ the committed `package-lock.json` matches.
 
 ## Driving the game in a browser
 
-The project's Playwright and its headless Chromium are installed, so you can
-serve the built game and drive it in a real browser, watch a dive, and check for
-console errors.
+The project's Playwright and its headless Chromium are installed, so the built
+game can be served and driven in a real browser.
 
 When you launch the browser, use the project's own Playwright: import it from
 your project (for example `import { chromium } from "playwright"`) or run the
@@ -145,10 +142,8 @@ sandbox and a default launch fails.
 
 ## The showcase
 
-The game ships with its store-page presentation: a `showcase/` directory at the
-project root holding a player-facing description of the game and a short carousel
-of captured media. `specs/showcase.md` defines its contents — the description,
-the `showcase.toml` carousel, and how the media are captured.
+The game ships its store-page presentation beside its source, as
+`specs/showcase.md` defines.
 
 ## Commit your work
 

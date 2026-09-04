@@ -17,6 +17,17 @@
 //
 // The environment is `node`. The engine takes every measurement from the
 // `SurfaceMetrics` the harness supplies, so these suites need no DOM.
+//
+// WHAT ONE FULL RUN COSTS, MEASURED. Against `references/structured-2d/base`,
+// on an idle developer machine with cores to spare, the whole of a base run's
+// checklist — 156 suites, every one of the points a base dive is rated on —
+// finished in under half a minute of wall clock, and the kindle checklist, four
+// suites longer, in about the same. An engine-backed suite runs in process
+// rather than over a browser, which is why it costs a fraction of what the
+// engineless project does. A two-core host is the machine the fifteen-minute
+// budget is stated against and is several times slower than that, and a run's
+// build is competing with the suites for those two cores, so the honest reading
+// of the figure is margin rather than a prediction.
 
 import { defineConfig } from "vitest/config";
 

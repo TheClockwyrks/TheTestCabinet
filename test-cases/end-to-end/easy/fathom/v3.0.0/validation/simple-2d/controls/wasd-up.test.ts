@@ -39,6 +39,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
+import { WASD_KEY } from "../constants";
 import { poseMoveKeyRun } from "../fixtures";
 import {
   captureReplay,
@@ -51,7 +52,7 @@ import {
 import { requireSceneHeld, sceneGuard } from "../scene";
 
 /** The second key specs/movement.md binds the `up` action to. */
-const KEY = "KeyW";
+const KEY = WASD_KEY.up;
 
 /**
  * Frames the key is held before the verdict is read.

@@ -28,7 +28,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { BRIGHT_HOLD } from "../constants";
+import { BINDINGS, BRIGHT_HOLD } from "../constants";
 import { poseStraightRun } from "../fixtures";
 import {
   captureStill,
@@ -39,7 +39,7 @@ import {
 import { parkForager } from "../scene";
 
 /** The second key specs/movement.md binds the `pause` action to. */
-const KEY = "KeyP";
+const KEY = BINDINGS.pause[1];
 
 /**
  * The corridor posed under the forager, in tiles.

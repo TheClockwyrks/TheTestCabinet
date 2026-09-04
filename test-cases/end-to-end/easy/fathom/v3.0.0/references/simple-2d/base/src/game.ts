@@ -61,10 +61,12 @@ import {
   menuUp,
   mutePressed,
   pausePressed,
+  pointerSamples,
   registerActions,
   sonarPressed,
 } from "./input";
 import { releaseInk } from "./ink";
+import { itemAt } from "./menu";
 import { renderGame } from "./render";
 import { advanceFrame } from "./simulate";
 import { castPulse, sonarRange } from "./sonar";
@@ -133,6 +135,80 @@ function menuFor(screen: FathomState["screen"]): readonly string[] | null {
   }
 }
 
+/** What the pointer and the finger left a menu holding this frame. */
+interface PointedMenu {
+  /** The state with the selection the gesture made, and its press remembered. */
+  readonly state: FathomState;
+  /** The item a gesture confirmed, or `null` where none did. */
+  readonly confirmed: number | null;
+}
+
+/**
+ * The pointer and the finger over the current menu (`specs/ui.md`).
+ *
+ * A sample that lands on an item selects it, which is what makes a mouse move
+ * select and a contact select on its landing, since a finger never hovers. A
+ * confirm takes both of its edges inside ONE item's region, so the release
+ * confirms only where it lands on the item the press landed on: two edges in
+ * different regions, and an edge outside every region, confirm nothing.
+ */
+function menuPointer(
+  state: FathomState,
+  api: UpdateApi,
+  items: readonly string[],
+): PointedMenu {
+  let next = state;
+  let confirmed: number | null = null;
+  for (const sample of pointerSamples(api)) {
+    const over = itemAt(state.screen, sample.x, sample.y);
+    if (over !== null && over < items.length) {
+      next = { ...next, menuIndex: over };
+    }
+    if (sample.type === "down") {
+      next = { ...next, pressedItem: over };
+      continue;
+    }
+    if (sample.type !== "up") continue;
+    if (over !== null && over === next.pressedItem) confirmed = over;
+    next = { ...next, pressedItem: null };
+  }
+  return { state: next, confirmed };
+}
+
+/** What a press on a screen with no item regions is remembered as. */
+const SCREEN_PRESS = 0;
+
+/** What a gesture on a screen with no menu left behind this frame. */
+interface ScreenGesture {
+  /** The state with the press it made remembered. */
+  readonly state: FathomState;
+  /** Whether a press and its release both landed on the screen. */
+  readonly tapped: boolean;
+}
+
+/**
+ * A gesture completed on a screen that shows no menu: a pointer pressed and
+ * released on it, or a contact landed and lifted on it (`specs/ui.md`).
+ *
+ * The screen carries no item regions, so the press is remembered as
+ * `SCREEN_PRESS` rather than as an item, and the release completes the gesture
+ * wherever on the screen it lands.
+ */
+function screenGesture(state: FathomState, api: UpdateApi): ScreenGesture {
+  let next = state;
+  let tapped = false;
+  for (const sample of pointerSamples(api)) {
+    if (sample.type === "down") {
+      next = { ...next, pressedItem: SCREEN_PRESS };
+      continue;
+    }
+    if (sample.type !== "up") continue;
+    if (next.pressedItem === SCREEN_PRESS) tapped = true;
+    next = { ...next, pressedItem: null };
+  }
+  return { state: next, tapped };
+}
+
 /**
  * A menu's `up`, `down` and `confirm`, read as edges.
  *
@@ -158,9 +234,11 @@ function menuInput(
 }
 
 function acceptTitle(state: FathomState, index: number): FathomState {
-  return index === 0
-    ? beginDive(state)
-    : enterScreen({ ...state, menuIndex: 0 }, "howto");
+  // Confirming an entry here records it, from the keyboard, a pointer and a
+  // contact alike, and every later arrival at the title lands on it
+  // (`specs/ui.md`).
+  const remembered: FathomState = { ...state, titleIndex: index };
+  return index === 0 ? beginDive(remembered) : enterScreen(remembered, "howto");
 }
 
 function acceptPause(state: FathomState, index: number): FathomState {
@@ -269,11 +347,15 @@ function handleInput(
     case "playing":
       return playInput(moved, api);
     case "howto": {
-      // Both leave, so both are read and neither is left armed.
+      // The two controls that leave, and — because the screen shows no menu — a
+      // gesture completed anywhere on it (`specs/ui.md`). All three are read
+      // before any is acted on, so none is left armed for a later frame.
       const accepted = confirmPressed(api);
       const left = backPressed(api);
+      const gestured = screenGesture(moved, api);
       return {
-        state: accepted || left ? toTitle(moved) : moved,
+        state:
+          accepted || left || gestured.tapped ? toTitle(moved) : gestured.state,
         cues: [],
       };
     }
@@ -282,13 +364,20 @@ function handleInput(
     case "title": {
       const items = menuFor(moved.screen);
       if (items === null) return { state: moved, cues: [] };
-      // On a menu `Escape` means "leave": resume from the pause menu, and the
-      // title from the game-over menu. The title menu has nowhere to go back to.
-      const back = backPressed(api);
-      if (back && moved.screen === "paused") {
-        return { state: enterScreen(moved, "playing"), cues: [] };
+      // The paused screen reads `pause` and `back` BEFORE the menu's own edges,
+      // and a frame carrying either resumes once and does nothing else
+      // (`specs/ui.md`). Both are read so neither is left armed for the frame
+      // after: `Escape` raises the two of them together.
+      if (moved.screen === "paused") {
+        const back = backPressed(api);
+        const paused = pausePressed(api);
+        if (back || paused) {
+          return { state: enterScreen(moved, "playing"), cues: [] };
+        }
       }
-      if (back && moved.screen === "gameover") {
+      // On the game-over screen `Escape` means "leave", to the title. The title
+      // menu has nowhere to go back to, so `back` there changes nothing.
+      if (moved.screen === "gameover" && backPressed(api)) {
         return { state: toTitle(moved), cues: [] };
       }
       const accept =
@@ -297,7 +386,13 @@ function handleInput(
           : moved.screen === "paused"
             ? acceptPause
             : acceptGameOver;
-      return { state: menuInput(moved, api, items, accept), cues: [] };
+      // The pointer is read first, because a gesture selects the item it is over
+      // before it confirms one and the confirm it raises acts on that selection.
+      const pointed = menuPointer(moved, api, items);
+      if (pointed.confirmed !== null) {
+        return { state: accept(pointed.state, pointed.confirmed), cues: [] };
+      }
+      return { state: menuInput(pointed.state, api, items, accept), cues: [] };
     }
     case "countdown":
     case "cleared":

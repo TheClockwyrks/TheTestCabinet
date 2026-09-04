@@ -100,7 +100,7 @@ afterEach(async () => {
 });
 
 it("returns every predator to the den on a catch and runs the whole staggered schedule again from the moment play resumes", async () => {
-  await h.debug.reset({ seed: SEED });
+  await h.debug.reset(SEED);
   const board = await poseDenBoard(h);
   await h.debug.setScreen("playing");
 
