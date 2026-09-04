@@ -23,7 +23,7 @@
 // tiles, spread, on one row well clear of the band — for the same reasons.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CHARGE_MAX } from "../../src/constants";
+import { CHARGE_MAX } from "../constants";
 import { assertGreaterThan } from "../assert";
 import {
   captureStill,

@@ -27,7 +27,7 @@
 // count.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CHARGE_MAX, CUES } from "../../src/constants";
+import { CHARGE_MAX, CUES } from "../constants";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

@@ -24,7 +24,7 @@
 // another is docked there rather than twice. This point reads the field alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { wormStepInterval } from "../../src/constants";
+import { wormStepInterval } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,

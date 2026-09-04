@@ -44,6 +44,7 @@ import { bulletBand, droneBand, inverted, isShimmering } from "./bands";
 import { clampLane } from "./ship";
 import { dischargeReady } from "./discharge";
 import { resetToTitle } from "./flow";
+import { menuItemRect, type MenuRect } from "./menus";
 import {
   droneById,
   bulletById,
@@ -75,6 +76,7 @@ export interface SpectraSnapshot {
   score: number;
   lives: number;
   extraLifeAwarded: boolean;
+  challengeHits: number;
   resonance: number;
   dischargeReady: boolean;
   inversion: number;
@@ -82,6 +84,7 @@ export interface SpectraSnapshot {
   muted: boolean;
   waveEntry: boolean;
   diveLaunching: boolean;
+  stageClearing: boolean;
   diveClock: number;
   droneSpeedScale: number;
   bulletSpeedScale: number;
@@ -146,6 +149,10 @@ export interface SpectraDebugApi {
     options?: { seed?: number },
   ): SpectraState;
   snapshot(state: DeepReadonly<SpectraState>): SpectraSnapshot;
+  menuItemRect(
+    state: DeepReadonly<SpectraState>,
+    index: number,
+  ): MenuRect | null;
 
   setScreen(state: DeepReadonly<SpectraState>, screen: Screen): SpectraState;
   setPhase(state: DeepReadonly<SpectraState>, phase: Phase): SpectraState;
@@ -161,12 +168,23 @@ export interface SpectraDebugApi {
     state: DeepReadonly<SpectraState>,
     awarded: boolean,
   ): SpectraState;
+  /**
+   * Set the current challenge stage's tally of drones destroyed.
+   *
+   * It destroys nothing and pays nothing: it is the latch alone, and the bonus
+   * belongs to the scoring path.
+   */
+  setChallengeHits(state: DeepReadonly<SpectraState>, n: number): SpectraState;
 
   setWaveEntry(
     state: DeepReadonly<SpectraState>,
     enabled: boolean,
   ): SpectraState;
   setDiveLaunching(
+    state: DeepReadonly<SpectraState>,
+    enabled: boolean,
+  ): SpectraState;
+  setStageClearing(
     state: DeepReadonly<SpectraState>,
     enabled: boolean,
   ): SpectraState;
@@ -327,6 +345,7 @@ export function createDebugApi(): SpectraDebugApi {
         score: state.score,
         lives: state.lives,
         extraLifeAwarded: state.extraLifeAwarded,
+        challengeHits: state.challengeHits,
         resonance: state.resonance,
         dischargeReady: dischargeReady(state.resonance),
         inversion: state.inversion,
@@ -334,6 +353,7 @@ export function createDebugApi(): SpectraDebugApi {
         muted: state.muted,
         waveEntry: state.waveEntry,
         diveLaunching: state.diveLaunching,
+        stageClearing: state.stageClearing,
         diveClock: state.diveClock,
         droneSpeedScale: droneSpeedScale(state.stage),
         bulletSpeedScale: bulletSpeedScale(state.stage),
@@ -393,6 +413,17 @@ export function createDebugApi(): SpectraDebugApi {
       };
     },
 
+    /**
+     * A pure read of the hit region of item `index` on the menu the current screen
+     * shows, in logical units. It changes nothing.
+     *
+     * Null on the four screens that show no menu, and null for an index the current
+     * menu has no item at (`specs/instrumentation.md`). The region is the one
+     * `src/menus.ts` lays out, which is the one `src/render.ts` draws the item in
+     * and the one the pointer selects on.
+     */
+    menuItemRect: (state, index) => menuItemRect(state.screen, index),
+
     // ---- The screen and the run ------------------------------------------
 
     setScreen: (state, screen) =>
@@ -439,6 +470,11 @@ export function createDebugApi(): SpectraDebugApi {
         sim.extraLifeAwarded = awarded;
       })(state),
 
+    setChallengeHits: (state, n) =>
+      pose((sim) => {
+        sim.challengeHits = Math.max(0, Math.round(n));
+      })(state),
+
     // ---- The world gates and the dive clock -------------------------------
 
     setWaveEntry: (state, enabled) =>
@@ -449,6 +485,11 @@ export function createDebugApi(): SpectraDebugApi {
     setDiveLaunching: (state, enabled) =>
       pose((sim) => {
         sim.diveLaunching = enabled;
+      })(state),
+
+    setStageClearing: (state, enabled) =>
+      pose((sim) => {
+        sim.stageClearing = enabled;
       })(state),
 
     setShipContact: (state, enabled) =>

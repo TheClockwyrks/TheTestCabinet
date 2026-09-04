@@ -34,6 +34,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual, assertNull } from "../assert";
 import { SAUCER_FIRST_DELAY } from "../constants";
 import {
+  armAudio,
   captureStill,
   createHarness,
   startPlaying,
@@ -82,7 +83,7 @@ it("sounds on the tick a saucer joins the field, and not on the run-up to it", a
   // A genuine, browser-trusted gesture: an engineless build's audio does not start
   // until the player has interacted with the page (`specs/audio.md`), and the key
   // is bound to nothing (`specs/controls.md`).
-  await h.armAudio();
+  await armAudio(h);
   // The one faculty this point is about, back on. Everything else `startPlaying`
   // shut stays shut.
   await h.debug.setSaucerSpawning(true);

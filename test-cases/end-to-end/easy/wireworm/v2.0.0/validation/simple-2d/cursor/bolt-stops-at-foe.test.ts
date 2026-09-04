@@ -34,7 +34,7 @@
 // foe roster, the node above, and the bolt.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED, FOE_HALF } from "../../src/constants";
+import { BOLT_SPEED, FOE_HALF } from "../constants";
 import { assertEqual, assertLength, assertNull } from "../assert";
 import {
   boltOf,

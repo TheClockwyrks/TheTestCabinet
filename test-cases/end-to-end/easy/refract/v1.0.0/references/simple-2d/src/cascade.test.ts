@@ -5,7 +5,7 @@
 // five measures in `src/difficulty.ts`.
 
 import { describe, expect, it } from "vitest";
-import { channelsOn } from "./board";
+import { cellCenter, channelsOn } from "./board";
 import {
   generateBoard,
   generateBoardWithSolution,
@@ -14,10 +14,30 @@ import {
   tierFor,
 } from "./cascade";
 import { CHANNELS, MAX_TIER, TIER_ADVANCE, TIERS } from "./constants";
-import { createDebugApi } from "./debug";
+import { createDebugApi, type RefractDebugApi } from "./debug";
 import { measureDifficulty, meetsFloor } from "./difficulty";
 import { createInitialState } from "./flow";
-import type { BoardState } from "./game";
+import type { BoardState, RefractState } from "./game";
+
+/**
+ * A route drawn through the surface's three pointer poses: a press at the
+ * first cell's center, a move to each remaining center, then a release. The
+ * surface carries no sugar for a route, so a caller that wants one composes it.
+ */
+function traceRoute(
+  api: RefractDebugApi,
+  state: RefractState,
+  cells: readonly { col: number; row: number }[],
+): RefractState {
+  if (cells.length === 0) return state;
+  const [firstX, firstY] = cellCenter(cells[0], state.board);
+  let next = api.pointerDown(state, firstX, firstY);
+  for (const cell of cells.slice(1)) {
+    const [x, y] = cellCenter(cell, next.board);
+    next = api.pointerMove(next, x, y);
+  }
+  return api.pointerUp(next);
+}
 
 describe("the tier ladder", () => {
   it("climbs one step every TIER_ADVANCE boards and tops out at MAX_TIER", () => {
@@ -122,7 +142,7 @@ describe("emitted boards", () => {
           ...debug.loadBoard(state, boardNotation(generated.board)),
         };
         for (const route of generated.solution) {
-          state = debug.trace(state, route);
+          state = traceRoute(debug, state, route);
         }
         expect(debug.snapshot(state).solved, label).toBe(true);
       }

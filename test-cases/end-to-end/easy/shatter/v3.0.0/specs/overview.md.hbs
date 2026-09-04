@@ -183,7 +183,7 @@ field uses.
   binds `game` to it, and runs.
 - `src/constants.ts`, holding every figure this specification fixes.
 - `index.html`, the page and the canvas the engine fits the field into.
-- `.tcab/`, holding the vendored engine that `package.json` resolves the
+- The vendored engine directory that `package.json` resolves the engine
   dependency from.
 - `engine/`, the engine's own documentation.
 - The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
@@ -241,7 +241,7 @@ itself.
   binds `game` to it, and runs.
 - `src/constants.ts`, holding every figure this specification fixes.
 - `index.html`, the page and the canvas the engine fits the field into.
-- `.tcab/`, holding the vendored engine that `package.json` resolves the
+- The vendored engine directory that `package.json` resolves the engine
   dependency from.
 - `engine/`, the engine's own documentation.
 - The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
@@ -324,12 +324,9 @@ it.
   nothing is fetched at runtime.
 - Run in the browser with no backend. Everything needed to play is self-contained,
   and no API key or credential is needed to build, run, or play.
-{{#if (eq engine.slug "none")}}
-- Hold the game's whole state in one value, the one the frame loop advances and
-  the debug surface reads.
-{{else if (eq engine.slug "simple-2d")}}
+{{#if (eq engine.slug "simple-2d")}}
 - Hold the game's whole state in `ShatterState`, as `specs/state.md` declares it.
-{{else}}
+{{else if (eq engine.slug "structured-2d")}}
 - Hold the game's whole authoritative state in `ShatterState`, the world's game
   state, as `specs/state.md` declares it.
 {{/if}}
@@ -368,6 +365,9 @@ of the entity rather than a corner of anything drawn for it.
 - Draw in logical units, and take the canvas element's own size from the runtime
   alone.
 - Game logic operates in logical units, independent of the rendered scale.
+- A pointer or touch position reaches the game in these same logical units, taken
+  through that same fit, so a position the game reads and a region the game
+  reports lie in one coordinate space.
 
 Every rate in this specification is per second and every duration is in seconds,
 with two exceptions stated in whole simulation ticks: the gun's fire gate and the
@@ -421,6 +421,6 @@ The palette, the type, the glow, and every other aspect of the look are yours.
 ## Out of scope
 
 - Network or online play, and any second local player. One ship is flown.
-- Pointer, touch, and gamepad input. The game is played from the keyboard.
+- Gamepad input.
 - Persistence of scores or settings between sessions. Each session starts fresh.
 - A hyperspace or teleport escape move.

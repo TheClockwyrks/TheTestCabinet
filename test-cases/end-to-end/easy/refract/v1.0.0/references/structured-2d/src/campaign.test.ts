@@ -861,7 +861,7 @@ describe("the campaign boards", () => {
         h.debug.loadBoard(CAMPAIGN_BOARDS[index]);
         expect(channelsOn(h.state.board)).toHaveLength(solution.length);
         for (const channelRoute of solution) {
-          h.debug.trace(route(channelRoute));
+          h.trace(route(channelRoute));
         }
         const snapshot = h.debug.snapshot();
         expect(snapshot.solved).toBe(true);

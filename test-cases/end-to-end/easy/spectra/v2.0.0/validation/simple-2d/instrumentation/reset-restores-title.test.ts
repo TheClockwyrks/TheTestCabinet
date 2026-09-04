@@ -7,12 +7,13 @@
 // drone, bullet, and burst rosters and the live discharge; it places the ship at
 // the center of its lane (`640`) on the cyan band with `0` seconds of fire
 // lockout and `0` seconds of fire cooldown; it turns the three world gates
-// `waveEntry`, `diveLaunching`, and `ship.contact` back on; it returns the wave's
+// `waveEntry`, `diveLaunching`, `stageClearing`, and `ship.contact` back on; it
+// returns the wave's
 // entry, sway, and dive clocks, and the gap the next dive waits for, to their
 // fresh-wave values, `diveClock` at `0` and the gap at `DIVE_FIRST_DELAY`; it
-// sets `extraLifeAwarded` to `false` and the challenge-stage hit count to `0`;
-// and it sets `simTime` to `0` and the counter the next entity's id is taken from
-// back to the first id".
+// sets `extraLifeAwarded` to `false` and `challengeHits` to `0`; and it sets
+// `simTime` to `0` and the counter the next entity's id is taken from back to the
+// first id".
 //
 // THE RUN IS MADE MESSY FIRST, AND EVERY FIELD IS MOVED OFF ITS TITLE VALUE
 // BEFORE THE RESET. A reset read off a game that was already at its title values
@@ -79,6 +80,7 @@ const MESSY_INVERSION = 3.5;
 const MESSY_PHASE_TIMER = 0.9;
 const MESSY_MENU_INDEX = 2;
 const MESSY_DIVE_CLOCK = 1.75;
+const MESSY_CHALLENGE_HITS = 12;
 
 /** The ship, posed off the centre of its lane, off its opening band, and with
  * both of its cannon's timers running. */
@@ -177,6 +179,7 @@ it("restores every declared field to its title value, and leaves mute alone", as
   h.debug.setLives(MESSY_LIVES);
   h.debug.setStage(MESSY_STAGE);
   h.debug.setExtraLifeAwarded(true);
+  h.debug.setChallengeHits(MESSY_CHALLENGE_HITS);
   h.debug.setMenuIndex(MESSY_MENU_INDEX);
   h.debug.setPhase("ready");
   h.debug.setPhaseTimer(MESSY_PHASE_TIMER);
@@ -187,7 +190,7 @@ it("restores every declared field to its title value, and leaves mute alone", as
   h.debug.setFireLockout(MESSY_LOCKOUT);
   h.debug.setFireCooldown(MESSY_COOLDOWN);
   h.debug.setDiveClock(MESSY_DIVE_CLOCK);
-  // `startPosed` shut all three world gates, which is the state a reset has to
+  // `startPosed` shut all four world gates, which is the state a reset has to
   // turn back on.
 
   const messy = h.snapshot();
@@ -232,6 +235,7 @@ it("restores every declared field to its title value, and leaves mute alone", as
   assertEqual(title.lives, START_LIVES, "reset restores lives to START_LIVES");
   assertEqual(title.stage, 1, "reset restores stage");
   assertEqual(title.extraLifeAwarded, false, "reset clears extraLifeAwarded");
+  assertEqual(title.challengeHits, 0, "reset clears challengeHits");
 
   // The band systems.
   assertCloseTo(title.resonance, 0, EXACT_DIGITS, "reset restores resonance");
@@ -277,6 +281,7 @@ it("restores every declared field to its title value, and leaves mute alone", as
   // The world gates and the wave's own clock.
   assertEqual(title.waveEntry, true, "reset turns waveEntry back on");
   assertEqual(title.diveLaunching, true, "reset turns diveLaunching back on");
+  assertEqual(title.stageClearing, true, "reset turns stageClearing back on");
   assertEqual(title.ship.contact, true, "reset turns ship.contact back on");
   assertCloseTo(title.diveClock, 0, EXACT_DIGITS, "reset restores diveClock");
 

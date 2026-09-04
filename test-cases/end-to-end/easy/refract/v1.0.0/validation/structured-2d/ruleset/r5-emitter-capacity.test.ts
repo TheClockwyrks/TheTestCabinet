@@ -20,6 +20,7 @@ import {
   moveToCell,
   pressCell,
   resetTo,
+  traceCells,
   type Harness,
 } from "../harness";
 
@@ -38,7 +39,7 @@ it("a second segment onto a loaded emitter is refused", async () => {
   await loadBoard(h, R5_EMITTER);
 
   // Draw T(0,0)-t(1,0) and release: the emitter now carries its one segment.
-  h.debug.trace([
+  traceCells(h, [
     { col: 0, row: 0 },
     { col: 1, row: 0 },
   ]);

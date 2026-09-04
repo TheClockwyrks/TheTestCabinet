@@ -569,7 +569,7 @@ describe("the screens", () => {
     expect(d.snapshot().menuIndex).toBe(0);
   });
 
-  it("reaches how-to-play and returns to the title's first item", () => {
+  it("reaches how-to-play and returns on the entry that led there", () => {
     d.reset();
     d.setMenuIndex(1);
     h.press("confirm");
@@ -578,7 +578,9 @@ describe("the screens", () => {
     h.press("back");
     h.advance(1 / 60, 1);
     expect(d.snapshot().screen).toBe("title");
-    expect(d.snapshot().menuIndex).toBe(0);
+    // specs/ui.md: an arrival back at the title highlights the entry that led
+    // away from it, which for the how-to screen is `HOW TO PLAY`.
+    expect(d.snapshot().menuIndex).toBe(TITLE_ITEMS.indexOf("HOW TO PLAY"));
   });
 
   it("pauses live play and freezes the field", () => {

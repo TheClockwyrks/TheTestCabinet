@@ -25,7 +25,7 @@
 // the bolt is climbing through.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED, TILE, tileCX, tileCY } from "../../src/constants";
+import { BOLT_SPEED, TILE, tileCX, tileCY } from "../constants";
 import { assertDefined, assertGreaterThan } from "../assert";
 import {
   boltById,

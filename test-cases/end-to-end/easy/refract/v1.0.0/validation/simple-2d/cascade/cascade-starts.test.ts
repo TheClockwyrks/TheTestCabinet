@@ -5,9 +5,15 @@
 // sets `mode` to `cascade`, sets `solvedCount` to 0 and `tier` to 1, generates
 // the first board, and moves to `playing` with every beam empty — and the
 // fields the campaign uses hold the resting values specs/state.md gives them
-// (boardIndex 0, solvedBoards empty, unlockedCount 1, selectIndex 0). The
-// entry is driven the way a player makes it: one `down` from CAMPAIGN to
-// CASCADE on the title menu, then `confirm`, through the registered actions.
+// (boardIndex 0, solvedBoards empty, unlockedCount 1, selectIndex 0).
+//
+// The entry is the REAL path a player takes, since starting the sequence is
+// what this point decides: CASCADE is `TITLE_ITEMS[1]`, so the title's `menu-1`
+// pointer target is pressed and released at its center, which specs/controls.md
+// fixes as "the same as `confirm` with `state.menuIndex` at `i`". The pointer
+// rather than a key: the title's target ids are the specification's, while the
+// menu's key bindings are the build's own, and those get their checks in
+// screens/ where the binding is the subject.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";

@@ -22,7 +22,7 @@
 // board is otherwise the empty, quiet one `startPlaying` opens.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../../src/constants";
+import { TILE } from "../constants";
 import { assertTrue } from "../assert";
 import {
   captureStill,

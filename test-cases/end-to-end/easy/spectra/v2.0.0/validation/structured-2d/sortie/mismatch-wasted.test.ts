@@ -42,9 +42,6 @@
 // `specs/instrumentation.md` makes hold its exact centre, its phase and its band
 // clock. So every difference the reading can show is one the shot made, not one
 // the world made.
-//
-// No bystander is posed: this scenario destroys nothing, so no stage-clear reading
-// is in play.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {

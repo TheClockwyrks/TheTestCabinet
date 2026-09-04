@@ -182,8 +182,9 @@ min_version = "1.0.0"
 #   - `simple-2d`     declares the engine in its `package.json`, which is vendored
 #                     in at seed time so the build imports it by its bare package
 #                     name, and seeds the case-owned modules around the game:
-#                     `src/constants.ts` (every figure this specification fixes,
-#                     which a validator imports; the look is NOT among them),
+#                     `src/constants.ts` (every figure this specification fixes;
+#                     the look is NOT among them, and no validator reads it —
+#                     each validator project transcribes those figures itself),
 #                     `src/main.ts` (the browser entry) and the `src/game.ts` stub
 #                     the build replaces.
 #   - `structured-2d` declares that engine in its `package.json` the same way and
@@ -452,9 +453,11 @@ description = "What the game looks and sounds like: the screens and their menus,
 # Reviewer checklist, in the categories grammar (`[review] format = 2`). Each
 # `[[review.categories]]` is a CATEGORY — a bare name grouping the points — and
 # each item entry under it is one graded review item, worth one point (the default
-# weight), so a category is worth the number of items it holds. No item declares a
-# `weight`: every observable behavior on this checklist counts the same, and the
-# relative importance of a failure is carried by `failure_cap`, not by arithmetic.
+# weight), so a category is worth the number of items it holds. Every observable
+# behavior on this checklist counts the same, and the relative importance of a
+# failure is carried by `failure_cap` rather than by arithmetic, so only ONE item
+# declares a `weight` — `showcase.exists`, which grades a deliverable of its own
+# rather than a behavior of the game, and says so where it is declared.
 #
 # A category carries no prose of its own; each item states in `description` the
 # claim its validator checks. The checklist is common to every run: there is one
@@ -2142,6 +2145,15 @@ validation = { script = "controls/pause-p.test.ts", outputs = [
   { id = "paused", name = "The pause screen KeyP opened", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "pause-p-resumes"
+title = "KeyP resumes from the pause screen"
+description = "Pressed on the pause screen, KeyP returns the game to playing with the board as it was. specs/controls.md gives the pause action both directions, so opening the pause screen and leaving it again are separate points: a build that wired the open and not the close leaves a menu the pause key cannot dismiss."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "controls/pause-p-resumes.test.ts", outputs = [
+  { id = "resumed", name = "The board KeyP resumed", kind = "image" },
+] }
+[[review.categories.items]]
 id = "pause-escape"
 title = "Escape pauses the game"
 description = "Pressed during play, Escape leaves the game on the pause screen. Escape drives both pause and back, and this is the pause half."
@@ -2208,11 +2220,23 @@ title = "Screens and menus"
 [[review.categories.items]]
 id = "title-screen"
 title = "The title screen shows its title, tagline and menu"
-description = "The title screen draws WIREWORM, CUT THE CURRENT, and both TITLE_ITEMS, with the highlighted item visibly distinct."
+description = "The game opens on the title with the highlight on the first item, and the frame draws WIREWORM, CUT THE CURRENT and both TITLE_ITEMS."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "screens/title-screen.test.ts", outputs = [
   { id = "title", name = "The title screen and its menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-highlight"
+title = "The highlighted title item is drawn distinctly"
+description = "The title menu marks which item `confirm` would take: the frame with the second TITLE_ITEMS entry highlighted differs from the frame with the first highlighted. specs/ui.md fixes no treatment, so a tint, a weight, a marker beside the row or a plate behind it all pass and a menu that marks nothing fails."
+domains = ["presentation"]
+failure_cap = "great"
+# Capped `great`: an unmarked highlight leaves the standard flow of gameplay
+# intact — every menu item is still reachable and `confirm` still takes the one
+# the game reports — but a player has to count rows to know which.
+validation = { script = "screens/title-highlight.test.ts", outputs = [
+  { id = "title", name = "The title menu with the highlight moved", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "title-descend-starts"
@@ -2241,6 +2265,15 @@ description = "The back binding from howto returns to title."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "screens/howto-back.test.ts", outputs = [
+  { id = "title", name = "The title the back binding returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-back-selects-howto"
+title = "Leaving the how-to screen selects HOW TO PLAY"
+description = "The back binding from howto returns to title with the highlight on HOW TO PLAY, the entry that led away from the menu. The index is derived from TITLE_ITEMS rather than written as a literal, and howto-back owns the transition itself."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/howto-back-selects-howto.test.ts", outputs = [
   { id = "title", name = "The title the back binding returned to", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -2283,14 +2316,48 @@ failure_cap = "scuffed"
 validation = { script = "screens/pause-screen.test.ts", outputs = [
   { id = "pause", name = "The pause menu over the frozen board", kind = "image" },
 ] }
+# specs/ui.md freezes four things behind the pause menu — no worm steps, no foe
+# moves, no bolt travels, no phase timer runs — and each is its own point, because
+# a build can stop one and leak another and the grade has to say which. The worm
+# and the foe are capped `broken`: a board that keeps playing behind the menu is
+# not a game that can be paused. The bolt and the phase timer are capped
+# `scuffed`: play still stops, and what leaks is a shot the player did not take
+# and a level the player did not get to play.
 [[review.categories.items]]
-id = "pause-freezes"
-title = "Pausing freezes the simulation"
-description = "Over a second of paused game time the worm takes no step and no foe moves."
+id = "pause-freezes-worm"
+title = "Pausing stops the worm"
+description = "Over a second of paused game time the worm takes no step. The worm is demonstrably walking when the pause lands, so the frozen reading means something."
 domains = ["arcade"]
 failure_cap = "broken"
-validation = { script = "screens/pause-freezes.test.ts", outputs = [
+validation = { script = "screens/pause-freezes-worm.test.ts", outputs = [
   { id = "frozen", name = "The second of paused game time", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "pause-freezes-foes"
+title = "Pausing stops the foes"
+description = "Over a second of paused game time a travelling foe holds its position. The foe is demonstrably moving when the pause lands, so the frozen reading means something."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "screens/pause-freezes-foes.test.ts", outputs = [
+  { id = "frozen", name = "The second of paused game time", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "pause-freezes-bolts"
+title = "Pausing stops the bolts"
+description = "Over a second of paused game time a bolt in flight holds its position. The bolt is demonstrably climbing when the pause lands, and BOLT_SPEED would carry it off the board inside that second."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "screens/pause-freezes-bolts.test.ts", outputs = [
+  { id = "frozen", name = "The second of paused game time", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "pause-freezes-phase-timer"
+title = "Pausing stops the phase timer"
+description = "Paused during the banner phase, the phase timer holds through three whole BANNER_TIMEs of paused game time and the phase does not move on."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "screens/pause-freezes-phase-timer.test.ts", outputs = [
+  { id = "held", name = "The banner the paused stretch did not burn", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "pause-resume"
@@ -2300,6 +2367,19 @@ domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "screens/pause-resume.test.ts", outputs = [
   { id = "resumed", name = "The board play resumed on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-back-resumes"
+title = "The back binding resumes from the pause screen"
+description = "Pressed on the pause screen, Escape returns the game to playing with the worm on the tile it was paused on. Escape drives both pause and back, and this is the back half."
+domains = ["arcade"]
+failure_cap = "passable"
+# Capped with its peers rather than harder than them. A build that cannot dismiss
+# the menu with Escape still has a working RESUME item and a working KeyP, so it
+# is the milder failure; `scuffed` is reserved for controls.pause-p and
+# controls.pause-escape, which grade the ability to open the pause screen at all.
+validation = { script = "screens/pause-back-resumes.test.ts", outputs = [
+  { id = "resumed", name = "The board the back binding resumed on", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "pause-restart"
@@ -2318,6 +2398,18 @@ domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "screens/pause-quit.test.ts", outputs = [
   { id = "title", name = "The title QUIT TO MENU returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-quit-selects-descend"
+title = "Quitting a run selects DESCEND"
+description = "QUIT TO MENU returns to the title with the highlight on DESCEND, the entry that started the run. The index is derived from TITLE_ITEMS rather than written as a literal, and pause-quit owns the transition itself."
+domains = ["arcade"]
+failure_cap = "passable"
+# The highlight rests on QUIT TO MENU's own index when the confirm runs, so a
+# build that carried `menuIndex` across the transition unchanged lands the title's
+# highlight off the end of TITLE_ITEMS. Nothing here is free.
+validation = { script = "screens/pause-quit-selects-descend.test.ts", outputs = [
+  { id = "title", name = "The title the quit returned to", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "victory-screen"
@@ -2354,6 +2446,104 @@ domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "screens/ending-menu.test.ts", outputs = [
   { id = "title", name = "The title MENU returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "ending-menu-selects-descend"
+title = "Leaving an end screen for the menu selects DESCEND"
+description = "MENU returns to the title with the highlight on DESCEND, the entry a run is started from. The index is derived from TITLE_ITEMS rather than written as a literal, and ending-menu owns the transition itself."
+domains = ["arcade"]
+failure_cap = "passable"
+# The highlight rests on MENU's own index when the confirm runs, so a build that
+# carried `menuIndex` across the transition unchanged lands the title's highlight
+# on HOW TO PLAY. Nothing here is free.
+validation = { script = "screens/ending-menu-selects-descend.test.ts", outputs = [
+  { id = "title", name = "The title the return selects an entry of", kind = "image" },
+] }
+
+# --- Pointer ------------------------------------------------------------------
+# specs/ui.md drives every menu screen with a mouse as well as with the keyboard,
+# over item regions the BUILD lays out and reports through `menuItemRect`. The
+# case fixes no menu geometry, so each point below asks the build where it put the
+# item and drives the real pointer at the middle of that region: any layout passes,
+# and a build that reports a region it does not answer on fails. The three points
+# are the three behaviors specs/ui.md gives the pointer — a move selects, a press
+# and its release inside one item confirms that item, and two edges that fall in
+# different items confirm nothing. Each is graded on the title menu, where both
+# entries confirm to screens a check reads straight off `screen`. The keyboard's
+# own edges are the `controls` and `screens` categories' points, not these.
+[[review.categories]]
+id = "pointer"
+title = "Pointer"
+[[review.categories.items]]
+id = "hover-selects"
+title = "Moving the pointer onto an item selects it"
+description = "On the title with the highlight on DESCEND, moving the pointer onto the region menuItemRect reports for HOW TO PLAY sets menuIndex to that item, with screen still title."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/hover-selects.test.ts", outputs = [
+  { id = "menu", name = "The title menu with the hovered item selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "click-confirms"
+title = "A press and release inside one item confirms it"
+description = "On the title with the highlight on DESCEND, pressing and releasing the pointer inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/click-confirms.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen opened by a click", kind = "image" },
+] }
+[[review.categories.items]]
+id = "slide-off-cancels"
+title = "A press and release in different items confirms nothing"
+description = "On the title, pressing the pointer inside HOW TO PLAY's region and releasing it inside DESCEND's leaves screen at title, confirming neither item."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/slide-off-cancels.test.ts", outputs = [
+  { id = "title", name = "The title still showing after the pointer slid off", kind = "image" },
+] }
+
+# --- Touch --------------------------------------------------------------------
+# specs/ui.md gives every menu screen a finger as well as the keyboard and the
+# mouse, and a finger is not a small mouse: it never hovers, so the first the
+# build hears of it is the contact LANDING, and the landing is what selects. Each
+# point below drives one real touch contact — carrying the device a finger
+# carries — at the middle of the region the build reports through `menuItemRect`,
+# so any layout passes and only the handling is graded. The three are the three
+# behaviors specs/ui.md gives a contact: a landing selects, a lift inside the
+# region it landed in confirms that item, and a lift in a different region
+# confirms nothing while the selection follows the finger. All three are graded on
+# the title menu, where a confirm that should not have happened is loud (a run
+# opens) and one that should have is silent (the title stays). The mouse's own
+# edges are the `pointer` category's points, not these.
+[[review.categories]]
+id = "touch"
+title = "Touch"
+[[review.categories.items]]
+id = "landing-selects"
+title = "A touch contact selects the item it lands on"
+description = "On the title with the highlight on DESCEND, a touch contact landing inside the region menuItemRect reports for HOW TO PLAY, and not lifted, sets menuIndex to that item."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "touch/landing-selects.test.ts", outputs = [
+  { id = "selected", name = "The title menu with the item the contact landed on selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tap-confirms"
+title = "A contact that lifts where it landed confirms that item"
+description = "On the title with the highlight on DESCEND, a touch contact landing and lifting inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "touch/tap-confirms.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen opened by a tap", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drag-cancels"
+title = "A contact that lifts on a different item confirms nothing"
+description = "On the title, a touch contact landing inside DESCEND's region, travelling onto HOW TO PLAY's and lifting there leaves screen at title, with menuIndex on HOW TO PLAY."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "touch/drag-cancels.test.ts", outputs = [
+  { id = "title", name = "The title still showing after the contact slid off", kind = "image" },
 ] }
 
 # --- Look and readouts --------------------------------------------------------
@@ -2670,4 +2860,61 @@ domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "audio/mute-silences.test.ts", outputs = [
   { id = "muted", name = "The muted board the events were driven on", kind = "image" },
+] }
+
+# --- Showcase (read off the produced tree, not off the running game) ----------
+# The showcase is the store-page presentation of the finished game: a
+# player-facing description and an ordered carousel of captured media, shipped in
+# a `showcase/` directory at the root of the produced repository, which
+# `specs/showcase.md` defines and `specs/overview.md` lists among the hard
+# requirements beside the runtime and the debug surface.
+#
+# It is the ONE point on this checklist that declares a `weight`, and it is worth
+# THREE. Every other point is one observable behavior of the game, and those are
+# all worth the same; the showcase is not a behavior of the game at all but a
+# deliverable of its own — a whole file of the specification, and the one piece of
+# a run a person meets before they meet the game.
+#
+# Its cap is `great` all the same: a build that shipped no showcase plays exactly
+# as well as one that did, so the miss costs the presentation and leaves the
+# standard flow of play untouched. The weight and the cap say different things on
+# purpose — how much of the score the point carries, and how far a failure may
+# drag the ratings down.
+#
+# It lowers `presentation` alone. This case's domains are cut by CONCERN rather
+# than by mode, and a build with no showcase has said nothing either way about its
+# charge model, its worm or its run; what it failed to do is present itself, which
+# is what that domain is for.
+#
+# ONE point, and it grades EXISTENCE alone. Whether the description reads like
+# something a player would want to play, whether the carousel leads on the
+# strongest view of live play, and whether the media is worth looking at is a
+# reviewer's judgement, and belongs to the AESTHETIC half of `presentation` rather
+# than to an assertion. The validator's whole verdict is that the two files are
+# there and that the carousel points at a file that is there with them: not a
+# dimension, not a byte of a picture, not a word of the prose. No other point on
+# this checklist asserts anything about the showcase.
+#
+# The script drives nothing. It reads the produced tree with `node:fs`, so one
+# suite stands unchanged in all three engine directories and the point means the
+# same thing whichever engine the run selected. What it hands back as evidence is
+# a `.png` copied out of the build's own showcase, so a reviewer sees the picture
+# the build chose to present its game with beside the verdict.
+[[review.categories]]
+id = "showcase"
+title = "Showcase"
+[[review.categories.items]]
+id = "exists"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, and at least one file the carousel names is present in showcase/."
+weight = 3
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: read the produced tree, confirm the description and the
+# carousel are both there, and confirm the carousel names a file present beside
+# them; the still handed back is a `.png` copied out of the showcase itself.
+# Nothing about the media is checked beyond its being there. See
+# validation/<engine>/showcase/exists.test.ts.
+validation = { script = "showcase/exists.test.ts", outputs = [
+  { id = "carousel", name = "A screenshot from the build's showcase", kind = "image" },
 ] }

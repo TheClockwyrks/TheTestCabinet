@@ -171,8 +171,8 @@ build knows what it is held to.
 
 `v1.0.0` graded `80` points on a base run and `84` on an overload run, of which
 `73` and `77` carried a standalone browser script; the rest were left to a
-reviewer to decide by looking. The checklist is now `269` points on a base run and
-`287` on an overload run, across sixteen categories, and every single one of them
+reviewer to decide by looking. The checklist is now `294` points on a base run and
+`312` on an overload run, across nineteen categories, and every single one of them
 is one observable behavior decided by its own Vitest suite under
 `validation/<engine>/<category>/<item>.test.ts`. Under `none` a suite drives the
 built site in headless Chromium through `window.__spectra`, with a page-injected
@@ -214,8 +214,8 @@ drone of its wave is destroyed, so a wave that never held a drone is playing
 rather than cleared. `stages.clears-on-last-drone` lets the real stage-1 wave fly
 in, rakes it down to its last drone and shoots that drone, so the wave under test
 is the game's own. `stages.empty-wave-does-not-clear` asserts the other half
-directly, which is what makes an empty posed field safe for the other `266` common
-items.
+directly, which is what makes an empty posed field safe for the rest of the
+common checklist.
 
 ## The stage-cleared screen is reached the same way
 
@@ -328,3 +328,9 @@ instead for a `showcase/` at its project root — its own store-page presentatio
 the game, a player-facing description and a short carousel of captured media — and
 every piece of media a reviewer sees beside a verdict is captured by this case's
 own validator suites, from scenarios the case controls.
+
+The showcase is a deliverable, so it carries a point: `showcase.exists`, worth
+three rather than one and capped at `great`. Its validator drives nothing — it
+reads the produced tree and confirms `showcase/showcase.md`, `showcase/showcase.toml`
+and one file the carousel names are there — and nothing else on the checklist
+asserts anything about the media, which is the reviewer's to judge.

@@ -12,6 +12,7 @@
 // a sound.
 
 import { game } from "./game";
+import type { PointerSample } from "./pointer";
 import type { UpdateApi } from "./runtime";
 import type { ShatterState } from "./types";
 
@@ -48,9 +49,23 @@ export class TestInput {
     return true;
   }
 
+  /** The mouse and touch samples this tick is to see, oldest first. */
+  private pointer: PointerSample[] = [];
+
+  /** Queue one pointer sample for the next tick, in logical field units. */
+  point(type: PointerSample["type"], x: number, y: number, id = 1): void {
+    this.pointer.push({ type, x, y, id });
+  }
+
+  /** Every sample queued for this tick, as the runtime reports them. */
+  pointerSamples(): readonly PointerSample[] {
+    return this.pointer;
+  }
+
   /** Discard every edge nothing consumed, as the runtime does each frame. */
   endFrame(): void {
     this.edges.clear();
+    if (this.pointer.length > 0) this.pointer = [];
   }
 }
 
@@ -102,6 +117,7 @@ export function drive(): Driven {
     input: {
       value: (name) => input.value(name),
       pressed: (name) => input.pressed(name),
+      pointerSamples: () => input.pointerSamples(),
     },
     audio: {
       play: (cue) => audio.play(cue),

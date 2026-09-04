@@ -78,18 +78,24 @@ export function resetState(state: SpectraState, seed = DEFAULT_SEED): void {
   state.ship.contact = true;
   state.waveEntry = true;
   state.diveLaunching = true;
+  state.stageClearing = true;
   freshWaveClocks(state);
   state.nextId = 1;
   state.simTime = 0;
   seedRandom(state, seed);
 }
 
-/** Back to the title, with its highlight on the first item. */
-export function toTitle(state: SpectraState): void {
+/**
+ * Back to the title, with its highlight on the entry that led away from it.
+ *
+ * `specs/ui.md`: the mode entry after a run, `HOW TO PLAY` after the how-to-play
+ * screen.
+ */
+export function toTitle(state: SpectraState, index = 0): void {
   state.screen = "title";
   state.phase = "live";
   state.phaseTimer = 0;
-  state.menuIndex = 0;
+  state.menuIndex = index;
 }
 
 /** Open the current stage's intro hold, over an empty field. */
@@ -202,6 +208,7 @@ export function checkStageEnd(
   cues: FrameCues,
 ): void {
   if (state.screen !== "inWave") return;
+  if (!state.stageClearing) return;
 
   if (isChallengeStage(state.stage)) {
     if (state.drones.length > 0) return;

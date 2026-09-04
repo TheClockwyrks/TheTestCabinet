@@ -54,7 +54,9 @@ describe("the target set", () => {
   });
 
   it("gives how-to a single back target", () => {
-    expect(targetsFor(on("howto")).map((target) => target.id)).toEqual(["back"]);
+    expect(targetsFor(on("howto")).map((target) => target.id)).toEqual([
+      "back",
+    ]);
   });
 
   it("gives select every board and then back", () => {

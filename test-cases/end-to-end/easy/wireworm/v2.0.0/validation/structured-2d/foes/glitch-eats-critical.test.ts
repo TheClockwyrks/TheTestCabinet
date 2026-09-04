@@ -25,7 +25,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertNull } from "../assert";
-import { CHARGE_MAX, DISCHARGE_RADIUS } from "../../src/constants";
+import { CHARGE_MAX, DISCHARGE_RADIUS } from "../constants";
 import {
   captureStill,
   chargeAt,

@@ -71,6 +71,7 @@ export function openingState(): ShatterState {
     rngState: DEFAULT_SEED,
 
     extraLifeNotice: 0,
+    pointerPresses: [],
   };
 }
 
@@ -106,6 +107,7 @@ export function resetToTitle(sim: Sim, seed: number): void {
   sim.simTime = 0;
   sim.rngState = seed;
   sim.extraLifeNotice = 0;
+  sim.pointerPresses = [];
 }
 
 /** Open a new game: a clean field, three ships, and wave 1. */

@@ -25,7 +25,7 @@
 // nothing here but the end of the dive.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_TOP_ROW, WORM_STEP_L1 } from "../../src/constants";
+import { BAND_TOP_ROW, WORM_STEP_L1 } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,

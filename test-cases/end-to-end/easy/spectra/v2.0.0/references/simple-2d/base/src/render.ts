@@ -34,11 +34,9 @@ import {
   FIELD_LEFT,
   FIELD_RIGHT,
   FIELD_TOP,
-  GAME_OVER_ITEMS,
   HUD_BOTTOM_TOP,
   HUD_STAGE_LABEL,
   HUD_TOP_H,
-  PAUSE_ITEMS,
   PERFECT_TEXT,
   PLAYER_BULLET_H,
   PLAYER_BULLET_W,
@@ -50,12 +48,12 @@ import {
   SPRITE_SIZE,
   STARFIELD_MIN,
   TAGLINE_TEXT,
-  TITLE_ITEMS,
   TITLE_TEXT,
   isChallengeStage,
 } from "./constants";
 import { droneBand, inverted, isShimmering, opposite } from "./bands";
 import { dischargeReady } from "./discharge";
+import { highlightedItem, itemBaselineY, menuOf } from "./menus";
 import { droneSize } from "./simulate";
 import { BAND_CORE, CYAN, COLOR, FONT, MAGENTA } from "./theme";
 import type { Band, SpectraState } from "./game";
@@ -114,7 +112,7 @@ export function renderGame(
       if (state.phase === "ready") drawBanner(ctx, width, READY_TEXT);
       break;
     case "paused":
-      drawMenuScreen(state, ctx, width, "PAUSED", PAUSE_ITEMS);
+      drawMenuScreen(state, ctx, width, "PAUSED");
       break;
     case "stageCleared":
       drawStageCleared(state, ctx, width);
@@ -707,16 +705,13 @@ function scrim(ctx: Ctx, alpha = 0.62): void {
 }
 
 /** The vertical menu a screen shows, its highlight on the item `menuIndex` names. */
-function drawMenu(
-  state: State,
-  ctx: Ctx,
-  width: number,
-  top: number,
-  items: readonly string[],
-): void {
-  items.forEach((item, i) => {
-    const y = top + i * 46;
-    const hot = i === state.menuIndex;
+function drawMenu(state: State, ctx: Ctx, width: number): void {
+  const menu = menuOf(state.screen);
+  if (menu === null) return;
+  const selected = highlightedItem(menu, state.menuIndex);
+  menu.items.forEach((item, i) => {
+    const y = itemBaselineY(menu, i);
+    const hot = i === selected;
     if (hot) {
       drawAccent(ctx, width / 2 - 150, y, 10, state.ship.band, 2);
       drawAccent(ctx, width / 2 + 150, y, 10, state.ship.band, 2);
@@ -739,7 +734,7 @@ function drawTitle(state: State, ctx: Ctx, width: number): void {
   drawAccent(ctx, width / 2 - 250, 210, 26, "cyan", 3);
   drawAccent(ctx, width / 2 + 250, 210, 26, "magenta", 3);
   centered(ctx, TAGLINE_TEXT, width / 2, 274, FONT.body, CYAN);
-  drawMenu(state, ctx, width, 400, TITLE_ITEMS);
+  drawMenu(state, ctx, width);
   centered(
     ctx,
     "ARROWS / AD MOVE — SPACE FIRE — F FLIP — X DISCHARGE",
@@ -865,7 +860,7 @@ function drawGameOver(state: State, ctx: Ctx, width: number): void {
     FONT.body,
     COLOR.textDim,
   );
-  drawMenu(state, ctx, width, 450, GAME_OVER_ITEMS);
+  drawMenu(state, ctx, width);
 }
 
 /** A screen that is a menu over the frozen field. */
@@ -874,9 +869,8 @@ function drawMenuScreen(
   ctx: Ctx,
   width: number,
   heading: string,
-  items: readonly string[],
 ): void {
   scrim(ctx, 0.6);
   centered(ctx, heading, width / 2, 250, FONT.title, COLOR.text);
-  drawMenu(state, ctx, width, 380, items);
+  drawMenu(state, ctx, width);
 }

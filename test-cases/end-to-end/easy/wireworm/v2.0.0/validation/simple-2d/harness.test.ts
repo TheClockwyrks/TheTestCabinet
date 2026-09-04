@@ -21,7 +21,7 @@ import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import type { Recording } from "@test-cabinet/simple-2d";
-import { tileCX, tileCY } from "../src/constants";
+import { tileCX, tileCY } from "./constants";
 import {
   captureReplay,
   captureStill,

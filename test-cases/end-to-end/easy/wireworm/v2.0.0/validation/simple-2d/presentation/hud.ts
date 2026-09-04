@@ -21,7 +21,7 @@
 // and `012345` and `12 345` all carry the figure `12345`; `LEVEL 7 / 12` carries
 // `7` and `12`, and neither of them is `712`.
 
-import { HUD_H } from "../../src/constants";
+import { HUD_H } from "../constants";
 import { drawnTextSpans, type Harness, type TextSpan } from "../harness";
 
 /** Every run of text the frame drew inside the HUD bar (specs/board.md). */

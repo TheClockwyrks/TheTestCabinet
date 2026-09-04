@@ -12,20 +12,10 @@
 // The distances are stated in each entry so a later reader can check the arithmetic
 // without re-deriving it.
 
-import { FIELD_H, FIELD_W, HALO_R } from "../constants";
+import { FIELD_H, FIELD_W, STAR_DRAW_R } from "../constants";
 import { STAR, wrappedDistance, type Vec } from "../geometry";
 import type { Rgb } from "../harness";
 import { colorAt, luminance, type Painted } from "./ink";
-
-/**
- * How far out the star may be drawn, in logical units.
- *
- * `specs/field.md`: "nothing of the star is drawn beyond `1.5 x HALO_R` (`HALO_R`
- * is `120`, so nothing beyond `180`)". It is the only extent the specification
- * fixes about the middle of the field, so it is also the figure the HUD's "clear of
- * the field's centre" is read against.
- */
-export const STAR_DRAW_R = 1.5 * HALO_R;
 
 /**
  * Where the ship is posed to be read: low and to the left.

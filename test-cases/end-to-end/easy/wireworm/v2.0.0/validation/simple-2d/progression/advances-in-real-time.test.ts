@@ -30,7 +30,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { WallClock } from "@test-cabinet/simple-2d";
-import { BANNER_TIME } from "../../src/constants";
+import { BANNER_TIME } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

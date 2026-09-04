@@ -124,7 +124,7 @@ import {
   slotY,
 } from "./constants";
 import { BACKGROUND, game as build } from "../src/game";
-import { fail } from "./assert";
+import { assertTruthy, fail } from "./assert";
 import { clearBeforeCoveringFills } from "./covered-frames";
 import type {
   Band,
@@ -134,6 +134,7 @@ import type {
   DroneKind,
   DronePhase,
   DroneSnapshot,
+  MenuRect,
   Mode,
   Phase,
   Screen,
@@ -150,6 +151,7 @@ export type {
   DroneKind,
   DronePhase,
   DroneSnapshot,
+  MenuRect,
   Mode,
   Phase,
   Screen,
@@ -775,6 +777,23 @@ export interface Harness {
 
   /** Where a logical point lands in the canvas's backing store. */
   device(x: number, y: number): { x: number; y: number };
+  /** Where a logical point lands in CSS pixels, which is where a gesture goes. */
+  css(x: number, y: number): { x: number; y: number };
+  /**
+   * Dispatch one real pointer event at the target the engine listens on, and run
+   * the frame that delivers it.
+   *
+   * The menus take a mouse and a finger as well as the keyboard
+   * (`specs/ui.md`), and each part of a gesture runs exactly ONE driven frame,
+   * so a caller counting frames can add them up and a build that reads its input
+   * once per frame sees every edge.
+   */
+  pointer(
+    type: "pointerdown" | "pointermove" | "pointerup",
+    x: number,
+    y: number,
+    device?: "mouse" | "touch",
+  ): Promise<void>;
   /** The device pixel under a logical point, as `[r, g, b, a]`. */
   pixel(x: number, y: number): [number, number, number, number];
 
@@ -791,6 +810,42 @@ class KeyEvent extends Event {
     super(type);
     this.code = code;
     this.repeat = repeat;
+  }
+}
+
+/**
+ * A `PointerEvent`-shaped event: the engine reads the position, the pointer's id,
+ * whether it is primary, the device that drove it, and the buttons it carries.
+ *
+ * Dispatched at the very target the engine attached its own pointer listeners to,
+ * so a gesture reaches the build the way a hand's does: the engine maps the
+ * position through the same letterboxed fit the game draws under, and the build
+ * reads it off the input reader like any other frame's pointer.
+ */
+class PointerDispatch extends Event {
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly pointerId: number;
+  readonly isPrimary = true;
+  readonly pointerType: "mouse" | "touch";
+  readonly button: number;
+  readonly buttons: number;
+
+  constructor(
+    type: "pointerdown" | "pointermove" | "pointerup",
+    at: { x: number; y: number },
+    device: "mouse" | "touch",
+    held: boolean,
+  ) {
+    super(type);
+    this.clientX = at.x;
+    this.clientY = at.y;
+    // A mouse keeps one id for the life of the page; a touch contact gets its own.
+    this.pointerId = device === "mouse" ? 1 : 2;
+    this.pointerType = device;
+    // `-1` on a move, which is the browser's own "no button reported here".
+    this.button = type === "pointermove" ? -1 : 0;
+    this.buttons = held ? 1 : 0;
   }
 }
 
@@ -1097,6 +1152,22 @@ export async function createHarness(
     events: keys,
 
     device: (x, y) => toDevice(engine.world, engine.viewport(), x, y),
+    css: (x, y) => {
+      const at = toDevice(engine.world, engine.viewport(), x, y);
+      return { x: at.x / dpr, y: at.y / dpr };
+    },
+    async pointer(type, x, y, device = "mouse") {
+      const at = toDevice(engine.world, engine.viewport(), x, y);
+      keys.dispatchEvent(
+        new PointerDispatch(
+          type,
+          { x: at.x / dpr, y: at.y / dpr },
+          device,
+          type !== "pointerup",
+        ),
+      );
+      await engine.advance(1);
+    },
     pixel: (x, y) => {
       const point = toDevice(engine.world, engine.viewport(), x, y);
       const { data } = ctx.getImageData(point.x, point.y, 1, 1);
@@ -1587,17 +1658,22 @@ export async function startRun(h: Harness, seed?: number): Promise<void> {
  * sequence rather than a debug operation because the surface is atomic: every
  * line below is one of its operations.
  *
- * EMPTY is safe. A stage clears in the moment the last drone of its wave is
- * DESTROYED (specs/stages.md), so a wave that never held one never clears, and a
- * posed rule runs without the stage advancing underneath it.
+ * EMPTY is what the isolation rule asks for: the scenario poses the entities its
+ * requirement concerns and nothing else stands beside them.
  *
- * QUIET is the three world gates. With `waveEntry`, `diveLaunching` and the
- * ship's `contact` all off, nothing the scenario did not ask for arrives,
- * launches, or costs a life: no entry group is released, no formation drone is
- * chosen to dive, and no incidental touch empties the field mid-scenario.
+ * QUIET is the four world gates. With `waveEntry`, `diveLaunching`,
+ * `stageClearing` and the ship's `contact` all off, nothing the scenario did not
+ * ask for arrives, launches, ends the stage, or costs a life: no entry group is
+ * released, no formation drone is chosen to dive, no incidental touch empties the
+ * field mid-scenario, and destroying the last drone a scenario posed leaves the
+ * wave live rather than clearing the stage out from under the reading.
  *
- * A check whose REQUIREMENT is one of those three faculties turns that one back
- * on itself, and only that one. A check that finds itself needing a gate for any
+ * Each gate is the WAVE's or the STAGE's own faculty rather than any entity's, so
+ * shutting one removes nothing the requirement concerns and parks no bystander in
+ * a corner to hold the wave open.
+ *
+ * A check whose REQUIREMENT is one of those four faculties turns that one back on
+ * itself, and only that one. A check that finds itself needing a gate for any
  * other reason has been mis-posed.
  *
  * The generator is left as it stands, so a check that wants a seeded one calls
@@ -1610,6 +1686,7 @@ export function startPosed(h: Harness): void {
   h.debug.clearBursts();
   h.debug.setWaveEntry(false);
   h.debug.setDiveLaunching(false);
+  h.debug.setStageClearing(false);
   h.debug.setShipContact(false);
   h.debug.setScreen("inWave");
   h.debug.setPhase("live");
@@ -1624,7 +1701,65 @@ export function startPosed(h: Harness): void {
   h.debug.setLives(START_LIVES);
   h.debug.setScore(0);
   h.debug.setExtraLifeAwarded(false);
+  h.debug.setChallengeHits(0);
   h.debug.setDiveClock(0);
+}
+
+/**
+ * Pose a live run PAUSED, with `index` highlighted on the pause menu.
+ *
+ * The ground the pause menu's pointer and touch points stand on, and the pose
+ * `screens/pause-quit` already uses: {@link startPosed} opens a live, empty, quiet
+ * wave, and the screen and the highlight are then PLACED rather than walked to.
+ * `specs/instrumentation.md` provides `setScreen` and `setMenuIndex` for exactly
+ * that, so no menu key is pressed on the way in and the menu keys cannot fail the
+ * points that stand here — a build whose `pause` binding or whose menu arrows are
+ * broken still has its pointer and its touch graded on this screen, and
+ * `controls/pause-escape`, `controls/pause-p` and the `controls` menu-arrow
+ * points still decide the keys.
+ *
+ * One frame is run after the pose, so the screen the gesture then arrives on is
+ * the paused screen the build's own code drew.
+ */
+export async function posePausedMenu(h: Harness, index: number): Promise<void> {
+  startPosed(h);
+  h.debug.setScreen("paused");
+  h.debug.setMenuIndex(index);
+  await h.advance(1);
+}
+
+/** The lost run the gesture is made from (specs/progression.md). */
+const POSED_STAGE = 6;
+const POSED_SCORE = 7250;
+const POSED_LIVES = 0;
+
+/**
+ * Pose a lost run on the game-over screen, with `index` highlighted on its menu.
+ *
+ * The ground the game-over menu's pointer and touch points stand on, and the pose
+ * `screens/game-over-menu-returns` already uses: the run is PLACED lost — the
+ * stage it reached, the score it ended on, no lives left — and the screen and the
+ * highlight are placed with it. `specs/instrumentation.md` provides `setScreen`
+ * and `setMenuIndex` for exactly that, so no life is spent and no menu key is
+ * pressed on the way in, and neither the death path nor the menu keys can fail the
+ * points that stand here — `progression/game-over-at-zero` still decides the route
+ * in, and the `controls` menu-arrow points still decide the keys.
+ *
+ * There is no live wave to open first, unlike {@link posePausedMenu}: the run is
+ * over, so the screen is placed on the field the harness starts with. One frame is
+ * run after the pose, so the screen the gesture then arrives on is the game-over
+ * screen the build's own code drew.
+ */
+export async function poseGameOverMenu(
+  h: Harness,
+  index: number,
+): Promise<void> {
+  h.debug.setScreen("gameOver");
+  h.debug.setStage(POSED_STAGE);
+  h.debug.setScore(POSED_SCORE);
+  h.debug.setLives(POSED_LIVES);
+  h.debug.setMenuIndex(index);
+  await h.advance(1);
 }
 
 /**
@@ -2659,4 +2794,109 @@ export async function toggleOverlay(h: Harness): Promise<void> {
   h.hold(OVERLAY_KEY);
   h.release(OVERLAY_KEY);
   await h.advance(1);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Menus, driven by a real mouse and a real finger                            */
+/* -------------------------------------------------------------------------- */
+//
+// The menus take a pointer and a touch contact as well as the keyboard
+// (`specs/ui.md`), and where a build LAYS the items out is the build's own — so a
+// check asks the build where it put an item, through `menuItemRect`, and then
+// drives a real pointer at that region. Nothing here poses a pointer through the
+// surface: a pose would tell the build where the pointer is without making the
+// engine's input layer see a press, a travel and a release the way a hand does,
+// and what these checks are about is precisely that the build reads them.
+
+/**
+ * Where the build put item `index` of the menu the current screen shows.
+ *
+ * Fails by assertion when the build reports no region for an item its own menu
+ * shows, so the point names that fault rather than dividing by a `null` several
+ * lines later. A check that is ABOUT the reading returning `null` — on a screen
+ * with no menu, or past the end of one — calls `h.debug.menuItemRect` directly.
+ */
+export function menuRect(h: Harness, index: number): MenuRect {
+  const rect = h.debug.menuItemRect(index);
+  assertTruthy(
+    rect,
+    `menuItemRect(${index}) must report the hit region of item ${index} on the ` +
+      "menu the current screen shows (specs/instrumentation.md)",
+  );
+  return rect as MenuRect;
+}
+
+/** The middle of a hit region: where a gesture aimed at that item lands. */
+export function rectCenter(rect: MenuRect): { x: number; y: number } {
+  return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+}
+
+/** Move the pointer onto item `index`, and run the frame that reads it. */
+export async function pointerOntoItem(
+  h: Harness,
+  index: number,
+): Promise<void> {
+  const at = rectCenter(menuRect(h, index));
+  await h.pointer("pointermove", at.x, at.y);
+}
+
+/** Press and release the pointer inside item `index`'s region. */
+export async function clickItem(h: Harness, index: number): Promise<void> {
+  const at = rectCenter(menuRect(h, index));
+  await h.pointer("pointermove", at.x, at.y);
+  await h.pointer("pointerdown", at.x, at.y);
+  await h.pointer("pointerup", at.x, at.y);
+}
+
+/**
+ * Press on one item, travel to another, and release there.
+ *
+ * The two edges fall in different regions, so this confirms nothing — the
+ * affordance that lets a player slide off a control to cancel, which
+ * `specs/ui.md` states and a check reads back as a `menuIndex` that moved and a
+ * screen that did not.
+ */
+export async function dragBetweenItems(
+  h: Harness,
+  from: number,
+  to: number,
+): Promise<void> {
+  const start = rectCenter(menuRect(h, from));
+  const end = rectCenter(menuRect(h, to));
+  await h.pointer("pointermove", start.x, start.y);
+  await h.pointer("pointerdown", start.x, start.y);
+  await h.pointer("pointermove", end.x, end.y);
+  await h.pointer("pointerup", end.x, end.y);
+}
+
+/** Land a touch contact inside item `index`'s region and leave it down. */
+export async function landOnItem(h: Harness, index: number): Promise<void> {
+  const at = rectCenter(menuRect(h, index));
+  await h.pointer("pointerdown", at.x, at.y, "touch");
+}
+
+/**
+ * Land a touch contact inside item `index`'s region and lift it there.
+ *
+ * The landing selects the item as well as confirming it, because a finger does
+ * not hover (`specs/ui.md`) — which is the difference between this and
+ * {@link clickItem}, and the reason both exist.
+ */
+export async function tapItem(h: Harness, index: number): Promise<void> {
+  const at = rectCenter(menuRect(h, index));
+  await h.pointer("pointerdown", at.x, at.y, "touch");
+  await h.pointer("pointerup", at.x, at.y, "touch");
+}
+
+/** Land a contact on one item, travel to another, and lift there: confirms nothing. */
+export async function touchBetweenItems(
+  h: Harness,
+  from: number,
+  to: number,
+): Promise<void> {
+  const start = rectCenter(menuRect(h, from));
+  const end = rectCenter(menuRect(h, to));
+  await h.pointer("pointerdown", start.x, start.y, "touch");
+  await h.pointer("pointermove", end.x, end.y, "touch");
+  await h.pointer("pointerup", end.x, end.y, "touch");
 }

@@ -32,7 +32,7 @@
 // `progression.respawn-*` points'. This point reads the cue alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, START_LIVES } from "../../src/constants";
+import { CUES, START_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

@@ -30,7 +30,7 @@
 // only that the surface's `addWorm` produced a worm the simulation moves.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WORM_STEP_L1 } from "../../src/constants";
+import { WORM_STEP_L1 } from "../constants";
 import { assertEqual, assertNotEqual } from "../assert";
 import {
   captureStill,

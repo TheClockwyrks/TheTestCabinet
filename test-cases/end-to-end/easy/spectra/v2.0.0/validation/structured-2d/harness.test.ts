@@ -32,6 +32,7 @@ import {
   RESONANCE_MAX,
   SHARD_HALF,
   SHIP_X_MAX,
+  SPECTRA_DEBUG_VERSION,
   STAGE_W,
   START_LIVES,
   TITLE_TEXT,
@@ -86,7 +87,7 @@ import {
   watchCues,
   type Harness,
 } from "./harness";
-import { REQUIRED_OPS, SPECTRA_DEBUG_VERSION } from "./surface";
+import { REQUIRED_OPS } from "./surface";
 
 /** The environment variable the runner names the media directory in. */
 const MEDIA_DIR_ENV = "TCAB_VALIDATION_MEDIA_DIR";

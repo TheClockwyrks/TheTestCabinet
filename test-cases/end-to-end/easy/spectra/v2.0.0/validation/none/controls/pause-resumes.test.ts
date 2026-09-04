@@ -31,8 +31,8 @@
 // hold, and that it stayed there rather than flickering back to the menu. That the
 // field behind the pause was frozen and comes back exactly as it was is
 // `screens/pause-freezes`'; what the paused screen draws is
-// `screens/pause-menu-items`'; that `RESUME` on that menu does the same thing is
-// the menu's, not the key's. None is restated here.
+// `screens/pause-menu-items`'; that confirming `RESUME` on that menu does the
+// same thing is `screens/pause-resume`'s. None is restated here.
 //
 // THE KEY IS A REAL ONE. `tap` presses the key down, runs exactly one frame with
 // it held, and releases it, all through Chromium's own input pipeline. Under this

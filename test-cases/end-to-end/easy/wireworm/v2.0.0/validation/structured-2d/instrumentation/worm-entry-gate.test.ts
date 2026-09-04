@@ -35,7 +35,7 @@
 // over either span came from the level's own entry and from nothing else.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BANNER_TIME } from "../../src/constants";
+import { BANNER_TIME } from "../constants";
 import { assertLength, assertTrue } from "../assert";
 import {
   captureStill,

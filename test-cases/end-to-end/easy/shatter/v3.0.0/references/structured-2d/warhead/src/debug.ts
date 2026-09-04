@@ -37,6 +37,7 @@ import {
   addTorpedoTo,
 } from "./entities";
 import { resetState } from "./flow";
+import { menuItemRect, type Rect } from "./menus";
 import {
   shatterState,
   type BulletState,
@@ -90,6 +91,9 @@ export interface SnapshotSaucer {
   mind: boolean;
   gun: boolean;
   travel: boolean;
+  fireClock: number;
+  weaveClock: number;
+  age: number;
 }
 
 export interface SnapshotTorpedo {
@@ -114,6 +118,8 @@ export interface ShatterSnapshot {
   muted: boolean;
   waveSpawning: boolean;
   saucerSpawning: boolean;
+  saucerClock: number;
+  saucerDue: number;
   ship: SnapshotShip;
   bullets: SnapshotBullet[];
   rocks: SnapshotRock[];
@@ -136,6 +142,7 @@ export interface ShatterDebugApi {
 
   reset(options?: { seed?: number }): void;
   snapshot(): ShatterSnapshot;
+  menuItemRect(index: number): Rect | null;
 
   setScreen(screen: Screen): void;
   setMenuIndex(index: number): void;
@@ -244,6 +251,12 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
       resetState(read(), options?.seed ?? DEFAULT_SEED);
     },
 
+    // Where the build laid the entry out, which `specs/ui.md` leaves to the
+    // build and a pointer check has to be told (`specs/instrumentation.md`).
+    menuItemRect(index) {
+      return menuItemRect(read().screen, index);
+    },
+
     snapshot() {
       const state = read();
       const { ship, saucer } = state;
@@ -259,6 +272,8 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
         muted: world().audio.muted(),
         waveSpawning: state.waveSpawning,
         saucerSpawning: state.saucerSpawning,
+        saucerClock: state.saucerClock,
+        saucerDue: state.saucerDue,
         ship: {
           x: ship.x,
           y: ship.y,
@@ -285,6 +300,9 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
                 mind: saucer.mind,
                 gun: saucer.gun,
                 travel: saucer.travel,
+                fireClock: saucer.fireClock,
+                weaveClock: saucer.weaveClock,
+                age: saucer.age,
               },
         enemyBullets: state.enemyBullets.map(readBullet),
         torpedoes: state.torpedoes.map(readTorpedo),

@@ -26,7 +26,7 @@
 // quiet one `startPlaying` opens with a level written onto it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_LEVEL_LABEL, TOTAL_LEVELS } from "../../src/constants";
+import { HUD_LEVEL_LABEL, TOTAL_LEVELS } from "../constants";
 import { assertTrue } from "../assert";
 import {
   captureStill,

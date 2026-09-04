@@ -4,8 +4,9 @@
 // `max(0.55, 1 - 0.05 * (stage - 1))`, and it multiplies "the gap between dive
 // launches" in specs/swarm.md. specs/swarm.md states that gap: the wave's first
 // dive launches when its dive clock reaches `DIVE_FIRST_DELAY` (`2.0` s), and
-// "each later dive" when the clock reaches "a value drawn between `DIVE_GAP_MIN`
-// (`1.4`) and `DIVE_GAP_MAX` (`2.6`) seconds, multiplied by `diveGapScale(stage)`".
+// "each later dive" when the clock reaches "a value drawn uniformly at random
+// between `DIVE_GAP_MIN` (`1.4`) and `DIVE_GAP_MAX` (`2.6`) seconds, multiplied by
+// `diveGapScale(stage)`".
 // At stage 7 that window is [0.98, 1.82] seconds and its middle is 1.40.
 //
 // WHY THE EXPECTATION IS NOT THE BUILD'S OWN FORMULA. `diveGapScale` is read from
@@ -25,9 +26,9 @@
 //   mean of twenty gaps is read against the middle of the stated window. It grades
 //   that the clock runs and the launcher fires off it, and it is the drive the
 //   reviewer's replay is cut from — but it is a mean over a DRAWN quantity, so the
-//   band around it has to be wide enough that an honest build's draw never fails
-//   it, and specs/swarm.md fixes only the window a gap is drawn FROM and not the
-//   distribution over it.
+//   band around it has to be wide enough that the sampling slack in twenty draws
+//   never fails an honest build. specs/swarm.md states the draw is UNIFORM over
+//   the window, so how wide that slack is is a figure rather than a guess.
 //
 //   The WINDOW is the bound itself, read exactly. specs/instrumentation.md gives
 //   `setDiveClock` the wave's own timer — "the seconds the wave's dive timer has
@@ -166,12 +167,13 @@ const SWEEP_FRAMES = ticksFor((DIVE_FIRST_DELAY + GAPS * GAP_MAX) * 1.5);
 /**
  * How far the mean gap may sit from the middle of the window, as a fraction.
  *
- * The manifest's own figure, and the right order for a mean of drawn values: 20% of
- * 1.40 s is 0.28 s, three and a half times the standard deviation of a twenty-draw
- * mean over this window, so a conforming build is not failed by the draw. It is not
- * tightened further because specs/swarm.md fixes only the RANGE a gap is drawn from
- * and not the distribution: a build drawing the two ends of that range rather than
- * uniformly over it carries a wider spread on the same mean, and it is conformant.
+ * The manifest's own figure, and the right order for a mean of drawn values.
+ * specs/swarm.md draws each gap UNIFORMLY over the window, which at this stage is
+ * [0.98, 1.82] seconds: one draw has a standard deviation of 0.243 s and the mean
+ * of twenty has 0.054 s. 20% of 1.40 s is 0.28 s, which is 5.2 of those, so the
+ * sampling slack alone never fails a conforming build. The band is sampling slack
+ * and nothing else, because the distribution is stated and no longer has to be
+ * covered for.
  *
  * What the band names is measured to its EDGE, at [1.12, 1.68] seconds: a build
  * that does not scale the gap at all means 2.00 s, one scaling at half the stated

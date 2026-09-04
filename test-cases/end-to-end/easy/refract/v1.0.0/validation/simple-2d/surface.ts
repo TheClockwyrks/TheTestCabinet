@@ -14,7 +14,7 @@
 // out read-only, so the surface holds no state of its own and nothing on it
 // mutates anything. Every operation is written in the shape of the game's
 // `update`: a POSE takes the current state and returns the next one
-// (`loadBoard(state, board)`, `trace(state, cells)`), and a READING takes the
+// (`loadBoard(state, board)`, `clear(state)`), and a READING takes the
 // current state and returns what it read (`snapshot(state)`). A caller drives
 // a pose through `engine.apply((s) => debug.clear(s))` — the engine stores what
 // the pose returned, and the next frame's `update` receives it — and a reading
@@ -143,6 +143,8 @@ export interface RefractSnapshot {
   muted: boolean;
   /** Accumulated simulation time, in seconds. */
   simTime: number;
+  /** The seeded generator's current state. */
+  rngState: number;
 }
 
 /**
@@ -162,7 +164,12 @@ export interface RefractDebugApi<S = unknown> {
   version: number;
   reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
   snapshot(state: DeepReadonly<S>): RefractSnapshot;
-  startMode(state: DeepReadonly<S>, mode: Mode): S;
+  /** The mode field alone: no screen moves and no board is generated. */
+  setMode(state: DeepReadonly<S>, mode: Mode): S;
+  /** The screen field alone: the board, the beams and the menus stay as they are. */
+  setScreen(state: DeepReadonly<S>, screen: Screen): S;
+  /** The highlighted item on whichever menu the current screen shows. */
+  setMenuIndex(state: DeepReadonly<S>, index: number): S;
   /** `board` is the board notation specs/board.md defines, one string per row. */
   loadBoard(state: DeepReadonly<S>, board: readonly string[]): S;
   pointerDown(
@@ -178,11 +185,6 @@ export interface RefractDebugApi<S = unknown> {
     device?: PointerDevice,
   ): S;
   pointerUp(state: DeepReadonly<S>, device?: PointerDevice): S;
-  /** Sugar over the three pointer operations: press at the first cell's
-   * center, a move to each remaining center in turn, then a release. A list
-   * the limits refuse part way through leaves the beam ending at the last
-   * segment they permitted. */
-  trace(state: DeepReadonly<S>, cells: readonly CellRef[]): S;
   /** The `clear` action: every beam emptied, on `playing` alone. */
   clear(state: DeepReadonly<S>): S;
 }
@@ -201,11 +203,12 @@ export const READINGS = ["snapshot"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
-  "startMode",
+  "setMode",
+  "setScreen",
+  "setMenuIndex",
   "loadBoard",
   "pointerDown",
   "pointerMove",
   "pointerUp",
-  "trace",
   "clear",
 ] as const;

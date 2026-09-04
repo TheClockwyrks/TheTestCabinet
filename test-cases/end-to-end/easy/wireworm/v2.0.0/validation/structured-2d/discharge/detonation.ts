@@ -18,7 +18,7 @@
 // it. It fixes arrangement alone: not one threshold a point asserts is decided
 // in this file.
 
-import { BOLT_SPEED, CHARGE_MAX, TILE } from "../../src/constants";
+import { BOLT_SPEED, CHARGE_MAX, TILE } from "../constants";
 import { poseBoltAtTile, TICK_HZ, type Harness } from "../harness";
 
 /** Logical units a bolt climbs in one frame of the suite's clock. */

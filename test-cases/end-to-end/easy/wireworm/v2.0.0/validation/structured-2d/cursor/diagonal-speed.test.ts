@@ -15,7 +15,7 @@
 // models are told apart by the number rather than by a bound.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, CURSOR_SPEED } from "../../src/constants";
+import { BINDINGS, CURSOR_SPEED } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   BAND_CX,

@@ -65,7 +65,7 @@ wave's dive launching runs, and it returns to `0` each time a dive is launched.
 | Launch | Happens when the dive clock reaches |
 | --- | --- |
 | The wave's first dive | `DIVE_FIRST_DELAY` (`2.0`) seconds |
-| Each later dive | A value drawn between `DIVE_GAP_MIN` (`1.4`) and `DIVE_GAP_MAX` (`2.6`) seconds, multiplied by `diveGapScale(stage)` |
+| Each later dive | A value drawn uniformly at random between `DIVE_GAP_MIN` (`1.4`) and `DIVE_GAP_MAX` (`2.6`) seconds, multiplied by `diveGapScale(stage)` |
 
 A launch takes one drone resting in the formation, chosen at random from those
 standing, and puts it in phase `diving`. Which one it takes is drawn from the

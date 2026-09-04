@@ -13,7 +13,7 @@
 // leaves through is anywhere near the span measured.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GLITCH_V_SPEED } from "../../src/constants";
+import { GLITCH_V_SPEED } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,

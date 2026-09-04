@@ -26,7 +26,7 @@
 // `nodes.bump-charges`'s. This point reads `dh` alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WORM_STEP_L1 } from "../../src/constants";
+import { WORM_STEP_L1 } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

@@ -39,6 +39,7 @@ function clearIntent(state: ShatterState): void {
   state.input.right = false;
   state.input.thrust = false;
   state.input.fire = false;
+  state.pointerPresses = [];
 }
 
 /**

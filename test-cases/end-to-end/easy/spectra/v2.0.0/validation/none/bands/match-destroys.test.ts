@@ -24,7 +24,6 @@ import {
   captureStill,
   createHarness,
   droneById,
-  poseBystander,
   poseDrone,
   shootDrone,
   startPosed,
@@ -35,8 +34,7 @@ import {
  * Where the target Shard stands.
  *
  * Mid-field on the ship's own lane: clear of both HUD strips (`FIELD_TOP` 64,
- * `FIELD_BOTTOM` 656), clear of `SHIP_Y` (600), and clear of the corner the
- * bystander holds.
+ * `FIELD_BOTTOM` 656), clear of `SHIP_Y` (600).
  */
 const TARGET = { x: FORM_CENTER_X, y: 300 } as const;
 
@@ -73,11 +71,6 @@ afterEach(async () => {
 
 it("destroys a Shard whose effective band the shot matches", async () => {
   await startPosed(harness);
-  // A stage clears in the moment the last drone of its wave is destroyed
-  // (specs/stages.md), and this scenario destroys the drone it poses; the
-  // bystander leaves the wave a drone under either reading of "its wave", so the
-  // field is still live when the reading is taken.
-  await poseBystander(harness);
   const target = await poseDrone(harness, "shard", TARGET.x, TARGET.y, {
     band: "cyan",
   });

@@ -269,9 +269,10 @@ the fields posed and read back by reading them.
 - `muted` — the game's readable copy of the engine's mute bit, which every
   `update` carries into the state it returns. The engine owns muting, and this
   field is what the debug surface reports.
-- `rngState` — the state of the game's seeded random generator. A `reset` with a
-  seed sets it, so reseeding and replaying the same calls reproduces the same
-  result. Cascade draws its boards from it, and Campaign never reads it.
+- `rngState` — the state of the game's seeded random generator. A `reset` sets it
+  to the seed it was given, so reseeding and replaying the same calls reproduces
+  the same result. Cascade draws its boards from it, and Campaign never reads it.
+  `specs/instrumentation.md` reports it on the snapshot.
 
 The four course fields and the two run fields are declared whatever `mode`
 holds, so the state has one shape. The two progressions are independent and
@@ -521,9 +522,10 @@ reading them.
 - `muted` — the game's readable copy of the engine's mute bit, refreshed every
   frame. The engine owns muting, and this field is what the debug surface
   reports.
-- `rngState` — the state of the game's seeded random generator. A `reset` with a
-  seed sets it, so reseeding and replaying the same calls reproduces the same
-  result. Cascade draws its boards from it, and Campaign never reads it.
+- `rngState` — the state of the game's seeded random generator. A `reset` sets it
+  to the seed it was given, so reseeding and replaying the same calls reproduces
+  the same result. Cascade draws its boards from it, and Campaign never reads it.
+  `specs/instrumentation.md` reports it on the snapshot.
 
 `RefractState` extends the engine's `GameState`, so an instance also carries the
 framework's own `world`, `players`, `phase`, and `elapsed`. Refract's screens

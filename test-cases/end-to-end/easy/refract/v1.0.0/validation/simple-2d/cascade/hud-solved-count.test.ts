@@ -4,11 +4,11 @@
 // specs/modes/cascade.md "The count": during `playing`, show the count beside
 // the label HUD_SOLVED_LABEL (SOLVED), clear of the board, whose extent
 // specs/board.md gives. TWO generated boards are really solved — the
-// spec-derived solver's beams drawn through `trace` — and NEXT BOARD taken,
-// so the count while playing is 2; the next playing frame's text runs are
-// read back, and one of them must be the label with the figure 2 beside it,
-// the pair clear of the board's extent. The adjacency and glyph-band figures
-// are stated in cascade/hud.ts.
+// spec-derived solver's beams drawn through the pointer operations — and NEXT
+// BOARD taken, so the count while playing is 2; the next playing frame's text
+// runs are read back, and one of them must be the label with the figure 2
+// beside it, the pair clear of the board's extent. The adjacency and glyph-band
+// figures are stated in cascade/hud.ts.
 //
 // WHY TWO SOLVES AND NOT ONE. After one solve the count and the tier both
 // read 1, so a build that drew only "TIER 1" beside a bare SOLVED label would

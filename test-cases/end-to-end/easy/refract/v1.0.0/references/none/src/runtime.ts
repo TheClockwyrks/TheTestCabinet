@@ -194,7 +194,13 @@ export function createRuntime<S, D>(
   const pointer = new Pointer(
     surface.events(),
     (clientX, clientY) =>
-      clientToStage(viewport, surface.origin(), surface.dpr(), clientX, clientY),
+      clientToStage(
+        viewport,
+        surface.origin(),
+        surface.dpr(),
+        clientX,
+        clientY,
+      ),
     canvas,
   );
   // The browser's own gestures on the canvas belong to the game while it runs:

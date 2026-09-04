@@ -20,7 +20,7 @@
 // the critical block can decide the step.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_TOP_ROW, CHARGE_MAX, WORM_STEP_L1 } from "../../src/constants";
+import { BAND_TOP_ROW, CHARGE_MAX, WORM_STEP_L1 } from "../constants";
 import { assertDeepEqual, assertEqual, assertLessThan } from "../assert";
 import {
   captureStill,

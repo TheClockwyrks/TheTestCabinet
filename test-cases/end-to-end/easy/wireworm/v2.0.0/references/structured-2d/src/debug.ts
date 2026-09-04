@@ -49,6 +49,7 @@ import {
   type WormState,
 } from "./game";
 import { dropNode, putNode } from "./grid";
+import { itemRect, menuFor, type MenuRect } from "./menus";
 import { addWormTo } from "./worm";
 
 // ---- The snapshot shape (specs/instrumentation.md) -----------------------
@@ -150,6 +151,7 @@ export interface WirewormDebugApi {
   setLives(lives: number): void;
   setLevel(level: number): void;
   setReachedLevel(level: number): void;
+  menuItemRect(index: number): MenuRect | null;
 
   setFoeSpawning(enabled: boolean): void;
   setWormEntry(enabled: boolean): void;
@@ -314,6 +316,19 @@ export function createDebugApi(world: () => World): WirewormDebugApi {
 
     setReachedLevel(level) {
       read().reachedLevel = level;
+    },
+
+    /**
+     * Where the build put item `index` of the menu the current screen shows
+     * (`specs/instrumentation.md`).
+     *
+     * A pure read of the same layout `src/render.ts` draws from, so a pointer
+     * selects exactly what the player sees. `null` on `playing` and `howto`,
+     * which show no menu, and for an index the current menu has no item at.
+     */
+    menuItemRect(index) {
+      const menu = menuFor(read().screen);
+      return menu === null ? null : itemRect(menu, index);
     },
 
     setFoeSpawning(enabled) {

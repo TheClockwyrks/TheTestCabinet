@@ -21,9 +21,6 @@
 // the shot so a build that shimmers anyway fails on that rather than on the
 // figure.
 //
-// WHY A BYSTANDER STANDS IN THE CORNER. See `scene.ts`: it leaves a drone
-// standing, so no `SCORE_STAGE_CLEAR` lands in the number this check reads.
-//
 // WHAT THIS DOES NOT DECIDE. That a matching shot destroys a held Flux is
 // `bands`'s and `drones`'s; it is read here as the precondition of a payment.
 // What a DIVING Flux pays is `scoring.flux-diving`.
@@ -39,14 +36,13 @@ import {
   startPosed,
   type Harness,
 } from "../harness";
-import { poseBystander, requireDrone, shootDrone } from "./scene";
+import { requireDrone, shootDrone } from "./scene";
 
 /**
  * Where the Flux is posed, in logical units.
  *
  * A clear stretch of the play field: below the formation grid's lowest row
- * (`332`) and its full sway, above the ship's lane (`SHIP_Y`, `600`), and well
- * clear of the corner the bystander holds.
+ * (`332`) and its full sway, above the ship's lane (`SHIP_Y`, `600`).
  */
 const TARGET_AT = { x: 900, y: 460 } as const;
 
@@ -75,7 +71,6 @@ afterEach(() => {
 
 it("adds exactly SCORE_FLUX_FORM when a formation Flux is destroyed", async () => {
   startPosed(h);
-  poseBystander(h);
   const target = poseDrone(h, "flux", TARGET_AT.x, TARGET_AT.y, {
     band: MATCHING_BAND,
     phase: "formation",

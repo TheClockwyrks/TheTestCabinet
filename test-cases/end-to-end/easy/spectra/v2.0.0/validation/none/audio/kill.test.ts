@@ -15,14 +15,6 @@
 // below it carrying the band `specs/bands.md` says destroys, and the build's own
 // contact and band rules decide the rest.
 //
-// A BYSTANDER STANDS OFF IN THE CORNER, and it is load-bearing. `specs/stages.md`
-// clears a stage in the moment the last drone of its wave is destroyed, and a
-// cleared stage plays the `stage-clear` cue on that same frame. A wave holding
-// only the target would therefore raise TWO cues on the frame the target dies,
-// and under this engine — where a cue's name is unobservable — the two could not
-// be told apart. The bystander leaves a drone standing, so the frame this check
-// reads carries the kill cue alone.
-//
 // WHAT THIS ENGINE CANNOT SEE. The cue's NAME, and how many sources one cue is
 // made of. `./cues.ts` states why, and what these checks assert instead.
 //
@@ -38,7 +30,6 @@ import {
   createHarness,
   droneById,
   framesFor,
-  poseBystander,
   poseDrone,
   requireDrone,
   startPosed,
@@ -53,8 +44,8 @@ import {
 } from "./cues";
 
 /**
- * Where the target Shard stands: inside the play field, clear of the bystander's
- * corner and of the ship's lane, with room under it for the shot's climb.
+ * Where the target Shard stands: inside the play field, clear of the ship's
+ * lane, with room under it for the shot's climb.
  */
 const TARGET_X = 400;
 const TARGET_Y = 300;
@@ -96,10 +87,10 @@ it("sounds on the frame a matching shot destroys a drone, and not before", async
   // audio layer and is entitled to open it on the player's first interaction
   // alone (`specs/ui.md`). The key is bound to nothing, so this changes no state.
   await h.armAudio();
-  // An empty, quiet, live wave, then exactly two drones: the target, and the
-  // bystander that keeps the wave from clearing on the kill.
+  // An empty, quiet, live wave, then the one drone this point is about. With
+  // `stageClearing` shut by `startPosed`, the kill raises its own cue and the
+  // stage does not end and raise a second one on the same frame.
   await startPosed(h);
-  await poseBystander(h);
   const targetId = await poseDrone(h, "shard", TARGET_X, TARGET_Y, {
     band: "cyan",
   });

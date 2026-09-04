@@ -18,14 +18,6 @@
 // `specs/progression.md`), so the run's one extra life cannot be crossed and
 // nothing but this shot can touch the score.
 //
-// THE POSTURE IS `bands/mismatch-spares`'s, FIGURE FOR FIGURE — the same
-// {@link TARGET_X}, {@link TARGET_Y}, the same stored-cyan Shard, the same magenta
-// shot fired {@link SHOT_BELOW} units under it and flown {@link FLIGHT_TICKS}
-// frames — so nothing is destroyed, no stage can clear, and no bystander is
-// needed. What the shot does to the DRONE is the sibling `sortie/mismatch-wasted`;
-// what it does to the METER is `sortie/mismatch-fills-no-resonance`. This check
-// reads the score alone.
-//
 // THE SHOT HAS TO ARRIVE, or the reading is worthless: a score nothing was fired
 // at is trivially unchanged. So the check reads that the bullet resolved at the
 // drone or climbed past its centre, the same guard `bands/mismatch-spares` stands.

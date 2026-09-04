@@ -35,6 +35,7 @@ import {
 } from "./constants";
 import type { DebugClock } from "./debug";
 import { createSpectra } from "./game";
+import { IDLE_POINTER, type PointerFrame } from "./pointer";
 import type { Game, InitApi, UpdateApi } from "./runtime";
 import type { Art, SpectraState, Sprite } from "./types";
 
@@ -193,6 +194,14 @@ export interface Harness {
   release(action: ActionName): void;
   /** Press and release an action, arming one edge. */
   press(action: ActionName): void;
+  /**
+   * Stage the pointer report the next frame reads, in logical units.
+   *
+   * The runtime maps real pointer events into this shape once per frame
+   * (specs/ui.md), and a frame consumes it exactly as it consumes a key edge, so
+   * a staged report is spent by the frame that reads it.
+   */
+  pointer(frame: PointerFrame): void;
   /** Run `frames` whole frames covering `seconds` of game time. */
   advance(seconds: number, frames?: number): void;
   /** Draw one frame through a real 2D context. */
@@ -237,6 +246,7 @@ export function harnessWith(art: Art): Harness {
   const drawn: DrawnImage[] = [];
   let muted = false;
   let stepping = true;
+  let pointerFrame: PointerFrame = IDLE_POINTER;
 
   const canvas = createCanvas(STAGE_W, STAGE_H);
   const raw = canvas.getContext("2d");
@@ -280,6 +290,12 @@ export function harnessWith(art: Art): Harness {
         return true;
       },
     },
+    pointer: {
+      frame: () => pointerFrame,
+      forget: () => {
+        pointerFrame = { ...pointerFrame, released: null };
+      },
+    },
     audio: {
       play: (cue) => void cues.push(cue as CueName),
       toggleMuted: () => {
@@ -298,6 +314,7 @@ export function harnessWith(art: Art): Harness {
       game.update(state, updateApi, step);
       // Edges are news for exactly one frame, as they are under the runtime.
       edges.clear();
+      pointerFrame = IDLE_POINTER;
     }
   }
 
@@ -325,6 +342,9 @@ export function harnessWith(art: Art): Harness {
     },
     press(action) {
       edges.add(action);
+    },
+    pointer(frame) {
+      pointerFrame = frame;
     },
     advance,
     draw() {

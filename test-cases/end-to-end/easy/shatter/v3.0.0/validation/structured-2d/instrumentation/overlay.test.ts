@@ -37,6 +37,15 @@
 // triangle so that neither component nor the speed built from them reads as the
 // `0` every other line on a quiet panel also carries.
 //
+// WHAT THE VARIANT ADDS IS ITS OWN ITEM. `specs/instrumentation.md`'s Diagnostics
+// list adds the torpedo charge and the torpedoes in flight under `warhead`, and
+// those two are `instrumentation/overlay-reports-the-torpedo`, an item of the
+// warhead checklist alone. They are not read here behind the build's own surface,
+// which is what this script used to do: a requirement gated on what the build
+// implemented can be shed by implementing less, so a `warhead` build that wrote no
+// torpedo would pass this point on the strength of its omission while one that
+// wrote the torpedo and left it off the panel would fail.
+//
 // AND THE CLOCK IS DRIVEN TO A FIGURE OF ITS OWN FIRST. The accumulated
 // simulation time is one of the values the overlay owes, and a reading taken
 // moments after a reset is a `0` that half the panel could be showing anyway. So
@@ -78,7 +87,6 @@ import {
   startPlaying,
   ticksFor,
   toggleOverlay,
-  torpedoesOf,
   type Harness,
 } from "../harness";
 
@@ -108,17 +116,6 @@ const GRACE_FORMS = /2\.5|\b3\b/;
 
 /** The game time the run is carried to before the reading, in seconds. */
 const SIM_SECONDS = 23;
-
-/** The `warhead` charge posed, and the forms it may be drawn in. */
-const TORPEDO_CHARGE = 0.6;
-const CHARGE_FORMS = /0\.6|\b60\b/;
-
-/** The `warhead` torpedoes posed, above the star and clear of every body. */
-const TORPEDO_PLACES = [
-  { x: 420, y: 260 },
-  { x: 860, y: 260 },
-];
-const TORPEDO_HEADING = -Math.PI / 2;
 
 /** Where the twelve rocks stand: two rows along the top and bottom edges. */
 const ROCK_ROWS = [20, 690];
@@ -210,22 +207,6 @@ it("draws the facts the specification lists, over a posed field", async () => {
   h.debug.setSaucerGun(false);
   h.debug.setSaucerTravel(false);
 
-  const addTorpedo = h.debug.addTorpedo;
-  const warhead = typeof addTorpedo === "function";
-  if (warhead) {
-    for (const place of TORPEDO_PLACES) {
-      addTorpedo(place.x, place.y, TORPEDO_HEADING);
-    }
-    if (torpedoesOf(h.snapshot()).length !== TORPEDO_PLACES.length) {
-      fail(
-        "addTorpedo to append each torpedo to the roster " +
-          "(specs/instrumentation.md)",
-        torpedoesOf(h.snapshot()).length,
-      );
-    }
-    h.debug.setTorpedoCharge?.(TORPEDO_CHARGE);
-  }
-
   // Frozen behind the pause menu, so the posed ship is still standing where the
   // reading expects it and no timer runs down under the panel (specs/ui.md).
   h.debug.setScreen("paused");
@@ -275,17 +256,6 @@ it("draws the facts the specification lists, over a posed field", async () => {
     SIM_SECONDS,
     "the accumulated simulation time, in seconds",
   );
-
-  // And the two the variant adds, demanded of a build whose surface carries the
-  // variant's operations.
-  if (warhead) {
-    assertForm(added, CHARGE_FORMS, "the torpedo charge, three fifths");
-    assertFigure(
-      added,
-      TORPEDO_PLACES.length,
-      "how many torpedoes are in flight",
-    );
-  }
 });
 
 it("is read-only: the snapshot is identical across the toggle, but for the frame", async () => {

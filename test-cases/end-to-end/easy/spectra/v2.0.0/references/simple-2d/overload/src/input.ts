@@ -17,7 +17,11 @@
 //     `back`.
 
 import { ACTIONS, BINDINGS, LAYOUT, type ActionName } from "./constants";
-import type { InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type {
+  InitApi,
+  PointerSample,
+  UpdateApi,
+} from "@test-cabinet/simple-2d";
 
 /** Everything a frame's input amounts to, resolved once per update. */
 export interface FrameInput {
@@ -35,6 +39,15 @@ export interface FrameInput {
   readonly back: boolean;
   readonly pause: boolean;
   readonly mute: boolean;
+  /**
+   * Every pointer sample the input frame collected, in arrival order.
+   *
+   * The menus take a mouse and a finger as well as the keyboard (`specs/ui.md`),
+   * and the samples rather than the snapshot are what a menu reads: a sweep that
+   * crossed two items between frames arrives as the positions it visited, so the
+   * item it ENTERED last is the one selected.
+   */
+  readonly pointer: readonly PointerSample[];
 }
 
 /** Everything but the edges, which are news for exactly one sub-step. */
@@ -50,6 +63,8 @@ export function heldOnly(input: FrameInput): FrameInput {
     back: false,
     pause: false,
     mute: false,
+    // The pointer belongs to the frame, not to each of its sub-steps.
+    pointer: [],
   };
 }
 
@@ -65,6 +80,7 @@ export const NO_INPUT: FrameInput = heldOnly({
   back: false,
   pause: false,
   mute: false,
+  pointer: [],
 });
 
 /**
@@ -129,5 +145,6 @@ export function readInput(api: UpdateApi): FrameInput {
     back,
     pause,
     mute,
+    pointer: api.input.pointerSamples(),
   };
 }

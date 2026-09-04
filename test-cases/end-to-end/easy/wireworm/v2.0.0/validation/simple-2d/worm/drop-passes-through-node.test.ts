@@ -24,7 +24,7 @@
 // `worm.oscillates-at-floor`'s requirement.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLS, WORM_STEP_L1 } from "../../src/constants";
+import { COLS, WORM_STEP_L1 } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,

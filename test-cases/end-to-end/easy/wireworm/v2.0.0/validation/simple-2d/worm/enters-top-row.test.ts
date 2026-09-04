@@ -31,7 +31,7 @@
 // the worm AS IT ENTERED rather than one that has since stepped.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BANNER_TIME, COLS } from "../../src/constants";
+import { BANNER_TIME, COLS } from "../constants";
 import {
   assertDeepEqual,
   assertEqual,

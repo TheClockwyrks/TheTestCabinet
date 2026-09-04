@@ -33,12 +33,7 @@
 // evidence that the boundary was crossed.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BOLT_SPEED,
-  BONUS_LIFE_EVERY,
-  FOE_HALF,
-  TILE,
-} from "../../src/constants";
+import { BOLT_SPEED, BONUS_LIFE_EVERY, FOE_HALF, TILE } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

@@ -141,7 +141,8 @@ describe("the menus", () => {
     h.tap("Escape");
     await h.engine.advance(1);
     expect(h.state.screen).toBe("title");
-    expect(h.state.menuIndex).toBe(0);
+    // The title remembers the entry that led away (specs/ui.md).
+    expect(h.state.menuIndex).toBe(2);
   });
 });
 
@@ -424,7 +425,7 @@ describe("rendering", () => {
 
   it("draws a beam connecting the centers of the cells it links", async () => {
     h.debug.loadBoard(["TtT"]);
-    h.debug.trace([
+    h.trace([
       { col: 0, row: 0 },
       { col: 1, row: 0 },
     ]);
@@ -457,12 +458,16 @@ describe("rendering", () => {
     expect(h.state.screen).toBe("howto");
     h.tap("Escape");
     await h.engine.advance(1);
+    // Back on the title with HOW TO PLAY highlighted (specs/ui.md); one more
+    // down wraps the highlight onto CAMPAIGN.
+    h.tap("KeyS");
+    await h.engine.advance(1);
     h.tap("Enter");
     await h.engine.advance(1);
     expect(h.state.screen).toBe("select");
 
     h.debug.loadBoard(["TtT"]);
-    h.debug.trace([
+    h.trace([
       { col: 0, row: 0 },
       { col: 1, row: 0 },
       { col: 2, row: 0 },
@@ -519,7 +524,7 @@ describe("the solved and complete screens", () => {
   });
 
   it("restarts cascade from its solved menu without reseeding", async () => {
-    h.debug.startMode("cascade");
+    await h.enterCascade();
     const expected = generateBoardWithSolution(DEFAULT_SEED, 1);
     for (const route of expected.solution) {
       await h.drag(route);
@@ -538,7 +543,7 @@ describe("the solved and complete screens", () => {
   });
 
   it("leaves cascade's solved screen to the title with back", async () => {
-    h.debug.startMode("cascade");
+    await h.enterCascade();
     const expected = generateBoardWithSolution(DEFAULT_SEED, 1);
     for (const route of expected.solution) {
       await h.drag(route);
@@ -546,7 +551,8 @@ describe("the solved and complete screens", () => {
     h.tap("Escape");
     await h.engine.advance(1);
     expect(h.state.screen).toBe("title");
-    expect(h.state.menuIndex).toBe(0);
+    // Cascade's screens return to the title on CASCADE (specs/modes/cascade.md).
+    expect(h.state.menuIndex).toBe(1);
   });
 
   it("offers the grid and the title from the complete screen", async () => {
@@ -556,7 +562,7 @@ describe("the solved and complete screens", () => {
     h.state.unlockedCount = CAMPAIGN_LENGTH;
     h.debug.loadBoard(["TtT"]);
     h.state.boardIndex = 23;
-    h.debug.trace([
+    h.trace([
       { col: 0, row: 0 },
       { col: 1, row: 0 },
       { col: 2, row: 0 },
@@ -579,7 +585,7 @@ describe("the solved and complete screens", () => {
   });
 
   it("leaves the board to the title with back during cascade play", async () => {
-    h.debug.startMode("cascade");
+    await h.enterCascade();
     h.tap("Escape");
     await h.engine.advance(1);
     expect(h.state.screen).toBe("title");

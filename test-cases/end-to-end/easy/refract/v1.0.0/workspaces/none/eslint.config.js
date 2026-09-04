@@ -19,6 +19,8 @@ export default tseslint.config(
       "coverage/",
       "proof/",
       ".tcab/",
+      "specs/",
+      "engine/",
     ],
   },
   js.configs.recommended,

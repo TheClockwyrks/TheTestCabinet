@@ -66,6 +66,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThanOrEqual, assertTrue } from "../assert";
+import { TORPEDO_CONE_DEG } from "../constants";
 import { DEG, angleBetween } from "../geometry";
 import {
   captureStill,
@@ -93,9 +94,15 @@ const HEADING = 0;
  */
 const LANE = { above: 640, below: 80 } as const;
 
-/** How far off the launch centre line each rock is posed, in degrees. */
-const INSIDE_DEG = 14;
-const OUTSIDE_DEG = 16;
+/**
+ * How far off the launch centre line each rock is posed, in degrees.
+ *
+ * A degree inside the cone's half-angle and a degree outside it, both derived
+ * from the figure `constants.ts` transcribes rather than written out, so a
+ * revision to `specs/weapons.md` moves the pair this check probes with it.
+ */
+const INSIDE_DEG = TORPEDO_CONE_DEG - 1;
+const OUTSIDE_DEG = TORPEDO_CONE_DEG + 1;
 
 /** The two sides of the heading the rule reaches, as signs on that offset. */
 const SIDES = [
@@ -182,8 +189,9 @@ it.each(SIDES)(
     assertTrue(
       taken.hit,
       `the rock posed ${String(INSIDE_DEG)} degrees ${name} the torpedo's ` +
-        "heading — inside TORPEDO_CONE (15 degrees), which reaches that far " +
-        "on EITHER side — to be acquired and destroyed within 1.5 seconds of " +
+        `heading — inside TORPEDO_CONE (${String(TORPEDO_CONE_DEG)} degrees), ` +
+        "which reaches that far on EITHER side — to be acquired and destroyed " +
+        "within 1.5 seconds of " +
         "flight (specs/weapons.md, specs/collision.md); it was still on the " +
         `field after ${String(FLIGHT_TICKS)} ticks`,
     );
@@ -205,8 +213,9 @@ it.each(SIDES)(
     assertTrue(
       rockById(h.snapshot(), outsideId) !== undefined,
       `the rock posed ${String(OUTSIDE_DEG)} degrees ${name} the torpedo's ` +
-        "heading — outside TORPEDO_CONE (15 degrees) — still on the field " +
-        "after 1.5 seconds: a body outside the cone is never a candidate, so " +
+        `heading — outside TORPEDO_CONE (${String(TORPEDO_CONE_DEG)} ` +
+        "degrees) — still on the field after 1.5 seconds: a body outside the " +
+        "cone is never a candidate, so " +
         "nothing turns toward it (specs/weapons.md)",
     );
 
@@ -222,8 +231,9 @@ it.each(SIDES)(
       HEADING_TOLERANCE,
       "the radians the torpedo's heading turned while passing a rock " +
         `${String(OUTSIDE_DEG)} degrees ${name} it — a degree outside the ` +
-        "TORPEDO_CONE (15 degrees) half-angle specs/weapons.md fixes, past " +
-        "which a body behind it is never acquired and the torpedo flies " +
+        `TORPEDO_CONE (${String(TORPEDO_CONE_DEG)} degrees) half-angle ` +
+        "specs/weapons.md fixes, past which a body behind it is never " +
+        "acquired and the torpedo flies " +
         `straight on its current heading; ${(turned / DEG).toFixed(3)} degrees`,
     );
   },

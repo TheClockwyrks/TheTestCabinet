@@ -18,7 +18,11 @@
 //     applies to it.
 
 import { ACTIONS, BINDINGS, LAYOUT, type ActionName } from "./constants";
-import type { InitApi, InputReader } from "@test-cabinet/structured-2d";
+import type {
+  InitApi,
+  InputReader,
+  PointerSample,
+} from "@test-cabinet/structured-2d";
 
 /** Everything a frame's input amounts to, resolved once per frame. */
 export interface FrameInput {
@@ -37,6 +41,15 @@ export interface FrameInput {
   readonly back: boolean;
   readonly pause: boolean;
   readonly mute: boolean;
+  /**
+   * Every pointer sample the input frame collected, in arrival order.
+   *
+   * The menus take a mouse and a finger as well as the keyboard (`specs/ui.md`),
+   * and the samples rather than the snapshot are what a menu reads: a sweep that
+   * crossed two items between frames arrives as the positions it visited, so the
+   * item it ENTERED last is the one selected.
+   */
+  readonly pointer: readonly PointerSample[];
 }
 
 /** A frame in which the player did nothing, which is what a pose steps under. */
@@ -51,6 +64,7 @@ export const IDLE_INPUT: FrameInput = {
   back: false,
   pause: false,
   mute: false,
+  pointer: [],
 };
 
 /**
@@ -115,5 +129,6 @@ export function readInput(reader: InputReader): FrameInput {
     back,
     pause,
     mute,
+    pointer: reader.pointerSamples(),
   };
 }

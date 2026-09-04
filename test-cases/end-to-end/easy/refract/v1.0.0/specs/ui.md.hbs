@@ -10,7 +10,7 @@ the name this specification gives it.
 ## Presentation
 
 Refract fixes no palette, no font, no node artwork, no beam rendering, and no
-background. The look of the optical bench is yours. `specs/overview.md` states
+background. The look of the optical bench is yours. `specs/overview.md` frames
 the visual design, and `specs/board.md` states the few things about a node and a
 beam a player has to read at a glance. One requirement is this file's own: every
 piece of text a screen shows is legible against whatever sits behind it at the
@@ -49,8 +49,10 @@ The main menu, and where the game opens. It is the only place a mode is chosen.
 The menu's items are stacked one above the next under the title and tagline. The
 item at `state.menuIndex` is highlighted and drawn **distinctly** from the
 others, so a player always sees which item would be accepted. `menuIndex` is `0`
-on arriving at the title. `up` and `down` move the highlight by one item and wrap
-at both ends. `back` does nothing.
+on the game's first arrival at the title; on every later arrival it is the index
+of the entry that led away, which each transition below and in the mode files
+names. `up` and `down` move the highlight by one item and wrap at both ends.
+`back` does nothing.
 
 Each item carries the pointer target `specs/controls.md` names for it, so the
 menu is worked by mouse and by touch as well as by the keyboard.
@@ -94,8 +96,8 @@ rules are the same in both modes, so one screen serves both. It covers:
 - the controls, naming the key bound to the `clear` action.
 
 The screen draws a `BACK_LABEL` (`BACK`) control carrying the `back` pointer
-target. Taking it, or the `back` action, returns to `title` with
-`menuIndex = 0`.
+target. Taking it, or the `back` action, returns to `title` with `HOW TO PLAY`
+highlighted (`menuIndex = 2`).
 
 ### `playing`
 
@@ -116,8 +118,12 @@ counting segments.
 
 The current mode adds its own readouts to this screen, and states them itself:
 `specs/modes/campaign.md` for Campaign and `specs/modes/cascade.md` for Cascade.
-Those sit clear of the board, whose extent is given in `specs/board.md`, as do
-the two controls.
+
+Inside the board's extent — the cell centers `specs/board.md` places, widened by
+`NODE_R` (`30`) on every side — this screen draws only the board: its cells, the
+nodes on them with whatever readout a node itself carries, and the beams. Every
+other element of the screen sits clear of that extent, the mode's own readouts
+and the two controls included.
 
 ## What advances on each screen
 

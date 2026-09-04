@@ -13,14 +13,6 @@
 // of the outcome those same two shots have with no inversion. A build that ignores
 // the inversion in its contact code gets both readings wrong, and each is named
 // separately in the failure, so which way it is wrong is legible.
-//
-// THE TWO SHARDS STAND 480 UNITS APART and each shot is placed on its own target's
-// column, so neither flight can reach the other's drone. The second Shard is also
-// what keeps the wave holding a drone after the first is destroyed, so no reading
-// of the stage-clear rule (specs/stages.md, "in the moment the last drone of its
-// wave is destroyed") can end the wave under the second shot. It is not a
-// bystander parked to soak up a rule: it is the drone the second half of the
-// requirement is fired at.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { INVERSION_TIME, PLAYER_BULLET_HALF, SHARD_HALF } from "../constants";

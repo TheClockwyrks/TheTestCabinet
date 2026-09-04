@@ -24,14 +24,15 @@
 // is worth after a pose is `poses-read-back`'s; what `reset` puts in it is
 // `reset-restores-title`'s. This item is the shape.
 //
-// THE WARHEAD ROWS. `specs/instrumentation.md` adds `torpedoes`,
+// THE WARHEAD ROWS ARE NOT HERE. `specs/instrumentation.md` adds `torpedoes`,
 // `torpedoCharge` and `torpedoReady` to the shape under the `warhead` variant
-// alone, and this script is a COMMON one — it is named by both checklists. A
-// build carrying the variant's torpedo OPERATIONS owes the fields those
-// operations set, so the extra rows are required exactly of a surface that
-// carries them. A `warhead` build that shipped no torpedo operations at all
-// fails `clear-torpedoes` and `remove-torpedo`, which is where that fault
-// belongs, rather than being reported here as a missing snapshot field.
+// alone, and this script is a COMMON one — it is named by both checklists. So
+// those three are `instrumentation/warhead-snapshot-shape`, an item of the
+// warhead checklist alone. They used to be required here of exactly the surface
+// that carried `addTorpedo`, and a requirement decided that way is one a build
+// can shed by implementing less: a `warhead` build that wrote no torpedo passed
+// this point on the strength of its omission, while one that wrote the torpedo
+// and mistyped a field failed it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { ROCK_RADIUS } from "../constants";
@@ -56,7 +57,6 @@ import {
   REQUIRED_SHIP_FIELDS,
   REQUIRED_SNAPSHOT_FIELDS,
   SHATTER_DEBUG_VERSION,
-  WARHEAD_SNAPSHOT_FIELDS,
   type ShatterSnapshot,
 } from "../surface";
 import { posePopulatedField, SIZES } from "./scene";
@@ -113,6 +113,8 @@ it("reports every documented field, with its documented type", async () => {
     "lives",
     "wave",
     "waveBanner",
+    "saucerClock",
+    "saucerDue",
     "simTime",
   ] as const) {
     assertEqual(typeof snapshot[field], "number", `${field} is a number`);
@@ -189,7 +191,16 @@ it("reports every documented field, with its documented type", async () => {
 
   // The saucer, up, with its centre, its velocity and its three faculties.
   const saucer = requireSaucer(snapshot, "the posed saucer");
-  for (const field of ["id", "x", "y", "vx", "vy"] as const) {
+  for (const field of [
+    "id",
+    "x",
+    "y",
+    "vx",
+    "vy",
+    "fireClock",
+    "weaveClock",
+    "age",
+  ] as const) {
     assertEqual(typeof saucer[field], "number", `saucer.${field} is a number`);
   }
   for (const field of ["mind", "gun", "travel"] as const) {
@@ -197,30 +208,6 @@ it("reports every documented field, with its documented type", async () => {
       typeof saucer[field],
       "boolean",
       `saucer.${field} is a boolean`,
-    );
-  }
-
-  // The variant's rows, required of the surface that carries the operations
-  // which set them (see the note above).
-  if (typeof h.debug.addTorpedo === "function") {
-    for (const field of WARHEAD_SNAPSHOT_FIELDS) {
-      assertHasProperty(snapshot, field, "a documented warhead snapshot field");
-    }
-    assertTrue(Array.isArray(snapshot.torpedoes), "torpedoes is an array");
-    assertEqual(
-      typeof snapshot.torpedoCharge,
-      "number",
-      "torpedoCharge is a number",
-    );
-    assertEqual(
-      typeof snapshot.torpedoReady,
-      "boolean",
-      "torpedoReady is a boolean",
-    );
-    assertEqual(
-      snapshot.torpedoReady,
-      snapshot.torpedoCharge === 1,
-      "torpedoReady is true exactly when the charge is 1, built at the call",
     );
   }
 });

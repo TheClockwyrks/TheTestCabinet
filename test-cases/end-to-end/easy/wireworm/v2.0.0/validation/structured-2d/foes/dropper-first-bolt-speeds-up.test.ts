@@ -24,7 +24,7 @@ import {
   DROPPER_SPEED,
   DROPPER_SPEED_HIT,
   FOE_HALF,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureStill,
   createHarness,

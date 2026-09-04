@@ -11,10 +11,10 @@
 // yet reporting an honest zero rather than a runner error.
 //
 // Both reporters write a FILE as well as the table, into `coverage/`, which this
-// project already ignores in git and in Prettier. The Test Cabinet reads the
-// recorded test results and coverage figures out of those two files and never
-// out of what the command printed, so a change to a reporter's terminal layout
-// can no longer change a recorded figure.
+// project already ignores in git and in Prettier. The suite's results and its
+// coverage are read back off those two report files, never off what the command
+// printed, so the recorded figures do not move when a runner restyles its
+// terminal output.
 //
 // Coverage is measured by ISTANBUL, not by v8. Istanbul instruments the source,
 // so a branch is an `if`, a ternary, a logical operator, a default parameter or a
@@ -26,9 +26,7 @@
 // this code. Istanbul's instrumentation is deterministic given the source and the
 // plugin version, and it emits the JSON format that is stored natively rather
 // than through a remap. Its one real cost is that instrumented code runs slower,
-// and that is the cost this architecture does not pay: these commands run
-// host-side after the run's container is gone, so a slow suite costs the run none
-// of its runtime budget.
+// which a suite this size does not feel.
 
 import { defineConfig } from "vitest/config";
 
@@ -39,8 +37,8 @@ export default defineConfig({
     environment: "node",
     passWithNoTests: true,
     // `default` keeps the human-readable run in the log; `json` writes the
-    // machine-readable report The Test Cabinet reads the recorded figures out of.
-    // Nothing is ever scraped back out of the terminal output.
+    // machine-readable report. Nothing is scraped back out of the terminal
+    // output.
     reporters: ["default", "json"],
     outputFile: { json: "coverage/test-report.json" },
     coverage: {

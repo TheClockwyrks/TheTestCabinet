@@ -28,7 +28,7 @@
 // pulse is a property of the node's own drawing and needs no other body.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CHARGE_MAX, TILE, tileCX, tileCY } from "../../src/constants";
+import { CHARGE_MAX, TILE, tileCX, tileCY } from "../constants";
 import { assertGreaterThanOrEqual, assertTrue } from "../assert";
 import {
   captureStill,

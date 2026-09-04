@@ -26,11 +26,6 @@
 // across". So the score is posed one point under the threshold and a matching
 // shot destroys a Shard, and the build's own scoring path carries it over.
 //
-// A BYSTANDER STANDS THROUGHOUT, for the reason `poseBystander` gives: without a
-// second drone on the field a build that reads a stage's wave as the drones
-// standing on it would clear the stage on the kill below and pay
-// `SCORE_STAGE_CLEAR` into the score being watched.
-//
 // WHAT THIS DOES NOT DECIDE. That the first crossing pays anything at all, which
 // is `progression.extra-life-awarded`'s: a build that never pays passes here and
 // fails there, and the pair grades the two directions apart.
@@ -54,7 +49,6 @@ import {
   startPosed,
   type Harness,
 } from "../harness";
-import { poseBystander } from "./lives";
 
 /**
  * The score the run is posed at, one point below `EXTRA_LIFE_AT` (`20000`).
@@ -67,8 +61,8 @@ const POSED_SCORE = EXTRA_LIFE_AT - 1;
 
 /**
  * Where the target Shard stands: the same slot `progression.extra-life-awarded`
- * fires at, four columns from the bystander's and well above the ship's lane, so
- * the two points differ in the latch and in nothing else.
+ * fires at, well above the ship's lane, so the two points differ in the latch
+ * and in nothing else.
  */
 const TARGET_X = slotX(4);
 const TARGET_Y = slotY(1);
@@ -97,7 +91,6 @@ afterEach(() => {
 
 it("adds no further life when a later kill carries the score across again", async () => {
   startPosed(h);
-  poseBystander(h);
   const target = poseDrone(h, "shard", TARGET_X, TARGET_Y, {
     band: MATCHING_BAND,
   });

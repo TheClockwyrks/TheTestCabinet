@@ -6,9 +6,12 @@
 // beam empty — and the fields the campaign uses hold the resting values
 // `specs/state.md` gives them, which `specs/instrumentation.md`'s resting table
 // states: `boardIndex` 0, `solvedBoards` empty, `unlockedCount` 1,
-// `selectIndex` 0. Entry goes through the surface's `startMode`, the pose
-// `specs/instrumentation.md` defines as "exactly as choosing its menu item
-// does", so no build-chosen menu binding is in the reading.
+// `selectIndex` 0. The choice is really made, since starting the sequence is
+// what this point decides: CASCADE is `TITLE_ITEMS[1]`, so the title's `menu-1`
+// pointer target is pressed and released at its center, which specs/controls.md
+// fixes as "the same as `confirm` with `state.menuIndex` at `i`". The pointer
+// rather than a key: the target ids are the specification's, while the menu's
+// key bindings are the build's own under this engine.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";

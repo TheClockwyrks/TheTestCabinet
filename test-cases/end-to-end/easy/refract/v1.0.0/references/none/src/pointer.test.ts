@@ -54,7 +54,9 @@ describe("samples", () => {
   it("maps every sample through the stage map it was given", () => {
     const { target, input } = pointer((x, y) => ({ x: x / 2, y: y / 2 }));
     target.dispatchEvent(new PointerEvt("pointerdown", 100, 200));
-    expect(input.samples()).toEqual([{ type: "down", x: 50, y: 100, device: "mouse", primary: true }]);
+    expect(input.samples()).toEqual([
+      { type: "down", x: 50, y: 100, device: "mouse", primary: true },
+    ]);
   });
 
   it("treats pointercancel as the release it is", () => {
@@ -104,12 +106,27 @@ describe("samples", () => {
 describe("current", () => {
   it("tracks the mapped position and the pressed bit", () => {
     const { target, input } = pointer();
-    expect(input.current()).toEqual({ x: 0, y: 0, down: false, device: "mouse" });
+    expect(input.current()).toEqual({
+      x: 0,
+      y: 0,
+      down: false,
+      device: "mouse",
+    });
     target.dispatchEvent(new PointerEvt("pointerdown", 10, 20));
-    expect(input.current()).toEqual({ x: 10, y: 20, down: true, device: "mouse" });
+    expect(input.current()).toEqual({
+      x: 10,
+      y: 20,
+      down: true,
+      device: "mouse",
+    });
     target.dispatchEvent(new PointerEvt("pointermove", 30, 40));
     target.dispatchEvent(new PointerEvt("pointerup", 30, 40));
-    expect(input.current()).toEqual({ x: 30, y: 40, down: false, device: "mouse" });
+    expect(input.current()).toEqual({
+      x: 30,
+      y: 40,
+      down: false,
+      device: "mouse",
+    });
   });
 
   it("holds its position while the map is degenerate, keeping the edges", () => {
@@ -119,8 +136,15 @@ describe("current", () => {
     input.endFrame();
     broken = true;
     target.dispatchEvent(new PointerEvt("pointerdown", 999, 999));
-    expect(input.samples()).toEqual([{ type: "down", x: 50, y: 60, device: "mouse", primary: true }]);
-    expect(input.current()).toEqual({ x: 50, y: 60, down: true, device: "mouse" });
+    expect(input.samples()).toEqual([
+      { type: "down", x: 50, y: 60, device: "mouse", primary: true },
+    ]);
+    expect(input.current()).toEqual({
+      x: 50,
+      y: 60,
+      down: true,
+      device: "mouse",
+    });
   });
 });
 

@@ -30,6 +30,12 @@ export interface Viewport {
   readonly offsetY: number;
 }
 
+/** A position in CSS pixels. */
+export interface Point {
+  x: number;
+  y: number;
+}
+
 /**
  * Where the runtime reads the drawing surface's size and pixel density, and what
  * it listens for keys on. Every measurement the runtime would otherwise take
@@ -40,6 +46,8 @@ export interface Surface {
   cssWidth(): number;
   /** The canvas element's laid-out height, in CSS pixels. */
   cssHeight(): number;
+  /** The canvas element's top-left corner, in the CSS pixels an event reports. */
+  origin(): Point;
   /** Device pixels per CSS pixel. */
   dpr(): number;
   /** The target key events and unlock gestures are listened for on. */
@@ -98,6 +106,28 @@ export function fitViewport(
   };
 }
 
+/**
+ * The logical stage point a CSS-pixel position inside the canvas lands on, or
+ * `null` when the canvas has no fit yet.
+ *
+ * The inverse of the map {@link fitViewport} builds, run in CSS pixels rather
+ * than device ones, which is the unit a pointer event reports its position in.
+ */
+export function logicalPoint(
+  view: Viewport,
+  dpr: number,
+  cssX: number,
+  cssY: number,
+): Point | null {
+  const ratio = normalizeDpr(dpr);
+  const cssScale = view.scale / ratio;
+  if (!(cssScale > 0)) return null;
+  return {
+    x: (cssX - view.offsetX / ratio) / cssScale,
+    y: (cssY - view.offsetY / ratio) / cssScale,
+  };
+}
+
 /** The backing-store size, in whole device pixels, of a CSS dimension. */
 export function deviceSize(cssSize: number, dpr: number): number {
   return Math.round(normalizeSize(cssSize) * normalizeDpr(dpr));
@@ -116,6 +146,10 @@ export function domSurface(canvas: HTMLCanvasElement): Surface {
   return {
     cssWidth: () => canvas.clientWidth,
     cssHeight: () => canvas.clientHeight,
+    origin: () => {
+      const box = canvas.getBoundingClientRect();
+      return { x: box.left, y: box.top };
+    },
     dpr: () => window.devicePixelRatio,
     events: () => window,
   };

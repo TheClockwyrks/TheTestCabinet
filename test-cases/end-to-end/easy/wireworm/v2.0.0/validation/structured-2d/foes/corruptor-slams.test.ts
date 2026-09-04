@@ -18,7 +18,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { CHARGE_MAX } from "../../src/constants";
+import { CHARGE_MAX } from "../constants";
 import {
   captureStill,
   createHarness,

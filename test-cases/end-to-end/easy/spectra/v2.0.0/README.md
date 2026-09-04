@@ -42,11 +42,11 @@ build that is nearly right in many places is told apart from one that is right.
 The case supports three engines and seeds a different project for each, which is
 what the manifest's `[workspaces]` table is for:
 
-| Engine          | What the seeded project supplies                                                                                                                                                                                                                                                                                                                                                                                                           |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `none`          | The toolchain configuration, `index.html`, and the art and particle system under `assets/`. There is no `src/`: the build writes the game and the runtime beneath it — the frame loop and its delta time, the canvas fit, keyboard input, audio, image loading, the overlay and the `window.__spectra` surface. The surface additionally carries the clock, because nothing outside the build owns it.                                     |
-| `simple-2d`     | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/constants.ts` and `src/main.ts` and a `src/game.ts` stub. The build writes `src/game.ts`: `SpectraState`, the debug surface `specs/instrumentation.md` specifies, `BACKGROUND`, and the three functions. Its `initialize` returns the surface beside the state as `[state, debug]`, which the engine serves from `engine.debug`.                            |
-| `structured-2d` | The [Structured 2D](/engines/structured-2d/) package, vendored the same way, plus `src/constants.ts` and `src/main.ts`. `src/game.ts` is deliberately absent from the seed, so the first `tsc` fails on the missing module. The build writes the `GameDefinition`, the instance whose `initialize` returns the debug surface, the mode whose `gameStateClass` is the live `SpectraState`, and the actors the field is drawn and driven by. |
+| Engine          | What the seeded project supplies                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------             |
+| `none`          | The toolchain configuration, `index.html`, and the art and particle system under `assets/`. There is no `src/`: the build writes the game and the runtime beneath it — the frame loop and its delta time, the canvas fit, keyboard and pointer input, audio, image loading, the overlay and the `window.__spectra` surface. The surface additionally carries the clock, because nothing outside the build owns it.                                     |
+| `simple-2d`     | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/constants.ts` and `src/main.ts` and a `src/game.ts` stub. The build writes `src/game.ts`: `SpectraState`, the debug surface `specs/instrumentation.md` specifies, `BACKGROUND`, and the three functions. Its `initialize` returns the surface beside the state as `[state, debug]`, which the engine serves from `engine.debug`.                                        |
+| `structured-2d` | The [Structured 2D](/engines/structured-2d/) package, vendored the same way, plus `src/constants.ts` and `src/main.ts`. `src/game.ts` is deliberately absent from the seed, so the first `tsc` fails on the missing module. The build writes the `GameDefinition`, the instance whose `initialize` returns the debug surface, the mode whose `gameStateClass` is the live `SpectraState`, and the actors the field is drawn and driven by.             |
 
 Spectra runs in **one** world for the whole session under `structured-2d`: every
 screen is a value of the state's `screen` field rather than a level of its own, so
@@ -166,14 +166,17 @@ they reach the build.
 
 Every scenario poses a world holding only what its point is about. The shared
 harness's `startPosed` empties the drones, the bullets and the bursts, turns off
-the three world gates — the wave's own entry, the dive launcher, and the ship's
-contact test — and opens a live wave, and the point then adds back exactly the
-entities its requirement concerns, holding each drone's own faculties (its
-travel, its oscillation, its fire) so nothing else in the scenario can move. An
-empty wave is safe because a stage clears on the moment its last drone is
-destroyed rather than on a predicate over an empty field, which
-`stages.empty-wave-does-not-clear` is what holds a build to. Every expected value
-a suite asserts comes from a figure the specs fix, never from a reference build.
+the four world gates — the wave's own entry, the dive launcher, the live stage's
+end-of-stage test, and the ship's contact test — and opens a live wave, and the
+point then adds back exactly the entities its requirement concerns, holding each
+drone's own faculties (its travel, its oscillation, its fire) so nothing else in
+the scenario can move. Shutting the stage-clear gate is what lets a point destroy
+the one drone it posed and still read a live field, rather than standing a second
+drone in a corner to hold the wave open. The three items whose requirement IS a
+clear — `stages.clears-on-last-drone`, `stages.empty-wave-does-not-clear` and
+`instrumentation.stage-clearing-gate` — are the ones that leave it on. Every
+expected value a suite asserts comes from a figure the specs fix, never from a
+reference build.
 
 ### Where the figure a suite asserts comes from
 
@@ -238,11 +241,14 @@ npx tsc --noEmit -p validation/tsconfig.json    # from a build's root
 
 ### Three captures move between runs
 
-`tcab capture-baselines` writes `1710` files across the six engine/variant
-targets: `1599` stills and `111` recorded replays. Seventeen of the stills are
-taken off a clock rather than off a posed frame, so two runs of the command over
-unchanged code write different bytes for them, and the committed baseline for
-each is one sample rather than a fixed picture. They are three outputs:
+`tcab capture-baselines` writes `1848` files across the six engine/variant
+targets: `1737` stills and `111` recorded replays. Six of those stills are not
+rendered at all: `showcase.exists__carousel` is a `.png` the point copies out of
+the build's own showcase, so the baseline for it is the reference's own picture.
+Seventeen of the stills are taken off a clock rather than off a posed frame, so
+two runs of the command over unchanged code write different bytes for them, and
+the committed baseline for each is one sample rather than a fixed picture. They
+are three outputs:
 
 | Output                                         | Targets | Why it moves                                                                                                                                      |
 | ---------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -263,7 +269,7 @@ picture on every host and any movement in it is the build's.
 The churn is bounded and it is all there is. Captures of the same code differ
 inside those seventeen files and in nothing else, and a delta within a file is no
 more than 2291 pixels of the 921600 in a frame, inside the panel's text band or on
-one moving entity. The other 1582 stills and all 111 replays are byte-identical
+one moving entity. The other 1720 stills and all 111 replays are byte-identical
 from one capture to the next.
 
 So a recapture that leaves only those seventeen files dirty has changed nothing
@@ -277,9 +283,12 @@ discharge and the inversion), `swarm` (the entrances, the formation, the dives
 and the three drones), `arcade` (the ship, the stages, the lives, the scoring and
 the screens) and `presentation` (the screens, the HUD, the art and the audio) —
 and its overall functional rating is the worst of the four. The checklist is
-`269` points on a base run and `287` on an overload run: fifteen categories common
-to both, plus one category the variant declares. Each point names the domains its
-failure lowers and how far it lowers them.
+`294` points on a base run and `312` on an overload run, over `292` and `310`
+items: eighteen categories common to both, plus one category the variant
+declares. Each point names the domains its failure lowers and how far it lowers
+them. Every item is worth one point except `showcase.exists`, which is worth
+three: the showcase is a deliverable of its own rather than a behavior of the
+game.
 
 ## Versioning
 

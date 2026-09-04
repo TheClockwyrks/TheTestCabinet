@@ -4,7 +4,7 @@
 // Two readings of the paused screen, both from `specs/ui.md`.
 //
 // THE MENU. The three entries are the case's own copy, PAUSE_ITEMS from
-// `src/constants.ts`, matched by substring because a highlighted entry is
+// `./constants`, matched by substring because a highlighted entry is
 // commonly drawn with a marker or padding beside it. The pause is raised by the
 // `pause` action's own first bound key — `KeyP`, which drives nothing else — as
 // a real key event at the target the engine listens on, over live, active play.
@@ -22,10 +22,11 @@
 // most likely to be drawn: a node under a letter would be a reading of the
 // build's typography rather than of the board behind it.
 //
-// That the paused board is FROZEN is `screens/pause-freezes`'s to decide.
+// That the paused board is FROZEN is for the four `screens/pause-freezes-*`
+// points to decide.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CHARGE_MAX, PAUSE_ITEMS } from "../../src/constants";
+import { CHARGE_MAX, PAUSE_ITEMS } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

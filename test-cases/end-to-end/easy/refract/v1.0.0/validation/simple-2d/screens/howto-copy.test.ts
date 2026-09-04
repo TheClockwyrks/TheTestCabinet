@@ -5,9 +5,14 @@
 // name, among its points, the key bound to `clear` — which specs/controls.md
 // fixes as KeyR. What is mechanically decidable is that the frame draws text
 // at all and that some drawn run carries a standalone R, matched at word
-// boundaries so the R inside REFRACT or CRYSTAL cannot stand in for it; the
-// full rules prose is the reviewer's to read from the captured frame, which is
-// why this item's cap is `great` rather than a functional one.
+// boundaries so the R inside REFRACT or CRYSTAL cannot stand in for it; whether
+// the prose really teaches the game is the run-wide aesthetic rating's, not
+// this point's, which is why this item's cap is `great` rather than a
+// functional one.
+//
+// The screen is POSED with `setScreen`, not walked to through the title menu:
+// a build with a broken `down` binding must fail `screens/title-down` and pass
+// this point.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
@@ -16,7 +21,6 @@ import {
   createHarness,
   drawnText,
   resetTo,
-  tapAction,
   type Harness,
 } from "../harness";
 
@@ -32,13 +36,12 @@ afterEach(() => {
 
 it("draws its copy, naming the clear key as a standalone R", async () => {
   await resetTo(h);
-  await tapAction(h, "down");
-  await tapAction(h, "down");
-  await tapAction(h, "confirm");
+  h.debug.setScreen("howto");
+  await h.advance(1);
   assertEqual(
     h.snapshot().screen,
     "howto",
-    "posing: confirming HOW TO PLAY opens the how-to screen (specs/ui.md)",
+    "posing: the how-to screen is up (specs/instrumentation.md setScreen)",
   );
 
   h.calls.length = 0;

@@ -24,7 +24,7 @@
 // to `active` (specs/progression.md), and a worm bumping a node changes the very
 // charge `scatter-inert` reads.
 
-import { COLS, SCATTER_BOTTOM_ROW, SCATTER_TOP_ROW } from "../../src/constants";
+import { COLS, SCATTER_BOTTOM_ROW, SCATTER_TOP_ROW } from "../constants";
 import { type Harness, type WirewormSnapshot } from "../harness";
 
 /**

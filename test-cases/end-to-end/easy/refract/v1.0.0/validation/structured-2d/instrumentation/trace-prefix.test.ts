@@ -1,10 +1,10 @@
-// Refract — instrumentation/trace-prefix: a refused trace keeps its
+// Refract — instrumentation/trace-prefix: a refused hop keeps the route's
 // permitted prefix.
 //
-// specs/instrumentation.md, on `trace`: running entirely through the pointer
-// path, a trace is subject to every limit a hand-drawn trace is, and "a list
-// the limits refuse part way through leaves the beam ending at the last
-// segment they permitted". The list here is three cells on R2_FOREIGN whose
+// specs/instrumentation.md, on the three pointer operations: they drive the
+// same path a player's pointer drives, "a move the limits refuse changes
+// nothing and leaves the trace live", and "the release ends the trace and
+// leaves the beam as drawn". The route here is three cells on R2_FOREIGN whose
 // third hop lands on the OTHER channel's lens — refused by R2
 // (specs/beams.md: a beam never meets an emitter or a lens of another
 // channel) — so the beam must hold exactly the first two cells, and the call
@@ -23,6 +23,7 @@ import {
   createHarness,
   loadBoard,
   resetTo,
+  traceCells,
   type Harness,
 } from "../harness";
 
@@ -44,7 +45,7 @@ it("a list refused part way through keeps the permitted prefix, without throwing
   // is a move R2 refuses. The game does not throw over it.
   assertDoesNotThrow(
     () =>
-      h.debug.trace([
+      traceCells(h, [
         { col: 0, row: 0 },
         { col: 1, row: 0 },
         { col: 1, row: 1 },

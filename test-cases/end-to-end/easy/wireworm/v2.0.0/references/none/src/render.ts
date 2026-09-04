@@ -25,18 +25,15 @@ import {
   BOARD_Y,
   COLS,
   CORRUPTOR_FPS,
-  ENDING_ITEMS,
   GLITCH_FPS,
   HUD_H,
   HUD_LEVEL_LABEL,
   NODE_PULSE_FPS,
-  PAUSE_ITEMS,
   ROWS,
   STAGE_H,
   STAGE_W,
   TAGLINE_TEXT,
   TILE,
-  TITLE_ITEMS,
   TITLE_TEXT,
   TOTAL_LEVELS,
   WORM_BODY_FPS,
@@ -48,6 +45,14 @@ import {
 } from "./constants";
 import { WORM_PAIR, nodeFrame, type Sprites } from "./assets";
 import { index } from "./field";
+import {
+  GAMEOVER_MENU,
+  PAUSE_MENU,
+  TITLE_MENU,
+  VICTORY_MENU,
+  itemBaseline,
+  type MenuLayout,
+} from "./menus";
 import {
   COLOR,
   CURSOR_GLOW,
@@ -529,7 +534,7 @@ function drawTitle(ctx: Ctx, state: WirewormState): void {
     color: COLOR.score,
     align: "center",
   });
-  drawMenu(ctx, TITLE_ITEMS, state.menuIndex, cx, 396, 60, 30);
+  drawMenu(ctx, TITLE_MENU, state.menuIndex);
   write(ctx, TITLE_HINT, cx, STAGE_H - 46, {
     size: 16,
     weight: 400,
@@ -577,7 +582,7 @@ function drawPause(ctx: Ctx, state: WirewormState): void {
     color: COLOR.text,
     align: "center",
   });
-  drawMenu(ctx, PAUSE_ITEMS, state.menuIndex, cx, 360, 58, 28);
+  drawMenu(ctx, PAUSE_MENU, state.menuIndex);
 }
 
 function drawVictory(ctx: Ctx, state: WirewormState): void {
@@ -607,7 +612,7 @@ function drawVictory(ctx: Ctx, state: WirewormState): void {
     color: COLOR.textDim,
     align: "center",
   });
-  drawMenu(ctx, ENDING_ITEMS, state.menuIndex, cx, 440, 56, 28);
+  drawMenu(ctx, VICTORY_MENU, state.menuIndex);
 }
 
 function drawGameOver(ctx: Ctx, state: WirewormState): void {
@@ -631,7 +636,7 @@ function drawGameOver(ctx: Ctx, state: WirewormState): void {
     color: COLOR.textDim,
     align: "center",
   });
-  drawMenu(ctx, ENDING_ITEMS, state.menuIndex, cx, 424, 56, 28);
+  drawMenu(ctx, GAMEOVER_MENU, state.menuIndex);
 }
 
 /** The level banner, over the board while the level opens. */
@@ -649,25 +654,21 @@ function drawBanner(ctx: Ctx, text: string): void {
 }
 
 /**
- * A vertical menu.
+ * A vertical menu, laid out where `src/menus.ts` says it is.
+ *
+ * The layout is read rather than restated, so the words a player sees stand
+ * exactly over the hit regions `menuItemRect` reports (specs/ui.md).
  *
  * The highlighted item is drawn in the highlight color with a marker beside it,
  * and the marker is a draw of its own so that an item's own text is exactly the
  * word `specs/ui.md` fixes.
  */
-function drawMenu(
-  ctx: Ctx,
-  items: readonly string[],
-  selected: number,
-  cx: number,
-  top: number,
-  spacing: number,
-  size: number,
-): void {
-  items.forEach((item, at) => {
-    const y = top + at * spacing;
+function drawMenu(ctx: Ctx, menu: MenuLayout, selected: number): void {
+  const { centerX, size } = menu;
+  menu.items.forEach((item, at) => {
+    const y = itemBaseline(menu, at);
     const on = at === selected;
-    write(ctx, item, cx, y, {
+    write(ctx, item, centerX, y, {
       size,
       weight: on ? 700 : 400,
       color: on ? COLOR.highlight : COLOR.textDim,
@@ -675,7 +676,7 @@ function drawMenu(
     });
     if (!on) return;
     const width = measure(ctx, item, size, 700);
-    write(ctx, "▸", cx - width / 2 - 24, y, {
+    write(ctx, "▸", centerX - width / 2 - 24, y, {
       size,
       weight: 700,
       color: COLOR.highlight,

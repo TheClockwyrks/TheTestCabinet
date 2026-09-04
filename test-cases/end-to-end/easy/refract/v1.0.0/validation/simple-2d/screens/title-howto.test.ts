@@ -2,11 +2,11 @@
 // how-to screen.
 //
 // specs/ui.md's table for `confirm` on the title: the HOW TO PLAY item sets
-// `screen = howto` and `menuIndex = 0`. HOW TO PLAY is TITLE_ITEMS[2], reached
-// by two down presses from the fresh title's menuIndex 0; the arrival on the
-// item is asserted before the confirm, so a build whose menu stepping is
-// broken fails on the pose rather than on a confirm that took the wrong item.
-// Every press is a real key event through the build's own bindings.
+// `screen = howto` and `menuIndex = 0`. HOW TO PLAY is TITLE_ITEMS[2], and the
+// highlight is POSED onto it with `setMenuIndex` rather than stepped to, so a
+// build whose menu stepping is broken fails `screens/title-down` alone. The
+// confirm itself is a real key event through the build's own bindings, because
+// the confirm is what this point decides.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -30,8 +30,8 @@ afterEach(() => {
 
 it("confirming HOW TO PLAY sets screen to howto with menuIndex 0", async () => {
   await resetTo(h);
-  await tapAction(h, "down");
-  await tapAction(h, "down");
+  h.debug.setMenuIndex(2);
+  await h.advance(1);
   assertEqual(
     h.snapshot().menuIndex,
     2,

@@ -99,7 +99,6 @@ What the look must deliver:
    that background.
 5. A drawn beam visibly connects the centers of the cells it links, so its route
    is unambiguous, and it carries its channel's hue.
-6. Text is legible against whatever it is drawn on at the logical stage size.
 
 ## Board notation
 

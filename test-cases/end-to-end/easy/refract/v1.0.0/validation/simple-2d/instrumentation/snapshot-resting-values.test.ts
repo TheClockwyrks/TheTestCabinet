@@ -8,10 +8,8 @@
 // rest, and one read in Campaign still carries the two cascade fields, at
 // rest — and no field of the documented shape goes missing either way.
 //
-// Each check resets and enters one mode through the surface's own `startMode`
-// — the pose specs/instrumentation.md gives for choosing a mode from the
-// title, exactly as its menu item does — and reads the OTHER mode's fields
-// against the resting-values table.
+// Each check resets and enters one mode from the title, the way a player does,
+// and reads the OTHER mode's fields against the resting-values table.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertHasProperty } from "../assert";
@@ -19,6 +17,8 @@ import {
   captureStill,
   createHarness,
   resetTo,
+  startCampaign,
+  startCascade,
   type Harness,
   type RefractSnapshot,
 } from "../harness";
@@ -42,6 +42,7 @@ const SNAPSHOT_FIELDS = [
   "pointer",
   "muted",
   "simTime",
+  "rngState",
 ] as const;
 
 /** The shape is fixed: every documented field is present, whatever the mode. */
@@ -63,12 +64,11 @@ afterEach(() => {
 
 it("in Cascade, the campaign fields report their resting values", async () => {
   await resetTo(h, 1);
-  h.debug.startMode("cascade");
-  await h.advance(1);
+  await startCascade(h);
   captureStill(h, "resting");
 
   const s = h.snapshot();
-  assertEqual(s.mode, "cascade", "startMode('cascade') sets the mode");
+  assertEqual(s.mode, "cascade", "choosing CASCADE sets the mode");
   assertEqual(
     s.screen,
     "playing",
@@ -84,11 +84,10 @@ it("in Cascade, the campaign fields report their resting values", async () => {
 
 it("in Campaign, the cascade fields report their resting values", async () => {
   await resetTo(h, 1);
-  h.debug.startMode("campaign");
-  await h.advance(1);
+  await startCampaign(h);
 
   const s = h.snapshot();
-  assertEqual(s.mode, "campaign", "startMode('campaign') sets the mode");
+  assertEqual(s.mode, "campaign", "choosing CAMPAIGN sets the mode");
   assertEqual(
     s.screen,
     "select",

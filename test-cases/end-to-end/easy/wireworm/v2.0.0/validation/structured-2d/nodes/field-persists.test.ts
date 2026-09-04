@@ -29,7 +29,7 @@
 // that re-scattered an identically sized field still fails.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BANNER_TIME, BOLT_SPEED, TILE } from "../../src/constants";
+import { BANNER_TIME, BOLT_SPEED, TILE } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,

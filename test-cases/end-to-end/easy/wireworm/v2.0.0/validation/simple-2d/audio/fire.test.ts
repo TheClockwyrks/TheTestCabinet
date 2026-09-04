@@ -27,7 +27,7 @@
 // point reads the cue alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, CUES, FIRE_INTERVAL } from "../../src/constants";
+import { BINDINGS, CUES, FIRE_INTERVAL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

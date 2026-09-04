@@ -28,7 +28,7 @@
 // business; what the specification fixes is that it comes from THIS pair.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../../src/constants";
+import { TILE } from "../constants";
 import { assertEqual, fail } from "../assert";
 import {
   captureStill,

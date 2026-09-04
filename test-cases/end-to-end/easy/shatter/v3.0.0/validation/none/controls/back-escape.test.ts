@@ -5,8 +5,8 @@
 // played and to "Leave the screen" otherwise, and settles the ambiguity outright:
 // "`Escape` pauses while the game is being played and leaves the screen otherwise.
 // The screen decides which meaning applies." Leaving a screen is a press edge, "once
-// per press". `specs/ui.md` says where leaving the how-to screen goes: "Leaving the
-// screen returns to `title`".
+// per press". `specs/ui.md` says where leaving the how-to screen goes: "Confirming
+// leaves the screen as leaving it does, and both return to `title`".
 //
 // THIS IS THE OTHER HALF OF THE AMBIGUOUS KEY. `controls/pause-escape` presses
 // `Escape` on `playing` and requires a pause; this one presses it on `howto` and

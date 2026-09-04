@@ -21,6 +21,7 @@ import {
   moveToCell,
   pressCell,
   resetTo,
+  traceCells,
   type Harness,
 } from "../harness";
 
@@ -40,7 +41,7 @@ it("a crystal entered and not yet left refuses a second entry", async () => {
 
   // The triangle beam enters the crystal and is left there: the 1 charge is
   // spent on entry, the crossing not yet completed by leaving.
-  h.debug.trace([
+  traceCells(h, [
     { col: 0, row: 0 },
     { col: 1, row: 0 },
   ]);

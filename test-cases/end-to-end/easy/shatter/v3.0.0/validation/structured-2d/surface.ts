@@ -49,6 +49,21 @@ export type Screen = "title" | "howto" | "playing" | "paused" | "gameover";
 /** The three rock sizes. */
 export type RockSize = "large" | "medium" | "small";
 
+/**
+ * A menu entry's hit region, in logical field units, with `(x, y)` its top-left
+ * corner (`specs/instrumentation.md`).
+ *
+ * Where the regions ARE is the build's own layout, which `specs/ui.md` leaves to
+ * it, so nothing in this project compares one against a figure: a check reads a
+ * region to drive a mouse or a contact at it, and grades what the menu does next.
+ */
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /** A point in the field's logical units. Every position is an entity's CENTRE. */
 export interface Point {
   x: number;
@@ -117,6 +132,12 @@ export interface SaucerSnapshot {
   mind: boolean;
   gun: boolean;
   travel: boolean;
+  /** Seconds until its next aimed shot; `SAUCER_FIRE_INTERVAL` on arrival. */
+  fireClock: number;
+  /** Seconds until it rerolls its weave; `SAUCER_WEAVE_INTERVAL` on arrival. */
+  weaveClock: number;
+  /** Seconds it has been on the field; `0` on arrival. */
+  age: number;
 }
 
 /** One torpedo in flight. `warhead` only. */
@@ -137,7 +158,9 @@ export interface TorpedoSnapshot {
  * The plain, JSON-serializable view `snapshot()` returns.
  *
  * Every field an operation can set is present, so every operation is verifiable
- * by setting a value and reading it back. Three entries are built at the call
+ * by setting a value and reading it back — except `tickClock`, `nextId` and
+ * `rngState`, the bookkeeping `reset` restores and `specs/instrumentation.md`
+ * deliberately keeps out of the snapshot. Three entries are built at the call
  * rather than read off a field: `ship.speed` and `rocks[].radius` under both
  * variants, and `torpedoReady` under `warhead`.
  */
@@ -159,6 +182,10 @@ export interface ShatterSnapshot {
   waveSpawning: boolean;
   /** The game's own saucer arrival runs. */
   saucerSpawning: boolean;
+  /** Seconds the current arrival cadence has run. */
+  saucerClock: number;
+  /** What `saucerClock` must reach for the next saucer to arrive, in seconds. */
+  saucerDue: number;
   ship: ShipSnapshot;
   /** Every one of the ship's bullets in flight, in roster order. */
   bullets: BulletSnapshot[];
@@ -196,6 +223,15 @@ export interface ShatterDebugApi {
 
   reset(options?: { seed?: number }): void;
   snapshot(): ShatterSnapshot;
+  /**
+   * The hit region of the entry at `index` on the menu the current screen shows,
+   * in logical units, with `(x, y)` its top-left corner.
+   *
+   * `null` on `howto` and `playing`, which show no menu, and for an index naming
+   * no entry of the menu the current screen shows. A reading, so it changes
+   * nothing (`specs/instrumentation.md`).
+   */
+  menuItemRect(index: number): Rect | null;
 
   setScreen(screen: Screen): void;
   setMenuIndex(index: number): void;
@@ -253,7 +289,7 @@ export interface ShatterDebugApi {
  * sweeps the surface (instrumentation/surface-present) calls a reading for its
  * value and a pose for its effect.
  */
-export const READINGS = ["snapshot"] as const;
+export const READINGS = ["snapshot", "menuItemRect"] as const;
 
 /**
  * Every operation the surface must carry under BOTH variants.
@@ -265,6 +301,7 @@ export const READINGS = ["snapshot"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "menuItemRect",
 
   "setScreen",
   "setMenuIndex",
@@ -330,6 +367,8 @@ export const REQUIRED_SNAPSHOT_FIELDS = [
   "muted",
   "waveSpawning",
   "saucerSpawning",
+  "saucerClock",
+  "saucerDue",
   "ship",
   "bullets",
   "rocks",

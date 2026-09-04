@@ -17,7 +17,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThanOrEqual } from "../assert";
-import { DROPPER_SPEED } from "../../src/constants";
+import { DROPPER_SPEED } from "../constants";
 import {
   captureReplay,
   createHarness,

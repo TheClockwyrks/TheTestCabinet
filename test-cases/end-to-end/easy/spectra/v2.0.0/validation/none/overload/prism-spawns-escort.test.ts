@@ -22,10 +22,6 @@
 // THE SHELL IS POSED STANDING, which is the branch this point is about; the other
 // branch is `overload/prism-core-no-escort`, and a build that adds an escort in
 // both cases or in neither grades differently on the two.
-//
-// THE FIELD IS EMPTY OF DRONES BUT FOR THE PRISM. `startPosed` clears the roster and
-// shuts the wave's entry gate, so nothing but the reaction can add a drone over the
-// scenario, and no bystander is posed because nothing here is destroyed.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";

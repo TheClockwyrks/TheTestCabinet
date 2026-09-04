@@ -7,8 +7,8 @@
 // Twenty-five consecutive boards from a fixed seed — the tier ladder puts
 // solves 21..25 at MAX_TIER (5), so the sweep reaches the top tier and
 // continues there — are each read off the snapshot, solved by the solver,
-// and the found beams drawn through `trace`; the game's own R9 is what says
-// each board is solved.
+// and the found beams drawn through the pointer operations; the game's own R9
+// is what says each board is solved.
 //
 // Documented residual risk: the solver is capped (DEFAULT_MAX_EXPANSIONS, a
 // generous runaway stop), so a conformant generator could in principle emit a
@@ -30,6 +30,7 @@ import {
   solveGenerated,
   startCascade,
   tapAction,
+  traceCells,
   type Harness,
 } from "../harness";
 import { CHANNELS, MAX_TIER } from "../notation";
@@ -84,7 +85,10 @@ it("solves twenty-five consecutive generated boards, reaching MAX_TIER and conti
     for (const channel of CHANNELS) {
       const beam = result.beams[channel];
       if (beam === undefined || beam.length === 0) continue;
-      h.debug.trace(beam.map((cell) => ({ col: cell.col, row: cell.row })));
+      traceCells(
+        h,
+        beam.map((cell) => ({ col: cell.col, row: cell.row })),
+      );
       await h.advance(1);
     }
     assertEqual(

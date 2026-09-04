@@ -35,6 +35,7 @@ import {
 } from "./constants";
 import { addBullet, addEnemyBullet } from "./bullets";
 import { resetToTitle } from "./flow";
+import { menuItemRect, type Rect } from "./menus";
 import { addRock, rockRadius } from "./rocks";
 import { addSaucer } from "./saucer";
 import { rockById, toSim, type MutBullet, type Sim } from "./sim";
@@ -53,6 +54,8 @@ export interface ShatterSnapshot {
   muted: boolean;
   waveSpawning: boolean;
   saucerSpawning: boolean;
+  saucerClock: number;
+  saucerDue: number;
   ship: {
     x: number;
     y: number;
@@ -91,6 +94,9 @@ export interface ShatterSnapshot {
     mind: boolean;
     gun: boolean;
     travel: boolean;
+    fireClock: number;
+    weaveClock: number;
+    age: number;
   } | null;
   enemyBullets: {
     id: number;
@@ -112,6 +118,7 @@ export interface ShatterDebugApi {
     options?: { seed?: number },
   ): ShatterState;
   snapshot(state: DeepReadonly<ShatterState>): ShatterSnapshot;
+  menuItemRect(state: DeepReadonly<ShatterState>, index: number): Rect | null;
 
   setScreen(state: DeepReadonly<ShatterState>, screen: Screen): ShatterState;
   setMenuIndex(state: DeepReadonly<ShatterState>, n: number): ShatterState;
@@ -260,6 +267,10 @@ export function createDebugApi(): ShatterDebugApi {
         resetToTitle(sim, options?.seed ?? DEFAULT_SEED);
       }),
 
+    // Where the build laid the entry out, which `specs/ui.md` leaves to the
+    // build and a pointer check has to be told (`specs/instrumentation.md`).
+    menuItemRect: (state, index) => menuItemRect(state.screen, index),
+
     snapshot: (state) => {
       const saucer = state.saucer;
       return {
@@ -273,6 +284,8 @@ export function createDebugApi(): ShatterDebugApi {
         muted: state.muted,
         waveSpawning: state.waveSpawning,
         saucerSpawning: state.saucerSpawning,
+        saucerClock: state.saucerClock,
+        saucerDue: state.saucerDue,
         ship: {
           x: state.ship.x,
           y: state.ship.y,
@@ -307,6 +320,9 @@ export function createDebugApi(): ShatterDebugApi {
                 mind: saucer.mind,
                 gun: saucer.gun,
                 travel: saucer.travel,
+                fireClock: saucer.fireClock,
+                weaveClock: saucer.weaveClock,
+                age: saucer.age,
               },
         enemyBullets: state.enemyBullets.map(readBullet),
         simTime: state.simTime,

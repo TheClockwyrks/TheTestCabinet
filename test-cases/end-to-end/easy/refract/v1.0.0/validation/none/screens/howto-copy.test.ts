@@ -6,7 +6,7 @@
 // which specs/controls.md fixes as `KeyR`, the one binding the case pins. What a
 // script can decide is that the frame draws text at all and that a standalone
 // `R`, matched at word boundaries, appears among it; whether the prose really
-// teaches the game is the reviewer's, from the captured frame. The word
+// teaches the game is the run-wide aesthetic rating's, not this point's. The word
 // boundary is what keeps `REFRACT`, `CRYSTAL`, or `CLEAR` from counting as
 // naming the key.
 

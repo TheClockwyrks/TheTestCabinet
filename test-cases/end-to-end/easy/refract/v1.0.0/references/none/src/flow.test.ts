@@ -9,10 +9,12 @@ import {
   createInitialState,
   EMPTY_BOARD,
   enterCampaignBoard,
+  goBack,
   nextCascadeBoard,
   onSolved,
   restartCascade,
   startMode,
+  TITLE_INDEX,
   toTitle,
 } from "./flow";
 import type { RefractState } from "./game";
@@ -55,7 +57,7 @@ describe("entering the modes", () => {
       0,
     );
     state = onSolved(state);
-    state = toTitle(state);
+    state = toTitle(state, TITLE_INDEX.campaign);
     state = startMode(state, "campaign");
     expect(state.solvedBoards).toEqual([0]);
     expect(state.unlockedCount).toBe(2);
@@ -154,5 +156,21 @@ describe("the cascade solve transition", () => {
     expect(restarted.tier).toBe(1);
     expect(restarted.screen).toBe("playing");
     expect(restarted.rngState).not.toBe(before);
+  });
+});
+
+describe("returning to the title", () => {
+  it("highlights the entry that led away (specs/ui.md)", () => {
+    const fromHowto = goBack({ ...createInitialState(), screen: "howto" });
+    expect(fromHowto.screen).toBe("title");
+    expect(fromHowto.menuIndex).toBe(TITLE_INDEX.howto);
+
+    const fromCascade = goBack(startMode(createInitialState(), "cascade"));
+    expect(fromCascade.screen).toBe("title");
+    expect(fromCascade.menuIndex).toBe(TITLE_INDEX.cascade);
+
+    const fromCampaign = goBack(startMode(createInitialState(), "campaign"));
+    expect(fromCampaign.screen).toBe("title");
+    expect(fromCampaign.menuIndex).toBe(TITLE_INDEX.campaign);
   });
 });

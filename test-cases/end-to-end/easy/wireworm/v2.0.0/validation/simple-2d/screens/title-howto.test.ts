@@ -13,7 +13,7 @@
 // (`specs/controls.md`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_ITEMS } from "../../src/constants";
+import { TITLE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 

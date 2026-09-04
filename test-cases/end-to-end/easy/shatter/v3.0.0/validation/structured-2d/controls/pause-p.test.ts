@@ -1,7 +1,8 @@
 // controls/pause-p — `KeyP` pauses a game in play.
 //
 // `specs/controls.md`'s bindings table gives the `pause` action TWO keys, `KeyP`
-// and `Escape`, and gives `pause` one meaning: Pause, while playing.
+// and `Escape`. On `playing` the action has one meaning, Pause, which is the one
+// this check drives; the other, resuming a paused game, is `screens/resume-p`'s.
 // `specs/ui.md` names what pausing reaches: the `paused` screen, "Reached by
 // pausing during live play."
 //

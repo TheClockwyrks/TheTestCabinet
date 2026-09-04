@@ -18,7 +18,7 @@
 // `respawn-clears-*` points.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { RESPAWN_INVULN, RESPAWN_TIME } from "../../src/constants";
+import { RESPAWN_INVULN, RESPAWN_TIME } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   captureStill,

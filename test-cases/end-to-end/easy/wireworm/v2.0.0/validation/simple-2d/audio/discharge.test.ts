@@ -32,7 +32,7 @@
 // cue alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED, CHARGE_MAX, CUES, TILE } from "../../src/constants";
+import { BOLT_SPEED, CHARGE_MAX, CUES, TILE } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

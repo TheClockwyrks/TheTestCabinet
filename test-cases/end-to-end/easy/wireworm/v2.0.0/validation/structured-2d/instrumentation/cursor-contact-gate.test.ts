@@ -39,7 +39,7 @@
 // contact test ran at all.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES, WORM_STEP_L1 } from "../../src/constants";
+import { START_LIVES, WORM_STEP_L1 } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

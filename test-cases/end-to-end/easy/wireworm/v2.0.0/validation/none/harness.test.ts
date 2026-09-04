@@ -236,7 +236,7 @@ it("advance runs exactly the frames it is asked for, and skip covers time off ca
   );
   assertEqual(h.frame(), framesFor(1), "the frames the harness counted");
 
-  await h.skip(2);
+  await h.skip(framesFor(2));
   const skipped = await h.snapshot();
   assertCloseTo(
     skipped.simTime - driven.simTime,
@@ -424,7 +424,7 @@ it("writes a still and a replay under the media directory", async () => {
       // Off camera, then on: the recording must hold the twelve driven frames
       // and nothing of the half-second the skip passed over, which is what lets
       // a discharge point record the burst rather than the wait before it.
-      await h.skip(0.5);
+      await h.skip(framesFor(0.5));
       await h.advance(12);
       return "returned";
     });

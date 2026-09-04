@@ -16,7 +16,7 @@
 // edge it would leave through.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DROPPER_SPEED } from "../../src/constants";
+import { DROPPER_SPEED } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,

@@ -1,19 +1,18 @@
-// Refract — campaign/unlocking: solving a board unlocks the next, and a
-// replay changes no unlock state.
+// Refract — campaign/unlocking: solving a board unlocks the next.
 //
 // specs/modes/campaign.md: "Solving a board unlocks the next board by number:
-// solving board n unlocks board n + 1", and "Solving a board that is already
-// solved changes no unlock state. It is a replay." Board 1 is really solved,
-// the state read back — `unlockedCount` 2, `solvedBoards` holding board 1
-// alone — and then solved a second time from the grid, after which both
-// fields must stand exactly as they were.
+// solving board n unlocks board n + 1". Board 1 is really solved and the state
+// read back — `unlockedCount` 2, `solvedBoards` holding board 1 alone. That a
+// SECOND solve of the same board changes neither field is its own rule and its
+// own point, campaign/replay-changes-no-unlock-state.
 //
 // GETTING BACK TO THE GRID. The solve leaves the game on the solved screen,
 // and specs/modes/campaign.md gives that screen two exits to `select`: its
 // third menu choice, back to select, and the `back` action. This item's
 // subject is on the far side of that step, not the step itself, so it must
 // not pin one of the two — `gridFromSolved` takes whichever the build honours,
-// and which one that is stays campaign/solved-back's verdict alone.
+// and which one that is stays campaign/solved-back-choice's and
+// campaign/solved-back-action's verdict alone.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
@@ -21,8 +20,6 @@ import {
   captureStill,
   createHarness,
   driveCourse,
-  fireAction,
-  solveCampaignBoard,
   type Harness,
 } from "../harness";
 import { gridFromSolved } from "./reading";
@@ -37,7 +34,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("unlocks board 2 on the first solve and nothing more on the replay", async () => {
+it("unlocks board 2 on the first solve", async () => {
   const walk = await driveCourse(h, 1);
   assertEqual(walk.final.unlockedCount, 2, "solving board 1 unlocks board 2");
   assertDeepEqual(
@@ -48,19 +45,4 @@ it("unlocks board 2 on the first solve and nothing more on the replay", async ()
 
   await gridFromSolved(h);
   await captureStill(h, "unlocked");
-
-  // Replay board 1 from the grid, where the highlight landed on it.
-  await fireAction(h, "confirm");
-  const replay = await h.snapshot();
-  assertEqual(replay.screen, "playing", "board 1 reopens for the replay");
-  assertEqual(replay.boardIndex, 0, "the replay is of board 1");
-  await solveCampaignBoard(h, 0);
-
-  const after = await h.snapshot();
-  assertEqual(after.unlockedCount, 2, "a replay solve changes no unlock state");
-  assertDeepEqual(
-    after.solvedBoards,
-    [0],
-    "a replay solve records nothing new",
-  );
 });

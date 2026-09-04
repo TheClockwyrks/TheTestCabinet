@@ -42,6 +42,13 @@ export const SOLVED_ITEMS = ["NEXT BOARD", "RESTART"] as const;
 export const HUD_SOLVED_LABEL = "SOLVED";
 export const HUD_TIER_LABEL = "TIER";
 
+/**
+ * specs/controls.md: the smallest a pointer target may be on each axis, which
+ * is what a fingertip needs at the stage size.
+ */
+export const TARGET_MIN_W = 96;
+export const TARGET_MIN_H = 72;
+
 /* -------------------------------------------------------------------------- */
 /* Audio cues (specs/ui.md "Audio")                                           */
 /* -------------------------------------------------------------------------- */

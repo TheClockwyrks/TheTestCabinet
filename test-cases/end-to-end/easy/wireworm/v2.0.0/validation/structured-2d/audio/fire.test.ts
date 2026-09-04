@@ -21,7 +21,7 @@
 // plays `fire` once as the bolt leaves.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, FIRE_INTERVAL } from "../../src/constants";
+import { CUES, FIRE_INTERVAL } from "../constants";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

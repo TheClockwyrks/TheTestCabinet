@@ -13,10 +13,8 @@
 // than 50 of 441 from the board's own ground (the review item's figure). The
 // dense boards are what make a drift visible: a build that derived its grid
 // from the wrong origin or pitch moves some center off its node, and the
-// reading there is bare ground. The four corners just outside the 7x6 board's
-// extent (the outermost centers widened by NODE_R, specs/board.md) must read as
-// background — nothing of the board is drawn out there — which pins the grid to
-// the stated center rather than merely to itself.
+// reading there is bare ground. Reading the SAME centering on two board sizes
+// is what pins the grid to the stated center rather than merely to itself.
 //
 // EVERY NODE IS READ THE SAME WAY, by the loudest pixel of the form drawn about
 // its center rather than by the center pixel alone. specs/board.md's only
@@ -41,21 +39,19 @@
 // on the same frame, which is why each posed board leaves one interior cell
 // empty: specs/board.md lets a build draw whatever background it likes, so a
 // node-region reading held against a stage-edge sample measures the build's
-// backdrop as much as its node. The corner readings stay on the far-field
-// background sample, because those points are genuinely off the board.
+// backdrop as much as its node. Every reading in this item is held against that
+// ground, and none is taken off the board: specs/board.md leaves what sits
+// behind and around the board to the build, so a panel, a tray, or a vignette
+// drawn there is a design choice this item has nothing to say about.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
-  boardExtent,
   captureStill,
-  colorDistance,
   createHarness,
   loadBoard,
   nodeCenter,
   resetTo,
-  sampleBackground,
-  sampleColor,
   type Harness,
 } from "../harness";
 import { NODE_R, parseBoard } from "../notation";
@@ -82,13 +78,6 @@ import { APART_MIN, bodyCentroid, bodyMask, groundSample } from "./masks";
 const CENTROID_MAX = NODE_R / 3 + 2;
 
 /**
- * The corners "match the background": they do not differ from it by more than
- * the same 50 of 441 the item draws the line at — the complement of the
- * apart reading, as the empty-cells item states it for quiet cells.
- */
-const MATCH_MAX = 50;
-
-/**
  * A 3x3 with a node in every cell but one: one channel, its two emitters
  * cornered. The one gap is the cell the board's own ground is read from.
  */
@@ -107,10 +96,6 @@ ttttttt
 ttttttt
 ttttttT
 `;
-
-/** How far outside the extent the corner clusters sit, so the whole ±4 px
- * sample cluster stays out of the board's drawn box. */
-const CORNER_OUT = 8;
 
 let h: Harness;
 
@@ -154,26 +139,7 @@ it("draws every node of a posed 3x3 board on its formula center", async () => {
   await assertNodesOnCenters(DENSE_3X3);
 });
 
-it("draws every node of a posed 7x6 board on its formula center, nothing outside its extent", async () => {
+it("draws every node of a posed 7x6 board on its formula center", async () => {
   await assertNodesOnCenters(DENSE_7X6);
   captureStill(h, "board");
-
-  // The grid is centered on (BOARD_CX, BOARD_CY) whatever its dimensions, so
-  // just outside the largest board's extent — the outermost centers widened by
-  // NODE_R (specs/board.md) — there is only background.
-  const background = sampleBackground(h);
-  const extent = boardExtent(7, 6);
-  const corners = [
-    { x: extent.x0 - CORNER_OUT, y: extent.y0 - CORNER_OUT },
-    { x: extent.x1 + CORNER_OUT, y: extent.y0 - CORNER_OUT },
-    { x: extent.x0 - CORNER_OUT, y: extent.y1 + CORNER_OUT },
-    { x: extent.x1 + CORNER_OUT, y: extent.y1 + CORNER_OUT },
-  ];
-  for (const corner of corners) {
-    assertLessThanOrEqual(
-      colorDistance(sampleColor(h, corner.x, corner.y), background),
-      MATCH_MAX,
-      `background just outside the 7x6 extent at (${corner.x}, ${corner.y})`,
-    );
-  }
 });

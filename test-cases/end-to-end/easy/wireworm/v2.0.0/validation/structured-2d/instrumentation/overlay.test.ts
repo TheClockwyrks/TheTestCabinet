@@ -61,7 +61,7 @@
 // by the next frame is `worm/*` and `foes/*`'s to say.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { tileCX, tileCY } from "../../src/constants";
+import { tileCX, tileCY } from "../constants";
 import { assertDeepEqual, assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

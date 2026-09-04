@@ -25,7 +25,7 @@
 // centred fit that file states.
 
 import { afterEach, it } from "vitest";
-import { COLS, ROWS, STAGE_H, STAGE_W } from "../../src/constants";
+import { COLS, ROWS, STAGE_H, STAGE_W } from "../constants";
 import {
   assertCloseTo,
   assertDeepEqual,

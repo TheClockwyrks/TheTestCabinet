@@ -1,12 +1,18 @@
 // Shatter — every figure the specification fixes, restated on the validator's
 // side. CASE-PROVIDED.
 //
-// WHY THIS FILE EXISTS AT ALL, AND WHY IT IS ONLY HERE. Under `simple-2d` and
-// `structured-2d` the case seeds `src/constants.ts` into the workspace, so a
-// validator imports the same module the build was told to build against and the
-// two cannot drift. An engineless run seeds no `src/` whatever: there is nothing
-// to import, and every figure below would otherwise have to be spelled out inside
-// whichever check happened to need it.
+// WHY EVERY PROJECT CARRIES ONE OF THESE. Each engine's validator project holds
+// its own root `constants.ts` transcribing the specification's figures, and none
+// of the three reads the build's `src/constants.ts`. The copy is per project
+// because a run stages ONE project: `validation/<engine>/` is copied whole into
+// the produced tree, so a module the projects shared from outside them would not
+// be there when the suites ran.
+//
+// WHAT IS DIFFERENT HERE. The engine projects may re-export, from this one file,
+// a value the specs leave to the build — read to drive the build, never compared
+// against. An engineless run seeds no `src/` whatever, so that allowance has
+// nothing to reach for in this project and every value below is the
+// specification's. WHAT IS NOT HERE, further down, records what that costs.
 //
 // NOTHING HERE IS READ FROM A BUILD, AND THAT IS THE POINT. Each figure is
 // transcribed from the `specs/` file named in its section heading, which is the
@@ -85,6 +91,14 @@ export const SOFTEN = 90;
 
 /** The ship's collision radius. */
 export const SHIP_R = 14;
+/**
+ * The hull's length nose to tail: `specs/ship.md` draws the ship "roughly `34`
+ * long from nose to tail". Never asserted — the `presentation` group reads a disc
+ * of this radius about the ship's centre so the whole hull, and any mark a build
+ * draws around it, falls inside the reading whatever point inside the hull the
+ * build calls the centre.
+ */
+export const HULL_LEN = 34;
 /** The rotation rate while a turn key is held, in radians per second. */
 export const SHIP_TURN = 300 * DEG;
 /** The same rate as the specification quotes it, in degrees per second. */
@@ -341,7 +355,7 @@ export const KEY_FIRE = "Space";
 export const KEYS_CONFIRM = ["Space", "Enter"] as const;
 /** Launch the torpedo (`warhead` only). */
 export const KEY_TORPEDO = "KeyF";
-/** Pause while playing. */
+/** Pause while playing; resume the paused game on a menu. */
 export const KEY_PAUSE = "KeyP";
 /** Pause while playing; leave the screen otherwise. */
 export const KEY_BACK = "Escape";
@@ -361,9 +375,6 @@ export const OVERLAY_KEY = "Backquote";
 export const UNBOUND_KEY = "KeyZ";
 
 /* ---- The debug surface (specs/instrumentation.md) ------------------------- */
-
-/** The version the surface reports. */
-export const SHATTER_DEBUG_VERSION = 1;
 
 /** The seed `reset()` uses when its caller names none. */
 export const DEFAULT_SEED = 1;

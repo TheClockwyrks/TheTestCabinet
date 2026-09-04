@@ -3,18 +3,22 @@
 //
 // specs/modes/campaign.md: "Choosing CAMPAIGN on the title menu sets state.mode
 // to 'campaign' and goes to select", and "A fresh start begins with board 1
-// unlocked and nothing solved". The choice is posed through the surface's
-// `startMode`, which specs/instrumentation.md defines as acting "exactly as
-// choosing its menu item does" — the title menu's own key bindings are the
-// build's under this engine, and they get their checks in screens/, where the
-// binding is the subject.
+// unlocked and nothing solved". The choice is really made, since the choice is
+// what this point decides: CAMPAIGN is `TITLE_ITEMS[0]`, so the title's `menu-0`
+// pointer target is pressed and released at its center, which specs/controls.md
+// fixes as "the same as `confirm` with `state.menuIndex` at `i`". The pointer
+// rather than a key: the title's target ids are the specification's, while the
+// menu's key bindings are the build's own under this engine, and those get
+// their checks in screens/ where the binding is the subject.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  startCampaign,
+  pressRelease,
+  targetById,
+  targetCenter,
   type Harness,
 } from "../harness";
 
@@ -29,7 +33,8 @@ afterEach(async () => {
 });
 
 it("enters the campaign on select with a fresh course", async () => {
-  await startCampaign(h);
+  const campaign = targetCenter(targetById(await h.snapshot(), "menu-0"));
+  await pressRelease(h, campaign);
   await captureStill(h, "select");
 
   const opened = await h.snapshot();

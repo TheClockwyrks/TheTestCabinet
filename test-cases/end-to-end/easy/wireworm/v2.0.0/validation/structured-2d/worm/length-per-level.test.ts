@@ -32,7 +32,7 @@ import {
   BANNER_TIME,
   WORM_BASE_LENGTH,
   WORM_LENGTH_PER_LEVEL,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,

@@ -3,7 +3,7 @@
 // LOCAL TO THIS GROUP ON PURPOSE. `validation/none/harness.ts` owns the compound
 // sequences the whole project shares and the small colour vocabulary every group
 // uses (`sampleColor`, `sampleField`, `colorDistance`, `luminance`); what is here
-// is the sampling geometry only these fifteen checks want, so it lives beside
+// is the sampling geometry only these seventeen checks want, so it lives beside
 // them and leaves the shared file alone.
 //
 // NOTHING HERE FIXES A BOUND. `specs/overview.md` closes its Visual design

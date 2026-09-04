@@ -28,7 +28,7 @@
 // read here — the pose is this check's own, chosen to outlast its own drive.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { tileCX, tileCY, wormStepInterval } from "../../src/constants";
+import { tileCX, tileCY, wormStepInterval } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

@@ -37,6 +37,7 @@ import {
 import { addFoe as addFoeAt } from "./foes";
 import { dropNode, putNode } from "./field";
 import { placeCursor, resetToTitle } from "./flow";
+import { itemRect, menuFor, type MenuRect } from "./menus";
 import { addWorm as addWormAt } from "./worm";
 import {
   foeById,
@@ -122,6 +123,10 @@ export interface WirewormDebugApi {
   setLives(state: DeepReadonly<WirewormState>, n: number): WirewormState;
   setLevel(state: DeepReadonly<WirewormState>, n: number): WirewormState;
   setReachedLevel(state: DeepReadonly<WirewormState>, n: number): WirewormState;
+  menuItemRect(
+    state: DeepReadonly<WirewormState>,
+    index: number,
+  ): MenuRect | null;
 
   setFoeSpawning(
     state: DeepReadonly<WirewormState>,
@@ -378,6 +383,19 @@ export function createDebugApi(): WirewormDebugApi {
       pose((sim) => {
         sim.reachedLevel = whole(n, 1, TOTAL_LEVELS);
       })(state),
+
+    /**
+     * Where the build put item `index` of the menu the current screen shows
+     * (specs/instrumentation.md).
+     *
+     * A pure read of the same layout `src/render.ts` draws from, so a pointer
+     * selects exactly what the player sees. `null` on `playing` and `howto`,
+     * which show no menu, and for an index the current menu has no item at.
+     */
+    menuItemRect: (state, index) => {
+      const menu = menuFor(state.screen);
+      return menu === null ? null : itemRect(menu, index);
+    },
 
     // ---- The world gates --------------------------------------------------
 

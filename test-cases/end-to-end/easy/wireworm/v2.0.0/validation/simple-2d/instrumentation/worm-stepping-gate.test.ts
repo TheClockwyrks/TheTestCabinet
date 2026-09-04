@@ -26,7 +26,7 @@
 // point and passes this one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { wormStepInterval } from "../../src/constants";
+import { wormStepInterval } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

@@ -21,9 +21,7 @@ import {
   CORE_R,
   FIELD_H,
   FIELD_W,
-  GAMEOVER_ITEMS,
   HALO_R,
-  PAUSE_ITEMS,
   ROCK_HEALTH,
   SAUCER_BULLET_R,
   SAUCER_R,
@@ -32,11 +30,12 @@ import {
   STAR_Y,
   TAGLINE_TEXT,
   TAU,
-  TITLE_ITEMS,
   TITLE_TEXT,
   TORPEDO_R,
+  type Screen,
 } from "./constants";
 import { shortestDelta, wrapOffsets } from "./geometry";
+import { menuLayout } from "./menus";
 import { COLOR, FONT, HUD, SHIP_ART, TYPE } from "./theme";
 import type {
   Bullet,
@@ -411,15 +410,16 @@ function panel(
  */
 function menu(
   ctx: CanvasRenderingContext2D,
-  items: readonly string[],
-  centreX: number,
-  topY: number,
-  step: number,
+  screen: Screen,
   index: number,
 ): void {
+  const layout = menuLayout(screen);
+  if (layout === null) return;
+  const items = layout.entries;
+  const centreX = FIELD_W / 2;
   const selected = ((index % items.length) + items.length) % items.length;
   items.forEach((item, i) => {
-    const y = topY + i * step;
+    const y = layout.top + i * layout.step;
     const chosen = i === selected;
     text(
       ctx,
@@ -543,7 +543,7 @@ function drawTitle(state: ShatterState, ctx: CanvasRenderingContext2D): void {
     COLOR.textDim,
     "center",
   );
-  menu(ctx, TITLE_ITEMS, FIELD_W / 2, 420, 58, state.menuIndex);
+  menu(ctx, "title", state.menuIndex);
 }
 
 /** How to play, in a player's words. */
@@ -597,7 +597,7 @@ function drawPause(state: ShatterState, ctx: CanvasRenderingContext2D): void {
   ctx.fillRect(0, 0, FIELD_W, FIELD_H);
   panel(ctx, 420, 200, 440, 320);
   text(ctx, "PAUSED", FIELD_W / 2, 260, TYPE.heading, COLOR.text, "center");
-  menu(ctx, PAUSE_ITEMS, FIELD_W / 2, 350, 58, state.menuIndex);
+  menu(ctx, "paused", state.menuIndex);
 }
 
 /** The game-over screen: the final score, the wave reached, and where to go. */
@@ -631,5 +631,5 @@ function drawGameOver(
     "center",
   );
 
-  menu(ctx, GAMEOVER_ITEMS, FIELD_W / 2, 470, 52, state.menuIndex);
+  menu(ctx, "gameover", state.menuIndex);
 }

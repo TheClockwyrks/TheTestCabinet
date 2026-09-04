@@ -17,7 +17,7 @@
 // top-row`'s point. What the level counted up to is `level-advances`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BANNER_TIME } from "../../src/constants";
+import { BANNER_TIME } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   captureStill,

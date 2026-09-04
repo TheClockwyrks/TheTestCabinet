@@ -2,15 +2,18 @@
 //
 // specs/modes/cascade.md "Determinism": the sequence is a function of the seed
 // alone — "seeding the generator with a given value and solving boards in
-// order produces the same boards, in the same order, every time" — and boards
-// are generated one at a time as they are needed. The reading is two real
-// passes over the same seed on one build: the first is solved by the case's
-// solver and its boards and routes recorded; the second is reseeded with
-// `reset({seed})`, entered through `startMode`, and solved with the FIRST
-// pass's routes — determinism means they re-apply — comparing each arriving
-// board, in notation, against the one the first pass met at that position.
-// Solving between comparisons is what makes the second and later boards
-// generated on demand rather than read out of anything decided in advance.
+// order produces the same boards, in the same order, every time". The reading
+// is two real passes over the same seed on one build: the first is solved by
+// the case's solver and its boards and routes recorded; the second is reseeded
+// with `reset({seed})`, re-entered, and solved with the FIRST pass's routes —
+// determinism means they re-apply — comparing each arriving board, in
+// notation, against the one the first pass met at that position.
+//
+// What this decides is the reproduction and nothing beyond it. Whether the
+// boards were generated one at a time as they were needed, rather than all six
+// the moment the sequence began, is a rule specs/modes/cascade.md states and
+// this reading cannot separate: an eager generator reproduces the same six
+// boards in the same order on both passes.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, fail } from "../assert";

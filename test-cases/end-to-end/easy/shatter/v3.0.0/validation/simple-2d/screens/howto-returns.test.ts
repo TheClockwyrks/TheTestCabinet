@@ -1,7 +1,8 @@
 // screens/howto-returns — leaving the how-to screen returns to the title.
 //
-// THE RULE. `specs/ui.md` closes the `howto` section with "leaving the screen
-// returns to `title`", and `specs/controls.md` fixes what leaving is: the `back`
+// THE RULE. `specs/ui.md` closes the `howto` section with "Confirming leaves the
+// screen as leaving it does, and both return to `title`", and `specs/controls.md`
+// fixes what leaving is: the `back`
 // action, read "as a press edge, once per press", whose menu column reads "leave
 // the screen". So a real press of a key bound to `back` on the how-to screen must
 // put the game on the title screen — otherwise a player who opened the

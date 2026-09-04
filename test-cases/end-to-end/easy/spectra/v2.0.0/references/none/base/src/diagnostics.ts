@@ -93,6 +93,7 @@ export function registerDiagnostics(api: InitApi, state: SpectraState): void {
     () =>
       `entry ${state.waveEntry ? "on" : "off"} ${fixed(state.entryClock)}s` +
       ` dive ${state.diveLaunching ? "on" : "off"} ` +
+      `clear ${state.stageClearing ? "on" : "off"} ` +
       `${fixed(state.diveClock)}/${fixed(state.diveGap)}s`,
   );
   api.diagnostics.register(

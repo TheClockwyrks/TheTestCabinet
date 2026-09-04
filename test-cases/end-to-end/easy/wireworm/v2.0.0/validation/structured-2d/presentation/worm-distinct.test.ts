@@ -22,7 +22,7 @@
 // is at the far end of the worm's own row.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CHARGE_MAX } from "../../src/constants";
+import { CHARGE_MAX } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

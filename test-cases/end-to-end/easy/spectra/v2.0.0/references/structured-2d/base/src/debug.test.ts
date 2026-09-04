@@ -73,30 +73,36 @@ describe("every pose reads back", () => {
     h.debug.setLives(2);
     h.debug.setStage(4);
     h.debug.setExtraLifeAwarded(true);
+    h.debug.setChallengeHits(17);
     const s = h.debug.snapshot();
     expect(s.score).toBe(1234);
     expect(s.lives).toBe(2);
     expect(s.stage).toBe(4);
     expect(s.extraLifeAwarded).toBe(true);
+    expect(s.challengeHits).toBe(17);
   });
 
-  it("poses the three world gates and the dive clock", () => {
+  it("poses the four world gates and the dive clock", () => {
     h.debug.setWaveEntry(true);
     h.debug.setDiveLaunching(true);
+    h.debug.setStageClearing(true);
     h.debug.setShipContact(true);
     h.debug.setDiveClock(1.4);
     let s = h.debug.snapshot();
     expect(s.waveEntry).toBe(true);
     expect(s.diveLaunching).toBe(true);
+    expect(s.stageClearing).toBe(true);
     expect(s.ship.contact).toBe(true);
     expect(s.diveClock).toBe(1.4);
 
     h.debug.setWaveEntry(false);
     h.debug.setDiveLaunching(false);
+    h.debug.setStageClearing(false);
     h.debug.setShipContact(false);
     s = h.debug.snapshot();
     expect(s.waveEntry).toBe(false);
     expect(s.diveLaunching).toBe(false);
+    expect(s.stageClearing).toBe(false);
     expect(s.ship.contact).toBe(false);
   });
 
@@ -440,6 +446,7 @@ describe("the reset", () => {
     expect(s.simTime).toBe(0);
     expect(s.waveEntry).toBe(true);
     expect(s.diveLaunching).toBe(true);
+    expect(s.stageClearing).toBe(true);
     expect(s.ship.contact).toBe(true);
   });
 

@@ -1,58 +1,15 @@
-// bursts/scene — the two arrangements every check in this group builds on.
+// bursts/scene — the arrangement every check in this group builds on.
 //
-// They live beside the checks that use them rather than in the shared harness
-// next door because only the `bursts` group poses a field this way. Like
-// everything there they fix GEOMETRY and nothing else — where an inert drone
-// stands, and how a shot reaches the drone it pops — and never a threshold:
-// every distance, tolerance and bound a check asserts is stated in that check,
-// derived from the figure `specs/` fixes for it.
+// It lives beside the checks that use it rather than in the shared harness next
+// door because only the `bursts` group poses a field this way. Like everything
+// there it fixes GEOMETRY and nothing else — where the drone stands, and how a
+// shot reaches the drone it pops — and never a threshold: every distance,
+// tolerance and bound a check asserts is stated in that check, derived from the
+// figure `specs/` fixes for it.
 
 import { assertLength, assertTrue } from "../assert";
-import { PLAYER_BULLET_SPEED, FIELD_LEFT, FIELD_TOP } from "../constants";
-import {
-  poseDrone,
-  SHOT_GAP,
-  ticksFor,
-  type Band,
-  type Harness,
-} from "../harness";
-
-/**
- * Where {@link poseBystander} stands: inside the play field, in the corner
- * furthest from the ship's lane, from the formation grid at its full sway, and
- * from every place this group poses a drone it is about to destroy.
- */
-export const BYSTANDER_AT = { x: FIELD_LEFT + 40, y: FIELD_TOP + 40 } as const;
-
-/**
- * Pose one inert Shard out of the way, so the live wave still holds a drone.
- *
- * WHAT IT IS FOR, AND WHY THIS GROUP NEEDS IT WHERE OTHERS DO NOT. A stage
- * clears in the moment the last drone of its wave is destroyed, and only a wave
- * that has had a drone removed can clear (`specs/stages.md`). Almost every
- * scenario in this suite poses a field and never destroys the last thing on it,
- * so `startPosed`'s empty field is exactly right for it. Every check in THIS
- * group destroys drones for a living — that is what starts a burst — so the
- * scenario that pops the only drone it posed leaves an empty wave that has had
- * one removed, and a conformant build opens the stage-cleared interstitial
- * underneath the reading. That is the build behaving correctly and it is simply
- * not what a check about a burst is asking about: the picture a still would keep
- * becomes the interstitial, and the frames a check drives afterwards are the
- * interstitial's rather than the wave's.
- *
- * A bystander leaves a drone standing, so the wave carries on whichever reading
- * the build took of "its wave" and the scenario under test runs to its end.
- *
- * It is a prop like any other {@link poseDrone} — every faculty off, in phase
- * `formation`, which is also the phase a discharge wave spares
- * (`specs/resonance.md`) — so it holds its corner and takes no part. A check
- * that poses one accounts for it when it counts drones.
- */
-export function poseBystander(h: Harness): number {
-  return poseDrone(h, "shard", BYSTANDER_AT.x, BYSTANDER_AT.y, {
-    phase: "formation",
-  });
-}
+import { PLAYER_BULLET_SPEED } from "../constants";
+import { SHOT_GAP, ticksFor, type Band, type Harness } from "../harness";
 
 /** What {@link firedPop} found: the burst the shot started, and when. */
 export interface Pop {

@@ -15,7 +15,7 @@
 // point reads only that the strike happened and what it paid.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOARD_H, BOLT_SPEED } from "../../src/constants";
+import { BOARD_H, BOLT_SPEED } from "../constants";
 import { assertEqual, assertNotEqual } from "../assert";
 import {
   captureStill,

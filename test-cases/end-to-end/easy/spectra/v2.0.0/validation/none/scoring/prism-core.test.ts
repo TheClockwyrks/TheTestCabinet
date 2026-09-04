@@ -26,12 +26,6 @@
 // cyan shot here would break nothing, which is `bands`'s point rather than this
 // one.
 //
-// WHY A BYSTANDER STANDS IN THE CORNER. This shot destroys the Prism, and a
-// stage clears in the moment the last drone of its wave is destroyed
-// (`specs/stages.md`) — a build that reads "its wave" as the drones on the field
-// would pay `SCORE_STAGE_CLEAR` into the very number this check reads. The
-// bystander leaves a drone standing under either reading.
-//
 // WHAT THIS DOES NOT DECIDE. That the exposed core falls to a shot of its own
 // band is `bands`'s and `drones`'s. What the SHELL pays is
 // `scoring/prism-shell`.
@@ -43,7 +37,6 @@ import {
   captureStill,
   createHarness,
   droneById,
-  poseBystander,
   poseDrone,
   requireDrone,
   shootDrone,
@@ -54,7 +47,7 @@ import {
 /**
  * Where the Prism is posed: a clear stretch of the play field, below the
  * formation grid's lowest row (`332`) and its full sway, above the ship's lane
- * (`SHIP_Y`, `600`), and well clear of the corner the bystander holds.
+ * (`SHIP_Y`, `600`).
  */
 const TARGET_AT = { x: 900, y: 460 } as const;
 
@@ -79,7 +72,6 @@ afterEach(async () => {
 
 it("adds exactly SCORE_PRISM_CORE when a Prism's exposed core is destroyed", async () => {
   await startPosed(h);
-  await poseBystander(h);
   // Stored cyan with the shell already gone, so the exposed core is magenta.
   const target = await poseDrone(h, "prism", TARGET_AT.x, TARGET_AT.y, {
     band: "cyan",

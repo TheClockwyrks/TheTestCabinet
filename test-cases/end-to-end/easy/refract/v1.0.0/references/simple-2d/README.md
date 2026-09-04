@@ -114,22 +114,27 @@ shape of `update`:
 
 ```ts
 engine.apply((s) => engine.debug.loadBoard(s, ["T.S", "1.s", "T.S"]));
-engine.apply((s) =>
-  engine.debug.trace(s, [
-    { col: 0, row: 0 },
-    { col: 0, row: 1 },
-    { col: 0, row: 2 },
-  ]),
-);
+
+// A route is the pointer trio in turn, each call handed the state the last one
+// returned. `snapshot().board.nodes` reports where each cell's center sits.
+const nodes = engine.debug.snapshot(engine.state).board.nodes;
+const at = (col, row) => nodes.find((n) => n.col === col && n.row === row);
+engine.apply((s) => {
+  const down = engine.debug.pointerDown(s, at(0, 0).x, at(0, 0).y);
+  const one = engine.debug.pointerMove(down, at(0, 1).x, at(0, 1).y);
+  const two = engine.debug.pointerMove(one, at(0, 2).x, at(0, 2).y);
+  return engine.debug.pointerUp(two);
+});
 const { beams, solved } = engine.debug.snapshot(engine.state);
 ```
 
-The operations are `reset` (seedable), `snapshot`, `startMode`, `loadBoard`
-(any board in the case's notation), the immediate-effect pointer trio
-`pointerDown` / `pointerMove` / `pointerUp`, `trace` (sugar over the trio), and
-`clear`. The pointer operations do not stand in for the engine's pointer — they
-feed the **same resolution path** its samples feed, so the hit radius, the grab
-rules, the limits, and the completion test run exactly as they do in play.
+The operations are `reset` (seedable), `snapshot`, the single-field poses
+`setMode` / `setScreen` / `setMenuIndex`, `loadBoard` (any board in the case's
+notation), the immediate-effect pointer trio
+`pointerDown` / `pointerMove` / `pointerUp`, and `clear`. The pointer
+operations do not stand in for the engine's pointer — they feed the **same
+resolution path** its samples feed, so the hit radius, the grab rules, the
+limits, and the completion test run exactly as they do in play.
 Everything about _driving a browser game_ — the clock, exact frames, key
 events — is the engine's, which is why the surface carries no `step` or
 `keyDown`. Both surfaces are inert during normal play.

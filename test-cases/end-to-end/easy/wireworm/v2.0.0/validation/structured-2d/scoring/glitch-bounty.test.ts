@@ -14,7 +14,7 @@
 // it was placed on and the shot is the only thing in the scenario.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOARD_H, BOLT_SPEED, SCORE_GLITCH } from "../../src/constants";
+import { BOARD_H, BOLT_SPEED, SCORE_GLITCH } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

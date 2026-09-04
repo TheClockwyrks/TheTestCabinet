@@ -49,17 +49,17 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { poseBystander, release, sweep } from "./wave";
+import { release, sweep } from "./wave";
 
 /**
  * Where the diving Prism stands, in logical units.
  *
  * Mid-field on the ship's own lane, 300 units from the ship — a fifth of
  * `DISCHARGE_MAX_R` (`1500`), so the wave reaches it early in its life and the
- * frames after it arrives are all inside the span this check samples. Well inside
- * the play field on both axes (`y` in `[64, 656]`, specs/field.md), clear of the
- * corner the bystander holds, and 340 units above `PRISM_INVERT_Y` (`640`), the
- * line a diving Prism inverts the field by crossing.
+ * frames after it arrives are all inside the span this check samples. Well
+ * inside the play field on both axes (`y` in `[64, 656]`, specs/field.md), and
+ * 340 units above `PRISM_INVERT_Y` (`640`), the line a diving Prism inverts the
+ * field by crossing.
  */
 const PRISM_AT = { x: LANE_CENTER, y: 300 } as const;
 
@@ -91,10 +91,6 @@ afterEach(() => {
 
 it("removes a shell-intact diving Prism whole, never leaving its core flying", async () => {
   startPosed(h);
-  // In the formation, which specs/resonance.md's own table spares, so the wave
-  // still leaves a drone standing (specs/stages.md clears a stage in the moment
-  // the last drone of its wave is destroyed).
-  poseBystander(h);
   const prism = poseDrone(h, "prism", PRISM_AT.x, PRISM_AT.y, {
     band: STORED_BAND,
     phase: "diving",

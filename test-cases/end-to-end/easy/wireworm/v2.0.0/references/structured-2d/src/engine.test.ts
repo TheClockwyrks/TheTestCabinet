@@ -239,7 +239,10 @@ describe("the keys the game answers to", () => {
     expect(h.debug.snapshot().screen).toBe("howto");
     await h.tap(BINDINGS.back[0]);
     expect(h.debug.snapshot().screen).toBe("title");
-    expect(h.debug.snapshot().menuIndex).toBe(0);
+    // The return selects the entry it left from (specs/ui.md).
+    expect(h.debug.snapshot().menuIndex).toBe(
+      TITLE_ITEMS.indexOf("HOW TO PLAY"),
+    );
   });
 
   it("opens a run from the title and runs it on the game's own clock", async () => {

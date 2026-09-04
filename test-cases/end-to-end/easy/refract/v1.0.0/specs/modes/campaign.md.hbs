@@ -82,7 +82,7 @@ the game is being played, and the choices it offers below are the campaign's.
 
 | Screen | What it shows | How it is reached | How it is left |
 | --- | --- | --- | --- |
-| `select` | The grid of all `24` boards, each showing its number and whether it is locked, unlocked, or solved. | Choosing `CAMPAIGN` on the title menu, and from `playing`, `solved`, and `complete`. | Entering an unlocked board goes to `playing`. `back` returns to `title`. |
+| `select` | The grid of all `24` boards, each showing its number and whether it is locked, unlocked, or solved. | Choosing `CAMPAIGN` on the title menu, and from `playing`, `solved`, and `complete`. | Entering an unlocked board goes to `playing`. `back` returns to `title` with `CAMPAIGN` highlighted. |
 | `solved` | The finished board, with the choices below drawn over it. | A board becomes solved, and boards remain unsolved. | A choice is taken: `playing` for the next board or a replay, `select` for the grid. |
 | `complete` | Confirmation that all `24` boards are solved. | The solve that leaves no board unsolved. | A choice is taken: `select` for the grid, `title` for the main menu. |
 
@@ -116,11 +116,12 @@ carry, both of which `specs/controls.md` defines.
   `confirm` on a locked board does nothing and leaves the highlight where it is.
 - Each board in the grid carries its own `board-<n>` pointer target, and the
   screen draws a `BACK_LABEL` (`BACK`) control carrying the `back` target.
-- `back`, and taking the `back` target, return to `title`.
+- `back`, and taking the `back` target, return to `title` with `CAMPAIGN`
+  highlighted (`menuIndex = 0`).
 
 The three board states read without relying on hue alone, since none of them
 carries a channel's hue. Presentation is otherwise the build's to design, within
-the legibility requirements in `specs/overview.md`.
+the legibility requirements in `specs/board.md` and `specs/ui.md`.
 
 ## The solved screen
 
@@ -159,7 +160,8 @@ the legibility requirements in `specs/overview.md`.
 - It offers two choices, in this order: back to `select`, and back to `title`. The
   first is highlighted on arriving at the screen, `up` and `down` move the
   highlight, wrapping at both ends, `confirm` takes it, and `back` goes to
-  `select`. Each choice carries its own `menu-<i>` pointer target.
+  `select`. Taking the second returns to `title` with `CAMPAIGN` highlighted
+  (`menuIndex = 0`). Each choice carries its own `menu-<i>` pointer target.
 - Every board stays unlocked and solved afterward, so the player can return to the
   grid and replay any of them.
 

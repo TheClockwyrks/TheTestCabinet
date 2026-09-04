@@ -20,16 +20,13 @@ import {
   CHARGE_MAX,
   CORRUPTOR_FPS,
   CURSOR_HALF,
-  ENDING_ITEMS,
   GLITCH_FPS,
   HUD_H,
   HUD_LEVEL_LABEL,
   NODE_PULSE_FPS,
-  PAUSE_ITEMS,
   SPRITE_SIZE,
   TAGLINE_TEXT,
   TILE,
-  TITLE_ITEMS,
   TITLE_TEXT,
   TOTAL_LEVELS,
   WORM_BODY_FPS,
@@ -46,6 +43,13 @@ import {
   WORM_TAIL_FRAME,
   type Frames,
 } from "./assets";
+import {
+  ENDING_MENU,
+  PAUSE_MENU,
+  TITLE_MENU,
+  itemBaseline,
+  type MenuLayout,
+} from "./menus";
 import { nextRandom } from "./rng";
 import { COLOR, font } from "./theme";
 import type { WirewormState } from "./game";
@@ -363,21 +367,24 @@ function scrim(
   ctx.fillRect(0, 0, width, height);
 }
 
+/**
+ * A vertical menu, laid out where `src/menus.ts` says it is.
+ *
+ * The layout is read rather than restated, so the words a player sees stand
+ * exactly over the hit regions `menuItemRect` reports (specs/ui.md).
+ */
 function drawMenu(
   ctx: CanvasRenderingContext2D,
-  items: readonly string[],
+  menu: MenuLayout,
   selected: number,
-  cx: number,
-  top: number,
-  step: number,
 ): void {
-  items.forEach((item, index) => {
+  menu.items.forEach((item, index) => {
     const chosen = index === selected;
     label(
       ctx,
       chosen ? `> ${item} <` : item,
-      cx,
-      top + index * step,
+      menu.centerX,
+      itemBaseline(menu, index),
       chosen ? 30 : 26,
       chosen ? COLOR.accent : COLOR.textDim,
       "center",
@@ -413,7 +420,7 @@ function drawTitle(
   scrim(ctx, width, height, COLOR.scrim);
   label(ctx, TITLE_TEXT, width / 2, 240, 88, COLOR.accent, "center");
   label(ctx, TAGLINE_TEXT, width / 2, 292, 28, COLOR.text, "center");
-  drawMenu(ctx, TITLE_ITEMS, state.menuIndex, width / 2, 420, 52);
+  drawMenu(ctx, TITLE_MENU, state.menuIndex);
 }
 
 function drawHowto(
@@ -437,7 +444,7 @@ function drawPaused(
 ): void {
   scrim(ctx, width, height, COLOR.scrim);
   label(ctx, "PAUSED", width / 2, 230, 62, COLOR.accent, "center");
-  drawMenu(ctx, PAUSE_ITEMS, state.menuIndex, width / 2, 340, 52);
+  drawMenu(ctx, PAUSE_MENU, state.menuIndex);
 }
 
 function drawEnding(
@@ -469,7 +476,7 @@ function drawEnding(
     COLOR.textDim,
     "center",
   );
-  drawMenu(ctx, ENDING_ITEMS, state.menuIndex, width / 2, 424, 52);
+  drawMenu(ctx, ENDING_MENU, state.menuIndex);
 }
 
 function drawBanner(

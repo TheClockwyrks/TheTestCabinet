@@ -28,7 +28,7 @@
 // within, so a cadence defect cannot make this point fail for the wrong reason.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WORM_STEP_L1 } from "../../src/constants";
+import { WORM_STEP_L1 } from "../constants";
 import { assertDeepEqual, assertLength, assertNotEqual } from "../assert";
 import {
   captureStill,

@@ -12,8 +12,9 @@
 // two entries on the title, THREE on the pause menu, two on game over. Ten is more than
 // any of them holds, so every menu is driven several times past both of its ends and the
 // wrap is exercised in both directions; a build that clamps instead of wrapping is not
-// caught here — it never leaves the range — which is why the reading is the RANGE rather
-// than the sequence. Three menus rather than one because the entry count is what the
+// caught here — it never leaves the range — and is caught by `screens/menu-wraps-up`
+// and `screens/menu-wraps-down`, which is why the reading here is the RANGE rather than
+// the sequence. Three menus rather than one because the entry count is what the
 // bound is made of, and a build that hard-coded one menu's count into the other's move
 // is caught only by driving both.
 //
@@ -27,8 +28,9 @@
 //
 // WHAT THIS ITEM DOES NOT DECIDE. That a press moves the highlight by ONE, or in the
 // right direction (`controls/menu-down-arrow`, `controls/menu-up-arrow`,
-// `controls/menu-s`, `controls/menu-w`), nor that the highlight is DRAWN
-// (`screens/title-menu-highlight`).
+// `controls/menu-s`, `controls/menu-w`), where the highlight lands when a move crosses
+// an end (`screens/menu-wraps-up`, `screens/menu-wraps-down`), nor that the highlight
+// is DRAWN (`screens/title-menu-highlight`).
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual } from "../assert";

@@ -195,6 +195,7 @@ export class SpectraState extends SpectraStateBase {
 
   waveEntry = true;
   diveLaunching = true;
+  stageClearing = true;
   entryClock = 0;
   swayClock = 0;
   diveClock = 0;

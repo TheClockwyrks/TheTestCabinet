@@ -211,6 +211,11 @@ it("reports every documented field, from a field carrying one of everything", as
     "boolean",
     "snapshot().extraLifeAwarded, the run's one-extra-life latch",
   );
+  assertEqual(
+    typeof s.challengeHits,
+    "number",
+    "snapshot().challengeHits, the challenge stage's tally of drones destroyed",
+  );
   assertEqual(typeof s.resonance, "number", "snapshot().resonance");
   assertEqual(
     typeof s.dischargeReady,
@@ -230,6 +235,7 @@ it("reports every documented field, from a field carrying one of everything", as
   assertEqual(typeof s.muted, "boolean", "snapshot().muted");
   assertEqual(typeof s.waveEntry, "boolean", "snapshot().waveEntry");
   assertEqual(typeof s.diveLaunching, "boolean", "snapshot().diveLaunching");
+  assertEqual(typeof s.stageClearing, "boolean", "snapshot().stageClearing");
   assertEqual(
     typeof s.diveClock,
     "number",

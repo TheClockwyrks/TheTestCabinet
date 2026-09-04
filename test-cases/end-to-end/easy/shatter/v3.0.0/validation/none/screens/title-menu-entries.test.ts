@@ -25,7 +25,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThan } from "../assert";
 import { TITLE_ITEMS } from "../constants";
-import { captureStill, createHarness, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  presentCalls,
+  type Harness,
+} from "../harness";
 import { menuDraws } from "./menu";
 import { reachTitle } from "./screens";
 
@@ -51,7 +56,7 @@ it("draws PLAY above HOW TO PLAY on the title menu", async () => {
 
   await reachTitle(h);
 
-  const calls = await h.presentCalls();
+  const calls = await presentCalls(h);
   await captureStill(h, "menu");
 
   const drawn = menuDraws(calls, TITLE_ITEMS, "the title screen");

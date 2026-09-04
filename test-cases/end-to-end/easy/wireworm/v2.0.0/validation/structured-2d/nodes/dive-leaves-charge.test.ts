@@ -24,7 +24,7 @@
 // never went near.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_TOP_ROW, wormStepInterval } from "../../src/constants";
+import { BAND_TOP_ROW, wormStepInterval } from "../constants";
 import { assertEqual, assertLessThan } from "../assert";
 import {
   captureStill,

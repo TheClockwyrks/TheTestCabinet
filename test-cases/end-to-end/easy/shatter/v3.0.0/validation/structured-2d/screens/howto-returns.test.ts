@@ -1,6 +1,7 @@
 // screens/howto-returns — leaving the how-to screen returns to the title.
 //
-// `specs/ui.md`, on the `howto` screen: "Leaving the screen returns to `title`."
+// `specs/ui.md`, on the `howto` screen: "Confirming leaves the screen as leaving
+// it does, and both return to `title`."
 // `specs/controls.md` says what leaving is — the `back` action, whose meaning on
 // a screen showing no live play is "Leave the screen" — and reads it as a press
 // edge, "once per press".

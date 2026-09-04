@@ -37,12 +37,7 @@
 // number: the lives remaining.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  CURSOR_HALF,
-  tileCX,
-  tileCY,
-  wormStepInterval,
-} from "../../src/constants";
+import { CURSOR_HALF, tileCX, tileCY, wormStepInterval } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

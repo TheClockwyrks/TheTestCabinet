@@ -29,7 +29,7 @@ import {
   WORM_STEP_DECAY,
   WORM_STEP_FLOOR,
   WORM_STEP_L1,
-} from "../../src/constants";
+} from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

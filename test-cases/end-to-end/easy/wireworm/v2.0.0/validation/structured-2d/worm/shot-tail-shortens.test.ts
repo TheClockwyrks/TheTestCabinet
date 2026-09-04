@@ -21,7 +21,7 @@
 // segment died on is `nodes.shot-leaves-node`'s requirement.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED, TILE } from "../../src/constants";
+import { BOLT_SPEED, TILE } from "../constants";
 import { assertDeepEqual, assertEqual, assertLength } from "../assert";
 import {
   captureStill,

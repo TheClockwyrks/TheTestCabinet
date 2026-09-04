@@ -29,7 +29,8 @@
 // game's own arrival.
 //
 // WHAT THIS DOES NOT DECIDE. Where the saucer enters (`saucer/enters-at-an-edge`,
-// `saucer/enters-at-a-random-row`), how long it stays (`saucer/despawns-after-12s`)
+// `saucer/entry-row-inside-the-range`, `saucer/enters-at-a-random-row`), how long
+// it stays (`saucer/despawns-after-12s`)
 // or when the next one comes (`saucer/subsequent-gap`).
 
 import { afterEach, beforeEach, it } from "vitest";

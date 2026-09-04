@@ -38,6 +38,7 @@ import {
   moveToCell,
   pressCell,
   resetTo,
+  traceCells,
   type Harness,
 } from "../harness";
 
@@ -63,7 +64,7 @@ it("keeps the board unsolved until every crystal is satisfied, then solves on th
   // Probe 1 — every channel's beam reports complete, yet an unspent charge
   // leaves the crystal unsatisfied and the board unsolved.
   await loadBoard(h, HALF_SPENT);
-  h.debug.trace([
+  traceCells(h, [
     { col: 0, row: 0 },
     { col: 1, row: 0 },
     { col: 2, row: 0 },
@@ -88,7 +89,7 @@ it("keeps the board unsolved until every crystal is satisfied, then solves on th
   // Probe 2 — a beam left ending on the crystal: all charges spent, but the
   // crossing begun across it has not been completed.
   await loadBoard(h, CRYSTAL_END);
-  h.debug.trace([
+  traceCells(h, [
     { col: 0, row: 0 },
     { col: 1, row: 0 },
   ]);

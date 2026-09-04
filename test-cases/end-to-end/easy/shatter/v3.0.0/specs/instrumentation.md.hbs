@@ -142,7 +142,8 @@ distinguishable from the next.
 ## The operations
 
 The surface carries `version` (`SHATTER_DEBUG_VERSION`, `1`), a plain number, and
-the operations below. Values are plain numbers, strings, and booleans.
+the operations below. Values are plain numbers, strings, booleans, and the two
+records the readings below return.
 {{#if (eq engine.slug "simple-2d")}}
 
 Each operation takes the current state, `DeepReadonly<ShatterState>`, as its first
@@ -165,6 +166,7 @@ read and changes nothing.
 {{#if (eq engine.slug "none")}}| `reset(options)` | Restores the state to the title-screen values listed below. |
 {{else}}| `reset(options)` | Restores every declared field of the state to its title-screen value, listed below. |
 {{/if}}| `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
+| `menuItemRect(index)` | The hit region of the entry at `index` on the menu the current screen shows. It changes nothing. |
 
 `reset` restores `screen` to `"title"`, `menuIndex` to `0`, `score` to `0`,
 `lives` to `START_LIVES` (`3`), `wave` to `0`, and `waveBanner` to `0`. It empties
@@ -179,6 +181,13 @@ It empties the torpedo roster and sets `torpedoCharge` to `1`.
 
 `options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the
 game's randomness. `muted` is left exactly as it stands; muting is the runtime's.
+
+`menuItemRect` returns `{ x, y, w, h }` in logical units, with `x` and `y` the
+region's top-left corner and `w` and `h` its size: the region a pointer selects
+that entry from, as `specs/ui.md` states. It returns `null` on `howto` and
+`playing`, which show no menu, and when `index` names no entry of the menu the
+current screen shows. It is a pure read, and where the regions are is the build's
+own layout rather than anything this specification fixes.
 {{#if (eq engine.slug "none")}}
 
 ### The clock
@@ -192,7 +201,9 @@ game's randomness. `muted` is left exactly as it stands; muting is the runtime's
 clock, so the game changes only when `advance` says so. `setAutoStep(true)` returns
 it to running itself, which is how the game starts. Drawing is unaffected either
 way: the loop keeps rendering, so the canvas shows the state the
-most recent tick left. It changes no game state.
+most recent tick left. It changes no game state. `reset` leaves this setting
+exactly as it stands: the clock is the runtime's rather than a game value, so a
+reset taken under a held clock leaves the clock held.
 
 `advance(ticks)` runs `ticks` whole simulation ticks immediately and in order, each
 worth exactly one `TICK_DT`. `ticks` is a non-negative whole number, and
@@ -307,6 +318,10 @@ per-entity removal and the clear.
 
 `snapshot` returns exactly this object. Every field an operation can set is
 present, so every operation is verifiable by setting a value and reading it back.
+The three exceptions are `tickClock`, `nextId`, and `rngState`, which `reset`
+restores and nothing else touches: they are the game's own bookkeeping, and what
+they do is already observable through the ids fresh entities take and through two
+games seeded alike running identically.
 
 ```js
 {
@@ -320,6 +335,8 @@ present, so every operation is verifiable by setting a value and reading it back
   muted: <boolean>,
   waveSpawning: <boolean>,      // the game's own wave loop runs
   saucerSpawning: <boolean>,    // the game's own saucer arrival runs
+  saucerClock: <number>,        // seconds the current arrival cadence has run
+  saucerDue: <number>,          // seconds saucerClock must reach for the next one
 {{#if (eq engine.slug "none")}}
   autoStep: <boolean>,          // the frame loop advances the simulation
 {{/if}}
@@ -355,6 +372,9 @@ present, so every operation is verifiable by setting a value and reading it back
     id: <number>,               // fresh on each arrival; never reused while live
     x: <number>, y: <number>, vx: <number>, vy: <number>,
     mind: <boolean>, gun: <boolean>, travel: <boolean>,
+    fireClock: <number>,        // seconds until its next shot
+    weaveClock: <number>,       // seconds until it rerolls its weave
+    age: <number>,              // seconds it has been on the field
   } | null,
   // Every saucer bullet in flight, in roster order.
   enemyBullets: [
@@ -392,9 +412,18 @@ what the game holds. Some entries need a note:
 {{/if}}
 - `muted` is the game's copy of the runtime's mute bit, refreshed in every update.
   No operation sets it; the mute key does.
+{{#if (eq engine.slug "none")}}
+- `autoStep` is the clock's own setting rather than a value the game holds, so it
+  is reported here and `reset` leaves it as it is.
+{{/if}}
 - `waveSpawning`, `saucerSpawning`, `ship.collision`, and the saucer's `mind`,
   `gun`, and `travel` are the gates and faculties, reported so each operation is
   verifiable by setting a value and reading it back.
+- The saucer's `fireClock`, `weaveClock`, and `age` are the three clocks it
+  carries, in seconds, and `saucerClock` and `saucerDue` are the arrival cadence's,
+  reported on the same terms: `addSaucer` fixes the first three at
+  `SAUCER_FIRE_INTERVAL`, `SAUCER_WEAVE_INTERVAL`, and `0`, and `reset` returns the
+  last two to the start of a game's cadence.
 {{#if (eq variant.slug "warhead")}}
 - Each torpedo's `homing` is its guidance gate, reported on the same terms.
 {{/if}}

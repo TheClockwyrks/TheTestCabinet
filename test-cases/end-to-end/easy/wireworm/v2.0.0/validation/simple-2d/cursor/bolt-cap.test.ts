@@ -25,7 +25,7 @@
 // this point must not read that as compliance.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIRE_INTERVAL, MAX_BOLTS } from "../../src/constants";
+import { FIRE_INTERVAL, MAX_BOLTS } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

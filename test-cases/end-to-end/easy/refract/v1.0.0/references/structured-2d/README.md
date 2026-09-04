@@ -124,19 +124,24 @@ Every operation acts on the live world at the moment it is called:
 
 ```ts
 engine.debug.loadBoard(["T.S", "1.s", "T.S"]);
-engine.debug.trace([
-  { col: 0, row: 0 },
-  { col: 0, row: 1 },
-  { col: 0, row: 2 },
-]);
+
+// A route is the pointer trio in turn. `snapshot().board.nodes` reports where
+// each cell's center sits.
+const nodes = engine.debug.snapshot().board.nodes;
+const at = (col, row) => nodes.find((n) => n.col === col && n.row === row);
+engine.debug.pointerDown(at(0, 0).x, at(0, 0).y);
+engine.debug.pointerMove(at(0, 1).x, at(0, 1).y);
+engine.debug.pointerMove(at(0, 2).x, at(0, 2).y);
+engine.debug.pointerUp();
 const { beams, solved } = engine.debug.snapshot();
 ```
 
-The operations are `reset` (seedable), `snapshot`, `startMode`, `loadBoard`
-(any board in the case's notation), the immediate-effect pointer trio
-`pointerDown` / `pointerMove` / `pointerUp`, `trace` (sugar over the trio), and
-`clear`. The pointer operations do not stand in for the engine's pointer — they
-feed the **same per-sample resolution path** the player controller feeds
+The operations are `reset` (seedable), `snapshot`, the single-field poses
+`setMode` / `setScreen` / `setMenuIndex`, `loadBoard` (any board in the case's
+notation), the immediate-effect pointer trio
+`pointerDown` / `pointerMove` / `pointerUp`, and `clear`. The pointer
+operations do not stand in for the engine's pointer — they feed the **same
+per-sample resolution path** the player controller feeds
 (`src/tracing.ts`), so the hit radius, the grab rules, the limits, and the
 completion test run exactly as they do in play, and each call takes effect
 before it returns. Everything about _driving a browser game_ — the clock, exact

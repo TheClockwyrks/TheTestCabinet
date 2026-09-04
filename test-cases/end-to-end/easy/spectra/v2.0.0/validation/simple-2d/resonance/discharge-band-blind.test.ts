@@ -43,7 +43,7 @@ import {
   type Band,
   type Harness,
 } from "../harness";
-import { poseBystander, release } from "./wave";
+import { release } from "./wave";
 
 /** The two bands specs/bands.md fixes; there is no third and no neutral state. */
 const BANDS: readonly Band[] = ["cyan", "magenta"];
@@ -52,10 +52,9 @@ const BANDS: readonly Band[] = ["cyan", "magenta"];
  * Where the two divers stand, one of each band.
  *
  * Either side of the ship's lane in the open field, `350` and `361` units from
- * the ship at `(640, 600)` — both a small fraction of `DISCHARGE_MAX_R` (`1500`),
- * so the wave reaches each of them inside its life, and near enough the same
- * distance that neither band is favoured by being closer. Clear of the corner the
- * bystander holds.
+ * the ship at `(640, 600)` — both a small fraction of `DISCHARGE_MAX_R`
+ * (`1500`), so the wave reaches each of them inside its life, and near enough
+ * the same distance that neither band is favoured by being closer.
  */
 const DIVERS_AT: Readonly<Record<Band, { x: number; y: number }>> = {
   cyan: { x: 340, y: 420 },
@@ -90,7 +89,6 @@ it("destroys divers of both bands whichever band the ship holds", async () => {
     h.debug.setShipBand(shipBand);
     // In the formation, which the wave spares, so a drone is still standing when
     // the two divers are taken (specs/stages.md).
-    poseBystander(h);
 
     const divers = BANDS.map((band) => ({
       band,
@@ -108,8 +106,8 @@ it("destroys divers of both bands whichever band the ship holds", async () => {
     );
     assertLength(
       posed.drones,
-      BANDS.length + 1,
-      "precondition: one diver of each band and the bystander are on the field",
+      BANDS.length,
+      "precondition: one diver of each band is on the field",
     );
     for (const diver of divers) {
       assertEqual(

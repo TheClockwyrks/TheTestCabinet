@@ -3,10 +3,11 @@
 //
 // The framework's states are live objects, so every transition here MUTATES
 // the `RefractState` it is handed — the world's one instance — writing the
-// fields it changes in place and leaving the rest alone. Each transition is
-// shared by the menus in `src/controller.ts` and the debug surface in
-// `src/debug.ts`, so choosing a mode from the title and posing it through
-// `startMode` are the same code path (specs/instrumentation.md).
+// fields it changes in place and leaving the rest alone. Every transition
+// belongs to the game itself, driven by the menus in `src/controller.ts`. The
+// debug surface in `src/debug.ts` runs none of them: each of its poses writes
+// one field (specs/instrumentation.md), so a scenario either takes a
+// transition the way a player does or sets the field it wants.
 //
 // The mode-specific facts live where the specs put them: Campaign's course,
 // unlocking, and select highlight follow `specs/modes/campaign.md`, and
@@ -17,7 +18,7 @@
 import { emptyBeams } from "./board";
 import { campaignBoard } from "./campaign";
 import { generateBoard, tierFor } from "./cascade";
-import { CAMPAIGN_LENGTH } from "./constants";
+import { CAMPAIGN_LENGTH, TITLE_ITEMS } from "./constants";
 import { RefractState, type BoardState, type Mode } from "./game";
 
 /**
@@ -48,10 +49,21 @@ export function resetState(state: RefractState, seed: number): void {
   state.rngState = seed;
 }
 
-/** Back to the title, with its first item highlighted. */
-export function toTitle(state: RefractState): void {
+/**
+ * Where each title entry sits in `TITLE_ITEMS`. A return to the title
+ * highlights the entry that led away (specs/ui.md), so every transition back
+ * names the one it came from.
+ */
+export const TITLE_INDEX = {
+  campaign: TITLE_ITEMS.indexOf("CAMPAIGN"),
+  cascade: TITLE_ITEMS.indexOf("CASCADE"),
+  howto: TITLE_ITEMS.indexOf("HOW TO PLAY"),
+} as const;
+
+/** Back to the title, with the entry that led away highlighted. */
+export function toTitle(state: RefractState, menuIndex: number): void {
   state.screen = "title";
-  state.menuIndex = 0;
+  state.menuIndex = menuIndex;
   state.tracing = null;
 }
 
@@ -104,9 +116,8 @@ export function restartCascade(state: RefractState): void {
 }
 
 /**
- * A mode chosen from the title menu, and the identical pose the debug
- * surface's `startMode` applies. Campaign opens on its select grid with the
- * session's progress as it stands; Cascade begins a fresh sequence from
+ * A mode chosen from the title menu. Campaign opens on its select grid with
+ * the session's progress as it stands; Cascade begins a fresh sequence from
  * tier 1 (specs/modes/cascade.md, The sequence).
  */
 export function startMode(state: RefractState, mode: Mode): void {
@@ -193,7 +204,7 @@ export function confirmItem(state: RefractState, index: number): void {
       return;
     case "complete":
       if (index === 0) toSelect(state);
-      else toTitle(state);
+      else toTitle(state, TITLE_INDEX.campaign);
       return;
     case "howto":
     case "playing":
@@ -224,8 +235,10 @@ export function goBack(state: RefractState): void {
     case "title":
       return;
     case "howto":
+      toTitle(state, TITLE_INDEX.howto);
+      return;
     case "select":
-      toTitle(state);
+      toTitle(state, TITLE_INDEX.campaign);
       return;
     case "playing":
       // The beams drawn on the board are discarded either way
@@ -234,12 +247,12 @@ export function goBack(state: RefractState): void {
         for (const beam of state.beams) beam.cells = [];
         toSelect(state);
       } else {
-        toTitle(state);
+        toTitle(state, TITLE_INDEX.cascade);
       }
       return;
     case "solved":
       if (state.mode === "campaign") toSelect(state);
-      else toTitle(state);
+      else toTitle(state, TITLE_INDEX.cascade);
       return;
     case "complete":
       toSelect(state);

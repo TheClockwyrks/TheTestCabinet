@@ -28,10 +28,12 @@
 import { AudioBus, type AudioContextSource, type CueSpec } from "./audio-bus";
 import { Keyboard, asKeyboardEvent } from "./keyboard";
 import { Diagnostics, OVERLAY_KEY } from "./overlay";
+import { PointerInput, type PointerFrame } from "./pointer";
 import {
   deviceSize,
   domSurface,
   fitViewport,
+  logicalPoint,
   type Surface,
   type Viewport,
 } from "./viewport";
@@ -82,6 +84,17 @@ export interface UpdateApi {
     value(name: string): number;
     /** Whether the action went down since the last frame. Consumes the edge. */
     pressed(name: string): boolean;
+  };
+  readonly pointer: {
+    /**
+     * What the pointer and the touch contacts did this frame, in the stage's
+     * logical units.
+     */
+    frame(): PointerFrame;
+    /**
+     * Forget the press in progress, so a gesture cannot span a change of screen.
+     */
+    forget(): void;
   };
   readonly audio: {
     /** Play a declared cue. */
@@ -170,6 +183,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
   const { canvas, width, height, game, background } = options;
   const surface = options.surface ?? domSurface(canvas);
   const keyboard = new Keyboard(surface.events());
+  const pointer = new PointerInput(surface.events());
   const audio = new AudioBus(options.audioContext);
   const diagnostics = new Diagnostics();
 
@@ -244,10 +258,23 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
     return ctx;
   }
 
+  /** This frame's pointer report, taken through the fit the frame is drawn under. */
+  function pointerFrame(): PointerFrame {
+    const origin = surface.origin();
+    const dpr = surface.dpr();
+    return pointer.frame((x, y) =>
+      logicalPoint(viewport, dpr, x - origin.x, y - origin.y),
+    );
+  }
+
   const updateApi: UpdateApi = {
     input: {
       value: (name) => keyboard.value(name),
       pressed: (name) => keyboard.pressed(name),
+    },
+    pointer: {
+      frame: pointerFrame,
+      forget: () => pointer.forget(),
     },
     audio: {
       play: (cue) => audio.play(cue),
@@ -281,8 +308,10 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
       diagnostics.draw(ctx, { count, dt });
     } finally {
       // An edge nothing consumed is discarded even when the frame threw, so one
-      // bad frame cannot leave a press to surface later, out of order.
+      // bad frame cannot leave a press to surface later, out of order. The
+      // pointer's edges go the same way, and for the same reason.
       keyboard.endFrame();
+      pointer.endFrame();
     }
   }
 
@@ -419,6 +448,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
       stopLoop();
       surface.events().removeEventListener("keydown", onOverlayKey);
       keyboard.detach();
+      pointer.detach();
       audio.dispose();
       live = null;
     },

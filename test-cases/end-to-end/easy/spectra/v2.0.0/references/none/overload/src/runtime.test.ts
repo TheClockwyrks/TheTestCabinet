@@ -38,6 +38,7 @@ function stubSurface(target: EventTarget): Surface {
     cssWidth: () => 1280,
     cssHeight: () => 720,
     dpr: () => 1,
+    origin: () => ({ x: 0, y: 0 }),
     events: () => target,
   };
 }

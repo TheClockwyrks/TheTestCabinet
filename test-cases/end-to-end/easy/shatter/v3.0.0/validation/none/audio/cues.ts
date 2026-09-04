@@ -47,7 +47,7 @@
 // stays the event's own moment.
 
 import type { Harness, ShatterSnapshot } from "../harness";
-import { watchCues, watchStops } from "../harness";
+import { stops as stopsSoFar, watchCues } from "../harness";
 
 /** What one driven tick of a watch sounded and stopped. */
 export interface TickSound {
@@ -115,10 +115,15 @@ export async function watchForEvent(
 ): Promise<CueWatch> {
   const { quietLead = 0, arm } = options;
   const sounds = watchCues(h);
-  const stops = watchStops(h);
   const ticks: TickSound[] = [];
   let readSounds = 0;
-  let readStops = 0;
+  // The stop count is a RUNNING TOTAL read across each tick rather than a sink the
+  // drive fills, because a stop cannot honestly be attributed to a tick: a key
+  // comes up between two driven ticks, and a build that answers the release from
+  // its own DOM handler stops its voice at a moment no tick accounts for. Reading
+  // the total either side of the tick puts that moment inside the window it
+  // belongs to. See {@link stopsSoFar}.
+  let readStops = await stopsSoFar(h);
   let armed = arm === undefined;
   let armedAt = 0;
   let armedTotal = await h.sounds();
@@ -132,16 +137,17 @@ export async function watchForEvent(
     }
     // The state the tick left comes back off the step that ran it, rather than
     // from a second crossing asking for the reading the first one already had.
-    const snapshot = await h.advance(1);
+    const snapshot = await h.step(1);
     const tick = h.tick();
+    const stoppedSoFar = await stopsSoFar(h);
     ticks.push({
       step,
       sounds: sounds.slice(readSounds).filter((cue) => cue.tick === tick)
         .length,
-      stops: stops.slice(readStops).filter((cue) => cue.tick === tick).length,
+      stops: stoppedSoFar - readStops,
     });
     readSounds = sounds.length;
-    readStops = stops.length;
+    readStops = stoppedSoFar;
 
     if (armed && event(snapshot)) {
       return {
@@ -170,9 +176,9 @@ export async function driveQuiet(
   ticks: number,
 ): Promise<{ sounds: number; stops: number }> {
   const sounds = watchCues(h);
-  const stops = watchStops(h);
+  const before = await stopsSoFar(h);
   await h.advance(ticks);
-  return { sounds: sounds.length, stops: stops.length };
+  return { sounds: sounds.length, stops: (await stopsSoFar(h)) - before };
 }
 
 /** How many sounds the build emitted on one numbered step of a watch. */

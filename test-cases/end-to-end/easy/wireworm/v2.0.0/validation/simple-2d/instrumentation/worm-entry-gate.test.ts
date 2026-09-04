@@ -28,7 +28,7 @@
 // that brings in no worm at all grade differently.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BANNER_TIME } from "../../src/constants";
+import { BANNER_TIME } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,

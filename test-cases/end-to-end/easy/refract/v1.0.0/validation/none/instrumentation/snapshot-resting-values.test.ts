@@ -7,8 +7,8 @@
 // fields, or reports them as whatever its internals happen to hold, breaks every
 // reader that trusts the documented shape; a build that keeps them at their
 // resting values is what the table requires. Each mode is entered from a clean
-// progression (the harness opens on `reset`, and `startMode` leaves progression
-// as it stands), which is exactly the state the table describes.
+// progression (the harness opens on `reset`, and neither entry disturbs the
+// other mode's progression), which is exactly the state the table describes.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertHasProperty } from "../assert";
@@ -39,6 +39,7 @@ const SNAPSHOT_FIELDS = [
   "pointer",
   "muted",
   "simTime",
+  "rngState",
 ] as const;
 
 let h: Harness;
@@ -56,7 +57,7 @@ it("in Cascade, the campaign fields rest and no field goes missing", async () =>
   await captureStill(h, "resting");
 
   const snapshot = await h.snapshot();
-  assertEqual(snapshot.mode, "cascade", "startMode entered cascade");
+  assertEqual(snapshot.mode, "cascade", "the sequence was entered");
   assertEqual(snapshot.screen, "playing", "cascade opens on playing");
 
   for (const field of SNAPSHOT_FIELDS) {
@@ -74,7 +75,7 @@ it("in Campaign, the cascade fields rest and no field goes missing", async () =>
   await startCampaign(h);
 
   const snapshot = await h.snapshot();
-  assertEqual(snapshot.mode, "campaign", "startMode entered campaign");
+  assertEqual(snapshot.mode, "campaign", "the campaign was entered");
   assertEqual(snapshot.screen, "select", "campaign opens on select");
 
   for (const field of SNAPSHOT_FIELDS) {

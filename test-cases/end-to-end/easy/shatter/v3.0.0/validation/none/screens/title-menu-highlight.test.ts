@@ -41,7 +41,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { TITLE_ITEMS } from "../constants";
-import { captureStill, createHarness, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  presentCalls,
+  type Harness,
+} from "../harness";
 import {
   BAND_SAMPLES,
   bandOf,
@@ -96,7 +101,7 @@ it("draws the highlighted title entry apart from the other, and moves the differ
     "the entry the highlight was posed on",
   );
   const drawn = menuDraws(
-    await h.presentCalls(),
+    await presentCalls(h),
     TITLE_ITEMS,
     "the title screen",
   );

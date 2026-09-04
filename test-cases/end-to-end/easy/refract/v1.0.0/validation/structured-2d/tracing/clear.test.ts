@@ -14,6 +14,7 @@ import {
   createHarness,
   loadBoard,
   resetTo,
+  traceCells,
   type Harness,
 } from "../harness";
 
@@ -32,11 +33,11 @@ it("KeyR empties every beam at once, leaves the nodes untouched, and stays on th
   await loadBoard(h, R2_FOREIGN);
 
   // Beams drawn on two channels, both partial.
-  h.debug.trace([
+  traceCells(h, [
     { col: 0, row: 0 },
     { col: 1, row: 0 },
   ]);
-  h.debug.trace([
+  traceCells(h, [
     { col: 0, row: 2 },
     { col: 1, row: 1 },
   ]);

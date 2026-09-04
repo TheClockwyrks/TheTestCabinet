@@ -12,8 +12,8 @@
 // worm holds the tile it was posed on for as long as the check runs. That is
 // deliberate isolation, not convenience: what RESUME owes is the board it was
 // handed back, and a worm free to step would make the reading depend on where a
-// resumed step clock happens to land — which is `worm`'s business, and
-// `screens/pause-freezes`'s.
+// resumed step clock happens to land — which is `worm`'s business, and the
+// `screens/pause-freezes-worm` point's.
 //
 // The pause is raised by the `pause` action's own first bound key (`KeyP`), and
 // the accept is the `confirm` action's, both dispatched as real key events at
@@ -22,7 +22,7 @@
 // here on the transition rather than on where its highlight started.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PAUSE_ITEMS } from "../../src/constants";
+import { PAUSE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

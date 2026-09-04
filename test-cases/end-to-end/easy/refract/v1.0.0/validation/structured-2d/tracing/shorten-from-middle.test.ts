@@ -16,6 +16,7 @@ import {
   loadBoard,
   pressCell,
   resetTo,
+  traceCells,
   type Harness,
 } from "../harness";
 
@@ -39,7 +40,7 @@ it("a press on a mid node drops every cell after it, leaves the rest drawn, and 
   await loadBoard(h, GEO_7X6);
 
   // Draw A -> B -> C -> D and release. B is a mid cell of exactly one beam.
-  h.debug.trace([A, B, C, D]);
+  traceCells(h, [A, B, C, D]);
   assertNull(h.snapshot().tracing, "the drawing trace ended with its release");
 
   pressCell(h, B);

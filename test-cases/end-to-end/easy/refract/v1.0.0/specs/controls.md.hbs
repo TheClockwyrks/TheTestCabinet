@@ -17,11 +17,11 @@ This game stands on no engine, so the pointer belongs to the runtime layer you
 write. What the game reads from that layer is a pointer position in the game's
 logical units on the `STAGE_W x STAGE_H` (`1280 x 720`) stage, a press edge, a
 release edge, and which of `mouse`, `pen`, and `touch` drove it. That layer
-delivers all three devices on that one path, and it takes the browser's own
-gestures on the canvas — panning, pinch-zoom, double-tap zoom, text selection,
-and the context menu — so a drag on a touchscreen reaches the game whole rather
-than being taken for a scroll part way through. How the layer produces those is
-yours to decide.
+delivers all three devices on that one path, and how it produces those reads is
+yours to decide. It also takes the browser's own gestures on the canvas so a
+touch drag arrives whole rather than being taken for a scroll part way through.
+The gestures it takes are panning, pinch-zoom, double-tap zoom, text selection,
+and the context menu.
 {{else if (eq engine.slug "simple-2d")}}
 The pointer belongs to the engine, which documents it in the `engine/`
 directory at the root of this repository. What the game reads from it is a
@@ -79,7 +79,7 @@ highlights, and a `board-<n>` target covers the drawn grid cell for campaign
 board `n`. The `back` target covers a drawn control reading `BACK_LABEL` (`BACK`)
 and the `clear` target one reading `CLEAR_LABEL` (`CLEAR`), each legible at the
 stage size. What each target looks like is the build's to design, within the
-requirements in `specs/overview.md`.
+requirements in `specs/ui.md`.
 
 On `playing` the `clear` and `back` targets sit clear of the board, whose extent
 is in `specs/board.md`, so a target never covers a node.

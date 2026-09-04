@@ -21,10 +21,8 @@ import {
   CORE_R,
   FIELD_H,
   FIELD_W,
-  GAMEOVER_ITEMS,
   HALO_R,
   HIT_FLASH_TIME,
-  PAUSE_ITEMS,
   ROCK_HEALTH,
   ROCK_RADIUS,
   SAUCER_BULLET_R,
@@ -33,10 +31,10 @@ import {
   STAR_X,
   STAR_Y,
   TAGLINE_TEXT,
-  TITLE_ITEMS,
   TITLE_TEXT,
   TORPEDO_R,
 } from "./constants";
+import { menuLayout } from "./menus";
 import { hashed } from "./rng";
 import { BACKGROUND, COLOR, STARFIELD, font } from "./theme";
 import type {
@@ -45,6 +43,7 @@ import type {
   SaucerState,
   ShatterState,
   ShipState,
+  Screen,
   TorpedoState,
   TrailState,
 } from "./game";
@@ -454,17 +453,13 @@ function drawHud(ctx: Ctx, state: State): void {
 }
 
 /** One vertical menu, with the highlighted entry drawn apart from the rest. */
-function drawMenu(
-  ctx: Ctx,
-  entries: readonly string[],
-  selected: number,
-  top: number,
-  step: number,
-): void {
+function drawMenu(ctx: Ctx, screen: Screen, selected: number): void {
+  const layout = menuLayout(screen);
+  if (layout === null) return;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  entries.forEach((entry, index) => {
-    const y = top + index * step;
+  layout.entries.forEach((entry, index) => {
+    const y = layout.top + index * layout.step;
     const active = index === selected;
     ctx.font = font(active ? 32 : 28, active ? "700" : "500");
     ctx.fillStyle = active ? COLOR.highlight : COLOR.textDim;
@@ -495,7 +490,7 @@ function drawTitle(ctx: Ctx, state: State): void {
   ctx.font = font(24, "600");
   ctx.fillText(TAGLINE_TEXT, FIELD_W / 2, 268);
 
-  drawMenu(ctx, TITLE_ITEMS, state.menuIndex, 400, 56);
+  drawMenu(ctx, "title", state.menuIndex);
 }
 
 const HOWTO_LINES: readonly string[] = [
@@ -560,7 +555,7 @@ function drawPaused(ctx: Ctx, state: State): void {
   ctx.fillStyle = COLOR.text;
   ctx.font = font(56, "800");
   ctx.fillText("PAUSED", FIELD_W / 2, 210);
-  drawMenu(ctx, PAUSE_ITEMS, state.menuIndex, 350, 56);
+  drawMenu(ctx, "paused", state.menuIndex);
 }
 
 function drawGameOver(ctx: Ctx, state: State): void {
@@ -582,7 +577,7 @@ function drawGameOver(ctx: Ctx, state: State): void {
   ctx.fillText(String(state.score), FIELD_W / 2 - 160, 292);
   ctx.fillText(String(state.wave), FIELD_W / 2 + 160, 292);
 
-  drawMenu(ctx, GAMEOVER_ITEMS, state.menuIndex, 420, 56);
+  drawMenu(ctx, "gameover", state.menuIndex);
 }
 
 /** The `WAVE N` banner, over the middle of the field while it runs. */

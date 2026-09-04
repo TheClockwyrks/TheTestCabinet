@@ -24,7 +24,7 @@
 // empty row, so nothing but the gate can decide what moves.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { wormStepInterval } from "../../src/constants";
+import { wormStepInterval } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,

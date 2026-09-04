@@ -23,7 +23,7 @@
 // reads the struck tile alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOARD_H, BOLT_SPEED, CHARGE_MAX } from "../../src/constants";
+import { BOARD_H, BOLT_SPEED, CHARGE_MAX } from "../constants";
 import { assertNull, assertTrue } from "../assert";
 import {
   captureStill,

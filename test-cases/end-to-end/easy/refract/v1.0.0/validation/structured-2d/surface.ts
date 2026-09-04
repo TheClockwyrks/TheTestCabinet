@@ -13,13 +13,13 @@
 // HOW THE SURFACE IS DRIVEN. Each operation is a method that acts on the
 // running game at the moment of the call, through the same systems play uses:
 // a POSE takes only the arguments its heading names, returns nothing, and
-// arranges the live world (`loadBoard(rows)`, `startMode("cascade")`), and a
+// arranges the live world (`loadBoard(rows)`, `setScreen("select")`), and a
 // READING takes no arguments and returns plain data read off the world at the
 // instant of the call (`snapshot()`). A caller therefore drives both directly —
 // `engine.debug.loadBoard(rows)`, `engine.debug.snapshot()` — with no wrapper
 // in between. `version` is a plain number.
 //
-// The three pointer operations and `trace` are the exception worth naming: the
+// The three pointer operations are the exception worth naming: the
 // specification says each takes effect the moment it is called, resolved
 // against the live state before the call returns, so a whole route is drawn
 // from code with no frame advanced between the calls. The clock, the keyboard,
@@ -153,6 +153,8 @@ export interface RefractSnapshot {
   muted: boolean;
   /** Accumulated simulation time, in seconds. */
   simTime: number;
+  /** The seeded generator's current state. */
+  rngState: number;
 }
 
 /**
@@ -160,8 +162,8 @@ export interface RefractSnapshot {
  * back from `engine.debug`.
  *
  * Each pose acts on the live game and returns nothing, and `snapshot` is a
- * reading of that same running game. The pointer operations and `trace` take
- * effect at the call; a SCREEN-CHANGING pose (`reset`, `startMode`,
+ * reading of that same running game. The pointer operations take
+ * effect at the call; a SCREEN-CHANGING pose (`reset`, `setScreen`,
  * `loadBoard`) may land at the call or as late as the end of the next advanced
  * frame — the spec fixes the arrangement, not the moment — so a scenario
  * poses, advances a frame, and then reads.
@@ -170,14 +172,17 @@ export interface RefractDebugApi {
   version: number;
   reset(options?: { seed?: number }): void;
   snapshot(): RefractSnapshot;
-  startMode(mode: Mode): void;
+  /** The mode field alone: no screen moves and no board is generated. */
+  setMode(mode: Mode): void;
+  /** The screen field alone: the board, the beams and the menus stay as they are. */
+  setScreen(screen: Screen): void;
+  /** The highlighted item on whichever menu the current screen shows. */
+  setMenuIndex(index: number): void;
   /** Poses a board written in specs/board.md notation, one string per row. */
   loadBoard(board: readonly string[]): void;
   pointerDown(x: number, y: number, device?: PointerDevice): void;
   pointerMove(x: number, y: number, device?: PointerDevice): void;
   pointerUp(device?: PointerDevice): void;
-  /** Sugar over the pointer operations: press, move per cell, release. */
-  trace(cells: readonly CellRef[]): void;
   clear(): void;
 }
 
@@ -199,11 +204,12 @@ export const READINGS = ["snapshot"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
-  "startMode",
+  "setMode",
+  "setScreen",
+  "setMenuIndex",
   "loadBoard",
   "pointerDown",
   "pointerMove",
   "pointerUp",
-  "trace",
   "clear",
 ] as const;

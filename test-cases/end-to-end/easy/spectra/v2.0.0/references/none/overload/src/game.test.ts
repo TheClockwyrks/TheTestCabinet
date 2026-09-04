@@ -45,6 +45,7 @@ import {
   STAGE_CLEARED_HOLD,
   STAGE_INTRO_HOLD,
   START_LIVES,
+  TITLE_ITEMS,
   fluxCycle,
   fluxHold,
   fluxWindow,
@@ -1096,7 +1097,9 @@ describe("the screens", () => {
     driven.frame(1 / 60);
     const shape = driven.debug.snapshot();
     expect(shape.screen).toBe("title");
-    expect(shape.menuIndex).toBe(0);
+    // specs/ui.md: an arrival back at the title highlights the entry that led
+    // away from it, which for the how-to-play screen is `HOW TO PLAY`.
+    expect(shape.menuIndex).toBe(TITLE_ITEMS.indexOf("HOW TO PLAY"));
   });
 
   it("pauses, freezes the field, and resumes", () => {

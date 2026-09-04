@@ -23,7 +23,7 @@
 // the seeded cursor frame, and whatever else the build drew is left alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../../src/constants";
+import { TILE } from "../constants";
 import { assertEqual, fail } from "../assert";
 import {
   captureStill,

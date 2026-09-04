@@ -47,7 +47,7 @@ import {
   type Harness,
 } from "../harness";
 import { footprintOf, meanChange, readRegion } from "./reading";
-import { firedPop, poseBystander } from "./scene";
+import { firedPop } from "./scene";
 
 /**
  * How far apart the two readings must stand, as a mean Euclidean RGB distance
@@ -91,7 +91,6 @@ afterEach(() => {
 
 it("paints two bursts of one run differently at the same place and age", async () => {
   startPosed(h);
-  poseBystander(h);
   const box = footprintOf(POP_AT.x, POP_AT.y, SHARD_SIZE);
 
   poseDrone(h, "shard", POP_AT.x, POP_AT.y, { band: "cyan" });

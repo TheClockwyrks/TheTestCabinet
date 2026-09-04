@@ -40,7 +40,6 @@ import {
   createHarness,
   droneById,
   framesFor,
-  poseBystander,
   poseDrone,
   startPosed,
   type Harness,
@@ -54,7 +53,7 @@ import { release } from "./wave";
  * same distance from the ship at `(640, 600)`: 350, 180 and 361 units out, every
  * one of them a small fraction of `DISCHARGE_MAX_R` (1500), so the wave reaches
  * all three well inside its life. All three are clear of both HUD strips
- * (`FIELD_TOP` 64, `FIELD_BOTTOM` 656) and of the corner the bystander holds.
+ * (`FIELD_TOP` 64, `FIELD_BOTTOM` 656).
  */
 const DIVERS_AT = [
   { x: 340, y: 420 },
@@ -84,10 +83,6 @@ afterEach(async () => {
 
 it("destroys every drone in phase diving", async () => {
   await startPosed(h);
-  // In the formation, which specs/resonance.md's own table spares, so the wave
-  // still leaves a drone standing: a stage clears in the moment the last drone of
-  // its wave is destroyed (specs/stages.md), and this scenario destroys three.
-  await poseBystander(h);
   const divers: number[] = [];
   for (const at of DIVERS_AT) {
     divers.push(await poseDrone(h, "shard", at.x, at.y, { phase: "diving" }));
@@ -96,8 +91,8 @@ it("destroys every drone in phase diving", async () => {
   const posed = await h.snapshot();
   assertLength(
     posed.drones,
-    DIVERS_AT.length + 1,
-    "precondition: the three divers and the bystander are on the field",
+    DIVERS_AT.length,
+    "precondition: the three divers are on the field",
   );
   assertEqual(
     posed.discharge.active,

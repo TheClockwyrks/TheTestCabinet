@@ -10,6 +10,15 @@
 // body on every roster — and then the whole list is read back. A build that resets
 // four of the fields and forgets the fifth fails on the fifth.
 //
+// WHAT THE VARIANT ADDS IS ITS OWN ITEM. `specs/instrumentation.md` has `reset` empty
+// the torpedo roster and fill the charge under `warhead`, and that is
+// `instrumentation/reset-clears-the-torpedoes`, an item of the warhead checklist
+// alone. It is not read here behind a probe of the build's own surface: a
+// requirement gated on whether the build installed `addTorpedo` is one a build can
+// shed by implementing less, and a `warhead` build that never wrote the torpedo
+// would then pass this point on the strength of its omission while one that wrote
+// the torpedo and forgot to clear it would fail.
+//
 // AND WHY MUTE IS THE ONE EXCEPTION. `specs/instrumentation.md` says `options.seed`
 // seeds the randomness and that "`muted` is left exactly as it stands; muting is
 // the runtime's". Under this engine the bit itself belongs to the engine's audio
@@ -36,7 +45,6 @@ import {
   poseRock,
   startPlaying,
   tapAction,
-  torpedoesOf,
   type Harness,
 } from "../harness";
 import { poseIdleSaucer } from "./populated-field";
@@ -108,8 +116,6 @@ it("puts every declared field back to its title value", async () => {
   poseBullet(h, BULLET_PLACE.x, BULLET_PLACE.y, 0, 0);
   poseEnemyBullet(h, ENEMY_BULLET_PLACE.x, ENEMY_BULLET_PLACE.y, 0, 0);
   poseIdleSaucer(h, SAUCER_PLACE.x, SAUCER_PLACE.y);
-  const warhead = typeof h.debug.addTorpedo === "function";
-  if (warhead) h.debug.setTorpedoCharge?.(0);
   await h.advance(1);
 
   // Read with NO tick between the reset and the reading. Under this engine a pose
@@ -155,18 +161,6 @@ it("puts every declared field back to its title value", async () => {
   assertEqual(s.waveSpawning, true, "reset turns the wave gate back on");
   assertEqual(s.saucerSpawning, true, "reset turns the saucer gate back on");
   assertCloseTo(s.simTime, 0, TITLE_DIGITS, "reset returns the clock to zero");
-
-  // And the fields the variant adds, demanded of a build whose surface carries
-  // the variant's operations.
-  if (warhead) {
-    assertLength(torpedoesOf(s), 0, "reset empties the torpedoes");
-    assertCloseTo(
-      s.torpedoCharge ?? -1,
-      1,
-      TITLE_DIGITS,
-      "reset fills the torpedo charge",
-    );
-  }
 });
 
 it("leaves the mute bit exactly as it stands", async () => {

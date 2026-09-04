@@ -1,10 +1,10 @@
 # Shatter — Screens and the HUD
 
-This file defines the five screens the game moves between, what each shows, the
-HUD drawn over live play, and the wave banner. The keys the screens are driven by
-are in `specs/controls.md`, and the run the `playing` screen carries is in
-`specs/progression.md`. Every piece of screen copy below carries the name this
-specification gives it.
+This file defines the five screens the game moves between, what each shows, how a
+mouse and a touch contact drive the menus, the HUD drawn over live play, and the
+wave banner. The keys the screens are driven by are in `specs/controls.md`, and the
+run the `playing` screen carries is in `specs/progression.md`. Every piece of
+screen copy below carries the name this specification gives it.
 
 Every piece of text a screen shows is legible against whatever sits behind it at
 the logical field size, `1280 x 720`. The palette, the type, and the layout of
@@ -32,8 +32,10 @@ The game is on exactly one of five screens at a time.
 
 The menu's entries are stacked one above the next under the title and tagline. The
 highlighted entry is drawn distinctly from the others, so a player always sees
-which entry confirming would take, and the highlight rests on the first entry on
-arriving at the title.
+which entry confirming would take. The highlight rests on the first entry when the
+game opens and on every return from a game, where `PLAY` is the entry that led
+away; a return from `howto` puts the highlight back on `HOW TO PLAY`, the entry
+that opened that screen.
 
 | Entry | Does |
 | --- | --- |
@@ -71,8 +73,10 @@ The controls it names include every key `specs/controls.md` binds, written as th
 standalone words `ARROWS`, `WASD`, `SPACE`, `ENTER`, `ESC`, `P`, and `M`.
 {{/if}}
 
-Leaving the screen returns to `title`, with the title's highlight at the first
-entry.
+`howto` shows no menu of its own, and the title's highlight is left exactly as it
+was while this screen shows. Confirming leaves the screen as leaving it does, and
+both return to `title`, so a screen opened from `HOW TO PLAY` returns with that
+entry highlighted.
 
 ### `playing`
 
@@ -101,9 +105,10 @@ rising: it counts the ticks the game ran rather than the play it ran.
 | --- | --- |
 | `RESUME` | Returns to `playing` with the field and the run exactly as they stood. |
 | `RESTART` | Opens a new game, as `specs/progression.md` states, and moves to `playing`. |
-| `QUIT TO MENU` | Returns to `title`, with the title's highlight at the first entry. |
+| `QUIT TO MENU` | Returns to `title`, with the title's highlight on `PLAY`, the entry that led away into the match. |
 
-Leaving this screen does what `RESUME` does.
+Leaving this screen and pausing again each do what `RESUME` does, so `Escape` and
+`P` alike resume the game from here.
 
 ### `gameover`
 
@@ -117,7 +122,42 @@ game reached.
 | Entry | Does |
 | --- | --- |
 | `PLAY AGAIN` | Opens a new game and moves to `playing`. |
-| `MENU` | Returns to `title`, with the title's highlight at the first entry. |
+| `MENU` | Returns to `title`, with the title's highlight on `PLAY`, the entry that led away into the match. |
+
+Leaving the screen does what `MENU` does.
+
+## Pointer and touch
+
+The menus take a mouse and touch as well as the keyboard, over the entries the
+screen shows. `title`, `paused`, and `gameover` show a menu; `howto` and `playing`
+show none, and nothing in this section applies to them.
+
+Each entry occupies a rectangular hit region the build lays out.
+`specs/instrumentation.md` states the reading through which the build reports an
+entry's region in logical units, so the menus keep whatever layout the build chose.
+
+| Input | Effect |
+| --- | --- |
+| A pointer moves onto an entry's region | The highlight becomes that entry. |
+| A touch contact lands inside an entry's region, or travels onto one | The highlight becomes that entry. |
+| A pointer is pressed and released inside one entry's region | The highlight becomes that entry, and that entry is confirmed. |
+| A touch contact lands and lifts inside one entry's region | The highlight becomes that entry, and that entry is confirmed. |
+
+A confirm takes both of its edges inside one entry's region: the press and its
+release for a pointer, the landing and the lift for a touch contact. Two edges that
+fall in different regions, and an edge that falls outside every region, confirm no
+entry. The entry every confirm acts on is the highlighted one, whichever input
+raised it, and it does what this file's table for that screen says it does.
+
+The pointer and the touch contacts are read once per frame, in the same input read
+as the keys, and are applied after that frame's key edges. A press and the release
+that follows it may arrive on one frame, and that frame confirms. A frame carrying
+a key movement edge together with a pointer or touch selection leaves the highlight
+where the pointer or the contact put it, and a frame carrying a key confirm
+together with a pointer or touch confirm confirms the key's entry alone. On
+`paused`, leaving the screen and pausing again are read before all of it, as
+`specs/controls.md` states, so a frame carrying either resumes and does nothing
+else.
 
 ## The HUD
 

@@ -21,7 +21,7 @@
 // point reads the step that starts the dive.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CHARGE_MAX, WORM_STEP_L1 } from "../../src/constants";
+import { CHARGE_MAX, WORM_STEP_L1 } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,

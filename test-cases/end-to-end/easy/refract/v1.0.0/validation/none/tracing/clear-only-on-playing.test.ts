@@ -11,9 +11,9 @@
 // runs a frame, and both fields move on every frame by specification
 // (`specs/instrumentation.md`), whatever the key did.
 //
-// The select screen is reached through `startMode`, the pose defined to act
-// "exactly as choosing its menu item does", so nothing here hangs on the
-// build's own menu bindings.
+// The select screen is reached through the two single-field poses that are all
+// entering the campaign does (`setMode`, `setScreen`), so nothing here hangs on
+// the build's own menu bindings.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";

@@ -55,7 +55,7 @@ import {
   isShimmering,
 } from "./bands";
 import { drawBursts } from "./bursts";
-import { menuItems } from "./game";
+import { highlightedItem, itemBaselineY, menuOf } from "./menus";
 import { drawStars } from "./starfield";
 import { BAND_COLOR, COLOR, FONT } from "./theme";
 import type { Bullet, Drone, SpectraState } from "./types";
@@ -532,17 +532,20 @@ function banner(
   ctx.restore();
 }
 
-/** A vertical menu, its highlighted item drawn distinctly from the others. */
-function drawMenu(
-  state: SpectraState,
-  ctx: CanvasRenderingContext2D,
-  top: number,
-  gap = 46,
-): void {
-  const items = menuItems(state.screen);
-  items.forEach((item, index) => {
-    const selected = index === state.menuIndex % Math.max(1, items.length);
-    const y = top + index * gap;
+/**
+ * A vertical menu, its highlighted item drawn distinctly from the others.
+ *
+ * The geometry is `src/menus.ts`'s, which is also what the debug surface reports
+ * through `menuItemRect` and what the pointer selects on: one layout, drawn and
+ * reported from the same place.
+ */
+function drawMenu(state: SpectraState, ctx: CanvasRenderingContext2D): void {
+  const menu = menuOf(state.screen);
+  if (menu === null) return;
+  const highlighted = highlightedItem(menu, state.menuIndex);
+  menu.items.forEach((item, index) => {
+    const selected = index === highlighted;
+    const y = itemBaselineY(menu, index);
     if (selected) {
       drawAccent(ctx, state.ship.band, STAGE_W / 2 - 150, y - 8, 8);
     }
@@ -582,7 +585,7 @@ function drawTitle(state: SpectraState, ctx: CanvasRenderingContext2D): void {
     weight: "600",
   });
 
-  drawMenu(state, ctx, 400, 54);
+  drawMenu(state, ctx);
 
   text(
     ctx,
@@ -681,7 +684,7 @@ function drawStageIntro(
 function drawPaused(state: SpectraState, ctx: CanvasRenderingContext2D): void {
   veil(ctx, 0.68);
   banner(ctx, "PAUSED", COLOR.text, 260);
-  drawMenu(state, ctx, 360);
+  drawMenu(state, ctx);
 }
 
 /** The interstitial a finished stage opens, and what it reports. */
@@ -737,5 +740,5 @@ function drawGameOver(
     align: "center",
     weight: "600",
   });
-  drawMenu(state, ctx, 430);
+  drawMenu(state, ctx);
 }

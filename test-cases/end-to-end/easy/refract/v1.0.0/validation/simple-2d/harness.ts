@@ -17,8 +17,8 @@
 // WHY THE DEBUG SURFACE RATHER THAN RAW ASSIGNMENT. specs/instrumentation.md
 // fixes its operations, so they mean the same thing in every build: `loadBoard`
 // poses a board and moves to `playing`, the pointer operations feed the same
-// immediate input path a player's pointer feeds, `trace` draws a whole route in
-// one call, and `reset` gives everything back. Posing through it is how a
+// immediate input path a player's pointer feeds, so a whole route is drawn
+// without a frame passing, and `reset` gives everything back. Posing through it is how a
 // scenario is reproducible, and it is the seam the case's specification
 // documents. `surface.ts` is that specification as types, and it is the only
 // description of the surface this harness reads: the build's own module for it
@@ -1091,18 +1091,40 @@ export async function loadBoard(h: Harness, notation: string): Promise<Board> {
 /** A route as `routes.ts` stores it: ordered `[col, row]` pairs. */
 export type RoutePairs = ReadonlyArray<readonly [number, number]>;
 
-/** `[col, row]` pairs as the cell list the surface's `trace` takes. */
+/** `[col, row]` pairs as the cell list {@link traceCells} takes. */
 export function toCells(route: RoutePairs): CellRef[] {
   return route.map(([col, row]) => ({ col, row }));
 }
 
 /**
- * Draw one route through `trace`. The pose is immediate — every pointer
- * operation takes effect as it is made — so nothing advances here; a check
- * that wants the drawn beam rendered advances a frame itself.
+ * Draw one route through the surface's three pointer operations: a press at the
+ * first cell's center, a move to each remaining center, then a release. Each
+ * pose is immediate — every pointer operation takes effect in the state the
+ * call returns — so nothing advances here; a check that wants the drawn beam
+ * rendered advances a frame itself.
+ *
+ * The sequence lives here rather than on the surface: a route is a compound of
+ * atomic operations, and a compound belongs to whoever is driving
+ * (specs/instrumentation.md carries the three operations and no sugar over
+ * them). A list the limits refuse part way through leaves the beam ending at
+ * the last segment they permitted, which is itself a specified behavior a
+ * check can read back.
  */
+export function traceCells(h: Harness, cells: readonly CellRef[]): void {
+  if (cells.length === 0) return;
+  const { cols, rows } = h.snapshot().board;
+  const first = nodeCenter(cells[0].col, cells[0].row, cols, rows);
+  h.debug.pointerDown(first.x, first.y);
+  for (const cell of cells.slice(1)) {
+    const point = nodeCenter(cell.col, cell.row, cols, rows);
+    h.debug.pointerMove(point.x, point.y);
+  }
+  h.debug.pointerUp();
+}
+
+/** {@link traceCells} over a route stored as `[col, row]` pairs. */
 export function traceRoute(h: Harness, route: RoutePairs): void {
-  h.debug.trace(toCells(route));
+  traceCells(h, toCells(route));
 }
 
 /** The registered actions, as the build's own `BINDINGS` table names them. */
@@ -1122,56 +1144,72 @@ export async function tapAction(h: Harness, action: ActionName): Promise<void> {
 }
 
 /**
- * Choose CAMPAIGN from the title menu the way a player does.
+ * Open the campaign's select grid, through the two single-field poses that ARE
+ * what choosing CAMPAIGN does: specs/modes/campaign.md fixes the effect as
+ * "sets `state.mode` to `\"campaign\"` and goes to `select`", and nothing
+ * else. The one frame after them is what puts the grid on the canvas. Assumes
+ * a fresh course (`resetTo` first), which is what the menu item would leave.
  *
- * Assumes a fresh title (`resetTo` first): CAMPAIGN is `TITLE_ITEMS[0]` and
- * `menuIndex` is 0 on arriving at the title, so one `confirm` takes it. The
- * arrival is asserted here because every course helper below stands on it: a
- * build that cannot enter the campaign fails with the requirement named
+ * Through the poses rather than through the title menu, deliberately: a build
+ * with a broken title menu and a correct grid must fail the menu checks and
+ * pass the grid's, so campaign/campaign-starts is where taking the item is the
+ * subject and every other check reaches the campaign directly. The arrival is
+ * asserted here because every course helper below stands on it: a build whose
+ * debug surface cannot open the campaign fails with the requirement named
  * rather than three helpers later.
  */
 export async function startCampaign(h: Harness): Promise<RefractSnapshot> {
-  await tapAction(h, "confirm");
+  h.debug.setMode("campaign");
+  h.debug.setScreen("select");
+  await h.advance(1);
   const snapshot = h.snapshot();
   assertEqual(
     snapshot.screen,
     "select",
-    "choosing CAMPAIGN on the title goes to select (specs/modes/campaign.md)",
+    "the campaign opens on select (specs/modes/campaign.md)",
   );
   return snapshot;
 }
 
 /**
- * Choose CASCADE from the title menu the way a player does: one `down` from
- * CAMPAIGN to CASCADE, then `confirm`. Assumes a fresh title (`resetTo`
- * first), and asserts the arrival for the same reason {@link startCampaign}
- * does.
+ * Begin a cascade sequence by taking the title's CASCADE item with the pointer.
+ * Assumes a title on screen (`resetTo` first), and asserts the arrival for the
+ * same reason {@link startCampaign} does.
+ *
+ * Cascade's entry is not a pose: specs/modes/cascade.md makes starting it set
+ * the mode, zero `solvedCount`, set `tier` to 1, GENERATE the first board, and
+ * move to `playing`, and the surface carries no operation that generates a
+ * board. So the sequence is begun the way the game itself begins it. The route
+ * is the pointer rather than the menu keys: CASCADE is `TITLE_ITEMS[1]`, so
+ * specs/controls.md fixes its target as `menu-1` and taking that target as
+ * "the same as `confirm` with `state.menuIndex` at `i`", which reaches the
+ * entry without walking the highlight — a build whose `down` does not move the
+ * highlight owes that point to screens/title-down and to no cascade check.
  */
 export async function startCascade(h: Harness): Promise<RefractSnapshot> {
-  await tapAction(h, "down");
-  await tapAction(h, "confirm");
+  const cascade = targetCenter(targetById(h.snapshot(), "menu-1"));
+  await pressRelease(h, cascade);
   const snapshot = h.snapshot();
   assertEqual(
     snapshot.screen,
     "playing",
-    "choosing CASCADE on the title goes straight to playing " +
+    "taking CASCADE on the title goes straight to playing " +
       "(specs/modes/cascade.md)",
   );
   return snapshot;
 }
 
 /**
- * Enter a mode through the surface's `startMode`, then run the one frame that
- * draws the screen it opened.
- *
- * specs/instrumentation.md defines `startMode` as entering a mode "exactly as
- * choosing its menu item does", so a check that only needs to BE in a mode
- * poses it rather than walking the title menu. The title menu stays the subject
- * of the `screens/` items, which is where the binding is what is being decided.
+ * Begin a cascade sequence from wherever the game stands, WITHOUT resetting:
+ * the title screen is posed through its single-field operation, and the entry
+ * itself is taken the way {@link startCascade} takes it. A check that has
+ * progress it must not lose (a solved campaign course, say) uses this rather
+ * than {@link startCascade}, whose fresh title is only reached by a reset.
  */
-export async function poseMode(h: Harness, mode: Mode): Promise<void> {
-  h.debug.startMode(mode);
+export async function enterCascade(h: Harness): Promise<RefractSnapshot> {
+  h.debug.setScreen("title");
   await h.advance(1);
+  return startCascade(h);
 }
 
 /** The snapshot's board as the oracle's `Board`, for `rules.ts`/`solver.ts`. */
@@ -1316,7 +1354,10 @@ export function traceBeams(h: Harness, beams: Beams): void {
   for (const channel of CHANNELS) {
     const beam = beams[channel];
     if (beam !== undefined && beam.length > 0) {
-      h.debug.trace(beam.map((cell) => ({ col: cell.col, row: cell.row })));
+      traceCells(
+        h,
+        beam.map((cell) => ({ col: cell.col, row: cell.row })),
+      );
     }
   }
 }
@@ -1787,6 +1828,30 @@ export function targetsOverlap(
 ): boolean {
   return (
     a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+  );
+}
+
+/**
+ * A stage point inside no target on the screen, found rather than assumed: the
+ * build owns its layout, so a gesture that must take nothing has to end
+ * somewhere the build itself says is free (specs/controls.md: a release
+ * anywhere but the armed target takes nothing).
+ */
+export function pointOutsideEveryTarget(targets: readonly TargetSnapshot[]): {
+  x: number;
+  y: number;
+} {
+  for (let y = 4; y < STAGE_H; y += 16) {
+    for (let x = 4; x < STAGE_W; x += 16) {
+      const probe = { id: "probe", x, y, w: 1, h: 1 };
+      if (!targets.some((target) => targetsOverlap(target, probe))) {
+        return { x, y };
+      }
+    }
+  }
+  return fail(
+    "a stage point inside no target",
+    targets.map((target) => target.id),
   );
 }
 

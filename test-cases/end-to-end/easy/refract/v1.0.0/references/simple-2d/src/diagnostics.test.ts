@@ -3,10 +3,31 @@
 // lists for the overlay.
 
 import { describe, expect, it } from "vitest";
-import { createDebugApi } from "./debug";
+import { cellCenter } from "./board";
+import { createDebugApi, type RefractDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
 import { createInitialState } from "./flow";
 import type { RefractState } from "./game";
+
+/**
+ * A route drawn through the surface's three pointer poses: a press at the
+ * first cell's center, a move to each remaining center, then a release. The
+ * surface carries no sugar for a route, so a caller that wants one composes it.
+ */
+function traceRoute(
+  api: RefractDebugApi,
+  state: RefractState,
+  cells: readonly { col: number; row: number }[],
+): RefractState {
+  if (cells.length === 0) return state;
+  const [firstX, firstY] = cellCenter(cells[0], state.board);
+  let next = api.pointerDown(state, firstX, firstY);
+  for (const cell of cells.slice(1)) {
+    const [x, y] = cellCenter(cell, next.board);
+    next = api.pointerMove(next, x, y);
+  }
+  return api.pointerUp(next);
+}
 import type { DeepReadonly } from "ts-essentials";
 
 type Source = (state: DeepReadonly<RefractState>) => unknown;
@@ -53,7 +74,7 @@ describe("the diagnostic sources", () => {
     expect(sources.get("pointer")?.(title)).toBe("0, 0");
 
     let playing = debug.loadBoard(title, ["T1T", "S.S"]);
-    playing = debug.trace(playing, [
+    playing = traceRoute(debug, playing, [
       { col: 0, row: 0 },
       { col: 1, row: 0 },
       { col: 2, row: 0 },

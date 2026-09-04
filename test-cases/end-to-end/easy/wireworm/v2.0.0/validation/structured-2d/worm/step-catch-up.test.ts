@@ -27,10 +27,26 @@
 // The board is empty and quiet and the worm is a single segment on a clear row,
 // so every step it takes is an unblocked wind and the head's column IS the
 // count of steps run.
+//
+// AND THE RECORDING BRACKETS THE PAIR RATHER THAN BEING THE PAIR. Two frames are
+// not something a reviewer can watch — a player opened on them shows a still —
+// so the clock is one whose next delta this check sets rather than a constant,
+// and it carries a run-up before the first long frame and a settle after the
+// second: ten and then twenty frames of `QUIET_INTERVALS`, three tenths of one
+// interval all told. The two readings are still taken on the same two long
+// frames, so the verdict is untouched.
+//
+// THE RUN-UP'S TIME ENTERS THE FIRST LONG FRAME, so the two readings are
+// restated with it included: `0.1 + 3.6 = 3.7` still floors to 3, and
+// `0.1 + 7.2 = 7.3` still floors to 7. The nearest boundary is `0.3` of an
+// interval away in each case, where it was `0.4` and `0.2` before, so both
+// readings sit further from a rounding of the accumulator than one of them did.
+// The settle then adds `0.2` to the `0.3` left standing, half an interval in
+// all, so no stray step lands inside it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ConstantClock } from "@test-cabinet/structured-2d";
-import { WORM_STEP_L1 } from "../../src/constants";
+import type { Clock } from "@test-cabinet/structured-2d";
+import { WORM_STEP_L1 } from "../constants";
 import { assertDeepEqual } from "../assert";
 import {
   captureReplay,
@@ -56,10 +72,39 @@ const FRAME_MS = WORM_STEP_L1 * INTERVALS_PER_FRAME * 1000;
 const STEPS_AFTER_FIRST = 3;
 const STEPS_AFTER_SECOND = 7;
 
+/**
+ * One frame of the run-up and the settle, in step intervals.
+ *
+ * A hundredth of an interval, so the thirty of them this check runs come to three
+ * tenths of one and no step can fall due inside either bracket: every step the
+ * check counts belongs to one of the two long frames.
+ */
+const QUIET_INTERVALS = 0.01;
+
+/** That, in milliseconds: `1.4` ms. */
+const QUIET_MS = WORM_STEP_L1 * QUIET_INTERVALS * 1000;
+
+/** Frames of run-up: the board at rest, before the first long frame lands. */
+const RUN_UP_FRAMES = 10;
+
+/** Frames of settle: what the two long frames left behind. */
+const SETTLE_FRAMES = 20;
+
+/** A clock whose next delta the check sets, so one frame can be any length. */
+class ScriptedClock implements Clock {
+  stepMs = FRAME_MS;
+
+  delta(): number {
+    return this.stepMs;
+  }
+}
+
+let clock: ScriptedClock;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ clock: new ConstantClock(FRAME_MS) });
+  clock = new ScriptedClock();
+  h = await createHarness({ clock });
 });
 
 afterEach(() => {
@@ -74,10 +119,15 @@ it("runs every step a long frame covered and carries the remainder", async () =>
   let afterSecond: WormSnapshot | undefined;
 
   await captureReplay(h, "catch-up", async () => {
+    clock.stepMs = QUIET_MS;
+    await h.advance(RUN_UP_FRAMES);
+    clock.stepMs = FRAME_MS;
     await h.advance(1);
     afterFirst = wormById(h.snapshot(), id);
     await h.advance(1);
     afterSecond = wormById(h.snapshot(), id);
+    clock.stepMs = QUIET_MS;
+    await h.advance(SETTLE_FRAMES);
   });
 
   assertDeepEqual(

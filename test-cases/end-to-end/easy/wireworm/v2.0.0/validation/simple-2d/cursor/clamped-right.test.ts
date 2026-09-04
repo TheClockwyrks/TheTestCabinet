@@ -15,7 +15,7 @@
 // cursor's centre x came to rest.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CURSOR_SPEED, CURSOR_X_MAX } from "../../src/constants";
+import { CURSOR_SPEED, CURSOR_X_MAX } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   BAND_CY,

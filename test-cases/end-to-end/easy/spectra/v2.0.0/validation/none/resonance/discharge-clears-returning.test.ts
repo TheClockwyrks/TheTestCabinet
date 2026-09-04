@@ -30,7 +30,6 @@ import {
   createHarness,
   droneById,
   framesFor,
-  poseBystander,
   poseDrone,
   startPosed,
   type Harness,
@@ -40,11 +39,10 @@ import { release } from "./wave";
 /**
  * Where the three returning drones stand, and the slot each is heading for.
  *
- * Between the formation grid (whose filled rows end at `slotY(4)` = 332) and the
- * ship's lane (`SHIP_Y` 600), spread across the field's width: 256, 160 and 256
- * units from the ship at `(640, 600)`, all far inside `DISCHARGE_MAX_R` (1500),
- * so the wave reaches every one of them early in its life. Clear of the corner
- * the bystander holds.
+ * Between the formation grid (whose filled rows end at `slotY(4)` = 332) and
+ * the ship's lane (`SHIP_Y` 600), spread across the field's width: 256, 160 and
+ * 256 units from the ship at `(640, 600)`, all far inside `DISCHARGE_MAX_R`
+ * (1500), so the wave reaches every one of them early in its life.
  */
 const RETURNING = [
   { x: 440, y: 440, col: 2, row: 0 },
@@ -73,10 +71,6 @@ afterEach(async () => {
 
 it("destroys every drone in phase returning", async () => {
   await startPosed(h);
-  // In the formation, which specs/resonance.md's own table spares, so a drone is
-  // still standing when the three are taken (specs/stages.md clears a stage on
-  // the moment the last drone of its wave is destroyed).
-  await poseBystander(h);
   const returning: number[] = [];
   for (const at of RETURNING) {
     returning.push(
@@ -91,8 +85,8 @@ it("destroys every drone in phase returning", async () => {
   const posed = await h.snapshot();
   assertLength(
     posed.drones,
-    RETURNING.length + 1,
-    "precondition: the three returning drones and the bystander are on the field",
+    RETURNING.length,
+    "precondition: the three returning drones are on the field",
   );
   for (const id of returning) {
     assertEqual(

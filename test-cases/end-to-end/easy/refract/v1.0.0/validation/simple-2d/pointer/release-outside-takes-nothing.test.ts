@@ -9,17 +9,15 @@
 // rather than assuming a corner is empty.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { STAGE_H, STAGE_W } from "../../src/constants";
-import { assertEqual, fail } from "../assert";
+import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
+  pointOutsideEveryTarget,
   resetTo,
   targetById,
   targetCenter,
-  targetsOverlap,
   type Harness,
-  type TargetSnapshot,
 } from "../harness";
 
 let h: Harness;
@@ -31,25 +29,6 @@ beforeEach(async () => {
 afterEach(() => {
   h?.dispose();
 });
-
-/**
- * A stage point inside no target on the screen, found rather than assumed: the
- * build owns its layout, so the release has to land somewhere the build itself
- * says is free.
- */
-function pointOutsideEveryTarget(
-  targets: readonly TargetSnapshot[],
-): { x: number; y: number } {
-  for (let y = 4; y < STAGE_H; y += 16) {
-    for (let x = 4; x < STAGE_W; x += 16) {
-      const probe = { id: "probe", x, y, w: 1, h: 1 };
-      if (!targets.some((target) => targetsOverlap(target, probe))) {
-        return { x, y };
-      }
-    }
-  }
-  return fail("a stage point inside no target", targets.map((t) => t.id));
-}
 
 it("leaves the title untouched when the release lands off the target", async () => {
   await resetTo(h, 1);

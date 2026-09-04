@@ -31,7 +31,7 @@ import {
   BOLT_SPEED,
   CHARGE_MAX,
   DISCHARGE_RADIUS,
-} from "../../src/constants";
+} from "../constants";
 import { assertNull, assertTrue } from "../assert";
 import {
   captureReplay,

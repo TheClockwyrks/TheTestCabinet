@@ -11,14 +11,11 @@ import {
   CHALLENGE_TOTAL,
   FIELD_BOTTOM,
   FIELD_TOP,
-  GAME_OVER_ITEMS,
   HUD_STAGE_LABEL,
-  PAUSE_ITEMS,
   PERFECT_TEXT,
   READY_TEXT,
   SCORE_STAGE_CLEAR,
   TAGLINE_TEXT,
-  TITLE_ITEMS,
   TITLE_TEXT,
   isChallengeStage,
 } from "./constants";
@@ -43,7 +40,7 @@ function drawTitle(
   // The two bands, side by side, so the pair reads before the first wave.
   accent(ctx, "cyan", 560, 340, 14, 3);
   accent(ctx, "magenta", 720, 340, 14, 3);
-  drawMenu(ctx, TITLE_ITEMS, state.menuIndex, 430, 52, 32);
+  drawMenu(ctx, "title", state.menuIndex, 32);
   label(ctx, "ENTER OR SPACE TO CHOOSE", 640, 600, 16, COLOR.textDim, "center");
 }
 
@@ -137,7 +134,7 @@ function drawGameOver(
   label(ctx, String(state.score), 520, 300, 32, COLOR.text);
   label(ctx, HUD_STAGE_LABEL, 500, 344, 26, COLOR.textDim, "right");
   label(ctx, String(state.stage), 520, 344, 26, COLOR.text);
-  drawMenu(ctx, GAME_OVER_ITEMS, state.menuIndex, 440, 50, 30);
+  drawMenu(ctx, "gameOver", state.menuIndex, 30);
 }
 
 /** The pause menu, over the frozen field. */
@@ -147,7 +144,7 @@ function drawPaused(
 ): void {
   wash(ctx, COLOR.scrim);
   label(ctx, "PAUSED", 640, 250, 60, COLOR.textBright, "center");
-  drawMenu(ctx, PAUSE_ITEMS, state.menuIndex, 350, 52, 30);
+  drawMenu(ctx, "paused", state.menuIndex, 30);
 }
 
 /** The banner the `ready` phase shows over the live field. */

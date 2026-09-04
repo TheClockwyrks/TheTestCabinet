@@ -18,7 +18,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThanOrEqual } from "../assert";
-import { GLITCH_MAX_ON_BOARD } from "../../src/constants";
+import { GLITCH_MAX_ON_BOARD } from "../constants";
 import {
   captureStill,
   createHarness,

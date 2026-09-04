@@ -18,7 +18,7 @@
 // consume the bolt on the way up.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED, CURSOR_Y_MAX, tileCX } from "../../src/constants";
+import { BOLT_SPEED, CURSOR_Y_MAX, tileCX } from "../constants";
 import { assertLessThanOrEqual, fail } from "../assert";
 import {
   boltById,

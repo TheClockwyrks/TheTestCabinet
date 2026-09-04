@@ -25,7 +25,7 @@
 // and the brightest of them is that colour, so an element and the ground behind
 // it are always compared like with like.
 
-import { TILE, tileCX, tileCY } from "../../src/constants";
+import { TILE, tileCX, tileCY } from "../constants";
 import {
   identifySprite,
   type DrawnImage,

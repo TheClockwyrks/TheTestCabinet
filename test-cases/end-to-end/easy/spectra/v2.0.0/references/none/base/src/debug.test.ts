@@ -57,6 +57,7 @@ describe("the surface", () => {
         "score",
         "lives",
         "extraLifeAwarded",
+        "challengeHits",
         "resonance",
         "dischargeReady",
         "inversion",
@@ -64,6 +65,7 @@ describe("the surface", () => {
         "muted",
         "waveEntry",
         "diveLaunching",
+        "stageClearing",
         "diveClock",
         "droneSpeedScale",
         "bulletSpeedScale",
@@ -193,6 +195,7 @@ describe("reset", () => {
     expect(s.extraLifeAwarded).toBe(false);
     expect(s.waveEntry).toBe(true);
     expect(s.diveLaunching).toBe(true);
+    expect(s.stageClearing).toBe(true);
     expect(s.ship.contact).toBe(true);
     expect(s.diveClock).toBe(0);
     expect(s.ship.x).toBe(LANE_CENTER);
@@ -285,14 +288,18 @@ describe("every pose reads back", () => {
     expect(d.snapshot().stage).toBe(11);
     d.setExtraLifeAwarded(true);
     expect(d.snapshot().extraLifeAwarded).toBe(true);
+    d.setChallengeHits(17);
+    expect(d.snapshot().challengeHits).toBe(17);
   });
 
-  it("poses the three world gates and the dive clock", () => {
+  it("poses the four world gates and the dive clock", () => {
     for (const enabled of [false, true]) {
       d.setWaveEntry(enabled);
       expect(d.snapshot().waveEntry).toBe(enabled);
       d.setDiveLaunching(enabled);
       expect(d.snapshot().diveLaunching).toBe(enabled);
+      d.setStageClearing(enabled);
+      expect(d.snapshot().stageClearing).toBe(enabled);
       d.setShipContact(enabled);
       expect(d.snapshot().ship.contact).toBe(enabled);
     }

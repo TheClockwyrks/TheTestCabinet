@@ -22,6 +22,7 @@ import {
   loadBoard,
   pressCell,
   resetTo,
+  traceCells,
   type Harness,
 } from "../harness";
 
@@ -54,8 +55,8 @@ it("a press on a node more than one beam passes through begins no trace and leav
 
   // Both channels cross the crystal completely, so it is a mid cell of both
   // beams; the unvisited lens keeps the board unsolved.
-  h.debug.trace([{ col: 0, row: 0 }, CRYSTAL, { col: 2, row: 0 }]);
-  h.debug.trace([{ col: 0, row: 1 }, CRYSTAL, { col: 2, row: 1 }]);
+  traceCells(h, [{ col: 0, row: 0 }, CRYSTAL, { col: 2, row: 0 }]);
+  traceCells(h, [{ col: 0, row: 1 }, CRYSTAL, { col: 2, row: 1 }]);
 
   const before = h.snapshot();
   assertDeepEqual(

@@ -84,7 +84,7 @@ const VELOCITY_TOLERANCE = 0.35;
  * How far from the opposite edge the body may be for the wrap to count as having
  * happened, in units.
  *
- * Not a reading of where the wrap put it — that is `wrap-rock`'s point, decided to
+ * Not a reading of where the wrap put it — that is the `wrap-rock-*` items' point, decided to
  * a fifth of a unit — but the precondition this item's own reading rests on: a
  * velocity carried "across a wrap" says nothing about a build that never wrapped.
  * One tick of the drift is 1.17 units, so two ticks of it admits any modulo a
@@ -131,7 +131,7 @@ it.each(CROSSINGS)(
     if (seam === RECORDED) captureStill(h, "wrap");
 
     // The rock really did come out of the far edge, which is what "across a wrap"
-    // means. Coarse on purpose: where exactly it landed is `wrap-rock`'s point.
+    // means. Coarse on purpose: where exactly it landed is the `wrap-rock-*` items' point.
     const landed = coordinateOn(crossing.after, run.axis);
     assertLessThanOrEqual(
       run.velocity > 0 ? landed : run.size - landed,

@@ -21,7 +21,7 @@
 // units, from row 19's centre (704) to y = 254, still 174 units inside the board.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOARD_Y, BOLT_SPEED } from "../../src/constants";
+import { BOARD_Y, BOLT_SPEED } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual, fail } from "../assert";
 import {
   boltOf,

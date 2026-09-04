@@ -40,7 +40,6 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { poseBystander } from "./wave";
 
 /**
  * Where the meter is posed before the kill, in meter points.
@@ -54,9 +53,9 @@ const POSED_METER = 20;
 /**
  * Where the target Shard stands, in logical units.
  *
- * Mid-field on the ship's own lane: well inside the play field on both axes (`y`
- * in `[64, 656]`, specs/field.md), far above the ship's lane at `SHIP_Y` (`600`),
- * and clear of the corner the bystander holds.
+ * Mid-field on the ship's own lane: well inside the play field on both axes
+ * (`y` in `[64, 656]`, specs/field.md), far above the ship's lane at `SHIP_Y`
+ * (`600`).
  */
 const TARGET_X = LANE_CENTER;
 const TARGET_Y = 300;
@@ -115,11 +114,6 @@ afterEach(() => {
 
 it("adds exactly RESONANCE_KILL when a matching shot destroys a Shard", async () => {
   startPosed(h);
-  // A stage clears in the moment the last drone of its wave is destroyed
-  // (specs/stages.md), and this scenario destroys the drone it poses; the
-  // bystander leaves the wave a drone under either reading of "its wave", so the
-  // field is still live when the meter is read.
-  poseBystander(h);
   h.debug.setResonance(POSED_METER);
   const target = poseDrone(h, "shard", TARGET_X, TARGET_Y, {
     band: MATCHING_BAND,

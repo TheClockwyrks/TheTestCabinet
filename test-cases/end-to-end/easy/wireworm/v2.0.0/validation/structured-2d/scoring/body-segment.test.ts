@@ -17,7 +17,7 @@
 // reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOARD_H, BOLT_SPEED, SCORE_BODY } from "../../src/constants";
+import { BOARD_H, BOLT_SPEED, SCORE_BODY } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

@@ -24,6 +24,26 @@ function fresh(): RefractState {
   return createInitialState();
 }
 
+/**
+ * A whole route drawn through the three pointer poses: a press at the first
+ * cell's center, a move to each remaining center, then a release. The surface
+ * carries no sugar for this — a route is a sequence, and a sequence belongs to
+ * whoever is driving.
+ */
+function trace(
+  state: RefractState,
+  cells: readonly { col: number; row: number }[],
+): RefractState {
+  if (cells.length === 0) return state;
+  const [firstX, firstY] = cellCenter(cells[0], state.board);
+  let next = debug.pointerDown(state, firstX, firstY);
+  for (const cell of cells.slice(1)) {
+    const [x, y] = cellCenter(cell, next.board);
+    next = debug.pointerMove(next, x, y);
+  }
+  return debug.pointerUp(next);
+}
+
 describe("the surface", () => {
   it("reports its version", () => {
     expect(debug.version).toBe(REFRACT_DEBUG_VERSION);
@@ -52,13 +72,14 @@ describe("snapshot", () => {
       targets: expect.any(Array),
       muted: false,
       simTime: 0,
+      rngState: DEFAULT_SEED,
     });
   });
 
   it("derives node centers, spends, completeness, and the live end", () => {
     let state = debug.loadBoard(fresh(), ["T1T", "S.S"]);
     const [x, y] = cellCenter({ col: 1, row: 0 }, state.board);
-    state = debug.trace(state, [
+    state = trace(state, [
       { col: 0, row: 0 },
       { col: 1, row: 0 },
     ]);
@@ -99,7 +120,7 @@ describe("snapshot", () => {
     expect(title.menuIndex).toBe(2);
 
     const select = debug.snapshot({
-      ...debug.startMode(fresh(), "campaign"),
+      ...debug.setScreen(fresh(), "select"),
       selectIndex: 5,
     });
     expect(select.selectIndex).toBe(5);
@@ -119,7 +140,7 @@ describe("snapshot", () => {
 describe("reset", () => {
   it("restores every declared field, seeds the generator, and keeps mute", () => {
     let state = debug.loadBoard(fresh(), ["TtT"]);
-    state = debug.trace(state, [
+    state = trace(state, [
       { col: 0, row: 0 },
       { col: 1, row: 0 },
     ]);
@@ -136,22 +157,33 @@ describe("reset", () => {
   });
 });
 
-describe("startMode", () => {
-  it("poses the same transition the title menu makes", () => {
-    const campaign = debug.startMode(fresh(), "campaign");
-    expect(campaign.screen).toBe("select");
-    expect(campaign.mode).toBe("campaign");
+describe("setMode", () => {
+  it("sets the mode field alone", () => {
+    const posed = debug.setMode({ ...fresh(), simTime: 4.5 }, "cascade");
+    expect(posed.mode).toBe("cascade");
+    expect(posed).toEqual({ ...fresh(), simTime: 4.5, mode: "cascade" });
+  });
+});
 
-    const cascade = debug.startMode(fresh(), "cascade");
-    expect(cascade.screen).toBe("playing");
-    expect(cascade.mode).toBe("cascade");
-    expect(cascade.tier).toBe(1);
-    expect(cascade.board.nodes.length).toBeGreaterThan(0);
+describe("setScreen", () => {
+  it("sets the screen field alone, leaving the board it was posed over", () => {
+    const playing = debug.loadBoard(fresh(), ["TtT"]);
+    const posed = debug.setScreen(playing, "solved");
+    expect(posed.screen).toBe("solved");
+    expect(posed).toEqual({ ...playing, screen: "solved", armedTarget: null });
   });
 
-  it("leaves simTime as it is, so a clean run is reset followed by this", () => {
-    const state = { ...fresh(), simTime: 4.5 };
-    expect(debug.startMode(state, "campaign").simTime).toBe(4.5);
+  it("leaves no pointer target armed", () => {
+    const armed: RefractState = { ...fresh(), armedTarget: "menu-1" };
+    expect(debug.setScreen(armed, "howto").armedTarget).toBeNull();
+  });
+});
+
+describe("setMenuIndex", () => {
+  it("sets the highlighted item alone", () => {
+    const posed = debug.setMenuIndex(fresh(), 2);
+    expect(posed.menuIndex).toBe(2);
+    expect(posed).toEqual({ ...fresh(), menuIndex: 2 });
   });
 });
 
@@ -198,10 +230,10 @@ describe("the pointer operations", () => {
   });
 });
 
-describe("trace", () => {
+describe("a route drawn through the pointer poses", () => {
   it("draws a whole route and solves through the game's own rules", () => {
     let state = debug.loadBoard(fresh(), ["TtT"]);
-    state = debug.trace(state, [
+    state = trace(state, [
       { col: 0, row: 0 },
       { col: 1, row: 0 },
       { col: 2, row: 0 },
@@ -212,7 +244,7 @@ describe("trace", () => {
 
   it("stops at the last permitted segment when the limits refuse the rest", () => {
     let state = debug.loadBoard(fresh(), ["TtT", "SsS"]);
-    state = debug.trace(state, [
+    state = trace(state, [
       { col: 0, row: 0 },
       { col: 1, row: 0 },
       { col: 1, row: 1 }, // square's lens: refused, live end stays at (1,0)
@@ -227,14 +259,14 @@ describe("trace", () => {
 
   it("is a no-op for an empty route", () => {
     const state = debug.loadBoard(fresh(), ["TtT"]);
-    expect(debug.trace(state, [])).toEqual(state);
+    expect(trace(state, [])).toEqual(state);
   });
 });
 
 describe("clear", () => {
   it("empties every beam on the playing screen alone", () => {
     let state = debug.loadBoard(fresh(), ["TtT"]);
-    state = debug.trace(state, [
+    state = trace(state, [
       { col: 0, row: 0 },
       { col: 1, row: 0 },
     ]);
@@ -284,17 +316,27 @@ describe("the installed surface", () => {
 
     api.loadBoard(["TtT"]);
     expect(host.state.screen).toBe("playing");
-    api.trace([
-      { col: 0, row: 0 },
-      { col: 1, row: 0 },
-      { col: 2, row: 0 },
-    ]);
+    for (const [col, row] of [
+      [0, 0],
+      [1, 0],
+      [2, 0],
+    ] as const) {
+      const [x, y] = cellCenter({ col, row }, host.state.board);
+      if (col === 0) api.pointerDown(x, y);
+      else api.pointerMove(x, y);
+    }
+    api.pointerUp();
     expect(api.snapshot().solved).toBe(true);
 
     api.reset({ seed: 7 });
     expect(host.state.rngState).toBe(7);
-    api.startMode("cascade");
+    expect(api.snapshot().rngState).toBe(7);
+    api.setMode("cascade");
     expect(host.state.mode).toBe("cascade");
+    api.setScreen("howto");
+    expect(host.state.screen).toBe("howto");
+    api.setMenuIndex(2);
+    expect(host.state.menuIndex).toBe(2);
   });
 
   it("draws a route through the immediate pointer operations", () => {

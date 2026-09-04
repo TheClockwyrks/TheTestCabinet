@@ -1,13 +1,17 @@
 // Refract — presentation/readouts-clear-of-the-board: the readouts sit clear
 // of the board.
 //
-// specs/ui.md "playing": the mode's readouts sit clear of the board, whose
-// extent specs/board.md gives — the largest board's cell centers span x
-// 352..928 and y 152..632, and every node's form reaches NODE_R (30) beyond
-// its center. So the keep-out region is that extent widened by NODE_R on every
-// side, and the check is that on a posed 7x6 board, in each mode, every run of
-// text the frame draws sits outside it — nothing overlaps a node or a beam on
-// the board that leaves the least room.
+// specs/ui.md "playing": inside the board's extent the screen draws only the
+// board — its cells, the nodes with whatever readout a node itself carries, and
+// the beams — and every other element of the screen sits clear of that extent,
+// the mode's own readouts and the two controls included. specs/board.md gives
+// the extent: the largest board's cell centers span x 352..928 and y 152..632,
+// and every node's form reaches NODE_R (30) beyond its center. So the keep-out
+// region is that extent widened by NODE_R on every side, and the check is that
+// on a posed 7x6 board, in each mode, every run of text the frame draws sits
+// outside it — nothing overlaps a node or a beam on the board that leaves the
+// least room. GEO_7X6 carries no crystal, so nothing on it draws the one
+// readout the extent is left open for.
 //
 // The text is read off the frame's own draw calls, each run's horizontal
 // extent recovered from the transform, measured width, and alignment it was
@@ -31,6 +35,7 @@ import {
   createHarness,
   drawnTextSpans,
   loadBoard,
+  poseMode,
   resetTo,
   type Harness,
   type TextSpan,
@@ -83,8 +88,7 @@ function assertSpansClear(spans: TextSpan[], mode: string): void {
 
 async function poseLargestBoard(mode: Mode): Promise<void> {
   await resetTo(h, 1);
-  h.debug.startMode(mode);
-  await h.advance(1);
+  await poseMode(h, mode);
   await loadBoard(h, GEO_7X6);
   const snapshot = h.snapshot();
   assertEqual(snapshot.screen, "playing", `${mode}: the posed board is up`);

@@ -84,6 +84,7 @@ export function resetToTitle(state: SpectraState, seed: number): void {
 
   state.waveEntry = true;
   state.diveLaunching = true;
+  state.stageClearing = true;
   state.entryClock = 0;
   state.swayClock = 0;
   state.diveClock = 0;

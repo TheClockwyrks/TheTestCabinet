@@ -17,11 +17,6 @@
 // put an enemy bullet into a scenario that is about a number. What a dive's PATH
 // and its FIRE do belongs to `swarm`'s items; this one needs the phase alone.
 //
-// WHY A BYSTANDER STANDS IN THE CORNER. {@link poseBystander} states it in full:
-// one inert drone standing keeps the wave live under either reading of "the last
-// drone of its wave" (specs/stages.md), so no `SCORE_STAGE_CLEAR` lands in the
-// number this check reads.
-//
 // WHAT THIS DOES NOT DECIDE. That a matching shot destroys a drone is
 // `bands/match-destroys`. That the other two moving phases pay this same figure is
 // `scoring/entering-scores-diving` and `scoring/returning-scores-diving`, each its
@@ -41,14 +36,13 @@ import {
   startPosed,
   type Harness,
 } from "../harness";
-import { poseBystander } from "./wave";
 
 /**
  * Where the Shard is posed, in logical units.
  *
  * A clear stretch of the play field: below the formation grid's lowest row
- * (`slotY(4)`, `332`) and its full sway, above the ship's lane (`SHIP_Y`, `600`),
- * and well clear of the corner the bystander holds.
+ * (`slotY(4)`, `332`) and its full sway, above the ship's lane (`SHIP_Y`,
+ * `600`).
  */
 const TARGET_AT = { x: 900, y: 460 } as const;
 
@@ -76,7 +70,6 @@ afterEach(() => {
 
 it("adds exactly SCORE_SHARD_DIVE when a diving Shard is destroyed", async () => {
   startPosed(h);
-  poseBystander(h);
   const target = poseDrone(h, "shard", TARGET_AT.x, TARGET_AT.y, {
     band: MATCHING_BAND,
     phase: "diving",

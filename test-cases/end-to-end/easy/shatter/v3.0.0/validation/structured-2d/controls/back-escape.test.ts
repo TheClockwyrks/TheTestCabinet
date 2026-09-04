@@ -1,10 +1,12 @@
 // controls/back-escape — `Escape` leaves the how-to screen.
 //
 // `specs/controls.md` binds `Escape` to the `back` action AND to `pause`, and
-// settles the ambiguity by the screen: "`Escape` drives both `back` and `pause`,
-// and the screen decides which one applies: it pauses while the game is being
-// played and leaves the screen otherwise." `specs/ui.md` says where leaving the
-// how-to screen goes: "Leaving the screen returns to `title`."
+// settles which screens read each: "`back` is read on `title`, `howto`, `paused`,
+// and `gameover`, and `pause` is read on `playing` and `paused`. `Escape` raises
+// both on one frame, so a single `Escape` press on `playing` pauses once and a
+// single `Escape` press on `paused` resumes once." `specs/ui.md` says where
+// leaving the how-to screen goes: "Confirming leaves the screen as leaving it
+// does, and both return to `title`."
 //
 // THE DOUBLE BINDING IS THE POINT, FROM THE OTHER SIDE. `controls/pause-escape`
 // decides that `Escape` pauses while the game is being played; this decides that

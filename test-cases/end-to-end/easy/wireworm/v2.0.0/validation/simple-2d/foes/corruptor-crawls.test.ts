@@ -17,7 +17,7 @@
 // edges it would leave through.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORRUPTOR_SPEED } from "../../src/constants";
+import { CORRUPTOR_SPEED } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,

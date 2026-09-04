@@ -21,8 +21,6 @@
 // whether the crossing inverts anything at all is
 // `drones/prism-triggers-inversion`'s point, and a build that never triggers is
 // named there.
-//
-// Nothing is destroyed in this scenario, so no bystander is needed.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDefined, assertEqual } from "../assert";

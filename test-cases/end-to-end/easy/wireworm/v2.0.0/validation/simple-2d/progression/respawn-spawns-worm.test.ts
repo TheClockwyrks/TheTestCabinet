@@ -23,7 +23,7 @@
 // that can arrive on this board is the worm the respawn brought.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { RESPAWN_TIME, START_LIVES, wormLength } from "../../src/constants";
+import { RESPAWN_TIME, START_LIVES, wormLength } from "../constants";
 import { assertContains } from "../assert";
 import {
   captureStill,

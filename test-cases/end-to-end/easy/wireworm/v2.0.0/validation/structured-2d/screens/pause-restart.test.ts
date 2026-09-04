@@ -20,7 +20,7 @@
 // so what this decides is the transition rather than how a menu moves.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PAUSE_ITEMS, START_LIVES } from "../../src/constants";
+import { PAUSE_ITEMS, START_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

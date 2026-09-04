@@ -59,7 +59,7 @@ build knows what it is held to.
 
 ## Every review point is decided by a validator
 
-The checklist grew from `77` points to `211`, and every one of them names a
+The checklist grew from `77` points to `227` items, and every one of them names a
 Vitest suite under `validation/<engine>/`, the domains its failure lowers, and
 how far it lowers them. The `74` standalone browser scripts of `v1.0.0` are gone.
 Under `none` a suite drives the built site in headless Chromium through

@@ -18,9 +18,7 @@ import {
   CORE_R,
   FIELD_H,
   FIELD_W,
-  GAMEOVER_ITEMS,
   HALO_R,
-  PAUSE_ITEMS,
   ROCK_RADIUS,
   SAUCER_BULLET_R,
   SAUCER_R,
@@ -29,12 +27,12 @@ import {
   STAR_Y,
   TAGLINE_TEXT,
   TICK_DT,
-  TITLE_ITEMS,
   TITLE_TEXT,
   TRAIL_TICKS,
   BULLET_R,
 } from "./constants";
-import type { RockState, ShatterState } from "./game";
+import type { RockState, Screen, ShatterState } from "./game";
+import { MENU_MARK_X, MENU_STEP, MENU_TEXT_X, menuLayout } from "./menus";
 import { COLOR, FONT } from "./theme";
 
 /** The eight neighbouring images of the field, plus the field itself. */
@@ -399,20 +397,21 @@ export function renderHud(
 /** One vertical menu: its entries stacked, with the highlighted one apart. */
 function paintMenu(
   ctx: CanvasRenderingContext2D,
-  items: readonly string[],
+  screen: Screen,
   selected: number,
-  top: number,
 ): void {
+  const layout = menuLayout(screen);
+  if (layout === null) return;
   ctx.save();
   ctx.font = FONT.menu;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
-  items.forEach((item, index) => {
-    const y = top + index * 58;
+  layout.entries.forEach((item, index) => {
+    const y = layout.top + index * MENU_STEP;
     const on = index === selected;
     ctx.fillStyle = on ? COLOR.highlight : COLOR.textDim;
-    ctx.fillText(item, 540, y);
-    if (on) ctx.fillText("▸", 496, y);
+    ctx.fillText(item, MENU_TEXT_X, y);
+    if (on) ctx.fillText("▸", MENU_MARK_X, y);
   });
   ctx.restore();
 }
@@ -464,7 +463,7 @@ export function renderScreens(
       ctx.font = FONT.tagline;
       ctx.fillStyle = COLOR.highlight;
       ctx.fillText(TAGLINE_TEXT, FIELD_W / 2, 268);
-      paintMenu(ctx, TITLE_ITEMS, state.menuIndex, 400);
+      paintMenu(ctx, "title", state.menuIndex);
       break;
 
     case "howto": {
@@ -499,7 +498,7 @@ export function renderScreens(
       ctx.font = FONT.heading;
       ctx.fillStyle = COLOR.text;
       ctx.fillText("PAUSED", FIELD_W / 2, 220);
-      paintMenu(ctx, PAUSE_ITEMS, state.menuIndex, 330);
+      paintMenu(ctx, "paused", state.menuIndex);
       break;
 
     case "gameover":
@@ -517,7 +516,7 @@ export function renderScreens(
       ctx.fillText(String(state.score), 660, 262);
       ctx.fillText(String(state.wave), 660, 312);
 
-      paintMenu(ctx, GAMEOVER_ITEMS, state.menuIndex, 420);
+      paintMenu(ctx, "gameover", state.menuIndex);
       break;
   }
   ctx.restore();

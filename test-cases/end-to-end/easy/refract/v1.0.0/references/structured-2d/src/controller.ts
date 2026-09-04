@@ -19,7 +19,12 @@
 import { PlayerController } from "@test-cabinet/structured-2d";
 import { playEvents } from "./audio";
 import { CAMPAIGN_LENGTH, SOLVED_ITEMS, TITLE_ITEMS } from "./constants";
-import { campaignSolvedItems, confirmItem, enterSelected, goBack } from "./flow";
+import {
+  campaignSolvedItems,
+  confirmItem,
+  enterSelected,
+  goBack,
+} from "./flow";
 import { refractState, type RefractState } from "./game";
 import { COMPLETE_ITEMS, SELECT_COLS } from "./layout";
 import { applySample } from "./pointer";

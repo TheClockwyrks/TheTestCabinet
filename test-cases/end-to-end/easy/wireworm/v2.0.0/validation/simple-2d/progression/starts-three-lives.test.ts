@@ -19,7 +19,7 @@
 // `screens.title-screen`'s point, not this one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES } from "../../src/constants";
+import { START_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 

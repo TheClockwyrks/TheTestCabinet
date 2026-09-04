@@ -29,7 +29,7 @@
 // read back is `instrumentation/poses-read-back`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ARC_LIFE, CHARGE_MAX, tileCX, tileCY } from "../../src/constants";
+import { ARC_LIFE, CHARGE_MAX, tileCX, tileCY } from "../constants";
 import {
   assertContains,
   assertEqual,

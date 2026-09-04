@@ -25,9 +25,11 @@
 // close to one it sits, and that is asserted beside the range.
 //
 // WHERE THE HIGHLIGHT LANDS IS NOT THIS POINT. `controls/menu-*` decides that a
-// move goes one entry in the right direction; this decides only that it never
-// leaves the menu. So nothing here asserts a particular index, and a build that
-// wraps the wrong way still passes here and fails there.
+// move goes one entry in the right direction, and `screens/menu-wraps-up` and
+// `screens/menu-wraps-down` decide where a move that crosses an end lands; this
+// decides only that the index never leaves the menu. So nothing here asserts a
+// particular index, and a build that CLAMPS at the ends passes here and fails
+// those two.
 //
 // THE MENUS ARE POSED DIRECTLY, and the paused one over the empty, quiet field
 // `startPlaying` leaves, so nothing behind a menu can reach the highlight while
@@ -35,8 +37,9 @@
 //
 // WHAT THIS DOES NOT DECIDE. Which key moves a menu, and which way
 // (`controls/menu-up-arrow`, `controls/menu-down-arrow`, `controls/menu-w`,
-// `controls/menu-s`), what each menu shows (`screens/*-menu-entries`), and where
-// a confirmed entry leads (`screens/*`).
+// `controls/menu-s`), that a move crossing an end wraps rather than clamps
+// (`screens/menu-wraps-up`, `screens/menu-wraps-down`), what each menu shows
+// (`screens/*-menu-entries`), and where a confirmed entry leads (`screens/*`).
 
 import { afterEach, beforeEach, it } from "vitest";
 import { GAMEOVER_ITEMS, PAUSE_ITEMS, TITLE_ITEMS } from "../constants";

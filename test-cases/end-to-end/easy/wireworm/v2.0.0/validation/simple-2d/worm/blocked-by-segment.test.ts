@@ -19,7 +19,7 @@
 // flip, and both worms are far from either side edge.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WORM_STEP_L1 } from "../../src/constants";
+import { WORM_STEP_L1 } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,

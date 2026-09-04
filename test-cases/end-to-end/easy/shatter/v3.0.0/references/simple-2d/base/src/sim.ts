@@ -19,7 +19,7 @@
 // state handed back.
 
 import type { CueName, RockSize } from "./constants";
-import type { Screen, ShatterState } from "./game";
+import type { PointerPress, Screen, ShatterState } from "./game";
 import type { DeepReadonly } from "ts-essentials";
 
 /**
@@ -116,6 +116,7 @@ export interface Sim {
   rngState: number;
 
   extraLifeNotice: number;
+  pointerPresses: PointerPress[];
 }
 
 /** Copy the state handed in into a value this transition may write. */
@@ -181,6 +182,11 @@ export function toSim(state: DeepReadonly<ShatterState>): Sim {
     rngState: state.rngState,
 
     extraLifeNotice: state.extraLifeNotice,
+    pointerPresses: state.pointerPresses.map((press) => ({
+      id: press.id,
+      entry: press.entry,
+      screen: press.screen,
+    })),
   };
 }
 

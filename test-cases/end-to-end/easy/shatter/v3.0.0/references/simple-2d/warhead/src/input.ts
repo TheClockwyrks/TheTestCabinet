@@ -23,7 +23,11 @@
 //     uses the one that applies.
 
 import { ACTIONS, BINDINGS, LAYOUT, type ActionName } from "./constants";
-import type { InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type {
+  InitApi,
+  PointerSample,
+  UpdateApi,
+} from "@test-cabinet/simple-2d";
 
 /** Everything a frame's input amounts to, resolved once per update. */
 export interface FrameInput {
@@ -42,6 +46,16 @@ export interface FrameInput {
   readonly back: boolean;
   readonly pause: boolean;
   readonly mute: boolean;
+
+  /**
+   * Every pointer and touch sample the frame delivered, in arrival order.
+   *
+   * `specs/ui.md` has the menus take a mouse and touch as well as the keys, and
+   * has them read once per frame in the same read as the keys. The samples are
+   * carried whole rather than reduced to a position, because a sweep that
+   * crossed several entries between two frames visited them in an order.
+   */
+  readonly pointer: readonly PointerSample[];
 }
 
 /** An input frame in which nothing at all is held or pressed. */
@@ -56,6 +70,7 @@ export const IDLE_INPUT: FrameInput = {
   back: false,
   pause: false,
   mute: false,
+  pointer: [],
 };
 
 /**
@@ -117,5 +132,6 @@ export function readInput(api: UpdateApi): FrameInput {
     back,
     pause,
     mute,
+    pointer: api.input.pointerSamples(),
   };
 }

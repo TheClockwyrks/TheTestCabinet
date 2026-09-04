@@ -26,6 +26,7 @@ import {
   captureStill,
   createHarness,
   drewText,
+  presentCalls,
   type Harness,
 } from "../harness";
 import { reachGameOver } from "./screens";
@@ -49,7 +50,7 @@ afterEach(async () => {
 it("draws the posed wave number on the game-over screen", async () => {
   await reachGameOver(h, { score: FINAL_SCORE, wave: FINAL_WAVE });
 
-  const calls = await h.presentCalls();
+  const calls = await presentCalls(h);
   await captureStill(h, "gameover");
 
   assertEqual(

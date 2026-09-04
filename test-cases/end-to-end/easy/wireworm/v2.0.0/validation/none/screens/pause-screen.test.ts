@@ -16,8 +16,8 @@
 // from the seeded art at its tile. A build that stops drawing the board behind
 // the menu draws none of them.
 //
-// That the board is also FROZEN is `screens/pause-freezes`'s requirement, and
-// nothing here reads it.
+// That the board is also FROZEN is the four `screens/pause-freezes-*` points'
+// requirement, and nothing here reads it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";

@@ -38,8 +38,8 @@
 // of a chosen length. Every harness opens by taking the game off the clock, so a
 // check asks for a number of frames and gets exactly that number. The POINTER
 // needs no frames at all: `specs/instrumentation.md` makes `pointerDown`,
-// `pointerMove`, `pointerUp`, and `trace` take effect the moment they are called,
-// so a whole route — a whole campaign course — is drawn without advancing the
+// `pointerMove`, and `pointerUp` take effect the moment they are called, so a
+// whole route — a whole campaign course — is drawn without advancing the
 // game, and a frame is driven only where something is genuinely per-frame: a
 // render to sample, a cue to hear, a key to deliver.
 //
@@ -67,6 +67,9 @@ import {
 import { fail } from "./assert";
 import { ACTION_KEYS, OVERLAY_KEY, type ActionName } from "./constants";
 import {
+  BOARD_CX,
+  BOARD_CY,
+  CELL_PITCH,
   CHANNELS,
   STAGE_H,
   STAGE_W,
@@ -101,12 +104,13 @@ export const REQUIRED_OPS = [
   "advance",
   "reset",
   "snapshot",
-  "startMode",
+  "setMode",
+  "setScreen",
+  "setMenuIndex",
   "loadBoard",
   "pointerDown",
   "pointerMove",
   "pointerUp",
-  "trace",
   "clear",
 ] as const;
 
@@ -173,6 +177,8 @@ export interface RefractSnapshot {
   targets: TargetSnapshot[];
   muted: boolean;
   simTime: number;
+  /** The seeded generator's current state. */
+  rngState: number;
 }
 
 /** Which device drove the pointer, as `specs/controls.md` names them. */
@@ -196,12 +202,13 @@ export interface RefractDebugApi {
   advance(seconds: number, frames?: number): Promise<void>;
   reset(options?: { seed?: number }): Promise<void>;
   snapshot(): Promise<RefractSnapshot>;
-  startMode(mode: Mode): Promise<void>;
+  setMode(mode: Mode): Promise<void>;
+  setScreen(screen: Screen): Promise<void>;
+  setMenuIndex(index: number): Promise<void>;
   loadBoard(board: readonly string[]): Promise<void>;
   pointerDown(x: number, y: number, device?: PointerDevice): Promise<void>;
   pointerMove(x: number, y: number, device?: PointerDevice): Promise<void>;
   pointerUp(device?: PointerDevice): Promise<void>;
-  trace(cells: readonly { col: number; row: number }[]): Promise<void>;
   clear(): Promise<void>;
 }
 
@@ -280,8 +287,8 @@ function projectCells(snapshot: RefractSnapshot): RefractSnapshot {
 // pointer-driven puzzle — the pointer operations do not even need a frame — so
 // the suite steps a plain 60 Hz, the rate a healthy display would have handed the
 // build anyway. The one check that is ABOUT the step size
-// (`instrumentation/deterministic-core`) calls `advance` with its own divisions
-// directly, through the surface.
+// (`instrumentation/advances-on-elapsed-time`) calls `advance` with its own
+// divisions directly, through the surface.
 
 /**
  * The shared harness, with Refract's snapshot, Refract's surface and Refract's
@@ -496,26 +503,40 @@ export async function toggleOverlay(h: Harness): Promise<void> {
 }
 
 /**
- * Enter a mode the way its title menu item does, through the surface's
- * `startMode` — the pose `specs/instrumentation.md` defines as "exactly as
- * choosing its menu item does". The one frame after it is what puts the new
- * screen on the canvas.
+ * Open the campaign's select grid, through the two single-field poses that
+ * ARE what choosing CAMPAIGN does: specs/modes/campaign.md fixes the effect as
+ * "sets `state.mode` to `\"campaign\"` and goes to `select`", and nothing
+ * else. The one frame after them is what puts the grid on the canvas.
  *
- * Through the pose rather than through the title menu's keys, deliberately: the
- * menu bindings are the build's own under this engine, so entering a mode by
- * key would hang every campaign and cascade check on a binding the
- * specification never fixed. The menu keys get their own checks in
- * `screens/`, where the binding is the subject.
+ * Through the poses rather than through the title menu, deliberately: a build
+ * with a broken title menu and a correct grid must fail the menu checks and
+ * pass the grid's (`campaign/campaign-starts` is where choosing the item is
+ * the subject).
  */
 export async function startCampaign(h: Harness): Promise<void> {
-  await h.debug.startMode("campaign");
+  await h.debug.setMode("campaign");
+  await h.debug.setScreen("select");
   await h.advance(1);
 }
 
-/** See {@link startCampaign}. */
+/**
+ * Begin a cascade sequence, by taking the title's `CASCADE` item with the
+ * pointer.
+ *
+ * Cascade's entry is not a pose: specs/modes/cascade.md makes starting it set
+ * the mode, zero `solvedCount`, set `tier` to 1, GENERATE the first board, and
+ * move to `playing`, and the surface carries no operation that generates a
+ * board. So the sequence is begun the way the game itself begins it. The route
+ * is the pointer rather than a key: specs/controls.md fixes the title's target
+ * ids (`menu-0`, `menu-1`, `menu-2`, one per entry of `TITLE_ITEMS`) and what
+ * taking one does, and the snapshot reports the rectangle the build actually
+ * hit-tests, so no binding of the build's own choosing enters the reading.
+ */
 export async function startCascade(h: Harness): Promise<void> {
-  await h.debug.startMode("cascade");
+  await h.debug.setScreen("title");
   await h.advance(1);
+  const cascade = targetCenter(targetById(await h.snapshot(), "menu-1"));
+  await pressRelease(h, cascade);
 }
 
 /**
@@ -553,17 +574,22 @@ export function segmentMidpoint(
 }
 
 /**
- * Draw a route through the surface's `trace`: a press at the first cell's
- * center, a move to each remaining center, then a release, all resolved the
- * moment the call is made. A list the limits refuse part way through leaves the
- * beam ending at the last segment they permitted, which is itself a specified
- * behaviour a check can read back.
+ * Draw a route through the surface's three pointer operations: a press at the
+ * first cell's center, a move to each remaining center, then a release, all
+ * resolved the moment each call is made. A list the limits refuse part way
+ * through leaves the beam ending at the last segment they permitted, which is
+ * itself a specified behavior a check can read back.
+ *
+ * The sequence lives here rather than on the surface: a route is a compound of
+ * atomic operations, and a compound belongs to whoever is driving. The whole
+ * route goes over in ONE crossing, for the reason {@link traces} gives.
  */
 export async function traceCells(
   h: Harness,
   cells: readonly Cell[],
 ): Promise<void> {
-  await h.debug.trace(cells.map(({ col, row }) => ({ col, row })));
+  if (cells.length === 0) return;
+  await traces(h, [cells]);
 }
 
 /** {@link traceCells} over a route stored as `[col, row]` pairs. */
@@ -578,16 +604,17 @@ export async function traceRoute(
 }
 
 /**
- * Draw several routes through the surface's `trace`, then read the state they
- * left — ALL IN ONE CROSSING.
+ * Draw several routes through the surface's pointer operations, then read the
+ * state they left — ALL IN ONE CROSSING.
  *
  * The same operations in the same order as one {@link traceCells} per route
- * followed by a `snapshot`, and the build sees no difference: `trace` resolves a
- * route the moment it is called, between frames, so nothing runs between two of
- * them for a crossing to have separated. What changes is the cost. A crossing is
+ * followed by a `snapshot`, and the build sees no difference: a press, a move,
+ * and a release each resolve the moment they are called, between frames, so
+ * nothing runs between two of them for a crossing to have separated. What
+ * changes is the cost. A crossing is
  * a round trip into a browser process, and a round trip is priced by how busy the
  * HOST is — 6 ms on an idle box and 90 ms on a loaded one — so a sweep that solves
- * twenty-five boards three channels at a time pays for a hundred of them in
+ * twenty-five boards three channels at a time pays for hundreds of them in
  * latency that has nothing to do with the build. Sending the whole solution at
  * once takes that out of the reading, which is what keeps a sweep clear of the
  * per-check allowance on a loaded host (`vitest.config.ts` names the four points
@@ -595,12 +622,23 @@ export async function traceRoute(
  *
  * WHY THIS IS A CASE-LEVEL FUNCTION AND NOT A HARNESS METHOD. Batching is not a
  * general capability the shared harness offers — it is sound here only because
- * `specs/instrumentation.md` makes THIS case's `trace` resolve between frames, so
- * a batch and a run of singles reach the same state. The two things it has to
+ * `specs/instrumentation.md` makes THIS case's pointer operations resolve
+ * between frames, so a batch and a run of singles reach the same state. The two
+ * things it has to
  * borrow from the harness it takes explicitly: the refusal a missing surface owes
  * every operation, and the same narrowing {@link projectCells} applies at the
  * harness's own single read point, so a check cannot tell a batched snapshot from
  * any other.
+ *
+ * WHY THE CENTER FORMULA IS WRITTEN OUT AGAIN INSIDE THE PAGE. The batch runs in
+ * the browser, where nothing this project imports is in scope, so the arithmetic
+ * `notation.ts` names `cellCenter` has to be spelled where it runs. It is the
+ * same expression over the same three transcribed figures, which cross in as
+ * arguments, and specs/board.md "Where a cell sits" is the authority for both.
+ * The board's own `cols` and `rows` are read off the surface at the batch, and
+ * the build's reported node positions are deliberately not used: whether the
+ * build put a cell where the formula says is `board/cell-geometry`'s point to
+ * decide, not a fact to drive from.
  */
 export async function traces(
   h: Harness,
@@ -608,26 +646,47 @@ export async function traces(
 ): Promise<RefractSnapshot> {
   if (h.surfaceFault !== null) failSurface(h.surfaceFault);
   const returned = await h.page.evaluate(
-    ([handle, list]) => {
+    ([handle, list, geometry]) => {
       const api = (
         window as unknown as Record<
           string,
           Record<string, (...a: unknown[]) => unknown>
         >
       )[handle];
-      for (const route of list) api.trace(route);
+      const { boardCx, boardCy, pitch } = geometry;
+      for (const route of list) {
+        if (route.length === 0) continue;
+        const { cols, rows } = (
+          api.snapshot() as unknown as { board: { cols: number; rows: number } }
+        ).board;
+        const center = (cell: {
+          col: number;
+          row: number;
+        }): [number, number] => [
+          boardCx - ((cols - 1) * pitch) / 2 + cell.col * pitch,
+          boardCy - ((rows - 1) * pitch) / 2 + cell.row * pitch,
+        ];
+        const [firstX, firstY] = center(route[0]);
+        api.pointerDown(firstX, firstY, "mouse");
+        for (const cell of route.slice(1)) {
+          const [x, y] = center(cell);
+          api.pointerMove(x, y, "mouse");
+        }
+        api.pointerUp("mouse");
+      }
       return api.snapshot();
     },
     [
       HANDLE,
       routes.map((route) => route.map(({ col, row }) => ({ col, row }))),
+      { boardCx: BOARD_CX, boardCy: BOARD_CY, pitch: CELL_PITCH },
     ] as const,
   );
   return projectCells(returned as RefractSnapshot);
 }
 
 /**
- * Draw a whole solution: one `trace` per channel present, in `CHANNELS` order,
+ * Draw a whole solution: one route per channel present, in `CHANNELS` order,
  * and hand back the state they left.
  *
  * Each beam's route runs emitter to emitter, so each trace begins on the first
@@ -637,9 +696,9 @@ export async function traces(
  * the trace ends on the spot, exactly as `specs/beams.md` states.
  *
  * The traces and the read-back go over in ONE crossing ({@link traces}), and the
- * snapshot that comes back IS the state after the solve: `trace` resolves between
- * frames, so nothing has run since. A caller that only wants the beams drawn may
- * still ignore it.
+ * snapshot that comes back IS the state after the solve: each pointer operation
+ * resolves between frames, so nothing has run since. A caller that only wants
+ * the beams drawn may still ignore it.
  */
 export async function drawBeams(
   h: Harness,
@@ -778,9 +837,9 @@ export async function driveCourse(
     );
     entered.push(snapshot);
     await onBoard?.(snapshot, index);
-    // The solution's own read-back IS the state after the solve: `trace` resolves
-    // between frames, so nothing has run since and a second crossing for a
-    // `snapshot` would read exactly what this already carries.
+    // The solution's own read-back IS the state after the solve: every pointer
+    // operation resolves between frames, so nothing has run since and a second
+    // crossing for a `snapshot` would read exactly what this already carries.
     snapshot = await solveCampaignBoard(h, index);
     if (index < boards - 1) {
       requireScreen(
@@ -861,9 +920,10 @@ export async function solveGenerated(
     await onBoard?.(snapshot, index);
     const verdict = solve(board);
     verdicts.push(verdict);
-    // The solution's own read-back IS the state after the solve: `trace` resolves
-    // between frames, so nothing has run since. A board the solver could not crack
-    // is read back as it stands, unsolved, for the caller's own verdict.
+    // The solution's own read-back IS the state after the solve: every pointer
+    // operation resolves between frames, so nothing has run since. A board the
+    // solver could not crack is read back as it stands, unsolved, for the
+    // caller's own verdict.
     snapshot =
       verdict.status === "solved"
         ? await drawBeams(h, verdict.beams)

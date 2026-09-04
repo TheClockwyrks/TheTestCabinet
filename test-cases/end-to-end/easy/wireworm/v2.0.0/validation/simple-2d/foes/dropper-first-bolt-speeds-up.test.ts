@@ -24,7 +24,7 @@ import {
   DROPPER_SPEED_HIT,
   FOE_HALF,
   TILE,
-} from "../../src/constants";
+} from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

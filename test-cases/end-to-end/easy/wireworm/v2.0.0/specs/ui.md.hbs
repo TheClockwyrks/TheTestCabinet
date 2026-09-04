@@ -33,8 +33,8 @@ The game is on exactly one of six screens at a time.
 
 The menu's items are stacked one above the next under the title and tagline. The
 highlighted item is drawn distinctly from the others, so a player always sees
-which item `confirm` would take, and the highlight rests on the first item on
-arriving at the title. `confirm` takes the highlighted item:
+which item `confirm` would take, and the highlight rests on the first item when
+the game opens. `confirm` takes the highlighted item:
 
 | Item | Does |
 | --- | --- |
@@ -61,7 +61,7 @@ The controls it names include the fire key, written as the standalone word
 `SPACE`, and the movement keys, written as the standalone words `ARROWS` and
 `WASD`.
 
-`back` returns to `title`, with the title's highlight at the first item.
+`back` returns to `title`, with the title's highlight on `HOW TO PLAY`.
 
 ### `playing`
 
@@ -73,8 +73,9 @@ the level's banner, naming the level about to be played, over the board.
 ### `paused`
 
 Reached by `pause` during live play. The board stays visible behind the menu and
-is frozen: no worm steps, no foe moves, no bolt travels, no phase timer runs, and
-no cue plays, so a paused game is exactly where it was when it was paused.
+is frozen: no worm steps, no foe moves, no bolt travels, and no phase timer runs,
+so nothing on the board raises a cue and a paused game is exactly where it was
+when it was paused.
 
 | Element | Constant | Content |
 | --- | --- | --- |
@@ -84,9 +85,11 @@ no cue plays, so a paused game is exactly where it was when it was paused.
 | --- | --- |
 | `RESUME` | Returns to `playing` with the board and the run exactly as they were. |
 | `RESTART` | Opens a new run, at level `1` with `START_LIVES` lives and a score of `0`, and moves to `playing`. |
-| `QUIT TO MENU` | Returns to `title`, with the title's highlight at the first item. |
+| `QUIT TO MENU` | Returns to `title`, with the title's highlight on `DESCEND`. |
 
-`back` on this screen does what `RESUME` does.
+`back` and `pause` on this screen each do what `RESUME` does. They are read
+before the menu edges, and a frame carrying either resumes and does nothing
+else.
 
 ### `victory` and `gameover`
 
@@ -100,7 +103,40 @@ Both end screens carry the same menu, `ENDING_ITEMS`: `PLAY AGAIN`, then `MENU`.
 | Item | Does |
 | --- | --- |
 | `PLAY AGAIN` | Opens a new run, at level `1` with `START_LIVES` lives and a score of `0`, and moves to `playing`. |
-| `MENU` | Returns to `title`, with the title's highlight at the first item. |
+| `MENU` | Returns to `title`, with the title's highlight on `DESCEND`. |
+
+## Pointer and touch on the menus
+
+Every screen showing a menu answers to a pointer and to touch as well as to the
+keyboard: `title`, `paused`, and the two end screens over their shared
+`ENDING_ITEMS`. The `howto` screen shows no menu and answers to `back` alone.
+
+Each menu item occupies a rectangular hit region you lay out.
+`specs/instrumentation.md` states the reading the build reports an item's region
+through, in logical stage units, so the menus keep the layout you designed.
+
+| Input | Effect |
+| --- | --- |
+| A pointer moves onto an item's region | `menuIndex` becomes that item's index. |
+| A touch contact lands inside an item's region, or travels onto one | `menuIndex` becomes that item's index. |
+| A pointer is pressed and released inside one item's region | `menuIndex` becomes that item's index, and that item is confirmed. |
+| A touch contact lands and lifts inside one item's region | `menuIndex` becomes that item's index, and that item is confirmed. |
+
+A confirm takes both of its edges inside one item's region: the press and its
+release for a pointer, the landing and the lift for a touch contact. Two edges
+falling in different regions confirm no item, and so does an edge falling
+outside every region. The item a confirm acts on is the item at `menuIndex`
+whichever input raised it, and its effect is the one this file's table for that
+screen gives `confirm`.
+
+The pointer and the touch contacts are read once per frame, in the same input
+read as the keyboard actions, and are applied after that frame's keyboard edges.
+A press and the release that follows it may arrive on one frame, and that frame
+confirms. A frame carrying a keyboard `up` or `down` edge together with a
+pointer or a touch selection leaves `menuIndex` at the item the pointer or the
+contact named. A frame carrying a keyboard `confirm` edge together with a
+pointer or a touch confirm confirms the keyboard's item alone. A pointer and a
+touch contact drive the menus directly rather than through an action.
 
 ## The HUD
 
@@ -162,7 +198,9 @@ sound is muted every cue is silent and the game stays fully playable.
 ## Out of scope
 
 - Network or online play.
-- Pointer, touch, and gamepad input. The game is played from the keyboard.
+- Gamepad input.
+- Pointer and touch control of play. The cursor is driven from the keyboard, and
+  the menus are what answer to a pointer and to touch.
 - Persistence of progress, scores, or settings between sessions. Each session
   starts fresh.
 - Power-ups, weapon upgrades, or a shop. The cursor's one weapon is the upward

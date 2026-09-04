@@ -1,9 +1,10 @@
 # Wireworm — Controls
 
-Wireworm is played on the keyboard alone. This file defines every action the game
-answers to and the keys bound to it. What the cursor does when it moves and fires
-is in `specs/cursor.md`, and the screens the menu actions move between are in
-`specs/ui.md`.
+Wireworm is played from the keyboard, and its menus answer to a pointer and to
+touch as well. This file defines every action the game answers to and the keys
+bound to it; `specs/ui.md` states how a pointer and touch drive the menus. What
+the cursor does when it moves and fires is in `specs/cursor.md`, and the screens
+the menu actions move between are in `specs/ui.md`.
 
 {{#if (eq engine.slug "none")}}
 ## How input reaches the game
@@ -38,7 +39,7 @@ The whole of `ACTIONS` is registered, so both buttons of the layout fire.
 | `b` | Fires a bolt. |
 | `confirm` | Accepts the highlighted menu item. |
 | `back` | Leaves the current screen. |
-| `pause` | Pauses live play, opening the pause screen. |
+| `pause` | Pauses live play, opening the pause screen, and resumes play from that screen. |
 | `mute` | Toggles sound, from any screen. |
 
 The four movement actions and the two fire actions are read as holds: the cursor
@@ -63,17 +64,21 @@ press.
 | `mute` | `KeyM` |
 
 `Space` drives `a`, `b`, and `confirm`, and `Escape` drives `back` and `pause`.
-The screen decides which one applies: `Space` fires while the game is being
-played and confirms on a screen showing a menu; `Escape` pauses while the game is
-being played and leaves the screen otherwise.
+The screen decides which one applies. `Space` fires while the game is being
+played and confirms on a screen showing a menu. `Escape` raises `back` and
+`pause` together on one frame: `pause` is read on `playing` and on `paused`, and
+`back` is read on `title`, `howto`, `paused`, `victory`, and `gameover` but not
+on `playing`. So a single `Escape` press during play opens the pause screen and
+leaves it open, and a single `Escape` press on `paused` resumes once.
 
 ## Menus
 
-Every menu is vertical and is driven by `up`, `down`, and `confirm`. `up` and
-`down` move the highlight by one item and wrap at both ends, so moving down from
-the last item highlights the first and moving up from the first highlights the
-last. `confirm` takes the highlighted item. `specs/ui.md` states each screen's
-items and where each one leads.
+Every menu is vertical, and from the keyboard it is driven by `up`, `down`, and
+`confirm`. `up` and `down` move the highlight by one item and wrap at both ends,
+so moving down from the last item highlights the first and moving up from the
+first highlights the last. `confirm` takes the highlighted item. `specs/ui.md`
+states each screen's items, where each one leads, and how a pointer and touch
+drive those same items.
 
 ## The debug overlay
 

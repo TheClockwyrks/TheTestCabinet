@@ -22,12 +22,7 @@
 // (specs/scoring.md), and with no segment in reach the whole award is the purge.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BOLT_SPEED,
-  CHARGE_MAX,
-  SCORE_PURGE_NODE,
-  TILE,
-} from "../../src/constants";
+import { BOLT_SPEED, CHARGE_MAX, SCORE_PURGE_NODE, TILE } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

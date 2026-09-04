@@ -17,7 +17,7 @@
 // nothing can arrive to confuse an empty roster with a refilled one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES } from "../../src/constants";
+import { START_LIVES } from "../constants";
 import { assertLength } from "../assert";
 import {
   captureStill,

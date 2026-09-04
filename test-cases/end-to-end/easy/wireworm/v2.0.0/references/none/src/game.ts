@@ -38,6 +38,7 @@ import { checkContact, clampCursor, moveCursor, updateFiring } from "./cursor";
 import { registerDiagnostics } from "./diagnostics";
 import { emptyField } from "./field";
 import { updateFoes } from "./foes";
+import { itemAt, menuFor } from "./menus";
 import {
   back,
   confirm,
@@ -124,6 +125,51 @@ function live(state: WirewormState): boolean {
   return state.screen === "playing" && state.phase === "active";
 }
 
+/**
+ * This frame's pointer and touch over the menu the current screen shows
+ * (specs/ui.md).
+ *
+ * Read after the keyboard edges, and skipped entirely when the keyboard already
+ * confirmed on this frame: a frame carrying a keyboard `confirm` together with a
+ * pointer confirm confirms the keyboard's item alone.
+ *
+ * A press selects as well as a move does, because a finger never hovers and the
+ * landing is the first the build hears of it. A release confirms only when it
+ * falls inside the very item its own press did, which is what makes sliding off
+ * a pressed entry cancel it.
+ */
+function drivePointer(
+  state: WirewormState,
+  api: UpdateApi,
+  spent: boolean,
+  onConfirm: (index: number) => void,
+): void {
+  const menu = menuFor(state.screen);
+  if (menu === null) return;
+  const frame = api.pointer.frame();
+  if (spent) return;
+
+  const at = (point: { x: number; y: number }): number | null =>
+    itemAt(menu, point.x, point.y);
+
+  if (frame.pressed !== null) {
+    const landed = at(frame.pressed);
+    if (landed !== null) state.menuIndex = landed;
+  }
+  if (frame.moved !== null) {
+    const over = at(frame.moved);
+    if (over !== null) state.menuIndex = over;
+  }
+  if (frame.released !== null) {
+    const from = at(frame.released.from);
+    const to = at(frame.released.to);
+    if (from !== null && from === to) {
+      state.menuIndex = to;
+      onConfirm(to);
+    }
+  }
+}
+
 /** Move a menu highlight, wrapping at both ends, and take a confirmed item. */
 function driveMenu(
   state: WirewormState,
@@ -135,6 +181,7 @@ function driveMenu(
   const up = menuUp(api);
   const down = menuDown(api);
   const accepted = confirm(api);
+  let spent = false;
   if (up) {
     state.menuIndex = (((state.menuIndex - 1) % count) + count) % count;
     cues.play(CUES.menu);
@@ -143,11 +190,30 @@ function driveMenu(
     cues.play(CUES.menu);
   } else if (accepted) {
     onConfirm(state.menuIndex);
+    spent = true;
   }
+  drivePointer(state, api, spent, onConfirm);
+}
+
+/**
+ * Read this frame's input and act on it.
+ *
+ * A frame that changed the screen makes the runtime forget the press in
+ * progress: a confirm takes both of its edges on one menu (specs/ui.md), and the
+ * release still to come belongs to a screen that is no longer shown.
+ */
+export function handleInput(
+  state: WirewormState,
+  api: UpdateApi,
+  cues: CueSink,
+): void {
+  const opening = state.screen;
+  handleScreenInput(state, api, cues);
+  if (state.screen !== opening) api.pointer.forget();
 }
 
 /** Read this frame's edges and act on them, by screen. */
-export function handleInput(
+function handleScreenInput(
   state: WirewormState,
   api: UpdateApi,
   cues: CueSink,
@@ -168,7 +234,11 @@ export function handleInput(
       return;
 
     case "howto":
-      if (back(api) || confirm(api)) toTitle(state);
+      // Leaving the how-to screen selects the entry that led away from it
+      // (specs/ui.md), which is `HOW TO PLAY` rather than the first item.
+      if (back(api) || confirm(api)) {
+        toTitle(state, TITLE_ITEMS.indexOf("HOW TO PLAY"));
+      }
       return;
 
     case "playing":

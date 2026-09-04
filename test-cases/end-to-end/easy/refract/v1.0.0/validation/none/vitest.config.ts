@@ -39,7 +39,7 @@ import { defineValidationConfig } from "./case-harness/vitest-config";
 // Sixty seconds was such an allowance, and this case is where that was measured.
 // On a host running nine of these projects at once (load average ~450), an
 // unmodified reference lost FOUR points to it — `cascade/tier-ladder`,
-// `cascade/sequence-is-endless`, `cascade/boards-meet-the-tier-floor` and
+// `cascade/sequence-is-endless`, the `cascade/floor-*` sweeps and
 // `campaign/select-states` — at 66-76 s apiece against quiet times of 6-14 s.
 // Nothing about those checks is unusual; a crossing costs 6 ms on an idle box and
 // 90 ms on a loaded one, and a sweep that makes a few hundred of them is one busy
