@@ -1,4 +1,4 @@
-// Deepcore — one update of the mine (specs/gameplay.md).
+// Deepcore — one update of the mine (specs/expedition.md).
 //
 // `stepGame` integrates one interval of game time against the delta time the
 // frame was handed: it drills, moves the miner under physics, bills fuel and

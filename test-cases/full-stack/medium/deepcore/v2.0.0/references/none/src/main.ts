@@ -30,12 +30,13 @@ import {
 import { Game } from "./game";
 import { Input, actionsForCode } from "./input";
 import { buyItem, itemForHotkey, useItem } from "./items";
-import { menuItems } from "./menus";
+import { arrivalIndex, menuItems } from "./menus";
 import { Diagnostics } from "./overlay";
 import { Bursts } from "./particles";
 import { render } from "./render";
 import type { Clickable, View } from "./render";
 import { fabricate } from "./rocket";
+import { hasSave } from "./save";
 import type { ItemId, OpenPanel, Ore, UpgradeTrack } from "./types";
 
 /** The largest delta one frame may be worth. A backgrounded tab resumes with a gap
@@ -109,8 +110,9 @@ async function main(): Promise<void> {
 
   function activate(action: string): void {
     if (action.startsWith("nav:")) {
-      game.screen = action.slice(4) as typeof game.screen;
-      game.menuIndex = 0;
+      const to = action.slice(4) as typeof game.screen;
+      game.menuIndex = arrivalIndex(game.screen, to, game.mode, hasSave());
+      game.screen = to;
       return;
     }
     if (action.startsWith("mode:")) {
@@ -197,14 +199,28 @@ async function main(): Promise<void> {
     }
   }
 
-  function routeClick(x: number, y: number): void {
+  /** Whether a logical point falls inside a clickable's region. */
+  function inside(c: Clickable, p: { x: number; y: number }): boolean {
+    return p.x >= c.x && p.x <= c.x + c.w && p.y >= c.y && p.y <= c.y + c.h;
+  }
+
+  /**
+   * Route one completed contact: both edges have to land in the same region.
+   *
+   * specs/controls.md: "A choice takes both of its edges inside one region... Two
+   * edges falling in different regions, and an edge falling outside every region,
+   * choose nothing."
+   */
+  function routeChoice(
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+  ): void {
     for (let i = clickables.length - 1; i >= 0; i--) {
       const c = clickables[i]!;
       if (c.disabled) continue;
-      if (x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) {
-        activate(c.action);
-        return;
-      }
+      if (!inside(c, from)) continue;
+      if (inside(c, to)) activate(c.action);
+      return;
     }
   }
 
@@ -282,10 +298,10 @@ async function main(): Promise<void> {
     }
   }
 
-  /** Run this frame's queued clicks and edge keys. */
+  /** Run this frame's completed contacts and edge keys. */
   function drainEdges(): void {
-    if (input.clicks.length || input.codes.length) gesture();
-    for (const c of input.clicks) routeClick(c.x, c.y);
+    if (input.choices.length || input.codes.length) gesture();
+    for (const c of input.choices) routeChoice(c.from, c.to);
     for (const code of input.codes) routeKey(code);
     input.drain();
   }
@@ -353,7 +369,13 @@ async function main(): Promise<void> {
     },
   };
 
-  installDebugApi({ game, input, clock, drainEdges });
+  installDebugApi({
+    game,
+    input,
+    clock,
+    drainEdges,
+    clickables: () => clickables,
+  });
 
   let last = performance.now();
 

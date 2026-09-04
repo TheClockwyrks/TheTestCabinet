@@ -104,10 +104,10 @@ async function arrange(page, seed) {
   // Through the menus, exactly as a player does: NEW EXPEDITION, STANDARD, STANDARD.
   await page.evaluate(() => {
     const d = window.__deepcore;
-    d.press("Enter");
-    d.press("Enter");
-    d.press("ArrowDown");
-    d.press("Enter");
+    for (const code of ["Enter", "Enter", "ArrowDown", "Enter"]) {
+      d.keyDown(code);
+      d.keyUp(code);
+    }
   });
   // A few tiers bought at the shop, so the dig reads at the pace a played run reaches.
   await page.evaluate(() => {

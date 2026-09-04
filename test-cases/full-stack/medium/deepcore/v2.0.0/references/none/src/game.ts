@@ -1,5 +1,5 @@
 // Deepcore — the game: every piece of authoritative state, and the update that
-// advances it (specs/gameplay.md, specs/ui.md).
+// advances it (specs/expedition.md, specs/ui.md).
 //
 // The game is a small state machine over the live mine. `update(dt)` integrates one
 // interval of game time against the delta time it is handed: it drills, moves the
@@ -142,6 +142,8 @@ export interface DeepcoreSnapshot {
   autoStep: boolean;
   muted: boolean;
   simTime: number;
+  /** The expedition's own clock, in seconds. Rests at 0 until one begins. */
+  elapsedSeconds: number;
   hasSave: boolean;
   credits: number;
   creditsEarned: number;
@@ -412,8 +414,12 @@ export class Game {
   // Lifecycle
   // -------------------------------------------------------------------------
 
-  /** Move to size-select, holding the chosen mode until a size is picked. */
+  /**
+   * Move to size-select with the expedition's mode set to the one chosen
+   * (specs/ui.md), holding it until a size is picked.
+   */
   chooseMode(mode: Mode): void {
+    this.mode = mode;
     this.pendingMode = mode;
     this.menuIndex = 0;
     this.screen = "size-select";
@@ -1148,6 +1154,7 @@ export class Game {
       autoStep: this.autoStep,
       muted: this.muted,
       simTime: this.simTime,
+      elapsedSeconds: this.elapsedSeconds,
       hasSave: hasSave(),
       credits: this.credits,
       creditsEarned: this.creditsEarned,

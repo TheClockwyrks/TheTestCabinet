@@ -343,7 +343,7 @@ function drawMine(
     if (b) {
       const bx = b.col * TILE + TILE / 2 + offX;
       const by = groundY - BUILDING_H - 6;
-      // The Save Pad has no menu — clicking it banks the expedition (specs/gameplay.md); every
+      // The Save Pad has no menu — clicking it banks the expedition (specs/expedition.md); every
       // other building opens its overlay panel.
       cl.push({
         x: bx - BUILDING_W / 2,
@@ -1643,7 +1643,7 @@ function drawFuelDepot(
   const fuelFull = fuelD <= 0;
   // FILL pays only for what is missing and only as far as the Credits reach, so
   // one unit's price is enough for it. The fixed increment is all-or-nothing, so
-  // specs/gameplay.md's "an action that cannot be afforded is disabled" holds it
+  // specs/expedition.md's "an action that cannot be afforded is disabled" holds it
   // to the whole of what it would buy.
   const cantBuyFuel = fuelFull || game.credits < FUEL_PRICE;
   const cantBuyFuelIncrement =
@@ -1926,7 +1926,7 @@ function drawUpgradeShop(
 /**
  * The SUPPLY DEPOT (specs/items.md, specs/world.md): the six single-use field supplies, each
  * with a code-drawn icon, its blurb, the count held, and a price/BUY greyed out when
- * unaffordable — its own surface building and the fourth Credits sink (specs/gameplay.md).
+ * unaffordable — its own surface building and the fourth Credits sink (specs/expedition.md).
  */
 function drawSupplyDepot(
   ctx: CanvasRenderingContext2D,

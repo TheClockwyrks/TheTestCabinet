@@ -1,4 +1,4 @@
-// Deepcore — the single-slot expedition save (specs/gameplay.md,
+// Deepcore — the single-slot expedition save (specs/expedition.md,
 // specs/modes.md).
 //
 // There is one slot, written only at the surface Save Pad, held in the browser.
