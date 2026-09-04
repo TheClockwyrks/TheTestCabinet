@@ -3571,6 +3571,63 @@ export async function startPosed(
 }
 
 /**
+ * Pose a live run PAUSED, with `index` highlighted on the pause menu.
+ *
+ * The ground the pause menu's pointer and touch points stand on, and the pose
+ * `screens/pause-quit` already uses: {@link startPosed} opens a live, empty, quiet
+ * wave, and the screen and the highlight are then PLACED rather than walked to.
+ * `specs/instrumentation.md` provides `setScreen` and `setMenuIndex` for exactly
+ * that, so no menu key is pressed on the way in and the menu keys cannot fail the
+ * points that stand here — a build whose `pause` binding or whose menu arrows are
+ * broken still has its pointer and its touch graded on this screen, and
+ * `controls/pause-escape`, `controls/pause-p` and the `controls` menu-arrow
+ * points still decide the keys.
+ *
+ * One frame is run after the pose, so the screen the gesture then arrives on is
+ * the paused screen the build's own code drew.
+ */
+export async function posePausedMenu(h: Harness, index: number): Promise<void> {
+  await startPosed(h);
+  await h.debug.setScreen("paused");
+  await h.debug.setMenuIndex(index);
+  await h.advance(1);
+}
+
+/** The lost run the gesture is made from (specs/progression.md). */
+const POSED_STAGE = 6;
+const POSED_SCORE = 7250;
+const POSED_LIVES = 0;
+
+/**
+ * Pose a lost run on the game-over screen, with `index` highlighted on its menu.
+ *
+ * The ground the game-over menu's pointer and touch points stand on, and the pose
+ * `screens/game-over-menu-returns` already uses: the run is PLACED lost — the
+ * stage it reached, the score it ended on, no lives left — and the screen and the
+ * highlight are placed with it. `specs/instrumentation.md` provides `setScreen`
+ * and `setMenuIndex` for exactly that, so no life is spent and no menu key is
+ * pressed on the way in, and neither the death path nor the menu keys can fail the
+ * points that stand here — `progression/game-over-at-zero` still decides the route
+ * in, and the `controls` menu-arrow points still decide the keys.
+ *
+ * There is no live wave to open first, unlike {@link posePausedMenu}: the run is
+ * over, so the screen is placed on the field the harness starts with. One frame is
+ * run after the pose, so the screen the gesture then arrives on is the game-over
+ * screen the build's own code drew.
+ */
+export async function poseGameOverMenu(
+  h: Harness,
+  index: number,
+): Promise<void> {
+  await h.debug.setScreen("gameOver");
+  await h.debug.setStage(POSED_STAGE);
+  await h.debug.setScore(POSED_SCORE);
+  await h.debug.setLives(POSED_LIVES);
+  await h.debug.setMenuIndex(index);
+  await h.advance(1);
+}
+
+/**
  * Open the wave the GAME builds for stage `n`, by running its stage intro out.
  *
  * The route for the handful of items whose requirement IS the wave the game

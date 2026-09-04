@@ -506,7 +506,7 @@ description = "What the game looks and sounds like: the screens and their menus,
 # `overload` in `variants/overload.toml` — because the two modes genuinely disagree
 # about what a mismatched shot does, and a claim that is true under one and false
 # under the other cannot be stated commonly. A base run's checklist is therefore
-# 282 points and an overload run's is 300: 276 common behaviors of the game, the
+# 294 points and an overload run's is 312: 288 common behaviors of the game, the
 # showcase's three, and the variant's own three or twenty-one. The whole of it is
 # reporter-side material — never seeded into a run, so the model never sees it.
 # Every item restates a requirement the seeded specification already states, in
@@ -1929,8 +1929,9 @@ validation = { script = "stages/clears-on-last-drone.test.ts", outputs = [
 # The other half of that fix, and the reason it is a point in its own right:
 # specs/stages.md states that a stage clears on the MOMENT its last drone is
 # destroyed, so a wave that never held a drone is playing rather than cleared. That
-# stated rule is what makes the shared harness's empty posed wave safe for all 266
-# common points, so a build that breaks it breaks the whole checklist's premise.
+# stated rule is what makes the shared harness's empty posed wave safe for every
+# common point that poses a field, so a build that breaks it breaks the whole
+# checklist's premise.
 [[review.categories.items]]
 id = "empty-wave-does-not-clear"
 title = "An empty wave is playing, not cleared"
@@ -2642,42 +2643,117 @@ validation = { script = "controls/overlay-backquote.test.ts", outputs = [
 # over item regions the BUILD lays out and reports through `menuItemRect`. The case
 # fixes no menu geometry, so each point below asks the build where it put the item
 # and drives the real pointer at the middle of that region: any layout passes, and a
-# build that reports a region it does not answer on fails. The three points are the
-# three behaviors specs/ui.md gives the pointer — a move selects, a press and its
-# release inside one item confirms that item, and two edges that fall in different
-# items confirm nothing. Each is graded on the title menu, where the entries confirm
-# to screens a check reads straight off `screen`. The keyboard's own edges are the
-# `controls` category's points, not these. All three are `passable`: the keyboard
-# reaches every menu, so a build with no mouse is playable and merely awkward.
+# build that reports a region it does not answer on fails.
+#
+# THREE BEHAVIORS, ON EACH OF THE THREE MENU SCREENS. specs/ui.md drives `title`,
+# `paused` and `gameOver` with the pointer, and each point below decides ONE of the
+# three behaviors specs/ui.md gives it — a move selects; a press and its release
+# inside one item confirms that item; two edges that fall in different items confirm
+# nothing — on ONE of those screens. Nine points, not three, because whether a
+# screen's menu is in the hit test, whether a gesture's confirm reaches that screen's
+# own entry table, and whether that screen pairs the two edges are three things a
+# build decides separately per screen. A build that laid out the title, wired the
+# mouse to it, then added the pause overlay and the game-over card without
+# registering their regions is an ordinary half-finished build; graded on the title
+# alone it loses nothing, and it must not score what a build that wired all three
+# scores. The case never tells a build how to divide its input code, so it must not
+# grade as though the build had divided it one way.
+#
+# EACH CANCEL POINT DECIDES A DIRECTION. A cancel is a negative claim, and a build
+# that reads no pointer at all on that screen would satisfy it for free. So each
+# cancel point presses the item the highlight is ALREADY on, travels to another and
+# releases there, reading back both that the screen did not change and that the
+# highlight followed — the pair of readings a build with no mouse code cannot produce.
+#
+# WHAT IS NOT HERE. The keyboard's own edges are the `controls` category's points.
+# specs/ui.md's fourth confirm clause — an edge that falls outside every region
+# confirms nothing — and its rule that neither a pointer nor a contact does anything
+# on the four screens that show no menu are not graded by this category. All nine
+# are `passable`: the keyboard reaches every menu, so a build with no mouse is
+# playable and merely awkward.
 [[review.categories]]
 id = "pointer"
 title = "Pointer"
 [[review.categories.items]]
-id = "hover-selects"
+id = "title-hover-selects"
 title = "Moving the pointer onto an item selects it"
 description = "On the title with menuIndex 0, moving the pointer onto the region menuItemRect reports for HOW TO PLAY sets menuIndex to that item, with screen still title."
 domains = ["arcade", "presentation"]
 failure_cap = "passable"
-validation = { script = "pointer/hover-selects.test.ts", outputs = [
+validation = { script = "pointer/title-hover-selects.test.ts", outputs = [
   { id = "menu", name = "The title menu with the hovered item selected", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "click-confirms"
+id = "pause-hover-selects"
+title = "Moving the pointer onto a pause-menu item selects it"
+description = "On the paused screen with menuIndex 0 on RESUME, moving the pointer onto the region menuItemRect reports for QUIT TO MENU sets menuIndex to that item, with screen still paused."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/pause-hover-selects.test.ts", outputs = [
+  { id = "menu", name = "The pause menu with the hovered item selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-hover-selects"
+title = "Moving the pointer onto a game-over-menu item selects it"
+description = "On the game-over screen with menuIndex 0 on PLAY AGAIN, moving the pointer onto the region menuItemRect reports for MENU sets menuIndex to that item, with screen still gameOver."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/game-over-hover-selects.test.ts", outputs = [
+  { id = "menu", name = "The game-over menu with the hovered item selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-click-confirms"
 title = "A press and release inside one item confirms it"
 description = "On the title with menuIndex 0, pressing and releasing the pointer inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
 domains = ["arcade", "presentation"]
 failure_cap = "passable"
-validation = { script = "pointer/click-confirms.test.ts", outputs = [
+validation = { script = "pointer/title-click-confirms.test.ts", outputs = [
   { id = "howto", name = "The how-to-play screen a click opened", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "slide-off-cancels"
-title = "A press and release in different items confirms nothing"
-description = "On the title, pressing the pointer inside HOW TO PLAY's region and releasing it inside the mode entry's leaves screen at title, confirming neither item."
+id = "pause-click-confirms"
+title = "A press and release inside one pause-menu item confirms it"
+description = "On the paused screen with menuIndex 0 on RESUME, pressing and releasing the pointer inside the region menuItemRect reports for QUIT TO MENU sets screen to title."
 domains = ["arcade", "presentation"]
 failure_cap = "passable"
-validation = { script = "pointer/slide-off-cancels.test.ts", outputs = [
-  { id = "title", name = "The title still showing after the pointer slid off", kind = "image" },
+validation = { script = "pointer/pause-click-confirms.test.ts", outputs = [
+  { id = "title", name = "The title a click on QUIT TO MENU returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-click-confirms"
+title = "A press and release inside one game-over-menu item confirms it"
+description = "On the game-over screen with menuIndex 0 on PLAY AGAIN, pressing and releasing the pointer inside the region menuItemRect reports for MENU sets screen to title."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/game-over-click-confirms.test.ts", outputs = [
+  { id = "title", name = "The title a click on MENU returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-slide-off-cancels"
+title = "A press and release in different items confirms nothing"
+description = "On the title with menuIndex 0 on the mode entry, pressing the pointer inside the mode entry's region, travelling onto the region menuItemRect reports for HOW TO PLAY while held and releasing there leaves screen at title and menuIndex on HOW TO PLAY, confirming neither item."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/title-slide-off-cancels.test.ts", outputs = [
+  { id = "title", name = "The title still showing, its highlight on the item the pointer ended over", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-slide-off-cancels"
+title = "A press and release in different pause-menu items confirms nothing"
+description = "On the paused screen with menuIndex 0 on RESUME, pressing the pointer inside RESUME's region and releasing it inside QUIT TO MENU's leaves screen at paused with menuIndex on QUIT TO MENU, confirming neither item."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/pause-slide-off-cancels.test.ts", outputs = [
+  { id = "paused", name = "The pause menu still showing, its highlight on the item the pointer ended over", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-slide-off-cancels"
+title = "A press and release in different game-over-menu items confirms nothing"
+description = "On the game-over screen with menuIndex 0 on PLAY AGAIN, pressing the pointer inside PLAY AGAIN's region and releasing it inside MENU's leaves screen at gameOver with menuIndex on MENU, confirming neither item."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/game-over-slide-off-cancels.test.ts", outputs = [
+  { id = "over", name = "The game-over screen still showing, its highlight on the item the pointer ended over", kind = "image" },
 ] }
 
 # --- Touch -----------------------------------------------------------------
@@ -2685,40 +2761,117 @@ validation = { script = "pointer/slide-off-cancels.test.ts", outputs = [
 # and a finger is not a small mouse: it never hovers, so the first the build hears of
 # it is the contact LANDING, and the landing is what selects. Each point below drives
 # one real touch contact at the middle of the region the build reports through
-# `menuItemRect`, so any layout passes and only the handling is graded. The three are
-# the three behaviors specs/ui.md gives a contact: a landing selects, a lift inside
-# the region it landed in confirms that item, and a lift in a different region
-# confirms nothing while the selection follows the finger. The mouse's own edges are
-# the `pointer` category's points, and the keyboard's the `controls` category's.
+# `menuItemRect`, so any layout passes and only the handling is graded.
+#
+# THREE BEHAVIORS, ON EACH OF THE THREE MENU SCREENS. specs/ui.md drives `title`,
+# `paused` and `gameOver` by touch, and each point below decides ONE of the three
+# behaviors specs/ui.md gives a contact — a landing selects; a lift inside the region
+# it landed in confirms that item; a lift in a different region confirms nothing
+# while the selection follows the finger — on ONE of those screens. Nine points, not
+# three, because whether a screen's menu is in the hit test, whether a gesture's
+# confirm reaches that screen's own entry table, and whether that screen pairs the
+# two edges are three things a build decides separately per screen. A build that
+# wired the title's regions to its touch handler and never registered the pause
+# overlay's or the game-over card's is an ordinary half-finished build; graded on the
+# title alone it loses nothing, and it must not score what a build that wired all
+# three scores. The case never tells a build how to divide its input code, so it must
+# not grade as though the build had divided it one way.
+#
+# EACH CANCEL POINT DECIDES A DIRECTION. A cancel is a negative claim, and a build
+# that reads no touch at all on that screen would satisfy it for free. So each cancel
+# point lands on the item the highlight is ALREADY on, travels to another and lifts
+# there, reading back both that the screen did not change and that the highlight
+# followed — the pair of readings a build with no touch code cannot produce.
+#
+# WHAT IS NOT HERE. The mouse's own edges are the `pointer` category's points, and
+# the keyboard's the `controls` category's. specs/ui.md's fourth confirm clause — an
+# edge that falls outside every region confirms nothing — and its rule that neither a
+# pointer nor a contact does anything on the four screens that show no menu are not
+# graded by this category. All nine are `passable`: the keyboard reaches every menu,
+# so a build with no touch is playable and merely awkward.
 [[review.categories]]
 id = "touch"
 title = "Touch"
 [[review.categories.items]]
-id = "landing-selects"
+id = "title-landing-selects"
 title = "A touch contact selects the item it lands on"
 description = "On the title with menuIndex 0, a touch contact landing inside the region menuItemRect reports for HOW TO PLAY, and not lifted, sets menuIndex to that item."
 domains = ["arcade", "presentation"]
 failure_cap = "passable"
-validation = { script = "touch/landing-selects.test.ts", outputs = [
+validation = { script = "touch/title-landing-selects.test.ts", outputs = [
   { id = "selected", name = "The title menu with the item the contact landed on selected", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "tap-confirms"
+id = "pause-landing-selects"
+title = "A touch contact selects the pause-menu item it lands on"
+description = "On the paused screen with menuIndex 0 on RESUME, a touch contact landing inside the region menuItemRect reports for QUIT TO MENU, and not lifted, sets menuIndex to that item, with screen still paused."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "touch/pause-landing-selects.test.ts", outputs = [
+  { id = "selected", name = "The pause menu with the item the contact landed on selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-landing-selects"
+title = "A touch contact selects the game-over-menu item it lands on"
+description = "On the game-over screen with menuIndex 0 on PLAY AGAIN, a touch contact landing inside the region menuItemRect reports for MENU, and not lifted, sets menuIndex to that item, with screen still gameOver."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "touch/game-over-landing-selects.test.ts", outputs = [
+  { id = "selected", name = "The game-over menu with the item the contact landed on selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-tap-confirms"
 title = "A contact that lifts where it landed confirms that item"
 description = "On the title with menuIndex 0, a touch contact landing and lifting inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
 domains = ["arcade", "presentation"]
 failure_cap = "passable"
-validation = { script = "touch/tap-confirms.test.ts", outputs = [
+validation = { script = "touch/title-tap-confirms.test.ts", outputs = [
   { id = "howto", name = "The how-to-play screen a tap opened", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "drag-cancels"
-title = "A contact that lifts in another item confirms nothing"
-description = "On the title, a touch contact landing inside HOW TO PLAY's region, travelling onto the mode entry's and lifting there leaves screen at title, confirming neither item."
+id = "pause-tap-confirms"
+title = "A contact that lifts where it landed confirms that pause-menu item"
+description = "On the paused screen with menuIndex 0 on RESUME, a touch contact landing and lifting inside the region menuItemRect reports for QUIT TO MENU sets screen to title."
 domains = ["arcade", "presentation"]
 failure_cap = "passable"
-validation = { script = "touch/drag-cancels.test.ts", outputs = [
-  { id = "title", name = "The title still showing after the contact dragged off", kind = "image" },
+validation = { script = "touch/pause-tap-confirms.test.ts", outputs = [
+  { id = "title", name = "The title a tap on QUIT TO MENU returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-tap-confirms"
+title = "A contact that lifts where it landed confirms that game-over-menu item"
+description = "On the game-over screen with menuIndex 0 on PLAY AGAIN, a touch contact landing and lifting inside the region menuItemRect reports for MENU sets screen to title."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "touch/game-over-tap-confirms.test.ts", outputs = [
+  { id = "title", name = "The title a tap on MENU returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-drag-cancels"
+title = "A contact that lifts in another item confirms nothing"
+description = "On the title with menuIndex 0 on the mode entry, a touch contact landing inside the mode entry's region, travelling onto the region menuItemRect reports for HOW TO PLAY while held and lifting there leaves screen at title and menuIndex on HOW TO PLAY, confirming neither item."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "touch/title-drag-cancels.test.ts", outputs = [
+  { id = "title", name = "The title still showing, its highlight on the item the contact ended over", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-drag-cancels"
+title = "A contact that lifts in another pause-menu item confirms nothing"
+description = "On the paused screen with menuIndex 0 on RESUME, a touch contact landing inside RESUME's region and lifting inside QUIT TO MENU's leaves screen at paused with menuIndex on QUIT TO MENU, confirming neither item."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "touch/pause-drag-cancels.test.ts", outputs = [
+  { id = "paused", name = "The pause menu still showing, its highlight on the item the contact ended over", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-drag-cancels"
+title = "A contact that lifts in another game-over-menu item confirms nothing"
+description = "On the game-over screen with menuIndex 0 on PLAY AGAIN, a touch contact landing inside PLAY AGAIN's region and lifting inside MENU's leaves screen at gameOver with menuIndex on MENU, confirming neither item."
+domains = ["arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "touch/game-over-drag-cancels.test.ts", outputs = [
+  { id = "over", name = "The game-over screen still showing, its highlight on the item the contact ended over", kind = "image" },
 ] }
 
 # --- Screens & HUD ---------------------------------------------------------
