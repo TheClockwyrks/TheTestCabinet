@@ -19,9 +19,6 @@
 // selects and confirms nothing, so a build that fired the entry on the hover has
 // left the title and fails here rather than passing on the index it set on the way
 // out.
-//
-// NOTHING IS ISOLATED. `specs/ui.md` advances nothing on the title, so there is no
-// bystander to remove and no entity for the gesture to disturb.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

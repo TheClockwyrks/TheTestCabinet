@@ -32,7 +32,6 @@ import {
   createHarness,
   droneById,
   framesFor,
-  poseBystander,
   poseDrone,
   startPosed,
   type Harness,
@@ -42,10 +41,10 @@ import { release } from "./wave";
 /**
  * Where the three entering drones stand.
  *
- * Just inside the play field below `FIELD_TOP` (64), spread across its width, at
- * 484, 460 and 484 units from the ship at `(640, 600)` — every one a third of
- * `DISCHARGE_MAX_R` (1500) or less, so the wave reaches all three inside its
- * life. Clear of the corner the bystander holds.
+ * Just inside the play field below `FIELD_TOP` (64), spread across its width,
+ * at 484, 460 and 484 units from the ship at `(640, 600)` — every one a third
+ * of `DISCHARGE_MAX_R` (1500) or less, so the wave reaches all three inside its
+ * life.
  */
 const ENTERING_AT = [
   { x: 340, y: 220 },
@@ -74,10 +73,6 @@ afterEach(async () => {
 
 it("destroys every drone in phase entering", async () => {
   await startPosed(h);
-  // In the formation, which specs/resonance.md's own table spares, so a drone is
-  // still standing when the three are taken (specs/stages.md clears a stage on
-  // the moment the last drone of its wave is destroyed).
-  await poseBystander(h);
   const entering: number[] = [];
   for (const at of ENTERING_AT) {
     entering.push(
@@ -90,8 +85,8 @@ it("destroys every drone in phase entering", async () => {
   const posed = await h.snapshot();
   assertLength(
     posed.drones,
-    ENTERING_AT.length + 1,
-    "precondition: the three entering drones and the bystander are on the field",
+    ENTERING_AT.length,
+    "precondition: the three entering drones are on the field",
   );
   for (const id of entering) {
     assertEqual(

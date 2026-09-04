@@ -8,13 +8,6 @@
 // return. Off, it holds its exact center and keeps its phase; nothing is
 // cancelled, completed, or resolved early. Its band clock and its firing run on."
 //
-// IT IS WHAT LETS A SCENARIO PUT A DRONE SOMEWHERE AND KEEP IT THERE. A shot aimed
-// at a Flux on a chosen beat, a Prism posed just under the ship, a bystander held
-// clear while a discharge spreads — every one of those needs the drone to be where
-// it was put when the frame that matters runs, and `poseDrone` turns all three
-// faculties off for exactly that reason. So most of this suite rests on this gate,
-// and this is where it is decided.
-//
 // THE WITNESS IS A DIVE, WHICH IS THE FASTEST THING A DRONE DOES. specs/swarm.md
 // flies one at `DIVE_SPEED` (`300`) units per second along a path that bends
 // toward the ship, so a second of it is three hundred units of travel — while a

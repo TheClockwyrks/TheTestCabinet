@@ -18,13 +18,6 @@
 // MAGENTA IS THE DISTINGUISHING VALUE. `addDrone` creates a drone holding cyan
 // (specs/instrumentation.md), so a build that matches against a default rather than
 // against the drone's stored band spares the Flux and fails.
-//
-// THE FRAME THAT KILLS ALSO CLEARS THE STAGE, AND THAT COSTS NOTHING. The world
-// holds exactly the drone the requirement concerns, so the kill's own frame is
-// necessarily the frame the live wave holds none — which specs/stages.md makes a
-// clear. Nothing here reads the screen or the stage; the reading is whether the
-// roster still holds the drone, and the clear can only follow the destruction it
-// is asserting. So no bystander is parked on the field to hold the wave open.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { FORM_CENTER_X, fluxHold } from "../constants";

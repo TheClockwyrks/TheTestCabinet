@@ -32,7 +32,6 @@ import {
   startPosed,
   type Harness,
 } from "../harness";
-import { poseBystander } from "./wave";
 
 /**
  * Where the meter is posed before the kill, in meter points.
@@ -47,8 +46,7 @@ const POSED_METER = 20;
  * Where the target Shard stands.
  *
  * Mid-field on the ship's own lane: clear of both HUD strips (`FIELD_TOP` `64`,
- * `FIELD_BOTTOM` `656`), clear of `SHIP_Y` (`600`), and clear of the corner the
- * bystander holds.
+ * `FIELD_BOTTOM` `656`), clear of `SHIP_Y` (`600`).
  */
 const TARGET = { x: FORM_CENTER_X, y: 300 } as const;
 
@@ -84,11 +82,6 @@ afterEach(() => {
 
 it("adds exactly RESONANCE_KILL when a matching shot destroys a Shard", async () => {
   startPosed(h);
-  // A stage clears in the moment the last drone of its wave is destroyed
-  // (specs/stages.md), and this scenario destroys the drone it poses; the
-  // bystander leaves the wave a drone standing, so the meter is read on the live
-  // wave rather than under the stage-cleared interstitial.
-  poseBystander(h);
   h.debug.setResonance(POSED_METER);
   const target = poseDrone(h, "shard", TARGET.x, TARGET.y, { band: "cyan" });
 

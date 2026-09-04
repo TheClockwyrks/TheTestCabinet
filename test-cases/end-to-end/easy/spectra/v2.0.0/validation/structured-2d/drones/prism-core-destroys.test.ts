@@ -16,13 +16,6 @@
 // The shell is posed away rather than shot away, so a build that cannot break a
 // shell fails `drones/prism-shell-breaks-to-shell-band` and is graded here on the
 // core rule alone.
-//
-// THE FRAME THAT KILLS ALSO CLEARS THE STAGE, AND THAT COSTS NOTHING. The world
-// holds exactly the drone the requirement concerns, so the kill's own frame is
-// necessarily the frame the live wave holds none — which specs/stages.md makes a
-// clear. Nothing here reads the screen or the stage; the reading is whether the
-// roster still holds the drone, and the clear can only follow the destruction it is
-// asserting. So no bystander is parked on the field to hold the wave open.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { FORM_CENTER_X, PLAYER_BULLET_SPEED } from "../constants";

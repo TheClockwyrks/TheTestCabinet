@@ -439,6 +439,7 @@ function stepWave(
   // A stage clears in the MOMENT the last drone of its wave leaves the field, so
   // a live wave that holds no drone and has had none removed is being played.
   if (
+    state.stageClearing &&
     state.screen === "inWave" &&
     state.drones.length === 0 &&
     events.dronesRemoved > 0

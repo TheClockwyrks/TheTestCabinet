@@ -7,7 +7,8 @@
 // drone, bullet, and burst rosters and the live discharge; it places the ship at
 // the center of its lane (`640`) on the cyan band with `0` seconds of fire
 // lockout and `0` seconds of fire cooldown; it turns the three world gates
-// `waveEntry`, `diveLaunching`, and `ship.contact` back on; it returns the wave's
+// `waveEntry`, `diveLaunching`, `stageClearing`, and `ship.contact` back on; it
+// returns the wave's
 // entry, sway, and dive clocks, and the gap the next dive waits for, to their
 // fresh-wave values, `diveClock` at `0` and the gap at `DIVE_FIRST_DELAY`; it
 // sets `extraLifeAwarded` to `false` and `challengeHits` to `0`; and it sets
@@ -189,7 +190,7 @@ it("restores every declared field to its title value, and leaves mute alone", as
   h.debug.setFireLockout(MESSY_LOCKOUT);
   h.debug.setFireCooldown(MESSY_COOLDOWN);
   h.debug.setDiveClock(MESSY_DIVE_CLOCK);
-  // `startPosed` shut all three world gates, which is the state a reset has to
+  // `startPosed` shut all four world gates, which is the state a reset has to
   // turn back on.
 
   const messy = h.snapshot();
@@ -280,6 +281,7 @@ it("restores every declared field to its title value, and leaves mute alone", as
   // The world gates and the wave's own clock.
   assertEqual(title.waveEntry, true, "reset turns waveEntry back on");
   assertEqual(title.diveLaunching, true, "reset turns diveLaunching back on");
+  assertEqual(title.stageClearing, true, "reset turns stageClearing back on");
   assertEqual(title.ship.contact, true, "reset turns ship.contact back on");
   assertCloseTo(title.diveClock, 0, EXACT_DIGITS, "reset restores diveClock");
 

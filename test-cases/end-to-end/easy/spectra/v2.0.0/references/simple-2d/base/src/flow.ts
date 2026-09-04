@@ -81,6 +81,7 @@ export function openingState(art: Art): SpectraState {
 
     waveEntry: true,
     diveLaunching: true,
+    stageClearing: true,
     entryClock: 0,
     swayClock: 0,
     diveClock: 0,
@@ -132,6 +133,7 @@ export function resetToTitle(sim: Sim, seed: number): void {
 
   sim.waveEntry = opening.waveEntry;
   sim.diveLaunching = opening.diveLaunching;
+  sim.stageClearing = opening.stageClearing;
   sim.entryClock = opening.entryClock;
   sim.swayClock = opening.swayClock;
   sim.diveClock = opening.diveClock;

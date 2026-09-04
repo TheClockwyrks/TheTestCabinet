@@ -41,7 +41,6 @@ import {
   captureStill,
   createHarness,
   framesFor,
-  poseBystander,
   poseDrone,
   startPosed,
   type Harness,
@@ -73,9 +72,6 @@ afterEach(async () => {
 
 it("leaves one burst for each of the three divers the wave destroyed", async () => {
   await startPosed(h);
-  // In the formation, so the wave spares it and a drone is still standing when
-  // the three divers are taken (specs/resonance.md, and see poseBystander).
-  await poseBystander(h);
   for (const at of DIVERS_AT) {
     await poseDrone(h, "shard", at.x, at.y, { phase: "diving" });
   }
@@ -88,8 +84,8 @@ it("leaves one burst for each of the three divers the wave destroyed", async () 
   );
   assertLength(
     posed.drones,
-    DIVERS_AT.length + 1,
-    "precondition: the three divers and the bystander are on the field",
+    DIVERS_AT.length,
+    "precondition: the three divers are on the field",
   );
 
   await h.debug.setResonance(RESONANCE_MAX);
@@ -102,9 +98,8 @@ it("leaves one burst for each of the three divers the wave destroyed", async () 
   const after = await h.snapshot();
   assertLength(
     after.drones,
-    1,
-    `precondition: the wave destroyed all three divers and spared the drone ` +
-      `resting in the formation (specs/resonance.md)`,
+    0,
+    `precondition: the wave destroyed all three divers (specs/resonance.md)`,
   );
   assertLength(
     after.bursts,

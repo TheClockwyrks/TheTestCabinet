@@ -1,11 +1,12 @@
 // swarm/dive-cadence — later dives launch DIVE_GAP_MIN..DIVE_GAP_MAX apart.
 //
 // specs/swarm.md, "The dive": each dive after the wave's first is launched when
-// the dive clock reaches "A value drawn between `DIVE_GAP_MIN` (`1.4`) and
-// `DIVE_GAP_MAX` (`2.6`) seconds, multiplied by `diveGapScale(stage)`", and the
-// clock "returns to `0` each time a dive is launched". So every gap between two
-// successive launches is a draw from that window, and the window is what this
-// checks — not the draw, which is the build's own generator's.
+// the dive clock reaches "A value drawn uniformly at random between
+// `DIVE_GAP_MIN` (`1.4`) and `DIVE_GAP_MAX` (`2.6`) seconds, multiplied by
+// `diveGapScale(stage)`", and the clock "returns to `0` each time a dive is
+// launched". So every gap between two successive launches is a draw from that
+// window, and the WINDOW is what this checks. Which value inside it any one
+// launch draws is the build's own generator's, and no bound can decide it.
 //
 // The bounds are the ENDS of that window, each given the item's own 20% either
 // way, so a build drawing from a window shifted or scaled off the specified one

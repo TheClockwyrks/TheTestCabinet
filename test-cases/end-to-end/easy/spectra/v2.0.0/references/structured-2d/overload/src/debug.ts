@@ -15,10 +15,11 @@
 // verifiable by setting a value and reading it back through `snapshot`, and it is
 // why the snapshot reports every field a pose can set.
 //
-// THE THREE WORLD GATES are worth naming: `setWaveEntry`, `setDiveLaunching` and
-// `setShipContact` each hold ONE faculty of the wave itself, default to on, are
-// restored to on by `reset`, and are reported by `snapshot`. With the three of them
-// off, nothing the caller did not ask for arrives, launches, or costs a life.
+// THE FOUR WORLD GATES are worth naming: `setWaveEntry`, `setDiveLaunching`,
+// `setStageClearing` and `setShipContact` each hold ONE faculty of the wave or the
+// stage itself, default to on, are restored to on by `reset`, and are reported by
+// `snapshot`. With the four of them off, nothing the caller did not ask for arrives,
+// launches, ends the stage, or costs a life.
 //
 // The surface holds no state and is inert during normal play: nothing below runs
 // until something calls it.
@@ -142,6 +143,7 @@ export interface SpectraSnapshot {
   muted: boolean;
   waveEntry: boolean;
   diveLaunching: boolean;
+  stageClearing: boolean;
   diveClock: number;
   droneSpeedScale: number;
   bulletSpeedScale: number;
@@ -180,6 +182,7 @@ export interface SpectraDebugApi {
 
   setWaveEntry(enabled: boolean): void;
   setDiveLaunching(enabled: boolean): void;
+  setStageClearing(enabled: boolean): void;
   setShipContact(enabled: boolean): void;
   setDiveClock(seconds: number): void;
 
@@ -277,6 +280,7 @@ export function createDebugApi(world: () => World): SpectraDebugApi {
         muted: state.muted,
         waveEntry: state.waveEntry,
         diveLaunching: state.diveLaunching,
+        stageClearing: state.stageClearing,
         diveClock: state.diveClock,
         droneSpeedScale: droneSpeedScale(state.stage),
         bulletSpeedScale: bulletSpeedScale(state.stage),
@@ -384,6 +388,10 @@ export function createDebugApi(world: () => World): SpectraDebugApi {
 
     setDiveLaunching(enabled) {
       read().diveLaunching = enabled;
+    },
+
+    setStageClearing(enabled) {
+      read().stageClearing = enabled;
     },
 
     setShipContact(enabled) {

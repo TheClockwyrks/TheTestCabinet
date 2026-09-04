@@ -48,9 +48,6 @@
 
 import type { DeepReadonly } from "ts-essentials";
 
-/** The surface's version, reported as `version` (`SPECTRA_DEBUG_VERSION`). */
-export const SPECTRA_DEBUG_VERSION = 1;
-
 /** The seed `reset()` restores when the caller names none (`DEFAULT_SEED`). */
 export const DEFAULT_SEED = 1;
 
@@ -209,6 +206,8 @@ export interface SpectraSnapshot {
   waveEntry: boolean;
   /** The assault's own dive choice runs. */
   diveLaunching: boolean;
+  /** The stage's own end-of-stage test runs. */
+  stageClearing: boolean;
   /** Seconds since the wave's last dive launch. */
   diveClock: number;
   /** Derived from `stage`. */
@@ -289,6 +288,8 @@ export interface SpectraDebugApi<S = unknown> {
   setWaveEntry(state: DeepReadonly<S>, enabled: boolean): S;
   /** Gates the assault's own choice of which drone dives next, and nothing else. */
   setDiveLaunching(state: DeepReadonly<S>, enabled: boolean): S;
+  /** Gates the live stage's own end-of-stage test, and nothing else. */
+  setStageClearing(state: DeepReadonly<S>, enabled: boolean): S;
   /** Gates the ship's contact test, and nothing else. Reported as `ship.contact`. */
   setShipContact(state: DeepReadonly<S>, enabled: boolean): S;
   /** Sets the seconds since the wave's last dive launch. It launches nothing. */
@@ -402,6 +403,7 @@ export const REQUIRED_OPS = [
 
   "setWaveEntry",
   "setDiveLaunching",
+  "setStageClearing",
   "setShipContact",
   "setDiveClock",
 

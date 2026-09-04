@@ -19,12 +19,6 @@
 // `specs/bands.md` states. The rhythm itself is `drones`'s to grade, not this
 // point's; here it is only kept out of the way.
 //
-// WHY A BYSTANDER STANDS IN THE CORNER. A stage clears in the moment the last
-// drone of its wave is destroyed (`specs/stages.md`), and a build that reads
-// "its wave" as the drones on the field would clear this stage under the kill
-// and pay `SCORE_STAGE_CLEAR` into the very number this check reads. The
-// bystander leaves a drone standing, so the wave carries on under either reading.
-//
 // WHAT THIS DOES NOT DECIDE. That a matching shot destroys a held Flux is
 // `bands`'s and `drones`'s; it is read here as the precondition of a payment.
 // What a DIVING Flux pays is `scoring/flux-diving`.
@@ -36,7 +30,6 @@ import {
   captureStill,
   createHarness,
   droneById,
-  poseBystander,
   poseDrone,
   requireDrone,
   shootDrone,
@@ -47,7 +40,7 @@ import {
 /**
  * Where the Flux is posed: a clear stretch of the play field, below the
  * formation grid's lowest row (`332`) and its full sway, above the ship's lane
- * (`SHIP_Y`, `600`), and well clear of the corner the bystander holds.
+ * (`SHIP_Y`, `600`).
  */
 const TARGET_AT = { x: 900, y: 460 } as const;
 
@@ -82,7 +75,6 @@ afterEach(async () => {
 
 it("adds exactly SCORE_FLUX_FORM when a formation Flux is destroyed", async () => {
   await startPosed(h);
-  await poseBystander(h);
   const target = await poseDrone(h, "flux", TARGET_AT.x, TARGET_AT.y, {
     band: "cyan",
     phase: "formation",

@@ -21,11 +21,6 @@
 // exactly this reason (`specs/instrumentation.md`), and posing it puts both
 // designs in the state the specification describes.
 //
-// A BYSTANDER STANDS THROUGHOUT, for the reason `specs/stages.md` gives: a build
-// that reads a stage's wave as the drones on the field would clear the stage on
-// the kill below and pay `SCORE_STAGE_CLEAR` into the score being watched. One
-// inert Shard in the far corner leaves a drone standing under either reading.
-//
 // WHAT THIS DOES NOT DECIDE. That the first crossing pays anything at all, which
 // is `progression/extra-life-awarded`'s: a build that never pays passes here and
 // fails there, and the pair grades the two directions apart.
@@ -41,7 +36,6 @@ import {
   captureStill,
   createHarness,
   droneById,
-  poseBystander,
   poseDrone,
   requireDrone,
   shootDrone,
@@ -58,8 +52,8 @@ import {
  */
 const POSED_SCORE = EXTRA_LIFE_AT - 1;
 
-/** Where the target Shard is posed: a slot of the formation grid, well clear of
- * the bystander's corner and of the ship's lane. */
+/** Where the target Shard is posed: a slot of the formation grid, well clear
+ * of the ship's lane. */
 const TARGET_AT = { x: slotX(4), y: slotY(1) } as const;
 
 /**
@@ -92,7 +86,6 @@ afterEach(async () => {
 
 it("adds no further life when a later kill carries the score across again", async () => {
   await startPosed(h);
-  await poseBystander(h);
   const target = await poseDrone(h, "shard", TARGET_AT.x, TARGET_AT.y);
   await h.debug.setLives(START_LIVES);
   await h.debug.setScore(POSED_SCORE);

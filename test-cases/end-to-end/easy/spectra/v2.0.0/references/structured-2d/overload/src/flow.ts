@@ -78,6 +78,7 @@ export function resetState(state: SpectraState, seed = DEFAULT_SEED): void {
   state.ship.contact = true;
   state.waveEntry = true;
   state.diveLaunching = true;
+  state.stageClearing = true;
   freshWaveClocks(state);
   state.nextId = 1;
   state.simTime = 0;
@@ -207,6 +208,7 @@ export function checkStageEnd(
   cues: FrameCues,
 ): void {
   if (state.screen !== "inWave") return;
+  if (!state.stageClearing) return;
 
   if (isChallengeStage(state.stage)) {
     if (state.drones.length > 0) return;

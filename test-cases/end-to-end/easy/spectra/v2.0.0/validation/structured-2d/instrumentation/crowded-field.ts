@@ -26,11 +26,10 @@
 // matching shot into a Shard — the plainest destroying case specs/bands.md names
 // — is what puts one there.
 //
-// AND WHY DRONES ARE LEFT STANDING. A stage clears in the moment the last drone
-// of its wave is destroyed (specs/stages.md), and a build is free to read "its
-// wave" as the drones on the field; the standing drones below leave one there
-// under either reading, so a scenario that pops something is still on a live
-// field afterwards.
+// AND WHY THREE DRONES STAND. They are not props held out of the way: they are
+// what `clearDrones` and `removeDrone` act on, and what the other six points
+// read to decide that an operation aimed at one roster left the drones alone.
+// Each one is inside the requirement every check here decides.
 
 import {
   PLAYER_BULLET_HALF,

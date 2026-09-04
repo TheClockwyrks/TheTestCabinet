@@ -13,9 +13,6 @@
 // the same placement, the same flight, and the opposite band on the bullet. A
 // build that destroys on every contact fails here and passes there; a build that
 // destroys on none fails there and passes here.
-//
-// No bystander is posed: this scenario destroys nothing, so no stage-clear
-// reading is in play.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDefined, assertEqual } from "../assert";

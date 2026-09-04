@@ -42,7 +42,6 @@ import {
   createHarness,
   footprint,
   framesFor,
-  poseBystander,
   poseDrone,
   readRegion,
   regionDistance,
@@ -96,7 +95,6 @@ afterEach(async () => {
 
 it("paints two bursts of one run differently at the same place and age", async () => {
   await startPosed(h);
-  await poseBystander(h);
   const rect = footprint(POP_AT.x, POP_AT.y, SHARD_SIZE);
 
   const first = await poseDrone(h, "shard", POP_AT.x, POP_AT.y, {

@@ -129,6 +129,7 @@ export interface SpectraSnapshot {
   muted: boolean;
   waveEntry: boolean;
   diveLaunching: boolean;
+  stageClearing: boolean;
   diveClock: number;
   droneSpeedScale: number;
   bulletSpeedScale: number;
@@ -172,6 +173,7 @@ export interface SpectraDebugApi {
 
   setWaveEntry(enabled: boolean): void;
   setDiveLaunching(enabled: boolean): void;
+  setStageClearing(enabled: boolean): void;
   setShipContact(enabled: boolean): void;
   setDiveClock(seconds: number): void;
 
@@ -278,6 +280,7 @@ export function createDebugApi(
         muted: state.muted,
         waveEntry: state.waveEntry,
         diveLaunching: state.diveLaunching,
+        stageClearing: state.stageClearing,
         diveClock: state.diveClock,
         droneSpeedScale: droneSpeedScale(state.stage),
         bulletSpeedScale: bulletSpeedScale(state.stage),
@@ -445,6 +448,10 @@ export function createDebugApi(
 
     setDiveLaunching(enabled) {
       state.diveLaunching = Boolean(enabled);
+    },
+
+    setStageClearing(enabled) {
+      state.stageClearing = Boolean(enabled);
     },
 
     setShipContact(enabled) {

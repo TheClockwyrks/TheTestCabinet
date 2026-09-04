@@ -26,7 +26,7 @@
 // over the thing it then finds intact. It is read as a PRECONDITION, never as the
 // verdict.
 
-import { BINDINGS, FIELD_LEFT, FIELD_TOP, SHIP_Y } from "../constants";
+import { BINDINGS, SHIP_Y } from "../constants";
 import { fail } from "../assert";
 import {
   distance,
@@ -101,39 +101,6 @@ export function everReached(
       distance(at, { x: snapshot.ship.x, y: SHIP_Y }) <=
       snapshot.discharge.radius
     );
-  });
-}
-
-/**
- * Where {@link poseBystander} stands: inside the play field, in the corner
- * furthest from the ship's lane and from every place this group poses a drone it
- * is about to destroy.
- */
-export const BYSTANDER_AT = { x: FIELD_LEFT + 40, y: FIELD_TOP + 40 } as const;
-
-/**
- * Pose one inert Shard out of the way, so the live wave still holds a drone.
- *
- * WHAT IT IS FOR. A stage clears in the moment the last drone of its wave is
- * destroyed, and only a wave that has had a drone removed can clear
- * (`specs/stages.md`). A check here that destroys every drone it posed therefore
- * leaves an empty wave that HAS had one removed, and a conformant build opens the
- * stage-cleared interstitial underneath the reading — correct behaviour, and
- * simply not what a check about the meter or about what a wave takes is asking
- * about: the still becomes the interstitial's, and the frames driven afterwards
- * are the interstitial's rather than the wave's.
- *
- * A bystander leaves a drone standing, so the wave carries on whichever reading
- * the build took of "its wave" and the scenario under test runs to its end. A
- * check that poses one accounts for it when it counts drones.
- *
- * It is a prop like any other {@link poseDrone} — every faculty off, in phase
- * `formation`, which is also the phase a discharge wave spares
- * (`specs/resonance.md`) — so it holds its corner and takes no part.
- */
-export function poseBystander(h: Harness): number {
-  return poseDrone(h, "shard", BYSTANDER_AT.x, BYSTANDER_AT.y, {
-    phase: "formation",
   });
 }
 

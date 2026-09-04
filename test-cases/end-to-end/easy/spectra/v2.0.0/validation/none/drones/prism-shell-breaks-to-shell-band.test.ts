@@ -18,12 +18,6 @@
 // build that breaks the shell on the CORE's band spares it here, a build that
 // matches against a default cyan spares it here, and a build that destroys the
 // whole Prism on one hit leaves no drone to read.
-//
-// The other three cells of the two-by-two are their own points:
-// `drones/prism-shell-survives-mismatch` fires the core's band into this same
-// scenario, and `drones/prism-core-survives-shell-band` and
-// `drones/prism-core-destroys` fire both bands into the same Prism with its shell
-// already gone. Nothing is destroyed here, so no bystander is needed.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

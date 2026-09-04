@@ -32,9 +32,6 @@
 // — is not held to them. {@link REQUIRED_OPS} is what every build owes;
 // {@link OVERLOAD_OPS} is what the `overload` suites additionally reach for.
 
-/** The surface's version, reported as `version`. */
-export const SPECTRA_DEBUG_VERSION = 1;
-
 /** The seed `reset()` restores when the caller names none. */
 export const DEFAULT_SEED = 1;
 
@@ -201,6 +198,8 @@ export interface SpectraSnapshot {
   waveEntry: boolean;
   /** The assault's own dive choice runs. */
   diveLaunching: boolean;
+  /** The stage's own end-of-stage test runs. */
+  stageClearing: boolean;
   /** Seconds since the wave's last dive launch. */
   diveClock: number;
   /** Derived from `stage`. */
@@ -259,6 +258,7 @@ export interface SpectraDebugApi {
 
   setWaveEntry(enabled: boolean): void;
   setDiveLaunching(enabled: boolean): void;
+  setStageClearing(enabled: boolean): void;
   setShipContact(enabled: boolean): void;
   setDiveClock(seconds: number): void;
 
@@ -336,6 +336,7 @@ export const REQUIRED_OPS = [
   // The world gates and the dive clock.
   "setWaveEntry",
   "setDiveLaunching",
+  "setStageClearing",
   "setShipContact",
   "setDiveClock",
 

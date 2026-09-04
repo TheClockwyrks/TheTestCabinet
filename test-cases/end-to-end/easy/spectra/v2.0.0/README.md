@@ -166,14 +166,17 @@ they reach the build.
 
 Every scenario poses a world holding only what its point is about. The shared
 harness's `startPosed` empties the drones, the bullets and the bursts, turns off
-the three world gates — the wave's own entry, the dive launcher, and the ship's
-contact test — and opens a live wave, and the point then adds back exactly the
-entities its requirement concerns, holding each drone's own faculties (its
-travel, its oscillation, its fire) so nothing else in the scenario can move. An
-empty wave is safe because a stage clears on the moment its last drone is
-destroyed rather than on a predicate over an empty field, which
-`stages.empty-wave-does-not-clear` is what holds a build to. Every expected value
-a suite asserts comes from a figure the specs fix, never from a reference build.
+the four world gates — the wave's own entry, the dive launcher, the live stage's
+end-of-stage test, and the ship's contact test — and opens a live wave, and the
+point then adds back exactly the entities its requirement concerns, holding each
+drone's own faculties (its travel, its oscillation, its fire) so nothing else in
+the scenario can move. Shutting the stage-clear gate is what lets a point destroy
+the one drone it posed and still read a live field, rather than standing a second
+drone in a corner to hold the wave open. The three items whose requirement IS a
+clear — `stages.clears-on-last-drone`, `stages.empty-wave-does-not-clear` and
+`instrumentation.stage-clearing-gate` — are the ones that leave it on. Every
+expected value a suite asserts comes from a figure the specs fix, never from a
+reference build.
 
 ### Where the figure a suite asserts comes from
 
@@ -280,7 +283,7 @@ discharge and the inversion), `swarm` (the entrances, the formation, the dives
 and the three drones), `arcade` (the ship, the stages, the lives, the scoring and
 the screens) and `presentation` (the screens, the HUD, the art and the audio) —
 and its overall functional rating is the worst of the four. The checklist is
-`279` points on a base run and `297` on an overload run: eighteen categories common
+`280` points on a base run and `298` on an overload run: eighteen categories common
 to both, plus one category the variant declares. Each point names the domains its
 failure lowers and how far it lowers them. Every point is worth one except
 `showcase.exists`, which is worth three: the showcase is a deliverable of its own

@@ -29,13 +29,6 @@
 // (specs/resonance.md) and would take it either way, but a drone that is not
 // changing under the reading is one less thing in the scenario.
 //
-// WHY THE BYSTANDER IS IN PHASE `formation`. specs/resonance.md puts a formation
-// drone outside what the wave takes, so it survives the discharge and leaves a
-// drone standing — which is what keeps `SCORE_STAGE_CLEAR` out of the number this
-// check reads, under either reading of "the last drone of its wave"
-// (specs/stages.md). It is also read back below: a build whose wave took it would
-// be adding a third payment to the sum.
-//
 // WHAT THIS DOES NOT DECIDE. That the discharge key releases the wave is
 // `controls/discharge-x`; what the wave destroys and spares is `resonance`'s; the
 // two figures themselves are `scoring/shard-diving` and `scoring/flux-diving`.
@@ -62,7 +55,6 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { poseBystander } from "./wave";
 
 /** The one key specs/controls.md binds the discharge action to. */
 const DISCHARGE_KEY = "KeyX";
@@ -72,8 +64,7 @@ const DISCHARGE_KEY = "KeyX";
  *
  * A clear stretch of the play field: below the formation grid's lowest row
  * (`slotY(4)`, `332`) and its full sway, above the ship's lane (`SHIP_Y`, `600`),
- * either side of the lane's centre and well clear of the corner the bystander
- * holds. Each is roughly `200` units from the ship the wave is centred on, which
+ * either side of the lane's centre. Each is roughly `200` units from the ship the wave is centred on, which
  * a radius growing to `DISCHARGE_MAX_R` (`1500`) in `DISCHARGE_TIME` (`0.5`)
  * seconds passes in the first tenth of its life.
  */
@@ -97,8 +88,8 @@ const HELD_CLOCK = 0;
  */
 const WAVE_TICKS = ticksFor(DISCHARGE_TIME) + 2;
 
-/** The field before the wave: the two divers and the bystander. */
-const POSED_DRONES = 3;
+/** The field before the wave: the two divers this point is about. */
+const POSED_DRONES = 2;
 
 let h: Harness;
 
@@ -112,7 +103,6 @@ afterEach(() => {
 
 it("pays each drone the wave destroys its diving figure", async () => {
   startPosed(h);
-  const bystander = poseBystander(h);
   const shard = poseDrone(h, "shard", SHARD_AT.x, SHARD_AT.y, {
     band: "cyan",
     phase: "diving",
@@ -129,7 +119,7 @@ it("pays each drone the wave destroys its diving figure", async () => {
   assertLength(
     before.drones,
     POSED_DRONES,
-    "precondition: the field holds the two divers and the bystander",
+    "precondition: the field holds the two divers",
   );
   assertEqual(
     before.dischargeReady,
@@ -152,11 +142,6 @@ it("pays each drone the wave destroys its diving figure", async () => {
   assertNull(
     findDrone(after, flux),
     "precondition: the wave destroyed the diving Flux (specs/resonance.md)",
-  );
-  assertNotNull(
-    findDrone(after, bystander),
-    "precondition: the wave left the formation bystander standing " +
-      "(specs/resonance.md: a drone in phase formation, nothing)",
   );
   assertEqual(
     after.score,

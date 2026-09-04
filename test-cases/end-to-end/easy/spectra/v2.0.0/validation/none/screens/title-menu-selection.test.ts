@@ -18,13 +18,14 @@
 // read because a build that repaints only the one it happens to start on has a
 // highlight that does not follow the index.
 //
-// EACH ENTRY'S NEIGHBOURHOOD IS THE BUILD'S OWN. It is the run of text the build
-// drew, taken from `textDraws` with the transform in force applied, widened by
-// `ENTRY_PAD_X` on each side and `entryHalfHeight` above and below, so a marker or
-// a bar drawn beside or behind the words falls inside it. The vertical extent is
-// capped at a fraction of the gap the build left between the two entries, so the
-// two neighbourhoods cannot overlap and the change read in one cannot be the other
-// entry's.
+// EACH ENTRY'S NEIGHBOURHOOD IS THE BUILD'S OWN, AND THE BUILD REPORTS IT. It is
+// the hit region `menuItemRect(index)` returns for that item — the region
+// `specs/ui.md` says a pointer or a contact selects the item from, in logical
+// units. So a menu drawn anywhere at any size is read where the build put it, and
+// a build whose labels are a sprite or a bitmap-font atlas rather than canvas text
+// is read exactly as well as one that draws them with `fillText`. Two items'
+// regions select different items, so they do not overlap and the change read in
+// one cannot be the other entry's.
 //
 // THE CONTROL. A strip of screen that moves on its own — an animated menu, a
 // drifting starfield behind it — would let "something changed" pass a build whose
@@ -33,24 +34,36 @@
 // index causes has to beat it.
 //
 // WHAT THIS DOES NOT DECIDE, AND SAYS SO. Which of the two treatments is the
-// HIGHLIGHTED one. With two entries and no fixed appearance for a highlight, no
-// reading of the pixels can tell "the highlight is on the item the index names"
-// from "the highlight is on the other one" — a script would have to be told what a
-// highlight looks like, which `specs/ui.md` deliberately does not say. The pair of
-// captures is what a reviewer decides that from.
+// HIGHLIGHTED one. Reading the regions from the build's own report settles WHERE
+// to look; it does not settle what a highlight looks like. With two entries and no
+// fixed appearance for one, no reading of the pixels can tell "the highlight is on
+// the item the index names" from "the highlight is on the other one" — a script
+// would have to be told what a highlight looks like, which `specs/ui.md`
+// deliberately does not say. The pair of captures is what a reviewer decides that
+// from.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, fail } from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { titleItems } from "../constants";
 import {
   captureStill,
   createHarness,
-  drawnText,
+  menuRect,
   readRegion,
-  textDraws,
   type Harness,
+  type MenuRect,
 } from "../harness";
-import { changedSamples, driftOverOneFrame, entryRegion } from "./reading";
+import { changedSamples, driftOverOneFrame } from "./reading";
+
+/** A reported hit region as the pixel readers take one. */
+function regionOf(rect: MenuRect): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  return { x: rect.x, y: rect.y, width: rect.w, height: rect.h };
+}
 
 /** The two indices the highlight is posed at: every index TITLE_ITEMS has. */
 const FIRST_INDEX = 0;
@@ -82,18 +95,6 @@ const REPAINT_MIN_SAMPLES = 24;
 /** One sample every two logical units, in both directions. */
 const READ_STEP = 2;
 
-/** How far either side of a run's own span its neighbourhood reaches. */
-const ENTRY_PAD_X = 40;
-
-/**
- * The most of the gap between the two entries one neighbourhood may claim, above
- * and below its anchor.
- *
- * Two fifths, so the two never overlap whatever spacing a build chose, and the
- * change read in one entry's square is that entry's.
- */
-const ENTRY_GAP_SHARE = 0.4;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -118,27 +119,11 @@ it("repaints each title-menu entry when the highlight index moves to it", async 
     "with the highlight resting on the first item (specs/ui.md)",
   );
 
-  // Where the build itself drew each entry, so the squares read below are the
-  // build's layout rather than the case's.
+  // Where the build itself put each entry, asked of the build, so the squares
+  // read below are its own layout rather than the case's.
   const items = titleItems(opened.mode);
-  const calls = await h.frameCalls();
-  const draws = textDraws(calls);
-  const first = draws.find((run) =>
-    run.text.toLowerCase().includes(items[0].toLowerCase()),
-  );
-  const second = draws.find((run) =>
-    run.text.toLowerCase().includes(items[1].toLowerCase()),
-  );
-  if (first === undefined || second === undefined) {
-    fail(
-      `both TITLE_ITEMS entries (${items.join(", ")}) drawn as runs of text ` +
-        "whose anchors can be read (specs/ui.md)",
-      JSON.stringify(drawnText(calls)),
-    );
-  }
-  const halfHeight = Math.abs(second.y - first.y) * ENTRY_GAP_SHARE;
-  const firstBox = entryRegion(first, ENTRY_PAD_X, halfHeight);
-  const secondBox = entryRegion(second, ENTRY_PAD_X, halfHeight);
+  const firstBox = regionOf(await menuRect(h, FIRST_INDEX));
+  const secondBox = regionOf(await menuRect(h, SECOND_INDEX));
 
   // What each square does on its own across one frame, with nothing posed.
   const firstDrift = await driftOverOneFrame(

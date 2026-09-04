@@ -15,12 +15,6 @@
 //
 // The seed is far below `EXTRA_LIFE_AT` (20000, specs/progression.md), so no
 // extra life is in play and nothing but this shot can touch the score.
-//
-// The shot is the same one `bands/mismatch-spares` fires — a magenta bullet into
-// a stored-cyan Shard, from below, driven clear past it — so nothing is destroyed,
-// no stage can clear, and no bystander is needed. What the shot does to the DRONE
-// is the sibling `sortie/mismatch-wasted`; what it does to the METER is
-// `sortie/mismatch-fills-no-resonance`. This check reads the score alone.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

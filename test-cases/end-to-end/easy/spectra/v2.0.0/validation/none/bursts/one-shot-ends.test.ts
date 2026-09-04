@@ -38,7 +38,6 @@ import {
   captureStill,
   createHarness,
   framesFor,
-  poseBystander,
   poseDrone,
   shootDrone,
   startPosed,
@@ -78,7 +77,6 @@ afterEach(async () => {
 
 it("plays for the burst's span, then leaves the roster and stays gone", async () => {
   await startPosed(h);
-  await poseBystander(h);
   const target = await poseDrone(h, "shard", POP_AT.x, POP_AT.y, {
     band: "cyan",
   });

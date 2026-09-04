@@ -21,10 +21,6 @@
 // shell's. The Prism stores cyan, so a cyan shot breaks the shell and nothing
 // else on the field can move the meter.
 //
-// NO BYSTANDER STANDS HERE, and the reason is the requirement itself: this
-// scenario destroys no drone — the Prism lives on with its core exposed — so the
-// wave still holds a drone and no stage can clear underneath the reading.
-//
 // WHAT THIS DOES NOT DECIDE. That the shell breaks and the Prism survives is
 // `drones`'; what the break SCORES is `scoring`'s; what the CORE adds is
 // `resonance/core-fills`, which is this point's opposite direction — a build that

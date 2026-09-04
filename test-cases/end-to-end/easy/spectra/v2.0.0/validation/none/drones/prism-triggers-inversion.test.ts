@@ -7,16 +7,6 @@
 // that gets through does not hurt the ship, it changes what everything on the
 // field reads as for `INVERSION_TIME` seconds.
 //
-// WHAT IS DRIVEN. One Prism alone, its shell intact — "a layer still intact" — in
-// phase `diving` with its TRAVEL ON and its fire off, posed twenty units above the
-// line so its own descent carries it across within a few frames of any dive path a
-// build lays out. Its fire is off because the bullets a dive carries are
-// `drones/prism-fires-two-bands`' requirement and would be bystanders here; its
-// slot is posed on the grid's top row so the return the crossing starts is a real
-// journey rather than a step, which is what `drones/prism-survives-bottom` reads.
-// `startPosed` leaves the field empty and the inversion at zero, so the reading
-// below can only be the crossing's doing.
-//
 // WHY THE PRISM IS POSED AT THE LINE RATHER THAN SENT DOWN FROM THE FORMATION.
 // specs/swarm.md lets a dive end "either by turning back above `FIELD_BOTTOM`
 // without ever entering the bottom HUD strip, or by wrapping through the bottom",

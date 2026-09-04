@@ -139,6 +139,7 @@ export function createState(art: Art): SpectraState {
     bursts: [],
     waveEntry: true,
     diveLaunching: true,
+    stageClearing: true,
     entryClock: 0,
     swayClock: 0,
     diveClock: 0,
@@ -186,6 +187,7 @@ export function resetState(state: SpectraState, seed = DEFAULT_SEED): void {
   state.bursts = [];
   state.waveEntry = true;
   state.diveLaunching = true;
+  state.stageClearing = true;
   freshWaveClocks(state);
   state.simTime = 0;
   state.rngState = seedRng(seed);
@@ -229,9 +231,10 @@ export function startRun(state: SpectraState): void {
   state.resonance = 0;
   state.extraLifeAwarded = false;
   state.ship.band = "cyan";
-  // Both of the wave's own faculties are on when a run begins.
+  // Every one of the wave's own faculties is on when a run begins.
   state.waveEntry = true;
   state.diveLaunching = true;
+  state.stageClearing = true;
   beginStage(state);
 }
 
@@ -843,7 +846,13 @@ function resolveRemovals(state: SpectraState): void {
   // A stage clears on the transition, not on a predicate: the roster emptying
   // through a removal is what clears it, so a live wave that was never given a
   // drone is being played rather than cleared (specs/stages.md).
-  if (state.screen === "inWave" && state.drones.length === 0) clearStage(state);
+  if (
+    state.stageClearing &&
+    state.screen === "inWave" &&
+    state.drones.length === 0
+  ) {
+    clearStage(state);
+  }
 }
 
 /** The interstitial a finished stage opens, and the bonus it pays. */

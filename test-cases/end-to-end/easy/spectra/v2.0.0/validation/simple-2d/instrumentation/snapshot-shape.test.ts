@@ -163,6 +163,7 @@ function assertShape(s: SpectraSnapshot): void {
       "muted",
       "waveEntry",
       "diveLaunching",
+      "stageClearing",
     ],
     "snapshot()",
   );

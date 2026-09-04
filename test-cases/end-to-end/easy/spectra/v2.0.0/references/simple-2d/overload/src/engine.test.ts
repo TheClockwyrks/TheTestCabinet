@@ -71,6 +71,7 @@ describe("the debug surface", () => {
       "setChallengeHits",
       "setWaveEntry",
       "setDiveLaunching",
+      "setStageClearing",
       "setShipContact",
       "setDiveClock",
       "setShipX",
@@ -166,6 +167,7 @@ describe("the debug surface", () => {
     h.pose((s, d) => d.setChallengeHits(s, 17));
     h.pose((s, d) => d.setWaveEntry(s, false));
     h.pose((s, d) => d.setDiveLaunching(s, false));
+    h.pose((s, d) => d.setStageClearing(s, false));
     h.pose((s, d) => d.setShipContact(s, false));
     h.pose((s, d) => d.setDiveClock(s, 1.25));
     h.pose((s, d) => d.setShipX(s, 300));
@@ -187,6 +189,7 @@ describe("the debug surface", () => {
     expect(snap.challengeHits).toBe(17);
     expect(snap.waveEntry).toBe(false);
     expect(snap.diveLaunching).toBe(false);
+    expect(snap.stageClearing).toBe(false);
     expect(snap.ship.contact).toBe(false);
     expect(snap.diveClock).toBeCloseTo(1.25, 6);
     expect(snap.ship.x).toBe(300);

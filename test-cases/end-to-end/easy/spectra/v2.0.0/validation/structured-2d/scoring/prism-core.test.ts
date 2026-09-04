@@ -25,10 +25,6 @@
 // cyan shot here would break nothing, which is `bands`'s point rather than this
 // one.
 //
-// WHY A BYSTANDER STANDS IN THE CORNER. See `scene.ts`: this shot destroys the
-// Prism, so without one the wave could be cleared under the kill and pay
-// `SCORE_STAGE_CLEAR` into the number this check reads.
-//
 // WHAT THIS DOES NOT DECIDE. That the exposed core falls to a shot of its own
 // band is `bands`'s and `drones`'s. What the SHELL pays is
 // `scoring.prism-shell`.
@@ -44,14 +40,13 @@ import {
   startPosed,
   type Harness,
 } from "../harness";
-import { poseBystander, requireDrone, shootDrone } from "./scene";
+import { requireDrone, shootDrone } from "./scene";
 
 /**
  * Where the Prism is posed, in logical units.
  *
  * A clear stretch of the play field: below the formation grid's lowest row
- * (`332`) and its full sway, above the ship's lane (`SHIP_Y`, `600`), and well
- * clear of the corner the bystander holds.
+ * (`332`) and its full sway, above the ship's lane (`SHIP_Y`, `600`).
  */
 const TARGET_AT = { x: 900, y: 460 } as const;
 
@@ -73,7 +68,6 @@ afterEach(() => {
 
 it("adds exactly SCORE_PRISM_CORE when a Prism's exposed core is destroyed", async () => {
   startPosed(h);
-  poseBystander(h);
   // Stored cyan with the shell already gone, so the exposed core is magenta.
   const target = poseDrone(h, "prism", TARGET_AT.x, TARGET_AT.y, {
     band: SHELL_BAND,

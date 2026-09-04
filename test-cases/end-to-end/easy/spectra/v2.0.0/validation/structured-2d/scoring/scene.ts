@@ -1,27 +1,12 @@
 // Spectra — scoring/scene: the posed field the ten per-kill points share, and
 // nothing else. LOCAL TO THIS GROUP.
 //
-// Ten of this group's fourteen points read one number: what the score held after
-// exactly one destruction. Each poses the same shape — an empty, quiet field, one
-// drone standing perfectly still in a clear stretch of it, one bystander out of
-// the way, and one shot climbing into the drone — and differs only in the kind,
-// the phase and the layer under test. That shape is written once here so the
-// fourteen files hold their own figures and their own reasoning rather than their
-// own plumbing.
-//
-// IT FIXES ARRANGEMENT AND NOTHING ELSE. Where a bystander stands, how far below
-// its target a shot starts, and how long that shot is given to arrive are all
-// geometry, derived from `PLAYER_BULLET_SPEED` and the drawn half-extents
-// `specs/drones.md` and `specs/ship.md` fix. Every FIGURE a point asserts — every
-// `SCORE_*` and every bonus — is stated in the point's own file, beside the
-// sentence of `specs/scoring.md` it comes from. Nothing here asserts a score.
-//
 // It lives beside the checks that use it rather than in the shared harness next
 // door because only this group poses a field this way: a scenario built to make
 // one payment the only thing that could have moved a number.
 
 import { fail } from "../assert";
-import { FIELD_LEFT, FIELD_TOP, PLAYER_BULLET_SPEED } from "../constants";
+import { PLAYER_BULLET_SPEED } from "../constants";
 import {
   droneById,
   fireAt,
@@ -32,37 +17,6 @@ import {
   type Harness,
   type SpectraSnapshot,
 } from "../harness";
-
-/**
- * Where {@link poseBystander} stands: inside the play field, in the corner
- * furthest from the ship's lane, from the formation grid at its full sway, and
- * from every place this group poses a drone it is about to destroy.
- */
-export const BYSTANDER_AT = { x: FIELD_LEFT + 40, y: FIELD_TOP + 40 } as const;
-
-/**
- * Pose one inert Shard out of the way, so the live wave still holds a drone.
- *
- * WHY EVERY PER-KILL POINT IN THIS GROUP NEEDS ONE. `specs/stages.md` clears a
- * standard stage "in the moment the last drone of its wave is destroyed", and a
- * cleared stage pays `SCORE_STAGE_CLEAR` (`specs/scoring.md`). A build is free to
- * read "its wave" as the drones standing on the field — under which reading a
- * scenario that destroys the only drone it posed clears the stage in that same
- * frame and pays a thousand points into the very number the check was about to
- * read. That is the build behaving correctly, and it is `scoring/stage-clear-bonus`'s
- * point rather than this one's. A bystander leaves a drone standing, so the wave
- * carries on whichever reading the build took and the score holds the one kill.
- *
- * It is a prop like any other {@link poseDrone} — every faculty off, in phase
- * `formation`, which is also the phase a discharge wave spares
- * (`specs/resonance.md`), so it survives the one point here that discharges. A
- * check that poses one accounts for it when it counts drones.
- */
-export function poseBystander(h: Harness): number {
-  return poseDrone(h, "shard", BYSTANDER_AT.x, BYSTANDER_AT.y, {
-    phase: "formation",
-  });
-}
 
 /**
  * The drone with that id, or the failure that the roster no longer holds it.

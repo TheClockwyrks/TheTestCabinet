@@ -19,11 +19,6 @@
 // the reach of any contact the case defines — the widest is a Prism's `28` plus a
 // bullet's `6` — so neither shot can resolve against the other's target and each
 // verdict belongs to its own drone.
-//
-// THE SECOND TARGET SURVIVES THE FIRST KILL. specs/stages.md clears a stage in
-// the moment its LAST drone is destroyed, so a scenario holding one drone would
-// leave the wave behind the instant the matching shot landed. Holding both here
-// is not a bystander parked in a corner: each is a target this point fires at.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { INVERSION_TIME, PRISM_HALF, SHARD_HALF } from "../constants";

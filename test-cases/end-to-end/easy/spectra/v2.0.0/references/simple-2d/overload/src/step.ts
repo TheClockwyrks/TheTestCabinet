@@ -204,6 +204,7 @@ function stepWave(
   // The clear is the removal of the wave's own last drone, so a wave that never
   // held one never clears and a drone a scenario placed clears nothing.
   if (
+    sim.stageClearing &&
     sim.screen === "inWave" &&
     ev.waveDronesRemoved > 0 &&
     !sim.drones.some(ofWave)

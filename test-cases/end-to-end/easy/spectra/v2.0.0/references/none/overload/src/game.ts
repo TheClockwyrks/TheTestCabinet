@@ -94,6 +94,7 @@ export function freshState(seed = DEFAULT_SEED): SpectraState {
     bursts: [],
     waveEntry: true,
     diveLaunching: true,
+    stageClearing: true,
     entryClock: 0,
     swayClock: 0,
     diveClock: 0,

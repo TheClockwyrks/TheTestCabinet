@@ -16,14 +16,6 @@
 // then `1` with no Prism left to shoot. Each fails on a different reading, so a
 // failure names which model the build implemented.
 //
-// THE TWO SHOTS ARE THE ONLY THINGS THAT HAPPEN. The Prism is posed with every
-// faculty off, holding its centre, so the second shot is aimed where the first
-// left it; `BURST_DURATION` (`0.7`) seconds is many times the fifth of a second
-// the two shots take together, so the shell's burst is still playing when the
-// core's starts and the count of `2` is a count of two LIVE bursts. The
-// bystander in the far corner keeps the wave open once the Prism is gone (see
-// `poseBystander`).
-//
 // WHAT THIS DOES NOT DECIDE. That a shot of the shell's band breaks the shell
 // and one of the core's destroys the core is `bands/`'s and the Prism's own
 // items', and it is read here as the precondition of each pop. What each burst
@@ -40,12 +32,11 @@ import {
   type Harness,
 } from "../harness";
 import { droneOf } from "./reading";
-import { poseBystander, shootAt } from "./scene";
+import { shootAt } from "./scene";
 
 /**
  * Where the Prism is posed: a clear stretch of the play field, below the
- * formation grid and its full sway, above the ship's lane, clear of the corner
- * the bystander holds.
+ * formation grid and its full sway, above the ship's lane.
  */
 const PRISM_AT = { x: 900, y: 460 } as const;
 
@@ -61,7 +52,6 @@ afterEach(() => {
 
 it("starts one burst when the shell breaks and a second when the core dies", async () => {
   startPosed(h);
-  poseBystander(h);
   // Cyan shell, so its core is magenta (specs/drones.md: the core's band is
   // always the opposite of the shell's).
   const prism = poseDrone(h, "prism", PRISM_AT.x, PRISM_AT.y, {

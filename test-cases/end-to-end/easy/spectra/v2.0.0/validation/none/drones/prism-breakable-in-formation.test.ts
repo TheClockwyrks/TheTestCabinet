@@ -25,9 +25,6 @@
 // `SWAY_AMP * 2π / SWAY_PERIOD` = 25.2 units per second, which is 6.3 units in the
 // 0.25 s the sweep allows — a fifth of the 34-unit reach, so the drift cannot
 // decide the contact either way.
-//
-// Nothing is destroyed here: the shell comes off and the Prism stands, so no
-// bystander is needed and no stage-clear reading is in play.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

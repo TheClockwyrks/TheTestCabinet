@@ -235,6 +235,7 @@ it("reports every documented field, from a field carrying one of everything", as
   assertEqual(typeof s.muted, "boolean", "snapshot().muted");
   assertEqual(typeof s.waveEntry, "boolean", "snapshot().waveEntry");
   assertEqual(typeof s.diveLaunching, "boolean", "snapshot().diveLaunching");
+  assertEqual(typeof s.stageClearing, "boolean", "snapshot().stageClearing");
   assertEqual(
     typeof s.diveClock,
     "number",

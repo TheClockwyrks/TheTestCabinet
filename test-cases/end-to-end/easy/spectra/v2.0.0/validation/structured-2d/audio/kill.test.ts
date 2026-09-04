@@ -18,18 +18,6 @@
 // three faculties off, so it neither travels, oscillates nor fires while the shot
 // is in the air.
 //
-// NO BYSTANDER HOLDS THE WAVE OPEN, AND THE NAME IS WHY NONE IS NEEDED. The world
-// holds exactly the drone the requirement concerns. Whether emptying the field of
-// it also CLEARS the stage depends on how a build reads "the last drone of its
-// wave" (`specs/stages.md`) — as the drones the stage built, or as the drones on
-// the field — and the specification leaves both open, so this check must be
-// indifferent to it. It is: under this engine the bus announces each play BY NAME,
-// so a build on the second reading raising `stage-clear` on the very same frame
-// costs the reading nothing. `specs/ui.md` provides for it — "a frame that raises
-// more than one of them plays each of those once" — and every assertion below
-// names `CUES.kill` alone. A build on that reading is also why the still may carry
-// the interstitial behind the burst.
-//
 // WHAT THIS DOES NOT DECIDE. That a matching shot destroys, what it scores, or
 // what it pops, which are `bands/match-destroys`'s, `scoring/*`'s and
 // `bursts/spawns-on-kill`'s; nor that a stage clear sounds, which is

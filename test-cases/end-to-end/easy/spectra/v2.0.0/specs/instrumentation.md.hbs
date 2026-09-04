@@ -154,13 +154,13 @@ and changes nothing.
 `resonance` to `0`, and `inversion` to `0`; it empties the drone, bullet, and burst
 rosters and the live discharge; it places the ship at the center of its lane (`640`)
 on the cyan band with `0` seconds of fire lockout and `0` seconds of fire cooldown;
-it turns the three world gates `waveEntry`, `diveLaunching`, and `ship.contact` back
-on; it returns the wave's entry, sway, and dive clocks, and the gap the next dive
-waits for, to their fresh-wave values, `diveClock` at `0` and the gap at
-`DIVE_FIRST_DELAY`; it sets `extraLifeAwarded` to `false` and `challengeHits` to `0`;
-and it sets `simTime` to `0` and the counter the next entity's id is taken from back
-to the first id, so two runs reset with the same seed report the same ids for the same
-scenario.
+it turns the four world gates `waveEntry`, `diveLaunching`, `stageClearing`, and
+`ship.contact` back on; it returns the wave's entry, sway, and dive clocks, and the
+gap the next dive waits for, to their fresh-wave values, `diveClock` at `0` and the
+gap at `DIVE_FIRST_DELAY`; it sets `extraLifeAwarded` to `false` and `challengeHits`
+to `0`; and it sets `simTime` to `0` and the counter the next entity's id is taken
+from back to the first id, so two runs reset with the same seed report the same ids
+for the same scenario.
 
 `options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the game's
 randomness. `muted` is left exactly as it stands, because muting is a player
@@ -221,14 +221,15 @@ not re-arm the award.
 
 ### The world gates and the dive clock
 
-Three faculties belong to the wave itself rather than to any one entity. Each has its
-own gate, each gates one faculty and nothing else, each is on by default and restored
-to on by `reset`, and each is reported by `snapshot`.
+Four faculties belong to the wave and the stage themselves rather than to any one
+entity. Each has its own gate, each gates one faculty and nothing else, each is on by
+default and restored to on by `reset`, and each is reported by `snapshot`.
 
 | Operation | Gates |
 | --- | --- |
 | `setWaveEntry(enabled)` | The wave's own release of drones: the staggered groups a stage sends in on the `ENTER_GROUP_GAP` schedule. Off, no drone arrives unless one is added. A drone already traveling its entrance flies it as usual. |
 | `setDiveLaunching(enabled)` | The assault's own choice of which formation drone dives next, and when. Off, no dive is launched. A drone already diving flies its dive as usual. |
+| `setStageClearing(enabled)` | The live stage's own end-of-stage test, which is the rule `specs/stages.md` states for a standard stage clearing and for a challenge stage ending. Off, no stage clears or ends however the field empties, and nothing else changes: drones are still destroyed, still scored, and still burst as usual. It is reported as `stageClearing`. |
 | `setShipContact(enabled)` | The ship's contact test, which is whether an enemy bullet or a drone body reaching the ship costs a life. Off, the ship still draws, still moves under input, and still fires, and no contact costs anything. It is reported as `ship.contact`. |
 
 The wave carries one clock of its own beside those gates.
@@ -350,6 +351,7 @@ so every operation is verifiable by setting a value and reading it back.
   muted: <boolean>,
   waveEntry: <boolean>,              // the wave's own release of drones runs
   diveLaunching: <boolean>,          // the assault's own dive choice runs
+  stageClearing: <boolean>,          // the stage's own end-of-stage test runs
   diveClock: <number>,               // seconds since the wave's last dive launch
   droneSpeedScale: <number>,         // derived from stage
   bulletSpeedScale: <number>,        // derived from stage

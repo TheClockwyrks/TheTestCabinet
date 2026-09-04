@@ -806,6 +806,15 @@ validation = { script = "instrumentation/ship-contact-gate.test.ts", outputs = [
   { id = "unharmed", name = "The bullet reaching the ship at no cost", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "stage-clearing-gate"
+title = "Stage clearing off ends no stage"
+description = "With setStageClearing(false), destroying the last drone of the game's own wave leaves the screen inWave, the phase live and no SCORE_STAGE_CLEAR paid; with the gate as reset leaves it, the same kill ends the wave."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "instrumentation/stage-clearing-gate.test.ts", outputs = [
+  { id = "carrying-on", name = "The wave still live after its last drone fell", kind = "image" },
+] }
+[[review.categories.items]]
 id = "set-score-grants-no-life"
 title = "Posing the score grants no extra life"
 description = "setScore across EXTRA_LIFE_AT leaves lives exactly as it was: the award belongs to the scoring path, and a pose is a precondition."

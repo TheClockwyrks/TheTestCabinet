@@ -73,6 +73,7 @@ export function startRun(state: SpectraState): void {
   state.bursts = [];
   state.waveEntry = true;
   state.diveLaunching = true;
+  state.stageClearing = true;
   openStageIntro(state);
 }
 

@@ -25,11 +25,6 @@
 // therefore about the Prism carrying its shell, and that is the pop read here.
 // That a Prism pops twice at all is `bursts/prism-twice`.
 //
-// WHY NO BYSTANDER STANDS HERE. The Prism keeps its core through the shell
-// break, so the field still holds a drone once the Shard is destroyed and the
-// live wave carries on with nothing extra posed into it (`specs/stages.md`, and
-// see `poseBystander` for the checks in this group that do need one).
-//
 // WHAT THIS DOES NOT DECIDE. Where a burst stands is `bursts/spawns-on-kill`,
 // and what it paints is `bursts/drawn`. Nothing here reads a pixel: the figure
 // under test is one the surface reports.

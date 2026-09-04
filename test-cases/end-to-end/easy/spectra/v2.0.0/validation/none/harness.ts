@@ -83,8 +83,6 @@ import { assertTruthy, fail } from "./assert";
 import {
   BURST_SYSTEM,
   ENEMY_BULLET_SPEED,
-  FIELD_LEFT,
-  FIELD_TOP,
   FORM_CENTER_X,
   FORM_COLS,
   FORM_ROWS,
@@ -152,6 +150,7 @@ export const REQUIRED_OPS = [
   // The world gates and the dive clock.
   "setWaveEntry",
   "setDiveLaunching",
+  "setStageClearing",
   "setShipContact",
   "setDiveClock",
   // The ship and its cannon.
@@ -318,6 +317,7 @@ export interface SpectraSnapshot {
   muted: boolean;
   waveEntry: boolean;
   diveLaunching: boolean;
+  stageClearing: boolean;
   diveClock: number;
   droneSpeedScale: number;
   bulletSpeedScale: number;
@@ -367,6 +367,7 @@ export interface SpectraDebugApi {
 
   setWaveEntry(enabled: boolean): Promise<void>;
   setDiveLaunching(enabled: boolean): Promise<void>;
+  setStageClearing(enabled: boolean): Promise<void>;
   setShipContact(enabled: boolean): Promise<void>;
   setDiveClock(seconds: number): Promise<void>;
 
@@ -3500,19 +3501,21 @@ export function distance(
  * The sequence, and why each part of it is here:
  *
  *   - THE FOUR ROSTERS ARE EMPTIED. `clearDrones`, `clearPlayerBullets`,
- *     `clearEnemyBullets`, `clearBursts`. An empty field is safe because of the
- *     stage-clear rule (`specs/stages.md`): a stage clears on the moment the last
- *     drone of its wave is DESTROYED, so a wave that never held one is being
- *     played rather than cleared. `stages/empty-wave-does-not-clear` is the item
- *     that grades that, and it is what makes every scenario below poseable.
- *   - THE THREE WORLD GATES ARE SHUT. Without `setWaveEntry(false)` the stage's
+ *     `clearEnemyBullets`, `clearBursts`. A scenario then poses the entities its
+ *     requirement concerns and stands nothing else beside them, which is what the
+ *     isolation rule asks for.
+ *   - THE FOUR WORLD GATES ARE SHUT. Without `setWaveEntry(false)` the stage's
  *     own wave releases a group every `ENTER_GROUP_GAP` (0.6 s), so any scenario
  *     running longer than half a second is joined by drones it never asked for;
  *     without `setDiveLaunching(false)` an assembled formation launches its first
  *     dive `DIVE_FIRST_DELAY` (2.0 s) in and a posed drone can be pulled into one
  *     mid-scenario; without `setShipContact(false)` a drone posed near the bottom
  *     or an enemy bullet anywhere costs a life, which enters the `ready` phase and
- *     stops the wave. Each gate is the WAVE's own faculty rather than any entity's,
+ *     stops the wave; and without `setStageClearing(false)` the live stage's own
+ *     clear test ends the stage the moment a scenario destroys the last drone it
+ *     posed, which takes the screen off `inWave`, stops the field resolving
+ *     contacts, and pays a bonus into the score a scoring check was about to read.
+ *     Each gate is the WAVE's or the STAGE's own faculty rather than any entity's,
  *     which is why shutting it is not "parking an entity in a harmless corner".
  *     THE ITEMS THAT TURN A GATE BACK ON ARE THE ITEMS WHOSE REQUIREMENT THE GATE
  *     IS; any other check that finds itself wanting one has been mis-posed.
@@ -3529,18 +3532,12 @@ export function distance(
  * It poses no drone, no bullet and no burst: a check adds exactly what its
  * requirement concerns.
  *
- * ONE CONSEQUENCE EVERY CHECK THAT DESTROYS A DRONE HAS TO KNOW. `specs/stages.md`
- * clears a stage in the moment the LAST drone of its wave is destroyed, and it
- * leaves a build free to read "its wave" either way: as the drones the stage
- * itself built, or as the drones on the field. Under the second reading a
- * scenario that poses one drone and destroys it clears the stage in that frame —
- * the screen leaves `inWave`, the field stops resolving contacts, and a standard
- * stage pays `SCORE_STAGE_CLEAR` into the score a scoring check was about to
- * read. So a check whose scenario destroys a drone and then needs play to carry
- * on poses {@link poseBystander} first, which is right under either reading, and
- * it does not assert the screen either way. The one item that grades the rule
- * itself, `stages/clears-on-last-drone`, opens the game's OWN wave with
- * {@link startStage}, where the two readings agree.
+ * A CHECK THAT DESTROYS A DRONE THEREFORE RUNS ON. With `stageClearing` shut, the
+ * wave stays live however the field empties, so a scenario that poses one drone
+ * and destroys it reads what the kill did rather than what the stage end did. The
+ * items whose requirement IS the clear rule — `stages/clears-on-last-drone`,
+ * `stages/empty-wave-does-not-clear` and `instrumentation/stage-clearing-gate` —
+ * are the ones that leave the gate on.
  */
 export async function startPosed(
   h: Harness,
@@ -3553,6 +3550,7 @@ export async function startPosed(
     ["clearBursts"],
     ["setWaveEntry", false],
     ["setDiveLaunching", false],
+    ["setStageClearing", false],
     ["setShipContact", false],
     ["setScreen", "inWave"],
     ["setPhase", "live"],
@@ -3645,8 +3643,8 @@ export interface DroneSpec {
  *
  * ALL THREE FACULTIES DEFAULT OFF, which is the opposite of what `addDrone`
  * gives, and it is the important part of this helper. Most drones a check poses
- * are props — a target for a shot, a body for a contact test, a bystander in a
- * discharge — and a prop that travels, oscillates or fires wanders into the
+ * are props — a target for a shot, a body for a contact test, one drone of a
+ * discharge's reach — and a prop that travels, oscillates or fires wanders into the
  * scenario that posed it. A check asks for the one faculty its requirement is:
  *
  *   - a Flux's rhythm poses `oscillation: true` and leaves travel off, so the
@@ -3711,36 +3709,6 @@ function arrangeDrone(added: DroneView, spec: DroneSpec): SurfaceCall[] {
   calls.push(["setDroneOscillation", id, spec.oscillation ?? false]);
   calls.push(["setDroneFire", id, spec.fire ?? false]);
   return calls;
-}
-
-/**
- * Where {@link poseBystander} stands: inside the play field, in the corner
- * furthest from the ship's lane, the formation grid at its full sway, and the
- * points {@link EMPTY_FIELD_POINTS} samples.
- */
-export const BYSTANDER_AT = { x: FIELD_LEFT + 40, y: FIELD_TOP + 40 } as const;
-
-/**
- * Pose one inert Shard out of the way, so the wave still holds a drone.
- *
- * WHAT IT IS FOR. A stage clears in the moment the last drone of its wave is
- * destroyed (`specs/stages.md`). A build that reads "its wave" as the drones on
- * the field therefore ends the live wave the moment a scenario destroys the only
- * drone it posed — and on a standard stage pays `SCORE_STAGE_CLEAR` into the
- * score a scoring check was about to read. That is conformant behaviour, and it
- * is simply not what a check about a shot, a score, a burst or the meter is
- * asking about. A bystander leaves a drone standing, so the wave carries on
- * whichever reading the build took and the scenario under test runs to its end.
- *
- * It is a prop like any other {@link poseDrone}: every faculty off, so it holds
- * its corner and takes no part. A check that poses one accounts for it when it
- * counts drones.
- */
-export async function poseBystander(
-  h: Harness,
-  spec: DroneSpec = {},
-): Promise<number> {
-  return poseDrone(h, "shard", BYSTANDER_AT.x, BYSTANDER_AT.y, spec);
 }
 
 /** One entry of a posed formation: a kind, a slot of the grid, and its spec. */

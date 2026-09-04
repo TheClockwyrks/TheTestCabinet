@@ -8,7 +8,8 @@
 // to `0`, and `inversion` to `0`; it empties the drone, bullet, and burst rosters
 // and the live discharge; it places the ship at the center of its lane (`640`) on
 // the cyan band with `0` seconds of fire lockout and `0` seconds of fire cooldown;
-// it turns the three world gates `waveEntry`, `diveLaunching`, and `ship.contact`
+// it turns the four world gates `waveEntry`, `diveLaunching`, `stageClearing`,
+// and `ship.contact`
 // back on; it returns the wave's clocks to their fresh-wave values, `diveClock` at
 // `0`; it sets `extraLifeAwarded` to `false` and `challengeHits` to `0`; and it
 // sets `simTime` to `0`. Every one of those is read below, in that order, except
@@ -216,6 +217,7 @@ it("restores every declared field to its title value and leaves muted alone", as
   await h.debug.setDiveClock(DIVE_CLOCK);
   await h.debug.setWaveEntry(false);
   await h.debug.setDiveLaunching(false);
+  await h.debug.setStageClearing(false);
   await h.debug.setShipContact(false);
   await h.debug.setScreen(SCREEN);
   await h.debug.setPhase(PHASE);
@@ -322,6 +324,11 @@ it("restores every declared field to its title value and leaves muted alone", as
     title.diveLaunching,
     true,
     "snapshot().diveLaunching after reset(), which restores the gate to on",
+  );
+  assertEqual(
+    title.stageClearing,
+    true,
+    "snapshot().stageClearing after reset(), which restores the gate to on",
   );
   assertEqual(
     title.diveClock,

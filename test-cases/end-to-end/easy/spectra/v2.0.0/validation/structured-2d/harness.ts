@@ -1658,17 +1658,22 @@ export async function startRun(h: Harness, seed?: number): Promise<void> {
  * sequence rather than a debug operation because the surface is atomic: every
  * line below is one of its operations.
  *
- * EMPTY is safe. A stage clears in the moment the last drone of its wave is
- * DESTROYED (specs/stages.md), so a wave that never held one never clears, and a
- * posed rule runs without the stage advancing underneath it.
+ * EMPTY is what the isolation rule asks for: the scenario poses the entities its
+ * requirement concerns and nothing else stands beside them.
  *
- * QUIET is the three world gates. With `waveEntry`, `diveLaunching` and the
- * ship's `contact` all off, nothing the scenario did not ask for arrives,
- * launches, or costs a life: no entry group is released, no formation drone is
- * chosen to dive, and no incidental touch empties the field mid-scenario.
+ * QUIET is the four world gates. With `waveEntry`, `diveLaunching`,
+ * `stageClearing` and the ship's `contact` all off, nothing the scenario did not
+ * ask for arrives, launches, ends the stage, or costs a life: no entry group is
+ * released, no formation drone is chosen to dive, no incidental touch empties the
+ * field mid-scenario, and destroying the last drone a scenario posed leaves the
+ * wave live rather than clearing the stage out from under the reading.
  *
- * A check whose REQUIREMENT is one of those three faculties turns that one back
- * on itself, and only that one. A check that finds itself needing a gate for any
+ * Each gate is the WAVE's or the STAGE's own faculty rather than any entity's, so
+ * shutting one removes nothing the requirement concerns and parks no bystander in
+ * a corner to hold the wave open.
+ *
+ * A check whose REQUIREMENT is one of those four faculties turns that one back on
+ * itself, and only that one. A check that finds itself needing a gate for any
  * other reason has been mis-posed.
  *
  * The generator is left as it stands, so a check that wants a seeded one calls
@@ -1681,6 +1686,7 @@ export function startPosed(h: Harness): void {
   h.debug.clearBursts();
   h.debug.setWaveEntry(false);
   h.debug.setDiveLaunching(false);
+  h.debug.setStageClearing(false);
   h.debug.setShipContact(false);
   h.debug.setScreen("inWave");
   h.debug.setPhase("live");

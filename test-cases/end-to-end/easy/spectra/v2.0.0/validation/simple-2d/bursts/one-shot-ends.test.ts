@@ -41,7 +41,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { firedPop, poseBystander } from "./scene";
+import { firedPop } from "./scene";
 
 /**
  * How far the end of a burst's play may stand from `BURST_DURATION` (`0.7`), as
@@ -75,7 +75,6 @@ afterEach(() => {
 
 it("plays for the burst's span, then leaves the roster and stays gone", async () => {
   startPosed(h);
-  poseBystander(h);
   poseDrone(h, "shard", POP_AT.x, POP_AT.y, { band: "cyan" });
 
   const pop = await firedPop(h, POP_AT.x, POP_AT.y, "cyan");

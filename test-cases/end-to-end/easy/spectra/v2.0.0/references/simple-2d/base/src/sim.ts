@@ -132,6 +132,7 @@ export interface Sim {
 
   waveEntry: boolean;
   diveLaunching: boolean;
+  stageClearing: boolean;
   entryClock: number;
   swayClock: number;
   diveClock: number;
@@ -214,6 +215,7 @@ export function toSim(state: DeepReadonly<SpectraState>): Sim {
 
     waveEntry: state.waveEntry,
     diveLaunching: state.diveLaunching,
+    stageClearing: state.stageClearing,
     entryClock: state.entryClock,
     swayClock: state.swayClock,
     diveClock: state.diveClock,

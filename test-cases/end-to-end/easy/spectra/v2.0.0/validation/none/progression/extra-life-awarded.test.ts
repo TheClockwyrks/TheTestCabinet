@@ -20,13 +20,6 @@
 // value, so a build that reads the latch and a build that ignores it grade
 // differently.
 //
-// A BYSTANDER STANDS THROUGHOUT. `specs/stages.md` clears a stage in the moment
-// the LAST drone of its wave is destroyed, and a build is free to read "its wave"
-// as the drones on the field — under which reading destroying the only drone
-// would clear the stage in that frame and pay `SCORE_STAGE_CLEAR` (`1000`) into
-// the score this check is watching. An inert Shard in the far corner leaves a
-// drone standing under either reading, so the crossing is the one the kill made.
-//
 // WHAT THIS DOES NOT DECIDE. What a Shard is worth (`scoring/shard-formation`'s),
 // nor that a matching shot destroys it (`bands/`'s). Both are read here only as
 // the premise that the score really did cross.
@@ -42,7 +35,6 @@ import {
   captureStill,
   createHarness,
   droneById,
-  poseBystander,
   poseDrone,
   requireDrone,
   shootDrone,
@@ -60,8 +52,8 @@ import {
  */
 const POSED_SCORE = EXTRA_LIFE_AT - 1;
 
-/** Where the target Shard is posed: a slot of the formation grid, well clear of
- * the bystander's corner and of the ship's lane. */
+/** Where the target Shard is posed: a slot of the formation grid, well clear
+ * of the ship's lane. */
 const TARGET_AT = { x: slotX(4), y: slotY(1) } as const;
 
 /**
@@ -80,7 +72,7 @@ const SHOT_BELOW = 200;
  * `specs/progression.md` puts the award on the scoring, so a build pays it on the
  * frame the score crossed; two frames leave room for one that resolves the award
  * in the update after the one that scored. Nothing else can happen in them: the
- * field holds one inert bystander, the world gates are shut and no key is held.
+ * field holds nothing but the ship, the world gates are shut and no key is held.
  */
 const AWARD_FRAMES = 2;
 
@@ -96,7 +88,6 @@ afterEach(async () => {
 
 it("adds exactly one life and latches when a kill carries the score across", async () => {
   await startPosed(h);
-  await poseBystander(h);
   const target = await poseDrone(h, "shard", TARGET_AT.x, TARGET_AT.y);
   await h.debug.setLives(START_LIVES);
   await h.debug.setScore(POSED_SCORE);

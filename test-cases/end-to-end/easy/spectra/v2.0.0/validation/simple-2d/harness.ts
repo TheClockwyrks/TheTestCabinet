@@ -1589,29 +1589,33 @@ export const LANE_CENTER = (SHIP_X_MIN + SHIP_X_MAX) / 2;
  * This is the ground almost every validator in this suite stands on, and both
  * halves of it are load-bearing.
  *
- * EMPTY is safe because of the stage-clear rule: a stage clears in the moment the
- * last drone of its wave is DESTROYED, so a wave that never held one is playing
- * rather than cleared (specs/stages.md). A validator therefore poses exactly the
- * entities its requirement concerns and nothing else, rather than keeping a
- * bystander drone alive to hold the stage open.
+ * EMPTY is what the isolation rule asks for: a validator poses exactly the entities
+ * its requirement concerns and nothing else, rather than keeping a bystander drone
+ * alive in a corner to hold the stage open.
  *
- * QUIET is the three world gates. With `waveEntry`, `diveLaunching` and
- * `ship.contact` all off, nothing the scenario did not ask for arrives, launches, or
- * costs a life — and each of the three would otherwise reach in. The stage's own
- * wave releases a group every `ENTER_GROUP_GAP`, so any scenario running longer than
- * half a second would be joined by drones it never asked for; an assembled
- * formation launches its first dive `DIVE_FIRST_DELAY` later and one every
- * `DIVE_GAP_MIN`–`DIVE_GAP_MAX` after that, so a posed formation drone can be pulled
- * into a dive mid-scenario; and the ship is the one entity no scenario can remove,
- * so its contact test reaches into every scenario that poses a drone near the
- * bottom or an enemy bullet anywhere, where a life lost enters the `ready` phase and
- * stops the wave.
+ * QUIET is the four world gates. With `waveEntry`, `diveLaunching`, `stageClearing`
+ * and `ship.contact` all off, nothing the scenario did not ask for arrives,
+ * launches, ends the stage, or costs a life — and each of the four would otherwise
+ * reach in. The stage's own wave releases a group every `ENTER_GROUP_GAP`, so any
+ * scenario running longer than half a second would be joined by drones it never
+ * asked for; an assembled formation launches its first dive `DIVE_FIRST_DELAY` later
+ * and one every `DIVE_GAP_MIN`–`DIVE_GAP_MAX` after that, so a posed formation drone
+ * can be pulled into a dive mid-scenario; the live stage's own clear test would end
+ * the stage the moment a scenario destroyed the last drone it posed, taking the
+ * screen off `inWave` and paying a bonus into a score about to be read; and the ship
+ * is the one entity no scenario can remove, so its contact test reaches into every
+ * scenario that poses a drone near the bottom or an enemy bullet anywhere, where a
+ * life lost enters the `ready` phase and stops the wave.
+ *
+ * Each gate is the WAVE's or the STAGE's own faculty rather than any entity's, so
+ * shutting one removes nothing a requirement concerns.
  *
  * TURNING A GATE BACK ON IS THE EXCEPTION, AND THE ITEM THAT DOES IT IS THE ITEM
- * WHOSE REQUIREMENT THE GATE IS — the wave-entry, stage and challenge items for
- * `setWaveEntry`, the dive-timing items for `setDiveLaunching`, and the shield,
- * contact and life-loss items for `setShipContact`. Any other validator that finds
- * itself needing one has been mis-posed; re-pose it.
+ * WHOSE REQUIREMENT THE GATE IS — the wave-entry and challenge items for
+ * `setWaveEntry`, the dive-timing items for `setDiveLaunching`, the stage-end items
+ * for `setStageClearing`, and the shield, contact and life-loss items for
+ * `setShipContact`. Any other validator that finds itself needing one has been
+ * mis-posed; re-pose it.
  *
  * It poses and returns; it runs no frame. A validator advances the frames its own
  * reading needs.
@@ -1628,6 +1632,7 @@ export function startPosed(h: Harness): void {
 
   h.debug.setWaveEntry(false);
   h.debug.setDiveLaunching(false);
+  h.debug.setStageClearing(false);
   h.debug.setShipContact(false);
 
   h.debug.setScreen("inWave");

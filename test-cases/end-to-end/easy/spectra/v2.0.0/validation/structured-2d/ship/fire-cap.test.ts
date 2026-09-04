@@ -15,18 +15,6 @@
 // wrong models read as different numbers: a build with NO cap climbs past 8 over the
 // held two seconds, a build that caps at 4 reads 4, and a conforming build reads 3.
 //
-// THE TWO POSED BULLETS ARE NOT BYSTANDERS — they ARE the precondition this point
-// is about, a cap one shot from closing — and they are HELD STILL with
-// `setBulletVelocity(id, 0, 0)` (specs/instrumentation.md), which is the same
-// isolation as posing an entity with only the faculties its requirement exercises:
-// what a bullet counts toward is not its travel. Left to travel they would climb
-// out of the play field in 0.77 s and specs/field.md would remove them, handing
-// their slots back and turning the rest of the window into a check on the field's
-// edge — `field/player-bullet-leaves-field`'s point, not this one. Standing still
-// they hold their two slots for the whole hold, which is what "however long fire is
-// held" asks. A bullet with no velocity is still one of the player's bullets in
-// flight: specs/ship.md counts what is on the roster.
-//
 // THE SHIP'S OWN SHOT IS LEFT TO TRAVEL, so the window is not a frozen tableau: the
 // third bullet climbs off the top after two thirds of a second, the cap re-opens,
 // the build fires again, and the ceiling is tested over and over across the two

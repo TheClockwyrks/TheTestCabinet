@@ -82,7 +82,7 @@ it("leaves the meter unchanged when a matching shot breaks a Prism's shell", asy
   startPosed(h);
   h.debug.setResonance(POSED_METER);
   // Nothing is destroyed by this scenario — the Prism lives on with its core
-  // exposed — so the wave still holds a drone and no bystander is needed.
+  // exposed, so the Prism is still standing when the meter is read.
   const prism = poseDrone(h, "prism", TARGET.x, TARGET.y, {
     band: "cyan",
     shell: true,

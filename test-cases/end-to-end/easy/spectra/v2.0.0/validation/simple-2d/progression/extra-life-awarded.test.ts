@@ -19,11 +19,6 @@
 // `progression.extra-life-once` the same scenario differing in ONE VALUE, so a
 // build that reads the latch and a build that ignores it grade differently.
 //
-// A BYSTANDER STANDS THROUGHOUT, for the reason `poseBystander` gives: without a
-// second drone on the field a build that reads a stage's wave as the drones
-// standing on it would clear the stage on the kill below and pay
-// `SCORE_STAGE_CLEAR` into the score being watched.
-//
 // THE TARGET IS A SHARD WITH EVERY FACULTY OFF, shot with its own band. A Shard
 // is the one kind whose effective band is its stored band outright — a Prism's
 // shell and a Flux's shimmer are each a swap of their own — so the kill is the
@@ -52,7 +47,6 @@ import {
   startPosed,
   type Harness,
 } from "../harness";
-import { poseBystander } from "./lives";
 
 /**
  * The score the run is posed at, one point below `EXTRA_LIFE_AT` (`20000`).
@@ -65,9 +59,8 @@ import { poseBystander } from "./lives";
 const POSED_SCORE = EXTRA_LIFE_AT - 1;
 
 /**
- * Where the target Shard stands: a slot of the formation grid four columns from
- * the bystander's and well above the ship's lane, so the shot's climb meets
- * nothing but the drone it was fired at.
+ * Where the target Shard stands: a slot of the formation grid well above the
+ * ship's lane, so the shot's climb meets nothing but the drone it was fired at.
  */
 const TARGET_X = slotX(4);
 const TARGET_Y = slotY(1);
@@ -81,7 +74,7 @@ const MATCHING_BAND = "cyan" as const;
  * specs/progression.md puts the award on the scoring, so a build pays it on the
  * frame the score crossed; two frames leave room for one that resolves the award
  * in the update after the one that scored. Nothing else can happen in them: the
- * field holds one inert bystander, the three world gates are shut and no key is
+ * field holds nothing but the ship, the four world gates are shut and no key is
  * held.
  */
 const AWARD_TICKS = 2;
@@ -98,7 +91,6 @@ afterEach(() => {
 
 it("adds exactly one life and latches when a kill carries the score across", async () => {
   startPosed(h);
-  poseBystander(h);
   const target = poseDrone(h, "shard", TARGET_X, TARGET_Y, {
     band: MATCHING_BAND,
   });

@@ -159,6 +159,7 @@ export interface SpectraState {
 
   readonly waveEntry: boolean;
   readonly diveLaunching: boolean;
+  readonly stageClearing: boolean;
   readonly entryClock: number;
   readonly swayClock: number;
   readonly diveClock: number;

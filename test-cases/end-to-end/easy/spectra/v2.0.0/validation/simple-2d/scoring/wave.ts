@@ -1,20 +1,10 @@
-// Spectra — scoring: the bystander every payment is read beside, and the wave the
-// GAME builds, opened and emptied one drone at a time.
+// Spectra — scoring: the wave the GAME builds, opened and emptied one drone at a
+// time.
 //
 // A LOCAL HELPER, FOR THIS GROUP ONLY. `scoring` is the one group that reads the
-// SCORE as an exact number, and the two things below are what make such a reading
+// SCORE as an exact number, and the things below are what make such a reading
 // mean the payment and nothing else. Neither belongs in `harness.ts`: no other
 // group asks what a kill was worth.
-//
-// WHY A BYSTANDER, WHEN `startPosed` LEAVES THE FIELD EMPTY. `specs/stages.md`
-// clears a standard stage "in the moment the last drone of its wave is
-// destroyed", and the phrase "its wave" has two conforming readings — the drones
-// the STAGE BUILT, or the drones ON THE FIELD. A build taking the second reading
-// clears the stage the moment a check destroys the only drone it posed, and pays
-// `SCORE_STAGE_CLEAR` (`1000`) into the very number the check was about to read.
-// That is conformant behaviour and it is simply not what a check about a figure
-// is asking about. {@link poseBystander} leaves one inert drone standing, so the
-// wave carries on under EITHER reading and the score holds the kill alone.
 //
 // WHY THE FOUR STAGE-END CHECKS OPEN A REAL WAVE. `stage-clear-bonus`,
 // `perfect-bonus`, `no-perfect-bonus-when-missed` and
@@ -39,7 +29,6 @@
 // drone stands when it is shot decides none of these four points, so bringing it
 // to a fixed spot costs the reading nothing and keeps every shot identical.
 
-import { FIELD_LEFT, FIELD_TOP } from "../constants";
 import { assertTrue, fail } from "../assert";
 import {
   droneOf,
@@ -47,36 +36,9 @@ import {
   findDrone,
   poseDrone,
   startStage,
-  type DroneOptions,
   type Harness,
   type SpectraSnapshot,
 } from "../harness";
-
-/**
- * Where {@link poseBystander} stands, in logical units.
- *
- * Inside the play field (`x` from `FIELD_LEFT`, `y` from `FIELD_TOP`,
- * specs/field.md) and in the corner furthest from everything these checks use:
- * the ship's lane at `SHIP_Y` (`600`), the formation grid at its full sway
- * (`x` in `[364, 916]`, `y` in `[140, 332]`), and {@link KILL_AT}.
- */
-export const BYSTANDER_AT = { x: FIELD_LEFT + 40, y: FIELD_TOP + 40 } as const;
-
-/**
- * Pose one inert Shard out of the way, so the wave still holds a drone, and
- * report its id.
- *
- * It is a prop like any other {@link poseDrone}: phase `formation`, every faculty
- * off, so it holds its corner, takes no part, and — being in `formation` — is
- * outside what a discharge wave reaches (specs/resonance.md). A check that poses
- * one counts it when it counts drones.
- */
-export function poseBystander(h: Harness, opts: DroneOptions = {}): number {
-  return poseDrone(h, "shard", BYSTANDER_AT.x, BYSTANDER_AT.y, {
-    phase: "formation",
-    ...opts,
-  });
-}
 
 /**
  * The one spot every kill in the four stage-end checks happens at.

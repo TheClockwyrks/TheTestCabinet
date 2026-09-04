@@ -14,14 +14,6 @@
 // the build did about it. The discharge's half of the same rule is
 // `bursts/discharge-pops`, and the Prism's is `bursts/prism-twice`.
 //
-// WHY THE FIELD IS POSED EMPTY AND WHY A BYSTANDER STANDS IN THE CORNER.
-// `startPosed` leaves no drone, no bullet and no burst, so the roster this check
-// counts starts at zero and the only thing that can put a burst on it is the
-// kill. The bystander keeps a drone standing, so a build that reads "its wave"
-// as the drones on the field does not clear the stage under the kill and stop
-// resolving the frame this check reads (see `poseBystander`); it stands in the
-// far corner with every faculty off, so it takes no part.
-//
 // WHAT THIS DOES NOT DECIDE. Whether the drone was destroyed at all is
 // `bands/match-destroys`, and it is read here as the precondition of a pop.
 // What the burst is SCALED to is `bursts/scaled-to-drone`, how long it plays is
@@ -38,7 +30,6 @@ import {
   captureStill,
   createHarness,
   droneById,
-  poseBystander,
   poseDrone,
   requireDrone,
   shootDrone,
@@ -60,8 +51,7 @@ const PLACED_MAX = SHARD_SIZE / 2;
 
 /**
  * Where the drone is posed: a clear stretch of the play field, below the
- * formation grid's lowest row and its full sway, above the ship's lane, and well
- * clear of the corner the bystander holds.
+ * formation grid's lowest row and its full sway, above the ship's lane.
  */
 const POP_AT = { x: 1000, y: 460 } as const;
 
@@ -87,7 +77,6 @@ afterEach(async () => {
 
 it("leaves exactly one burst, at the destroyed drone's centre", async () => {
   await startPosed(h);
-  await poseBystander(h);
   const target = await poseDrone(h, "shard", POP_AT.x, POP_AT.y, {
     band: "cyan",
   });

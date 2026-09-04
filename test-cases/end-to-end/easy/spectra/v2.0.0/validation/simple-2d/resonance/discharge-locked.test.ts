@@ -19,13 +19,6 @@
 // without reporting `discharge.active`, or whose wave has already ended by the
 // time the field is read, still has to leave the diver alive.
 //
-// THE DIVER IS THE ONE THING ON THE FIELD BESIDES THE SHIP. It is posed in phase
-// `diving`, which `specs/resonance.md` puts squarely among what a wave destroys,
-// with every faculty off so it holds its place and fires nothing — so if it is
-// gone at the end, the only thing that can have taken it is a wave that should
-// never have started. Nothing is destroyed here, so no stage can clear underneath
-// the reading and no bystander is needed.
-//
 // WHAT THIS DOES NOT DECIDE. That a discharge at full spends the meter is
 // `resonance/discharge-spends`; that `dischargeReady` reports the boundary is
 // `resonance/ready-at-full`.
