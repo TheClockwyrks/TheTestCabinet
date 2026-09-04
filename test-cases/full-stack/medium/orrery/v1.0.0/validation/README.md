@@ -141,7 +141,8 @@ how a sprite is identified — never by matching a path.
 **Media** — `captureStill(h, outputId)` and
 `captureReplay(h, outputId, scenario)` for a point whose evidence is the game;
 `writeImageBytes(outputId, png)` for a point about a produced FILE, whose
-evidence is a picture of that file. All three are no-ops outside a run.
+evidence is a picture of that file. All three are no-ops outside a run. A replay
+brackets its behavior with `RECORDING_RUN_UP` and `RECORDING_SETTLE` — see below.
 
 **Produced files** — `assets/files.ts` is the table (every path, canvas and frame
 count, derived from `../constants`); `assets/sprites.ts` decodes and measures
@@ -224,6 +225,40 @@ the build's. Two the run checks need constantly:
   `specs/instrumentation.md` carries `sim.fraction` as a running sum of the
   frames' own delta times, which "agree to within the rounding of that sum rather
   than bit for bit", so a fraction is never read for equality.
+
+## A replay brackets its behavior, never the instant
+
+A `replay` is what a REVIEWER watches, so it is armed once the world is posed and
+disarmed once the behavior has played out, with a short run-up before and a short
+settle after: the reviewer sees the behavior arrive and sees what it left behind.
+An act that closes one frame — a press, a release, a pose read back — records one
+frame if it is wrapped on its own, which is a still filed under a moving name.
+
+Both figures come from `constants.ts`, stated in the `FRAMES_PER_CYCLE` a cycle is
+watchable at, so every recording in the case brackets its moment the same way:
+
+```ts
+await captureReplay(h, "stepped", async () => {
+  await h.advance(RECORDING_RUN_UP);
+  await stepAction(h);
+  await h.advance(RECORDING_SETTLE);
+});
+```
+
+**Neither may change a verdict**, which decides how a suite spends them:
+
+- **A world that does not move through them takes them as frames.** A paused run,
+  a completed one, an editor with no run at all — the frames run and nothing the
+  check reads moves.
+- **A world that WOULD move divides the span it was already driving.** `specs/`
+  fixes no timestep and "an interval of game time reaches the same state however it
+  was divided into frames", so `advanceFraction(h, 1 / 2, RECORDING_RUN_UP)` runs
+  the same half cycle the check always ran, watched rather than jumped.
+- **A run that must not advance is HELD.** `pauseRun` either side of the acting
+  frame buys the run-up and the settle without crossing a boundary.
+- **A reading taken off a frame number moves inside the bracket.** A check that
+  counts the frame a cue sounded on takes that frame past the run-up and reads the
+  cues before the settle, so what it reports is still the act's own doing.
 
 ## Running one engine's suites against its reference
 

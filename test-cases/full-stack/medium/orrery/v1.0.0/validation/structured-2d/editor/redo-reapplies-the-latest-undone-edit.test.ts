@@ -43,6 +43,7 @@ import {
   assertLength,
   assertNotEqual,
 } from "../assert";
+import { RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import { at } from "../field";
 import { armPart, sigilPart, solution, trackPart } from "../formats";
 import { BARE, ORIGIN } from "../fixtures";
@@ -81,6 +82,7 @@ it("leaves editor.parts exactly as it stood before the undo, and trades the two 
   await loadMachine(h, MACHINE);
 
   const readings = await captureReplay(h, "redone", async () => {
+    await h.advance(RECORDING_RUN_UP);
     const posed = await h.snapshot();
     const bind = solePartOfKind(posed, "bind")?.id ?? -1;
 
@@ -95,6 +97,7 @@ it("leaves editor.parts exactly as it stood before the undo, and trades the two 
     await pressAction(h, "redo");
     const redone = await h.snapshot();
 
+    await h.advance(RECORDING_SETTLE);
     return { posed, bind, edited, undone, redone };
   });
 

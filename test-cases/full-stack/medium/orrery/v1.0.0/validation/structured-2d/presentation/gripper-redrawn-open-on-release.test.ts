@@ -27,7 +27,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, fail } from "../assert";
-import { GRIPPER_PATHS, GRIPPER_SPRITE_SIZE } from "../constants";
+import {
+  GRIPPER_PATHS,
+  GRIPPER_SPRITE_SIZE,
+  RECORDING_RUN_UP,
+  RECORDING_SETTLE,
+} from "../constants";
 import { distance, hexCenter, type Hex } from "../field";
 import { armPart, solution } from "../formats";
 import { BARE, ORIGIN } from "../fixtures";
@@ -117,9 +122,12 @@ it("draws the open gripper file again on the frame after the gripper lets go", a
   );
 
   const released = await captureReplay(h, "release", async () => {
+    await h.advance(RECORDING_RUN_UP);
     await holdGrip(h, arm, SPOKE);
     await h.advance(1);
-    return h.lastCalls();
+    const letGo = await h.lastCalls();
+    await h.advance(RECORDING_SETTLE);
+    return letGo;
   });
 
   const after = await h.snapshot();

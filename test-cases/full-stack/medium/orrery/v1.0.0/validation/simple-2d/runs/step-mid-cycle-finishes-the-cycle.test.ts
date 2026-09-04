@@ -33,7 +33,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNear, assertNotNull } from "../assert";
-import { ARM_MIN_LEN, FRACTION_TOLERANCE } from "../constants";
+import {
+  ARM_MIN_LEN,
+  FRACTION_TOLERANCE,
+  RECORDING_RUN_UP,
+  RECORDING_SETTLE,
+} from "../constants";
 import { at, rotateAbout } from "../field";
 import { armPart, solution } from "../formats";
 import { BARE, ORIGIN } from "../fixtures";
@@ -107,7 +112,11 @@ it("finishes the part cycle to its boundary rather than a whole cycle beyond it"
     `the run stands at fraction ${PART_WAY}, with half of cycle 0 left to run`,
   );
 
-  await captureReplay(h, "finished", () => stepAction(h));
+  await captureReplay(h, "finished", async () => {
+    await h.advance(RECORDING_RUN_UP);
+    await stepAction(h);
+    await h.advance(RECORDING_SETTLE);
+  });
 
   const finished = await h.snapshot();
   assertEqual(

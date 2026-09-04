@@ -26,6 +26,14 @@
 // `ARM_MAX_LEN`, which `specs/simulation.md` raises as `overextended`. All five
 // cycles fall inside one second at step `3`.
 //
+// THE FIRST RUN IS OPENED PAUSED and resumed inside the recording, because the
+// behaviour this point is about lasts ONE frame and a recording of one frame is a
+// still. The run-up is taken on the held run, where `specs/simulation.md` leaves
+// the fraction where it stands, so a reviewer sees the machine at rest at
+// `ARM_MIN_LEN` before the frame that sweeps it to `ARM_MAX_LEN`; the settle is
+// taken the same way, on the run held again once the sweep has been read. Neither
+// runs a cycle, so the thirty the frame crosses are the thirty the frame crossed.
+//
 // THE VERDICT. The first frame leaves `sim.cycle` at `30` with the piston at
 // length `3`; the second leaves `sim.status` `faulted`, the fault `overextended`,
 // and the run stopped on the fifth cycle rather than carrying on through the
@@ -39,6 +47,8 @@ import {
   ARM_MAX_LEN,
   ARM_MIN_LEN,
   FRACTION_TOLERANCE,
+  RECORDING_RUN_UP,
+  RECORDING_SETTLE,
   SPEEDS,
 } from "../constants";
 import { armPart, solution } from "../formats";
@@ -48,7 +58,9 @@ import {
   createHarness,
   openBareRun,
   partIds,
+  pauseRun,
   poseOf,
+  resumeRun,
   type Harness,
 } from "../harness";
 
@@ -80,6 +92,7 @@ it("runs all thirty cycles of one frame, and stops on the fifth when the fifth f
       ]),
     ]),
     speed: FASTEST,
+    paused: true,
   });
   const looping = (await partIds(h))[0] ?? -1;
 
@@ -96,8 +109,13 @@ it("runs all thirty cycles of one frame, and stops on the fifth when the fifth f
   );
 
   const swept = await captureReplay(h, "burst", async () => {
+    await h.advance(RECORDING_RUN_UP);
+    await resumeRun(h);
     await h.advanceSeconds(ONE_SECOND, 1);
-    return h.snapshot();
+    const crossed = await h.snapshot();
+    await pauseRun(h);
+    await h.advance(RECORDING_SETTLE);
+    return crossed;
   });
 
   assertNotNull(

@@ -41,6 +41,7 @@ import {
   assertNotNull,
   assertTrue,
 } from "../assert";
+import { RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import { at } from "../field";
 import { challenge, loneMote } from "../formats";
 import { ORIGIN } from "../fixtures";
@@ -176,7 +177,11 @@ it("moves every reported figure to the posed world rather than the one it starte
   );
 
   // The panel stays open across everything below.
-  await captureReplay(h, "live", () => poseTheRun());
+  await captureReplay(h, "live", async () => {
+    await h.advance(RECORDING_RUN_UP);
+    await poseTheRun();
+    await h.advance(RECORDING_SETTLE);
+  });
 
   const posed = await h.snapshot();
   const sim = posed.sim;

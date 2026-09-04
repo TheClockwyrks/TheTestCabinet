@@ -771,6 +771,28 @@ export const FILAMENT_WEIGHTS = [1, 3] as const;
  */
 export const FRAMES_PER_CYCLE = 12;
 
+/**
+ * The frames a `replay` output holds either side of the moment it brackets.
+ *
+ * ALSO THE SUITE'S CHOICE. A recording is what a REVIEWER watches, so it is armed
+ * once the world is posed and disarmed once the behaviour has played out, with a
+ * short run-up before and a short settle after: the reviewer sees the behaviour
+ * arrive and sees what it left behind. An act that closes one frame — a press, a
+ * release, a pose read back — records one frame without them, which is a still
+ * under a moving name. Both are stated in `FRAMES_PER_CYCLE`, the frames a cycle
+ * is watchable at, so a bracket around an instant comes to a few dozen frames,
+ * well inside the three hundred a written recording holds.
+ *
+ * NEITHER MAY CHANGE A VERDICT. They run frames of a world the check has already
+ * read or has not yet posed — a paused run, a completed one, an editor with no
+ * run at all — and a suite whose world would MOVE through them says so instead:
+ * it divides the span it was already driving into more frames, which
+ * `specs/instrumentation.md` leaves it free to do, or it holds the run with
+ * `pauseRun` for the frames it is only watching.
+ */
+export const RECORDING_RUN_UP = FRAMES_PER_CYCLE;
+export const RECORDING_SETTLE = 2 * FRAMES_PER_CYCLE;
+
 /** The rate the suites step at, in frames of simulated time per second. */
 export const TICK_HZ = 60;
 

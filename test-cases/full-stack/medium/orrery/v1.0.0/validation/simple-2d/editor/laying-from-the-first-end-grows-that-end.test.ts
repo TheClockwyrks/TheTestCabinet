@@ -26,6 +26,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertTrue } from "../assert";
+import { RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import { adjacent, at, hexCenter, type Hex } from "../field";
 import { BARE } from "../fixtures";
 import {
@@ -67,15 +68,17 @@ it("appends the hex in front of the old first cell when the lay runs from first"
   const track = await placeTrack(h, [FIRST, LAST]);
 
   const seen = await captureReplay(h, "front", async () => {
-    await h.advance(1);
+    await h.advance(RECORDING_RUN_UP);
     await pressAt(h, hexCenter(FIRST));
     const opened = (await h.snapshot()).editor.drag;
     await h.advance(1);
     await moveTo(h, hexCenter(GROWN));
     await h.advance(1);
-    return { opened, part: partById(await h.snapshot(), track) };
+    const grown = { opened, part: partById(await h.snapshot(), track) };
+    await releasePointer(h);
+    await h.advance(RECORDING_SETTLE);
+    return grown;
   });
-  await releasePointer(h);
 
   assertEqual(
     seen.opened?.kind,

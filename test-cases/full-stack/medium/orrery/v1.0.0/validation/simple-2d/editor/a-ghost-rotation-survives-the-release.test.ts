@@ -29,6 +29,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import { hexCenter } from "../field";
 import { armPart } from "../formats";
 import { BARE, NORTH, ORIGIN, WEST } from "../fixtures";
@@ -72,13 +73,13 @@ it("keeps the turned rotation through a committed move and through a refused one
   const dragged = await placePart(h, "arm", ORIGIN);
 
   await captureReplay(h, "committed", async () => {
-    await h.advance(1);
+    await h.advance(RECORDING_RUN_UP);
     await pressAt(h, hexCenter(ORIGIN));
     await moveTo(h, hexCenter(NORTH));
     await pressAction(h, "part-cw");
     await pressAction(h, "part-cw");
     await releasePointer(h);
-    await h.advance(1);
+    await h.advance(RECORDING_SETTLE);
   });
 
   const moved = partById(await h.snapshot(), dragged);
@@ -94,12 +95,12 @@ it("keeps the turned rotation through a committed move and through a refused one
   );
 
   await captureReplay(h, "refused", async () => {
-    await h.advance(1);
+    await h.advance(RECORDING_RUN_UP);
     await pressAt(h, hexCenter(NORTH));
     await moveTo(h, hexCenter(WEST));
     await pressAction(h, "part-cw");
     await releasePointer(h);
-    await h.advance(1);
+    await h.advance(RECORDING_SETTLE);
   });
 
   const refused = partById(await h.snapshot(), dragged);

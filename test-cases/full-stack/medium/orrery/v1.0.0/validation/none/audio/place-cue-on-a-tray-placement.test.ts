@@ -33,7 +33,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertLength, assertNotNull } from "../assert";
-import { CUES } from "../constants";
+import { CUES, RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import { BARE, ORIGIN } from "../fixtures";
 import {
   captureReplay,
@@ -83,11 +83,22 @@ it("sounds place once, on the frame after the release that placed the part", asy
     "nothing sounds while the machine is empty and the pointer has not moved",
   );
 
-  const released = h.frame();
+  // The recording brackets the gesture rather than the frame it lands on: the
+  // run-up is taken on the empty machine, which the fence above has just read as
+  // silent, and the settle on the placed part. The frame the release is counted
+  // from is taken INSIDE, past the run-up, and the sounds are read there too, so
+  // the reading below is the reading the release itself produced.
+  let released = 0;
+  let atRelease: number[] = [];
   const placed = await captureReplay(h, "placed", async () => {
+    await h.advance(RECORDING_RUN_UP);
+    released = h.frame();
     await dragFromTray(h, ARM_SLOT, ORIGIN);
     await h.advance(1);
-    return partIds(h);
+    const ids = await partIds(h);
+    atRelease = soundingFrames(heard, CUES.place);
+    await h.advance(RECORDING_SETTLE);
+    return ids;
   });
 
   assertLength(
@@ -100,7 +111,7 @@ it("sounds place once, on the frame after the release that placed the part", asy
     "the placed arm is on the machine after the gesture",
   );
   assertDeepEqual(
-    soundingFrames(heard, CUES.place),
+    atRelease,
     [released + 1],
     "the place cue sounds on the one frame advanced after the release, and on no frame before it",
   );

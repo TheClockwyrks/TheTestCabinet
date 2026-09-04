@@ -35,6 +35,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNotNull } from "../assert";
+import { RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import { at, hexCenter } from "../field";
 import { solution, trackPart } from "../formats";
 import { BARE } from "../fixtures";
@@ -75,6 +76,7 @@ it("raises the undo depth by one for the whole lay, and one undo takes all three
   await loadMachine(h, solution([trackPart(LAID)]));
 
   const readings = await captureReplay(h, "undone", async () => {
+    await h.advance(RECORDING_RUN_UP);
     const posed = await h.snapshot();
 
     await pressAt(h, hexCenter(LAID[1] ?? at(0, 0)));
@@ -86,6 +88,7 @@ it("raises the undo depth by one for the whole lay, and one undo takes all three
     await pressAction(h, "undo");
     const undone = await h.snapshot();
 
+    await h.advance(RECORDING_SETTLE);
     return { posed, pressed, laid, undone };
   });
 

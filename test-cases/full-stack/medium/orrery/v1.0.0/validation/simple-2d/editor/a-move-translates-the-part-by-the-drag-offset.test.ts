@@ -29,6 +29,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull } from "../assert";
+import { RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import { at, type Hex } from "../field";
 import { sigilPart } from "../formats";
 import { BARE, ORIGIN } from "../fixtures";
@@ -78,9 +79,9 @@ it("moves the anchor by the drag's offset rather than onto the pointer", async (
   const bind = await placePart(h, "bind", ORIGIN);
 
   await captureReplay(h, "moved", async () => {
-    await h.advance(1);
+    await h.advance(RECORDING_RUN_UP);
     await dragHex(h, PRESSED, RELEASED);
-    await h.advance(1);
+    await h.advance(RECORDING_SETTLE);
   });
 
   const moved = partById(await h.snapshot(), bind);

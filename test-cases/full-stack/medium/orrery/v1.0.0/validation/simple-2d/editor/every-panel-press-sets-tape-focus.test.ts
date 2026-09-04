@@ -28,6 +28,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import {
   at,
   regionCenter,
@@ -93,11 +94,16 @@ it("sets tape focus on a cell press, a label press, and a press on neither", asy
   const [onCell, onLabel, onNeither] = await captureReplay(
     h,
     "focus",
-    async () => [
-      await pressFromFieldFocus(ON_A_CELL),
-      await pressFromFieldFocus(ON_A_LABEL),
-      await pressFromFieldFocus(ON_NEITHER),
-    ],
+    async () => {
+      await h.advance(RECORDING_RUN_UP);
+      const presses = [
+        await pressFromFieldFocus(ON_A_CELL),
+        await pressFromFieldFocus(ON_A_LABEL),
+        await pressFromFieldFocus(ON_NEITHER),
+      ];
+      await h.advance(RECORDING_SETTLE);
+      return presses;
+    },
   );
 
   assertEqual(

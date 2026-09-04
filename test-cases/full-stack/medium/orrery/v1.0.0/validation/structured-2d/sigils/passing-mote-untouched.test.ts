@@ -46,7 +46,12 @@ import {
   assertNotNull,
   assertNull,
 } from "../assert";
-import { FRACTION_TOLERANCE, HEX_PITCH } from "../constants";
+import {
+  FRACTION_TOLERANCE,
+  HEX_PITCH,
+  RECORDING_RUN_UP,
+  RECORDING_SETTLE,
+} from "../constants";
 import { at, distance, hexCenter } from "../field";
 import { armPart, sigilPart, solution } from "../formats";
 import { BARE } from "../fixtures";
@@ -114,8 +119,12 @@ it("leaves an essence swept across a wane's seat its own type at the boundary", 
   const essence = await spawnMote(h, FROM, "nova");
   await takeGrip(h, arm, 0, essence);
 
+  // Each half of the sweep is divided over the recording's own frames rather than
+  // driven in one, so the pass over the seat is watched rather than jumped. "An
+  // interval of game time reaches the same state however it was divided into
+  // frames" (`specs/instrumentation.md`), so the reading at t = 4/8 is the reading.
   await captureReplay(h, "sweep", async () => {
-    await advanceFraction(h, 4 / 8);
+    await advanceFraction(h, 4 / 8, RECORDING_RUN_UP);
 
     const midway = await h.snapshot();
     const flying = moteById(midway, essence);
@@ -135,7 +144,7 @@ it("leaves an essence swept across a wane's seat its own type at the boundary", 
       "mid-cycle the essence is in flight, resting on no hex at all",
     );
 
-    await advanceFraction(h, 4 / 8);
+    await advanceFraction(h, 4 / 8, RECORDING_SETTLE);
   });
 
   const snapshot = await h.snapshot();

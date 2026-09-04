@@ -28,7 +28,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertNotNull } from "../assert";
-import { MODES } from "../constants";
+import { MODES, RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -83,9 +83,12 @@ it("opens the challenge at selectIndex, in that mode, in both modes", async () =
       `the ${mode} highlight stands on the row the press must open`,
     );
 
-    const after = await captureReplay(h, "opened", () =>
-      pressAction(h, "confirm"),
-    );
+    const after = await captureReplay(h, "opened", async () => {
+      await h.advance(RECORDING_RUN_UP);
+      const taken = await pressAction(h, "confirm");
+      await h.advance(RECORDING_SETTLE);
+      return taken;
+    });
 
     assertEqual(
       after.screen,

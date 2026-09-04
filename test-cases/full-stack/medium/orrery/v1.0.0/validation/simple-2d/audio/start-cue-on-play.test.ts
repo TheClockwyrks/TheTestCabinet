@@ -39,7 +39,7 @@ import {
   assertNotNull,
   assertNull,
 } from "../assert";
-import { CUES } from "../constants";
+import { CUES, RECORDING_RUN_UP, RECORDING_SETTLE } from "../constants";
 import { armPart, risePart, setPart, solution } from "../formats";
 import { BARE, EAST, ORIGIN, WEST } from "../fixtures";
 import {
@@ -93,11 +93,21 @@ it("sounds start once, on the frame the play press started the run on", async ()
     "and nothing sounds while the machine merely stands ready",
   );
 
+  // The recording brackets the press rather than the frame it is answered on: the
+  // run-up is taken on the machine standing ready, which the fence above has just
+  // read as silent, and the settle on the run it started. The frame the press was
+  // answered on and the frames that sounded are read INSIDE, past the run-up and
+  // before the settle, so the reading below is the press's own.
+  let pressed = 0;
+  let sounded: number[] = [];
   await captureReplay(h, "started", async () => {
+    await h.advance(RECORDING_RUN_UP);
     await playAction(h);
     await h.advance(PRESS_LAG);
+    pressed = h.frame();
+    sounded = soundingFrames(heard, CUES.start);
+    await h.advance(RECORDING_SETTLE);
   });
-  const pressed = h.frame();
 
   const started = await h.snapshot();
   assertNotNull(
@@ -109,7 +119,6 @@ it("sounds start once, on the frame the play press started the run on", async ()
     "running",
     "play produces the running status, where step would have left the run paused",
   );
-  const sounded = soundingFrames(heard, CUES.start);
   assertLength(sounded, 1, "exactly one frame sounds the start cue");
   assertBetween(
     sounded[0] ?? 0,
