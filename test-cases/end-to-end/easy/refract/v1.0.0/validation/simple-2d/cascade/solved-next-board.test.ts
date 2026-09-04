@@ -112,7 +112,17 @@ it("NEXT BOARD opens an empty board and carries the count and the tier forward",
     0,
     "NEXT BOARD generates a board (specs/modes/cascade.md)",
   );
-  for (const [channel, beam] of Object.entries(next.beams)) {
+  // A board present carries at least one channel, so an entry-less `beams` is
+  // itself a failure rather than a vacuous pass — the reading
+  // structured-2d's assertEveryBeamEmpty already takes, so the three engines
+  // decide this point alike.
+  const beamEntries = Object.entries(next.beams);
+  assertGreaterThan(
+    beamEntries.length,
+    0,
+    "the board NEXT BOARD handed over carries at least one beam entry",
+  );
+  for (const [channel, beam] of beamEntries) {
     assertEqual(
       beam.cells.length,
       0,

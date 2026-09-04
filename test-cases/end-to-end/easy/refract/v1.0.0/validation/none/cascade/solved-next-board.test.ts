@@ -101,7 +101,17 @@ it("NEXT BOARD opens an empty board and carries the count and the tier forward",
   const next = await h.snapshot();
   assertEqual(next.screen, "playing", "NEXT BOARD moves to playing");
   assertGreaterThan(next.board.nodes.length, 0, "NEXT BOARD generates a board");
-  for (const [channel, beam] of Object.entries(next.beams)) {
+  // A board present carries at least one channel, so an entry-less `beams` is
+  // itself a failure rather than a vacuous pass — the reading
+  // structured-2d's assertEveryBeamEmpty already takes, so the three engines
+  // decide this point alike.
+  const beamEntries = Object.entries(next.beams);
+  assertGreaterThan(
+    beamEntries.length,
+    0,
+    "the board NEXT BOARD handed over carries at least one beam entry",
+  );
+  for (const [channel, beam] of beamEntries) {
     if (beam === undefined) continue;
     assertDeepEqual(beam.cells, [], `the ${channel} beam arrives empty`);
   }
