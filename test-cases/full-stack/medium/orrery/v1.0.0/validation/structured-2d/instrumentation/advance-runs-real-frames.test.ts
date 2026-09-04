@@ -12,25 +12,33 @@
 // simulation from a stepped clock without drawing anything: the state moves, every
 // reading answers, and the canvas keeps whatever picture the loop last left on it.
 // So the verdict is the two together, over ONE frame — the state moved, and the
-// canvas moved with it. A frame that updated and did not render leaves the picture
-// exactly as it was. A frame that rendered and did not update leaves the fraction
-// exactly as it was.
+// frame's own operations moved with it. A frame that updated and did not render
+// issues no operations at all. A frame that rendered and did not update leaves the
+// fraction exactly as it was.
 //
 // THE POSE is one arm sweeping one mote, mid-cycle. `rotate-cw` carries the held
-// mote around the arm's base, so the hex the mote was drawn on is repainted WITHOUT
-// it by any frame that genuinely rendered the state that frame produced. The hold
-// is given with `setGrip`, "which takes hold with no `grab` ever running", and the
-// field holds nothing else, so the one advanced frame is the whole of what happens
-// between the two readings.
+// mote around the arm's base, so where the mote sprite is drawn is where the state
+// has just put it, in any frame that genuinely rendered the state that frame
+// produced. The hold is given with `setGrip`, "which takes hold with no `grab` ever
+// running", and the field holds nothing else, so the one advanced frame is the
+// whole of what happens between the two readings, and the one mote-sized sprite
+// each frame draws is that mote.
+//
+// THE READING IS POSITIVE ON BOTH SIDES — a mote drawn where the state had it, then
+// a mote drawn where the state has moved it — rather than the absence of one at the
+// hex left behind. A quarter of one `rotate-cw` cycle is a small arc, and the sweep
+// only has to carry the mote `MOVED_AT_LEAST`, so the two positions can sit closer
+// together than any radius a sprite could be read at.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
+  assertLength,
   assertNotNull,
   assertNull,
 } from "../assert";
-import { FRACTION_TOLERANCE, HEX_PITCH } from "../constants";
+import { FRACTION_TOLERANCE, MOTE_SPRITE_SIZE } from "../constants";
 import { at } from "../field";
 import { armPart, solution } from "../formats";
 import { BARE } from "../fixtures";
@@ -38,14 +46,17 @@ import {
   advanceFraction,
   captureStill,
   createHarness,
-  differingShare,
   drawOps,
+  imagesNear,
   moteById,
   openBareRun,
   partIds,
   spawnMote,
   takeGrip,
+  type DrawCall,
   type Harness,
+  type ImageDraw,
+  type Point,
 } from "../harness";
 
 /** The hex the carried mote starts on: the gripper of an arm at (0, 0), rotation 0. */
@@ -56,6 +67,18 @@ const FRACTION = 0.25;
 
 /** How far the sweep must carry the mote for the reading to mean anything, in units. */
 const MOVED_AT_LEAST = 1;
+
+/** How near a sprite's centre must land to count as drawn on a position. */
+const ON_POINT = 6;
+
+/** The mote-sized sprites a frame drew on a position, at the mote canvas's own size. */
+function motesOn(calls: readonly DrawCall[], point: Point): ImageDraw[] {
+  return imagesNear(calls, point, ON_POINT).filter(
+    (draw) =>
+      draw.image.width === MOTE_SPRITE_SIZE &&
+      draw.image.height === MOTE_SPRITE_SIZE,
+  );
+}
 
 let h: Harness;
 
@@ -82,16 +105,16 @@ it("moves the state and redraws the canvas in the one frame it advances", async 
   assertNotNull(wasAt, "the carried mote is on the field before the frame");
   const wasX = wasAt?.x ?? 0;
   const wasY = wasAt?.y ?? 0;
-  const wasPicture = await h.pixelRect(
-    wasX - HEX_PITCH / 2,
-    wasY - HEX_PITCH / 2,
-    HEX_PITCH,
-    HEX_PITCH,
+  assertLength(
+    motesOn(await h.lastCalls(), { x: wasX, y: wasY }),
+    1,
+    "the frame before the advance drew the mote where the state then had it",
   );
 
   // Exactly one frame, worth a quarter of the cycle the arm is sweeping.
   await advanceFraction(h, FRACTION, 1);
   await captureStill(h, "rendered");
+  const rendered = await h.lastCalls();
   const after = await h.snapshot();
 
   // The state moved.
@@ -119,19 +142,13 @@ it("moves the state and redraws the canvas in the one frame it advances", async 
 
   // And the canvas moved with it.
   assertGreaterThan(
-    drawOps(await h.lastCalls()),
+    drawOps(rendered),
     0,
     "the same frame ran a render: the operations it issued are the last frame's",
   );
-  const nowPicture = await h.pixelRect(
-    wasX - HEX_PITCH / 2,
-    wasY - HEX_PITCH / 2,
-    HEX_PITCH,
-    HEX_PITCH,
-  );
-  assertGreaterThan(
-    differingShare(nowPicture, wasPicture),
-    0,
-    "and the canvas reflects the state the frame produced: the mote is no longer drawn where it was",
+  assertLength(
+    motesOn(rendered, { x: nowAt?.x ?? 0, y: nowAt?.y ?? 0 }),
+    1,
+    "and the canvas reflects the state the frame produced: the frame drew the mote where the state now puts it",
   );
 });
