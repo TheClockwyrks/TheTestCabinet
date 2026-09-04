@@ -1755,7 +1755,7 @@ title = "Pointer and touch"
 [[review.categories.items]]
 id = "targets-listed-per-screen"
 title = "Every screen reports the pointer targets it carries"
-description = "The snapshot's targets list carries exactly the ids specs/controls.md fixes for the screen, in that order: menu-0 through menu-2 on title, back on howto, board-1 through board-24 then back on select, and clear then back on playing."
+description = "On each of the six screens, the snapshot's targets list carries exactly the ids specs/controls.md fixes for it, in that order: menu-0 through menu-2 on title, back on howto, board-1 through board-24 then back on select, clear then back on playing, menu-0 through menu-2 on solved for a board that is not the last, and menu-0 and menu-1 on complete."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "pointer/targets-listed-per-screen.test.ts", outputs = [

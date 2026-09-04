@@ -41,6 +41,14 @@ async function screens(): Promise<{ name: string; targets: Target[] }[]> {
     { name: "title", targets: h.snapshot().targets },
   ];
 
+  // Every screen the walk does not arrive at in play is POSED with `setScreen`,
+  // which sets `state.screen` alone (specs/instrumentation.md). The geometry
+  // measured here belongs to the screen itself, so reaching one through the
+  // menus would fail this point for a build whose menus are the broken part.
+  h.debug.setScreen("howto");
+  await h.advance(1);
+  walked.push({ name: "howto", targets: h.snapshot().targets });
+
   await startCampaign(h);
   walked.push({ name: "select", targets: h.snapshot().targets });
   // The still is the grid, not whatever screen the walk ends on.
@@ -48,6 +56,17 @@ async function screens(): Promise<{ name: string; targets: Target[] }[]> {
 
   await loadBoard(h, R9_UNIQUE);
   walked.push({ name: "playing", targets: h.snapshot().targets });
+
+  // The posed board stays behind both, as specs/modes/campaign.md has it.
+  // `boardIndex` rests at 0, so the solved board is board 1 and the screen
+  // offers the next board alongside the replay and the way back.
+  h.debug.setScreen("solved");
+  await h.advance(1);
+  walked.push({ name: "solved", targets: h.snapshot().targets });
+
+  h.debug.setScreen("complete");
+  await h.advance(1);
+  walked.push({ name: "complete", targets: h.snapshot().targets });
 
   return walked;
 }
@@ -69,5 +88,4 @@ it("leaves no two targets on a screen intersecting", async () => {
       }
     }
   }
-
 });
