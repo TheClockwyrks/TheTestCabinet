@@ -181,6 +181,18 @@ validation = { script = "instrumentation/cleared-cell-is-safe.test.ts", outputs 
   { id = "crossed", name = "The head crossing a cleared cell", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "cleared-board-keeps-its-border"
+title = "Clearing the course leaves the border fatal"
+description = "clearObstacles takes the course off the board and leaves the wall border where it is, so the head still ends the round on it."
+domains = ["maze"]
+failure_cap = "passable"
+# Automated validation: clear the course, run the head into the wall, and read
+# the screen. See
+# validation/<engine>/instrumentation/cleared-board-keeps-its-border.test.ts.
+validation = { script = "instrumentation/cleared-board-keeps-its-border.test.ts", outputs = [
+  { id = "border", name = "The head ending the round on the border of a cleared board", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "cleared-cell-takes-a-pellet"
 title = "A cleared cell is open to a pellet"
 description = "After clearObstacles a cell the course held is back in the valid set a pellet is drawn from, so a long run of respawns eventually places one on it."
