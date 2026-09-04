@@ -11,8 +11,8 @@ lists. Durations are whole ticks of the fixed timestep `specs/overview.md` fixes
 ## The pod draw
 
 The game keeps one random stream for the whole session: a mulberry32 generator
-seeded with the session's seed. A fresh session seeds it with `DEFAULT_SEED`
-(`1`), and pod draws are the only thing that consumes it. Each draw takes the
+seeded with the session's seed. A fresh session seeds it with `1`, and pod
+draws are the only thing that consumes it. Each draw takes the
 stream's next value, a number in `[0, 1)`, so the same seed and the same play
 shed the same pods in the same order.
 

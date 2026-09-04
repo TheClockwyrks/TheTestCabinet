@@ -193,7 +193,7 @@ the deflector at angle `90` with span `48`, every ring slot filled at its full
 hit points with every ring angle at `0` and each ring's speed from the wave-1
 formulas, no balls, no pods, no timed effect, no shield, the interstitial timer
 at `0`, and both driver switches on. `seed` is an optional whole number that
-seeds the pod generator, defaulting to `DEFAULT_SEED` (`1`).
+seeds the pod generator, defaulting to {{#if (eq engine.slug "none")}}`1`{{else}}`DEFAULT_SEED` (`1`){{/if}}.
 {{#if (eq engine.slug "none")}}
 
 Whether the simulation advances on its own each frame is untouched.
