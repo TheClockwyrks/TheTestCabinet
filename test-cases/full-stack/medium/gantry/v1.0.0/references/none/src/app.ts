@@ -39,6 +39,7 @@ import {
   currentSite,
   currentStructure,
   isYardScreen,
+  menuLength,
   poseCamera,
   recordBest,
   titleState,
@@ -341,6 +342,13 @@ export class Game implements ScreenIo {
   ): GantryState {
     const pointer = state.pointer;
 
+    // A contact is not the pointer (`specs/instrumentation.md`): it moves no
+    // pointer position and raises no press of one. The menus are the whole of
+    // what a contact reaches, and `src/screens.ts` decides what it took.
+    if (event.kind === "touch-down" || event.kind === "touch-up") {
+      return handlePointer(state, event, this).state;
+    }
+
     if (event.kind === "down") {
       const pressed: GantryState = {
         ...state,
@@ -354,7 +362,9 @@ export class Game implements ScreenIo {
           captured: false,
         },
       };
-      if (pressed.screen !== "program") return pressed;
+      if (pressed.screen !== "program" && menuLength(pressed) === 0) {
+        return pressed;
+      }
       const outcome = handlePointer(pressed, event, this);
       if (!outcome.consumed) return outcome.state;
       return {
@@ -368,6 +378,9 @@ export class Game implements ScreenIo {
         ...state,
         pointer: { ...pointer, x: event.x, y: event.y },
       };
+      // A menu follows the pointer whether or not a press is live
+      // (`specs/ui.md`), so its moves reach the screen before the drag rules.
+      if (menuLength(moved) > 0) return handlePointer(moved, event, this).state;
       if (pointer.captured) return handlePointer(moved, event, this).state;
       if (!pointer.down) return moved;
       if (!pointer.dragging) {
@@ -393,7 +406,9 @@ export class Game implements ScreenIo {
     }
 
     let released = state;
-    if (pointer.captured) {
+    if (menuLength(state) > 0) {
+      released = handlePointer(state, event, this).state;
+    } else if (pointer.captured) {
       released = handlePointer(state, event, this).state;
     } else if (pointer.down && !pointer.dragging) {
       released = this.applyClick(state);

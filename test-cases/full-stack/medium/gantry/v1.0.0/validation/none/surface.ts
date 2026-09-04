@@ -128,6 +128,21 @@ export interface CheckResult {
 }
 
 /**
+ * A menu entry's hit region, in logical stage units.
+ *
+ * `specs/ui.md` leaves the menu layout to the build and fixes only that every
+ * entry occupies one of these; `menuItemRect` is how a check finds where the
+ * build drew an entry, so a check aims a press or a contact at the middle of
+ * what the build reported and knows no menu coordinate of its own.
+ */
+export interface MenuRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
  * Where a world position is drawn, in logical stage units.
  *
  * `visible` is whether the position lies in front of the camera and inside the
@@ -355,6 +370,8 @@ export interface GantryDebugApi {
   check(): Promise<CheckResult>;
   /** What the last frame drew (`specs/instrumentation.md`). */
   drawn(): Promise<DrawnEntry[]>;
+  /** The hit region of entry `index` of the menu the screen showing carries. */
+  menuItemRect(index: number): Promise<MenuRect>;
   /** Where `(x, y, z)` is drawn, through the camera as it stands. */
   project(x: number, y: number, z: number): Promise<Projected>;
 
@@ -465,6 +482,10 @@ export interface GantryDebugApi {
   pointerDown(x: number, y: number): Promise<void>;
   /** A release at the position the pointer is at. */
   pointerUp(): Promise<void>;
+  /** A touch contact landing at a logical stage position. */
+  touchDown(x: number, y: number): Promise<void>;
+  /** The contact lifting, at the position it landed at. */
+  touchUp(): Promise<void>;
   /** Presses a key down. `code` is a standard `KeyboardEvent.code`. */
   keyDown(code: string): Promise<void>;
   keyUp(code: string): Promise<void>;
@@ -474,7 +495,7 @@ export interface GantryDebugApi {
  * The operations a validator reaches through `h.debug`.
  *
  * The surface MINUS the ones the harness lifts out: the clock (`setAutoStep`,
- * `advance`), the projection (`project`), and the five input operations. Those
+ * `advance`), the projection (`project`), and the seven input operations. Those
  * exist only under this engine — the two engine-backed projects get them from
  * the engine instead — so they reach a validator as `h.advance`, `h.keyDown`,
  * `h.project`… and a validator never learns that they were engine-only here.
@@ -490,6 +511,8 @@ export type GantryDriver = Omit<
   | "pointerMove"
   | "pointerDown"
   | "pointerUp"
+  | "touchDown"
+  | "touchUp"
   | "keyDown"
   | "keyUp"
 >;

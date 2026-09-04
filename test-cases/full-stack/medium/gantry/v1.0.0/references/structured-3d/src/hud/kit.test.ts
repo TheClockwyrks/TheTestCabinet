@@ -115,7 +115,7 @@ describe("the pieces", () => {
   it("marks the highlighted menu entry and hides the rows past the menu", () => {
     const actor = host();
     const root = new HudGroup(actor);
-    const menu = new Menu(root, 0, 0, 200, 3);
+    const menu = new Menu(root, (i) => ({ x: 0, y: i * 48, w: 200, h: 40 }), 3);
     menu.refresh(["ONE", "TWO"], 1);
     root.apply();
     const labels = actor.components

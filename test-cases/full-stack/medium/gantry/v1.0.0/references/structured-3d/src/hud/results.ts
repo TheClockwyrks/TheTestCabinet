@@ -1,11 +1,12 @@
 // A cleared site's score, beside the site's par, and where to go next
 // (`specs/ui.md`).
 
-import { CLEARED_TEXT, STAGE_W, TICK_HZ } from "../constants";
+import { CLEARED_TEXT, RESULTS_ITEMS, STAGE_W, TICK_HZ } from "../constants";
 import { ACCENT, INK_DIM, INK_FAINT, PANEL_SOLID } from "../palette";
 import { cost as costText, menuEntries, seconds } from "../format";
 import { craneCost, currentSite, highlightedIndex } from "../state";
 import { GantryView, type ViewFrame } from "../actor-view";
+import { resultsRowRect } from "../menus";
 import { HudGroup, type Rect } from "./kit";
 import { Menu } from "./pieces";
 import type { TextComponent } from "@test-cabinet/structured-3d";
@@ -55,7 +56,7 @@ export class ResultsActor extends GantryView {
       align: "center",
     });
 
-    this.menu = new Menu(this.root, CARD.x + 180, CARD.y + 292, 280, 3);
+    this.menu = new Menu(this.root, resultsRowRect, RESULTS_ITEMS.length);
   }
 
   override refresh(frame: ViewFrame): void {

@@ -65,6 +65,7 @@ import {
   type AxisName,
 } from "./sim";
 import * as st from "./state";
+import { menuRects } from "./menus";
 import { lastDrawnEntries } from "./render";
 import type { DrawnEntry } from "./render-drawn";
 
@@ -337,6 +338,22 @@ export function createDebugSurface(): GantryDebugApi {
         muted: state.muted,
         simTime: state.simTime,
       };
+    },
+
+    menuItemRect(state, index) {
+      // A menu entry's region is only a reading where a menu is showing, so a
+      // screen with none and an index the menu has no entry at are both
+      // outside the domain (`specs/instrumentation.md`).
+      const count = st.menuLength(state);
+      if (count === 0) {
+        invalid(
+          `menuItemRect is read on a screen showing a menu; ${state.screen} shows none`,
+        );
+      }
+      const at = requireIndex("index", index, count);
+      const rect = menuRects(state)[at];
+      if (rect === undefined) invalid(`index has no entry at ${at}`);
+      return { x: rect.x, y: rect.y, w: rect.w, h: rect.h };
     },
 
     drawn(): DrawnEntry[] {

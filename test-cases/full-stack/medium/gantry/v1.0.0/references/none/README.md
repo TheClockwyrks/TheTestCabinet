@@ -179,6 +179,7 @@ the frame loop replaces each frame.
 | `src/sim/` | The simulation core: the truss solve, the axis controller, the pendulum, collisions, breakage, and the tick pipeline. It renders nothing and reads no input |
 | `src/editor.ts` | Pointer picking on the lattice and the six build tools |
 | `src/screens.ts`, `src/screens-tape.ts` | The seven screens, the navigation, and the tape editor's widgets |
+| `src/menus.ts` | Where the menu entries are laid out, and what a pointer or a contact lands on |
 | `src/render*.ts` | The `three` yard, the camera and projection, and the 2D screen layer over it |
 | `src/runtime*.ts` | The runtime this build stands on: canvas fit, keyboard, pointer, audio, and the diagnostics overlay |
 | `src/assets.ts` | Loading the produced models and sounds through the bundler |

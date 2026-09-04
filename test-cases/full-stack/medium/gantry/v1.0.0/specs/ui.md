@@ -16,11 +16,33 @@ here are the ones `specs/controls.md` binds.
 | `run` | The tape playing out under the simulation. |
 | `results` | A cleared site's score. |
 
-The menus are driven by the key actions alone: the pointer operates the 3D
-scene and the tape editor, never a menu. On every menu `up` and `down` move
-the highlight by one entry and wrap at both ends, `confirm` takes the
-highlighted entry, and `left` and `right` reach the menu but leave the
-highlight where it is. Where `back` leads is stated per screen below.
+On every menu `up` and `down` move the highlight by one entry and wrap at both
+ends, `confirm` takes the highlighted entry, and `left` and `right` reach the
+menu but leave the highlight where it is. Where `back` leads is stated per
+screen below.
+
+Every menu also takes the pointer and a touch contact. Three screens show one:
+`title`, `select`, and `results`. On each of them every entry occupies a
+rectangular hit region on the stage, laid out as the build likes and reported by
+`menuItemRect` (`specs/instrumentation.md`).
+
+| Input | Effect |
+| --- | --- |
+| The pointer moves onto an entry's region | The highlight moves to that entry |
+| The pointer is pressed and released inside one entry's region | The highlight moves to that entry, and that entry is taken |
+| A touch contact lands and lifts inside one entry's region | The highlight moves to that entry, and that entry is taken |
+
+Taking an entry does what `confirm` does with it on that screen. Both edges fall
+inside one region or nothing is taken: a release outside the region its press
+went down in takes no entry, and neither does a release inside a different
+entry's region, though the highlight still follows the pointer wherever it
+travels. A pointer over no entry's region leaves the highlight where it is, and
+a press and release there take nothing. A contact has no hover, so its landing
+is what moves the highlight.
+
+The pointer and a contact drive a menu directly rather than through an action.
+On the four screens showing no menu the pointer operates the 3D scene and the
+tape editor instead (`specs/controls.md`).
 
 ### Title
 

@@ -17,6 +17,7 @@ import {
   type CueName,
 } from "./constants";
 import { showCheck, undo } from "./editor";
+import { menuHit } from "./menus";
 import { startIssues, type StartIssue } from "./sim";
 import type { StagePointerEvent } from "./runtime";
 import {
@@ -274,6 +275,7 @@ export function handlePointer(
   event: StagePointerEvent,
   _io: ScreenIo,
 ): PointerOutcome {
+  if (menuLength(state) > 0) return handleMenuPointer(state, event);
   if (state.screen !== "program") return { state, consumed: false };
   if (event.kind !== "down") {
     // Only a press the panel took reaches here as a move or a release, and the
@@ -284,4 +286,47 @@ export function handlePointer(
   const widget = hitTapeWidget(tapeLayout(state), event.x, event.y);
   if (widget === null) return { state, consumed: true };
   return { state: applyTapeWidget(state, widget), consumed: true };
+}
+
+// ---- The menus, under a pointer and under a finger --------------------------
+
+/**
+ * Deliver a pointer act or a contact edge to the menu the screen is showing
+ * (`specs/ui.md`).
+ *
+ * The pointer moved onto an entry's hit region selects that entry, whether or
+ * not a press is live, and a press and its release both inside one region take
+ * it. A release outside the region its press went down in takes nothing, which
+ * is what lets a player slide off an entry to change their mind. A contact has
+ * no hover, so its landing both selects and — with the lift in the same region
+ * — takes.
+ *
+ * Every act on a menu screen is consumed: there is no camera to turn and
+ * nothing to edit behind a menu, so a press that hit no entry is still the
+ * menu's.
+ */
+function handleMenuPointer(
+  state: GantryState,
+  event: StagePointerEvent,
+): PointerOutcome {
+  const at = menuHit(state, event.x, event.y);
+
+  // A move, a press, and a contact landing all select what they are over and
+  // take nothing.
+  if (event.kind !== "up" && event.kind !== "touch-up") {
+    return {
+      state: at === null ? state : { ...state, menuIndex: at },
+      consumed: true,
+    };
+  }
+
+  // A release, or a contact lifting. Both edges fall inside one region or
+  // nothing is taken.
+  const from =
+    event.kind === "up"
+      ? menuHit(state, state.pointer.pressX, state.pointer.pressY)
+      : at;
+  if (at === null || from !== at) return { state, consumed: true };
+  const selected: GantryState = { ...state, menuIndex: at };
+  return { state: confirmEntry(selected), consumed: true };
 }

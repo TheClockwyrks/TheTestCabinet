@@ -139,6 +139,21 @@ export interface Projected {
   visible: boolean;
 }
 
+/**
+ * A menu entry's hit region, in logical stage units.
+ *
+ * `specs/ui.md` leaves the menu layout to the build and fixes only that every
+ * entry occupies one of these; `menuItemRect` is how a check finds where the
+ * build drew an entry, so a check aims a press or a contact at the middle of
+ * what the build reported and knows no menu coordinate of its own.
+ */
+export interface MenuRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /** One obstacle: the axis-aligned box it fills. */
 export interface Obstacle {
   min: Vec3;
@@ -356,6 +371,8 @@ export interface GantryDebugApi {
   check(): CheckResult;
   /** What the last frame drew (`specs/instrumentation.md`). */
   drawn(): DrawnEntry[];
+  /** The hit region of entry `index` of the menu the screen showing carries. */
+  menuItemRect(index: number): MenuRect;
 
   /* ---- The run and the screens ------------------------------------------- */
 

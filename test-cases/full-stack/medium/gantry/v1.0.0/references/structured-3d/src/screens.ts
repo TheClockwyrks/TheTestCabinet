@@ -32,6 +32,7 @@ import {
   siteUnlocked,
 } from "./state";
 import { showCheck, undo } from "./editor";
+import { menuHit } from "./menus";
 import { startIssues, type StartIssue } from "./sim";
 import { simStructure } from "./adapt";
 import {
@@ -275,6 +276,7 @@ export function handlePointer(
   act: PointerAct,
   _io: GameIo,
 ): boolean {
+  if (menuLength(state) > 0) return handleMenuPointer(state, act);
   if (state.screen !== "program") return false;
   // Only a press the panel already took reaches here as a move or a release,
   // and the editor has nothing left to do with it.
@@ -282,5 +284,37 @@ export function handlePointer(
   if (!insidePanel(act.x, act.y)) return false;
   const widget = hitTapeWidget(tapeLayout(state), act.x, act.y);
   if (widget !== null) applyTapeWidget(state, widget);
+  return true;
+}
+
+// ---- The menus, under a pointer and under a finger --------------------------
+
+/**
+ * Deliver a pointer act to the menu the screen is showing (`specs/ui.md`).
+ *
+ * The pointer moved onto an entry's hit region selects that entry, whether or
+ * not a press is live, and a press and its release both inside one region take
+ * it. A release outside the region its press went down in takes nothing, which
+ * is what lets a player slide off an entry to change their mind. A contact
+ * reaches the game on the engine's own pointer reads (`specs/controls.md`), so
+ * a tap is a press and a release at one point and takes the entry it landed in.
+ *
+ * Every act on a menu screen is taken: there is no camera to turn and nothing
+ * to edit behind a menu, so a press that hit no entry is still the menu's.
+ */
+function handleMenuPointer(state: GantryState, act: PointerAct): boolean {
+  const at = menuHit(state, act.x, act.y);
+
+  // A move and a press both select what they are over and take nothing.
+  if (act.kind !== "up") {
+    if (at !== null) setMenuIndex(state, at);
+    return true;
+  }
+
+  // Both edges fall inside one region or nothing is taken.
+  const from = menuHit(state, state.pointer.pressX, state.pointer.pressY);
+  if (at === null || from !== at) return true;
+  setMenuIndex(state, at);
+  confirmEntry(state);
   return true;
 }

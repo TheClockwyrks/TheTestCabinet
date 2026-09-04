@@ -112,7 +112,10 @@ export interface SiteState {
 
 /** A structure's readiness issue (specs/structure.md). */
 export type ReadinessIssue =
-  "no-ring" | "no-rail" | "invalid-rail" | "disconnected-members";
+  | "no-ring"
+  | "no-rail"
+  | "invalid-rail"
+  | "disconnected-members";
 
 /** What would refuse a run: a readiness issue, or an empty tape. */
 export type StartIssue = ReadinessIssue | "empty-program";
@@ -264,10 +267,21 @@ export interface PointerState {
 }
 
 export type Screen =
-  "title" | "howto" | "select" | "build" | "program" | "run" | "results";
+  | "title"
+  | "howto"
+  | "select"
+  | "build"
+  | "program"
+  | "run"
+  | "results";
 
 export type Tool =
-  "strut" | "cable" | "rail" | "ring" | "counterweight" | "delete";
+  | "strut"
+  | "cable"
+  | "rail"
+  | "ring"
+  | "counterweight"
+  | "delete";
 
 export class GantryState extends GameState {
   screen: Screen = "title";
@@ -481,6 +495,14 @@ export interface PickReport {
 }
 
 /** The fixed shape `snapshot` returns; every field is present on every screen. */
+/** A menu entry's hit region, in logical stage units. */
+export interface MenuRectReport {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface Snapshot {
   version: number;
   screen: Screen;
@@ -523,6 +545,7 @@ export interface GantryDebugApi {
   snapshot(): Snapshot;
   check(): CheckReport;
   drawn(): DrawnEntry[];
+  menuItemRect(index: number): MenuRectReport;
 
   // The run and the screens
   reset(): void;

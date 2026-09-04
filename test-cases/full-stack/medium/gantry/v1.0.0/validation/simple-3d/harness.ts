@@ -109,6 +109,7 @@ import type {
   LoadClass,
   LoadPose,
   MaterialName,
+  MenuRect,
   Projected,
   Screen,
   TapeAction,
@@ -140,6 +141,7 @@ export const REQUIRED_OPS = [
   "snapshot",
   "check",
   "drawn",
+  "menuItemRect",
   "reset",
   "setScreen",
   "setMenuIndex",
@@ -188,7 +190,12 @@ export const REQUIRED_OPS = [
  * separates them: "Readings" is a section of `specs/instrumentation.md` and it
  * holds exactly these two under this engine, `project` having gone to the engine.
  */
-export const READINGS: readonly string[] = ["snapshot", "check", "drawn"];
+export const READINGS: readonly string[] = [
+  "snapshot",
+  "check",
+  "drawn",
+  "menuItemRect",
+];
 
 /**
  * What `cues()` reports a sound it could not name as.
@@ -534,6 +541,12 @@ export interface Harness {
   pointerUp(): Promise<void>;
   /** Down, a tick, up, a tick: the click a player's press makes. */
   click(x: number, y: number): Promise<void>;
+  /** A touch contact landing at a logical stage position. */
+  touchDown(x: number, y: number): Promise<void>;
+  /** The contact lifting, at the position it landed at. */
+  touchUp(): Promise<void>;
+  /** Land a contact, a tick, lift it, a tick: the tap a finger makes. */
+  tap(x: number, y: number): Promise<void>;
 
   /**
    * Where a world position is drawn, in logical stage units, THROUGH THE CAMERA
@@ -1144,6 +1157,29 @@ export async function createHarness(
       await step(1);
     },
 
+    // A CONTACT, NOT THE MOUSE. `specs/controls.md` has a touch contact arrive
+    // on the engine's own pointer reads, told apart by its device, so it is
+    // delivered as a pointer event carrying `pointerType: "touch"` and the
+    // engine's contact bookkeeping (`input.md`: "A touch or a pen in contact
+    // holds `primary`") applies unchanged.
+    async touchDown(x, y) {
+      const at = onWindow(x, y);
+      contactAt = { x: at.x, y: at.y };
+      dispatchPointer(events, "pointerdown", at.x, at.y, "touch");
+    },
+    async touchUp() {
+      dispatchPointer(events, "pointerup", contactAt.x, contactAt.y, "touch");
+    },
+
+    async tap(x, y) {
+      // The landing, a tick, the lift, a tick: the same bracketing `click`
+      // uses, so a build that reads its input once a frame sees both edges.
+      await this.touchDown(x, y);
+      await step(1);
+      await this.touchUp();
+      await step(1);
+    },
+
     async project(x, y, z) {
       poseCameraNow();
       const camera = engine.camera;
@@ -1460,6 +1496,109 @@ export const MINIMAL_CRANE: CraneDesign = {
   ],
   tape: [],
 };
+
+/* -------------------------------------------------------------------------- */
+/* The menus, where the build drew them                                       */
+/* -------------------------------------------------------------------------- */
+//
+// `specs/ui.md` gives every menu the pointer and touch as well as the key
+// actions, and deliberately leaves the LAYOUT to the build: what it fixes is
+// that the build reports each entry's hit region through `menuItemRect`, and
+// what the pointer and a contact do over that region. So every helper below
+// asks the build where it put the entry and then drives a real gesture there.
+// Nothing here knows a menu coordinate, and a build that lays its menus out any
+// way it likes passes.
+
+/** Where the build put entry `index` of the menu the screen showing carries. */
+export async function menuRect(h: Harness, index: number): Promise<MenuRect> {
+  return h.debug.menuItemRect(index);
+}
+
+/** The middle of a hit region: where a gesture aimed at that entry lands. */
+export function rectCenter(rect: MenuRect): { x: number; y: number } {
+  return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+}
+
+/** Move the pointer onto entry `index`, and run the frame that reads it. */
+export async function pointerOntoItem(
+  h: Harness,
+  index: number,
+): Promise<{ x: number; y: number }> {
+  const at = rectCenter(await menuRect(h, index));
+  await h.pointerMove(at.x, at.y);
+  await h.advance(1);
+  return at;
+}
+
+/** Press and release inside entry `index`'s region: the click that takes it. */
+export async function clickItem(
+  h: Harness,
+  index: number,
+): Promise<{ x: number; y: number }> {
+  const at = rectCenter(await menuRect(h, index));
+  await h.click(at.x, at.y);
+  return at;
+}
+
+/** Land a contact inside entry `index`'s region and lift it there. */
+export async function tapItem(
+  h: Harness,
+  index: number,
+): Promise<{ x: number; y: number }> {
+  const at = rectCenter(await menuRect(h, index));
+  await h.tap(at.x, at.y);
+  return at;
+}
+
+/**
+ * Press inside entry `from`'s region, travel to `to`, and release there.
+ *
+ * The slide-off affordance: a press begun on one entry and released elsewhere
+ * takes nothing (`specs/ui.md`). A check reads that nothing was taken and that
+ * the highlight followed the pointer.
+ */
+export async function slideOffItem(
+  h: Harness,
+  from: number,
+  to: { x: number; y: number } | number,
+): Promise<void> {
+  const start = rectCenter(await menuRect(h, from));
+  const end = typeof to === "number" ? rectCenter(await menuRect(h, to)) : to;
+  await h.pointerDown(start.x, start.y);
+  await h.advance(1);
+  await h.pointerMove(end.x, end.y);
+  await h.advance(1);
+  await h.pointerUp();
+  await h.advance(1);
+}
+
+/**
+ * A stage point inside no entry's region of the menu showing.
+ *
+ * Found by walking a coarse grid over the stage and keeping the first point
+ * every reported region misses, so it holds for any layout a build chooses.
+ */
+export async function offEveryMenuItem(
+  h: Harness,
+  count: number,
+): Promise<{ x: number; y: number }> {
+  const rects: MenuRect[] = [];
+  for (let i = 0; i < count; i += 1) rects.push(await menuRect(h, i));
+  const holds = (x: number, y: number): boolean =>
+    !rects.some(
+      (r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h,
+    );
+  for (let y = 8; y < STAGE_H; y += 16) {
+    for (let x = 8; x < STAGE_W; x += 16) {
+      if (holds(x, y)) return { x, y };
+    }
+  }
+  fail(
+    "a stage point inside no menu entry's hit region (specs/ui.md leaves the " +
+      "layout to the build, and a menu cannot cover the whole stage)",
+    "every point of a 16-pixel grid over the stage fell inside a reported region",
+  );
+}
 
 /* -------------------------------------------------------------------------- */
 /* Compound sequences                                                         */

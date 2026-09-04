@@ -13,6 +13,7 @@ import {
 import { point } from "./convert";
 import { createDebugSurface } from "./debug";
 import type { GantryState } from "./game";
+import { menuRects } from "./menus";
 import { setScreen, titleState } from "./state";
 
 const debug = createDebugSurface();
@@ -160,9 +161,37 @@ describe("openSite", () => {
   });
 });
 
+describe("menuItemRect", () => {
+  it("reports the hit region of an entry of the menu showing", () => {
+    // The reading is the layout `src/menus.ts` draws at, so what it answers is
+    // where the entry actually is (`specs/instrumentation.md`).
+    const s = titleState();
+    expect(debug.menuItemRect(s, 1)).toEqual(menuRects(s)[1]);
+    // A screen showing no menu, and an index the menu has no entry at, are
+    // both outside the domain.
+    expect(() => debug.menuItemRect(s, 2)).toThrow();
+    expect(() => debug.menuItemRect(s, -1)).toThrow();
+    expect(() => debug.menuItemRect(setScreen(s, "howto"), 0)).toThrow();
+  });
+});
+
+describe("showCheck", () => {
+  it("leaves the check the action would show, on the build screen alone", () => {
+    const shown = debug.showCheck(yard());
+    expect(shown.checkResult).not.toBeNull();
+    expect(debug.snapshot(shown).checkResult).toEqual(debug.check(shown));
+    // The `check` action reaches the build screen and nothing else, and so
+    // does this pose (`specs/instrumentation.md`).
+    expect(debug.showCheck(titleState()).checkResult).toBeNull();
+    expect(
+      debug.showCheck(setScreen(yard(), "program")).checkResult,
+    ).toBeNull();
+  });
+});
+
 describe("reset", () => {
   it("restores every field but muted", () => {
-    let s = debug.openSite(titleState(), 2);
+    let s = enterSite(2);
     s = debug.setRing(s, 0, 2, 0);
     s = debug.setTool(s, "delete");
     s = debug.setCleared(s, 0, true);

@@ -13,6 +13,7 @@ import { RESULTS_ITEMS, RUN_SPEEDS, type ActionName } from "./constants";
 import { thaw } from "./convert";
 import { showCheck, undo } from "./edits";
 import type { GantryState, ReadonlyGantryState, Tool } from "./game";
+import { menuHit } from "./menus";
 import {
   abortRun,
   beginRun,
@@ -21,6 +22,7 @@ import {
   currentSite,
   currentTape,
   highlightedIndex,
+  menuLength,
   moveMenu,
   openSite,
   resultsItems,
@@ -269,6 +271,7 @@ export function handlePointer(
   state: GantryState,
   event: StagePointerEvent,
 ): PointerOutcome {
+  if (menuLength(state) > 0) return handleMenuPointer(state, event);
   if (state.screen !== "program") return { state, consumed: false };
   if (event.kind !== "down") {
     // Only a press the panel took reaches here as a move or a release, and the
@@ -279,4 +282,39 @@ export function handlePointer(
   const widget = hitTapeWidget(tapeLayout(state), event.x, event.y);
   if (widget === null) return { state, consumed: true };
   return { state: applyTapeWidget(state, widget), consumed: true };
+}
+
+// ---- The menus, under a pointer and under a finger --------------------------
+
+/**
+ * Deliver a pointer act to the menu the screen is showing (`specs/ui.md`).
+ *
+ * The pointer moved onto an entry's hit region selects that entry, whether or
+ * not a press is live, and a press and its release both inside one region take
+ * it. A release outside the region its press went down in takes nothing, which
+ * is what lets a player slide off an entry to change their mind. A contact
+ * reaches the engine's pointer reads like a mouse (`specs/controls.md`), so a
+ * tap is a press and a release at one point and takes the entry it landed in.
+ *
+ * Every act on a menu screen is consumed: there is no camera to turn and
+ * nothing to edit behind a menu, so a press that hit no entry is still the
+ * menu's.
+ */
+function handleMenuPointer(
+  state: GantryState,
+  event: StagePointerEvent,
+): PointerOutcome {
+  const at = menuHit(state, event.x, event.y);
+
+  // A move and a press both select what they are over and take nothing.
+  if (event.kind !== "up") {
+    if (at !== null) state.menuIndex = at;
+    return { state, consumed: true };
+  }
+
+  // Both edges fall inside one region or nothing is taken.
+  const from = menuHit(state, state.pointer.pressX, state.pointer.pressY);
+  if (at === null || from !== at) return { state, consumed: true };
+  state.menuIndex = at;
+  return { state: confirmEntry(state), consumed: true };
 }

@@ -429,6 +429,37 @@ validation = { script = "instrumentation/readings-return-plain-values.test.ts", 
   { id = "plain-readings", name = "The run the two readings were taken over", kind = "image" },
 ] }
 
+# On the title screen read menuItemRect(0) and menuItemRect(1), then move the
+# pointer to the middle of each in turn, advancing a frame after each, and read
+# menuIndex. — Each reading is a { x, y, w, h } inside the stage, the two
+# regions do not overlap, and the highlight follows the pointer onto the entry
+# each region was reported for.
+# From specs/instrumentation.md § Readings; specs/ui.md § The screens.
+[[review.categories.items]]
+id = "menu-item-rect-reports-the-entry-region"
+title = "menuItemRect reports the region the entry is selected from"
+description = "menuItemRect reports an entry's hit region in logical stage units, and it is the region that entry is actually selected from: the pointer moved into it highlights that entry."
+domains = ["presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/menu-item-rect-reports-the-entry-region.test.ts", outputs = [
+  { id = "state", name = "The driven state this point decides", kind = "image" },
+] }
+
+# Call menuItemRect(0) on the howto, build, program and run screens, and
+# menuItemRect(2) and menuItemRect(-1) on the title screen, whose menu carries
+# two entries. — Every one of those calls throws and the snapshot is unchanged
+# after each.
+# From specs/instrumentation.md § Readings.
+[[review.categories.items]]
+id = "menu-item-rect-off-a-menu-fails-loudly"
+title = "menuItemRect fails loudly where no such entry is showing"
+description = "menuItemRect is called on a screen carrying a menu, for an entry that menu has: a screen with no menu and an index outside the menu's entry count are both outside the operation's domain, and the call fails loudly."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/menu-item-rect-off-a-menu-fails-loudly.test.ts", outputs = [
+  { id = "state", name = "The driven state this point decides", kind = "image" },
+] }
+
 # During a run with a load attached, take a snapshot, take fifty more, and
 # take a final one, advancing nothing in between. — The first and the last
 # snapshot are deep-equal, run.tick and simTime included.
@@ -7461,22 +7492,67 @@ validation = { script = "collisions/member-strike-precedes-a-load-strike.test.ts
 id = "controls"
 title = "Keys, the camera, and the pointer"
 
-# setScreen("select"), setMenuIndex(2), then deliver a pointerDown and
-# pointerUp at each point of a grid covering the stage — 16 by 9 points at
-# 80-pixel spacing, so every drawn menu entry is pressed wherever the build
-# laid it out — advancing a frame after each, and read menuIndex and screen
-# after every one. — menuIndex still reads 2 and screen still reads select
-# after every one of those presses: no press moved the highlight and none
-# took an entry.
-# From specs/controls.md § The actions.
+# THE FOUR MENU-POINTER POINTS BELOW ALL AIM AT A REGION THE BUILD REPORTS.
+# specs/ui.md leaves the menu layout to the build and fixes only that each entry
+# occupies a hit region reported by menuItemRect, so every one of these asks the
+# build where it drew the entry and drives the pointer or a contact at the middle
+# of what it answered. Nothing here knows a menu coordinate.
+
+# setScreen("title"), setMenuIndex(0), then move the pointer to the middle of
+# menuItemRect(1) and advance a frame. — menuIndex reads 1, and screen still
+# reads title: the hover moved the highlight and took nothing.
+# From specs/ui.md § The screens.
 [[review.categories.items]]
-id = "a-click-does-not-drive-a-menu"
-title = "A click on a menu screen neither moves the highlight nor takes an entry"
-description = "The menus are driven by the key actions alone — the four directions, confirm and back — so a press anywhere on a menu screen moves no highlight and takes no entry, wherever the build draws its entries."
+id = "a-pointer-onto-a-menu-entry-selects-it"
+title = "A pointer moved onto a menu entry selects it"
+description = "The pointer moved onto a menu entry's hit region moves the highlight to that entry, wherever the build drew it."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "controls/a-click-does-not-drive-a-menu.test.ts", outputs = [
-  { id = "state", name = "the select menu after a press at every point", kind = "image" },
+validation = { script = "controls/a-pointer-onto-a-menu-entry-selects-it.test.ts", outputs = [
+  { id = "state", name = "the title menu with the highlight under the pointer", kind = "image" },
+] }
+
+# setScreen("title"), setMenuIndex(0), then press and release inside
+# menuItemRect(1), the HOW TO PLAY entry, advancing a frame around each edge. —
+# screen reads howto, which is what confirm on that entry does.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "a-click-in-a-menu-entry-takes-it"
+title = "A press and release inside one menu entry takes it"
+description = "A pointer pressed and released inside one menu entry's hit region takes that entry, doing what confirm does with it on that screen."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "controls/a-click-in-a-menu-entry-takes-it.test.ts", outputs = [
+  { id = "state", name = "the screen a click on a menu entry reached", kind = "image" },
+] }
+
+# setScreen("title"), setMenuIndex(0), then press inside menuItemRect(1), move
+# the pointer to a stage point inside no entry's region, and release there. —
+# screen still reads title: the release fell outside the region the press went
+# down in, so nothing was taken.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "a-release-outside-the-pressed-entry-takes-nothing"
+title = "A release outside the entry it was pressed in takes nothing"
+description = "Both edges of a press fall inside one entry's hit region or nothing is taken, so a release outside the region its press went down in takes no entry."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "controls/a-release-outside-the-pressed-entry-takes-nothing.test.ts", outputs = [
+  { id = "state", name = "the title menu a slipped press left where it was", kind = "image" },
+] }
+
+# setScreen("title"), setMenuIndex(0), then land a touch contact in the middle
+# of menuItemRect(1) and lift it there, advancing a frame around each edge. —
+# screen reads howto: the contact selected the entry and took it.
+# From specs/ui.md § The screens.
+[[review.categories.items]]
+id = "a-tap-in-a-menu-entry-selects-and-takes-it"
+title = "A touch contact landing and lifting in one menu entry selects and takes it"
+description = "A touch contact that lands and lifts inside one menu entry's hit region moves the highlight to that entry and takes it, so the menus are playable with a finger."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "controls/a-tap-in-a-menu-entry-selects-and-takes-it.test.ts", outputs = [
+  { id = "state", name = "the screen a tap on a menu entry reached", kind = "image" },
 ] }
 
 # Start a run, advance, press Escape. — screen reads build and run.phase
@@ -9503,19 +9579,19 @@ validation = { script = "screens/title-sites-opens-select.test.ts", outputs = [
   { id = "select-opened", name = "the screen SITES opened", kind = "image" },
 ] }
 
-# On the select screen move the highlight to site 4 with the down action,
-# press back to reach title, and read snapshot().menuIndex; then enter howto,
-# press back, and read it again. — screen reads title and menuIndex reads 0
-# on both arrivals.
-# From specs/ui.md § Title, § How to play, § Site select.
+# On the title screen with menuIndex 1, press and release at a stage point
+# every reported menu region misses, advancing a frame around each edge, and
+# read menuIndex and screen. — menuIndex still reads 1 and screen still reads
+# title: the press selected nothing and took nothing.
+# From specs/ui.md § The screens.
 [[review.categories.items]]
-id = "title-menu-index-zero-on-every-arrival"
-title = "Arriving at the title screen puts the highlight on its first entry"
-description = "The title screen carries menuIndex 0 on arriving, whichever screen the player arrived from, so back from select and back from howto both leave the highlight on SITES."
+id = "a-press-off-every-menu-entry-does-nothing"
+title = "A press outside every menu entry moves no highlight and takes no entry"
+description = "A pointer pressed and released at a point inside no entry's hit region leaves the highlight where it is and takes no entry, so the space around a menu is not a hidden button."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "screens/title-menu-index-zero-on-every-arrival.test.ts", outputs = [
-  { id = "title-highlight", name = "the title menu on arriving from select", kind = "image" },
+validation = { script = "screens/a-press-off-every-menu-entry-does-nothing.test.ts", outputs = [
+  { id = "state", name = "the title menu a press off every entry left alone", kind = "image" },
 ] }
 
 # openSite(3), clearStructure, pose members to a known cost, and read the

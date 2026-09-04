@@ -30,6 +30,7 @@ import {
 } from "./constants";
 import { point, simStructure } from "./adapt";
 import * as editor from "./editor";
+import { menuRects } from "./menus";
 import { requestRun } from "./app-tick";
 import type { GameIo } from "./io";
 import {
@@ -340,6 +341,23 @@ export function createDebugSurface(access: GameAccess): GantryDebugApi {
       };
     },
 
+    menuItemRect(index) {
+      // A menu entry's region is only a reading where a menu is showing, so a
+      // screen with none and an index the menu has no entry at are both
+      // outside the domain (`specs/instrumentation.md`).
+      const state = now();
+      const count = st.menuLength(state);
+      if (count === 0) {
+        invalid(
+          `menuItemRect is read on a screen showing a menu; ${state.screen} shows none`,
+        );
+      }
+      const at = requireIndex("index", index, count);
+      const rect = menuRects(state)[at];
+      if (rect === undefined) invalid(`index has no entry at ${at}`);
+      return { x: rect.x, y: rect.y, w: rect.w, h: rect.h };
+    },
+
     drawn(): DrawnEntry[] {
       // What the last frame drew. The frame itself describes what it put on
       // screen, so the reading and the picture cannot disagree
@@ -392,7 +410,6 @@ export function createDebugSurface(access: GameAccess): GantryDebugApi {
       const state = now();
       const site = requireIndex("index", index, SITE_COUNT);
       st.openSite(state, site);
-      st.setScreen(state, "build");
     },
 
     setCleared(index, cleared) {

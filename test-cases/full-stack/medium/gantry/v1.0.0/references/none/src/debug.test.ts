@@ -52,6 +52,7 @@ import {
 } from "./constants";
 import { createDebugSurface, type GantryDebugApi } from "./debug";
 import * as editor from "./editor";
+import { menuRects } from "./menus";
 import { project } from "./render";
 import {
   SIM_SITES,
@@ -86,6 +87,8 @@ function harness(): Harness {
   let motorOn = false;
   let px = 0;
   let py = 0;
+  let cx = 0;
+  let cy = 0;
   let source: () => readonly string[] = () => [];
   const down = new Set<ActionName>();
 
@@ -117,6 +120,14 @@ function harness(): Harness {
     },
     feedPointerUp() {
       pointer.push({ kind: "up", x: px, y: py });
+    },
+    feedTouchDown(x, y) {
+      cx = x;
+      cy = y;
+      pointer.push({ kind: "touch-down", x, y });
+    },
+    feedTouchUp() {
+      pointer.push({ kind: "touch-up", x: cx, y: cy });
     },
     playCue(cue) {
       cues.push(cue);
@@ -557,6 +568,19 @@ describe("the readings", () => {
     expect(h.debug.snapshot().checkResult).toEqual(shown);
   });
 
+  it("reports the hit region of an entry of the menu showing", () => {
+    // The reading is the layout `src/menus.ts` draws at, so what it answers is
+    // where the entry actually is (`specs/instrumentation.md`).
+    const rect = h.debug.menuItemRect(1);
+    expect(rect).toEqual(menuRects(h.game.state)[1]);
+    // A screen showing no menu, and an index the menu has no entry at, are
+    // both outside the domain.
+    expect(() => h.debug.menuItemRect(2)).toThrow();
+    expect(() => h.debug.menuItemRect(-1)).toThrow();
+    h.debug.setScreen("howto");
+    expect(() => h.debug.menuItemRect(0)).toThrow();
+  });
+
   it("projects a world position through the camera as it stands", () => {
     const point = h.debug.project(1, 2, 3);
     expect(point).toEqual({ x: 640, y: 360, visible: true });
@@ -838,6 +862,19 @@ describe("input", () => {
     h.debug.keyDown("KeyC");
     h.debug.keyUp("KeyC");
     expect(h.keys).toEqual(["down KeyC", "up KeyC"]);
+  });
+
+  it("delivers a contact that lands and lifts where the entry was drawn", () => {
+    const rect = menuRects(h.game.state)[1]!;
+    h.debug.touchDown(rect.x + rect.w / 2, rect.y + rect.h / 2);
+    h.game.frame(0);
+    expect(h.debug.snapshot().menuIndex).toBe(1);
+    h.debug.touchUp();
+    h.game.frame(0);
+    // TITLE_ITEMS index 1 is HOW TO PLAY.
+    expect(h.debug.snapshot().screen).toBe("howto");
+    // The contact is not the pointer: neither the position nor the press moved.
+    expect(h.debug.snapshot().pointer.down).toBe(false);
   });
 
   it("follows a press as a click when it stays inside CLICK_SLOP", () => {

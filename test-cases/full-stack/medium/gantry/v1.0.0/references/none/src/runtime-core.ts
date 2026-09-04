@@ -87,6 +87,15 @@ export class RuntimeCore implements Runtime {
     this.input.pointerUp();
   }
 
+  feedTouchDown(x: number, y: number): void {
+    this.audio.unlock();
+    this.input.touchDown(x, y);
+  }
+
+  feedTouchUp(): void {
+    this.input.touchUp();
+  }
+
   playCue(cue: CueName): void {
     this.audio.playCue(cue);
   }

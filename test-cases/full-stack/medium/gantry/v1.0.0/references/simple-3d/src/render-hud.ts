@@ -62,6 +62,7 @@ import {
   type ToolEntry,
 } from "./render-format";
 import { pendingStartIssues } from "./screens";
+import { menuRects } from "./menus";
 import { tapeLayout, type Rect, type TapeWidget } from "./tape";
 import {
   craneCost,
@@ -721,16 +722,19 @@ function scrim(ctx: Ctx): void {
   ctx.fillRect(0, 0, STAGE_W, STAGE_H);
 }
 
+/**
+ * Draw a menu's entries at the hit regions `src/menus.ts` lays out, so what a
+ * player sees and what a pointer selects are the same rectangles.
+ */
 function menu(
   ctx: Ctx,
   items: readonly string[],
   highlight: number,
-  x: number,
-  y: number,
-  width: number,
+  rects: readonly Rect[],
 ): void {
   items.forEach((item, i) => {
-    const rect: Rect = { x, y: y + i * 48, w: width, h: 40 };
+    const rect = rects[i];
+    if (rect === undefined) return;
     const on = i === highlight;
     if (on) box(ctx, rect, PANEL_INSET, ACCENT, 4);
     write(ctx, on ? "»" : " ", rect.x + 14, rect.y + 27, {
@@ -751,7 +755,7 @@ function titleScreen(ctx: Ctx, state: ReadonlyGantryState): void {
   ctx.fillRect(124, 274, 320, 5);
   write(ctx, TAGLINE_TEXT, 124, 312, { font: mono(18), colour: INK_DIM });
   const items = menuEntries(state) ?? [];
-  menu(ctx, items, highlightedIndex(state), 120, 400, 380);
+  menu(ctx, items, highlightedIndex(state), menuRects(state));
   write(ctx, "↑ ↓ CHOOSE      ENTER SELECT      M MUTE", 120, STAGE_H - 60, {
     font: mono(12),
     colour: INK_FAINT,
@@ -801,13 +805,10 @@ function selectScreen(ctx: Ctx, state: ReadonlyGantryState): void {
     colour: INK_FAINT,
   });
   const rows = siteRows(state);
+  const rects = menuRects(state);
   rows.forEach((row, i) => {
-    const rect: Rect = {
-      x: MARGIN + 36,
-      y: 152 + i * 76,
-      w: STAGE_W - 2 * (MARGIN + 36),
-      h: 64,
-    };
+    const rect = rects[i];
+    if (rect === undefined) return;
     const locked = row.state === "locked";
     box(
       ctx,
@@ -901,7 +902,7 @@ function resultsScreen(ctx: Ctx, state: ReadonlyGantryState): void {
   }
 
   const items = menuEntries(state) ?? [];
-  menu(ctx, items, highlightedIndex(state), rect.x + 180, rect.y + 292, 280);
+  menu(ctx, items, highlightedIndex(state), menuRects(state));
 }
 
 // ---- The whole layer -------------------------------------------------------

@@ -9,6 +9,7 @@ import {
 import { createDebugSurface } from "./debug";
 import { GantryState, type GantryDebugApi } from "./game";
 import { silentIo } from "./io";
+import { menuRects } from "./menus";
 import * as st from "./state";
 
 interface Harness {
@@ -159,6 +160,30 @@ describe("the screens", () => {
     expect(s.site.name).toBe(SITE_NAMES[2]);
     expect(s.site.obstacles).toHaveLength(SITES[2].obstacles.length);
     expect(() => h.debug.openSite(SITE_COUNT)).toThrow(/index/);
+  });
+
+  it("reports the hit region of an entry of the menu showing", () => {
+    // The reading is the layout `src/menus.ts` draws at, so what it answers is
+    // where the entry actually is (`specs/instrumentation.md`).
+    const h = harness();
+    expect(h.debug.menuItemRect(1)).toEqual(menuRects(h.state)[1]);
+    // A screen showing no menu, and an index the menu has no entry at, are
+    // both outside the domain.
+    expect(() => h.debug.menuItemRect(2)).toThrow();
+    expect(() => h.debug.menuItemRect(-1)).toThrow();
+    h.debug.setScreen("howto");
+    expect(() => h.debug.menuItemRect(0)).toThrow();
+  });
+
+  it("poses the check action on the build screen alone", () => {
+    const h = onSite(0);
+    h.debug.showCheck();
+    expect(h.debug.snapshot().checkResult).toEqual(h.debug.check());
+    // The `check` action reaches the build screen and nothing else, and so
+    // does this pose (`specs/instrumentation.md`).
+    const elsewhere = harness();
+    elsewhere.debug.showCheck();
+    expect(elsewhere.debug.snapshot().checkResult).toBeNull();
   });
 
   it("sets and clears a site's cleared flag and its best score", () => {

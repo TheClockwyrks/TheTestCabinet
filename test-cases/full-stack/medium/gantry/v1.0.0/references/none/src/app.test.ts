@@ -44,6 +44,8 @@ function harness(): Harness {
     feedPointerMove: () => {},
     feedPointerDown: () => {},
     feedPointerUp: () => {},
+    feedTouchDown: () => {},
+    feedTouchUp: () => {},
     playCue: (cue) => {
       cues.push(cue);
     },

@@ -270,6 +270,19 @@ readout is the `text` it drew and not what the build calls it.
 
 Art direction stays the build's throughout: the reading reports what a build
 chose, and nothing here fixes a palette, a form, or a layout.
+
+| Operation | Returns |
+| --- | --- |
+| `menuItemRect(index)` | The hit region of entry `index` of the menu the screen showing carries, as `{ x, y, w, h }`. |
+
+`x` and `y` are the region's top-left corner in logical stage units and `w` and
+`h` its size: the region a pointer selects that entry from and a contact takes
+it in (`specs/ui.md`). It is a pure reading and moves nothing. Because
+`specs/ui.md` leaves the menu layout to the build, this is how a caller finds
+where an entry was drawn without knowing that layout, and it is what a caller
+aims a press or a contact at. The three screens carrying a menu are `title`,
+`select`, and `results`; called on any of the other four it fails loudly, and so
+does an `index` the menu showing has no entry at.
 {{#if (eq engine.slug "none")}}
 
 | Operation | Returns |
@@ -493,15 +506,21 @@ whatever the act it delivers changes.
 | `pointerMove(x, y)` | Moves the pointer to a logical stage position. |
 | `pointerDown(x, y)` | A press at a logical stage position. It moves the pointer there first, so a press needs no `pointerMove` before it. |
 | `pointerUp` | A release at the position the pointer is at. |
+| `touchDown(x, y)` | A touch contact landing at a logical stage position. |
+| `touchUp` | The contact lifting, at the position it landed at. |
 | `keyDown(code)` | Presses a key down. `code` is a standard `KeyboardEvent.code`. A one-shot action it fires on the current screen applies, and a held action stays held until `keyUp`. |
 | `keyUp(code)` | Releases a key. |
 
 Each delivers one act, and a caller that wants a gesture made of several
 delivers them in order: a click is a `pointerDown` followed by a `pointerUp`,
-and an orbit drag is a `pointerDown`, one or more `pointerMove` calls, and a
-`pointerUp`. A build is free to act on an event as it arrives or on the frame
-that reads it, so a caller that needs the game to have consumed one runs a frame
-after it.
+an orbit drag is a `pointerDown`, one or more `pointerMove` calls, and a
+`pointerUp`, and a tap is a `touchDown` followed by a `touchUp`. The contact the
+touch pair delivers is a contact and not the pointer: it moves no pointer
+position and raises no press or release of one, so a build that tells the two
+apart is delivered exactly what `specs/controls.md` says its runtime reports.
+
+A build is free to act on an event as it arrives or on the frame that reads it,
+so a caller that needs the game to have consumed one runs a frame after it.
 
 {{/if}}
 ## Snapshot shape
