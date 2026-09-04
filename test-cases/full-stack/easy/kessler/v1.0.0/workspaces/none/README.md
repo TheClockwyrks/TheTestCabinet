@@ -16,9 +16,9 @@ TypeScript, Vite, Vitest, ESLint and Prettier, wired to the commands below.
 `index.html` loads `/src/main.ts` as its entry point, so that module is where
 your build starts. Beyond that the structure is yours. You write the runtime a
 browser game needs — the frame loop and the delta time it measures, fitting the
-fixed 1000x1000 logical stage onto the canvas, keyboard input, image loading,
-audio with looping beds, and the diagnostics overlay — and you write the game
-itself on top of it.
+fixed 1000x1000 logical stage onto the canvas, keyboard and pointer input,
+image loading, audio with looping beds, and the diagnostics overlay — and you
+write the game itself on top of it.
 
 Kessler advances on a fixed tick fed by elapsed time, so the loop you write is
 what the whole simulation rests on: `specs/overview.md` states the tick,

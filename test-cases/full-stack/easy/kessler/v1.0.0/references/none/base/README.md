@@ -51,8 +51,9 @@ npm test            # vitest run, with coverage
 
 ## Controls
 
-The game is keyboard only. Keys are bound by physical position
-(`KeyboardEvent.code`), so they hold on any layout.
+The field is driven from the keyboard; the menus answer the pointer and touch
+as well. Keys are bound by physical position (`KeyboardEvent.code`), so they
+hold on any layout.
 
 | Action | Keys |
 | --- | --- |
@@ -60,6 +61,7 @@ The game is keyboard only. Keys are bound by physical position
 | Launch the parked ball | `Space` |
 | Menus: move the highlight | `ArrowUp` / `KeyW` and `ArrowDown` / `KeyS` |
 | Menus: confirm | `Space` or `Enter` |
+| Menus: pointer or touch | Move onto an entry to highlight it; press and release inside it to accept it |
 | Pause / back | `Escape` or `KeyP` |
 | Debug overlay | `Backquote` (`` ` ``) |
 
@@ -90,8 +92,11 @@ the browser.
 
 - `src/viewport.ts` — letterboxed uniform fit of the 1000 × 1000 logical
   stage, DPR-aware.
-- `src/input.ts` — the keyboard: held keys and per-press edges by
-  `KeyboardEvent.code`.
+- `src/input.ts` — the keyboard, as held keys and per-press edges by
+  `KeyboardEvent.code`, and the pointer, as stage-space samples the menus
+  answer.
+- `src/menus.ts` — where the two menus sit: the hit region of each entry, and
+  which entry a stage point is over.
 - `src/runtime.ts` — the requestAnimationFrame loop, the accumulator, and
   the clock `setAutoStep`/`step` take hold of.
 - `src/assets.ts` — loads the committed produced assets; every load failure

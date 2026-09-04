@@ -54,8 +54,9 @@ npm test            # vitest run, with coverage
 
 ## Controls
 
-The game is keyboard only. Keys are bound by physical position
-(`KeyboardEvent.code`), so they hold on any layout.
+The field is driven from the keyboard; the menus answer the pointer and touch
+as well. Keys are bound by physical position (`KeyboardEvent.code`), so they
+hold on any layout.
 
 | Action | Keys |
 | --- | --- |
@@ -63,6 +64,7 @@ The game is keyboard only. Keys are bound by physical position
 | Launch the parked ball | `Space` |
 | Menus: move the highlight | `ArrowUp` / `KeyW` and `ArrowDown` / `KeyS` |
 | Menus: confirm | `Space` or `Enter` |
+| Menus: pointer or touch | Move onto an entry to highlight it; press and release inside it to accept it |
 | Pause / back | `Escape` or `KeyP` |
 | Debug overlay | `Backquote` (`` ` ``) — engine chrome, not a game action |
 
@@ -97,7 +99,10 @@ half.
   the engine drives; re-exports the state and the debug surface type.
 - `src/controller.ts` — the player controller: the one seat the registered
   actions are read from.
-- `src/input.ts` — the action registry: names and key bindings.
+- `src/input.ts` — the action registry — names and key bindings — and the
+  per-frame pointer samples.
+- `src/menus.ts` — where the two menus sit: the hit region of each entry, and
+  which entry a stage point is over.
 - `src/actors.ts` — the tagged actors that populate the field, their draw
   components, and the reconciler that keeps them mirroring the state.
 - `src/theme.ts`, `src/draw.ts`, `src/render.ts`, `src/screens.ts` — the

@@ -52,8 +52,9 @@ npm test            # vitest run, with coverage
 
 ## Controls
 
-The game is keyboard only. Keys are bound by physical position
-(`KeyboardEvent.code`), so they hold on any layout.
+The field is driven from the keyboard; the menus answer the pointer and touch
+as well. Keys are bound by physical position (`KeyboardEvent.code`), so they
+hold on any layout.
 
 | Action | Keys |
 | --- | --- |
@@ -61,6 +62,7 @@ The game is keyboard only. Keys are bound by physical position
 | Launch the parked ball | `Space` |
 | Menus: move the highlight | `ArrowUp` / `KeyW` and `ArrowDown` / `KeyS` |
 | Menus: confirm | `Space` or `Enter` |
+| Menus: pointer or touch | Move onto an entry to highlight it; press and release inside it to accept it |
 | Pause / back | `Escape` or `KeyP` |
 | Debug overlay | `Backquote` (`` ` ``) |
 
@@ -96,7 +98,10 @@ engine binding and the drawing.
 
 - `src/game.ts` — the `Game<KesslerState, KesslerDebugApi>` the engine
   drives: `initialize`, the per-frame `update`, and `render`.
-- `src/input.ts` — the action registrations and the per-frame reads.
+- `src/input.ts` — the action registrations and the per-frame reads, the
+  pointer's samples included.
+- `src/menus.ts` — where the two menus sit: the hit region of each entry, and
+  which entry a stage point is over.
 - `src/audio.ts` — the thirteen cues and two beds on the engine's cue bus,
   each declared as a synth fallback and then loaded from its produced file.
 - `src/assets.ts` — the produced sprites and particle systems through the

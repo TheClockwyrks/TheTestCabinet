@@ -404,13 +404,14 @@ description = "Everything a player sees and hears. The produced assets first: th
 #
 # EVERY ITEM CARRIES A `validation` SCRIPT. Each item declares its
 # `validation/<engine>/<category>/<item id>.test.ts` suite — one Vitest project per
-# engine, the same relative path under each — and the media the suite writes; the
-# suites were captured against the three reference implementations under
-# `references/<engine>/base/`. A handful of items add `engines = ["none"]` to that
-# table, which scopes the item to the engines where the behavior is the build's own
-# work: the debug overlay and its backtick toggle, the press-edge contract, and the
-# stage fit are the engine's under `simple-2d` and `structured-2d`, and grading them
-# there would hand every build the point. The checklist was authored first so the suites are
+# engine, the same relative path under each — and the media the suite writes. Each
+# suite is written to the item's claim and read back against the three reference
+# implementations under `references/<engine>/base/`, which every suite passes. A
+# handful of items add `engines = ["none"]` to that table, which scopes the item to
+# the engines where the behavior is the build's own work: the debug overlay and its
+# backtick toggle, the press-edge contract, and the stage fit are the engine's under
+# `simple-2d` and `structured-2d`, and grading them there would hand every build the
+# point. The checklist was authored first so the suites are
 # written TO these claims rather than the claims drifting to fit what a suite
 # happened to check. Every item is cut to that standard: ONE observable behavior, posed
 # through the instrumentation surface and read back, so a build fails exactly the
