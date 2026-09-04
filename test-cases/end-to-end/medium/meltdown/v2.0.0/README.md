@@ -35,7 +35,7 @@ consistent.
 A major bump. Three engines instead of one; a debug surface rewritten from
 nothing, with no operation carrying its old signature; a rewritten and re-split
 spec set; per-engine reference implementations; per-engine Vitest validator
-suites deciding all 375 review items; captured baseline media per engine; and a
+suites deciding all 376 review items; captured baseline media per engine; and a
 case showcase in place of the proof captures. `changelog.md` carries the full
 entry.
 
@@ -130,7 +130,7 @@ that, against an RGB distance and never a hex value.
 
 ## Validation
 
-This case is validator-rated: all 375 review items carry a Vitest suite, and the
+This case is validator-rated: all 376 review items carry a Vitest suite, and the
 validators decide the functional rating through each item's failure cap. A
 reviewer rates the run's aesthetics and may override a verdict.
 
@@ -139,6 +139,13 @@ reviewer rates the run's aesthetics and may override a verdict.
 through `window.__meltdown`; the two engine projects run in process against the
 vendored engine and reach the surface through `engine.debug`. The three run the
 same scenarios and differ only in how they reach the build.
+
+The engineless project stands on `@test-cabinet/case-harness`, the shared
+engineless harness the runner stages beside it: the browser, the driven frame,
+the draw recorder, the audio probe and the evidence writers are that package's.
+What sits beside it is what is Meltdown's own — the contract the build owes, the
+two clocks the case chose, the scope that hands the frame loop back to the build,
+and the compound sequences the checks share.
 
 Each project carries the same spec-derived oracle beside its harness:
 `thermal.ts` recomputes the two-phase heat model from the specification's own

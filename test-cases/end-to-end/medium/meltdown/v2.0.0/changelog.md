@@ -95,8 +95,8 @@ the game running on its own clock, and the speed toggle.
 
 ## Every review item is decided by a validator
 
-The checklist grew from `107` items to `375`, and the twenty-nine categories that
-held them became nineteen. Every one of the `375` names a Vitest suite under
+The checklist grew from `107` items to `376`, and the twenty-nine categories that
+held them became nineteen. Every one of the `376` names a Vitest suite under
 `validation/<engine>/`, the domains its failure lowers, and how far it lowers
 them. The `100` standalone `.mjs` browser drivers of `v1.0.0`, and the single
 module they shared, are gone, and so are the seven items it left for a reviewer
