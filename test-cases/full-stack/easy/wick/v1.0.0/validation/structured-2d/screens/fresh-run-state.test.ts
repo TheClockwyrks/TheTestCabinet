@@ -2,16 +2,15 @@
 // exactly what the specification says a fresh run holds.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/ui.md`, "A fresh run":
-// "`LIGHT THE LAMP`, `TRY AGAIN`, and the debug surface's
-// `setScreen("playing")` each begin a fresh run, and whatever the previous run
-// held is discarded. A fresh run has the run clock at `0:00`, the lamplighter
-// at the world origin `(0, 0)` with `hp = BASE_MAX_HP` (`100`) and
+// "`LIGHT THE LAMP` and `TRY AGAIN` each begin a fresh run, and whatever the
+// previous run held is discarded. A fresh run has the run clock at `0:00`, the
+// lamplighter at the world origin `(0, 0)` with `hp = BASE_MAX_HP` (`100`) and
 // `facing = "right"`, level `1` with `xp = 0` and `kills = 0`, Taper at level
-// `1` alone in the first weapon slot and no passive held, no enemy,
-// projectile, zone, gem, or pickup in the world, no level-up queued, and the
-// spawn timer at `0`". `specs/state.md`, "The idle run", adds `offers` empty,
-// `chestResult` `null`, and `firedEvents` empty, and "A fresh run is the idle
-// run with Taper at level `1` and cooldown `0` in the first weapon slot".
+// `1` alone in the first weapon slot and no passive held, no enemy, projectile,
+// zone, gem, or pickup in the world, no level-up queued, and the spawn timer at
+// `0`". `specs/state.md`, "The idle run", adds `offers` empty, `chestResult`
+// `null`, and `firedEvents` empty, and "A fresh run is the idle run with Taper
+// at level `1` and cooldown `0` in the first weapon slot".
 //
 // WHY THE PRESS RUNS NO TICK. `specs/controls.md`: "a frame whose press enters
 // `playing` ... runs that frame's ticks", and a tick of a fresh run fires

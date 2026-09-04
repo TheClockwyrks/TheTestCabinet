@@ -32,15 +32,13 @@
 // names: a build that acts on the key's held state frame after frame.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { SPEEDS } from "../../src/constants";
+import { keyFor, SPEEDS } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  keyFor,
-  openYard,
   type Harness,
+  openYard,
 } from "../harness";
 
 /** Frames the key is held down for. Never a whole number of speed cycles. */

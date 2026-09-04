@@ -13,8 +13,8 @@
 // Everything but the dials below is the shared validator harness's, because
 // everything but the dials is what makes a staged validator project one shape the
 // runner can drive: the project's name, the suites it collects, the scaffolding
-// it loads, the four workers a shared browser can hold pages for, and the refusal
-// to pass a run that collected nothing.
+// it loads, the workers a shared browser holds pages for, and the refusal to
+// pass a run that collected nothing.
 //
 // THE ROOT IS THE WORKSPACE, NOT THIS DIRECTORY, so a validator addresses the
 // build's output by the same relative path the build itself produced it at. It is

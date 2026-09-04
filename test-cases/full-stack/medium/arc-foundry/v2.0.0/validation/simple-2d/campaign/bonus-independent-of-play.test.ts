@@ -30,16 +30,14 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import {
   captureReplay,
-  COLLECTOR_WAYPOINT,
   createHarness,
-  loadDef,
+  type Harness,
   openYard,
   parkUnit,
   releaseUnit,
-  waveBonus,
-  type Harness,
 } from "../harness";
 import { KILL_AT, LEAK_FROM, standGun } from "./runs";
+import { COLLECTOR_WAYPOINT, loadDef, waveBonus } from "../constants";
 
 /** The wave every run below is posed at, so every bonus compared is the same one. */
 const WAVE = 6;

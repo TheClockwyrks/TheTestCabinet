@@ -83,6 +83,7 @@ describe("readings", () => {
         "scanner",
         "notice",
         "noticesFired",
+        "elapsedSeconds",
         "summary",
       ].sort(),
     );
@@ -216,16 +217,6 @@ describe("restoring the world", () => {
     expect(h.debug.tileAt(h.state, 6, 200).kind).toBe("tunnel");
     expect(snapshot.cargo.slotsUsed).toBe(0);
     expect(snapshot.miner.hull).toBe(HULL_TIERS[0]);
-  });
-
-  it("takes every ground item off without detonating a jettisoned Sample", () => {
-    h.pose((debug, state) => debug.placeCoreSample(state, 5, 200));
-    expect(h.debug.snapshot(h.state).coreGround).toEqual({ col: 5, row: 200 });
-    h.pose((debug, state) => debug.clearGroundItems(state));
-    const snapshot = h.debug.snapshot(h.state);
-    expect(snapshot.coreGround).toBeNull();
-    expect(snapshot.coreTimer).toBeNull();
-    expect(snapshot.summary).toBeNull();
   });
 
   it("empties the bay and the supplies without earning Credits", () => {

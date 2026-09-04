@@ -9,14 +9,15 @@
 // departs from the specification is held against the specification, and a check
 // reaching for a missing operation fails on the point that needed it.
 //
-// WHAT IS IMPORTED, AND WHY THAT IS NOT THE SAME THING. The identifier
-// vocabularies below — the screens, the phases, the eight component types, the
-// twelve combination towers, the five targeting priorities, the panel, menu and
-// status actions — come from `src/constants.ts`. That file is the CASE's, seeded
-// into every workspace and left alone by the build, so importing it is reading
-// the case's own statement of its vocabulary rather than reading the build. The
-// build's `src/game.ts` is imported by the harness for one thing only: the game
-// object the engine is constructed over.
+// WHAT IS IMPORTED, AND FROM WHERE. The identifier vocabularies below — the
+// screens, the phases, the eight component types, the twelve combination towers,
+// the five targeting priorities, the panel, menu and status actions — come from
+// `./constants`, this project's own transcription of the figures the specs fix.
+// They are NOT read out of the build's `src/constants.ts`: that module is seeded
+// into the workspace but it sits in the build's tree, and a check that took its
+// vocabulary from there would be holding the build to whatever the build's tree
+// happened to say. The build's `src/game.ts` is imported by the harness for one
+// thing only: the game object the engine is constructed over.
 //
 // HOW THE SURFACE IS DRIVEN. Directly. Each operation is a method acting on the
 // LIVE world at the moment of the call — the instance holds the engine, and
@@ -50,19 +51,20 @@ import type {
   ComboId,
   ComponentType,
   DifficultyId,
-  LoadType,
   MapId,
   MenuAction,
   PanelAction,
   PhaseName,
-  ScreenName,
   PressControl as PressAction,
+  ScreenName,
+  SpawnType,
   StatusControl as StatusAction,
   StructureKind,
   TargetingPriority,
-} from "../src/constants";
+  Tier,
+} from "./constants";
 
-export { FOUNDRY_DEBUG_VERSION, DEFAULT_SEED } from "../src/constants";
+export { FOUNDRY_DEBUG_VERSION, DEFAULT_SEED } from "./constants";
 export type {
   ComboId,
   ComponentType,
@@ -70,8 +72,10 @@ export type {
   MapId,
   MenuAction,
   PanelAction,
+  SpawnType,
   StatusAction,
   StructureKind,
+  Tier,
 };
 
 /** The eight screens the game is a state machine over. */
@@ -83,18 +87,20 @@ export type Phase = PhaseName;
 /** The five targeting priorities, in the order the control cycles them. */
 export type Targeting = TargetingPriority;
 
-/** A quality tier, `1` (Scrap) through `5` (Tesla-Prime). */
-export type Tier = 1 | 2 | 3 | 4 | 5;
-
-/**
- * Every argument `spawnUnit` takes: the six roster types and the finale's
- * Overload Dynamo (`OVERLOAD_TYPE`), in the order
- * `specs/instrumentation.md` lists them.
- */
-export type SpawnType = LoadType | "overload";
-
 /** Which read-only overlay `setOverlay` opens or closes. */
 export type OverlayName = "combos" | "damage";
+
+/**
+ * The status bar's reads, as `specs/instrumentation.md` names them.
+ *
+ * The four the bar always carries, then the two `specs/hud.md` shows only while
+ * they apply: the `PAUSED` read and the finale's `OVERLOAD` read.
+ */
+export type ReadoutName =
+  "charge" | "integrity" | "wave" | "maze-length" | "paused" | "overload";
+
+/** The three states `specs/hud.md` fixes for a recipe's ingredient. */
+export type IngredientState = "selected" | "owned" | "missing";
 
 /* -------------------------------------------------------------------------- */
 /* The readings                                                               */
@@ -155,6 +161,52 @@ export interface StatusControl {
   w: number;
   h: number;
   state: boolean | number;
+}
+
+/**
+ * One of the status bar's READS — what it draws that is not a control.
+ *
+ * `specs/hud.md` fixes the bar's reads and their left-to-right order and leaves
+ * each one's rectangle to the build, so this is how a check finds a read without
+ * knowing where it was drawn. `charge`, `integrity`, `wave` and `maze-length` are
+ * the four the bar always carries; `paused` and `overload` are the two conditional
+ * reads, present only on the frames the bar is drawing them.
+ *
+ * The rectangle is where the read is drawn, so a pointer standing at its center is
+ * over it — which is what the maze-length hover of `specs/controls.md` acts on.
+ */
+export interface StatusReadout {
+  readout: ReadoutName;
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * One ingredient cell the recipe book drew.
+ *
+ * `specs/hud.md` requires every ingredient of every recipe to be drawn in one of
+ * three states, told apart at a glance, and leaves the book's layout to the build.
+ * So the build reports which cell it drew where and in which state, and a check
+ * decides the state from the report and the "at a glance" half from the pixels
+ * inside the reported rectangle.
+ *
+ * `combo` is the recipe's combination tower and `ingredient` that ingredient's
+ * index within the recipe, counted from `0` in the order `specs/combinations.md`
+ * lists it, so a recipe naming the same type twice is still two cells.
+ */
+export interface RecipeEntry {
+  combo: ComboId;
+  ingredient: number;
+  type: ComponentType;
+  quality: number;
+  state: IngredientState;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -271,6 +323,8 @@ export interface FoundrySnapshot {
   wave: number;
   totalWaves: number;
   waveActive: boolean;
+  /** The wave's clear-and-pay resolution is held by `setWaveHold`. */
+  waveHeld: boolean;
   charge: number;
   integrity: number;
   refinement: number;
@@ -328,6 +382,8 @@ export interface FoundryDebugApi {
   pressControls(): PressButton[];
   menuButtons(): MenuButton[];
   statusControls(): StatusControl[];
+  statusReadouts(): StatusReadout[];
+  recipeEntries(): RecipeEntry[];
 
   /* The run. */
   reset(options?: { seed?: number }): void;
@@ -336,6 +392,8 @@ export interface FoundryDebugApi {
   startRun(): void;
   setScreen(screen: Screen): void;
   setMenuIndex(index: number): void;
+  setPhase(phase: Phase): void;
+  setWaveHold(held: boolean): void;
   setPaused(paused: boolean): void;
   setSpeed(multiplier: number): void;
   setOverlay(overlay: OverlayName, open: boolean): void;
@@ -351,6 +409,7 @@ export interface FoundryDebugApi {
   clearStructures(): void;
   setNextRoll(type: ComponentType, quality: number): void;
   clearNextRoll(): void;
+  clearHeld(): void;
   placeRock(col: number, row: number): void;
   placeComponent(
     type: ComponentType,
@@ -390,7 +449,7 @@ export interface FoundryDebugApi {
  *
  * The surface's shape alone cannot say at runtime which members return a value
  * and which arrange the world, so the specification names them: a check that
- * sweeps the surface (`instrumentation/surface-present`) calls a reading for its
+ * sweeps the surface (`instrumentation/surface-complete`) calls a reading for its
  * value and a pose for its effect.
  */
 export const READINGS = [
@@ -399,6 +458,8 @@ export const READINGS = [
   "pressControls",
   "menuButtons",
   "statusControls",
+  "statusReadouts",
+  "recipeEntries",
 ] as const;
 
 /**
@@ -407,7 +468,7 @@ export const READINGS = [
  *
  * The clock and the input operations are absent by design: the engine owns both,
  * so the specification puts neither on the surface. This list is what
- * `instrumentation/surface-present` reflects over, and a build missing any of
+ * `instrumentation/surface-complete` reflects over, and a build missing any of
  * them fails there by name rather than throwing a `TypeError` inside whichever
  * check reached for it first.
  */
@@ -418,6 +479,8 @@ export const REQUIRED_OPS = [
   "pressControls",
   "menuButtons",
   "statusControls",
+  "statusReadouts",
+  "recipeEntries",
   // The run.
   "reset",
   "setMap",
@@ -425,6 +488,8 @@ export const REQUIRED_OPS = [
   "startRun",
   "setScreen",
   "setMenuIndex",
+  "setPhase",
+  "setWaveHold",
   "setPaused",
   "setSpeed",
   "setOverlay",
@@ -438,6 +503,7 @@ export const REQUIRED_OPS = [
   "clearStructures",
   "setNextRoll",
   "clearNextRoll",
+  "clearHeld",
   "placeRock",
   "placeComponent",
   "placeCombo",

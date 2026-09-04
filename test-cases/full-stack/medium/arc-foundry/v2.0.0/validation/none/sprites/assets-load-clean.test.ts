@@ -19,6 +19,12 @@
 // The page is given a real gesture first, because a browser will not open an
 // audio context without one and the twelve produced `.wav` files are assets like
 // any other.
+//
+// ONE REQUEST IS ANSWERED BEFORE IT IS MADE, AND IT IS NOT THE BUILD'S. A browser
+// asks every page it shows for `/favicon.ico` whether or not the page mentions one,
+// and the seeded `index.html` — a file the build does not own — declares none, so no
+// build can stop that request or satisfy it. It is fulfilled here with an empty
+// response, which leaves every request the BUILD makes exactly as it was.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual } from "../assert";
@@ -42,7 +48,14 @@ const MISSING =
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({
+    armAudio: true,
+    beforeLoad: async (page) => {
+      await page.route("**/favicon.ico", (route) =>
+        route.fulfill({ status: 204, body: "" }),
+      );
+    },
+  });
 });
 
 afterEach(async () => {
@@ -50,7 +63,6 @@ afterEach(async () => {
 });
 
 it("asks the site for nothing it does not carry, across all three phases", async () => {
-  await h.armAudio();
   await openYard(h, { wave: 12, charge: 500 });
 
   await captureReplay(h, "run", async () => {

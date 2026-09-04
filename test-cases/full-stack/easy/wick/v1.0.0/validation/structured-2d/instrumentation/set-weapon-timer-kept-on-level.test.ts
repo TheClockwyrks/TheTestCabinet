@@ -37,7 +37,7 @@ afterEach(() => {
 });
 
 it("keeps the timer across a level-only pose and counts on from it", async () => {
-  isolate(h, { keepTaper: true });
+  isolate(h, { taper: true });
   h.debug.setWeaponCooldown(0, COUNTING);
 
   h.debug.setWeapon(0, "taper", NEW_LEVEL);

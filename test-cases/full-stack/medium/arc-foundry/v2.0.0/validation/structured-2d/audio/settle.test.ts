@@ -23,8 +23,7 @@
 // THE CUE'S NAME IS READ, not merely that something sounded.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { CUES, STAMPS_PER_LEVEL } from "../../src/constants";
+import { CUES, STAMPS_PER_LEVEL } from "../constants";
 import { assertContains, assertDeepEqual, assertEqual } from "../assert";
 import {
   captureReplay,

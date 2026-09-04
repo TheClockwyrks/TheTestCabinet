@@ -88,19 +88,16 @@ import {
   type Viewport,
 } from "@test-cabinet/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
-// The one thing this project takes from the build's tree rather than from
-// `constants.ts`: the touch layout `src/main.ts` stands the engine up with. It is
-// wiring rather than a threshold, deciding which of the engine's control schemes
-// tags the actions the build registers, and no verdict rests on it, so the
-// harness reads it where the entry point reads it and builds the engine the way
-// the page does. Every FIGURE a point is decided against is written on the
-// case's side, in `constants.ts`, for the reason stated there.
-import { LAYOUT } from "../src/constants";
-import { BACKGROUND, game as build, type WickState } from "../src/game";
+// The build's own module, for the game object the engine is stood up over and
+// for the state type. Every FIGURE a point is decided against, and the one
+// value the specification leaves to the build, come from `./constants`.
+import { game as build, type WickState } from "../src/game";
 import { fail } from "./assert";
 import {
+  BACKGROUND,
   BINDINGS,
-  ISOLATE_LEVEL,
+  DAWN_TICK,
+  LAYOUT,
   OVERLAY_TOGGLE_CODE,
   STAGE_CX,
   STAGE_CY,
@@ -962,11 +959,11 @@ export interface Harness {
    * pointer in. Runs no frame: the rules are applied by the frame that follows,
    * so a check reads the move's effect after one {@link Harness.tick}.
    */
-  movePointer(x: number, y: number): void;
+  movePointer(x: number, y: number, init?: PointerInit): void;
   /** Press the primary button at a logical stage point. Runs no frame. */
-  pressPointer(x: number, y: number): void;
+  pressPointer(x: number, y: number, init?: PointerInit): void;
   /** Release the primary button at a logical stage point. Runs no frame. */
-  releasePointer(x: number, y: number): void;
+  releasePointer(x: number, y: number, init?: PointerInit): void;
   /**
    * Turn the wheel by `x` and `y` of travel in LOGICAL STAGE UNITS, the units
    * specs/controls.md sums a frame's travel in. Runs no frame; the frame that
@@ -1041,6 +1038,23 @@ class KeyEvent extends Event {
 }
 
 /**
+ * What a pointer event carries beyond its position.
+ *
+ * `specs/controls.md` makes "a mouse, a pen, and a touch contact all reach the
+ * menus on those coordinates", so a check drives the device the rule it decides
+ * is about. The defaults are one primary mouse; a contact names
+ * `pointerType: "touch"` and, while it travels, the held mask a finger in
+ * contact carries.
+ */
+export interface PointerInit {
+  pointerType?: "mouse" | "pen" | "touch";
+  /** `0` is the primary button; a move reports `-1`, meaning none. */
+  button?: number;
+  /** The held-button mask: `1` while the primary button is down. */
+  buttons?: number;
+}
+
+/**
  * A `PointerEvent`-shaped event.
  *
  * The engine reads a pointer event STRUCTURALLY: `clientX`/`clientY` place it,
@@ -1048,12 +1062,14 @@ class KeyEvent extends Event {
  * device, and `button`/`buttons` say what is held. A move names no button, so
  * it carries `button` `-1` and an empty mask, exactly as a browser's does; a
  * primary press carries `button` `0` and `buttons` `1`, and the release that
- * ends it carries `button` `0` and an empty mask.
+ * ends it carries `button` `0` and an empty mask. A contact travelling across
+ * the stage is a move with the primary mask held, which is what a finger in
+ * contact reports.
  */
 class PointerEventShape extends Event {
   readonly pointerId = 1;
   readonly isPrimary = true;
-  readonly pointerType = "mouse";
+  readonly pointerType: string;
   readonly clientX: number;
   readonly clientY: number;
   readonly button: number;
@@ -1063,12 +1079,14 @@ class PointerEventShape extends Event {
     type: "pointermove" | "pointerdown" | "pointerup",
     clientX: number,
     clientY: number,
+    init: PointerInit = {},
   ) {
     super(type);
     this.clientX = clientX;
     this.clientY = clientY;
-    this.button = type === "pointermove" ? -1 : 0;
-    this.buttons = type === "pointerdown" ? 1 : 0;
+    this.pointerType = init.pointerType ?? "mouse";
+    this.button = init.button ?? (type === "pointermove" ? -1 : 0);
+    this.buttons = init.buttons ?? (type === "pointerdown" ? 1 : 0);
   }
 }
 
@@ -1290,10 +1308,11 @@ export async function createHarness(
     type: "pointermove" | "pointerdown" | "pointerup",
     x: number,
     y: number,
+    init?: PointerInit,
   ): void => {
     announced = null;
     const at = clientOf(x, y);
-    keys.dispatchEvent(new PointerEventShape(type, at.x, at.y));
+    keys.dispatchEvent(new PointerEventShape(type, at.x, at.y, init));
   };
 
   /** Wheel travel, in stage units, as the CSS-pixel deltas an event carries. */
@@ -1419,9 +1438,9 @@ export async function createHarness(
     holdKey: (code, keyOptions) => dispatch("keydown", code, keyOptions),
     releaseKey: (code) => dispatch("keyup", code),
 
-    movePointer: (x, y) => dispatchPointer("pointermove", x, y),
-    pressPointer: (x, y) => dispatchPointer("pointerdown", x, y),
-    releasePointer: (x, y) => dispatchPointer("pointerup", x, y),
+    movePointer: (x, y, init) => dispatchPointer("pointermove", x, y, init),
+    pressPointer: (x, y, init) => dispatchPointer("pointerdown", x, y, init),
+    releasePointer: (x, y, init) => dispatchPointer("pointerup", x, y, init),
     turnWheel: (x, y) => dispatchWheel(x, y),
 
     clearCalls: () => {
@@ -1674,6 +1693,137 @@ export function clickRect(h: Harness, rect: WickRect): Promise<WickSnapshot> {
 }
 
 /**
+ * Press the primary button at a logical stage point, run the one frame that
+ * reads it, and LEAVE the button down.
+ *
+ * The half of a click a check about arming needs: "a primary press edge inside
+ * the rectangle of the item at `menuIndex` `i` sets `menuIndex` to `i` ... and
+ * arms that item" (specs/controls.md), with the release still to come.
+ */
+export async function pressAt(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.pressPointer(x, y);
+  return h.tick(1);
+}
+
+/** Press the middle of a reported rectangle, leaving the button down. */
+export function pressRect(h: Harness, rect: WickRect): Promise<WickSnapshot> {
+  const at = centerOf(rect);
+  return pressAt(h, at.x, at.y);
+}
+
+/** Travel the held mouse to a logical stage point, one driven frame. */
+export async function glideTo(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.movePointer(x, y, { button: -1, buttons: 1 });
+  return h.tick(1);
+}
+
+/** Lift the primary button at a logical stage point, one driven frame. */
+export async function liftAt(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.releasePointer(x, y);
+  return h.tick(1);
+}
+
+/** Lift the primary button in the middle of a reported rectangle. */
+export function liftRect(h: Harness, rect: WickRect): Promise<WickSnapshot> {
+  const at = centerOf(rect);
+  return liftAt(h, at.x, at.y);
+}
+
+/* ---- Touch ---------------------------------------------------------------- */
+//
+// A CONTACT REACHES THE SAME RULES. "A touch contact landing inside a rectangle
+// is that rectangle's press edge and lifting is its release edge", and "a touch
+// contact never hovers: only a device reporting a position while out of contact
+// moves the highlight this way" (specs/controls.md). So a contact is driven as
+// the events a finger really produces: a `pointerdown` naming `touch`, moves
+// that carry the held mask while it travels, and a `pointerup` naming `touch`.
+// There is no move before the landing, because a finger reports no position
+// before it touches the glass.
+
+/** What a contact's events carry: the device, and the mask while it travels. */
+const CONTACT: PointerInit = { pointerType: "touch" };
+const CONTACT_HELD: PointerInit = {
+  pointerType: "touch",
+  button: -1,
+  buttons: 1,
+};
+
+/** Land a real contact at a logical stage point, one driven frame. */
+export async function touchLandAt(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.pressPointer(x, y, CONTACT);
+  return h.tick(1);
+}
+
+/** Land a contact in the middle of a reported rectangle. */
+export function touchLandRect(
+  h: Harness,
+  rect: WickRect,
+): Promise<WickSnapshot> {
+  const at = centerOf(rect);
+  return touchLandAt(h, at.x, at.y);
+}
+
+/** Travel the held contact to a logical stage point, one driven frame. */
+export async function touchGlideTo(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.movePointer(x, y, CONTACT_HELD);
+  return h.tick(1);
+}
+
+/** Lift the contact at a logical stage point, one driven frame. */
+export async function touchLiftAt(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.releasePointer(x, y, CONTACT);
+  return h.tick(1);
+}
+
+/**
+ * Land a contact on a logical stage point and lift it there: two driven frames.
+ *
+ * The landing and the lift are separately observable, so the tap runs a frame
+ * for each.
+ */
+export async function touchTapAt(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  await touchLandAt(h, x, y);
+  return touchLiftAt(h, x, y);
+}
+
+/** Tap the middle of a reported rectangle. */
+export function touchTapRect(
+  h: Harness,
+  rect: WickRect,
+): Promise<WickSnapshot> {
+  const at = centerOf(rect);
+  return touchTapAt(h, at.x, at.y);
+}
+
+/**
  * Turn the wheel by `rows` rows of travel, run the one frame that reads it, and
  * hand back what that frame left.
  *
@@ -1697,7 +1847,7 @@ export function wheelBy(h: Harness, rows: number): Promise<WickSnapshot> {
 // world: it clears every entity the requirement is not about and spawns back
 // exactly what it is about, and it holds still the faculties the requirement
 // does not exercise. The surface carries the operations that make that possible
-// (the five `clear…` operations, `removeWeapon`, and the seven driver switches)
+// (the five `clear…` operations, `removeWeapon`, and the nine driver switches)
 // and {@link isolate} is the one place they are all spoken in a single breath.
 
 /** Set one driver switch through its own operation. */
@@ -1710,15 +1860,16 @@ export interface IsolateOptions {
   /** The seed `reset` lays the generator with. Defaults to `DEFAULT_SEED`. */
   seed?: number;
   /**
-   * The level the run is posed at. Defaults to `ISOLATE_LEVEL` (50), whose
-   * `xpToNext` of 495 keeps any gain a scenario's kills produce from opening
-   * an overlay mid-scenario. A check that reads `level` poses its own.
+   * The level the run is posed at. Left as the fresh run's `1` when it is not
+   * given: an isolated world holds the level the check posed, because the
+   * `progression` switch, not a level chosen to outrun the build's own
+   * `xpToNext`, is what keeps an overlay from opening mid-scenario.
    */
   level?: number;
   /**
-   * Whether to leave Taper in the first weapon slot. Defaults to `false`: the
-   * fresh run's Taper is removed so nothing fires unless a check holds a
-   * weapon of its own.
+   * Whether to put Taper at level `1` in the first weapon slot. Defaults to
+   * `false`: the isolated run holds no weapon at all unless a check holds the
+   * one its requirement is about.
    */
   keepTaper?: boolean;
 }
@@ -1726,14 +1877,19 @@ export interface IsolateOptions {
 /**
  * Reset the game and pose an EMPTY `playing` run with every driver switch off:
  * no enemy, projectile, zone, gem, or pickup, no weapon held, no director,
- * nothing moving, nothing hitting, nothing firing.
+ * nothing moving, nothing hitting, nothing firing, nothing dropping, and no
+ * experience spent.
  *
- * The reset first, so nothing a previous section left is inherited; then a
- * fresh run through `setScreen("playing")`, entered "exactly as LIGHT THE LAMP
- * and TRY AGAIN do"; then the world is emptied, the fresh run's Taper removed,
- * and the seven autonomous faculties held. A check spawns back exactly what
- * its requirement is about, holds the weapon it is about, and turns on exactly
- * the switches whose faculty IS the requirement.
+ * The reset first, so nothing a previous section left is inherited; then the
+ * atomic `setScreen("playing")`, which sets the screen and leaves the idle run
+ * exactly as `reset` restored it; then the world is emptied and the nine
+ * autonomous faculties held. A check spawns back exactly what its requirement
+ * is about, holds the weapon it is about, and turns on exactly the switches
+ * whose faculty IS the requirement.
+ *
+ * Nothing here is "parked" or "kept quiet": each faculty a scenario has to
+ * hold is held by its own operation, so a build that computes a threshold
+ * wrongly fails the check that decides that threshold and no other.
  */
 export function isolate(
   h: Harness,
@@ -1746,14 +1902,9 @@ export function isolate(
   h.debug.clearZones();
   h.debug.clearGems();
   h.debug.clearPickups();
-  if (!(options.keepTaper ?? false)) {
-    const { weapons } = h.snapshot().run;
-    for (let slot = weapons.length - 1; slot >= 0; slot -= 1) {
-      h.debug.removeWeapon(slot);
-    }
-  }
+  if (options.keepTaper ?? false) h.debug.setWeapon(0, "taper", 1);
   for (const name of SWITCH_NAMES) setSwitch(h, name, false);
-  h.debug.setLevel(options.level ?? ISOLATE_LEVEL);
+  if (options.level !== undefined) h.debug.setLevel(options.level);
   return h.snapshot();
 }
 
@@ -1787,25 +1938,60 @@ export async function startPlay(
 }
 
 /**
- * Reset and enter `screen` through the surface alone, "exactly as the real
- * transition into it enters it" (`setScreen`, specs/instrumentation.md).
+ * Reset and set `screen` through the surface alone.
  *
- * The reset first, so the screen is entered from the boot state and two poses
- * of the same scene read the same way. `setScreen` has no row for `chest`, and
- * its `levelup` row needs a queued level-up, so those two are reached through
- * {@link openLevelUp} and {@link openChest}; `paused`, `fallen`, and `dawn` are
- * entered from a fresh `playing` run, as their rows require.
+ * The reset first, so the screen is set from the boot state and two poses of
+ * the same scene read the same way. `setScreen` sets the screen and the three
+ * cursors and nothing else, so this reaches the screens a run is not needed
+ * for. The screens the game's own systems open are reached through the
+ * sequences that open them: {@link openLevelUp}, {@link openChest},
+ * {@link endFallen}, and {@link endDawn}.
  */
 export function poseScene(
   h: Harness,
-  screen: Exclude<Screen, "levelup" | "chest">,
+  screen: Exclude<Screen, "levelup" | "chest" | "fallen" | "dawn">,
 ): WickSnapshot {
   h.reset();
-  if (screen === "paused" || screen === "fallen" || screen === "dawn") {
-    h.debug.setScreen("playing");
-  }
   h.debug.setScreen(screen);
   return h.snapshot();
+}
+
+/**
+ * Begin a fresh run through the surface, the sequence specs/instrumentation.md
+ * names: "a fresh run is `reset`, this pose to `playing`, and
+ * `setWeapon(0, "taper", 1)`".
+ *
+ * The run a player starts on `LIGHT THE LAMP`, composed here rather than asked
+ * of one operation: `setScreen` sets the screen alone, so the loadout the
+ * fresh run carries is put there by the pose that puts weapons in slots.
+ */
+export function freshRun(h: Harness, seed?: number): WickSnapshot {
+  h.reset(seed);
+  h.debug.setScreen("playing");
+  h.debug.setWeapon(0, "taper", 1);
+  return h.snapshot();
+}
+
+/**
+ * End the run the way the rule ends it: `hp` posed to `0` and one `playing`
+ * tick, "the fallen ending is `setHp` at `0` and one tick"
+ * (specs/instrumentation.md). The ENDING is the outcome the tick decides, so a
+ * check that wants the end screen stands on the rule rather than around it.
+ */
+export async function endFallen(h: Harness): Promise<WickSnapshot> {
+  h.debug.setHp(0);
+  return h.tick(1);
+}
+
+/**
+ * End the run at dawn the way the rule ends it: the clock posed to the tick
+ * before `DAWN_TICK` and one `playing` tick, "the dawn ending is `setTick` at
+ * `DAWN_TIME × TICK_HZ − 1` (`35999`) and one tick"
+ * (specs/instrumentation.md).
+ */
+export async function endDawn(h: Harness): Promise<WickSnapshot> {
+  h.debug.setTick(DAWN_TICK - 1);
+  return h.tick(1);
 }
 
 /**
@@ -2009,7 +2195,7 @@ export function projectilesOf(
   );
 }
 
-/** The seven switches as the snapshot reports them, by name. */
+/** The nine switches as the snapshot reports them, by name. */
 export function switchesOf(
   snapshot: WickSnapshot,
 ): Record<SwitchName, boolean> {
@@ -2021,6 +2207,8 @@ export function switchesOf(
     enemyContact: snapshot.enemyContact,
     weaponFire: snapshot.weaponFire,
     effectMotion: snapshot.effectMotion,
+    drops: snapshot.drops,
+    progression: snapshot.progression,
   };
 }
 

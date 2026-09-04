@@ -1,21 +1,20 @@
-// screens/pause-resume — RESUME returns to playing and clears the in-place pause.
+// screens/pause-resume — RESUME returns the screen to playing.
 //
 // THE REQUIREMENT. `specs/ui.md`, of `paused`: "`RESUME` returns to `playing` and
 // clears any in-place pause." `specs/controls.md` says the same from the control's
-// side: "Resuming from it also clears any in-place pause." That second clause is
-// the whole point of this check. A player who pauses in place with `Space` and
-// then opens the pause menu on top of it has two pauses engaged, and a build that
-// closes the menu without clearing the in-place one drops the player back on a
-// `playing` screen that does not play.
+// side: "Resuming from it also clears any in-place pause."
 //
-// HOW IT IS DECIDED. The harder of the two states is the one posed: the in-place
-// pause is engaged FIRST, and the pause menu is opened over it. `RESUME` is then
-// found by the action it carries rather than by where it was drawn and pressed at
-// the centre of the rectangle the build itself reported for it, and both fields
-// are read: the screen is back on `playing`, and `paused` is false.
+// TWO CLAIMS, TWO POINTS. A build that closes the menu without clearing an
+// in-place pause drops the player back on a `playing` screen that does not play,
+// and a build whose RESUME does not close the menu at all leaves them stuck in it.
+// Those are different failures and they cost the player different things, so the
+// screen change and the in-place pause are decided apart. The in-place pause is
+// the sibling point `pause-resume-clears-the-in-place-pause`.
+//
+// RESUME IS FOUND BY THE ACTION IT CARRIES rather than by where it was drawn, and
+// pressed at the centre of the rectangle the build itself reported for it.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual } from "../assert";
 import {
   captureStill,
@@ -35,37 +34,21 @@ afterEach(() => {
   h.dispose();
 });
 
-it("clears the in-place pause that was engaged before the menu opened", async () => {
+it("returns to the playing screen", async () => {
   openYard(h, { wave: 6 });
-  h.debug.setPaused(true);
   h.debug.setScreen("paused");
-
-  const posed = h.snapshot();
   assertEqual(
-    posed.screen,
+    h.snapshot().screen,
     "paused",
     "the pause menu showing before RESUME is taken (specs/ui.md)",
-  );
-  assertEqual(
-    posed.paused,
-    true,
-    "the in-place pause engaged underneath it, which is the state RESUME has " +
-      "to clear as well (specs/controls.md)",
   );
 
   await pressMenu(h, "resume");
   captureStill(h, "resume");
 
-  const resumed = h.snapshot();
   assertEqual(
-    resumed.screen,
+    h.snapshot().screen,
     "playing",
     "the screen RESUME returns to (specs/ui.md)",
-  );
-  assertEqual(
-    resumed.paused,
-    false,
-    "the in-place pause after RESUME, which clears any in-place pause " +
-      "(specs/ui.md, specs/controls.md)",
   );
 });

@@ -2,7 +2,7 @@
 //
 // specs/instrumentation.md: `creditsEarned` is "the running total earned this
 // expedition", read beside the balance rather than derived from it.
-// specs/gameplay.md has the Victory and Game Over screens report the total
+// specs/expedition.md has the Victory and Game Over screens report the total
 // Credits earned among what they summarize, and makes selling the only source of
 // Credits and the Upgrade Shop one of the four sinks.
 //
@@ -61,7 +61,7 @@ it("adds up every sale, and does not fall when the proceeds are spent", async ()
   await h.debug.setPanel("ore-market");
 
   const opening = await h.snapshot();
-  assertEqual(opening.credits, 0, "specs/gameplay.md");
+  assertEqual(opening.credits, 0, "specs/expedition.md");
   assertEqual(opening.creditsEarned, 0, "specs/instrumentation.md");
 
   await stageCargo(h, FIRST);
@@ -73,7 +73,7 @@ it("adds up every sale, and does not fall when the proceeds are spent", async ()
   await h.debug.sell();
   const both = await h.snapshot();
   assertEqual(both.creditsEarned, EARNED, "specs/instrumentation.md");
-  assertEqual(both.credits, EARNED, "specs/gameplay.md");
+  assertEqual(both.credits, EARNED, "specs/expedition.md");
 
   // Spend part of it, at a sink that is not the Ore Market.
   await standAtBuilding(h, "upgrade-shop");
@@ -86,5 +86,5 @@ it("adds up every sale, and does not fall when the proceeds are spent", async ()
   assertEqual(after.tiers[TRACK], 2, "specs/upgrades.md");
   assertEqual(after.credits, EARNED - PRICE, "specs/upgrades.md");
   assertEqual(after.creditsEarned, EARNED, "specs/instrumentation.md");
-  assertGreaterThan(after.creditsEarned, after.credits, "specs/gameplay.md");
+  assertGreaterThan(after.creditsEarned, after.credits, "specs/expedition.md");
 });

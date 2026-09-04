@@ -1,7 +1,7 @@
 // save/new-expedition-abandons-the-save — starting a new expedition throws the
 // old save away.
 //
-// specs/gameplay.md: "There is one save slot, and saving overwrites it. Starting
+// specs/expedition.md: "There is one save slot, and saving overwrites it. Starting
 // a new expedition abandons any existing save." So the save and the new
 // expedition never coexist: once the size choice begins a run, `hasSave` is
 // false and the title carries no `CONTINUE` back into the abandoned one.
@@ -17,7 +17,12 @@
 // save that is abandoned is the one this check banked.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MODE_ITEMS, SIZE_ITEMS, TITLE_ITEMS } from "../../src/constants";
+import {
+  MODE_ITEMS,
+  SIZE_ITEMS,
+  TITLE_ITEMS,
+  TITLE_ITEMS_NO_SAVE,
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   ACTION_KEY,
@@ -26,12 +31,7 @@ import {
   drewText,
   type Harness,
 } from "../harness";
-import {
-  TITLE_ITEMS_NO_SAVE,
-  bankSave,
-  menuLength,
-  openAtCamp,
-} from "./expedition";
+import { bankSave, menuLength, openAtCamp } from "./expedition";
 
 /** Where each choice sits on its own menu, as specs/ui.md lists them. */
 const NEW_EXPEDITION = TITLE_ITEMS.indexOf("NEW EXPEDITION");
@@ -76,7 +76,7 @@ it("leaves no save behind once a new expedition has begun", async () => {
   assertEqual(
     started.hasSave,
     false,
-    "specs/gameplay.md: starting a new expedition abandons any existing save",
+    "specs/expedition.md: starting a new expedition abandons any existing save",
   );
 
   h.debug.setScreen("title");

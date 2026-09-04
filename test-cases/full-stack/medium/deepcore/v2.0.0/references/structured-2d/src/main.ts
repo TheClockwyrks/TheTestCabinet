@@ -33,9 +33,10 @@ const engine = createEngine({
   // The stage background, which the engine clears the canvas to each frame so
   // the letterbox bars match the mine. The game owns the color.
   background: BACKGROUND,
-  // No touch layout is selected: Deepcore is played with the keyboard and the
-  // mouse alone (specs/ui.md), and its actions are its own rather than a
-  // layout's vocabulary, so the game registers every one of them from ACTIONS.
+  // No touch layout is selected: the miner is driven from the keyboard alone
+  // (specs/controls.md), and its actions are its own rather than a layout's
+  // vocabulary, so the game registers every one of them from ACTIONS. The
+  // pointer and touch drive the menus, the panels, and the status bar directly.
 });
 
 async function main(): Promise<void> {

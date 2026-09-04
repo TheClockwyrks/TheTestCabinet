@@ -7,7 +7,8 @@
 // tier `1` on every upgrade track, a full fuel tank and a full hull, `0` Credits,
 // an empty cargo bay, an empty satchel, no field supplies, no rocket component
 // installed, no live Core Sample, no ground item, neither hazard notice fired,
-// the camera lead at `0`, both faculties running, and `simTime` at `0`."
+// the camera lead at `0`, both faculties running, and `simTime` and
+// `elapsedSeconds` at `0`."
 //
 // And one exception, for a stated reason: "`muted` is untouched, because muting is
 // a player preference rather than a value an expedition opens with." Muting is the
@@ -35,7 +36,7 @@ import {
   SPAWN_COL,
   SURFACE_Y,
   TRACKS,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertBetween,
   assertDeepEqual,
@@ -103,6 +104,7 @@ it("restores the whole title-screen state, and leaves muted alone", async () => 
   h.debug.setNoticeFired("gas", true);
   h.debug.setNoticeFired("lava", true);
   h.debug.setCameraLead(120);
+  h.debug.setElapsed(90);
   h.debug.setPanel("upgrade-shop");
   h.debug.setFacing("west");
   placeAt(h, minerXOn(COL), minerYOn(ROW));
@@ -123,6 +125,11 @@ it("restores the whole title-screen state, and leaves muted alone", async () => 
     0,
     "the game time a reset is asked to clear",
   );
+  assertGreaterThan(
+    dirty.elapsedSeconds,
+    0,
+    "the expedition clock a reset is asked to clear",
+  );
 
   h.debug.reset({ seed: SEED });
   const s = h.snapshot();
@@ -134,6 +141,7 @@ it("restores the whole title-screen state, and leaves muted alone", async () => 
   assertEqual(s.mode, "standard", "mode");
   assertEqual(s.worldSize, "standard", "worldSize");
   assertEqual(s.simTime, 0, "simTime");
+  assertEqual(s.elapsedSeconds, 0, "elapsedSeconds");
   assertNull(s.summary, "summary");
 
   // The mine, as `clearMine` leaves one.
@@ -141,7 +149,7 @@ it("restores the whole title-screen state, and leaves muted alone", async () => 
   assertEqual(h.tileAt(COL, 1).kind, "tunnel", `the cell (${COL}, 1)`);
 
   // The miner, on the camp ground at the spawn, facing east, at rest. The COLUMN
-  // rather than an exact `x`: `specs/gameplay.md` puts the miner at `SPAWN_COL`
+  // rather than an exact `x`: `specs/expedition.md` puts the miner at `SPAWN_COL`
   // and leaves where within that column to the build.
   assertEqual(s.miner.col, SPAWN_COL, "the miner's spawn column");
   assertBetween(

@@ -1,24 +1,28 @@
-// Wick — instrumentation/set-screen-fallen: `setScreen("fallen")` on `playing`
-// or `paused` ends the run exactly as falling does: `screen` `fallen` with
-// `menuIndex` `0` and the run kept, its tick, level, and kills reported.
+// Wick — instrumentation/set-screen-fallen: `setScreen("fallen")` from
+// `playing` and from `paused` stands the game on `fallen` with `menuIndex` `0`,
+// ending nothing.
 //
 // WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — `setScreen(name)`):
-// the `fallen, dawn | playing, paused` row: "Ends the run exactly as that
-// ending does, the run kept for the end screen to report." specs/ui.md: the
-// end screens show "The run clock at the end", "The level reached", and "The
-// kill count"; "The shape is fixed ... `run` reports ... the run that just
-// ended on `fallen` and `dawn`" (specs/instrumentation.md).
+// "Sets `screen` to `name`, one of the `Screen` values, with `menuIndex`,
+// `almanacTab`, and `almanacScroll` all `0`", and "Applies on every screen".
+// The pose ends no run: "a run is never begun, discarded, ended, or grown by
+// it", and "the fallen ending is `setHp` at `0` and one tick", which is the
+// ending rule of specs/world.md and what `screens/fallen-copy` and the rest of
+// the end-screen points drive.
 //
 // WHY THE WORLD IS POSED AS IT IS. The run is given a clock, a level, and a
-// kill count that are not the idle values, so "kept" is told from "discarded";
-// the call is made from both screens the row lists.
+// kill count that are not the idle values, and the lamplighter is left at full
+// health, so a build that ran its ending rule out of this pose is read on the
+// health it did not take. The call is made from both run screens.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { BASE_MAX_HP } from "../constants";
 import {
   captureStill,
   createHarness,
   isolate,
+  player,
   poseScreen,
   type Harness,
 } from "../harness";
@@ -37,8 +41,8 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** Pose the run's figures, enter `from`, and end the run fallen. */
-async function endFallenFrom(from: "playing" | "paused"): Promise<void> {
+/** Pose the run's figures, stand on `from`, and pose `fallen` over it. */
+async function poseFallenFrom(from: "playing" | "paused"): Promise<void> {
   await isolate(h);
   await h.debug.setTick(TICK);
   await h.debug.setLevel(LEVEL);
@@ -51,14 +55,18 @@ async function endFallenFrom(from: "playing" | "paused"): Promise<void> {
     `the screen after setScreen('fallen') from ${from}`,
   );
   assertEqual(fallen.menuIndex, 0, `menuIndex on fallen from ${from}`);
-  assertEqual(fallen.run.tick, TICK, `the ended run's tick from ${from}`);
-  assertEqual(fallen.run.level, LEVEL, `the ended run's level from ${from}`);
-  assertEqual(fallen.run.kills, KILLS, `the ended run's kills from ${from}`);
-  assertEqual(fallen.accumulator, 0, `the accumulator on fallen from ${from}`);
+  assertEqual(fallen.run.tick, TICK, `the run's tick from ${from}`);
+  assertEqual(fallen.run.level, LEVEL, `the run's level from ${from}`);
+  assertEqual(fallen.run.kills, KILLS, `the run's kills from ${from}`);
+  assertEqual(
+    player(fallen).hp,
+    BASE_MAX_HP,
+    `the health the pose left from ${from}`,
+  );
 }
 
-it("ends the run fallen from playing and from paused, keeping the run", async () => {
-  await endFallenFrom("playing");
-  await endFallenFrom("paused");
+it("stands the game on fallen from playing and from paused", async () => {
+  await poseFallenFrom("playing");
+  await poseFallenFrom("paused");
   await captureStill(h, "fallen");
 });

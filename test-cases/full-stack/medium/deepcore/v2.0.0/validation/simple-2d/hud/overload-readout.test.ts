@@ -13,7 +13,7 @@
 // screen is read.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { OVERLOAD } from "../../src/constants";
+import { OVERLOAD } from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,

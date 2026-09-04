@@ -13,14 +13,8 @@
 
 import { it } from "vitest";
 import { assertEqual } from "../assert";
-import {
-  TIERS,
-  captureStill,
-  createHarness,
-  openYard,
-  standCombo,
-} from "../harness";
-import { COMBO_IDS, COMPONENT_TYPES } from "../../src/constants";
+import { captureStill, createHarness, openYard, standCombo } from "../harness";
+import { COMBO_IDS, COMPONENT_TYPES, TIERS } from "../constants";
 import { comboHead, componentHead, decode, samePixels } from "./png";
 import { serveProducedAssets } from "./host";
 

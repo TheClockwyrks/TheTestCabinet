@@ -21,7 +21,7 @@
 // wild spread from mine to mine passes, which is the lesser error.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DENSITY_TOLERANCE } from "../../src/constants";
+import { DENSITY_TOLERANCE } from "../constants";
 import { assertBetween, assertGreaterThan } from "../assert";
 import {
   captureStill,

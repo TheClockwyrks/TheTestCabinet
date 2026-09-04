@@ -12,12 +12,13 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertEqual } from "../assert";
 import {
+  BAR,
   captureStill,
   createHarness,
-  openYard,
+  figures,
   type Harness,
+  openYard,
 } from "../harness";
-import { BAR, figures } from "./reading";
 
 /** Two figures no other bar read carries: not the integrity, wave, or maze length. */
 const FIRST = 473;

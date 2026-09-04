@@ -24,20 +24,17 @@
 // fold rather than passing on it.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { CUES } from "../../src/constants";
+import { comboDef, CUES, type Tier } from "../constants";
 import { assertContains, assertDeepEqual, assertEqual } from "../assert";
 import {
   captureReplay,
-  comboDef,
   createHarness,
   emptyYard,
+  type Harness,
   openYard,
   standComponent,
   structureAt,
   watchCues,
-  type Harness,
-  type Tier,
 } from "../harness";
 import { RUN_UP, beforeFrame, names, onFrame } from "./cues";
 

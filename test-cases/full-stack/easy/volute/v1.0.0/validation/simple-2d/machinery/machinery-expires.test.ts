@@ -17,9 +17,17 @@
 //
 // WHY ONE CORE. As in `choke-multiplier`: "a lone core forms a segment of one,
 // and the lead segment is the one containing the head" (`specs/channel.md`), so
-// the reading is the feed speed and nothing else. The quota is 0, so the inlet
-// adds nothing, and the pressure is 0, so the only factor away from 1 is the one
-// that has just lapsed.
+// the reading is the feed speed and nothing else. `poseHall` holds the inlet, so
+// it adds nothing, and the pressure is 0, so the only factor away from 1 is the
+// one that has just lapsed.
+//
+// WHAT THE REPLAY BRACKETS. The behavior the point backs is the LAPSE and the
+// feed returning with it, which is the last second of the drive. The eight
+// seconds of choke before it are a hall running down and would fill a recording
+// (three hundred frames at most, so a longer one is thinned to fit) with the part
+// that does not matter. So the wait is stepped OUTSIDE the recorder and only a
+// short run-up before the expiry tick is armed, which leaves the reviewer a
+// hundred-odd undecimated frames around the moment the choke ends.
 //
 // THE TOLERANCE. An ideal build gains exactly 22 units over the 60 ticks after
 // the lapse. The case's standing speed tolerance is 2% of the stated figure
@@ -61,6 +69,16 @@ const EXPIRE_TICKS = ticksFor(CHOKE_DURATION) + 1;
 /** One second of simulated time, the span the gain is read over. */
 const MEASURE_TICKS = TICK_HZ;
 
+/**
+ * Ticks of the still-choked hall kept in front of the lapse, for the replay.
+ *
+ * Half a second, so a reviewer sees the slow feed arrive at the boundary rather
+ * than opening on it. With the measured second after it the whole recording is
+ * 90 frames, well inside the three hundred a written recording holds, so nothing
+ * is decimated.
+ */
+const RUNUP_TICKS = TICK_HZ / 2;
+
 /** The free rate the specs give: 22 x (1 + 0 / 100) x 1. */
 const FREE_FEED = effectiveFeed(LEVEL, 0, false);
 
@@ -84,14 +102,18 @@ it(`is back at ${FREE_FEED} units/s once the ${CHOKE_DURATION} s choke has run o
   await poseHall(h, {
     level: LEVEL,
     pressure: 0,
-    quotaRemaining: 0,
     cores: [[CORE_S, "halide", null]],
     machinery: "choke",
   });
 
+  // The eight-second wait runs OUTSIDE the recorder: it is the choke simply
+  // running down, and the behavior this point backs is what happens at the end
+  // of it.
+  await h.step(EXPIRE_TICKS - RUNUP_TICKS);
+
   let lapsed: VoluteSnapshot | undefined;
   const after = await captureReplay(h, "expiry", async () => {
-    lapsed = await h.step(EXPIRE_TICKS);
+    lapsed = await h.step(RUNUP_TICKS);
     return h.step(MEASURE_TICKS);
   });
 

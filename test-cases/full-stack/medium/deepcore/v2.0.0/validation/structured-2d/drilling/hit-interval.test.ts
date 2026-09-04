@@ -20,7 +20,7 @@ import {
   BAND_HEALTH,
   DRILL_DAMAGE_TIERS,
   DRILL_HIT_INTERVAL,
-} from "../../src/constants";
+} from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   ACTION_KEY,

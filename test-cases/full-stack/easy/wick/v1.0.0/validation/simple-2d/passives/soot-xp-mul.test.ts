@@ -13,9 +13,9 @@
 // `xp` at the 0 a reset leaves. One medium gem lies at the lamplighter's
 // center, inside both pickupRadius and COLLECT_RADIUS (8), so the single tick
 // that follows attracts and collects it, which specs/world.md ("Attraction and
-// flight") has happen in that order within phase 9. `isolate` poses level 50,
-// whose xpToNext is 495, so the gain crosses no threshold and no overlay opens
-// over the reading.
+// flight") has happen in that order within phase 9. `progression` is one of the
+// switches `isolate` holds off, so the gain reaches `xp` and is spent on no
+// level: no overlay opens over the reading.
 //
 // WHAT IS READ. `xp` after the collecting tick, 3.6, with the gem gone from the
 // field so the gain is a collection rather than a figure posed beside one.

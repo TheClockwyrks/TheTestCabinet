@@ -14,17 +14,16 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo } from "../assert";
-import { ARCNODE_SPLASH } from "../../src/constants";
+import { ARCNODE_SPLASH, componentDamage } from "../constants";
 import {
   captureReplay,
-  componentDamage,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
   structureById,
   unitById,
-  type Harness,
 } from "../harness";
 import { awaitImpact } from "./impact";
 

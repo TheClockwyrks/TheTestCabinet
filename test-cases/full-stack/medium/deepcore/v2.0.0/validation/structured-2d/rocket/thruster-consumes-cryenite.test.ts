@@ -13,7 +13,7 @@
 // consumes its own material and nothing else.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCKET_COMPONENTS } from "../../src/constants";
+import { ROCKET_COMPONENTS } from "../constants";
 import { assertContains, assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { openPadScene } from "./pad-scene";

@@ -12,12 +12,7 @@
 // and the death is the only thing that changes between the two readings.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  MINER_H,
-  MINER_W,
-  PLAYABLE_COL_MIN,
-  TILE,
-} from "../../src/constants";
+import { MINER_H, MINER_W, PLAYABLE_COL_MIN, TILE } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,

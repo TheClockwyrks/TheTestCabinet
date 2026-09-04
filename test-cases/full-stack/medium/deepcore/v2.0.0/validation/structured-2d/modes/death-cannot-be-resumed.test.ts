@@ -35,6 +35,17 @@ import { openAtCamp } from "../save/expedition";
 const DEATH_CEILING = 8;
 const SECOND_FRAMES = 8;
 
+/**
+ * The frames the recording runs before the first input and after the last.
+ *
+ * These bound the CLIP a reviewer watches, not the check: nothing below is
+ * asserted against them. A bracket that opened on the input and closed on the
+ * result would hand a reviewer a flicker a few frames long, so the recorder is
+ * armed with the world at rest and runs on once the behavior has settled.
+ */
+const RUN_UP = 20;
+const SETTLE = 30;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -51,6 +62,7 @@ it("never reaches the pause menu once the death has been taken", async () => {
   pinDrill(h);
 
   const seen = await captureReplay(h, "over", async () => {
+    await h.advance(RUN_UP);
     h.debug.setHull(0);
     await h.advance(1);
 
@@ -62,7 +74,9 @@ it("never reaches the pause menu once the death has been taken", async () => {
       await h.advanceSeconds(1, SECOND_FRAMES);
       screens.push(h.snapshot().screen);
     }
-    return { screens, ended: h.snapshot() };
+    const ended = h.snapshot();
+    await h.advance(SETTLE);
+    return { screens, ended };
   });
 
   for (const screen of seen.screens) {

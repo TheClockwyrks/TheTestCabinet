@@ -13,7 +13,7 @@
 // progress.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../../src/constants";
+import { TILE } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   ACTION_KEY,

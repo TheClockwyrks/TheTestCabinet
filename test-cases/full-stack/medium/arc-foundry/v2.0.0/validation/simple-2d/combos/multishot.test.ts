@@ -30,14 +30,13 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureReplay,
-  comboDef,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   standCombo,
-  structureCenter,
-  type Harness,
 } from "../harness";
+import { comboDef, structureCenter } from "../constants";
 
 const TOWER = comboDef("forkarray");
 /** The `N` of the `multishot(N)` its row names. */

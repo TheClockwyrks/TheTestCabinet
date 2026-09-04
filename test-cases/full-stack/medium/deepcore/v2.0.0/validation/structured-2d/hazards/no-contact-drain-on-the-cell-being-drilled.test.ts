@@ -25,18 +25,19 @@ import {
   BAND_HEALTH,
   DRILL_DAMAGE_TIERS,
   DRILL_HIT_INTERVAL,
+  drillHitsFor,
   LAVA_CONTACT_DPS,
   LAVA_DRILL_DEEPSTONE,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureReplay,
   createHarness,
   driveCut,
+  type Harness,
   openScene,
   standOn,
-  type Harness,
 } from "../harness";
-import { armHull, bandRow, drillHitsFor, HAZARD_COL } from "./scene";
+import { armHull, bandRow, HAZARD_COL } from "./scene";
 
 /** The tier whose hull survives the lump and would survive the drain as well. */
 const HULL_TIER = 5;

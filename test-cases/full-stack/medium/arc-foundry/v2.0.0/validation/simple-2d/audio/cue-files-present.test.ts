@@ -26,10 +26,8 @@
 // read directly and the point is decided by the bytes.
 
 import { existsSync } from "node:fs";
-
 import { afterEach, beforeEach, it } from "vitest";
-
-import { CUES } from "../../src/constants";
+import { CUES } from "../constants";
 import { assertDeepEqual } from "../assert";
 import {
   createHarness,

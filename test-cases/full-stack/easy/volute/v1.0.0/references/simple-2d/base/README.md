@@ -39,8 +39,8 @@ produced files, committed under `public/assets/` and bundled into the build.
 | Aim                              | `←` `→`            | move the pointer  |
 | Fire                             | `Space`            | press the pointer |
 | Swap the loaded and queued cores | `X`                | —                 |
-| Start a run, dismiss an ending   | `Enter` or `Space` | —                 |
-| Pause and resume                 | `Esc`              | —                 |
+| Start a run, dismiss an ending   | `Enter` or `Space` | press the pointer |
+| Pause and resume                 | `Esc` or `P`       | —                 |
 | Mute and unmute                  | `M`                | —                 |
 | Show and hide the debug overlay  | `` ` ``            | —                 |
 
@@ -113,7 +113,7 @@ what it read.
 ```ts
 import { createEngine, ConstantClock } from "@test-cabinet/simple-2d";
 import { BACKGROUND, game } from "./src/game";
-import { FIELD_H, FIELD_W, LAYOUT, TICK_DT } from "./src/constants";
+import { CELLS, FIELD_H, FIELD_W, LAYOUT, TICK_DT } from "./src/constants";
 
 const engine = createEngine({
   canvas,
@@ -128,7 +128,9 @@ await engine.initialize();
 
 const debug = engine.debug;
 engine.apply((s) => debug.reset(s, { seed: 1 }));
-engine.apply((s) => debug.start(s));
+engine.apply((s) => debug.setScore(s, 0));
+engine.apply((s) => debug.setCells(s, CELLS));
+engine.apply((s) => debug.startLevel(s, 1));
 await engine.advance(120);
 console.log(debug.snapshot(engine.state).train.length);
 ```

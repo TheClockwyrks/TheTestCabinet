@@ -88,14 +88,16 @@ reaches the same state every time.
 ## What the runtime provides instead
 
 {{#if (eq engine.slug "none")}}
-The debug overlay belongs to the runtime layer beneath the game, and the surface
-carries no operation for it. That layer draws the overlay and toggles it, and the
-game registers what it shows.
+The debug overlay and the pointer belong to the runtime layer beneath the game,
+and the surface carries no operation for either. That layer draws the overlay and
+toggles it, and the game registers what it shows; it reports the pointer and the
+touch contacts in the stage's logical units, and the page's own pointer events are
+what drive them.
 
 The clock and the keyboard are the exception, because nothing outside this build
 owns them. The surface is what takes the game off real time and advances it,
 through `setAutoStep` and `advance`, and what puts keys down and lets them up,
-through `keyDown`, `keyUp`, and `press`.
+through `keyDown` and `keyUp`.
 {{else}}
 The clock, the keyboard, the pointer, and the debug overlay belong to the
 {{engine.name}} engine, which documents them in the `engine/` directory at the
@@ -116,7 +118,7 @@ walking, thrusting, and drilling in a scenario run the game's own movement and
 drill code from the game's own input.
 
 {{#if (eq engine.slug "none")}}
-Keys reach the game through `keyDown`, `keyUp`, and `press` below. An injected key
+Keys reach the game through `keyDown` and `keyUp` below. An injected key
 flows through the same handling the real keyboard feeds, so it exercises the
 bindings the game registers rather than a parallel path. A key left down stays
 held, so a movement, thrust, or drill key drives the miner through the game's own
@@ -180,6 +182,43 @@ Every reading is pure and changes nothing.
 | `tileAt(col, row)` | One cell's observable state, as the object under Snapshot shape below. |
 | `findTile(kind)` | The `{ col, row }` of a cell of that kind, the one nearest the miner where several exist, or `null` where the mine holds none. `kind` is one of the nine tile kinds. |
 | `buildings()` | One entry per surface building, `{ id, x, y, w, h }`, with `id` the building's id and `x`, `y`, `w`, `h` its footprint in world units. |
+| `menuItemRect(index)` | The hit region of item `index` on the menu the current screen shows. |
+| `controlRect(control, subject)` | The hit region of the on-screen control `control`, for the ore, upgrade track, or field supply `subject` where the control takes one. |
+
+`menuItemRect` and `controlRect` both return `{ x, y, w, h }` in the stage's
+logical units, with `x` and `y` the region's top-left corner and `w` and `h` its
+size: the region a pointer or a touch contact drives that item or that control
+from, as `specs/controls.md` states. The layout is the build's, so this is how the
+build reports where it put each one.
+
+`menuItemRect` returns `null` on `in-mine`, which shows no menu, and where `index`
+names no item of the menu the current screen shows.
+
+`controlRect` takes `subject` as the id the control acts on, and `null` for a
+control that acts on nothing further. It returns `null` while the control is not
+drawn, including while the panel that carries it is closed.
+
+| `control` | `subject` | The control |
+| --- | --- | --- |
+| `"drop-ore"` | an ore or gemstone id | The inventory's drop control for that ore. |
+| `"use-item"` | a field supply's id | The inventory's `USE` control for that supply. |
+| `"jettison"` | `null` | The inventory's `JETTISON`. |
+| `"sell"` | `null` | The Ore Market's `SELL`. |
+| `"buy-fuel"` | `null` | The Fuel Depot's fixed fuel increment. |
+| `"fill-fuel"` | `null` | The Fuel Depot's fill to full. |
+| `"buy-repair"` | `null` | The Fuel Depot's fixed repair increment. |
+| `"repair-full"` | `null` | The Fuel Depot's repair to full. |
+| `"buy-upgrade"` | an upgrade track's name | The Upgrade Shop's buy control on that track. |
+| `"buy-item"` | a field supply's id | The Supply Depot's buy control for that supply. |
+| `"fabricate"` | `null` | The Launch Pad's `FABRICATE`. |
+| `"launch"` | `null` | The Launch Pad's `LAUNCH`. |
+| `"dismiss-notice"` | `null` | The hazard notice card on screen. |
+| `"inventory"` | `null` | The status bar's inventory control. |
+| `"pause"` | `null` | The status bar's pause control. |
+| `"mute"` | `null` | The status bar's mute control. |
+
+Every one of these is the named counterpart of a control under The controls
+below, or one of the three the status bar carries.
 
 {{#if (eq engine.slug "none")}}
 ### The clock
@@ -217,7 +256,6 @@ clock is already doing, so a scenario that must be reproducible calls
 | --- | --- |
 | `keyDown(code)` | Puts the key `code` down and leaves it down. `code` is a `KeyboardEvent.code`. |
 | `keyUp(code)` | Lets the key `code` up. |
-| `press(code)` | A `keyDown(code)` followed immediately by a `keyUp(code)`. |
 
 Injecting a key never changes `autoStep`, and a key held across a call to
 `advance` drives the miner through every frame it runs.
@@ -234,7 +272,7 @@ standing on the camp ground at `SPAWN_COL` facing `east` at rest, tier `1` on
 every upgrade track, a full fuel tank and a full hull, `0` Credits, an empty cargo
 bay, an empty satchel, no field supplies, no rocket component installed, no live
 Core Sample, no ground item, neither hazard notice fired, the camera lead at `0`,
-both faculties running, and `simTime` at `0`.
+both faculties running, and `simTime` and `elapsedSeconds` at `0`.
 
 `options.seed` seeds the game's generator, defaulting to `DEFAULT_SEED` (`1`).
 `options` is optional and an omitted `seed` takes the default.
@@ -268,13 +306,7 @@ stand. No ore, gemstone, gas pocket, lava cell, boulder, or material node
 survives.
 
 Nothing here is drilled, so nothing is banked and no gas detonates. Ground items
-are untouched; `clearGroundItems` is what removes those.
-
-#### `clearGroundItems()`
-
-Takes every ground item off the mine at once, leaving `coreGround` `null`. A
-jettisoned Core Sample removed this way is not detonated, so it damages nothing,
-and the removal leaves no Sample live.
+are untouched; a `reset` is what clears those.
 
 #### `clearCargo()`
 
@@ -354,6 +386,7 @@ with the drill running, and the animation state follows what it is actually doin
 | `setRocketInstalled(count)` | How many rocket components are installed, `0` through `5`, taken in the order the checklist builds them. It costs no Credits and consumes no material. |
 | `setNoticeFired(hazard, fired)` | Whether the one-time notice for `"gas"` or `"lava"` has already been raised this expedition. It raises no card and dismisses none. |
 | `setCameraLead(lead)` | The camera's carried vertical lead, in world units, positive downward, within `[-CAM_LEAD_MAX, CAM_LEAD_MAX]`. The camera moves to match on the next update. |
+| `setElapsed(seconds)` | The expedition's elapsed time, at least `0`, which is the clock `elapsedSeconds` reports and the summary shows. It moves no other clock and advances nothing. |
 | `clearSave()` | Deletes the save slot, leaving `hasSave` `false`. |
 {{#if (eq engine.slug "none")}}
 | `setMuted(muted)` | The audio mute toggle, the same one the mute control flips. |
@@ -386,7 +419,7 @@ band. Generation is what makes every cell's band the band its row falls in, so a
 
 ### The controls
 
-These are the named counterparts of the on-screen controls a player clicks. Each
+These are the named counterparts of the on-screen controls a player presses. Each
 runs the game's own rule for that control, on the game as it stands, so none of
 them poses an outcome. A control the game's own rules refuse changes nothing and
 shows the note it would show for a player, exactly as the control it stands for
@@ -407,7 +440,7 @@ would.
 | `fabricate()` | Fabricates the next uninstalled rocket component at the Launch Pad. |
 | `launch()` | Launches, as the Launch Pad's `LAUNCH` control does. |
 | `save()` | Saves the expedition, as activating the Save Pad does. |
-| `dismissNotice()` | Dismisses the hazard notice card on screen, as a click on it does. |
+| `dismissNotice()` | Dismisses the hazard notice card on screen, as a press on it does. |
 
 ## Snapshot shape
 
@@ -433,6 +466,7 @@ would.
 {{/if}}
   muted: <boolean>,
   simTime: <number>,            // accumulated game time, in seconds
+  elapsedSeconds: <number>,     // the expedition's own clock, in seconds
   hasSave: <boolean>,
   credits: <number>,
   creditsEarned: <number>,      // the running total earned this expedition
@@ -507,7 +541,8 @@ The shape is fixed and every field is present on every screen. A field the curre
 screen does not use reports its resting value rather than going missing: `summary`
 is `null` until the expedition ends, `coreTimer` and `coreGround` are `null` while
 no Sample is live, `panel` is `null` while no panel is open, `notice` is `null`
-while no card is armed or on screen, and `menuIndex` rests at `0` on `in-mine`.
+while no card is armed or on screen, `elapsedSeconds` rests at `0` until an
+expedition begins, and `menuIndex` rests at `0` on `in-mine`.
 
 Several fields are derived rather than stored: `depthMeters` and
 `deepestDepthMeters` from the miner's position, `overloaded` from `loadKg` against
@@ -516,6 +551,10 @@ health drains. `scanner.locked` is `false`, with the direction zero and the
 distance `null`, whenever nothing needed is in range, matching the indicator being
 hidden. `notice.shown` is `true` only while the card is drawn, so it is `false`
 over the `NOTICE_DELAY` between the hit and the card appearing.
+
+`elapsedSeconds` is the expedition's own clock, described in
+`specs/expedition.md`, and the summary's `elapsedSeconds` is the value it holds
+when the expedition ends.
 
 {{#if (eq engine.slug "structured-2d")}}
 Three of the snapshot's figures are live reads rather than kept copies: `muted` is

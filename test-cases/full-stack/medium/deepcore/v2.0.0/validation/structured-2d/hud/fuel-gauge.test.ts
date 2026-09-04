@@ -16,7 +16,7 @@
 // gauge and never the alert treatment, which is its own point.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FUEL_TIERS } from "../../src/constants";
+import { FUEL_TIERS } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

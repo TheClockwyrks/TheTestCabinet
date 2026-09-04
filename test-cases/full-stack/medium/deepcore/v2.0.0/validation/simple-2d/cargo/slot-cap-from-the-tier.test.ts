@@ -10,7 +10,7 @@
 // the weight limit alongside the slot one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARGO_TIERS, JETPACK_TIERS, MAX_TIER } from "../../src/constants";
+import { CARGO_TIERS, JETPACK_TIERS, MAX_TIER } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,
@@ -45,7 +45,7 @@ it("reports the capacity the cargo tier gives, tier by tier", async () => {
   pinDrill(h);
 
   const opening = h.snapshot();
-  assertEqual(opening.tiers.cargo, 1, "specs/gameplay.md");
+  assertEqual(opening.tiers.cargo, 1, "specs/expedition.md");
   assertEqual(opening.cargo.slotCap, CARGO_TIERS[0], "specs/upgrades.md");
 
   for (let tier = 1; tier <= MAX_TIER.cargo; tier += 1) {

@@ -10,45 +10,27 @@
 //   npx vitest run                                       # the build's own tests
 //   npx vitest run --config validation/vitest.config.ts  # the case's validators
 //
-// The root is the workspace, not this directory, so a validator addresses the
-// build's output by the same relative path the build itself produced it at, and
-// reads a produced asset off `assets/` by the path `specs/assets.md` fixes for it.
-// It is derived from this file's own URL rather than from the working directory,
-// so the command above works from anywhere.
+// Everything but the root is the shared validator harness's, because everything
+// but the root is what makes a staged validator project one shape the runner can
+// drive: the project's name, the suites it collects, the scaffolding it loads,
+// the refusal to pass a run that collected nothing, and the three dials — eight
+// workers over one shared browser, and five minutes apiece for a check and for a
+// hook — that the package MEASURED rather than guessed. This case takes all
+// three: nothing about a scenario here is costlier than the cases those figures
+// were measured on, and a lower ceiling is a point lost to the load average
+// rather than to the build.
 //
-// WHY THIS PROJECT NEEDS SCAFFOLDING THE ENGINE-BACKED ONES DO NOT. An engineless
-// build is a static site with nothing to import, so every check drives it in a
-// real browser and reaches the game through the `window.__foundry` surface.
-// `globalSetup.ts` starts the one server and the one Chromium the whole project
-// shares, before any suite runs; `setupFiles` gives each suite worker the teardown
-// that returns its page when the file is done. The environment stays `node` — the
-// suites drive a browser, they do not run in one.
+// THE ROOT IS THE WORKSPACE, NOT THIS DIRECTORY, so a validator addresses the
+// build's output by the same relative path the build itself produced it at. It is
+// computed HERE, from this file's own URL, rather than inside the package: the
+// package is staged one directory deeper than this file, so anything derived from
+// its own location would name the wrong tree.
+//
+// Imported from its own module rather than through the package's barrel, for the
+// reason `globalSetup.ts` gives.
 
-import { defineConfig } from "vitest/config";
+import { defineValidationConfig } from "./case-harness/vitest-config";
 
-export default defineConfig({
+export default defineValidationConfig({
   root: new URL("..", import.meta.url).pathname,
-  test: {
-    name: "validation",
-    include: ["validation/**/*.test.ts"],
-    environment: "node",
-    globalSetup: ["validation/globalSetup.ts"],
-    setupFiles: ["validation/setup.ts"],
-    // A missing validator is a broken suite, not a passing one.
-    passWithNoTests: false,
-    coverage: { enabled: false },
-    // Each suite file holds a page of the shared browser while it runs, so the
-    // ceiling on files in flight is the ceiling on pages — and a suite spends
-    // almost all of its time waiting on a crossing into one, so overlapping them
-    // is most of what decides how long the whole run takes. Capped rather than
-    // left to the core count because the cost of a page is memory in one shared
-    // browser process rather than a core, and the host running this is running a
-    // model's build under it.
-    maxWorkers: 4,
-    minWorkers: 1,
-    // Each frame of a drive is a crossing into the page, and a wave driven to its
-    // clear is thousands of them; generous here, and still seconds in practice.
-    testTimeout: 120_000,
-    hookTimeout: 60_000,
-  },
 });

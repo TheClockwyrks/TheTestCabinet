@@ -9,9 +9,9 @@
 // which is why this module imports them rather than restating any rule.
 //
 // The clock and the keyboard are the exception, because nothing outside this build
-// owns them: `setAutoStep` and `advance` reach the runtime's loop, and `keyDown`,
-// `keyUp`, and `press` dispatch real key events at the page, so an injected key flows
-// through the very handling the physical keyboard feeds.
+// owns them: `setAutoStep` and `advance` reach the runtime's loop, and `keyDown` and
+// `keyUp` dispatch real key events at the page, so an injected key flows through the
+// very handling the physical keyboard feeds.
 
 import {
   BAND_HEALTH,
@@ -43,6 +43,7 @@ import { clearSave as clearSaveSlot } from "./save";
 import { fabricate } from "./rocket";
 import { isMinableKind, setCell } from "./world";
 import type { BuildingBox, DeepcoreSnapshot, Game, TileRead } from "./game";
+import type { Clickable } from "./render";
 import type { Input } from "./input";
 import type {
   Facing,
@@ -103,6 +104,39 @@ export interface DebugClock {
   advance(seconds: number, frames: number): void;
 }
 
+/**
+ * A hit region in the stage's logical units, as the two layout readings answer.
+ *
+ * `specs/instrumentation.md`: "`x` and `y` the region's top-left corner and `w`
+ * and `h` its size: the region a pointer or a touch contact drives that item or
+ * that control from".
+ */
+export interface HitRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** The on-screen controls `controlRect` reports a region for, by their spec names. */
+export type ControlName =
+  | "drop-ore"
+  | "use-item"
+  | "jettison"
+  | "sell"
+  | "buy-fuel"
+  | "fill-fuel"
+  | "buy-repair"
+  | "repair-full"
+  | "buy-upgrade"
+  | "buy-item"
+  | "fabricate"
+  | "launch"
+  | "dismiss-notice"
+  | "inventory"
+  | "pause"
+  | "mute";
+
 /** What the surface is built over. */
 export interface DebugContext {
   game: Game;
@@ -110,7 +144,44 @@ export interface DebugContext {
   clock: DebugClock;
   /** Run this frame's queued edge input at once, as the loop does each frame. */
   drainEdges(): void;
+  /**
+   * The hit regions the last frame drew, in the stage's logical units.
+   *
+   * `specs/overview.md` leaves the layout to the build, and
+   * `specs/instrumentation.md` has the build report it, so the two layout
+   * readings answer off the same list the pointer is routed through. Reading the
+   * routing table rather than a second table of its own is what makes the
+   * reported region the region a press really lands in.
+   */
+  clickables(): readonly Clickable[];
 }
+
+/**
+ * The action string each named control is routed by, for `controlRect`.
+ *
+ * `specs/instrumentation.md` fixes the names; the actions are this build's own,
+ * and `main.ts` is what turns one into an effect.
+ */
+const CONTROL_ACTIONS: Readonly<
+  Record<ControlName, string | ((subject: string) => string)>
+> = {
+  "drop-ore": (ore) => `drop:${ore}`,
+  "use-item": (item) => `useitem:${item}`,
+  jettison: "jettison",
+  sell: "sell",
+  "buy-fuel": "buyfuel:increment",
+  "fill-fuel": "buyfuel:full",
+  "buy-repair": "buyrepair:increment",
+  "repair-full": "buyrepair:full",
+  "buy-upgrade": (track) => `buy:${track}`,
+  "buy-item": (item) => `buyitem:${item}`,
+  fabricate: "fabricate",
+  launch: "launch",
+  "dismiss-notice": "notice:dismiss",
+  inventory: "sys:inventory",
+  pause: "sys:pause",
+  mute: "sys:mute",
+};
 
 /** The debugging and automation surface. */
 export interface DeepcoreDebugApi {
@@ -121,6 +192,8 @@ export interface DeepcoreDebugApi {
   tileAt(col: number, row: number): TileRead;
   findTile(kind: TileKind): { col: number; row: number } | null;
   buildings(): BuildingBox[];
+  menuItemRect(index: number): HitRect | null;
+  controlRect(control: ControlName, subject: string | null): HitRect | null;
 
   // The clock
   setAutoStep(enabled: boolean): void;
@@ -129,13 +202,11 @@ export interface DeepcoreDebugApi {
   // Input
   keyDown(code: string): void;
   keyUp(code: string): void;
-  press(code: string): void;
 
   // Restoring the world
   reset(options?: { seed?: number }): void;
   generateMine(): void;
   clearMine(): void;
-  clearGroundItems(): void;
   clearCargo(): void;
   clearItems(): void;
 
@@ -175,6 +246,7 @@ export interface DeepcoreDebugApi {
   setRocketInstalled(count: number): void;
   setNoticeFired(hazard: Hazard, fired: boolean): void;
   setCameraLead(lead: number): void;
+  setElapsed(seconds: number): void;
   clearSave(): void;
   setMuted(muted: boolean): void;
 
@@ -264,6 +336,30 @@ function requireOneOf<T extends string>(
 export function installDebugApi(ctx: DebugContext): DeepcoreDebugApi {
   const { game, input, clock, drainEdges } = ctx;
 
+  /**
+   * The region the last frame drew for `action`, or `null` where it drew none.
+   *
+   * A control the frame did not draw — a panel that is closed, a button the game
+   * cannot act on and so leaves off the screen — has no entry, which is the
+   * `null` `specs/instrumentation.md` names. A control drawn DISABLED still has
+   * one: it is on screen, and the specification's other conformant answer is
+   * that it is drawn disabled and answers nothing.
+   */
+  const boxOf = (
+    regions: readonly Clickable[],
+    action: string,
+  ): HitRect | null => {
+    // Last first, matching the order a click is routed in, so a region drawn over
+    // another is the one reported.
+    for (let i = regions.length - 1; i >= 0; i -= 1) {
+      const region = regions[i]!;
+      if (region.action === action) {
+        return { x: region.x, y: region.y, w: region.w, h: region.h };
+      }
+    }
+    return null;
+  };
+
   /** A posable cell: any column, and any row from the first ground row to the Core. */
   const cell = (
     op: string,
@@ -312,6 +408,30 @@ export function installDebugApi(ctx: DebugContext): DeepcoreDebugApi {
 
     buildings: () => game.buildings(),
 
+    menuItemRect(index) {
+      const at = requireInteger("menuItemRect", "index", index, 0, 0xffff);
+      if (game.screen === "in-mine") return null;
+      const item = menuItems(game)[at];
+      if (!item) return null;
+      return boxOf(ctx.clickables(), item.action);
+    },
+
+    controlRect(control, subject) {
+      const route = CONTROL_ACTIONS[control as ControlName];
+      if (route === undefined) {
+        fail(
+          `controlRect() needs one of the control names specs/instrumentation.md lists, got ${String(control)}`,
+        );
+      }
+      if (typeof route === "function") {
+        if (typeof subject !== "string" || !subject) {
+          fail(`controlRect() needs a subject id for ${control}`);
+        }
+        return boxOf(ctx.clickables(), route(subject));
+      }
+      return boxOf(ctx.clickables(), route);
+    },
+
     // ---- The clock ----
 
     setAutoStep(enabled) {
@@ -350,11 +470,6 @@ export function installDebugApi(ctx: DebugContext): DeepcoreDebugApi {
       window.dispatchEvent(new KeyboardEvent("keyup", { code, bubbles: true }));
     },
 
-    press(code) {
-      api.keyDown(code);
-      api.keyUp(code);
-    },
-
     // ---- Restoring the world ----
 
     reset(options) {
@@ -372,11 +487,6 @@ export function installDebugApi(ctx: DebugContext): DeepcoreDebugApi {
 
     clearMine() {
       game.clearMine();
-    },
-
-    clearGroundItems() {
-      game.groundItems = [];
-      game.coreTimer = game.satchel.coreSample ? game.coreTimer : null;
     },
 
     clearCargo() {
@@ -658,6 +768,16 @@ export function installDebugApi(ctx: DebugContext): DeepcoreDebugApi {
         lead,
         -CAM_LEAD_MAX,
         CAM_LEAD_MAX,
+      );
+    },
+
+    setElapsed(seconds) {
+      game.elapsedSeconds = requireRange(
+        "setElapsed",
+        "seconds",
+        seconds,
+        0,
+        Number.MAX_SAFE_INTEGER,
       );
     },
 

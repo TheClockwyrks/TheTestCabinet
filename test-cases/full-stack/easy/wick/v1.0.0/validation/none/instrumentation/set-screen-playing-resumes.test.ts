@@ -2,9 +2,11 @@
 // `paused` returns to `playing` with the run untouched.
 //
 // WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — `setScreen(name)`):
-// the `playing | paused` row: "Resumes exactly as `pause` on `paused` does; the
-// run is untouched." The comparison is exact equality of the documented run
-// across the call.
+// "Sets `screen` to `name` ... Nothing else changes: the run, the loadout,
+// `offers`, `nextOffers`, `chestResult`, `pendingLevelUps`, `rngState`,
+// `simTime`, and the driver switches all stand exactly as they were." The
+// comparison is exact equality of the documented run across the call, over the
+// one direction a build reads as a resume.
 //
 // WHY THE WORLD IS POSED AS IT IS. The paused run holds one entity of every
 // kind, a clock, a spawn timer, a hurt lamplighter, and a weapon with a timer

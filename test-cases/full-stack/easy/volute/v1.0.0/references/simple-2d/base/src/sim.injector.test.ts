@@ -20,7 +20,7 @@ describe("the aim", () => {
   it("opens straight up the field and keeps its value across a level change", async () => {
     const h = await harness();
     expect(h.api.snapshot().injector.aim).toBe(270);
-    h.api.fire(123);
+    h.api.fireAt(123);
     h.api.startLevel(3);
     expect(h.api.snapshot().injector.aim).toBe(123);
     h.dispose();
@@ -39,7 +39,7 @@ describe("the aim", () => {
 
   it("leaves the aim alone for a pointer exactly on the injector", async () => {
     const h = await bare();
-    h.api.fire(180);
+    h.api.fireAt(180);
     h.point(INJECTOR_X, INJECTOR_Y);
     await h.step();
     expect(h.api.snapshot().injector.aim).toBeCloseTo(180, 6);
@@ -48,7 +48,7 @@ describe("the aim", () => {
 
   it("swings counter-clockwise under the turn-left action", async () => {
     const h = await bare();
-    h.api.fire(180);
+    h.api.fireAt(180);
     h.hold(LEFT);
     await h.step(30);
     expect(h.api.snapshot().injector.aim).toBeCloseTo(90, 1);
@@ -57,7 +57,7 @@ describe("the aim", () => {
 
   it("swings clockwise under the turn-right action", async () => {
     const h = await bare();
-    h.api.fire(180);
+    h.api.fireAt(180);
     h.hold(RIGHT);
     await h.step(30);
     expect(h.api.snapshot().injector.aim).toBeCloseTo(270, 1);
@@ -66,7 +66,7 @@ describe("the aim", () => {
 
   it("turns by nothing with both held", async () => {
     const h = await bare();
-    h.api.fire(180);
+    h.api.fireAt(180);
     h.hold(LEFT);
     h.hold(RIGHT);
     await h.step(30);
@@ -76,7 +76,7 @@ describe("the aim", () => {
 
   it("wraps continuously through a full turn", async () => {
     const h = await bare();
-    h.api.fire(10);
+    h.api.fireAt(10);
     h.hold(LEFT);
     await h.step(10);
     const aim = h.api.snapshot().injector.aim;
@@ -88,7 +88,7 @@ describe("the aim", () => {
 
   it("holds the aim still while the hall is paused", async () => {
     const h = await bare();
-    h.api.fire(180);
+    h.api.fireAt(180);
     h.api.pause();
     h.hold(LEFT);
     await h.step(30);
@@ -101,7 +101,7 @@ describe("firing", () => {
   it("launches along the aim and sets the cooldown", async () => {
     const h = await bare();
     h.api.setLoaded("cobalt");
-    h.api.fire(270);
+    h.api.fireAt(270);
     const shot = h.api.snapshot();
     expect(shot.projectiles).toHaveLength(1);
     expect(shot.projectiles[0]).toMatchObject({
@@ -116,7 +116,7 @@ describe("firing", () => {
 
   it("refuses the fire control inside the cooldown, and sounds the refusal", async () => {
     const h = await bare();
-    h.api.fire(270);
+    h.api.fireAt(270);
     await h.step(10);
     const marker = h.cues.length;
     h.tap(FIRE);
@@ -128,7 +128,7 @@ describe("firing", () => {
 
   it("honors the fire control once the cooldown has run out", async () => {
     const h = await bare();
-    h.api.fire(270);
+    h.api.fireAt(270);
     await h.step(11);
     h.tap(FIRE);
     await h.step();
@@ -151,7 +151,7 @@ describe("firing", () => {
     const h = await bare();
     h.api.setLoaded("halide");
     h.api.setQueued("garnet");
-    h.api.fire(270);
+    h.api.fireAt(270);
     expect(h.api.snapshot().injector.loaded).toBe("garnet");
     expect(h.api.snapshot().injector.queued).not.toBeNull();
     h.dispose();
@@ -173,7 +173,7 @@ describe("firing", () => {
 
   it("swaps whether or not the cooldown has run out", async () => {
     const h = await bare();
-    h.api.fire(270);
+    h.api.fireAt(270);
     h.api.setLoaded("halide");
     h.api.setQueued("cobalt");
     h.tap(SWAP);
@@ -187,7 +187,7 @@ describe("firing", () => {
 
   it("flies 620 units a second in a straight line", async () => {
     const h = await bare();
-    h.api.fire(270);
+    h.api.fireAt(270);
     await h.step(30);
     const shot = h.api.snapshot().projectiles[0];
     expect(Math.hypot(shot.x - INJECTOR_X, shot.y - INJECTOR_Y)).toBeCloseTo(
@@ -201,7 +201,7 @@ describe("firing", () => {
 
   it("discards a shot whose center leaves the field", async () => {
     const h = await bare();
-    h.api.fire(270);
+    h.api.fireAt(270);
     await h.step(60);
     expect(h.api.snapshot().projectiles).toHaveLength(0);
     h.dispose();
@@ -209,9 +209,9 @@ describe("firing", () => {
 
   it("keeps several shots in flight at once, each independent", async () => {
     const h = await bare();
-    h.api.fire(260);
+    h.api.fireAt(260);
     await h.step(6);
-    h.api.fire(280);
+    h.api.fireAt(280);
     expect(h.api.snapshot().projectiles).toHaveLength(2);
     await h.step(4);
     const [first, second] = h.api.snapshot().projectiles;

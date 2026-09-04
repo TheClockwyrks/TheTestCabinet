@@ -1,6 +1,6 @@
 // save/save-excludes-a-live-sample — no save ever holds a live Core Sample.
 //
-// specs/gameplay.md: "Saving is refused while a Core Sample's timer runs, carried
+// specs/expedition.md: "Saving is refused while a Core Sample's timer runs, carried
 // or jettisoned", and specs/items.md repeats it, adding that "item counts are
 // carried in the save; a live Core Sample never is". The consequence this check
 // decides is the one a player meets: a restored expedition always opens with
@@ -87,7 +87,7 @@ it("refuses a save while a Sample is live, so a restore opens with none", async 
   assertEqual(
     restored.credits,
     SAVED_CREDITS,
-    "specs/gameplay.md: saving is refused while a Core Sample's timer runs",
+    "specs/expedition.md: saving is refused while a Core Sample's timer runs",
   );
   assertNull(
     restored.coreTimer,

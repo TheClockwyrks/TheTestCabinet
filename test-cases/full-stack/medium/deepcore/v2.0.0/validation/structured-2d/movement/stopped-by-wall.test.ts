@@ -21,7 +21,7 @@
 // all.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MINER_W, TILE } from "../../src/constants";
+import { MINER_W, TILE } from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,

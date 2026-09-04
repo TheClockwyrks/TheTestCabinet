@@ -12,7 +12,7 @@
 // nothing here is about cutting — and there is nothing in the sky to cut.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { AIR_BURN, SURFACE_Y } from "../../src/constants";
+import { AIR_BURN, SURFACE_Y } from "../constants";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import {
   ACTION_KEY,

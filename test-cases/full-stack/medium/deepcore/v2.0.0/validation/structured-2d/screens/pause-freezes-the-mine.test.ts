@@ -18,7 +18,7 @@
 // the world: no ore to bank, no gas to detonate, no lava to drain the hull.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { LIFE_SUPPORT_BURN } from "../../src/constants";
+import { LIFE_SUPPORT_BURN } from "../constants";
 import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
 import {
   ACTION_KEY,

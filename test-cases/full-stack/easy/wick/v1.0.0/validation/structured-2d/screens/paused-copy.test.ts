@@ -24,9 +24,9 @@
 // right and 100 down, the clock posed so `m:ss` reads something other than the
 // zero every screen would show. One frame on `playing` gives the sprite's
 // place; the pause posed through `setScreen("paused")` — which
-// `specs/instrumentation.md` says enters it "exactly as `pause` does" — and one
-// frame give the paused picture. The key that pauses is
-// `screens/pause-via-key`'s point, so nothing is pressed here.
+// `specs/instrumentation.md` says enters it by setting `screen` alone, with the
+// run left as it stands — and one frame give the paused picture. The key that
+// pauses is `screens/pause-via-key`'s point, so nothing is pressed here.
 //
 // THE TOLERANCE. The copy is exact as a substring; the sprite's centre is
 // matched within `SPRITE_TOL` device pixels, the slack that lets a build round

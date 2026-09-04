@@ -13,8 +13,7 @@
 // press cannot be allowed to reroute the Load.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { TARGETING_PRIORITIES } from "../../src/constants";
+import { TARGETING_PRIORITIES } from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureReplay,

@@ -16,17 +16,15 @@
 // stamp for nothing.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { STAMPS_PER_LEVEL } from "../../src/constants";
+import { mapById, STAMPS_PER_LEVEL } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,
   clickTile,
   createHarness,
-  mapById,
+  type Harness,
   openYard,
   pressAction,
-  type Harness,
 } from "../harness";
 
 let h: Harness;

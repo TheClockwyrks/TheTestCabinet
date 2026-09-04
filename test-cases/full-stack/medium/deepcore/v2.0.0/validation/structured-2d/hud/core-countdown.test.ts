@@ -17,7 +17,7 @@
 // nothing but the timer is running.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_TIMER, PLAYABLE_COL_MIN } from "../../src/constants";
+import { CORE_TIMER, PLAYABLE_COL_MIN } from "../constants";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import {
   captureReplay,

@@ -22,8 +22,9 @@
 // moves its highlight silently, two says it sounded the move twice on one
 // frame.
 //
-// THE DRIVE. The title through `setScreen`, "exactly as the real transition
-// into it enters it" (specs/instrumentation.md); the recording opened AFTER the
+// THE DRIVE. The title through `setScreen`, which "sets `screen` to `name` ...
+// with `menuIndex` ... `0`" (specs/instrumentation.md); the recording opened
+// AFTER the
 // pose, since "A cue is played by a tick or a frame, never by a pose of the
 // debug surface" (specs/ui.md); then the pointer to the middle of the rectangle
 // the build reported for position `1`, and the one frame that reads it.

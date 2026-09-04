@@ -24,7 +24,7 @@ import {
   type Harness,
 } from "../harness";
 import { allDistinct, readPicture, type Picture } from "./produced";
-import { ROCKET_STAGES } from "./spec";
+import { ROCKET_STAGES } from "../constants";
 
 /** The count the still shows the pad at: partway up the checklist. */
 const SHOWN = 3;

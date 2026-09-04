@@ -18,11 +18,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
-import {
-  GAS_BLAST_TILES,
-  PLASTIC_EXPLOSIVES_RADIUS,
-  TILE,
-} from "../../src/constants";
+import { GAS_BLAST_TILES, PLASTIC_EXPLOSIVES_RADIUS, TILE } from "../constants";
 import {
   captureReplay,
   cellCenter,
@@ -41,8 +37,16 @@ import { armHull, bandRow, HAZARD_COL } from "./scene";
 /** The tier whose hull survives a rockbed detonation with room to read it. */
 const HULL_TIER = 5;
 
-/** Frames the blast is given to resolve. */
-const SETTLE_FRAMES = 4;
+/**
+ * The frames the recording runs before the first input and after the last.
+ *
+ * These bound the CLIP a reviewer watches, not the check: nothing below is
+ * asserted against them. A bracket that opened on the input and closed on the
+ * result would hand a reviewer a flicker a few frames long, so the recorder is
+ * armed with the world at rest and runs on once the behavior has settled.
+ */
+const RUN_UP = 15;
+const SETTLE_FRAMES = 30;
 
 let h: Harness;
 
@@ -76,6 +80,9 @@ async function blastAt(
     row: posed.miner.row,
   };
   h.debug.setTile(pocket.col, pocket.row, "gas");
+  // The run-up: the pocket sits there, undetonated, with the world at rest, so
+  // the recording opens on the arrangement rather than on the flash.
+  await h.advance(RUN_UP);
 
   const centre = minerCenter(posed.miner);
   const at = cellCenter(pocket.col, pocket.row);

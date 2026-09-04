@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
-import { SPEEDS, keyFor } from "../constants";
+import { keyFor, SPEEDS } from "../constants";
 import {
   captureStill,
   createHarness,

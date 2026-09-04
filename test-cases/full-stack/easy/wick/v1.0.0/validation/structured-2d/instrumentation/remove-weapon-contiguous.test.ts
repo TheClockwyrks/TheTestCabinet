@@ -35,7 +35,7 @@ afterEach(() => {
 });
 
 it("closes the gap, carrying Pin's level and cooldown into slot 1", async () => {
-  isolate(h, { keepTaper: true });
+  isolate(h, { taper: true });
   holdWeapon(h, "ember", 2);
   const pin = holdWeapon(h, "pin", 4);
   h.debug.setWeaponCooldown(pin, PIN_COOLDOWN);

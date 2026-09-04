@@ -19,13 +19,9 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual } from "../assert";
-import {
-  captureReplay,
-  difficultyById,
-  milestoneWaves,
-  type Harness,
-} from "../harness";
+import { captureReplay, type Harness } from "../harness";
 import { collectWave, createWaveHarness, healthPool, openWave } from "./waves";
+import { difficultyById, milestoneWaves } from "../constants";
 
 const DIFFICULTY = "easy";
 const [MIDDLE, LAST] = milestoneWaves(difficultyById(DIFFICULTY).waves);

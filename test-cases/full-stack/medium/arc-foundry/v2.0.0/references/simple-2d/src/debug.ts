@@ -35,6 +35,7 @@ import {
   MAP_IDS,
   MAX_QUALITY,
   OVERLOAD_TYPE,
+  PHASES,
   REFINEMENT_MAX,
   REFINEMENT_ODDS,
   SCREENS,
@@ -45,8 +46,10 @@ import {
   type ComponentType,
   type DifficultyId,
   type LoadType,
+  type IngredientState,
   type MapId,
   type PhaseName,
+  type StatusReadout as StatusReadoutName,
   type ScreenName,
   type Speed,
   type StructureKind,
@@ -67,6 +70,7 @@ import {
   board,
   canPlaceAt,
   clearCombineSet,
+  clearHeldRock,
   clearNextRoll,
   clearProjectiles,
   clearStructures,
@@ -96,6 +100,7 @@ import {
   setMenuIndex,
   setOverlay,
   setPaused,
+  setPhase,
   setRefinement,
   setScreen,
   setSpeed,
@@ -106,6 +111,7 @@ import {
   setUnitPosition,
   setUnitWaypoint,
   setWave,
+  setWaveHold,
   spawnUnit,
   stampsLeft,
   startRun,
@@ -117,10 +123,12 @@ import {
 } from "./sim";
 import {
   barState,
+  bookEntries,
   menuControls,
   panelButtonControls,
   pressPanelControls,
   statusBarControls,
+  statusBarReadouts,
 } from "./layout";
 import { abilityTags } from "./tables";
 import { thaw, type FoundryView } from "./world";
@@ -148,6 +156,36 @@ export interface StatusSnapshot {
   w: number;
   h: number;
   state: boolean | number;
+}
+
+/**
+ * One of the status bar's READS, with the rectangle it is drawn in.
+ *
+ * A read is not a control, so `statusControls` reports none of them, and the hover of
+ * `specs/controls.md` acts on one of them — which is why the build reports where it drew
+ * each (specs/instrumentation.md).
+ */
+export interface ReadoutSnapshot {
+  readout: StatusReadoutName;
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** One ingredient cell of one recipe in the book, with the state it is drawn in. */
+export interface RecipeEntrySnapshot {
+  combo: ComboId;
+  /** Its index within that tower's recipe, counted from `0`. */
+  ingredient: number;
+  type: ComponentType;
+  quality: number;
+  state: IngredientState;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 /** One live unit, as the snapshot reports it. */
@@ -228,6 +266,7 @@ export interface FoundrySnapshot {
   wave: number;
   totalWaves: number;
   waveActive: boolean;
+  waveHeld: boolean;
   charge: number;
   integrity: number;
   refinement: number;
@@ -272,6 +311,8 @@ export interface FoundryDebugApi {
   pressControls(state: FoundryView): ButtonSnapshot[];
   menuButtons(state: FoundryView): ButtonSnapshot[];
   statusControls(state: FoundryView): StatusSnapshot[];
+  statusReadouts(state: FoundryView): ReadoutSnapshot[];
+  recipeEntries(state: FoundryView): RecipeEntrySnapshot[];
 
   // The run.
   reset(state: FoundryView, options?: { seed?: number }): FoundryWorld;
@@ -282,6 +323,8 @@ export interface FoundryDebugApi {
   setMenuIndex(state: FoundryView, index: number): FoundryWorld;
   setPaused(state: FoundryView, paused: boolean): FoundryWorld;
   setSpeed(state: FoundryView, multiplier: number): FoundryWorld;
+  setPhase(state: FoundryView, phase: string): FoundryWorld;
+  setWaveHold(state: FoundryView, held: boolean): FoundryWorld;
   setOverlay(state: FoundryView, overlay: string, open: boolean): FoundryWorld;
 
   // Resources and progress.
@@ -295,6 +338,7 @@ export interface FoundryDebugApi {
   clearStructures(state: FoundryView): FoundryWorld;
   setNextRoll(state: FoundryView, type: string, quality: number): FoundryWorld;
   clearNextRoll(state: FoundryView): FoundryWorld;
+  clearHeld(state: FoundryView): FoundryWorld;
   placeRock(state: FoundryView, col: number, row: number): FoundryWorld;
   placeComponent(
     state: FoundryView,
@@ -451,6 +495,7 @@ export function snapshot(state: FoundryView): FoundrySnapshot {
     wave: state.wave,
     totalWaves: difficulty(state).waves,
     waveActive: state.activeWave !== null || state.units.some((u) => !u.dead),
+    waveHeld: state.waveHeld,
     charge: state.charge,
     integrity: state.integrity,
     refinement: state.refinement,
@@ -658,6 +703,21 @@ export function createDebugApi(): FoundryDebugApi {
         state: barState(state, c.action as never),
       })),
 
+    statusReadouts: (state) => statusBarReadouts(state).map((r) => ({ ...r })),
+
+    recipeEntries: (state) =>
+      bookEntries(state).map((e) => ({
+        combo: e.combo,
+        ingredient: e.ingredient,
+        type: e.type,
+        quality: e.quality,
+        state: e.state,
+        x: e.x,
+        y: e.y,
+        w: e.w,
+        h: e.h,
+      })),
+
     // ---- The run ----------------------------------------------------------
 
     reset: (state, options) =>
@@ -719,6 +779,19 @@ export function createDebugApi(): FoundryDebugApi {
         setSpeed(w, m as Speed);
       }),
 
+    // A run's phase, and nothing else: no unit is released, no wave is composed, no
+    // bonus is paid, and no wave number is spent (specs/instrumentation.md).
+    setPhase: (state, phase) => {
+      const p = oneOf("setPhase", "phase", phase, PHASES) as PhaseName;
+      if (state.screen !== "playing") {
+        invalid("setPhase", "the game to be on a run to phase", state.screen);
+      }
+      return pose(state, (w) => setPhase(w, p));
+    },
+
+    setWaveHold: (state, held) =>
+      pose(state, (w) => setWaveHold(w, bool("setWaveHold", "held", held))),
+
     setOverlay: (state, overlay, open) =>
       pose(state, (w) =>
         setOverlay(
@@ -778,6 +851,8 @@ export function createDebugApi(): FoundryDebugApi {
       ),
 
     clearNextRoll: (state) => pose(state, (w) => clearNextRoll(w)),
+
+    clearHeld: (state) => pose(state, (w) => clearHeldRock(w)),
 
     // The rock enters through the real placement path, so it is refused exactly as a
     // pointer press would be when the footprint is illegal or the allowance is spent.

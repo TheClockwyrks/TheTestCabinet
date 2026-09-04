@@ -9,25 +9,27 @@
 //    tick."
 //
 // and `specs/channel.md` fixes the order — segments advance (step 2), then
-// projectiles advance and strike (step 3). So the geometry a check needs is the
-// geometry ONE TICK AFTER whatever it posed, not the geometry it posed. A check
-// that poses a core before the shot is fired has to predict a whole flight's
-// worth of the train's advance to know where that core will be; a check that
-// poses it while the shot is one tick short has to predict exactly one tick.
+// projectiles advance and strike (step 3). A check that poses a core before the
+// shot is fired would have to predict a whole flight's worth of the train's
+// advance to know where that core will be by the time the strike resolves.
 //
 // So every check here does the same thing: it fires, it lets the shot fly to a
 // point one tick short of the channel, and only then poses the cores its
-// requirement is about — at the arc position that puts them where they must be
-// AFTER the single tick that follows. `poseTrain` "leaves the projectiles as they
-// are" (specs/instrumentation.md), so the shot in flight is untouched, and a pose
-// happens between ticks so no strike is checked against a core that has not yet
-// had its tick.
+// requirement is about — at exactly the arc positions the strike must see.
+// `poseTrain` "leaves the projectiles as they are" (specs/instrumentation.md), so
+// the shot in flight is untouched, and a pose happens between ticks so no strike
+// is checked against a core that has not yet had its tick.
 //
-// THE ONE-TICK ADVANCE. `specs/channel.md` gives two rates: the lead segment
-// advances at the effective feed speed and "Every other segment" at
-// `CATCHUP_SPEED` (180 units/s). Both are fixed by the spec, so the arc position
-// to pose at is simply the position wanted minus one tick of the rate that core's
-// segment will run at. {@link poseFor} is that subtraction and nothing else.
+// WHY THE POSED POSITION IS THE POSITION THE STRIKE SEES. The train's advance is
+// a faculty none of these requirements exercises, so every check here holds it:
+// `poseHall` is called with `feed: false`, which is `setFeed(false)` on the
+// surface — "no segment advances, no merge follows from an advance ... Every
+// other step runs unchanged while the train is held: timers fall, projectiles
+// fly, a strike seats and the run it completes is extracted"
+// (specs/instrumentation.md). A core posed at `s` therefore still stands at `s`
+// on the tick the strike resolves, with nothing to pre-compensate for and no
+// dependence on the feed rate, which is `channel/feed-advance`'s requirement and
+// `channel/catchup-advance`'s rather than any of these.
 //
 // WHY THE SHOT IS ALWAYS AXIS-ALIGNED. One of the checks needs a geometry that
 // holds to the last bit: `tie-break-forward` needs two centre distances that are
@@ -42,22 +44,8 @@
 // rather than a coin toss between two distances that differ in their last bit.
 
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
-import {
-  CATCHUP_SPEED,
-  CHANNEL,
-  CHANNEL_ARC,
-  INJECTOR,
-  TICK_DT,
-  effectiveFeed,
-  type ChargeId,
-} from "../constants";
-import {
-  parkedCore,
-  topRunS,
-  type Harness,
-  type PosedCore,
-  type VoluteSnapshot,
-} from "../harness";
+import { CHANNEL, CHANNEL_ARC, INJECTOR, type ChargeId } from "../constants";
+import { fireAt, topRunS, type Harness, type VoluteSnapshot } from "../harness";
 
 /* -------------------------------------------------------------------------- */
 /* The two headings                                                           */
@@ -80,33 +68,6 @@ export const UP_AIM = 270;
  * `tie-break-forward` builds its symmetry on.
  */
 export const RIGHT_AIM = 0;
-
-/* -------------------------------------------------------------------------- */
-/* Where a core has to be posed                                               */
-/* -------------------------------------------------------------------------- */
-
-/**
- * The advance one tick gives the LEAD segment of a level-1 hall at pressure `0`.
- *
- * "effective feed speed = level feed speed x (1 + pressure / 100) x choke factor"
- * (specs/channel.md), which for level 1 (`feed 22`, specs/progression.md) at the
- * pressure a level starts at is `22` units/s. Every check here poses through
- * {@link poseHall}, which opens level 1 and sets the pressure to 0.
- */
-export const LEAD_STEP = effectiveFeed(1, 0) * TICK_DT;
-
-/**
- * The advance one tick gives every OTHER segment.
- *
- * "Every other segment | `180` units/s ... the catch-up rate of `180` units/s is
- * fixed, and pressure and machinery leave it alone" (specs/channel.md).
- */
-export const CATCHUP_STEP = CATCHUP_SPEED * TICK_DT;
-
-/** The arc position to pose at so a core stands at `s` after one tick of `step`. */
-export function poseFor(s: number, step: number): number {
-  return s - step;
-}
 
 /* -------------------------------------------------------------------------- */
 /* The two approaches                                                         */
@@ -179,7 +140,7 @@ export async function approach(
   h: Harness,
   aim: typeof UP_AIM | typeof RIGHT_AIM,
 ): Promise<VoluteSnapshot> {
-  await h.debug.fire(aim);
+  await fireAt(h, aim);
   const swept = await h.stepUntil(
     (s) => {
       const shot = (s.projectiles ?? [])[0];
@@ -202,18 +163,16 @@ export async function approach(
 /* -------------------------------------------------------------------------- */
 
 /**
- * A core parked at the inlet, which every approach flies with.
+ * The hall every approach is flown through: `poseHall(h, { feed: false, loaded:
+ * SHOT })`.
  *
- * `specs/progression.md`: "A level is cleared the moment its quota is exhausted
- * and no cores remain on the channel", and every check here runs with the quota
- * exhausted so nothing the inlet emits joins its scenario. So the channel may
- * never be empty, or the level clears mid-approach and the shot is discarded.
- * One core at the inlet satisfies that: `s = 0` is the point `(40, 40)`, which is
- * 380 units from the vertical shot's path — many times the 28-unit strike
- * distance — and it is replaced by the scenario's own cores the moment the
- * approach ends. A check whose shot flies elsewhere parks its own core instead.
+ * Nothing stands on the channel while the shot flies. `poseHall` holds the inlet
+ * with `setEmission(false)` and leaves the level's quota where it stands, so no
+ * core arrives and the clear specs/progression.md fires "the moment its quota is
+ * exhausted and no cores remain on the channel" never comes up — which is what
+ * lets the channel be genuinely empty, with no bystander core standing anywhere
+ * in it, until the check poses the cores its requirement is about.
  */
-export const PARKED: PosedCore[] = parkedCore();
 
 /** The charge every check fires, distinct from the cores it poses. */
 export const SHOT: ChargeId = "olivine";

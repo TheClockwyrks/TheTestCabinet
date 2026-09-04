@@ -47,7 +47,7 @@ afterEach(async () => {
 });
 
 it("appends the accepted weapon at level 1 with its timer at 0", async () => {
-  await isolate(h, { keepTaper: true });
+  await isolate(h, { taper: true });
   await h.debug.setNextOffers(OFFERED);
 
   const overlay = await openLevelUp(h);

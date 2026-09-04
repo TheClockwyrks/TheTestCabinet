@@ -24,8 +24,8 @@
 // WHY THE WORLD IS POSED AS IT IS. An isolated run holding nothing but Taper
 // at 8 and Wick 1, every driver switch off, so the tick that collects the
 // chest fires no weapon, spawns nothing, and moves nothing: what it changed is
-// the chest's doing alone. The level is `ISOLATE_LEVEL`, far above any gain,
-// so no level-up overlay competes for the tick.
+// the chest's doing alone. The `progression` switch is off with the rest, so
+// no gain is spent on a level and no level-up overlay competes for the tick.
 //
 // THE TOLERANCE. None: a slot's id and level, and a result object, are read
 // exactly.

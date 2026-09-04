@@ -1,11 +1,14 @@
 // economy/tank-upgrade-adds-its-difference — a bigger tank is not a refill.
 //
-// `specs/upgrades.md` states the arithmetic exactly: "A bigger fuel tank or hull
-// raises the maximum and adds the same amount to the current value, so a 100 to
-// 175 tank at 30/100 fuel becomes 105/175. It is not a refill: the rest is still
-// bought at the Fuel Depot." The two failures this separates are a purchase that
-// tops the tank up to the new maximum and one that raises the maximum alone and
-// leaves the fuel where it stood, so both figures are read.
+// `specs/upgrades.md`: "A bigger fuel tank or hull raises the maximum and adds
+// the same amount to the current value, so a 100 to 175 tank at 30/100 fuel
+// becomes 105/175. It is not a refill: the rest is still bought at the Fuel
+// Depot."
+//
+// THE CEILING AND WHAT IS HELD ARE TWO POINTS. This one decides that the fuel
+// held rises by exactly the difference between the two tiers — the failure it
+// separates is a purchase that tops the fuel up to the new maximum instead —
+// and `economy/tank-upgrade-raises-the-maximum` decides the ceiling itself.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual } from "../assert";
@@ -14,7 +17,7 @@ import { captureStill, createHarness, type Harness } from "../harness";
 import { openCamp } from "./camp";
 
 /** The fuel held when the tier is bought, well short of the tier-1 maximum. */
-const FUEL_BEFORE = 30;
+const BEFORE = 30;
 
 let h: Harness;
 
@@ -26,9 +29,9 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("raises maxFuel to the new tier and adds the same amount to the fuel held", async () => {
+it("adds the tier's difference to the fuel held", async () => {
   await openCamp(h);
-  await h.debug.setFuel(FUEL_BEFORE);
+  await h.debug.setFuel(BEFORE);
   await h.debug.setCredits(UPGRADE_PRICES[2]);
   await h.debug.setPanel("upgrade-shop");
 
@@ -39,10 +42,9 @@ it("raises maxFuel to the new tier and adds the same amount to the fuel held", a
   const after = await h.snapshot();
   const added = FUEL_TANK_MAX[1] - FUEL_TANK_MAX[0];
   assertEqual(after.tiers.fuel, 2, "specs/upgrades.md");
-  assertCloseTo(after.miner.maxFuel, FUEL_TANK_MAX[1], 6, "specs/upgrades.md");
   assertCloseTo(
     after.miner.fuel,
-    FUEL_BEFORE + added,
+    BEFORE + added,
     6,
     "specs/upgrades.md, the difference added rather than a refill",
   );

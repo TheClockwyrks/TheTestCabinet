@@ -21,11 +21,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { LOAD_ROSTER } from "../../src/constants";
+import { LOAD_ROSTER } from "../constants";
 import {
   captureReplay,
   createHarness,
-  holdWaveOpen,
+  holdWave,
   openYard,
   type Harness,
 } from "../harness";
@@ -46,7 +46,7 @@ afterEach(() => {
 
 it("costs each roster type's leak value on the frame it grounds out", async () => {
   openYard(h, { wave: 1, integrity: INTEGRITY });
-  holdWaveOpen(h);
+  holdWave(h);
 
   const cost = await captureReplay(h, "leak", async () => {
     const rows: number[] = [];

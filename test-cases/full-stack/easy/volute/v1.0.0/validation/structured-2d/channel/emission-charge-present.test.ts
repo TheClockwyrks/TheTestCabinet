@@ -90,6 +90,9 @@ it("draws an emitted core's charge from the charges on the channel", async () =>
   await poseHall(h, {
     level: LEVEL,
     quotaRemaining: QUOTA,
+    // The one point here that IS about the inlet, so its gate is let go
+    // (specs/instrumentation.md, `setEmission`).
+    emission: true,
     cores: spacedBlock(POSED_HEAD_S, POSED_COUNT, POSED_CHARGE),
   });
 

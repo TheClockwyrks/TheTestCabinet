@@ -50,11 +50,9 @@ import {
 import {
   approach,
   assertInFlight,
-  LEAD_STEP,
-  PARKED,
   PLUMB_SHOT_X,
-  poseFor,
   SHOT,
+  STAGE,
   UP_AIM,
 } from "./stage";
 
@@ -88,16 +86,14 @@ it("seats the fired core ahead of the core it struck from the front", async () =
     "the arrangement is inside the strike distance",
   );
 
-  await poseHall(h, { cores: PARKED, loaded: SHOT });
+  await poseHall(h, STAGE);
 
   const after = await captureReplay(h, "ahead", async () => {
     const short = await approach(h, UP_AIM);
     assertInFlight(short);
     // The struck core stands LEAD units behind the shot's path in `x`, so at the
     // strike `dot(d - c.position, forward)` is `+LEAD`: the shot arrives ahead.
-    await h.debug.poseTrain([
-      [poseFor(topRunS(PLUMB_SHOT_X - LEAD), LEAD_STEP), TARGET, null],
-    ]);
+    await h.debug.poseTrain([[topRunS(PLUMB_SHOT_X - LEAD), TARGET, null]]);
     const struck = await h.step(1);
     await h.step(SETTLE);
     return struck;

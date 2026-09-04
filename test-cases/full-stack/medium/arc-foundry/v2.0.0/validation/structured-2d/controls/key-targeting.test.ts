@@ -16,19 +16,17 @@
 // sixth.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { TARGETING_PRIORITIES } from "../../src/constants";
+import { keyFor, TARGETING_PRIORITIES } from "../constants";
 import { assertEqual, assertNotNull } from "../assert";
 import {
   captureStill,
   createHarness,
-  keyFor,
+  type Harness,
   openYard,
   pressAction,
   standComponent,
   structureById,
   targetingAfter,
-  type Harness,
 } from "../harness";
 
 /** Where the component stands: clear of the chain and of the yard edges. */

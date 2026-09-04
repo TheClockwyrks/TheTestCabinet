@@ -45,6 +45,19 @@ const SUPPLY_ACTIONS = [
 ] as const;
 
 export class DeepcoreController extends PlayerController {
+  /**
+   * The control each contact currently down was pressed on, by contact id.
+   *
+   * specs/controls.md: "A choice takes both of its edges inside one region: the
+   * press and its release for a pointer, the landing and the lift for a touch
+   * contact. Two edges falling in different regions, and an edge falling outside
+   * every region, choose nothing." So a press is remembered rather than acted on,
+   * and the release is what runs it — and only where it lands on the same
+   * control. A contact that goes down outside every region is remembered as
+   * `null`, so its release chooses nothing either.
+   */
+  private readonly pressedOn = new Map<number, string | null>();
+
   override tick(): void {
     const state = deepcoreState(this.world);
     // The controls are computed from the state as this frame opened on it,
@@ -66,9 +79,17 @@ export class DeepcoreController extends PlayerController {
     const pointer = this.input.pointer();
     state.pointer = { x: pointer.x, y: pointer.y, down: pointer.down };
     for (const sample of this.input.pointerSamples()) {
-      if (sample.type !== "down") continue;
+      if (sample.type === "down") {
+        const hit = controlAt(controls, sample.x, sample.y);
+        this.pressedOn.set(sample.id, hit ? hit.action : null);
+        continue;
+      }
+      if (sample.type !== "up") continue;
+      const pressed = this.pressedOn.get(sample.id) ?? null;
+      this.pressedOn.delete(sample.id);
+      if (pressed === null) continue;
       const hit = controlAt(controls, sample.x, sample.y);
-      if (hit) this.run(state, hit.action);
+      if (hit && hit.action === pressed) this.run(state, hit.action);
     }
     this.syncMenuToPointer(state, controls, pointer.x, pointer.y);
   }

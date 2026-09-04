@@ -37,7 +37,7 @@ afterEach(() => {
 });
 
 it("zeroes the timer on an id change so the new weapon fires at once", async () => {
-  isolate(h, { keepTaper: true });
+  isolate(h, { taper: true });
   h.debug.setWeaponCooldown(0, COUNTING);
   assertEqual(
     h.snapshot().run.weapons[0]?.cooldown,

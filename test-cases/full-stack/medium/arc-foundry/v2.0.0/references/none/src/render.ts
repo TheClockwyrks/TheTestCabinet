@@ -1502,6 +1502,32 @@ function drawBuildCursor(
 }
 
 // ---- status bar ---------------------------------------------------------------
+// One STATUS BAR READ, recorded with the rectangle it was drawn at
+// (specs/instrumentation.md). `specs/hud.md` fixes the bar's reads and their order and
+// leaves each rectangle to this build, so this is how a caller finds a read without
+// knowing where it went — which the maze-length hover of `specs/controls.md` needs,
+// because a read is not a control and `statusControls()` never reports it. It is
+// recorded disabled so the press loop steps over it: a read activates nothing.
+function readout(
+  clicks: Clickable[],
+  name: string,
+  label: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
+  clicks.push({
+    x,
+    y,
+    w,
+    h,
+    action: "noop",
+    label,
+    disabled: true,
+    readout: name,
+  });
+}
 
 function drawStatusBar(
   ctx: CanvasRenderingContext2D,
@@ -1529,6 +1555,7 @@ function drawStatusBar(
     "left",
     "700",
   );
+  readout(clicks, "charge", `${Math.floor(game.charge)}`, 26, 8, 140, 40);
 
   const low = game.integrity <= game.maxIntegrity * 0.25;
   if (A.has(INTEGRITY_ICON))
@@ -1544,12 +1571,22 @@ function drawStatusBar(
     "left",
     "700",
   );
+  readout(
+    clicks,
+    "integrity",
+    `${Math.max(0, Math.floor(game.integrity))}`,
+    176,
+    8,
+    140,
+    40,
+  );
 
   const N = game.diff.waves;
   const wnum = game.wave === 0 ? 1 : game.wave;
   text(ctx, "WAVE", 380, 20, 10, COL.text3, "left", "600", 1);
   text(ctx, `${wnum}`, 380, 36, 18, COL.text, "left", "700");
   text(ctx, `/ ${N}`, 412, 37, 13, COL.text2, "left", "500");
+  readout(clicks, "wave", `${wnum} / ${N}`, 380, 8, 80, 40);
 
   let sub = "";
   let subColor: string = COL.text2;
@@ -1568,6 +1605,9 @@ function drawStatusBar(
     sub = `${Math.round(game.waveProgress() * 100)}%`;
   }
   text(ctx, sub, 470, 37, 12, subColor, "left", "600", 1);
+  // The two CONDITIONAL reads, present only on the frames the bar is actually drawing
+  // them (specs/instrumentation.md).
+  if (game.paused) readout(clicks, "paused", sub, 464, 24, 90, 24);
 
   // The run keeps NO running score (specs/hud.md). During the post-final OVERLOAD finale, this
   // slot shows the live MAZE RATING accruing on the invincible boss; otherwise it is blank.
@@ -1582,6 +1622,15 @@ function drawStatusBar(
       COL.spark,
       "left",
       "800",
+    );
+    readout(
+      clicks,
+      "overload",
+      `${Math.round(game.mazeRating).toLocaleString()}`,
+      556,
+      8,
+      130,
+      40,
     );
   }
 
@@ -1614,6 +1663,7 @@ function drawStatusBar(
   );
   const numStr = `${mazeLen}`;
   text(ctx, numStr, mzX + 10, mzY + 28, 16, COL.arc, "left", "700");
+  readout(clicks, "maze-length", numStr, mzX, mzY, mzW, mzH);
   text(
     ctx,
     "tiles",
@@ -2503,6 +2553,7 @@ function recipeStates(
 // so each state can be tinted on its own.
 function drawRecipe(
   ctx: CanvasRenderingContext2D,
+  clicks: Clickable[],
   def: ComboDef,
   states: IngState[],
   x: number,
@@ -2537,6 +2588,25 @@ function drawRecipe(
           ? COL.legal
           : COL.text2;
     ctx.fillText(token, cx, cy);
+    // The cell as drawn, so `recipeEntries()` reports the rectangle whatever the state
+    // drew inside it is (specs/instrumentation.md). It is recorded disabled: a cell of
+    // the read-only book activates nothing.
+    clicks.push({
+      x: cx,
+      y: cy - size / 2 - 2,
+      w: tokenW,
+      h: size + 4,
+      action: "noop",
+      label: token,
+      disabled: true,
+      recipe: {
+        combo: def.combo,
+        ingredient: i,
+        type: r.type,
+        quality: r.tier,
+        state,
+      },
+    });
     cx += tokenW;
     // Trailing " + " separator (kept on the same line as the ingredient it follows).
     if (i < def.recipe.length - 1) {
@@ -2735,7 +2805,7 @@ function drawCombosBook(
       "700",
       0.5,
     );
-    drawRecipe(ctx, def, states, cxp + 12, cyp + 57, cellW - 24, 9);
+    drawRecipe(ctx, clicks, def, states, cxp + 12, cyp + 57, cellW - 24, 9);
   }
 
   // Hovering a combo floats a card describing what that tower DOES (specs/controls.md) — the
@@ -3394,7 +3464,7 @@ function drawHowto(
   text(ctx, "CONTROLS", 150, fy + 22, 12, COL.text3, "left", "700", 1.5);
   wrap(
     ctx,
-    "B press · click place / select · SHIFT-click multi-select · K keep · G downgrade · C combine · U upgrade · T target · X dismantle · F speed (1/2/4/8×) · SPACE pause · V recipes · L damage · M mute · ↑ / ↓ move · Enter confirm · Esc back",
+    "B press · click place / select · SHIFT-click multi-select · K keep · G downgrade · C combine · U upgrade · T target · X dismantle · F speed (1/2/4/8×) · SPACE pause · P pause menu · V recipes · L damage · M mute · ↑ / ↓ move · Enter confirm · Esc back",
     150,
     fy + 44,
     980,

@@ -17,7 +17,7 @@
 // would pass a check that only looked for an unharmed miner.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_BLAST_TILES } from "../../src/constants";
+import { CORE_BLAST_TILES } from "../constants";
 import { assertEqual, assertGreaterThan, assertNull } from "../assert";
 import {
   captureReplay,

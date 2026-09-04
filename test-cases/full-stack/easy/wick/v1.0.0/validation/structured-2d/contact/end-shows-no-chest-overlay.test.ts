@@ -18,7 +18,7 @@
 // item below its max level", which the second rule levels to `2`. `hp` posed
 // to `0` then stays `0` through the collection, and the tick ends fallen.
 //
-// THE POSE. `isolate` keeps Taper (its `keepTaper`) and nothing else; a chest
+// THE POSE. `isolate` places Taper (its `taper`) and nothing else; a chest
 // posed at the lamplighter's center, within `PICKUP_ITEM_RADIUS +
 // PLAYER_RADIUS` so phase 8 collects it; `hp` `0` through `setHp`;
 // `weaponFire` off so Taper does not slash. The reading is the screen, with
@@ -49,7 +49,7 @@ afterEach(() => {
 });
 
 it("ends fallen rather than on the chest overlay when the ending tick collects a chest", async () => {
-  const start = isolate(h, { keepTaper: true });
+  const start = isolate(h, { taper: true });
   assertDeepEqual(
     start.run.weapons.map((weapon) => `${weapon.id}:${weapon.level}`),
     ["taper:1"],

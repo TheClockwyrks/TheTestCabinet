@@ -5,21 +5,22 @@
 // `specs/controls.md` lists the pointer act: "move over the maze-length readout —
 // draws the full ground route on the yard".
 //
-// WHERE THE READOUT IS. No reading reports it: `statusControls` carries the bar's
-// five controls and the maze length is a read rather than a control. What
-// `specs/hud.md` does fix is the bar's order left to right — Charge, Grid
-// Integrity, wave, maze length, then the combos toggle — so the readout is
-// somewhere in the strip left of that toggle, whose rectangle `statusControls`
-// does report. The strip is therefore swept, and the pointer position that draws
-// the route is found rather than assumed.
+// WHERE THE READOUT IS. The build says. `specs/hud.md` fixes the bar's reads and
+// their left-to-right order and leaves every rectangle to the build, so
+// `specs/instrumentation.md` has the build report each read's own rectangle through
+// `statusReadouts`, with the same guarantee a control's rectangle carries: it is
+// where the read is drawn, so a pointer standing at its centre is over it. The
+// pointer is put there and nowhere else, so a conformant build that draws the read
+// on two lines, off the bar's midline, or narrower than any step a search would
+// take is hovered exactly as a player hovers it.
 //
 // WHAT COUNTS AS THE ROUTE BEING DRAWN. The yard itself, at the tile centers the
 // route runs through. On an empty Substation the first leg is the only route
 // there is between the entry at `(0, 5)` and `WP1` at `(44, 5)`: straight along
 // row `5`, `44` tiles, where every other way round is longer by at least two
 // diagonal steps. So those tile centers are where a drawn ground route has to
-// pass, and they are read with the pointer on the bar and with it off, because a
-// route that appears and never leaves is not a hover.
+// pass, and they are read with the pointer on the readout and with it off, because
+// a route that appears and never leaves is not a hover.
 //
 // THE POINTER IS THE ENGINE'S. `specs/instrumentation.md` puts no pointer
 // operation on the surface under an engine, so a hover is a real pointer event
@@ -42,21 +43,20 @@ import {
 } from "../assert";
 import {
   captureStill,
+  controlCenter,
   createHarness,
-  mapById,
-  openYard,
-  statusControl,
-  tileCenter,
+  DISTINCT,
   type Harness,
+  openYard,
+  rgbDistance,
+  sample,
+  statusReadout,
 } from "../harness";
-import { BAR_H } from "../../src/constants";
-import { DISTINCT, rgbDistance, sample } from "./reading";
+import { mapById, tileCenter } from "../constants";
 
 const MAP = "substation";
 /** Somewhere on the open yard, well clear of the chain and of the bar. */
 const OFF = { x: 500, y: 400 };
-/** How finely the strip left of the combos toggle is swept. */
-const SWEEP_STEP = 12;
 /** How many of the route's tile centers a drawn route has to reach. */
 const ENOUGH = 3;
 
@@ -94,36 +94,27 @@ it("draws the ground route while the pointer is over the maze readout", async ()
     "how many tile centers the leg gives",
   );
 
-  /** One frame with the pointer at `x` along the bar, or off the bar entirely. */
-  const readAt = (x: number | null): Promise<Pixel[]> => {
-    if (x === null) h.pointerMove(OFF.x, OFF.y);
-    else h.pointerMove(x, BAR_H / 2);
+  // The read's own rectangle, as the build reported it.
+  const readout = statusReadout(h, "maze-length");
+  assertGreaterThan(
+    readout.w * readout.h,
+    0,
+    "the area of the rectangle the build reports for its maze-length read " +
+      "(specs/instrumentation.md)",
+  );
+  const over = controlCenter(readout);
+
+  /** One frame with the pointer on the readout, or off it entirely. */
+  const readAt = (at: { x: number; y: number } | null): Promise<Pixel[]> => {
+    const point = at ?? OFF;
+    h.pointerMove(point.x, point.y);
     return sample(h, along);
   };
 
-  const combos = statusControl(h, "combos");
-  let best = 0;
-  let bestX = 0;
-  for (let x = SWEEP_STEP; x < combos.x; x += SWEEP_STEP) {
-    const bare = await readAt(null);
-    const count = moved(await readAt(x), bare);
-    if (count > best) {
-      best = count;
-      bestX = x;
-    }
-  }
-  assertGreaterThanOrEqual(
-    best,
-    ENOUGH,
-    "how many of the first leg's tile centers the yard drew over while the " +
-      `pointer swept the bar left of the combos toggle, at ${SWEEP_STEP}-unit ` +
-      "steps",
-  );
-
   // The route appears with the pointer and leaves with it: three consecutive
-  // frames, off the bar, on the readout, off the bar again.
+  // frames, off the readout, on it, off it again.
   const before = await readAt(null);
-  const hovered = await readAt(bestX);
+  const hovered = await readAt(over);
   captureStill(h, "route");
   const after = await readAt(null);
 
@@ -131,12 +122,13 @@ it("draws the ground route while the pointer is over the maze readout", async ()
     moved(hovered, before),
     ENOUGH,
     "how many of the first leg's tile centers the yard draws over with the " +
-      `pointer on the maze readout at x ${bestX}`,
+      `pointer at the centre of the reported maze-length rectangle ` +
+      `(${over.x}, ${over.y})`,
   );
   assertEqual(
     moved(after, before),
     0,
     "how many of the first leg's tile centers are still drawn over once the " +
-      "pointer has left the bar",
+      "pointer has left the readout",
   );
 });

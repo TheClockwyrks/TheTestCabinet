@@ -12,9 +12,9 @@
 // THE WORLD. An isolated `playing` run: nothing alive, nothing else dropped,
 // no weapon and no passive held, every driver switch off. Soot is the only
 // thing that scales a gain and no passive is held, so `xpMul` is `1` and the
-// gain read is the tier's own figure. `isolate` poses `ISOLATE_LEVEL` (50),
-// whose `xpToNext` is 495, so the gain crosses no threshold and opens no
-// overlay over the reading.
+// gain read is the tier's own figure. `progression` is one of the switches
+// `isolate` holds off, so the gain reaches `xp` and is spent on no level: no
+// overlay opens over the reading, whatever the build's own `xpToNext`.
 //
 // WHAT IS READ. `xp` after one real tick, with the gem gone from the field, so
 // the figure is a collection rather than a number posed beside one. The gem

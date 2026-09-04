@@ -16,15 +16,18 @@ export class Audio {
   private buffers = new Map<Name, AudioBuffer>();
   private musicSource: AudioBufferSourceNode | null = null;
   private started = false;
+  private onYard = false;
   muted = false;
 
   constructor(private readonly urls: Record<Name, string>) {}
 
-  // Called on the first user gesture: build the graph, decode the clips, loop music.
+  // Called on the first user gesture: build the graph and decode the clips. The bed is
+  // NOT started here — `specs/ui.md` loops it "under the yard from the first build phase
+  // onward", so a gesture made on the title screen opens the audio and sounds nothing.
+  // `setPlaying` is what starts and stops it.
   async resume(): Promise<void> {
     if (this.ctx) {
       if (this.ctx.state === "suspended") await this.ctx.resume();
-      if (!this.musicSource && !this.muted) this.startMusic();
       return;
     }
     const AC =
@@ -53,7 +56,30 @@ export class Audio {
       }),
     );
     this.started = true;
-    if (!this.muted) this.startMusic();
+    if (this.onYard && !this.muted) this.startMusic();
+  }
+
+  /**
+   * Whether a run is showing, so the bed loops under the yard and nowhere else.
+   *
+   * `specs/ui.md` loops `music` "under the yard from the first build phase onward", so
+   * the bed follows the run rather than the audio context: it starts when the run opens
+   * (or, if the player has not gestured yet, the moment the context does open), and it
+   * stops when the run is left.
+   */
+  setPlaying(onYard: boolean): void {
+    if (this.onYard === onYard) return;
+    this.onYard = onYard;
+    if (onYard) {
+      if (this.started && !this.muted) this.startMusic();
+      return;
+    }
+    this.stopMusic();
+  }
+
+  private stopMusic(): void {
+    this.musicSource?.stop();
+    this.musicSource = null;
   }
 
   private startMusic(): void {
@@ -77,7 +103,8 @@ export class Audio {
         0.02,
       );
     }
-    if (!this.muted && this.started && !this.musicSource) this.startMusic();
+    if (!this.muted && this.started && this.onYard && !this.musicSource)
+      this.startMusic();
   }
 
   // Sound one cue on the update that raised it (specs/ui.md). How often that happens is

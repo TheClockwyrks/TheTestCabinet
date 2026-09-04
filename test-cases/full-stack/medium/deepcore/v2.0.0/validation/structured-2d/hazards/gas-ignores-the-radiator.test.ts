@@ -13,7 +13,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
-import { MAX_TIER, RADIATOR_TIERS } from "../../src/constants";
+import { MAX_TIER, RADIATOR_TIERS } from "../constants";
 import {
   captureReplay,
   createHarness,

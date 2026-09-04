@@ -24,16 +24,14 @@ import { assertContains, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
-  openYard,
+  drew,
+  figures,
   type Harness,
+  openYard,
+  recipeCells,
+  type Region,
 } from "../harness";
-import {
-  COMBOS,
-  COMBO_DAMAGE_MULT,
-  STAGE_H,
-  STAGE_W,
-} from "../../src/constants";
-import { drew, figures, type Region } from "./reading";
+import { COMBO_DAMAGE_MULT, COMBOS, STAGE_H, STAGE_W } from "../constants";
 
 /** The overlay covers the stage, so the whole of it is read. */
 const OVERLAY: Region = { x0: 0, y0: 0, x1: STAGE_W, y1: STAGE_H };
@@ -92,5 +90,23 @@ it("lists every one of the twelve towers with its stats", async () => {
           `${combo.name}'s recipe calls for`,
       );
     }
+
+    // And the book draws the recipe EXACTLY: one cell per ingredient, in the
+    // order `specs/combinations.md` lists them, each at the type and quality that
+    // recipe calls for. `specs/hud.md` requires "every ingredient of every
+    // recipe" to be drawn, and `specs/instrumentation.md` has the build report
+    // each cell it drew, so a book that drew eleven of the twelve recipes, or one
+    // recipe short of an ingredient, fails here rather than passing on the names
+    // its neighbours happened to draw.
+    assertEqual(
+      recipeCells(h, combo.id)
+        .map((cell) => `${cell.type}@${cell.quality}`)
+        .join(" + "),
+      combo.recipe
+        .map((ingredient) => `${ingredient.type}@${ingredient.tier}`)
+        .join(" + "),
+      `the ingredient cells the recipe book draws for the ${combo.name} ` +
+        "(specs/combinations.md, specs/hud.md)",
+    );
   }
 });

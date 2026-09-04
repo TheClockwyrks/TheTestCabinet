@@ -20,9 +20,10 @@
 // really moved.
 //
 // WHY THE SCREENS ARE REACHED AS THEY ARE. Each is entered through the debug
-// surface, "exactly as the real transition into it enters it"
-// (specs/instrumentation.md, `setScreen`), so a build with a broken menu route
-// still reaches the screen this point is about. On each of the three the item
+// surface alone, so a build with a broken menu route still reaches the screen
+// this point is about: the title by `setScreen`, and the end screen by the
+// ending that reaches it, "the fallen ending is `setHp` at `0` and one tick"
+// (specs/instrumentation.md). On each of the three the item
 // the press lands on exists, since `title` carries three items and both of the
 // others carry at least two. The level-up overlay is opened
 // from an isolated night with nothing on the field and every driver switch off,
@@ -37,6 +38,7 @@ import { assertEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
+  endFallen,
   isolate,
   onCue,
   openLevelUp,
@@ -80,7 +82,8 @@ it("plays menu-move on the frame a highlight moves on title, levelup, and fallen
     "menu-move cues on the overlay's frame",
   );
 
-  poseScene(h, "fallen");
+  isolate(h, { keepTaper: true });
+  await endFallen(h);
   const onFallen = onCue(h);
 
   const fallen = await tap(h, DOWN_KEY);

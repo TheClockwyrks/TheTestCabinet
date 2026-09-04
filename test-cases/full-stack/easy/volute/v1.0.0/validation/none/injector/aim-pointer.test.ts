@@ -21,15 +21,12 @@
 // readings say the pointer was read. Both expected bearings are unchanged.
 //
 // THE HALL. The pointer is live on `playing` alone (specs/controls.md, "What
-// each screen reads"), so the level has to stay open. An exhausted quota over
-// an empty channel clears the level on the next tick (specs/channel.md, "The
-// order of a tick", step 6), which would take the screen off `playing` — so one
-// core is parked at the inlet (`parkedCore()`), which specs/channel.md's
-// polyline puts at `(40, 40)`, far from the injector and from anything this
-// check reads. It rides the feed at level 1's 22 units/s
-// (specs/progression.md), so two ticks move it by under a unit. Nothing else is
-// on the channel and no shot is fired: the aim is the only thing this check
-// touches.
+// each screen reads"), so the level has to stay open. `poseHall` holds the inlet
+// with `setEmission(false)` and leaves the quota unexhausted, so
+// specs/progression.md's clear condition ("the moment its quota is exhausted and
+// no cores remain on the channel") never fires and the screen holds `playing`
+// over an EMPTY channel. Nothing stands on the channel, nothing arrives, and no
+// shot is fired: the aim is the only thing this check touches.
 //
 // TOLERANCE. `ANGLE_TOL`, the case's standing +/- 1 degree. Neither reading is
 // integrated over ticks — each is one bearing of a posed geometry, so the only
@@ -45,7 +42,6 @@ import { ANGLE_TOL, INJECTOR } from "../constants";
 import {
   captureStill,
   createHarness,
-  parkedCore,
   poseHall,
   type Harness,
 } from "../harness";
@@ -67,7 +63,7 @@ afterEach(async () => {
 });
 
 it("sets the aim to the angle from the injector's center to the pointer", async () => {
-  await poseHall(h, { cores: parkedCore() });
+  await poseHall(h);
 
   // "An update resolves the pointer first": the move is delivered, then one tick
   // runs, then the aim is read off the state that tick left.

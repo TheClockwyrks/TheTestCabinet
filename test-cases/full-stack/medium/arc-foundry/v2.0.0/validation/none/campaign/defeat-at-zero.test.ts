@@ -45,7 +45,7 @@ afterEach(async () => {
 
 it("puts the run on the overload screen the frame a leak empties the counter", async () => {
   await openYard(h, { wave: 4, integrity: INTEGRITY });
-  const bystander = await holdWaveOpen(h);
+  await holdWaveOpen(h);
 
   const before = await h.snapshot();
   assertEqual(before.phase, "wave", "the run is mid-wave");
@@ -64,8 +64,9 @@ it("puts the run on the overload screen the frame a leak empties the counter", a
     "the frame the counter emptied, the run is on the defeat screen",
   );
   assertEqual(
-    before.units.some((unit) => unit.id === bystander),
+    before.waveHeld,
     true,
-    "a unit of the wave was still on the yard when the counter emptied",
+    "the wave's clear-and-pay resolution was held while the counter emptied " +
+      "(specs/instrumentation.md)",
   );
 });

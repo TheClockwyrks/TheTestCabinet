@@ -60,6 +60,7 @@ import {
 import {
   captureReplay,
   createHarness,
+  fireAt,
   type Harness,
   type VoluteSnapshot,
 } from "../harness";
@@ -105,12 +106,14 @@ afterEach(async () => {
 it("discards a fired core once its center has left the field", async () => {
   // The level is opened and the channel emptied by hand rather than through
   // `poseHall`, because this is the one scenario that needs the quota LEFT as the
-  // level start leaves it — see the note above.
+  // level start leaves it — see the note above. The inlet is held, so the empty
+  // channel stays empty and the shot flies over a hall holding nothing.
   await h.debug.startLevel(1);
+  await h.debug.setEmission(false);
   await h.debug.clearTrain();
 
   const history = await captureReplay(h, "discard", async () => {
-    await h.debug.fire(OPENING_AIM);
+    await fireAt(h, OPENING_AIM);
     return h.stepWatching(DRIVE_TICKS);
   });
 

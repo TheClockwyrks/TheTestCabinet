@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { PLASTIC_EXPLOSIVES_RADIUS } from "../../src/constants";
+import { PLASTIC_EXPLOSIVES_RADIUS } from "../constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import {
   AFTERMATH_FRAMES,

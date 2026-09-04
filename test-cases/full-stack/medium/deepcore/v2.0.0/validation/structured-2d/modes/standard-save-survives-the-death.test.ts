@@ -17,7 +17,7 @@
 // body and drill gated throughout.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GAME_OVER_SAVE_ITEMS } from "../../src/constants";
+import { GAME_OVER_SAVE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   ACTION_KEY,

@@ -26,7 +26,7 @@
 // that fixture.
 //
 // THE DRIVE, AND WHY THE FRAME IS SHORT. The title through `setScreen`,
-// "exactly as the real transition into it enters it"
+// which "sets `screen` to `name` ... with `menuIndex` ... `0`"
 // (specs/instrumentation.md), then a primary press at the middle of the
 // rectangle the build reported for position `0`. "The frame's update then runs
 // on the screen the edges left: a frame whose press enters `playing` ... runs

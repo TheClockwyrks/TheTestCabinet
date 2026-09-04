@@ -27,6 +27,7 @@ import { END_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,
+  endFallen,
   isolate,
   tap,
   type Harness,
@@ -44,7 +45,7 @@ afterEach(() => {
 
 it("wraps the fallen highlight from the last item to the first", async () => {
   isolate(h);
-  h.debug.setScreen("fallen");
+  await endFallen(h);
   const last = END_ITEMS.length - 1;
   let staged = h.snapshot();
   for (let press = 0; press < last; press += 1) {

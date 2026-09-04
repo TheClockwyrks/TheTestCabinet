@@ -52,6 +52,10 @@ afterEach(async () => {
 it("places no core at the inlet once the quota is spent", async () => {
   await poseHall(h, {
     level: 1,
+    // The inlet is the faculty this point is about, so its gate is left OPEN and
+    // the quota alone is what has to stop it. A hall driven with the gate closed
+    // would place nothing whatever the quota, and the reading would be vacuous.
+    emission: true,
     quotaRemaining: 0,
     cores: [[START_S, "halide", null]],
   });

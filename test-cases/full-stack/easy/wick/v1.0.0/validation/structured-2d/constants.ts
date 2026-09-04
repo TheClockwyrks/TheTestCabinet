@@ -1,17 +1,22 @@
 // Wick — the figures the specification fixes, as this suite states them.
 // CASE-PROVIDED.
 //
-// Every value here is DERIVED FROM THE RENDERED SPECS, file and statement
+// Every FIGURE here is DERIVED FROM THE RENDERED SPECS, file and statement
 // named beside each group, and none is imported from the build. The seeded
 // `src/constants.ts` carries the same figures for the build's own use; this
 // file restates them so a check's bound traces to the specification rather
 // than to anything the workspace holds, and so a build that edited its
 // constants would still be graded against the spec.
 //
+// The one section that DOES read the build is the last, "What the
+// specification leaves to the build": values the specs leave open, read to
+// drive the build or to locate what it drew and compared against nothing.
+// This file is the project's only import site for the build's own modules.
+//
 // Every length is in world units (the stage's units), every rate is PER
 // SECOND, every duration is in SECONDS, and a count of ticks is stated as one.
-// The tolerances at the end are the suite's own, each with the reason it is
-// honest.
+// The tolerances under "The suite's own figures" are the suite's own, each
+// with the reason it is honest.
 
 /* ---- The stage and the tick (specs/overview.md, specs/world.md) --------- */
 
@@ -1474,14 +1479,6 @@ export const DEFAULT_SEED = 1;
 /* ---- The suite's own figures -------------------------------------------- */
 
 /**
- * The level an isolated world is posed at. `xpToNext(50)` is `495`, more
- * experience than any scenario's kills drop, so no gain a check's kills
- * produce crosses a threshold and opens an overlay mid-scenario. A check that
- * reads `level` poses its own.
- */
-export const ISOLATE_LEVEL = 50;
-
-/**
  * Tolerance for a figure the build reaches by one or two real-valued
  * operations: a table value times a multiplier, a sum of two reals. The
  * specification states these figures exactly and binary floating point
@@ -1589,3 +1586,19 @@ export const PIXEL_CHANNEL_EPS = 8;
  * silence: a hundredth of full scale, 40 dB down, inaudible under any mix.
  */
 export const SILENCE_FLOOR = 0.01;
+
+/* ---- What the specification leaves to the build ------------------------- */
+//
+// Read to drive the build or to locate what it drew, never compared against.
+// This is the project's ONE import site for the build's own modules, so the
+// names it takes are a list a reader can count.
+//
+// `BACKGROUND`: `specs/overview.md` fixes that `src/game.ts` exports it, that
+// `src/main.ts` hands it to the engine as the colour the canvas is cleared to,
+// and that the letterbox bars around the fitted stage carry it. Which colour
+// it is belongs to the build ("Wick fixes no palette, no font, and no styling
+// for any screen", `specs/ui.md`), so the harness has to ask for it to stand
+// the engine up the way `src/main.ts` does, and the letterbox check has to ask
+// for it to know which colour the bars owe.
+
+export { BACKGROUND } from "../src/game";

@@ -81,7 +81,7 @@ it("resumes a banked Hardcore expedition through the title's CONTINUE", async ()
   assertEqual(
     resumed.credits,
     CREDITS,
-    "specs/gameplay.md: the resumed expedition is the one that was banked",
+    "specs/expedition.md: the resumed expedition is the one that was banked",
   );
   assertEqual(
     resumed.hasSave,

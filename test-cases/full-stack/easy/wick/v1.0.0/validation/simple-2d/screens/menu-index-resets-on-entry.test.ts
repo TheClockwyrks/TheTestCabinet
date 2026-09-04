@@ -1,20 +1,22 @@
-// screens/menu-index-resets-on-entry — arriving anywhere sets menuIndex to 0.
+// screens/menu-index-resets-on-entry — arriving anywhere sets the highlight
+// the rule gives that arrival.
 //
-// WHAT THIS DECIDES. One thing, over all nine screens: `menuIndex` reads 0 on
-// arrival, so no screen inherits the highlight of the screen before it. The
-// nine share one point because they exercise one rule the same way.
+// WHAT THIS DECIDES. One thing, over all nine screens: no screen inherits the
+// highlight of the screen before it. `menuIndex` reads 0 on arrival everywhere
+// but `title`, which selects the entry the arriving transition led away from.
+// The nine share one point because they exercise one rule the same way.
 //
 // THE SPEC IT RESTS ON.
 //   specs/state.md (`WickState`): "`menuIndex`: the highlighted item on
 //   whichever vertical menu `screen` is showing. It is `0` on entering every
-//   screen, and on a screen with no menu it stays `0`."
-//   specs/controls.md ("What each screen reads"): "`menuIndex` is `0` on
-//   entering every screen, and on a screen with no highlight it stays `0`."
-//   specs/ui.md: "`menuIndex` is `0` on arriving" on `title` and on `paused`,
-//   "`menuIndex` is `0` on opening" on `levelup`, "`menuIndex = 0`" on `howto`
-//   and on `title` by `TITLE` and by `MAIN MENU`, and "`menuIndex`,
-//   `almanacTab`, and `almanacScroll` all `0`" on `almanac`. `chest` states no
-//   index of its own, so the rule above is the whole of what it must obey.
+//   screen but `title`, which selects the entry that led away from it as
+//   `specs/ui.md` states, and on a screen with no menu it stays `0`."
+//   specs/controls.md ("What each screen reads"): the same sentence.
+//   specs/ui.md: "`menuIndex` is `0` on arriving" on `paused`, "`menuIndex` is
+//   `0` on opening" on `levelup`, and "`menuIndex`, `almanacTab`, and
+//   `almanacScroll` all `0`" on `almanac`; `TITLE` on an end screen "returns to
+//   `title` with `LIGHT THE LAMP` selected". `chest` states no index of its
+//   own, so the rule above is the whole of what it must obey.
 //   specs/progression.md ("Choosing"): "When level-ups remain queued the next
 //   overlay opens immediately, with a fresh pool ... otherwise `screen` returns
 //   to `playing`", both of which are arrivals this point reads.
@@ -71,7 +73,7 @@ afterEach(() => {
   h.dispose();
 });
 
-it("arrives on every screen with the highlight on the first item", async () => {
+it("arrives on every screen with the highlight the rule gives it", async () => {
   // almanac, entered from the title with its second item highlighted.
   await highlightTitleItem(TITLE_ITEMS.indexOf("THE ALMANAC"));
   const almanac = await tap(h, "Enter");
@@ -174,7 +176,11 @@ it("arrives on every screen with the highlight on the first item", async () => {
     "title",
     "the screen the end menu's second item opened",
   );
-  assertEqual(title.menuIndex, 0, "the highlight on arriving at the title");
+  assertEqual(
+    title.menuIndex,
+    TITLE_ITEMS.indexOf("LIGHT THE LAMP"),
+    "the entry selected on arriving at the title from an end screen",
+  );
 
   // dawn, entered by the tick that crosses into DAWN_TIME.
   isolate(h);

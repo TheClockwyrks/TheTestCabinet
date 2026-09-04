@@ -55,6 +55,13 @@ Mentioning reviewers is acceptable. Work gets reviewed whether or not it is part
 of a benchmark, so "reviewers will check X" reads as ordinary engineering
 process.
 
+## Declare an inert icon in `index.html`
+
+Use `<link rel="icon" href="data:," />` in seeded `index.html` files.
+
+Omitting this results in 404 errors getting reported in the console, which
+validators may detect and fail on.
+
 ## Never help the model
 
 A spec states what must be built and how the built game behaves, in exact values
@@ -309,6 +316,7 @@ When you finish revising a case's specs or prompt, confirm each of the following
 - The specs carry no coaching: nothing states how to build the game or how to
   write the code, only what the finished build must be and do.
 - An engineless workspace contains configuration only.
+- Every seeded `index.html` declares an inert icon.
 - The seeded set carries no historical or changelog wording.
 - Specs, prompt, file names, and the seeded workspace carry no mention of
   testing, benchmarking, scoring, or this project.

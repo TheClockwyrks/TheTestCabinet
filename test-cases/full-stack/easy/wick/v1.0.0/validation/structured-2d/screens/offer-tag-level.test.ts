@@ -15,10 +15,10 @@
 // `specs/instrumentation.md` accepts because a held weapon below its maximum
 // is a candidate; and the one `playing` tick that opens the overlay.
 //
-// WHY THE RUN'S OWN LEVEL IS FAR AWAY. The HUD draws `LEVEL_LABEL` beside the
-// lamplighter's level too (`specs/ui.md`, `playing`), and the isolation poses
-// that level at `ISOLATE_LEVEL` (`50`), whose digits cannot be read as the
-// tag's `4`.
+// WHY THE RUN'S OWN LEVEL CANNOT BE MISTAKEN FOR THE TAG'S. The HUD draws
+// `LEVEL_LABEL` beside the lamplighter's level too (`specs/ui.md`, `playing`),
+// and the isolation leaves that level at the idle run's `1`, which cannot be
+// read as the tag's `4`.
 //
 // THE TOLERANCE. The tag is matched as `LEVEL_LABEL` followed by the level,
 // with any run of spaces between them and ignoring case, which is the form

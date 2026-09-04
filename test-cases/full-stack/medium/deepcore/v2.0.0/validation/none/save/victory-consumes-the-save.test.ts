@@ -1,6 +1,6 @@
 // save/victory-consumes-the-save — winning spends the save.
 //
-// specs/gameplay.md: "A Hardcore death deletes the save. A victory consumes it. A
+// specs/expedition.md: "A Hardcore death deletes the save. A victory consumes it. A
 // Standard death leaves it intact." So the title reached after a launch offers no
 // `CONTINUE` back into the expedition that has already been won.
 //
@@ -72,7 +72,7 @@ it("leaves no save to continue once the rocket has launched", async () => {
   assertEqual(
     won.hasSave,
     false,
-    "specs/gameplay.md: a victory consumes the save",
+    "specs/expedition.md: a victory consumes the save",
   );
 
   await h.debug.setScreen("title");

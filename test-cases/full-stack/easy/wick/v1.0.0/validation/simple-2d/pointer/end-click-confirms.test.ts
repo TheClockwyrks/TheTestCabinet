@@ -24,9 +24,10 @@
 // old run differs from that fixture.
 //
 // THE DRIVE, AND WHY THE FRAME IS SHORT. An isolated run loaded with a clock,
-// kills, and a level, ended through `setScreen("fallen")`, which "Ends the run
-// exactly as that ending does, the run kept for the end screen to report"
-// (specs/instrumentation.md), so the ending's own rules are not on the way in.
+// kills, and a level, ended the way the rule ends it: "the fallen ending is
+// `setHp` at `0` and one tick" (specs/instrumentation.md), which is what
+// `endFallen` composes, so the end screen is reached by the ending rather than
+// around it.
 // "A frame whose press enters `playing` ... runs that frame's ticks"
 // (specs/controls.md), so a whole frame would leave the run one tick old; a
 // frame of half a tick delivers the same press and consumes none, since "A tick
@@ -42,6 +43,7 @@ import { END_ITEMS, FRESH_RUN } from "../constants";
 import {
   captureStill,
   createHarness,
+  endFallen,
   isolate,
   runFields,
   type Harness,
@@ -65,7 +67,7 @@ it("starts a fresh run when TRY AGAIN is clicked on the fallen screen", async ()
   isolate(h, { level: 11 });
   h.debug.setTick(6000);
   h.debug.setKills(52);
-  h.debug.setScreen("fallen");
+  await endFallen(h);
   const before = h.snapshot();
   assertEqual(before.screen, "fallen", "the screen the click lands on");
   assertEqual(before.menuIndex, CLICKED, "the highlight resting on TRY AGAIN");

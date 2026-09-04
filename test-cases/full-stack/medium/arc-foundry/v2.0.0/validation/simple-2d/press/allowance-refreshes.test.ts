@@ -12,8 +12,7 @@
 // every unit it released is gone, so the next build phase opens on its own.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { STAMPS_PER_LEVEL } from "../../src/constants";
+import { STAMPS_PER_LEVEL } from "../constants";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import {
   captureStill,

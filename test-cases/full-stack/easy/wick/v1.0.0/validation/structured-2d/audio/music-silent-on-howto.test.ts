@@ -6,12 +6,12 @@
 // "Exactly when" makes the rule two-sided, and `howto` falls on the silent
 // side, so the threshold is `false` on every frame of it.
 //
-// WHY THE WORLD IS POSED AS IT IS. `reset` to the title, then `howto` posed,
-// which `specs/instrumentation.md` makes the screen's own real entry:
-// "`howto` from any: Enters the how-to screen exactly as confirming
-// `HOW TO PLAY` does: the idle run." Posing it keeps the title menu out of an
-// audio point, so a build with a broken menu fails the menu points and is
-// decided here on its audio alone.
+// WHY THE WORLD IS POSED AS IT IS. `reset` to the title, whose idle run the
+// pose then carries, then `howto` posed, which `specs/instrumentation.md`
+// makes "Sets `screen` to `name` ... with `menuIndex`, `almanacTab`, and
+// `almanacScroll` all `0`". Posing it keeps the title menu out of an audio
+// point, so a build with a broken menu fails the menu points and is decided
+// here on its audio alone.
 //
 // `howto` is driven as well as `title` because the two are separate screens
 // with separate entries, and a build that starts the bed on the way into the

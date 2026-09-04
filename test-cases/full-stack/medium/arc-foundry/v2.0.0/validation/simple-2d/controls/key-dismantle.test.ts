@@ -15,17 +15,16 @@
 // that lands is the reading that says they are.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
 import {
   captureStill,
   createHarness,
-  keyFor,
+  type Harness,
   openYard,
   pressAction,
   standComponent,
-  type Harness,
 } from "../harness";
+import { keyFor } from "../constants";
 
 /**
  * An anchor whose footprint lies across the Substation's opening leg.

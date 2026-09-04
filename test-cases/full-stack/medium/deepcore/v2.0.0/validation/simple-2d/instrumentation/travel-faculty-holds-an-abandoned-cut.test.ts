@@ -25,7 +25,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { BAND_HEALTH } from "../../src/constants";
+import { BAND_HEALTH } from "../constants";
 import {
   ACTION_KEY,
   captureReplay,

@@ -20,12 +20,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
-import {
-  callsTo,
-  captureStill,
-  COLLECTOR_WAYPOINT,
-  type Harness,
-} from "../harness";
+import { callsTo, captureStill, type Harness } from "../harness";
 import {
   LEAK_FROM,
   createRunHarness,
@@ -33,6 +28,7 @@ import {
   openFinalWave,
   RUN_HZ,
 } from "./runs";
+import { COLLECTOR_WAYPOINT } from "../constants";
 
 /** One short of the end: any unit's leak takes the counter to zero or below. */
 const INTEGRITY = 1;

@@ -24,8 +24,8 @@
 //
 // WHY THE NIGHT IS POSED FIFTEEN TIMES OVER. Each cue has exactly one event, so
 // there is one scene per cue and no scene can be shared. Every scene is an
-// isolated night — `isolate` resets, enters `playing`, empties the field, drops
-// the fresh run's Taper and holds all seven driver switches — and turns on only
+// isolated night — `isolate` resets, enters `playing`, empties the field, holds
+// no weapon and holds all nine driver switches — and turns on only
 // the faculty its own event needs, so no other cue's event can happen inside
 // it. A pose "sounds nothing" (specs/instrumentation.md), so every sound
 // recorded came from the ticks and frames run after a pose.

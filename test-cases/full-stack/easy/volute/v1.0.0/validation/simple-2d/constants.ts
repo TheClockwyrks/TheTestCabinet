@@ -264,8 +264,23 @@ export const BORE_RADIUS = 90;
 /** "`sightline` | The aim ray is drawn ... | `12` s". */
 export const SIGHTLINE_DURATION = 12;
 
-/** The kinds that become the active machinery; `bore` never does. */
+/**
+ * The kinds that become the active machinery; `bore` never does.
+ *
+ * `specs/machinery.md` — "The active machinery": "At most one of `choke`,
+ * `backflow` and `sightline` is active at a time ... `bore` never becomes the
+ * active machinery".
+ */
 export const TIMED_MACHINERY = ["choke", "backflow", "sightline"] as const;
+
+/**
+ * One of the three kinds `grantMachinery` grants.
+ *
+ * "Grants `kind`, one of the three timed machinery kinds — `choke`, `backflow`,
+ * or `sightline`" (specs/instrumentation.md). A `bore` is reached by extracting a
+ * run that carries a `bore` mark, never by a pose.
+ */
+export type TimedMachineryKind = (typeof TIMED_MACHINERY)[number];
 
 /** How long each timed kind runs, in seconds. */
 export const MACHINERY_DURATION: Readonly<Record<MachineryKind, number>> = {
@@ -449,11 +464,25 @@ export const BINDINGS = {
   swap: ["KeyX"],
   /** "`confirm` | edge | starts a run, and dismisses an ending". */
   confirm: ["Enter", "Space"],
-  /** "`pause` | edge | pauses, and resumes". */
-  pause: ["Escape"],
+  /** "`pause` | edge | pauses, and resumes"; "bound to `Escape` and to `KeyP`". */
+  pause: ["Escape", "KeyP"],
   /** "`mute` | edge | toggles the audio between muted and unmuted". */
   mute: ["KeyM"],
 } as const;
+
+/**
+ * The engine's touch control scheme the page stands the engine up with.
+ *
+ * "export const LAYOUT = \"dpad-4-two-buttons\";" (`src/constants.ts`). The
+ * seeded set fixes it and `specs/overview.md` ("What stays as it is") lists both
+ * `src/main.ts`, "the entry point ... it stands the engine up over the page's
+ * canvas", and `src/constants.ts`, "holding every figure this specification
+ * fixes", among the files a build does not change — so this is the case's figure
+ * like every other one here, not the build's choice, and it is transcribed rather
+ * than read out of the tree under test. The harness stands its own engine up with
+ * it so a check drives the engine the page drives.
+ */
+export const LAYOUT = "dpad-4-two-buttons";
 
 /** "The backtick toggles the engine's debug overlay on every screen." */
 export const OVERLAY_KEY = "Backquote";
@@ -500,15 +529,22 @@ export const DEFAULT_SEED = 1;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
-  "start",
+  "setScreen",
+  "setLevel",
+  "setScore",
+  "setCells",
+  "setChainStep",
   "startLevel",
   "poseTrain",
   "clearTrain",
   "setLoaded",
   "setQueued",
+  "setAim",
   "fire",
   "setPressure",
   "setQuotaRemaining",
+  "setEmission",
+  "setFeed",
   "grantMachinery",
   "pause",
   "resume",
@@ -545,6 +581,8 @@ export const SNAPSHOT_FIELDS = [
   "injector",
   "projectiles",
   "machinery",
+  "emission",
+  "feed",
   "muted",
   "simTime",
   "rngState",

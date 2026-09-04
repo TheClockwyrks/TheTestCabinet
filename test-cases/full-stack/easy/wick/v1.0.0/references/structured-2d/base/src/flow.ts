@@ -19,6 +19,7 @@ import {
   CUES,
   TICK_DT,
   TICK_EPSILON,
+  TITLE_ITEMS,
   type ActionName,
   type CueName,
 } from "./constants";
@@ -34,6 +35,15 @@ import {
   type SwitchName,
   type WickState,
 } from "./state";
+
+/** `LIGHT THE LAMP`, the title entry a run leads away from and back to. */
+const TITLE_LIGHT_THE_LAMP = TITLE_ITEMS.indexOf("LIGHT THE LAMP");
+
+/** `THE ALMANAC`, the entry `back` on the almanac returns to. */
+const TITLE_THE_ALMANAC = TITLE_ITEMS.indexOf("THE ALMANAC");
+
+/** `HOW TO PLAY`, the entry `back` on the how-to screen returns to. */
+const TITLE_HOW_TO_PLAY = TITLE_ITEMS.indexOf("HOW TO PLAY");
 
 /** Where a tick's or a menu's cues go. */
 export type CueSink = (cue: CueName) => void;
@@ -105,10 +115,19 @@ export function startRun(state: WickState): void {
   state.accumulator = 0;
 }
 
-/** Discard the run and return to `title`. */
-export function toTitle(state: WickState): void {
+/**
+ * Discard the run and return to `title` with `selected` highlighted:
+ * `menuIndex` is `0` "on entering every screen but `title`, which selects the
+ * entry that led away from it" (specs/ui.md). `LIGHT THE LAMP` is the default,
+ * the entry every transition but the two menu screens' `back` leads away from.
+ */
+export function toTitle(
+  state: WickState,
+  selected: number = TITLE_LIGHT_THE_LAMP,
+): void {
   state.run = idleRun();
   enter(state, "title");
+  state.menuIndex = selected;
   state.accumulator = 0;
 }
 
@@ -117,6 +136,11 @@ export function toHowto(state: WickState): void {
   state.run = idleRun();
   enter(state, "howto");
   state.accumulator = 0;
+}
+
+/** Leave `howto` the way `back` there does: the title, `HOW TO PLAY` selected. */
+export function leaveHowto(state: WickState): void {
+  toTitle(state, TITLE_HOW_TO_PLAY);
 }
 
 /** Discard the run and enter `almanac`, on its first tab and first entry. */
@@ -317,14 +341,14 @@ export function handleAction(
       else if (action === "confirm") confirmItem(state, onScreen, sink);
       break;
     case "howto":
-      if (action === "back") toTitle(state);
+      if (action === "back") toTitle(state, TITLE_HOW_TO_PLAY);
       break;
     case "almanac":
       if (action === "up") moveHighlight(state, -1, sink);
       else if (action === "down") moveHighlight(state, 1, sink);
       else if (action === "left") moveTab(state, -1, sink);
       else if (action === "right") moveTab(state, 1, sink);
-      else if (action === "back") toTitle(state);
+      else if (action === "back") toTitle(state, TITLE_THE_ALMANAC);
       break;
     case "playing":
       if (action === "pause" || action === "back") pause(state);

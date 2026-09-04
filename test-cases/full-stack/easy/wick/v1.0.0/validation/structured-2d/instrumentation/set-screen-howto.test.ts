@@ -1,14 +1,20 @@
-// Wick — instrumentation/set-screen-howto: `setScreen('howto')` from `title`
-// enters `howto` with `menuIndex` 0 and the idle run.
+// Wick — instrumentation/set-screen-howto: `setScreen('howto')` shows the
+// how-to screen with `menuIndex` `0` and the run standing as it was.
 //
-// WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`, the
-// `setScreen` table, row `howto` from any: "Enters the how-to screen exactly
-// as confirming `HOW TO PLAY` does: the idle run", with `menuIndex` `0`.
-// `specs/state.md`, "The idle run", is `IDLE_RUN`.
+// WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`,
+// `setScreen`: "Sets `screen` to `name`, one of the `Screen` values, with
+// `menuIndex`, `almanacTab`, and `almanacScroll` all `0`. Nothing else
+// changes: the run, the loadout, `offers`, `nextOffers`, `chestResult`,
+// `pendingLevelUps`, `rngState`, `simTime`, and the driver switches all stand
+// exactly as they were". `specs/state.md`, "The idle run", is the table
+// `IDLE_RUN` transcribes, which is the run `reset` leaves behind.
 //
-// THE POSE. `reset` to the title, the highlight moved off 0 by a real press
-// so `menuIndex` 0 is read as the pose's doing, then the pose, read at the
-// call.
+// THE POSE. `reset` to the title, the highlight moved off `0` by a real press
+// so `menuIndex` `0` is read as the pose's doing, then the pose, read at the
+// call. The run behind the pose is the idle one `reset` restored, so reading
+// it back unchanged is reading that the pose left it alone.
+//
+// THE TOLERANCE. None: a screen name, a whole index, and an exact run.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
@@ -30,7 +36,7 @@ afterEach(() => {
   h.dispose();
 });
 
-it("enters howto with menuIndex 0 and the idle run", async () => {
+it("shows howto with menuIndex 0 and the run as it stood", async () => {
   h.reset();
   const moved = await tap(h, "ArrowDown");
   assertEqual(moved.menuIndex, 1, "menuIndex moved off 0 before the pose");

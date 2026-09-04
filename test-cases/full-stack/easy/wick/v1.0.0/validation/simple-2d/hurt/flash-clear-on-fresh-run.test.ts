@@ -1,11 +1,11 @@
 // hurt/flash-clear-on-fresh-run — a fresh run starts with no hurt flash, even
 // when the run before it ended with one running.
 //
-// THE RULE, FROM THE SPEC. specs/ui.md ("A fresh run"): "`LIGHT THE LAMP`,
-// `TRY AGAIN`, and the debug surface's `setScreen("playing")` each begin a
-// fresh run, and whatever the previous run held is discarded. A fresh run has
-// the run clock at `0:00`, the lamplighter at the world origin `(0, 0)` with
-// `hp = BASE_MAX_HP` (`100`), `facing = "right"`, and `hurtFlash` at `0`".
+// THE RULE, FROM THE SPEC. specs/ui.md ("A fresh run"): "`LIGHT THE LAMP` and
+// `TRY AGAIN` each begin a fresh run, and whatever the previous run held is
+// discarded. A fresh run has the run clock at `0:00`, the lamplighter at the
+// world origin `(0, 0)` with `hp = BASE_MAX_HP` (`100`), `facing = "right"`,
+// and `hurtFlash` at `0`".
 // specs/world.md ("Contact damage") says the same of it: `hurtFlash` "is `0` on
 // the idle run and on a fresh run".
 //
@@ -16,10 +16,11 @@
 //
 // THE DRIVE. An isolated night with `enemyContact` the only switch on and one
 // rat posed 20 units along +x lands its hit on the first tick, which arms the
-// flash. The run is then ended through `setScreen("fallen")`, which "Ends the
-// run exactly as that ending does, the run kept for the end screen to report"
-// (specs/instrumentation.md), so the ending's own rules are not on the way in
-// and the flash the hit armed is still running on the end screen. `confirm` is
+// flash. The run is then ended the way the rule ends it: "the fallen ending is
+// `setHp` at `0` and one tick" (specs/instrumentation.md), which is what
+// `endFallen` composes. That ending tick counts the flash down by one tick of
+// `TICK_DT` and no more, so the flash the hit armed is still running on the end
+// screen. `confirm` is
 // then pressed on `END_ITEMS`' first item: "`menuIndex` is `0` on arriving" and
 // "`TRY AGAIN` starts a fresh run and sets `screen = playing`" (specs/ui.md).
 //
@@ -44,6 +45,7 @@ import { END_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,
+  endFallen,
   tapWithoutTick,
   type Harness,
 } from "../harness";
@@ -61,7 +63,7 @@ afterEach(() => {
 
 it("reads hurtFlash 0 on the run TRY AGAIN starts after a run that was hit", async () => {
   await armFlash(h);
-  h.debug.setScreen("fallen");
+  await endFallen(h);
   const ended = h.snapshot();
   assertEqual(ended.screen, "fallen", "the screen Enter is pressed on");
   assertEqual(

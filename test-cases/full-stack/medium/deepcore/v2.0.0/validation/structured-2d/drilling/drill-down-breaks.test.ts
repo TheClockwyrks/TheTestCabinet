@@ -13,7 +13,7 @@
 // is what `specs/instrumentation.md` fixes that faculty gate to leave running.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_HEALTH } from "../../src/constants";
+import { BAND_HEALTH } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,

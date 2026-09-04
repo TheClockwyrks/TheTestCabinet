@@ -38,11 +38,12 @@ is the whole of the authoritative game — the actors, components, and controlle
 you write draw it and drive it, holding nothing authoritative of their own.
 Implement the game.
 
-**The pointer comes from the engine.** The yard is built by pressing on the
-stage, and the player controller reads it from its input reader already in
-logical stage units, as the frame's ordered samples carrying the press and
-release edges — read the engine's input documentation for the API.
-`specs/controls.md` states what Arc Foundry does with them.
+**The pointer and the touch contact come from the engine.** The yard is built by
+pressing on the stage and the menus answer to a finger, and the player controller
+reads each from its input reader already in logical stage units, as the frame's
+ordered samples carrying the press and release edges — read the engine's input
+documentation for the API. `specs/controls.md` states what Arc Foundry does with
+them.
 
 The debug surface is a required deliverable. The engine returns it from
 `engine.debug` exactly as the instance's `initialize` handed it over, and that

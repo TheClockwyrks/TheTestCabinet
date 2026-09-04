@@ -1,6 +1,6 @@
 // save/save-pad-writes — activating the Save Pad writes the save on the spot.
 //
-// specs/gameplay.md: "The Save Pad is the only way to save... Activating the pad
+// specs/expedition.md: "The Save Pad is the only way to save... Activating the pad
 // writes the save on the spot", and specs/world.md gives the pad the id
 // `save-pad` and says it is the one surface building that opens no panel: it
 // saves directly. So a miner standing at it and pressing `activate` leaves
@@ -55,7 +55,7 @@ it("saves on the spot at the Save Pad, opening no panel", async () => {
   assertEqual(
     saved.hasSave,
     true,
-    "specs/gameplay.md: activating the Save Pad writes the save on the spot",
+    "specs/expedition.md: activating the Save Pad writes the save on the spot",
   );
   assertNull(
     saved.panel,

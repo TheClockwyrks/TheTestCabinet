@@ -162,7 +162,8 @@ describe("cells", () => {
       [PATH_LENGTH - 20, "halide", null],
       [PATH_LENGTH - 48, "halide", null],
     ]);
-    h.debug.fire(180);
+    h.debug.setAim(180);
+    h.debug.fire();
     for (let i = 0; i < 120; i += 1) {
       await h.engine.advance(1);
       if (h.snapshot().cells < CELLS) break;

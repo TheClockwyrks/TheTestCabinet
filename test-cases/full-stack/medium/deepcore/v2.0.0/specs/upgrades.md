@@ -47,11 +47,9 @@ Sets the maximum fuel.
 
 ## Drill
 
-Sets the damage a drill hit removes from a cell's health. Hits land every
-`DRILL_HIT_INTERVAL` (`0.125`) seconds and each spends `DRILL_HIT_FUEL` (`0.25`)
-fuel, so the hits to break a cell are `ceil(BAND_HEALTH / damagePerHit)`, the time
-is `hits * DRILL_HIT_INTERVAL`, and the fuel is `hits * DRILL_HIT_FUEL`. Damage
-per hit may be fractional; health is a number and hits round up.
+Sets the damage a drill hit removes from a cell's health, which may be
+fractional. `specs/character.md` states the drill's cadence, what each hit costs,
+and how the hits below follow from that damage against each band's `BAND_HEALTH`.
 
 | Tier | Damage per hit | Topsoil hits | Rockbed hits | Deepstone hits | Coreshell hits |
 | --- | --- | --- | --- | --- | --- |
@@ -93,7 +91,7 @@ Sets the maximum hull.
 
 Sets three figures per tier: the heaviest load the jetpack can climb with, the
 empty-load climb speed cap, and the empty-load climb acceleration.
-How a load scales the last two is stated with the miner's movement.
+`specs/character.md` states how a load scales the last two.
 
 | Tier | `liftLimitKg` | `emptyClimb` | `emptyAccel` |
 | --- | --- | --- | --- |
@@ -102,9 +100,6 @@ How a load scales the last two is stated with the miner's movement.
 | 3 | `2850` | `1080` | `1350` |
 | 4 | `7400` | `1150` | `1440` |
 | 5 | `12700` | `1230` | `1540` |
-
-Every `emptyClimb` sits at or below `FALL_TERMINAL_EMPTY` (`950`), so a climb never
-outruns an empty plunge.
 
 ## Radiator
 

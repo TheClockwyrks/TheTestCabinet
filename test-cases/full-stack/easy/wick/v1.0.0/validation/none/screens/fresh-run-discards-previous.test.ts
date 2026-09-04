@@ -2,8 +2,8 @@
 // before it.
 //
 // WHERE THE THRESHOLD COMES FROM. specs/ui.md ("A fresh run"): "`LIGHT THE
-// LAMP`, `TRY AGAIN`, and the debug surface's `setScreen("playing")` each begin
-// a fresh run, and whatever the previous run held is discarded", and the fresh
+// LAMP` and `TRY AGAIN` each begin a fresh run, and whatever the previous run
+// held is discarded", and the fresh
 // run's own figures follow: the clock at `0:00`, the lamplighter at the origin
 // at `BASE_MAX_HP` (`100`), level `1` with `xp = 0` and `kills = 0`, "Taper at
 // level `1` alone in the first weapon slot and no passive held, no enemy,

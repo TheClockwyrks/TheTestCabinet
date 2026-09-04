@@ -128,14 +128,14 @@ export function slotOf(
 }
 
 /**
- * Close the chest overlay the way `confirm` does, when one was opened:
- * "`playing` | `chest` | Closes the overlay exactly as `confirm` does:
- * `chestResult` becomes `null`" (`specs/instrumentation.md`, `setScreen`).
+ * Stand the game back on `playing` when a chest overlay was opened, to pose the
+ * next scenario: `setScreen("playing")` "Sets `screen` to `name` ... Nothing
+ * else changes" (`specs/instrumentation.md`), so the loadout the check posed
+ * crosses it untouched. Closing the overlay for real is `confirm`'s, which
+ * `screens/chest-confirm-closes` decides.
  *
  * A build that opened no overlay is already on `playing`, and the call is
- * skipped rather than made, because `setScreen("playing")` from any screen but
- * `paused`, `chest`, and `levelup` "Begins a fresh run" and would discard the
- * loadout the check posed. Whether the overlay opens at all is decided by the
+ * skipped rather than made. Whether the overlay opens at all is decided by the
  * progression points; this leaves the run standing either way.
  */
 export async function closeChest(

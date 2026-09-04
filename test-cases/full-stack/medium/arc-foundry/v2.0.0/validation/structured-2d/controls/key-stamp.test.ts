@@ -15,16 +15,14 @@
 // allowance with it.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { STAMPS_PER_LEVEL } from "../../src/constants";
+import { keyFor, STAMPS_PER_LEVEL } from "../constants";
 import { assertEqual, assertNull } from "../assert";
 import {
   captureStill,
   createHarness,
-  keyFor,
+  type Harness,
   openYard,
   pressAction,
-  type Harness,
 } from "../harness";
 
 let h: Harness;

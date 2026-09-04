@@ -13,10 +13,13 @@
 // THE POSE. An isolated `playing` run holding nothing, at level `1` with `xp`
 // `4`; one chest pickup and one small gem, both on the lamplighter's own
 // center, so a single tick collects both: the pickup phase takes the chest and
-// the gem phase takes the level. `specs/instrumentation.md` makes
-// `setScreen("playing")` from `chest` exactly what `confirm` does there, so
-// the overlay is closed the way the game closes it and one further tick is
-// run. Holding nothing, the chest's result is the heal of
+// the gem phase takes the level, with `progression` the one driver switch
+// turned on so the gain is spent. The chest overlay is then left with
+// `setScreen("playing")`, which sets the screen alone
+// (`specs/instrumentation.md`), and one further tick is run: phase 12 keys the
+// level-up overlay off whether THAT tick collected a chest, so the
+// `chestResult` the pose leaves standing changes nothing it decides, and no
+// menu press is driven on the way. Holding nothing, the chest's result is the heal of
 // `specs/evolutions.md`, which no assertion here reads.
 //
 // THE TOLERANCE. Exact: two screen names and a whole queue length.
@@ -27,6 +30,7 @@ import {
   advanceTicks,
   captureReplay,
   createHarness,
+  enable,
   isolate,
   placeGem,
   placePickup,
@@ -47,7 +51,11 @@ afterEach(() => {
 });
 
 it("ends the collecting tick on chest and opens the level-up overlay a tick later", async () => {
+  // `progression`, the faculty that spends a gain on levels, is the one
+  // switch this point is about, so it is turned back on and the other eight
+  // stay held (`specs/instrumentation.md`, the switch table).
   const { player } = isolate(h).run;
+  enable(h, "progression");
   h.debug.setLevel(LEVEL);
   h.debug.setXp(XP_BEFORE);
   placePickup(h, "chest", player.x, player.y);
@@ -55,8 +63,9 @@ it("ends the collecting tick on chest and opens the level-up overlay a tick late
 
   const [chest, after] = await captureReplay(h, "chest", async () => {
     const collected = await advanceTicks(h, 1);
-    // `specs/instrumentation.md`: `setScreen("playing")` from `chest` closes
-    // the overlay exactly as `confirm` does.
+    // `setScreen` sets the screen alone (`specs/instrumentation.md`), which
+    // is all this point needs: the next tick collects no chest, so phase 12
+    // reaches the queued level-up.
     h.debug.setScreen("playing");
     return [collected, await advanceTicks(h, 1)] as const;
   });

@@ -166,14 +166,55 @@ export function menuLength(state: WickState): number {
   }
 }
 
+// ---- The way out of `howto` and `chest` -------------------------------------
+//
+// Neither shows a menu, and each answers the pointer and touch on one box:
+// "the area the screen's way out is taken in, which the screen shows"
+// (specs/controls.md). `src/render/screens.ts` draws its line inside that box.
+
+const DISMISS_WIDTH = 340;
+const DISMISS_HEIGHT = 38;
+
+/** The dismiss line's text baseline, from the top of its rectangle. */
+export const DISMISS_BASELINE = 25;
+
+/** The tops of the two boxes: at the how-to's foot, inside the chest panel. */
+export const HOWTO_DISMISS_TOP = STAGE_H - 50;
+export const CHEST_DISMISS_TOP = 426;
+
+/** A dismiss box, centered on the stage, whose top is `top`. */
+function dismissRect(top: number): WickRect {
+  return {
+    x: STAGE_CX - DISMISS_WIDTH / 2,
+    y: top,
+    width: DISMISS_WIDTH,
+    height: DISMISS_HEIGHT,
+  };
+}
+
+/** The one box on `howto`, which `back` is taken in. */
+export function howtoRects(): WickRect[] {
+  return [dismissRect(HOWTO_DISMISS_TOP)];
+}
+
+/** The one box on `chest`, which `confirm` is taken in. */
+export function chestRects(): WickRect[] {
+  return [dismissRect(CHEST_DISMISS_TOP)];
+}
+
 /**
- * The rectangles of the current screen's vertical menu, in menu order, and an
- * empty list on a screen with no menu.
+ * The rectangles of the current screen's vertical menu, in menu order. `howto`
+ * and `chest` show no menu and report the one box their way out is taken in;
+ * `playing` reports an empty list.
  */
 export function menuRects(state: WickState): WickRect[] {
   switch (state.screen) {
     case "title":
       return stackedRects(TITLE_ITEMS.length, TITLE_MENU_TOP);
+    case "howto":
+      return howtoRects();
+    case "chest":
+      return chestRects();
     case "almanac":
       return rowRects(visibleRows(state));
     case "levelup":

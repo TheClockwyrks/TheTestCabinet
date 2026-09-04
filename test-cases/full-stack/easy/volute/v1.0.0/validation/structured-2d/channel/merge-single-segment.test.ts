@@ -80,7 +80,6 @@ it("rides a merged pair as one segment, at the feed speed", async () => {
   await poseHall(h, {
     level: LEVEL,
     pressure: 0,
-    quotaRemaining: 0,
     cores: [
       [LEAD_S, "halide", null],
       [TRAIL_S, "sulfur", null],

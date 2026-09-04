@@ -9,8 +9,10 @@
 // `5` is spent on the level, and `2` is left standing at level `2` rather than
 // discarded.
 //
-// WHY THE WORLD IS POSED AS IT IS. An isolated night with every faculty held,
-// nothing alive, and no passive, so the gem is worth exactly its tier's value.
+// WHY THE WORLD IS POSED AS IT IS. An isolated night with `progression` alone
+// turned back on, which is the faculty that spends a gain on a level, and every
+// other faculty held, nothing alive, and no passive, so the gem is worth
+// exactly its tier's value.
 // The gain is a real collection by a real tick. The medium gem is chosen
 // because its value is neither the threshold nor a divisor of it, so a build
 // that discards the remainder reads `0` and a build that never spends the
@@ -50,7 +52,7 @@ afterEach(async () => {
 });
 
 it("keeps the experience past the threshold at the new level", async () => {
-  await isolate(h);
+  await isolate(h, { on: ["progression"] });
   await h.debug.setLevel(POSED_LEVEL);
   await h.debug.setXp(POSED_XP);
 

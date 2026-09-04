@@ -12,9 +12,11 @@
 // THE POSE. An isolated `playing` run holding nothing, at level `1` with `xp`
 // `4`, and one small gem placed on the lamplighter's own center so the tick's
 // gem phase collects it: `4 + 1` reaches `xpToNext(1)`, exactly, so the level
-// is taken with nothing left over. Every driver switch is off and the world is
-// otherwise empty, so the gain the tick reports is that one gem's and nothing
-// else's. No passive is held, so `xpMul` is `1`.
+// is taken with nothing left over. `progression` is the one driver switch
+// turned on, since spending a gain on a level is what this point decides; the
+// other eight are off and the world is otherwise empty, so the gain the tick
+// reports is that one gem's and nothing else's. No passive is held, so `xpMul`
+// is `1`.
 //
 // THE TOLERANCE. `level` and `pendingLevelUps` are whole and exact; `REAL_EPS`
 // on `xp`, which the specification makes a real number and which is here a
@@ -27,6 +29,7 @@ import {
   advanceTicks,
   captureStill,
   createHarness,
+  enable,
   isolate,
   placeGem,
   type Harness,
@@ -47,7 +50,11 @@ afterEach(() => {
 });
 
 it("takes level 2 with xp 0 and one level-up queued when a small gem reaches the threshold", async () => {
+  // `progression`, the faculty that spends a gain on levels, is the one
+  // switch this point is about, so it is turned back on and the other eight
+  // stay held (`specs/instrumentation.md`, the switch table).
   const { player } = isolate(h).run;
+  enable(h, "progression");
   h.debug.setLevel(LEVEL);
   h.debug.setXp(XP_BEFORE);
   placeGem(h, "small", player.x, player.y);

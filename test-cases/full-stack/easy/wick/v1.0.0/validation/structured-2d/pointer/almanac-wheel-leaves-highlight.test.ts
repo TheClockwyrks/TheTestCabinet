@@ -19,10 +19,10 @@
 // window leaves the scroll at `0` and the wheel's own row is the only movement
 // the list sees.
 //
-// THE DRIVE. `setScreen("almanac")` — "exactly as confirming `THE ALMANAC`
-// does" (`specs/instrumentation.md`) — three real `ArrowDown` presses onto the
-// fourth entry of the `TOOLS` tab, then one frame carrying exactly `WHEEL_ROW`
-// stage units of downward travel.
+// THE DRIVE. `setScreen("almanac")` — by setting `screen` with the three menu
+// indices at `0` and the run left as it stands (`specs/instrumentation.md`) —
+// three real `ArrowDown` presses onto the fourth entry of the `TOOLS` tab, then
+// one frame carrying exactly `WHEEL_ROW` stage units of downward travel.
 //
 // THE TOLERANCE. None: two indices.
 

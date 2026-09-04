@@ -13,7 +13,7 @@
 // it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { JETPACK_TIERS } from "../../src/constants";
+import { JETPACK_TIERS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

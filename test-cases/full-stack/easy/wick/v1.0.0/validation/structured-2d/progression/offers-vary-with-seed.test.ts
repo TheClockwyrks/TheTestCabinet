@@ -22,6 +22,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import { BASE_WEAPON_IDS, PASSIVE_IDS } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -29,6 +30,13 @@ import {
   openLevelUp,
   type Harness,
 } from "../harness";
+
+/**
+ * The candidates a fresh run's pool holds: one per base weapon, Taper's being
+ * its `+1 level` offer, and one per passive (`specs/progression.md`, "The
+ * pool").
+ */
+const FRESH_POOL_SIZE = BASE_WEAPON_IDS.length + PASSIVE_IDS.length;
 
 /** Ten seeds over one pool. */
 const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -60,7 +68,11 @@ it("does not present the same three ids in the same order on all ten seeds", asy
   await h.frameDraw();
   captureStill(h, "random");
 
-  assertEqual(poolSize, 20, "the pool the ten draws were made over");
+  assertEqual(
+    poolSize,
+    FRESH_POOL_SIZE,
+    "the pool the ten draws were made over",
+  );
   assertGreaterThanOrEqual(
     new Set(drawn).size,
     2,

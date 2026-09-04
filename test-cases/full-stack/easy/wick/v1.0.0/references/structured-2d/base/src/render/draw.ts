@@ -4,6 +4,26 @@
 import { STAGE_H, STAGE_W } from "../constants";
 import { COLORS, FONT } from "./theme";
 
+/**
+ * Blit a bitmap with image smoothing off.
+ *
+ * `specs/assets.md` ("The sprites"): every sprite "is pixel art drawn at one
+ * unit per pixel ... and the game draws it with image smoothing off so it stays
+ * crisp at the stage's fit". The flag is set at the blit rather than once a
+ * frame, so no drawing order and no engine default can leave one blit smoothed.
+ */
+export function blit(
+  ctx: CanvasRenderingContext2D,
+  image: CanvasImageSource,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): void {
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(image, x, y, width, height);
+}
+
 /** Quiet the world beneath a menu or an overlay. */
 export function dim(ctx: CanvasRenderingContext2D): void {
   ctx.fillStyle = COLORS.dim;
@@ -114,6 +134,6 @@ export function sprite(
   if (options.rotation) ctx.rotate(options.rotation);
   if (options.mirror) ctx.scale(-1, 1);
   if (options.alpha !== undefined) ctx.globalAlpha = options.alpha;
-  ctx.drawImage(image, -width / 2, -height / 2, width, height);
+  blit(ctx, image, -width / 2, -height / 2, width, height);
   ctx.restore();
 }

@@ -24,8 +24,10 @@
 // with the tick it sounded on. This decides that the hall SOUNDED on the tick the
 // run was drawn out. Which of the fifteen was heard is deliberately not asserted,
 // so this point decides the same requirement under every engine the case supports
-// — under no engine there is no bus to ask at all — and whether it was the
-// extraction's own cue and not another is the reviewer's, by ear.
+// — under no engine there is no bus to ask at all. Which of the five extraction
+// cues sounded, and at which chain step, is decided by
+// `audio/extract-cue-step-one`, `-two` and `-beyond` beside this file, which the
+// manifest scopes to the two engines whose bus reports the name.
 //
 // WHY A MERGE AND NOT AN INSERTION. The reading is "a cue sounded on the tick the
 // run was drawn out", so the tick has to be one the specification puts NO other
@@ -47,8 +49,8 @@
 // ("Advance") rides the lead segment at the effective feed speed and "Every other
 // segment" at the fixed 180 units/s, so the trailing segment closes on its own,
 // merges, and the maximal same-charge run spanning the join is three cobalt with
-// a halide stopping it at each end. The quota is exhausted (`specs/channel.md`,
-// "Emission") so the inlet puts nothing into the gap, and the two halide left
+// a halide stopping it at each end. The inlet is held (`specs/instrumentation.md`,
+// `setEmission`) so it puts nothing into the gap, and the two halide left
 // standing keep the channel occupied so the level does not clear on the
 // extraction's tick.
 //
@@ -150,8 +152,7 @@ it("sounds a cue on the tick the run is drawn out", async () => {
     // Two detached segments on the straight top run, each head first and spaced
     // by SPACING, with the trailing one a gap short of the merge position.
     cores: [...spacedRun(LEAD_HEAD_S, LEAD), ...spacedRun(TRAIL_HEAD_S, TRAIL)],
-    // The inlet stopped, so nothing arrives to join either segment.
-    quotaRemaining: 0,
+    // The inlet is held, so nothing arrives to join either segment.
   });
 
   const posed = h.snapshot();

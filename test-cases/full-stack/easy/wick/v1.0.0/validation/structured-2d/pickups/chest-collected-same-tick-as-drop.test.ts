@@ -36,6 +36,7 @@ import {
   advanceTicks,
   captureStill,
   createHarness,
+  enable,
   isolate,
   placeEnemy,
   placePuddle,
@@ -56,7 +57,11 @@ afterEach(() => {
 });
 
 it("leaves no chest on the field and ends the drop's tick on the chest overlay", async () => {
-  const opened = isolate(h);
+  // `drops` is the faculty this point is about — the chest an elite's death
+  // leaves — so it is the one switch turned back on.
+  isolate(h);
+  enable(h, "drops");
+  const opened = h.snapshot();
   const at = opened.run.player;
   const elite = placeEnemy(h, "mothwing", at.x, at.y);
   h.debug.setEnemyHp(elite, PULSE_DAMAGE);

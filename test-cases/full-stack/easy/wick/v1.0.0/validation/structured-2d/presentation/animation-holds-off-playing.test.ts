@@ -25,7 +25,8 @@
 // enough apart that no sprite can be claimed by its neighbour, and the
 // lamplighter still at the origin. One `playing` frame runs first, so the
 // reading starts from the frames a real tick left; then `setScreen("paused")`,
-// which `specs/instrumentation.md` enters "exactly as `pause` does".
+// which `specs/instrumentation.md` enters by setting `screen` alone, with the
+// run left as it stands.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull } from "../assert";

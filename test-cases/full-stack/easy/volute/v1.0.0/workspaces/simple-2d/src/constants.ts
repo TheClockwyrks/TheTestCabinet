@@ -304,7 +304,7 @@ export const BINDINGS: Readonly<Record<ActionName, readonly string[]>> = {
   b: ["KeyX"],
   confirm: ["Enter", "Space"],
   back: ["Escape"],
-  pause: ["Escape"],
+  pause: ["Escape", "KeyP"],
   mute: ["KeyM"],
 };
 

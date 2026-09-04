@@ -19,8 +19,8 @@
 // THE DRIVE. An isolated `playing` world holding one moth, the lamplighter
 // posed away from the origin and the clock posed off `0`; the pause posed
 // through `setScreen("paused")` — which `specs/instrumentation.md` says enters
-// it "exactly as `pause` does" — and the run read there; then the `Escape`
-// this point is about. What `KeyP` does there is
+// it by setting `screen` alone, with the run left as it stands — and the run
+// read there; then the `Escape` this point is about. What `KeyP` does there is
 // `screens/paused-resume-via-key`'s point.
 //
 // THE TOLERANCE. None: the whole run is compared field for field.

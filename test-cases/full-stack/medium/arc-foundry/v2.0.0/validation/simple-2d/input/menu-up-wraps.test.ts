@@ -1,4 +1,4 @@
-// input/menu-up-wraps — the up action moves the menu highlight up, and wraps.
+// input/menu-up-wraps — the up action wraps from the first entry to the last.
 //
 // THE REQUIREMENT. `specs/ui.md` states it for every menu at once: "On every
 // menu, the up and down actions move the highlight by one entry and wrap at both
@@ -6,29 +6,28 @@
 // `specs/instrumentation.md` reports the highlight as `menuIndex`, counted
 // from `0`.
 //
-// HOW IT IS DECIDED. The map select is the menu it is decided on, because
-// `specs/ui.md` gives it four entries — three maps and a `BACK` — so a step of one
-// and a wrap to the last are different answers, which they would not be on a
-// two-entry menu. The highlight is posed at a middle entry and the key is pressed
-// as a player presses it, a real key event dispatched at the engine's own surface;
-// the highlight is then posed at the first entry and the key pressed again, which
-// is the wrap. The entry count is read off the build's own `menuButtons`, so no
-// layout and no fixed number of maps is assumed.
+// THE STEP AND THE WRAP ARE TWO POINTS. A build whose highlight moves but never
+// wraps and a build whose menu keys do nothing at all must not grade the same, and
+// the wrap is an edge case of the stepping rule, which earns a check of its own.
+// So `menu-up-moves` decides the step and `menu-up-wraps` decides the
+// boundary.
+//
+// THE MENU IT IS DECIDED ON is the map select, because `specs/ui.md` gives it four
+// entries — three maps and a `BACK` — so a step of one and a wrap to the last are
+// different answers, which they would not be on a two-entry menu. The key is
+// pressed as a player presses it, a real key event dispatched at the engine's own surface. The entry count is read off the build's
+// own `menuButtons`, so no layout and no fixed number of maps is assumed.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  keyFor,
+  type Harness,
   openMenu,
   pressAction,
-  type Harness,
 } from "../harness";
-
-/** The entry the step is measured from: neither end of the menu. */
-const MIDDLE = 2;
+import { keyFor } from "../constants";
 
 let h: Harness;
 
@@ -40,27 +39,16 @@ afterEach(() => {
   h.dispose();
 });
 
-it("moves the highlight up one entry, and wraps to the last from the first", async () => {
+it("wraps to the last entry from the first", async () => {
   h.debug.reset();
   const entries = openMenu(h, "mapselect");
   assertGreaterThanOrEqual(
     entries.length,
-    MIDDLE + 1,
-    "the map select to present its three maps and a BACK choice, so it has an " +
-      "entry that is neither the first nor the last (specs/ui.md)",
+    2,
+    "the map select to present more than one entry, so wrapping to the far end " +
+      "is a different answer from standing still (specs/ui.md)",
   );
 
-  // One step up, from an entry with room above it.
-  h.debug.setMenuIndex(MIDDLE);
-  await pressAction(h, "up");
-  assertEqual(
-    h.snapshot().menuIndex,
-    MIDDLE - 1,
-    `the highlight after ${keyFor("up")} from entry ${MIDDLE}, which moves it ` +
-      "up by one (specs/ui.md)",
-  );
-
-  // And the wrap: from the first entry it goes to the last.
   h.debug.setMenuIndex(0);
   await pressAction(h, "up");
   captureStill(h, "wrap");

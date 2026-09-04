@@ -85,7 +85,8 @@ Produce one `draw-sheet` cycle per animation state, one PNG per frame, under
 animation states.
 The game plays the cycle matching the miner's current state, advancing frames at
 `ANIM_FPS` (`12`) frames per second, looping every cycle but `hurt`, which plays
-once.
+once. Every produced cycle carries at least `DRAWINGS_MIN` (`2`) distinct
+drawings, so a cycle that repeats one picture is not a cycle.
 
 | State | Minimum frames | The frame must carry |
 | --- | --- | --- |
@@ -113,9 +114,9 @@ Produce each of the following with `draw`.
   share the band's color and differ only in the grain. The grain is fine and even
   across the whole tile rather than a few large blotches.
 - The bedrock border tile.
-- Unbreakable stone, at least two variants, reading as a smooth, cold, harder
-  material against the grainy band rock, with a distinct silhouette rather than a
-  re-tinted dirt tile.
+- Unbreakable stone, at least `STONE_VARIANTS` (`2`) variants, reading as a
+  smooth, cold, harder material against the grainy band rock, with a distinct
+  silhouette rather than a re-tinted dirt tile.
 - The carved-tunnel interior fill, which the game paints inside the shaped tunnel.
 - One overlay per ore, drawn as a smear of mineral run through the dirt: a streak
   spreading across much of the cell, feathering into the rock at the edges so the
@@ -133,8 +134,8 @@ Produce each of the following with `draw`.
 
 ## Produced animations
 
-- The lava shimmer: a looping cycle for a lava cell's molten interior, so lava
-  glows and churns rather than sitting flat.
+- The lava shimmer: a looping cycle of at least `LAVA_FRAMES` (`2`) frames for a
+  lava cell's molten interior, so lava glows and churns rather than sitting flat.
 - The drill-damage crack overlay: at least `CRACK_FRAMES` (`4`) transparent frames
   running front to back from faint hairlines to a shattered, about-to-break face.
   The game picks the frame from a cell's damage fraction, `1 - health /

@@ -75,7 +75,8 @@ describe("granting", () => {
     expect(h.snapshot().machinery).toBeNull();
 
     h.debug.setLoaded("halide");
-    h.debug.fire(toward(380, 420));
+    h.debug.setAim(toward(380, 420));
+    h.debug.fire();
     for (let i = 0; i < 20; i += 1) {
       await h.engine.advance(1);
       if (h.snapshot().machinery !== null) break;
@@ -170,7 +171,7 @@ describe("bore", () => {
 
     const head = h.snapshot().train[0];
     const before = h.snapshot().train.map((core) => ({ ...core }));
-    h.debug.grantMachinery("bore");
+    h.mode().detonate(head.x, head.y);
 
     const caught = before.filter(
       (core) => Math.hypot(core.x - head.x, core.y - head.y) <= BORE_RADIUS,
@@ -186,7 +187,8 @@ describe("bore", () => {
     const h = current();
     await isolate(h);
     poseTrain(h, run(400, 6, "halide"));
-    h.debug.grantMachinery("bore");
+    const head = h.snapshot().train[0];
+    h.mode().detonate(head.x, head.y);
     expect(h.snapshot().chainStep).toBe(1);
     expect(h.snapshot().chainTimer).toBe(0);
   });
@@ -212,7 +214,8 @@ describe("sightline", () => {
     await isolate(h);
     poseTrain(h, [[380, "halide", null]]);
     await h.engine.advance(1);
-    h.debug.fire(270);
+    h.debug.setAim(270);
+    h.debug.fire();
     await h.engine.advance(1);
     const dark = h.pixel(420, 200);
 

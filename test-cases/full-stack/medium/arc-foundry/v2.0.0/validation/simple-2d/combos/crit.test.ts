@@ -31,16 +31,14 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,
-  comboDamage,
-  comboDef,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   standCombo,
   structureById,
-  structureCenter,
-  type Harness,
 } from "../harness";
+import { comboDamage, comboDef, structureCenter } from "../constants";
 
 const TOWER = comboDef("slagdriver");
 /** The multiplier of the `crit(chance, multiplier)` its row names. */

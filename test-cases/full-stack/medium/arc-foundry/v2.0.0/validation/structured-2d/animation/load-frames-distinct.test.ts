@@ -20,17 +20,11 @@
 // draws.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertDeepEqual } from "../assert";
-import {
-  SPAWN_TYPES,
-  createHarness,
-  openYard,
-  releaseUnit,
-  type Harness,
-} from "../harness";
+import { createHarness, type Harness, openYard, releaseUnit } from "../harness";
 import { cycleFrames, decodeAll, duplicatePairs, evidence } from "./images";
 import { serveProducedAssets } from "./produced";
+import { SPAWN_TYPES } from "../constants";
 
 let h: Harness;
 

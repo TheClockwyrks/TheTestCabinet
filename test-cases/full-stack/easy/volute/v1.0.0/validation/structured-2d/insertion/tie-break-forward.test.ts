@@ -73,10 +73,8 @@ import {
 import {
   approach,
   assertInFlight,
-  CATCHUP_STEP,
   leg5S,
   LEVEL_SHOT_Y,
-  poseFor,
   RIGHT_AIM,
   SHOT,
 } from "./stage";
@@ -128,6 +126,7 @@ it("strikes the core with the larger arc position when two are tied", async () =
   );
 
   await poseHall(h, {
+    feed: false,
     cores: [[LEAD_S, LEAD, null]],
     loaded: SHOT,
   });
@@ -136,8 +135,8 @@ it("strikes the core with the larger arc position when two are tied", async () =
     const short = await approach(h, RIGHT_AIM);
     assertInFlight(short);
     // Leg 5 descends, so the core BELOW the shot's line carries the larger arc
-    // position. Both ride the catch-up rate behind the lead core, so both are
-    // posed one tick of that rate short of the symmetric arrangement.
+    // position. The train is held, so both stand exactly where they are posed
+    // when the projectile reaches them and the pair is symmetric to the last bit.
     const belowS = leg5S(LEVEL_SHOT_Y + HALF_GAP);
     const aboveS = leg5S(LEVEL_SHOT_Y - HALF_GAP);
     assertNear(
@@ -148,8 +147,8 @@ it("strikes the core with the larger arc position when two are tied", async () =
     );
     h.debug.poseTrain([
       [LEAD_S, LEAD, null],
-      [poseFor(belowS, CATCHUP_STEP), AHEAD, null],
-      [poseFor(aboveS, CATCHUP_STEP), REAR, null],
+      [belowS, AHEAD, null],
+      [aboveS, REAR, null],
     ]);
     const struck = await h.step(1);
     await h.step(SETTLE);

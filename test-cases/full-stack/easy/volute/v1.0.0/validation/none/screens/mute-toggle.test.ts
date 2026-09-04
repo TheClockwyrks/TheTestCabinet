@@ -10,11 +10,10 @@
 //   screen."
 //   specs/ui.md ("Mute"): "The game binds the mute action to the runtime's mute
 //   bit and toggles it from any screen."
-//   specs/state.md: `muted` is "the game's readable copy of the engine's mute
-//   bit", and specs/instrumentation.md has `snapshot()` report it, refreshed
-//   "from the runtime in every update".
-//   specs/state.md ("The title state"): `muted` is `false` on a fresh game, which
-//   is the precondition read back before the press.
+//   specs/instrumentation.md: "`muted` mirrors the runtime's mute bit. Refresh it
+//   from the runtime in every update", which is what `snapshot()` reports.
+//   specs/state.md: "A fresh game starts with its audio unmuted", which is the
+//   precondition read back before the press.
 //
 // THE DRIVE. The run is opened through the debug surface rather than through the
 // title's confirm key, so a broken title fails the title points alone. The bit
@@ -25,8 +24,9 @@
 //
 // WHAT IS NOT ASSERTED, AND WHY. That the speakers went quiet. There is no cue
 // bus to ask under this engine, and specs/ui.md leaves the runtime free to mute
-// either by silencing its sources or by holding them at zero gain — "A muted bed
-// goes on looping silently" — so a count of live audio sources cannot decide
+// either by silencing its sources or by holding them at zero gain — "Muting
+// silences every cue and the running bed without stopping the bed" — so a count
+// of live audio sources cannot decide
 // this and would fail a conformant build for choosing the other way. The
 // specification fixes the REPORTED bit, so the reported bit is what this reads;
 // whether the hall actually fell silent is the reviewer's, by ear.

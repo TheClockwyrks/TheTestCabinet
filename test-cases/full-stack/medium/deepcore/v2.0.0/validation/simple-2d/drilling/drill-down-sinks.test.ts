@@ -25,20 +25,21 @@ import {
   BAND_HEALTH,
   DRILL_DAMAGE_TIERS,
   DRILL_HIT_INTERVAL,
+  drillHitsFor,
   TILE,
-} from "../../src/constants";
+} from "../constants";
 import {
   ACTION_KEY,
   captureReplay,
   createHarness,
+  type Harness,
   minerFeet,
   openScene,
   rowInBand,
   standOn,
   TICK_HZ,
-  type Harness,
 } from "../harness";
-import { drillHitsFor, SAMPLE_FRAMES } from "./hits";
+import { SAMPLE_FRAMES } from "./hits";
 
 /** A column well clear of the camp, the cave mouth, and the Core. */
 const COL = 8;

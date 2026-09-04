@@ -143,9 +143,12 @@ describe("the pointer", () => {
       }),
     );
     const frame = pointer.drain(HALVED);
-    // The secondary press moved the pointer and armed nothing.
-    expect(frame.at).toEqual({ x: 0, y: -10 });
+    // The primary press took the hover away: only a device reporting a position
+    // OUT of contact hovers, and this one is down (specs/controls.md).
+    expect(frame.at).toBeNull();
+    // The secondary press armed nothing; the primary one did.
     expect(frame.presses).toEqual([{ x: 20, y: 20 }]);
+    expect(frame.releases).toEqual([]);
     expect(frame.wheel).toBe(50);
     target.dispatchEvent(new Event("pointerleave"));
     expect(pointer.drain(HALVED).at).toBeNull();

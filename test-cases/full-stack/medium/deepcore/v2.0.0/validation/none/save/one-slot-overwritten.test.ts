@@ -1,6 +1,6 @@
 // save/one-slot-overwritten — the second save replaces the first.
 //
-// specs/gameplay.md: "There is one save slot, and saving overwrites it". So an
+// specs/expedition.md: "There is one save slot, and saving overwrites it". So an
 // expedition saved twice restores to the LATER of the two, and the earlier one is
 // gone rather than sitting beside it.
 //
@@ -53,11 +53,11 @@ it("restores the later of two saves rather than the earlier", async () => {
   assertEqual(
     restored.credits,
     SECOND.credits,
-    "specs/gameplay.md: saving overwrites the single slot",
+    "specs/expedition.md: saving overwrites the single slot",
   );
   assertEqual(
     restored.tiers.drill,
     SECOND.drill,
-    "specs/gameplay.md: the restored expedition is the second save, not the first",
+    "specs/expedition.md: the restored expedition is the second save, not the first",
   );
 });

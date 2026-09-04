@@ -10,19 +10,16 @@
 // a tile-size error and a sign error each show up differently.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual } from "../assert";
 import {
-  MAX_ANCHOR_COL,
-  MAX_ANCHOR_ROW,
   captureStill,
   createHarness,
+  type Harness,
   openYard,
   standBlocker,
   structureById,
-  structureCenter,
-  type Harness,
 } from "../harness";
+import { MAX_ANCHOR_COL, MAX_ANCHOR_ROW, structureCenter } from "../constants";
 
 /** The four corners of the anchor range, and its middle. */
 const ANCHORS = [

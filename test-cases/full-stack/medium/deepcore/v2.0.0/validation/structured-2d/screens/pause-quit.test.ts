@@ -14,7 +14,7 @@
 // and a working QUIT must pass this and fail that one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PAUSE_ITEMS, TITLE_ITEMS, TITLE_TEXT } from "../../src/constants";
+import { PAUSE_ITEMS, TITLE_ITEMS, TITLE_TEXT } from "../constants";
 import { assertEqual } from "../assert";
 import {
   ACTION_KEY,

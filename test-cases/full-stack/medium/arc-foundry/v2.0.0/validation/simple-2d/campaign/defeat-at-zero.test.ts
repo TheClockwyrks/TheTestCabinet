@@ -13,18 +13,21 @@
 // a build that waits for the wave to finish before resolving its defeat plays on
 // past the frame this reads.
 //
-// A SECOND UNIT IS STILL LIVE. `spawnUnit` opens a wave whose schedule is empty,
-// so the yard holds exactly what this check released: the Mote that leaks, and
-// one held unit that is still there when the counter empties. That is what makes
-// this a mid-wave defeat rather than the end of a wave that happened to also be
-// the end of the run.
+// THE WAVE CANNOT END, SO THE DEFEAT CAN ONLY BE A MID-WAVE ONE. `setWaveHold`
+// holds the wave's own clear-and-pay resolution and nothing else
+// (`specs/instrumentation.md`): the leak still costs its Grid Integrity and defeat
+// still resolves at zero, but the wave the Mote leaked out of stays running whatever
+// it left behind. So a build that waits for the wave to finish before resolving its
+// defeat never gets the wave it was waiting for, and the frame this reads is
+// unambiguous. Nothing is parked on the yard to achieve that: the run holds one Mote,
+// which is the only thing the requirement is about.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
-  holdWaveOpen,
+  openHeldWave,
   openYard,
   type Harness,
 } from "../harness";
@@ -45,11 +48,17 @@ afterEach(() => {
 
 it("puts the run on the overload screen the frame a leak empties the counter", async () => {
   openYard(h, { wave: 4, integrity: INTEGRITY });
-  const bystander = holdWaveOpen(h);
+  openHeldWave(h);
 
   const before = h.snapshot();
   assertEqual(before.phase, "wave", "the run is mid-wave");
   assertEqual(before.screen, "playing", "the run is still being played");
+  assertEqual(
+    before.waveHeld,
+    true,
+    "the wave's own clear-and-pay resolution to be held, so nothing but the " +
+      "defeat can end this run (specs/instrumentation.md)",
+  );
 
   const defeated = await captureReplay(h, "overload", () => leakOne(h, "mote"));
 
@@ -64,8 +73,9 @@ it("puts the run on the overload screen the frame a leak empties the counter", a
     "the frame the counter emptied, the run is on the defeat screen",
   );
   assertEqual(
-    before.units.some((unit) => unit.id === bystander),
+    defeated.waveHeld,
     true,
-    "a unit of the wave was still on the yard when the counter emptied",
+    "the wave still held open on the frame the counter emptied, so the defeat " +
+      "resolved mid-wave rather than at the end of one",
   );
 });

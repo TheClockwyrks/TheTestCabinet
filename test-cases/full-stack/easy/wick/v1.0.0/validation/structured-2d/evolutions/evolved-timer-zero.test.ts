@@ -7,13 +7,12 @@
 // tick it is held". `specs/progression.md` ("The chest overlay"): "The
 // simulation does not tick while the overlay is open; `confirm` closes it,
 // setting `chestResult` to `null` and `screen` to `playing`", and
-// `specs/instrumentation.md` gives `setScreen("playing")` from `chest` as
-// "Closes the overlay exactly as `confirm` does". `specs/weapons.md`
-// ("Cooldown timers"): "the weapon fires again on the tick the timer is due",
-// and a timer at `0` "stays due on every tick until it is set again"
-// (`specs/world.md`, Timers). Pyre is Taper's slash, which "need[s] no
-// target", so the first `playing` tick after the overlay closes creates its
-// slashes.
+// `specs/instrumentation.md` gives `setScreen("playing")` from `chest` as sets
+// `screen` alone, leaving `chestResult` standing. `specs/weapons.md` ("Cooldown
+// timers"): "the weapon fires again on the tick the timer is due", and a timer
+// at `0` "stays due on every tick until it is set again" (`specs/world.md`,
+// Timers). Pyre is Taper's slash, which "need[s] no target", so the first
+// `playing` tick after the overlay closes creates its slashes.
 //
 // WHAT IS READ. Two readings of one requirement: `weapons[slot].cooldown` on
 // the tick the chest evolved Taper, which the rule sets to `0`; and the zones

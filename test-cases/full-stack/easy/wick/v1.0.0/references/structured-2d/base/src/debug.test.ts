@@ -30,8 +30,14 @@ afterEach(() => {
   h.dispose();
 });
 
+/**
+ * A run on `playing`, composed the way `specs/instrumentation.md` says a fresh
+ * run is: `setScreen("playing")` sets the screen alone, and `setWeapon` puts
+ * Taper at level 1 in the first slot with its timer at 0.
+ */
 function playing(): Harness {
   h.debug.setScreen("playing");
+  h.debug.setWeapon(0, "taper", 1);
   return h;
 }
 
@@ -92,13 +98,13 @@ describe("the snapshot", () => {
     expect("autoStep" in snap).toBe(false);
   });
 
-  it("is a copy, and reports the pool on levelup alone", () => {
+  it("is a copy, and reports the pool on levelup alone", async () => {
     const { debug } = playing();
     const snap = debug.snapshot();
     snap.run.player.x = 99;
     expect(h.state.run.player.x).toBe(0);
     debug.setPendingLevelUps(1);
-    debug.setScreen("levelup");
+    await h.step(1);
     const onOverlay = debug.snapshot();
     expect(onOverlay.run.pool.length).toBeGreaterThan(3);
     for (const id of onOverlay.run.offers) {
@@ -166,7 +172,7 @@ describe("reset", () => {
 });
 
 describe("setScreen", () => {
-  it("begins a fresh run from title, keeping rng and simTime and the switches", async () => {
+  it("shows a screen and begins no run, keeping rng, simTime, and the switches", async () => {
     const { debug } = h;
     debug.setWeaponFire(false);
     await h.step(3);
@@ -175,14 +181,16 @@ describe("setScreen", () => {
     debug.setScreen("playing");
     const snap = debug.snapshot();
     expect(snap.screen).toBe("playing");
-    expect(snap.run.weapons).toEqual([{ id: "taper", level: 1, cooldown: 0 }]);
+    // The pose installs nothing: a fresh run's Taper is `setWeapon`'s.
+    expect(snap.run.weapons).toEqual([]);
+    expect(snap.run).toEqual(before.run);
     expect(snap.simTime).toBe(before.simTime);
     expect(snap.rngState).toBe(before.rngState);
     expect(snap.weaponFire).toBe(false);
     expect(h.cues).toEqual([]);
   });
 
-  it("resumes from paused, closes the chest, and is inert on levelup", async () => {
+  it("leaves the run, the chest result, and the overlay's offers standing", async () => {
     const { debug } = playing();
     debug.setSpawning(false);
     debug.setTick(10);
@@ -193,44 +201,52 @@ describe("setScreen", () => {
     debug.spawnPickup("chest", 0, 0);
     await h.step(1);
     expect(debug.snapshot().screen).toBe("chest");
-    expect(debug.snapshot().run.chestResult).toEqual({
-      kind: "level",
-      item: "taper",
-      level: 2,
-    });
+    const result = debug.snapshot().run.chestResult;
+    expect(result).toEqual({ kind: "level", item: "taper", level: 2 });
     debug.setScreen("playing");
     expect(debug.snapshot().screen).toBe("playing");
-    expect(debug.snapshot().run.chestResult).toBeNull();
+    // Clearing it is `confirm`'s, not the pose's.
+    expect(debug.snapshot().run.chestResult).toEqual(result);
     expect(debug.snapshot().run.tick).toBe(11);
     debug.setPendingLevelUps(1);
-    debug.setScreen("levelup");
+    await h.step(1);
     expect(debug.snapshot().screen).toBe("levelup");
+    const offers = debug.snapshot().run.offers;
     debug.setScreen("playing");
-    expect(debug.snapshot().screen).toBe("levelup");
-    debug.choose(0);
     expect(debug.snapshot().screen).toBe("playing");
+    expect(debug.snapshot().run.offers).toEqual(offers);
+    expect(debug.snapshot().run.pendingLevelUps).toBe(1);
   });
 
-  it("needs a pending level-up to open the overlay", () => {
+  it("reaches levelup with nothing queued, and draws no offers there", () => {
     const { debug } = playing();
+    const before = debug.snapshot();
     debug.setScreen("levelup");
-    expect(debug.snapshot().screen).toBe("playing");
+    const snap = debug.snapshot();
+    expect(snap.screen).toBe("levelup");
+    expect(snap.run.pendingLevelUps).toBe(0);
+    expect(snap.run.offers).toEqual([]);
+    expect(snap.rngState).toBe(before.rngState);
   });
 
-  it("ends the run kept for the end screens, and leaves unlisted rows inert", () => {
+  it("shows the end screens without ending the run, and reaches every screen", () => {
     const { debug } = playing();
     debug.setKills(3);
+    debug.setHp(50);
     debug.setScreen("fallen");
     expect(debug.snapshot().screen).toBe("fallen");
     expect(debug.snapshot().run.kills).toBe(3);
+    // The pose ended nothing: the run behind it stands as it did.
+    expect(debug.snapshot().run.player.hp).toBe(50);
     debug.setScreen("chest");
-    expect(debug.snapshot().screen).toBe("fallen");
+    expect(debug.snapshot().screen).toBe("chest");
     debug.setScreen("levelup");
-    expect(debug.snapshot().screen).toBe("fallen");
+    expect(debug.snapshot().screen).toBe("levelup");
     debug.setScreen("paused");
-    expect(debug.snapshot().screen).toBe("fallen");
+    expect(debug.snapshot().screen).toBe("paused");
     debug.setScreen("title");
-    expect(debug.snapshot().run.kills).toBe(0);
+    expect(debug.snapshot().screen).toBe("title");
+    expect(debug.snapshot().run.kills).toBe(3);
     debug.setScreen("howto");
     expect(debug.snapshot().screen).toBe("howto");
     debug.setScreen("almanac");
@@ -244,7 +260,7 @@ describe("setScreen", () => {
 });
 
 describe("the almanac readings", () => {
-  it("enters the almanac with the idle run and the three indices at zero", () => {
+  it("shows the almanac with the three indices at zero and the run standing", () => {
     const { debug } = playing();
     debug.setKills(5);
     debug.setScreen("almanac");
@@ -253,8 +269,8 @@ describe("the almanac readings", () => {
     expect(snap.menuIndex).toBe(0);
     expect(snap.almanacTab).toBe(0);
     expect(snap.almanacScroll).toBe(0);
-    expect(snap.run.kills).toBe(0);
-    expect(snap.run.weapons).toEqual([]);
+    expect(snap.run.kills).toBe(5);
+    expect(snap.run.weapons).toEqual([{ id: "taper", level: 1, cooldown: 0 }]);
     expect(h.cues).toEqual([]);
   });
 
@@ -332,13 +348,13 @@ describe("menuRects and tabRects", () => {
     }
   }
 
-  it("reports one rectangle per item of the menu each screen shows", () => {
+  it("reports one rectangle per item of the menu each screen shows", async () => {
     const { debug } = h;
     expect(debug.menuRects()).toHaveLength(TITLE_ITEMS.length);
     disjointOnStage(debug.menuRects());
     debug.setScreen("playing");
     debug.setPendingLevelUps(1);
-    debug.setScreen("levelup");
+    await h.step(1);
     expect(debug.menuRects()).toHaveLength(debug.snapshot().run.offers.length);
     disjointOnStage(debug.menuRects());
     debug.choose(0);
@@ -349,14 +365,14 @@ describe("menuRects and tabRects", () => {
     disjointOnStage(debug.menuRects());
   });
 
-  it("is empty on the screens with no menu", () => {
+  it("reports one box on howto and chest, and none on playing", () => {
     const { debug } = playing();
     expect(debug.menuRects()).toEqual([]);
     debug.setScreen("title");
     debug.setScreen("howto");
-    expect(debug.menuRects()).toEqual([]);
-    debug.setScreen("playing");
-    debug.spawnPickup("chest", 0, 0);
+    expect(debug.menuRects()).toHaveLength(1);
+    debug.setScreen("chest");
+    expect(debug.menuRects()).toHaveLength(1);
   });
 
   it("windows the almanac's rows and lists its tabs beside them", async () => {
@@ -460,10 +476,13 @@ describe("the lamplighter and progression poses", () => {
     expect(debug.snapshot().run.gems).toEqual([]);
   });
 
-  it("accepts nextOffers on levelup for the queued overlay", () => {
+  it("accepts nextOffers on levelup for the queued overlay", async () => {
     const { debug } = playing();
     debug.setPendingLevelUps(2);
-    debug.setScreen("levelup");
+    await h.step(1);
+    // The tick that opened the overlay sounds `level-up`; the poses after it
+    // sound nothing, so the bus must not grow past what it holds here.
+    const sounded = [...h.cues];
     debug.setNextOffers(["lure"]);
     debug.choose(0);
     expect(debug.snapshot().screen).toBe("levelup");
@@ -473,26 +492,26 @@ describe("the lamplighter and progression poses", () => {
     debug.choose(-1);
     expect(debug.snapshot().screen).toBe("levelup");
     expect(debug.snapshot().run.offers).toEqual(["lure"]);
-    expect(h.cues).toEqual([]);
+    expect(h.cues).toEqual(sounded);
   });
 
-  it("takes an evolved id in nextOffers and discards the list at the open", () => {
+  it("takes an evolved id in nextOffers and discards the list at the open", async () => {
     const { debug } = playing();
     debug.setNextOffers(["pyre"]);
     expect(debug.snapshot().run.nextOffers).toEqual(["pyre"]);
     debug.setPendingLevelUps(1);
-    debug.setScreen("levelup");
+    await h.step(1);
     expect(debug.snapshot().run.offers).not.toContain("pyre");
     expect(debug.snapshot().run.offers).toHaveLength(3);
     expect(debug.snapshot().run.nextOffers).toBeNull();
   });
 
-  it("discards a queued list that is no longer in the pool", () => {
+  it("discards a queued list that is no longer in the pool", async () => {
     const { debug } = playing();
     debug.setWeapon(0, "taper", 8);
     debug.setNextOffers(["taper"]);
     debug.setPendingLevelUps(1);
-    debug.setScreen("levelup");
+    await h.step(1);
     const snap = debug.snapshot();
     expect(snap.run.offers).not.toContain("taper");
     expect(snap.run.offers).toHaveLength(3);
@@ -775,5 +794,59 @@ describe("the switches", () => {
     expect(snap.run.enemies[0].age).toBeCloseTo(1, 9);
     expect(snap.run.zones).toEqual([]);
     expect(snap.run.weapons[0].cooldown).toBe(0);
+  });
+
+  it("holds a death's drop while drops is off and drops it when on", async () => {
+    const { debug } = playing();
+    debug.setSpawning(false);
+    debug.setEnemyMotion(false);
+    debug.setWeaponFire(false);
+    debug.setDrops(false);
+    debug.spawnEnemy("moth", 1000, 0);
+    const [moth] = debug.snapshot().run.enemies;
+    debug.setEnemyHp(moth.id, 1);
+    debug.spawnPuddle("oil-splash", 1000, 0);
+    const before = debug.snapshot();
+    await h.step(1);
+    let snap = debug.snapshot();
+    expect(snap.run.kills).toBe(1);
+    expect(snap.run.gems).toEqual([]);
+    expect(snap.run.pickups).toEqual([]);
+    expect(snap.rngState).toBe(before.rngState);
+
+    debug.setDrops(true);
+    debug.spawnEnemy("moth", -1000, 0);
+    const [second] = debug.snapshot().run.enemies;
+    debug.setEnemyHp(second.id, 1);
+    debug.spawnPuddle("oil-splash", -1000, 0);
+    await h.step(1);
+    snap = debug.snapshot();
+    expect(snap.run.kills).toBe(2);
+    expect(snap.run.gems).toHaveLength(1);
+    expect(snap.run.gems[0].tier).toBe("small");
+  });
+
+  it("banks a gain unspent while progression is off and spends it when on", async () => {
+    const { debug } = playing();
+    debug.setSpawning(false);
+    debug.setWeaponFire(false);
+    debug.setProgression(false);
+    debug.spawnGem("large", 0, 0);
+    await h.step(1);
+    let snap = debug.snapshot();
+    expect(snap.run.gems).toEqual([]);
+    expect(snap.run.xp).toBe(10);
+    expect(snap.run.level).toBe(1);
+    expect(snap.run.pendingLevelUps).toBe(0);
+    expect(snap.screen).toBe("playing");
+
+    debug.setProgression(true);
+    debug.setXp(0);
+    debug.spawnGem("large", 0, 0);
+    await h.step(1);
+    snap = debug.snapshot();
+    expect(snap.run.level).toBe(2);
+    expect(snap.run.xp).toBe(5);
+    expect(snap.run.pendingLevelUps).toBe(1);
   });
 });

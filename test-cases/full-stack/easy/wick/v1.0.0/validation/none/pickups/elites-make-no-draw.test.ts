@@ -12,7 +12,8 @@
 // every kill advances the generator on each of these ticks and, once in fifty,
 // leaves a bread or a draft beside the chest.
 //
-// WHY THE WORLD IS POSED AS IT IS. An isolated night: `spawning` and `events`
+// WHY THE WORLD IS POSED AS IT IS. An isolated night with `drops` alone turned
+// back on, which is the faculty the draw belongs to: `spawning` and `events`
 // off, so no spawn angle or type is drawn; no weapon held, so nothing of the
 // lamplighter's own draws a puddle's landing point, a strike's target, or a
 // swarm's direction; every other switch off and nothing else alive, so the tick
@@ -63,7 +64,7 @@ afterEach(async () => {
 });
 
 it("leaves rngState untouched and exactly one chest on each of twenty elite kills", async () => {
-  await isolate(h);
+  await isolate(h, { on: ["drops"] });
 
   for (let round = 0; round < ROUNDS; round += 1) {
     const at = killPoint(round);

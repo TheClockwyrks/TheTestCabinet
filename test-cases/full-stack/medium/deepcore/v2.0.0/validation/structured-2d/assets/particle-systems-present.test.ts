@@ -22,7 +22,7 @@
 import { ParticleSimulator } from "@test-cabinet/particle-runtime";
 import type { ParticleSystem } from "@test-cabinet/particle-runtime";
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_HEALTH, PLAYABLE_COL_MIN } from "../../src/constants";
+import { BAND_HEALTH, FX_SYSTEMS, PLAYABLE_COL_MIN } from "../constants";
 import { assertEqual } from "../assert";
 import {
   ACTION_KEY,
@@ -35,7 +35,6 @@ import {
   type Harness,
 } from "../harness";
 import { readProducedText } from "./produced";
-import { FX_SYSTEMS } from "./spec";
 
 /** Where the still is taken: a coreshell cell held under the drill. */
 const ROW = 450;

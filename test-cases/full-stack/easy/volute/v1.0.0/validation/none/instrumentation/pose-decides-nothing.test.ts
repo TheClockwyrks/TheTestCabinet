@@ -23,15 +23,15 @@
 // reports whatever failure that produces rather than this one. This point names
 // it directly.
 //
-// THE ARRANGEMENT. `poseHall` opens level 1, sets the quota remaining to 0, sets
+// THE ARRANGEMENT. `poseHall` stands the hall on level 1, holds the inlet, sets
 // the pressure to 0, empties the channel, and puts back exactly three halide
 // cores at s = 100, 128 and 156 — `SPACING` apart, so
 // specs/channel.md's "A **segment** is a maximal run of consecutive cores in the
 // train whose arc positions differ by exactly `SPACING`" makes them one segment
 // and specs/extraction.md's "A run is a set of consecutive cores of one segment
 // that all carry the same charge" makes them one maximal run of three. Nothing
-// else stands on the channel, the quota of 0 stops the inlet
-// ("While the level's quota is not exhausted, the inlet emits"), and no
+// else stands on the channel, the inlet is held (`specs/instrumentation.md`,
+// `setEmission`: it "stops step 7 of the tick order ... no core is emitted"), and no
 // projectile is in flight, so the only two events that could extract the run are
 // both out of reach and the run must simply ride.
 //
@@ -105,7 +105,6 @@ afterEach(async () => {
 it("leaves a posed run of three on the channel, and scores nothing", async () => {
   await poseHall(h, {
     level: 1,
-    quotaRemaining: 0,
     pressure: 0,
     cores: spacedBlock(HEAD_S, MIN_RUN, CHARGE),
   });

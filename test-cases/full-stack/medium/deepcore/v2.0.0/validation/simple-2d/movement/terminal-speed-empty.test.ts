@@ -22,7 +22,7 @@
 // drill is gated, so the load is `0` and nothing but gravity acts.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FALL_TERMINAL_EMPTY } from "../../src/constants";
+import { FALL_TERMINAL_EMPTY } from "../constants";
 import { assertBetween, assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,

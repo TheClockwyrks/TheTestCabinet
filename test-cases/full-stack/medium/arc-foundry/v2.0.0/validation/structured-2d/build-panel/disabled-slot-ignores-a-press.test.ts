@@ -8,8 +8,9 @@
 // control's real hit region, so a press at its centre is the press a player makes.
 //
 // THE OTHER DIRECTION. `build-panel/slots-fixed` decides that an unavailable action
-// is REPORTED disabled rather than dropped, and `input/pointer-activates-control`
-// decides that a press at a reported, non-disabled rectangle activates its control.
+// is REPORTED disabled rather than dropped, and the four
+// `input/pointer-activates-*` checks decide that a press at a reported,
+// non-disabled rectangle activates its control.
 // Neither presses a disabled one. This does, at the two slots whose refusal comes
 // from a rule of its own rather than from the price of the act:
 //
@@ -30,7 +31,7 @@ import {
   captureStill,
   clickControl,
   createHarness,
-  holdWaveOpen,
+  enterWave,
   openYard,
   panelControl,
   standCombo,
@@ -39,7 +40,7 @@ import {
   structureById,
   type Harness,
 } from "../harness";
-import { COMBO_MAX_LEVEL } from "../../src/constants";
+import { COMBO_MAX_LEVEL } from "../constants";
 
 /** More Charge than either act here costs, so no refusal can be about the price. */
 const PLENTY = 500;
@@ -116,12 +117,12 @@ it("commits nothing when a disabled inspector slot is pressed", async () => {
     STANDING.col,
     STANDING.row,
   );
-  holdWaveOpen(h);
+  enterWave(h);
   h.debug.select(standing);
   assertEqual(
     h.snapshot().phase,
     "wave",
-    "the phase a released unit puts the run into (specs/instrumentation.md)",
+    'the phase setPhase("wave") puts the run into (specs/instrumentation.md)',
   );
 
   const dismantle = panelControl(h, "dismantle");

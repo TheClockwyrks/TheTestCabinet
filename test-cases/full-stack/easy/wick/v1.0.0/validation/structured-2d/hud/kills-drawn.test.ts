@@ -7,7 +7,7 @@
 // (`specs/ui.md`, "A fresh run": "level `1` with `xp = 0` and `kills = 0`"), and
 // `143` is a count a night reaches that no other readout on the HUD can be
 // showing: on the isolated run this point poses the health reads `100` of `100`,
-// the experience is `0`, the level is posed high, and the clock reads `0:00`.
+// the experience is `0` of `5`, the level reads `1`, and the clock reads `0:00`.
 // That is what makes the second frame decidable — a `143` on the HUD came from
 // the kill count — and it is why the first frame is also read for the ABSENCE of
 // `143`, so a HUD that draws a fixed figure rather than the count fails here.

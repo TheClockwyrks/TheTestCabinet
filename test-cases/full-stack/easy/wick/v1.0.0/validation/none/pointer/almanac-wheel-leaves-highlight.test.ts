@@ -16,8 +16,9 @@
 // list moved and the highlight did not.
 //
 // HOW THE SCENARIO IS DRIVEN. The almanac is entered through
-// `setScreen("almanac")`, which specs/instrumentation.md defines as "exactly as
-// confirming `THE ALMANAC` does", and the highlight is moved to the fourth entry
+// `setScreen("almanac")`, which specs/instrumentation.md defines as setting
+// `screen` alone, "with `menuIndex`, `almanacTab`, and `almanacScroll`
+// all `0`", and the highlight is moved to the fourth entry
 // with real `down` presses, which leaves `almanacScroll` at `0` because an index
 // below `ALMANAC_ROWS` (`10`) needs no window to move. The wheel is Chromium's
 // own, turned by exactly `WHEEL_ROW` (`100`) stage units of downward travel taken

@@ -48,34 +48,78 @@ export function pressedActions(input: InputReader): ActionName[] {
   return ACTIONS.filter((action) => input.pressed(action));
 }
 
-/** The pointer as one frame delivered it, in stage coordinates. */
-export interface PointerFrame {
-  /** Where the pointer rests, which is what a hover reads. */
+/** A point on the stage, as a pointer sample reports one. */
+export interface StagePoint {
   readonly x: number;
   readonly y: number;
-  /** Where this frame's primary press edge landed, or `null` for none. */
-  readonly press: { readonly x: number; readonly y: number } | null;
+}
+
+/** The pointer as one frame delivered it, in stage coordinates. */
+export interface PointerFrame {
+  /**
+   * Where a device reporting a position OUT of contact rests, or `null`.
+   *
+   * The hover position and nothing else: "only a device reporting a position
+   * while out of contact moves the highlight this way" (specs/controls.md), so
+   * a finger, which reports a position only while it is down, never lands here.
+   */
+  readonly at: StagePoint | null;
+  /** The frame's primary press edges, in arrival order. */
+  readonly presses: readonly StagePoint[];
+  /** The frame's primary release edges, in arrival order. */
+  readonly releases: readonly StagePoint[];
   /** The frame's wheel travel down the stage, in stage units. */
   readonly wheel: number;
 }
 
 /**
- * This frame's pointer, read once from the single player controller. The
- * press is placed at the `down` sample that armed it rather than at the
- * pointer's resting position, so a click acts where the button went down even
- * on a frame that moved on afterwards; past the reader's sample cap the
- * resting position stands in.
+ * The pointing device's own contact state, carried across frames.
+ *
+ * A hover position and a hold are facts about the DEVICE rather than about the
+ * game, so neither belongs in `WickState`, which `specs/state.md` declares in
+ * full. A frame's samples say what changed; whether the pointer was already
+ * down when the frame opened is what this remembers.
+ */
+const contact: { down: boolean; at: StagePoint | null } = {
+  down: false,
+  at: null,
+};
+
+/** Forget the contact, so a fresh game starts with nothing held or hovered. */
+export function resetPointer(): void {
+  contact.down = false;
+  contact.at = null;
+}
+
+/**
+ * This frame's pointer, read once from the single player controller.
+ *
+ * The frame's samples are walked in order, because the rules turn on WHERE each
+ * edge fell rather than on where the pointer ended up: a press that lands in one
+ * box and a lift that falls in another are two different points. A move made
+ * while the pointer is down is not a hover, so a finger never hovers at all.
  */
 export function pointerFrame(input: InputReader): PointerFrame {
-  const at = input.pointer();
-  let press: { x: number; y: number } | null = null;
-  if (input.pointerPressed()) {
-    press = { x: at.x, y: at.y };
-    for (const sample of input.pointerSamples()) {
-      if (sample.type !== "down") continue;
-      if (!sample.primary || sample.button !== "primary") continue;
-      press = { x: sample.x, y: sample.y };
+  const presses: StagePoint[] = [];
+  const releases: StagePoint[] = [];
+  for (const sample of input.pointerSamples()) {
+    const at = { x: sample.x, y: sample.y };
+    if (sample.type === "down") {
+      contact.down = true;
+      contact.at = null;
+      presses.push(at);
+    } else if (sample.type === "up") {
+      contact.down = false;
+      contact.at = null;
+      releases.push(at);
+    } else if (!contact.down) {
+      contact.at = at;
     }
   }
-  return { x: at.x, y: at.y, press, wheel: input.wheel().y };
+  return {
+    at: contact.at === null ? null : { ...contact.at },
+    presses,
+    releases,
+    wheel: input.wheel().y,
+  };
 }

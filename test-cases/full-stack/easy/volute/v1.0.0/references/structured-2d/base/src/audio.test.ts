@@ -48,7 +48,8 @@ describe("the cues", () => {
     await h.engine.advance(30);
     expect(since(h, mark)).toEqual([]);
 
-    h.debug.fire(270);
+    h.debug.setAim(270);
+    h.debug.fire();
     await h.engine.advance(1);
     expect(since(h, mark)).toEqual([CUES.fire]);
   });
@@ -57,7 +58,8 @@ describe("the cues", () => {
     const h = current();
     await isolate(h);
     poseTrain(h, [[1300, "halide", null]]);
-    h.debug.fire(270);
+    h.debug.setAim(270);
+    h.debug.fire();
     await h.engine.advance(1);
 
     const mark = h.cues.length;

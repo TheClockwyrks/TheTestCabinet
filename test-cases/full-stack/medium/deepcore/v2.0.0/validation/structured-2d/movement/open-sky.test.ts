@@ -22,7 +22,7 @@
 // solid footing, the bay is empty, and the drill is gated.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURFACE_Y, TILE } from "../../src/constants";
+import { SURFACE_Y, TILE } from "../constants";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import {
   ACTION_KEY,

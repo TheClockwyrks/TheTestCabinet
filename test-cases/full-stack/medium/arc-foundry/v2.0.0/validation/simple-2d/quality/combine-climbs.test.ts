@@ -18,14 +18,13 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual, assertLength } from "../assert";
 import {
   captureStill,
-  componentDamage,
-  componentRange,
   createHarness,
+  type Harness,
   openYard,
   standComponent,
-  type Harness,
 } from "../harness";
 import { anchored } from "./anchors";
+import { componentDamage, componentRange } from "../constants";
 
 /** The initiator's anchor, and the partner's, clear of it by two footprints. */
 const INITIATOR = { col: 8, row: 10 };

@@ -30,15 +30,15 @@ import { assertGreaterThan, assertGreaterThanOrEqual, fail } from "../assert";
 import {
   captureStill,
   createHarness,
-  mapById,
+  type Harness,
+  inRegion,
   openYard,
   parkUnit,
   standComponent,
-  tileCenter,
-  type Harness,
+  textDraws,
+  YARD,
 } from "../harness";
-import { FOOTPRINT, TILE } from "../../src/constants";
-import { YARD, inRegion, textDraws } from "./reading";
+import { FOOTPRINT, mapById, TILE, tileCenter } from "../constants";
 import { lastOpIn, type Box } from "./order";
 
 const MAP = "substation";

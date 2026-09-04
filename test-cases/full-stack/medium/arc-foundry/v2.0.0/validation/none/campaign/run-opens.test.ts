@@ -21,10 +21,10 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import {
+  difficultyById,
   STAMPS_PER_LEVEL,
   START_CHARGE,
   START_INTEGRITY,
-  difficultyById,
 } from "../constants";
 import { captureStill, createHarness, openRun, type Harness } from "../harness";
 

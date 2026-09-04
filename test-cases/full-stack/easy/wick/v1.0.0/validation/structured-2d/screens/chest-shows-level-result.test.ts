@@ -16,10 +16,10 @@
 // Ember at level `4` whatever the generator draws. A chest posed at the
 // lamplighter's own centre and the one tick that collects it open the overlay.
 //
-// WHY THE RUN'S OWN LEVEL IS FAR AWAY. The HUD draws `LEVEL_LABEL` beside the
-// lamplighter's level too (`specs/ui.md`, `playing`), and the isolation poses
-// that level at `ISOLATE_LEVEL` (`50`), whose digits cannot be read as the
-// result's `4`.
+// WHY THE RUN'S OWN LEVEL CANNOT BE MISTAKEN FOR THE RESULT'S. The HUD draws
+// `LEVEL_LABEL` beside the lamplighter's level too (`specs/ui.md`, `playing`),
+// and the isolation leaves that level at the idle run's `1`, which cannot be
+// read as the result's `4`.
 //
 // WHAT THE ICON READING CAN AND CANNOT SEE. The levelled item sits in a weapon
 // slot, and `specs/ui.md` leaves it open whether a build draws the HUD beneath

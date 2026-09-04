@@ -15,9 +15,9 @@
 // no tick keeps its edges, so a shot raised in the sliver between two ticks is
 // still fired.
 //
-// The two mouse buttons are two more sources on two existing actions: the primary
-// raises `fire`, the secondary raises `swap`, and the secondary is consumed so the
-// browser's context menu stays closed.
+// The two mouse buttons are two more sources on existing actions: the primary
+// raises `fire` and `confirm`, the secondary raises `swap`, and the secondary is
+// consumed so the browser's context menu stays closed.
 
 /** The pseudo-code the primary mouse button is registered under. */
 export const MOUSE_PRIMARY = "MousePrimary";

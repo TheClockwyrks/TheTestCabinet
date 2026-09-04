@@ -92,6 +92,9 @@ afterEach(async () => {
 it("draws an emitted core's charge from the charges on the channel", async () => {
   await poseHall(h, {
     level: LEVEL,
+    // The inlet is the faculty this point is about, so it is the one gate left
+    // open (`specs/instrumentation.md`, `setEmission`).
+    emission: true,
     quotaRemaining: QUOTA,
     cores: spacedBlock(POSED_HEAD_S, POSED_COUNT, POSED_CHARGE),
   });

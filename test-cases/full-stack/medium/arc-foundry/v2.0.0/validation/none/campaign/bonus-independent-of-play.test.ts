@@ -28,7 +28,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { loadDef, waveBonus } from "../constants";
+import { COLLECTOR_WAYPOINT, loadDef, waveBonus } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -37,7 +37,7 @@ import {
   releaseUnit,
   type Harness,
 } from "../harness";
-import { COLLECTOR, KILL_AT, LEAK_FROM, standGun } from "./runs";
+import { KILL_AT, LEAK_FROM, standGun } from "./runs";
 
 /** The wave every run below is posed at, so every bonus compared is the same one. */
 const WAVE = 6;
@@ -91,7 +91,7 @@ async function clearByLeaking(bank: number): Promise<number> {
   for (let n = 0; n < UNITS; n += 1) {
     await releaseUnit(h, "mote", {
       at: { x: LEAK_FROM.x, y: LEAK_FROM.y + n * 20 },
-      waypoint: COLLECTOR,
+      waypoint: COLLECTOR_WAYPOINT,
     });
   }
   const before = (await h.snapshot()).charge;

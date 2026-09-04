@@ -11,9 +11,9 @@ description = "The five-level hall run: three charges at the inlet rising to fiv
 # set reads as one self-contained game.
 #
 # It declares no `[workspaces]` either, so every run is seeded from the case's own
-# per-engine table, and no `[[review.categories]]`: the whole eighty-three-point
-# checklist is common, because there is no second variant for a point to be stated
-# wrongly for.
+# per-engine table, and no `[[review.categories]]`: every one of the checklist's
+# one hundred and twenty-nine points is common, because there is no second variant
+# for a point to be stated wrongly for.
 
 # The authored, *correct* static build of this variant — the case-variant analogue
 # of a run's `links.playableBuild`. It names a directory (resolved against the

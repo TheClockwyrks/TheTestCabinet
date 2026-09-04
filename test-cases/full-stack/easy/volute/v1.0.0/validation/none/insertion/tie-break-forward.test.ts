@@ -29,12 +29,11 @@
 // however a build integrated it. The tie is a fact about the geometry rather than
 // an accident of the arithmetic.
 //
-// The pair is posed with a THIRD core well ahead of it, which is what makes both
-// of them "Every other segment" (specs/channel.md, "Advance") rather than one of
-// them the lead. Both then close at the fixed catch-up rate of 180 units/s, both
-// are posed one tick of that rate short of where they must stand, and the tick
-// the strike resolves on moves them by the same amount — which is what keeps them
-// symmetric about `y = 330` when it matters.
+// The pair stands alone on the channel and stands still: the hall is posed with
+// `feed: false`, which stops the train's advance and nothing else
+// (specs/instrumentation.md, `setFeed`), so both cores are exactly where they
+// were posed on the tick the strike resolves and the symmetry about `y = 330` is
+// the one the pose arranged rather than one a rate has to preserve.
 //
 // WHAT THE TIE DECIDES. The pair is `PAIR_GAP` (42 units) apart, so the two
 // answers differ: the tie-break's core is the one with the LARGER arc position,
@@ -73,12 +72,11 @@ import {
 import {
   approach,
   assertInFlight,
-  CATCHUP_STEP,
   leg5S,
   LEVEL_SHOT_Y,
-  poseFor,
   RIGHT_AIM,
   SHOT,
+  STAGE,
 } from "./stage";
 
 /** How far apart in arc the two tied cores stand when the strike resolves. */
@@ -87,18 +85,7 @@ const PAIR_GAP = 42;
 /** How far above and below the shot's line each of them sits, in field units. */
 const HALF_GAP = PAIR_GAP / 2;
 
-/**
- * The core that makes both tied cores trailing segments.
- *
- * Far enough ahead that nothing merges over the drive — the gap closes at
- * `180 - 22 = 158` units/s, and 229 units of it take 87 ticks against a drive of
- * about 60 — and far enough off the shot's line, at `(680, 420)`, that it is
- * never a candidate for the strike.
- */
-const LEAD_S = 3700;
-
-/** The charges: the lead core's, the two tied cores', and none of them the shot's. */
-const LEAD = "cobalt";
+/** The charges of the two tied cores, neither of them the shot's. */
 const AHEAD = "sulfur";
 const REAR = "halide";
 
@@ -127,17 +114,13 @@ it("strikes the core with the larger arc position when two are tied", async () =
     "a pair one spacing apart would seat in the same slot either way",
   );
 
-  await poseHall(h, {
-    cores: [[LEAD_S, LEAD, null]],
-    loaded: SHOT,
-  });
+  await poseHall(h, STAGE);
 
   const after = await captureReplay(h, "tie", async () => {
     const short = await approach(h, RIGHT_AIM);
     assertInFlight(short);
     // Leg 5 descends, so the core BELOW the shot's line carries the larger arc
-    // position. Both ride the catch-up rate behind the lead core, so both are
-    // posed one tick of that rate short of the symmetric arrangement.
+    // position. The train is held, so both stand where they are posed.
     const belowS = leg5S(LEVEL_SHOT_Y + HALF_GAP);
     const aboveS = leg5S(LEVEL_SHOT_Y - HALF_GAP);
     assertNear(
@@ -147,16 +130,15 @@ it("strikes the core with the larger arc position when two are tied", async () =
       "the pair straddles the shot's line",
     );
     await h.debug.poseTrain([
-      [LEAD_S, LEAD, null],
-      [poseFor(belowS, CATCHUP_STEP), AHEAD, null],
-      [poseFor(aboveS, CATCHUP_STEP), REAR, null],
+      [belowS, AHEAD, null],
+      [aboveS, REAR, null],
     ]);
     const struck = await h.step(1);
     await h.step(SETTLE);
     return struck;
   });
 
-  assertEqual(coreCount(after), 4, "the shot seated into the train");
+  assertEqual(coreCount(after), 3, "the shot seated into the train");
 
   const seated = coreWithCharge(after, SHOT);
   const rear = coreWithCharge(after, REAR);

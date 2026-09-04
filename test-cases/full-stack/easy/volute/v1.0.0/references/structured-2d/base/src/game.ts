@@ -62,6 +62,15 @@ interface Pending {
   readonly world: WorldName;
   /** The level of the run to open on arrival, or nothing for the title. */
   readonly open: { readonly level: number; readonly freshRun: boolean } | null;
+  /**
+   * The run's own figures, carried across the transition.
+   *
+   * `startLevel` "Opens `level` ... The score and the cells stay as they are"
+   * (specs/instrumentation.md), and a transition builds a fresh game state, so
+   * the two figures are read off the outgoing world and written onto the
+   * incoming one. A fresh run leaves them behind, since `openRun` sets both.
+   */
+  readonly carry: { readonly score: number; readonly cells: number } | null;
   /** The poses made since the transition was requested, in call order. */
   readonly poses: HeldPose[];
 }
@@ -74,6 +83,18 @@ export class VoluteGame extends GameInstance<VoluteDebug> {
    * charge of each emitted core, and the charges the injector loads and queues.
    */
   rngState: number = DEFAULT_SEED;
+
+  /**
+   * Whether the inlet emits, and whether the train advances.
+   *
+   * The two faculty gates `setEmission` and `setFeed` set
+   * (specs/instrumentation.md). They live on the instance, not on a world's game
+   * state, because "a `reset` and a `startLevel` both leave this where the caller
+   * put it": a level opening builds a fresh world, and a value that survives one
+   * belongs here (specs/state.md).
+   */
+  emission = true;
+  feed = true;
 
   /**
    * The frame clock's accumulated time, in milliseconds, at the last `reset`.
@@ -110,6 +131,11 @@ export class VoluteGame extends GameInstance<VoluteDebug> {
 
     if (world.level === WORLDS.hall) {
       const open = pending?.open ?? { level: 1, freshRun: true };
+      const carry = pending?.carry ?? null;
+      if (carry !== null) {
+        mode.state.score = carry.score;
+        mode.state.cells = carry.cells;
+      }
       if (open.freshRun) mode.openRun();
       else mode.openLevel(open.level);
     }
@@ -171,7 +197,7 @@ export class VoluteGame extends GameInstance<VoluteDebug> {
       this.mode().resetToTitle();
       return;
     }
-    this.pending = { world: WORLDS.title, open: null, poses: [] };
+    this.pending = { world: WORLDS.title, open: null, carry: null, poses: [] };
     world.open(WORLDS.title);
   }
 
@@ -200,7 +226,13 @@ export class VoluteGame extends GameInstance<VoluteDebug> {
       else mode.openLevel(open.level);
       return;
     }
-    this.pending = { world: WORLDS.hall, open, poses: [] };
+    // A fresh run sets both figures itself; a level opened into keeps them.
+    const held = this.engine.world.mode;
+    const carry =
+      open.freshRun || !(held instanceof HallMode)
+        ? null
+        : { score: held.state.score, cells: held.state.cells };
+    this.pending = { world: WORLDS.hall, open, carry, poses: [] };
     world.open(WORLDS.hall);
   }
 }

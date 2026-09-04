@@ -16,9 +16,9 @@
 // and phase 12's other two outcomes cannot happen. With no weapon and no
 // passive held the chest's result is the heal of specs/evolutions.md's third
 // rule, which needs no draw and no loadout, so the reading is about the overlay
-// rather than about which result was rolled. `isolate` poses `ISOLATE_LEVEL`
-// (50) and nothing grants experience, so no level-up overlay competes with the
-// chest's.
+// rather than about which result was rolled. Nothing grants experience and
+// `progression` is one of the switches `isolate` holds off, so no level-up
+// overlay competes with the chest's.
 //
 // WHAT IS READ. The snapshot of that single tick: `screen` `chest`, `menuIndex`
 // 0, `chestResult` set, and the chest gone from the field.

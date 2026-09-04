@@ -1,5 +1,5 @@
 // Deepcore — the expedition's lifecycle, the surface camp, and the one place a
-// named control is run (specs/gameplay.md, specs/ui.md).
+// named control is run (specs/expedition.md, specs/ui.md).
 //
 // Everything a player can choose reaches the game through `activate`: a menu
 // item, a panel's button, a status-bar control, a click on a building, and the
@@ -39,8 +39,9 @@ import {
 import { dismissNotice, note } from "./feedback";
 import { atSurface, maxFuel, maxHull } from "./figures";
 import { emptyCargo, emptyItems, startingTiers } from "./game";
-import type { GroundItem, Miner } from "./game";
+import type { Miner } from "./game";
 import { buyItem, coreGround, jettisonCoreSample, useItem } from "./items";
+import { arrivalIndex } from "./menus";
 import { minerCenterX } from "./physics";
 import { allInstalled, fabricate } from "./rocket";
 import { clearSave, hasSave, readSave, writeSave } from "./save";
@@ -185,8 +186,12 @@ export function placeAtSpawn(d: Draft): void {
   m.drilling = null;
 }
 
-/** Move to size-select, holding the chosen mode until a size is picked. */
+/**
+ * Move to size-select with the expedition's mode set to the one chosen
+ * (specs/ui.md), holding it until a size is picked.
+ */
 export function chooseMode(d: Draft, mode: Mode): void {
+  d.mode = mode;
   d.pendingMode = mode;
   d.menuIndex = 0;
   d.screen = "size-select";
@@ -332,13 +337,6 @@ export function regenerateMine(d: Draft): void {
   d.nodes = mine.nodes.map((node) => ({ ...node }));
 }
 
-/** Take every ground item off the mine at once. */
-export function clearGroundItems(d: Draft): void {
-  const items: GroundItem[] = [];
-  d.groundItems = items;
-  if (!d.satchel.coreSample) d.coreTimer = null;
-}
-
 /** Begin the launch, which the Victory screen follows. */
 export function startLaunch(d: Draft): boolean {
   if (!allInstalled(d.installed)) {
@@ -363,8 +361,9 @@ export function startLaunch(d: Draft): boolean {
  */
 export function activate(d: Draft, action: string): void {
   if (action.startsWith("nav:")) {
-    d.screen = action.slice(4) as ScreenName;
-    d.menuIndex = 0;
+    const to = action.slice(4) as ScreenName;
+    d.menuIndex = arrivalIndex(d.screen, to, d.mode, d.hasSave);
+    d.screen = to;
     return;
   }
   if (action.startsWith("mode:")) {

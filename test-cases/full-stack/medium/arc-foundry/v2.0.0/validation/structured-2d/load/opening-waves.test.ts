@@ -16,8 +16,9 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { captureReplay, type Harness, type SpawnType } from "../harness";
+import { captureReplay, type Harness } from "../harness";
 import { collectWave, createWaveHarness, openWave, typesOf } from "./waves";
+import type { SpawnType } from "../constants";
 
 /** The run this check reads. Every difficulty runs the same opening rule. */
 const DIFFICULTY = "easy";

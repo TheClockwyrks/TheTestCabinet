@@ -57,6 +57,8 @@ export function createDraft(seed: number): Draft {
     interlude: 0,
     simTime: 0,
     accumulator: 0,
+    emission: true,
+    feed: true,
     muted: false,
     rngState: seedState(seed),
   };
@@ -66,7 +68,9 @@ export function createDraft(seed: number): Draft {
  * Return every declared field to its title-screen value.
  *
  * `muted` is deliberately untouched — muting is a player preference the runtime
- * owns — and so is `rngState`, which only a `reset` reseeds.
+ * owns — and so is `rngState`, which only a `reset` reseeds. `emission` and
+ * `feed` are untouched too: they belong to the caller driving the game rather
+ * than to the run being played (specs/instrumentation.md).
  */
 export function toTitle(draft: Draft): void {
   draft.screen = "title";
@@ -184,7 +188,7 @@ export function startLevel(draft: Draft, level: number): void {
   draft.queued = drawCharge(draft);
 }
 
-/** Pose what the start control on the title does: a fresh run, opened on level 1. */
+/** What the start control on the title does: a fresh run, opened on level 1. */
 export function startRun(draft: Draft): void {
   draft.score = 0;
   draft.cells = CELLS;

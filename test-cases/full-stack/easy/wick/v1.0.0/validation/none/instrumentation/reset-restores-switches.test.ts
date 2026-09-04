@@ -1,9 +1,9 @@
-// Wick — instrumentation/reset-restores-switches: with all seven driver
+// Wick — instrumentation/reset-restores-switches: with all nine driver
 // switches posed off, `reset()` leaves every one of them `true`.
 //
 // WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — "The driver
 // switches"): "each is restored to on by `reset`"; and `reset(options)`:
-// "Restores every declared field ... and every driver switch on". The seven
+// "Restores every declared field ... and every driver switch on". The nine
 // names are the table's, "reported by the snapshot under the same name".
 //
 // WHY THE WORLD IS POSED AS IT IS. Every switch is first turned off, and the

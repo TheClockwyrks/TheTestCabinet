@@ -28,6 +28,7 @@ import { FIGURE_TOLERANCE, XP_BASE } from "../constants";
 import {
   captureStill,
   createHarness,
+  enable,
   isolate,
   spawnGemAt,
   type Harness,
@@ -51,6 +52,8 @@ afterEach(() => {
 
 it("reads level 2, xp 0, and pendingLevelUps 1 when a small gem carries xp 4 to the threshold", async () => {
   isolate(h);
+  // Spending experience on levels is the requirement, so `progression` is the one faculty turned back on.
+  enable(h, "progression");
   h.debug.setLevel(POSED_LEVEL);
   h.debug.setXp(POSED_XP);
   const { player } = h.snapshot().run;

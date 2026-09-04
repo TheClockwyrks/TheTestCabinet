@@ -188,6 +188,11 @@ describe("the chain", () => {
         [head - 4 * SPACING - 60, "cobalt", null],
       ],
       "halide",
+      // Spent on the strike tick alone, so the level clears when the merge
+      // extraction empties the channel rather than during the flight.
+      () => {
+        h.api.setQuotaRemaining(0);
+      },
     );
     return h;
   }

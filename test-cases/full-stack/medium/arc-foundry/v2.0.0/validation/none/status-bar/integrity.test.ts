@@ -9,12 +9,13 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertEqual } from "../assert";
 import {
+  BAR,
   captureStill,
   createHarness,
-  openYard,
+  figures,
   type Harness,
+  openYard,
 } from "../harness";
-import { BAR, figures } from "./reading";
 
 const FIRST = 17;
 const SECOND = 12;

@@ -17,7 +17,7 @@ import {
   MINER_W,
   PLAYABLE_COL_MIN,
   TILE,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,

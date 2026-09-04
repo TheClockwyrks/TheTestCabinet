@@ -13,21 +13,26 @@
 // each cut starts from the same pose and the count is the drill's alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_HEALTH, DRILL_DAMAGE_TIERS, MAX_TIER } from "../../src/constants";
+import {
+  BAND_HEALTH,
+  DRILL_DAMAGE_TIERS,
+  drillHitsFor,
+  MAX_TIER,
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   ACTION_KEY,
   BAND_ORDER,
   captureReplay,
   createHarness,
+  type Harness,
   openScene,
   pinMiner,
   rowInBand,
   stageTiers,
   standOn,
-  type Harness,
 } from "../harness";
-import { countHits, drillHitsFor } from "./hits";
+import { countHits } from "./hits";
 
 /** A column well clear of the camp, the cave mouth, and the Core. */
 const COL = 8;

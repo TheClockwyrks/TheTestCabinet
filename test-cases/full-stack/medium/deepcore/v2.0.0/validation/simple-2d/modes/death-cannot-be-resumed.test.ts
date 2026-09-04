@@ -35,6 +35,17 @@ import { openAtCamp } from "../save/expedition";
 const DEATH_CEILING = 8;
 const SECOND_FRAMES = 8;
 
+/**
+ * Frames the recording holds either side of the death.
+ *
+ * The loop below leaves the bracket as soon as the Game Over screen arrives, which
+ * is a handful of frames, so the expedition is left running at the camp before the
+ * hull is emptied and the Game Over screen is left standing afterwards. That is
+ * what a reviewer watches: play, the death, and the screen that refuses to resume.
+ */
+const RUN_UP_FRAMES = 20;
+const SETTLE_FRAMES = 20;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -51,6 +62,8 @@ it("never reaches the pause menu once the death has been taken", async () => {
   pinDrill(h);
 
   const seen = await captureReplay(h, "over", async () => {
+    // The expedition alive at the camp, so the clip has a before.
+    await h.advance(RUN_UP_FRAMES);
     h.debug.setHull(0);
     await h.advance(1);
 
@@ -62,7 +75,10 @@ it("never reaches the pause menu once the death has been taken", async () => {
       await h.advanceSeconds(1, SECOND_FRAMES);
       screens.push(h.snapshot().screen);
     }
-    return { screens, ended: h.snapshot() };
+    const ended = h.snapshot();
+    // And the screen the death left, held long enough to read.
+    await h.advance(SETTLE_FRAMES);
+    return { screens, ended };
   });
 
   for (const screen of seen.screens) {

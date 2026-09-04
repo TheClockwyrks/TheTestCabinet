@@ -90,7 +90,12 @@ it("draws every core's charge from the level's own set", async () => {
     // 3. Emissions onto an empty channel, which is the draw that reaches for the
     //    level's set rather than for what is standing on the channel.
     for (let draw = 0; draw < EMPTY_DRAWS; draw += 1) {
-      await poseHall(h, { level: level.level, quotaRemaining: level.quota });
+      await poseHall(h, {
+        level: level.level,
+        // The draw being read IS an emission, so the inlet's gate is open.
+        emission: true,
+        quotaRemaining: level.quota,
+      });
       assertEachIn(charges(await h.step(1)), level.charges, context);
     }
   }

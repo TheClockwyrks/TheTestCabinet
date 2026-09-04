@@ -39,8 +39,8 @@ import {
   assertLength,
   assertLessThan,
 } from "../assert";
-import { OVERLOAD_SPEED, TILE } from "../../src/constants";
-import { captureReplay, distance, tileCenter, type Harness } from "../harness";
+import { OVERLOAD_SPEED, TILE, tileCenter } from "../constants";
+import { captureReplay, distance, type Harness } from "../harness";
 import {
   CLEAR_POLL,
   createRunHarness,

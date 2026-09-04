@@ -7,7 +7,7 @@
 // happened.
 //
 // WHICH CUE IT WAS IS READABLE HERE. The engine announces a play by the name the
-// game asked for (`engine/audio.md`), and `src/constants.ts` gives `material-chime`
+// game asked for (`engine/audio.md`), and `specs/assets.md` gives `material-chime`
 // and `ore-pickup` two names, so "its own chime" is decided rather than left to the
 // reviewer's ear: the chime must sound at the break and the ore pickup must not. A
 // build that plays the ore cue at a material node fails here.
@@ -17,7 +17,7 @@
 // — so that half stays the reviewer's, off the produced files.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, PLAYABLE_COL_MIN } from "../../src/constants";
+import { CUES, PLAYABLE_COL_MIN } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,

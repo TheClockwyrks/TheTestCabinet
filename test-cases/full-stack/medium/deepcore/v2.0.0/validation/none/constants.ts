@@ -72,7 +72,7 @@ export const CORE_COL = 16;
 /** The one cell of `row 1` generation leaves open: the way down out of the camp. */
 export const CAVE_MOUTH_COL = 26;
 
-/** The column the miner spawns standing on (specs/gameplay.md). */
+/** The column the miner spawns standing on (specs/expedition.md). */
 export const SPAWN_COL = 4;
 
 /**
@@ -664,7 +664,7 @@ export const MATERIAL_BAND: Readonly<Record<Material, Band>> = {
 export const SCANNER_RANGE: readonly number[] = [0, 10, 32];
 
 /* -------------------------------------------------------------------------- */
-/* The economy (specs/gameplay.md)                                            */
+/* The economy (specs/expedition.md)                                            */
 /* -------------------------------------------------------------------------- */
 
 export const FUEL_PRICE = 1;
@@ -866,13 +866,16 @@ export const TITLE_ITEMS = [
 export const TITLE_ITEMS_NO_SAVE = TITLE_ITEMS.slice(1);
 export const MODE_ITEMS = ["STANDARD", "HARDCORE", "BACK"] as const;
 export const SIZE_ITEMS = ["QUICK", "STANDARD", "MARATHON", "BACK"] as const;
+
+/** The How To Play screen's menu, in this order. */
+export const HOW_TO_PLAY_ITEMS = ["BACK"] as const;
 export const PAUSE_ITEMS = ["RESUME", "RESTART", "QUIT TO MENU"] as const;
 export const VICTORY_ITEMS = ["PLAY AGAIN", "MENU"] as const;
 export const GAME_OVER_ITEMS = ["PLAY AGAIN", "MENU"] as const;
 export const GAME_OVER_SAVE_ITEMS = ["CONTINUE FROM SAVE", "MENU"] as const;
 
 /** The status bar's reading while the load fraction is `1` or more. */
-export const OVERLOAD_TEXT = "OVERLOAD";
+export const OVERLOAD = "OVERLOAD";
 
 /* -------------------------------------------------------------------------- */
 /* Controls (specs/controls.md)                                               */
@@ -908,7 +911,7 @@ export const ACTIONS: Readonly<Record<Action, readonly string[]>> = {
   up: ["KeyW", "ArrowUp", "Space"],
   activate: ["KeyE", "Enter"],
   inventory: ["KeyI"],
-  pause: ["Escape"],
+  pause: ["Escape", "KeyP"],
   mute: ["KeyM"],
   jettison: ["KeyJ"],
   supply1: ["Digit1"],
@@ -929,6 +932,134 @@ export const OVERLAY_TOGGLE_CODE = "Backquote";
  * gesture, and a key with no binding is a gesture that changes nothing.
  */
 export const UNBOUND_KEY = "KeyZ";
+
+/* -------------------------------------------------------------------------- */
+/* Produced assets (specs/assets.md)                                          */
+/* -------------------------------------------------------------------------- */
+
+/** The frame rate a miner cycle is played at, `ANIM_FPS`. */
+export const ANIM_FPS = 12;
+
+/** The square a miner frame is authored to fit within, `MINER_SPRITE`. */
+export const MINER_SPRITE = 80;
+
+/** The square a status-bar icon is authored at, `ICON_SIZE`. */
+export const ICON_SIZE = 24;
+
+/** How many interchangeable rock variants a band carries at least, `TILE_VARIANTS`. */
+export const TILE_VARIANTS = 3;
+
+/** How many frames the drill-damage overlay carries at least, `CRACK_FRAMES`. */
+export const CRACK_FRAMES = 4;
+
+/** How many variants unbreakable stone is produced in at least, `STONE_VARIANTS`. */
+export const STONE_VARIANTS = 2;
+
+/** How many frames the lava shimmer carries at least, `LAVA_FRAMES`. */
+export const LAVA_FRAMES = 2;
+
+/**
+ * The fewest distinct drawings a produced cycle carries.
+ *
+ * `specs/assets.md`: "every produced cycle carries at least two distinct
+ * drawings, so a cycle that repeats one picture is not a cycle".
+ */
+export const DRAWINGS_MIN = 2;
+
+/** The miner's animation states, and the frames `specs/assets.md` asks each for. */
+export const MINER_CYCLES: Readonly<Record<string, number>> = {
+  idle: 2,
+  walk: 4,
+  "drill-down": 3,
+  "drill-side": 3,
+  jetpack: 3,
+  fall: 2,
+  hurt: 2,
+  "fuel-out": 2,
+};
+
+/** The four bands' rock, by the file-name stem `assets/tiles/<band>-<n>.png` gives. */
+export const BAND_TILES: readonly Band[] = BAND_ORDER;
+
+/** The six surface buildings, by the ids `specs/world.md` gives them. */
+export const BUILDING_SPRITES: readonly string[] = BUILDING_IDS;
+
+/** The rest of what `assets/surface/` holds. */
+export const SURFACE_SPRITES: readonly string[] = [
+  "cave-mouth",
+  "ground",
+  "sky",
+];
+
+/** The material sprites, the Core, and the Core Sample. */
+export const MATERIAL_SPRITES: readonly (Material | "core" | "core-sample")[] =
+  [...MATERIALS, "core", "core-sample"];
+
+/** The status-bar icons `assets/icons/<name>.png` holds. */
+export const ICON_SPRITES: readonly string[] = [
+  "fuel",
+  "hull",
+  "cargo",
+  "credits",
+  "depth",
+  ...MATERIALS,
+];
+
+/** How many assembly states the rocket is produced at: `stage0` through `stage5`. */
+export const ROCKET_STAGES = ROCKET_COMPONENTS.length + 1;
+
+/** The twelve produced particle systems, by the file names `specs/assets.md` gives. */
+export const FX_SYSTEMS: readonly string[] = [
+  "gas-seep",
+  "drill-debris",
+  "jetpack-exhaust",
+  "ore-sparkle",
+  "material-shimmer",
+  "gas-explosion",
+  "lava-embers",
+  "impact-dust",
+  "core-extract",
+  "core-detonation",
+  "launch-exhaust",
+  "death-burst",
+];
+
+/** The thirteen produced sounds, by the file names `specs/assets.md` gives. */
+export const AUDIO_FILES: readonly string[] = [
+  "drill",
+  "thrust",
+  "ore-pickup",
+  "material-chime",
+  "gas-explosion",
+  "lava-sizzle",
+  "impact",
+  "fabricate",
+  "launch",
+  "death",
+  "alarm-fuel",
+  "alarm-core",
+  "music",
+];
+
+/* -------------------------------------------------------------------------- */
+/* The showcase (specs/showcase.md)                                           */
+/* -------------------------------------------------------------------------- */
+
+/** The showcase's directory, at the root of the repository the build produced. */
+export const SHOWCASE_DIR = "showcase";
+
+/** "`showcase/showcase.md`, the description." */
+export const SHOWCASE_DESCRIPTION = "showcase/showcase.md";
+
+/** "`showcase/showcase.toml`, the carousel." */
+export const SHOWCASE_CAROUSEL = "showcase/showcase.toml";
+
+/** "The carousel holds two to four entries." */
+export const SHOWCASE_MIN_ENTRIES = 2;
+export const SHOWCASE_MAX_ENTRIES = 4;
+
+/** "Every file the carousel names exists there, and each stays under 25 MiB." */
+export const SHOWCASE_MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 
 /* -------------------------------------------------------------------------- */
 /* The debug surface (specs/instrumentation.md)                               */

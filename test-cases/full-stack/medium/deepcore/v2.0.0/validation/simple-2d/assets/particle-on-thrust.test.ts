@@ -15,12 +15,7 @@
 // on, and no other effect can be playing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  MINER_H,
-  MINER_W,
-  PLAYABLE_COL_MIN,
-  TILE,
-} from "../../src/constants";
+import { MINER_H, MINER_W, PLAYABLE_COL_MIN, TILE } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   ACTION_KEY,

@@ -7,15 +7,14 @@
 // `world.audio.looping`, which "reports whether it is", and the threshold is
 // that it is `true` once a fresh run is under way.
 //
-// WHY THE RUN IS POSED RATHER THAN LIT FROM THE MENU. `specs/ui.md` makes the
-// two the same run: "`LIGHT THE LAMP`, `TRY AGAIN`, and the debug surface's
-// `setScreen("playing")` each begin a fresh run", and
+// WHY THE SCREEN IS POSED RATHER THAN LIT FROM THE MENU. The rule is keyed on
+// the SCREEN and not on how it was reached — "exactly when `screen` is
+// `playing`, `levelup`, `chest`, or `paused`" — and
 // `specs/instrumentation.md` states what that means for sound: "Both looping
-// cues are reconciled from the state by the next frame, so a run posed
-// through `setScreen("playing")` sounds exactly as one started from the menu
-// one frame later." Posing keeps the title menu out of an audio point, so a
-// build with a broken menu fails the menu points and is decided here on its
-// audio alone.
+// cues are reconciled from the state by the next frame, so a run posed through
+// `setScreen("playing")` sounds exactly as one started from the menu one frame
+// later." Posing keeps the title menu out of an audio point, so a build with a
+// broken menu fails the menu points and is decided here on its audio alone.
 //
 // WHY THE WORLD IS POSED AS IT IS. `reset` first, so the game stands on
 // `title` with no run, and the bed is read as `false` there before the run is

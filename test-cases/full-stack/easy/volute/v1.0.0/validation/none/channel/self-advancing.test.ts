@@ -9,6 +9,16 @@
 // segment gains the effective feed speed every second of it. So a build handed
 // back its own clock, with nothing stepping it, must carry the train forward.
 //
+// ENGINELESS ONLY, WHICH IS WHY THIS FILE HAS NO COUNTERPART NEXT DOOR. The
+// manifest scopes the point with `engines = ["none"]`. Here the frame loop is a
+// deliverable: the build writes the requestAnimationFrame loop, the accumulator
+// and the fixed tick under them, and a build that wrote none of it stands still.
+// Under either engine the loop is the ENGINE's — the seeded `src/main.ts`, which
+// a build does not edit, stands the engine up and runs it — so the point would
+// grade the engine rather than the build, and the build's own residue (that its
+// `update` integrates against the dt it is handed) is `channel/feed-advance`'s
+// point, measured there against counted ticks where it can be measured exactly.
+//
 // THE DRIVE. An isolated hall with one core on the channel and the inlet
 // stopped, so nothing but the advance can move the reading. The harness hands
 // the build its own wall clock for six hundred milliseconds and then takes it
@@ -65,7 +75,6 @@ afterEach(async () => {
 it("carries the train forward on its own clock, unstepped", async () => {
   await poseHall(h, {
     level: LEVEL,
-    quotaRemaining: 0,
     cores: [[START_S, "halide", null]],
   });
 

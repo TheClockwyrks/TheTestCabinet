@@ -29,7 +29,7 @@ import {
   TELEPORT_SPEED_MAX,
   TELEPORT_SPEED_MIN,
   TILE,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureReplay,
   createHarness,

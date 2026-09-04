@@ -4,11 +4,11 @@
 // was written on names the thing it means rather than spelling it again.
 // Nothing here decides an outcome and nothing here reads the reference.
 //
-// WHY THE ALMANAC IS DRIVEN BY KEYS. `specs/instrumentation.md` gives the
-// debug surface one operation that reaches this screen, `setScreen("almanac")`,
-// which enters it "exactly as confirming `THE ALMANAC` does: the idle run,
-// `menuIndex` `0`, `almanacTab` `0`, `almanacScroll` `0`", and no operation
-// that poses a tab or a highlight. Every arrangement past that first state is
+// WHY THE ALMANAC IS DRIVEN BY KEYS. `specs/instrumentation.md` gives the debug
+// surface one operation that reaches this screen, `setScreen("almanac")`, which
+// enters it by setting `screen` with `menuIndex`, `almanacTab`, and
+// `almanacScroll` all `0` and the run left as it stands, and no operation that
+// poses a tab or a highlight. Every arrangement past that first state is
 // therefore made with the real keys `specs/controls.md` binds: `right` and
 // `left` move the tab, `up` and `down` move the entry highlight.
 //

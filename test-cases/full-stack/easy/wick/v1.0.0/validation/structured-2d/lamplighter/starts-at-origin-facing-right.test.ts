@@ -11,12 +11,14 @@
 // rather than with `100`, because the rule is the equality; `maxHp`'s own
 // figure is the derived-stats points' business.
 //
-// WHY THE WORLD IS POSED AS IT IS. `freshRun` is `reset` and
-// `setScreen("playing")`, which specs/instrumentation.md makes "a fresh run
-// exactly as `LIGHT THE LAMP` and `TRY AGAIN` do" — the real start of a run
-// without the title menu, whose keys are the screens' points. The reading is
-// taken at tick `0`, before any frame, since the opening state is what a tick
-// then acts on. For the still, the driver switches are turned off and one
+// WHY THE WORLD IS POSED AS IT IS. `freshRun` is the sequence
+// `specs/instrumentation.md` names under `setScreen` for arranging what
+// `LIGHT THE LAMP` and `TRY AGAIN` begin: `reset`, the pose to `playing`, and
+// `setWeapon(0, "taper", 1)`. Every figure read here — the position, the
+// facing, and `hp` at `maxHp` — comes from the idle run `reset` restores
+// rather than from anything the sequence poses, so the reading is the run's
+// opening state and not the harness's. It is taken at tick `0`, before any
+// frame, since the opening state is what a tick then acts on. For the still, the driver switches are turned off and one
 // frame is drawn: with no key held the lamplighter stands where it started,
 // and nothing spawns into the picture.
 //

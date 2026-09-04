@@ -14,9 +14,11 @@
 // THE DRIVE. Cue collectors opened after each arrangement and read at the
 // call, so what they hold is what the call itself sounded. `choose` needs an
 // open overlay, which the real tick opens (sounding `level-up`), so its
-// collector opens after that tick. The loop: a fresh run posed through the
-// surface and one frame, against a fresh run confirmed with a real key and
-// one frame, both read off the engine's bus.
+// collector opens after that tick. The loop: the `playing` screen posed
+// through the surface and one frame, against a run confirmed with a real key
+// and one frame, both read off the engine's bus. The loop rule is keyed on the
+// SCREEN — "exactly when `screen` is `playing`, `levelup`, `chest`, or
+// `paused`" (`specs/ui.md`) — so the two arrive at the same reading.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

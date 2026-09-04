@@ -54,6 +54,9 @@ function surface(): { api: DeepcoreDebugApi; game: Game; stub: Stub } {
   const game = new Game();
   const api = installDebugApi({
     game,
+    // The layout reads answer off the frame's own routing table, and nothing
+    // here draws a frame, so the surface is built over an empty one.
+    clickables: () => [],
     input: new Input(),
     clock: {
       setAutoStep: (enabled) => {
@@ -191,11 +194,11 @@ describe("restoring the world", () => {
     expect(api.snapshot().miner.hull).toBe(game.maxHull());
   });
 
-  it("takes every ground item off without detonating a jettisoned Sample", () => {
+  it("takes every ground item off with a reset, detonating nothing", () => {
     const { api, game } = surface();
     api.setHull(game.maxHull());
     api.placeCoreSample(5, 200);
-    api.clearGroundItems();
+    api.reset();
     expect(api.snapshot().coreGround).toBeNull();
     expect(api.snapshot().coreTimer).toBeNull();
     expect(api.snapshot().miner.hull).toBe(game.maxHull());
@@ -546,12 +549,9 @@ describe("input", () => {
     const { api, stub } = surface();
     api.keyDown("KeyD");
     api.keyUp("KeyD");
-    api.press("KeyE");
     expect(stub.dispatched).toEqual([
       { type: "keydown", code: "KeyD" },
       { type: "keyup", code: "KeyD" },
-      { type: "keydown", code: "KeyE" },
-      { type: "keyup", code: "KeyE" },
     ]);
   });
 });

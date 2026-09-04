@@ -17,7 +17,7 @@
 // that eases into the drift is read at the speed it holds rather than at the ramp.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WALK_SPEED } from "../../src/constants";
+import { WALK_SPEED } from "../constants";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import {
   ACTION_KEY,

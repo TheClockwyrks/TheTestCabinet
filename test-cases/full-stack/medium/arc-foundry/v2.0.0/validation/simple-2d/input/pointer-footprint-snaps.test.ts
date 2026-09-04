@@ -21,19 +21,20 @@
 // the specification's arithmetic rather than a measurement of anything.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual } from "../assert";
 import {
-  MAX_ANCHOR_COL,
-  MAX_ANCHOR_ROW,
   captureStill,
   createHarness,
-  mapById,
+  type Harness,
   openYard,
   pressAction,
-  tileCenter,
-  type Harness,
 } from "../harness";
+import {
+  mapById,
+  MAX_ANCHOR_COL,
+  MAX_ANCHOR_ROW,
+  tileCenter,
+} from "../constants";
 
 let h: Harness;
 

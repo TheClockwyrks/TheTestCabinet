@@ -15,21 +15,19 @@
 // opening value is back where a fresh run starts it.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { START_CHARGE, START_INTEGRITY } from "../../src/constants";
+import { START_CHARGE, START_INTEGRITY } from "../constants";
 import { assertEqual, assertLength } from "../assert";
+import { captureStill, pressMenu, type Harness } from "../harness";
 import {
-  captureStill,
-  createHarness,
-  pressMenu,
-  type Harness,
-} from "../harness";
-import { ENDING_DIFFICULTY, reachVictory } from "./outcomes";
+  ENDING_DIFFICULTY,
+  createEndingHarness,
+  reachVictory,
+} from "./outcomes";
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createEndingHarness();
 });
 
 afterEach(() => {

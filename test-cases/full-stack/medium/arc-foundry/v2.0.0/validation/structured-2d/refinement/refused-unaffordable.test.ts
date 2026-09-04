@@ -20,10 +20,10 @@ import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  openYard,
-  refinementCost,
   type Harness,
+  openYard,
 } from "../harness";
+import { refinementCost } from "../constants";
 
 /** The rung part-way up the track the second attempt is made from. */
 const MIDWAY = 4;

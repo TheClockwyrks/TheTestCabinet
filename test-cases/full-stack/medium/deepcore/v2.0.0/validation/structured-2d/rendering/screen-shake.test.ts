@@ -62,7 +62,7 @@ import {
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
 } from "../assert";
-import { TILE } from "../../src/constants";
+import { TILE } from "../constants";
 import {
   captureReplay,
   createHarness,

@@ -117,6 +117,6 @@ it("ignores a click on a building the miner is not standing at", async () => {
   assertEqual(
     run.settled.hasSave,
     false,
-    "specs/gameplay.md: the Save Pad did not save from across the camp",
+    "specs/expedition.md: the Save Pad did not save from across the camp",
   );
 });

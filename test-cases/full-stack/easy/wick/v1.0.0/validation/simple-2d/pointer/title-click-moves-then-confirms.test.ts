@@ -24,8 +24,9 @@
 // other item, so the screen alone names which item the click took; the
 // `menuIndex` of `0` is the arrival rule the item itself carries.
 //
-// THE DRIVE. The title through `setScreen`, "exactly as the real transition
-// into it enters it" (specs/instrumentation.md), with the highlight asserted at
+// THE DRIVE. The title through `setScreen`, which "sets `screen` to `name` ...
+// with `menuIndex` ... `0`" (specs/instrumentation.md), with the highlight
+// asserted at
 // `0` so the item clicked is provably not the item highlighted; then a primary
 // press at the middle of the rectangle the build reported for the last
 // position, and the one frame that reads it. Nothing advances on `howto`

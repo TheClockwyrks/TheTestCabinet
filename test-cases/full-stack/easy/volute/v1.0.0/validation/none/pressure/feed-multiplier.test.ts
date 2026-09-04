@@ -23,7 +23,7 @@
 // bands overlap almost entirely, so nothing turns on the difference; the spec is
 // simply the thing being asserted.
 //
-// THE DRIVE. An isolated hall at level 1 with the quota stopped at 0 so the inlet
+// THE DRIVE. An isolated hall at level 1 with the inlet held so it
 // delivers nothing that could join the core and change which segment leads, the
 // pressure posed at 50, and exactly one core on the channel. A lone core is a
 // segment of one and it holds the head, so it is the lead segment
@@ -125,7 +125,6 @@ afterEach(async () => {
 it("rides the lead segment at the level's feed speed times 1 + pressure / 100", async () => {
   await poseHall(harness, {
     level: LEVEL,
-    quotaRemaining: 0,
     pressure: START_PRESSURE,
     cores: spacedBlock(START_S, CORES, CHARGE),
   });

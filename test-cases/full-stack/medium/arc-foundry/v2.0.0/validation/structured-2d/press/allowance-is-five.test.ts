@@ -11,8 +11,7 @@
 // which is what separates "the sixth was refused" from "the fifth never landed".
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { STAMPS_PER_LEVEL } from "../../src/constants";
+import { STAMPS_PER_LEVEL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

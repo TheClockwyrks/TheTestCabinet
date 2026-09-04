@@ -17,7 +17,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual } from "../assert";
-import { MINER_H, SURFACE_Y } from "../../src/constants";
+import { MINER_H, SURFACE_Y } from "../constants";
 import {
   captureReplay,
   createHarness,

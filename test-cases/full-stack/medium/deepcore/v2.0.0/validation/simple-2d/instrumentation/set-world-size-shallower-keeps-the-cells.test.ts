@@ -27,7 +27,7 @@
 // nor cuts one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WORLD_COLS } from "../../src/constants";
+import { WORLD_COLS } from "../constants";
 import { assertDeepEqual, assertEqual, fail } from "../assert";
 import {
   bandOfRow,

@@ -56,10 +56,10 @@ the overload wall. The cargo bay is capped by slot count rather than by weight, 
 a bay full of light shallow ore lifts easily while a bay part-filled with heavy
 deep ore can already exceed the lift.
 
-The escape from an overload is dropping ore. The inventory is openable anywhere
-and discards one unit of a chosen ore at a time, so the player sheds weight until
-the load fraction falls below `1`. Dropped ore is lost rather than sold. The
-status bar reads `OVERLOAD` while `load` is `1` or more.
+A `load` of `1` or more is an overload. The escape from one is dropping ore: the
+inventory is openable anywhere and discards one unit of a chosen ore at a time, so
+the player sheds weight until the load fraction falls below `1`. Dropped ore is
+lost rather than sold.
 
 ## Drilling
 
@@ -124,9 +124,9 @@ loaded climb cap and below every empty one, so an empty or light climb earns the
 eased rate and a heavy haul pays the full rate the whole way up. Walking and
 standing still cost no fuel.
 
-Fuel never refills on its own, on the surface or anywhere else. Below
-`LOW_FUEL_FRACTION` (`0.2`) of the maximum, the fuel gauge takes the alert
-treatment and the low-fuel alarm cue plays.
+Fuel never refills on its own, on the surface or anywhere else. Fuel below
+`LOW_FUEL_FRACTION` (`0.2`) of the maximum is low, and the low-fuel alarm cue
+plays while it is.
 
 Fuel reaching `0` while the miner is below the surface ground line strands it: the
 jetpack is dead and there is no way up. That is a death.
@@ -140,8 +140,7 @@ the Fuel Depot. The maximum is set by the hull tier.
   landing, and the Core Sample detonation.
 - The radiator tier reduces lava damage only, both the contact drain and the lump
   for drilling through a lava cell. Nothing reduces gas damage.
-- Below `LOW_HULL_FRACTION` (`0.25`) of the maximum, the hull gauge takes the
-  alert treatment.
+- Hull below `LOW_HULL_FRACTION` (`0.25`) of the maximum is low.
 - Hull standing at `0` destroys the miner, whatever emptied it, and is checked
   continuously rather than only at the blow that emptied it. That is a death. An
   empty hull is never a state the expedition continues from, and no open panel or
@@ -165,6 +164,13 @@ last lateral input, and its sprite mirrors to match.
 | `fall` | Descending through open space without thrust. |
 | `hurt` | Taking damage. The state holds for `HURT_TIME` (`0.4`) seconds from the blow, then gives way to whatever the miner is doing. |
 | `fuel-out` | Below the surface with fuel at `0`. |
+
+More than one row describes the miner at once often enough that the order matters,
+so the states take this precedence, highest first: `drill-down` and `drill-side`,
+then `hurt`, then `fuel-out`, then `jetpack`, then `fall`, then `walk`, then
+`idle`. A miner cutting the cell below while its fuel is gone is `drill-down`,
+and a miner standing on solid ground below the surface with fuel at `0` is
+`fuel-out`.
 
 Each state is a produced animation cycle, played frame by frame on a timer while
 the state holds.

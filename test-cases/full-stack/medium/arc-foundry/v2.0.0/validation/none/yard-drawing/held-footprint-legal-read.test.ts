@@ -25,12 +25,15 @@ import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
+  DISTINCT,
+  type Harness,
+  lattice,
   openYard,
   pressAction,
-  type Harness,
+  rgbDistance,
+  sample,
 } from "../harness";
-import { FOOTPRINT, TILE, mapById, structureCenter } from "../constants";
-import { DISTINCT, lattice, rgbDistance, sample } from "./reading";
+import { FOOTPRINT, mapById, structureCenter, TILE } from "../constants";
 
 /** Open ground, clear of every platform on the Substation. */
 const LEGAL = { col: 10, row: 10 };

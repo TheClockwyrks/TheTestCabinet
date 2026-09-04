@@ -177,6 +177,7 @@ export function resetWorld(w: FoundryState, seed: number = DEFAULT_SEED): void {
   w.screen = "title";
   w.runPhase = "build";
   w.menuIndex = 0;
+  w.pressedMenu = null;
   w.paused = false;
   w.charge = START_CHARGE;
   w.integrity = START_INTEGRITY;
@@ -203,6 +204,7 @@ export function resetWorld(w: FoundryState, seed: number = DEFAULT_SEED): void {
   w.cueQueue = [];
   w.activeWave = null;
   w.spawnerHeld = false;
+  w.waveHeld = false;
   w.spawnCursor = 0;
   w.waveClock = 0;
   w.simTime = 0;
@@ -243,12 +245,14 @@ export function startRun(w: FoundryState): void {
   w.refinement = 0;
   w.harvest = { mode: "none" };
   w.menuIndex = 0;
+  w.pressedMenu = null;
   w.kills = 0;
   w.leakCount = 0;
   w.fxQueue = [];
   w.cueQueue = [];
   w.activeWave = null;
   w.spawnerHeld = false;
+  w.waveHeld = false;
   w.spawnCursor = 0;
   w.waveClock = 0;
   w.simTime = 0;
@@ -1045,6 +1049,9 @@ function cullDead(w: FoundryState): void {
 function checkWaveEnd(w: FoundryState): void {
   const wave = w.activeWave;
   if (!wave) return;
+  // The surface's hold on the clear-and-pay resolution, and on nothing else: every
+  // other rule has already run this step (`specs/instrumentation.md`).
+  if (w.waveHeld) return;
   if (w.spawnCursor >= wave.events.length && w.units.length === 0) endWave(w);
 }
 
@@ -1192,6 +1199,7 @@ function win(w: FoundryState): void {
   w.finale = false;
   w.screen = "victory";
   w.menuIndex = 0;
+  w.pressedMenu = null;
   w.units = [];
   w.projectiles = [];
 }
@@ -1201,6 +1209,7 @@ function lose(w: FoundryState): void {
   w.finale = false;
   w.screen = "overload";
   w.menuIndex = 0;
+  w.pressedMenu = null;
   w.units = [];
   w.projectiles = [];
   w.activeWave = null;
@@ -2068,9 +2077,25 @@ export function setPaused(w: FoundryState, paused: boolean): void {
   w.paused = paused;
 }
 
-export function setScreen(w: FoundryState, screen: ScreenName): void {
+/**
+ * Show a screen, with `index` highlighted.
+ *
+ * `specs/ui.md`: "A menu reached other than by returning to it opens with its first
+ * entry highlighted, at menu index `0`. Returning to a menu highlights the entry
+ * that led away from it." The default is the first entry, and the callers that
+ * return to a menu name the entry they came through.
+ *
+ * A gesture in flight is dropped, because the entry its press landed in belongs to
+ * a menu that is no longer showing.
+ */
+export function setScreen(
+  w: FoundryState,
+  screen: ScreenName,
+  index = 0,
+): void {
   w.screen = screen;
-  w.menuIndex = 0;
+  w.menuIndex = index;
+  w.pressedMenu = null;
 }
 
 export function setMenuIndex(w: FoundryState, index: number): void {
@@ -2084,6 +2109,41 @@ export function setOverlay(
 ): void {
   if (overlay === "combos") w.showCombos = open;
   else w.showDamage = open;
+}
+
+/**
+ * Put the run into a phase, releasing no unit and composing no wave.
+ *
+ * `wave` and `finale` open a live wave whose spawn schedule is empty, exactly as
+ * `spawnUnit` does, so the yard holds whatever it already held and nothing arrives;
+ * `build` ends whatever phase is running without paying a wave-clear bonus and without
+ * advancing the wave counter (`specs/instrumentation.md`). It spends no wave number.
+ */
+export function setRunPhase(w: FoundryState, phase: PhaseName): void {
+  if (phase === "build") {
+    w.activeWave = null;
+    w.spawnerHeld = false;
+    w.projectiles = [];
+    w.finale = false;
+    w.runPhase = "build";
+    w.harvest = { mode: "none" };
+    return;
+  }
+  w.runPhase = "wave";
+  w.finale = phase === "finale";
+  w.harvest = { mode: "none" };
+  w.holding = false;
+  holdSpawner(w);
+}
+
+/**
+ * Hold the running wave's own clear-and-pay resolution, or release it.
+ *
+ * Nothing else is held with it: structures fire, bounties are paid, leaks cost Grid
+ * Integrity, and defeat still resolves (`specs/instrumentation.md`).
+ */
+export function setWaveHold(w: FoundryState, held: boolean): void {
+  w.waveHeld = held;
 }
 
 /** The map the next run opens on. The chain a snapshot reports is its from now. */
@@ -2147,6 +2207,17 @@ export function armNextRoll(
 
 export function clearNextRoll(w: FoundryState): void {
   w.armedRoll = null;
+}
+
+/**
+ * Put away whatever rock is held on the cursor.
+ *
+ * Placement is continuous (`specs/scrap-press.md`), so a drop that leaves stamps in the
+ * allowance arms the next rock at once. This empties the cursor, spending no stamp and
+ * refunding none, and does nothing when nothing is held.
+ */
+export function clearHeld(w: FoundryState): void {
+  w.holding = false;
 }
 
 /**

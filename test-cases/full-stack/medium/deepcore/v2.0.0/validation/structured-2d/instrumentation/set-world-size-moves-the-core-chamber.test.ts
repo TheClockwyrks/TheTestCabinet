@@ -26,7 +26,7 @@
 // miner stays at the camp and cuts nothing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_COL, WORLD_COLS } from "../../src/constants";
+import { CORE_COL, WORLD_COLS } from "../constants";
 import { assertDeepEqual, assertEqual, fail } from "../assert";
 import {
   captureStill,

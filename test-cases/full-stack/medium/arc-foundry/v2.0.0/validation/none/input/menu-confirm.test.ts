@@ -18,7 +18,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, fail } from "../assert";
-import { MAP_MENU_ACTION, MAP_IDS, keyFor, type MapId } from "../constants";
+import { keyFor, MAP_IDS, MAP_MENU_ACTION, type MapId } from "../constants";
 import {
   captureStill,
   createHarness,

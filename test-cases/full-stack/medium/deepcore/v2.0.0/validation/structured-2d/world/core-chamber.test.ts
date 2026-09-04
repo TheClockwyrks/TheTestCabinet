@@ -12,7 +12,7 @@
 // generation that lays the chamber.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_COL, WORLD_COLS, WORLD_SIZES } from "../../src/constants";
+import { CORE_COL, WORLD_COLS, WORLD_SIZES } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { generatedMine, kindAt, look } from "../generation/mine-scan";

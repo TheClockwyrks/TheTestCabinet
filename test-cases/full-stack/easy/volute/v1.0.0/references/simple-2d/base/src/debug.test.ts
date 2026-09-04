@@ -21,15 +21,22 @@ import { bare, harness } from "./harness.test";
 const OPERATIONS = [
   "reset",
   "snapshot",
-  "start",
+  "setScreen",
+  "setLevel",
+  "setScore",
+  "setCells",
+  "setChainStep",
   "startLevel",
   "poseTrain",
   "clearTrain",
   "setLoaded",
   "setQueued",
+  "setAim",
   "fire",
   "setPressure",
   "setQuotaRemaining",
+  "setEmission",
+  "setFeed",
   "grantMachinery",
   "pause",
   "resume",
@@ -63,7 +70,7 @@ describe("the surface itself", () => {
   it("sounds nothing when a pose is applied", async () => {
     const h = await bare();
     const marker = h.cues.length;
-    h.api.fire(270);
+    h.api.fireAt(270);
     h.api.grantMachinery("bore");
     h.api.startLevel(2);
     expect(h.since(marker)).toEqual([]);
@@ -77,7 +84,7 @@ describe("snapshot", () => {
     h.api.start();
     h.api.setPressure(40);
     h.api.grantMachinery("choke");
-    h.api.fire(90);
+    h.api.fireAt(90);
     const shot = h.api.snapshot();
 
     expect(Object.keys(shot).sort()).toEqual(
@@ -86,7 +93,9 @@ describe("snapshot", () => {
         "chainStep",
         "chainTimer",
         "danger",
+        "emission",
         "emitted",
+        "feed",
         "feedSpeed",
         "injector",
         "interlude",
@@ -117,6 +126,8 @@ describe("snapshot", () => {
     );
     expect(Object.keys(shot.segments[0]).sort()).toEqual(["count", "hold"]);
     expect(shot.muted).toBe(false);
+    expect(shot.emission).toBe(true);
+    expect(shot.feed).toBe(true);
     h.dispose();
   });
 
@@ -201,7 +212,7 @@ describe("reset", () => {
       h.api.reset({ seed: 99 });
       h.api.start();
       await h.step(120);
-      h.api.fire(300);
+      h.api.fireAt(300);
       await h.step(60);
       const shot = h.api.snapshot();
       h.dispose();
@@ -247,7 +258,7 @@ describe("the poses", () => {
     const h = await bare();
     h.api.poseTrain([[1000, "halide", null]]);
     h.api.grantMachinery("choke");
-    h.api.fire(270);
+    h.api.fireAt(270);
     const before = h.api.snapshot();
     h.api.startLevel(3);
     const shot = h.api.snapshot();
@@ -313,7 +324,7 @@ describe("the poses", () => {
       [972, "halide", null],
       [944, "halide", null],
     ]);
-    h.api.fire(270);
+    h.api.fireAt(270);
     const before = h.api.snapshot();
     h.api.clearTrain();
     const shot = h.api.snapshot();
@@ -341,13 +352,13 @@ describe("the poses", () => {
     const h = await harness();
     h.api.reset();
     // No level is open, so the injector holds nothing: the call draws one first.
-    h.api.fire(-90);
+    h.api.fireAt(-90);
     const shot = h.api.snapshot();
     expect(shot.injector.aim).toBe(270);
     expect(shot.projectiles).toHaveLength(1);
     expect(shot.injector.loaded).not.toBeNull();
 
-    h.api.fire(45);
+    h.api.fireAt(45);
     expect(h.api.snapshot().projectiles).toHaveLength(2);
     h.dispose();
   });
@@ -372,6 +383,7 @@ describe("the poses", () => {
 
     // Wound so the next core the inlet places is the level's second mark.
     h.api.setQuotaRemaining(LEVELS[0].quota - 24 + 1);
+    h.api.setEmission(true);
     h.api.clearTrain();
     await h.step();
     expect(h.api.snapshot().train[0].mark).toBe("backflow");

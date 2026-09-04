@@ -13,10 +13,19 @@
 // get both of those right and never let the chain lapse on its own, so the quiet
 // hall is its own point.
 //
-// THE DRIVE. The chain is first taken to step 2 the only way the specification
-// allows — a merge extraction, the "previous step plus 1" row — by posing a lead
-// segment of halide, cobalt, cobalt with a detached cobalt, halide behind it and
-// letting the catch-up close the gap. Then nothing is done but step.
+// THE DRIVE. The step is POSED at 2 and then nothing is done but step.
+// specs/instrumentation.md's `setChainStep` "sets the chain step an extraction
+// scores at to `k` ... and restarts the window that returns the step to `1`, so
+// the posed step holds for `CHAIN_RESET` (`2.0` s) of play from the call" — so
+// the window this point measures starts at the pose, exactly as it would start at
+// an extraction.
+//
+// WHY THE STEP IS POSED RATHER THAN EARNED. Raising it by driving a merge
+// extraction is `extraction/chain-increment`'s requirement: a build with a broken
+// merge would fail both points instead of one, and the drive would spend two
+// hundred ticks reaching a state a single pose reaches. The surface carries a
+// single-field pose for the step so that a point about the LAPSE can decide the
+// lapse alone.
 //
 // WHY 122 TICKS. specs/instrumentation.md fixes the tick at `TICK_DT` (1 / 60 s),
 // so 2.0 s is exactly 120 ticks and the lapse falls on the 120th. The check steps
@@ -25,63 +34,48 @@
 // Both figures come from `ticksFor` over `CHAIN_RESET` and from `TICK_TOL` rather
 // than being spelled.
 //
-// WHAT THE QUIET HALL HAS TO KEEP. Two things would make the reading mean something
-// else, so both are asserted rather than assumed:
+// WHAT THE QUIET HALL HAS TO KEEP. Two things would make the reading mean
+// something else, so both are asserted rather than assumed:
 //
-//   - Cores still standing. specs/progression.md — "Clearing a level": "A level is
-//     cleared the moment its quota is exhausted and no cores remain on the
-//     channel", and specs/channel.md's tick order runs that check every tick. A
-//     hall that emptied would leave `playing` and stop the clock this point is
-//     about. The two halide the merge extraction leaves ride on and cannot extract
-//     — a run of two is under specs/extraction.md's minimum of three — so the
-//     channel stays occupied and quiet at the same time.
+//   - A level still being played. The hall is EMPTY, which it can be because
+//     `poseHall` holds the inlet with `setEmission(false)` and leaves the quota
+//     unexhausted: specs/progression.md clears a level "the moment its quota is
+//     exhausted and no cores remain on the channel", and an unexhausted quota
+//     never satisfies that. A hall that left `playing` would stop the clock this
+//     point is about.
 //   - No extraction in the window. "elapses with no extraction" is the whole
-//     condition, so the check reads that the score never moved across the span.
+//     condition, and an empty channel makes it structural — there is nothing to
+//     insert into and nothing to merge — but the score is read across the span
+//     anyway, so a build that scored from somewhere cannot pass.
 //
-// THE TOLERANCE. The step is a whole number, read exactly. The timer is read as a
+// THE TOLERANCE. The step is a whole number, read exactly. The window's opening
+// value is read at the case's standing +/- 2 ticks on a duration, which is what
+// makes 122 ticks the right count to step. The timer at the end is read as a
 // bound rather than an equality: a build that clamps the countdown at 0 and one
-// that lets the last partial tick carry it just below 0 are both honest readings of
-// "seconds left", and one tick's worth of slack admits both while still ruling out
-// a timer that restarted itself.
+// that lets the last partial tick carry it just below 0 are both honest readings
+// of "seconds left", and one tick's worth of slack admits both while still ruling
+// out a timer that restarted itself.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertLessThanOrEqual,
-  assertTrue,
-} from "../assert";
-import { CHAIN_RESET, MIN_RUN, SPACING, TICK_DT, TICK_TOL } from "../constants";
+import { assertEqual, assertLessThanOrEqual, assertNear } from "../assert";
+import { CHAIN_RESET, TICK_DT, TICK_TOL } from "../constants";
 import {
   captureReplay,
   coreCount,
   createHarness,
   poseHall,
-  spacedRun,
   ticksFor,
   type Harness,
 } from "../harness";
 
-/** The lead segment of the merge pose, at `(540, 40)` on specs/channel.md's first leg. */
-const LEAD_HEAD_S = 500;
-
-/** A halide ahead of two cobalt, so the run spanning the join stops there. */
-const LEAD = ["halide", "cobalt", "cobalt"] as const;
-
-/** A cobalt at the head with a halide behind it, so the run stops there too. */
-const TRAIL = ["cobalt", "halide"] as const;
-
-/** How far behind the merge position the trailing segment starts. */
-const GAP = 60;
-
-/** The trailing segment's head: one spacing plus the gap behind the lead's tail. */
-const TRAIL_HEAD_S = LEAD_HEAD_S - (LEAD.length - 1) * SPACING - SPACING - GAP;
-
-/** How long the check waits for the catch-up, against about 23 ticks of it. */
-const APPROACH_TICKS = 180; // 3 s
+/** The step the chain is posed at, so "back to 1" is a reading and not a default. */
+const POSED_STEP = 2;
 
 /** 2.0 s of quiet plus the standing two-tick slack: 122 ticks. */
 const LAPSE_TICKS = ticksFor(CHAIN_RESET) + TICK_TOL;
+
+/** The +/- 2 ticks the case's standing tolerances put on a duration, in seconds. */
+const DURATION_TOL = TICK_TOL * TICK_DT;
 
 let h: Harness;
 
@@ -94,37 +88,27 @@ afterEach(async () => {
 });
 
 it("returns the chain to step 1 after 2.0 s with no extraction", async () => {
-  // The chain is raised to step 2 the only way the specification allows.
-  await poseHall(h, {
-    cores: [...spacedRun(LEAD_HEAD_S, LEAD), ...spacedRun(TRAIL_HEAD_S, TRAIL)],
-  });
-  const merge = await h.stepUntil(
-    (snapshot) => coreCount(snapshot) <= LEAD.length + TRAIL.length - MIN_RUN,
-    { maxTicks: APPROACH_TICKS, poll: 1 },
-  );
-  assertTrue(merge.hit, "a merge extraction to raise the chain");
-  assertEqual(
-    merge.snapshot.chainStep,
-    2,
-    "the chain step a merge extraction leaves",
-  );
+  await poseHall(h, { chainStep: POSED_STEP });
 
-  // Nothing left to emit, so the quiet is the inlet's as well as the train's
-  // (specs/channel.md — "Emission").
-  await h.debug.setQuotaRemaining(0);
+  const posed = await h.snapshot();
+  assertEqual(posed.chainStep, POSED_STEP, "the chain step the pose left");
+  assertNear(
+    posed.chainTimer,
+    CHAIN_RESET,
+    DURATION_TOL,
+    "the seconds left on the window the pose restarted",
+  );
+  assertEqual(coreCount(posed), 0, "the cores the pose left on the channel");
 
   const quiet = await captureReplay(h, "reset", () => h.step(LAPSE_TICKS));
 
-  // The hall was quiet: nothing extracted across the window, so what lapsed is the
+  // The hall was quiet: nothing scored across the window, so what lapsed is the
   // clock rather than a run being drawn out.
-  assertEqual(quiet.score, merge.snapshot.score, "the score across the quiet");
-  // And it was still a level being played, with cores on the channel — an emptied
-  // channel under an exhausted quota clears the level instead.
-  assertGreaterThan(coreCount(quiet), 0, "cores standing through the quiet");
-  assertEqual(quiet.screen, "playing");
+  assertEqual(quiet.score, posed.score, "the score across the quiet");
+  assertEqual(quiet.screen, "playing", "the screen the quiet ran on");
 
   // The rule itself.
-  assertEqual(quiet.chainStep, 1);
+  assertEqual(quiet.chainStep, 1, "the chain step after the window lapsed");
   assertLessThanOrEqual(
     quiet.chainTimer,
     TICK_DT,

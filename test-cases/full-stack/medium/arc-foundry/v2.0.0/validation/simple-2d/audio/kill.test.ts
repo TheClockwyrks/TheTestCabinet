@@ -22,13 +22,12 @@
 // here.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { CUES } from "../../src/constants";
+import { CUES } from "../constants";
 import { assertContains, assertDeepEqual, assertEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
-  holdWaveOpen,
+  holdWave,
   openYard,
   parkUnit,
   standComponent,
@@ -50,7 +49,7 @@ afterEach(() => {
 
 it("sounds on the frame the unit dies, and not between the shot and the kill", async () => {
   openYard(h, { wave: 1 });
-  holdWaveOpen(h);
+  holdWave(h);
   standComponent(h, "capacitor", 1, ANCHOR.col, ANCHOR.row);
   const victim = parkUnit(h, "mote", TARGET, { hp: 1 });
 

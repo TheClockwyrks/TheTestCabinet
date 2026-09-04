@@ -21,7 +21,7 @@
 // against a one-tile floor is not a rate.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { LIFE_SUPPORT_BURN, SURFACE_Y } from "../../src/constants";
+import { LIFE_SUPPORT_BURN, SURFACE_Y } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   captureReplay,

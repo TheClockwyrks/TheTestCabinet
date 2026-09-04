@@ -22,19 +22,17 @@
 //   they are the same colour.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { PAUSE_ITEMS } from "../../src/constants";
+import { PAUSE_ITEMS, structureCenter } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
   colorDistance,
   createHarness,
+  type Harness,
   openYard,
   sampleColor,
   standComponent,
-  structureCenter,
   ticks,
-  type Harness,
 } from "../harness";
 import { SAMPLE_SPREAD, drewText } from "./reading";
 

@@ -20,6 +20,7 @@ import { FIGURE_TOLERANCE, GEM_VALUES, xpToNext } from "../constants";
 import {
   captureStill,
   createHarness,
+  enable,
   isolate,
   spawnGemAt,
   type Harness,
@@ -54,6 +55,8 @@ afterEach(() => {
 
 it("sets xp without a level-up, and the next gain queues what the total earns", async () => {
   isolate(h, { level: 1 });
+  // The gain a posed `xp` earns is spent by the progression faculty, which this point reads through.
+  enable(h, "progression");
   h.debug.setXp(SMALL_XP);
   assertEqual(h.snapshot().run.xp, SMALL_XP, "xp read back");
 

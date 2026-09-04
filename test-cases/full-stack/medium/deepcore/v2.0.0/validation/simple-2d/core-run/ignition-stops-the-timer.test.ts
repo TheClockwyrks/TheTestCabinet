@@ -14,7 +14,7 @@
 // moment later, because a timer that merely paused would start falling again.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_TIMER, ROCKET_COMPONENTS } from "../../src/constants";
+import { CORE_TIMER, ROCKET_COMPONENTS } from "../constants";
 import {
   assertContains,
   assertEqual,

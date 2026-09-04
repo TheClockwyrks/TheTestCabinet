@@ -14,7 +14,7 @@
 // move — so a difference is the rocket and nothing else.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCKET_COMPONENTS, SURFACE_Y } from "../../src/constants";
+import { ROCKET_COMPONENTS, ROCKET_STAGES, SURFACE_Y } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,
@@ -27,7 +27,6 @@ import {
   type Harness,
 } from "../harness";
 import { boxChanged, sampleBox } from "./drawn";
-import { ROCKET_STAGES } from "./spec";
 
 /** How far above the pad's footprint the reading reaches, in world units. */
 const HEADROOM = 160;

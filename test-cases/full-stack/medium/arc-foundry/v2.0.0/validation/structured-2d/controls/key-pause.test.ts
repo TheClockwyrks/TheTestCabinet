@@ -19,17 +19,16 @@
 // checklist's `inplace-pause`. This point decides the key toggling the bit.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  keyFor,
+  type Harness,
   openYard,
   pressAction,
   releaseUnit,
-  type Harness,
 } from "../harness";
+import { keyFor } from "../constants";
 
 let h: Harness;
 

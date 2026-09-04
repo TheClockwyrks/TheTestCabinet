@@ -14,17 +14,16 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull } from "../assert";
 import {
-  NON_FIRING_TYPE,
-  TIERS,
   captureStill,
   createHarness,
+  type Harness,
   openYard,
   refillStamps,
   standCandidate,
   standComponent,
   structureById,
-  type Harness,
 } from "../harness";
+import { NON_FIRING_TYPE, TIERS } from "../constants";
 
 let h: Harness;
 

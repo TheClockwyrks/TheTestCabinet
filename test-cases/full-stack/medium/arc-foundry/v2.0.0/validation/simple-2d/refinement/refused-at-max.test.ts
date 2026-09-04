@@ -18,7 +18,7 @@ import {
   REFINEMENT_COSTS,
   REFINEMENT_MAX,
   REFINEMENT_ODDS,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureStill,
   createHarness,

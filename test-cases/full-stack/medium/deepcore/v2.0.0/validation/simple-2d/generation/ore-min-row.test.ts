@@ -11,7 +11,7 @@
 // no ore wherever generation put it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ORE_MIN_ROW, WORLD_SIZES } from "../../src/constants";
+import { ORE_MIN_ROW, WORLD_SIZES } from "../constants";
 import { assertDeepEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { generatedMine, look } from "./mine-scan";

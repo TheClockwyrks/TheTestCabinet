@@ -24,7 +24,7 @@ import {
 import { runTime } from "../sim/enemies";
 import type { PassiveSlot, RunState, WeaponSlot } from "../state";
 import { maxHp, xpToNext } from "../stats";
-import { text } from "./draw";
+import { blit, text } from "./draw";
 import { COLORS } from "./theme";
 
 const MARGIN = 24;
@@ -98,7 +98,7 @@ export function drawIcon(
 ): void {
   const image = assets.image(ICON_PATHS[id]);
   if (image) {
-    ctx.drawImage(image, x - size / 2, y - size / 2, size, size);
+    blit(ctx, image, x - size / 2, y - size / 2, size, size);
     return;
   }
   ctx.fillStyle = COLORS.slotEdge;

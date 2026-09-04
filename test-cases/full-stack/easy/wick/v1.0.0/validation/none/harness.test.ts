@@ -53,7 +53,6 @@ import {
   assertTrue,
 } from "./assert";
 import {
-  ISOLATE_LEVEL,
   advanceBy,
   captureReplay,
   captureStill,
@@ -252,11 +251,7 @@ it("poses an isolated night, and leaves it exactly as posed", async () => {
     worldIsEmpty(posed),
     "nothing alive and nothing dropped after isolate",
   );
-  assertEqual(
-    posed.run.level,
-    ISOLATE_LEVEL,
-    "the level an isolated night poses",
-  );
+  assertEqual(posed.run.level, 1, "the level an isolated night stands at");
   assertEqual(posed.run.player.x, 0, "player.x after isolate");
   assertEqual(posed.run.player.y, 0, "player.y after isolate");
   assertEqual(posed.run.player.facing, "right", "facing after isolate");
@@ -270,7 +265,7 @@ it("poses an isolated night, and leaves it exactly as posed", async () => {
   assertEqual(later.run.player.x, 0, "player.x after 60 held frames");
   assertEqual(later.run.player.y, 0, "player.y after 60 held frames");
   assertEqual(later.run.player.hp, BASE_MAX_HP, "hp after 60 held frames");
-  assertEqual(later.run.level, ISOLATE_LEVEL, "the level after 60 held frames");
+  assertEqual(later.run.level, 1, "the level after 60 held frames");
   assertEqual(later.screen, "playing", "the screen after 60 held frames");
 });
 

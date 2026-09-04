@@ -49,9 +49,14 @@ function build(): {
   return { api: createApi(game, clock), game, clock };
 }
 
+/**
+ * A game standing on `playing` with the fresh run's Taper in the first slot:
+ * `setScreen` sets the screen alone, so the run is composed here.
+ */
 function playing(): ReturnType<typeof build> {
   const built = build();
   built.api.setScreen("playing");
+  built.api.setWeapon(0, "taper", 1);
   return built;
 }
 
@@ -119,7 +124,7 @@ describe("the snapshot", () => {
     snap.run.player.x = 99;
     expect(game.state.run.player.x).toBe(0);
     api.setPendingLevelUps(1);
-    api.setScreen("levelup");
+    api.step(1);
     const onOverlay = api.snapshot();
     expect(onOverlay.run.pool.length).toBeGreaterThan(3);
     for (const id of onOverlay.run.offers) {
@@ -154,7 +159,7 @@ describe("the snapshot", () => {
     expect(api.snapshot().run.hurtFlash).toBeCloseTo(0.3, 9);
     api.step(1);
     expect(api.snapshot().run.hurtFlash).toBeCloseTo(0.3 - TICK_DT, 9);
-    api.setScreen("title");
+    api.reset();
     expect(api.snapshot().run.hurtFlash).toBe(0);
   });
 
@@ -202,7 +207,7 @@ describe("reset", () => {
 });
 
 describe("setScreen", () => {
-  it("begins a fresh run from title, keeping rng and simTime and the switches", () => {
+  it("sets the screen alone, keeping rng, simTime, and the switches", () => {
     const { api, game } = build();
     api.setWeaponFire(false);
     game.state.simTime = 3;
@@ -211,15 +216,16 @@ describe("setScreen", () => {
     api.setScreen("playing");
     const snap = api.snapshot();
     expect(snap.screen).toBe("playing");
-    expect(snap.run.weapons).toEqual([{ id: "taper", level: 1, cooldown: 0 }]);
+    expect(snap.run.weapons).toEqual([]);
     expect(snap.simTime).toBe(3);
     expect(snap.rngState).toBe(rng);
     expect(snap.weaponFire).toBe(false);
   });
 
-  it("resumes from paused, closes the chest, and is inert on levelup", () => {
+  it("leaves the run standing across every screen it reaches", () => {
     const { api } = playing();
     api.setTick(10);
+    api.setKills(3);
     api.setScreen("paused");
     expect(api.snapshot().screen).toBe("paused");
     api.setScreen("playing");
@@ -234,18 +240,17 @@ describe("setScreen", () => {
     });
     api.setScreen("playing");
     expect(api.snapshot().screen).toBe("playing");
-    expect(api.snapshot().run.chestResult).toBeNull();
+    expect(api.snapshot().run.chestResult).not.toBeNull();
     expect(api.snapshot().run.tick).toBe(11);
-    api.setPendingLevelUps(1);
-    api.setScreen("levelup");
-    expect(api.snapshot().screen).toBe("levelup");
-    api.setScreen("playing");
-    expect(api.snapshot().screen).toBe("levelup");
-    api.choose(0);
-    expect(api.snapshot().screen).toBe("playing");
+    api.setScreen("title");
+    expect(api.snapshot().screen).toBe("title");
+    expect(api.snapshot().run.kills).toBe(3);
+    api.setScreen("howto");
+    expect(api.snapshot().screen).toBe("howto");
+    expect(api.snapshot().run.tick).toBe(11);
   });
 
-  it("enters the almanac exactly as confirming THE ALMANAC does", () => {
+  it("zeroes the three indices and leaves the run on the almanac", () => {
     const { api } = playing();
     api.setKills(4);
     api.setScreen("almanac");
@@ -254,35 +259,38 @@ describe("setScreen", () => {
     expect(snap.menuIndex).toBe(0);
     expect(snap.almanacTab).toBe(0);
     expect(snap.almanacScroll).toBe(0);
-    expect(snap.run.kills).toBe(0);
+    expect(snap.run.kills).toBe(4);
     expect(snap.accumulator).toBe(0);
   });
 
-  it("needs a pending level-up to open the overlay", () => {
+  it("opens no overlay of its own on levelup", () => {
     const { api } = playing();
+    api.setPendingLevelUps(1);
     api.setScreen("levelup");
-    expect(api.snapshot().screen).toBe("playing");
+    expect(api.snapshot().screen).toBe("levelup");
+    expect(api.snapshot().run.offers).toEqual([]);
+    expect(api.snapshot().run.pendingLevelUps).toBe(1);
   });
 
-  it("ends the run kept for the end screens, and leaves unlisted rows inert", () => {
+  it("ends nothing on the end screens, and reaches every Screen value", () => {
     const { api } = playing();
     api.setKills(3);
     api.setScreen("fallen");
     expect(api.snapshot().screen).toBe("fallen");
     expect(api.snapshot().run.kills).toBe(3);
+    expect(api.snapshot().run.player.hp).toBe(100);
     api.setScreen("chest");
-    expect(api.snapshot().screen).toBe("fallen");
-    api.setScreen("levelup");
-    expect(api.snapshot().screen).toBe("fallen");
+    expect(api.snapshot().screen).toBe("chest");
     api.setScreen("paused");
-    expect(api.snapshot().screen).toBe("fallen");
+    expect(api.snapshot().screen).toBe("paused");
     api.setScreen("title");
-    expect(api.snapshot().run.kills).toBe(0);
+    expect(api.snapshot().run.kills).toBe(3);
     api.setScreen("howto");
     expect(api.snapshot().screen).toBe("howto");
     api.setScreen("playing");
     api.setScreen("dawn");
     expect(api.snapshot().screen).toBe("dawn");
+    expect(api.snapshot().run.tick).toBe(0);
     expect(() => api.setScreen("nowhere" as never)).toThrow();
   });
 });
@@ -299,10 +307,14 @@ describe("the menu readings", () => {
     expect(api.menuRects()).toHaveLength(END_ITEMS.length);
     api.setScreen("playing");
     api.setPendingLevelUps(1);
-    api.setScreen("levelup");
+    api.step(1);
+    expect(game.state.run.offers.length).toBeGreaterThan(0);
     expect(api.menuRects()).toHaveLength(game.state.run.offers.length);
+    // `howto` and `chest` show no menu and answer the pointer on one box each.
     api.setScreen("howto");
-    expect(api.menuRects()).toEqual([]);
+    expect(api.menuRects()).toHaveLength(1);
+    api.setScreen("chest");
+    expect(api.menuRects()).toHaveLength(1);
   });
 
   it("reports the almanac's visible rows, counted from its scroll", () => {
@@ -454,7 +466,7 @@ describe("the lamplighter and progression poses", () => {
     api.setNextOffers(["pyre"]);
     expect(api.snapshot().run.nextOffers).toEqual(["pyre"]);
     api.setPendingLevelUps(1);
-    api.setScreen("levelup");
+    api.step(1);
     expect(api.snapshot().run.offers).not.toContain("pyre");
     expect(api.snapshot().run.offers).toHaveLength(3);
     expect(api.snapshot().run.nextOffers).toBeNull();
@@ -463,7 +475,7 @@ describe("the lamplighter and progression poses", () => {
   it("accepts nextOffers on levelup for the queued overlay", () => {
     const { api } = playing();
     api.setPendingLevelUps(2);
-    api.setScreen("levelup");
+    api.step(1);
     api.setNextOffers(["lure"]);
     api.choose(0);
     expect(api.snapshot().screen).toBe("levelup");

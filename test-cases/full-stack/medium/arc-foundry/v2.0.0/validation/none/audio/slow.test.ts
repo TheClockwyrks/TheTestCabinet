@@ -39,7 +39,7 @@ import { ANCHOR, TARGET, beforeFrame, onFrame, settle } from "./cues";
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -47,7 +47,6 @@ afterEach(async () => {
 });
 
 it("sounds on the frame the slow lands, and not between the shot and the hit", async () => {
-  await h.armAudio();
   await openYard(h, { wave: 1 });
   await settle(h);
   await standComponent(h, "choke", 1, ANCHOR.col, ANCHOR.row);

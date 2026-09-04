@@ -12,29 +12,31 @@
 // exactly three sources and sinks in the whole game (specs/economy.md): a
 // bounty, the wave-clear bonus, and the two things Charge is spent on. So the
 // yard carries one Capacitor and nothing else, no refinement is bought, no tower
-// is upgraded, and a held unit at the entry keeps the live wave from clearing
-// while a bounty is being read — because a clear pays a bonus into the same
-// counter. Grid Integrity has exactly one mover, a leak, and it never
-// regenerates, so nothing but the unit being read can touch it either.
+// is upgraded, and the wave's own clear-and-pay resolution is HELD
+// (specs/instrumentation.md) so no bonus can land in the same counter mid-reading.
+// Nothing is parked to achieve that: the yard holds the gun and the unit being
+// read, and nothing else. Grid Integrity has exactly one mover, a leak, and it
+// never regenerates, so nothing but the unit being read can touch it either.
 //
-// THE GUN IS FAR FROM BOTH. The Capacitor's `100` reach covers the point a kill
-// is staged at and nothing else: not the entry, where the held unit stands, and
-// not the stretch a leak is walked over. So the unit being read is the only one
-// it can fire at.
+// THE GUN IS FAR FROM THE WALK. The Capacitor's `100` reach covers the point a kill
+// is staged at and not the stretch a leak is walked over, so the unit being read is
+// the only one it can fire at.
 
 import { assertEqual } from "../assert";
-import { type LoadType } from "../../src/constants";
 import {
   COLLECTOR_WAYPOINT,
-  holdWaveOpen,
+  type LoadType,
+  structureCenter,
+  tileCenter,
+} from "../constants";
+import {
+  type Harness,
+  holdWave,
   openYard,
   parkUnit,
   releaseUnit,
   standComponent,
-  structureCenter,
-  tileCenter,
   unitById,
-  type Harness,
   type YardOptions,
 } from "../harness";
 
@@ -65,7 +67,7 @@ export interface Grounded {
 /** Pose the field these readings are taken on. */
 export function openField(h: Harness, options: YardOptions): void {
   openYard(h, options);
-  holdWaveOpen(h);
+  holdWave(h);
   standComponent(h, "capacitor", 1, GUN.col, GUN.row);
 }
 
@@ -83,6 +85,36 @@ export async function bountyFor(h: Harness, type: LoadType): Promise<number> {
     `the ${type} held under the Capacitor to be killed by it`,
   );
   return removed.snapshot.charge - before;
+}
+
+/**
+ * Release one unit onto the same walk `leakFor` reads and leave it travelling.
+ *
+ * The two suites that read a unit in motion show one: a still taken after every
+ * reading has been made would otherwise draw an empty yard.
+ */
+export function walkOne(h: Harness, type: LoadType): number {
+  return releaseUnit(h, type, { at: LEAK_FROM, waypoint: COLLECTOR_WAYPOINT });
+}
+
+/**
+ * What one unit of that type reads while it is travelling under its own legs.
+ *
+ * The roster's speed is what a unit MOVES at, so the reading is taken off a unit
+ * the spawner released and nothing has touched: no hold, no slow, no gun.
+ */
+export function travelling(h: Harness, type: LoadType): Grounded {
+  // The unit is released BEFORE the snapshot is taken: a snapshot read as an
+  // argument beside the release is evaluated first, and would carry a yard the
+  // unit is not on yet.
+  const id = walkOne(h, type);
+  const walking = unitById(h.snapshot(), id);
+  return {
+    leak: 0,
+    speed: walking.speed,
+    baseSpeed: walking.baseSpeed,
+    flying: walking.flying,
+  };
 }
 
 /** The Grid Integrity one leak of that type cost, and the speed it walked at. */

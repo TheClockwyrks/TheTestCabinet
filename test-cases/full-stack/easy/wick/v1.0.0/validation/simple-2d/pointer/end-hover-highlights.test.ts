@@ -27,12 +27,12 @@
 // same rules; the hover rule is about a menu answering the pointer, and one of
 // the two decides it.
 //
-// THE DRIVE. An isolated `playing` run ended through `setScreen("fallen")`,
-// which "Ends the run exactly as that ending does, the run kept for the end
-// screen to report" (specs/instrumentation.md), so the ending's own rules are
-// not on the way in. Then the pointer to the middle of the reported rectangle
-// and one frame: the rules are "applied on every frame, after that frame's
-// press edges and before its update" (specs/controls.md).
+// THE DRIVE. An isolated `playing` run ended the way the rule ends it: "the
+// fallen ending is `setHp` at `0` and one tick" (specs/instrumentation.md),
+// which is what `endFallen` composes, so the end screen is reached by the
+// ending rather than around it. Then the pointer to the middle of the reported
+// rectangle and one frame: the rules are "applied on every frame, after that
+// frame's press edges and before its update" (specs/controls.md).
 //
 // THE TOLERANCE. None: a menu index is a discrete figure.
 
@@ -43,6 +43,7 @@ import {
   captureStill,
   createHarness,
   hoverRect,
+  endFallen,
   isolate,
   type Harness,
 } from "../harness";
@@ -65,7 +66,7 @@ it("moves the fallen highlight to the item the pointer rests in", async () => {
   isolate(h, { level: 11 });
   h.debug.setTick(6000);
   h.debug.setKills(52);
-  h.debug.setScreen("fallen");
+  await endFallen(h);
   const before = h.snapshot();
   assertEqual(before.screen, "fallen", "the screen the pointer rests on");
   assertEqual(before.menuIndex, 0, "the highlight before the pointer moves");

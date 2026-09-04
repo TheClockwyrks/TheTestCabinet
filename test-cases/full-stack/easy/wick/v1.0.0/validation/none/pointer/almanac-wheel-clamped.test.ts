@@ -15,8 +15,9 @@
 // higher; one that stopped early reads lower.
 //
 // HOW THE SCENARIO IS DRIVEN. The almanac is entered through
-// `setScreen("almanac")`, which specs/instrumentation.md defines as "exactly as
-// confirming `THE ALMANAC` does", with `almanacScroll` `0`. The wheel is then
+// `setScreen("almanac")`, which specs/instrumentation.md defines as setting
+// `screen` alone, "with `menuIndex`, `almanacTab`, and `almanacScroll`
+// all `0`", with `almanacScroll` `0`. The wheel is then
 // turned by forty rows' worth of downward travel in one frame. Forty is a DRIVE
 // LENGTH rather than a threshold: any travel past the tab's sixteen entries
 // answers the same bound, and forty is comfortably past it whatever the shown

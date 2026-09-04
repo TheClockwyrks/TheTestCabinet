@@ -18,9 +18,9 @@
 // resetting the reader's place in the list is told apart from one that did both.
 //
 // HOW THE SCENARIO IS DRIVEN. The almanac is entered through
-// `setScreen("almanac")`, which specs/instrumentation.md defines as "exactly as
-// confirming `THE ALMANAC` does: the idle run, `menuIndex` `0`, `almanacTab`
-// `0`, `almanacScroll` `0`", so the shown tab is the first and the third is one
+// `setScreen("almanac")`, which specs/instrumentation.md defines as setting
+// `screen` alone, "with `menuIndex`, `almanacTab`, and `almanacScroll`
+// all `0`", so the shown tab is the first and the third is one
 // the almanac is not showing. The highlight is then moved with real `down`
 // presses, and the primary button is pressed at the middle of the third
 // rectangle `tabRects()` reports, with exactly one frame between press and

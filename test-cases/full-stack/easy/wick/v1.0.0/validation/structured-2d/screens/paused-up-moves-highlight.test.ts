@@ -8,11 +8,11 @@
 // the `paused` row "`up`, `down` move the highlight, wrapping", and binds `up`
 // to `ArrowUp` and `KeyW`; with two items, index `1` moves to index `0`.
 //
-// THE DRIVE. An isolated `playing` world, paused through
-// `setScreen("paused")` — which `specs/instrumentation.md` says enters the
-// screen "exactly as `pause` does" — and one `ArrowDown` onto the last item,
-// read back as the precondition, so the `ArrowUp` this point is about is made
-// from an index the wrap is not involved in.
+// THE DRIVE. An isolated `playing` world, paused through `setScreen("paused")`
+// — which `specs/instrumentation.md` says enters the screen by setting `screen`
+// alone, with the run left as it stands — and one `ArrowDown` onto the last
+// item, read back as the precondition, so the `ArrowUp` this point is about is
+// made from an index the wrap is not involved in.
 //
 // THE TOLERANCE. None: an index is exact.
 

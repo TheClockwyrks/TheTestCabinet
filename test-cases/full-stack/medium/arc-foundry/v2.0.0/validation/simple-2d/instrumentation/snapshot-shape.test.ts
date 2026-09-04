@@ -19,16 +19,20 @@
 // `1`–`7`, and the Overload Dynamo's `invincible`.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import {
   COMBO_IDS,
   COMPONENT_TYPES,
   DIFFICULTY_IDS,
+  FOUNDRY_DEBUG_VERSION,
   MAP_IDS,
+  mapById,
   SCREENS,
+  SPAWN_TYPES,
   SPEEDS,
+  structureCenter,
   TARGETING_PRIORITIES,
-} from "../../src/constants";
+  tileCenter,
+} from "../constants";
 import {
   assertBetween,
   assertContains,
@@ -41,11 +45,10 @@ import {
   assertTrue,
 } from "../assert";
 import {
-  FOUNDRY_DEBUG_VERSION,
-  SPAWN_TYPES,
   captureStill,
   createHarness,
-  mapById,
+  type FoundrySnapshot,
+  type Harness,
   openYard,
   parkUnit,
   standBlocker,
@@ -53,11 +56,7 @@ import {
   standCombo,
   standComponent,
   structureById,
-  structureCenter,
-  tileCenter,
   unitById,
-  type FoundrySnapshot,
-  type Harness,
 } from "../harness";
 
 /** A wave deep enough that the posed target survives whatever is shot at it. */
@@ -87,6 +86,7 @@ const SNAPSHOT_FIELDS = [
   "wave",
   "totalWaves",
   "waveActive",
+  "waveHeld",
   "charge",
   "integrity",
   "refinement",
@@ -250,6 +250,7 @@ it("reports the whole documented shape off a fully posed yard", async () => {
   assertEqual(typeof s.wave, "number", "typeof snapshot().wave");
   assertEqual(typeof s.totalWaves, "number", "typeof snapshot().totalWaves");
   assertEqual(typeof s.waveActive, "boolean", "typeof snapshot().waveActive");
+  assertEqual(typeof s.waveHeld, "boolean", "typeof snapshot().waveHeld");
   assertEqual(typeof s.charge, "number", "typeof snapshot().charge");
   assertEqual(typeof s.integrity, "number", "typeof snapshot().integrity");
   assertEqual(typeof s.refinement, "number", "typeof snapshot().refinement");

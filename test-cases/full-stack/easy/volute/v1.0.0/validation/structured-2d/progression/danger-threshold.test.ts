@@ -53,7 +53,6 @@ afterEach(async () => {
 it("reads danger only once the head has reached 4000", async () => {
   await poseHall(h, {
     level: 1,
-    quotaRemaining: 0,
     pressure: 0,
     cores: [[DANGER_S - MARGIN, "halide", null]],
   });
@@ -61,7 +60,6 @@ it("reads danger only once the head has reached 4000", async () => {
 
   await poseHall(h, {
     level: 1,
-    quotaRemaining: 0,
     pressure: 0,
     cores: [[DANGER_S + MARGIN, "halide", null]],
   });

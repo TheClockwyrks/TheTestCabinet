@@ -12,12 +12,12 @@
 // sibling point `reset-leaves-mute-and-pointer`, in the other direction.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import {
   STAMPS_PER_LEVEL,
   START_CHARGE,
   START_INTEGRITY,
-} from "../../src/constants";
+  tileCenter,
+} from "../constants";
 import {
   assertDeepEqual,
   assertEqual,
@@ -28,11 +28,10 @@ import {
 import {
   captureStill,
   createHarness,
+  type Harness,
   parkUnit,
   pressAction,
   standComponent,
-  tileCenter,
-  type Harness,
 } from "../harness";
 
 /** The seed the reset under test is given. */

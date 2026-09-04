@@ -78,6 +78,10 @@ export interface Draft {
   interlude: number;
   simTime: number;
   accumulator: number;
+  /** Whether the inlet emits: step 7 of the tick order. */
+  emission: boolean;
+  /** Whether the train advances: step 2 of the tick order. */
+  feed: boolean;
   muted: boolean;
   rngState: number;
 }
@@ -177,6 +181,8 @@ export function thaw(state: DeepReadonly<VoluteState>): Draft {
     interlude: state.interlude,
     simTime: state.simTime,
     accumulator: state.accumulator,
+    emission: state.emission,
+    feed: state.feed,
     muted: state.muted,
     rngState: state.rngState,
   };
@@ -222,6 +228,8 @@ export function freeze(draft: Draft): VoluteState {
     interlude: draft.interlude,
     simTime: draft.simTime,
     accumulator: draft.accumulator,
+    emission: draft.emission,
+    feed: draft.feed,
     muted: draft.muted,
     rngState: draft.rngState >>> 0,
   };

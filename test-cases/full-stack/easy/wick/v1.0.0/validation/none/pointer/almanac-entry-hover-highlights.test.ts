@@ -18,9 +18,9 @@
 // establish the scroll would not know which entry it aimed at.
 //
 // HOW THE SCENARIO IS DRIVEN. The almanac is entered through
-// `setScreen("almanac")`, which specs/instrumentation.md defines as "exactly as
-// confirming `THE ALMANAC` does: the idle run, `menuIndex` `0`, `almanacTab`
-// `0`, `almanacScroll` `0`". `menuRects()` reports where this build drew the ten
+// `setScreen("almanac")`, which specs/instrumentation.md defines as setting
+// `screen` alone, "with `menuIndex`, `almanacTab`, and `almanacScroll`
+// all `0`". `menuRects()` reports where this build drew the ten
 // visible rows; the pointer is moved to the middle of the third, and exactly one
 // frame runs after the move, because the pointer rules are "applied on every
 // frame".

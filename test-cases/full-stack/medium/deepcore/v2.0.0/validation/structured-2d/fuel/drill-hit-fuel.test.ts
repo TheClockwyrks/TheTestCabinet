@@ -21,7 +21,8 @@ import {
   BAND_HEALTH,
   DRILL_DAMAGE_TIERS,
   DRILL_HIT_FUEL,
-} from "../../src/constants";
+  drillHitsFor,
+} from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   ACTION_KEY,
@@ -29,14 +30,13 @@ import {
   captureReplay,
   createHarness,
   driveCut,
+  type Harness,
   openScene,
   pinDrill,
   pinMiner,
   rowInBand,
   standOn,
-  type Harness,
 } from "../harness";
-import { drillHitsFor } from "../drilling/hits";
 
 /** A column well clear of the camp, the cave mouth, and the Core. */
 const COL = 8;

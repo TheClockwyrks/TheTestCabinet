@@ -16,16 +16,18 @@
 // what decides, so a refusal that half-placed something is caught either way.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { GRID_COLS, GRID_ROWS } from "../../src/constants";
-import { assertEqual } from "../assert";
 import {
+  GRID_COLS,
+  GRID_ROWS,
   MAX_ANCHOR_COL,
   MAX_ANCHOR_ROW,
+} from "../constants";
+import { assertEqual } from "../assert";
+import {
   captureStill,
   createHarness,
-  openYard,
   type Harness,
+  openYard,
 } from "../harness";
 
 /**

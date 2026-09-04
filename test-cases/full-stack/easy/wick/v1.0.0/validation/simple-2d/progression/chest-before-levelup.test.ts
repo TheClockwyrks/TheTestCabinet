@@ -31,6 +31,7 @@ import { XP_BASE } from "../constants";
 import {
   captureReplay,
   createHarness,
+  enable,
   isolate,
   spawnGemAt,
   spawnPickupAt,
@@ -55,6 +56,10 @@ afterEach(() => {
 
 it("ends the collecting tick on chest with the level-up still queued, and opens it on the next playing tick", async () => {
   isolate(h);
+  // The order the two overlays take is the requirement: `drops` stays off (the
+  // gem and the chest are posed), and `progression` is on because the queued
+  // level-up the chest stands in front of is what the point reads.
+  enable(h, "progression");
   h.debug.setLevel(POSED_LEVEL);
   h.debug.setXp(POSED_XP);
   const { player } = h.snapshot().run;
@@ -63,8 +68,9 @@ it("ends the collecting tick on chest with the level-up still queued, and opens 
 
   const collected = await captureReplay(h, "chest", async () => {
     const onChest = await h.tick(1);
-    // The chest overlay closed the way `confirm` closes it, then one playing
-    // tick, which is the tick the queued level-up's overlay opens at the end of.
+    // The screen posed back to `playing`, then one playing tick, which is the
+    // tick the queued level-up's overlay opens at the end of. `setScreen` sets
+    // the screen alone, so nothing but the screen moves here.
     h.debug.setScreen("playing");
     const afterClose = await h.tick(1);
     return { onChest, afterClose };

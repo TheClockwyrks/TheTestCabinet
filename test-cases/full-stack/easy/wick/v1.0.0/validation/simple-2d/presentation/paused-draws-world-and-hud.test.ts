@@ -21,8 +21,8 @@
 // are held so the HUD has a filled slot of each kind to draw, and with
 // `weaponFire` off the weapon never fires, so nothing it would create can
 // appear between the two frames. The pause is posed through `setScreen`, which
-// specs/instrumentation.md enters "exactly as the real transition into it
-// enters it", so the point does not depend on the pause key another point
+// specs/instrumentation.md "sets `screen` to `name`" and leaves the run as it
+// stands, so the point does not depend on the pause key another point
 // decides.
 //
 // WHAT IS READ. One playing frame, then PAUSED_FRAMES frames drawn on

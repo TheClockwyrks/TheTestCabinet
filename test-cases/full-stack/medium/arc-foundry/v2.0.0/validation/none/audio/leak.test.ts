@@ -20,7 +20,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
-import { START_INTEGRITY, mapById, tileCenter } from "../constants";
+import { mapById, START_INTEGRITY, tileCenter } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -41,7 +41,7 @@ const SINK = (() => {
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -49,7 +49,6 @@ afterEach(async () => {
 });
 
 it("sounds on the frame the unit grounds out, and not on the walk in", async () => {
-  await h.armAudio();
   await openYard(h, { map: "substation", wave: 1 });
   await settle(h);
   await holdWaveOpen(h);

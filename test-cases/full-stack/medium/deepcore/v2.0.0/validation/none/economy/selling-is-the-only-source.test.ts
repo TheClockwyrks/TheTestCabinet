@@ -1,6 +1,6 @@
 // economy/selling-is-the-only-source — only the Ore Market pays.
 //
-// `specs/gameplay.md` fixes one source and four sinks, and names the source:
+// `specs/expedition.md` fixes one source and four sinks, and names the source:
 // "Selling is the only source of Credits." So this point drives the four things
 // a player does that most plausibly look like income — drilling an ore cell out
 // of the rock, refuelling, using a field supply, and dying — and reads the
@@ -110,7 +110,7 @@ it("moves the balance up at the Ore Market and nowhere else", async () => {
     assertLessThanOrEqual(
       step.credits,
       previous,
-      `specs/gameplay.md, the balance after ${step.what}`,
+      `specs/expedition.md, the balance after ${step.what}`,
     );
     previous = step.credits;
   }
@@ -120,12 +120,12 @@ it("moves the balance up at the Ore Market and nowhere else", async () => {
   assertGreaterThan(
     balances.sold.credits,
     previous,
-    "specs/gameplay.md, the Ore Market is the source",
+    "specs/expedition.md, the Ore Market is the source",
   );
   assertEqual(
     balances.dead.credits,
     balances.sold.credits,
-    "specs/gameplay.md",
+    "specs/expedition.md",
   );
   assertEqual(balances.dead.screen, "game-over", "specs/modes.md");
   assertEqual(

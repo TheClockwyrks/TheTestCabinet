@@ -22,6 +22,8 @@
 // overlay control (the runtime draws the panel and owns the backtick key).
 
 import {
+  CELLS,
+  CHAIN_RESET,
   CHARGE_IDS,
   DEFAULT_SEED,
   LEVEL_COUNT,
@@ -29,6 +31,7 @@ import {
   PATH_LENGTH,
   PRESSURE_MAX,
   PRESSURE_MIN,
+  SCREENS,
   VOLUTE_DEBUG_VERSION,
   VOLUTE_HANDLE,
 } from "./constants";
@@ -36,13 +39,7 @@ import type { ChargeId, MachineryKind, ScreenName } from "./constants";
 import { pointAt } from "./channel";
 import { newReport } from "./events";
 import { inDanger, fire as fireCore, grantMachinery } from "./sim";
-import {
-  levelSpec,
-  normalizeAngle,
-  startLevel,
-  startRun,
-  toTitle,
-} from "./state";
+import { levelSpec, normalizeAngle, startLevel, toTitle } from "./state";
 import { clamp, effectiveFeed, resegment, spaced } from "./train";
 import type { CueName } from "./constants";
 import type { FxEvent } from "./events";
@@ -127,6 +124,12 @@ export interface VoluteSnapshot {
   };
   projectiles: ProjectileSnapshot[];
   machinery: { kind: MachineryKind; remaining: number } | null;
+  /** Whether the inlet emits. */
+  emission: boolean;
+  /** Whether the train advances. */
+  feed: boolean;
+  /** Whether the frame loop advances the simulation. */
+  autoStep: boolean;
   muted: boolean;
   simTime: number;
   rngState: number;
@@ -139,15 +142,22 @@ export interface VoluteDebugApi {
   step(ticks?: number): void;
   reset(options?: { seed?: number }): void;
   snapshot(): VoluteSnapshot;
-  start(): void;
+  setScreen(name: string): void;
+  setLevel(level: number): void;
+  setScore(n: number): void;
+  setCells(n: number): void;
+  setChainStep(k: number): void;
   startLevel(level: number): void;
   poseTrain(cores: readonly PosedCore[]): void;
   clearTrain(): void;
   setLoaded(charge: string): void;
   setQueued(charge: string): void;
-  fire(angleDegrees: number): void;
+  setAim(angleDegrees: number): void;
+  fire(): void;
   setPressure(value: number): void;
   setQuotaRemaining(n: number): void;
+  setEmission(enabled: boolean): void;
+  setFeed(enabled: boolean): void;
   grantMachinery(kind: string): void;
   pause(): void;
   resume(): void;
@@ -165,6 +175,27 @@ function asMark(value: unknown): MachineryKind | null {
   return MACHINERY_KINDS.includes(value as MachineryKind)
     ? (value as MachineryKind)
     : null;
+}
+
+/** The three kinds `grantMachinery` grants; `bore` is not one of them. */
+const TIMED_KINDS: readonly MachineryKind[] = [
+  "choke",
+  "backflow",
+  "sightline",
+];
+
+/** One of the three timed kinds, or the first of them when the name is none. */
+function asTimedKind(value: unknown): MachineryKind {
+  return TIMED_KINDS.includes(value as MachineryKind)
+    ? (value as MachineryKind)
+    : TIMED_KINDS[0];
+}
+
+/** A screen name, or `title` when the argument names none. */
+function asScreen(value: unknown): ScreenName {
+  return SCREENS.includes(value as ScreenName)
+    ? (value as ScreenName)
+    : SCREENS[0];
 }
 
 /** A finite number, or a stated fallback. */
@@ -225,15 +256,56 @@ export function createDebugApi(host: DebugHost): VoluteDebugApi {
     },
 
     /**
-     * Pose exactly what the start control on the title does: the score `0`, the
-     * cells full, and level `1` opened as `startLevel` opens it.
+     * Set the screen, and change nothing else.
      *
-     * The generator's state and `simTime` stay as they are, so a run from a known
-     * seed is a `reset` followed by this.
+     * No level is opened, no channel is seeded, no timer is started, and no
+     * interlude is set: the ending a screen names holds whatever the run behind
+     * it stands at, which is what lets a caller pose one and dismiss it.
      */
-    start() {
-      startRun(state);
-      host.clearEffects();
+    setScreen(name) {
+      state.screen = asScreen(name);
+    },
+
+    /**
+     * Set the level in play, and change nothing else.
+     *
+     * The level's feed speed and its charge set follow at once, because both are
+     * read off `state.level` where they are needed rather than copied out of it.
+     */
+    setLevel(level) {
+      state.level = clamp(
+        Math.round(asNumber(level, state.level)),
+        1,
+        LEVEL_COUNT,
+      );
+    },
+
+    /** Set the run's score, clamped to at least `0`. */
+    setScore(n) {
+      state.score = Math.max(0, Math.round(asNumber(n, state.score)));
+    },
+
+    /**
+     * Set the cells remaining, clamped to `0` through `CELLS`.
+     *
+     * It ends no run: `setCells(0)` leaves the screen where it stands, and the
+     * ending a spent last cell reaches comes from the ticks run after the pose.
+     */
+    setCells(n) {
+      state.cells = clamp(Math.round(asNumber(n, state.cells)), 0, CELLS);
+    },
+
+    /**
+     * Set the chain step an extraction scores at, clamped to at least `1`, and
+     * restart the window that returns it to `1`.
+     *
+     * The window is restarted because that is what a step above `1` means: the
+     * step is the standing value of a chain that is still running, and a step
+     * posed under a window already at `0` would hold for the rest of the level.
+     */
+    setChainStep(k) {
+      state.chainStep = Math.max(1, Math.round(asNumber(k, state.chainStep)));
+      state.chainTimer = CHAIN_RESET;
     },
 
     /** Open `level`, exactly as the interlude before it opens it. */
@@ -284,17 +356,21 @@ export function createDebugApi(host: DebugHost): VoluteDebugApi {
       state.queued = asCharge(charge);
     },
 
+    /** Set the aim, normalized into `[0, 360)`, and do nothing else. */
+    setAim(angleDegrees) {
+      state.aim = normalizeAngle(asNumber(angleDegrees, state.aim));
+    },
+
     /**
-     * Aim at `angleDegrees` and release the loaded core along it, through the same
-     * path the fire control takes.
+     * Release the loaded core along the current aim, through the same path the
+     * fire control takes.
      *
      * Any cooldown outstanding at the call is cleared first, so the call always
      * launches, and a call made while the injector holds no loaded core draws one
      * first. The flight, the strike, the insertion and any extraction the insertion
      * causes come from the ticks that follow.
      */
-    fire(angleDegrees) {
-      state.aim = normalizeAngle(asNumber(angleDegrees, state.aim));
+    fire() {
       state.fireCooldown = 0;
       const report = newReport();
       fireCore(state, report);
@@ -327,13 +403,37 @@ export function createDebugApi(host: DebugHost): VoluteDebugApi {
     },
 
     /**
-     * Grant a kind exactly as extracting a run holding a mark of that kind grants
-     * it: the three timed kinds become the active machinery at their full duration,
-     * and `bore` resolves at once, centered on the head core's position.
+     * Hold the inlet, or let it go again.
+     *
+     * Independent of the quota, so a hall whose quota is untouched and whose
+     * inlet is held emits nothing and is never cleared for an exhausted quota.
+     */
+    setEmission(enabled) {
+      state.emission = Boolean(enabled);
+    },
+
+    /**
+     * Hold the train where it stands, or let it advance again.
+     *
+     * Step 2 of the tick alone: every other step runs unchanged while the train
+     * is held, so a strike still seats, a removal still recoils, and the inlet
+     * still emits.
+     */
+    setFeed(enabled) {
+      state.feed = Boolean(enabled);
+    },
+
+    /**
+     * Grant one of the three timed kinds, exactly as extracting a run holding a
+     * mark of that kind grants it.
+     *
+     * `bore` is not granted here: it removes cores and scores the moment it
+     * resolves, and no pose decides an outcome, so a bore is reached by posing a
+     * run that carries a `bore` mark and letting the ticks extract it.
      */
     grantMachinery(kind) {
       const report = newReport();
-      grantMachinery(state, asMark(kind) ?? MACHINERY_KINDS[0], report);
+      grantMachinery(state, asTimedKind(kind), report);
       for (const cue of report.cues) host.queueCue(cue);
       for (const event of report.fx) host.spawnFx(event);
     },
@@ -406,6 +506,9 @@ export function snapshot(state: VoluteState): VoluteSnapshot {
             kind: state.machinery.kind,
             remaining: state.machinery.remaining,
           },
+    emission: state.emission,
+    feed: state.feed,
+    autoStep: state.autoStep,
     muted: state.muted,
     simTime: state.simTime,
     rngState: state.rngState >>> 0,

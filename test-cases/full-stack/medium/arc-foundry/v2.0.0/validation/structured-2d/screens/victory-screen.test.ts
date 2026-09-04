@@ -20,8 +20,7 @@
 // and off the frame by the copy `specs/ui.md` fixes for them.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { VICTORY_ITEMS } from "../../src/constants";
+import { VICTORY_ITEMS } from "../constants";
 import { assertEqual, assertTruthy } from "../assert";
 import {
   captureStill,

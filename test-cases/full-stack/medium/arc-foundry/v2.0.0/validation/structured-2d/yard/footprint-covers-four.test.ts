@@ -12,8 +12,7 @@
 // with no gap at all — so a build that blocks one tile too many fails on it.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { FOOTPRINT } from "../../src/constants";
+import { FOOTPRINT } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

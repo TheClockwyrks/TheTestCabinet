@@ -8,7 +8,7 @@
 // position and facing, the enemy count with the spawn window index, the
 // projectile and zone counts, the gem count, the held weapons with their
 // levels and cooldowns, the held passives with their levels,
-// `pendingLevelUps`, and the seven driver switches, the same facts the
+// `pendingLevelUps`, and the nine driver switches, the same facts the
 // snapshot reports." The run clock is shown "as `m:ss`" (specs/ui.md). The
 // overlay's medium is the build's, so what it shows is read as text: the runs
 // the toggled frame drew beyond the untoggled one, and any text the document

@@ -20,8 +20,8 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { WAVE_BONUS_BASE, WAVE_BONUS_STEP } from "../../src/constants";
-import { captureReplay, openYard, waveBonus, type Harness } from "../harness";
+import { WAVE_BONUS_BASE, WAVE_BONUS_STEP, waveBonus } from "../constants";
+import { captureReplay, type Harness, openYard } from "../harness";
 import { clearWave, createRunHarness, harvestWave } from "./runs";
 
 /** The waves whose clears are read: the first, an early one, and a deep one. */

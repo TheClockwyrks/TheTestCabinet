@@ -26,24 +26,24 @@ import { assertBetween, assertEqual } from "../assert";
 import {
   GAS_DAMAGE_MAX,
   GAS_DAMAGE_MIN,
+  GAS_FLOOR_FRACTION,
+  gasDamageAt,
   HULL_TIERS,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureReplay,
   createHarness,
-  openScene,
-  pinMiner,
   type DeepcoreSnapshot,
   type Harness,
+  openScene,
+  pinMiner,
 } from "../harness";
 import {
   armHull,
   bandRow,
   cutUnderfoot,
-  fractionOf,
   FAST_DRILL_TIER,
-  gasDamageAt,
-  GAS_FLOOR_FRACTION,
+  fractionOf,
   HAZARD_COL,
   rowAt,
 } from "./scene";

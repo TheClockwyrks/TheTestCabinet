@@ -14,17 +14,16 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual } from "../assert";
-import { COIL_FALLOFF } from "../../src/constants";
+import { COIL_FALLOFF, componentDamage } from "../constants";
 import {
   captureReplay,
-  componentDamage,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
   structureById,
   unitById,
-  type Harness,
 } from "../harness";
 import { awaitImpact } from "./impact";
 

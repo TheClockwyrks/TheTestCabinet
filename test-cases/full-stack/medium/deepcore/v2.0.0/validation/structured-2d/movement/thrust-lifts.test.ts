@@ -22,7 +22,7 @@
 // drill is gated, so the key that is down is the only thing acting.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../../src/constants";
+import { TILE } from "../constants";
 import { assertEqual, assertLessThan } from "../assert";
 import {
   ACTION_KEY,

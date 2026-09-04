@@ -30,9 +30,10 @@
 //     lamplighter's center.
 //
 // WHY THE NIGHT IS POSED AS IT IS. One enemy of the row's type stands 150 units
-// along +x of the lamplighter, every switch off and no weapon held: nothing
-// spawns, nothing moves, nothing else can remove the enemy or leave anything on
-// the ground. 150 units is past both collection distances, so whatever the
+// along +x of the lamplighter, every switch off but `drops` and no weapon held:
+// nothing spawns, nothing moves, nothing else can remove the enemy or leave
+// anything on the ground. `drops` is the one faculty every point sharing this
+// pose is ABOUT, so it is the one switch turned back on. 150 units is past both collection distances, so whatever the
 // death leaves lies where the enemy stood for the reading. The enemy's `hp` is
 // posed to 1 so that one bolt of the level-1 Ember row's damage (10) kills any
 // of the thirteen rows on its first hit, from the gnat's 2 to the Dark's 10000,
@@ -51,6 +52,7 @@ import {
 import { EMBER_LEVELS, FIGURE_TOLERANCE, type EnemyId } from "../constants";
 import {
   captureStill,
+  enable,
   enemyById,
   isolate,
   present,
@@ -92,6 +94,9 @@ export async function killByBolt(
   outputId: string,
 ): Promise<Kill> {
   isolate(h);
+  // The drop is the requirement, so the faculty that makes it is on and every
+  // other stays held.
+  enable(h, "drops");
   const id = spawnEnemyNear(h, type, KILL_DX, 0);
   const placed = present(enemyById(h.snapshot(), id), `the posed ${type}`);
   h.debug.setEnemyHp(id, POSED_HP);

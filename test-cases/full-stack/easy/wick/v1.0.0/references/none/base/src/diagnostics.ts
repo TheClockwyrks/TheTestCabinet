@@ -44,7 +44,7 @@ export function formatClock(seconds: number): string {
 /**
  * Register the sources the overlay shows: the screen, the run clock, the
  * level and experience, health, kills, the lamplighter, the counts, the
- * loadout, the queued level-ups, and the seven driver switches.
+ * loadout, the queued level-ups, and the nine driver switches.
  */
 export function registerGameDiagnostics(
   diagnostics: Diagnostics,

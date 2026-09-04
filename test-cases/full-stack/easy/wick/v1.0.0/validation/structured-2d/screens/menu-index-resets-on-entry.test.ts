@@ -1,14 +1,15 @@
 // Wick — screens/menu-index-resets-on-entry: arriving on any screen puts the
-// highlight back on the first item.
+// highlight where the rule for that arrival puts it, never where the screen
+// before it left it.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/ui.md`, "Menu navigation":
-// "`menuIndex` is `0` on entering every screen, and on a screen with no menu
-// it stays `0`." `specs/state.md` says the same of the field, and each
-// screen's own section repeats it: `title`, `almanac`, `levelup`, `paused`,
-// and the end screens all arrive on `0`, `THE ALMANAC` sets "`menuIndex`,
-// `almanacTab`, and `almanacScroll` all `0`", `HOW TO PLAY` "Sets
-// `screen = howto` and `menuIndex = 0`", and `MAIN MENU` and `TITLE` return to
-// `title` "with `menuIndex = 0`".
+// "`menuIndex` is `0` on entering every screen but `title`, which selects the
+// entry that led away from it as the `title` section above states, and on a
+// screen with no menu it stays `0`." `specs/state.md` says the same of the
+// field, and each screen's own section repeats it: `almanac`, `levelup`,
+// `paused`, and the end screens all arrive on `0`, `THE ALMANAC` sets
+// "`menuIndex`, `almanacTab`, and `almanacScroll` all `0`", and `MAIN MENU`
+// and `TITLE` return to `title` "with `LIGHT THE LAMP` selected".
 //
 // THE DRIVE. Every one of the nine screens is entered once, by the route the
 // specification gives it, and the arrival is read. Five of those routes start
@@ -48,9 +49,10 @@ import {
 /** How many level-ups the overlay scenario queues: one to leave, one to take. */
 const QUEUED = 2;
 
-/** Where `THE ALMANAC` and `HOW TO PLAY` stand in `TITLE_ITEMS` (specs/ui.md). */
+/** Where the three title entries stand in `TITLE_ITEMS` (specs/ui.md). */
 const THE_ALMANAC = TITLE_ITEMS.indexOf("THE ALMANAC");
 const HOW_TO_PLAY = TITLE_ITEMS.indexOf("HOW TO PLAY");
+const LIGHT_THE_LAMP = TITLE_ITEMS.indexOf("LIGHT THE LAMP");
 
 let h: Harness;
 
@@ -79,7 +81,7 @@ async function standOnTitleItem(
   );
 }
 
-it("arrives on every screen with menuIndex 0", async () => {
+it("arrives on every screen with the highlight the rule gives it", async () => {
   await standOnTitleItem(h, THE_ALMANAC);
   const almanac = await tap(h, "Enter");
   assertEqual(almanac.screen, "almanac", "the screen THE ALMANAC entered");
@@ -146,7 +148,11 @@ it("arrives on every screen with menuIndex 0", async () => {
   );
   const title = await tap(h, "Enter");
   assertEqual(title.screen, "title", "the screen TITLE entered");
-  assertEqual(title.menuIndex, 0, "menuIndex on arriving at the title screen");
+  assertEqual(
+    title.menuIndex,
+    LIGHT_THE_LAMP,
+    "the entry selected on arriving at the title from an end screen",
+  );
 
   isolate(h);
   const dawn = await endDawn(h);

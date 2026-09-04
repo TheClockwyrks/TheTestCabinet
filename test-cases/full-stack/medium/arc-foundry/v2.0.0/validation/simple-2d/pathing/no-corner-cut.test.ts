@@ -22,20 +22,21 @@
 // route and the never-seal rule refuses none of it.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertCloseTo, assertGreaterThan } from "../assert";
 import {
-  STEP_DIAGONAL,
-  STEP_ORTHOGONAL,
   captureStill,
-  chain,
   createHarness,
-  mapById,
+  type Harness,
   openYard,
   standBlocker,
-  type Harness,
-  type Tile,
 } from "../harness";
+import {
+  chain,
+  mapById,
+  STEP_DIAGONAL,
+  STEP_ORTHOGONAL,
+  type Tile,
+} from "../constants";
 
 /** The staircase: five footprints, each touching the next at a corner alone. */
 const STAIRCASE = [

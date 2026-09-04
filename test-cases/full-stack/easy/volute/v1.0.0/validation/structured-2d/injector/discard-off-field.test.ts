@@ -114,7 +114,8 @@ it("discards a fired core once its center has left the field", async () => {
   h.debug.clearTrain();
 
   const history = await captureReplay(h, "discard", async () => {
-    h.debug.fire(OPENING_AIM);
+    h.debug.setAim(OPENING_AIM);
+    h.debug.fire();
     return h.stepWatching(DRIVE_TICKS);
   });
 

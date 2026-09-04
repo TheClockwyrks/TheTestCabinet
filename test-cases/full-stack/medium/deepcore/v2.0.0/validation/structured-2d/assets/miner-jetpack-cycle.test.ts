@@ -26,7 +26,7 @@ import { assertGreaterThanOrEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { showMiner } from "./miner";
 import { cycleFrames, distinctCount, readPictures } from "./produced";
-import { DRAWINGS_MIN, MINER_CYCLES } from "./spec";
+import { DRAWINGS_MIN, MINER_CYCLES } from "../constants";
 
 /** The state this point is about, and where `specs/assets.md` puts its cycle. */
 const STATE = "jetpack";

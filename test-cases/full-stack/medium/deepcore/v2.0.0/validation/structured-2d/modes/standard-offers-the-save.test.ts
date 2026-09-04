@@ -20,7 +20,7 @@
 // body and drill are gated, since neither is what the Game Over screen is about.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GAME_OVER_ITEMS, GAME_OVER_SAVE_ITEMS } from "../../src/constants";
+import { GAME_OVER_ITEMS, GAME_OVER_SAVE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

@@ -22,18 +22,17 @@
 // is the key, so the quieter of the two is what it is decided on.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual, assertTruthy } from "../assert";
 import {
   captureStill,
   createHarness,
-  keyFor,
+  type Harness,
   openYard,
   pressAction,
   standComponent,
   structureAt,
-  type Harness,
 } from "../harness";
+import { keyFor } from "../constants";
 
 /** The two footprints the pair is stood on, clear of the chain. */
 const INITIATOR = { col: 10, row: 0 };

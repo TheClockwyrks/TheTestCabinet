@@ -8,17 +8,17 @@
 
 import { assertTruthy } from "../assert";
 import {
-  structureAt,
   type FoundrySnapshot,
   type PanelButton,
+  structureAt,
   type StructureView,
-  type Tier,
 } from "../harness";
 import {
-  MAX_QUALITY,
   type Combo,
+  MAX_QUALITY,
   type RecipeIngredient,
-} from "../../src/constants";
+  type Tier,
+} from "../constants";
 
 /**
  * The structure anchored at that tile, or a failure naming the tile.

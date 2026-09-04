@@ -25,11 +25,12 @@
 
 import { assertEqual, assertTruthy, fail } from "../assert";
 import {
+  COLLECTOR_WAYPOINT,
   difficultyById,
-  structureCenter,
-  tileCenter,
   type DifficultyId,
   type LoadType,
+  structureCenter,
+  tileCenter,
 } from "../constants";
 import {
   ConstantClock,
@@ -66,9 +67,6 @@ export const KILL_AT = { x: GUN_CENTER.x + 60, y: GUN_CENTER.y };
 
 /** Three tiles short of the Substation's collector, and `310` from the gun. */
 export const LEAK_FROM = tileCenter(46, 20);
-
-/** The checkpoint index of the collector (specs/instrumentation.md). */
-export const COLLECTOR = 7;
 
 /**
  * The frame rate a check that plays whole waves runs at: `40` Hz.
@@ -231,9 +229,13 @@ export async function leakOne(
   id?: number,
 ): Promise<FoundrySnapshot> {
   const unit =
-    id ?? (await releaseUnit(h, type, { at: LEAK_FROM, waypoint: COLLECTOR }));
+    id ??
+    (await releaseUnit(h, type, {
+      at: LEAK_FROM,
+      waypoint: COLLECTOR_WAYPOINT,
+    }));
   if (id !== undefined) {
-    await h.debug.setUnitWaypoint(id, COLLECTOR);
+    await h.debug.setUnitWaypoint(id, COLLECTOR_WAYPOINT);
     await h.debug.setUnitPosition(id, LEAK_FROM.x, LEAK_FROM.y);
     await h.debug.setUnitFrozen(id, false);
   }

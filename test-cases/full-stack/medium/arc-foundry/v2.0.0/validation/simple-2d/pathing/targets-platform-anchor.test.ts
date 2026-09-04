@@ -14,19 +14,15 @@
 // position on that frame has to be within half a tile of the anchor's centre.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { TILE } from "../../src/constants";
+import { mapById, type Point, TILE, tileCenter } from "../constants";
 import { assertLessThanOrEqual, assertTrue } from "../assert";
 import {
   captureReplay,
   createHarness,
   distance,
-  mapById,
+  type Harness,
   openYard,
   releaseUnit,
-  tileCenter,
-  type Harness,
-  type Point,
 } from "../harness";
 
 /** How far short of the anchor each unit is posed, in tiles. */

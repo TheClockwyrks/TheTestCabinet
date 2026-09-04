@@ -34,6 +34,19 @@ const NODE_ROW = 40;
 /** The rows the miner is read from: closing in, then falling back. */
 const STATIONS = [12, 20, 30, 36, 22];
 
+/**
+ * Frames the recording holds at each station, and on either side of the walk.
+ *
+ * Each station settles in a single frame, so the bare readings are five frames of
+ * recording — a flicker rather than something a reviewer can watch the indicator
+ * tighten across. The miner is left standing at each station long enough for the
+ * indicator to be read there, with the scene on screen before the first move and
+ * after the last.
+ */
+const DWELL_FRAMES = 8;
+const RUN_UP_FRAMES = 10;
+const SETTLE_FRAMES = 12;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -51,9 +64,12 @@ it("reports the cell separation, falling on approach and rising on retreat", asy
 
   const readings = await captureReplay(h, "closing", async () => {
     const seen: number[] = [];
+    // The scene at rest before the first station, so the walk has a beginning.
+    await h.advance(RUN_UP_FRAMES);
     for (const row of STATIONS) {
       standOn(h, MINER_COL, row);
       const at = await settled(h);
+      await h.advance(DWELL_FRAMES);
       assertEqual(at.scanner.locked, true, `specs/mining.md, from row ${row}`);
       assertEqual(at.scanner.target, "resonite", "specs/mining.md");
       const expected = cellDistance(minerCell(at), node);
@@ -65,6 +81,7 @@ it("reports the cell separation, falling on approach and rising on retreat", asy
       );
       seen.push(at.scanner.distanceTiles ?? Number.NaN);
     }
+    await h.advance(SETTLE_FRAMES);
     return seen;
   });
 

@@ -17,20 +17,23 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
-import { ARCNODE_SPLASH, PROJECTILE_HIT_R } from "../../src/constants";
 import {
-  captureReplay,
+  ARCNODE_SPLASH,
   componentDamage,
   componentRange,
+  PROJECTILE_HIT_R,
+  TIERS,
+} from "../constants";
+import {
+  captureReplay,
   createHarness,
   emptyYard,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
   structureById,
-  TIERS,
   unitById,
-  type Harness,
 } from "../harness";
 import { awaitImpact } from "./impact";
 

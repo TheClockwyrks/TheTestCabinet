@@ -24,7 +24,7 @@ import {
   FUEL_TIERS,
   LOW_FUEL_FRACTION,
   PLAYABLE_COL_MIN,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,

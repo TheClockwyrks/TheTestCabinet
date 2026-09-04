@@ -18,16 +18,19 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { COMBO_MAX_LEVEL, COMBO_UPGRADE_COST_FRAC } from "../../src/constants";
 import {
-  captureStill,
+  COMBO_MAX_LEVEL,
+  COMBO_UPGRADE_COST_FRAC,
   comboDef,
   comboUpgradeCost,
+} from "../constants";
+import {
+  captureStill,
   createHarness,
+  type Harness,
   openYard,
   standCombo,
   structureById,
-  type Harness,
 } from "../harness";
 
 const TOWER = comboDef("staticweb");

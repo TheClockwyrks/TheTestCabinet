@@ -10,9 +10,9 @@
 // core of the run at once". MIN_RUN is the case's name for that 3.
 //
 // THE POSE. One segment of halide, halide, cobalt on the straight top run, with
-// the quota exhausted so the inlet delivers nothing into the scenario
-// (specs/channel.md — "Emission": the inlet emits only "While the level's quota is
-// not exhausted"), and the injector loaded with halide. specs/channel.md — "The
+// the inlet held so it delivers nothing into the scenario
+// (specs/instrumentation.md — `setEmission`, which holds the inlet "whatever the
+// quota"), and the injector loaded with halide. specs/channel.md — "The
 // train" — fixes what makes those three one segment: cores "whose arc positions
 // differ by exactly SPACING (28 units)". The head sits at arc position 380, which
 // specs/channel.md's polyline puts at (420, 40) — directly above the injector at

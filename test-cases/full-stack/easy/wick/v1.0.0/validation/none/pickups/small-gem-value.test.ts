@@ -11,9 +11,10 @@
 // WHY THE WORLD IS POSED AS IT IS. An isolated night: every driver switch off,
 // nothing alive, nothing dropped, and no slot held. Soot is the only thing that
 // scales a gain and no passive is held, so the multiplier is `1` and the gain
-// this check reads is the tier's own figure. `isolate` poses `ISOLATE_LEVEL`
-// (`50`), whose `xpToNext` is `495`, so the gain crosses no threshold and opens
-// no overlay on top of the reading. The gem is placed at the lamplighter's
+// this check reads is the tier's own figure. `isolate` holds `progression` with
+// the rest, so "No gain is spent: `xp` rises as gems are collected and stands
+// however high it climbs" (specs/instrumentation.md) and no threshold is
+// crossed to open an overlay on top of the reading. The gem is placed at the lamplighter's
 // center and collected by one real tick, which is the only path experience
 // arrives by: the tick attracts it (`0` is at most `pickupRadius`), moves it
 // nowhere, and collects it (`0` is at most `COLLECT_RADIUS`).

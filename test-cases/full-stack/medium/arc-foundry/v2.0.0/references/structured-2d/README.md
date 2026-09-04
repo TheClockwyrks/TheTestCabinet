@@ -57,8 +57,8 @@ one. `npm run preview` serves the built output locally.
 
 ## Controls
 
-Every screen and every control is fully operable with the pointer alone. The keys below
-are accelerators.
+Every screen and every control is fully operable with the pointer alone, and every menu
+with a touch contact alone. The keys below are accelerators.
 
 | Key | Does |
 | --- | --- |
@@ -71,6 +71,7 @@ are accelerators.
 | `X` | Dismantles the selected structure. |
 | `F` | Cycles the speed multiplier through 1x, 2x, 4x and 8x. |
 | `Space` | Pauses in place, and resumes. |
+| `P` | Opens the pause menu, and closes it and resumes. |
 | `V` | Opens and closes the recipe book. |
 | `L` | Opens and closes the damage leaderboard. |
 | `M` | Toggles audio mute. |

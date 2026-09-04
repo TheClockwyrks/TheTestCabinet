@@ -14,7 +14,7 @@
 // each spend is the thrust burn alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CRUISE_SPEED, THRUST_BURN_SIZE_MULT } from "../../src/constants";
+import { CRUISE_SPEED, THRUST_BURN_SIZE_MULT } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   ACTION_KEY,

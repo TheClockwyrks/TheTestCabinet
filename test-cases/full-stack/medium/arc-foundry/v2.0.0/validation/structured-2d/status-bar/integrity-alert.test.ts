@@ -24,19 +24,17 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan } from "../assert";
 import {
   captureStill,
-  createHarness,
-  openYard,
-  statusControl,
-  type Harness,
-} from "../harness";
-import { BAR_H, INTEGRITY_ALERT } from "../../src/constants";
-import {
-  DISTINCT,
   changedPoints,
+  createHarness,
+  DISTINCT,
+  type Harness,
   lattice,
   maxDistance,
+  openYard,
   sample,
-} from "./reading";
+  statusControl,
+} from "../harness";
+import { BAR_H, INTEGRITY_ALERT } from "../constants";
 
 /** The crossing, and a control that redraws the same digit ten above it. */
 const CROSSING = [INTEGRITY_ALERT + 1, INTEGRITY_ALERT] as const;

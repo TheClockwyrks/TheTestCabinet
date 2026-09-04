@@ -24,17 +24,14 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { type LoadType } from "../../src/constants";
+import { difficultyById, loadDef, type LoadType, scaledHp } from "../constants";
 import {
   captureStill,
   createHarness,
-  difficultyById,
-  loadDef,
+  type Harness,
   openYard,
   releaseUnit,
-  scaledHp,
   unitById,
-  type Harness,
 } from "../harness";
 
 const DIFFICULTY = "medium";

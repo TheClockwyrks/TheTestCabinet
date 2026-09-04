@@ -17,12 +17,12 @@ import { assertCloseTo } from "../assert";
 import {
   captureReplay,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
-  tileCenter,
   unitById,
-  type Harness,
 } from "../harness";
+import { tileCenter } from "../constants";
 
 /** The stronger slow, applied first, and the weaker one applied over it. */
 const STRONG = { amount: 0.6, seconds: 3 };

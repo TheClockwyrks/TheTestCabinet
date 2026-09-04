@@ -8,9 +8,10 @@
 // plays as `specs/ui.md` states." So the tick that takes a moth's last health is
 // a tick that plays `kill`.
 //
-// WHY THE WORLD IS POSED AS IT IS. An isolated night: every driver switch off,
-// nothing alive, nothing dropped, no slot held, so nothing but the posed bolt can
-// end anything and no other event can arrive from the side. One moth stands
+// WHY THE WORLD IS POSED AS IT IS. An isolated night with `drops` alone turned
+// back on, so the gem the death leaves is there to be read: every other driver
+// switch off, nothing alive, nothing dropped, no slot held, so nothing but the
+// posed bolt can end anything and no other event can arrive from the side. One moth stands
 // MOTH_OFFSET (200) units out, far outside its radius 10 plus `PLAYER_RADIUS`
 // (12) so it cannot touch the lamplighter, and far outside `PICKUP_RADIUS` (48)
 // so the gem the death leaves stays where it falls. One Ember bolt is posed on
@@ -64,7 +65,7 @@ afterEach(async () => {
 });
 
 it("plays the kill cue on the tick a moth dies", async () => {
-  await openNight(h);
+  await openNight(h, { on: ["drops"] });
   const moth = await placeEnemyNear(h, "moth", MOTH_OFFSET, 0);
   await placeProjectile(h, "ember", moth.x, moth.y, 0, 0, NO_PIERCE);
 

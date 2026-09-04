@@ -57,12 +57,17 @@ export interface DebugContext {
   pointerMove(x: number, y: number): void;
   pointerDown(x: number, y: number): void;
   pointerUp(): void;
+  touchStart(x: number, y: number): void;
+  touchMove(x: number, y: number): void;
+  touchEnd(): void;
   keyDown(code: string): void;
   keyUp(code: string): void;
   panelButtons(): PanelButton[];
   pressControls(): PanelButton[];
   menuButtons(): PanelButton[];
   statusControls(): StatusControl[];
+  statusReadouts(): StatusReadout[];
+  recipeEntries(): RecipeEntry[];
 }
 
 /** One control as it was last drawn: where it sits, what it reads, and whether it is inert. */
@@ -74,6 +79,29 @@ export interface PanelButton {
   w: number;
   h: number;
   disabled: boolean;
+}
+
+/** A status-bar READ: the same geometry, named by the read of `specs/hud.md` it reports. */
+export interface StatusReadout {
+  readout: string;
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** One ingredient cell of the recipe book, as the book last drew it. */
+export interface RecipeEntry {
+  combo: string;
+  ingredient: number;
+  type: string;
+  quality: number;
+  state: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 /** A status-bar control, reporting the value it currently reads rather than its availability. */
@@ -100,6 +128,8 @@ export interface FoundryDebugApi {
   pressControls(): PanelButton[];
   menuButtons(): PanelButton[];
   statusControls(): StatusControl[];
+  statusReadouts(): StatusReadout[];
+  recipeEntries(): RecipeEntry[];
 
   // The run.
   reset(options?: { seed?: number }): void;
@@ -110,6 +140,8 @@ export interface FoundryDebugApi {
   setMenuIndex(index: number): void;
   setPaused(paused: boolean): void;
   setSpeed(multiplier: number): void;
+  setPhase(phase: string): void;
+  setWaveHold(held: boolean): void;
   setOverlay(overlay: string, open: boolean): void;
 
   // Resources and progress.
@@ -123,6 +155,7 @@ export interface FoundryDebugApi {
   clearStructures(): void;
   setNextRoll(type: string, quality: number): void;
   clearNextRoll(): void;
+  clearHeld(): void;
   placeRock(col: number, row: number): void;
   placeComponent(type: string, quality: number, col: number, row: number): void;
   placeCombo(combo: string, col: number, row: number): void;
@@ -155,6 +188,9 @@ export interface FoundryDebugApi {
   pointerMove(x: number, y: number): void;
   pointerDown(x: number, y: number): void;
   pointerUp(): void;
+  touchStart(x: number, y: number): void;
+  touchMove(x: number, y: number): void;
+  touchEnd(): void;
   keyDown(code: string): void;
   keyUp(code: string): void;
 }
@@ -220,6 +256,7 @@ const MAP_IDS: readonly string[] = MAPS.map((m) => m.id);
 const DIFFICULTIES: readonly Difficulty[] = ["easy", "medium", "hard"];
 const SPEEDS: readonly number[] = [1, 2, 4, 8];
 const OVERLAYS = ["combos", "damage"] as const;
+const PHASES = ["build", "wave", "finale"] as const;
 const LOAD_TYPES: readonly string[] = [
   "mote",
   "spark",
@@ -303,6 +340,16 @@ export function installDebugApi(ctx: DebugContext): void {
       ctx.refreshControls();
       return ctx.statusControls();
     },
+    statusReadouts() {
+      ctx.refreshControls();
+      return ctx.statusReadouts();
+    },
+    // The cells of the frame the book was last drawn on, because a cell's rectangle is
+    // the one the book was laid out at (specs/instrumentation.md).
+    recipeEntries() {
+      ctx.refreshControls();
+      return ctx.recipeEntries();
+    },
 
     // ---- The run ---------------------------------------------------------------
 
@@ -340,6 +387,16 @@ export function installDebugApi(ctx: DebugContext): void {
       if (!SPEEDS.includes(m))
         invalid("setSpeed", "multiplier to be one of 1, 2, 4, 8", multiplier);
       game.setSpeed(m as 1 | 2 | 4 | 8);
+    },
+    setPhase(phase) {
+      const p = oneOf("setPhase", "phase", phase, PHASES);
+      // It is invalid off a run, where `phase` reads null (specs/instrumentation.md).
+      if (game.state !== "playing")
+        invalid("setPhase", "the game to be on a run to phase", game.state);
+      game.setPhase(p);
+    },
+    setWaveHold(held) {
+      game.setWaveHold(bool("setWaveHold", "held", held));
     },
     setOverlay(overlay, open) {
       game.setOverlay(
@@ -386,6 +443,11 @@ export function installDebugApi(ctx: DebugContext): void {
     },
     clearNextRoll() {
       game.clearNextRoll();
+    },
+    // Puts away whatever rock is held, spending no stamp and refunding none. Placement is
+    // continuous, so this is what empties a cursor a scenario never asked to fill.
+    clearHeld() {
+      game.cancelHeld();
     },
     // The rock enters through the real placement path, so it is refused exactly as a pointer
     // press would be when the footprint is illegal or the allowance is spent.
@@ -549,6 +611,19 @@ export function installDebugApi(ctx: DebugContext): void {
     },
     pointerUp() {
       ctx.pointerUp();
+    },
+    // A contact lands, travels and lifts over the same regions the pointer acts over,
+    // so a landing lays the frame out first for the same reason a press does.
+    touchStart(x, y) {
+      ctx.refreshControls();
+      ctx.touchStart(num("touchStart", "x", x), num("touchStart", "y", y));
+    },
+    touchMove(x, y) {
+      ctx.refreshControls();
+      ctx.touchMove(num("touchMove", "x", x), num("touchMove", "y", y));
+    },
+    touchEnd() {
+      ctx.touchEnd();
     },
     keyDown(code) {
       if (typeof code !== "string" || code.length === 0)

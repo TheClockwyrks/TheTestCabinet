@@ -24,7 +24,7 @@ import {
   assertGreaterThan,
   assertGreaterThanOrEqual,
 } from "../assert";
-import { START_INTEGRITY, mapById, tileCenter } from "../constants";
+import { mapById, START_INTEGRITY, tileCenter } from "../constants";
 import {
   captureReplay,
   createHarness,

@@ -5,7 +5,8 @@
 //   - `specs/ui.md` ("Audio"): the cue table binds `fire` to "The injector fires
 //     a core", and the paragraph under it fixes WHEN: "Each sounds on the tick
 //     its event happens, and at most once on that tick."
-//   - `specs/controls.md` ("Actions and bindings"): fire is bound to `Space`,
+//   - `specs/controls.md` ("Actions"): `fire` is the action that "fires the
+//     loaded core along the aim" and `src/constants.ts` binds it to `Space`,
 //     read as an edge — "true once for the frame in which the held value became
 //     true" — so the tick the key goes down is the tick the injector fires.
 //   - `specs/instrumentation.md` ("A deterministic core"): "Audio belongs to the
@@ -24,8 +25,9 @@
 // build that sounds the shot from one that is silent, one that sounds it a tick
 // late, and one that blips on every tick. Which of the fifteen was heard is
 // deliberately not asserted, so this point decides the same requirement under
-// every engine the case supports — under no engine there is no bus to ask at all
-// — and whether the cue heard was the injector's own is the reviewer's, by ear.
+// every engine the case supports — under no engine there is no bus to ask at all.
+// The identity is decided by `audio/fire-cue-named` beside this file, which the
+// manifest scopes to the two engines whose bus reports it.
 //
 // THE HALL IS POSED SO THAT ONLY THE SHOT CAN SOUND. One lone core, the inlet
 // stopped (`quotaRemaining` 0), pressure 0, and the core parked on the bottom run

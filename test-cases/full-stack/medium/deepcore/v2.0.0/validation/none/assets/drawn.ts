@@ -26,6 +26,7 @@
 
 import { STAGE_H, STAGE_W } from "../constants";
 import {
+  RECORDER_GLOBAL,
   REPLAY_BACKGROUND,
   type DrawCall,
   type Harness,
@@ -319,11 +320,14 @@ export async function recordImages<T>(
   run: () => Promise<T>,
 ): Promise<{ value: T; frames: DrawnFrame[] }> {
   await h.page.evaluate(
-    (design) =>
-      (
-        window as unknown as { __deepcoreRec: { arm(d: unknown): boolean } }
-      ).__deepcoreRec.arm(design),
-    { width: STAGE_W, height: STAGE_H, background: REPLAY_BACKGROUND },
+    ([rec, design]) =>
+      (window as unknown as Record<string, { arm(d: unknown): boolean }>)[
+        rec
+      ]!.arm(design),
+    [
+      RECORDER_GLOBAL,
+      { width: STAGE_W, height: STAGE_H, background: REPLAY_BACKGROUND },
+    ] as const,
   );
   let value: T;
   let recording: Recording | null = null;
@@ -332,10 +336,12 @@ export async function recordImages<T>(
   } finally {
     // Disarmed in a `finally`, and its answer kept there too, so a scenario that
     // threw leaves the recorder idle for whatever runs next.
-    recording = (await h.page.evaluate(() =>
-      (
-        window as unknown as { __deepcoreRec: { disarm(): unknown } }
-      ).__deepcoreRec.disarm(),
+    recording = (await h.page.evaluate(
+      (rec) =>
+        (window as unknown as Record<string, { disarm(): unknown }>)[
+          rec
+        ]!.disarm(),
+      RECORDER_GLOBAL,
     )) as Recording | null;
   }
   return { value, frames: recording === null ? [] : framesOf(recording) };

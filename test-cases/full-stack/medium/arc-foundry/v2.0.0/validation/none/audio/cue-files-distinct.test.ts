@@ -38,7 +38,7 @@ const EFFECT_CUES = CUES.filter((cue) => cue !== "music");
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -47,7 +47,6 @@ afterEach(async () => {
 
 it("renders eleven different sounds for the eleven effect cues", async () => {
   await evidence(h, "run", async () => {
-    await h.armAudio();
     await openYard(h, { wave: 1 });
     await standComponent(h, "coil", 1, ANCHOR.col, ANCHOR.row);
     await parkUnit(h, "mote", TARGET, { hp: 1 });

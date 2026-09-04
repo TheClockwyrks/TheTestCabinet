@@ -7,9 +7,8 @@
 // is `fallen-copy`.
 //
 // THE SPEC IT RESTS ON.
-//   specs/instrumentation.md (`setScreen`): "`fallen`, `dawn` | `playing`,
-//   `paused` | Ends the run exactly as that ending does, the run kept for the
-//   end screen to report."
+//   specs/world.md ("Fallen and dawn"): the run ends on the tick `hp` reaches
+//   `0`, which is the ending this point drives.
 //   specs/instrumentation.md ("Snapshot shape"): "`run` reports the idle run of
 //   `specs/state.md` on `title`, `howto`, and `almanac`, and the run that just
 //   ended on `fallen` and `dawn`."
@@ -20,10 +19,13 @@
 //   seconds", so tick `7260` is `121` seconds, drawn `2:01`.
 //
 // THE DRIVE. An isolated `playing` run posed to the clock, level, and kill
-// count this point names, ended through `setScreen`, which ends it "exactly as
-// that ending does". The three fields are read off the snapshot and then looked
-// for on the frame, so a build that kept the run but drew nothing of it, and a
-// build that drew figures it did not keep, both fail.
+// count this point names, ended the way the rule ends it: "the fallen ending is
+// `setHp` at `0` and one tick" (specs/instrumentation.md), which is what
+// `endFallen` composes. The clock is posed one tick short of `TICK` so the
+// ending tick is the one that reaches it. The three fields are read off the
+// snapshot and then looked for on the frame, so a build that cleared the run on
+// the way to the end screen, and one that drew figures it did not keep, both
+// fail.
 //
 // THE TOLERANCE. None on the snapshot: three whole counts. On the frame each
 // figure is matched as a whole number in the frame's text, so a neighbouring
@@ -37,6 +39,7 @@ import {
   captureStill,
   createHarness,
   drewPhrase,
+  endFallen,
   isolate,
   type Harness,
 } from "../harness";
@@ -58,9 +61,9 @@ afterEach(() => {
 
 it("keeps and draws the ended run's clock, level, and kills", async () => {
   isolate(h, { level: LEVEL });
-  h.debug.setTick(TICK);
+  h.debug.setTick(TICK - 1);
   h.debug.setKills(KILLS);
-  h.debug.setScreen("fallen");
+  await endFallen(h);
   const ended = h.snapshot();
 
   const { calls } = await h.frameDraw();

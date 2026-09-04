@@ -31,10 +31,11 @@ frame builds the next state from the current one rather than writing into it, an
 the type is what guarantees that rendering changes nothing. All three currently
 throw `"not implemented"`. Implement them.
 
-**The pointer comes from the engine.** The yard is built by pressing on the
-stage, and the engine hands the game its position already in logical stage units
-along with its press and release edges — read the engine's input documentation
-for the API. `specs/controls.md` states what Arc Foundry does with them.
+**The pointer and the touch contact come from the engine.** The yard is built by
+pressing on the stage and the menus answer to a finger, and the engine hands the
+game each position already in logical stage units along with its press and
+release edges — read the engine's input documentation for the API.
+`specs/controls.md` states what Arc Foundry does with them.
 
 The debug surface is a required deliverable. The engine returns it from
 `engine.debug` exactly as `initialize` handed it over, and that is how the game

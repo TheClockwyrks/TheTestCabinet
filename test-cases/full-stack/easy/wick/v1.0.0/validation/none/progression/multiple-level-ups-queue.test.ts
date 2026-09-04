@@ -10,8 +10,10 @@
 // `20`, which spends `5` and then `15`, leaving level `3`, `xp` `0`, and
 // `pendingLevelUps` `2`.
 //
-// WHY THE WORLD IS POSED AS IT IS. An isolated night with every faculty held,
-// nothing alive, and no passive, so the gain is exactly the gem's value. The
+// WHY THE WORLD IS POSED AS IT IS. An isolated night with `progression` alone
+// turned back on, which is the faculty that spends a gain on a level, and every
+// other faculty held, nothing alive, and no passive, so the gain is exactly the
+// gem's value. The
 // experience is posed one short of the two thresholds together, so the smallest
 // gem in the game crosses both at once: a build that loops its rule reads two,
 // and a build that applies it once reads one.
@@ -48,7 +50,7 @@ afterEach(async () => {
 });
 
 it("crosses both thresholds on one gem and queues two level-ups", async () => {
-  await isolate(h);
+  await isolate(h, { on: ["progression"] });
   await h.debug.setLevel(POSED_LEVEL);
   await h.debug.setXp(POSED_XP);
 

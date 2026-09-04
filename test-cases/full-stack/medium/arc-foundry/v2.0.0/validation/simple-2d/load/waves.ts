@@ -32,16 +32,14 @@
 // run while a whole campaign's worth of waves is being read.
 
 import { ConstantClock } from "@test-cabinet/simple-2d";
-
 import { assertEqual, assertTruthy, fail } from "../assert";
-import { type DifficultyId } from "../../src/constants";
+import type { DifficultyId, SpawnType } from "../constants";
 import {
   createHarness,
+  type Harness,
   openYard,
   startWave,
   TICK_MS,
-  type Harness,
-  type SpawnType,
 } from "../harness";
 
 /** One unit a wave released, as the snapshot first reported it. */
@@ -55,7 +53,7 @@ export interface Released {
 const HARVEST = { col: 10, row: 10 };
 
 /**
- * The frame rate a composition is read at: `40` Hz, a third of this project's
+ * The frame rate a composition is read at: `20` Hz, a sixth of this project's
  * default.
  *
  * A whole campaign's worth of waves is minutes of simulation, and the
@@ -63,13 +61,24 @@ const HARVEST = { col: 10, row: 10 };
  * reaches the same state however it was divided into frames and whatever frame
  * rate produced it" (specs/instrumentation.md). Nothing read here is a
  * projectile, so the one step size this project has to respect — a shot's travel
- * staying inside its hit radius — does not arise, and a `25` ms frame is an
- * ordinary frame for a slow machine rather than an exotic one.
+ * staying inside its hit radius — does not arise, and a `50` ms frame is an
+ * ordinary frame for a slow machine rather than an exotic one. A build that
+ * cannot be read at it fails `instrumentation/frame-division-movement`, which is
+ * the point that requirement belongs to.
+ *
+ * WHY IT IS AS COARSE AS IT IS. These five checks read fourteen whole waves each,
+ * and a wave's schedule is tens of seconds of simulation: at `40` Hz the two
+ * heaviest of them measured `271` s and `256` s of the fifteen-minute budget on
+ * the two-core host a run is validated on, between them a fifth of it. What
+ * decides every one of these checks is the composition a wave released, which is
+ * a function of the wave number and of nothing else, so the frames spent watching
+ * it arrive are the one cost here that buys nothing. Halving them is the whole of
+ * the saving and none of the check.
  */
-const HZ = 40;
+const HZ = 20;
 
 /** Frames between two readings of the yard: half a second. */
-const POLL = HZ / 2;
+const POLL = Math.max(1, Math.round(HZ / 2));
 
 /** Three minutes of simulation: past any wave, and a verdict if a build has none. */
 const MAX_FRAMES = 180 * HZ;

@@ -1,5 +1,5 @@
 // Wick — evolutions/corona-heals-per-kill: each enemy a Corona pulse kills
-// heals `CORONA_HEAL`, and a pulse that kills nothing heals nothing.
+// heals `CORONA_HEAL`.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE.
 //   - `specs/evolutions.md` ("Corona"): "Each enemy a pulse kills, one whose
@@ -16,22 +16,17 @@
 //     it at the `maxHp` in force"; `maxHp` is `BASE_MAX_HP` (`100`) with no
 //     Tallow held and `recovery` is `BASE_RECOVERY` (`0`) with no Tinder, so
 //     nothing else moves `hp` over the span.
-//   - `specs/world.md` ("Timers"): an interval of `0.5` seconds is
-//     `round(0.5 × 60)` ticks, so the second pulse falls on tick 31, with the
-//     moths already gone and the hound still standing.
 //
 // WHAT IS READ. With `hp` posed to 50, three moths and one hound inside the
-// aura: after the first pulse `hp` reads 53, one `CORONA_HEAL` for each of the
-// three kills and none for the hound the same pulse hit without killing; and
-// after the second pulse, 30 ticks later, which hits the hound again and kills
-// nothing, `hp` still reads 53. A build that heals per hit reads 54 and then
-// 55, one that heals once per pulse reads 51, and one that heals not at all
-// reads 50.
+// aura: after the pulse `hp` reads 53, one `CORONA_HEAL` for each of the three
+// kills and none for the hound the same pulse hit without killing. A build that
+// heals per hit reads 54, one that heals once per pulse reads 51, and one that
+// heals not at all reads 50. What a pulse that kills NOTHING heals is
+// `evolutions/corona-heals-nothing-without-a-kill`'s.
 //
 // WHY THE NIGHT IS POSED AS IT IS. Corona alone with three moths and one hound
-// and nothing else, so the hits are four and the kills three and the two
-// readings separate; the hound's 120 health outlasts both pulses of 12, so the
-// second pulse is one that hits and kills; every driver switch off but
+// and nothing else, so the hits are four and the kills three and the reading
+// separates a heal per hit from a heal per kill; every driver switch off but
 // `weaponFire`, so no contact, no recovery, and no other shape can move `hp`;
 // `hp` posed 50 below `maxHp`, so the whole of the healing fits under the cap.
 // The moths stand 40, 60, and 80 units out and the hound 100 the other way, so
@@ -50,7 +45,6 @@ import {
   CORONA_STATS,
   ENEMIES,
   FIGURE_TOLERANCE,
-  ticksFor,
 } from "../constants";
 import {
   captureStill,
@@ -78,9 +72,6 @@ const SURVIVOR_OFFSET = -100;
 /** The health the run is posed at, clear of `maxHp` by more than the healing. */
 const POSED_HP = 50;
 
-/** The ticks to the next pulse: round(0.5 × 60). */
-const PERIOD_TICKS = ticksFor(CORONA_STATS.cooldown);
-
 /** What the three kills heal: one `CORONA_HEAL` each. */
 const HEALED = KILLED_OFFSETS.length * CORONA_HEAL;
 
@@ -94,7 +85,7 @@ afterEach(() => {
   h.dispose();
 });
 
-it("raises hp from 50 to 53 on the pulse that kills three moths and holds it on the next", async () => {
+it("raises hp from 50 to 53 on the pulse that kills three moths", async () => {
   assertEqual(
     [...KILLED_OFFSETS, SURVIVOR_OFFSET].every(
       (offset) => Math.abs(offset) < CORONA_STATS.radius,
@@ -103,9 +94,9 @@ it("raises hp from 50 to 53 on the pulse that kills three moths and holds it on 
     "the probes' offsets against the aura's radius",
   );
   assertEqual(
-    ENEMIES[SURVIVOR].hp > 2 * CORONA_STATS.damage,
+    ENEMIES[SURVIVOR].hp > CORONA_STATS.damage,
     true,
-    "the hound's health against the two pulses it takes",
+    "the hound's health against the pulse it takes",
   );
   assertEqual(
     POSED_HP + HEALED <= BASE_MAX_HP,
@@ -134,14 +125,5 @@ it("raises hp from 50 to 53 on the pulse that kills three moths and holds it on 
     POSED_HP + HEALED,
     FIGURE_TOLERANCE,
     "hp after the pulse, one CORONA_HEAL for each of the three kills",
-  );
-
-  const later = await h.tick(PERIOD_TICKS);
-  present(enemyById(later, hound), "the hound after the second pulse");
-  assertWithin(
-    later.run.player.hp,
-    POSED_HP + HEALED,
-    FIGURE_TOLERANCE,
-    `hp after tick ${1 + PERIOD_TICKS}, the pulse that hit the hound and killed nothing`,
   );
 });

@@ -19,7 +19,7 @@
 // the world, and nothing about the mine is touched between the two readings.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_ITEMS } from "../../src/constants";
+import { TITLE_ITEMS, TITLE_ITEMS_NO_SAVE } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,
@@ -28,7 +28,6 @@ import {
   type Harness,
 } from "../harness";
 import {
-  TITLE_ITEMS_NO_SAVE,
   bankSave,
   continueFromTitle,
   menuLength,

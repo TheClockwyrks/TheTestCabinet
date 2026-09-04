@@ -1,7 +1,7 @@
 // economy/repair-price — hull repair costs REPAIR_PRICE a point, by the
 // increment and to full.
 //
-// `specs/gameplay.md` fixes hull repair as `REPAIR_PRICE` (2) Credits per point,
+// `specs/expedition.md` fixes hull repair as `REPAIR_PRICE` (2) Credits per point,
 // offered as a fixed `REPAIR_BUY_INCREMENT` (25) points and as a repair-to-full
 // that pays only for the missing points and only as far as the Credits reach.
 // The increment is bought into a hull with room for all 25 of it, then the
@@ -42,12 +42,12 @@ it("charges REPAIR_PRICE a point for the increment and for the fill", async () =
     stepped.miner.hull,
     HULL_BEFORE + REPAIR_BUY_INCREMENT,
     6,
-    "specs/gameplay.md",
+    "specs/expedition.md",
   );
   assertEqual(
     stepped.credits,
     CREDITS_BEFORE - REPAIR_BUY_INCREMENT * REPAIR_PRICE,
-    "specs/gameplay.md",
+    "specs/expedition.md",
   );
 
   await h.debug.repairFull();
@@ -56,10 +56,10 @@ it("charges REPAIR_PRICE a point for the increment and for the fill", async () =
 
   const filled = await h.snapshot();
   const missing = HULL_MAX[0] - stepped.miner.hull;
-  assertCloseTo(filled.miner.hull, HULL_MAX[0], 6, "specs/gameplay.md");
+  assertCloseTo(filled.miner.hull, HULL_MAX[0], 6, "specs/expedition.md");
   assertEqual(
     filled.credits,
     stepped.credits - missing * REPAIR_PRICE,
-    "specs/gameplay.md",
+    "specs/expedition.md",
   );
 });

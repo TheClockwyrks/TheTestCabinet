@@ -31,6 +31,7 @@ import { IDLE_RUN } from "../constants";
 import {
   captureStill,
   createHarness,
+  endDawn,
   isolate,
   runFields,
   spawnEnemyAt,
@@ -51,9 +52,8 @@ afterEach(() => {
 it("returns to the title on the idle run when Escape is pressed on dawn", async () => {
   isolate(h, { level: 11 });
   spawnEnemyAt(h, "moth", 260, -60);
-  h.debug.setTick(6000);
   h.debug.setKills(52);
-  h.debug.setScreen("dawn");
+  await endDawn(h);
   const before = h.snapshot();
   assertEqual(before.screen, "dawn", "the screen Escape is pressed on");
 

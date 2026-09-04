@@ -40,6 +40,12 @@
 // lattice point, so two pickups sharing a center can only be two drops of one
 // kill.
 //
+// WHY `drops` IS TURNED ON. It is the faculty every check here is about: with
+// it off a death "leaves nothing on the field and draws nothing from the
+// generator" (`specs/instrumentation.md`, the switch table), which is exactly
+// what an isolated world holds by default, so the sample turns it back on and
+// leaves the other eight switches off.
+//
 // WHAT IS CARRIED AWAY, AND WHAT IS SWEPT. Each batch's pickups are copied out
 // of the snapshot and the field is then cleared of pickups, gems, and zones
 // through the surface's own operations, which collect nothing and score nothing
@@ -54,7 +60,13 @@ import {
   OIL_SPLASH_LEVELS,
   type PickupKind,
 } from "../constants";
-import { advanceTicks, isolate, type Harness, type Point } from "../harness";
+import {
+  advanceTicks,
+  enable,
+  isolate,
+  type Harness,
+  type Point,
+} from "../harness";
 
 /** A level-1 Oil Splash puddle's damage, `4`, with no Wick held. */
 export const PULSE_DAMAGE = OIL_SPLASH_LEVELS[0].damage;
@@ -114,6 +126,7 @@ export async function sampleDrops(
   batch: number = BATCH,
 ): Promise<Sample> {
   const at = isolate(h, { seed }).run.player;
+  enable(h, "drops");
   const drops: Drop[] = [];
   let killed = 0;
 

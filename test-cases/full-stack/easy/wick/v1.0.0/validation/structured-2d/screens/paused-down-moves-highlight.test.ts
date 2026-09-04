@@ -9,10 +9,10 @@
 // `down` to `ArrowDown` and `KeyS`; with two items, index `0` moves to index
 // `1`.
 //
-// THE DRIVE. An isolated `playing` world, paused through
-// `setScreen("paused")` — which `specs/instrumentation.md` says enters the
-// screen "exactly as `pause` does" — then one real `ArrowDown`, on the index
-// the arrival highlights.
+// THE DRIVE. An isolated `playing` world, paused through `setScreen("paused")`
+// — which `specs/instrumentation.md` says enters the screen by setting `screen`
+// alone, with the run left as it stands — then one real `ArrowDown`, on the
+// index the arrival highlights.
 //
 // THE TOLERANCE. None: an index is exact.
 

@@ -17,7 +17,7 @@
 // by a build that lets the trailing core keep closing. The two carry different
 // charges, so the merge cannot extract ("the merging segment's head core and the
 // segment ahead's tail core carry the same charge" is what an extraction on a
-// merge needs), and the quota is posed to 0 so nothing arrives behind them.
+// merge needs), and the inlet is held so nothing arrives behind them.
 //
 // WHAT IS READ. The gap across the join, which the spec fixes at exactly one
 // spacing, and the direction of the pair — the trailing core is still behind the
@@ -65,7 +65,6 @@ afterEach(async () => {
 
 it("clamps the catching-up core exactly one spacing behind the one ahead", async () => {
   await poseHall(h, {
-    quotaRemaining: 0,
     cores: [
       [LEAD_S, "halide", null],
       [TRAIL_S, "sulfur", null],

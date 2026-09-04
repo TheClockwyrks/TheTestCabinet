@@ -17,11 +17,9 @@
 //
 // A 42-unit pair is TWO segments, because "A **segment** is a maximal run of
 // consecutive cores in the train whose arc positions differ by exactly `SPACING`"
-// (specs/channel.md). So the front core is the lead segment and rides the feed
-// while the rear closes at the fixed catch-up rate of 180 units/s, and the pose
-// allows for both: each core is placed one tick of ITS OWN rate short of where it
-// must stand when the strike resolves (specs/channel.md, "The order of a tick" —
-// segments advance at step 2, projectiles strike at step 3).
+// (specs/channel.md). Neither travels here: the train is held for the whole check
+// (`feed: false`), so each core stands at exactly the arc position it was posed
+// at when the strike resolves at step 3 of the tick order.
 //
 // HOW THE ANSWER IS READ. Not against a predicted arc position, which would make
 // the check depend on the flight arithmetic as much as on the rule, but against
@@ -68,17 +66,7 @@ import {
   topRunS,
   type Harness,
 } from "../harness";
-import {
-  approach,
-  assertInFlight,
-  CATCHUP_STEP,
-  LEAD_STEP,
-  PARKED,
-  PLUMB_SHOT_X,
-  poseFor,
-  SHOT,
-  UP_AIM,
-} from "./stage";
+import { approach, assertInFlight, PLUMB_SHOT_X, SHOT, UP_AIM } from "./stage";
 
 /** How far apart in arc the two candidate cores stand when the strike resolves. */
 const PAIR_GAP = 42;
@@ -120,19 +108,19 @@ it("strikes the nearer of two cores inside the window", async () => {
     "a pair one spacing apart would seat in the same slot either way",
   );
 
-  await poseHall(h, { cores: PARKED, loaded: SHOT });
+  await poseHall(h, { feed: false, loaded: SHOT });
 
   const after = await captureReplay(h, "nearest", async () => {
     const short = await approach(h, UP_AIM);
     assertInFlight(short);
     // The rear core lands NEAR_OFFSET units to the -x side of the shot's path and
     // the front core FAR_OFFSET units to the +x side, so at the strike the rear
-    // is 18 units away and the front 24. The rear rides the catch-up rate and the
-    // front the feed, so each is posed one tick of its own rate short.
+    // is 18 units away and the front 24. The train is held, so each stands where
+    // it is posed.
     const rearS = topRunS(PLUMB_SHOT_X - NEAR_OFFSET);
     await h.debug.poseTrain([
-      [poseFor(rearS + PAIR_GAP, LEAD_STEP), FRONT, null],
-      [poseFor(rearS, CATCHUP_STEP), REAR, null],
+      [rearS + PAIR_GAP, FRONT, null],
+      [rearS, REAR, null],
     ]);
     const struck = await h.step(1);
     await h.step(SETTLE);

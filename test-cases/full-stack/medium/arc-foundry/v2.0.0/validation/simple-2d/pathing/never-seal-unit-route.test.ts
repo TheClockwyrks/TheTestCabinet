@@ -17,17 +17,16 @@
 // anything else the yard had to say.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   standBlocker,
-  tileCenter,
-  type Harness,
 } from "../harness";
+import { tileCenter } from "../constants";
 
 /** The two footprints that close the pocket's southern side. */
 const POCKET_WALLS = [

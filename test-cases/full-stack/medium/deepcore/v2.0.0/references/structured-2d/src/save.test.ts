@@ -1,4 +1,4 @@
-// The single-slot expedition save (specs/gameplay.md, specs/modes.md).
+// The single-slot expedition save (specs/expedition.md, specs/modes.md).
 //
 // The slot lives in the browser's storage, so these run against a stand-in that
 // behaves like it, plus one that is not there at all, because the game has to run

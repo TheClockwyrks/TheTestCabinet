@@ -34,6 +34,20 @@ const NODE_ROW = 40;
 /** The rows the miner is read from: closing in, then falling back. */
 const STATIONS = [12, 20, 30, 36, 22];
 
+/**
+ * The frames the recording runs before the first input and after the last, and
+ * the frames it holds between them.
+ *
+ * These bound the CLIP a reviewer watches, not the check: nothing below is
+ * asserted against them. A bracket that opened on the input and closed on the
+ * result would hand a reviewer a flicker a few frames long, so the recorder is
+ * armed with the world at rest, holds long enough for each step to be seen, and
+ * runs on once the behavior has settled.
+ */
+const RUN_UP = 15;
+const HOLD = 10;
+const SETTLE = 30;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -51,6 +65,7 @@ it("reports the cell separation, falling on approach and rising on retreat", asy
 
   const readings = await captureReplay(h, "closing", async () => {
     const seen: number[] = [];
+    await h.advance(RUN_UP);
     for (const row of STATIONS) {
       standOn(h, MINER_COL, row);
       const at = await settled(h);
@@ -64,7 +79,9 @@ it("reports the cell separation, falling on approach and rising on retreat", asy
         `specs/mining.md, from row ${row}`,
       );
       seen.push(at.scanner.distanceTiles ?? Number.NaN);
+      await h.advance(HOLD);
     }
+    await h.advance(SETTLE);
     return seen;
   });
 

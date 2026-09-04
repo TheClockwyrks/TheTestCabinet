@@ -8,7 +8,7 @@
 // it". Phase 8 of One tick collects pickups and phase 11 ends the run, both
 // before phase 12, where "A tick that ends the run opens no overlay."
 //
-// THE POSE. An isolated night keeping the fresh run's Taper at level 1 in the
+// THE POSE. An isolated night holding Taper at level 1 in the
 // first weapon slot: hp posed to 0 through setHp, which "ends the run fallen at
 // the end of the next playing tick", and one chest posed at the lamplighter's
 // center, collected on the next tick by specs/world.md's collection rule. With

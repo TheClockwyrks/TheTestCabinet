@@ -9,8 +9,9 @@
 // `ArrowRight`, `KeyD` | held on `playing`, edge on `almanac`".
 //
 // WHY THE WORLD IS POSED AS IT IS. The almanac is entered through
-// `setScreen("almanac")`, which specs/instrumentation.md makes the same arrival
-// as confirming `THE ALMANAC`, so the screen stands on `almanacTab` `0` without
+// `setScreen("almanac")`, which specs/instrumentation.md defines as setting
+// `screen` alone, "with `menuIndex`, `almanacTab`, and `almanacScroll`
+// all `0`", so the screen stands on `almanacTab` `0` without
 // a key having been pressed. The press is a REAL `ArrowRight` through
 // Chromium's input pipeline held across exactly one frame, which is one press
 // edge whichever of the two conformant ways a build reads one. What a tab change

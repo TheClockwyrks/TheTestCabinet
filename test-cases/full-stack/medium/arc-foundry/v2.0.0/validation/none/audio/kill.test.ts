@@ -41,7 +41,7 @@ import { ANCHOR, TARGET, beforeFrame, onFrame, settle } from "./cues";
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -49,7 +49,6 @@ afterEach(async () => {
 });
 
 it("sounds on the frame the unit dies, and not between the shot and the kill", async () => {
-  await h.armAudio();
   await openYard(h, { wave: 1 });
   await settle(h);
   await holdWaveOpen(h);

@@ -13,7 +13,6 @@
 // phase running has a level that yields two harvests.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual } from "../assert";
 import {
   captureStill,

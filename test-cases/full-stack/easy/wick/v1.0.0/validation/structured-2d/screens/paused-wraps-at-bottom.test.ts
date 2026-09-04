@@ -7,12 +7,12 @@
 // row: "`up`, `down` move the highlight, wrapping". The menu is `PAUSE_ITEMS`,
 // two items, so the last index is `1` and a `down` there reads `0`.
 //
-// THE DRIVE. An isolated `playing` world, paused through
-// `setScreen("paused")` — which `specs/instrumentation.md` says enters the
-// screen "exactly as `pause` does" — one `ArrowDown` onto the last item, read
-// back as the precondition, then the `ArrowDown` that must wrap. The edge case
-// is its own point: a build that moves the highlight correctly and clamps at
-// the bottom fails here alone.
+// THE DRIVE. An isolated `playing` world, paused through `setScreen("paused")`
+// — which `specs/instrumentation.md` says enters the screen by setting `screen`
+// alone, with the run left as it stands — one `ArrowDown` onto the last item,
+// read back as the precondition, then the `ArrowDown` that must wrap. The edge
+// case is its own point: a build that moves the highlight correctly and clamps
+// at the bottom fails here alone.
 //
 // THE TOLERANCE. None: an index is exact.
 

@@ -37,9 +37,9 @@ eight values.
 | Tagline | `TAGLINE_TEXT` | `GROUND THE LOAD` |
 | Menu | `TITLE_ITEMS` | `SALVAGE`, `HOW TO PLAY`, in that order |
 
-The item at the current menu index is highlighted and drawn distinctly from the others,
-and the index is `0` on arriving at the title. `SALVAGE` leads to `mapselect` and
-`HOW TO PLAY` leads to `howto`. A dim slice of a yard may show behind the menu.
+The item at the current menu index is highlighted and drawn distinctly from the others.
+`SALVAGE` leads to `mapselect` and `HOW TO PLAY` leads to `howto`. A dim slice of a yard
+may show behind the menu.
 
 ### `mapselect`
 
@@ -82,12 +82,18 @@ status bar and the build panel of `specs/hud.md`. It covers the build phase, the
 and the finale alike. The game can be paused in place here: the simulation freezes, the
 yard stays visible with no menu over it, and the status bar reads `PAUSED`.
 
+The pause menu is opened from here, by `KeyP` and by `Escape`; `specs/controls.md`
+states how each of the two resolves.
+
 ### `paused`
 
 The pause menu, over a yard that is visible and frozen behind it. It offers `RESUME`,
 `RESTART`, and `QUIT TO MENU`. `RESUME` returns to `playing` and clears any in-place
 pause, `RESTART` begins a fresh run on the same map at the same difficulty, and
 `QUIT TO MENU` returns to `title`.
+
+`Escape` and `KeyP` each close the pause menu and resume the run, doing exactly what
+`RESUME` does.
 
 ### `victory`
 
@@ -106,12 +112,42 @@ and the build panel of `specs/hud.md` are not drawn.
 
 ## Menu navigation
 
-Every menu is fully operable with the pointer alone, and the keyboard actions of
-`specs/controls.md` are an alternative rather than a requirement of the path. On every
-menu, the up and down actions move the highlight by one entry and wrap at both ends, the
-confirm action takes the highlighted entry, and the back action takes the entry that
-returns to the previous screen. Every menu that this file gives a `BACK` entry can also
-be left with the back action.
+Every menu is fully operable with the pointer alone, with a touch contact alone, and with
+the keyboard actions of `specs/controls.md` alone. The three reach the same entries, and
+no menu needs more than one of them.
+
+Where a menu draws its entries is this build's, so each entry occupies a rectangular hit
+region the build lays out and reports through the `menuButtons` reading of
+`specs/instrumentation.md`. That reported rectangle is the region the pointer and the
+touch rules below act over.
+
+| Input | Effect |
+| --- | --- |
+| The up action | Moves the highlight up one entry, wrapping from the first entry to the last. |
+| The down action | Moves the highlight down one entry, wrapping from the last entry to the first. |
+| The confirm action | Takes the highlighted entry. |
+| The back action | Takes the entry that returns to the previous screen. |
+| A pointer moved onto an entry's region | The highlight moves to that entry. |
+| A pointer pressed and released inside one entry's region | The highlight moves to that entry, and that entry is taken. |
+| A touch contact landing inside an entry's region, or traveling onto one | The highlight moves to that entry. |
+| A touch contact landing and lifting inside one entry's region | The highlight moves to that entry, and that entry is taken. |
+
+An entry is taken only when both edges of the gesture fall inside one entry's region: the
+press and the release for a pointer, the landing and the lift for a touch contact. Two
+edges in different regions take no entry, and an edge outside every region takes none.
+Every menu that this file gives a `BACK` entry can also be left with the back action.
+
+### What is highlighted on arrival
+
+A menu reached other than by returning to it opens with its first entry highlighted, at
+menu index `0`. Returning to a menu highlights the entry that led away from it.
+
+| Returning to | From | Highlighted on arrival |
+| --- | --- | --- |
+| `title` | `howto` | `HOW TO PLAY` |
+| `title` | `mapselect` | `SALVAGE` |
+| `title` | `QUIT TO MENU` on `paused`, or `MENU` on `victory` or `overload` | `SALVAGE` |
+| `mapselect` | `difficultyselect` | The map entry that was chosen |
 
 ## Audio
 
@@ -164,7 +200,7 @@ from any screen, and stays fully playable with sound muted.
 ## Out of scope
 
 - Network play, and any progress persisted between sessions.
-- Touch and gamepad input.
+- Gamepad input.
 - A map editor or generated maps. The three maps of `specs/yard.md` are the whole set.
 - Any Load type, component type, quality tier, combination tower, or mechanic beyond
   those this specification states.

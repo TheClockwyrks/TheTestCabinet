@@ -38,12 +38,8 @@
 // canvas pixel and every reading below is a straight synchronous read of the frame
 // the engine has just drawn.
 
-import {
-  captureStill,
-  type FoundrySnapshot,
-  type Harness,
-  type Point,
-} from "../harness";
+import { captureStill, type FoundrySnapshot, type Harness } from "../harness";
+import type { Point } from "../constants";
 
 /** A square lattice about `center`, `half` either side, `step` apart. */
 export function lattice(center: Point, half: number, step: number): Point[] {

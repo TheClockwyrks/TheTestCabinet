@@ -57,7 +57,7 @@ specification is written against them:
   run-clock times of the scripted events that have fired this run.
 - The next id to assign, one counter shared by enemies, projectiles, zones,
   gems, and pickups and never reused within a run.
-- The seven driver switches `specs/instrumentation.md` names, each a boolean,
+- The nine driver switches `specs/instrumentation.md` names, each a boolean,
   held outside the run: a fresh run leaves them as they stand, and the
   surface's `reset` restores every one to on.
 - The simulation time, in seconds, which every frame adds its delta time to
@@ -635,6 +635,12 @@ The run in progress or just ended.
   projectiles, zones, gems, and pickups. It is `0` when a run starts and is
   never reused within a run.
 
+Where a field above, or the idle run below, is described by the screen it is
+read on, that is how play and the ticks maintain it. The debug surface's
+`setScreen` sets `screen` and the three menu indices alone, as
+`specs/instrumentation.md` states, so a posed screen stands over whatever run
+it was posed over.
+
 ## The idle run
 
 `run` holds the values below whenever `screen` is `title`, `howto`, or
@@ -675,8 +681,9 @@ fields posed and read back by reading them.
 
 - `screen`: the screen currently shown.
 - `menuIndex`: the highlighted item on whichever vertical menu `screen` is
-  showing. It is `0` on entering every screen, and on a screen with no menu it
-  stays `0`.
+  showing. It is `0` on entering every screen but `title`, which selects the
+  entry that led away from it as `specs/ui.md` states, and on a screen with no
+  menu it stays `0`.
 - `almanacTab`: the index into `ALMANAC_TABS` of the tab the almanac is
   showing. It is `0` on entering every screen, and on every screen but
   `almanac` it stays `0`.
@@ -699,9 +706,9 @@ fields posed and read back by reading them.
   type, an offer draw, a puddle's landing point, a strike's target, a chest's
   fallback item, a swarm's direction, and the bread and draft draws.
 - `spawning`, `events`, `despawning`, `enemyMotion`, `enemyContact`,
-  `weaponFire`, `effectMotion`: the seven driver switches
-  `specs/instrumentation.md` names, each `true` from `initialize` and after
-  `reset`, and left as they stand by a fresh run.
+  `weaponFire`, `effectMotion`, `drops`, `progression`: the nine driver
+  switches `specs/instrumentation.md` names, each `true` from `initialize` and
+  after `reset`, and left as they stand by a fresh run.
 
 ## The contract
 

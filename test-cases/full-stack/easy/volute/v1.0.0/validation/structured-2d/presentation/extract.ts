@@ -89,7 +89,8 @@ export async function driveShot(
   h: Harness,
   ticks: number,
 ): Promise<ShotFrames> {
-  h.debug.fire(270);
+  h.debug.setAim(270);
+  h.debug.fire();
   const result: ShotFrames = {
     strike: -1,
     removed: false,

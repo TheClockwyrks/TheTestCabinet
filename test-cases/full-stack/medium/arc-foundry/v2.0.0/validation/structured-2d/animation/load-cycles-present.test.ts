@@ -21,17 +21,11 @@
 // gone rather than only that one is.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertDeepEqual } from "../assert";
-import {
-  SPAWN_TYPES,
-  createHarness,
-  openYard,
-  releaseUnit,
-  type Harness,
-} from "../harness";
+import { createHarness, type Harness, openYard, releaseUnit } from "../harness";
 import { cycleFrames, decodeAll, evidence, missing } from "./images";
 import { serveProducedAssets } from "./produced";
+import { SPAWN_TYPES } from "../constants";
 
 /** The three identifiers `specs/assets.md` draws at `32 x 32`. */
 const LARGE = new Set(["slug", "dynamo", "overload"]);

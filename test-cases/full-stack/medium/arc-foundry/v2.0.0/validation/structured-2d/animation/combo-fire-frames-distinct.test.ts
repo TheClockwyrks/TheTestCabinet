@@ -12,8 +12,7 @@
 // pictures differ at all rather than how much.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { COMBO_IDS } from "../../src/constants";
+import { COMBO_IDS } from "../constants";
 import { assertDeepEqual } from "../assert";
 import { createHarness, openYard, standCombo, type Harness } from "../harness";
 import { cycleFrames, decodeAll, duplicatePairs, evidence } from "./images";

@@ -20,7 +20,7 @@
 // the world at all.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CAM_LEAD_MAX, CAM_STILL_SPEED } from "../../src/constants";
+import { CAM_LEAD_MAX, CAM_STILL_SPEED } from "../constants";
 import { assertBetween, assertGreaterThan } from "../assert";
 import {
   captureReplay,

@@ -13,16 +13,15 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { COMBO_MAX_LEVEL } from "../../src/constants";
+import { COMBO_MAX_LEVEL, comboDef } from "../constants";
 import {
   captureStill,
-  comboDef,
   createHarness,
+  type Harness,
   openYard,
   panelControl,
   standCombo,
   structureById,
-  type Harness,
 } from "../harness";
 
 const TOWER = comboDef("staticweb");

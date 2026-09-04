@@ -17,9 +17,10 @@
 // no enemy to damage or kill, no pickup to collect, no contact, and no
 // weapon held.
 //
-// The run is posed at `ISOLATE_LEVEL` (50), whose `xpToNext` is `495`
-// (`specs/progression.md`), so the `1` experience a small gem carries queues
-// no level-up and the tick opens no overlay beside the collection.
+// The isolation leaves the `progression` switch off, so the `1` experience a
+// small gem carries is banked as `xp` and spent on no level
+// (`specs/instrumentation.md`, the switch table): the tick queues no level-up
+// and opens no overlay beside the collection.
 //
 // THE TOLERANCE. None: the specification fixes the cue to the tick of the
 // collection and to at most one play on it, and the collector reads whole

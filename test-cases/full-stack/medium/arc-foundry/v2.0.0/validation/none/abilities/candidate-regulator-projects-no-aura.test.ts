@@ -23,7 +23,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual } from "../assert";
-import { REGULATOR_AURA, componentDamage } from "../constants";
+import { componentDamage, REGULATOR_AURA } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -37,13 +37,16 @@
 // arranged so that no cue in `specs/ui.md`'s table can fire, so the only looping
 // source the hall can hold is a bed, and a build with none fails.
 //
-// THE HALL IS POSED SO THAT ONLY A BED CAN SOUND. One lone core, the inlet
-// stopped (`quotaRemaining` 0), pressure 0. No insertion, no extraction
-// (`MIN_RUN` is 3 and there is one core), no intake arrival, no emission, no
-// grant, no swap, no shot. And not an EMPTY hall, because "A level is cleared the
-// moment its quota is exhausted and no cores remain on the channel" — an empty
-// one would clear on the first tick and move the game off `playing`, where
-// `specs/ui.md` says neither bed loops.
+// THE HALL IS POSED SO THAT ONLY A BED CAN SOUND. An EMPTY channel with the inlet
+// held and the pressure at 0. Nothing in `specs/ui.md`'s cue table can fire: no
+// core to strike, insert, extract, or carry into the intake, no emission, no
+// grant, no swap, no shot. The hall stays on `playing` while it stands empty
+// because `poseHall` leaves the quota unexhausted and holds the inlet with
+// `setEmission(false)` (`specs/instrumentation.md`) rather than starving it, so
+// `specs/progression.md`'s clear condition — "the moment its quota is exhausted
+// and no cores remain on the channel" — never fires. An empty channel is also
+// never in danger (`specs/progression.md`), which is the condition `specs/ui.md`
+// puts `hall-loop` under.
 //
 // AUDIO IS ARMED BY THE REAL ENTER PRESS THAT STARTS THE RUN. A browser opens no
 // audio context without a genuine user gesture, and `specs/controls.md` binds
@@ -60,30 +63,15 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { CHANNEL_ARC, TICK_HZ, type ChargeId } from "../constants";
+import { TICK_HZ } from "../constants";
 import {
   captureReplay,
   createHarness,
   poseHall,
   pressConfirm,
-  spacedBlock,
   stepUntilBed,
   type Harness,
 } from "../harness";
-
-/**
- * Where the lone core stands: the middle of the leg from vertex 2 to vertex 3.
- *
- * `specs/channel.md` runs that leg along the bottom of the field, and an arc
- * position this low is far short of the danger line at `s = 4000` and of the
- * intake at `s = 5000` — so the run stays out of danger for the whole drive,
- * which is the condition `specs/ui.md` puts `hall-loop` under, and no core
- * reaches the intake to spend a cell.
- */
-const QUIET_S = (CHANNEL_ARC[2] + CHANNEL_ARC[3]) / 2;
-
-/** Immaterial: no rule here turns on which of the five charges is posed. */
-const QUIET_CHARGE: ChargeId = "halide";
 
 /**
  * A second of the hall recorded once the bed is up, in ticks.
@@ -115,7 +103,7 @@ it("runs a looping bed under a run in play", async () => {
     "playing",
     "the screen a real confirm press on the title opened",
   );
-  await poseHall(h, { cores: spacedBlock(QUIET_S, 1, QUIET_CHARGE) });
+  await poseHall(h);
 
   const bed = await captureReplay(h, "music", async () => {
     const looping = await stepUntilBed(h);

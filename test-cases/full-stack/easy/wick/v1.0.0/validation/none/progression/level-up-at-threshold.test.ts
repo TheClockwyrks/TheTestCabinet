@@ -10,9 +10,11 @@
 // small gem takes `xp` to exactly `5`, the threshold is met once, and the run
 // reads level `2`, `xp` `0`, `pendingLevelUps` `1`.
 //
-// WHY THE WORLD IS POSED AS IT IS. An isolated night with every faculty held,
-// nothing alive, and no passive: Soot is the only thing that scales a gain and
-// no passive is held, so the gem is worth exactly its tier's value. The level
+// WHY THE WORLD IS POSED AS IT IS. An isolated night with `progression` alone
+// turned back on, which is the faculty that spends a gain on a level, and every
+// other faculty held, nothing alive, and no passive: Soot is the only thing
+// that scales a gain and no passive is held, so the gem is worth exactly its
+// tier's value. The level
 // and the experience are posed with `setLevel` and `setXp`, of which
 // "No level-up is derived from it: a level-up comes from the next gain" — so
 // the crossing this check reads is the gem's alone. The gem is placed at the
@@ -50,7 +52,7 @@ afterEach(async () => {
 });
 
 it("rises a level, spends the threshold, and queues one level-up", async () => {
-  await isolate(h);
+  await isolate(h, { on: ["progression"] });
   await h.debug.setLevel(POSED_LEVEL);
   await h.debug.setXp(POSED_XP);
 

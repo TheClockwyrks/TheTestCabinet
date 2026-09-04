@@ -75,6 +75,43 @@ export function endRects(): Rect[] {
   return stack(END_ITEMS.length, END_MENU_TOP);
 }
 
+// ---- The way out of `howto` and `chest` --------------------------------------
+//
+// Neither screen shows a menu, and each answers the pointer and touch on one
+// box: "the area the screen's way out is taken in, which the screen shows"
+// (specs/controls.md). `src/render/screens.ts` draws the line inside that box,
+// so what is tapped is what is read.
+
+const DISMISS_WIDTH = 320;
+const DISMISS_HEIGHT = 36;
+
+/** The baseline of the line drawn inside a dismiss box, from its top. */
+export const DISMISS_BASELINE = 25;
+
+/** The tops of the two boxes: above the how-to's foot, inside the chest panel. */
+export const HOWTO_DISMISS_TOP = STAGE_H - 85;
+export const CHEST_DISMISS_TOP = 425;
+
+/** A dismiss box, centered on the stage, whose top is `top`. */
+function dismiss(top: number): Rect {
+  return {
+    x: STAGE_CX - DISMISS_WIDTH / 2,
+    y: top,
+    width: DISMISS_WIDTH,
+    height: DISMISS_HEIGHT,
+  };
+}
+
+/** The one box on `howto`, which `back` is taken in. */
+export function howtoRects(): Rect[] {
+  return [dismiss(HOWTO_DISMISS_TOP)];
+}
+
+/** The one box on `chest`, which `confirm` is taken in. */
+export function chestRects(): Rect[] {
+  return [dismiss(CHEST_DISMISS_TOP)];
+}
+
 // ---- The level-up overlay ----------------------------------------------------
 
 /** The pitch of the overlay's offers. */
@@ -163,16 +200,21 @@ export function almanacRowRects(count: number): Rect[] {
 /**
  * The boxes of `state`'s vertical menu, in menu order. On `almanac` these are
  * the visible entry rows, at most `ALMANAC_ROWS` of them, counted from
- * `almanacScroll`; a screen with no menu reports none.
+ * `almanacScroll`. `howto` and `chest` show no menu and report the one box
+ * their way out is taken in; `playing` reports none.
  */
 export function menuRects(state: WickState): Rect[] {
   switch (state.screen) {
     case "title":
       return titleRects();
+    case "howto":
+      return howtoRects();
     case "almanac":
       return almanacRowRects(almanacEntries(state.almanacTab).length);
     case "levelup":
       return [...levelUpLayout(state.run.offers.length).offers];
+    case "chest":
+      return chestRects();
     case "paused":
       return pauseRects();
     case "fallen":

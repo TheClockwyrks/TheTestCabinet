@@ -32,6 +32,11 @@ async function extractThree(h: Harness): Promise<void> {
       [head - SPACING, "halide", null],
     ],
     "halide",
+    // Spent on the strike tick alone, so the channel this empties clears the
+    // level without an empty channel clearing it during the flight.
+    () => {
+      h.api.setQuotaRemaining(0);
+    },
   );
 }
 
@@ -157,7 +162,7 @@ describe("cells", () => {
       [INTAKE_S, "halide", null],
       [INTAKE_S - 28, "halide", null],
     ]);
-    h.api.fire(270);
+    h.api.fireAt(270);
     await h.step(2);
     const after = h.api.snapshot();
     expect(after.cells).toBe(CELLS - 1);

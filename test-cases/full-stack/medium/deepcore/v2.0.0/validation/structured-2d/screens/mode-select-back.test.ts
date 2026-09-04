@@ -7,7 +7,7 @@
 //
 // "NOTHING STARTED" IS READ, not assumed. A distinctive Credits balance is posed
 // before the mode choice is opened, and read back after the return: beginning an
-// expedition puts the Credits back to `0` (specs/gameplay.md), so a build that
+// expedition puts the Credits back to `0` (specs/expedition.md), so a build that
 // started one on the way out is caught on the balance rather than on the screen
 // it landed on.
 //
@@ -16,7 +16,7 @@
 // must pass this and fail that one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MODE_ITEMS } from "../../src/constants";
+import { MODE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   ACTION_KEY,

@@ -38,6 +38,7 @@ import {
   captureReplay,
   createHarness,
   enemyById,
+  enable,
   isolate,
   present,
   spawnEnemyNear,
@@ -66,6 +67,8 @@ afterEach(() => {
 
 it("removes the moth, counts the kill, and drops its gem where it stood, on the tick of the hit", async () => {
   const posed = isolate(h);
+  // The death's drop is part of the requirement this point decides.
+  enable(h, "drops");
   assertGreaterThan(
     EMBER_LEVELS[0].damage,
     ENEMIES[TYPE].hp,

@@ -26,9 +26,9 @@ import type { Recording } from "@test-cabinet/simple-2d";
 import {
   BASE_MAX_HP,
   CUE_PATHS,
+  DAWN_TICK,
   DEFAULT_SEED,
   ENEMIES,
-  ISOLATE_LEVEL,
   enemyFramePath,
   enemySpriteSize,
   LAMPLIGHTER_IDLE_PATH,
@@ -52,6 +52,8 @@ import {
   createHarness,
   cuesNamed,
   enable,
+  endDawn,
+  endFallen,
   enemyById,
   hold,
   imagePixels,
@@ -205,8 +207,10 @@ it("isolates an empty playing run with every switch off and no weapon", () => {
   expect(posed.run.pickups).toEqual([]);
   expect(posed.run.weapons).toEqual([]);
   expect(posed.run.passives).toEqual([]);
-  expect(posed.run.level).toBe(ISOLATE_LEVEL);
-  expect(posed.run.xpToNext).toBe(xpToNext(ISOLATE_LEVEL));
+  // The isolated run holds the fresh run's level: nothing here is posed to
+  // outrun the build's own arithmetic, because `progression` is off.
+  expect(posed.run.level).toBe(1);
+  expect(posed.run.xpToNext).toBe(xpToNext(1));
   for (const name of SWITCH_NAMES) expect(posed[name], name).toBe(false);
   expect(posed.rngState).toBe(h.snapshot().rngState);
 });
@@ -277,13 +281,24 @@ it("reaches every posable screen through poseScene", () => {
   for (const screen of [
     "playing",
     "paused",
-    "fallen",
-    "dawn",
+    "almanac",
     "howto",
     "title",
   ] as const) {
     expect(poseScene(h, screen).screen, screen).toBe(screen);
   }
+});
+
+it("reaches the two endings through the ticks that end the run", async () => {
+  isolate(h, { keepTaper: true });
+  const fallen = await endFallen(h);
+  expect(fallen.screen).toBe("fallen");
+  expect(fallen.run.player.hp).toBeLessThanOrEqual(0);
+
+  isolate(h, { keepTaper: true });
+  const dawn = await endDawn(h);
+  expect(dawn.screen).toBe("dawn");
+  expect(dawn.run.tick).toBe(DAWN_TICK);
 });
 
 it("opens the two overlays through the ticks that open them", async () => {

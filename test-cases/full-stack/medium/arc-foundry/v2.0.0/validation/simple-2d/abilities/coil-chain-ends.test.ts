@@ -25,16 +25,16 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertGreaterThan, assertLength } from "../assert";
 import {
   captureReplay,
-  componentDamage,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   standComponent,
   structureById,
   unitById,
-  type Harness,
 } from "../harness";
 import { awaitImpact } from "./impact";
+import { componentDamage } from "../constants";
 
 const ANCHOR = { col: 10, row: 10 };
 

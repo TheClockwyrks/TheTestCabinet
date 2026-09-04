@@ -12,10 +12,12 @@
 //   npx vitest run --config validation/vitest.config.ts  # the case's validators
 //
 // The root is the workspace, not this directory, so a validator resolves the
-// build's modules by the same relative paths the build itself uses: `../src/game`
-// is the module `src/main.ts` imports, and `../src/constants` is the figure table
-// the case seeded beside it. It is derived from this file's own URL rather than
-// from the working directory, so the command above works from anywhere.
+// build's module by the same relative path the build itself uses: `../src/game`
+// is the module `src/main.ts` imports, and `harness.ts` is the one file that
+// takes it. Every figure a check asserts comes from this project's own
+// `constants.ts`, transcribed from the rendered specs; nothing here reads a
+// figure out of the build. The root is derived from this file's own URL rather
+// than from the working directory, so the command above works from anywhere.
 //
 // WHY THIS PROJECT NEEDS NO SCAFFOLDING. Under an engine there is no browser and
 // no server: the build exports its game, this project stands the engine up over a

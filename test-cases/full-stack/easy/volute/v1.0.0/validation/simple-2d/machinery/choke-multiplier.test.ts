@@ -14,9 +14,9 @@
 // consecutive cores ... a lone core forms a segment of one, and the lead segment
 // is the one containing the head." One core is therefore the whole train and the
 // lead segment both, so nothing about catch-up, merging or recoil enters the
-// reading. `poseHall` leaves the quota at 0, so the inlet emits nothing that
-// could join it, and the pressure at 0, so the multiplier under test is the only
-// factor away from 1.
+// reading. `poseHall` holds the inlet, so it emits nothing that could join it,
+// and leaves the pressure at 0, so the multiplier under test is the only factor
+// away from 1.
 //
 // THE TOLERANCE. The measurement is a whole number of ticks from a posed arc
 // position, so an ideal build lands exactly on 8.8 after 60 ticks. The case's

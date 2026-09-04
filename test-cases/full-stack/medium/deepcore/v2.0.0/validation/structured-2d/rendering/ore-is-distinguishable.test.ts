@@ -23,7 +23,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual } from "../assert";
-import { MINERALS, ORE_MIN_ROW } from "../../src/constants";
+import { MINERALS, ORE_MIN_ROW } from "../constants";
 import {
   captureStill,
   colorDistance,

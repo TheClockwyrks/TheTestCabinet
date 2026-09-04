@@ -16,15 +16,14 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertDeepEqual } from "../assert";
-import { REGULATOR_AURA } from "../../src/constants";
+import { componentDamage, REGULATOR_AURA } from "../constants";
 import {
   captureStill,
-  componentDamage,
   createHarness,
+  type Harness,
   openYard,
   standComponent,
   structureById,
-  type Harness,
   type StructureView,
 } from "../harness";
 

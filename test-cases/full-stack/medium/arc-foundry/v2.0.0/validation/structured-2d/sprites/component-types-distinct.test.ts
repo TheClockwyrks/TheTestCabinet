@@ -17,9 +17,8 @@ import {
   createHarness,
   openYard,
   standComponent,
-  type Tier,
 } from "../harness";
-import { COMPONENT_TYPES } from "../../src/constants";
+import { COMPONENT_TYPES, type Tier } from "../constants";
 import { componentHead, decode, samePixels } from "./png";
 import { serveProducedAssets } from "./host";
 

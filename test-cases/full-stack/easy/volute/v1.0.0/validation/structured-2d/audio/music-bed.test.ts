@@ -20,7 +20,9 @@
 // specification puts `hall-loop` under and leaves the identification to the
 // reviewer. That keeps the point deciding the same requirement under every engine
 // the case supports — under no engine there is no bus to ask which cue is
-// looping at all.
+// looping at all. Which bed is running, and the swap on the tick danger arrives,
+// are `audio/danger-bed-swap`'s point, which the manifest scopes to the two
+// engines whose bus reports the name.
 //
 // WHAT IS THEREFORE ASSERTED. That the build has a cue looping under the hall.
 // The harness counts the loops the engine's bus has open, which is exactly the
@@ -41,7 +43,7 @@
 //
 // AUDIO IS ARMED BY THE REAL ENTER PRESS THAT STARTS THE RUN. The engine "opens
 // the audio context on the first pointer or key event it sees", and
-// `specs/controls.md` binds `confirm` to `Enter`, which "starts a run" from the
+// `src/constants.ts` binds `confirm` to `Enter`, which "starts a run" from the
 // title — so one real key press at the engine's input seam is both the gesture
 // and the start.
 //

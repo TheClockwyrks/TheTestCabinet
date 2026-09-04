@@ -14,20 +14,14 @@
 // the last point of Grid Integrity on the counter; it grounds out, the counter
 // reaches `0`, and the defeat is the game's own. The run is lost on wave `17`, a
 // number of its own so that reading it off the screen's text cannot pick up some
-// other figure. The frame's own text draws are then read three ways: the wave is
-// there, the words "MAZE RATING" are not, and the two choices are drawn and
-// reported.
+// other figure. The frame's own text draws are then read for that wave, and the
+// rating the run carries is read off the snapshot. Where the screen's two choices
+// lead is decided by `overload-try-again` and `overload-menu`, each on its own.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { OVERLOAD_ITEMS } from "../constants";
-import {
-  captureStill,
-  createHarness,
-  menuControl,
-  type Harness,
-} from "../harness";
-import { drewNumber, drewText } from "./reading";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { drewNumber } from "./reading";
 import { OVERLOAD_WAVE, reachOverload } from "./outcomes";
 
 let h: Harness;
@@ -40,7 +34,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("shows the wave the run reached and offers its two choices", async () => {
+it("shows the wave the run reached and no Maze Rating", async () => {
   await reachOverload(h);
   const calls = await h.frameCalls();
   await captureStill(h, "overload");
@@ -64,14 +58,4 @@ it("shows the wave the run reached and offers its two choices", async () => {
     "the Maze Rating of a defeated run, which never reaches the finale and so " +
       "has none (specs/ui.md, specs/campaign.md)",
   );
-
-  for (const item of OVERLOAD_ITEMS) {
-    assertEqual(
-      drewText(calls, item),
-      true,
-      `the overload screen to draw its ${item} choice (specs/ui.md)`,
-    );
-  }
-  await menuControl(h, "again");
-  await menuControl(h, "menu");
 });

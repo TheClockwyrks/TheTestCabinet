@@ -20,8 +20,10 @@
 // for its own chest, so a build that drops a gem or a second pickup for an
 // elite fails on the first of them.
 //
-// WHY THE WORLD IS POSED AS IT IS. An isolated night: `spawning`, `events`, and
-// every other driver switch off and no weapon held, so nothing else in the tick
+// WHY THE WORLD IS POSED AS IT IS. An isolated night with `drops` turned back
+// on, which is the faculty the point is about — with it off a death draws
+// nothing at all and there would be no draw to find absent. `spawning`,
+// `events`, and every other driver switch stay off and no weapon is held, so nothing else in the tick
 // can draw from the generator ("a spawn's angle and type, an offer draw, a
 // puddle's landing point, a strike's target, a swarm's direction, a chest's
 // fallback item" are the other draws, and none of them happens here). The kills
@@ -46,6 +48,7 @@ import {
   advanceTicks,
   captureStill,
   createHarness,
+  enable,
   enemyById,
   isolate,
   placeEnemy,
@@ -77,6 +80,7 @@ afterEach(() => {
 
 it("leaves each of twenty mothwing kills exactly its chest, and rngState untouched", async () => {
   const at = isolate(h, { seed: DEFAULT_SEED }).run.player;
+  enable(h, "drops");
 
   for (let kill = 0; kill < KILLS; kill += 1) {
     const x = at.x + POST + kill * SPACING;

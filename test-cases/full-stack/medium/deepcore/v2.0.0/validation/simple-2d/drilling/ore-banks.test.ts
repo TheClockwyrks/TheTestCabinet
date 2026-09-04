@@ -12,7 +12,7 @@
 // back names which ore was banked rather than merely that something was.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARGO_TIERS } from "../../src/constants";
+import { CARGO_TIERS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,
@@ -50,7 +50,7 @@ it("banks one unit of the ore the broken cell held", async () => {
   pinMiner(h);
 
   const opening = h.snapshot();
-  assertEqual(opening.cargo.slotsUsed, 0, "specs/gameplay.md");
+  assertEqual(opening.cargo.slotsUsed, 0, "specs/expedition.md");
   assertEqual(opening.cargo.slotCap, CARGO_TIERS[0], "specs/upgrades.md");
   assertEqual(h.tileAt(COL, ROW).ore, ORE, "specs/instrumentation.md");
 

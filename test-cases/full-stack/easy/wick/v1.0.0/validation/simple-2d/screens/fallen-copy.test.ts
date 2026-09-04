@@ -15,10 +15,11 @@
 //   seconds always two digits", which `clockText` spells.
 //
 // THE DRIVE. An isolated `playing` run posed with a clock, a level, and a kill
-// count whose spellings no two of them share, ended through `setScreen`, which
-// "Ends the run exactly as that ending does, the run kept for the end screen to
-// report" (specs/instrumentation.md). One frame is then drawn and its runs of
-// text are read as one corpus.
+// count whose spellings no two of them share, ended the way the rule ends it:
+// "the fallen ending is `setHp` at `0` and one tick"
+// (specs/instrumentation.md), which is what `endFallen` composes. The clock is
+// posed one tick short of `TICK` so the ending tick is the one that reaches it.
+// One frame is then drawn and its runs of text are read as one corpus.
 //
 // THE TOLERANCE. Every piece of copy is matched as its words in order through
 // `drewPhrase`, which admits any label, font, wrap, or marker a build puts
@@ -34,6 +35,7 @@ import {
   captureStill,
   createHarness,
   drewPhrase,
+  endFallen,
   isolate,
   present,
   topAnchorOf,
@@ -57,9 +59,9 @@ afterEach(() => {
 
 it("draws THE LIGHT WENT OUT, the run's figures, and the end menu", async () => {
   isolate(h, { level: LEVEL });
-  h.debug.setTick(TICK);
+  h.debug.setTick(TICK - 1);
   h.debug.setKills(KILLS);
-  h.debug.setScreen("fallen");
+  await endFallen(h);
   const ended = h.snapshot();
   assertEqual(ended.screen, "fallen", "the screen the frame is read from");
 

@@ -17,7 +17,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
-import { STAMPS_PER_LEVEL, mapById } from "../constants";
+import { mapById, STAMPS_PER_LEVEL } from "../constants";
 import {
   captureStill,
   clickTile,

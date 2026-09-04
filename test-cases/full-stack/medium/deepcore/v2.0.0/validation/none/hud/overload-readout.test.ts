@@ -2,7 +2,7 @@
 //
 // `specs/ui.md`: the cargo reads `OVERLOAD` while the load fraction is `1` or
 // more, and `specs/character.md` fixes the fraction as `loadKg / liftLimitKg` and
-// the wall as the point the jetpack stops climbing. `OVERLOAD_TEXT` is copy the
+// the wall as the point the jetpack stops climbing. `OVERLOAD` is copy the
 // specification states, so this is the one status-bar point that can read the
 // words themselves rather than a treatment.
 //
@@ -18,7 +18,7 @@ import {
   assertGreaterThanOrEqual,
   assertLessThan,
 } from "../assert";
-import { OVERLOAD_TEXT } from "../constants";
+import { OVERLOAD } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -54,10 +54,10 @@ it("reads OVERLOAD over the lift limit and not under it", async () => {
   await stageTiers(h, { cargo: 5 });
 
   const under = await loadToFraction(h, UNDER);
-  const saidUnder = drewText(await h.frameCalls(), OVERLOAD_TEXT);
+  const saidUnder = drewText(await h.frameCalls(), OVERLOAD);
 
   const over = await loadToFraction(h, OVER);
-  const saidOver = drewText(await h.frameCalls(), OVERLOAD_TEXT);
+  const saidOver = drewText(await h.frameCalls(), OVERLOAD);
   await captureStill(h, "overload");
 
   assertLessThan(under.fraction, 1, "specs/character.md");

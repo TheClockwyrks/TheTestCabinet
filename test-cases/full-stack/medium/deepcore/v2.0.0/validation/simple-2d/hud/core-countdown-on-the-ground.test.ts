@@ -18,7 +18,7 @@
 // glyphs landed on the stage, which is the same space `worldToStage` maps into.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MINER_H, MINER_W, PLAYABLE_COL_MIN } from "../../src/constants";
+import { MINER_H, MINER_W, PLAYABLE_COL_MIN } from "../constants";
 import { assertGreaterThan, assertLessThan } from "../assert";
 import {
   captureStill,

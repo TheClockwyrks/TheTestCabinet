@@ -10,12 +10,7 @@
 // cell it is aimed at is the one beside its box, not the one under its feet.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  MINER_W,
-  PLAYABLE_COL_MAX,
-  TILE,
-  WORLD_COLS,
-} from "../../src/constants";
+import { MINER_W, PLAYABLE_COL_MAX, TILE, WORLD_COLS } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   ACTION_KEY,

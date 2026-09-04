@@ -41,7 +41,11 @@ export class InjectorController extends PlayerController {
       case "title":
       case "gameover":
       case "victory":
-        if (this.input.pressed(ACTION.confirm)) mode.confirm();
+        // A primary pointer press anywhere on the field confirms here, so a run
+        // starts and an ending dismisses without a keyboard.
+        if (this.input.pressed(ACTION.confirm) || this.input.pointerPressed()) {
+          mode.confirm();
+        }
         break;
       case "paused":
         if (this.input.pressed(ACTION.pause)) state.screen = "playing";

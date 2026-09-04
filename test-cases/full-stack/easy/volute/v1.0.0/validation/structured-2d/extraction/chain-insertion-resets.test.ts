@@ -12,24 +12,23 @@
 // build can raise a chain correctly and never let it fall, so the two are separate
 // points.
 //
-// THE DRIVE, IN TWO POSES. First the chain is taken to step 2 the only way the
-// specification allows — a merge extraction, the "previous step plus 1" row. Then
-// the insertion scenario is posed over the hall that left:
-// specs/instrumentation.md's `poseTrain` "Replaces every core on the channel with
-// the cores given" and leaves "the quota, the pressure, the chain step, the active
-// machinery, the projectiles, and the injector... as they are", so the chain
-// arrives at step 2 and the insertion has something to reset.
+// THE CHAIN IS POSED, NOT EARNED. specs/instrumentation.md (`setChainStep`) "sets
+// the chain step an extraction scores at to `k` ... and restarts the window that
+// returns the step to `1`". So the hall arrives at step 2 with one operation, and
+// nothing is driven to get it there: what RAISES the step is
+// `extraction/chain-increment`'s requirement, and a build broken in the merge
+// rules must fail that point rather than this one too.
 //
 // INSIDE THE CHAIN WINDOW. specs/extraction.md resets the step to 1 on its own when
 // "`CHAIN_RESET` (2.0 s) elapses with no extraction", so a slow drive would read a
-// lapse instead of the rule under test. The insertion lands about 26 ticks after
-// the merge, and the check reads the reported chain timer just before the shot
-// resolves to confirm the window was still open.
+// lapse instead of the rule under test. `setChainStep` restarts that window at the
+// pose and the insertion lands about 26 ticks later, and the check reads the
+// reported chain timer just before the shot resolves to confirm it was still open.
 //
-// WHY THE PRECONDITION IS ASSERTED. If the merge left the chain at 1, a following
-// insertion scoring 30 would say nothing at all — the number would be right for the
-// wrong reason. So the check reads the step the merge left before it drives the
-// insertion, and the point fails when the hall it needs could not be posed, as
+// WHY THE PRECONDITION IS ASSERTED. If the hall arrived at step 1, an insertion
+// scoring 30 would say nothing at all — the number would be right for the wrong
+// reason. So the check reads the posed step before it drives the insertion, and
+// the point fails when the hall it needs could not be posed, as
 // `writing-debug-apis-and-validators` requires of a validator that cannot reach its
 // scenario.
 //
@@ -46,9 +45,8 @@ import {
   assertEqual,
   assertGreaterThan,
   assertGreaterThanOrEqual,
-  assertTrue,
 } from "../assert";
-import { extractionScore, MIN_RUN, OPENING_AIM, SPACING } from "../constants";
+import { extractionScore, MIN_RUN, OPENING_AIM } from "../constants";
 import {
   captureReplay,
   coreCount,
@@ -59,25 +57,10 @@ import {
   type Harness,
 } from "../harness";
 
-/** The lead segment of the merge pose, at `(540, 40)` on specs/channel.md's first leg. */
-const LEAD_HEAD_S = 500;
+/** The step the chain is posed at, so the insertion has something to reset. */
+const POSED_STEP = 2;
 
-/** A halide ahead of two cobalt, so the run spanning the join stops there. */
-const LEAD = ["halide", "cobalt", "cobalt"] as const;
-
-/** A cobalt at the head with a halide behind it, so the run stops there too. */
-const TRAIL = ["cobalt", "halide"] as const;
-
-/** How far behind the merge position the trailing segment starts. */
-const GAP = 60;
-
-/** The trailing segment's head: one spacing plus the gap behind the lead's tail. */
-const TRAIL_HEAD_S = LEAD_HEAD_S - (LEAD.length - 1) * SPACING - SPACING - GAP;
-
-/** How long the check waits for the catch-up, against about 23 ticks of it. */
-const APPROACH_TICKS = 180; // 3 s
-
-/** The head of the insertion pose, at `(420, 40)` on the same leg. */
+/** The head of the insertion pose, at `(420, 40)` on specs/channel.md's first leg. */
 const INSERT_HEAD_S = 380;
 
 /** The pair a seated halide completes into a run of three. */
@@ -100,29 +83,15 @@ afterEach(async () => {
 });
 
 it("takes the chain back to step 1 and pays 30 for a three-core insertion extraction", async () => {
-  // The chain is raised to step 2 the only way the specification allows.
   await poseHall(h, {
-    cores: [...spacedRun(LEAD_HEAD_S, LEAD), ...spacedRun(TRAIL_HEAD_S, TRAIL)],
+    chainStep: POSED_STEP,
+    cores: spacedRun(INSERT_HEAD_S, INSERT_POSED),
+    loaded: "halide",
   });
-  const merge = await h.stepUntil(
-    (snapshot) => coreCount(snapshot) <= LEAD.length + TRAIL.length - MIN_RUN,
-    { maxTicks: APPROACH_TICKS, poll: 1 },
-  );
-  assertTrue(merge.hit, "a merge extraction to raise the chain");
-  assertEqual(
-    merge.snapshot.chainStep,
-    2,
-    "the chain step a merge extraction leaves",
-  );
-
-  // The insertion scenario, posed over the hall that merge left. The chain step
-  // rides through the pose.
-  h.debug.poseTrain(spacedRun(INSERT_HEAD_S, INSERT_POSED));
-  h.debug.setLoaded("halide");
   const posed = h.snapshot();
   assertEqual(
     posed.chainStep,
-    2,
+    POSED_STEP,
     "the chain step the insertion is driven from",
   );
 

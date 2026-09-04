@@ -36,7 +36,7 @@ import {
   DRILL_DAMAGE_TIERS,
   DRILL_HIT_FUEL,
   LIFE_SUPPORT_BURN,
-} from "../../src/constants";
+} from "../constants";
 import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
 import {
   ACTION_KEY,

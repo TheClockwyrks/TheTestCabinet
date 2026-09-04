@@ -8,12 +8,12 @@
 // hp: BASE_MAX_HP }`, and "A fresh run is the idle run with Taper at level 1
 // and cooldown 0 in the first weapon slot".
 //
-// HOW THE RUN IS STARTED. Through the surface alone, "exactly as LIGHT THE LAMP
-// and TRY AGAIN do": specs/instrumentation.md's `setScreen("playing")` from
-// the title "Begins a fresh run exactly as LIGHT THE LAMP and TRY AGAIN do".
-// `poseScene` resets and enters `playing` that way, so no menu key stands
-// between this point and the run it reads, and a build with a broken title
-// menu and a correct run start fails the menu points and passes here.
+// HOW THE RUN IS STARTED. Through the surface alone, by the sequence
+// specs/instrumentation.md names: "a fresh run is `reset`, this pose to
+// `playing`, and `setWeapon(0, "taper", 1)`", which `freshRun` composes. No
+// menu key stands between this point and the run it reads, so a build with a
+// broken title menu and a correct run start fails the menu points and passes
+// here.
 //
 // WHAT IS READ. The snapshot the moment the run begins, before any tick: the
 // lamplighter's center, its facing, and its hp against the `maxHp` the same
@@ -32,7 +32,7 @@ import { FIGURE_TOLERANCE } from "../constants";
 import {
   captureStill,
   createHarness,
-  poseScene,
+  freshRun,
   type Harness,
 } from "../harness";
 
@@ -47,7 +47,7 @@ afterEach(() => {
 });
 
 it("holds the lamplighter at (0, 0), facing right, at full hp when a run starts", async () => {
-  const fresh = poseScene(h, "playing");
+  const fresh = freshRun(h);
   assertEqual(fresh.screen, "playing", "the screen a fresh run opens on");
   const { player, maxHp } = fresh.run;
 

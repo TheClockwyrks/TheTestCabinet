@@ -12,7 +12,7 @@
 // reproduces.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MINERALS } from "../../src/constants";
+import { MINERALS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

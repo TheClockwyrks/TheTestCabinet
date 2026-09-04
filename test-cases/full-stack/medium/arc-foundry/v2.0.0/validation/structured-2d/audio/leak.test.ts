@@ -19,21 +19,23 @@
 // each play by name.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { CUES, START_INTEGRITY } from "../../src/constants";
+import {
+  CUES,
+  mapById,
+  type Point,
+  START_INTEGRITY,
+  tileCenter,
+} from "../constants";
 import { assertContains, assertDeepEqual, assertEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
-  holdWaveOpen,
-  mapById,
+  type Harness,
+  holdWaveClear,
   openYard,
   releaseUnit,
   ticks,
-  tileCenter,
   watchCues,
-  type Harness,
-  type Point,
 } from "../harness";
 import { beforeFrame, names, onFrame } from "./cues";
 
@@ -54,7 +56,7 @@ afterEach(() => {
 
 it("sounds on the frame the unit grounds out, and not on the walk in", async () => {
   openYard(h, { map: "substation", wave: 1 });
-  holdWaveOpen(h);
+  holdWaveClear(h);
   releaseUnit(h, "mote", {
     waypoint: 7,
     at: { x: SINK.x - 60, y: SINK.y },

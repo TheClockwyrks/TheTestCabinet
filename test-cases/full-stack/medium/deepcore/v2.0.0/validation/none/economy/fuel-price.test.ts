@@ -1,6 +1,6 @@
 // economy/fuel-price — the Fuel Depot's fixed increment costs what it says.
 //
-// `specs/gameplay.md` fixes both halves of one purchase: the increment is
+// `specs/expedition.md` fixes both halves of one purchase: the increment is
 // `FUEL_BUY_INCREMENT` (25) units and fuel costs `FUEL_PRICE` (1) Credit per
 // unit, so the control adds 25 to the tank and takes 25 from the balance. The
 // tank is posed part-empty with room for the whole increment, so what is read is
@@ -45,12 +45,12 @@ it("adds FUEL_BUY_INCREMENT fuel and takes FUEL_PRICE for each unit", async () =
     after.miner.fuel,
     FUEL_BEFORE + FUEL_BUY_INCREMENT,
     6,
-    "specs/gameplay.md",
+    "specs/expedition.md",
   );
   assertEqual(
     after.credits,
     CREDITS_BEFORE - FUEL_BUY_INCREMENT * FUEL_PRICE,
-    "specs/gameplay.md",
+    "specs/expedition.md",
   );
   // The increment fits: the reading above is the whole of it rather than a
   // purchase the tier-1 maximum clipped (specs/upgrades.md).

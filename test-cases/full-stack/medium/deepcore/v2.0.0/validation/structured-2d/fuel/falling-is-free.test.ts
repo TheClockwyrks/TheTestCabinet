@@ -12,7 +12,7 @@
 // The drill is gated, since nothing here is about cutting.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { LIFE_SUPPORT_BURN } from "../../src/constants";
+import { LIFE_SUPPORT_BURN } from "../constants";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,

@@ -195,8 +195,10 @@ function readPlayingControls(
  * Release the loaded core along the current aim.
  *
  * The queued charge becomes loaded, a fresh charge is drawn as queued, and the
- * cooldown is set. A call made while the injector holds no loaded core draws one
- * first, which is what lets the debug surface's `fire` launch from a bare hall.
+ * cooldown is set. The aim is read, never written: `specs/injector.md` fixes the
+ * aim elsewhere, and the debug surface points the injector with `setAim`. A call
+ * made while the injector holds no loaded core draws one first, which is what
+ * lets the surface's `fire` launch from a bare hall.
  */
 export function fire(draft: Draft, report: TickReport): void {
   if (draft.loaded === null) draft.loaded = drawCharge(draft);
@@ -258,8 +260,11 @@ function playingTick(draft: Draft, dt: number, report: TickReport): void {
   runTimers(draft, dt);
 
   // 2. Every segment advances, and a merge that completes a run extracts it.
+  //    The debug surface's feed gate holds this step, and only this step, so a
+  //    scenario can watch a strike or a removal against a train that stands
+  //    still (specs/instrumentation.md — "The driver").
   const grants: PendingGrant[] = [];
-  advanceTrain(draft, dt, report, grants);
+  if (draft.feed) advanceTrain(draft, dt, report, grants);
 
   // 3. Every projectile advances, oldest first, and a strike seats.
   advanceProjectiles(draft, dt, report, grants);
@@ -446,6 +451,8 @@ function clearLevel(draft: Draft, report: TickReport): void {
  * inlet.
  */
 function runInlet(draft: Draft): void {
+  // The debug surface's emission gate holds the inlet whatever the quota says.
+  if (!draft.emission) return;
   if (draft.quotaRemaining <= 0) return;
   if (draft.machinery?.kind === "backflow") return;
   const tail = draft.cores[draft.cores.length - 1];
@@ -453,13 +460,22 @@ function runInlet(draft: Draft): void {
   emitCore(draft);
 }
 
-/** Grant a machinery kind exactly as extracting a run holding its mark grants it. */
-export function grantMachinery(
+/** The three machinery kinds that run on a timer; `bore` resolves at once. */
+export type TimedMachineryKind = Exclude<MachineryKind, "bore">;
+
+/**
+ * Grant a TIMED machinery kind exactly as extracting a run holding its mark
+ * grants it, through the same {@link applyGrant} a removal's grant runs through.
+ *
+ * `bore` is not one of them: it removes cores and scores the moment it resolves,
+ * which is an outcome rather than an arrangement, so the debug surface does not
+ * grant it (specs/instrumentation.md — `grantMachinery`). The extraction point a
+ * grant carries is therefore never read on this path, and `0, 0` stands for it.
+ */
+export function grantTimedMachinery(
   draft: Draft,
-  kind: MachineryKind,
+  kind: TimedMachineryKind,
   report: TickReport,
 ): void {
-  const head = draft.cores[0];
-  const point = head === undefined ? INTAKE : pointAt(head.s);
-  applyGrant(draft, { kind, x: point.x, y: point.y }, report);
+  applyGrant(draft, { kind, x: 0, y: 0 }, report);
 }

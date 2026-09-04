@@ -12,7 +12,7 @@ import {
   WHEEL_ROW,
   type CueName,
 } from "./constants";
-import { pause, startRun, toAlmanac } from "./flow";
+import { pause, startRun, toAlmanac, toHowto } from "./flow";
 import type { PointerFrame } from "./input";
 import { menuRects, tabRects, type WickRect } from "./menus";
 import { applyPointer } from "./pointer";
@@ -27,6 +27,10 @@ interface Bench {
   /** Rest the pointer at a stage point, pressing nothing. */
   at(x: number, y: number): void;
   clickAt(x: number, y: number): void;
+  /** Press at a stage point and leave the button down. */
+  pressAt(x: number, y: number): void;
+  /** Lift at a stage point, with no press before it on the same frame. */
+  liftAt(x: number, y: number): void;
   scroll(travel: number): void;
 }
 
@@ -43,8 +47,18 @@ function bench(): Bench {
   const b: Bench = {
     state,
     cues,
-    at: (x, y) => drive({ x, y, press: null, wheel: 0 }),
-    clickAt: (x, y) => drive({ x, y, press: { x, y }, wheel: 0 }),
+    at: (x, y) => drive({ at: { x, y }, presses: [], releases: [], wheel: 0 }),
+    clickAt: (x, y) =>
+      drive({
+        at: null,
+        presses: [{ x, y }],
+        releases: [{ x, y }],
+        wheel: 0,
+      }),
+    pressAt: (x, y) =>
+      drive({ at: null, presses: [{ x, y }], releases: [], wheel: 0 }),
+    liftAt: (x, y) =>
+      drive({ at: null, presses: [], releases: [{ x, y }], wheel: 0 }),
     hover: (rects, index) => {
       const { x, y } = center(rects[index]);
       b.at(x, y);
@@ -53,7 +67,8 @@ function bench(): Bench {
       const { x, y } = center(rects[index]);
       b.clickAt(x, y);
     },
-    scroll: (travel) => drive({ x: 0, y: 0, press: null, wheel: travel }),
+    scroll: (travel) =>
+      drive({ at: null, presses: [], releases: [], wheel: travel }),
   };
   return b;
 }
@@ -180,5 +195,48 @@ describe("the almanac", () => {
     b.scroll(WHEEL_ROW * 4);
     expect(b.state.almanacScroll).toBe(0);
     expect(b.state.menuIndex).toBe(0);
+  });
+});
+
+describe("press and release", () => {
+  it("takes nothing when the lift falls outside the box the press armed", () => {
+    const b = bench();
+    const rects = menuRects(b.state);
+    const armed = center(rects[2]);
+    const elsewhere = center(rects[0]);
+    b.pressAt(armed.x, armed.y);
+    expect(b.state.menuIndex).toBe(2);
+    expect(b.state.screen).toBe("title");
+    b.liftAt(elsewhere.x, elsewhere.y);
+    expect(b.state.screen).toBe("title");
+    expect(b.state.menuIndex).toBe(2);
+  });
+
+  it("takes the item when the lift falls back inside the armed box", () => {
+    const b = bench();
+    const armed = center(menuRects(b.state)[2]);
+    b.pressAt(armed.x, armed.y);
+    b.liftAt(armed.x, armed.y);
+    expect(b.state.screen).toBe("howto");
+  });
+
+  it("leaves the how-to screen from its one box", () => {
+    const b = bench();
+    toHowto(b.state);
+    const rects = menuRects(b.state);
+    expect(rects).toHaveLength(1);
+    b.click(rects, 0);
+    expect(b.state.screen).toBe("title");
+    expect(b.state.menuIndex).toBe(2);
+  });
+
+  it("closes the chest overlay from its one box", () => {
+    const b = bench();
+    startRun(b.state);
+    b.state.screen = "chest";
+    const rects = menuRects(b.state);
+    expect(rects).toHaveLength(1);
+    b.click(rects, 0);
+    expect(b.state.screen).toBe("playing");
   });
 });

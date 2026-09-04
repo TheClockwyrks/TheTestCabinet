@@ -15,20 +15,19 @@
 //   nothing on that screen."
 //   specs/ui.md ("What advances on each screen"): on `levelup`, `chest`, and
 //   `paused`, "Nothing. The world beneath holds exactly the tick it was at."
-//   specs/instrumentation.md ("`setScreen(name)`"): `paused` from `playing` is
-//   "Exactly as `pause` does"; `playing` from `paused` "Resumes exactly as
-//   `pause` on `paused` does; the run is untouched"; `levelup` from `playing`
-//   with `pendingLevelUps` at least `1` "Opens the overlay exactly as the end of
-//   a `playing` tick opens it".
+//   specs/instrumentation.md ("`setScreen(name)`"): the pose "Sets `screen` to
+//   `name` ... Nothing else changes", so `paused` and `playing` are reached
+//   without touching the run; the level-up overlay is "`setPendingLevelUps` and
+//   one `playing` tick".
 //
 // THE DRIVE. An isolated night, the lamplighter posed at `x` `100` so a build
 // that resets the position on a screen change is told apart from one that
-// holds it, and no tick runs at any point: `paused` is posed straight from
-// `playing`, the key is held across sixty frames there, play is resumed by the
-// pose that changes nothing, one level-up is queued and the overlay posed open,
-// and the key is held across sixty frames there too. Every route is a pose, so
-// the only thing that could move `x` is a held key read on a screen that reads
-// none.
+// holds it: `paused` is posed straight from `playing`, the key is held across
+// sixty frames there, play is resumed by the pose that changes nothing, and the
+// overlay is opened the real way, by one queued level-up and the tick that
+// opens it, with nothing held on that tick. Nothing else in the drive runs a
+// tick, so the only thing that could move `x` is a held key read on a screen
+// that reads none.
 //
 // THE TOLERANCE. None: no tick runs, so the posed value is exact.
 
@@ -40,6 +39,7 @@ import {
   createHarness,
   holdKeys,
   isolate,
+  openLevelUp,
   poseScreen,
   type Harness,
 } from "../harness";
@@ -73,8 +73,7 @@ it("holds player.x under ArrowRight on paused and on levelup", async () => {
   const heldPaused = await holdKeys(h, [RIGHT_KEY], HELD_FRAMES);
 
   await h.debug.setScreen("playing");
-  await h.debug.setPendingLevelUps(1);
-  const overlay = await poseScreen(h, "levelup");
+  const overlay = await openLevelUp(h);
   assertEqual(
     overlay.screen,
     "levelup",

@@ -110,4 +110,5 @@ fresh one.
   detonation, the screen shake, and the hull drop land first.
 - The card is drawn low in the viewport, clear of the miner.
 - The card is non-blocking: the mine keeps running behind it, and it fades on its
-  own after `NOTICE_FADE` (`8`) seconds. A click on the card dismisses it at once.
+  own after `NOTICE_FADE` (`8`) seconds. A pointer press or a touch on the card
+  dismisses it at once.

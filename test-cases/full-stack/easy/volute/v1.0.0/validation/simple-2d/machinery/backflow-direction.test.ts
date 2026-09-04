@@ -14,7 +14,7 @@
 // segment's tail sits at 2000 - 3 x 28 = 1916, so nothing in the drive comes
 // near the pack the spec describes and the reading is the rate alone. Every core
 // of the segment is read, not just the head, because the requirement is about
-// every core; `poseHall` leaves the quota at 0 so the inlet adds none.
+// every core; `poseHall` holds the inlet so it adds none.
 //
 // THE TOLERANCE. One tick of backflow travel is 60 / 60 = 1 unit exactly, which
 // is the +/- 1 the review item states: it covers a build that begins the motion

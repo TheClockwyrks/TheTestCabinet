@@ -24,22 +24,24 @@
 // can fire, so the only loop the hall can hold open is a bed, and a build with
 // none fails.
 //
-// THE BED'S NAME IS NOT ASSERTED, THOUGH THIS ENGINE OFFERS IT. `hall-loop` and
-// `danger-loop` are both cues on the bus and the announcement carries the name,
-// so a check here COULD hold the posed hall to `hall-loop`. An engineless build
-// owns its whole audio layer and has no bus to ask, and the three validator
-// projects of this case decide the same eighty-three points, so the reading is
-// the one every engine can make: a bed runs under a hall the specification puts
-// `hall-loop` under, and the reviewer decides by ear that it is the hall's and
-// not the danger bed.
+// THE BED'S NAME IS NOT ASSERTED HERE, THOUGH THIS ENGINE OFFERS IT. `hall-loop`
+// and `danger-loop` are both cues on the bus and the announcement carries the
+// name, so a check here COULD hold the posed hall to `hall-loop`. This point
+// covers all three engines, and an engineless build owns its whole audio layer
+// with no bus to ask — so the reading is the one every engine can make: a bed
+// runs under a hall the specification puts `hall-loop` under. Which bed it is,
+// and the swap on the tick danger arrives, are `audio/danger-bed-swap`'s point,
+// which the manifest scopes to the two engines whose bus reports the name.
 //
-// THE HALL IS POSED SO THAT ONLY A BED CAN SOUND. One lone core, the inlet
-// stopped (`quotaRemaining` 0), pressure 0. No insertion, no extraction
-// (`MIN_RUN` is 3 and there is one core), no intake arrival, no emission, no
-// grant, no swap, no shot. And not an EMPTY hall, because "A level is cleared the
-// moment its quota is exhausted and no cores remain on the channel" — an empty
-// one would clear on the first tick and move the game off `playing`, where
-// `specs/ui.md` says neither bed loops.
+// THE HALL IS POSED SO THAT ONLY A BED CAN SOUND. An EMPTY channel, the inlet
+// held (`setEmission(false)`), pressure 0. No insertion, no extraction, no intake
+// arrival, no emission, no grant, no swap, no shot — nothing stands in the hall
+// that any of them could involve. The level's quota is left where it stands, so
+// "A level is cleared the moment its quota is EXHAUSTED and no cores remain on
+// the channel" never fires and the game stays on `playing`, where `specs/ui.md`
+// puts the beds. An empty channel is also never in danger
+// (`specs/progression.md`: the condition "holds only while a head exists"), so
+// the bed under test is the hall bed and not the danger one.
 //
 // AUDIO IS ARMED BY THE ENTER PRESS THAT STARTS THE RUN. "Muting and the
 // first-gesture unlock belong to the engine", which opens its audio context on
@@ -57,30 +59,15 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { CHANNEL_ARC, TICK_HZ, type ChargeId } from "../constants";
+import { TICK_HZ } from "../constants";
 import {
   captureReplay,
   createHarness,
   poseHall,
   pressConfirm,
-  spacedBlock,
   stepUntilBed,
   type Harness,
 } from "../harness";
-
-/**
- * Where the lone core stands: the middle of the leg from vertex 2 to vertex 3.
- *
- * `specs/channel.md` runs that leg along the bottom of the field, and an arc
- * position this low is far short of the danger line at `s = 4000` and of the
- * intake at `s = 5000` — so the run stays out of danger for the whole drive,
- * which is the condition `specs/ui.md` puts `hall-loop` under, and no core
- * reaches the intake to spend a cell.
- */
-const QUIET_S = (CHANNEL_ARC[2] + CHANNEL_ARC[3]) / 2;
-
-/** Immaterial: no rule here turns on which of the five charges is posed. */
-const QUIET_CHARGE: ChargeId = "halide";
 
 /**
  * A second of the hall recorded once the bed is up, in ticks.
@@ -112,7 +99,7 @@ it("runs a looping bed under a run in play", async () => {
     "playing",
     "the screen a real confirm press on the title opened",
   );
-  await poseHall(h, { cores: spacedBlock(QUIET_S, 1, QUIET_CHARGE) });
+  await poseHall(h);
 
   const bed = await captureReplay(h, "music", async () => {
     const looping = await stepUntilBed(h);

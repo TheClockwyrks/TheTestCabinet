@@ -18,8 +18,8 @@
 // nothing else, no weapon held and every driver switch off. All five sit on the
 // lamplighter's own center, a distance of `0`, so the collection condition holds
 // for every one of them on the first tick and the tick raises the gem event five
-// times. `isolate` poses level `ISOLATE_LEVEL` (50), whose `xpToNext` of 495 the
-// five small gems' 5 experience cannot reach, so no overlay opens over the
+// times. `progression` is one of the switches `isolate` holds off, so the five
+// gems' experience is spent on no level and no overlay opens over the
 // reading.
 //
 // TOLERANCE. None. Every reading is a count.

@@ -36,8 +36,9 @@ export function isOfferId(id: string): id is OfferId {
 }
 
 /** Add experience and queue every level-up it crosses. */
-export function gainXp(run: RunState, amount: number): void {
+export function gainXp(run: RunState, amount: number, spend = true): void {
   run.xp += amount;
+  if (!spend) return;
   while (run.xp >= xpToNext(run.level)) {
     run.xp -= xpToNext(run.level);
     run.level += 1;

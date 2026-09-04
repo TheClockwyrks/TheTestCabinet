@@ -21,7 +21,7 @@
 // stood up off disk, because the cycle this is about is the produced one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ANIM_FPS } from "../../src/constants";
+import { ANIM_FPS } from "../constants";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import {
   TICK_HZ,

@@ -5,8 +5,9 @@
 // point (screens/pause-freezes), and resuming is another (screens/resume-escape).
 //
 // THE SPEC IT RESTS ON.
-//   specs/controls.md ("Actions and bindings"): "pause | `Escape` | — | edge |
-//   pauses, and resumes", and ("What each screen reads") "`playing` | the
+//   specs/controls.md ("Actions"): "`pause` | edge | pauses, and resumes", with
+//   ("Pausing") "Pause is bound to `Escape` and to `KeyP`" and `src/constants.ts`
+//   binding the action under exactly those keys, and ("What each screen reads") "`playing` | the
 //   pointer, the two turn actions, fire, swap, and pause, which pauses".
 //   specs/ui.md ("Screens"): `paused` is "The hall held still."
 //

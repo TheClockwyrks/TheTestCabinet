@@ -21,16 +21,16 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,
-  comboDef,
   createHarness,
   emptyYard,
+  type Harness,
   openYard,
   standCombo,
   standComponent,
   structureById,
-  type Harness,
 } from "../harness";
 import { offeredFolds, offeredRecipes, tierOf } from "./towers";
+import { comboDef } from "../constants";
 
 /** The pair, and the tower whose own recipe is rebuilt around it. */
 const PAIR = comboDef("fusecluster");

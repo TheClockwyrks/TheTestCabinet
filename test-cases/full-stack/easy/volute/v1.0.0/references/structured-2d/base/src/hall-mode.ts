@@ -71,6 +71,22 @@ import {
   type PendingGrant,
 } from "./train";
 
+/**
+ * The three kinds that become the active machinery.
+ *
+ * `bore` is the fourth machinery kind and is not one of these: it "resolves at
+ * once" (specs/machinery.md) and so is never granted through the debug surface,
+ * which poses preconditions alone (specs/instrumentation.md, `grantMachinery`).
+ */
+export const TIMED_MACHINERY_KINDS = [
+  "choke",
+  "backflow",
+  "sightline",
+] as const;
+
+/** One of the three kinds `grantMachinery` accepts. */
+export type TimedMachineryKind = (typeof TIMED_MACHINERY_KINDS)[number];
+
 /** Whether the run is in danger: a head standing at or past the threshold. */
 export function inDanger(state: HallState): boolean {
   return state.cores.length > 0 && state.cores[0].s >= DANGER_S;
@@ -235,8 +251,11 @@ export class HallMode extends GameMode implements HallPorts {
     this.runTimers(dt);
 
     // 2. Every segment advances, and a merge that completes a run extracts it.
+    // The step is skipped entirely while the train's gate is held: "no segment
+    // advances, no merge follows from an advance, and an active `backflow` moves
+    // nothing" (specs/instrumentation.md, `setFeed`).
     const grants: PendingGrant[] = [];
-    advanceTrain(state, this, dt, grants);
+    if (this.game.feed) advanceTrain(state, this, dt, grants);
 
     // 3. Every projectile advances, oldest first, and a strike seats.
     this.advanceProjectiles(dt, grants);
@@ -419,6 +438,9 @@ export class HallMode extends GameMode implements HallPorts {
    */
   private runInlet(): void {
     const state = this.state;
+    // The inlet's gate is independent of the quota (specs/instrumentation.md,
+    // `setEmission`), so a held inlet emits nothing whatever the quota holds.
+    if (!this.game.emission) return;
     if (state.quotaRemaining <= 0) return;
     if (state.machinery?.kind === "backflow") return;
     const tail = state.cores[state.cores.length - 1];
@@ -487,11 +509,17 @@ export class HallMode extends GameMode implements HallPorts {
     this.cue(CUES.swap);
   }
 
-  /** Grant a kind exactly as extracting a run holding its mark grants it. */
-  grantMachinery(kind: MachineryKind): void {
-    const head = this.state.cores[0];
-    const point = head === undefined ? INTAKE : pointAt(head.s);
-    this.applyGrant({ kind, x: point.x, y: point.y });
+  /**
+   * Grant one of the three TIMED kinds, exactly as extracting a run holding its
+   * mark grants it (specs/instrumentation.md, `grantMachinery`).
+   *
+   * `bore` is not granted here: it removes cores and scores the moment it
+   * resolves, and no pose decides an outcome, so a bore is reached by extracting
+   * a run that carries a `bore` mark.
+   */
+  grantTimedMachinery(kind: TimedMachineryKind): void {
+    this.state.machinery = { kind, remaining: MACHINERY_DURATIONS[kind] };
+    this.cue(CUES.machinery);
   }
 
   /**

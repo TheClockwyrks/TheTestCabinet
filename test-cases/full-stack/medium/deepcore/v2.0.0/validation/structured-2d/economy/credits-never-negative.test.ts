@@ -1,6 +1,6 @@
 // economy/credits-never-negative — no sink ever borrows.
 //
-// `specs/gameplay.md` fixes the floor over the whole economy: "Credits never go
+// `specs/expedition.md` fixes the floor over the whole economy: "Credits never go
 // negative". This point drives every sink the specification names — the Fuel
 // Depot's four controls, all seven upgrade tracks, all six field supplies and
 // the Launch Pad's fabricate — twice: once from a balance of `0`, and once from
@@ -9,7 +9,7 @@
 // and clamps back is caught on the call that dipped.
 //
 // Fill-to-full and repair-to-full are the two sinks that may legitimately spend
-// on a thin balance, since `specs/gameplay.md` has them buy as far as the
+// on a thin balance, since `specs/expedition.md` has them buy as far as the
 // Credits reach; what the floor requires of them is the same, that they never
 // take more than there is.
 
@@ -22,7 +22,7 @@ import {
   REPAIR_PRICE,
   ROCKET_COMPONENTS,
   TRACKS,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   captureStill,
@@ -123,12 +123,12 @@ it("holds the balance at or above 0 through every sink", async () => {
     assertGreaterThanOrEqual(
       spendFrom(sink, 0),
       0,
-      `specs/gameplay.md, ${sink.name} from a balance of 0`,
+      `specs/expedition.md, ${sink.name} from a balance of 0`,
     );
     assertGreaterThanOrEqual(
       spendFrom(sink, sink.price - 1),
       0,
-      `specs/gameplay.md, ${sink.name} one Credit short`,
+      `specs/expedition.md, ${sink.name} one Credit short`,
     );
   }
 

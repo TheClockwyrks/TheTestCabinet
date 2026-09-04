@@ -11,7 +11,9 @@
 //
 // THE POSE. An isolated `playing` run holding nothing, at level `1` with `xp`
 // `4`, and one small gem on the lamplighter's own center: `4 + 1` reaches
-// `xpToNext(1)` (`5`), so the collecting tick queues the level-up. Exactly one
+// `xpToNext(1)` (`5`), so the collecting tick queues the level-up.
+// `progression` is the one driver switch turned on, since the queue has to be
+// earned rather than posed for the tick to be the one under test. Exactly one
 // tick is run, so a build that opens the overlay on the tick after the gain
 // reads `playing` here and fails.
 //
@@ -23,6 +25,7 @@ import {
   advanceTicks,
   captureStill,
   createHarness,
+  enable,
   isolate,
   placeGem,
   type Harness,
@@ -42,7 +45,11 @@ afterEach(() => {
 });
 
 it("ends the collecting tick on levelup with menuIndex 0", async () => {
+  // `progression`, the faculty that spends a gain on levels, is the one
+  // switch this point is about, so it is turned back on and the other eight
+  // stay held (`specs/instrumentation.md`, the switch table).
   const { player } = isolate(h).run;
+  enable(h, "progression");
   h.debug.setLevel(LEVEL);
   h.debug.setXp(XP_BEFORE);
   placeGem(h, "small", player.x, player.y);

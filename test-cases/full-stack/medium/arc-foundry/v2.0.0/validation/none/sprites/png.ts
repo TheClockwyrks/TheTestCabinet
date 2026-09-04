@@ -25,12 +25,12 @@ import { inflateSync } from "node:zlib";
 import { fail } from "../assert";
 import {
   COMBO_IDS,
-  COMPONENT_TYPES,
-  FIRING_TYPES,
-  TIERS,
   type ComboId,
+  COMPONENT_TYPES,
   type ComponentType,
+  FIRING_TYPES,
   type Tier,
+  TIERS,
 } from "../constants";
 
 /* -------------------------------------------------------------------------- */

@@ -16,7 +16,7 @@
 // running: the mine is cleared, the drill is held, and no key is down.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCKET_COMPONENTS, TILE } from "../../src/constants";
+import { ROCKET_COMPONENTS, TILE } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,

@@ -20,7 +20,7 @@
 // right way to hold a position still (specs/instrumentation.md).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { VIEW_W, WORLD_W } from "../../src/constants";
+import { VIEW_W, WORLD_W } from "../constants";
 import { assertBetween, assertCloseTo } from "../assert";
 import {
   captureStill,

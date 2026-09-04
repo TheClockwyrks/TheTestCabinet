@@ -16,13 +16,13 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,
-  comboDef,
   createHarness,
+  type Harness,
   openYard,
   standComponent,
-  type Harness,
 } from "../harness";
 import { anchored, offeredRecipes, tierOf } from "./towers";
+import { comboDef } from "../constants";
 
 const TOWER = comboDef("staticweb");
 const INITIATOR = { col: 10, row: 10 };

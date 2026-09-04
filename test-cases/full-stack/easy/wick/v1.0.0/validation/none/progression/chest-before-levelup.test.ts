@@ -13,14 +13,16 @@
 // level-up overlay opens at the end of the first `playing` tick after the chest
 // overlay closes.
 //
-// WHY THE WORLD IS POSED AS IT IS. An isolated night with every faculty held
-// and nothing alive, so the only two things that happen on the read tick are the
-// two collections. A chest and a small gem are both placed at the lamplighter's
+// WHY THE WORLD IS POSED AS IT IS. An isolated night with `progression` alone
+// turned back on, which is the faculty that spends a gain on a level, every
+// other faculty held, and nothing alive, so the only two things that happen on
+// the read tick are the two collections. A chest and a small gem are both placed at the lamplighter's
 // center: the chest is collected in phase 8 and the gem in phase 9, so one tick
 // does both. Level `1` with `xp` one short of `XP_BASE` makes that gem cross a
-// threshold. The overlay is closed through `setScreen("playing")`, which "Closes
-// the overlay exactly as `confirm` does" (specs/instrumentation.md), so a build
-// with a broken menu key fails the menu points rather than this one. No weapon
+// threshold. The game is stood back on `playing` through `setScreen("playing")`,
+// which "Sets `screen` to `name` ... Nothing else changes"
+// (specs/instrumentation.md), so a build with a broken menu key fails the menu
+// points rather than this one. No weapon
 // and no passive is held, so the chest's result is the heal of rule 3 in
 // specs/evolutions.md and nothing about the loadout moves under it.
 //
@@ -53,7 +55,7 @@ afterEach(async () => {
 });
 
 it("opens the chest overlay on the tick and the level-up on the next", async () => {
-  const posed = await isolate(h);
+  const posed = await isolate(h, { on: ["progression"] });
   await h.debug.setLevel(POSED_LEVEL);
   await h.debug.setXp(POSED_XP);
   const at = posed.run.player;

@@ -152,7 +152,7 @@ What the overlay shows is Wick's, under Diagnostics below.
 
 ## The driver switches
 
-Seven switches give a scenario a hold on the game's autonomous systems, so it
+Nine switches give a scenario a hold on the game's autonomous systems, so it
 can watch one behavior without another arriving on top of it. Each is on when
 the game is played, each is restored to on by `reset`, each is left as it
 stands by `setScreen`, each is set by its own operation below, and each is
@@ -169,6 +169,16 @@ catching up for the ticks it missed.
 | `setEnemyContact(on)` | `enemyContact` | An overlapping enemy whose cooldown is due hits. | No enemy hits. Every `contactCooldown` still counts down. |
 | `setWeaponFire(on)` | `weaponFire` | Cooldown timers count down and due weapons fire or pulse. | Every cooldown timer holds where it stands and nothing fires or pulses. |
 | `setEffectMotion(on)` | `effectMotion` | Projectiles integrate, lanterns revolve, shards bounce, and sconces decelerate. | Every projectile holds its position and velocity, and every lantern holds its angle. `ttl` and every re-hit entry still count, and hits still resolve. |
+| `setDrops(on)` | `drops` | An enemy that dies leaves what `specs/world.md` gives it: a common's gem and the bread or draft its roll draws, and an elite's chest. | A death leaves nothing on the field and draws nothing from the generator. The enemy still dies, still counts as a kill, and still sounds. |
+| `setProgression(on)` | `progression` | Experience gained is spent on levels as `specs/progression.md` states: `xp` falls by `xpToNext(level)`, `level` rises, and a level-up is queued. | No gain is spent: `xp` rises as gems are collected and stands however high it climbs, and `level` and `pendingLevelUps` hold where they are. |
+
+The overlays are gated by neither `drops` nor `progression`: on every `playing`
+tick, whatever the two hold, phase 12 of `specs/world.md` runs, so a tick that
+collected a chest opens the chest overlay and a tick that ends with
+`pendingLevelUps` above `0` opens the level-up overlay. Collection is gated by
+neither either: a gem or a pickup already on the field is attracted and
+collected as phases 8 and 9 state, and a collected gem's experience still
+reaches `xp`.
 
 Placement is gated by neither `weaponFire` nor `effectMotion`: on every
 `playing` tick, whatever the two hold, the placement part of phase 5 of
@@ -302,28 +312,22 @@ below. It changes nothing.
 #### `setScreen(name)`
 {{/if}}
 
-Enters screen `name`, one of the `Screen` values the rows below list, exactly
-as the real transition into it from the current screen enters it, with
-`menuIndex` `0`. No cue sounds at the call. The driver switches stay as they
-are.
+Sets `screen` to `name`, one of the `Screen` values, with `menuIndex`,
+`almanacTab`, and `almanacScroll` all `0`. Nothing else changes: the run, the
+loadout, `offers`, `nextOffers`, `chestResult`, `pendingLevelUps`, `rngState`,
+`simTime`, and the driver switches all stand exactly as they were, and no cue
+sounds at the call. A call that leaves `playing` discards the accumulator, as
+every frame and pose that leaves `playing` does. Applies on every screen.
 
-| `name` | From | What the call does |
-| --- | --- | --- |
-| `title` | any | Discards the run exactly as `TITLE` on an end screen or `MAIN MENU` on `paused` does: the idle run. |
-| `howto` | any | Enters the how-to screen exactly as confirming `HOW TO PLAY` does: the idle run. |
-| `almanac` | any | Enters the almanac exactly as confirming `THE ALMANAC` does: the idle run, `menuIndex` `0`, `almanacTab` `0`, `almanacScroll` `0`. |
-| `playing` | `paused` | Resumes exactly as `pause` on `paused` does; the run is untouched. |
-| `playing` | `chest` | Closes the overlay exactly as `confirm` does: `chestResult` becomes `null`. |
-| `playing` | `levelup` | Changes nothing; `choose` is the way out. |
-| `playing` | any other | Begins a fresh run exactly as `LIGHT THE LAMP` and `TRY AGAIN` do: the idle run with Taper at level `1` and cooldown `0` in the first weapon slot. `rngState` and `simTime` stay as they are, so a run from a known seed is `reset` followed by this. |
-| `levelup` | `playing`, with `pendingLevelUps` at least `1` | Opens the overlay exactly as the end of a `playing` tick opens it: the pool is computed, `nextOffers` is consumed or the draw is made, and `offers` is filled. With `pendingLevelUps` `0` the call leaves the state as it was. |
-| `paused` | `playing` | Exactly as `pause` does; the accumulator is discarded as on any frame that leaves `playing`. |
-| `fallen`, `dawn` | `playing`, `paused` | Ends the run exactly as that ending does, the run kept for the end screen to report. |
-
-Any row not listed, `chest` from anywhere or `levelup` from `title` among them,
-leaves the state as it was. The chest overlay is reached through
-`spawnPickup("chest", x, y)` at the lamplighter's center and one tick, which is
-the real collection path.
+The pose sets the screen and nothing else, so a run is never begun, discarded,
+ended, or grown by it. What a screen shows is arranged before the pose or
+reached through the game's own systems: a fresh run is `reset`, this pose to
+`playing`, and `setWeapon(0, "taper", 1)`; the idle run the menus hold is
+`reset`; the level-up overlay is `setPendingLevelUps` and one `playing` tick;
+the chest overlay is `spawnPickup("chest", x, y)` at the lamplighter's center
+and one tick, which is the real collection path; the fallen ending is `setHp`
+at `0` and one tick; and the dawn ending is `setTick` at
+`DAWN_TIME × TICK_HZ − 1` (`35999`) and one tick.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `choose(state, index)`
@@ -353,9 +357,11 @@ coordinates the pointer is read in. `title`, `levelup`, `paused`, `fallen`, and
 `dawn` report one rectangle per item of the menu they show. `almanac` reports
 one rectangle per visible entry row, in list order from `almanacScroll` and at
 most `ALMANAC_ROWS` of them, so a tab holding fewer entries than that reports
-one per entry. `howto`, `playing`, and `chest` report an empty list. Each
-rectangle is the area a hover or a click selects that item inside, so what this
-reading reports is what the pointer rules of `specs/controls.md` act on.
+one per entry. `howto` and `chest` report exactly one rectangle, the area the
+screen's way out is taken in. `playing` reports an empty list. Each rectangle is
+the area a hover, a press and release, or a touch contact selects that item
+inside, so what this reading reports is what the pointer and touch rules of
+`specs/controls.md` act on.
 {{#if (eq engine.slug "simple-2d")}}
 It returns no state, because it poses nothing.
 {{else}}
@@ -371,8 +377,8 @@ It changes nothing.
 Reports the rectangles of the almanac's tab bar on `almanac`, one per tab in
 `ALMANAC_TABS` order, each a plain object carrying `x`, `y`, `width`, and
 `height` in the same stage coordinates. Every other screen reports an empty
-list. Each rectangle is the area a click selects that tab inside, and it meets
-no rectangle `menuRects` reports on that screen.
+list. Each rectangle is the area a press and release or a touch contact selects
+that tab inside, and it meets no rectangle `menuRects` reports on that screen.
 {{#if (eq engine.slug "simple-2d")}}
 It returns no state, because it poses nothing.
 {{else}}
@@ -381,17 +387,19 @@ It changes nothing.
 
 ### The driver switches
 
-#### The seven switch operations
+#### The nine switch operations
 
 {{#if (eq engine.slug "simple-2d")}}
 `setSpawning(state, on)`, `setEvents(state, on)`, `setDespawning(state, on)`,
 `setEnemyMotion(state, on)`, `setEnemyContact(state, on)`,
-`setWeaponFire(state, on)`, and `setEffectMotion(state, on)` set the seven
-driver switches, as The driver switches above describes.
+`setWeaponFire(state, on)`, `setEffectMotion(state, on)`,
+`setDrops(state, on)`, and `setProgression(state, on)` set the nine driver
+switches, as The driver switches above describes.
 {{else}}
 `setSpawning(on)`, `setEvents(on)`, `setDespawning(on)`, `setEnemyMotion(on)`,
-`setEnemyContact(on)`, `setWeaponFire(on)`, and `setEffectMotion(on)` set the
-seven driver switches, as The driver switches above describes.
+`setEnemyContact(on)`, `setWeaponFire(on)`, `setEffectMotion(on)`,
+`setDrops(on)`, and `setProgression(on)` set the nine driver switches, as The
+driver switches above describes.
 {{/if}}
 `on` is a boolean. Each applies on every screen and changes nothing but its
 switch.
@@ -787,6 +795,8 @@ export interface WickDebugApi {
   setEnemyContact(state: DeepReadonly<WickState>, on: boolean): WickState;
   setWeaponFire(state: DeepReadonly<WickState>, on: boolean): WickState;
   setEffectMotion(state: DeepReadonly<WickState>, on: boolean): WickState;
+  setDrops(state: DeepReadonly<WickState>, on: boolean): WickState;
+  setProgression(state: DeepReadonly<WickState>, on: boolean): WickState;
   setTick(state: DeepReadonly<WickState>, tick: number): WickState;
   setSpawnTimer(state: DeepReadonly<WickState>, seconds: number): WickState;
   setPlayerPosition(
@@ -924,6 +934,8 @@ export interface WickDebugApi {
   setEnemyContact(on: boolean): void;
   setWeaponFire(on: boolean): void;
   setEffectMotion(on: boolean): void;
+  setDrops(on: boolean): void;
+  setProgression(on: boolean): void;
   setTick(tick: number): void;
   setSpawnTimer(seconds: number): void;
   setPlayerPosition(x: number, y: number): void;
@@ -986,13 +998,15 @@ export interface WickDebugApi {
 {{#if (eq engine.slug "none")}}
   autoStep: <boolean>,             // whether the frame loop advances the simulation
 {{/if}}
-  spawning: <boolean>,             // the seven driver switches
+  spawning: <boolean>,             // the nine driver switches
   events: <boolean>,
   despawning: <boolean>,
   enemyMotion: <boolean>,
   enemyContact: <boolean>,
   weaponFire: <boolean>,
   effectMotion: <boolean>,
+  drops: <boolean>,
+  progression: <boolean>,
   run: {
     tick: <number>,
     time: <number>,                // tick / TICK_HZ, seconds
@@ -1043,13 +1057,14 @@ export interface WickDebugApi {
 ```
 
 The shape is fixed, and every field is present whatever the screen. `run`
-reports the idle run of `specs/state.md` on `title`, `howto`, and `almanac`, and
-the run that just ended on `fallen` and `dawn`. `zones[].ttl` is `null` for a
-zone that never expires, and `width` and `height` appear on a slash alone. Every
-zone's `x`, `y` is its center; a strike's `radius` is its `area` and a burst's
-is its Flare `radius`. `almanacTab` and `almanacScroll` sit beside `menuIndex`,
-outside `run`, and are `0` on every screen but `almanac`. The seven switches sit
-beside `muted`, outside `run`, and a fresh run leaves them as they stand.
+reports whatever run the game holds: the idle run of `specs/state.md` on
+`title`, `howto`, and `almanac` as play reaches them, and the run that just
+ended on `fallen` and `dawn`. `zones[].ttl` is `null` for a zone that never
+expires, and `width` and `height` appear on a slash alone. Every zone's `x`,
+`y` is its center; a strike's `radius` is its `area` and a burst's is its Flare
+`radius`. `almanacTab` and `almanacScroll` sit beside `menuIndex`, outside
+`run`, and are `0` on every screen but `almanac`. The nine switches sit beside
+`muted`, outside `run`, and a fresh run leaves them as they stand.
 {{#if (eq engine.slug "none")}}
 
 `autoStep` is `true` while the frame loop advances the simulation from the wall
@@ -1097,7 +1112,7 @@ Register at least the current `screen`, the run clock, the level with `xp` over
 `xpToNext`, `hp` over `maxHp`, the kill count, the lamplighter's position and
 facing, the enemy count with the spawn window index, the projectile and zone
 counts, the gem count, the held weapons with their levels and cooldowns, the
-held passives with their levels, `pendingLevelUps`, and the seven driver
+held passives with their levels, `pendingLevelUps`, and the nine driver
 switches, the same facts the snapshot reports. Keep each one short enough to
 read on a line, and keep every source a pure read, so watching the overlay
 leaves the game as it is.

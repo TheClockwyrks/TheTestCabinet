@@ -33,19 +33,18 @@
 // death burst can stand in for the flare.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
+  type Harness,
   openYard,
   parkUnit,
   ticks,
-  tileCenter,
-  type Harness,
 } from "../harness";
 import { serveProducedAssets } from "./produced";
 import { lattice, motion } from "./region";
+import { tileCenter } from "../constants";
 
 /** Clear ground, well away from the map's waypoint platforms and its chain. */
 const AT = tileCenter(26, 17);

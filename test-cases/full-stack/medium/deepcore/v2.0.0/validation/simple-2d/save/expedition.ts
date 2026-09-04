@@ -24,7 +24,7 @@
 // checks reach the game through a menu, because the specification puts the
 // restore behind one; every other route here is a control or a pose.
 
-import { SPAWN_COL, TITLE_ITEMS } from "../../src/constants";
+import { SPAWN_COL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   ACTION_KEY,
@@ -50,14 +50,6 @@ import {
  * specs/modes.md says a restore puts the player back.
  */
 export const SURFACE_ROW = 0;
-
-/**
- * The title menu with no save banked: `TITLE_ITEMS` without its first entry.
- *
- * specs/ui.md fixes `CONTINUE` as present only while a save exists, and first
- * when present, so the menu a title with an empty slot carries is the rest of it.
- */
-export const TITLE_ITEMS_NO_SAVE = TITLE_ITEMS.slice(1);
 
 /** How an expedition opens: the seed, the size, and the mode it is played in. */
 export interface ExpeditionOptions {
@@ -117,7 +109,7 @@ export function bankSave(h: Harness): void {
   assertEqual(
     h.snapshot().hasSave,
     true,
-    "specs/gameplay.md: activating the Save Pad writes the save on the spot",
+    "specs/expedition.md: activating the Save Pad writes the save on the spot",
   );
 }
 

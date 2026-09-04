@@ -16,8 +16,7 @@
 // presents them, so no layout and no ordering is assumed.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { MAP_IDS, type MapId } from "../../src/constants";
+import { MAP_IDS, type MapId } from "../constants";
 import { assertEqual, fail } from "../assert";
 import {
   captureStill,

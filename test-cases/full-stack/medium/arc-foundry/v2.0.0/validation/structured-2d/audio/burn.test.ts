@@ -23,8 +23,7 @@
 // `burnDps` first rises above `0` is the frame the burn was applied.
 
 import { afterEach, beforeEach, it } from "vitest";
-
-import { CUES } from "../../src/constants";
+import { CUES } from "../constants";
 import { assertContains, assertDeepEqual, assertEqual } from "../assert";
 import {
   captureReplay,

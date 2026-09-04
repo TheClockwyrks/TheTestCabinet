@@ -72,7 +72,8 @@ it("draws the score an extraction paid", async () => {
     ],
     loaded: RUN_CHARGE,
   });
-  h.debug.fire(270);
+  h.debug.setAim(270);
+  h.debug.fire();
 
   const scored = await h.stepUntil((snapshot) => snapshot.score > 0, {
     maxTicks: 90,

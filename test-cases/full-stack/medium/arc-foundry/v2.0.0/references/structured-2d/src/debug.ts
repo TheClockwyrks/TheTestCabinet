@@ -33,6 +33,7 @@ import {
   MAP_IDS,
   MAX_QUALITY,
   OVERLOAD_TYPE,
+  PHASES,
   REFINEMENT_MAX,
   REFINEMENT_ODDS,
   SCREENS,
@@ -65,6 +66,7 @@ import {
   board,
   canPlaceAt,
   clearCombineSet,
+  clearHeld,
   clearNextRoll,
   clearProjectiles,
   clearStructures,
@@ -94,6 +96,7 @@ import {
   setOverlay,
   setPaused,
   setRefinement,
+  setRunPhase,
   setScreen,
   setSpeed,
   setStamps,
@@ -103,6 +106,7 @@ import {
   setUnitPosition,
   setUnitWaypoint,
   setWave,
+  setWaveHold,
   spawnUnit,
   stampsLeft,
   startRun,
@@ -118,10 +122,12 @@ import {
   panelButtonControls,
   pressPanelControls,
   statusBarControls,
+  statusReadouts,
 } from "./layout";
+import type { ReadoutName } from "./layout";
 import { abilityTags } from "./tables";
 import { foundryState, type FoundryState } from "./state";
-import type { Unit } from "./types";
+import type { RecipeCell, Unit } from "./types";
 import type { World } from "@test-cabinet/structured-2d";
 
 // ---- The shapes the readings return (specs/instrumentation.md) -----------
@@ -147,6 +153,19 @@ export interface StatusSnapshot {
   h: number;
   state: boolean | number;
 }
+
+/** One status-bar read, reporting the text it draws and the rectangle it drew it at. */
+export interface ReadoutSnapshot {
+  readout: ReadoutName;
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** One ingredient cell of one recipe, as the recipe book drew it. */
+export type RecipeEntrySnapshot = RecipeCell;
 
 /** One live unit, as the snapshot reports it. */
 export interface UnitSnapshot {
@@ -226,6 +245,8 @@ export interface FoundrySnapshot {
   wave: number;
   totalWaves: number;
   waveActive: boolean;
+  /** The wave's clear-and-pay resolution is held by `setWaveHold`. */
+  waveHeld: boolean;
   charge: number;
   integrity: number;
   refinement: number;
@@ -268,6 +289,8 @@ export interface FoundryDebugApi {
   pressControls(): ButtonSnapshot[];
   menuButtons(): ButtonSnapshot[];
   statusControls(): StatusSnapshot[];
+  statusReadouts(): ReadoutSnapshot[];
+  recipeEntries(): RecipeEntrySnapshot[];
 
   // The run.
   reset(options?: { seed?: number }): void;
@@ -276,6 +299,8 @@ export interface FoundryDebugApi {
   startRun(): void;
   setScreen(screen: string): void;
   setMenuIndex(index: number): void;
+  setPhase(phase: string): void;
+  setWaveHold(held: boolean): void;
   setPaused(paused: boolean): void;
   setSpeed(multiplier: number): void;
   setOverlay(overlay: string, open: boolean): void;
@@ -291,6 +316,7 @@ export interface FoundryDebugApi {
   clearStructures(): void;
   setNextRoll(type: string, quality: number): void;
   clearNextRoll(): void;
+  clearHeld(): void;
   placeRock(col: number, row: number): void;
   placeComponent(type: string, quality: number, col: number, row: number): void;
   placeCombo(combo: string, col: number, row: number): void;
@@ -421,6 +447,7 @@ export function snapshot(state: FoundryState): FoundrySnapshot {
     wave: state.wave,
     totalWaves: difficulty(state).waves,
     waveActive: state.activeWave !== null || state.units.some((u) => !u.dead),
+    waveHeld: state.waveHeld,
     charge: state.charge,
     integrity: state.integrity,
     refinement: state.refinement,
@@ -625,6 +652,15 @@ export function createDebugApi(world: () => World): FoundryDebugApi {
       }));
     },
 
+    statusReadouts: () => statusReadouts(live()).map((r) => ({ ...r })),
+
+    // The cells of the frame that last drew the book, and nothing while it is closed
+    // (specs/instrumentation.md).
+    recipeEntries: () => {
+      const state = live();
+      return state.showCombos ? state.bookCells.map((c) => ({ ...c })) : [];
+    },
+
     // ---- The run ----------------------------------------------------------
 
     reset(options) {
@@ -665,6 +701,23 @@ export function createDebugApi(world: () => World): FoundryDebugApi {
 
     setMenuIndex(index) {
       setMenuIndex(live(), int("setMenuIndex", "index", index, 0, 64));
+    },
+
+    // A phase pose, releasing no unit and composing no wave. It is invalid off a run,
+    // where `phase` reads `null` (specs/instrumentation.md).
+    setPhase(phase) {
+      const state = live();
+      if (reportedPhase(state) === null) {
+        invalid("setPhase", "the run to be on the yard", phase);
+      }
+      setRunPhase(
+        state,
+        oneOf("setPhase", "phase", phase, PHASES) as PhaseName,
+      );
+    },
+
+    setWaveHold(held) {
+      setWaveHold(live(), bool("setWaveHold", "held", held));
     },
 
     setPaused(paused) {
@@ -738,6 +791,10 @@ export function createDebugApi(world: () => World): FoundryDebugApi {
 
     clearNextRoll() {
       clearNextRoll(live());
+    },
+
+    clearHeld() {
+      clearHeld(live());
     },
 
     // The rock enters through the real placement path, so it is refused exactly as a

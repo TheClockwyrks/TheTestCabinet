@@ -11,10 +11,10 @@
 // channel carrying 44 cores rises at (44 - 24) x 0.05 = 1.0 per second and bleeds
 // nothing, and one second of simulation carries a pressure of 0 to exactly 1.0.
 //
-// THE DRIVE. An isolated hall: `startLevel(1)` opens the level, the quota is
-// stopped at 0 so the inlet delivers nothing that would change the count under
-// the measurement (`specs/channel.md` — "While the level's quota is not
-// exhausted, the inlet emits"), the pressure is posed at 0, and the channel holds
+// THE DRIVE. An isolated hall on level 1, with the inlet held so it delivers
+// nothing that would change the count under the measurement
+// (`specs/instrumentation.md` — `setEmission(false)` "stops step 7 of the tick
+// order ... no core is emitted"), the pressure posed at 0, and the channel holding
 // exactly 44 cores in one segment. One segment cannot merge and no projectile
 // exists, so `specs/extraction.md` has nothing to extract and the count holds at
 // 44 for the whole measured second. The block is posed clear of the intake at
@@ -85,7 +85,6 @@ afterEach(async () => {
 it("rises by 0.05 per second for each core above 24", async () => {
   await poseHall(harness, {
     level: 1,
-    quotaRemaining: 0,
     pressure: START_PRESSURE,
     cores: spacedBlock(HEAD_S, CORES, CHARGE),
   });

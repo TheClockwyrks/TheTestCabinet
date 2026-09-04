@@ -23,14 +23,15 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { inflateSync } from "node:zlib";
 import { fail } from "../assert";
-import { COMBO_IDS, COMPONENT_TYPES } from "../../src/constants";
 import {
-  FIRING_TYPES,
-  TIERS,
+  COMBO_IDS,
   type ComboId,
+  COMPONENT_TYPES,
   type ComponentType,
+  FIRING_TYPES,
   type Tier,
-} from "../harness";
+  TIERS,
+} from "../constants";
 
 /* -------------------------------------------------------------------------- */
 /* The paths specs/assets.md fixes                                            */

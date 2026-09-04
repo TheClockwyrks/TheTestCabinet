@@ -8,7 +8,8 @@
 //
 // WHY THE WORLD IS POSED AS IT IS. Two moths, one removed, so the other must
 // stay; the kill count is posed to a figure that is not `0` so a count that
-// rose is plain; the sounds emitted across the call are read off the probe
+// rose is plain; `drops` is the one faculty left on, so "Nothing drops" is
+// read against a night that could have dropped; the sounds emitted across the call are read off the probe
 // inside the page, in the same evaluation as the call, because the same
 // document leaves the build's own loop running in real time while the clock is
 // held and a frame of that loop reconciles the looping cues.
@@ -40,7 +41,7 @@ afterEach(async () => {
 });
 
 it("removes one enemy with no outcome", async () => {
-  await isolate(h);
+  await isolate(h, { on: ["drops"] });
   await h.debug.setKills(POSED_KILLS);
   const removed = await placeEnemy(h, "moth", 200, 0);
   const kept = await placeEnemy(h, "moth", -200, 0);

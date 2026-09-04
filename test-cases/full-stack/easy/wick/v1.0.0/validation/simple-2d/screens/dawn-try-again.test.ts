@@ -38,6 +38,7 @@ import { END_ITEMS, FRESH_RUN } from "../constants";
 import {
   captureStill,
   createHarness,
+  endDawn,
   isolate,
   runFields,
   tapWithoutTick,
@@ -56,9 +57,8 @@ afterEach(() => {
 
 it("starts a fresh run from the dawn screen", async () => {
   isolate(h, { level: 11 });
-  h.debug.setTick(6000);
   h.debug.setKills(52);
-  h.debug.setScreen("dawn");
+  await endDawn(h);
   const before = h.snapshot();
   assertEqual(before.screen, "dawn", "the screen Enter is pressed on");
   assertEqual(

@@ -85,7 +85,7 @@ selected engine; the rest seed verbatim.
 | `hazards.md`             | Gas pockets, lava, fall impact, and the unstable Core Sample's timer.                           |
 | `upgrades.md`            | The seven upgrade tracks, their tiers, and what each tier costs and gives.                      |
 | `rocket.md`              | The five rocket components, what each needs, and the launch that wins.                          |
-| `gameplay.md`            | The expedition, the Credits economy, the surface loop, saving, and the summary.                 |
+| `expedition.md`          | The expedition, the Credits economy, the surface loop, saving, and the summary.                 |
 | `ui.md`                  | The screens, the menus, the building panels, the status bar, and what is out of scope.          |
 | `modes.md`               | Standard and Hardcore, and what a death costs in each.                                          |
 | `controls.md.hbs`        | The actions the player drives the miner with and the keys bound to them.                        |
@@ -128,18 +128,6 @@ captured from that engine's reference build, so a reviewer sees the build's
 evidence and the reference's side by side. `tcab capture-baselines` writes that
 directory wholesale from the references, so it is regenerated rather than
 edited.
-
-## What this version still owes
-
-`references/none/` is written: it satisfies this version's specification, ships
-its own `showcase/`, and passes the four checks the specification names. The
-rest is named here so the gap is not mistaken for a decision.
-
-| Owed | Blocked on |
-| --- | --- |
-| A reference build under `references/simple-2d` and `references/structured-2d`. | Nothing. Each directory carries a README of its own saying so. |
-| The validator suites that stand in place of the 912 stubs. | Nothing. `references/none/` is the build the engineless suites drive. |
-| `showcase/base/` (a `showcase.md`, a `showcase.toml`, and flat media) with `showcase = "showcase/base"` on `variants/base.toml`, and `validation-baseline/<engine>/base/`. | The validator suites, for the baselines. `references/none/showcase/` is what the case showcase is captured from. |
 
 ## Versioning
 

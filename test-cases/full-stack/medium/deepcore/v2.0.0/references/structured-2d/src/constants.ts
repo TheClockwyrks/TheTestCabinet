@@ -680,7 +680,7 @@ export const TELEPORT_HEIGHT_TILES_MAX = 8;
 export const TELEPORT_SPEED_MIN = 150;
 export const TELEPORT_SPEED_MAX = 700;
 
-// ---- The economy (specs/gameplay.md) -------------------------------------
+// ---- The economy (specs/expedition.md) -------------------------------------
 
 /** Credits one unit of fuel costs at the Fuel Depot. */
 export const FUEL_PRICE = 1;
@@ -759,6 +759,9 @@ export const MODE_ITEMS = ["STANDARD", "HARDCORE", "BACK"] as const;
 /** The world-size menu, in this order. */
 export const SIZE_ITEMS = ["QUICK", "STANDARD", "MARATHON", "BACK"] as const;
 
+/** The How To Play screen's single menu item. */
+export const HOW_TO_PLAY_ITEMS = ["BACK"] as const;
+
 /** The pause menu, in this order. */
 export const PAUSE_ITEMS = ["RESUME", "RESTART", "QUIT TO MENU"] as const;
 
@@ -824,8 +827,9 @@ export type CueName = (typeof CUES)[keyof typeof CUES];
 /**
  * Every action the game is driven by, bound to the `KeyboardEvent.code` values
  * that drive it, so a binding is a physical key rather than a layout-dependent
- * character. Deepcore is played with the keyboard and the mouse alone, so no
- * touch layout is selected and this table is the whole vocabulary.
+ * character. The miner is driven from the keyboard alone, so no touch layout is
+ * selected and this table is the whole keyboard vocabulary; the pointer and
+ * touch drive the menus, the panels, and the status bar directly.
  */
 export const ACTIONS = {
   left: ["KeyA", "ArrowLeft"],
@@ -834,7 +838,7 @@ export const ACTIONS = {
   up: ["KeyW", "ArrowUp", "Space"],
   activate: ["KeyE", "Enter"],
   inventory: ["KeyI"],
-  pause: ["Escape"],
+  pause: ["Escape", "KeyP"],
   mute: ["KeyM"],
   jettison: ["KeyJ"],
   supply1: ["Digit1"],

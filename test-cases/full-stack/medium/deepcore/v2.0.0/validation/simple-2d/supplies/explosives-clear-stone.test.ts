@@ -17,7 +17,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { DYNAMITE_RADIUS } from "../../src/constants";
+import { DYNAMITE_RADIUS } from "../constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import { AFTERMATH_FRAMES, openBlastScene, ROCKBED_ROW } from "./blast-scene";
 

@@ -20,8 +20,8 @@
 // tick that follows; they lie on opposite sides of the lamplighter, along `+x`
 // and `−x`, so neither can be mistaken for the other and each step is one axis
 // wide. They carry different tiers, `medium` (3) and `large` (10), so the
-// experience gained names which of the two was collected. `isolate` poses
-// `ISOLATE_LEVEL` (50), whose `xpToNext` is 495, so the gain opens no overlay.
+// experience gained names which of the two was collected. `progression` is one
+// of the switches `isolate` holds off, so the gain opens no overlay.
 //
 // WHAT IS READ. After one tick: the inside gem gone, the outside gem still on
 // the field 9 units from the lamplighter, and `xp` risen by the inside gem's

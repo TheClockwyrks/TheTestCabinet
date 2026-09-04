@@ -1,7 +1,7 @@
 // economy/unaffordable-controls-are-disabled — a purchase the balance cannot
 // cover is drawn as one the player cannot take.
 //
-// `specs/gameplay.md`: "Credits never go negative, and an action that cannot be
+// `specs/expedition.md`: "Credits never go negative, and an action that cannot be
 // afforded is disabled." `specs/controls.md` says what "disabled" means on
 // screen: "A control is drawn as operable only where it acts. Where the game
 // cannot act on a control in the state it is in, that control is drawn disabled

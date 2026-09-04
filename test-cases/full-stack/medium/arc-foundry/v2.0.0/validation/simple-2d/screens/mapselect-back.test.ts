@@ -13,7 +13,6 @@
 // back.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertEqual } from "../assert";
 import {
   captureStill,

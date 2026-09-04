@@ -30,7 +30,7 @@ import {
   captureStill,
   clickControl,
   createHarness,
-  holdWaveOpen,
+  openHeldWave,
   openYard,
   panelControl,
   standCombo,
@@ -39,7 +39,7 @@ import {
   structureById,
   type Harness,
 } from "../harness";
-import { COMBO_MAX_LEVEL } from "../../src/constants";
+import { COMBO_MAX_LEVEL } from "../constants";
 
 /** More Charge than either act here costs, so no refusal can be about the price. */
 const PLENTY = 500;
@@ -116,7 +116,7 @@ it("commits nothing when a disabled inspector slot is pressed", async () => {
     STANDING.col,
     STANDING.row,
   );
-  holdWaveOpen(h);
+  openHeldWave(h);
   h.debug.select(standing);
   assertEqual(
     h.snapshot().phase,

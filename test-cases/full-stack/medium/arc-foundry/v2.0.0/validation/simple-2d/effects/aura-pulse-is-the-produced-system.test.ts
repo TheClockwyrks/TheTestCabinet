@@ -40,19 +40,17 @@
 // aura. The window opens after the pulse has had time to cross the ring.
 
 import { afterEach, it } from "vitest";
-
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,
   createHarness,
   emptyYard,
+  type Harness,
   openYard,
   standComponent,
-  structureCenter,
   ticks,
-  type Harness,
 } from "../harness";
-import type { ComponentType } from "../../src/constants";
+import { type ComponentType, structureCenter } from "../constants";
 import { serveProducedAssets } from "./produced";
 import { annulus, motion } from "./region";
 

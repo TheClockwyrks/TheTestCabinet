@@ -1,6 +1,6 @@
 // save/save-holds-the-mine — the save carries the generated mine, shafts and all.
 //
-// specs/gameplay.md lists "the generated mine and its world size" first among
+// specs/expedition.md lists "the generated mine and its world size" first among
 // what a save holds, so continuing returns to the shafts already cut rather than
 // to a freshly generated mine. specs/world.md adds that "the mine is generated
 // fresh for each expedition from the current seed" and that a cell's kind is
@@ -106,7 +106,7 @@ it("returns to the same mine, with the shaft already cut still cut", async () =>
     assertEqual(
       after[i],
       before[i],
-      `specs/gameplay.md: the save holds the generated mine, at (${cells[i].col}, ${cells[i].row})`,
+      `specs/expedition.md: the save holds the generated mine, at (${cells[i].col}, ${cells[i].row})`,
     );
   }
 
@@ -114,12 +114,12 @@ it("returns to the same mine, with the shaft already cut still cut", async () =>
     assertEqual(
       (await h.tileAt(SHAFT_COL, row)).kind,
       "tunnel",
-      `specs/gameplay.md: the shaft already cut is still cut, at row ${row}`,
+      `specs/expedition.md: the shaft already cut is still cut, at row ${row}`,
     );
   }
   assertEqual(
     (await h.tileAt(SHAFT_COL, CAP_ROW)).kind,
     "stone",
-    "specs/gameplay.md: the cell capping the shaft comes back as it was left",
+    "specs/expedition.md: the cell capping the shaft comes back as it was left",
   );
 });

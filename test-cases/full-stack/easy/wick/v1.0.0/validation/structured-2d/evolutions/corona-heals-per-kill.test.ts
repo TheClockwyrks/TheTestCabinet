@@ -10,9 +10,7 @@
 // (`100`) — no Tallow held — the pulse leaves `hp` at 53, short of the cap.
 //
 // THE OTHER HALF OF THE RULE. A heal PER KILL is nothing when there is nothing
-// to kill, so the next pulse is run too: 30 ticks later, `round(0.5 × 60)`
-// from the first (`specs/world.md`, Timers), over an empty field, and `hp` must
-// still read 53. A build that healed per pulse rather than per kill reads 54.
+// to kill, which is `evolutions/corona-heals-nothing-without-a-kill`'s.
 //
 // WHERE THE THREE MOTHS STAND. `INSIDE` (120) units out on three directions
 // 120 degrees apart, each inside the aura's 150 radius and the 160 at which a
@@ -40,7 +38,6 @@ import {
   ENEMIES,
   PICKUP_RADIUS,
   REAL_EPS,
-  ticksOf,
 } from "../constants";
 import {
   advanceTicks,
@@ -59,9 +56,6 @@ const POSED_HP = 50;
 /** Three directions 120 degrees apart, each `INSIDE` units out. */
 const POSTS: readonly number[] = [0, 120, 240];
 
-/** Ticks from one pulse to the next: `round(0.5 × 60)` = 30. */
-const PERIOD = ticksOf(CORONA_STATS.cooldown);
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -72,7 +66,7 @@ afterEach(() => {
   h.dispose();
 });
 
-it("raises hp from 50 to 53 on the pulse that kills three moths and heals nothing on the next", async () => {
+it("raises hp from 50 to 53 on the pulse that kills three moths", async () => {
   if (!(INSIDE < CORONA_STATS.radius + ENEMIES.moth.radius)) {
     throw new Error("the moths must overlap the aura");
   }
@@ -112,13 +106,5 @@ it("raises hp from 50 to 53 on the pulse that kills three moths and heals nothin
     POSED_HP + POSTS.length * CORONA_HEAL,
     REAL_EPS,
     `hp after the pulse, ${CORONA_HEAL} for each of the ${POSTS.length} enemies it killed (specs/evolutions.md, Corona)`,
-  );
-
-  const again = await advanceTicks(h, PERIOD);
-  assertNear(
-    again.run.player.hp,
-    POSED_HP + POSTS.length * CORONA_HEAL,
-    REAL_EPS,
-    `hp after the pulse on tick ${PERIOD + 1}, which killed nothing (specs/evolutions.md, Corona)`,
   );
 });

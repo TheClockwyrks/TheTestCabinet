@@ -20,7 +20,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
-import { MINER_H, MINER_W, PLAYABLE_COL_MIN } from "../constants";
+import { ANIM_FPS, MINER_H, MINER_W, PLAYABLE_COL_MIN } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -32,7 +32,6 @@ import {
   type Harness,
 } from "../harness";
 import { holds, sampleBox } from "./drawn";
-import { ANIM_FPS } from "./spec";
 
 const ROW = 200;
 const COL = PLAYABLE_COL_MIN + 8;

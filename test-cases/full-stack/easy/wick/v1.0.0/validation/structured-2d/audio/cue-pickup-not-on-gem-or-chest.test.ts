@@ -22,10 +22,10 @@
 // the lamplighter's own center — inside `COLLECT_RADIUS` (`8`) for the gem
 // and inside `PICKUP_ITEM_RADIUS` (`16`) plus `PLAYER_RADIUS` (`12`) for the
 // chest, whatever the build's pickup radius — so each collection lands on the
-// first tick. The gem run is at `ISOLATE_LEVEL` (50), whose `xpToNext` is
-// `495` (`specs/progression.md`), so the `1` experience a small gem carries
-// opens no overlay. The chest run holds no weapon and no passive, so the
-// chest heals rather than evolving or levelling.
+// first tick. The gem run leaves the `progression` switch off, so the `1`
+// experience a small gem carries is spent on no level and opens no overlay.
+// The chest run holds no weapon and no passive, so the chest heals rather than
+// evolving or levelling.
 //
 // THE TOLERANCE. None: the count of a cue the specification does not put on
 // these ticks is zero.

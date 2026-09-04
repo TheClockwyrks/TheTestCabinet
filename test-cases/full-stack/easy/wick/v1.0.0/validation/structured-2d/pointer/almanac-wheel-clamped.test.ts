@@ -12,8 +12,8 @@
 // `max(0, 16 − 10)` = `6`. The check computes it from those two constants
 // rather than naming `6`, so it states the rule and not one build's arithmetic.
 //
-// THE DRIVE. `setScreen("almanac")` — "exactly as confirming `THE ALMANAC`
-// does: the idle run, `menuIndex` `0`, `almanacTab` `0`, `almanacScroll` `0`"
+// THE DRIVE. `setScreen("almanac")` — by setting `screen` with `menuIndex`,
+// `almanacTab`, and `almanacScroll` all `0` and the run left as it stands
 // (`specs/instrumentation.md`) — then one frame carrying `OVERSHOOT` (`40`)
 // rows of downward travel, several times the whole list, so nothing but the
 // bound can decide where the scroll lands.

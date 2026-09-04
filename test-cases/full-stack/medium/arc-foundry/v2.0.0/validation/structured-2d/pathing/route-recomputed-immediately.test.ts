@@ -17,7 +17,6 @@
 // yard for the evidence, and each pair is measured from its own side of it.
 
 import { afterEach, beforeEach, it } from "vitest";
-
 import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

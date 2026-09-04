@@ -21,6 +21,7 @@ import {
   onCue,
   tap,
   type Harness,
+  type PointerInit,
   type TimedCue,
   type WickRect,
   type WickSnapshot,
@@ -177,4 +178,127 @@ export async function moveHighlight(
   let last = h.snapshot();
   for (let step = 0; step < steps; step += 1) last = await tap(h, DOWN);
   return last;
+}
+
+/* ---- The parts of a gesture, on frames that run no tick ------------------ */
+//
+// A GESTURE IS TWO EDGES, AND SOMETIMES THEY BELONG TO DIFFERENT FRAMES.
+// `specs/controls.md` rule 2 arms an item on the press and takes it on the
+// release, and rule 3 makes a contact's landing the press edge and its lift the
+// release edge. A check about a drag, a lift somewhere else, or a contact that
+// travels needs the edges APART, so each helper below delivers one edge and
+// runs one partial frame, for the reason {@link clickRectPartial} gives.
+
+/** Press the primary button at a stage point and leave it down. */
+export async function pressAtPartial(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.pressPointer(x, y);
+  await h.frameOf(PARTIAL_MS);
+  return h.snapshot();
+}
+
+/** Press the middle of a rectangle, leaving the button down. */
+export function pressRectPartial(
+  h: Harness,
+  rect: WickRect,
+): Promise<WickSnapshot> {
+  const at = centerOf(rect);
+  return pressAtPartial(h, at.x, at.y);
+}
+
+/** Travel the held mouse to a stage point: a move carrying the primary mask. */
+export async function glideToPartial(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.movePointer(x, y, { button: -1, buttons: 1 });
+  await h.frameOf(PARTIAL_MS);
+  return h.snapshot();
+}
+
+/** Lift the primary button at a stage point. */
+export async function liftAtPartial(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.releasePointer(x, y);
+  await h.frameOf(PARTIAL_MS);
+  return h.snapshot();
+}
+
+/** What a contact's events carry: the device, and the mask while it travels. */
+const CONTACT: PointerInit = { pointerType: "touch" };
+const CONTACT_HELD: PointerInit = {
+  pointerType: "touch",
+  button: -1,
+  buttons: 1,
+};
+
+/**
+ * Land a contact at a stage point.
+ *
+ * There is no move before it: a finger reports no position before it touches
+ * the glass, which is what makes "a touch contact never hovers" true of a real
+ * device (`specs/controls.md`, rule 1).
+ */
+export async function touchLandAtPartial(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.pressPointer(x, y, CONTACT);
+  await h.frameOf(PARTIAL_MS);
+  return h.snapshot();
+}
+
+/** Land a contact in the middle of a rectangle. */
+export function touchLandRectPartial(
+  h: Harness,
+  rect: WickRect,
+): Promise<WickSnapshot> {
+  const at = centerOf(rect);
+  return touchLandAtPartial(h, at.x, at.y);
+}
+
+/** Travel the held contact to a stage point. */
+export async function touchGlideToPartial(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.movePointer(x, y, CONTACT_HELD);
+  await h.frameOf(PARTIAL_MS);
+  return h.snapshot();
+}
+
+/** Lift the contact at a stage point. */
+export async function touchLiftAtPartial(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.releasePointer(x, y, CONTACT);
+  await h.frameOf(PARTIAL_MS);
+  return h.snapshot();
+}
+
+/**
+ * Tap the middle of a rectangle: land the contact, then lift it, one partial
+ * frame each.
+ *
+ * The landing and the lift are separately observable, so the tap runs a frame
+ * for each and neither consumes a tick.
+ */
+export async function touchTapRectPartial(
+  h: Harness,
+  rect: WickRect,
+): Promise<WickSnapshot> {
+  const at = centerOf(rect);
+  await touchLandAtPartial(h, at.x, at.y);
+  return touchLiftAtPartial(h, at.x, at.y);
 }

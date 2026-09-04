@@ -55,7 +55,7 @@ afterEach(() => {
 });
 
 it("holds a due Taper timer under weaponFire off and a due spawn timer under spawning off", async () => {
-  isolate(h, { keepTaper: true });
+  isolate(h, { taper: true });
   h.debug.setWeaponCooldown(TAPER_SLOT, 0);
   h.debug.setSpawnTimer(0);
 

@@ -20,21 +20,22 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
-
 import type { Recording } from "@test-cabinet/structured-2d";
 import { afterEach, beforeEach, expect, it } from "vitest";
-
 import {
+  BAR_H,
   BINDINGS,
+  DEFAULT_SEED,
+  FOUNDRY_DEBUG_VERSION,
   STAGE_H,
   STAGE_W,
   STAMPS_PER_LEVEL,
   START_CHARGE,
-} from "../src/constants";
+  structureCenter,
+  type Tier,
+  tileCenter,
+} from "./constants";
 import {
-  DEFAULT_SEED,
-  FOUNDRY_DEBUG_VERSION,
-  REQUIRED_OPS,
   captureReplay,
   captureStill,
   clearColor,
@@ -43,7 +44,9 @@ import {
   colorDistance,
   createHarness,
   emptyYard,
-  holdWaveOpen,
+  enterWave,
+  type Harness,
+  holdWaveClear,
   lastStructure,
   menuControl,
   observer,
@@ -51,7 +54,11 @@ import {
   openYard,
   parkUnit,
   pressAction,
+  putAwayHeld,
+  recipeCell,
+  recipeCells,
   releaseUnit,
+  REQUIRED_OPS,
   retable,
   sampleColor,
   standBlocker,
@@ -59,13 +66,11 @@ import {
   standCombo,
   standComponent,
   statusControl,
+  statusReadout,
   structureById,
-  structureCenter,
-  tileCenter,
   unitById,
   watchCues,
   withModify,
-  type Harness,
 } from "./harness";
 
 /** The environment variable the runner names the media directory in. */
@@ -256,6 +261,20 @@ it("drops a candidate through the real press and leaves the hand empty", () => {
   expect(panel).toContain("dismantle");
 });
 
+it("puts a held rock away without spending a stamp or pressing anything", () => {
+  openYard(h);
+  h.debug.setNextRoll("coil", 2);
+  h.debug.placeRock(10, 10);
+  const armed = h.snapshot();
+  expect(armed.held.active).toBe(true);
+
+  putAwayHeld(h);
+  const put = h.snapshot();
+  expect(put.held).toEqual({ active: false, col: 0, row: 0, legal: false });
+  expect(put.stampsLeft).toBe(armed.stampsLeft);
+  expect(put.structures).toHaveLength(armed.structures.length);
+});
+
 it("releases one unit, posed one faculty at a time", () => {
   openYard(h, { wave: 3 });
   const at = tileCenter(20, 15);
@@ -274,13 +293,32 @@ it("releases one unit, posed one faculty at a time", () => {
   expect(unit.speed).toBeCloseTo(unit.baseSpeed * 0.5, 6);
 });
 
-it("holds a wave open with one unit nothing is shooting at", async () => {
+it("opens a live wave without releasing a unit", async () => {
   openYard(h);
-  const bystander = holdWaveOpen(h);
-  await h.advance(240);
+  enterWave(h);
   const snapshot = h.snapshot();
+  expect(snapshot.phase).toBe("wave");
   expect(snapshot.waveActive).toBe(true);
-  expect(unitById(snapshot, bystander).frozen).toBe(true);
+  expect(snapshot.units).toHaveLength(0);
+});
+
+it("holds the wave's clear-and-pay resolution, and releases it", async () => {
+  openYard(h, { wave: 3, charge: 0 });
+  enterWave(h);
+  holdWaveClear(h);
+  expect(h.snapshot().waveHeld).toBe(true);
+
+  // A wave with nothing left on the yard would clear on the next advance, and
+  // clearing pays the wave-clear bonus. Held, it does neither.
+  await h.advance(240);
+  const held = h.snapshot();
+  expect(held.waveActive).toBe(true);
+  expect(held.charge).toBe(0);
+
+  holdWaveClear(h, false);
+  expect(h.snapshot().waveHeld).toBe(false);
+  await h.advance(240);
+  expect(h.snapshot().charge).toBeGreaterThan(0);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -298,6 +336,39 @@ it("activates a status-bar control at the rectangle the reading reports", async 
   await clickControl(h, speed);
   expect(h.snapshot().speed).toBe(2);
   expect(statusControl(h, "speed").state).toBe(2);
+});
+
+it("finds a status-bar read by name, inside the bar it was drawn in", () => {
+  openYard(h);
+  const maze = statusReadout(h, "maze-length");
+  expect(maze.w).toBeGreaterThan(0);
+  expect(maze.h).toBeGreaterThan(0);
+  expect(maze.x).toBeGreaterThanOrEqual(0);
+  expect(maze.x + maze.w).toBeLessThanOrEqual(STAGE_W);
+  expect(maze.y + maze.h).toBeLessThanOrEqual(BAR_H);
+});
+
+it("finds a recipe book cell by its recipe and its ingredient index", async () => {
+  openYard(h);
+  expect(h.debug.recipeEntries()).toHaveLength(0);
+
+  h.debug.setOverlay("combos", true);
+  await h.advance(1);
+  const web = recipeCells(h, "staticweb");
+  expect(web.length).toBeGreaterThan(0);
+  expect(web.map((cell) => cell.ingredient)).toEqual(
+    web.map((_cell, index) => index),
+  );
+
+  const first = recipeCell(h, "staticweb", 0);
+  expect(first.state).toBe("missing");
+  expect(first.w).toBeGreaterThan(0);
+  expect(first.h).toBeGreaterThan(0);
+
+  standComponent(h, first.type, first.quality as Tier, 10, 10);
+  h.debug.clearSelection();
+  await h.advance(1);
+  expect(recipeCell(h, "staticweb", 0).state).toBe("owned");
 });
 
 it("takes a menu choice at the rectangle the reading reports", async () => {

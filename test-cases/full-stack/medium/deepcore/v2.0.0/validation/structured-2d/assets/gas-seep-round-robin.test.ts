@@ -29,7 +29,7 @@ import {
   GAS_SEEP_PERIOD,
   PLAYABLE_COL_MIN,
   TILE,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,
