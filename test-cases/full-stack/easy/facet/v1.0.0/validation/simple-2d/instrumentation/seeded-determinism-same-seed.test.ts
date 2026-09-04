@@ -40,9 +40,7 @@
 // and what `reset` restores, which is `instrumentation/reset-restores`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-} from "../assert";
+import { assertEqual } from "../assert";
 import { assertBoardEquals, renderBoard } from "../board";
 import {
   captureStill,

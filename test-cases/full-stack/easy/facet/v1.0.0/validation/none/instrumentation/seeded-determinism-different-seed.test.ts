@@ -36,12 +36,8 @@
 // and what `reset` restores, which is `instrumentation/reset-restores`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertNotEqual,
-} from "../assert";
-import {
-  renderBoard,
-} from "../board";
+import { assertNotEqual } from "../assert";
+import { renderBoard } from "../board";
 import {
   captureStill,
   createHarness,
