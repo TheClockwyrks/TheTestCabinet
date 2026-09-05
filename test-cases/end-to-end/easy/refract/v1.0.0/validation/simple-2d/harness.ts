@@ -1830,10 +1830,7 @@ export function targetCenter(target: TargetSnapshot): {
 }
 
 /** Whether two target rectangles share any area. */
-export function targetsOverlap(
-  a: TargetSnapshot,
-  b: TargetSnapshot,
-): boolean {
+export function targetsOverlap(a: TargetSnapshot, b: TargetSnapshot): boolean {
   return (
     a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
   );

@@ -99,7 +99,14 @@ import type {
   TargetSnapshot,
 } from "./surface";
 
-export type { CellRef, Channel, Mode, PointerDevice, RefractSnapshot, TargetSnapshot };
+export type {
+  CellRef,
+  Channel,
+  Mode,
+  PointerDevice,
+  RefractSnapshot,
+  TargetSnapshot,
+};
 
 /** The case's surface, exactly as `surface.ts` specifies it. */
 export type RefractSurface = RefractDebugApi;
@@ -2008,10 +2015,7 @@ export function targetCenter(target: TargetSnapshot): {
 }
 
 /** Whether two target rectangles share any area. */
-export function targetsOverlap(
-  a: TargetSnapshot,
-  b: TargetSnapshot,
-): boolean {
+export function targetsOverlap(a: TargetSnapshot, b: TargetSnapshot): boolean {
   return (
     a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
   );

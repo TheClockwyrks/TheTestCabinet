@@ -626,7 +626,10 @@ class PointerShapedEvent extends Event {
 
 /** The four pointer events the engine listens for. */
 type PointerEventType =
-  "pointerdown" | "pointermove" | "pointerup" | "pointercancel";
+  | "pointerdown"
+  | "pointermove"
+  | "pointerup"
+  | "pointercancel";
 
 /**
  * The browser's own numbering for `PointerEvent.button`, which the engine reads

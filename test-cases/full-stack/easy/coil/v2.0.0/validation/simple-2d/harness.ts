@@ -498,7 +498,8 @@ function serveWorkspaceAssets(): void {
   hostServed = true;
   const host = globalThis as unknown as Record<string, unknown>;
   const inherited = host.fetch as
-    ((input: string, init?: unknown) => Promise<Response>) | undefined;
+    | ((input: string, init?: unknown) => Promise<Response>)
+    | undefined;
 
   host.fetch = async (input: unknown, init?: unknown): Promise<Response> => {
     const url = typeof input === "string" ? input : String(input);
