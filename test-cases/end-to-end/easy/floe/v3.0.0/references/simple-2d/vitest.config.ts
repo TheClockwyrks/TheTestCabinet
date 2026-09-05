@@ -27,7 +27,7 @@ export default defineConfig({
     passWithNoTests: true,
     coverage: {
       provider: "v8",
-      reporter: ["text"],
+      reporter: ["json-summary"],
       include: ["src/**/*.ts"],
       exclude: ["src/**/*.test.ts"],
     },
