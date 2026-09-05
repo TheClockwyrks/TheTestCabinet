@@ -180,10 +180,10 @@ it("changes the picture on hex (0, 0) across the boundary the run completes", as
     "the completion effect is played on hex (0, 0) on the boundary the run " +
       "completes, so the picture there changes across the frames that follow",
   );
-  assertGreaterThan(
-    moved[0] ?? 0,
+  assertEqual(
     moved[1] ?? 0,
-    "and it is played THERE: a radially symmetric system on hex (0, 0) moves " +
-      "more of that hex than of one three hexes away",
+    0,
+    "and it is played THERE: not one pixel of a hex three hexes away changes " +
+      "across those same frames",
   );
 });

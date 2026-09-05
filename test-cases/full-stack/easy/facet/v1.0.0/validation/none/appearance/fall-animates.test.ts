@@ -41,7 +41,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBoardEquals, boardExtent } from "../board";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { FALL_SECONDS_PER_ROW, PATCH_DISTINCT_MIN } from "../constants";
+import { FALL_SECONDS_PER_ROW } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -188,7 +188,7 @@ it("draws the frame a board is dealt on apart from the same board once it has la
 
   assertGreaterThan(
     patchDistance(dealt.arriving, dealt.landed),
-    PATCH_DISTINCT_MIN,
+    0,
     "how far the board's extent reads on the frame it was dealt on from the " +
       "same extent once its fall had run",
   );

@@ -1,10 +1,13 @@
-// presentation/surge-reads-apart-from-the-floor — a unit is not the floor.
+// presentation/surge-reads-apart-from-the-floor — every surge type is drawn where
+// it stands.
 //
 // THE RULE. specs/overview.md's legibility table: "Ground units, flyers, and the
 // boss read apart from one another, from the floor, and from every color a tower
-// shows anywhere on its heat ramp." This point takes the middle clause and reads
-// it for all six types specs/surge.md rosters, one at a time, because the floor
-// is what every one of them is walking over.
+// shows anywhere on its heat ramp." What a check can decide of that is presence:
+// each of the six types specs/surge.md rosters is drawn on the tile it stands on.
+// How far apart the six read from one another and from the floor is appearance,
+// which the palette clause of the same specification hands to the build: "The
+// palette, the type, the glow, and every other aspect of the look are yours."
 //
 // HOW A UNIT IS READ. A unit reports its CENTRE (specs/instrumentation.md), and
 // the centre is the one part of a unit every build draws whatever shape it chose,
@@ -13,26 +16,26 @@
 // than the harness's tile-scale `sampleColor` — a Swarm is smaller than a tile,
 // and a cluster three units either side would blur the floor into it.
 //
-// WHAT IS COMPARED, AND WHY IT IS NEVER A COLOUR. specs/overview.md fixes no
-// palette. The reading is the unit's own centre against the floor it is standing
-// over — the centre of a tile three tiles below it, which is open floor and clear
-// both of the unit and of the health bar specs/hud.md draws above one.
+// WHY THE READING IS A REMOVAL. specs/instrumentation.md gives `clearSurge`, so
+// the centre is read with the unit standing on it and again with the surge taken
+// away, and the unit is what disappeared. The floor art under it, the grid line
+// specs/floor.md puts on every tile boundary, and anything else the build laid
+// there are identical in the two frames and cancel exactly. How much the picture
+// moves on its own is measured first, by reading the same centres on two frames
+// with the surge standing, and the removal has to beat that by `NOISE_MARGIN`.
 //
 // THE FLOOR IS POSED BARE. `startRun` opens on an empty floor with the run's own
 // release of surge held, and each unit is posed standing still with its motion
 // off, so nothing walks out of the tile it was read on and nothing arrives that
-// the check did not ask for. The hp is far above anything on this floor, but
-// nothing on this floor fires: it is there so a full health bar is the one the
-// picture shows.
+// the check did not ask for.
 //
-// WHAT IT DOES NOT DECIDE. Whether the six read apart from EACH OTHER is
-// `ground-flyer-boss-read-apart`; whether they read apart from the heat ramp is
-// `surge-off-the-heat-axis`; the health bar over a unit is
+// WHAT IT DOES NOT DECIDE. What each type is worth, how fast it walks and how
+// much it carries are the `surge` group's; the health bar over a unit is
 // `hud.unit-health-bars`. Nothing here asserts a size, a shape or a colour.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual } from "../assert";
-import { SURGE_TYPES, tileCX, tileCY } from "../constants";
+import { SURGE_TYPES } from "../constants";
 import {
   captureStill,
   colorDistance,
@@ -41,32 +44,12 @@ import {
   startRun,
   type Harness,
 } from "../harness";
-import { pixelAt, showRgb, spotColor, unitOf } from "./read";
-
-/**
- * How far, out of the 441 the RGB cube spans, a unit's centre must sit from the
- * floor beneath it.
- *
- * The group's figure for two things a player tells apart at a glance, and the
- * same 50 every other point in this group draws its line at. A unit is the thing
- * a player is tracking across a floor covered in towers, so it is the last thing
- * that may read as its background.
- */
-const APART_MIN = 50;
+import { NOISE_MARGIN, spotColor, unitOf } from "./read";
 
 /** The row the six stand on, the first column, and the pitch between them. */
 const SURGE_ROW = 8;
 const SURGE_COL0 = 5;
 const SURGE_PITCH = 5;
-
-/**
- * How far below each unit the floor it is read against is sampled, in tiles.
- *
- * Three tiles is clear of the largest unit in the roster and clear of the health
- * bar drawn above one, and near enough that a build shading its floor is
- * measured against the floor it drew there.
- */
-const FLOOR_REFERENCE_TILES = 3;
 
 /** The hp each unit is posed with, so its health bar is drawn full. */
 const TARGET_HP = 10_000;
@@ -81,29 +64,38 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("draws every surge type apart from the floor it stands on", async () => {
+it("draws every surge type on the tile it stands on", async () => {
   startRun(h);
   const ids = SURGE_TYPES.map((type, index) =>
     poseTarget(h, type, SURGE_COL0 + index * SURGE_PITCH, SURGE_ROW, TARGET_HP),
   );
   await h.advance(1);
-  captureStill(h, "surge");
 
   const snapshot = h.snapshot();
+  const centres = ids.map((id) => {
+    const unit = unitOf(snapshot, id);
+    return { x: unit.x, y: unit.y };
+  });
+
+  const first = centres.map((at) => spotColor(h, at.x, at.y));
+  await h.advance(1);
+  const second = centres.map((at) => spotColor(h, at.x, at.y));
+  captureStill(h, "surge");
+
+  h.debug.clearSurge();
+  await h.advance(1);
+  const cleared = centres.map((at) => spotColor(h, at.x, at.y));
+
   SURGE_TYPES.forEach((type, index) => {
-    const unit = unitOf(snapshot, ids[index]);
-    const body = spotColor(h, unit.x, unit.y);
-    const floor = pixelAt(
-      h,
-      tileCX(SURGE_COL0 + index * SURGE_PITCH),
-      tileCY(SURGE_ROW + FLOOR_REFERENCE_TILES),
-    );
+    const noise = colorDistance(first[index], second[index]);
     assertGreaterThanOrEqual(
-      colorDistance(body, floor),
-      APART_MIN,
-      `a ${type} (${showRgb(body)}) against the floor beneath it ` +
-        `(${showRgb(floor)}), out of 441 (specs/overview.md: the surge reads ` +
-        `apart from the floor)`,
+      colorDistance(second[index], cleared[index]),
+      noise + NOISE_MARGIN,
+      `a ${type} on tile (${SURGE_COL0 + index * SURGE_PITCH}, ` +
+        `${SURGE_ROW}): the patch on its centre changes when the surge is ` +
+        `taken away, by more than the ${noise} two frames with it standing ` +
+        `moved on their own (specs/overview.md: the surge reads apart from ` +
+        `the floor)`,
     );
   });
 });

@@ -165,10 +165,10 @@ it("changes the picture on the anchor hex of the set that consumed", async () =>
     "the delivery is played at the consuming set, so the picture on its anchor " +
       "hex changes across the frames after the boundary",
   );
-  assertGreaterThan(
-    moved[0] ?? 0,
+  assertEqual(
     moved[1] ?? 0,
-    "and it is played THERE: a radially symmetric system on the set's anchor " +
-      "moves more of that hex than of a bare hex three hexes away",
+    0,
+    "and it is played THERE: not one pixel of a bare hex three hexes away " +
+      "changes across those same frames",
   );
 });

@@ -241,7 +241,10 @@ There is no tool for interface art, so all of the following are drawn in code:
   one pool.
 - The screen shake: a short render-space jitter of the world on a gas detonation,
   an explosives blast, a hard landing, or the Core Sample's detonation, scaled to
-  the event and decaying out. It is purely visual and never moves the simulation.
+  the event and decaying out. The jitter displaces the drawn world by at least
+  `SHAKE_MIN` (`2`) logical units at its peak, and the world is back where it
+  started within `SHAKE_SETTLE` (`3`) seconds of the event. It is purely visual
+  and never moves the simulation.
 - The first-time hazard notice card.
 
 ## The bar

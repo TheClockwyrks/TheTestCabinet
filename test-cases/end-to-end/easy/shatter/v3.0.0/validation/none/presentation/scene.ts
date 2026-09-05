@@ -14,8 +14,6 @@
 
 import { FIELD_H, FIELD_W, STAR_DRAW_R, STAR_X, STAR_Y } from "../constants";
 import { starDistance } from "../geometry";
-import { BARE_POINTS, type Harness, type Rgb } from "../harness";
-import { readPoints } from "./ink";
 
 /**
  * Where the ship is posed to be read: low and to the left.
@@ -23,7 +21,7 @@ import { readPoints } from "./ink";
  * `376` from the star's centre, so a disc of `34` about it — the whole hull, which
  * `specs/ship.md` makes roughly `34` long — clears the star's drawn extent by more
  * than `160`. Its nearest bare point (`specs/field.md` puts none of the star here,
- * and {@link BARE_POINTS} keeps clear of the HUD) is `197` away, so posing the ship
+ * and `BARE_POINTS` keeps clear of the HUD) is `197` away, so posing the ship
  * cannot move the background reading every check here measures against.
  */
 export const SHIP_SPOT = { x: 300, y: 520 } as const;
@@ -62,7 +60,7 @@ export const BULLET_SPOT = { x: 300, y: 660 } as const;
  * where the kill happened blanks a disc around it, and a kill posed near the middle
  * of the field would blank the very place an announcement drawn "on the field"
  * (`specs/scoring.md`) is most likely to land. Its whole drawn extent and the round's
- * short flight are inside the field, and the nearest of {@link BARE_POINTS} is `98`
+ * short flight are inside the field, and the nearest of `BARE_POINTS` is `98`
  * away, so the background reading is still of bare field.
  */
 export const KILL_SPOT = { x: 1080, y: 620 } as const;
@@ -79,28 +77,6 @@ export const FAR_SHIP = { x: 120, y: 120 } as const;
 /** Whether a logical point is clear of everything the star draws. */
 export function clearOfStar(point: { x: number; y: number }): boolean {
   return starDistance(point) > STAR_DRAW_R;
-}
-
-/**
- * The field's own background, read as the MEDIAN of {@link BARE_POINTS}.
- *
- * `Harness.sampleField` takes the darkest of the same points, which is what a check
- * measuring DISTANCE FROM the background wants — it must not mistake a build's
- * banner or watermark for the field. A check on the background's own luminance
- * wants the opposite guard, so this takes the middle reading: a build that painted
- * one bright decoration over one bare point still reads dark, and a build whose
- * field is simply not dark reads bright at every point and cannot hide behind one.
- */
-export async function medianField(h: Harness): Promise<Rgb> {
-  const look = await readPoints(h, BARE_POINTS);
-  const byLuminance = [...look].sort(
-    (a, b) =>
-      0.2126 * a.r +
-      0.7152 * a.g +
-      0.0722 * a.b -
-      (0.2126 * b.r + 0.7152 * b.g + 0.0722 * b.b),
-  );
-  return byLuminance[Math.floor((byLuminance.length - 1) / 2)];
 }
 
 /**

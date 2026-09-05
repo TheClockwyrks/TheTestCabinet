@@ -116,8 +116,22 @@ scores near the top during a match, a title screen showing the title and the
 menu. Palettes, fonts, layouts, and styling are the build's choices.
 
 How the build looks is what the reviewer's
-[domain ratings](/testing/end-to-end/evaluation/#review) judge. A validator
-asserting appearance checks presence and distinguishability, never a hex value.
+[domain ratings](/testing/end-to-end/evaluation/#review) judge. A validator reads
+the picture only to decide whether the build drew something where the spec says
+something is drawn, and reads palettes, contrast, extent, and placement never.
+
+### Produced files are required to load
+
+A case whose build produces its own files states that the built site is
+self-contained and carries every file it draws and plays, and that the site
+serves every produced file under the root the spec names. Producing those files
+and getting them to the page is the build's work, and a build that fails at it
+fails the checks that read what it drew.
+
+The spec states no behavior for a load that fails. Wording that keeps the game
+running through a missing sprite or a silent cue makes degradation a requirement,
+which puts a fallback path under test and invites a validator to withhold the
+files every other check depends on.
 
 ### Showcase media exists and is reviewed
 
@@ -311,6 +325,8 @@ When you finish revising a case's specs or prompt, confirm each of the following
   behavior written as a concrete number or an explicit bound.
 - Appearance is specified as what must be visible or present, leaving palette,
   type, layout, and styling to the build.
+- A case producing its own files requires the built site to be self-contained and
+  to serve every produced file, and states no behavior for a load that fails.
 - Every menu is navigable by pointer and touch as well as by the keyboard, and
   the build reports each item's hit region through its debug API.
 - Every transition between screens is stated, and a pause menu opens on Escape

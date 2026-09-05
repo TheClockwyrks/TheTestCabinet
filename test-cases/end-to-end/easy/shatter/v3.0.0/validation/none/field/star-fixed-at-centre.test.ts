@@ -1,5 +1,5 @@
-// field/star-fixed-at-centre — the star's core is drawn centred on (640, 360) and
-// is still centred there after a minute of play.
+// field/star-fixed-at-centre — the star is drawn at (640, 360) on the first tick of
+// play, and is still drawn there after a minute of it.
 //
 // THE RULE. `specs/field.md`: "a single star stands at `(STAR_X, STAR_Y)` =
 // `(640, 360)`, the centre of the field, for the whole game. It never moves, and
@@ -9,78 +9,107 @@
 // puts it makes every one of those look wrong to the player while reading right
 // in the state.
 //
-// WHAT IS READ, AND WHY IT IS THE DRAWN EXTENT RATHER THAN A COLOUR. The look is
-// the build's: `specs/overview.md` fixes no palette and no geometry for the star
-// beyond "a bright core with a softer halo around it fading outward into the
-// field". So the reading is where the bright thing IS, not what colour it is: the
-// row through the star's centre and the column through it are scanned, the
-// build's own bare field is taken as the baseline from the parts of each line
-// outside the star's drawn extent, and the midpoint of the run of pixels standing
-// clear of that baseline is compared with the centre the specification fixes.
+// WHAT THIS ITEM ADDS, AND WHAT IT SHARES. Both readings are taken twice, once on
+// the first tick and once a minute of real play later, and the SECOND pair is what
+// this item decides that no other does: `presentation/star-core-is-drawn` reads the
+// same disc and `presentation/star-halo-fades-outward` the same absence, but both
+// on an opening frame alone. A build whose star drifts with its own accumulated
+// time, or which redraws the field from a camera that moved, passes those two and
+// fails here.
 //
-// WHY A MIDPOINT AND NOT A BRIGHTNESS-WEIGHTED CENTROID. A centroid moves with
-// shading, and a build is free to draw a core lit from one side. The midpoint of
-// the lit run does not: it measures where the drawn thing sits, which is what the
-// requirement is about.
+// THE TWO READINGS, WHICH ARE THE TWO DIRECTIONS OF "IT NEVER MOVES":
 //
-// WHY THE THRESHOLD IS WHERE IT IS. `specs/overview.md` bounds the field's own
-// background — "the luminance of that background is below a quarter of full" —
-// and requires the star to read as a bright core. Ninety out of 255 above the
-// bare line is above anything a background of that luminance can reach even fully
-// saturated, so nothing a build lays over its field can be mistaken for the star,
-// and it is far below what a core drawn to read as bright reaches.
+//   - THE STAR IS DRAWN AT THE CENTRE. Some of the disc inside `CORE_R` of
+//     `(640, 360)` is painted something the bare field is not.
+//   - AND NOTHING OF IT IS DRAWN AWAY FROM THE CENTRE. The rings at `190` and
+//     `220` — beyond the `1.5 x HALO_R` (`180`) `specs/field.md` bounds the star's
+//     whole drawn extent at — read as the bare field reads.
+//
+// THE TWO ARE READ IN OPPOSITE DIRECTIONS, WHICH IS WHY THEY CARRY DIFFERENT
+// FIGURES. The first asks whether the build painted anything at all inside
+// `CORE_R`, so its bar is the sensing floor: the level below which a sampling
+// cannot tell a drawing from the rounding of an 8-bit channel, and one a star
+// drawn in any colour over any field clears. The second asks whether two readings
+// are the same reading, so its bar is a tolerance on that sameness — raising it
+// only passes more builds — and it is the one
+// `presentation/star-halo-fades-outward` holds its own outer rings to.
+//
+// NOTHING HERE READS A COLOUR, AN EXTENT OR A PLACEMENT. `specs/overview.md` fixes
+// no palette and no geometry for the star beyond "a bright core with a softer halo
+// around it fading outward into the field", so every reading is a distance from the
+// field the BUILD itself drew.
+//
+// WHERE THE OUTER RINGS ARE SAMPLED. Below the star only. `specs/ui.md` draws the
+// HUD "in the upper portion of the field", so a full ring would run through
+// wherever a build chose to put its readouts and report them as the star.
 //
 // WHY THE SHIP IS MOVED. It is the one body no scenario can remove
 // (`startPlaying` empties every roster and shuts both world gates, but the ship
-// remains), and `specs/ship.md` puts it at the safe point `(640, 560)` — on the
-// star's own column, thirty units from the end of the window this reads. Posing
-// it at `(200, 620)` puts it on neither scanned line. Nothing else is on the
-// field, so what the two lines carry is the star and the field behind it.
+// remains), and `specs/ship.md` puts it at the safe point `(640, 560)` — inside
+// the outer rings this reads. Posing it at `(200, 620)` puts it clear of all of
+// them. Nothing else is on the field.
+//
+// THE MINUTE IS A MINUTE OF THE GAME'S OWN CLOCK, run through the harness's quiet
+// sweep and then drawn: a build whose star drifts with its accumulated time, or
+// which redraws the field from a camera that moved, is read where it ends up.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertGreaterThanOrEqual,
-  assertLessThanOrEqual,
-  fail,
-} from "../assert";
-import { CORE_R, STAR_DRAW_R, STAR_X, STAR_Y } from "../constants";
+import { assertLessThan, assertTrue } from "../assert";
+import { CORE_R, STAR_DRAW_R, STAR_X, STAR_Y, TAU } from "../constants";
+import { type Vec } from "../geometry";
 import {
   captureStill,
+  colorDistance,
   createHarness,
+  sampleField,
   startPlaying,
   ticksFor,
   type Harness,
+  type Rgb,
 } from "../harness";
 
-/** Where the ship is parked, off both scanned lines. */
+/** Where the ship is parked, clear of every ring this reads. */
 const SHIP_AWAY = { x: 200, y: 620 };
 
-/**
- * How far above the bare field a pixel must read to count as the star, out of
- * 255. See the header for the derivation.
- */
-const STAR_BRIGHT_MIN = 90;
+/** The centre the specification fixes the star at. */
+const STAR: Vec = { x: STAR_X, y: STAR_Y };
 
 /**
- * The shortest run of such pixels that can be the star's core, in units.
+ * The sensing floor: how far a sample must sit from the field the build drew before
+ * the reading can be called the build's own ink, of the 441 an RGB distance can
+ * span.
  *
- * `CORE_R` is `30`, so a line through the core's centre crosses `60` units of it.
- * Half of that is asked for, which leaves room for a core drawn inside its
- * collision radius and for a line that misses the exact centre, while a build
- * with no core drawn at the field's centre at all finds no run at all.
+ * Eight. Below that a sampling cannot tell a drawing from the rounding of an 8-bit
+ * channel and the host's own anti-aliasing; above it nothing is decided about how
+ * strongly the mark reads. The comparison is against the background the BUILD drew,
+ * so a core painted in any colour over any field clears it.
  */
-const CORE_RUN_MIN = CORE_R;
+const SENSING_FLOOR = 8;
+
+/** Rings of samples inside `CORE_R`, and samples around each. */
+const CORE_RINGS = 5;
+const CORE_SPOKES = 12;
 
 /**
- * How far the midpoint of that run may sit from the centre the specification
- * fixes, in units.
- *
- * A third of `CORE_R`: a core whose drawn centre is further off than that has
- * moved by a third of its own radius and reads visibly off the field's middle,
- * while the bound leaves room for a build that rounds its centre to a device
- * pixel and for the anti-aliased ends the run is found at.
+ * The rings sampled beyond `1.5 x HALO_R`, where nothing of the star may be drawn,
+ * and how many samples each carries across the lower semicircle.
  */
-const CENTRE_TOLERANCE = 10;
+const BEYOND = [STAR_DRAW_R + 10, STAR_DRAW_R + 40] as const;
+const BEYOND_SPOKES = 24;
+
+/**
+ * How far a ring beyond `1.5 x HALO_R` may sit from the bare field on average, of
+ * the 441 an RGB distance can span.
+ *
+ * A tolerance on a sameness claim rather than a floor under a drawing: raising it
+ * can only pass more builds. Not zero, because `specs/overview.md` lets a build
+ * draw what it likes behind the bodies, and a starfield or a nebula lifts a ring
+ * mean a little wherever it is sampled. Fifteen of 441 is under four per cent, far
+ * below what any part of a star bright enough to be seen would contribute and far
+ * above a decorated field. It is the figure `presentation/star-halo-fades-outward`
+ * holds its own rings beyond `STAR_DRAW_R` to, so the two items answer alike.
+ */
+const BEYOND_LIMIT = 15;
 
 /** The minute of play the second reading is taken after. */
 const MINUTE_TICKS = ticksFor(60);
@@ -95,96 +124,87 @@ afterEach(async () => {
   await harness.dispose();
 });
 
-/** The median of `values`, the bare line's own level whatever the build painted. */
-function median(values: readonly number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)] ?? 0;
-}
-
-/**
- * Where the star's drawn centre sits on one axis, in logical units.
- *
- * The line is scanned across the whole surface; the baseline is taken from the
- * parts of it outside the star's whole drawn extent, which `specs/field.md` bounds
- * at `1.5 x HALO_R` (`180`); and the run of pixels standing `STAR_BRIGHT_MIN`
- * clear of that baseline, inside that extent, is the star. Its ends are required
- * to fall INSIDE the window, because the specification says nothing of the star is
- * drawn beyond it — a run that reaches the window's edge is not the star, and its
- * midpoint would be the window's own centre whatever the build drew.
- */
-async function drawnCentreOn(axis: "x" | "y"): Promise<number> {
-  const view = harness.viewport();
-  const across = axis === "x" ? "row" : "column";
-  const line =
-    axis === "x"
-      ? harness.device(STAR_X, STAR_Y).y
-      : harness.device(STAR_X, STAR_Y).x;
-  const scan = await harness.scanDevice(across, line);
-
-  const offset = axis === "x" ? view.offsetX : view.offsetY;
-  const at = (logical: number): number =>
-    Math.round(offset + logical * view.scale);
-  const centre = axis === "x" ? STAR_X : STAR_Y;
-  const from = at(centre - STAR_DRAW_R);
-  const to = at(centre + STAR_DRAW_R);
-
-  const outside = scan.filter((_, index) => index < from || index > to);
-  const baseline = median(outside);
-  const threshold = baseline + STAR_BRIGHT_MIN;
-
-  let first = -1;
-  let last = -1;
-  for (let index = from; index <= to && index < scan.length; index += 1) {
-    if ((scan[index] ?? 0) >= threshold) {
-      if (first < 0) first = index;
-      last = index;
+/** The points inside `CORE_R` the star's own drawing is looked for at. */
+function corePoints(): Vec[] {
+  const points: Vec[] = [];
+  for (let ring = 0; ring < CORE_RINGS; ring += 1) {
+    const at = (CORE_R * (ring + 0.5)) / CORE_RINGS;
+    for (let spoke = 0; spoke < CORE_SPOKES; spoke += 1) {
+      const theta = (TAU * (spoke + 0.5 * ring)) / CORE_SPOKES;
+      points.push({
+        x: STAR.x + at * Math.cos(theta),
+        y: STAR.y + at * Math.sin(theta),
+      });
     }
   }
-  if (first < 0) {
-    fail(
-      `the star's core drawn at ${axis === "x" ? STAR_X : STAR_Y} on the field's ${axis} axis, reading at least ${STAR_BRIGHT_MIN} above the bare field (specs/field.md)`,
-      `nothing on that line rose above ${threshold.toFixed(1)} within ${STAR_DRAW_R} units of the centre`,
-    );
-  }
-  if (first === from || last === to) {
-    fail(
-      `nothing of the star drawn beyond 1.5 x HALO_R (${STAR_DRAW_R}) of its centre (specs/field.md)`,
-      `the lit run on the ${axis} axis reached the edge of that extent`,
-    );
-  }
-
-  const width = (last - first + 1) / view.scale;
-  assertGreaterThanOrEqual(
-    width,
-    CORE_RUN_MIN,
-    `units of the star's core crossed by the line through (${STAR_X}, ${STAR_Y}) on the ${axis} axis`,
-  );
-  return ((first + last) / 2 - offset) / view.scale;
+  return points;
 }
 
-async function assertCentred(when: string): Promise<void> {
-  assertLessThanOrEqual(
-    Math.abs((await drawnCentreOn("x")) - STAR_X),
-    CENTRE_TOLERANCE,
-    `the drawn centre of the star's core in x, ${when}`,
-  );
-  assertLessThanOrEqual(
-    Math.abs((await drawnCentreOn("y")) - STAR_Y),
-    CENTRE_TOLERANCE,
-    `the drawn centre of the star's core in y, ${when}`,
-  );
+/** One ring about the star, across the lower semicircle. */
+function ringPoints(radius: number): Vec[] {
+  const points: Vec[] = [];
+  for (let spoke = 0; spoke < BEYOND_SPOKES; spoke += 1) {
+    const theta = (Math.PI * (spoke + 0.5)) / BEYOND_SPOKES;
+    points.push({
+      x: STAR.x + radius * Math.cos(theta),
+      y: STAR.y + radius * Math.sin(theta),
+    });
+  }
+  return points;
 }
 
-it("draws the star's core at the field's centre, and still does a minute on", async () => {
+/** How many of `points` the build painted something other than `field` on. */
+async function markedAt(
+  h: Harness,
+  points: readonly Vec[],
+  field: Rgb,
+): Promise<number> {
+  const read = await h.pixels(points);
+  return read.filter(
+    ([r, g, b]) => colorDistance({ r, g, b }, field) > SENSING_FLOOR,
+  ).length;
+}
+
+/** How far the samples at `points` sit from `field` on average, out of 441. */
+async function meanFrom(
+  h: Harness,
+  points: readonly Vec[],
+  field: Rgb,
+): Promise<number> {
+  const read = await h.pixels(points);
+  if (read.length === 0) return 0;
+  let total = 0;
+  for (const [r, g, b] of read) total += colorDistance({ r, g, b }, field);
+  return total / read.length;
+}
+
+async function assertStarAtCentre(when: string): Promise<void> {
+  const field = await sampleField(harness);
+
+  assertTrue(
+    (await markedAt(harness, corePoints(), field)) > 0,
+    `the star drawn inside CORE_R of (${STAR_X}, ${STAR_Y}), carrying ink of the build's own — further than the sensing floor of ${SENSING_FLOOR} of 441 from the field it drew — ${when} (specs/field.md)`,
+  );
+
+  for (const radius of BEYOND) {
+    assertLessThan(
+      await meanFrom(harness, ringPoints(radius), field),
+      BEYOND_LIMIT,
+      `the mean distance out of 441 between the ring at ${radius} — beyond the ${STAR_DRAW_R} nothing of the star may be drawn past — and the bare field, ${when} (specs/field.md)`,
+    );
+  }
+}
+
+it("draws the star at the field's centre, and still does a minute on", async () => {
   await startPlaying(harness);
   await harness.debug.setShipPosition(SHIP_AWAY.x, SHIP_AWAY.y);
   await harness.advance(1);
 
-  await assertCentred("on the first tick of play");
+  await assertStarAtCentre("on the first tick of play");
 
   await harness.skip(MINUTE_TICKS);
   await harness.advance(1);
   await captureStill(harness, "star");
 
-  await assertCentred("after a minute of play");
+  await assertStarAtCentre("after a minute of play");
 });

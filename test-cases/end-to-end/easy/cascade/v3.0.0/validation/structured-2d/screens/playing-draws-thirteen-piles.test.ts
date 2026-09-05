@@ -41,7 +41,7 @@
 // asks: are all thirteen there at once.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThanOrEqual, assertTrue } from "../assert";
+import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import { CARD_H, CARD_W } from "../constants";
 import {
   ACE,
@@ -76,18 +76,6 @@ import {
  * units.
  */
 const CARD_BOX_TOLERANCE = 2;
-
-/**
- * How many pixels of a pile's card rectangle must change when the pile goes from
- * holding nothing to holding a card.
- *
- * A card's footprint is `100 x 140`, which is fourteen thousand pixels, and a
- * face-up card owes a rank and a suit drawn on it over a body that reads apart
- * from the table (specs/overview.md), so a real card changes a large fraction of
- * them. One percent of the footprint is far below the smallest of those marks and
- * far above the handful of pixels an anti-aliased edge can shift.
- */
-const MIN_CHANGED_PIXELS = Math.round((CARD_W * CARD_H) / 100);
 
 /** One card for each of the thirteen piles, all of them distinct. */
 const ON_STOCK: CardSpec = card("clubs", 2);
@@ -198,12 +186,13 @@ it("draws a card at every one of the thirteen piles' anchors", async () => {
         `${anchor.y}), where the table holds one card (specs/screens.md, ` +
         "specs/table.md)",
     );
-    assertGreaterThanOrEqual(
-      differingPixels(bare[at], held[at]),
-      MIN_CHANGED_PIXELS,
-      `pixels of the ${pile} ${index} anchor that changed when the pile took ` +
-        "its card, so what is drawn there is the card and not the empty " +
-        "slot (specs/screens.md, specs/table.md)",
+    const changed = differingPixels(bare[at], held[at]);
+    assertGreaterThan(
+      changed,
+      0,
+      `the ${pile} ${index} anchor drawn differently once the pile took its ` +
+        "card, so what is drawn there is the card and not the empty slot " +
+        `(specs/screens.md, specs/table.md) — ${String(changed)} pixels moved`,
     );
   });
 });

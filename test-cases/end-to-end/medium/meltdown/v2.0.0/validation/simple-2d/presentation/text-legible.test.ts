@@ -1,11 +1,22 @@
-// presentation/text-legible — every word the game draws can be read.
+// presentation/text-legible — every run of text the game draws reaches the
+// finished picture.
 //
 // THE RULE. specs/overview.md's legibility table: "Every readout and every
-// screen's text is legible against its background at the logical stage size." It
-// is the one row of the table that is not about two named things reading apart,
-// because the two things are whatever a build chose to write and whatever it
-// chose to write it on. So the check does not name any text: it finds every run
-// the frame drew, and reads each one against the ground it landed on.
+// screen's text is legible against its background at the logical stage size."
+// What a check can decide of that is that the ink ARRIVED: the run the build
+// submitted left something on the frame a player sees. How readable the result is
+// — the face, the size, the colour it chose against the panel behind it — is
+// appearance, which the same specification hands to the build ("The palette, the
+// type, the glow, and every other aspect of the look are yours") and the
+// reviewer's presentation rating judges. So the check names no text: it finds
+// every run the frame drew, and reads the box each one landed in.
+//
+// WHY THIS IS NOT ALREADY CARRIED BY `hud` AND `screens`. Those groups read the
+// runs the build SUBMITTED — what each screen and each readout says, and that it
+// was drawn at all. A build that submits a run and then paints over it, or draws
+// it in the exact colour of the ground under it, satisfies every one of them and
+// puts nothing on the screen. This point is the one reading taken off the
+// finished frame instead.
 //
 // EVERY SCREEN, BECAUSE THE ROW SAYS EVERY SCREEN. The eight screens
 // specs/screens.md fixes, plus the build panel of specs/hud.md, which is drawn
@@ -33,13 +44,11 @@
 // the picture starts, and only the runs after it are read. On a screen with no
 // overlay that fill is the frame's own clear, and everything is read.
 //
-// WHY THE FIGURE IS WHAT IT IS. This is a contrast, and the measured contrast
-// UNDERSTATES the real one: at ordinary sizes many of a glyph's pixels are blends
-// of ink and ground, and a run drawn at a small size may have few solid ones. So
-// the same 50 of 441 the rest of this group calls "plainly apart" is a floor here
-// rather than a target — a build that clears it may still have text a reviewer
-// finds thin, and a build that fails it has drawn text a player genuinely cannot
-// pick out of its own background.
+// WHERE THE BAR COMES FROM. Not a stated contrast. The same band is read on two
+// consecutive frames, which is how much the build's own animation moves it, and
+// the ink has to beat that by `NOISE_MARGIN`. A build that lays its text in the
+// ground's own colour, or paints over it, leaves a band that reads as one flat
+// colour and clears nothing.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
@@ -52,30 +61,18 @@ import {
   startRun,
   type DrawCall,
   type Harness,
+  type Rgb,
   type TextSpan,
 } from "../harness";
 import type { Screen } from "../surface";
-import { dominant, furthestFrom, readRegion, showRgb } from "./read";
-
-/**
- * How far, out of the 441 the RGB cube spans, a run's ink must sit from its
- * ground.
- *
- * The suite's figure for two things a player tells apart at a glance, and the
- * same 50 every other point in this group draws its line at. See the header on
- * why it is a floor rather than a target here.
- */
-const TEXT_CONTRAST_MIN = 50;
-
-/**
- * How close two pixels of a run's band must be to count as the same reading, when
- * the check asks what the band mostly is.
- *
- * Half of `TEXT_CONTRAST_MIN`, and the suite's figure for two readings that are
- * the same thing rather than two things: a panel shaded behind its readouts, a
- * gradient, a pixel softened at the edge of a slot.
- */
-const SAME_READING_MAX = 25;
+import {
+  NOISE_MARGIN,
+  furthestFrom,
+  largestShift,
+  modal,
+  readRegion,
+  showRgb,
+} from "./read";
 
 /**
  * The share of the stage a single fill must cover to count as a wash the picture
@@ -142,11 +139,8 @@ function lastWash(h: Harness, calls: readonly DrawCall[]): number {
   return found;
 }
 
-/** The contrast between a run's ink and its ground, or `null` if too small to read. */
-function contrastOf(
-  h: Harness,
-  span: TextSpan,
-): { contrast: number; ground: string; ink: string } | null {
+/** The band of the picture one run of text was laid in, or `null` if too small. */
+function bandOf(h: Harness, span: TextSpan): Rgb[] | null {
   const width = span.right - span.left;
   const em = width / (ADVANCE_PER_EM * Math.max(1, span.text.length));
   if (em < MIN_EM) return null;
@@ -160,14 +154,7 @@ function contrastOf(
     },
     Math.max(1, Math.round(em / SAMPLES_PER_EM)),
   );
-  if (samples.length < MIN_BAND_PIXELS) return null;
-  const ground = dominant(samples, SAME_READING_MAX);
-  const ink = furthestFrom(samples, ground);
-  return {
-    contrast: ink.distance,
-    ground: showRgb(ground),
-    ink: showRgb(ink.colour),
-  };
+  return samples.length < MIN_BAND_PIXELS ? null : samples;
 }
 
 let h: Harness;
@@ -180,7 +167,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("draws every run of text apart from what it is drawn on", async () => {
+it("draws every run of text onto the frame", async () => {
   for (const screen of SCREENS) {
     startRun(h);
     h.debug.setScreen(screen);
@@ -188,27 +175,38 @@ it("draws every run of text apart from what it is drawn on", async () => {
     if (screen === SHOWN_SCREEN) captureStill(h, "text");
 
     const spans = drawnTextSpans(h, calls.slice(lastWash(h, calls) + 1));
+    const bands = spans.map((span) => bandOf(h, span));
+    await drawFrame(h);
+    const again = spans.map((span) => bandOf(h, span));
+
     let read = 0;
-    for (const span of spans) {
+    for (const [index, span] of spans.entries()) {
       if (span.text.trim() === "") continue;
-      const found = contrastOf(h, span);
-      if (found === null) continue;
+      const before = bands[index];
+      const band = again[index];
+      if (before === null || band === null) continue;
       read += 1;
+      const noise = largestShift(before, band);
+      const ground = modal(band);
+      const ink = furthestFrom(band, ground);
       assertGreaterThanOrEqual(
-        found.contrast,
-        TEXT_CONTRAST_MIN,
-        `the ${screen} screen's "${span.text.trim()}" (ink ${found.ink} on ` +
-          `ground ${found.ground}), out of 441 (specs/overview.md: every ` +
-          `readout and every screen's text is legible against its background ` +
-          `at the logical stage size)`,
+        ink.distance,
+        noise + NOISE_MARGIN,
+        `the ${screen} screen's "${span.text.trim()}": ink left on the ` +
+          `finished picture there (${showRgb(ink.colour)}) against the ground ` +
+          `it is laid on (${showRgb(ground)}), past the ${noise} that band ` +
+          `moved between two frames on its own. A run drawn in the ground's ` +
+          `own colour, and one drawn and then painted over, both read as ` +
+          `nothing (specs/overview.md: every readout and every screen's text ` +
+          `is legible against its background at the logical stage size)`,
       );
     }
     assertGreaterThan(
       read,
       0,
       `runs of text the ${screen} screen drew for a player to read ` +
-        `(specs/screens.md, specs/hud.md), which is what this point measures ` +
-        `the contrast of`,
+        `(specs/screens.md, specs/hud.md), which is what this point reads the ` +
+        `picture for`,
     );
   }
 });

@@ -11,7 +11,10 @@
 //   2. THE WORLD IS NOT. The bar is read at two columns of the SAME deep row, so
 //      every figure it shows is identical and the world behind it is completely
 //      different, and the two reads must match pixel for pixel. A bar the mine
-//      draws over, or shows through, cannot.
+//      draws over, or shows through, cannot. How much of the band changes between
+//      the camp and the deep is the build's LAYOUT and is read nowhere here:
+//      `specs/overview.md` fixes the band's extent and `specs/ui.md` that it stays
+//      fully visible, and neither says how much of it moves with the depth.
 //
 // A generated mine is used rather than a cleared one, because the point is that
 // the rock, the ore, the lava and the boulders of two different stretches of the
@@ -20,7 +23,7 @@
 // itself reports has moved between them.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { HULL_MAX, PLAYABLE_COL_MIN, PLAYABLE_COL_MAX } from "../constants";
 import {
   captureStill,
@@ -43,15 +46,6 @@ const DEEP_ROW = 400;
 /** Two columns far apart, so the mine behind the bar is nothing like itself. */
 const WEST_COL = PLAYABLE_COL_MIN + 4;
 const EAST_COL = PLAYABLE_COL_MAX - 4;
-
-/**
- * How much of the band may differ between the camp and the deep, as a share.
- *
- * The one reading `specs/ui.md` puts on the bar that MUST differ between the two
- * is the depth in meters, which is a few digits. A band that came back largely
- * different is a band the mine is drawing into.
- */
-const DEPTH_ONLY_SHARE = 0.1;
 
 let h: Harness;
 
@@ -92,14 +86,7 @@ it("keeps the bar drawn and unobscured at the camp and deep alike", async () => 
   const east = await sampleBar(h);
   await captureStill(h, "bar");
 
-  const samples = west.length / 3;
-
   assertGreaterThan(varied(camp), 0, "specs/ui.md");
   assertGreaterThan(varied(west), 0, "specs/ui.md");
   assertEqual(changed(west, east), 0, "specs/overview.md");
-  assertLessThan(
-    changed(camp, west) / samples,
-    DEPTH_ONLY_SHARE,
-    "specs/overview.md",
-  );
 });

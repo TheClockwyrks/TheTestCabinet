@@ -25,13 +25,16 @@
 // decides is `building.preview-*`'s business; this point needs only to know which
 // of the two states it is looking at.
 //
-// WHAT IS COMPARED, AND WHY IT IS NEVER A COLOUR. specs/overview.md fixes no
-// palette, and in particular it does not say valid is green. The reading is what
-// the footprint mostly is on the valid frame against what it mostly is on the
-// refused one — the mean of its largest cluster of pixels either way
-// (presentation/read.ts) — so a build that marks refusal with a wash, a fill, a
-// hatch or a border all answer, and a build that draws the two the same reads
-// zero.
+// WHAT IS DECIDED, AND WHERE THE BAR COMES FROM. specs/overview.md fixes no
+// palette, and in particular it does not say valid is green — how plainly the
+// two read apart is the reviewer's to judge. What is decided here is that the
+// build drew the verdict at all: the same footprint, pixel for pixel, on the
+// valid frame and on the refused one, reduced to the position the two diverge
+// most at, so a build that marks refusal with a wash, a fill, a hatch or a border
+// all answer. How far they must diverge is measured rather than stated: the valid
+// footprint is read on two frames, which is how much the preview moves on its
+// own, and the refusal has to beat that by `NOISE_MARGIN`. A build that draws the
+// two the same reads zero.
 //
 // WHAT IT DOES NOT DECIDE. Whether the preview follows the pointer, which
 // footprint it lands on and which of the six conditions refuses it are the
@@ -49,34 +52,18 @@ import { TOWER_DEFS } from "../constants";
 import { sizeOf } from "../geometry";
 import {
   captureStill,
-  colorDistance,
   createHarness,
   startRun,
   type Harness,
   type Rgb,
 } from "../harness";
 import type { TowerType } from "../surface";
-import { dominant, footprintRegion, readRegion, showRgb } from "./read";
-
-/**
- * How far, out of the 441 the RGB cube spans, the two previews must read.
- *
- * The suite's figure for two things a player tells apart at a glance, and the
- * same 50 every other point in this group draws its line at. "Plainly apart" is
- * the legibility table's own phrase for this pair, and it is what a player
- * carrying a footprint across a floor has to answer without stopping to look.
- */
-const APART_MIN = 50;
-
-/**
- * How close two pixels of the footprint must be to count as the same reading,
- * when the check asks what the footprint mostly is.
- *
- * Half of `APART_MIN`, and the suite's figure for two readings that are the same
- * thing rather than two things: a wash shaded across its own area, a gradient, a
- * pixel softened where it meets a border.
- */
-const SAME_READING_MAX = 25;
+import {
+  NOISE_MARGIN,
+  footprintRegion,
+  largestShift,
+  readRegion,
+} from "./read";
 
 /**
  * The type held, and the tile it is held over.
@@ -94,8 +81,17 @@ const ROW = 22;
 const FOOTPRINT_INSET = 3;
 const FOOTPRINT_STEP = 3;
 
+/** Every pixel of the footprint on the frame now on the canvas. */
+function readFootprint(h: Harness): Rgb[] {
+  return readRegion(
+    h,
+    footprintRegion(COL, ROW, sizeOf(TYPE), FOOTPRINT_INSET),
+    FOOTPRINT_STEP,
+  );
+}
+
 /** The footprint as it stands on this frame, once the verdict is confirmed. */
-function readPreview(h: Harness, wanted: boolean, outputId: string): Rgb {
+function readPreview(h: Harness, wanted: boolean, outputId: string): Rgb[] {
   const held = h.snapshot().build;
   assertNotNull(
     held,
@@ -111,14 +107,7 @@ function readPreview(h: Harness, wanted: boolean, outputId: string): Rgb {
       `a picture of`,
   );
   captureStill(h, outputId);
-  return dominant(
-    readRegion(
-      h,
-      footprintRegion(COL, ROW, sizeOf(TYPE), FOOTPRINT_INSET),
-      FOOTPRINT_STEP,
-    ),
-    SAME_READING_MAX,
-  );
+  return readFootprint(h);
 }
 
 let h: Harness;
@@ -136,7 +125,12 @@ it("draws a valid footprint plainly apart from a refused one", async () => {
   h.debug.setArmed(TYPE);
   h.debug.setPreview(COL, ROW);
   await h.advance(1);
+  const first = readFootprint(h);
+
+  // How far the held preview moves on its own, with nothing changed at all.
+  await h.advance(1);
   const valid = readPreview(h, true, "valid");
+  const noise = largestShift(first, valid);
 
   // Only the money moves: the same type, over the same tile, on the next frame.
   h.debug.setMoney(TOWER_DEFS[TYPE].cost - 1);
@@ -144,11 +138,12 @@ it("draws a valid footprint plainly apart from a refused one", async () => {
   const refused = readPreview(h, false, "invalid");
 
   assertGreaterThanOrEqual(
-    colorDistance(valid, refused),
-    APART_MIN,
-    `a ${TYPE} preview held over tile (${COL}, ${ROW}) reading valid ` +
-      `(${showRgb(valid)}) against the same preview reading refused ` +
-      `(${showRgb(refused)}), out of 441 (specs/overview.md: a valid ` +
-      `footprint and an invalid one read plainly apart)`,
+    largestShift(valid, refused),
+    noise + NOISE_MARGIN,
+    `a ${TYPE} preview held over tile (${COL}, ${ROW}) reading valid against ` +
+      `the same preview reading refused: the footprint is drawn differently, ` +
+      `past the ${noise} two frames of the valid preview moved on their own ` +
+      `(specs/overview.md: a valid footprint and an invalid one read plainly ` +
+      `apart)`,
   );
 });

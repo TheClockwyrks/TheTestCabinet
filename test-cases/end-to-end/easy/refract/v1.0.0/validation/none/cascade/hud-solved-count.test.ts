@@ -2,13 +2,14 @@
 // playing.
 //
 // specs/modes/cascade.md "The count": during playing, "show the count beside
-// the label HUD_SOLVED_LABEL (SOLVED)", sitting "clear of the board, whose
-// extent is given in specs/board.md". TWO boards are genuinely solved and the
+// the label HUD_SOLVED_LABEL (SOLVED)", sitting "clear of the board in play,
+// whose extent is the box its own cell centers span, given in specs/board.md,
+// widened by NODE_R on every side". TWO boards are genuinely solved and the
 // next entered, so the count on screen is 2 rather than the 0 a build might
 // paint unconditionally; the frame's text runs must then carry the label with
-// the figure 2 beside it (either in the label's own run or in a numbers run
-// anchored within readouts.ts's adjacency), with both anchors outside the
-// largest board's extent widened by NODE_R (constants.ts BOARD_EXTENT).
+// the figure 2 beside it — in the label's own run, or in a numbers run within
+// HUD_VALUE_GAP (96) of it — with both runs clear of the extent of the BOARD IN
+// PLAY, its own cell-center span widened by NODE_R.
 //
 // WHY TWO SOLVES AND NOT ONE. After one solve the count and the tier both
 // read 1, so a build that drew only "TIER 1" beside a bare SOLVED label would
@@ -31,7 +32,7 @@ import {
   solveGenerated,
   type Harness,
 } from "../harness";
-import { findReadouts, outsideBoardExtent } from "./readouts";
+import { boardKeepOut, findReadouts, runClearOf } from "./readouts";
 
 const SEED = 6;
 
@@ -66,17 +67,19 @@ it("draws SOLVED with the figure 2 beside it, clear of the board's extent", asyn
   const calls = await h.frameCalls();
   await captureStill(h, "hud");
 
+  const keepOut = boardKeepOut(playing.board);
   const readouts = findReadouts(
     drawnTextRuns(calls),
     HUD_SOLVED_LABEL,
     2,
   ).filter(
     (readout) =>
-      outsideBoardExtent(readout.label) && outsideBoardExtent(readout.value),
+      runClearOf(readout.label, keepOut) && runClearOf(readout.value, keepOut),
   );
   assertGreaterThan(
     readouts.length,
     0,
-    `a ${HUD_SOLVED_LABEL} readout of 2, clear of the board's extent`,
+    `a ${HUD_SOLVED_LABEL} readout of 2, clear of the board in play (x ` +
+      `${keepOut.left}..${keepOut.right}, y ${keepOut.top}..${keepOut.bottom})`,
   );
 });

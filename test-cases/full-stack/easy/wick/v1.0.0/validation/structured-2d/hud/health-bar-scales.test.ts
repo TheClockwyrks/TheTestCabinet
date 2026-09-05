@@ -19,9 +19,10 @@
 // tallest unbroken block of changed pixels for the bar's rows and reads the
 // band's width across them, passing over the rules a build may have drawn down
 // its bar. A run of text can never be mistaken for one, since a stroke tall
-// enough to fill those rows stands alone and narrower. Three frames are taken,
-// differing in health alone, and each band is measured against the near-empty
-// one:
+// enough to fill those rows stands alone and narrower. A band of any width at
+// all is what says a bar was drawn; how tall it is, and how it is styled, are
+// the build's and the reviewer's. Three frames are taken, differing in health
+// alone, and each band is measured against the near-empty one:
 //
 //   band(1 → 25)  is the bar from a hundredth of its width to a quarter of it
 //   band(1 → 100) is the bar from a hundredth of its width to all of it
@@ -70,7 +71,6 @@ import {
 import {
   assertEqual,
   assertGreaterThan,
-  assertGreaterThanOrEqual,
   assertLessThanOrEqual,
   assertNear,
 } from "../assert";
@@ -102,13 +102,6 @@ const QUARTER_SHARE = QUARTER / FULL;
  * nothing else in the world moves across them.
  */
 const SETTLE_TICKS = TICK_HZ;
-
-/**
- * The fewest rows a band must be thick to be a bar rather than an artifact.
- * A bar legible at the 1280 x 720 stage `specs/ui.md` fixes is drawn several
- * pixels tall; three is under any of them.
- */
-const MIN_BAR_ROWS = 3;
 
 let harnesses: Harness[] = [];
 
@@ -166,7 +159,6 @@ it("fills the health bar in proportion to hp", async () => {
   const part = bandBetween(empty, quarter);
 
   assertGreaterThan(whole.w, 0, "the width of the bar the health filled");
-  assertGreaterThanOrEqual(whole.h, MIN_BAR_ROWS, "the height of that bar");
   assertGreaterThan(part.w, 0, `the width the bar filled at ${QUARTER} health`);
 
   assertNear(

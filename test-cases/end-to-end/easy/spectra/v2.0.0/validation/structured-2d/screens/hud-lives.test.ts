@@ -39,6 +39,7 @@ import {
 } from "../harness";
 import {
   BOTTOM_STRIP,
+  PAINT_MIN,
   countMoved,
   driftOverOneFrame,
   readRegion,
@@ -46,28 +47,6 @@ import {
 
 /** The lives the second reading is taken at. */
 const FEWER_LIVES = 1;
-
-/**
- * How far a pixel must move to count as repainted, as a Euclidean RGB distance out of
- * the `441` an RGB cube is across.
- *
- * The case's figure, since `specs/ui.md` states the rule and leaves the palette to the
- * build: `40` is about a tenth of the space, which is the least a player reads as a
- * change at a glance, and far above the rounding two readings of one unchanged pixel
- * differ by.
- */
-const REPAINT_MIN = 40;
-
-/**
- * How many pixels of the strip must be repainted.
- *
- * At the harness's default shape the canvas is the stage at one device pixel per
- * logical unit, so `64` pixels is an eight-by-eight mark — smaller than one digit of
- * type legible at the stage's `1280 x 720` (`specs/ui.md`) and smaller than one life
- * icon in a `64`-unit-tall strip. It is a floor under anti-aliasing noise on a single
- * glyph edge rather than a demand on how a build draws the readout.
- */
-const REPAINT_MIN_PIXELS = 64;
 
 let h: Harness;
 
@@ -90,7 +69,7 @@ it("repaints the bottom strip when the lives remaining change", async () => {
   );
 
   // What the strip does on its own across one frame, with nothing posed.
-  const drift = await driftOverOneFrame(h, BOTTOM_STRIP, REPAINT_MIN);
+  const drift = await driftOverOneFrame(h, BOTTOM_STRIP, PAINT_MIN);
   const atFull = drift.reading;
 
   h.debug.setLives(FEWER_LIVES);
@@ -104,8 +83,8 @@ it("repaints the bottom strip when the lives remaining change", async () => {
   captureStill(h, "lives");
 
   assertGreaterThan(
-    countMoved(atFull, atFewer, REPAINT_MIN),
-    Math.max(drift.count, REPAINT_MIN_PIXELS),
+    countMoved(atFull, atFewer, PAINT_MIN),
+    drift.count,
     "pixels of the bottom HUD strip repainted when the lives went from " +
       `${String(START_LIVES)} to ${String(FEWER_LIVES)} — the lives readout ` +
       '"changes as the lives change" (specs/ui.md) and sits in that strip ' +

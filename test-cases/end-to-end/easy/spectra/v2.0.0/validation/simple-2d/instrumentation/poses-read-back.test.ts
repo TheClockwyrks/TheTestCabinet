@@ -39,7 +39,7 @@
 // grades the rule. This point asks only that the surface poses what it claims to.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { fluxHold } from "../constants";
+import { START_LIVES, fluxHold } from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureStill,
@@ -68,11 +68,17 @@ const EXACT_DIGITS = 6;
 const SCREEN = "gameOver" as const;
 const PHASE = "ready" as const;
 
-/** The run's figures, each a value nothing else here reports. */
+/**
+ * The run's figures, each a value nothing else here reports and each inside the
+ * range its own rule allows it.
+ *
+ * `specs/progression.md` starts a run at `START_LIVES` (`3`) and pays exactly one
+ * extra life, so four is the most a run ever carries and is what is posed.
+ */
 const PHASE_TIMER = 0.42;
 const MENU_INDEX = 1;
 const SCORE = 13570;
-const LIVES = 2;
+const LIVES = START_LIVES + 1;
 const STAGE = 4;
 const CHALLENGE_HITS = 17;
 const RESONANCE = 37;

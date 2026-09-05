@@ -749,7 +749,7 @@ title = "Board and geometry"
 [[review.categories.items]]
 id = "stage-fit"
 title = "The whole stage stays visible and centred"
-description = "The entire 1280x720 stage — the full HUD bar, the whole board and all four edges — is visible, fitted and centred at three window sizes and two pixel densities, including on load before any input."
+description = "Content posed at all four extreme tiles of the board is painted where the specified fit maps it, at three window sizes and two pixel densities, so the entire 1280x720 stage is visible, fitted and centred. Under none, where the build sizes the canvas itself, the backing store is also read on load before any input."
 domains = ["presentation"]
 # A stage that is not fitted still runs and is still played: what it costs is a
 # window size at which part of the board or the bar is cut off, which is normal
@@ -771,19 +771,21 @@ validation = { script = "board/hud-above-board.test.ts", outputs = [
 [[review.categories.items]]
 id = "tile-centres"
 title = "Nodes sit on the tile centres the formula gives"
-description = "A node posed at each of eight spread tiles changes what is painted at that tile's centre, (32c + 16, 80 + 32r + 16), and leaves the tile beside it as the background it was."
+description = "A node posed at each of eight spread tiles changes what is painted at that tile's centre, (32c + 16, 80 + 32r + 16), more than it changes the centre of the tile beside it."
 domains = ["charge", "presentation"]
 failure_cap = "scuffed"
-# The second clause — the tile beside each is background — is a control sample
-# read from the same scenario, not a second requirement: it is what tells a
-# build that centred its nodes apart from one that filled every tile.
+# The second clause — the neighbour moves less than the node's own tile — is a
+# control sample read from the same scenario, not a second requirement: it is
+# what tells a build that centred its nodes apart from one that filled every
+# tile. A glow that spills onto the neighbour is the build's to lay, so the
+# comparison is between the two readings rather than against a bound.
 validation = { script = "board/tile-centres.test.ts", outputs = [
   { id = "tiles", name = "The eight nodes on their tile centres", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "band-tinted"
 title = "The player band reads as a distinct floor"
-description = "The bottom two rows (y in [656, 720]) render in a tint measurably distinct from the board above them, across the full width."
+description = "The bottom two rows (y in [656, 720]) render in a tint that is not the tint of the board directly above them, at every column of the grid."
 domains = ["presentation"]
 failure_cap = "great"
 validation = { script = "board/band-tinted.test.ts", outputs = [
@@ -819,7 +821,7 @@ validation = { script = "board/scatter-inert.test.ts", outputs = [
 [[review.categories.items]]
 id = "scatter-varies"
 title = "The scatter is not a fixed layout"
-description = "Runs from two different seeds lay scatters that differ in more than a tenth of their occupied tiles."
+description = "Runs from two different seeds lay scatters that occupy different sets of tiles, over three seed pairs."
 domains = ["charge"]
 failure_cap = "passable"
 validation = { script = "board/scatter-varies.test.ts", outputs = [
@@ -2547,12 +2549,12 @@ validation = { script = "touch/drag-cancels.test.ts", outputs = [
 ] }
 
 # --- Look and readouts --------------------------------------------------------
-# This case seeds no palette and no typeface, so there is no hex value on this
-# checklist to assert. Every color point instead checks PRESENCE and
-# SEPARATION, against a stated RGB distance out of 441 — which is exactly
-# what specs/overview.md's legibility table asks a player to be able to read at a
-# glance, and nothing more. A build that designs a beautiful board its own way
-# passes every one of them.
+# This case seeds no palette and no typeface, so no point on this checklist reads
+# a color. Each look point does one of three things instead: it reads the image
+# source handed to a draw, it reads the text a frame drew, or it reads one place
+# of the board twice — once with the thing there and once with it removed through
+# the debug API — and asks only whether the picture changed. How well the result
+# reads is the reviewer's, from the captured still.
 #
 # Every sprite point reads the IMAGE SOURCE handed to each draw and matches it
 # against the seeded PNG read off the workspace's own assets/ tree, rather than
@@ -2563,20 +2565,11 @@ id = "presentation"
 title = "Look and readouts"
 [[review.categories.items]]
 id = "node-ramp-distinct"
-title = "The four charge states are told apart"
-description = "Four nodes posed at charges 0..3 sample four colors that differ pairwise by more than 40 of 441."
+title = "Each charge state is drawn from its own node frame"
+description = "Four nodes posed at charges 0..3 are each drawn from the frame of assets/node/ that charge names: 0, 1, 2, and either 3 or 4 for critical."
 domains = ["charge", "presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/node-ramp-distinct.test.ts", outputs = [
-  { id = "ramp", name = "The four charge states side by side", kind = "image" },
-] }
-[[review.categories.items]]
-id = "node-ramp-brightens"
-title = "The ramp brightens toward critical"
-description = "The sampled brightness of the four charge states is strictly increasing from inert to critical."
-domains = ["charge", "presentation"]
-failure_cap = "scuffed"
-validation = { script = "presentation/node-ramp-brightens.test.ts", outputs = [
   { id = "ramp", name = "The four charge states side by side", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -2587,33 +2580,6 @@ domains = ["charge", "presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/critical-pulses.test.ts", outputs = [
   { id = "pulse", name = "The critical node over a second of pulsing", kind = "image" },
-] }
-[[review.categories.items]]
-id = "worm-distinct"
-title = "The worm reads apart from the board and the nodes"
-description = "A posed worm's sampled color differs from the board background and from each of the four node charge colors by more than 40 of 441."
-domains = ["presentation"]
-failure_cap = "scuffed"
-validation = { script = "presentation/worm-distinct.test.ts", outputs = [
-  { id = "worm", name = "The worm over the board and the field", kind = "image" },
-] }
-[[review.categories.items]]
-id = "cursor-distinct"
-title = "The cursor reads apart from the band"
-description = "The cursor's sampled color differs from the band tint by more than 40 of 441."
-domains = ["presentation"]
-failure_cap = "scuffed"
-validation = { script = "presentation/cursor-distinct.test.ts", outputs = [
-  { id = "cursor", name = "The cursor in its band", kind = "image" },
-] }
-[[review.categories.items]]
-id = "foes-distinct"
-title = "The three foes read apart"
-description = "The three foes' sampled colors differ pairwise, and each from the board background, by more than 40 of 441."
-domains = ["presentation"]
-failure_cap = "scuffed"
-validation = { script = "presentation/foes-distinct.test.ts", outputs = [
-  { id = "foes", name = "The three foes side by side", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "node-from-sprite"
@@ -2708,7 +2674,7 @@ validation = { script = "presentation/hud-score.test.ts", outputs = [
 [[review.categories.items]]
 id = "hud-lives"
 title = "The HUD shows the lives remaining"
-description = "With lives posed at 2 the HUD bar shows two lives, as icons or as a count."
+description = "With lives posed at 2 the HUD bar names the figure among its text, or draws marks it does not draw with one life and does not draw with none."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/hud-lives.test.ts", outputs = [
@@ -2726,7 +2692,7 @@ validation = { script = "presentation/hud-level.test.ts", outputs = [
 [[review.categories.items]]
 id = "bolts-drawn"
 title = "A bolt in flight is drawn in its column"
-description = "A posed bolt is drawn within half a tile of its reported centre, distinct from the board background by more than 40 of 441."
+description = "A posed bolt changes what the board carries within half a tile of its reported centre, against the same place read with the bolt taken off."
 domains = ["presentation", "arcade"]
 failure_cap = "passable"
 validation = { script = "presentation/bolts-drawn.test.ts", outputs = [
@@ -2735,7 +2701,7 @@ validation = { script = "presentation/bolts-drawn.test.ts", outputs = [
 [[review.categories.items]]
 id = "arcs-drawn"
 title = "A discharge draws lightning between the tiles it links"
-description = "While arcs are live, the segment joining each linked pair of tile centres carries drawn pixels distinct from the board background."
+description = "While an arc is live, the stretch of board between the two tile centres it links carries drawing the same place does not carry once the arc has gone."
 domains = ["presentation", "charge"]
 failure_cap = "passable"
 validation = { script = "presentation/arcs-drawn.test.ts", outputs = [
@@ -2858,7 +2824,17 @@ title = "Mute silences every cue"
 description = "With mute turned on through the real KeyM binding, firing a bolt, cutting a segment and moving a menu selection play nothing at all, and the snapshot reports muted throughout."
 domains = ["presentation"]
 failure_cap = "scuffed"
-validation = { script = "audio/mute-silences.test.ts", outputs = [
+# Engineless only. Under an engine the mute bit belongs to the engine's cue bus,
+# which announces every cue at a gain of zero while it is set, so once the build
+# has bound the action — `controls.mute-m`, which every engine decides — the
+# silence is the engine's and the same verdict comes back for every build. Under
+# `none` the build owns its own audio and the silence is its work.
+#
+# The scoping costs one clause under the engines: that a muted game stays fully
+# playable is decided only under `none` now. That is accepted rather than made
+# an item of its own — a point states one claim — and the firing and the cutting
+# it exercises are each decided on an unmuted board by `cursor/*` and `worm/*`.
+validation = { script = "audio/mute-silences.test.ts", engines = ["none"], outputs = [
   { id = "muted", name = "The muted board the events were driven on", kind = "image" },
 ] }
 

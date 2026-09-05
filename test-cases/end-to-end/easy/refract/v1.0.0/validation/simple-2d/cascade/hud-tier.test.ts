@@ -1,12 +1,13 @@
 // Refract — cascade/hud-tier: the tier is on screen while playing.
 //
 // specs/modes/cascade.md "The count": during `playing`, show the current tier
-// beside the label HUD_TIER_LABEL (TIER), clear of the board, whose extent
-// specs/board.md gives. On a fresh cascade the tier is 1 — and the count is
-// 0, so the tier's digit cannot be mistaken for it. A playing frame's text
-// runs are read back, and one of them must be the label with the current
-// tier's digit beside it, the pair clear of the board's extent. The adjacency
-// and glyph-band figures are stated in cascade/hud.ts.
+// beside the label HUD_TIER_LABEL (TIER), clear of the board in play, whose
+// extent specs/board.md gives for its own cols and rows, widened by NODE_R.
+// On a fresh cascade the tier is 1 — and the count is 0, so the tier's digit
+// cannot be mistaken for it. A playing frame's text runs are read back, and
+// one of them must be the label with the current tier's digit beside it —
+// within HUD_VALUE_GAP (96) — the pair clear of the extent of the board in
+// play. cascade/hud.ts states both readings.
 //
 // The frame's text is read as COALESCED RUNS rather than as raw `fillText`
 // calls, because a build is free to letter-space its HUD and canvas has no

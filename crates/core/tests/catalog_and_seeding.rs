@@ -383,17 +383,31 @@ fn resolves_carom_from_its_manifest() {
                     validation.script.is_none(),
                     "carom point `{id}` should declare its validator per engine"
                 );
+                // A validator scoped with `engines` decides its point only on the
+                // engines it names — the behavior the others leave to the engine —
+                // so its suite ships in those projects and in no other. Both
+                // directions are asserted: present where it is covered, absent
+                // where it is not.
                 for engine in version.engine_slugs() {
                     let suite = version
                         .root
                         .join("validation")
                         .join(&engine)
                         .join(&validation.script_rel);
-                    assert!(
-                        suite.is_file(),
-                        "carom point `{id}` names no validator for engine `{engine}`: {}",
-                        suite.display()
-                    );
+                    if validation.covers(&engine) {
+                        assert!(
+                            suite.is_file(),
+                            "carom point `{id}` names no validator for engine `{engine}`: {}",
+                            suite.display()
+                        );
+                    } else {
+                        assert!(
+                            !suite.exists(),
+                            "carom point `{id}` is scoped away from engine `{engine}`, so its \
+                             validator project should not ship the suite: {}",
+                            suite.display()
+                        );
+                    }
                 }
                 assert!(
                     validation.script_rel.ends_with(".test.ts"),

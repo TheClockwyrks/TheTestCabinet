@@ -40,16 +40,6 @@ const WORKSPACE_ROOT = resolve(
   "..",
 );
 
-/**
- * How far one channel may drift before two pixels count as different.
- *
- * Nothing in the pipeline should move a byte at all — a PNG is lossless — so this
- * is a guard against a build that re-encoded a frame through a different colour
- * profile rather than a tolerance the specification asks for. Small enough that
- * no visible difference hides under it.
- */
-const CHANNEL_EPSILON = 8;
-
 /** One produced sprite, decoded. */
 export interface Sprite {
   /** The path `specs/assets.md` fixes for it, relative to the repository root. */
@@ -169,11 +159,14 @@ export function paintShare(sprite: Sprite): number {
 /**
  * How many pixels of two sprites are not the same pixel in both.
  *
- * A pixel differs when its alpha moved, or when it carries paint in both and a
- * colour channel moved. Two fully clear pixels are the same pixel whatever
- * colour bytes sit under them, because a straight-alpha canvas leaves those
- * bytes undefined and a player sees nothing either way. Sprites of different
- * sizes are wholly different, since no pixel of one is the pixel of the other.
+ * A pixel differs when its alpha differs, or when it carries paint in both and a
+ * colour byte differs. Exactly, with no tolerance: a PNG is lossless and both
+ * files come off the same disk in the same process, so a byte that moved is a
+ * byte the build wrote differently. Two fully clear pixels are the same pixel
+ * whatever colour bytes sit under them, because a straight-alpha canvas leaves
+ * those bytes undefined and a player sees nothing either way. Sprites of
+ * different sizes are wholly different, since no pixel of one is the pixel of the
+ * other.
  */
 export function differingPixels(a: Sprite, b: Sprite): number {
   if (a.width !== b.width || a.height !== b.height) {
@@ -183,16 +176,13 @@ export function differingPixels(a: Sprite, b: Sprite): number {
   for (let i = 0; i < a.pixels.length; i += 4) {
     const alphaA = a.pixels[i + 3];
     const alphaB = b.pixels[i + 3];
-    if (Math.abs(alphaA - alphaB) > CHANNEL_EPSILON) {
+    if (alphaA !== alphaB) {
       differing += 1;
       continue;
     }
     if (alphaA === 0 && alphaB === 0) continue;
     for (let channel = 0; channel < 3; channel += 1) {
-      if (
-        Math.abs(a.pixels[i + channel] - b.pixels[i + channel]) >
-        CHANNEL_EPSILON
-      ) {
+      if (a.pixels[i + channel] !== b.pixels[i + channel]) {
         differing += 1;
         break;
       }

@@ -36,11 +36,17 @@
 // figure of this check's choosing, so it reaches the slots a glyph could occupy and
 // stops well short of the far side of the HUD.
 //
-// HOW A GLYPH IS COUNTED. `specs/ui.md` draws the glyphs "in a row", so they are
-// separated marks along it: a column of the box counts as inked when anything in
-// it is drawn, a run of inked columns is one mark, and a bare column between two
-// runs separates them. Nothing about a glyph's shape, size or colour is read —
-// `specs/overview.md` leaves the look to the build.
+// HOW A GLYPH IS COUNTED, AND WHY THE GLYPH IS MEASURED RATHER THAN NAMED. The two
+// glyphs the reserve added are the build's own drawing of one, so the ink they
+// carry, halved, is what ONE glyph of this build costs in square units. The row's
+// own ink is then read against that: a row carrying two glyphs' worth of ink holds
+// two glyphs, and one carrying none holds none. `specs/overview.md` lets a build
+// paint what it likes behind its HUD, and at the level below which a sampling
+// cannot tell a drawing from the rounding of a channel a speck of a starfield is
+// ink like any other — but a speck is a unit or two where a glyph is scores of
+// them, so a decorated field moves the count by a fraction of a glyph and never by
+// one. Nothing about a glyph's shape or colour is read — `specs/overview.md`
+// leaves the look to the build.
 //
 // THE POSE. An emptied, gated field on the `playing` screen with the score held at
 // `0` across all three frames, so the score's own digits are identical on each and
@@ -57,36 +63,38 @@ import {
 } from "../harness";
 import {
   changedCells,
-  marksInBand,
+  inkedInBand,
   readInk,
   readPainted,
   type InkGrid,
 } from "./ink";
 import { HUD_REGION, clearOfStar, sampleField } from "./scene";
 
-/** How far a square unit must be from the field to count as drawn, of 441. */
-const APART = 60;
+/**
+ * The sensing floor: how far a square unit's reading must sit from the field the
+ * build drew before the cell can be called painted, of the 441 an RGB distance can
+ * span.
+ *
+ * Eight. Below that a sampling cannot tell a drawing from the rounding of an 8-bit
+ * channel and the host's own anti-aliasing; above it nothing is decided about how
+ * strongly the mark reads. Anything the build painted over the sample clears it,
+ * in whatever colour it chose, over whatever field it chose.
+ */
+const SENSING_FLOOR = 8;
 
 /** The side of a square unit the HUD is read in, in logical units. */
 const CELL = 1;
 
 /**
- * How much a square unit's reading must move between two frames to count as
- * changed, of 441.
+ * The sensing floor on a change: how far a reading must move between two frames
+ * before the move can be called a redrawing, of the 441 an RGB distance can span.
  *
- * Half the `60` a unit must sit from the field by to be called drawn, so a glyph
- * drawn faintly still marks the row out, and a build's own dithering does not.
+ * Eight. Below that a sampling cannot tell a redrawing from the rounding of an
+ * 8-bit channel and the host's own anti-aliasing; above it nothing is decided
+ * about how strongly the two readings differ. Anything the build drew differently
+ * clears it, however faintly it drew it.
  */
-const CHANGE = 30;
-
-/**
- * How many bare columns separate two marks along the row.
- *
- * One. `specs/ui.md` fixes that the glyphs are drawn "in a row" and nothing about
- * the spacing, so the least a row can be is glyphs with a column of field between
- * them, and that is what is required.
- */
-const GAP = 1;
+const CHANGE = 8;
 
 /** The counts of ships posed, and the reserve glyphs each must draw. */
 const POSED = [
@@ -143,13 +151,20 @@ it("draws two reserve glyphs at three ships, one at two, and none at one", async
     toCol: toCol + reach,
   };
 
+  // What one glyph of this build costs, in square units: the ink the reserve added
+  // between one ship and three, over the two glyphs those ships put in the row.
+  const glyphInk =
+    row.length / (POSED[0].glyphs - POSED[POSED.length - 1].glyphs);
+
   for (const { lives, glyphs, grid } of read) {
     assertEqual(
-      marksInBand(grid, band, APART, GAP),
+      Math.round(inkedInBand(grid, band, SENSING_FLOOR) / glyphInk),
       glyphs,
-      `with ${lives} ships, how many separated marks the row of reserve ` +
-        "glyphs holds, which is one per ship in reserve and so one fewer " +
-        "than the ships the run has left (specs/ui.md)",
+      `with ${lives} ships, how many glyphs' worth of ink the row of reserve ` +
+        `glyphs holds — against the ${glyphInk.toFixed(1)} square units one ` +
+        "of this build's own glyphs carries — which is one per ship in " +
+        "reserve and so one fewer than the ships the run has left " +
+        "(specs/ui.md)",
     );
   }
 });

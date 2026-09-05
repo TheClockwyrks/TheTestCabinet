@@ -12,12 +12,11 @@
 // tree: `dist/` "runs correctly when served as-is at the root of any static file
 // server, and equally when served from a sub-path".
 //
-// HOW THE MOUNT IS REAL RATHER THAN LENIENT. The harness answers every request
-// the build makes exactly as a browser on a page at that base would: a
-// page-relative path resolves, and a path rooted at `/` names a file the
-// deployment does not serve and is refused. So a build that spelled one asset
-// `/assets/...` does not quietly succeed here — it gets the 404 the
-// specification says it gets, and the failure lands on this item.
+// HOW THE MOUNT IS POSED, AND WHERE THE VERDICT COMES FROM. The harness records
+// every path the build resolves against the mounted base and refuses none of
+// them — every produced file is stood up for this check as for every other — so
+// the verdict is read off those paths. A build that spelled one asset
+// `/assets/...` is caught by that reading rather than by a withheld file.
 //
 // WHAT IS DRIVEN, AND WHY THAT MUCH. Everything specs/assets.md commits is
 // loaded at run time, and a build is free to load a file when it first needs it
@@ -112,9 +111,9 @@ it("resolves every file it loads inside the sub-path it is mounted at", async ()
     // loaded a thing, so what was asked for is counted first.
     assertGreaterThan(h.requests.length, 0, "files the build asked for");
 
-    // Nothing failed: every path the build resolved names a file this mount
-    // holds. A path the loader itself refused for escaping the asset root is in
-    // here too, and it is the same fault — an asset named from the origin root.
+    // Every produced file loaded: nothing the build asked for went unanswered.
+    // A path the loader itself refused for escaping the asset root is in here
+    // too, and it is the same fault — an asset named from the origin root.
     assertDeepEqual(
       reported(
         h.assetFailures
@@ -125,8 +124,8 @@ it("resolves every file it loads inside the sub-path it is mounted at", async ()
       "assets the mounted site did not answer",
     );
 
-    // And the reason they answered is the paths themselves, rather than a
-    // lenient transport: not one of them was rooted at the origin.
+    // And the paths themselves are page-relative: not one of them was rooted at
+    // the origin, which is what the item decides.
     assertDeepEqual(
       reported(h.requests.filter(isRootAbsolute)),
       [],

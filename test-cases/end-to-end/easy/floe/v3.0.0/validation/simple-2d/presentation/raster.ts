@@ -3,28 +3,26 @@
 //
 // The shared harness reads pixels as a LIST OF POINTS — `h.pixel` is one
 // `getImageData` per point — which is the right shape for the handful of samples
-// a band check takes and the wrong one for the points here that read a REGION:
-// the three "reads apart" points, which weigh every pixel of a body's tile
-// against the ground beside it; `hud-lives` and `hud-bays`, which find a readout
-// by what MOVED in the bar between two posed frames; and `text-legible`, which
-// weighs every glyph of a run against the background around it. Each wants
-// thousands of pixels of one rectangle at once, so this takes the rectangle in a
-// single `getImageData` and holds it as one string of bytes.
+// a band reading takes and the wrong one for the points here that read a REGION:
+// `hud-lives` and `hud-bays`, which find a readout by what MOVED in the bar
+// between two posed frames, and `submerged-bear-visible`, which reads a whole
+// tile with the bear on it and again with the bear cleared. Each wants thousands
+// of pixels of one rectangle at once, so this takes the rectangle in a single
+// `getImageData` and holds it as one string of bytes.
 //
 // IT IS A SNAPSHOT, NOT A VIEW. The buffer is copied at the moment the raster is
 // read, so a later frame cannot change what an earlier reading measured, and two
-// frames can be held side by side — which is what `hud-lives` and `hud-bays`
+// frames can be held side by side — which is what all three of those points
 // compare.
 //
 // The mapping from a stage coordinate to a device pixel is the harness's own
 // `h.device`, so a raster reads the same under whatever fit and pixel density a
 // check built its harness at.
 //
-// NOTHING HERE FIXES A BOUND A VERDICT TURNS ON. What counts as two pixels
-// differing, how much of a rectangle must differ, and how far a glyph must sit
-// from the ground behind it are each the deciding point's own figure, stated in
-// the point. The one number below, the bucket the commonest colour is counted in,
-// is how a reading is TAKEN rather than what it is held to.
+// NOTHING HERE FIXES A BOUND A VERDICT TURNS ON, AND NOTHING HERE MEASURES
+// APPEARANCE. Every point that uses this asks the same question of a rectangle —
+// did any pixel of it change — and passes `0` for the distance below, so what
+// comes back is presence rather than contrast.
 
 import { assertTrue } from "../assert";
 import { colorDistance, type Harness, type Rgb } from "../harness";
@@ -43,8 +41,6 @@ export interface Raster {
   scale: number;
   /** Three bytes per pixel, row-major from the rectangle's top-left corner. */
   rgb: Uint8Array;
-  /** The colour at a stage point, clamped to the rectangle's own bounds. */
-  at(x: number, y: number): Rgb;
 }
 
 /** Wrap a device-pixel rectangle of the canvas as a raster in stage units. */
@@ -63,7 +59,7 @@ function rasterFrom(
     rgb[j + 1] = data[i + 1];
     rgb[j + 2] = data[i + 2];
   }
-  const raster: Raster = {
+  return {
     x: (left - view.offsetX) / view.scale,
     y: (top - view.offsetY) / view.scale,
     w: pixelW / view.scale,
@@ -72,23 +68,7 @@ function rasterFrom(
     height: pixelH,
     scale: view.scale,
     rgb,
-    at(x: number, y: number): Rgb {
-      const point = h.device(x, y);
-      const dx = Math.min(Math.max(point.x - left, 0), pixelW - 1);
-      const dy = Math.min(Math.max(point.y - top, 0), pixelH - 1);
-      return colorAt(raster, dy * pixelW + dx);
-    },
   };
-  return raster;
-}
-
-/** Pull the whole canvas back and hand out a reader over it. */
-export function rasterOf(h: Harness): Raster {
-  assertTrue(
-    h.canvas.width > 0 && h.canvas.height > 0,
-    "the runtime drew into a canvas with area, so a frame's pixels can be read",
-  );
-  return rasterFrom(h, 0, 0, h.canvas.width, h.canvas.height);
 }
 
 /**
@@ -136,27 +116,6 @@ export function colorAt(raster: Raster, index: number): Rgb {
   return { r: raster.rgb[at], g: raster.rgb[at + 1], b: raster.rgb[at + 2] };
 }
 
-/** Where the device pixel at `index` sits, in stage units. */
-export function pointAt(
-  raster: Raster,
-  index: number,
-): { x: number; y: number } {
-  return {
-    x: raster.x + (index % raster.width) / raster.scale,
-    y: raster.y + Math.floor(index / raster.width) / raster.scale,
-  };
-}
-
-/** The RGB distance between the same stage point of two frames. */
-export function changeBetween(
-  before: Raster,
-  after: Raster,
-  x: number,
-  y: number,
-): number {
-  return colorDistance(before.at(x, y), after.at(x, y));
-}
-
 /**
  * Every index at which two rasters of the same rectangle differ by more than
  * `minDistance`, as an RGB distance.
@@ -177,9 +136,4 @@ export function differingPixels(
     }
   }
   return indexes;
-}
-
-/** How many device pixels cover one square unit of the stage. */
-export function unitArea(raster: Raster): number {
-  return raster.scale * raster.scale;
 }

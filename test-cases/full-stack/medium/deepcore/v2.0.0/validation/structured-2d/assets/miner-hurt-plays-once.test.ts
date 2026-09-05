@@ -39,7 +39,7 @@ import { minerCentre, showMiner } from "./miner";
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ assets: true });
+  h = await createHarness();
 });
 
 afterEach(() => {

@@ -9,8 +9,8 @@
 // THE CONTROL IS WHAT MAKES THAT SEPARABLE. Two poses either side of the
 // threshold differ in two ways at once: the alert, and two units less fuel in the
 // gauge. So a second pair the SAME two units apart is read on the same side of
-// the threshold, and the straddling pair has to move materially more of the band
-// than that. Both pairs change the same number of digits and the same length of
+// the threshold, and the straddling pair has to move MORE of the band than that
+// pair does. Both pairs change the same number of digits and the same length of
 // fill, so what is left between them is the treatment alone.
 //
 // Every read is a frame no clock moves under, so a pulsing treatment is held at
@@ -35,16 +35,6 @@ const STEP = 0.01;
 
 /** Where the control pair sits above the threshold, as a fraction. */
 const CONTROL_AT = LOW_FUEL_FRACTION + 0.1;
-
-/**
- * How many times the control the straddling pair must move.
- *
- * A treatment is a change to the gauge rather than to its length, so it moves the
- * whole of what it treats where the control moves one edge of it. Twice the
- * control is a floor a real treatment clears comfortably and a build with none
- * cannot reach.
- */
-const TREATMENT_FACTOR = 2;
 
 let h: Harness;
 
@@ -78,9 +68,5 @@ it("draws the gauge differently below the low-fuel threshold", async () => {
   const straddling = changed(above, below);
 
   assertGreaterThan(straddling, 0, "specs/character.md");
-  assertGreaterThan(
-    straddling,
-    TREATMENT_FACTOR * control,
-    "specs/character.md",
-  );
+  assertGreaterThan(straddling, control, "specs/character.md");
 });

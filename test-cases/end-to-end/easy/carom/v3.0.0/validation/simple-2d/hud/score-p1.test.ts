@@ -7,7 +7,9 @@
 // in logical units through the transform and alignment the build drew it with.
 // The score must be drawn as a run whose digits read as that score — a label
 // around it and zero padding (`07`) are fine, the other score's digit in the
-// same run is not — with the run's midpoint on its side of the field's center.
+// same run is not — anchored on its side of the field's center. The anchor is
+// the point the build PLACED the figure at, which is what specs/overview.md
+// fixes, and it is the point all three projects read.
 //
 // The match is posed straight onto `playing` with `enterPlaying`, which serves
 // nothing and takes no paddle: this point is about a drawn figure, so it needs a
@@ -74,7 +76,7 @@ it("draws player one's score left of the field's center", async () => {
   );
   assertGreaterThan(runs.length, 0);
   assertEqual(
-    runs.some((span) => (span.left + span.right) / 2 < FIELD_CX),
+    runs.some((span) => span.x < FIELD_CX),
     true,
   );
 });

@@ -16,7 +16,7 @@ import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
-  DISTINCT,
+  DRAWN,
   type Harness,
   lattice,
   maxDistance,
@@ -59,9 +59,9 @@ it("draws the mute control differently muted, from the bar and from the key", as
   );
   assertGreaterThan(
     maxDistance(open, byBar),
-    DISTINCT,
-    "how far the mute control's pixels move when it is muted from the bar, in " +
-      "RGB distance",
+    DRAWN,
+    "how far the mute control's pixels move when it is muted from the bar, " +
+      "against the floor a reading needs to call anything drawn",
   );
 
   await pressStatus(h, "mute");
@@ -80,8 +80,8 @@ it("draws the mute control differently muted, from the bar and from the key", as
   );
   assertGreaterThan(
     maxDistance(open, byKey),
-    DISTINCT,
+    DRAWN,
     "how far the mute control's pixels move when it is muted from the " +
-      "keyboard, in RGB distance",
+      "keyboard, against the floor a reading needs to call anything drawn",
   );
 });

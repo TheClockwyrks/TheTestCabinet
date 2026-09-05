@@ -22,7 +22,7 @@ import { BUILDING_SPRITES, SURFACE_SPRITES } from "../constants";
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ assets: true });
+  h = await createHarness();
 });
 
 afterEach(() => {

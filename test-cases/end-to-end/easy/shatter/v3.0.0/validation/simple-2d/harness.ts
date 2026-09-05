@@ -246,7 +246,7 @@ export interface PlayedCue {
   cue: string;
   /** Frame-loop time, in milliseconds. */
   t: number;
-  /** `0` while muted, which is how `audio/mute-silences` reads a silenced cue. */
+  /** The level the engine played it at; `0` while its own mute bit is set. */
   gain: number;
 }
 

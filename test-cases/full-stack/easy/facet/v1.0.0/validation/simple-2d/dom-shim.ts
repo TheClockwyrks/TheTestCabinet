@@ -22,8 +22,9 @@
 //    (specs/assets.md), so with no transport not one of them loads and every
 //    check that reads the board's drawing would be deciding a question about
 //    Node rather than about the build. This one serves the build's own tree off
-//    disk, and answers a file that is not there with a 404 rather than a throw,
-//    which is what the loader's own failure path expects.
+//    disk for every check in the project, with no way to turn it off, and
+//    answers a file that is not there with a 404 rather than a throw, which is
+//    what the loader's own failure path expects.
 // 2. `createImageBitmap`. The loader decodes an image with it and rejects by
 //    name where the host has none. `@napi-rs/canvas`'s `loadImage` is the
 //    decoder Node has.
@@ -70,26 +71,9 @@ const WORKSPACE = join(dirname(fileURLToPath(import.meta.url)), "..");
  */
 const ASSET_DIRS = ["dist", "build", "out", "public"] as const;
 
-/** Whether the disk transport is currently serving. */
-let serving = true;
-
-/**
- * Turn the disk transport on or off.
- *
- * `createHarness({ assets: false })` uses it for the one kind of check that is
- * about a build surviving assets that never arrive. It is process-global, so a
- * harness built that way must be the only one alive.
- */
-export function setAssetTransport(enabled: boolean): void {
-  serving = enabled;
-}
-
 /** The build's own tree, served to the engine's asset loader. */
 async function diskFetch(input: unknown): Promise<Response> {
   const url = String(input);
-  if (!serving) {
-    return new Response(null, { status: 503, statusText: "no transport" });
-  }
   for (const dir of ASSET_DIRS) {
     try {
       const body = await readFile(join(WORKSPACE, dir, url));
@@ -305,6 +289,5 @@ export function installDomShims(): () => void {
       else globals[name] = value;
     }
     previous.clear();
-    serving = true;
   };
 }

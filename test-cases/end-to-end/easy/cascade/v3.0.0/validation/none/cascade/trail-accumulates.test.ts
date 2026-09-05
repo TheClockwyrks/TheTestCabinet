@@ -46,18 +46,6 @@ import { FELT_GRID, openCascade, paintedFelt, readFelt } from "./flight";
 const EARLY = 1;
 const LATE = 4;
 
-/**
- * How far a painted point must sit from the bare table, out of 441.
- *
- * `specs/overview.md`'s legibility table requires that "a card of either face
- * reads apart from the table it sits on", which the case fixes as `90` of `441`
- * in `presentation/face-distinct-from-table`. The painted layer is made of cards
- * stamped onto the table, so that is the figure that says a point has been
- * painted. It is applied identically to both readings, so it decides which
- * points count and never which way the comparison goes.
- */
-const PAINTED_APART = 90;
-
 /** How many of the grid's points were painted. */
 function covered(grid: readonly boolean[]): number {
   return grid.filter(Boolean).length;
@@ -86,12 +74,7 @@ it("paints more of the table after four seconds than after one", async () => {
   await harness.advance(framesFor(EARLY));
   await captureStill(harness, "one-second");
   const early = covered(
-    await paintedFelt(
-      harness,
-      bare,
-      PAINTED_APART,
-      (await harness.snapshot()).flyers,
-    ),
+    await paintedFelt(harness, bare, (await harness.snapshot()).flyers),
   );
   assertGreaterThan(
     early,
@@ -102,12 +85,7 @@ it("paints more of the table after four seconds than after one", async () => {
   await harness.advance(framesFor(LATE - EARLY));
   await captureStill(harness, "four-seconds");
   const late = covered(
-    await paintedFelt(
-      harness,
-      bare,
-      PAINTED_APART,
-      (await harness.snapshot()).flyers,
-    ),
+    await paintedFelt(harness, bare, (await harness.snapshot()).flyers),
   );
 
   assertGreaterThan(

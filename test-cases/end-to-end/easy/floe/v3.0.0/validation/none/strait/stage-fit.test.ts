@@ -25,10 +25,10 @@
 //      are visible beside it.
 //   3. THE PICTURE. The build really drew into that map: the critter posed on
 //      each of the strait's FOUR EXTREME TILES is read at that tile's own logical
-//      centre, mapped through the specified fit, and must have changed what is
-//      there. A build that scaled non-uniformly, that cropped, that anchored the
+//      centre, mapped through the specified fit, and what is there must have
+//      CHANGED. A build that scaled non-uniformly, that cropped, that anchored the
 //      stage to a corner, or that drew in device pixels and ignored the ratio
-//      puts bare band at those four points.
+//      leaves the four points exactly as they were.
 //
 // WHY THE FOUR CORNERS, AND WHY THE READING IS THE BUILD AGAINST ITSELF. A wrong
 // fit displaces a point by more the further it is from the centre of the surface,
@@ -36,25 +36,29 @@
 // `specs/strait.md`'s grid puts the corner tiles at `(0, 0)`, `(39, 0)`, `(0, 19)`
 // and `(39, 19)`, which are the four corners of the stage's whole play area. And
 // each corner is read TWICE — once bare and once with the critter on it — so what
-// is compared is the same build's own two pictures. Nothing here fixes a colour,
-// which the specification leaves to the build.
+// is compared is the same build's own two pictures, and what is asserted is that
+// they differ at all. Nothing here fixes a colour and nothing measures how far
+// apart the two readings are; how the critter looks against the band under it is
+// appearance, which the reviewer judges.
 //
-// AND A FOURTH READING, THE BARS THEMSELVES. `specs/overview.md` also fixes what
-// the letterbox carries: "The letterbox bars around the stage carry the stage's
-// background color." A build that stretched its picture into the bars, cropped
-// the stage against them, or painted the strait past the stage's edge puts the
-// BANDS there instead — and the bands are five different tints stacked down the
-// strait (`specs/strait.md`), so they cannot read as one colour.
+// A DRAW CALL CANNOT ANSWER THIS. A blit's coordinates are logical units, so a
+// build that scaled non-uniformly, cropped, anchored to a corner or ignored the
+// device pixel ratio submits exactly the same draw calls as one that fitted the
+// stage correctly. `strait/tiles-drawn-on-the-map` reads those calls, on one
+// surface size; only the surface itself says where they landed.
 //
-// WHAT THAT READING CAN BE UNDER THIS ENGINE. Under an engine the runtime clears
-// the canvas to the colour the build exported and a check holds the bars against
-// that value; here there is no such export and no runtime — the build owns the
-// whole canvas — so what is read is the build against itself: every point of
-// every bar the fit leaves is required to be THE SAME COLOUR, on both sides of
-// the stage and along each bar. That is the observable content of the rule (one
-// background colour, not the picture) without naming a colour the specification
-// leaves to the build. The surfaces of the stage's own aspect leave no bar and
-// are read on the three readings above alone.
+// AND A FOURTH READING, THE BARS THEMSELVES, WHICH IS "THE BUILD DREW NOTHING
+// HERE". `specs/overview.md` fixes what the letterbox carries: "The letterbox
+// bars around the stage carry the stage's background color." A build that
+// stretched its picture into the bars, cropped the stage against them, or painted
+// the strait past the stage's edge puts the GAME there instead — so the bars are
+// read on two frames of a live crossing whose lanes have moved between them, and
+// every bar point must be exactly what it was. A build whose picture reaches the
+// letterbox moves those pixels when the lanes move; a build whose letterbox is
+// its own background, whatever colour that is, does not. No colour is named and
+// none is compared: the specification leaves the background to the build. The
+// surfaces of the stage's own aspect leave no bar and are read on the readings
+// above alone.
 //
 // EACH SHAPE IS A WINDOW OF ITS OWN. A device pixel ratio belongs to a browser
 // context rather than to a page, so `createHarness` opens one per shape and the
@@ -67,34 +71,44 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
+  assertTrue,
 } from "../assert";
-import { COLS, ROWS, STAGE_H, STAGE_W } from "../constants";
+import { COLS, ICE_TOP, ROWS, STAGE_H, STAGE_W } from "../constants";
 import {
   captureStill,
   colorDistance,
   createHarness,
+  itemsOnRow,
   sampleTile,
   startCrossing,
+  startRunFromTitle,
+  ticksFor,
   type Harness,
   type Rgb,
 } from "../harness";
 
 /**
- * How far the reading at a corner must move when the critter is put on it, in
- * RGB distance out of 441.
+ * How long the crossing is left running between the two letterbox readings.
  *
- * THIS IS A POSITION CHECK, NOT A CONTRAST ONE. What it has to tell apart is "the
- * critter is drawn at this logical point" from "it is not", and the case's own
- * line for a body that reads clearly apart from the band under it — the `60` of
- * `presentation/critter-reads-apart` — is a different requirement, graded by a
- * different item. Demanding it here would fail a build whose fit is perfect and
- * whose critter is merely low-contrast twice over.
- *
- * `30` is half that line: far above the two or three units a scaled resample of
- * one flat band can drift by, and low enough that any build whose critter is
- * visible at all clears it. A build that put nothing at the corner reads `0`.
+ * Half a second. Every lane `specs/ice.md` and `specs/water.md` tabulate runs at
+ * a tile a second or more, so half a second moves every one of them by more than
+ * half a tile — plenty for a build whose picture reaches the letterbox to show
+ * it, and short enough to keep six surfaces inside the suite's budget.
  */
-const CORNER_MOVE_MIN = 30;
+const LANE_DRIFT_SECONDS = 0.5;
+
+/** Every letterbox point, as the bytes the build painted into them. */
+async function readBars(
+  h: Harness,
+  bars: readonly { x: number; y: number }[],
+): Promise<number[][]> {
+  const read: number[][] = [];
+  for (const bar of bars) {
+    const [r, g, b] = await h.devicePixel(bar.x, bar.y);
+    read.push([r, g, b]);
+  }
+  return read;
+}
 
 /**
  * The three window sizes at the two pixel densities the item names.
@@ -141,15 +155,6 @@ const SURFACES = [
     dpr: 2,
   },
 ];
-
-/**
- * How far two letterbox samples may sit apart and still be one colour, of 441.
- *
- * Twenty-five. A flat fill is identical to the byte, so the only room this needs
- * is for reading a canvas's own pixels back; a bar carrying any of the strait's
- * five bands, or a gradient, or the edge of the picture, is far past it.
- */
-const BAR_FLAT_MAX = 25;
 
 /**
  * How wide a letterbox has to be before its pixels are read, in device pixels.
@@ -286,17 +291,16 @@ it.each(SURFACES)(
       const drawn = await sampleTile(h, corner.col, corner.row);
       assertGreaterThan(
         colorDistance(drawn, bare[index]),
-        CORNER_MOVE_MIN,
-        `${corner.where} of the strait, read at its own logical centre through the fit the specification requires (specs/overview.md)`,
+        0,
+        `${corner.where} of the strait, read at its own logical centre through ` +
+          `the fit the specification requires: putting the critter on it ` +
+          `changed what is drawn there (specs/overview.md)`,
       );
       await h.debug.removeCritter();
     }
 
-    // 4. The bars, with the game really drawn: a live crossing is the busiest
-    //    thing the game puts on the stage, and every point of every bar is still
-    //    the one background colour.
-    await startCrossing(h);
-    await h.step();
+    // 4. The bars, over a real run whose lanes are moving: whatever the build
+    //    drew in the letterbox, the game moving must not have moved it.
     const bars = barPoints(
       view.offsetX,
       view.offsetY,
@@ -304,21 +308,33 @@ it.each(SURFACES)(
       store.height,
     );
     if (bars.length > 0) {
-      const read: Rgb[] = [];
-      for (const bar of bars) {
-        const [r, g, b] = await h.devicePixel(bar.x, bar.y);
-        read.push({ r, g, b });
-      }
-      for (const [index, colour] of read.entries()) {
-        assertLessThanOrEqual(
-          colorDistance(colour, read[0]),
-          BAR_FLAT_MAX,
-          `the letterbox pixel at device (${bars[index].x}, ` +
-            `${bars[index].y}) against the one at (${bars[0].x}, ` +
-            `${bars[0].y}) — the bars around the stage carry the stage's ` +
-            `background color (specs/overview.md)`,
-        );
-      }
+      await startRunFromTitle(h);
+      await h.advance(1);
+      const before = await readBars(h, bars);
+      const movingRow = ICE_TOP;
+      const beforeItems = itemsOnRow(await h.snapshot(), movingRow);
+      await h.advance(ticksFor(LANE_DRIFT_SECONDS));
+      const after = await readBars(h, bars);
+      const afterItems = itemsOnRow(await h.snapshot(), movingRow);
+
+      // The situation: the strait really was running between the two readings,
+      // so a bar that did not move is a bar the game does not reach.
+      assertTrue(
+        beforeItems.length > 0 &&
+          afterItems.some((item) =>
+            beforeItems.some((was) => was.id === item.id && was.x !== item.x),
+          ),
+        `the lanes on row ${movingRow} to have moved between the two ` +
+          `letterbox readings (specs/ice.md)`,
+      );
+
+      assertDeepEqual(
+        after,
+        before,
+        `the letterbox pixels across ${LANE_DRIFT_SECONDS} s of a running ` +
+          `crossing — the bars around the stage carry the stage's background ` +
+          `colour and nothing the game draws (specs/overview.md)`,
+      );
     }
 
     // Nothing the page threw or logged as an error while this harness drove it.

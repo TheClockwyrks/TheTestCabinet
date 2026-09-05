@@ -38,14 +38,16 @@ import { DISC_SAMPLES, markedCount, readDisc } from "./ink";
 import { SHIP_SPOT } from "./scene";
 
 /**
- * How far a sample must be from the field to count as the ship, of the 441 an RGB
- * distance can span.
+ * The sensing floor: how far a sample must sit from the field the build drew
+ * before the reading can be called the build's own ink, of the 441 an RGB distance
+ * can span.
  *
- * The item's own figure. Far above what a build's own dithering or a faint vignette
- * moves a background sample by, and far below the separation any two colours a
- * build would pick for a field and a hull sit at.
+ * Eight. Below that a sampling cannot tell a drawing from the rounding of an 8-bit
+ * channel and the host's own anti-aliasing; above it nothing is decided about how
+ * strongly the mark reads. Anything the build painted over the sample clears it,
+ * in whatever colour it chose, over whatever field it chose.
  */
-const APART = 60;
+const SENSING_FLOOR = 8;
 
 /**
  * How many of the {@link DISC_SAMPLES} readings inside `SHIP_R` must be the ship's.
@@ -76,8 +78,8 @@ it("paints the disc of SHIP_R about the ship apart from the field behind it", as
   await captureStill(harness, "ship");
 
   assertGreaterThanOrEqual(
-    markedCount(ship, field, APART),
+    markedCount(ship, field, SENSING_FLOOR),
     MIN_MARKED,
-    `of ${DISC_SAMPLES} samples inside SHIP_R of the ship's centre, how many are more than ${APART} of 441 from the field the build drew (specs/overview.md)`,
+    `of ${DISC_SAMPLES} samples inside SHIP_R of the ship's centre, how many are more than ${SENSING_FLOOR} of 441 from the field the build drew (specs/overview.md)`,
   );
 });

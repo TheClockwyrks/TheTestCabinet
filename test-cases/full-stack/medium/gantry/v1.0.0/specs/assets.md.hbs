@@ -56,9 +56,10 @@ the first column:
 | drum | the `drum` load class | its class box, `2 x 3 x 2` units |
 
 The three load models fill their class boxes: a load's collisions and
-placement use the class dimensions from `specs/world.md` whatever is drawn, so
-a model well short of its box would read as missing what it visibly overlaps.
-The part models are sized to sit believably on the structure; the figures
+placement use the class dimensions from `specs/world.md` whatever is drawn.
+Each load model's mesh spans at least `LOAD_MODEL_FILL` (`0.85`) of its class
+box on every axis, so a load cannot read as missing what it visibly overlaps.
+The part models are sized to sit believably on the structure; their figures
 above are the intent, not a tolerance. Art direction is yours: one coherent
 machine across the parts, loads that read at a glance as a crate, a container,
 and a drum, and forms that read from every camera angle, since the player

@@ -163,14 +163,3 @@ export function toRgb(pixel: [number, number, number, number]): Rgb {
 export function colorDistance(a: Rgb, b: Rgb): number {
   return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
 }
-
-/**
- * How far apart two sampled colours must sit before a check calls them a
- * different thing on the canvas.
- *
- * `50` of the scale's `441`, the same line the letterbox reading is set against
- * at half of it: far enough that a shading, a vignette or a dimming pass cannot
- * cross it, close enough that any two things the specification asks a player to
- * tell apart on sight do.
- */
-export const DISTINCT_MIN = 50;

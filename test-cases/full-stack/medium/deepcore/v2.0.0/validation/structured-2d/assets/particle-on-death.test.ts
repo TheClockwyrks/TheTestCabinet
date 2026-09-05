@@ -45,7 +45,7 @@ const ENDING_FRAMES = 80;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ assets: true });
+  h = await createHarness();
 });
 
 afterEach(() => {

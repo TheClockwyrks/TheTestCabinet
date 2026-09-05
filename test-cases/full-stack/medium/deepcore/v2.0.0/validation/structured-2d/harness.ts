@@ -347,17 +347,6 @@ export interface HarnessOptions {
   /** Device pixels per CSS pixel. Defaults to 1, so one device pixel is one unit. */
   dpr?: number;
   /**
-   * Load the PRODUCED files under `assets/` off disk before the game
-   * initializes. Defaults to `false`.
-   *
-   * A Node process has neither `fetch` nor `createImageBitmap`, so by default
-   * every sprite the build asks for comes back refused and the build draws its
-   * fallbacks — which is exactly what a check about the simulation wants, and it
-   * costs nothing. A check about a PRODUCED ASSET needs the real files, and this
-   * is what stands them up: see {@link installAssets}.
-   */
-  assets?: boolean;
-  /**
    * Give the game a `localStorage` to save into. Defaults to `false`.
    *
    * Node has none, and `specs/modes.md` requires a build to run without one, so
@@ -632,7 +621,7 @@ const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
  */
 const WORKSPACE_ROOT = dirname(PROJECT_ROOT);
 
-/** How many live harnesses asked for the asset polyfill. */
+/** How many live harnesses are holding the asset polyfill up. */
 let assetHosts = 0;
 let heldFetch: unknown;
 let heldDecoder: unknown;
@@ -643,15 +632,14 @@ let heldDecoder: unknown;
  *
  * The engine's loader resolves every path under `assets/` and then calls the
  * host's `fetch` and `createImageBitmap` (`engine/assets.md`). Node has neither,
- * so a check about a produced sprite would otherwise read the build's fallback
- * and grade nothing. These two are the whole of what is missing: the fetch reads
- * the file the loader named off disk, relative to the build's own project
- * directory, and the decoder is `@napi-rs/canvas`'s, whose `Image` is what the
- * same canvas draws.
+ * so these two are the whole of what is missing: the fetch reads the file the
+ * loader named off disk, relative to the build's own project directory, and the
+ * decoder is `@napi-rs/canvas`'s, whose `Image` is what the same canvas draws.
  *
- * Nothing here decides an outcome. A file that is not there answers `404`, which
- * is the same refusal a served page gives, and the build's own fallback handles
- * it exactly as it does in a browser.
+ * Every harness installs this, so every check runs against a build whose
+ * produced files are all present. Nothing here decides an outcome. A file that
+ * is not there answers `404`, which is the same refusal a served page gives, and
+ * a file the build never produced is the defect it looks like.
  */
 export function installAssets(): void {
   assetHosts += 1;
@@ -769,7 +757,7 @@ export async function createHarness(
   const dpr = options.dpr ?? 1;
   const clock = options.clock ?? new ConstantClock(TICK_MS);
 
-  if (options.assets) installAssets();
+  installAssets();
   if (options.storage) installStorage();
 
   const canvas = createCanvas(
@@ -959,7 +947,7 @@ export async function createHarness(
     dispose: () => {
       harness.releaseAll();
       engine.destroy();
-      if (options.assets) removeAssets();
+      removeAssets();
       if (options.storage) removeStorage();
     },
   };
@@ -2121,18 +2109,6 @@ export async function driveFall(
 /* -------------------------------------------------------------------------- */
 /* Rendering and colour                                                       */
 /* -------------------------------------------------------------------------- */
-
-/**
- * The RGB distance two sampled colours must exceed to count as "clearly apart".
- *
- * `specs/overview.md` requires that a player tells one band's rock from the next,
- * an ore vein from plain rock, a gemstone from an ore, and lava from safe ground,
- * and it deliberately fixes no palette — so distinguishability is the whole of
- * what a visibility check can read, and a number is the only way to read it. 50
- * of the 441 the RGB cube spans: comfortably crossed by two colours a player
- * would call different, and not by two shades of the same one.
- */
-export const DISTINCT_MIN = 50;
 
 /** A sampled colour, each channel 0–255. */
 export interface Rgb {

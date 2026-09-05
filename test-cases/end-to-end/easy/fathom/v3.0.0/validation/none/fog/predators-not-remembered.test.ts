@@ -30,10 +30,13 @@
 // `alert` at the same moment to confirm the detection alert is not what is drawing
 // it.
 //
-// THE TOLERANCE IS THE SIBLING FOG POINTS'. This point's own wording fixes no
-// number for "nothing of the body left drawn"; `25` of the `441` an RGB distance
-// can reach is what `fog/unrevealed-black` uses for two tiles being drawn alike,
-// and it is used here for the same question about one tile at two moments.
+// TWO READINGS, TWO DIRECTIONS, TWO FIGURES. The claim this point makes is a
+// sameness one — nothing of the body is left drawn — so its bound is a tolerance
+// on two readings of one tile, and `25` of the `441` an RGB distance can reach is
+// what `fog/unrevealed-black` allows two tiles drawn alike. The control that comes
+// first runs the other way: it asks only whether a body was drawn on the tile at
+// all, so it is held to the sensing floor of `8`, below which a sampling cannot
+// tell a drawing from eight-bit channel rounding and the host's antialiasing.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -95,10 +98,24 @@ const TAIL_TICKS = 36;
  * How far the tile may be drawn from its own baseline, as an RGB distance out of
  * the `441` that separates black from white.
  *
- * See the header: this point states no figure of its own, and this is the bound
- * `fog/unrevealed-black` puts on two tiles being drawn alike.
+ * A tolerance on "these two readings of one tile are the same reading", not a
+ * floor: it is what the fog is allowed to keep of a body it has to forget, and
+ * `25` is honest slack on two samplings of one flat tile.
  */
 const ALIKE_MAX = 25;
+
+/**
+ * The sensing floor the control reading owes, as an RGB distance out of that same
+ * `441`.
+ *
+ * `8` of `441` is the level below which a sampling cannot tell a drawing from
+ * eight-bit channel rounding and the host's antialiasing. Anything the build
+ * painted there clears it, in whatever palette and however dim.
+ *
+ * It decides only that a body was drawn on the tile while the light held it; how
+ * boldly the build drew one is the build's.
+ */
+const DRAWN_MIN = 8;
 
 let h: Harness;
 
@@ -239,7 +256,7 @@ it("drops a predator body once the light leaves it, keeping nothing on the tile"
   const shown = colorDistance(reading.litColor, baseline);
   assertGreaterThan(
     shown,
-    ALIKE_MAX,
+    DRAWN_MIN,
     "how far the tile with the hunter lit on it was drawn from the same tile " +
       "empty, of 441 — a body drawn there is what the fog then has to forget",
   );

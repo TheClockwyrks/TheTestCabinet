@@ -32,7 +32,7 @@
 // (`screens/game-over-on-the-last-life`), its menu
 // (`screens/play-again-starts-a-game`,
 // `screens/game-over-menu-returns-to-the-title`), and that the text reads
-// against what is behind it (`presentation/screen-text-is-legible`).
+// against what is behind it, which the reviewer judges.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

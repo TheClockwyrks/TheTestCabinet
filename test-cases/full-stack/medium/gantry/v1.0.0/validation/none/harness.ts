@@ -1350,33 +1350,6 @@ export function entriesNear(
 }
 
 /**
- * How far apart two colours are, summed across the channels, out of 765.
- *
- * What a check may ask about colour is whether two things are told apart, never
- * what either one is: "Palettes, fonts, layouts, and styling are the build's
- * choices", and `specs/overview.md` asks only that a strut, a cable and a rail
- * are "told apart at a glance" and that a broken member is "unmistakable".
- */
-export function colourDistance(
-  a: readonly [number, number, number],
-  b: readonly [number, number, number],
-): number {
-  return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
-}
-
-/**
- * The ramp's heat: how far a colour leans red of its own blue and green.
- *
- * `specs/overview.md` has each member's colour read "its utilization on a
- * monotone ramp from slack to its limit". Monotone is a fact about the ORDER two
- * colours stand in and not about either one, so this is the quantity a check
- * compares — it rises along any ramp that climbs toward heat, whatever palette a
- * build picks for it.
- */
-export const colourHeat = (c: readonly [number, number, number]): number =>
-  c[0] - (c[1] + c[2]) / 2;
-
-/**
  * Where a lattice node is drawn, as a point a click can pick it by.
  *
  * `specs/controls.md` fixes how a click PICKS rather than how the yard is drawn,

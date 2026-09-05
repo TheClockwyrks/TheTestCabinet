@@ -26,7 +26,7 @@ import { assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
-  DISTINCT,
+  DRAWN,
   type Harness,
   lattice,
   maxDistance,
@@ -86,8 +86,9 @@ it("marks a structure once a matching partner stands, with nothing selected", as
 
   assertGreaterThan(
     moved,
-    DISTINCT,
+    DRAWN,
     "how far the structure's own tiles move once a matching partner stands " +
-      "elsewhere on the yard, in RGB distance, at the moment they move most",
+      "elsewhere on the yard, at the moment they move most, against the floor " +
+      "a reading needs to call anything drawn",
   );
 });

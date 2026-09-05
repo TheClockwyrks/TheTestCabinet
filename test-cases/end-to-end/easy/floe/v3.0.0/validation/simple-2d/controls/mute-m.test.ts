@@ -13,8 +13,11 @@
 // it is the half a player notices; the item this file decides is worded for both
 // presses, so both are here. Two presses is still ONE requirement in one direction
 // — "this key toggles" — rather than two, and no other point in the suite grades
-// it: `audio.mute-silences` grades what muting does to the sound, which is a
-// different requirement that a build can fail with a perfectly good key.
+// it: `audio.mute-produces-no-sound` grades what muting does to the sound, which
+// is a different requirement that a build can fail with a perfectly good key.
+// That item is `engines = ["none"]`, because under an engine the mute bit and the
+// cue bus are the engine's; `audio.mute-silences` carries the half that stays the
+// build's here, which is that the game keeps running while muted.
 //
 // THE STARTING BIT IS READ, NOT ASSUMED. No specification file fixes what `muted`
 // is on a freshly loaded build, and `reset` explicitly leaves it as it stands

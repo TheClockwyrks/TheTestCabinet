@@ -22,6 +22,15 @@
 // on each, the reading is of the pile itself, and the captured frame shows a
 // reviewer thirteen piles rather than eight and five marks.
 //
+// AND THAT SAME AMBIGUITY IS WHY EACH ANCHOR IS READ TWICE. A card-sized shape at
+// an anchor is not by itself evidence the CARD was drawn, since the empty-slot
+// mark is card-sized too, so the frame with a card on every pile is compared
+// against the frame of the same table empty and the pixels at each anchor have to
+// have changed. Rendering is deterministic here — the same operations produce the
+// same buffer — so "changed" is any difference at all, and no threshold is needed
+// or stated. How the card is drawn over the slot is the reviewer's. The
+// `simple-2d` and `structured-2d` suites read this point the same way.
+//
 // The faces are chosen so the world is one the specification describes: the
 // stock's card is face-down (`specs/stock.md`), the waste's is face-up on a set
 // of one (`specs/stock.md`), and each foundation holds its Ace, which is the one
@@ -38,7 +47,7 @@
 // still counts as having drawn its pile there.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertLessThanOrEqual } from "../assert";
+import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import { FOUNDATION_COUNT, TABLEAU_COLUMNS, type Suit } from "../constants";
 import {
   card,
@@ -54,7 +63,14 @@ import {
   poseWaste,
   type Harness,
   type PileName,
+  type Rgb,
 } from "../harness";
+import {
+  CARD_COLS,
+  CARD_ROWS,
+  cardSamples,
+  differingCells,
+} from "../presentation/reading";
 
 /**
  * How far a shape's measured size may sit from `CARD_W x CARD_H` and still be
@@ -120,6 +136,16 @@ afterEach(async () => {
 
 it("draws a pile at each of the thirteen anchors", async () => {
   await openTable(h);
+
+  // Every anchor with its pile empty, so what each card adds can be told from
+  // what the pile draws whether it holds one or not.
+  await h.advance(SETTLE_FRAMES);
+  const bare: Rgb[][] = [];
+  for (const { pile, index } of PILES) {
+    const anchor = pileTopLeft(pile, index);
+    bare.push(await cardSamples(h, anchor.x, anchor.y));
+  }
+
   await poseStock(h, faceDown("9C"));
   await poseWaste(h, [card("7D")], [1]);
   for (let i = 0; i < FOUNDATION_COUNT; i += 1) {
@@ -134,17 +160,31 @@ it("draws a pile at each of the thirteen anchors", async () => {
   await captureStill(h, "table");
 
   const drawn = cardFootprints(calls, SIZE_TOLERANCE);
-  for (const { name, pile, index } of PILES) {
+  for (const [at, { name, pile, index }] of PILES.entries()) {
     const anchor = pileTopLeft(pile, index);
     const nearest = drawn.reduce(
-      (best, at) =>
-        Math.min(best, Math.hypot(at.x - anchor.x, at.y - anchor.y)),
+      (best, box) =>
+        Math.min(best, Math.hypot(box.x - anchor.x, box.y - anchor.y)),
       Number.POSITIVE_INFINITY,
     );
     assertLessThanOrEqual(
       nearest,
       ANCHOR_TOLERANCE,
       `how far the nearest card-sized shape sits from ${name}'s anchor (${anchor.x}, ${anchor.y}) (specs/screens.md, specs/table.md)`,
+    );
+
+    const changed = differingCells(
+      bare[at],
+      await cardSamples(h, anchor.x, anchor.y),
+    ).length;
+    assertGreaterThan(
+      changed,
+      0,
+      `the footprint at ${name}'s anchor (${anchor.x}, ${anchor.y}) drawn ` +
+        "differently once the pile took its card, so what is drawn there is " +
+        "the card and not the empty-slot mark a pile holding no cards draws " +
+        `(specs/screens.md, specs/table.md) — ${String(changed)} of the ` +
+        `${String(CARD_COLS * CARD_ROWS)} sampled points moved`,
     );
   }
 });

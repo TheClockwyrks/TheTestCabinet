@@ -35,7 +35,7 @@ import {
   type Rig,
 } from "./harness.test-support";
 
-/** The separation `test-case.toml`'s presentation points ask for, out of 441. */
+/** The separation this build holds its own palette to, out of 441. */
 const READS_APART = 40;
 
 let sprites: Sprites;

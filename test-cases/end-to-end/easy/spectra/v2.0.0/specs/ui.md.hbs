@@ -224,8 +224,8 @@ sound is muted the game starts no sound at all: a muted cue is not played and th
 silenced, it is not played, so no source is started and no node is scheduled for it.
 The game stays fully playable muted.
 
-No sound is started between the page loading and the player's first key press, and a
-build whose audio cannot start still runs and still plays.
+No sound is started between the page loading and the player's first key press: the
+game plays no cue before that first input.
 {{else}}
 Muting and the first-interaction unlock belong to the engine, and the `mute` action
 toggles the engine's mute bit from any screen. While sound is muted the game starts

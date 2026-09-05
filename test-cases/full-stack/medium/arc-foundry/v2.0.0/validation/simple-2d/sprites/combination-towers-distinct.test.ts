@@ -16,12 +16,6 @@ import { assertEqual } from "../assert";
 import { captureStill, createHarness, openYard, standCombo } from "../harness";
 import { COMBO_IDS, COMPONENT_TYPES, TIERS } from "../constants";
 import { comboHead, componentHead, decode, samePixels } from "./png";
-import { serveProducedAssets } from "./host";
-
-// The produced files, served to the engine off disk, so the still beside this
-// point's verdict shows the art the run made rather than the fallback a build
-// draws when nothing arrived.
-serveProducedAssets();
 
 it("draws twelve tower heads, each unlike every other and every component", async () => {
   const towers = COMBO_IDS.map((id) => ({ id, png: decode(comboHead(id)) }));

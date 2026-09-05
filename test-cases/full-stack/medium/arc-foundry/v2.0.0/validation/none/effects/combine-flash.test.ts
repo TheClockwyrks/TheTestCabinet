@@ -28,7 +28,7 @@
 // the end of which the result stands alone again and is not combinable either.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
+import { assertGreaterThan } from "../assert";
 import { structureCenter } from "../constants";
 import {
   captureReplay,
@@ -48,7 +48,6 @@ const PARTNER = { col: 24, row: 22 };
 const POINTS = lattice(structureCenter(ANCHOR.col, ANCHOR.row), 16, 4);
 
 const WINDOW = ticks(0.1);
-const MOVING = WINDOW / 2;
 
 let h: Harness;
 
@@ -85,11 +84,5 @@ it("sets the result's footprint moving when a combine resolves", async () => {
     "the resulting structure's footprint to change on more frames after a " +
       "combine resolves than before it, so a combine flash is played there " +
       `(specs/assets.md); it changed on ${still} of ${WINDOW} frames before`,
-  );
-  assertGreaterThanOrEqual(
-    played,
-    MOVING,
-    "the footprint to keep changing across the tenth of a second after the " +
-      "fold, as a live particle system does (specs/assets.md)",
   );
 });

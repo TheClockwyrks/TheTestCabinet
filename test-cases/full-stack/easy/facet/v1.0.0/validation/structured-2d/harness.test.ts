@@ -90,7 +90,6 @@ import {
   framesPast,
   framesShortOf,
   loadBoard,
-  meanColor,
   patchDistance,
   poseBoard,
   poseBoardWithEscape,
@@ -383,10 +382,9 @@ it("patchDistance sees a difference of FORM at an identical mean color", () => {
   expect(patchDistance(a, b)).toBeGreaterThan(100);
 });
 
-it("reads a patch of no pixels as no distance and no color", () => {
-  // A degenerate patch is a reading rather than a division. Both instruments
-  // answer for it, so a box that came back empty fails the check that asked the
-  // question rather than filling the pair with NaN.
+it("reads a patch of no pixels as no distance", () => {
+  // A degenerate patch is a reading rather than a division, so a box that came
+  // back empty fails the check that asked the question rather than answering NaN.
   const empty = (): Patch => ({
     half: 0,
     width: 0,
@@ -394,7 +392,6 @@ it("reads a patch of no pixels as no distance and no color", () => {
     data: new Uint8ClampedArray(0),
   });
   expect(patchDistance(empty(), empty())).toBe(0);
-  expect(meanColor(empty())).toEqual({ r: 0, g: 0, b: 0 });
 });
 
 /* -------------------------------------------------------------------------- */
@@ -573,11 +570,12 @@ it("reads a device-pixel patch centered on a cell", async () => {
 });
 
 it("reads one box shape at a board edge and at its middle", async () => {
-  // `patchDistance` is a MEAN over the box and PATCH_DISTINCT_MIN is one
-  // threshold under all three engines, so the box is the same shape wherever the
-  // cell sits: at a canvas edge the ORIGIN slides inward rather than the box
-  // shrinking. A `half` of 120 logical units runs off the bottom of the 1280x720
-  // stage at the last row, which is what makes this readable at all.
+  // The box is the same shape wherever the cell sits: at a canvas edge the
+  // ORIGIN slides inward rather than the box shrinking. `patchDistance` is a
+  // MEAN over the box, so two readings of one cell answer for what was drawn in
+  // it rather than for how the box was cut. A `half` of 120 logical units runs
+  // off the bottom of the 1280x720 stage at the last row, which is what makes
+  // this readable at all.
   poseBoardWithEscape(h, []);
   await h.advance(1);
   const middle = h.patch(3, 3, 120);
@@ -751,29 +749,6 @@ it("keeps the two looping music beds apart from the one-shot cues", async () => 
   // A bed loops on the title screen, and it is NOT a cue.
   expect(h.loops.length).toBeGreaterThan(0);
   expect(cues.length).toBe(0);
-});
-
-it("options.assets false starves the build of its produced files", async () => {
-  // The one arrangement a point about a missing asset needs, and proof that the
-  // shims really are what makes the ordinary arrangement work: with the tree
-  // taken away every produced file fails, and the build still stands up.
-  const starved = await createHarness({ assets: false });
-  try {
-    expect(starved.assetFailures.length).toBeGreaterThan(0);
-    startRound(starved);
-    await starved.advance(2);
-    expect(starved.snapshot().board.cells.length).toBe(GRID_COLS * GRID_ROWS);
-  } finally {
-    starved.dispose();
-  }
-  // And the harness put the tree back: the default harness still loads them.
-  expect(h.assetFailures).toEqual([]);
-});
-
-it("runFor drives the engine's own frame loop in real time", async () => {
-  const before = h.frame();
-  await h.runFor(120);
-  expect(h.frame()).toBeGreaterThan(before);
 });
 
 it("options.seed reaches the build, and the same seed deals the same board", async () => {

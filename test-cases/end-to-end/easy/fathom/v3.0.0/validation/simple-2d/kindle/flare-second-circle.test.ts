@@ -74,7 +74,13 @@ import {
   sceneGuard,
 } from "../scene";
 import { Tile } from "../maze";
-import { FOG_MATCH, fromFog, tileColor, windowRadius } from "./circle";
+import {
+  DRAWN_FLOOR,
+  FOG_MATCH,
+  fromFog,
+  tileColor,
+  windowRadius,
+} from "./circle";
 
 /**
  * The board, stamped at the grid's own origin so both rooms sit where this
@@ -112,8 +118,17 @@ const ART = [
  */
 const DISC_MARGIN = 16;
 
-/** The review item's bounds, as RGB distances out of `441`. */
-const DRAWN_MIN = FOG_MATCH;
+/**
+ * The sensing floor a tile inside the bloom owes against the flat fog, as an RGB
+ * distance out of `441`.
+ *
+ * `8` of `441` is the level below which a sampling cannot tell a drawing from
+ * eight-bit channel rounding and the host's antialiasing. Anything the build
+ * painted there clears it, in whatever palette and however dim.
+ */
+const DRAWN_MIN = DRAWN_FLOOR;
+
+/** What a tile painted back to that fog may read as, out of `441`. */
 const FADED_MAX = FOG_MATCH;
 
 /**

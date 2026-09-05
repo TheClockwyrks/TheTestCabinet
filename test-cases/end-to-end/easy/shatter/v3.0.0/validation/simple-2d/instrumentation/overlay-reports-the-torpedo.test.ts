@@ -3,10 +3,10 @@
 // torpedoes are in flight. `warhead` only.
 //
 // THE RULE. `specs/instrumentation.md`'s Diagnostics section adds those two rows to
-// the panel under this variant. Everything else about the overlay — that it exists,
-// that the engine's key shows it, that watching it leaves the game exactly as it was,
-// and every fact both variants share — is `instrumentation/overlay`, which both
-// checklists name.
+// the panel under this variant. Every fact both variants share is
+// `instrumentation/overlay`, which both checklists name. That the panel exists at
+// all, that the engine's key shows it and that watching it leaves the game exactly
+// as it was are the ENGINE's under this engine, so no item on it reads them.
 //
 // WHY IT IS AN ITEM OF ITS OWN. That sibling script is common to both checklists, and
 // the only thing it could branch on to decide whether to demand these two rows is

@@ -3,10 +3,10 @@
 // Only the `screens` group reads a HUD strip, a menu entry's neighbourhood and a
 // drawn number this way, so they live beside the checks that use them rather than
 // in the shared harness next door. Like everything there they fix a READING
-// alone — which square of the stage a readout may sit in, how many of its pixels
+// alone — which square of the stage a readout may sit in, which of its pixels
 // moved, and which runs of text carry a number — and never a threshold: every
-// distance, count and tolerance a check asserts is stated in that check, derived
-// from the figure `specs/` fixes for it.
+// count and tolerance a check asserts is stated in that check, derived from the
+// figure `specs/` fixes for it.
 //
 // WHY A HUD CHECK READS A WHOLE STRIP. `specs/field.md` puts each readout in one
 // of the two strips and then says, in as many words, that "how each is composed
@@ -75,6 +75,21 @@ export function insideBand(box: Box, y: number): boolean {
 /* Comparing two readings of one region                                       */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * How far a place must move between two readings to count as repainted, as a
+ * Euclidean RGB distance out of the `441` an RGB cube is across.
+ *
+ * THIS IS THE READING, NOT A THRESHOLD. It decides which places of a region
+ * count as having been drawn on again, and how far a readout moves beyond that
+ * is never asserted: `specs/ui.md` fixes each readout's CONTENT and
+ * `specs/field.md` leaves its composition and placement within its strip to the
+ * build, so the palette, the type and the treatment are the reviewer's to rate.
+ * Two readings of one place nothing was drawn on are identical, so anything
+ * above zero would do; `12` is a little above the rounding one composite can put
+ * on a pixel.
+ */
+export const PAINT_MIN = 12;
+
 /** Two readings of one region are the same size, or they are not comparable. */
 function sameShape(before: Region, after: Region): void {
   if (
@@ -97,8 +112,8 @@ function sameShape(before: Region, after: Region): void {
  * The harness's own `countUnlike` holds a reading against ONE colour, which is the
  * question "how much of this square is not the field behind it". The question every
  * HUD check here asks is the other one: how much of this square changed when the
- * value it reports changed. `minDistance` is the caller's, because what counts as a
- * pixel having moved is the check's own figure.
+ * value it reports changed. `minDistance` is the caller's; every check in this
+ * group passes {@link PAINT_MIN}.
  */
 export function countMoved(
   before: Region,
@@ -118,36 +133,12 @@ export function countMoved(
   return moved;
 }
 
-/**
- * The MEAN distance between two readings of one region, on the 0–441 RGB scale.
- *
- * The reading a check about something FIELD-WIDE takes, where a count of moved
- * pixels would be satisfied by a mark in one corner. A wash, a tint, a scanline or
- * a repeated pattern all move the mean; a badge does not.
- */
-export function meanDistance(before: Region, after: Region): number {
-  sameShape(before, after);
-  let total = 0;
-  let count = 0;
-  for (let i = 0; i < before.data.length; i += 4) {
-    total += Math.hypot(
-      before.data[i] - after.data[i],
-      before.data[i + 1] - after.data[i + 1],
-      before.data[i + 2] - after.data[i + 2],
-    );
-    count += 1;
-  }
-  return count === 0 ? 0 : total / count;
-}
-
 /** What a region did on its own across one frame, and where it ended up. */
 export interface Drift {
   /** Pixels that moved further than the caller's distance, with nothing posed. */
   count: number;
   /** The second of the two readings, for the check to compare against. */
   reading: Region;
-  /** The mean distance between the two readings, on the 0–441 RGB scale. */
-  mean: number;
 }
 
 /**
@@ -173,7 +164,6 @@ export async function driftOverOneFrame(
   return {
     count: countMoved(first, second, minDistance),
     reading: second,
-    mean: meanDistance(first, second),
   };
 }
 

@@ -2227,23 +2227,16 @@ export const SAME_COLOR_TOL = 2;
  * The ground read under a movement of the lamplighter (specs/world.md — "The
  * camera and the view": "The ground is drawn as a pattern fixed in world space
  * and repeating on both axes, so that the lamplighter's motion reads against
- * it"). Both are the harness's own allowances, not the specification's figures.
+ * it"): the share of a region's pixels that, after the lamplighter has moved,
+ * match the pixels that stood the movement's distance further along before it.
  *
- * `GROUND_SHIFT_MATCH_MIN`: the share of a region's pixels that, after the
- * lamplighter has moved, match the pixels that stood the movement's distance
- * further along before it. A ground fixed in world space matches everywhere the
- * region holds ground alone; a tenth is left for whatever a build lays over the
- * ground in screen space — a HUD element, a vignette, a lamp's glow — since the
- * specification fixes no layout for those.
- *
- * `GROUND_CHANGE_MIN`: the share of the region's pixels that differ between the
- * two pictures at the SAME stage point, which is what "motion reads against it"
- * asks for at all. A ground that is one flat colour changes nothing under any
- * movement and reads as no motion; one pixel in two hundred is the least a
- * pattern can put in a region for a movement to read against.
+ * A ground fixed in world space matches everywhere the region holds ground
+ * alone; a tenth is left for whatever a build lays over the ground in screen
+ * space — a HUD element, a vignette, a lamp's glow — since the specification
+ * fixes no layout for those. It is this harness's own allowance on the rule,
+ * not a figure the specification states.
  */
 export const GROUND_SHIFT_MATCH_MIN = 0.9;
-export const GROUND_CHANGE_MIN = 0.005;
 
 /**
  * The seeded drop roll (specs/world.md — "The drop roll"), read over a fixed

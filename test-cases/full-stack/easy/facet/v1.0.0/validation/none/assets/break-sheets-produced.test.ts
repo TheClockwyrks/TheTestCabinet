@@ -12,9 +12,10 @@
 // directory", holding frames and nothing else. The rule is written over shape
 // rather than over names because the specification fixes neither: its
 // `public/assets/gems/break/ruby/` is given as an example, and a build that named
-// its sequences otherwise has still produced them. The same shape rule keeps a
-// directory of single sprites out of the count, since specs/assets.md lands those
-// under `assets/gems/` alongside the sequence directories rather than in one.
+// its sequences otherwise has still produced them. The same shape rule keeps the
+// single sprites out of the count, since specs/assets.md lands them "directly in
+// `public/assets/gems/`, with each `draw-sheet` sequence in its own directory
+// beside them".
 //
 // WHY THE FRAMES ARE HASHED. A sequence whose frames are all the same picture is
 // what a build that emitted its sheet without advancing `draw-sheet`'s frame

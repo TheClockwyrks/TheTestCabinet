@@ -73,9 +73,7 @@ arrives through it.
 Everything below is one call, under the same name, on all three engines.
 
 **Standing up** — `createHarness(options?)`, `h.dispose()`.
-`options` carries `frameMs`, `cssWidth`, `cssHeight`, `dpr`, and `withoutAssets`
-(a `RegExp`: produced files whose path matches are not served, which is how a
-check poses `specs/assets.md`'s "a load that fails leaves the game running").
+`options` carries `frameMs`, `cssWidth`, `cssHeight`, and `dpr`.
 
 **The clock** — `h.advance(frames)` runs frames at the harness's own rate;
 `h.advanceSeconds(seconds, frames)` runs a span of game time divided into whole

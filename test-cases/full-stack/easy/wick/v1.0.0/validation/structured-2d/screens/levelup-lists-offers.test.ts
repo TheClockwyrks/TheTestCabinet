@@ -24,9 +24,12 @@
 // an empty loadout — and the one `playing` tick that opens the overlay. The
 // highlight is moved with one real `ArrowDown`.
 //
-// THE TOLERANCE. The order is strict: each anchor is strictly below the one
-// before it. A row counts as redrawn at `MOVED_PIXELS` differing pixels,
-// enough that a stray pixel of anti-aliasing is not mistaken for a highlight.
+// THE FLOOR. The order is strict: each anchor is strictly below the one before
+// it. A sample counts as changed once a channel moved by more than
+// `PIXEL_CHANNEL_EPS`, the level below which eight-bit rounding and the host's
+// anti-aliasing cannot be told from a drawing, and a row counts as redrawn at
+// more than `MOVED_PIXELS` (`0`) of them: anything the build painted differently
+// into the row clears it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -64,8 +67,12 @@ const NAMES: readonly string[] = [
   PASSIVES.lure.name,
 ];
 
-/** How many pixels of a row must change for the highlight to have moved. */
-const MOVED_PIXELS = 32;
+/**
+ * The count of changed samples a row must exceed for the sampling to tell a
+ * redraw from none. Each sample already had to clear `PIXEL_CHANNEL_EPS`, the
+ * rounding-and-anti-aliasing level, so one of them is a pixel the build painted.
+ */
+const MOVED_PIXELS = 0;
 
 let h: Harness;
 

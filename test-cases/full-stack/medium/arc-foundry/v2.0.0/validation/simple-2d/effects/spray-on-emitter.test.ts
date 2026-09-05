@@ -6,8 +6,9 @@
 // makes the Emitter a rapid single-target type, so what marks the event is the
 // frame its projectile appears.
 //
-// THE PRODUCED SYSTEMS ARE SERVED TO THE LOADER HERE, by `./produced.ts`, so what
-// plays is the file the build committed.
+// THE PRODUCED SYSTEMS REACH THE LOADER THROUGH THE HARNESS, which stands the
+// committed `assets/` tree up for every check it builds, so what plays is the
+// file the build committed.
 //
 // WHAT IS READ, AND WHY THE WINDOW IS SHORT. The span sampled is the near stretch
 // of the line from the head to the target, clear of the structure's own `2` by `2`
@@ -34,7 +35,6 @@ import {
   TICK_HZ,
   ticks,
 } from "../harness";
-import { serveProducedAssets } from "./produced";
 import { read, scan } from "./region";
 
 /** Clear ground, well away from the map's waypoint platforms and its chain. */
@@ -63,7 +63,6 @@ const WINDOW = Math.floor((SPAN.from - 6) / (PROJECTILE_SPEED / TICK_HZ));
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 

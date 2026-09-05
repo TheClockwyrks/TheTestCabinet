@@ -80,28 +80,19 @@ const AFFORDS = COST;
 const CANNOT = COST - 1;
 
 /**
- * How far the two paintings of the entry must sit apart, out of the 441 the RGB
- * cube spans.
+ * How far above the movement two unchanged frames show a reading must sit for an
+ * entry to count as having been drawn differently, out of the 441 the RGB cube
+ * spans.
  *
- * The suite's figure for "plainly apart" (specs/overview.md), the same one the
- * `presentation` group holds a tower against the floor and a tripped tower
- * against an online one to. 60 is about a seventh of the scale: a shade a
- * reviewer would call a different state rather than a different rendering of the
- * same one.
+ * NOT A LEGIBILITY BAR. specs/overview.md gives the palette and the type to the
+ * build, so no figure here says how far apart a disabled entry and an affordable
+ * one must read; how plainly they do is what the reviewer's presentation rating
+ * judges. This is the tolerance on the noise measurement itself: two frames of an
+ * animated build do not move by exactly the same amount every pair, so a reading
+ * has to clear the measured movement by a little rather than by nothing. Eight
+ * units is under two per cent of the scale.
  */
-const APART_MIN = 60;
-
-/**
- * How far the control entry's painting may move, out of the same 441.
- *
- * A third of {@link APART_MIN}, so one painting cannot satisfy both bounds: what
- * clears this one is a row a reviewer would call unchanged, and what clears the
- * other is a row they would call a different state. It is not zero because a
- * build is free to anti-alias its rows against whatever it drew behind them, and
- * a shade of movement is not a state; it is well under the bound the disabled row
- * has to clear because anything that far is.
- */
-const STILL_MAX = 20;
+const NOISE_MARGIN = 8;
 
 /**
  * How finely the entry is sampled: a grid over its interior.
@@ -138,8 +129,15 @@ it("draws an entry it cannot afford apart from the same entry it can", async () 
   await drawFrame(h);
   const entry = shopEntry(h.snapshot().controls, TYPE);
   const control = shopEntry(h.snapshot().controls, CONTROL_TYPE);
+  const entryFirst = sampleRect(h, entry, SAMPLE_COLS, SAMPLE_ROWS);
+  const controlFirst = sampleRect(h, control, SAMPLE_COLS, SAMPLE_ROWS);
+
+  // The same purse again, so how far each entry moves on its own is measured.
+  await drawFrame(h);
   const affordable = sampleRect(h, entry, SAMPLE_COLS, SAMPLE_ROWS);
   const controlAffordable = sampleRect(h, control, SAMPLE_COLS, SAMPLE_ROWS);
+  const entryNoise = largestChange(entryFirst, affordable);
+  const controlNoise = largestChange(controlFirst, controlAffordable);
 
   h.debug.setMoney(CANNOT);
   await drawFrame(h);
@@ -149,15 +147,16 @@ it("draws an entry it cannot afford apart from the same entry it can", async () 
 
   assertGreaterThanOrEqual(
     largestChange(affordable, disabled),
-    APART_MIN,
+    entryNoise + NOISE_MARGIN,
     `how far the ${TYPE} entry's paint moved, out of 441, between a purse of ` +
       `${AFFORDS} that affords its cost of ${COST} and one of ${CANNOT} that ` +
-      `does not — specs/hud.md draws the second "disabled, plainly apart from ` +
-      `an affordable entry"`,
+      `does not, past the ${entryNoise} two frames at ${AFFORDS} showed — ` +
+      `specs/hud.md draws the second "disabled, plainly apart from an ` +
+      `affordable entry"`,
   );
   assertLessThanOrEqual(
     largestChange(controlAffordable, controlShort),
-    STILL_MAX,
+    controlNoise + NOISE_MARGIN,
     `how far the ${CONTROL_TYPE} entry's paint moved, out of 441, across the ` +
       `same two purses — it costs ${CONTROL_COST}, which both ${AFFORDS} and ` +
       `${CANNOT} afford, so specs/hud.md leaves it affordable in both and the ` +

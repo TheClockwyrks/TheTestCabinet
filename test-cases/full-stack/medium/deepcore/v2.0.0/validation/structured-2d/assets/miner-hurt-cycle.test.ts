@@ -34,9 +34,7 @@ const STATE = "hurt";
 let h: Harness;
 
 beforeEach(async () => {
-  // The produced sprites are stood up off disk, so the still shows the cycle
-  // rather than whatever a build falls back to when its sprites are refused.
-  h = await createHarness({ assets: true });
+  h = await createHarness();
 });
 
 afterEach(() => {

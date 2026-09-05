@@ -11,9 +11,9 @@
 // `structured-2d` it hands the arithmetic to the engine, which owns the viewport
 // and hands each drawing component a context already carrying the world-to-device
 // transform. So this item does NOT re-derive the letterbox: asserting a figure the
-// engine computed would grade the engine rather than the build. It grades the two
-// halves of the requirement that ARE the build's, which `specs/overview.md` states
-// in the same list:
+// engine computed would grade the engine rather than the build. It grades the half
+// of the requirement that IS the build's, which `specs/overview.md` states in the
+// same list:
 //
 //  - "Draw in logical units, and take the canvas element's own size from the
 //    runtime alone." A build that lays its field out from `canvas.width`, that
@@ -21,10 +21,6 @@
 //    the surface once at `initialize` and caches a scale, draws its bodies
 //    somewhere other than where the fit puts them — and does so differently at
 //    each window shape.
-//  - "The letterbox bars around the field carry the field's background color."
-//    Under this engine the bars are the `BACKGROUND` the build exports from
-//    `src/game.ts` and `src/main.ts` hands the engine, so a build whose exported
-//    colour is not the field it actually paints shows bars that do not match it.
 //
 // THE PROBE, AND WHY IT IS A DIFFERENCE. Four Large rocks are posed near the four
 // edges of the field and the canvas is read at the device pixels the fit puts each
@@ -54,16 +50,14 @@
 
 import { afterEach, it } from "vitest";
 import { FIELD_H, FIELD_W, ROCK_RADIUS } from "../constants";
-import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
+import { assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,
-  colorDistance,
   createHarness,
   poseRock,
-  sampleColor,
   type Harness,
 } from "../harness";
-import { changedOver, paintedWithAndWithout, rgbAt, type Span } from "./paint";
+import { changedOver, paintedWithAndWithout, type Span } from "./paint";
 
 /**
  * The three window sizes and two pixel densities the item names, as four windows.
@@ -137,48 +131,18 @@ const PROBE_WINDOW = ROCK_RADIUS.large + 20;
 const DRAW_TICKS = 1;
 
 /**
- * How far a pixel's colour must move to count as the rock, of the 441 an RGB
- * distance can span.
+ * The sensing floor on a change: how far a reading must move between two frames
+ * before the move can be called a redrawing, of the 441 an RGB distance can span.
  *
- * The baseline is the same tick of the same seeded game without the rocks, so a
- * pixel that moved at all moved because of a rock, and the only thing this bound
- * has to clear is the rounding of an 8-bit channel. Twenty is far above that and
- * far below the contrast of a rock `specs/overview.md` requires to read apart
- * from a field whose luminance is below a quarter of full.
+ * Eight. Below that a sampling cannot tell a redrawing from the rounding of an
+ * 8-bit channel and the host's own anti-aliasing; above it nothing is decided
+ * about how strongly the two readings differ. Anything the build drew differently
+ * clears it, however faintly it drew it.
  */
-const CHANGE_MIN = 20;
+const CHANGE_MIN = 8;
 
 /** How many such pixels a probe must show. Two, so no single pixel decides it. */
 const CHANGED_MIN = 2;
-
-/**
- * Where the bare field is sampled, to hold the letterbox bars against.
- *
- * Four patches in the lower half of the field: clear of the star's whole drawn
- * extent (nothing of it beyond `180` units of the centre, `specs/field.md`), clear
- * of the ship at its safe point `(640, 560)`, and out of the upper portion
- * `specs/ui.md` draws the HUD in.
- */
-const BARE_POINTS = [
-  { x: 80, y: 440 },
-  { x: 1200, y: 440 },
-  { x: 80, y: 690 },
-  { x: 1200, y: 690 },
-];
-
-/**
- * How far a letterbox bar's colour may sit from the nearest patch of bare field,
- * in RGB distance out of 441.
- *
- * `specs/overview.md` makes the bars the field's background colour. The bar holds
- * the raw `BACKGROUND` the build exported, while a patch of field shows that
- * ground through whatever the build legitimately lays over its field — a vignette,
- * a gradient, a faint texture — so the bar is held against the NEAREST of the bare
- * patches rather than against one of them. Twenty-five is half of the fifty at
- * which two things on this canvas read as different colours at all, so a bar
- * carrying anything the game visibly drew still fails.
- */
-const BAR_MATCH_MAX = 25;
 
 let harnesses: Harness[] = [];
 
@@ -236,54 +200,3 @@ it.each(SHAPES)(
     }
   },
 );
-
-it("puts the leftover into letterbox bars carrying the field's background", async () => {
-  // The two off-aspect shapes: one wider than the field, which letterboxes left
-  // and right, and one narrower, which letterboxes top and bottom. Neither bar is
-  // visible on a window the size of the field, which is why they are read here
-  // rather than inside the loop above.
-  //
-  // Each bar is named by a LOGICAL point outside the field, so `h.device` maps it
-  // through the same fit the field itself is drawn under and no arithmetic here
-  // has to restate the letterbox.
-  const wide = await windowOf({ cssWidth: 1600, cssHeight: 720, dpr: 1 });
-  const narrow = await windowOf({ cssWidth: 960, cssHeight: 720, dpr: 1 });
-
-  for (const [h, name, bars] of [
-    [
-      wide,
-      "the window wider than the field",
-      [
-        { x: -80, y: 360 },
-        { x: FIELD_W + 80, y: 360 },
-      ],
-    ],
-    [
-      narrow,
-      "the window narrower than the field",
-      [
-        { x: 480, y: -60 },
-        { x: 480, y: FIELD_H + 60 },
-      ],
-    ],
-  ] as const) {
-    const { drawn } = await paintedWithAndWithout(h, () => {}, DRAW_TICKS);
-
-    const patches = BARE_POINTS.map((point) =>
-      sampleColor(h, point.x, point.y),
-    );
-    for (const bar of bars) {
-      const at = h.device(bar.x, bar.y);
-      const colour = rgbAt(drawn, at.x, at.y);
-      const nearest = Math.min(
-        ...patches.map((patch) => colorDistance(colour, patch)),
-      );
-      assertLessThanOrEqual(
-        nearest,
-        BAR_MATCH_MAX,
-        `the letterbox bar at logical (${bar.x}, ${bar.y}) in ${name}, ` +
-          "against the nearest patch of bare field (specs/overview.md)",
-      );
-    }
-  }
-});

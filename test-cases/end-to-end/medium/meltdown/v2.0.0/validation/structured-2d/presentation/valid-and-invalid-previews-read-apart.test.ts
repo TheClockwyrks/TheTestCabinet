@@ -24,21 +24,16 @@
 // decides is `building.preview-*`'s business; this point needs only to know which
 // of the two states it is looking at.
 //
-// WHAT IS COMPARED, AND WHY IT IS NEVER A COLOUR. specs/overview.md fixes no
-// palette, and in particular it does not say valid is green. The reading is the
-// same footprint on the two frames, pixel for pixel: what proportion of it the
-// build drew plainly differently once the verdict turned over. Everything about
-// the preview that does NOT depend on the verdict — its outline, the radiator
-// marks a build puts on a held type, the floor and the grid showing through a
-// translucent wash — is identical in both frames and cancels out of the reading,
-// so what is left is exactly the marking the verdict moved.
-//
-// WHY A PROPORTION AND NOT THE COLOUR THE FOOTPRINT MOSTLY READS AS. A build may
-// mark refusal by washing the whole footprint, by filling it, by hatching it, or
-// by drawing a border round it, and the specification asks for none of them in
-// particular. A reading of what the footprint MOSTLY is would answer the first
-// three and fail the fourth for being a border, so the reading is a proportion
-// and the bar below is set at the thinnest border a player could see.
+// WHAT IS DECIDED, AND WHERE THE BAR COMES FROM. specs/overview.md fixes no
+// palette, and in particular it does not say valid is green — how plainly the
+// two read apart is the reviewer's to judge. What is decided here is that the
+// build drew the verdict at all: the same footprint, pixel for pixel, on the
+// valid frame and on the refused one, reduced to the position the two diverge
+// most at, so a build that marks refusal with a wash, a fill, a hatch or a border
+// all answer. How far they must diverge is measured rather than stated: the valid
+// footprint is read on two frames, which is how much the preview moves on its
+// own, and the refusal has to beat that by `NOISE_MARGIN`. A build that draws the
+// two the same reads zero.
 //
 // WHAT IT DOES NOT DECIDE. Whether the preview follows the pointer, which
 // footprint it lands on and which condition refuses it are the `building` group's.
@@ -61,33 +56,12 @@ import {
   type Rgb,
   type TowerType,
 } from "../harness";
-import { footprintRegion, movedFraction, readRegion } from "./read";
-
-/**
- * How far, out of the 441 the RGB cube spans, the two previews must read.
- *
- * The group's figure for two things a player tells apart at a glance, and the
- * same 50 every other point in this group draws its line at. "Plainly apart" is
- * the legibility table's own phrase for this pair, and it is what a player
- * carrying a footprint across a floor has to answer without stopping to look.
- */
-const APART_MIN = 50;
-
-/**
- * How much of the footprint must be drawn differently for the verdict to have
- * been marked at all.
- *
- * The whole footprint is read, so a build that washes or fills it reads nearly
- * all of it and this figure is set for the LEANEST marking the rule admits: a
- * border round the footprint's own edge. A border of ordinary weight — two units
- * — laid on that edge puts about one unit of itself inside the footprint, which
- * on the 4-tile footprint read here is 4 * 76 * 1 of 76 * 76, a nineteenth. The
- * bar is half of that, because a border is anti-aliased against whatever it is
- * drawn over and only part of its width reads as plainly changed. A build that
- * draws the two states identically reads zero, so nothing separates a bordered
- * preview from an unmarked one but this.
- */
-const CHANGED_MIN = 0.025;
+import {
+  NOISE_MARGIN,
+  footprintRegion,
+  largestShift,
+  readRegion,
+} from "./read";
 
 /**
  * The type held, and the tile it is held over.
@@ -110,6 +84,15 @@ const ROW = 22;
 const FOOTPRINT_INSET = 0;
 const FOOTPRINT_STEP = 1;
 
+/** Every pixel of the footprint on the frame now on the canvas. */
+function readFootprint(h: Harness): Rgb[] {
+  return readRegion(
+    h,
+    footprintRegion(COL, ROW, sizeOf(TYPE), FOOTPRINT_INSET),
+    FOOTPRINT_STEP,
+  );
+}
+
 /** The footprint as it stands on this frame, once the verdict is confirmed. */
 function readPreview(h: Harness, wanted: boolean, outputId: string): Rgb[] {
   const held = h.snapshot().build;
@@ -126,11 +109,7 @@ function readPreview(h: Harness, wanted: boolean, outputId: string): Rgb[] {
       `(specs/building.md), which is the state this reading is a picture of`,
   );
   captureStill(h, outputId);
-  return readRegion(
-    h,
-    footprintRegion(COL, ROW, sizeOf(TYPE), FOOTPRINT_INSET),
-    FOOTPRINT_STEP,
-  );
+  return readFootprint(h);
 }
 
 let h: Harness;
@@ -148,7 +127,12 @@ it("draws a valid footprint plainly apart from a refused one", async () => {
   h.debug.setArmed(TYPE);
   h.debug.setPreview(COL, ROW);
   await h.advance(1);
+  const first = readFootprint(h);
+
+  // How far the held preview moves on its own, with nothing changed at all.
+  await h.advance(1);
   const valid = readPreview(h, true, "valid");
+  const noise = largestShift(first, valid);
 
   // Only the money moves: the same type, over the same tile, on the next frame.
   h.debug.setMoney(TOWER_DEFS[TYPE].cost - 1);
@@ -156,12 +140,12 @@ it("draws a valid footprint plainly apart from a refused one", async () => {
   const refused = readPreview(h, false, "invalid");
 
   assertGreaterThanOrEqual(
-    movedFraction(valid, refused, APART_MIN),
-    CHANGED_MIN,
+    largestShift(valid, refused),
+    noise + NOISE_MARGIN,
     `a ${TYPE} preview held over tile (${COL}, ${ROW}) reading valid against ` +
-      `the same preview over the same tile reading refused: the proportion of ` +
-      `its footprint drawn at least ${APART_MIN} of 441 differently between ` +
-      `the two (specs/overview.md: a valid footprint and an invalid one read ` +
-      `plainly apart)`,
+      `the same preview over the same tile reading refused: the footprint is ` +
+      `drawn differently, past the ${noise} two frames of the valid preview ` +
+      `moved on their own (specs/overview.md: a valid footprint and an ` +
+      `invalid one read plainly apart)`,
   );
 });

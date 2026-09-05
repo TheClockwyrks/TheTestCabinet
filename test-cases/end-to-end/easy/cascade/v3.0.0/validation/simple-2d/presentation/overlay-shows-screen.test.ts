@@ -10,10 +10,10 @@
 //
 // WHAT IT DECIDES, AND WHAT IT LEAVES ALONE. The screen and the deal mode. The
 // pile counts are `presentation/overlay-shows-pile-counts`, the drag
-// `presentation/overlay-shows-drag`, the cascade
-// `presentation/overlay-shows-cascade`, and that watching the panel costs the
-// game nothing is `presentation/overlay-changes-nothing`. One source per point,
-// so a grade says which registration is missing.
+// `presentation/overlay-shows-drag`, and the cascade
+// `presentation/overlay-shows-cascade`. That watching the panel costs the game
+// nothing is the engine's under this engine and is graded on `none` alone. One
+// source per point, so a grade says which registration is missing.
 //
 // THE SCREEN POSED IS `howto`, AND THAT IS THE POINT. It is neither the screen
 // `reset` leaves behind (`title`) nor the one every other check opens

@@ -29,7 +29,6 @@ import {
   type Harness,
 } from "../harness";
 import { cycleFrames, decodeAll, evidence, missing } from "./images";
-import { serveProducedAssets } from "./produced";
 
 const FRAMES = COMPONENT_TYPES.flatMap((type) =>
   cycleFrames(`components/${type}/fire`),
@@ -38,7 +37,6 @@ const FRAMES = COMPONENT_TYPES.flatMap((type) =>
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 

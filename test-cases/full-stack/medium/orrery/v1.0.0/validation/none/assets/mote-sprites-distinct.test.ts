@@ -7,13 +7,12 @@
 // sit on one field at once, and a player tells a `sol` from a `dust` by its
 // picture.
 //
-// WHAT IT READS. Every one of the hundred and five pairs differs on at least
-// `DIFFER_MIN_SHARE` of the canvas the two share. A file shipped fifteen times
-// differs by exactly nothing, since a PNG carries its pixels losslessly, so the
-// floor is one hundredth — the smallest share worth calling measurable. Two clear
-// pixels count as the same pixel whatever bytes sit under them, because a
-// straight-alpha canvas leaves those bytes undefined and a player sees nothing
-// either way.
+// WHAT IT READS. Every one of the hundred and five pairs differs somewhere on
+// the canvas the two share. A file shipped fifteen times differs by exactly
+// nothing, since a PNG carries its pixels losslessly, so any pixel of
+// difference is the whole of the reading. Two clear pixels count as the same
+// pixel whatever bytes sit under them, because a straight-alpha canvas leaves
+// those bytes undefined and a player sees nothing either way.
 //
 // WHAT IT DOES NOT DECIDE. Whether a pair is distinguishable AT A GLANCE, and
 // whether the six planets read as one ladder, are the art bar itself and are the
@@ -24,11 +23,10 @@
 // compared by eye beside the verdict.
 
 import { it } from "vitest";
-import { assertGreaterThanOrEqual, assertLength, fail } from "../assert";
+import { assertGreaterThan, assertLength, fail } from "../assert";
 import { MOTES } from "../constants";
 import { MOTE_SPRITES } from "./files";
 import {
-  DIFFER_MIN_SHARE,
   type Sprite,
   decodeProduced,
   differingShare,
@@ -53,9 +51,9 @@ it("draws a picture of its own for each of the fifteen motes", async () => {
 
   for (let i = 0; i < sprites.length; i += 1) {
     for (let j = i + 1; j < sprites.length; j += 1) {
-      assertGreaterThanOrEqual(
+      assertGreaterThan(
         differingShare(sprites[i], sprites[j]),
-        DIFFER_MIN_SHARE,
+        0,
         `${MOTE_SPRITES[i].label} against ${MOTE_SPRITES[j].label}: the share of the canvas that differs`,
       );
     }

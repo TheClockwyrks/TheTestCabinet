@@ -12,12 +12,13 @@
 // tree: `dist/` "runs correctly when served as-is at the root of any static file
 // server, and equally when served from a sub-path".
 //
-// HOW THE MOUNT IS REAL RATHER THAN LENIENT. The harness opens the page at the
-// sub-path AND answers everything the build then asks for outside it with a 404,
-// which is what the origin root of a real per-run deployment holds: nothing of
-// this build. So a build that spelled one asset `/assets/...` does not quietly
-// succeed here — it gets the 404 the specification says it gets, and the failure
-// lands on this item.
+// HOW THE MOUNT IS POSED, AND WHERE THE VERDICT COMES FROM. The harness opens
+// the page at the sub-path, so a page-relative URL resolves from there and a
+// root-absolute one names somewhere else entirely. Nothing the build asks for is
+// refused — every produced file is stood up for this check as for every other —
+// so the verdict is read off the paths the build itself resolved, which are
+// recorded in full. A build that spelled one asset `/assets/...` is caught by
+// that reading rather than by a withheld file.
 //
 // WHAT IS DRIVEN, AND WHY THAT MUCH. Everything specs/assets.md commits is
 // loaded at run time, and a build is free to load a file when it first needs it
@@ -117,7 +118,7 @@ it("resolves every file it loads inside the sub-path it is mounted at", async ()
     // having loaded a thing, so what was asked for is counted first.
     assertGreaterThan(h.requests.length, 0, "files the build asked for");
 
-    // Nothing 404'd: every URL the build resolved names a file this mount holds.
+    // Every produced file loaded: nothing the build asked for went unanswered.
     assertDeepEqual(
       reported(
         h.failedRequests.filter((failure) =>
@@ -128,8 +129,8 @@ it("resolves every file it loads inside the sub-path it is mounted at", async ()
       "requests the mounted site did not answer",
     );
 
-    // And the reason it answered is the URLs themselves, rather than a lenient
-    // server: not one of them reached past the mount toward the origin root.
+    // And the URLs themselves are page-relative: not one of them reached past
+    // the mount toward the origin root, which is what the item decides.
     assertDeepEqual(
       reported(
         h.requests

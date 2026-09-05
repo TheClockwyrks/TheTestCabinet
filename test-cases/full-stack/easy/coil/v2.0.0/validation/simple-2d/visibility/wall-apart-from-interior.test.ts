@@ -1,44 +1,51 @@
 // visibility/wall-apart-from-interior — the border a player must not touch is
-// visible against the field it encloses.
+// drawn rather than left as bare ground.
 //
-// WHAT THE SPECIFICATION FIXES. `specs/overview.md` requires that "the interior
-// play area and the one-cell wall border around it are told apart at a glance,
-// and the border reads as solid", and `specs/board.md` makes that border one cell
-// thick on all four sides, drawn for the whole round. The palette is the build's,
-// so what is read is separation alone, against the review item's figure for
-// clearly apart: more than 50 of the 441 the RGB cube spans.
+// WHAT THE SPECIFICATION FIXES. `specs/board.md` makes the wall border one cell
+// thick on all four sides and has it "drawn for the whole round", and
+// `specs/overview.md` requires that a player read it. The palette is the build's
+// and how the border looks is the presentation domain's aesthetic rating, so the
+// one thing a check may read off the picture is PRESENCE: whether the build
+// painted the wall cells at all.
+//
+// HOW PRESENCE IS READ. Against the stage outside the board. The border is drawn
+// for the whole round and never changes (`specs/board.md`), so there is no frame
+// of this build with the board and without its border to compare against; what
+// there is instead is ground the board does not cover. `specs/board.md` spans the
+// board over x `[BOARD_X, BOARD_X + BOARD_W]`, so a point at x below `BOARD_X` is
+// stage the board never reaches, and a build that painted its border renders
+// something else on the border itself.
 //
 // THE WORLD THIS POSES. Nothing but the chain, which cannot be taken off the
 // board: the pellet is cleared, the obstacle course is cleared, and the chain is
-// laid across the middle of the interior, far from the wall cell sampled and far
-// from the empty cell it is sampled against. Travel is switched off, so nothing
-// moves between the pose and the sample.
+// laid across the middle of the interior, far from the wall cell sampled. Travel
+// is switched off, so nothing moves between the pose and the sample.
 //
 // WHERE IT SAMPLES. `WALL_CELL` is column `0` at mid height — border at every
 // row (`specs/board.md`), and as far from a corner as the board goes, so a build
 // that rounds or highlights its corners is read on the run of the border rather
-// than on a joint.
+// than on a joint. The point it is read against is halfway between the stage's
+// left edge and the board's, at the same height.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan } from "../assert";
+import { assertNotEqual } from "../assert";
+import { BOARD_X } from "../constants";
 import {
   captureStill,
+  cellCenter,
   chainFrom,
-  colorDistance,
   createHarness,
   HOME_HEAD,
   poseScene,
-  sampleCells,
   WALL_CELL,
-  type Cell,
   type Harness,
+  type Rgb,
 } from "../harness";
 
-/** The review item's distance: clearly apart on the 0–441 RGB scale. */
-const DISTINCT_MIN = 50;
-
-/** The interior cell the posed world leaves empty, well inside the border. */
-const BOARD_CELL: Cell = { col: 20, row: 12 };
+/** A sampled colour as one string, so a failure names the reading plainly. */
+function shows(color: Rgb): string {
+  return `rgb(${color.r}, ${color.g}, ${color.b})`;
+}
 
 let h: Harness;
 
@@ -50,7 +57,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("draws a wall cell apart from an empty interior cell", async () => {
+it("paints the wall border, over stage the board does not reach", async () => {
   poseScene(h, {
     snake: chainFrom(HOME_HEAD, "right", 3),
     dir: "right",
@@ -60,11 +67,13 @@ it("draws a wall cell apart from an empty interior cell", async () => {
   await h.advance(1);
   captureStill(h, "scene");
 
-  const [wall, board] = sampleCells(h, [WALL_CELL, BOARD_CELL]);
+  const middle = cellCenter(WALL_CELL.col, WALL_CELL.row);
+  const [wallR, wallG, wallB] = h.pixel(middle.x, middle.y);
+  const [groundR, groundG, groundB] = h.pixel(BOARD_X / 2, middle.y);
 
-  assertGreaterThan(
-    colorDistance(wall, board),
-    DISTINCT_MIN,
-    "the RGB distance between a wall cell's centre and an empty interior cell's",
+  assertNotEqual(
+    shows({ r: wallR, g: wallG, b: wallB }),
+    shows({ r: groundR, g: groundG, b: groundB }),
+    "a wall cell's centre, against stage outside the board's own rectangle",
   );
 });

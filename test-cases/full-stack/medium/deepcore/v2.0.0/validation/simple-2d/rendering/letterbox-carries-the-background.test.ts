@@ -1,25 +1,26 @@
-// rendering/letterbox-carries-the-background — the bars are the game's own colour.
+// rendering/letterbox-carries-the-background — the bars are one painted colour.
 //
-// specs/overview.md letterboxes the fitted stage, and the bars are part of the
-// picture a player sees. The build owes `BACKGROUND`, the stage background
-// `src/main.ts` hands the engine as the colour the canvas is cleared to, so the
-// bars around the stage match the game rather than showing through to the page.
+// specs/overview.md letterboxes the fitted stage and fixes what the bars hold:
+// "The letterbox bars around the stage carry the stage's background color." So
+// the bars are painted rather than left showing through to the page, and one
+// colour covers all of them.
 //
-// THIS POINT DECIDES THE BARS: every letterbox pixel is painted rather than left
-// transparent, each sits within 25 of 441 in RGB distance of the build's own
-// `BACKGROUND`, and the three window shapes all carry the same one. A build that
-// drew outside the stage's own `0..STAGE_W` by `0..STAGE_H` box puts its own
-// drawing into the bars and fails here.
+// THIS POINT DECIDES THE BARS: every letterbox pixel is opaque, and every bar
+// reads as the same colour as the first — within one window shape and across the
+// three. Flat paint through a blit is exact, so the readings are held EQUAL
+// rather than held inside a distance. What COLOUR the build chose is the
+// build's, and nothing here compares it against a figure of any kind.
 //
-// UNDER THIS ENGINE THE BARS ARE STILL THE BUILD'S. The engine paints them, but
-// it paints them with the `BACKGROUND` src/main.ts hands it, so what is on the
-// line here is the colour the build chose and exported.
+// UNDER THIS ENGINE THE BARS ARE STILL THE BUILD'S TO KEEP CLEAN. The engine
+// paints them, but a build that drew outside the stage's own `0..STAGE_W` by
+// `0..STAGE_H` box puts its own drawing into them and fails here.
 //
 // THREE POINTS. The requirement names three separable things — the whole stage
 // inside the surface at its own aspect, the stage CENTRED with even bars, and the
 // bars themselves carrying the game's background — and a build that fits the stage
 // and pins it to one corner must grade differently from one that does none of the
-// three. The other two are `rendering/stage-fit` and `rendering/stage-centred`.
+// three. The other two are `rendering/stage-fit` and, under no engine,
+// `rendering/stage-centred`.
 //
 // THREE SHAPES, THREE WINDOWS. A window wider than the stage, a window taller
 // than it, and an off-aspect window at twice the device pixel ratio. A pixel
@@ -28,30 +29,13 @@
 // requirement is about, since the fit has to be right on load.
 
 import { afterEach, it } from "vitest";
-import { createCanvas } from "@napi-rs/canvas";
-import {
-  assertEqual,
-  assertGreaterThanOrEqual,
-  assertLessThanOrEqual,
-} from "../assert";
-import { BACKGROUND } from "../constants";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,
-  colorDistance,
   createHarness,
   type Harness,
   type Rgb,
 } from "../harness";
-
-/**
- * How far a bar may sit from the background it is held against, in RGB distance.
- *
- * The review item's figure: 25 of the 441 the RGB cube spans. Wider than the
- * rounding a scaled blit can introduce, and half of DISTINCT_MIN, the scale's own
- * line for two colours a player would call different — so a bar carrying
- * anything the game visibly drew still fails.
- */
-const BAR_MATCH_MAX = 25;
 
 /** Where the letterbox bars fall on this surface, in the canvas's own pixels. */
 function barPoints(
@@ -72,26 +56,6 @@ function barPoints(
     );
   }
   return points;
-}
-
-/**
- * The stage background as a colour, resolved by the same 2D context the engine
- * clears with.
- *
- * `BACKGROUND` is a CSS colour string `src/game.ts` exports and `src/main.ts`
- * hands the engine (specs/overview.md), so it is the build's statement of what
- * the bars should be; resolving it through a canvas rather than parsing it here
- * is what lets a build name its background in any spelling CSS allows. Painted
- * over an opaque ground first, so a build that named a translucent colour reads
- * as what a viewer would actually see rather than as the page behind it.
- */
-function stageBackground(): Rgb {
-  const probe = createCanvas(1, 1);
-  const ctx = probe.getContext("2d");
-  ctx.fillStyle = BACKGROUND;
-  for (let i = 0; i < 255; i += 1) ctx.fillRect(0, 0, 1, 1);
-  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-  return { r, g, b };
 }
 
 const SURFACES = [
@@ -132,8 +96,14 @@ async function surface(options: {
   return h;
 }
 
-it("paints every letterbox bar with the build's own background", async () => {
-  const background = stageBackground();
+/** One bar reading held against the first, channel by channel. */
+function assertSameColor(bar: Rgb, first: Rgb, context: string): void {
+  assertEqual(bar.r, first.r, `${context}: red`);
+  assertEqual(bar.g, first.g, `${context}: green`);
+  assertEqual(bar.b, first.b, `${context}: blue`);
+}
+
+it("paints every letterbox bar with one background", async () => {
   const bars: Rgb[] = [];
 
   for (const [index, shape] of SURFACES.entries()) {
@@ -159,12 +129,14 @@ it("paints every letterbox bar with the build's own background", async () => {
         255,
         `the letterbox painted rather than left transparent on ${shape.name}`,
       );
-      assertLessThanOrEqual(
-        colorDistance({ r, g, b }, background),
-        BAR_MATCH_MAX,
-        `the letterbox of ${shape.name} carrying the BACKGROUND src/game.ts exports, in RGB distance`,
-      );
       sampled.push({ r, g, b });
+    }
+    for (const pixel of sampled) {
+      assertSameColor(
+        pixel,
+        sampled[0],
+        `one background across every bar of ${shape.name}`,
+      );
     }
     bars.push(sampled[0]);
   }
@@ -172,10 +144,10 @@ it("paints every letterbox bar with the build's own background", async () => {
   // The same background again on a window letterboxed along the other axis, and
   // on a window at another pixel ratio.
   for (const [index, bar] of bars.entries()) {
-    assertLessThanOrEqual(
-      colorDistance(bar, bars[0]),
-      BAR_MATCH_MAX,
-      `the letterbox on ${SURFACES[index].name} carrying the same background as on ${SURFACES[0].name}, in RGB distance`,
+    assertSameColor(
+      bar,
+      bars[0],
+      `the letterbox on ${SURFACES[index].name} carrying the same background as on ${SURFACES[0].name}`,
     );
   }
 });

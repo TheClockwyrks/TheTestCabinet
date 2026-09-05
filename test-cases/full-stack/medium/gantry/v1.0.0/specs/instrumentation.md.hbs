@@ -233,7 +233,6 @@ Each entry is one thing the frame put on screen:
   x: 0, y: 6, z: 0,    // the world position it is drawn at
   yaw: 0,              // the yaw it is turned to, in degrees
   size: [2.5, 2, 2.5], // its extent in world units, as [width, height, depth]
-  color: [180, 180, 190], // the color it is drawn in, as [r, g, b] from 0 to 255
   text: null,          // the string drawn, for `text`; null otherwise
 }
 ```
@@ -264,10 +263,9 @@ and what it looks like are the build's; that it is on screen is not.
 `specs/assets.md` names it and without any path or bundling suffix a build's
 tooling adds, and it is `null` for anything the build drew in code. `size` is
 what was actually drawn rather than what it stands for, so a model drawn at the
-wrong scale reports the wrong size. `color` is a single representative color for
-the thing; where a thing is drawn in more than one, it is the one that carries
-the most of it. A `text` entry's `name` is the build's own, so what identifies a
-readout is the `text` it drew and not what the build calls it.
+wrong scale reports the wrong size. A `text` entry's `name` is the build's own,
+so what identifies a readout is the `text` it drew and not what the build calls
+it.
 {{#if (eq engine.slug "none")}}
 The one exception is the debug overlay, which is not one of the game's readouts
 at all: Diagnostics below fixes the `name` its lines are reported under.

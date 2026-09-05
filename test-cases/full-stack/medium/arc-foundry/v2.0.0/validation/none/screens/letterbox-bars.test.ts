@@ -49,14 +49,14 @@ const GROUND_POINTS: readonly { x: number; y: number }[] = [
 
 /**
  * How far a letterbox bar may sit from the nearest sampled patch of the stage's
- * background, in RGB distance: the review item's `25` of `441`.
+ * background, in RGB distance: `25` of the `441` a full RGB diagonal spans.
  *
  * The specification makes the bars the stage's background colour, but a bar holds
  * the raw cleared ground while a patch of stage shows that ground through whatever
  * the build legitimately lays over it — a vignette, a gradient, a faint texture —
- * because the look is the build's. `25` leaves that drift room while staying at
- * half of `DISTINCT_MIN`, this project's own line for something clearly drawn,
- * so a bar carrying anything the game painted still fails.
+ * because the look is the build's. `25` is the room that drift is given: wide
+ * enough that a bar matching a shaded stage still reads as background, narrow
+ * enough that a bar the build painted a picture of its own into does not.
  */
 const BAR_MATCH_MAX = 25;
 

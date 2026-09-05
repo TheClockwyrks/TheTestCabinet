@@ -1,23 +1,25 @@
-// visibility/targets-apart-from-field — a live target's arc is not the color
-// of the empty ring around it.
+// visibility/targets-apart-from-field — a live target's arc is drawn on its
+// ring.
 //
-// WHAT THE SPECIFICATION FIXES. The review item: "A live target's arc stands
-// apart from the open field around its ring, so the derelicts to sweep are
-// read off the screen." The arc's geometry is `specs/rings.md`'s — ring 1's
-// annulus runs 290 to 314, its slot 6's target arc centers at 195 degrees
-// under ring angle 0 — and the palette is the build's own, so what is read is
-// separation alone, against the category's figure for clearly apart
-// (`DISTINCT_MIN`, see `visibility/distinct.ts`).
+// WHAT THE SPECIFICATION FIXES. The review item: "A live target's arc is drawn
+// on its ring, so the derelicts to sweep are read off the screen." The arc's
+// geometry is `specs/rings.md`'s — ring 1's annulus runs 290 to 314, its slot
+// 6's target arc centers at 195 degrees under ring angle 0 — and the palette is
+// the build's own, so what is read is presence alone: the arc's footprint is
+// rendered twice, once with the target standing in the slot and once with the
+// targets cleared, and the points that moved between the two frames are the
+// points the target was drawn on.
 //
 // THE WORLD THIS POSES. An isolated `playing` field holding exactly one live
 // target, on ring 1, which is stationary at wave 1 (`specs/rings.md`), so the
-// posed arc stands where the pose put it through the rendered tick.
+// posed arc stands where the pose put it through both rendered ticks and the
+// second frame reads the same places over the same ring.
 //
-// WHERE IT SAMPLES. Fifteen points across the target's arc — three radii
-// inside the annulus by five angles inside the arc — against five points of
-// the same annulus at angles whose slots hold no target: the open field
-// around its ring, exactly as the item words it. The target passes when some
-// point of its arc is clearly apart from every one of those field samples.
+// WHERE IT SAMPLES. Five angles inside the arc, and at each of them every
+// whole radius strictly inside the ring's annulus, so a target drawn as an arc
+// of any weight lands on some sampled point at every one of those angles. Each
+// angle is read on its own, so a target drawn across only part of its arc does
+// not pass on the rest.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan } from "../assert";
@@ -29,23 +31,20 @@ import {
   targetArcCenterDeg,
   type Harness,
 } from "../harness";
-import {
-  DISTINCT_MIN,
-  polarGrid,
-  polarPoints,
-  samplePoints,
-  separation,
-} from "./distinct";
+import { movedCount, polarGrid, polarPoints, samplePoints } from "./sampling";
 
 /** Ring 1, slot 6: arc center 195 degrees under ring angle 0. */
 const RING = 1;
 const SLOT = 6;
 
-/** Radii inside ring 1's annulus (290 to 314): 4 in from each edge, and mid. */
-const ARC_RADII = [294, 302, 310];
+/** Every whole radius strictly inside ring 1's annulus (290 to 314). */
+const ARC_RADII = Array.from(
+  { length: RINGS[RING - 1].outerRadius - RINGS[RING - 1].innerRadius - 1 },
+  (_, i) => RINGS[RING - 1].innerRadius + 1 + i,
+);
 
-/** The same annulus where no target stands: other slots' territory. */
-const FIELD_ANGLES = [15, 45, 75, 285, 315];
+/** Angles inside the 26-degree arc, 6 in from each edge. */
+const ARC_OFFSETS = [-7, -3.5, 0, 3.5, 7];
 
 let h: Harness;
 
@@ -57,22 +56,29 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("draws a live target apart from its ring's open field", async () => {
+it("draws a live target across its arc on the ring", async () => {
   isolate(h);
   h.debug.spawnTarget(RING, SLOT, RINGS[RING - 1].hitPoints);
   await h.tick(1);
   captureStill(h, "scene");
 
   const arcCenter = targetArcCenterDeg(RING, SLOT);
-  const arcAngles = [-7, -3.5, 0, 3.5, 7].map((off) => arcCenter + off);
-
-  const target = samplePoints(h, polarPoints(polarGrid(ARC_RADII, arcAngles)));
-  const field = samplePoints(h, polarPoints(polarGrid([302], FIELD_ANGLES)));
-
-  assertGreaterThan(
-    separation(target, field),
-    DISTINCT_MIN,
-    "the RGB separation of a live target's arc from the empty annulus " +
-      "around its ring",
+  const columns = ARC_OFFSETS.map((off) =>
+    polarPoints(polarGrid(ARC_RADII, [arcCenter + off])),
   );
+  const live = columns.map((points) => samplePoints(h, points));
+
+  h.debug.clearTargets();
+  await h.tick(1);
+  const cleared = columns.map((points) => samplePoints(h, points));
+
+  for (let i = 0; i < ARC_OFFSETS.length; i += 1) {
+    assertGreaterThan(
+      movedCount(live[i], cleared[i]),
+      0,
+      `the sampled points of ring ${RING}'s annulus at ` +
+        `${ARC_OFFSETS[i]} degrees from the arc's center the target was ` +
+        `drawn on`,
+    );
+  }
 });

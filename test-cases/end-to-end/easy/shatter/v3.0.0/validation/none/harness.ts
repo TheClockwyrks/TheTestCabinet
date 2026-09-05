@@ -736,10 +736,9 @@ export async function presentCalls(h: Harness): Promise<DrawCall[]> {
  * game state.
  *
  * DELIVERED WHERE THE CHECK ASKS FOR IT, rather than at the moment the harness is
- * built. The kit carries the same gesture as `HarnessOptions.armAudio`, which
- * arms before the opening `reset`; `audio/runs-without-audio` needs the opposite
- * order — the page's audio shut down FIRST, and the gesture then meeting the
- * refusal — so the case keeps the gesture as a step a check takes.
+ * built. The kit carries the same gesture as `HarnessOptions.armAudio`, which arms
+ * before the opening `reset`; a cue check wants it after its own scenario is posed,
+ * so the case keeps the gesture as a step a check takes.
  */
 export async function armAudio(h: Harness): Promise<void> {
   await h.page.keyboard.press(UNBOUND_KEY);

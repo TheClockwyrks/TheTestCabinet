@@ -12,9 +12,10 @@
 // part, through `world.diagnostics` in the game mode's `beginPlay` ... Drawing the
 // panel and toggling it are the engine's."
 //
-// THAT THE KEY TOGGLES IT IS `controls/overlay-backquote`'S POINT, NOT THIS ONE'S.
-// This one is about the CONTENTS: a build that registers nothing still shows and
-// hides an engine panel, and loses here while keeping that one.
+// THAT THE KEY TOGGLES IT IS `controls/overlay-backquote`'S POINT, NOT THIS ONE'S
+// — and that item is `engines = ["none"]`, because the key and the panel are the
+// engine's here. This one is about the CONTENTS, which are the build's under every
+// engine: a build that registers nothing still shows and hides an engine panel.
 //
 // HOW A FACT IS READ. The recorder hands back every operation one frame's render
 // issued, so the panel's contents are the text that frame drew. The baseline is

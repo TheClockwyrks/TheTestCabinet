@@ -8,11 +8,9 @@
 // `animation/load-cycles-present` and fails here — which is exactly the split
 // between the two points.
 //
-// THE PRODUCED FRAMES ARE SERVED TO THE LOADER HERE, so the cycle the build plays
-// is the cycle it produced: `./produced.ts` answers the engine's asset requests
-// from the committed `assets/` tree. Without them the point would be about whatever
-// the build's fallback geometry happens to do, which is not what the specification
-// states.
+// THE PRODUCED FRAMES REACH THE LOADER THROUGH THE HARNESS, so the cycle the build
+// plays is the cycle it produced: the harness answers the engine's asset requests
+// from the committed `assets/` tree for every check it builds.
 //
 // THE SCENARIO. One Mote on an emptied yard, its travel held and nothing else
 // posed, so the pixels over it can change for one reason only. Holding the travel
@@ -41,7 +39,6 @@ import {
   parkUnit,
   ticks,
 } from "../harness";
-import { serveProducedAssets } from "./produced";
 import { distinct, lattice, readOverFrames } from "./region";
 import { tileCenter } from "../constants";
 
@@ -57,7 +54,6 @@ const WINDOW = ticks(0.5);
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 

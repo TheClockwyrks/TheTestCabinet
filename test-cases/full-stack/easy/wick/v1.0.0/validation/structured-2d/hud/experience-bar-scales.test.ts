@@ -19,8 +19,10 @@
 // bar is a filled shape running the height of the bar, so `hud/regions.ts` takes
 // the tallest unbroken block of changed pixels for the bar's rows and reads the
 // band's width across them, passing over the rules a build may have drawn down
-// its bar. The bar is EMPTY at `xp` `0`, so each band measured against that
-// frame is a fill read from the bar's own start:
+// its bar. A band of any width at all is what says a bar was drawn; how tall it
+// is, and how it is styled, are the build's and the reviewer's. The bar is EMPTY
+// at `xp` `0`, so each band measured against that frame is a fill read from the
+// bar's own start:
 //
 //   band(0 → 3)  is the bar filled one fifth
 //   band(0 → 12) is the bar filled four fifths
@@ -76,7 +78,6 @@ import {
 import {
   assertEqual,
   assertGreaterThan,
-  assertGreaterThanOrEqual,
   assertLessThanOrEqual,
   assertNear,
 } from "../assert";
@@ -102,9 +103,6 @@ const WHOLE = xpToNext(LEVEL);
 
 /** Ticks run after the experience is posed, so an eased bar has arrived. */
 const SETTLE_TICKS = TICK_HZ;
-
-/** The fewest rows a band must be thick to be a bar rather than an artifact. */
-const MIN_BAR_ROWS = 3;
 
 let harnesses: Harness[] = [];
 
@@ -147,7 +145,6 @@ it("fills the experience bar in proportion to xp", async () => {
   const filled = changedBand(differenceMask(empty.pixels, whole.pixels));
 
   assertGreaterThan(filled.w, 0, "the width of the bar the experience filled");
-  assertGreaterThanOrEqual(filled.h, MIN_BAR_ROWS, "the height of that bar");
 
   /** Each partial fill, the share of the bar the spec gives it, and its band. */
   const parts = [

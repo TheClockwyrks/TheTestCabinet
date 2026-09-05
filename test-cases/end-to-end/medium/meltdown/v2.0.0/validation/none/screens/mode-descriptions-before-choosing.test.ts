@@ -30,12 +30,12 @@
 // difference before it is measured, and what is measured is the LETTERS that
 // remain.
 //
-// A PER-MODE FIGURES LINE COUNTS AS A DESCRIPTION, and that is deliberate. The
+// A LABELLED FIGURES LINE COUNTS AS A DESCRIPTION, and that is deliberate. The
 // sentence asks the body to describe "what that mode is and what it changes", and
 // a row of that mode's own starting money, wave count and lives does the second
-// half of it — so a build that answers with figures rather than prose is not
-// failed here. Whether the first half is answered too is the reviewer's reading,
-// from the still.
+// half of it — the labels beside those figures are the letters this reads, so a
+// build that answers with figures rather than prose is not failed here. Whether
+// the first half is answered too is the reviewer's reading, from the still.
 //
 // THE HIGHLIGHT IS POSED, NOT WALKED, for the reason `screens.menu-wraps-down`
 // gives: `setMenuIndex` "Sets the highlighted row of whatever menu the current
@@ -64,18 +64,17 @@ import { lettersIn } from "./copy";
 
 /**
  * How many letters of text unique to a row must remain once every row label has
- * been struck out of it.
+ * been struck out of it: one.
  *
  * `specs/screens.md` asks for "a different body of text for each ... describing
- * what that mode is and what it changes" and fixes not one word of it, so the
- * floor has to sit below the shortest honest description and above what a build
- * that wrote none can produce by accident. 12 letters is about three short words —
- * under `SUDDEN DEATH`'s own label, so no row's name could clear it, and well
- * under any sentence describing a mode. What a build with no descriptions produces
- * is a selection marker, a caret or a number, none of which carries three words:
- * those read 0 to 2.
+ * what that mode is and what it changes" and fixes not one word of it — not how
+ * long it runs, not how it is broken into lines, not what it says. So what is read
+ * is whether the row drew a body of its own AT ALL, which is the smallest count
+ * there is. How much a row drew and how well it describes its mode are the
+ * reviewer's, from the still this point captures. A build drawing one paragraph
+ * for every mode, or none, leaves a row nothing of its own and reads 0.
  */
-const DESCRIPTION_MIN_LETTERS = 12;
+const DESCRIPTION_MIN_LETTERS = 1;
 
 /** The row the still is captured on, so the picture shows a description. */
 const CAPTURE_ROW = 1;

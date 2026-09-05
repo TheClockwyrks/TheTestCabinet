@@ -16,15 +16,19 @@
 // the bare label.
 //
 // THE BAR IS A BODY OF TEXT, NOT A MARK. For each row, what must be there is text
-// that appears on that row's frame and on none of the other four, and enough of it
-// to be a description: `MIN_DISTINCT_CHARS` characters. A build that swaps a
-// marker glyph or reverses one row's colour has nothing distinctive to say and
-// reads a handful of characters at most; a build that draws no body at all reads
-// zero. A build that draws all five descriptions at once, unchanged as the
-// highlight moves, also reads zero — which is what the specification's "moving the
-// highlight ... draws a different body of text for each" asks, since the
-// description a player is reading has to be the one belonging to the row they are
-// on.
+// that appears on that row's frame and on none of the other four. A build that
+// swaps a marker glyph or reverses one row's colour draws no text of its own there
+// and reads zero, because a run is compared on its letters, digits and inner
+// spaces alone and a marker leaves none of those behind. A build that draws no
+// body at all reads zero, and so does one that draws all five descriptions at
+// once, unchanged as the highlight moves — which is what the specification's
+// "moving the highlight ... draws a different body of text for each" asks, since
+// the description a player is reading has to be the one belonging to the row they
+// are on.
+//
+// HOW LONG THE BODY RUNS IS NEVER READ. specs/screens.md fixes not one word of a
+// description, so what is decided here is that the row drew one and the reviewer
+// reads it off the still.
 //
 // AND IT STARTS NOTHING. The screen is read after every move: five presses across
 // the list must leave the game exactly where it was, on `modeselect`, with no run
@@ -49,16 +53,15 @@ import {
 import { isRowLabel, normalize, poseMenu } from "./menu";
 
 /**
- * How many characters of text must belong to a row and to no other row.
+ * How many characters of text must belong to a row and to no other row: one.
  *
  * specs/screens.md asks for "a body of text ... describing what that mode is and
- * what it changes", and 24 characters is about four short words: past any marker,
- * glyph or repositioned label a build could produce by accident, and far short of
- * the sentence a real description of a mode runs to. The reading is in characters
- * rather than in runs of text, because how a build breaks its copy into lines is
- * its own business.
+ * what it changes" and fixes not one word of it, so what is read is whether the
+ * row drew a body of its own AT ALL, which is the smallest count there is. The
+ * reading is in characters rather than in runs of text, because how a build breaks
+ * its copy into lines is its own business.
  */
-const MIN_DISTINCT_CHARS = 24;
+const MIN_DISTINCT_CHARS = 1;
 
 /**
  * The rows a description is read on: the five that name a mode, in `MODE_ITEMS`

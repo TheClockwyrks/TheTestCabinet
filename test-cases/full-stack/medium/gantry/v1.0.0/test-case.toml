@@ -284,11 +284,16 @@ description = "The produced voxel models and audio and the 3D scene they sit in:
 # the same point is decided by the same-named suite in each engine's validator
 # project under `validation/<engine>/`. The three suites are the same files:
 # the three harnesses export one async API, so a point is graded identically
-# whichever runtime the run selected.
+# whichever runtime the run selected. Six points carry `engines = ["none"]`
+# and live under `validation/none/` alone: the debug overlay's visibility, its
+# toggle key and its reading the game without changing it, the clock going off
+# real time, and the stage's fit to the window are the engine's own work under
+# the two 3D runtimes, so a check on them there would grade the engine rather
+# than the build.
 #
-# 827 points across 14 categories. Each asserts ONE
-# observable behavior, because a build that gets half of a compound point right
-# must score differently from one that gets all of it right. A domain's rating is
+# 820 points across 14 categories. Each asserts ONE observable behavior,
+# because a build that gets half of a compound point right must score
+# differently from one that gets all of it right. A domain's rating is
 # the worst cap among its failures, so the count weights nothing — what the split
 # buys is a grade that names the requirement a build missed.
 [review]
@@ -1956,20 +1961,16 @@ title = "Taken off real time, the game changes only when it is advanced"
 description = "setAutoStep(false) stops the frame loop advancing the game from the wall clock, so a run stands still while wall-clock time passes and changes only when advance says so."
 domains = ["simulation"]
 failure_cap = "scuffed"
-validation = { script = "instrumentation/auto-step-off-stops-the-wall-clock.test.ts", outputs = [
+validation = { script = "instrumentation/auto-step-off-stops-the-wall-clock.test.ts", engines = ["none"], outputs = [
   { id = "still", name = "The run after half a second of wall clock", kind = "image" },
 ] }
 
-# Show the overlay with Backquote on the build screen of site index 0 (First
-# Lift) with an empty structure, capture the panel's pixels; then, without
-# touching the overlay, pose a crane (a ring, four struts and a
-# counterweight), start a run and advance it to a tick with a nonzero clock
-# and a moving axis, and capture the panel again at each of those two states.
-# — The panel's pixels differ between the empty build screen and the posed
-# crane, and again between the posed crane and the running tick, so the panel
-# is reading the screen, the structure's figures and the run's figures rather
-# than drawing a fixed caption; and the game's own state is byte-for-byte
-# identical before and after each capture.
+# Show the overlay with Backquote on the build screen of an emptied site and
+# read the lines drawn() reports for it; then, without touching the overlay,
+# move the camera, place a member and show another screen, reading the lines
+# again after each. — The lines the overlay reports change at each of the
+# three, so the panel is reading the camera pose, the structure's member
+# count and the current screen rather than drawing a fixed caption.
 # From specs/instrumentation.md § Diagnostics.
 [[review.categories.items]]
 id = "diagnostics-sources-registered"
@@ -6756,12 +6757,12 @@ validation = { script = "tape/controller-drives-when-moving-away.test.ts", outpu
 ] }
 
 # Clear the loads and the obstacles, pose a ready crane, clear the tape, add
-# one hoist move to 5 at rate 4 — the hoist starts at HOIST_START (2), so d
-# is exactly 3 — start the run, and before the first tick call
-# setAxisRate("hoist", 6), making v * v / (2 * a) = 36 / 12 = 3, exactly d.
-# Advance one tick. — run.axes.hoist.rate reads 6 - HOIST_ACCEL / TICK_HZ =
-# 5.9 within 1e-9, the braking result, rather than the 4 a drive-and-clamp
-# would leave.
+# one hoist move to 2.75 at rate 4 — the hoist starts at HOIST_START (2), so
+# d is exactly 0.75 — start the run, and before the first tick call
+# setAxisRate("hoist", 3), making v * v / (2 * a) = 9 / 12 = 0.75, exactly d.
+# Advance one tick. — run.axes.hoist.rate reads 3 - HOIST_ACCEL / TICK_HZ =
+# 2.9 within 1e-9, the braking result, rather than the 3.1 a drive would
+# leave.
 # From specs/program.md § Axis motion — "if `v * s > 0` and `|d| <= v * v /
 # (2 * a)`, brake, `v = v - s * a * dt`".
 [[review.categories.items]]
@@ -9138,7 +9139,7 @@ validation = { script = "controls/pick-null-off-the-build-screen.test.ts", outpu
 ] }
 
 # ----------------------------------------------------------------------------
-# Screens, readouts, and the failure copy — 107 points
+# Screens, readouts, and the failure copy — 104 points
 # ----------------------------------------------------------------------------
 [[review.categories]]
 id = "screens"
@@ -9209,11 +9210,10 @@ validation = { script = "screens/build-back-returns-to-select.test.ts", outputs 
   { id = "state", name = "the select screen back left the build screen for", kind = "image" },
 ] }
 
-# openSite(0), clearLoads, clearObstacles, clearStructure, read the frame;
-# then addObstacle(4, 0, -2, 2, 4, 4) with the camera untouched and read the
-# frame again. — The pixels inside the obstacle box's projected extent change
-# between the two frames, and nothing outside it does.
-# From specs/ui.md § The screens.
+# openSite(0), show the build screen, addObstacle twice at two boxes well
+# apart in the yard, advance a frame and read drawn(). — The frame reports
+# two obstacles, one for each the site carries.
+# From specs/ui.md § Build.
 [[review.categories.items]]
 id = "build-draws-the-obstacles"
 title = "The build screen draws the site's obstacles"
@@ -9705,10 +9705,12 @@ validation = { script = "screens/select-shows-the-best-time.test.ts", outputs = 
 ] }
 
 # reset, setCleared(0, true) so site 1 reads cleared, site 2 open and site 3
-# locked, open select, and read each row's pixels converted to grayscale
-# luminance. — The three rows' grayscale pixels differ from one another
-# beyond antialiasing noise, so each state is told apart with the hue
-# removed.
+# locked, open select, advance a frame and read the operations that frame
+# made on the screen layer. Build one token list per row from the methods,
+# the arguments and the coordinates under the transform in force, together
+# with the font, line and alignment state, and drop fillStyle, strokeStyle
+# and shadowColor. — The three rows' token lists are pairwise unequal, so
+# each state is told apart with the color removed.
 # From specs/ui.md § The screens.
 [[review.categories.items]]
 id = "select-state-not-by-hue-alone"
@@ -9717,7 +9719,7 @@ description = "A site's state reads without relying on hue alone, so locked, ope
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "screens/select-state-not-by-hue-alone.test.ts", outputs = [
-  { id = "select-grayscale", name = "The select rows in grayscale", kind = "image" },
+  { id = "select-grayscale", name = "The select rows in their three states", kind = "image" },
 ] }
 
 # reset, then setCleared(0, true), setScreen("select") and setMenuIndex(1) —
@@ -9880,14 +9882,13 @@ validation = { script = "screens/build-readout-cost-against-budget.test.ts", out
   { id = "build-cost", name = "The cost readout", kind = "image" },
 ] }
 
-# openSite(0), read the palette with the strut tool selected, then
-# setTool("cable") and read it again. — In each frame exactly one tool is
-# drawn distinctly from the rest, and it is the selected one.
+# openSite(0), empty the yard, show the build screen, setTool("strut"),
+# advance a frame and read drawn(). — The frame reports a selected-tool mark.
 # From specs/ui.md § Build.
 [[review.categories.items]]
 id = "build-readout-selected-tool-marked"
 title = "The build screen marks the selected tool"
-description = "The build screen's tool palette marks the selected tool, distinctly from the others."
+description = "The build screen's tool palette marks the selected tool, so a click's next effect is readable before it is made."
 domains = ["presentation", "construction"]
 failure_cap = "scuffed"
 validation = { script = "screens/build-readout-selected-tool-marked.test.ts", outputs = [
@@ -9933,23 +9934,6 @@ validation = { script = "screens/build-readout-tool-palette-bindings.test.ts", o
   { id = "build-palette", name = "The tool palette", kind = "image" },
 ] }
 
-# On an isolated sound crane whose members carry visibly different
-# utilizations, press KeyC, read check() for each member's utilization, and
-# sample each member's drawn color along its projected segment. — Each
-# member's drawn color is the ramp's color for the utilization the check
-# reports it, so members of different utilization are drawn differently and
-# members of equal utilization alike.
-# From specs/ui.md § Build.
-[[review.categories.items]]
-id = "check-display-colors-by-utilization"
-title = "The check colors each member by its static utilization"
-description = "With a structure that stands, each member is colored by its static utilization on the utilization ramp."
-domains = ["presentation", "construction"]
-failure_cap = "scuffed"
-validation = { script = "screens/check-display-colors-by-utilization.test.ts", outputs = [
-  { id = "check-colors", name = "The members coloured by utilization", kind = "image" },
-] }
-
 # On a sound crane on site 1 with clearProgram called, press KeyC and read
 # the screen's text. — empty-program is named on the screen.
 # From specs/ui.md § Build.
@@ -9961,20 +9945,6 @@ domains = ["presentation", "construction"]
 failure_cap = "passable"
 validation = { script = "screens/check-display-names-empty-program.test.ts", outputs = [
   { id = "empty-program-shown", name = "The check display naming empty-program", kind = "image" },
-] }
-
-# On an isolated crane with rails but no ring, read each member's drawn
-# color, press KeyC and read them again. — Every member is drawn in the same
-# color it was before the check.
-# From specs/ui.md § Build.
-[[review.categories.items]]
-id = "check-display-readiness-colors-no-member"
-title = "With a readiness issue no member is colored"
-description = "With a readiness issue the check reports no member, so no member is colored on the build screen."
-domains = ["presentation", "construction"]
-failure_cap = "passable"
-validation = { script = "screens/check-display-readiness-colors-no-member.test.ts", outputs = [
-  { id = "check-no-color", name = "The members left uncolored", kind = "image" },
 ] }
 
 # On an isolated crane with rails but no ring, press KeyC and read the
@@ -10030,25 +10000,12 @@ validation = { script = "screens/check-display-says-it-stands.test.ts", outputs 
   { id = "check-stands", name = "The stands verdict", kind = "image" },
 ] }
 
-# On an isolated ready crane that is a mechanism, read each member's drawn
-# color, press KeyC and read them again. — Every member is drawn in the same
-# color it was before the check.
-# From specs/ui.md § Build.
-[[review.categories.items]]
-id = "check-display-unstable-colors-no-member"
-title = "A structure that does not stand has no member colored"
-description = "With no readiness issue and a structure that does not stand the check reports no member, so no member is colored on the build screen."
-domains = ["presentation", "construction"]
-failure_cap = "passable"
-validation = { script = "screens/check-display-unstable-colors-no-member.test.ts", outputs = [
-  { id = "check-unstable-color", name = "The members left uncolored of a mechanism", kind = "image" },
-] }
-
-# setAutoStep(false) on an isolated build screen, hold the pointer still over
-# a node, advance a frame and capture it as a baseline; then deliver a click
-# the editor refuses, advancing one frame at a time and capturing each of the
-# next ten frames. — The structure is unchanged, and at least one of the ten
-# frames differs from the baseline, so the refusal is shown.
+# On an isolated build screen carrying a ring, rest the pointer on one node
+# with the strut tool selected, advance a frame and read drawn(); then, with
+# the pointer where it is, select the ring tool — whose click that node
+# refuses — advance a frame and read drawn() again, and deliver the click. —
+# The two readings differ, so the screen shows the refusal, and the structure
+# comes through the click unchanged.
 # From specs/ui.md § Build.
 [[review.categories.items]]
 id = "refused-edit-is-visible"
@@ -10103,10 +10060,10 @@ validation = { script = "screens/program-lists-the-move-steps.test.ts", outputs 
   { id = "program-moves", name = "The move steps listed", kind = "image" },
 ] }
 
-# openSite(3) with a posed crane, read the build screen's yard and readouts,
-# then press KeyP and read them again with the camera untouched. — The site
-# name, the cost against the budget, the tool palette and the step count are
-# all still drawn, and the yard is drawn from the same camera pose.
+# openSite(3) with a posed crane and a posed tape, read the build screen's
+# readouts, then setScreen("program") and read them again. — The site name,
+# the cost, the budget and the step count are each still drawn as the same
+# run of text, and the camera the yard is shown through is unchanged.
 # From specs/ui.md § Program.
 [[review.categories.items]]
 id = "program-shows-the-same-yard-and-readouts"
@@ -10131,16 +10088,14 @@ validation = { script = "screens/failed-run-stays-on-the-run-screen.test.ts", ou
   { id = "failed-run", name = "The run screen held after a failure", kind = "image" },
 ] }
 
-# Run an isolated crane holding one member near slack and one near its limit,
-# sample each member's drawn color along its projected segment, then sample
-# the run screen outside every member's projected extent. — Both sampled ramp
-# colors appear on the screen away from every member, so a legend for the
-# ramp is drawn.
+# Open a site, stand a minimal crane, pose a tape that holds the run open,
+# start the run, advance a frame and read drawn(). — The frame reports a
+# ramp-legend aid, so the run screen carries a legend for the ramp.
 # From specs/ui.md § Run.
 [[review.categories.items]]
 id = "run-legend"
 title = "The run screen carries a legend for the utilization ramp"
-description = "The run screen carries a legend for the utilization ramp, drawing the ramp's colors away from the members so the member coloring reads."
+description = "The run screen carries a legend for the utilization ramp, so the member coloring reads."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "screens/run-legend.test.ts", outputs = [
@@ -11926,20 +11881,19 @@ validation = { script = "assets/assets-work-from-a-sub-path.test.ts", outputs = 
   { id = "sub-path", name = "The site played from a sub-path", kind = "image" },
 ] }
 
-# Open a site, clear the loads and the obstacles, clear the structure, and
-# place the ring alone. Project the slew axis at mid-flange height and
-# capture the frame. Then re-serve the built dist eight times, each time
-# withholding one committed .glb, and capture the same frame. — With every
-# file served the ring is drawn at the projected point; exactly one file's
-# absence removes those pixels while every other posed subject stays drawn.
+# Open a site, clear the loads and the obstacles, clear the structure, place
+# the ring alone, advance a frame and read drawn(). — The frame reports a
+# ring model, and the source it names for it is ring.glb.
 # From specs/assets.md intro and § The models — the build 'produces every
 # model and sound the game uses with them, commits the produced files, and
 # wires them in', and the ring is one of the eight models the table asks
-# for..
+# for; specs/instrumentation.md § Readings — a model entry's `source` is 'the
+# produced file its geometry came from, or `null` when the build drew it in
+# code'.
 [[review.categories.items]]
 id = "ring-drawn-from-a-produced-model"
 title = "The ring is drawn from a produced model file"
-description = "The ring on screen is a committed voxel model decoded and drawn, not geometry the build draws in code: exactly one of the committed .glb files, withheld from the served site, removes the ring from the frame."
+description = "The ring on screen is a committed voxel model decoded and drawn, not geometry the build draws in code: the frame reports the ring as drawn from the produced ring.glb."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/ring-drawn-from-a-produced-model.test.ts", outputs = [
@@ -11947,34 +11901,33 @@ validation = { script = "assets/ring-drawn-from-a-produced-model.test.ts", outpu
 ] }
 
 # Pose a crane carrying a rail and a ring on an isolated site with no loads
-# and no obstacles, start a run, set the trolley axis to a value on the
-# track, and project the trolley point. Capture the frame with every produced
-# file served, and again with each committed .glb withheld in turn. — With
-# every file served the trolley is drawn at the projected point; exactly one
-# file's absence removes those pixels while the other subjects stay drawn.
-# From specs/assets.md § The models — 'trolley | the carriage on the rail'.
+# and no obstacles, advance a frame and read drawn(). — The frame reports a
+# trolley model, and the source it names for it is trolley.glb.
+# From specs/assets.md § The models — 'trolley | the carriage on the rail';
+# specs/instrumentation.md § Readings — a model entry's `source` is 'the
+# produced file its geometry came from, or `null` when the build drew it in
+# code'.
 [[review.categories.items]]
 id = "trolley-drawn-from-a-produced-model"
 title = "The trolley is drawn from a produced model file"
-description = "The trolley on screen is a committed voxel model decoded and drawn, not geometry the build draws in code: exactly one of the committed .glb files, withheld from the served site, removes the trolley from the frame."
+description = "The trolley on screen is a committed voxel model decoded and drawn, not geometry the build draws in code: the frame reports the trolley as drawn from the produced trolley.glb."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/trolley-drawn-from-a-produced-model.test.ts", outputs = [
   { id = "trolley", name = "The trolley drawn from its produced model", kind = "image" },
 ] }
 
-# Start a run on an isolated site with no loads and no obstacles, pose the
-# bob at a known position with the hoist axis set to the pivot-to-bob
-# distance, and project the bob. Capture the frame with every produced file
-# served, and again with each committed .glb withheld in turn. — With every
-# file served the hook is drawn at the projected bob; exactly one file's
-# absence removes those pixels while the other subjects stay drawn.
+# Pose a crane on an isolated site with no loads and no obstacles, advance a
+# frame and read drawn(). — The frame reports a hook model, and the source it
+# names for it is hook.glb.
 # From specs/assets.md § The models — 'hook | the hook block at the cable's
-# end'.
+# end'; specs/instrumentation.md § Readings — a model entry's `source` is 'the
+# produced file its geometry came from, or `null` when the build drew it in
+# code'.
 [[review.categories.items]]
 id = "hook-drawn-from-a-produced-model"
 title = "The hook block is drawn from a produced model file"
-description = "The hook at the cable's end is a committed voxel model decoded and drawn, not geometry the build draws in code: exactly one of the committed .glb files, withheld from the served site, removes the hook from the frame."
+description = "The hook at the cable's end is a committed voxel model decoded and drawn, not geometry the build draws in code: the frame reports the hook as drawn from the produced hook.glb."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/hook-drawn-from-a-produced-model.test.ts", outputs = [
@@ -11982,101 +11935,102 @@ validation = { script = "assets/hook-drawn-from-a-produced-model.test.ts", outpu
 ] }
 
 # On an isolated site with no loads and no obstacles, pose a structure
-# carrying one member and add a counterweight on one of its nodes, then
-# project that node. Capture the frame with every produced file served, and
-# again with each committed .glb withheld in turn. — With every file served
-# the counterweight is drawn at the projected node; exactly one file's
-# absence removes those pixels while the other subjects stay drawn.
+# carrying one member, add a counterweight on one of its nodes, advance a
+# frame and read drawn(). — The frame reports a counterweight model, and the
+# source it names for it is counterweight.glb.
 # From specs/assets.md § The models — 'counterweight | a dense ballast
-# block'.
+# block'; specs/instrumentation.md § Readings — a model entry's `source` is 'the
+# produced file its geometry came from, or `null` when the build drew it in
+# code'.
 [[review.categories.items]]
 id = "counterweight-drawn-from-a-produced-model"
 title = "The counterweight is drawn from a produced model file"
-description = "A counterweight on screen is a committed voxel model decoded and drawn, not geometry the build draws in code: exactly one of the committed .glb files, withheld from the served site, removes it from the frame."
+description = "A counterweight on screen is a committed voxel model decoded and drawn, not geometry the build draws in code: the frame reports it as drawn from the produced counterweight.glb."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/counterweight-drawn-from-a-produced-model.test.ts", outputs = [
   { id = "counterweight", name = "The counterweight drawn from its produced model", kind = "image" },
 ] }
 
-# Open a site, clear the structure, the loads and the obstacles, and project
-# one authored anchor node. Capture the frame with every produced file
-# served, and again with each committed .glb withheld in turn. — With every
-# file served a mount is drawn at the projected anchor; exactly one file's
-# absence removes those pixels while the other subjects stay drawn.
-# From specs/assets.md § The models — 'mount | an anchor's ground fixture'.
+# Open a site, clear the structure, the loads and the obstacles, advance a
+# frame and read drawn(). — The frame reports a mount model, and the source
+# it names for it is mount.glb.
+# From specs/assets.md § The models — 'mount | an anchor's ground fixture';
+# specs/instrumentation.md § Readings — a model entry's `source` is 'the
+# produced file its geometry came from, or `null` when the build drew it in
+# code'.
 [[review.categories.items]]
 id = "mount-drawn-from-a-produced-model"
 title = "The anchor mount is drawn from a produced model file"
-description = "The ground fixture at an anchor is a committed voxel model decoded and drawn, not geometry the build draws in code: exactly one of the committed .glb files, withheld from the served site, removes the mounts from the frame."
+description = "The ground fixture at an anchor is a committed voxel model decoded and drawn, not geometry the build draws in code: the frame reports the mount as drawn from the produced mount.glb."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/mount-drawn-from-a-produced-model.test.ts", outputs = [
   { id = "mount", name = "The mount drawn from its produced model", kind = "image" },
 ] }
 
-# Open a site, clear the obstacles and loads, add one crate, and identify the
-# .glb that draws it by re-serving the built dist with each committed model
-# file withheld in turn. Decode that file and measure the mesh's axis-aligned
-# bounds in its own units. — The identified model's bounds, divided by
-# VOXELS_PER_UNIT (8), fill the crate class's 2 x 2 x 2 box on all three
-# axes.
-# From specs/assets.md § The models — 'The three load models fill their class
-# boxes'; specs/world.md § Loads — 'crate | 2 x 2 x 2'.
+# Open a site, clear the obstacles and loads, add one crate and capture the
+# frame. Read the committed assets/models/crate.glb off the workspace and
+# measure the mesh's axis-aligned bounds from its POSITION accessors. — The
+# bounds, divided by VOXELS_PER_UNIT (8), reach at least LOAD_MODEL_FILL
+# (0.85) of the crate class's 2 x 2 x 2 box on all three axes.
+# From specs/assets.md § The models — 'Each load model's mesh spans at least
+# LOAD_MODEL_FILL (0.85) of its class box on every axis'; specs/world.md
+# § Loads — 'crate | 2 x 2 x 2'.
 [[review.categories.items]]
 id = "model-crate-fills-its-box"
 title = "The crate model fills its class box"
-description = "The committed model that draws the crate class fills the class's 2 x 2 x 2 units: measured in voxels and divided by VOXELS_PER_UNIT (8), its mesh spans close to the class box on every axis rather than falling well short of it."
+description = "The committed assets/models/crate.glb fills the crate class's 2 x 2 x 2 units: measured in voxels and divided by VOXELS_PER_UNIT (8), its mesh spans at least LOAD_MODEL_FILL (0.85) of the class box on every axis."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/model-crate-fills-its-box.test.ts", outputs = [
   { id = "crate", name = "The crate model against its class box", kind = "image" },
 ] }
 
-# Open a site, clear the obstacles and loads, add one container, and identify
-# the .glb that draws it by re-serving the built dist with each committed
-# model file withheld in turn. Decode that file and measure its mesh bounds.
-# — The identified model's bounds, divided by VOXELS_PER_UNIT (8), fill the
-# container class's 4 x 2 x 2 box on all three axes, including the long x
-# axis.
-# From specs/assets.md § The models — 'The three load models fill their class
-# boxes'; specs/world.md § Loads — 'container | 4 x 2 x 2'.
+# Open a site, clear the obstacles and loads, add one container and capture
+# the frame. Read the committed assets/models/container.glb off the workspace
+# and measure its mesh bounds. — The bounds, divided by VOXELS_PER_UNIT (8),
+# reach at least LOAD_MODEL_FILL (0.85) of the container class's 4 x 2 x 2
+# box on all three axes, the long x axis included.
+# From specs/assets.md § The models — 'Each load model's mesh spans at least
+# LOAD_MODEL_FILL (0.85) of its class box on every axis'; specs/world.md
+# § Loads — 'container | 4 x 2 x 2'.
 [[review.categories.items]]
 id = "model-container-fills-its-box"
 title = "The container model fills its class box"
-description = "The committed model that draws the container class fills the class's 4 x 2 x 2 units: measured in voxels and divided by VOXELS_PER_UNIT (8), its mesh spans close to the class box on every axis."
+description = "The committed assets/models/container.glb fills the container class's 4 x 2 x 2 units: measured in voxels and divided by VOXELS_PER_UNIT (8), its mesh spans at least LOAD_MODEL_FILL (0.85) of the class box on every axis."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/model-container-fills-its-box.test.ts", outputs = [
   { id = "container", name = "The container model against its class box", kind = "image" },
 ] }
 
-# Open a site, clear the obstacles and loads, add one drum, and identify the
-# .glb that draws it by re-serving the built dist with each committed model
-# file withheld in turn. Decode that file and measure its mesh bounds. — The
-# identified model's bounds, divided by VOXELS_PER_UNIT (8), fill the drum
-# class's 2 x 3 x 2 box on all three axes, including the tall y axis.
-# From specs/assets.md § The models — 'The three load models fill their class
-# boxes'; specs/world.md § Loads — 'drum | 2 x 3 x 2'.
+# Open a site, clear the obstacles and loads, add one drum and capture the
+# frame. Read the committed assets/models/drum.glb off the workspace and
+# measure its mesh bounds. — The bounds, divided by VOXELS_PER_UNIT (8),
+# reach at least LOAD_MODEL_FILL (0.85) of the drum class's 2 x 3 x 2 box on
+# all three axes, the tall y axis included.
+# From specs/assets.md § The models — 'Each load model's mesh spans at least
+# LOAD_MODEL_FILL (0.85) of its class box on every axis'; specs/world.md
+# § Loads — 'drum | 2 x 3 x 2'.
 [[review.categories.items]]
 id = "model-drum-fills-its-box"
 title = "The drum model fills its class box"
-description = "The committed model that draws the drum class fills the class's 2 x 3 x 2 units: measured in voxels and divided by VOXELS_PER_UNIT (8), its mesh spans close to the class box on every axis."
+description = "The committed assets/models/drum.glb fills the drum class's 2 x 3 x 2 units: measured in voxels and divided by VOXELS_PER_UNIT (8), its mesh spans at least LOAD_MODEL_FILL (0.85) of the class box on every axis."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/model-drum-fills-its-box.test.ts", outputs = [
   { id = "drum", name = "The drum model against its class box", kind = "image" },
 ] }
 
-# Open a site, clear the loads, the obstacles and the structure, and set the
-# ring at a known base corner. Project the point midway between the
-# bottom-flange level and the top-flange level on the slew axis. Capture the
-# frame with the ring's model served and again with it withheld. — The pixels
-# the ring's model contributes are centered on the projected slew-axis point
-# and lie between the projected bottom-flange and top-flange levels.
+# Open a site, clear the loads, the obstacles and the structure, set the ring
+# at a known base corner, advance a frame and read drawn(). — The ring
+# model's reported world position stands on the slew axis — the vertical line
+# through the flange square's centre — in x and z, within 0.25 units.
 # From specs/assets.md § The models — 'the ring centered on the slew axis
 # between its flanges'; specs/structure.md § The slew ring for the flange
-# nodes and the slew axis.
+# nodes and the slew axis; specs/instrumentation.md § Readings for the world
+# position a drawn entry reports.
 [[review.categories.items]]
 id = "ring-model-on-the-slew-axis"
 title = "The ring model is drawn centered on the slew axis between its flanges"
@@ -12087,12 +12041,10 @@ validation = { script = "assets/ring-model-on-the-slew-axis.test.ts", outputs = 
   { id = "ring", name = "The ring on the slew axis, between its flanges", kind = "image" },
 ] }
 
-# Pose an isolated crane carrying a ring, start a run, and capture the frame
-# with the slew axis set to 0. Set the slew axis to 45 with setAxis, advance
-# one frame, and capture the same region again. Take both captures with the
-# camera pose fixed. — The ring's drawn pixels differ between the two slew
-# values, and the difference is a rotation about the projected slew axis
-# rather than a translation.
+# Pose an isolated crane carrying a ring, start a run, setAxis("slew", 0),
+# advance a frame and read the yaw drawn() reports for the ring model; then
+# setAxis("slew", 90), advance a frame and read it again. — The model's yaw
+# turned by the 90 degrees the axis turned, within 15 degrees.
 # From specs/assets.md § The models — 'the ring centered on the slew axis
 # between its flanges and turning with the arm'.
 [[review.categories.items]]
@@ -12102,12 +12054,13 @@ description = "The ring model is drawn turned by the slew angle, so it turns wit
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "assets/ring-model-turns-with-the-arm.test.ts", outputs = [
-  { id = "slew", name = "The ring at slew 0 and slew 37", kind = "image" },
+  { id = "slew", name = "The ring after the arm has swung", kind = "image" },
 ] }
 
-# Place counterweights on two nodes and read the rendered frame. — A
-# counterweight model is drawn at each of the two projected nodes and nowhere
-# else.
+# Open site 0, empty the yard, show the build screen, set a ring, add one
+# strut and place a counterweight on each of its two nodes, advance a frame
+# and read drawn(). — The frame reports exactly two counterweight models, one
+# within 1.25 units of each carrying node.
 # From specs/assets.md § The models.
 [[review.categories.items]]
 id = "counterweight-model-at-its-node"
@@ -12119,9 +12072,11 @@ validation = { script = "assets/counterweight-model-at-its-node.test.ts", output
   { id = "counterweights", name = "A counterweight at each of the two carrying nodes", kind = "image" },
 ] }
 
-# Drive the trolley along the track and compare the model's drawn position
-# with the projected trolley point. — The model tracks the trolley point at
-# every value.
+# Pose an isolated crane carrying a rail and a ring, start a run,
+# setAxis("trolley", 2), advance a frame and read the world position drawn()
+# reports for the trolley model; then setAxis("trolley", 6), advance a frame
+# and read it again. — The model moved with its axis, by more than half the
+# four units the axis travelled.
 # From specs/assets.md § The models.
 [[review.categories.items]]
 id = "trolley-model-on-the-track"
@@ -12133,11 +12088,10 @@ validation = { script = "assets/trolley-model-on-the-track.test.ts", outputs = [
   { id = "trolley", name = "The trolley drawn at its position along the track", kind = "image" },
 ] }
 
-# Start a run on an isolated site with no loads and no obstacles. Pose the
-# bob at two different positions with setBob, setting the hoist axis to the
-# pivot-to-bob distance each time, advance a frame, read run.bob.pos from
-# snapshot and project it. — At both positions the hook's drawn pixels are
-# centered on the projected bob.
+# Start a run on an isolated site, setBob to a world position well away from
+# where the crane rests it, advance a frame, read run.bob.pos from the
+# snapshot and the hook model from drawn(). — The hook model's reported world
+# position stands within 1 unit of the bob, the model's own half-height.
 # From specs/assets.md § The models — 'the hook at the bob'.
 [[review.categories.items]]
 id = "hook-model-at-the-bob"
@@ -12149,11 +12103,10 @@ validation = { script = "assets/hook-model-at-the-bob.test.ts", outputs = [
   { id = "hook", name = "The hook at the bob", kind = "image" },
 ] }
 
-# Start a run on an isolated site with the bob posed and held still, the
-# camera pose fixed. Capture the hook's region with the grip axis at 0, then
-# set the grip axis to 90 with setAxis, advance one frame, and capture the
-# same region. — The hook's drawn pixels differ between grip 0 and grip 90,
-# consistently with a rotation about the vertical axis through the bob.
+# Start a run on an isolated site, setAxis("grip", 0), advance a frame and
+# read the yaw drawn() reports for the hook model; then setAxis("grip", 90),
+# advance a frame and read it again. — The model's yaw turned by the 90
+# degrees the axis turned, within 15 degrees.
 # From specs/assets.md § The models — 'the hook at the bob turned to the
 # grip's yaw'.
 [[review.categories.items]]
@@ -12163,16 +12116,15 @@ description = "The hook model is drawn turned by the grip axis's value, so the h
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "assets/hook-model-turned-to-the-grip.test.ts", outputs = [
-  { id = "grip", name = "The hook at grip 0 and grip 37", kind = "image" },
+  { id = "grip", name = "The hook turned to the grip", kind = "image" },
 ] }
 
-# Open Heavy Haul (openSite(5), displayed as site 6), clear the structure,
-# the loads and the obstacles, and project each of the nine authored anchor
-# nodes and a handful of ground lattice nodes that are not anchors. — A mount
-# is drawn at each of the nine projected anchor nodes, and at none of the
-# projected non-anchor nodes.
+# Open site 0, empty the yard, show the build screen, advance a frame, and
+# read the site's anchors from the snapshot alongside drawn(). — The frame
+# reports one mount model per anchor the site fixes and no more, each within
+# 1 unit of the anchor it stands at.
 # From specs/assets.md § The models — 'a mount at each anchor';
-# specs/sites.md § Site 6 — Heavy Haul (nine anchors).
+# specs/sites.md for the anchors a site fixes.
 [[review.categories.items]]
 id = "mount-model-at-each-anchor"
 title = "A mount model is drawn at each anchor"
@@ -12183,11 +12135,11 @@ validation = { script = "assets/mount-model-at-each-anchor.test.ts", outputs = [
   { id = "anchors", name = "The nine anchors with their mounts", kind = "image" },
 ] }
 
-# On an isolated site carrying one crate with a known target pose set by
-# setLoadTarget, start a run, set the load's phase to placed with
-# setLoadPhase, advance a frame, and project the target lift point. — The
-# crate's model is drawn with its top face centered on the projected target
-# lift point and at the target yaw.
+# On an isolated site carrying one crate with a known target pose, start a
+# run, setLoadPose to that target, setLoadPhase(0, "placed"), advance a frame
+# and read the snapshot and drawn(). — The load reads placed, and the frame
+# reports its crate model within 1.5 units of the pose run.loads[0].pos
+# gives.
 # From specs/assets.md § The models — 'each load at its pose, waiting,
 # hanging, or placed'; specs/world.md § Loads — 'A placed load sits at
 # exactly its target pose for the rest of the run'.
@@ -12201,11 +12153,11 @@ validation = { script = "assets/load-model-at-its-placed-pose.test.ts", outputs 
   { id = "placed", name = "The placed load on its pad", kind = "image" },
 ] }
 
-# On an isolated site carrying one crate, start a run, pose the bob away from
-# the load's starting position, set the load's phase to attached with
-# setLoadPhase, advance a frame, and project the pose snapshot reports at
-# run.loads[0].pos. — The crate's model is drawn at the projected hanging
-# pose and not at its projected starting pose.
+# On an isolated site carrying one crate, start a run, setBob and setLoadPose
+# to a position well away from where the load waits, setLoadPhase(0,
+# "attached"), advance a frame and read the snapshot and drawn(). — The load
+# reads attached, and the frame reports its crate model within 1.5 units of
+# the pose run.loads[0].pos gives.
 # From specs/assets.md § The models — 'each load at its pose, waiting,
 # hanging, or placed'.
 [[review.categories.items]]
@@ -12218,10 +12170,10 @@ validation = { script = "assets/load-model-at-its-hanging-pose.test.ts", outputs
   { id = "hanging", name = "The attached load hanging from the hook", kind = "image" },
 ] }
 
-# Open a site, clear the obstacles and the loads, add one crate at a known
-# lift point and yaw with addLoad, and project that lift point. — The crate's
-# model is drawn with its top face centered on the projected lift point, and
-# at no other position in the yard.
+# On an isolated site carrying one crate at a known starting pose, start a
+# run, advance a frame and read the snapshot and drawn(). — The load reads
+# waiting, and the frame reports its crate model within 1.5 units of the pose
+# run.loads[0].pos gives.
 # From specs/assets.md § The models — 'each load at its pose, waiting,
 # hanging, or placed'; specs/world.md § Loads for the lift point.
 [[review.categories.items]]
@@ -12265,12 +12217,10 @@ validation = { script = "assets/everything-else-drawn-in-code.test.ts", outputs 
   { id = "requests", name = "Every asset the played-through site requested", kind = "image" },
 ] }
 
-# Read the .wav files committed under assets/ off disk, decode each RIFF/WAVE
-# container's fmt and data chunks, and measure each one's peak amplitude.
-# Identify which file backs which cue by re-serving the built dist with each
-# .wav withheld in turn and raising each cue. — Every one of the eleven cues
-# is backed by a committed .wav that decodes as PCM and carries a sample
-# above silence.
+# Read assets/audio/<cue>.wav off disk for each of the eleven cues, decode
+# each RIFF/WAVE container's fmt and data chunks, and measure each one's peak
+# amplitude. — Every one of the eleven files exists, decodes as uncompressed
+# PCM, carries bytes in its data chunk, and carries a sample above silence.
 # From specs/assets.md § The sound — 'Produce one `.wav` per cue in
 # `specs/ui.md`' and § The tools — 'the audio tools record voices, layers, or
 # notes and render a PCM `.wav`'.
@@ -12284,11 +12234,9 @@ validation = { script = "assets/cue-files-produced.test.ts", outputs = [
   { id = "cues", name = "The eleven committed cue files", kind = "image" },
 ] }
 
-# Identify the music bed's file by re-serving the built dist with each
-# committed .wav withheld in turn and reading which withholding silences the
-# title screen's bed, then read that file off disk and decode it. — The music
-# bed's file is committed under assets/, decodes as PCM audio, and carries a
-# sample above silence.
+# Read assets/audio/music.wav off disk and decode its RIFF/WAVE container. —
+# The file exists, decodes as uncompressed PCM, carries bytes in its data
+# chunk, and carries a sample above silence.
 # From specs/assets.md § The sound — 'Produce the music bed with `music`: ...
 # the `.wav` the game plays'.
 [[review.categories.items]]
@@ -12301,11 +12249,10 @@ validation = { script = "assets/music-bed-file-produced.test.ts", outputs = [
   { id = "music", name = "The committed music bed", kind = "image" },
 ] }
 
-# Locate the music bed's .wav under assets/ (identified as in
-# music-bed-file-produced) and list the files in the directory holding it.
-# Read any .mid found there and parse its header. — A .mid sits in the same
-# directory as the music bed's .wav and parses as a standard MIDI file with
-# at least one track.
+# Read assets/audio/music.mid off disk, beside the assets/audio/music.wav
+# the specification fixes, and parse its header. — The .mid exists there and
+# parses as a standard MIDI file, its MThd header carrying the track count
+# the MTrk chunks after it hold, with at least one track.
 # From specs/assets.md § The sound — 'its `.mid` committed beside the `.wav`
 # the game plays'; § The tools — '`music` emits a portable `.mid` beside the
 # `.wav` you play'.
@@ -12320,16 +12267,16 @@ validation = { script = "assets/music-mid-beside-the-wav.test.ts", outputs = [
 ] }
 
 # Open a site, clear the structure, the obstacles and the loads, add one
-# crate at a known pose, and project its lift point. Capture the frame with
-# every produced file served, and again with each committed .glb withheld in
-# turn. — With every file served the crate is drawn at the projected pose;
-# exactly one file's absence removes those pixels while every other subject
-# stays drawn.
-# From specs/assets.md § The models — 'crate | the `crate` load class'.
+# crate at a known pose, advance a frame and read drawn(). — The frame
+# reports a crate model, and the source it names for it is crate.glb.
+# From specs/assets.md § The models — 'crate | the `crate` load class';
+# specs/instrumentation.md § Readings — a model entry's `source` is 'the
+# produced file its geometry came from, or `null` when the build drew it in
+# code'.
 [[review.categories.items]]
 id = "crate-drawn-from-a-produced-model"
 title = "The crate is drawn from a produced model file"
-description = "A crate on screen is a committed voxel model decoded and drawn, not geometry the build draws in code: exactly one of the committed .glb files, withheld from the served site, removes the crate from the frame."
+description = "A crate on screen is a committed voxel model decoded and drawn, not geometry the build draws in code: the frame reports the crate as drawn from the produced crate.glb."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/crate-drawn-from-a-produced-model.test.ts", outputs = [
@@ -12337,17 +12284,17 @@ validation = { script = "assets/crate-drawn-from-a-produced-model.test.ts", outp
 ] }
 
 # Open a site, clear the structure, the obstacles and the loads, add one
-# container at a known pose, and project its lift point. Capture the frame
-# with every produced file served, and again with each committed .glb
-# withheld in turn. — With every file served the container is drawn at the
-# projected pose; exactly one file's absence removes those pixels, and it is
-# not the file that backs the crate or the drum.
+# container at a known pose, advance a frame and read drawn(). — The frame
+# reports a container model, and the source it names for it is
+# container.glb.
 # From specs/assets.md § The models — 'container | the `container` load
-# class'.
+# class'; specs/instrumentation.md § Readings — a model entry's `source` is 'the
+# produced file its geometry came from, or `null` when the build drew it in
+# code'.
 [[review.categories.items]]
 id = "container-drawn-from-a-produced-model"
 title = "The container is drawn from a produced model file"
-description = "A container on screen is a committed voxel model decoded and drawn, not geometry the build draws in code: exactly one of the committed .glb files, withheld from the served site, removes the container from the frame."
+description = "A container on screen is a committed voxel model decoded and drawn, not geometry the build draws in code: the frame reports the container as drawn from the produced container.glb."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/container-drawn-from-a-produced-model.test.ts", outputs = [
@@ -12355,16 +12302,16 @@ validation = { script = "assets/container-drawn-from-a-produced-model.test.ts", 
 ] }
 
 # Open a site, clear the structure, the obstacles and the loads, add one drum
-# at a known pose, and project its lift point. Capture the frame with every
-# produced file served, and again with each committed .glb withheld in turn.
-# — With every file served the drum is drawn at the projected pose; exactly
-# one file's absence removes those pixels, and it is not the file that backs
-# the crate or the container.
-# From specs/assets.md § The models — 'drum | the `drum` load class'.
+# at a known pose, advance a frame and read drawn(). — The frame reports a
+# drum model, and the source it names for it is drum.glb.
+# From specs/assets.md § The models — 'drum | the `drum` load class';
+# specs/instrumentation.md § Readings — a model entry's `source` is 'the
+# produced file its geometry came from, or `null` when the build drew it in
+# code'.
 [[review.categories.items]]
 id = "drum-drawn-from-a-produced-model"
 title = "The drum is drawn from a produced model file"
-description = "A drum on screen is a committed voxel model decoded and drawn, not geometry the build draws in code: exactly one of the committed .glb files, withheld from the served site, removes the drum from the frame."
+description = "A drum on screen is a committed voxel model decoded and drawn, not geometry the build draws in code: the frame reports the drum as drawn from the produced drum.glb."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/drum-drawn-from-a-produced-model.test.ts", outputs = [
@@ -12372,14 +12319,10 @@ validation = { script = "assets/drum-drawn-from-a-produced-model.test.ts", outpu
 ] }
 
 # Open a site, clear the structure, the loads and the obstacles, add one
-# crate at a known lift point, and hold the camera at a fixed pose. Project
-# two world points a known distance apart at the load's position to fix the
-# stage units per world unit. Isolate the model's silhouette by capturing the
-# frame with its .glb served and with it withheld, and measure the
-# silhouette's extent in stage units. Decode the same .glb off disk and
-# measure its mesh extent. — The silhouette's extent in world units equals
-# the decoded mesh's extent divided by VOXELS_PER_UNIT (8), within the
-# tolerance of the projection measurement.
+# crate at a known pose, advance a frame and read the size drawn() reports
+# for its model. Decode the committed assets/models/crate.glb off disk and
+# measure its mesh extent in voxels. — The drawn size on each axis equals the
+# decoded mesh's extent divided by VOXELS_PER_UNIT (8).
 # From specs/assets.md § The models — 'Sculpt each model with `voxel` at
 # `VOXELS_PER_UNIT` (`8`): eight voxels to one world unit, so the game draws
 # every model at a scale of `1 / VOXELS_PER_UNIT`.'.
@@ -12390,16 +12333,18 @@ description = "A model's drawn size in world units is its decoded mesh size in v
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/models-drawn-at-voxel-scale.test.ts", outputs = [
-  { id = "scale", name = "The drawn silhouette measured against the decoded mesh", kind = "image" },
+  { id = "scale", name = "The drawn model measured against its decoded mesh", kind = "image" },
 ] }
 
 # Walk the build workspace, which is this validator project's root, excluding
 # node_modules and dist, and list every .glb, .wav and .mid file it carries.
 # — assets/ exists at the repository root, holds every .glb, .wav and .mid
 # found, and no such file is committed outside it.
-# From specs/assets.md intro — 'Commit the produced files under `assets/` in
-# a layout of your choosing.'; § Consuming a model — 'Its asset loader
-# resolves every path under one root, `ASSET_ROOT` (`assets/`)'.
+# From specs/assets.md intro — 'Commit the produced files under `assets/`, at
+# these paths: each model as `assets/models/<model>.glb` … each cue's sound as
+# `assets/audio/<cue>.wav` … and the music bed as `assets/audio/music.wav`
+# with `assets/audio/music.mid` beside it.'; § Consuming a model — 'Its asset
+# loader resolves every path under one root, `ASSET_ROOT` (`assets/`)'.
 [[review.categories.items]]
 id = "produced-files-committed-under-assets"
 title = "The produced files are committed under assets/"
@@ -12447,43 +12392,37 @@ validation = { script = "assets/build-invokes-no-asset-tool.test.ts", outputs = 
 ] }
 
 # ----------------------------------------------------------------------------
-# The 3D scene and legibility — 25 points
+# The 3D scene and legibility — 21 points
 # ----------------------------------------------------------------------------
 [[review.categories]]
 id = "presentation"
 title = "The 3D scene and legibility"
 
-# Open site 0, clearStructure, clearLoads and clearObstacles, addMember from
-# (0,0,0) to (0,8,0), capture the frame and the member's projected midpoint
-# at the start camera pose, then setCamera(135, 30, 40) and capture the frame
-# and the new projected midpoint. — The two projected midpoints are more than
-# 100 logical pixels apart, the second frame paints the member at the second
-# projected midpoint (more than 50 of 441 from the same point on an
-# empty-structure frame at that pose), and the first frame's projected
-# midpoint no longer carries it.
+# Open site 0, clearStructure, clearLoads and clearObstacles, setCamera(0,
+# 30, 24), advance a frame and project the world point (2, 2, 2); then
+# setCamera(90, 30, 24), advance a frame and project the same world point
+# again. — The point is drawn on the stage at both poses, and the two
+# projected points stand at least 20 logical stage units apart.
 # From specs/overview.md § Hard requirements; specs/controls.md § The camera.
 [[review.categories.items]]
 id = "orbiting-redraws-the-scene"
 title = "Orbiting the camera moves what is drawn"
-description = "The yard is drawn through the orbit camera the player turns, so changing the camera pose redraws the scene from the new pose: what stood at a world position is drawn at that position's new projected point and no longer at the old one."
+description = "The yard is drawn through the orbit camera the player turns, so changing the camera pose redraws the scene from the new pose: a fixed world position is drawn somewhere else on the stage once the camera has orbited."
 domains = ["presentation"]
 failure_cap = "broken"
 validation = { script = "presentation/orbiting-redraws-the-scene.test.ts", outputs = [
   { id = "orbited", name = "The same crane from two camera poses", kind = "image" },
 ] }
 
-# Open site 0, clearStructure, clearLoads and clearObstacles, capture the
-# build screen at the start camera pose, then addMember from (0,0,0) to
-# (0,8,0) as a strut and capture again with the camera untouched. — At least
-# eight of ten points sampled evenly along the projected segment between the
-# two nodes differ between the frames by more than 50 of 441 in RGB distance,
-# while points sampled 60 logical pixels to either side of that segment are
-# unchanged.
+# Open site 0, clearStructure, clearLoads and clearObstacles, addMember from
+# (0,0,0) to (0,4,0) as a strut, advance a frame and read drawn(). — The
+# frame reports a strut whose world position is the span's midpoint and whose
+# reported height is the span's own, each within 0.4 units.
 # From specs/overview.md § Hard requirements; specs/ui.md § Build.
 [[review.categories.items]]
 id = "member-drawn-at-its-projected-segment"
-title = "A placed member is drawn along the segment the camera projects it to"
-description = "The crane is drawn in the yard through the camera: a member placed between two lattice nodes is painted along the segment joining the two nodes' projected points, so the picture is the structure in the world rather than a placeholder."
+title = "A placed member is drawn along the span between the nodes it joins"
+description = "The crane is drawn in the yard where it stands: a member placed between two lattice nodes is drawn along the span joining them, centred on the span's midpoint and reaching the span's own length, so the picture is the structure in the world rather than a placeholder."
 domains = ["presentation", "construction"]
 failure_cap = "broken"
 validation = { script = "presentation/member-drawn-at-its-projected-segment.test.ts", outputs = [
@@ -12491,30 +12430,27 @@ validation = { script = "presentation/member-drawn-at-its-projected-segment.test
 ] }
 
 # Load the game three times: over a 1600 x 700 surface, over a 900 x 1200
-# surface, and over a 1280 x 720 surface at devicePixelRatio 2. On each, read
-# the drawn stage rectangle off the page — the canvas element's bounding box
-# — on the first frame, before any input. — In each case the rectangle's
-# aspect ratio is 16:9 within 1 per cent, it lies entirely inside the
-# surface, and the leftover margins are equal on opposing sides within 2
-# logical pixels.
+# surface, and over a 1280 x 720 surface at devicePixelRatio 2. On each,
+# move a real pointer to the window position the specified fit — one uniform
+# scale, the whole stage inside, centred, the leftover split evenly — maps
+# each of five stage points to: the stage's middle and one a short way inside
+# each of its corners. Advance a frame after each move and read
+# snapshot().pointer. — Every probe reads back the stage point it was aimed
+# at, within 2 logical units.
 # From specs/overview.md § Units, ticks, and the stage.
 [[review.categories.items]]
 id = "stage-letterboxed"
 title = "The complete logical stage is on screen at every window size"
-description = "Over surfaces wider than 16:9, taller than 16:9, and at a raised device pixel ratio, the whole 1280 x 720 stage is inside the surface with its aspect ratio preserved and the letterboxing even on both sides, read on the first frame before any input."
+description = "Over surfaces wider than 16:9, taller than 16:9, and at a raised device pixel ratio, the whole 1280 x 720 stage is reachable at one uniform centred scale: a pointer at the window position that fit maps a stage point to reads back as that stage point, at the stage's middle and inside each of its corners."
 domains = ["presentation"]
 failure_cap = "scuffed"
-validation = { script = "presentation/stage-letterboxed.test.ts", outputs = [
+validation = { script = "presentation/stage-letterboxed.test.ts", engines = ["none"], outputs = [
   { id = "fit", name = "The stage fitted and centred in an off-aspect window", kind = "image" },
 ] }
 
-# Open site 0, clearStructure, clearLoads and clearObstacles, park the
-# pointer at the far corner of the stage so no node is picked, and capture
-# the build screen at the start camera pose. — For each of six ground lattice
-# nodes inside the envelope, the pixels within 6 logical pixels of the node's
-# projected point differ by more than 50 of 441 from the pixels at the
-# projected point of that cell's centre, the non-lattice position one unit
-# along x and z from the node; at least five of the six separate.
+# Open site 0, clearStructure, clearLoads and clearObstacles, show the build
+# screen, advance a frame and read drawn(). — The frame reports a lattice
+# aid.
 # From specs/overview.md § Visual design; specs/ui.md § Build.
 [[review.categories.items]]
 id = "lattice-aids-visible"
@@ -12526,65 +12462,36 @@ validation = { script = "presentation/lattice-aids-visible.test.ts", outputs = [
   { id = "lattice", name = "The lattice aid on the empty build screen", kind = "image" },
 ] }
 
-# openSite(2) (Over the Wall, envelope x -10..12), clearStructure, clearLoads
-# and clearObstacles, park the pointer off every node and capture at the
-# start camera pose. Then openSite(3) (Long Reach, envelope x -10..20), clear
-# the same way, and capture at the same camera pose. — In the first frame the
-# pixels within 6 logical pixels of the projected ground boundary points (12,
-# 0, -8) and (12, 0, 8) differ by more than 50 of 441 from the pixels at the
-# projected points 4 units outside them, (16, 0, -8) and (16, 0, 8). In the
-# second frame that relation holds instead at (20, 0, ±8) against (24, 0,
-# ±8), and the points at (12, 0, ±8) no longer carry the boundary, so the aid
-# follows the site's ranges.
+# Open site 0, clearStructure, clearLoads and clearObstacles, show the build
+# screen, advance a frame and read drawn(). — The frame reports an envelope
+# aid.
 # From specs/overview.md § Visual design; specs/world.md § The envelope.
 [[review.categories.items]]
 id = "envelope-extent-visible"
 title = "The envelope's extent is a visible aid on the build screen"
-description = "The build screen draws the envelope's extent as a visible aid at the site's own ranges, so the player reads where the crane may be built and sees that boundary move between sites."
+description = "The build screen draws the envelope's extent as a visible aid, so the player reads where the crane may be built."
 domains = ["presentation", "construction"]
 failure_cap = "scuffed"
 validation = { script = "presentation/envelope-extent-visible.test.ts", outputs = [
-  { id = "envelope", name = "The envelope aid on two sites", kind = "image" },
+  { id = "envelope", name = "The envelope aid on the build screen", kind = "image" },
 ] }
 
-# openSite(5) (Heavy Haul), whose nine anchors run over (0..4, 0, 0..4),
-# clearStructure, clearLoads and clearObstacles, park the pointer off every
-# node, and capture at the start camera pose. — For each of the nine anchors,
-# the pixels within 8 logical pixels of its projected point differ by more
-# than 50 of 441 from the pixels within 8 logical pixels of the projected
-# point of (10, 0, 0), a ground lattice node inside the envelope that is not
-# an anchor; at least eight of the nine separate.
+# Open site 0, clearStructure, clearLoads and clearObstacles, show the build
+# screen, advance a frame and read drawn(). — The frame reports an anchor
+# mark.
 # From specs/overview.md § Visual design; specs/world.md § Anchors.
 [[review.categories.items]]
 id = "anchors-marked"
 title = "Anchor points are marked in the yard"
-description = "A site's anchor nodes are marked, distinctly from the ordinary ground lattice nodes around them, so the player reads where the crane is fixed to the earth before anything is built."
+description = "A site's anchor nodes are marked in the yard, so the player reads where the crane is fixed to the earth before anything is built."
 domains = ["presentation", "construction"]
 failure_cap = "passable"
 validation = { script = "presentation/anchors-marked.test.ts", outputs = [
-  { id = "anchors", name = "The nine anchors marked in the yard", kind = "image" },
+  { id = "anchors", name = "The anchors marked in the yard", kind = "image" },
 ] }
 
-# Pose a crane whose run.forces report three members at utilizations near
-# 0.35, near 0.65 and near 0.97, drawn clear of one another. Start the run,
-# advance one tick and sample each member's drawn color at its projected
-# midpoint. — The color at 0.97 is more than 50 of 441 from the color at
-# 0.65, and that distance is at least as large as the distance between the
-# colors at 0.65 and 0.35, so the breaking-point member is not merely one
-# more even step along the ramp.
-# From specs/overview.md § Visual design.
-[[review.categories.items]]
-id = "breaking-point-stands-out"
-title = "A member at breaking point stands out from the rest of the ramp"
-description = "The top of the utilization ramp is not just another step: a member at breaking point is drawn further from the rest of the ramp than an equal step lower down, so it catches the eye before it breaks."
-domains = ["presentation", "simulation"]
-failure_cap = "scuffed"
-validation = { script = "presentation/breaking-point-stands-out.test.ts", outputs = [
-  { id = "breaking", name = "A member at breaking point, and the same member two equal steps below", kind = "image" },
-] }
-
-# Open a site with nothing built and read the frame. — Each waiting load is
-# drawn at its authored starting pose.
+# Open site 0, show the build screen, add one crate at a starting pose,
+# advance a frame and read drawn(). — The frame reports a load-start mark.
 # From specs/overview.md § Visual design.
 [[review.categories.items]]
 id = "load-starts-marked"
@@ -12596,88 +12503,26 @@ validation = { script = "presentation/load-starts-marked.test.ts", outputs = [
   { id = "loads", name = "A waiting load drawn at its starting pose", kind = "image" },
 ] }
 
-# Move the pointer within NODE_PICK_PX of a node's projected point, read the
-# frame, then move it far from every node and read the frame again. — The
-# node snapshot reports as pick.node is drawn distinctly from the neighboring
-# lattice nodes in the first frame, and no node is in the second.
+# Open site 0, clearStructure, clearLoads and clearObstacles, project a
+# lattice node, move the pointer onto its projected point, advance a frame
+# and read the snapshot and drawn(). — snapshot().pick.node names a node, and
+# the frame reports a picked-node mark.
 # From specs/overview.md § Visual design.
 [[review.categories.items]]
 id = "picked-node-highlighted"
-title = "The picked node under the pointer is highlighted"
-description = "The node a click would take is highlighted before the click, so the player sees what a click would take."
+title = "The picked node under the pointer is marked"
+description = "The node a click would take is marked before the click, so the player sees what a click would take."
 domains = ["presentation", "construction"]
 failure_cap = "scuffed"
 validation = { script = "presentation/picked-node-highlighted.test.ts", outputs = [
-  { id = "pick", name = "The picked node highlighted under the pointer", kind = "image" },
+  { id = "pick", name = "The picked node marked under the pointer", kind = "image" },
 ] }
 
-# Open site 0, clearStructure, clearLoads and clearObstacles, and capture an
-# empty baseline frame at the start camera pose. Then, three times over, add
-# one member of a single material between (0,0,0) and (0,8,0), capture, and
-# remove it — camera and pointer untouched throughout. — For each material,
-# the painted mask is the set of sampled points differing from the baseline
-# by more than 50 of 441 in RGB distance. The three masks are pairwise
-# different in shape: each pair's intersection is less than 80 per cent of
-# its union, so the three are told apart with hue discarded.
-# From specs/overview.md § Visual design; specs/assets.md § What is drawn in
-# code.
-[[review.categories.items]]
-id = "members-told-apart-by-form"
-title = "A strut, a cable and a rail are told apart by form and not by hue alone"
-description = "The three materials are drawn as distinct geometry, so a strut, a cable and a rail standing between the same two nodes are told apart with color removed."
-domains = ["presentation", "construction"]
-failure_cap = "scuffed"
-validation = { script = "presentation/members-told-apart-by-form.test.ts", outputs = [
-  { id = "materials", name = "A strut, a cable and a rail between the same nodes", kind = "image" },
-] }
-
-# Pose a crane carrying a member that will break on a known tick beside an
-# intact control member drawn clear of it, with every axis stopped and no
-# load attached so nothing else in the yard moves. Capture the frame on the
-# tick before the break and on the tick after, and read run.broken to confirm
-# which member went. — At least eight of ten points sampled along the broken
-# member's projected segment differ between the two frames by more than 50 of
-# 441 in RGB distance, while the same ten points along the control member's
-# projected segment are unchanged within 25 of 441.
-# From specs/overview.md § Visual design; specs/statics.md § Utilization and
-# breakage.
-[[review.categories.items]]
-id = "broken-member-unmistakable"
-title = "A broken member is drawn unmistakably differently from an intact one"
-description = "A member that breaks stops being drawn as an intact member: it is either removed from the drawing or drawn in a broken state, and either way what is on screen where it stood changes unmistakably."
-domains = ["presentation", "simulation"]
-failure_cap = "scuffed"
-validation = { script = "presentation/broken-member-unmistakable.test.ts", outputs = [
-  { id = "broken", name = "The frame after the break", kind = "image" },
-] }
-
-# Pose a crane whose run.forces report three members A, B and C at
-# utilizations separated by at least 0.25 and ordered A < B < C, with all
-# three drawn clear of one another on the stage. Start the run, advance one
-# tick, and sample each member's drawn color at its projected midpoint, away
-# from any crossing. — The three colors are pairwise more than 50 of 441
-# apart, and B lies between A and C on the ramp: distance(A,B) <
-# distance(A,C) and distance(B,C) < distance(A,C).
-# From specs/overview.md § Visual design; specs/statics.md § Utilization and
-# breakage.
-[[review.categories.items]]
-id = "utilization-ramp-monotone"
-title = "Members are colored along one ramp by utilization"
-description = "While the tape runs, each member's color reads its utilization on a single ramp from slack to its limit, so a member's color places it between two members it sits between in utilization."
-domains = ["presentation", "simulation"]
-failure_cap = "scuffed"
-validation = { script = "presentation/utilization-ramp-monotone.test.ts", outputs = [
-  { id = "ramp", name = "Three members at three utilizations", kind = "image" },
-] }
-
-# Start a run on a posed crane over one posed load, capture the run screen,
-# then setLoadPhase(0, "attached"), setBob to a position 6 units from the
-# load's start, advance one tick, and capture again with the camera
-# untouched. — Pixels inside the projected class box at the bob change by
-# more than 50 of 441 between the frames, and pixels inside the projected
-# class box at the load's starting pose change back toward the empty-yard
-# frame, so the load moved onto the hook rather than being drawn twice or
-# left behind.
+# Start a run on a posed crane over one posed load, setBob to a position well
+# away from where the load waits, setLoadPose to that same position,
+# setLoadPhase(0, "attached"), advance one tick and read the snapshot and
+# drawn(). — The frame reports the load's model within 2 units of the bob
+# position the snapshot gives.
 # From specs/overview.md § Visual design; specs/rigging.md § The pivot and
 # the bob.
 [[review.categories.items]]
@@ -12691,14 +12536,10 @@ validation = { script = "presentation/attached-load-drawn-at-the-bob.test.ts", o
 ] }
 
 # Start a run over a posed crane and one posed load, setLoadPhase(0,
-# "attached"), setBob to a position well off the vertical so the pendulum
-# swings, and advance in steps of 20 ticks, capturing the frame and reading
-# run.bob.pos at each of four samples. — At each sample the projected bob
-# position is separated from the previous sample's by more than 40 logical
-# pixels; the pixels inside a 10-pixel disc at the current projected bob
-# differ from the same disc on a frame captured with the load unattached by
-# more than 50 of 441, and the disc at the previous sample's projected bob
-# has returned to within 25 of 441 of that unattached frame.
+# "attached"), and at each of two bob poses far enough apart that a fixed
+# drawing cannot pass both, setBob and setLoadPose to that position, advance
+# a tick and read the snapshot and drawn(). — At each pose the frame reports
+# the load's model within 2 units of the bob position the snapshot gives.
 # From specs/overview.md § Visual design; specs/rigging.md § The pendulum
 # tick.
 [[review.categories.items]]
@@ -12711,13 +12552,8 @@ validation = { script = "presentation/swing-drawn-true.test.ts", outputs = [
   { id = "swing", name = "The load drawn at the bob across the swing", kind = "image" },
 ] }
 
-# Open site 0, clearStructure and clearObstacles, clearLoads, then
-# addLoad("crate", 40, 10, 2, 0, 0) and setLoadTarget(0, 0, 2, 10, 0).
-# Capture the build screen, then clearLoads and capture again with the camera
-# untouched. — Pixels sampled inside the projected 2 x 2 ground footprint
-# centred under (0, 2, 10) differ between the two frames by more than 50 of
-# 441 in RGB distance, and pixels sampled 4 units outside that footprint do
-# not.
+# Open site 0, show the build screen, add one crate with a target pose,
+# advance a frame and read drawn(). — The frame reports a pad mark.
 # From specs/world.md § Pads; specs/overview.md § Visual design.
 [[review.categories.items]]
 id = "pad-footprint-marked"
@@ -12729,14 +12565,10 @@ validation = { script = "presentation/pad-footprint-marked.test.ts", outputs = [
   { id = "pad", name = "The pad marked on the ground", kind = "image" },
 ] }
 
-# Open site 0, clearStructure, clearObstacles and clearLoads,
-# addLoad("container", 90, 10, 2, 0, 0) — the 4 x 2 x 2 class, so its
-# footprint is 4 long in x and 2 in z at yaw 0 — and setLoadTarget(0, 0, 2,
-# 8, 0); capture. Then setLoadTarget(0, 0, 2, 8, 90) and capture again,
-# camera untouched. — In the first frame the painted footprint reaches the
-# projected points of the corners at (±2, 0, 8 ± 1) and not those at (±1, 0,
-# 8 ± 2); in the second frame the reverse holds, so the outline turned with
-# the target yaw rather than standing square.
+# Open site 0, show the build screen, add one crate whose target is at yaw 0,
+# advance a frame and read the pad mark's yaw; then add one at yaw 90,
+# advance a frame and read it again. — The pad mark's reported yaw turned by
+# 90 degrees, within 15.
 # From specs/world.md § Pads; specs/overview.md § Visual design.
 [[review.categories.items]]
 id = "pad-outline-turned-to-the-target-yaw"
@@ -12748,31 +12580,24 @@ validation = { script = "presentation/pad-outline-turned-to-the-target-yaw.test.
   { id = "pad-yaw", name = "The same pad at yaw 0 and yaw 90", kind = "image" },
 ] }
 
-# Open site 0, clearStructure, clearLoads and clearObstacles, and capture the
-# build screen at the start camera pose. — The pixels at the projected points
-# of (6, 0, 6), (-6, 0, -6) and (0, 0, 8) differ from the pixels at the
-# projected point of (0, 30, 0), a position well above the horizon, by more
-# than 50 of 441 in RGB distance, so a floor is painted where the ground
-# plane is and the frame is not one uniform sky.
+# Open site 0, clearStructure, clearLoads and clearObstacles, show the build
+# screen, advance a frame and read drawn(). — The frame reports the yard
+# floor.
 # From specs/world.md § The world frame; specs/ui.md § Build.
 [[review.categories.items]]
 id = "ground-drawn"
 title = "The ground plane is drawn as the yard floor"
-description = "The plane y = 0 is drawn as the yard floor, so the yard reads as ground under the crane rather than as empty sky."
+description = "The plane y = 0 is drawn as the yard floor, so the yard reads as ground under the crane."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/ground-drawn.test.ts", outputs = [
-  { id = "floor", name = "The empty yard, floor against sky", kind = "image" },
+  { id = "floor", name = "The yard floor under the site", kind = "image" },
 ] }
 
-# Open site 4 (High Shelf), whose platform is the box at minimum corner (-9,
-# 0, -2) of size (4, 6, 4) and whose container's target is (-7, 8, 0) at yaw
-# 90, and clearStructure so only the site's own furniture is drawn. Capture
-# the build screen, then clearLoads and capture again. — The pixels at the
-# projected point of (-7, 6, 0), the platform's top face at the target's
-# footprint, differ between the two frames by more than 50 of 441 in RGB
-# distance, while the pixels at the projected point of (-7, 0, 0), the ground
-# directly beneath it, do not.
+# Open site 0, show the build screen, add one obstacle standing 3 units tall
+# and one crate whose target sits on that obstacle's top face, advance a
+# frame and read drawn(). — The pad mark's reported height is the target's
+# own, within 0.75 units, rather than the ground plane below it.
 # From specs/world.md § Pads; specs/world.md § Obstacles.
 [[review.categories.items]]
 id = "pad-on-an-obstacle-top"
@@ -12784,14 +12609,10 @@ validation = { script = "presentation/pad-on-an-obstacle-top.test.ts", outputs =
   { id = "shelf-pad", name = "The pad marked on the platform's top", kind = "image" },
 ] }
 
-# Start a run on a posed crane with no load attached, setAxis("hoist", 6),
-# advance one tick, and capture the run screen; then setAxis("hoist", 12),
-# advance one tick and capture again, camera untouched. — In each frame at
-# least eight of ten points sampled along the projected segment from
-# run.pivot to run.bob.pos differ from the same points in the other frame's
-# empty region by more than 50 of 441 in RGB distance, and the painted line
-# ends at the projected bob in each: the point 20 logical pixels beyond the
-# bob along the segment's direction is unpainted.
+# Start a run on a posed crane with no load attached, setBob to a position
+# that gives the cable a span worth measuring, advance a tick and read the
+# snapshot and drawn(). — The frame reports a hoist cable whose extent on
+# each axis is the pivot-to-bob span on that axis, within 0.6 units.
 # From specs/rigging.md § The pivot and the bob.
 [[review.categories.items]]
 id = "hoist-cable-drawn-pivot-to-bob"
@@ -12800,17 +12621,12 @@ description = "The hoist cable is drawn as a line from the pivot to the bob, whe
 domains = ["presentation", "simulation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/hoist-cable-drawn-pivot-to-bob.test.ts", outputs = [
-  { id = "cable", name = "The cable drawn at two hoist lengths", kind = "image" },
+  { id = "cable", name = "The cable drawn from the pivot to the bob", kind = "image" },
 ] }
 
-# Open site 0, clearStructure, clearLoads and clearObstacles, park the
-# pointer at the far corner of the stage so nothing is picked, and capture
-# the build screen. Then setPendingNode(4, 0, 4), run a frame and capture
-# again, with the camera untouched throughout. — Pixels sampled inside a
-# 12-logical-pixel disc around the projected point of (4, 0, 4) differ
-# between the two frames by more than 50 of 441 in RGB distance, while a
-# control disc around the projected point of (8, 0, 4) is unchanged, and
-# snapshot().pendingNode reads that node.
+# Open site 0, clearStructure, clearLoads and clearObstacles, show the build
+# screen, setPendingNode(2, 0, 0), advance a frame and read drawn(). — The
+# frame reports a pending-node mark.
 # From specs/ui.md § Build; specs/controls.md § The build tools.
 [[review.categories.items]]
 id = "pending-node-marked"
@@ -12822,26 +12638,23 @@ validation = { script = "presentation/pending-node-marked.test.ts", outputs = [
   { id = "pending", name = "The node held pending", kind = "image" },
 ] }
 
-# Open site 0, clearLoads and clearObstacles, and capture the build screen at
-# the start camera pose. Then addObstacle(4, 0, 4, 4, 6, 4) and capture again
-# with the camera untouched. — The pixels at the projected centre of the
-# box's near face, and at the projected centres of its top face and its two
-# visible vertical edges, differ between the two frames by more than 50 of
-# 441 in RGB distance, while a control point projected 20 units away from the
-# box on the ground is unchanged.
+# Open site 0, show the build screen, addObstacle(4, 0, 4, 2, 3, 2), advance
+# a frame and read drawn(). — The frame reports an obstacle.
 # From specs/ui.md § Build; specs/world.md § Obstacles.
 [[review.categories.items]]
 id = "obstacles-drawn"
 title = "Each obstacle is drawn in the yard as its box"
-description = "The build screen draws the site's obstacles, each at the axis-aligned box its minimum corner and size give it, so the player reads what the crane and the load must clear before anything is built."
+description = "The build screen draws the site's obstacles in the yard, so the player reads what the crane and the load must clear before anything is built."
 domains = ["presentation", "construction"]
 failure_cap = "scuffed"
 validation = { script = "presentation/obstacles-drawn.test.ts", outputs = [
   { id = "obstacle", name = "The yard with one obstacle standing in it", kind = "image" },
 ] }
 
-# Take a snapshot, toggle the overlay on and advance sixty frames, then take
-# another. — Every field but simTime is unchanged by the overlay being shown.
+# Stand a minimal crane in an emptied yard, advance a frame and take a
+# snapshot; then press Backquote, advance a frame and take another. — Every
+# field but simTime reads the same across the press, so showing the overlay
+# and reading the sources the build registered changed nothing.
 # From specs/instrumentation.md § Diagnostics.
 [[review.categories.items]]
 id = "overlay-is-read-only"
@@ -12849,15 +12662,15 @@ title = "Showing the overlay leaves the game as it is"
 description = "Every diagnostic source is a pure read, so watching the overlay leaves the game as it is."
 domains = ["presentation"]
 failure_cap = "great"
-validation = { script = "presentation/overlay-is-read-only.test.ts", outputs = [
+validation = { script = "presentation/overlay-is-read-only.test.ts", engines = ["none"], outputs = [
   { id = "read-only", name = "The stage with the overlay shown", kind = "image" },
 ] }
 
-# Load the game, capture the first frame before any input, then press
-# Backquote, run a frame and capture again. — The first frame carries no
-# panel: the region the second frame's panel occupies is unchanged from a
-# frame captured with the overlay hidden, and more than 2 per cent of the
-# stage's pixels differ between the two frames.
+# Load the game and read the overlay lines the first frame reports through
+# drawn() — the text entries named overlay — before any key reaches the
+# game, then press Backquote, run a frame and read them again. — The first
+# frame reports no overlay line and the frame after the press reports at
+# least one.
 # From specs/instrumentation.md § Diagnostics.
 [[review.categories.items]]
 id = "overlay-off-until-toggled"
@@ -12865,13 +12678,14 @@ title = "The debug overlay is off until it is toggled"
 description = "The debug overlay is not drawn until the backtick key is pressed, so the game's own display is what a player sees on load."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "presentation/overlay-off-until-toggled.test.ts", outputs = [
+validation = { script = "presentation/overlay-off-until-toggled.test.ts", engines = ["none"], outputs = [
   { id = "off", name = "The stage with the overlay hidden", kind = "image" },
 ] }
 
-# Load the game, empty the site, press Backquote and run a frame, capture. —
-# The capture differs from the pre-press frame over more than 2 per cent of
-# the stage's pixels.
+# Load the game, empty the site, read the overlay lines the frame reports
+# through drawn() — the text entries named overlay — then press Backquote,
+# run a frame and read them again. — No overlay line is reported before the
+# press and at least one is reported after it.
 # From specs/instrumentation.md § Diagnostics.
 [[review.categories.items]]
 id = "overlay-shown-by-backquote"
@@ -12879,15 +12693,15 @@ title = "The backtick key shows the debug overlay"
 description = "Pressing the backtick key (KeyboardEvent.code Backquote) shows the debug overlay."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "presentation/overlay-shown-by-backquote.test.ts", outputs = [
+validation = { script = "presentation/overlay-shown-by-backquote.test.ts", engines = ["none"], outputs = [
   { id = "on", name = "The stage with the overlay shown", kind = "image" },
 ] }
 
 # Load the game, empty the site, press Backquote and run a frame, press it
-# again and run a frame, capture. — The capture matches the pre-press frame
-# within 50 of 441 at every sampled point. Nothing is asked of the first
-# press: a build that draws no panel passes here and fails
-# overlay-shown-by-backquote.
+# again and run a frame, and read the overlay lines that frame reports
+# through drawn() — the text entries named overlay. — No overlay line is
+# reported. Nothing is asked of the first press: a build that draws no panel
+# passes here and fails overlay-shown-by-backquote.
 # From specs/instrumentation.md § Diagnostics.
 [[review.categories.items]]
 id = "overlay-hidden-by-a-second-backquote"
@@ -12895,7 +12709,7 @@ title = "A second backtick press hides the debug overlay"
 description = "With the debug overlay shown, pressing the backtick key again hides it, leaving the game's own display."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "presentation/overlay-hidden-by-a-second-backquote.test.ts", outputs = [
+validation = { script = "presentation/overlay-hidden-by-a-second-backquote.test.ts", engines = ["none"], outputs = [
   { id = "off-again", name = "The stage after a second backtick press", kind = "image" },
 ] }
 

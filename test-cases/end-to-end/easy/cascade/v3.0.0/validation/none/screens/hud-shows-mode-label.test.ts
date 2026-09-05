@@ -17,8 +17,8 @@
 //
 // The table is left empty, so the label is read off a `playing` screen with
 // nothing on it but the HUD — nothing here concerns a card. Where in the strip the
-// label sits is what `screens/hud-clear-of-piles` looks at, and whether it
-// reads against what is behind it is `presentation/text-legible`.
+// label sits is what `screens/hud-clear-of-piles` looks at, and how legibly it
+// reads against what is behind it is the reviewer's.
 //
 // THE ONE GUARD. A build reporting an empty label would make the search vacuous,
 // since every frame "contains" the empty string; `specs/stock.md` fixes

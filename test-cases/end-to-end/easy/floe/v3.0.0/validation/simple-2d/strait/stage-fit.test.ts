@@ -1,5 +1,5 @@
-// strait/stage-fit — the whole 1280 x 720 stage stays visible, fitted and centred,
-// at every window shape and pixel density.
+// strait/stage-fit — the build draws into the fit the runtime derived, at every
+// window shape and pixel density.
 //
 // specs/overview.md: "`STAGE_W x STAGE_H` is the game's logical design size.
 // Fitting it to the browser window is the runtime's: the uniform scale that
@@ -9,62 +9,45 @@
 // "Draw in logical units, and take the canvas element's own size from the runtime
 // alone."
 //
-// SO WHAT THIS ITEM GRADES UNDER THIS ENGINE IS THE BUILD DRAWING INTO THE FIT THE
-// RUNTIME DERIVED. The fit itself is the engine's, and reading it back is how the
-// space every later reading is expressed in becomes visible; what the build can
-// still get wrong is drawing in device pixels, fitting the stage a second time
-// itself, or anchoring to a corner of the canvas — and each of those moves what
-// lands on the surface away from where the viewport says it should be.
+// ONLY THE BUILD'S HALF IS READ HERE. Under this engine the fit itself, the
+// canvas's backing store and the letterbox bars are the engine's: every build on
+// this engine returns the same verdict on them, so reading them would grade the
+// engine rather than the build. `validation/none` reads them, because there the
+// build writes the runtime layer. The viewport is still asked for below, but only
+// as the coordinate map a pixel reading is addressed in.
 //
-// TWO READINGS, OVER SIX WINDOWS: three window sizes at each of two pixel
-// densities, which is what the item names.
+// WHAT IS LEFT IS THE BUILD DRAWING INTO THAT MAP, and it is the whole of this
+// file: the critter posed on each of the strait's FOUR EXTREME TILES is read at
+// that tile's own logical centre and what is there must have CHANGED. A build
+// that drew in device pixels, that fitted the stage a second time on top of the
+// runtime's fit, or that anchored the stage to a corner of the canvas leaves the
+// four points exactly as they were.
 //
-//   1. ARITHMETIC THE BUILD CANNOT ARGUE WITH, taken BEFORE anything is posed or
-//      driven, because the item is about the state reached on load, before any
-//      input: the logical space is the stage at one uniform scale, the whole of it
-//      fits inside the surface on both axes, the leftover on each axis splits into
-//      two even bars, and one axis is filled exactly. That is what "the entire
-//      stage, the full HUD bar, the whole strait and all four edges is visible,
-//      fitted and centred" says in coordinates — the HUD bar is the stage's own top
-//      eighty units, so a fit that holds for the stage holds for it.
-//   2. THE PICTURE. The build really drew into that map: the critter posed on each
-//      of the strait's FOUR EXTREME TILES is read at that tile's own logical centre
-//      and must have changed what is there. A build that drew in device pixels, or
-//      that fitted the stage itself on top of the runtime's fit, puts bare band at
-//      those four points.
+// A DRAW CALL CANNOT ANSWER THIS. A blit's coordinates are logical units, so all
+// three of those faults submit exactly the same draw calls as a build that drew
+// correctly. `strait/tiles-drawn-on-the-map` reads the calls, on one surface
+// size; only the surface itself says where they landed, and only an off-aspect
+// surface at a pixel ratio above one says it clearly.
 //
 // WHY THE FOUR CORNERS, AND WHY THE READING IS THE BUILD AGAINST ITSELF. A wrong
 // fit displaces a point by more the further it is from the centre of the surface,
 // so the corners are where a wrong fit shows and the middle is where it hides;
 // specs/strait.md's grid puts the corner tiles at `(0, 0)`, `(39, 0)`, `(0, 19)`
-// and `(39, 19)`, which are the four corners of the stage's whole play area. And
-// each corner is read TWICE — once bare and once with the critter on it — so what
-// is compared is the same build's own two pictures. Nothing here fixes a colour,
-// which the specification leaves to the build.
-//
-// AND THE BARS THEMSELVES. specs/overview.md also fixes what the letterbox
-// carries — "The letterbox bars around the stage carry the stage's background
-// color" — so wherever the fit leaves one, its pixels are held against the
-// build's own exported `BACKGROUND`. That is the reading that catches a build
-// which stretched its picture into the bars or drew the strait past the stage's
-// edge; the surfaces of the stage's own aspect leave no bar and are read on the
-// three above alone.
+// and `(39, 19)`, which are the four corners of the stage's whole play area. Each
+// corner is read TWICE — once bare and once with the critter on it — so what is
+// compared is the same build's own two pictures, and what is asserted is that
+// they differ at all. Nothing here fixes a colour and nothing measures how far
+// apart the two readings are; how the critter looks against the band under it is
+// appearance, which the reviewer judges.
 //
 // EACH SHAPE IS A SURFACE OF ITS OWN, so `createHarness` builds one per shape and
 // the build meets each as a fresh game — which is also the state the item is
 // about.
 
 import { afterEach, it } from "vitest";
-import {
-  assertCloseTo,
-  assertEqual,
-  assertGreaterThan,
-  assertGreaterThanOrEqual,
-  assertLessThanOrEqual,
-} from "../assert";
+import { assertGreaterThan } from "../assert";
 import {
   captureStill,
-  clearColor,
   colorDistance,
   createHarness,
   startCrossing,
@@ -72,43 +55,6 @@ import {
   type Rgb,
 } from "../harness";
 import { COLS, ROWS, STAGE_H, STAGE_W, bandColor } from "./harness";
-
-/**
- * How far a letterbox pixel may sit from the stage's background colour, of 441.
- *
- * specs/overview.md gives the bars the stage's background colour exactly, so the
- * only room this needs is for rasterizing a CSS colour string through a canvas and
- * reading it back — a channel or two. Twenty-five of 441 is that and nothing more:
- * a bar carrying anything the game visibly drew is far past it.
- */
-const BAR_MAX = 25;
-
-/**
- * How wide a letterbox has to be before its pixels are read, in device pixels.
- *
- * Two. A surface of the stage's own aspect leaves no bar at all, and the fit's
- * rounding to whole device pixels can leave a sliver of one on a surface that is a
- * fraction off — reading a bar one pixel wide would be reading that rounding
- * rather than the requirement.
- */
-const BAR_MIN = 2;
-
-/**
- * How far the reading at a corner must move when the critter is put on it, in RGB
- * distance out of 441.
- *
- * THIS IS A POSITION CHECK, NOT A CONTRAST ONE. What it has to tell apart is "the
- * critter is drawn at this logical point" from "it is not", and the case's own
- * line for a body that reads clearly apart from the band under it — the `60` of
- * `presentation/critter-reads-apart` — is a different requirement, graded by a
- * different item. Demanding it here would fail a build whose fit is perfect and
- * whose critter is merely low-contrast twice over.
- *
- * `30` is half that line: far above the two or three units a scaled resample of one
- * flat band can drift by, and low enough that any build whose critter is visible at
- * all clears it. A build that put nothing at the corner reads `0`.
- */
-const CORNER_MOVE_MIN = 30;
 
 /**
  * The three window sizes at the two pixel densities the item names.
@@ -156,27 +102,6 @@ const SURFACES = [
   },
 ];
 
-/** A device point of each letterbox bar the fit left, or none where it left none. */
-function barPoints(
-  offsetX: number,
-  offsetY: number,
-  deviceWidth: number,
-  deviceHeight: number,
-): { x: number; y: number }[] {
-  const points: { x: number; y: number }[] = [];
-  if (offsetX >= BAR_MIN) {
-    const y = Math.floor(deviceHeight / 2);
-    points.push({ x: Math.floor(offsetX / 2), y });
-    points.push({ x: deviceWidth - 1 - Math.floor(offsetX / 2), y });
-  }
-  if (offsetY >= BAR_MIN) {
-    const x = Math.floor(deviceWidth / 2);
-    points.push({ x, y: Math.floor(offsetY / 2) });
-    points.push({ x, y: deviceHeight - 1 - Math.floor(offsetY / 2) });
-  }
-  return points;
-}
-
 /** The four extreme tiles of the strait: the corners of the whole play area. */
 const CORNERS = [
   { col: 0, row: 0, where: "the top-left tile" },
@@ -193,74 +118,15 @@ afterEach(() => {
 });
 
 it.each(SURFACES)(
-  "fits the whole stage into $name, centred, and draws into that map",
-  async ({ cssWidth, cssHeight, dpr, name }) => {
+  "draws into the fit the runtime derived for $name",
+  async ({ name, cssWidth, cssHeight, dpr }) => {
     const h = await createHarness({ cssWidth, cssHeight, dpr });
     harnesses.push(h);
 
-    // 1. The fit reached on load, before anything was posed or driven. The
-    //    surface is the window at its device pixel ratio, and the stage is fitted
-    //    whole and centred inside it.
-    const deviceWidth = Math.round(cssWidth * dpr);
-    const deviceHeight = Math.round(cssHeight * dpr);
-    const uniform = Math.min(cssWidth / STAGE_W, cssHeight / STAGE_H) * dpr;
-    const view = h.engine.viewport();
-
-    assertEqual(
-      h.canvas.width,
-      deviceWidth,
-      "the surface's width in device pixels",
-    );
-    assertEqual(
-      h.canvas.height,
-      deviceHeight,
-      "the surface's height in device pixels",
-    );
-    assertEqual(view.width, STAGE_W, "the logical stage's width");
-    assertEqual(view.height, STAGE_H, "the logical stage's height");
-    assertCloseTo(view.scale, uniform, 9, "one uniform scale on both axes");
-    assertLessThanOrEqual(
-      STAGE_W * view.scale,
-      deviceWidth + 1e-6,
-      "the whole stage across the surface",
-    );
-    assertLessThanOrEqual(
-      STAGE_H * view.scale,
-      deviceHeight + 1e-6,
-      "the whole stage down the surface",
-    );
-    assertGreaterThanOrEqual(
-      view.offsetX,
-      0,
-      "the stage's left edge on the surface",
-    );
-    assertGreaterThanOrEqual(
-      view.offsetY,
-      0,
-      "the stage's top edge on the surface",
-    );
-    assertCloseTo(
-      view.offsetX * 2 + STAGE_W * view.scale,
-      deviceWidth,
-      6,
-      "the leftover across split evenly into two bars",
-    );
-    assertCloseTo(
-      view.offsetY * 2 + STAGE_H * view.scale,
-      deviceHeight,
-      6,
-      "the leftover down split evenly into two bars",
-    );
-    assertCloseTo(
-      Math.min(view.offsetX, view.offsetY),
-      0,
-      6,
-      "one axis filled exactly, so the letterboxing is on the other alone",
-    );
-
-    // 2. The picture. An emptied, live strait with nothing on it, read at the
-    //    four corner tiles; then the critter put on each corner in turn and the
-    //    same four points read again.
+    // An emptied, live strait with nothing on it, read at the four corner tiles;
+    // then the critter put on each corner in turn and the same four points read
+    // again. Each reading is addressed through the runtime's own viewport, which
+    // is the coordinate map and not the thing being graded.
     startCrossing(h);
     h.debug.removeCritter();
     await h.advance(1);
@@ -287,32 +153,11 @@ it.each(SURFACES)(
     for (const [index, corner] of CORNERS.entries()) {
       assertGreaterThan(
         moved[index],
-        CORNER_MOVE_MIN,
-        `${corner.where} of the strait, read at its own logical centre through ` +
-          `the fit the runtime derived: the build draws in logical units ` +
-          `(specs/overview.md)`,
-      );
-    }
-
-    // 3. The bars, with the game really drawn: a live crossing is the busiest
-    //    thing the game puts on the stage, and the bars still carry nothing but
-    //    the stage's background colour.
-    startCrossing(h);
-    await h.advance(1);
-    const background = clearColor();
-    for (const bar of barPoints(
-      view.offsetX,
-      view.offsetY,
-      deviceWidth,
-      deviceHeight,
-    )) {
-      const { data } = h.ctx.getImageData(bar.x, bar.y, 1, 1);
-      assertLessThanOrEqual(
-        colorDistance({ r: data[0], g: data[1], b: data[2] }, background),
-        BAR_MAX,
-        `${name}: the letterbox pixel at device (${bar.x}, ${bar.y}) — the ` +
-          `bars around the stage carry the stage's background colour ` +
-          `(specs/overview.md)`,
+        0,
+        `${name}: ${corner.where} of the strait, read at its own logical ` +
+          `centre through the fit the runtime derived — putting the critter ` +
+          `on it changed what is drawn there, so the build draws in logical ` +
+          `units (specs/overview.md)`,
       );
     }
   },

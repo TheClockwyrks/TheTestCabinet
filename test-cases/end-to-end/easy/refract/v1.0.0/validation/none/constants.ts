@@ -36,6 +36,13 @@ export const HUD_SOLVED_LABEL = "SOLVED";
 export const HUD_TIER_LABEL = "TIER";
 
 /**
+ * specs/modes/cascade.md: how far a readout's value may sit from its label and
+ * still be beside it — at most this gap between the two runs horizontally, and
+ * at most this far between their baselines (`HUD_VALUE_GAP`).
+ */
+export const HUD_VALUE_GAP = 96;
+
+/**
  * specs/controls.md: the smallest a pointer target may be on each axis, which
  * is what a fingertip needs at the stage size.
  */

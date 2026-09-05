@@ -16,13 +16,15 @@
 // effects reach the yard is decided by the points that drive the build.
 
 import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import { type EffectName, EFFECTS } from "../constants";
 import { fail } from "../assert";
-import { ASSETS } from "./produced";
 
 export { EFFECTS, type EffectName } from "../constants";
-export { ASSETS } from "./produced";
+
+/** `assets/` at the root of the produced repository, as `specs/assets.md` fixes it. */
+export const ASSETS = fileURLToPath(new URL("../../assets/", import.meta.url));
 
 /**
  * The four effects a firing structure plays, which `specs/assets.md` escalates
@@ -102,26 +104,6 @@ export function colorStops(system: ParticleSystem): [number, number, number][] {
     }
   }
   return stops;
-}
-
-/** The mean of a set of colors, channel by channel. */
-export function meanColor(
-  stops: readonly [number, number, number][],
-): [number, number, number] {
-  const n = stops.length;
-  return [
-    stops.reduce((t, s) => t + s[0], 0) / n,
-    stops.reduce((t, s) => t + s[1], 0) / n,
-    stops.reduce((t, s) => t + s[2], 0) / n,
-  ];
-}
-
-/** The RGB distance between two colors, `0` to `441`. */
-export function colorDistance(
-  a: readonly [number, number, number],
-  b: readonly [number, number, number],
-): number {
-  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 
 /**

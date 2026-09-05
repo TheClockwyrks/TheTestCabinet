@@ -20,9 +20,9 @@
 // WHAT IS OBSERVED. Which cue sounded, by name. `specs/assets.md` binds each cue
 // to its produced file through the engine's cue bus and the build plays each by
 // the name `specs/ui.md` fixes, so a build that plays one of the three event cues
-// at the start of a round does not pass this by making a noise. The bed is asked
-// for whether or not its produced file loaded, since `specs/assets.md` leaves the
-// game running when one does not arrive.
+// at the start of a round does not pass this by making a noise. What is read is
+// the ask the cue bus announces rather than a sound: this process has no Web
+// Audio context, so no produced file is decoded here.
 //
 // WHAT IS ASSERTED, IN ONE DIRECTION. That no music sounded over a stretch of
 // frames on the title, and that music sounded once the round had begun. It is not

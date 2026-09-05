@@ -939,10 +939,9 @@ export async function openHarness(
       // and has the build load them itself), so a check that drove the game the
       // instant the page settled could reach a bounce before the bounce's own
       // clip had arrived and read silence from a build that is simply still
-      // starting up. The wait is BOUNDED and never fails: `specs/assets.md`
-      // says a load that fails leaves the game running, so a build with no
-      // audio at all must reach its cue points and fail them, rather than hang
-      // here.
+      // starting up. The wait is BOUNDED and never fails, so a build whose
+      // cues never decode reaches its cue points and fails them there, rather
+      // than hanging here.
       //
       // Then a GENUINE browser gesture, not a posed one: a build is free to
       // open its audio context from a real DOM event alone (conformant), so a

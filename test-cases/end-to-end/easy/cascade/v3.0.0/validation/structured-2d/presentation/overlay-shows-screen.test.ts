@@ -7,10 +7,11 @@
 // — so what this point decides is exactly what the build owns.
 //
 // WHAT IT DECIDES, AND WHAT IT LEAVES ALONE. That those two sources are
-// registered and read the live game. The other four registrations are
+// registered and read the live game. The other registrations are
 // `overlay-shows-pile-counts`, `overlay-shows-drag` and `overlay-shows-cascade`,
-// and that raising the panel changes nothing is `overlay-changes-nothing`, so a
-// build missing one registration is docked once and a grade names which.
+// so a build missing one registration is docked once and a grade names which.
+// That raising the panel changes nothing is the engine's under this engine and
+// is graded on `none` alone.
 //
 // THE SCREEN IS READ ON TWO SCREENS, and that is the design. A build whose
 // source returns a constant, or which prints the screen it opened on, answers

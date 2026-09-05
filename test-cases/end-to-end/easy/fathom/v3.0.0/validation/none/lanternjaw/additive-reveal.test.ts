@@ -105,15 +105,17 @@ const BODY_RADIUS = Math.max(...MOTE_RADII) + 4;
 const FOG_CEILING = 25.5;
 
 /**
- * How far the ring must move once the light falls on the creature, as an RGB
- * distance out of the 441 that separates black from white.
+ * The sensing floor the ring owes once the light falls on the creature, as an
+ * RGB distance out of the 441 that separates black from white.
  *
- * The case's own bound on two things being drawn alike: `fog/unrevealed-black`
- * holds an unrevealed rock tile and an unrevealed corridor tile within 25 of each
- * other, and calls anything closer indistinguishable. So a ring that has moved
- * further than that has visibly stopped being the fog it was.
+ * `8` of `441` is the level below which a sampling cannot tell a drawing from
+ * eight-bit channel rounding and the host's antialiasing. Anything the build
+ * painted there clears it, in whatever palette and however dim.
+ *
+ * So a ring that has moved further than that has stopped being the fog it was,
+ * and how boldly the build drew the body over it is the build's.
  */
-const CHANGED_MIN = 25;
+const CHANGED_MIN = 8;
 
 /** A beat either side of the change, in ticks, so nothing is read on the tick it flipped. */
 const SETTLE_TICKS = 2;

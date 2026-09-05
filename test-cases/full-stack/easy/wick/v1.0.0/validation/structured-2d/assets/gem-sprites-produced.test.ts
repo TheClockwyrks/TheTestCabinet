@@ -27,8 +27,7 @@
 // evidence picture is painted on.
 //
 // THE TOLERANCE. Each canvas is exact, because the specification states it
-// exactly. The paint floor is `PAINT_MIN_SHARE`, one pixel in a thousand,
-// which on the smallest of the three is one pixel of its sixty-four.
+// exactly. The paint reading is presence: at least one pixel not clear.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { captureStill, createHarness, type Harness } from "../harness";

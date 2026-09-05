@@ -6,8 +6,9 @@
 // strikes, dimming per leap", and it is spawned "at the position of the event that
 // raised it: ... the chain threaded through each unit a Coil's hit strikes".
 //
-// THE PRODUCED SYSTEMS ARE SERVED TO THE LOADER HERE, by `./produced.ts`, so what
-// plays is the file the build committed.
+// THE PRODUCED SYSTEMS REACH THE LOADER THROUGH THE HARNESS, which stands the
+// committed `assets/` tree up for every check it builds, so what plays is the
+// file the build committed.
 //
 // THE WORLD, AND WHY IT IS SHAPED LIKE THIS. Three Motes held in a column fifty
 // units apart, and one Scrap Coil level with the top one and ninety units to its
@@ -43,7 +44,6 @@ import {
   ticks,
   unitById,
 } from "../harness";
-import { serveProducedAssets } from "./produced";
 import { between, read, scan } from "./region";
 import { structureCenter } from "../constants";
 
@@ -65,7 +65,6 @@ const POINTS = [
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 

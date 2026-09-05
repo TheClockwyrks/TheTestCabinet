@@ -126,8 +126,8 @@ version against its own validator.
 
 Maze keeps its own `maze` domain and the points that roll up to it: the fixed
 course and its clear starting row, an obstacle fatal to the head, a pellet that
-never lands on one, the two operations that clear and lay a course, and the course
-told apart by color from the board and from the snake.
+never lands on one, the two operations that clear and lay a course, and an
+obstacle drawn on the cell it occupies rather than left as the empty field.
 
 ## A showcase for the catalog
 

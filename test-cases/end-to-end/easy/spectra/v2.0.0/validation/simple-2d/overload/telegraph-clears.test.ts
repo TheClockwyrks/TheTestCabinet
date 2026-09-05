@@ -72,17 +72,20 @@ const AT = { x: FORM_CENTER_X, y: 300 } as const;
  * How far apart two readings of the same pixel must sit to count as changed, on the
  * 0-to-441 scale.
  *
- * The figure this case's manifest states for the telegraph: 25 of 441, the same one
- * `overload/telegraph-drawn` requires the charge to move the drone by.
+ * This check's own bound on what counts as one place having been drawn on again.
+ * 25 of 441 is above the couple of units an anti-aliased edge moves by and far
+ * below what a mark drawn over a drone reaches, so it separates a telegraph that
+ * is still there from the noise of two renders of one unchanged drone.
  */
 const MIN_DISTANCE = 25;
 
 /**
  * How much of the footprint must differ for a telegraph to count as drawn there.
  *
- * The floor `overload/telegraph-drawn` requires a telegraph to reach, used here with
- * a side each way: under it the two readings show the same thing, at or above it they
- * show different things. The two points are one figure.
+ * This check's own bound, with a side each way: under three per cent of the drone's
+ * own footprint the two readings show the same thing, and at or above it they show
+ * different things. A mark that small is smaller than the drone's own smallest
+ * feature, so no telegraph a build draws falls inside it.
  */
 const MIN_FRACTION = 0.03;
 

@@ -159,8 +159,10 @@ states as a ramp, the worm apart from the board and from a node, its head, body
 and tail told apart, the cursor apart from its band, the three foes apart from
 one another, a bolt apart from the column it climbs, the band as a floor, and
 legible text — and the palette, the type, the glow and every other aspect of the
-look are the build's. The presentation validators assert that a thing is drawn and that two
-things are told apart, against a stated RGB distance, never a hex value.
+look are the build's. The presentation validators assert only that a thing is
+drawn: the image source a draw was handed, the text a frame drew, or one place of
+the board read twice, with the thing there and with it removed. No point reads a
+color, and how well the result reads is the reviewer's.
 
 ## The cursor's speed is stated, and measured where the band cannot truncate it
 

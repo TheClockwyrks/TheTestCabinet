@@ -43,18 +43,6 @@ const RUN_LIVES = 3;
 /** The lives the screen is drawn a second time at, to read its dependence. */
 const OTHER_LIVES = 1;
 
-/**
- * How many bytes of the canvas the lives figure has to move, over and above
- * whatever the screen changes on its own between two frames.
- *
- * One digit's glyphs are the smallest a compliant readout can be — a build that
- * draws icons or a longer phrase changes far more — and a single digit of body
- * type covers well over a hundred pixels, each carrying four bytes. 120 bytes is
- * a fraction of one such glyph: beyond the reach of a rounding difference, and
- * unreachable by a screen that never mentions the lives at all.
- */
-const LIVES_BYTES = 120;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -135,7 +123,7 @@ it("reports the score, the twelve levels cleared, the lives and both ending item
   );
   assertGreaterThan(
     pixelsChanged(again, atOne),
-    restless + LIVES_BYTES,
+    restless,
     "the victory screen is drawn differently at one life than at three, so " +
       "it reports the lives remaining (specs/ui.md)",
   );

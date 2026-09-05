@@ -29,29 +29,13 @@
 // screen that merely says `wave`, which any screen about this game says somewhere,
 // so it asks for a wave AND for a type. Every other subject is one set.
 //
-// AND THE SCREEN MUST CARRY PROSE. `HOWTO_MIN_LETTERS` is a floor on the letters
-// the screen draws, so a build that satisfies eleven word-searches with a word
-// list still fails. It is far under the tersest honest how-to and far over what a
-// bare list of eleven words comes to.
-//
 // THE SCREEN IS POSED, because what it DRAWS does not depend on how a player got
 // to it: reaching it is `screens.title-to-howto`'s reading and leaving it is
 // `screens.back-from-howto`'s.
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThanOrEqual, fail } from "../assert";
+import { assertEqual, fail } from "../assert";
 import { captureStill, createHarness, resetTo, type Harness } from "../harness";
 import { readScreen, saysAnyStem } from "./menu";
-
-/**
- * How many letters the how-to screen must carry.
- *
- * specs/screens.md gives it eleven subjects and fixes no wording, so the floor has
- * to sit below the tersest honest screen and above what a build that wrote no
- * prose can produce. The words looked for below come to about seventy letters;
- * `120` is well over that, which eleven subjects cannot be covered in without
- * sentences, and a fraction of what any real how-to draws.
- */
-const HOWTO_MIN_LETTERS = 120;
 
 /**
  * One subject the how-to must cover, and the word stems that cover it.
@@ -133,16 +117,6 @@ it("covers every subject the how-to screen is required to cover", async () => {
     h.snapshot().screen,
     "howto",
     "the screen the scenario is posed on",
-  );
-
-  assertGreaterThanOrEqual(
-    runs
-      .map((run) => run.text)
-      .join(" ")
-      .replace(/[^A-Za-z]/g, "").length,
-    HOWTO_MIN_LETTERS,
-    `the letters of text the how-to screen drew; it covers eleven subjects ` +
-      `(specs/screens.md), which no screen does without prose`,
   );
 
   // The whole of a how-to screen is far too much text to put on a failure's

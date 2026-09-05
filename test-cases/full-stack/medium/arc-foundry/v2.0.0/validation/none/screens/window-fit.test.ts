@@ -18,11 +18,12 @@
 //   on both axes, with the leftover split evenly into two bars and one axis filled
 //   exactly. This is read on the FIRST frame, before anything is driven, which is
 //   the state the requirement is about.
-//   The picture. A structure is stood at a known tile and the canvas is sampled at
-//   that tile's own logical centre, and at an empty tile's, both mapped through
-//   the specified fit. A build that scaled non-uniformly, that cropped, that
-//   ignored the pixel ratio, or that drew in device pixels puts something other
-//   than a structure at the first point.
+//   The picture. The canvas is sampled at a known tile's own logical centre,
+//   mapped through the specified fit, with the tile bare and again with a
+//   structure standing on it. A build that scaled non-uniformly, that cropped,
+//   that ignored the pixel ratio, or that drew in device pixels leaves that point
+//   as it found it, because whatever it drew landed somewhere else. What the
+//   structure LOOKS like is not read: only that the build painted that point.
 //
 // What the LETTERBOX BARS are filled with is a second requirement of its own, and
 // `screens/letterbox-bars` decides that.
@@ -38,15 +39,18 @@ import {
   assertGreaterThan,
   assertLessThanOrEqual,
 } from "../assert";
-import { STAGE_H, STAGE_W, structureCenter, tileCenter } from "../constants";
+import { STAGE_H, STAGE_W, structureCenter } from "../constants";
 import {
   captureStill,
   createHarness,
+  DRAWN,
+  lattice,
+  maxDistance,
   openYard,
+  sample,
   standComponent,
   type Harness,
 } from "../harness";
-import { DISTINCT_MIN, colorDistance, sampleColor } from "./reading";
 
 /** The window shapes the fit is read over. */
 const SURFACES = [
@@ -83,9 +87,18 @@ const SURFACES = [
   { name: "a portrait window", cssWidth: 600, cssHeight: 900, dpr: 1 },
 ];
 
-/** Where the structure the picture is read on stands, and an empty tile beside it. */
+/** Where the structure the picture is read on stands. */
 const STOOD = { col: 24, row: 15 };
-const BARE = { col: 34, row: 15 };
+
+/**
+ * The logical points a tile's own centre is read at.
+ *
+ * A small cluster rather than the single centre point, so one anti-aliased pixel
+ * of whatever the build drew there cannot swing the reading either way.
+ */
+function atCentre(point: { x: number; y: number }): { x: number; y: number }[] {
+  return lattice({ x: point.x - 4, y: point.y - 4, w: 8, h: 8 }, 4);
+}
 
 let harnesses: Harness[] = [];
 
@@ -176,23 +189,23 @@ it.each(SURFACES)(
         "axis is filled exactly (specs/overview.md)",
     );
 
-    // And the build really drew into that map: a structure stood at a known tile
-    // is under that tile's own logical centre, mapped through the specified fit.
+    // And the build really drew into that map: standing a structure at a known
+    // tile has to paint that tile's own logical centre, mapped through the
+    // specified fit. The SAME points are read with the tile bare and with the
+    // structure on it, so what is decided is that the build put something there
+    // — not what it put there, and not how it compares to the yard beside it.
     await openYard(h);
+    const centre = atCentre(structureCenter(STOOD.col, STOOD.row));
+    const bare = await sample(h, centre);
     await standComponent(h, "discharge", 5, STOOD.col, STOOD.row);
+    const stood = await sample(h, centre);
     await captureStill(h, "fit");
-    await h.advance(1);
 
-    const stood = structureCenter(STOOD.col, STOOD.row);
-    const bare = tileCenter(BARE.col, BARE.row);
     assertGreaterThan(
-      colorDistance(
-        await sampleColor(h, stood.x, stood.y),
-        await sampleColor(h, bare.x, bare.y),
-      ),
-      DISTINCT_MIN,
-      `a structure standing at tile (${STOOD.col}, ${STOOD.row}) to be under ` +
-        "its own logical centre, told apart from bare yard beside it " +
+      maxDistance(bare, stood),
+      DRAWN,
+      `how far the logical centre of tile (${STOOD.col}, ${STOOD.row}) moves ` +
+        "once a structure stands there, mapped through the specified fit " +
         "(specs/overview.md)",
     );
   },

@@ -53,7 +53,7 @@ import {
   type Harness,
   type MenuRect,
 } from "../harness";
-import { changedSamples, driftOverOneFrame } from "./reading";
+import { PAINT_MIN, changedSamples, driftOverOneFrame } from "./reading";
 
 /** A reported hit region as the pixel readers take one. */
 function regionOf(rect: MenuRect): {
@@ -68,29 +68,6 @@ function regionOf(rect: MenuRect): {
 /** The two indices the highlight is posed at: every index TITLE_ITEMS has. */
 const FIRST_INDEX = 0;
 const SECOND_INDEX = 1;
-
-/**
- * How far a sample must move to count as repainted, as a Euclidean RGB distance
- * out of the `441` an RGB cube is across.
- *
- * The case's figure, since `specs/ui.md` states the rule and leaves the palette to
- * the build: `40` is about a tenth of the space, which is the least a player reads
- * as a different treatment at a glance, and far above the nothing that separates
- * two readings of one unchanged pixel.
- */
-const REPAINT_MIN = 40;
-
-/**
- * How many samples of an entry's neighbourhood must be repainted.
- *
- * At the harness's default shape the canvas is the stage at one pixel per unit
- * and the lattice below is one sample every `READ_STEP` units, so `24` samples is
- * about a hundred logical units of the screen — a tenth of the area a single
- * capital letter of legible menu type covers. It is a floor under anti-aliasing
- * noise on one glyph edge rather than a demand on how a build draws its
- * highlight, which `specs/ui.md` leaves open.
- */
-const REPAINT_MIN_SAMPLES = 24;
 
 /** One sample every two logical units, in both directions. */
 const READ_STEP = 2;
@@ -126,18 +103,13 @@ it("repaints each title-menu entry when the highlight index moves to it", async 
   const secondBox = regionOf(await menuRect(h, SECOND_INDEX));
 
   // What each square does on its own across one frame, with nothing posed.
-  const firstDrift = await driftOverOneFrame(
-    h,
-    firstBox,
-    READ_STEP,
-    REPAINT_MIN,
-  );
+  const firstDrift = await driftOverOneFrame(h, firstBox, READ_STEP, PAINT_MIN);
   const secondAtFirstIndex = await readRegion(h, secondBox, READ_STEP);
   const secondDrift = await driftOverOneFrame(
     h,
     secondBox,
     READ_STEP,
-    REPAINT_MIN,
+    PAINT_MIN,
   );
   const firstAtFirstIndex = await readRegion(h, firstBox, READ_STEP);
 
@@ -155,17 +127,17 @@ it("repaints each title-menu entry when the highlight index moves to it", async 
   const firstMoved = changedSamples(
     firstAtFirstIndex,
     firstAtSecondIndex,
-    REPAINT_MIN,
+    PAINT_MIN,
   );
   const secondMoved = changedSamples(
     secondAtFirstIndex,
     secondAtSecondIndex,
-    REPAINT_MIN,
+    PAINT_MIN,
   );
 
   assertGreaterThan(
     firstMoved,
-    Math.max(firstDrift.count, REPAINT_MIN_SAMPLES),
+    firstDrift.count,
     `the ${items[0]} entry drawn differently once the index no longer names ` +
       `it — the highlighted item is the one menuIndex names and is drawn ` +
       `distinctly from the others (specs/ui.md); its square moved on its own ` +
@@ -173,7 +145,7 @@ it("repaints each title-menu entry when the highlight index moves to it", async 
   );
   assertGreaterThan(
     secondMoved,
-    Math.max(secondDrift.count, REPAINT_MIN_SAMPLES),
+    secondDrift.count,
     `the ${items[1]} entry drawn differently once the index names it — the ` +
       `highlighted item is the one menuIndex names and is drawn distinctly ` +
       `from the others (specs/ui.md); its square moved on its own across one ` +

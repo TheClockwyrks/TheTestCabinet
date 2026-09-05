@@ -26,20 +26,21 @@
 // rotation changes fails on E and S. Only one step, the way specs/towers.md
 // states, answers all four.
 //
-// HOW IT IS READ, AND WHY THE READING IS A DIFFERENCE. The SAME band of the SAME
-// face of the SAME tower on the SAME tile at the SAME heat, on two consecutive
-// frames, one with the tower placed at rotation `0` and one at rotation `1`.
-// Nothing about a build's palette is named, and no absolute colour is read at
-// all: whatever a build draws on a footprint that does not depend on the rotation
-// — a body, an outline, a label, the heat read specs/hud.md asks for — is
-// identical in both frames and cancels out of every reading. What is left is
-// exactly what the rotation moved, which is what this point is about.
+// HOW IT IS READ, AND WHERE THE BAR COMES FROM. The SAME band of the SAME face of
+// the SAME tower on the SAME tile at the SAME heat, on a tower placed at rotation
+// `0` and one placed at rotation `1`. Nothing about a build's palette is named,
+// and no two things the build drew are compared: whatever a build draws on a
+// footprint that does not depend on the rotation — a body, an outline, a label,
+// the heat read specs/hud.md asks for — is identical in both frames and cancels
+// out of every reading. What is left is exactly what the rotation moved, which is
+// what this point is about. How far a band moves on its own is measured, by
+// reading it twice at one rotation, and a face that must change has to beat that
+// by `NOISE_MARGIN` while a face that must not stays inside it.
 //
-// WHAT IT DOES NOT DECIDE. That the marking is distinct AT ALL is
-// `radiator-faces-read`; a build that draws no radiator marking anywhere fails
-// there, and fails here too, because a face that carries nothing cannot change.
-// That the rotation is fixed at placement, and reported in world orientation, are
-// `towers` and `building` items; nothing here reads a snapshot field.
+// WHAT IT DOES NOT DECIDE. That the rotation is fixed at placement, and reported
+// in world orientation, are `towers` and `building` items; nothing here reads a
+// snapshot field. A build that draws no radiator marking anywhere fails here,
+// because a face that carries nothing cannot change.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
@@ -53,38 +54,7 @@ import {
 } from "../harness";
 import type { Face, TowerType } from "../surface";
 import { poseStillTower } from "./pose";
-import { faceBand, movedFraction, readRegion } from "./read";
-
-/**
- * How far, out of the 441 the RGB cube spans, a pixel of a face band must move
- * between the two rotations to count as having changed.
- *
- * The suite's figure for two things a player tells apart at a glance, and the
- * same 50 every other point in this group draws its line at: a face that gains or
- * loses its marking has to look different, not merely differ by measurement.
- */
-const APART_MIN = 50;
-
-/**
- * How much of a face's band must change for the marking to have moved onto it or
- * off it.
- *
- * A quarter — the same share `radiator-faces-read` asks a marking to cover, for
- * the same reason: the band is seven units deep, and a build is free to mark a
- * face with a fin, a bar, a row of pips or a shaded edge rather than with a
- * full-depth block.
- */
-const CHANGED_MIN = 0.25;
-
-/**
- * How much of a face's band may change while still counting as unchanged.
- *
- * The two frames are consecutive, the tower is posed identically in both, and
- * nothing in this scenario moves, so a face the rotation did not touch reads
- * zero. A twentieth is the allowance for a build that plays an idle shimmer over
- * its towers, and it is far below `CHANGED_MIN`, so no reading satisfies both.
- */
-const UNCHANGED_MAX = 0.05;
+import { NOISE_MARGIN, faceBand, largestShift, readRegion } from "./read";
 
 /**
  * The tower the rotation is read on, and where it stands.
@@ -106,17 +76,14 @@ const BAND_TO = 7;
 const ALONG_FROM = 0.3;
 const ALONG_TO = 0.7;
 
-/** Every face band of the tower, posed at `rotation` and drawn. */
-async function readFaces(
-  h: Harness,
-  rotation: number,
-  outputId: string,
-): Promise<Record<Face, Rgb[]>> {
-  startRun(h);
-  poseStillTower(h, TYPE, COL, ROW, rotation);
-  await h.advance(1);
-  captureStill(h, outputId);
+/** One rotation's face bands, read twice so the frame's own movement shows. */
+interface Reading {
+  first: Record<Face, Rgb[]>;
+  second: Record<Face, Rgb[]>;
+}
 
+/** Every face band read on one frame of the tower as it now stands. */
+function readFaces(h: Harness): Record<Face, Rgb[]> {
   const size = sizeOf(TYPE);
   const read = {} as Record<Face, Rgb[]>;
   for (const face of [...CHANGES, ...KEEPS]) {
@@ -127,6 +94,21 @@ async function readFaces(
     );
   }
   return read;
+}
+
+/** The tower posed at `rotation`, and its face bands read on two frames. */
+async function bandsAt(
+  h: Harness,
+  rotation: number,
+  outputId: string,
+): Promise<Reading> {
+  startRun(h);
+  poseStillTower(h, TYPE, COL, ROW, rotation);
+  await h.advance(1);
+  const first = readFaces(h);
+  await h.advance(1);
+  captureStill(h, outputId);
+  return { first, second: readFaces(h) };
 }
 
 let h: Harness;
@@ -140,8 +122,15 @@ afterEach(() => {
 });
 
 it("marks the faces rotation 1 gives, and no longer rotation 0's", async () => {
-  const unturned = await readFaces(h, 0, "unturned");
-  const turned = await readFaces(h, 1, "turned");
+  const unturned = await bandsAt(h, 0, "unturned");
+  const turned = await bandsAt(h, 1, "turned");
+
+  /** How far the band on `face` moves between two frames at one rotation. */
+  const noiseOn = (face: Face): number =>
+    Math.max(
+      largestShift(unturned.first[face], unturned.second[face]),
+      largestShift(turned.first[face], turned.second[face]),
+    );
 
   const rule =
     `a ${TYPE}, whose world radiator faces are ` +
@@ -150,22 +139,25 @@ it("marks the faces rotation 1 gives, and no longer rotation 0's", async () => {
     `the rotation turns the local faces N -> E -> S -> W)`;
 
   for (const face of CHANGES) {
+    const noise = noiseOn(face);
     assertGreaterThanOrEqual(
-      movedFraction(unturned[face], turned[face], APART_MIN),
-      CHANGED_MIN,
-      `${rule}: the proportion of its ${face} face drawn differently at ` +
-        `rotation 1 than at rotation 0, which is a face exactly one of the ` +
-        `two rotations marks`,
+      largestShift(unturned.second[face], turned.second[face]),
+      noise + NOISE_MARGIN,
+      `${rule}: its ${face} face, which exactly one of the two rotations ` +
+        `marks, is drawn differently at rotation 1 than at rotation 0 — past ` +
+        `the ${noise} that band moves between two frames at one rotation`,
     );
   }
 
   for (const face of KEEPS) {
+    const noise = noiseOn(face);
     assertLessThanOrEqual(
-      movedFraction(unturned[face], turned[face], APART_MIN),
-      UNCHANGED_MAX,
-      `${rule}: the proportion of its ${face} face drawn differently at ` +
-        `rotation 1 than at rotation 0, which must be none of it, because ` +
-        `${face} is a radiator face at both rotations`,
+      largestShift(unturned.second[face], turned.second[face]),
+      noise + NOISE_MARGIN,
+      `${rule}: its ${face} face, which is a radiator face at BOTH ` +
+        `rotations, is drawn the same way at rotation 1 as at rotation 0 — ` +
+        `within the ${noise} that band moves between two frames at one ` +
+        `rotation`,
     );
   }
 });

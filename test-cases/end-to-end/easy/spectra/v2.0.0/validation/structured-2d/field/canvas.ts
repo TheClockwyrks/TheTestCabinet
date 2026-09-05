@@ -177,29 +177,21 @@ export interface MarkOptions {
    * by about twice what the pixel disagrees with either — which is exactly what
    * the second condition rejects. Without it a build's ship glow alone reads as
    * two dozen marks, and a starfield well under the minimum passes on the strength
-   * of them. It follows that `span` has to clear the widest thing being counted,
-   * so it is always set above half of {@link MarkOptions.maxExtent}.
+   * of them. The span is part of the reading rather than a bound the caller
+   * asserts.
    */
   span: number;
-  /**
-   * The largest a mark may be, in logical units, on either axis.
-   *
-   * A bound on what the word "mark" can mean: anything wider or taller than this
-   * is a body, a panel or a wash, and is discarded rather than counted.
-   */
-  maxExtent: number;
 }
 
 /**
  * How many separate marks `box` holds: connected blobs of pixels that stand out
- * from a field that AGREES WITH ITSELF either side of them, and that are no larger
- * than `maxExtent` on either axis.
+ * from a field that AGREES WITH ITSELF either side of them.
  *
  * Four-connected, at the canvas's OWN resolution rather than on a lattice, so a
  * mark a single pixel across is counted once and a mark four across is not counted
- * four times. The two figures the caller states are in logical units and are
- * carried into device pixels through the engine's own fit, so a mark counts the
- * same at every window size and pixel density.
+ * four times. The figures the caller states are in logical units and are carried
+ * into device pixels through the engine's own fit, so a mark counts the same at
+ * every window size and pixel density.
  */
 export function countMarksByContrast(
   h: Harness,
@@ -208,7 +200,6 @@ export function countMarksByContrast(
 ): number {
   const { scale } = h.engine.viewport();
   const span = Math.max(1, Math.round(options.span * scale));
-  const maxExtent = options.maxExtent * scale;
   const region = readRegion(h, box);
   const { width, height } = region;
 
@@ -244,20 +235,12 @@ export function countMarksByContrast(
   const stack: number[] = [];
   for (let seed = 0; seed < ink.length; seed += 1) {
     if (ink[seed] !== 1) continue;
-    let minX = width;
-    let maxX = -1;
-    let minY = height;
-    let maxY = -1;
     ink[seed] = 2;
     stack.push(seed);
     while (stack.length > 0) {
       const at = stack.pop() as number;
       const x = at % width;
       const y = (at - x) / width;
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
       if (x > 0 && ink[at - 1] === 1) {
         ink[at - 1] = 2;
         stack.push(at - 1);
@@ -275,8 +258,7 @@ export function countMarksByContrast(
         stack.push(at + width);
       }
     }
-    if (maxX - minX + 1 <= maxExtent && maxY - minY + 1 <= maxExtent)
-      marks += 1;
+    marks += 1;
   }
   return marks;
 }

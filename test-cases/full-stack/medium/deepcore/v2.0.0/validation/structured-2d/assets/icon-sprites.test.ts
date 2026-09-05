@@ -31,7 +31,7 @@ import { allDistinct, readPicture, type Picture } from "./produced";
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ assets: true });
+  h = await createHarness();
 });
 
 afterEach(() => {

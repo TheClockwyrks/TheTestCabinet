@@ -41,8 +41,9 @@
 // than draw calls admits every way of painting a repeating pattern, and
 // taking the BEST shift rather than a fixed match fraction admits a smooth
 // overlay fixed to the stage (a lamp's glow, a vignette), which shifts no
-// structure of its own. A ground with no structure to read matches every
-// shift alike and is failed as such, since motion cannot read against it.
+// structure of its own. What the pattern is made of is not read: specs/world.md
+// leaves the look of it to the build, so nothing here asks how much of the band
+// the pattern covers or how far it stands from its neighbours.
 //
 // WHY THE WORLD IS POSED AS IT IS. `isolate` gives a fresh `playing` screen
 // holding nothing, every driver switch off, so nothing but the ground, the
@@ -54,12 +55,10 @@
 // runs at one device pixel per unit, so a conformant build shifts the band by
 // the walk exactly, and a build that rounded the camera to whole pixels is
 // within one; the three answers above sit 16 units apart, sixteen times the
-// bound. `STRUCTURE_MARGIN` is the least by which the best shift must
-// out-match every other candidate: a hundredth of the band's pixels, which one
-// distinguishing column in a 64-unit tile exceeds.
+// bound.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertBetween, assertNear } from "../assert";
+import { assertNear } from "../assert";
 import {
   GROUND_TILE_SIZE,
   MOTION_EPS,
@@ -84,9 +83,6 @@ const BAND = { x: 48, y: STAGE_CY - 112, w: 320, h: 224 };
 
 /** How far the best shift may sit from the walk. */
 const SHIFT_PX = 1;
-
-/** The least lead, as a fraction of the band's pixels, the best shift must hold. */
-const STRUCTURE_MARGIN = 0.01;
 
 /**
  * The fraction of `after`'s pixels that match `before` read `shift` pixels
@@ -164,17 +160,7 @@ it("slides the ground 16 stage units left under a walk of 16 units right", async
   for (const [shift, score] of scores) {
     if (score > (scores.get(best) ?? -1)) best = shift;
   }
-  let runnerUp = -1;
-  for (const [shift, score] of scores) {
-    if (Math.abs(shift - best) > SHIFT_PX && score > runnerUp) runnerUp = score;
-  }
 
-  assertBetween(
-    (scores.get(best) ?? 0) - runnerUp,
-    STRUCTURE_MARGIN,
-    1,
-    "the lead of the best-matching shift over every other phase: the ground's structure to read motion against",
-  );
   assertNear(
     best,
     WALK,

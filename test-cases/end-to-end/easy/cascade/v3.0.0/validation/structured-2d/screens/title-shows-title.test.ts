@@ -16,8 +16,8 @@
 //
 // ONE LITERAL, ONE POINT. The tagline and the two menu items are
 // `screens/title-shows-tagline` and `screens/title-shows-new-game`, so a build that
-// draws a title and no tagline grades apart from one that draws neither. That the
-// title READS against what it sits on is `presentation/text-legible`.
+// draws a title and no tagline grades apart from one that draws neither. How
+// legibly the title reads against what it sits on is the reviewer's.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

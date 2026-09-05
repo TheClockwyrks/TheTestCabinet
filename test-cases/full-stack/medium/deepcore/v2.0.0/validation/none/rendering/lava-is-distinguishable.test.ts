@@ -1,24 +1,27 @@
-// rendering/lava-is-distinguishable — lava reads as molten, not as more rock.
+// rendering/lava-is-distinguishable — a lava cell is drawn as lava rather than
+// as more rock.
 //
 // specs/overview.md: "Lava is plainly visible as molten and dangerous against
 // safe ground." A pool has to be read BEFORE the miner is standing in it, and
-// specs/hazards.md makes contact cost hull continuously, so a lava cell a player
-// mistakes for rock is a lava cell a player drills into. The specification fixes
-// no palette, so separation is what a check can read, and the review item states
-// the figure: a lava cell's sampled interior at least an RGB distance of 60 from
-// the rock of its own band.
+// specs/hazards.md makes contact cost hull continuously, so a lava cell drawn
+// exactly as rock is a lava cell a player drills into. The specification fixes
+// no palette, so what a check reads is that the lava is DRAWN: the cell's
+// picture changes when lava is what is in it. How molten it looks is the
+// presentation rating's, not this check's.
 //
-// THE READING. A run of that band's rock with one cell of it posed to lava, so
-// the two samples are the same band, the same camera and the same frame: the
-// only difference between them is the kind of the cell. The deepstone is the
-// band used, because specs/world.md puts the shallowest lava there.
+// THE READING is one cell, twice. A run of the band's rock is laid, the cell in
+// the middle of it is posed to lava and its interior sampled, then the same cell
+// is posed back to that band's rock and sampled again — same cell, same camera,
+// same neighbours, so the only difference between the two readings is the kind
+// of the cell. The deepstone is the band used, because specs/world.md puts the
+// shallowest lava there.
 //
 // The miner is parked clear of the pool with both faculties held, so it neither
-// walks into the lava nor drills it while the frame is read — the contact drain
-// and the drilling lump belong to the hazards checks, not to this one.
+// walks into the lava nor drills it while the frames are read — the contact
+// drain and the drilling lump belong to the hazards checks, not to this one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThanOrEqual } from "../assert";
+import { assertGreaterThan } from "../assert";
 import {
   captureStill,
   colorDistance,
@@ -35,16 +38,13 @@ import {
   type Harness,
 } from "../harness";
 
-/** The review item's figure for "plainly visible": 60 of the 441 RGB spans. */
-const LAVA_APART_MIN = 60;
-
 /** The column the pool sits in, mid-mine so the camera holds it. */
 const LAVA_COL = 16;
 
-/** How many columns to the side the plain rock is read from. */
-const ROCK_OFFSET = 2;
+/** How many columns of plain band rock are laid either side of the posed cell. */
+const ROCK_MARGIN = 2;
 
-/** How far to the side the miner waits, clear of the pool and of the rock read. */
+/** How far to the side the miner waits, clear of the pool. */
 const MINER_OFFSET = 4;
 
 let h: Harness;
@@ -57,35 +57,38 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("draws lava clearly apart from the rock of its band", async () => {
+it("draws a lava cell differently from the rock the same cell holds", async () => {
   await openScene(h);
   await pinMiner(h);
   await pinDrill(h);
 
-  const { coreRow } = await h.snapshot();
-  const row = rowInBand("deepstone", coreRow);
+  const row = rowInBand("deepstone", (await h.snapshot()).coreRow);
   await fillBlock(
     h,
     {
-      fromCol: LAVA_COL - ROCK_OFFSET,
-      toCol: LAVA_COL + ROCK_OFFSET,
+      fromCol: LAVA_COL - ROCK_MARGIN,
+      toCol: LAVA_COL + ROCK_MARGIN,
       fromRow: row - 1,
       toRow: row + 1,
     },
     "rock",
   );
-  await h.debug.setTile(LAVA_COL, row, "lava");
   await placeAt(h, minerXOn(LAVA_COL - MINER_OFFSET), minerYOn(row));
 
-  await h.advance(1);
-  const snapshot = await h.snapshot();
-  const lava = await sampleCell(h, snapshot, LAVA_COL, row);
-  const rock = await sampleCell(h, snapshot, LAVA_COL + ROCK_OFFSET, row);
+  // The cell holding lava ...
+  await h.debug.setTile(LAVA_COL, row, "lava");
+  await h.advance(2);
+  const lava = await sampleCell(h, await h.snapshot(), LAVA_COL, row);
   await captureStill(h, "lava");
 
-  assertGreaterThanOrEqual(
+  // ... and the same cell holding the band's rock instead.
+  await h.debug.setTile(LAVA_COL, row, "rock");
+  await h.advance(2);
+  const rock = await sampleCell(h, await h.snapshot(), LAVA_COL, row);
+
+  assertGreaterThan(
     colorDistance(lava, rock),
-    LAVA_APART_MIN,
-    "a lava cell against a rock cell of the same band, sampled at each cell's centre in the same frame",
+    0,
+    "one cell sampled at its centre with lava in it and with rock in it",
   );
 });

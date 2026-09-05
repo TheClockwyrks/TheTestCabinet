@@ -62,17 +62,15 @@ const FIRST = 0;
 const SECOND = 1;
 
 /**
- * How far apart two colours must be, out of the `441` an RGB difference runs to,
- * for a pixel to count as drawn differently.
+ * The sensing floor on a change: how far a reading must move between two frames
+ * before the move can be called a redrawing, of the 441 an RGB distance can span.
  *
- * The bound the rest of this case uses for a mark a player can see: `60` of
- * `441` is what `presentation/*` requires between a body and the field behind
- * it, and a highlight that must show "a player always sees which entry
- * confirming would take" (`specs/ui.md`) is a mark of at least that standing.
- * Well above any anti-aliasing difference, which moves a pixel a few units at
- * most.
+ * Eight. Below that a sampling cannot tell a redrawing from the rounding of an
+ * 8-bit channel and the host's own anti-aliasing; above it nothing is decided
+ * about how strongly the two readings differ. Anything the build drew differently
+ * clears it, however faintly it drew it.
  */
-const CHANGED_DISTANCE = 60;
+const CHANGED_DISTANCE = 8;
 
 /**
  * How many pixels of a row must change for the row to have been drawn

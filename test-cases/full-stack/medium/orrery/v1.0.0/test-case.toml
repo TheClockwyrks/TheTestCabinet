@@ -623,41 +623,48 @@ description = "Every pose changes the state alone and sounds nothing, the three 
 domains = ["presentation"]
 failure_cap = "great"
 validation = { script = "instrumentation/poses-sound-nothing.test.ts", outputs = [ { id = "silent", name = "The silently posed machine", kind = "replay" } ] }
+# The five points below are scoped to `none`. `specs/instrumentation.md` puts the
+# clock switch and `advance` on the engineless surface alone; under `simple-2d`
+# and `structured-2d` the hold and the stepping are the engine's own scripted
+# clock, so a check on them returns the same verdict for every build. That an
+# interval of game time reaches the same state however it is divided into frames
+# is the build's own under every engine, and is decided by
+# `frame-division-independent` above.
 [[review.categories.items]]
 id = "clock-switch-holds-the-simulation"
 title = "The clock switch takes the game off real time"
-description = "With setAutoStep(false) the frame loop stops advancing the simulation from the wall clock, so a live run's cycle and fraction stand still across real time and change only when advance says so; setAutoStep(true) returns the game to running itself. Under an engine the same hold is the engine's own stepped clock."
+description = "With setAutoStep(false) the frame loop stops advancing the simulation from the wall clock, so a live run's cycle and fraction stand still across real time and change only when advance says so; setAutoStep(true) returns the game to running itself."
 domains = ["workshop"]
 failure_cap = "broken"
-validation = { script = "instrumentation/clock-switch-holds-the-simulation.test.ts", outputs = [ { id = "held", name = "The run held off the wall clock", kind = "replay" } ] }
+validation = { script = "instrumentation/clock-switch-holds-the-simulation.test.ts", engines = ["none"], outputs = [ { id = "held", name = "The run held off the wall clock", kind = "replay" } ] }
 [[review.categories.items]]
 id = "clock-switch-leaves-input"
 title = "Input carries on while the simulation is held"
-description = "With the wall clock held off the simulation, by setAutoStep(false) under none and a scripted clock under an engine, the build keeps reading the keys, so a title-menu key press still moves menuIndex."
+description = "With the wall clock held off the simulation by setAutoStep(false), the build keeps reading the keys, so a title-menu key press still moves menuIndex."
 domains = ["workshop"]
 failure_cap = "passable"
-validation = { script = "instrumentation/clock-switch-leaves-input.test.ts", outputs = [ { id = "answering", name = "The menu answering a key with the clock held", kind = "replay" } ] }
+validation = { script = "instrumentation/clock-switch-leaves-input.test.ts", engines = ["none"], outputs = [ { id = "answering", name = "The menu answering a key with the clock held", kind = "replay" } ] }
 [[review.categories.items]]
 id = "clock-switch-leaves-drawing"
 title = "Drawing carries on while the simulation is held"
 description = "With the wall clock held off the simulation the build keeps rendering, so every frame the held clock is advanced by issues its drawing operations and the picture on the canvas follows the state."
 domains = ["workshop", "presentation"]
 failure_cap = "passable"
-validation = { script = "instrumentation/clock-switch-leaves-drawing.test.ts", outputs = [ { id = "drawing", name = "The canvas redrawn with the clock held", kind = "replay" } ] }
+validation = { script = "instrumentation/clock-switch-leaves-drawing.test.ts", engines = ["none"], outputs = [ { id = "drawing", name = "The canvas redrawn with the clock held", kind = "replay" } ] }
 [[review.categories.items]]
 id = "advance-divides-the-interval"
 title = "advance runs the frames it is told, each worth its share of the interval"
-description = "With the wall clock held off the simulation, advance(seconds, frames) under none runs frames whole frames in order, each covering seconds / frames of game time, immediately at the call, and the engine's scripted clock covers an interval the same way; frames is a whole number of at least 1 and defaults to 1, so advance(1) runs one frame of a whole second."
+description = "With the wall clock held off the simulation, advance(seconds, frames) runs frames whole frames in order, each covering seconds / frames of game time, immediately at the call; frames is a whole number of at least 1 and defaults to 1, so advance(1) runs one frame of a whole second."
 domains = ["workshop"]
 failure_cap = "broken"
-validation = { script = "instrumentation/advance-divides-the-interval.test.ts", outputs = [ { id = "advanced", name = "The state after a divided advance", kind = "replay" } ] }
+validation = { script = "instrumentation/advance-divides-the-interval.test.ts", engines = ["none"], outputs = [ { id = "advanced", name = "The state after a divided advance", kind = "replay" } ] }
 [[review.categories.items]]
 id = "advance-runs-real-frames"
 title = "Each advanced frame is a real frame"
-description = "A frame advanced with the wall clock held off the simulation is a real frame: under none advance runs the update the loop runs followed by a render, and under an engine the engine produces the frame, so after one advanced frame the state has moved and the canvas reflects it rather than the state moving with nothing drawn."
+description = "A frame advanced with the wall clock held off the simulation is a real frame: advance runs the update the loop runs followed by a render, so after one advanced frame the state has moved and the canvas reflects it rather than the state moving with nothing drawn."
 domains = ["workshop", "presentation"]
 failure_cap = "passable"
-validation = { script = "instrumentation/advance-runs-real-frames.test.ts", outputs = [ { id = "rendered", name = "The canvas after an advanced frame", kind = "image" } ] }
+validation = { script = "instrumentation/advance-runs-real-frames.test.ts", engines = ["none"], outputs = [ { id = "rendered", name = "The canvas after an advanced frame", kind = "image" } ] }
 [[review.categories.items]]
 id = "completion-off-carries-the-run-past-the-target"
 title = "The completion switch off carries a satisfied run on"
@@ -721,13 +728,15 @@ description = "muted reports the same value across a reset, whichever way it sto
 domains = ["presentation"]
 failure_cap = "great"
 validation = { script = "instrumentation/reset-leaves-muted.test.ts", outputs = [ { id = "muted", name = "The mute bit across a reset", kind = "image" } ] }
+# Scoped to `none` for the reason the clock-switch points above are: the bit a
+# reset is read against is on the engineless surface alone.
 [[review.categories.items]]
 id = "reset-leaves-the-clock-switch"
 title = "reset leaves the game off the wall clock"
-description = "In an engineless build a reset inside a stepped scenario leaves autoStep false, so the simulation is still held afterwards and only advance moves it. Under an engine the engine's clock is likewise untouched."
+description = "A reset inside a stepped scenario leaves autoStep false, so the simulation is still held afterwards and only advance moves it."
 domains = ["workshop"]
 failure_cap = "passable"
-validation = { script = "instrumentation/reset-leaves-the-clock-switch.test.ts", outputs = [ { id = "stepped", name = "The stepped scenario surviving a reset", kind = "replay" } ] }
+validation = { script = "instrumentation/reset-leaves-the-clock-switch.test.ts", engines = ["none"], outputs = [ { id = "stepped", name = "The stepped scenario surviving a reset", kind = "replay" } ] }
 [[review.categories.items]]
 id = "snapshot-is-a-pure-read"
 title = "snapshot changes nothing"
@@ -1614,7 +1623,7 @@ validation = { script = "field/field-fits-its-region.test.ts", outputs = [ { id 
 [[review.categories.items]]
 id = "field-ends-at-radius-five"
 title = "No cell is drawn beyond the field's radius"
-description = "With the machine empty, every sample within 16 of the computed center of a ring-6 hex whose whole sample disc falls inside the field region, x 224 to 1008 and y 48 to 560, matches the sky sample within 25 of 441 RGB distance, because the field is exactly the hexes with max(|q|, |r|, |q + r|) at most FIELD_R (5)."
+description = "With the machine empty, every sample within 16 of the computed center of a ring-6 hex whose whole sample disc falls inside the field region, x 224 to 1008 and y 48 to 560, is the sky the field region was sampled for, because the field is exactly the hexes with max(|q|, |r|, |q + r|) at most FIELD_R (5)."
 domains = ["workshop", "presentation"]
 failure_cap = "passable"
 validation = { script = "field/field-ends-at-radius-five.test.ts", outputs = [ { id = "edge", name = "The field's outer edge against the sky", kind = "image" } ] }
@@ -4103,8 +4112,8 @@ failure_cap = "great"
 validation = { script = "editor/tray-press-outside-every-entry-does-nothing.test.ts", outputs = [ { id = "gutter", name = "A press in the tray gutter beginning nothing", kind = "image" } ] }
 [[review.categories.items]]
 id = "tray-entries-are-drawn-distinguishably"
-title = "Two tray entries of different parts are drawn differently"
-description = "Each entry shows its part's name and its cost from PART_COSTS, so the rectangles of two entries holding different part kinds are not drawn identically, and no entry's rectangle is drawn empty."
+title = "Every tray entry carries its own words"
+description = "Each entry shows its part's name and its cost from PART_COSTS, so the frame anchors a run of text inside every entry's rectangle and no entry's rectangle is drawn empty."
 domains = ["workshop", "presentation"]
 failure_cap = "passable"
 validation = { script = "editor/tray-entries-are-drawn-distinguishably.test.ts", outputs = [ { id = "tray", name = "The tray of a challenge offering several kinds", kind = "image" } ] }
@@ -4729,7 +4738,7 @@ validation = { script = "editor/the-cursors-cell-is-visibly-marked.test.ts", out
 [[review.categories.items]]
 id = "row-labels-are-drawn-distinguishably"
 title = "No two row labels are drawn the same"
-description = "Each row's label carries an identifier unique among the machine's rows, so with three rows placed the three label rectangles are pairwise different and none is drawn empty."
+description = "Each row's label carries an identifier unique among the machine's rows, so one label rectangle draws three different pictures as three different rows scroll into it, and draws something where a row stands that it does not draw where none does."
 domains = ["workshop", "presentation"]
 failure_cap = "passable"
 validation = { script = "editor/row-labels-are-drawn-distinguishably.test.ts", outputs = [ { id = "labels", name = "Three rows with distinct labels", kind = "image" } ] }
@@ -5970,21 +5979,21 @@ validation = { script = "campaign/select-row-shows-its-name.test.ts", outputs = 
 [[review.categories.items]]
 id = "select-locked-reads-apart-from-unlocked"
 title = "A locked row reads apart from an unlocked one"
-description = "Posing setUnlockedCount(1) and then setUnlockedCount(2) on the campaign select screen changes the drawn frame, and the change survives projection to grayscale, so locked and unlocked read apart without relying on hue."
+description = "Posing setUnlockedCount(1) and then setUnlockedCount(2) on the campaign select screen draws that challenge's row differently, so a locked row reads apart from an unlocked one."
 domains = ["campaign", "presentation"]
 failure_cap = "passable"
 validation = { script = "campaign/select-locked-reads-apart-from-unlocked.test.ts", outputs = [ { id = "states", name = "The row locked, then unlocked", kind = "image" } ] }
 [[review.categories.items]]
 id = "select-solved-reads-apart-from-unlocked"
 title = "A solved row reads apart from an unlocked one"
-description = "Posing setSolved(\"campaign\", 0, true) on the campaign select screen changes the drawn frame, and the change survives projection to grayscale, so unlocked and solved read apart without relying on hue."
+description = "Posing setSolved(\"campaign\", 0, true) on the campaign select screen draws that challenge's row differently, so a solved row reads apart from an unlocked one."
 domains = ["campaign", "presentation"]
 failure_cap = "passable"
 validation = { script = "campaign/select-solved-reads-apart-from-unlocked.test.ts", outputs = [ { id = "states", name = "The row unlocked, then solved", kind = "image" } ] }
 [[review.categories.items]]
 id = "select-locked-reads-apart-from-solved"
 title = "A locked row reads apart from a solved one"
-description = "Posing setUnlockedCount(1) with nothing solved, and then setUnlockedCount(2) with challenge 1 solved, draws two different campaign select-screen frames, and the difference survives projection to grayscale, so the third pair of row states reads apart without relying on hue."
+description = "Posing setUnlockedCount(1) with nothing solved, and then setUnlockedCount(2) with challenge 1 solved, draws that challenge's row differently, so a locked row reads apart from a solved one."
 domains = ["campaign", "presentation"]
 failure_cap = "passable"
 validation = { script = "campaign/select-locked-reads-apart-from-solved.test.ts", outputs = [
@@ -6399,13 +6408,6 @@ description = "Completing an Extras challenge changes the drawn select-screen fr
 domains = ["extras", "presentation"]
 failure_cap = "passable"
 validation = { script = "extras/select-marks-solved-rows.test.ts", outputs = [ { id = "states", name = "A solved row beside unsolved ones", kind = "image" } ] }
-[[review.categories.items]]
-id = "solved-mark-survives-hue-removal"
-title = "Solved is readable without relying on hue"
-description = "The grayscale projection of the Extras select-screen frame differs between the challenge unsolved and solved, so the solved state carries information with hue removed."
-domains = ["extras", "presentation"]
-failure_cap = "passable"
-validation = { script = "extras/solved-mark-survives-hue-removal.test.ts", outputs = [ { id = "grayscale", name = "The solved row with hue removed", kind = "image" } ] }
 [[review.categories.items]]
 id = "select-shows-three-records-on-a-solved-row"
 title = "A solved row shows its three records, labelled"
@@ -7941,50 +7943,6 @@ description = "The built site requests nothing from outside its own dist/: every
 domains = ["workshop", "presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/built-site-fetches-nothing-external.test.ts", outputs = [ { id = "requests", name = "Every request the built game made", kind = "image" } ] }
-[[review.categories.items]]
-id = "missing-sprite-leaves-game-running"
-title = "A missing sprite leaves the game running"
-description = "With a mote sprite unavailable at load, the game still initializes, still ticks, still takes keyboard and pointer input, and still draws a legible field, tray and tape panel."
-domains = ["workshop", "presentation"]
-failure_cap = "passable"
-validation = { script = "assets/missing-sprite-leaves-game-running.test.ts", outputs = [ { id = "degraded", name = "The game running without a mote sprite", kind = "image" } ] }
-[[review.categories.items]]
-id = "missing-sheet-frame-leaves-game-running"
-title = "A missing sheet frame leaves the game running"
-description = "With one aperture frame unavailable at load, the game still initializes, still ticks, still takes keyboard and pointer input, and still draws a legible field, tray and tape panel."
-domains = ["workshop", "presentation"]
-failure_cap = "passable"
-validation = { script = "assets/missing-sheet-frame-leaves-game-running.test.ts", outputs = [ { id = "degraded", name = "The game running without an aperture frame", kind = "image" } ] }
-[[review.categories.items]]
-id = "missing-system-leaves-game-running"
-title = "A missing particle system leaves the game running"
-description = "With a particle system unavailable at load, the game still initializes, still ticks, still takes keyboard and pointer input, and a run that would have fired it still runs, faults and completes."
-domains = ["workshop", "presentation"]
-failure_cap = "passable"
-validation = { script = "assets/missing-system-leaves-game-running.test.ts", outputs = [ { id = "degraded", name = "A run with no delivery system loaded", kind = "replay" } ] }
-[[review.categories.items]]
-id = "missing-sound-leaves-game-running"
-title = "A missing sound leaves the game running"
-description = "With a cue file unavailable at load, the game still initializes, still ticks, still takes keyboard and pointer input, and still draws a legible field, tray and tape panel."
-domains = ["workshop", "presentation"]
-failure_cap = "passable"
-validation = { script = "assets/missing-sound-leaves-game-running.test.ts", outputs = [ { id = "degraded", name = "The game running without a cue file", kind = "image" } ] }
-[[review.categories.items]]
-id = "collision-radius-reads-no-image"
-title = "The collision radius reads no produced file"
-description = "With a mote sprite unavailable at load, two motes whose centers come strictly closer than 2 * MOTE_COLLIDE_R (38) still fault the run as collision, so the radius comes from the figure rather than from whatever a file decoded to."
-domains = ["workshop", "presentation"]
-failure_cap = "passable"
-validation = { script = "assets/collision-radius-reads-no-image.test.ts", outputs = [ { id = "collision", name = "A collision with no sprite loaded", kind = "replay" } ] }
-[[review.categories.items]]
-id = "targeting-reads-no-image"
-title = "The targeting radius reads no produced file"
-description = "With a mote sprite unavailable at load, the pointer still targets the nearest hex whose center is within HEX_HIT_R (26), so the targeting radius comes from the figure rather than from whatever a file decoded to."
-domains = ["workshop", "presentation"]
-failure_cap = "passable"
-validation = { script = "assets/targeting-reads-no-image.test.ts", outputs = [
-  { id = "targeting-no-image", name = "Targeting with a sprite unavailable", kind = "image" },
-] }
 
 # --- Presentation -------------------------------------------------------------
 # What a player must be able to see and tell apart, and whether the build draws
@@ -7993,7 +7951,7 @@ validation = { script = "assets/targeting-reads-no-image.test.ts", outputs = [
 # specs/assets.md fixes; the sky, the field, the arms, the wheel, the track, and
 # the rise and set patterns drawn in code around them; the three particle systems
 # playing at their events; the stage fitted to the window; and every piece of
-# screen text legible. Whether the produced FILES exist, measure their canvases,
+# screen text drawn. Whether the produced FILES exist, measure their canvases,
 # and differ from one another is decided under Produced Assets; how GOOD the sky
 # looks — the palette, the type, the originality of the design — is the run-wide
 # aesthetic rating's and is not scored here.
@@ -8268,7 +8226,7 @@ validation = { script = "presentation/aperture-drawn-under-the-pattern.test.ts",
 [[review.categories.items]]
 id = "delivery-plays-at-a-consuming-set"
 title = "The delivery effect plays on a set that consumed"
-description = "At a boundary where a set consumed at least one accepted constellation, assets/particles/deliver.json is played at that set's anchor hex."
+description = "At a boundary where a set consumed at least one accepted constellation, assets/particles/deliver.json is played at that set's anchor hex: the picture there changes over the frames that follow and a bare hex three hexes away does not."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/delivery-plays-at-a-consuming-set.test.ts", outputs = [ { id = "deliver", name = "The delivery over the consuming set", kind = "replay" } ] }
@@ -8289,21 +8247,21 @@ validation = { script = "presentation/no-delivery-without-a-consumption.test.ts"
 [[review.categories.items]]
 id = "fault-effect-at-the-named-mote"
 title = "The fault effect plays at the mote the fault names"
-description = "On a torn fault naming a two-mote constellation whose motes rest 48 apart, assets/particles/fault.json is played at the position of the named mote lowest in y and then lowest in x, so a fault marks where it happened."
+description = "On a torn fault naming a two-mote constellation whose motes rest 48 apart, the snapshot names which of them is lowest in y, and assets/particles/fault.json is played at that mote: the picture there changes over the frames after the fault."
 domains = ["presentation", "workshop"]
 failure_cap = "passable"
 validation = { script = "presentation/fault-effect-at-the-named-mote.test.ts", outputs = [ { id = "collision", name = "The fault effect over a torn constellation", kind = "replay" } ] }
 [[review.categories.items]]
 id = "fault-effect-tie-break"
 title = "A tie in y is broken by the lowest x"
-description = "Among the motes a fault names, two sharing the lowest y put the effect on the one with the lower x."
+description = "Among the motes a fault names, two sharing the lowest y put the effect on the one with the lower x: the snapshot reports the two at the same y one hex apart, and the picture at the one with the lower x changes over the frames after the fault."
 domains = ["presentation"]
 failure_cap = "great"
 validation = { script = "presentation/fault-effect-tie-break.test.ts", outputs = [ { id = "tie", name = "The fault effect under a tie in y", kind = "replay" } ] }
 [[review.categories.items]]
 id = "fault-effect-at-the-named-part"
 title = "A fault naming no mote plays at the part's anchor"
-description = "On a fetch fault, whose motes are empty and whose parts name the faulting part, the fault effect is played at that part's anchor hex."
+description = "On a fetch fault, whose motes are empty and whose parts name the faulting part, the fault effect is played at that part's anchor hex: the picture there changes over the frames that follow and the unnamed arm's own hex does not."
 domains = ["presentation", "workshop"]
 failure_cap = "passable"
 validation = { script = "presentation/fault-effect-at-the-named-part.test.ts", outputs = [ { id = "unmounted", name = "The fault effect over an unmounted advance", kind = "replay" } ] }
@@ -8319,7 +8277,7 @@ validation = { script = "presentation/no-fault-effect-while-running.test.ts", ou
 [[review.categories.items]]
 id = "completion-effect-plays-on-completion"
 title = "The completion effect plays when the run completes"
-description = "On the boundary a run completes, the frame differs from the same completing frame produced with assets/particles/complete.json unavailable, so the completion effect is played."
+description = "On the boundary a run completes, assets/particles/complete.json is played on hex (0, 0): the picture there changes over the frames that follow and a hex three hexes away does not."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/completion-effect-plays-on-completion.test.ts", outputs = [ { id = "complete", name = "The completion effect on the completing boundary", kind = "replay" } ] }
@@ -8334,13 +8292,6 @@ validation = { script = "presentation/no-completion-effect-at-a-non-completing-b
 ] }
 # The field and the machine, read at a glance.
 [[review.categories.items]]
-id = "hexes-visible-on-the-field"
-title = "The field's hexes are visible enough to place parts by"
-description = "The ninety-one cells of the field of radius FIELD_R (5) are drawn so a cell's extent is told from its neighbors: a sample across a hex boundary differs from a sample at a cell center, rather than the field being one flat wash."
-domains = ["presentation", "workshop"]
-failure_cap = "scuffed"
-validation = { script = "presentation/hexes-visible-on-the-field.test.ts", outputs = [ { id = "field", name = "The empty field the cells were sampled on", kind = "image" } ] }
-[[review.categories.items]]
 id = "sprites-separate-from-the-sky"
 title = "Every produced sprite reads on the dark sky"
 description = "Each produced sprite drawn on the field differs from the field's own drawn background at the same place with the sprite absent, so no sprite relies on a ground of its own to be seen."
@@ -8354,13 +8305,6 @@ description = "Every hex of a placed sigil's footprint is drawn distinct from a 
 domains = ["presentation", "workshop"]
 failure_cap = "scuffed"
 validation = { script = "presentation/sigil-footprint-hexes-visible.test.ts", outputs = [ { id = "footprint", name = "A confluence footprint against bare hexes", kind = "image" } ] }
-[[review.categories.items]]
-id = "sigil-role-hexes-told-apart"
-title = "A sigil's distinguished hexes read apart"
-description = "Within one footprint the hexes specs/sigils.md gives different roles are drawn apart from one another, so a confluence crown is told from its four founts and a dispersion's four crowns from its fount."
-domains = ["presentation", "workshop"]
-failure_cap = "passable"
-validation = { script = "presentation/sigil-role-hexes-told-apart.test.ts", outputs = [ { id = "roles", name = "A confluence and a dispersion engraved side by side", kind = "image" } ] }
 [[review.categories.items]]
 id = "arm-spokes-visible"
 title = "An arm's spokes are visible"
@@ -8410,7 +8354,7 @@ validation = { script = "presentation/track-path-reads-as-a-path.test.ts", outpu
 [[review.categories.items]]
 id = "open-track-ends-visible"
 title = "An open track's two ends are visible"
-description = "The first and last cells of an open track are drawn distinct from its interior cells, so the ends a lay may start from are read off the field."
+description = "The first and last cells of an open track are drawn differently from the way the same cell is drawn inside a longer path, so the ends a lay may start from are read off the field."
 domains = ["presentation", "workshop"]
 failure_cap = "scuffed"
 validation = { script = "presentation/open-track-ends-visible.test.ts", outputs = [ { id = "ends", name = "The two ends of an open track", kind = "image" } ] }
@@ -8438,7 +8382,7 @@ validation = { script = "presentation/set-shows-its-product-pattern.test.ts", ou
 [[review.categories.items]]
 id = "repeating-set-shows-its-repeated-copy"
 title = "A repeating set shows the copy at its repeat vector"
-description = "A set for a repeating product draws the placed pattern and the pattern translated once by the placed repeat vector, which is exactly its footprint, so the chain it accepts is read off the field."
+description = "A set for a repeating product draws on both hexes of its footprint, the placed pattern and the pattern translated once by the placed repeat vector, so the chain it accepts is read off the field."
 domains = ["presentation", "workshop"]
 failure_cap = "passable"
 validation = { script = "presentation/repeating-set-shows-its-repeated-copy.test.ts", outputs = [ { id = "repeat", name = "A repeating set and its translated copy", kind = "image" } ] }
@@ -8450,8 +8394,7 @@ validation = { script = "presentation/repeating-set-shows-its-repeated-copy.test
 # runtime is the engine: the seeded `src/main.ts` hands it the 1280 x 720 stage
 # and is marked not to be edited, and the seeded `index.html` sizes the canvas by
 # CSS alone. Under `none` the runtime is the layer the build writes, so that is
-# where these three are decided. The bars' color below stays unscoped, because
-# `BACKGROUND` is the build's own under every engine.
+# where these three are decided.
 [[review.categories.items]]
 id = "stage-fits-a-wide-window"
 title = "The whole stage fits a window wider than 16:9"
@@ -8474,51 +8417,44 @@ domains = ["presentation", "workshop"]
 failure_cap = "passable"
 validation = { script = "presentation/stage-fits-a-raised-device-pixel-ratio.test.ts", engines = ["none"], outputs = [ { id = "dpr", name = "The stage at a raised device pixel ratio", kind = "image" } ] }
 [[review.categories.items]]
-id = "letterbox-bars-carry-the-sky"
-title = "The letterbox bars carry the stage's background"
-description = "The bars around the fitted stage carry the stage's background color, the color the canvas is cleared to, so the sky runs to the edge of the window."
-domains = ["presentation"]
-failure_cap = "great"
-validation = { script = "presentation/letterbox-bars-carry-the-sky.test.ts", outputs = [ { id = "bars", name = "The bars sampled against the sky", kind = "image" } ] }
-[[review.categories.items]]
 id = "title-text-legible"
-title = "The title screen's text is legible"
-description = "TITLE_TEXT (ORRERY), TAGLINE_TEXT (SET THE HEAVENS TURNING), and the three TITLE_ITEMS are legible against whatever sits behind them at the logical stage size 1280 x 720."
+title = "The title screen's text is drawn"
+description = "TITLE_TEXT (ORRERY), TAGLINE_TEXT (SET THE HEAVENS TURNING), and the three TITLE_ITEMS are each drawn onto the stage at the logical stage size 1280 x 720, standing off the ground behind them."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/title-text-legible.test.ts", outputs = [ { id = "title", name = "The title screen whose text was read", kind = "image" } ] }
 [[review.categories.items]]
 id = "howto-text-legible"
-title = "The how-to's text is legible"
-description = "Every one of the HOWTO_PAGES (5) pages shows text legible against whatever sits behind it at the logical stage size 1280 x 720."
+title = "The how-to's text is drawn"
+description = "Every one of the HOWTO_PAGES (5) pages draws text onto the stage at the logical stage size 1280 x 720, standing off the ground behind it."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/howto-text-legible.test.ts", outputs = [ { id = "howto", name = "The five how-to pages whose text was read", kind = "image" } ] }
 [[review.categories.items]]
 id = "select-text-legible"
-title = "The select screen's text is legible"
-description = "Each row of the current mode's select screen, the highlighted row included, is legible against whatever sits behind it at the logical stage size 1280 x 720."
+title = "The select screen's text is drawn"
+description = "Each row of the current mode's select screen, the highlighted row included, is drawn onto the stage at the logical stage size 1280 x 720, standing off the ground behind it."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/select-text-legible.test.ts", outputs = [ { id = "select", name = "The select screen whose rows were read", kind = "image" } ] }
 [[review.categories.items]]
 id = "editor-text-legible"
-title = "The editor's text is legible"
-description = "The heading's name, cost, and messages, the tray's names and costs, the readout's figures, and the tape rows' labels and length annotations are legible against whatever sits behind them at the logical stage size 1280 x 720."
+title = "The editor's text is drawn"
+description = "The heading's name, cost, and messages, the tray's names and costs, the readout's figures, and the tape rows' labels and length annotations are each drawn onto the stage at the logical stage size 1280 x 720, standing off the ground behind them."
 domains = ["presentation", "workshop"]
 failure_cap = "scuffed"
 validation = { script = "presentation/editor-text-legible.test.ts", outputs = [ { id = "editor", name = "The editor whose text was read", kind = "image" } ] }
 [[review.categories.items]]
 id = "solved-panel-text-legible"
-title = "The solved panel's text is legible"
-description = "SOLVED_TITLE_TEXT (CHALLENGE COMPLETE), the three metrics, the records, and the SOLVED_ITEMS menu are legible against the finished machine drawn behind the panel."
+title = "The solved panel's text is drawn"
+description = "SOLVED_TITLE_TEXT (CHALLENGE COMPLETE), the three metrics, the records, and the SOLVED_ITEMS menu are each drawn over the finished machine behind the panel, standing off the ground behind them."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/solved-panel-text-legible.test.ts", outputs = [ { id = "solved", name = "The solved panel whose text was read", kind = "image" } ] }
 [[review.categories.items]]
 id = "fault-banner-legible"
-title = "The fault banner is legible"
-description = "While sim.status is faulted the banner naming which of the FAULTS stopped the run is legible against the frozen machine behind it."
+title = "The fault banner is drawn"
+description = "While sim.status is faulted the banner naming which of the FAULTS stopped the run is drawn over the frozen machine behind it, standing off the ground behind it."
 domains = ["presentation", "workshop"]
 failure_cap = "passable"
 validation = { script = "presentation/fault-banner-legible.test.ts", outputs = [ { id = "banner", name = "The fault banner over the frozen field", kind = "image" } ] }

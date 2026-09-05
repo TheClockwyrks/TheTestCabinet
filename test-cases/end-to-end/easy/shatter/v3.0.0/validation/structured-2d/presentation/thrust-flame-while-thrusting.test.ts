@@ -92,14 +92,16 @@ const WEDGE_FAR = 48;
 const WEDGE_HALF_ANGLE = Math.PI / 4;
 
 /**
- * How far a square unit's reading must stand from the field to count as painted,
- * of 441.
+ * The sensing floor: how far a square unit's reading must sit from the field the
+ * build drew before the cell can be called painted, of the 441 an RGB distance can
+ * span.
  *
- * The same `60` every presentation item in this suite calls a body drawn at, so a
- * flame drawn faint enough to be only just visible still registers and the field's
- * own gradient does not.
+ * Eight. Below that a sampling cannot tell a drawing from the rounding of an 8-bit
+ * channel and the host's own anti-aliasing; above it nothing is decided about how
+ * strongly the mark reads. Anything the build painted over the sample clears it,
+ * in whatever colour it chose, over whatever field it chose.
  */
-const INKED = 60;
+const INKED = 8;
 
 /**
  * How many more square units of the wedge must be painted when the burn starts.

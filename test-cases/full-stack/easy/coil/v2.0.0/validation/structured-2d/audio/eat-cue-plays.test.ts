@@ -12,11 +12,10 @@
 // sounded, and `watchCues` reads that name. A build that made some noise of its
 // own has not played `eat`, and this reads the difference.
 //
-// THE CUE SOUNDS WHETHER OR NOT ITS FILE LOADED. This process has no Web Audio
-// context, so no produced `.wav` can be decoded through the engine here;
-// `specs/assets.md` requires a build that keeps playing when its files do not
-// arrive — "a load that fails leaves the game running" — so the cue is still
-// asked for and still named. What the file itself holds is
+// WHAT THIS READS IS THE ASK, NOT THE SOUND. This process has no Web Audio
+// context, so no produced `.wav` can be decoded through the engine here; what the
+// cue bus announces is the cue the build asked to play, by name, which is what
+// this point is about. What the file itself holds is
 // `audio/eat-file-produced`.
 //
 // THE THREE THINGS THIS SEPARATES. A build that plays no cue on the eat; a build

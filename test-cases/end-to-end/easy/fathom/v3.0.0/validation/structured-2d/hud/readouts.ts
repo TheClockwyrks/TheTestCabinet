@@ -59,14 +59,14 @@ export interface Strip {
 export const LEGIBLE_MIN = 50;
 
 /**
- * How far a sampled point must sit from the strip's ground to count as drawn on,
- * for the two gauge points.
+ * The sensing floor a sampled point owes to count as drawn on, as an RGB distance
+ * out of the `441` that separates black from white.
  *
- * `25` of `441`, the same figure every other point in this case uses for "this is
- * not the background". Lower than {@link LEGIBLE_MIN} on purpose: a gauge is a
- * shape rather than a glyph, and a build is free to draw it dim.
+ * `8` of `441` is the level below which a sampling cannot tell a drawing from
+ * eight-bit channel rounding and the host's antialiasing. Anything the build
+ * painted there clears it, in whatever palette and however dim.
  */
-export const DRAWN_MIN = 25;
+export const DRAWN_MIN = 8;
 
 /**
  * How far apart two samples stand across a strip, in units.

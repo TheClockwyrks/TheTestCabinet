@@ -32,10 +32,10 @@
 // frame-to-frame drift is measured first, with nothing posed between the two readings,
 // and the change the band causes has to beat it.
 //
-// WHAT IS NOT ASSERTED. That the indicator AGREES with the band drawn on the ship —
-// the ship's own two readings are `presentation/ship-reads-band`'s — and that the two
-// bands are told apart by colour at all, which is
-// `presentation/cyan-magenta-distinct`'s.
+// WHAT IS NOT ASSERTED. Anything about how the indicator LOOKS. What colour, accent
+// or type the build chose, and how far apart its two bands read, are the reviewer's
+// presentation rating; the reading here is that the strip was repainted when the band
+// moved.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -48,6 +48,7 @@ import {
 } from "../harness";
 import {
   BOTTOM_STRIP,
+  PAINT_MIN,
   countMoved,
   driftOverOneFrame,
   readRegion,
@@ -56,27 +57,6 @@ import {
 /** The band the ship starts every run on (specs/bands.md), and the other one. */
 const FIRST_BAND: Band = "cyan";
 const SECOND_BAND: Band = "magenta";
-
-/**
- * How far a pixel must move to count as repainted, as a Euclidean RGB distance out of
- * the `441` an RGB cube is across.
- *
- * The case's figure, since `specs/ui.md` states the rule and leaves the palette to the
- * build: `40` is about a tenth of the space, which is the least a player reads as a
- * different band at a glance, and far above the rounding two readings of one unchanged
- * pixel differ by.
- */
-const REPAINT_MIN = 40;
-
-/**
- * How many pixels of the strip the indicator must repaint.
- *
- * At the harness's default shape the canvas is the stage at one device pixel per
- * logical unit, so `64` pixels is an eight-by-eight mark — smaller than one glyph of a
- * `BAND_LABELS` label legible at the stage's `1280 x 720` (`specs/ui.md`), let alone
- * the colour and shape accent beside it.
- */
-const REPAINT_MIN_PIXELS = 64;
 
 let h: Harness;
 
@@ -98,7 +78,7 @@ it("repaints the bottom strip when the ship's band changes", async () => {
     "the ship is posed on the first band",
   );
 
-  const drift = await driftOverOneFrame(h, BOTTOM_STRIP, REPAINT_MIN);
+  const drift = await driftOverOneFrame(h, BOTTOM_STRIP, PAINT_MIN);
   const onFirst = drift.reading;
   captureStill(h, FIRST_BAND);
 
@@ -113,8 +93,8 @@ it("repaints the bottom strip when the ship's band changes", async () => {
   captureStill(h, SECOND_BAND);
 
   assertGreaterThan(
-    countMoved(onFirst, onSecond, REPAINT_MIN),
-    Math.max(drift.count, REPAINT_MIN_PIXELS),
+    countMoved(onFirst, onSecond, PAINT_MIN),
+    drift.count,
     "pixels of the bottom HUD strip repainted when the ship went from " +
       `${FIRST_BAND} to ${SECOND_BAND} — the polarity indicator shows the ` +
       "ship's CURRENT band, in that band's colour and shape accent, with its " +

@@ -241,18 +241,18 @@ npx tsc --noEmit -p validation/tsconfig.json    # from a build's root
 
 ### Three captures move between runs
 
-`tcab capture-baselines` writes `1848` files across the six engine/variant
-targets: `1737` stills and `111` recorded replays. Six of those stills are not
+`tcab capture-baselines` writes `1784` files across the six engine/variant
+targets: `1673` stills and `111` recorded replays. Six of those stills are not
 rendered at all: `showcase.exists__carousel` is a `.png` the point copies out of
 the build's own showcase, so the baseline for it is the reference's own picture.
-Seventeen of the stills are taken off a clock rather than off a posed frame, so
+Thirteen of the stills are taken off a clock rather than off a posed frame, so
 two runs of the command over unchanged code write different bytes for them, and
 the committed baseline for each is one sample rather than a fixed picture. They
 are three outputs:
 
 | Output                                         | Targets | Why it moves                                                                                                                                      |
 | ---------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `controls.overlay-backquote__overlay`          | 6       | The panel carries a frame-time reading measured on the host that ran it: the engine's own line under an engine, the build's `dt` under `none`.    |
+| `controls.overlay-backquote__overlay`          | 2       | The panel carries a frame-time reading measured on the host that ran it. It is scoped to `none`, where the build writes the overlay.              |
 | `instrumentation.advances-in-real-time__after` | 6       | The point's whole subject is a second of real time under the engine's own loop, so what has moved by the still is whatever that second delivered. |
 | `instrumentation.overlay__overlay`             | 5       | The same panel as the first, over a posed field.                                                                                                  |
 
@@ -267,12 +267,12 @@ than sitting through a stretch of the wall clock, so its still is the same
 picture on every host and any movement in it is the build's.
 
 The churn is bounded and it is all there is. Captures of the same code differ
-inside those seventeen files and in nothing else, and a delta within a file is no
+inside those thirteen files and in nothing else, and a delta within a file is no
 more than 2291 pixels of the 921600 in a frame, inside the panel's text band or on
-one moving entity. The other 1720 stills and all 111 replays are byte-identical
+one moving entity. The other 1660 stills and all 111 replays are byte-identical
 from one capture to the next.
 
-So a recapture that leaves only those seventeen files dirty has changed nothing
+So a recapture that leaves only those thirteen files dirty has changed nothing
 and is not worth committing. One that moves anything else has changed the
 picture a reviewer is shown, and is.
 
@@ -283,12 +283,14 @@ discharge and the inversion), `swarm` (the entrances, the formation, the dives
 and the three drones), `arcade` (the ship, the stages, the lives, the scoring and
 the screens) and `presentation` (the screens, the HUD, the art and the audio) —
 and its overall functional rating is the worst of the four. The checklist is
-`294` points on a base run and `312` on an overload run, over `292` and `310`
+`286` points on a base run and `304` on an overload run, over `284` and `302`
 items: eighteen categories common to both, plus one category the variant
-declares. Each point names the domains its failure lowers and how far it lowers
-them. Every item is worth one point except `showcase.exists`, which is worth
-three: the showcase is a deliverable of its own rather than a behavior of the
-game.
+declares. Under an engine each figure is one lower, because
+`controls.overlay-backquote` is scoped to `none`, where the build writes the
+overlay and its toggle itself. Each point names the domains its failure lowers
+and how far it lowers them. Every item is worth one point except
+`showcase.exists`, which is worth three: the showcase is a deliverable of its own
+rather than a behavior of the game.
 
 ## Versioning
 

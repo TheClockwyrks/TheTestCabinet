@@ -103,10 +103,10 @@ This version declares no reference mockups. The board geometry, the tick rate, t
 combo window and every other figure a validator reads are fixed exactly, and the
 palette, the type and the look of the board and the HUD are the build's. What a
 validator reads of the drawing is only what the specs fix: that the stage is
-fitted, that the pieces on the board are told apart by a stated color distance,
-that the copy each screen names is drawn, and that the snake is painted from its
-produced sprites. How any of it looks is the presentation domain's aesthetic
-rating.
+fitted, that each piece on the board is drawn rather than left as the ground
+under it, that the copy each screen names is drawn, and that the snake is
+painted from its produced sprites. How any of it looks is the presentation
+domain's aesthetic rating.
 
 The snake's sprite set and the game's sound and music are produced during the run
 with the binaries on the run image's `PATH` and committed into the build, so

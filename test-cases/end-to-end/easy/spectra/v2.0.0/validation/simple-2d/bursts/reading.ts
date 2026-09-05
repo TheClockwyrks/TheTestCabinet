@@ -99,13 +99,25 @@ export function furthestChange(
 }
 
 /**
+ * How far a place must move between two readings to count as painted, as a
+ * Euclidean RGB distance out of the `441` an RGB cube is across.
+ *
+ * THIS IS THE READING, NOT A THRESHOLD. It decides which places of a square count
+ * as drawn on, and how far they moved is never asserted: `specs/overview.md`
+ * fixes no palette and `specs/assets.md` leaves how the burst is composed to the
+ * build, so how bright or broad it reads is the reviewer's rating. Two readings
+ * of one place nothing was drawn on are identical, so anything above zero would
+ * do; `12` is a little above the rounding one composite can put on a pixel.
+ */
+export const PAINT_MIN = 12;
+
+/**
  * How many pixels of a square moved further than `minDistance` between two
  * readings of it.
  *
  * The count rather than the single furthest pixel, for a check asking whether
- * something was PAINTED over a stretch of field: one pixel can move because a
- * build's starfield drifted a mark under the reading, while a population of
- * particles moves a whole patch of them.
+ * something was PAINTED over a stretch of field. `minDistance` is the caller's;
+ * every check in this group passes {@link PAINT_MIN}.
  */
 export function changedPixels(
   before: Region,
@@ -123,26 +135,4 @@ export function changedPixels(
     if (distance > minDistance) count += 1;
   }
   return count;
-}
-
-/**
- * How far two readings of one square stand apart on average, as a mean
- * Euclidean RGB distance per pixel out of the `441` an RGB cube is across.
- *
- * The mean rather than the furthest pixel, for a check asking whether two
- * pictures are the SAME picture: a single moved pixel is what one particle's
- * rounding does, while the mean over a whole square moves only if what was
- * painted over it landed somewhere else.
- */
-export function meanChange(before: Region, after: Region): number {
-  const pixels = samePixels(before, after);
-  let total = 0;
-  for (let at = 0; at < after.data.length; at += 4) {
-    total += Math.hypot(
-      after.data[at] - before.data[at],
-      after.data[at + 1] - before.data[at + 1],
-      after.data[at + 2] - before.data[at + 2],
-    );
-  }
-  return total / pixels;
 }

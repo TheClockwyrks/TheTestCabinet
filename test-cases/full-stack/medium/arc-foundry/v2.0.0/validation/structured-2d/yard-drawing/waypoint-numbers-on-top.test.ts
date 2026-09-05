@@ -21,9 +21,10 @@
 // `specs/yard.md` makes that anchor "the tile the Load paths to" — and every one
 // of them has to have been issued after that operation.
 //
-// A build whose produced sprites did not arrive draws its own geometry instead
-// (`specs/assets.md`), and the reading is the same either way: what is compared is
-// where the operations sat, not which primitive they were.
+// WHICH PRIMITIVE CARRIED EACH THING IS NOT READ. A number drawn as text, a number
+// blitted from an icon, and a component drawn as a sprite or as geometry all reach
+// this reading the same way: what is compared is where the operations sat and the
+// order they were issued in.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertGreaterThanOrEqual, fail } from "../assert";

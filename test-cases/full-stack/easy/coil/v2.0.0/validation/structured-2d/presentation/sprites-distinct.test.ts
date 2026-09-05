@@ -11,19 +11,20 @@
 // pieces are three images, and a build that ships one of them three times paints
 // a bend with a straight.
 //
-// WHAT IS READ, AND THE FIGURE. Each of the three pairs, compared pixel for
-// pixel, against `DIFFER_MIN_PIXELS`: four pixels, the smallest square mark a
-// player sees at one cell. One sprite shipped twice differs by exactly nothing,
-// since a PNG carries its pixels losslessly, so what the floor really separates
-// is three pieces from one file copied. Whether the three JOIN without a seam,
-// which the same file asks for, is the presentation domain's aesthetic rating.
+// WHAT IS READ. Each of the three pairs, compared pixel for pixel. A PNG carries
+// its pixels losslessly and both files come off the same disk in the same
+// process, so one sprite shipped twice differs on exactly nothing and three
+// pieces differ on something. How MUCH two of them differ is not read: the
+// specification fixes no figure for it, and whether the three JOIN without a
+// seam, which the same file asks for, is the presentation domain's aesthetic
+// rating.
 //
 // This decides only that the three differ as files. That the build paints the
 // right one on the right cell is `presentation/corner-at-a-bend` and
 // `presentation/tail-at-the-last-cell`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThanOrEqual, fail } from "../assert";
+import { assertGreaterThan, fail } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import {
   BODY_FILES,
@@ -32,7 +33,6 @@ import {
   showSpriteFiles,
   type Sprite,
 } from "./sprites";
-import { DIFFER_MIN_PIXELS } from "../constants";
 
 let h: Harness;
 
@@ -58,9 +58,9 @@ it("draws the straight, corner and tail sprites differently", async () => {
 
   for (let a = 0; a < sprites.length; a += 1) {
     for (let b = a + 1; b < sprites.length; b += 1) {
-      assertGreaterThanOrEqual(
+      assertGreaterThan(
         differingPixels(sprites[a], sprites[b]),
-        DIFFER_MIN_PIXELS,
+        0,
         `the pixels differing between ${sprites[a].file} and ${sprites[b].file}`,
       );
     }

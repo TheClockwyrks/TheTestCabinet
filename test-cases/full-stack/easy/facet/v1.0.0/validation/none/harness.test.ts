@@ -95,7 +95,6 @@ import {
   framesPast,
   framesShortOf,
   loadBoard,
-  meanColor,
   patchDistance,
   poseBoardWithEscape,
   PROJECT_ROOT,
@@ -531,10 +530,9 @@ it("measures a patch difference as the mean per-pixel RGB distance", () => {
   );
 });
 
-it("reads a patch of no pixels as no distance and no color", () => {
-  // A degenerate patch is a reading rather than a division. Both instruments
-  // answer for it, so a box that came back empty fails the check that asked the
-  // question rather than filling the pair with NaN.
+it("reads a patch of no pixels as no distance", () => {
+  // A degenerate patch is a reading rather than a division, so a box that came
+  // back empty fails the check that asked the question rather than answering NaN.
   const empty = (): Patch => ({
     half: 0,
     width: 0,
@@ -542,7 +540,6 @@ it("reads a patch of no pixels as no distance and no color", () => {
     data: new Uint8ClampedArray(0),
   });
   expect(patchDistance(empty(), empty())).toBe(0);
-  expect(meanColor(empty())).toEqual({ r: 0, g: 0, b: 0 });
 });
 
 /* -------------------------------------------------------------------------- */
@@ -913,7 +910,8 @@ it("puts the copy of a screen where a check can read it", async () => {
   // `frameText` runs one frame and gathers what it put on screen from both places
   // an engineless build is allowed to draw it — `specs/assets.md` has the chrome
   // "drawn in code (canvas or DOM)" — so a check reads a screen's copy without
-  // knowing which the build chose.
+  // knowing which the build chose. Its DOM half reads what is RENDERED, so text
+  // in a hidden element is not on screen and is not gathered.
   const title = await h.frameText();
   expect(showsText(title, TITLE_TEXT)).toBe(true);
   expect(showsText(title, TAGLINE_TEXT)).toBe(true);
@@ -1115,11 +1113,12 @@ it("refuses a frame count that is not a whole number of frames", async () => {
 });
 
 it("reads one box shape at a board edge and at its middle", async () => {
-  // `patchDistance` is a MEAN over the box and PATCH_DISTINCT_MIN is one
-  // threshold under all three engines, so the box is the same shape wherever the
-  // cell sits: at a canvas edge the ORIGIN slides inward rather than the box
-  // shrinking. A `half` of 120 logical units runs off the bottom of the
-  // 1280x720 stage at the last row, which is what makes this readable at all.
+  // The box is the same shape wherever the cell sits: at a canvas edge the
+  // ORIGIN slides inward rather than the box shrinking. `patchDistance` is a
+  // MEAN over the box, so two readings of one cell answer for what was drawn in
+  // it rather than for how the box was cut. A `half` of 120 logical units runs
+  // off the bottom of the 1280x720 stage at the last row, which is what makes
+  // this readable at all.
   await poseBoardWithEscape(h, []);
   await h.advance(1);
   const middle = await h.patch(3, 3, 120);
@@ -1219,14 +1218,13 @@ it("opens the build's audio and hears a sound on the frame that made it", async 
   expect(cues.filter((cue) => cue.frame > sounded)).toEqual([]);
 });
 
-it("mounts the build under a sub-path, and 404s what reaches past it", async () => {
+it("mounts the build under a sub-path, and answers everything it asks for", async () => {
   // `specs/assets.md`: the site "is not guaranteed to be served from the root of
-  // its origin; it is played back mounted under a per-run sub-path", and a
-  // root-absolute URL "resolves against the origin root and 404s under a
-  // sub-path". Both halves are posed here — the page really is opened under the
-  // sub-path, and anything asked for outside it really is refused — so a check
-  // about page-relative assets is deciding the build's URLs rather than the
-  // server's leniency.
+  // its origin; it is played back mounted under a per-run sub-path". The page
+  // really is opened under the sub-path, so a page-relative URL resolves from
+  // there and every request the build made is written down — which is what a
+  // check about page-relative assets reads. Nothing is refused: the produced
+  // files stand up here as they do for every other check.
   const mounted = await createHarness({ basePath: "/runs/7/build/" });
   try {
     expect(mounted.surfaceFault).toBeNull();
@@ -1238,36 +1236,9 @@ it("mounts the build under a sub-path, and 404s what reaches past it", async () 
       );
     }
     expect(mounted.failedRequests).toEqual([]);
-
-    // And the refusal is real: a fetch from the origin root, which is what a
-    // root-absolute asset URL would be, is answered 404.
-    const status = await mounted.page.evaluate(async () => {
-      const response = await fetch("/assets/gems/ruby.png");
-      return response.status;
-    });
-    expect(status).toBe(404);
+    expect(mounted.assetFailures).toEqual([]);
   } finally {
     await mounted.dispose();
-  }
-});
-
-it("stands a build up whose produced assets never arrive", async () => {
-  // The other half of the asset vocabulary: `assets: false` answers every request
-  // under the served `assets/` tree with a 404, which is the tree
-  // `specs/assets.md` commits every produced file to. The build still stands up,
-  // because a missing sprite is a fault to be reported on the points about it
-  // rather than one that stops the harness.
-  const stripped = await createHarness({ assets: false });
-  try {
-    expect(stripped.surfaceFault).toBeNull();
-    await stripped.advance(2);
-    expect(stripped.assetFailures.length).toBeGreaterThan(0);
-    for (const failure of stripped.assetFailures) {
-      expect(failure.path.split("/"), failure.path).toContain("assets");
-      expect(failure.reason).toBe("404");
-    }
-  } finally {
-    await stripped.dispose();
   }
 });
 

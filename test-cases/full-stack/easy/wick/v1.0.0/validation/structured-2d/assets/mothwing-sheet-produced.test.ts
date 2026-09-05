@@ -30,7 +30,7 @@
 // evidence picture is painted on, and the picture is the four frames.
 //
 // THE TOLERANCE. The canvas is exact, because the specification states it
-// exactly; the paint floor is `PAINT_MIN_SHARE`, one pixel in a thousand; and
+// exactly; the paint reading is presence, at least one pixel not clear; and
 // two frames are the same picture within `PIXEL_CHANNEL_EPS`, eight levels of
 // 255 per channel, which a losslessly stored duplicate lands inside and no
 // visible difference hides under.

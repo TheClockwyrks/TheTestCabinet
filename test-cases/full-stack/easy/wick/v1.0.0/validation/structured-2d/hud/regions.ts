@@ -8,7 +8,14 @@
 // one figure the point is about changed and nothing else did. These functions
 // measure such a region; the thresholds live in the suites.
 
-import type { Harness, PixelRect } from "../harness";
+import {
+  blitsOf,
+  type Blit,
+  type DrawCall,
+  type Harness,
+  type Matrix,
+  type PixelRect,
+} from "../harness";
 
 /** A rectangle of the canvas, in device pixels. */
 export interface Rect {
@@ -183,39 +190,6 @@ export function holds(rect: Rect, x: number, y: number): boolean {
   );
 }
 
-/**
- * How much two frames differ inside `rect`, as the mean over its pixels of the
- * largest change any one channel took: `0` where the two are identical, and up
- * to `255` where every pixel went from one extreme to the other.
- *
- * A COUNT of changed pixels answers whether anything moved; this answers how
- * much, which is what tells a picture drawn over another from one blended into
- * it. Comparing one region's figure against another's is comparing how much of
- * the same sprite's own contrast reached each place.
- */
-export function changeEnergy(a: PixelRect, b: PixelRect, rect: Rect): number {
-  if (a.width !== b.width || a.height !== b.height) {
-    throw new Error("wick hud: two frames of different sizes were compared");
-  }
-  let total = 0;
-  let seen = 0;
-  for (let row = rect.y; row < rect.y + rect.h; row += 1) {
-    if (row < 0 || row >= a.height) continue;
-    for (let col = rect.x; col < rect.x + rect.w; col += 1) {
-      if (col < 0 || col >= a.width) continue;
-      const at = (row * a.width + col) * 4;
-      total += Math.max(
-        Math.abs(a.data[at] - b.data[at]),
-        Math.abs(a.data[at + 1] - b.data[at + 1]),
-        Math.abs(a.data[at + 2] - b.data[at + 2]),
-        Math.abs(a.data[at + 3] - b.data[at + 3]),
-      );
-      seen += 1;
-    }
-  }
-  return seen === 0 ? 0 : total / seen;
-}
-
 /** How many pixels inside `rect` the mask marks as changed. */
 export function changedIn(mask: Mask, rect: Rect): number {
   let count = 0;
@@ -357,4 +331,273 @@ export function stagePointOf(
     x: (x - view.offsetX) / view.scale,
     y: (y - view.offsetY) / view.scale,
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* What a frame painted over a rectangle, and in what order                   */
+/* -------------------------------------------------------------------------- */
+//
+// The readings above report where a frame drew something as a POINT or as the
+// box a blit covered. Neither answers "was anything painted OVER this rectangle
+// after some earlier call", because the anchor of the call that fills a bar is
+// one corner of it and a panel drawn behind a whole HUD is anchored nowhere near
+// the bar it covers. So the walk below carries the transform state the canvas
+// carries and reports the AREA each call covered. The transform arithmetic is
+// the canvas's own `[a, b, c, d, e, f]`.
+
+const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
+
+/** `m` followed by `n`, in the canvas's own multiplication order. */
+function multiply(m: Matrix, n: Matrix): Matrix {
+  return [
+    m[0] * n[0] + m[2] * n[1],
+    m[1] * n[0] + m[3] * n[1],
+    m[0] * n[2] + m[2] * n[3],
+    m[1] * n[2] + m[3] * n[3],
+    m[0] * n[4] + m[2] * n[5] + m[4],
+    m[1] * n[4] + m[3] * n[5] + m[5],
+  ];
+}
+
+/** Where `(x, y)` lands under `m`. */
+function apply(m: Matrix, x: number, y: number): { x: number; y: number } {
+  return { x: m[0] * x + m[2] * y + m[4], y: m[1] * x + m[3] * y + m[5] };
+}
+
+/** The leading `count` arguments, when every one of them is a number. */
+function numbers(args: readonly unknown[], count: number): number[] | null {
+  const taken = args.slice(0, count);
+  return taken.length === count && taken.every((v) => typeof v === "number")
+    ? (taken as number[])
+    : null;
+}
+
+/** The transform after `method(...args)`, or `null` for a call that draws. */
+function moved(
+  current: Matrix,
+  method: string,
+  args: unknown[],
+): Matrix | null {
+  if (method === "translate") {
+    const v = numbers(args, 2);
+    return v
+      ? multiply(current, [1, 0, 0, 1, v[0] as number, v[1] as number])
+      : current;
+  }
+  if (method === "scale") {
+    const v = numbers(args, 2);
+    return v
+      ? multiply(current, [v[0] as number, 0, 0, v[1] as number, 0, 0])
+      : current;
+  }
+  if (method === "rotate") {
+    const v = numbers(args, 1);
+    if (!v) return current;
+    const c = Math.cos(v[0] as number);
+    const s = Math.sin(v[0] as number);
+    return multiply(current, [c, s, -s, c, 0, 0]);
+  }
+  if (method === "transform") {
+    const v = numbers(args, 6);
+    return v ? multiply(current, v as Matrix) : current;
+  }
+  if (method === "setTransform") {
+    const v = numbers(args, 6);
+    if (v) return v as Matrix;
+    if (args.length === 0) return IDENTITY;
+    return current;
+  }
+  if (method === "resetTransform") return IDENTITY;
+  return null;
+}
+
+/** A box being accumulated from the points a path laid down. */
+interface PathBox {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+function grew(box: PathBox | null, at: { x: number; y: number }): PathBox {
+  return box === null
+    ? { minX: at.x, minY: at.y, maxX: at.x, maxY: at.y }
+    : {
+        minX: Math.min(box.minX, at.x),
+        minY: Math.min(box.minY, at.y),
+        maxX: Math.max(box.maxX, at.x),
+        maxY: Math.max(box.maxY, at.y),
+      };
+}
+
+/** Whether two boxes share any pixel. */
+export function boxesOverlap(a: Rect, b: Rect): boolean {
+  return (
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+  );
+}
+
+function covers(box: PathBox | null, rect: Rect): boolean {
+  return (
+    box !== null &&
+    boxesOverlap(
+      {
+        x: box.minX,
+        y: box.minY,
+        w: box.maxX - box.minX,
+        h: box.maxY - box.minY,
+      },
+      rect,
+    )
+  );
+}
+
+/**
+ * How many of a frame's drawing operations painted over `rect`.
+ *
+ * The count is only ever compared against the same count taken over a PREFIX of
+ * the same frame, which is what says whether anything painted there after some
+ * earlier operation. Every way a build has of covering a rectangle is counted:
+ * a rectangle filled or stroked outright, a path filled or stroked (as the box
+ * its points span, so a panel drawn as one shape counts wherever it reaches), a
+ * bitmap blitted, and a run of text anchored inside. A shape a build drew under
+ * a transform is read where it landed.
+ */
+export function paintsIn(calls: readonly DrawCall[], rect: Rect): number {
+  let count = 0;
+  const stack: Matrix[] = [];
+  let current: Matrix = IDENTITY;
+  let path: PathBox | null = null;
+  const add = (x: number, y: number): void => {
+    path = grew(path, apply(current, x, y));
+  };
+  const boxOf = (v: readonly number[]): PathBox | null => {
+    let box: PathBox | null = null;
+    for (const [dx, dy] of [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+      [1, 1],
+    ] as const) {
+      box = grew(
+        box,
+        apply(
+          current,
+          (v[0] as number) + dx * (v[2] as number),
+          (v[1] as number) + dy * (v[3] as number),
+        ),
+      );
+    }
+    return box;
+  };
+
+  for (const call of calls) {
+    if (call.kind !== "call") continue;
+    const { method, args } = call;
+    if (method === "save") {
+      stack.push(current);
+      continue;
+    }
+    if (method === "restore") {
+      current = stack.pop() ?? IDENTITY;
+      continue;
+    }
+    const after = moved(current, method, args);
+    if (after !== null) {
+      current = after;
+      continue;
+    }
+    if (method === "beginPath") {
+      path = null;
+    } else if (method === "moveTo" || method === "lineTo") {
+      const v = numbers(args, 2);
+      if (v) add(v[0] as number, v[1] as number);
+    } else if (method === "quadraticCurveTo") {
+      const v = numbers(args, 4);
+      if (v) {
+        add(v[0] as number, v[1] as number);
+        add(v[2] as number, v[3] as number);
+      }
+    } else if (method === "bezierCurveTo") {
+      const v = numbers(args, 6);
+      if (v) {
+        add(v[0] as number, v[1] as number);
+        add(v[2] as number, v[3] as number);
+        add(v[4] as number, v[5] as number);
+      }
+    } else if (method === "arc" || method === "ellipse") {
+      const v = numbers(args, method === "arc" ? 3 : 4);
+      if (v) {
+        const rx = v[2] as number;
+        const ry = method === "arc" ? rx : (v[3] as number);
+        add((v[0] as number) - rx, (v[1] as number) - ry);
+        add((v[0] as number) + rx, (v[1] as number) + ry);
+      }
+    } else if (method === "rect" || method === "roundRect") {
+      const v = numbers(args, 4);
+      if (v) {
+        for (const [dx, dy] of [
+          [0, 0],
+          [1, 0],
+          [0, 1],
+          [1, 1],
+        ] as const) {
+          add(
+            (v[0] as number) + dx * (v[2] as number),
+            (v[1] as number) + dy * (v[3] as number),
+          );
+        }
+      }
+    } else if (method === "fill" || method === "stroke") {
+      if (covers(path, rect)) count += 1;
+    } else if (
+      method === "fillRect" ||
+      method === "strokeRect" ||
+      method === "clearRect"
+    ) {
+      const v = numbers(args, 4);
+      if (v && covers(boxOf(v), rect)) count += 1;
+    } else if (method === "fillText" || method === "strokeText") {
+      const v = numbers(args.slice(1), 2);
+      if (v) {
+        const at = apply(current, v[0] as number, v[1] as number);
+        if (
+          at.x >= rect.x &&
+          at.x < rect.x + rect.w &&
+          at.y >= rect.y &&
+          at.y < rect.y + rect.h
+        ) {
+          count += 1;
+        }
+      }
+    }
+  }
+
+  for (const blit of blitsOf(calls)) {
+    if (boxesOverlap(blit, rect)) count += 1;
+  }
+  return count;
+}
+
+/**
+ * The length of the shortest prefix of `calls` that already holds EVERY blit
+ * `match` accepts, or `null` where no blit does.
+ *
+ * The LAST such blit rather than the first, because what a check asks of it is
+ * whether anything was painted over a sprite once the frame had finished
+ * drawing it: a build that draws a sprite, then the HUD, then the sprite again
+ * has drawn the sprite over the HUD, and the first blit would say the opposite.
+ */
+export function lastBlitIndex(
+  calls: readonly DrawCall[],
+  match: (blit: Blit) => boolean,
+): number | null {
+  let last: number | null = null;
+  for (let at = 0; at < calls.length; at += 1) {
+    const call = calls[at];
+    if (call.kind !== "call" || call.method !== "drawImage") continue;
+    const [blit] = blitsOf([call]);
+    if (blit !== undefined && match(blit)) last = at + 1;
+  }
+  return last;
 }

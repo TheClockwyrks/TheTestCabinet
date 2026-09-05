@@ -63,16 +63,6 @@ const CONTROL_OFFSET = 10;
 /** A hull that is spent but nowhere near empty, so no death is in play. */
 const SPENT_HULL = 20;
 
-/**
- * How many times the control pair the straddling pair must move.
- *
- * A treatment is a change to the whole of the control it treats, where the
- * control pair moves only whatever digits the panel prints of the balance. Twice
- * is a floor a real treatment clears comfortably and a build with none — one that
- * draws the same live control either side of the price — cannot reach.
- */
-const TREATMENT_FACTOR = 2;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -122,7 +112,7 @@ it("draws the Fuel Depot's fixed increments differently one Credit short of thei
   );
   assertGreaterThan(
     fuelStraddling,
-    TREATMENT_FACTOR * fuelControl,
+    fuelControl,
     "specs/controls.md: and by more than the balance printed beside it changes",
   );
   assertGreaterThan(
@@ -132,7 +122,7 @@ it("draws the Fuel Depot's fixed increments differently one Credit short of thei
   );
   assertGreaterThan(
     hullStraddling,
-    TREATMENT_FACTOR * hullControl,
+    hullControl,
     "specs/controls.md: and by more than the balance printed beside it changes",
   );
 });

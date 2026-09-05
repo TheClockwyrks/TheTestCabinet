@@ -417,10 +417,9 @@ export interface AssetLoaded {
 //
 // WHAT WOULD HAPPEN WITHOUT IT. Every produced file would fail to load, and
 // every point about a produced sprite or a bound cue would fail every build
-// ever written, a fact about Node rather than about the build. `specs/assets.md`
-// requires a build that keeps playing when its files do not arrive, so a check
-// about the missing-art path still has one: it withholds a named file through
-// {@link HarnessOptions.withhold} and reads `assetFailures`.
+// ever written, a fact about Node rather than about the build. Every file the
+// build committed is served to every harness this project builds, so a check
+// that reads `assetFailures` is reading whether the build's own files loaded.
 
 /**
  * The directory this harness sits in, which is the validator project's root.
@@ -470,9 +469,6 @@ const imageSource = new WeakMap<object, string>();
 
 /** Where a decoded sound came from, or absent for one the build synthesized. */
 const audioSource = new WeakMap<object, string>();
-
-/** The produced paths the host currently refuses to serve. */
-const withheld = new Set<string>();
 
 /** The file a page-relative URL names, or `null` when no root holds it. */
 function assetFile(url: string): string | null {
@@ -719,14 +715,6 @@ function installAssetHost(): void {
       }
       return platformFetch(input as RequestInfo, init as RequestInit);
     }
-    if (withheld.has(normalizeUrl(url))) {
-      return {
-        ok: false,
-        status: 404,
-        blob: () => Promise.reject(new Error("withheld")),
-        arrayBuffer: () => Promise.reject(new Error("withheld")),
-      } as unknown as Response;
-    }
     const bytes = readFileSync(file);
     const source = normalizeUrl(url);
     const blob = new Blob([bytes]);
@@ -818,13 +806,6 @@ export interface HarnessOptions {
    * engine's own `assets/`.
    */
   assetRoot?: string;
-  /**
-   * Produced paths, relative to the `assets/` root (`sprites/enemies/moth/0.png`,
-   * `audio/hit.wav`), the host refuses to serve while this harness initializes,
-   * so a check about the missing-art path can withhold exactly the files it
-   * names and read the build's `assetFailures`.
-   */
-  withhold?: readonly string[];
   /**
    * Whether to give the engine the gesture that unlocks its audio once the game
    * has initialized, so the sounds the bus starts are recorded from the first
@@ -1264,12 +1245,7 @@ export async function createHarness(
     if (at >= 0) loops.splice(at, 1);
   });
 
-  for (const path of options.withhold ?? []) withheld.add(assetPath(path));
-  try {
-    await engine.initialize();
-  } finally {
-    for (const path of options.withhold ?? []) withheld.delete(assetPath(path));
-  }
+  await engine.initialize();
 
   const raw: unknown = engine.debug;
   const surfaceFault = readDebugSurface(raw);

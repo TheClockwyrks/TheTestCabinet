@@ -1,26 +1,29 @@
-// rendering/stone-is-distinguishable — a boulder is recognized before the drill
-// is wasted on it.
+// rendering/stone-is-distinguishable — an unbreakable boulder is drawn as a
+// boulder rather than as more rock.
 //
 // specs/overview.md: "An unbreakable boulder reads as a harder material than the
 // rock around it, so a player sees that the drill will not break it."
 // specs/world.md puts unbreakable stone inside the playable field rather than at
-// its border, so a shaft that meets one has to jog past it, and a player who
-// cannot see one coming spends fuel on a cell that never breaks. The
-// specification fixes no palette, so separation is what a check can read, and
-// the review item states the figure: at least an RGB distance of 30 between the
-// boulder and the band rock around it.
+// its border, so a shaft that meets one has to jog past it. The specification
+// fixes no palette, so what a check reads is that the boulder is DRAWN: the
+// cell's picture changes when stone is what is in it. How much harder it looks
+// is the presentation rating's, not this check's.
 //
 // EVERY BAND STONE APPEARS IN. specs/world.md places none in the topsoil and a
 // rising share from the top of the rockbed down, so the boulder is posed in each
-// of the three bands a player meets one in, read each time against that band's
-// own rock in the same frame.
+// of the three bands a player meets one in.
+//
+// THE READING is one cell, twice, in each band. The cell is posed to stone and
+// its interior sampled, then posed back to that band's rock and sampled again —
+// same cell, same camera, same neighbours, so the only difference between the
+// two readings is the kind of the cell.
 //
 // The miner is parked clear of the boulder with both faculties held, so nothing
-// cuts at it while the frame is read: what a drill does against stone is the
+// cuts at it while the frames are read: what a drill does against stone is the
 // drilling checks' business, not this one's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThanOrEqual } from "../assert";
+import { assertGreaterThan } from "../assert";
 import type { Band } from "../constants";
 import {
   captureStill,
@@ -38,17 +41,14 @@ import {
   type Harness,
 } from "../harness";
 
-/** The review item's figure for "reads as a harder material": 30 of 441. */
-const STONE_APART_MIN = 30;
-
 /** The bands unbreakable stone is generated in: every one but the topsoil. */
 const STONE_BANDS: readonly Band[] = ["rockbed", "deepstone", "coreshell"];
 
 /** The column the boulder sits in, mid-mine so the camera holds it. */
 const STONE_COL = 16;
 
-/** How many columns to the side the plain rock is read from. */
-const ROCK_OFFSET = 2;
+/** How many columns of plain band rock are laid either side of the posed cell. */
+const ROCK_MARGIN = 2;
 
 /** How far to the side the miner waits, clear of the boulder. */
 const MINER_OFFSET = 4;
@@ -63,7 +63,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("draws an unbreakable boulder clearly apart from its band's rock", async () => {
+it("draws a boulder differently from the rock the same cell holds", async () => {
   await openScene(h);
   await pinMiner(h);
   await pinDrill(h);
@@ -75,29 +75,34 @@ it("draws an unbreakable boulder clearly apart from its band's rock", async () =
     await fillBlock(
       h,
       {
-        fromCol: STONE_COL - ROCK_OFFSET,
-        toCol: STONE_COL + ROCK_OFFSET,
+        fromCol: STONE_COL - ROCK_MARGIN,
+        toCol: STONE_COL + ROCK_MARGIN,
         fromRow: row - 1,
         toRow: row + 1,
       },
       "rock",
     );
-    await h.debug.setTile(STONE_COL, row, "stone");
     await placeAt(h, minerXOn(STONE_COL - MINER_OFFSET), minerYOn(row));
 
-    await h.advance(1);
-    const snapshot = await h.snapshot();
-    const boulder = await sampleCell(h, snapshot, STONE_COL, row);
-    const rock = await sampleCell(h, snapshot, STONE_COL + ROCK_OFFSET, row);
+    // The cell holding the boulder ...
+    await h.debug.setTile(STONE_COL, row, "stone");
+    await h.advance(2);
+    const boulder = await sampleCell(h, await h.snapshot(), STONE_COL, row);
     if (index === 0) await captureStill(h, "boulder");
+
+    // ... and the same cell holding the band's rock instead.
+    await h.debug.setTile(STONE_COL, row, "rock");
+    await h.advance(2);
+    const rock = await sampleCell(h, await h.snapshot(), STONE_COL, row);
+
     apart.set(band, colorDistance(boulder, rock));
   }
 
   for (const band of STONE_BANDS) {
-    assertGreaterThanOrEqual(
+    assertGreaterThan(
       apart.get(band) as number,
-      STONE_APART_MIN,
-      `an unbreakable boulder against the ${band} rock around it, sampled at each cell's centre in the same frame`,
+      0,
+      `one cell sampled at its centre with a boulder in it and with ${band} rock in it`,
     );
   }
 });

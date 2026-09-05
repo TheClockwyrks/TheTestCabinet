@@ -127,6 +127,38 @@ in the specs, designed around the behavior rather than around an engine or the
 reference's architecture, and assert the now-stated behavior. If it is not,
 the validator has nothing to assert.
 
+### A validator grades the build's code, not the engine's
+
+An engine ships behavior every build on it gets for free, and a check on that
+behavior returns the same verdict for every build. The debug overlay is the
+standing example. The engine owns the backtick key, the panel, its start state,
+and the fact that reading it changes nothing; a build owns only the sources it
+registers into the engine's diagnostics registry. Pressing backtick under an
+engine and looking for a panel decides whether the engine works.
+
+An item whose behavior is the build's own work under one engine and the engine's
+under another names the engines it covers, through the
+[`engines`](/testing/end-to-end/manifests/#the-categories-grammar-format--2) key
+on its `validation` table. The overlay's visibility, its toggle key, its start
+state, and its read-only-ness are `engines = ["none"]`, where the build writes
+the overlay itself. The sources a build registers are every engine's, because
+the build registers them under every engine.
+
+An item left with no engine to decide it goes, and its validators go with it.
+
+### A figure the specs do not state is not a threshold
+
+A validator compares against a figure the specs require and against nothing
+else, plus an honest tolerance on the rule that figure belongs to. A threshold
+read off the reference, measured once and written down, or chosen because it
+looked reasonable, grades a build against a requirement it was never given: a
+build is free to sit anywhere the specs allow, so it clears every stated
+requirement and fails the check anyway.
+
+A check that wants such a figure has two honest ends. The case's specs gain the
+requirement, exactly or as an explicit bound, and the project's `constants.ts`
+transcribes it. Otherwise the check has nothing to assert and is deleted.
+
 ### Validators own the figures they assert
 
 Every figure a validator compares against is stated by the validator. Each
@@ -301,6 +333,42 @@ creature senses gives it its senses and holds its body still, and a check on how
 it travels gives it both. A switch that turns a whole creature off cannot express
 the first, so each faculty a scenario has to hold is its own operation.
 
+### A pose stays inside the bounds the specs set
+
+A validator arranges a world normal play never reaches, and that is the point: a
+field holding one ball and one obstacle, a score at match point, a timer one
+frame from expiring. The arrangement is the validator's to choose. Each entity's
+own state is the specification's, and a validator poses every property inside
+the range the specs allow it.
+
+A build is written against the stated bounds, so an entity posed outside them
+exercises behavior no requirement describes. A ball driven above the case's speed
+cap, a paddle placed off the field, or a timer set negative fails builds that
+satisfy every stated requirement, which is the flaw
+[a validator asserting the specification](#validators-assert-the-specification-not-the-reference)
+exists to avoid.
+
+A no-tunnelling check therefore fires the ball at the case's speed ceiling rather
+than past it. What it varies instead is the host: the frame lengths a real
+machine delivers are the case's to state and the validator's to drive, because
+the frame is the world's, not the ball's.
+
+### Every produced file loads
+
+The produced files are a requirement of the build rather than a condition a
+validator varies. A case's specs require the built site to be self-contained and
+to serve every file it draws and plays, so a validator runs against a build whose
+files are all present, and a load that fails is the defect it looks like.
+
+A harness stands the produced files up for every check it runs. It offers no
+switch that leaves them out, and a project carries no route interception, no
+refused request, and no withheld path. A check about the simulation costs nothing
+by having the real files, and a check about a produced asset is only meaningful
+with them.
+
+Where a check needs to know which file the build asked for, it reads the request
+the build made and lets that request succeed.
+
 ### A check reads state before it reads pixels
 
 A validator decides its requirement from the strongest reading it has: the
@@ -309,16 +377,40 @@ the drawing operations the build submitted. Each of those says what the build
 did. Pixels say what one frame happened to look like, which anti-aliasing, the
 resolved font, and the device pixel ratio all move.
 
-Pixels are the right reading where the requirement is about the picture itself,
-such as a field being dark or two shapes being distinguishable, and a sample is
-taken well inside a shape rather than near an edge. Under an engine they are the
-last reading reached for, because the scene and the draw calls answer the same
-claim exactly. Under `none` a validator holds a page rather than an engine, so
-they are more often the only reading a claim has.
+A pixel read answers one question: whether the build drew something where the
+requirement says something is drawn. Presence is the whole of it, and a sample
+is taken well inside the region rather than near an edge. Palettes, contrast
+between two shapes, the extent of a drawn region, and where inside a region a
+mark landed are appearance, which
+[the reviewer judges](/guides/authoring/writing-case-specifications/#appearance-is-loose-and-reviewed),
+and a suite measuring any of them fails builds that met every stated
+requirement.
 
-A suite leaning on pixels is usually reading a spec that pinned appearance, which
-[Appearance is loose and reviewed](/guides/authoring/writing-case-specifications/#appearance-is-loose-and-reviewed)
-leaves to the reviewer.
+Under an engine the scene and the draw calls answer presence exactly, so they are
+the reading and pixels are the last resort. Under `none` a validator holds a page
+rather than an engine, so a sample is more often the only reading presence has.
+
+Deciding presence takes an instrument, and an instrument carries a floor: the
+sampled region differs from the ground the build cleared to, the region holds more
+than one value, a produced sound rises above digital silence. Such a floor is set
+where any drawing at all clears it, and it stays a presence reading. A floor tuned
+so that some drawings pass and others fail is a threshold, and it needs a figure
+the specs state.
+
+Which of the two a figure is follows from the direction it is compared in. A
+figure a reading must EXCEED is a floor, and raising it makes the check stricter,
+so a build that drew what the spec asks for in a colour near its ground fails. A
+floor therefore sits at the level below which a sampling cannot tell a drawing from
+the rounding of eight-bit channels and the host's antialiasing, which is around
+eight of the four hundred and forty-one the RGB cube spans. A figure a reading must
+stay UNDER is a tolerance on a claim that two readings are the same reading, and
+raising it only makes the check more lenient, so it cannot fail a conformant build
+and it is set wherever the claim stays honest.
+
+A check whose claim is that nothing was drawn takes its bound from a measurement
+rather than a figure: sample the same region over several idle frames and compare
+against the spread those frames show. A number chosen for that bound is a threshold
+wearing a floor's clothes.
 
 ### Under `none`, nothing is on the canvas until a frame is driven
 
@@ -440,6 +532,10 @@ When designing or revising a case's debug API and validators:
   reported by a read the validators drive.
 - Each assertion traces to a statement in the specs, not to the reference
   implementation, and every spec-honoring design passes.
+- Every threshold a check compares against is a figure the specs state, and a
+  check wanting one they do not state is deleted or its figure is specified.
+- No item decides behavior the engine owns, and an item that is the build's work
+  under one engine alone carries `engines` naming it.
 - Every figure a suite asserts comes from the project's own `constants.ts`,
   transcribed from the specs.
 - An engineless project is built on the shared `@clockwyrks/case-harness`
@@ -460,7 +556,11 @@ When designing or revising a case's debug API and validators:
 - Every validator reaches a pass or a fail, and a debug API that cannot be
   driven fails the item rather than leaving it undecided.
 - Each check reads state, events, or draw calls where they answer its claim, and
-  reads pixels where the requirement is the picture itself.
+  reads pixels only to decide whether something was drawn.
+- Each entity a scenario poses is inside the range the specs allow it, with the
+  arrangement alone reaching states normal play does not.
+- Every check runs with the produced files present, and no project withholds,
+  refuses, or intercepts a load.
 - Each replay brackets the behavior its check backs, with a short run-up and a
   short settle around it.
 - The whole suite finishes in fifteen minutes on a two-core host.

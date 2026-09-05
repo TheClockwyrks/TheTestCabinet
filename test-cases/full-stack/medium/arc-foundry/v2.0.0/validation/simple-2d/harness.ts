@@ -9,11 +9,11 @@
 //
 // WHAT A CHECK READS. The game's own state (through the debug surface's
 // `snapshot`), the six layout readings, the engine's frame counter, the cues
-// the engine announced, the assets the build failed to load, and — for the
-// rendering checks — the pixels on the canvas or the operations the render issued
-// against the 2D context. Nothing here fabricates an outcome: the scenario
-// helpers below only ARRANGE the yard through the debug surface, and the real
-// `update` the build wrote is what runs from there.
+// the engine announced, the assets the build asked for and whether each arrived,
+// and — for the rendering checks — the pixels on the canvas or the operations the
+// render issued against the 2D context. Nothing here fabricates an outcome: the
+// scenario helpers below only ARRANGE the yard through the debug surface, and the
+// real `update` the build wrote is what runs from there.
 //
 // WHY THE DEBUG SURFACE RATHER THAN RAW ASSIGNMENT. `specs/instrumentation.md`
 // fixes its operations, so they mean the same thing in every build:
@@ -65,13 +65,14 @@
 // hundred suites say what their scenario is about in one line and say it the same
 // way. A check that needs only part of a sequence calls the operations it needs.
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import {
   createCanvas,
   Image,
+  loadImage,
   type Canvas,
   type SKRSContext2D,
 } from "@napi-rs/canvas";
@@ -329,6 +330,8 @@ export interface Harness {
   readonly calls: DrawCall[];
   /** Every cue the build played, oldest first. */
   readonly cues: TimedCue[];
+  /** Every asset the build asked for and got, by path, oldest first. */
+  readonly assetLoads: string[];
   /** Every asset the build failed to load, oldest first. */
   readonly assetFailures: AssetFailure[];
 
@@ -623,6 +626,58 @@ function driveSurface(
   });
 }
 
+/** `assets/` at the root of the produced repository, as `specs/assets.md` fixes it. */
+const ASSETS = fileURLToPath(new URL("../assets/", import.meta.url));
+
+/** The root the engine resolves every asset path under (`packages/simple-2d`). */
+const PRODUCED_ROOT = "assets/";
+
+let assetHostInstalled = false;
+
+/**
+ * Give the host the two facilities the engine's asset loader needs and a browser
+ * already has, once per process.
+ *
+ * `fetch` answers a path under the asset root with the bytes the run committed at
+ * that path, and a path the build never produced comes back `404` exactly as the
+ * served site would answer it. A request for anything outside the asset root is
+ * handed to the host's own `fetch` untouched. `createImageBitmap` decodes a PNG
+ * through the same `@napi-rs/canvas` this harness draws with, so a decoded frame
+ * reaches `drawImage` exactly as an `ImageBitmap` does in a page.
+ *
+ * Nothing here reaches into the engine, the build, or the harness, and nothing here
+ * is a fixture: it serves whatever the build committed, so a build that authored no
+ * sprite still gets none and a build that authored the wrong size still gets that
+ * size.
+ */
+function installProducedAssetHost(): void {
+  if (assetHostInstalled) return;
+  assetHostInstalled = true;
+
+  const host = globalThis.fetch.bind(globalThis);
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (!url.startsWith(PRODUCED_ROOT)) return host(input, init);
+    const at = ASSETS + url.slice(PRODUCED_ROOT.length);
+    if (!existsSync(at)) {
+      return Promise.resolve(new Response(null, { status: 404 }));
+    }
+    return Promise.resolve(new Response(readFileSync(at)));
+  }) as typeof globalThis.fetch;
+
+  const scope = globalThis as {
+    createImageBitmap?: (blob: Blob) => Promise<ImageBitmap>;
+  };
+  scope.createImageBitmap = async (blob: Blob): Promise<ImageBitmap> => {
+    const bytes = Buffer.from(await blob.arrayBuffer());
+    const image = await loadImage(bytes);
+    // A no-op `close`, because that is the one member of `ImageBitmap` a game may
+    // reach for that a decoded image does not carry, and a build releasing a frame
+    // it has finished with must not fault on the host that decoded it.
+    return Object.assign(image, { close: () => {} }) as unknown as ImageBitmap;
+  };
+}
+
 /**
  * Build an engine over a canvas of the harness's own, initialize the build's game,
  * and hand back everything a check reads.
@@ -632,16 +687,25 @@ function driveSurface(
  * harness serves every build of this case. Everything else the build decided lives
  * inside `src/game.ts`.
  *
- * THE PRODUCED FILES DO NOT RESOLVE HERE, and that is the intended reading. There
- * is no page behind the loader, so every path under `assets/` fails, the engine
- * announces each failure, and `specs/assets.md` requires the build to stay playable
- * on its own geometry when a file does not arrive. A check about a produced file
- * reads the file off disk itself; every other check runs against the fallbacks,
- * which is a strictly harder game to pass.
+ * EVERY PRODUCED FILE IS SERVED, to every check without exception. There is no page
+ * behind the engine's asset loader here, so {@link installProducedAssetHost} gives
+ * the host the two facilities a browser has and node does not — a `fetch` that
+ * answers a path under the asset root from the produced tree on disk, and an image
+ * decoder — before the engine is built. The engine resolves, requests, decodes and
+ * announces exactly as it does in a page, and the build asks for its files exactly
+ * as it always does.
+ *
+ * The twelve `.wav` cues are the one thing the host still cannot finish. Decoding
+ * audio needs a Web Audio context and a node process has none, so each of those
+ * settles as a failure whose reason names the missing context rather than a missing
+ * file. Nothing about a cue is read from the decode: the engine announces every play
+ * by name, and that is what the `audio/` points read.
  */
 export async function createHarness(
   options: HarnessOptions = {},
 ): Promise<Harness> {
+  installProducedAssetHost();
+
   const cssWidth = options.cssWidth ?? STAGE_W;
   const cssHeight = options.cssHeight ?? STAGE_H;
   const dpr = options.dpr ?? 1;
@@ -682,8 +746,12 @@ export async function createHarness(
   // Subscribed BEFORE `initialize`, which is what makes the game's own loading and
   // its opening cues observable: construction runs no game code, so nothing has
   // happened yet.
+  const assetLoads: string[] = [];
   const assetFailures: AssetFailure[] = [];
   const cues: TimedCue[] = [];
+  engine.events.on("asset:loaded", ({ path }) => {
+    assetLoads.push(path);
+  });
   engine.events.on("asset:failed", ({ path, reason }) => {
     assetFailures.push({ path, reason });
   });
@@ -747,6 +815,7 @@ export async function createHarness(
     canvas,
     calls,
     cues,
+    assetLoads,
     assetFailures,
 
     frame: () => engine.frame().count,
@@ -2603,9 +2672,6 @@ export interface Rect {
   h: number;
 }
 
-/** The distance two pixels are told apart by, of the 441 the cube spans. */
-export const DISTINCT = 50;
-
 /** A lattice of logical points inside a rectangle, `step` units apart. */
 export function lattice(rect: Rect, step = 2): { x: number; y: number }[] {
   const points: { x: number; y: number }[] = [];
@@ -2636,18 +2702,14 @@ export function maxDistance(
   return worst;
 }
 
-/** How many of two samplings of the same points read as told apart. */
-export function changedPoints(
-  before: readonly Pixel[],
-  after: readonly Pixel[],
-  threshold = DISTINCT,
-): number {
-  let changed = 0;
-  for (let i = 0; i < Math.min(before.length, after.length); i += 1) {
-    if (rgbDistance(before[i]!, after[i]!) > threshold) changed += 1;
-  }
-  return changed;
-}
+/**
+ * The floor a presence reading clears: below it a sampling cannot tell a drawing
+ * from the rounding of eight-bit channels and the antialiasing the host applied.
+ * It is not a line about how a mark looks. A wash, a low-alpha tint and an opaque
+ * fill are all drawings, and `specs/hud.md` fixes what the yard draws and nothing
+ * about how strongly, so anything the build painted clears this.
+ */
+export const DRAWN = 8;
 
 /**
  * Draw one frame and sample it at every point given.
@@ -2663,4 +2725,25 @@ export async function sample(
 ): Promise<Pixel[]> {
   await h.advance(1);
   return h.pixels(points);
+}
+
+/**
+ * How far the same points read from themselves over `moments` frames, unchanged.
+ *
+ * The control a reading that expects NOTHING is held against. Nothing in
+ * `specs/hud.md` forbids a build from animating its yard, so "these points did
+ * not change" can only ever mean "these points moved no further than they move
+ * when nothing at all is asked of them".
+ */
+export async function idleSpread(
+  h: Harness,
+  points: readonly { x: number; y: number }[],
+  moments = 4,
+): Promise<number> {
+  const first = await sample(h, points);
+  let worst = 0;
+  for (let i = 1; i < moments; i += 1) {
+    worst = Math.max(worst, maxDistance(first, await sample(h, points)));
+  }
+  return worst;
 }

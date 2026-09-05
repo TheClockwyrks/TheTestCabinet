@@ -27,8 +27,8 @@
 // aligned by accident: two of its four joins turn a corner.
 //
 // THE VERDICT. Every one of the five-cell open track's four consecutive pairs is
-// drawn joined, over at least `MIN_JOINED_SHARE` of the square about their shared
-// boundary.
+// drawn joined: the square about their shared boundary is drawn differently once
+// the track runs through both.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertGreaterThan } from "../assert";
@@ -62,9 +62,6 @@ const CELLS: readonly Hex[] = [
 
 /** Half the side of the square a join is read over. */
 const HALF = 10;
-
-/** The least share of that square a drawn join must cover. */
-const MIN_JOINED_SHARE = 0.05;
 
 /** The point two adjacent cells share an edge at: the midpoint of their centres. */
 function joinOf(a: Hex, b: Hex): StagePoint {
@@ -119,7 +116,7 @@ it("draws every consecutive pair of a laid track joined along the path", async (
         bare[index - 1] as PixelRect,
         await square(joinOf(from, to)),
       ),
-      MIN_JOINED_SHARE,
+      0,
       `the boundary between (${from.q}, ${from.r}) and (${to.q}, ${to.r}) is drawn once the track runs through both, so the path reads as one ordered run of hexes rather than as loose marks`,
     );
   }

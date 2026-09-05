@@ -22,7 +22,7 @@
 // the same readers under the same names, with the same failure messages, so one
 // condition reports identically whichever engine the build was written for
 // (README.md: the three run the same scenarios and differ only in how they
-// reach the build). Only `regionLuminances` differs, because `none` reaches the
+// reach the build). Only `regionPixels` differs, because `none` reaches the
 // pixels through the page rather than through a context it holds.
 
 import { assertDeepEqual, assertLength, fail } from "../assert";
@@ -155,11 +155,11 @@ export interface Region {
 }
 
 /**
- * The Rec. 709 luminance, on the same 0..255 scale, of every device pixel the
- * region covers — every one of them, in the backing store's own order, so two
- * reads of one region on two frames line up pixel for pixel.
+ * Every device pixel the region covers, channel by channel, in the backing
+ * store's own order, so two reads of one region on two frames line up pixel for
+ * pixel.
  */
-export function regionLuminances(h: Harness, region: Region): number[] {
+export function regionPixels(h: Harness, region: Region): number[] {
   const a = h.device(region.cx - region.half, region.cy - region.half);
   const b = h.device(region.cx + region.half, region.cy + region.half);
   const { data } = h.ctx.getImageData(
@@ -168,30 +168,23 @@ export function regionLuminances(h: Harness, region: Region): number[] {
     Math.max(1, b.x - a.x),
     Math.max(1, b.y - a.y),
   );
-  const luminances: number[] = [];
+  const values: number[] = [];
   for (let i = 0; i < data.length; i += 4) {
-    luminances.push(
-      0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2],
-    );
+    values.push(data[i], data[i + 1], data[i + 2]);
   }
-  return luminances;
+  return values;
 }
 
 /**
- * The share of a region's pixels whose luminance moved by more than `step`
- * between two readings of it, on 0..1.
+ * How many of a region's channel values moved at all between two readings of
+ * it. Zero means the build rendered the two states of that tile identically.
  *
- * A COUNT, never a mean: a mean measures how much ink a build repaints, so a
- * build that states a tile's condition in a word beside an unchanged tile
- * dilutes to nothing, while the same reading is obvious to a player. Counting
- * the pixels that moved reads that build and a build that repaints the whole
- * tile alike. The two readings must be of one region on one canvas, so a
- * mismatch in length is a fault in the caller, named as one.
+ * The two readings must be of one region on one canvas, so a mismatch in length
+ * is a fault in the caller, named as one.
  */
-export function changedFraction(
+export function changedValues(
   before: readonly number[],
   after: readonly number[],
-  step: number,
 ): number {
   assertLength(after, before.length, "two readings of one tile region");
   if (before.length === 0) {
@@ -199,9 +192,9 @@ export function changedFraction(
   }
   let changed = 0;
   for (let i = 0; i < before.length; i += 1) {
-    if (Math.abs(after[i] - before[i]) > step) changed += 1;
+    if (after[i] !== before[i]) changed += 1;
   }
-  return changed / before.length;
+  return changed;
 }
 
 /**

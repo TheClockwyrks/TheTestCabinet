@@ -60,7 +60,7 @@ title = "Kindle sensing"
 [[review.categories.items]]
 id = "vision-circle"
 title = "The maze is drawn only inside the circle"
-description = "On ground the forager has already revealed, a tile whose center lies inside windowRadius of the forager's center is drawn — differing from unrevealed fog by more than an RGB distance of 25 of 441 — and a revealed tile whose center lies beyond it is painted with that same flat fog, within 25 of 441 of it, with the boundary tested on both sides."
+description = "On ground the forager has already revealed, a tile whose center lies inside windowRadius of the forager's center is drawn — reading as something other than unrevealed fog, however dim — and a revealed tile whose center lies beyond it is painted with that same flat fog, within 25 of 441 of it, with the boundary tested on both sides."
 domains = ["sensing"]
 failure_cap = "scuffed"
 # Automated validation: reveal a stretch of corridor, read `windowRadius`, and
@@ -108,7 +108,7 @@ validation = { script = "kindle/predators-by-light.test.ts", outputs = [
 [[review.categories.items]]
 id = "beyond-circle"
 title = "The amber lights are clipped to the circle"
-description = "A bonus drifter posed beyond windowRadius draws no mote: the pixels within 12 units of its reported center are within an RGB distance of 25 of 441 of the surrounding flat fog, and the same drifter inside the radius draws its warm mote."
+description = "A bonus drifter posed beyond windowRadius draws no mote: the pixels within 12 units of its reported center are within an RGB distance of 25 of 441 of the surrounding flat fog, and the same drifter inside the radius draws a light that stands off that fog."
 domains = ["sensing"]
 failure_cap = "passable"
 # Automated validation: spawn a drifter beyond the radius and search its
@@ -121,7 +121,7 @@ validation = { script = "kindle/beyond-circle.test.ts", outputs = [
 [[review.categories.items]]
 id = "flare-second-circle"
 title = "A flare is a second window onto the maze"
-description = "A Flarefish blooming beyond the forager's vision circle draws the maze inside its bloom: a tile inside FLARE_RADIUS (192) of the Flarefish but beyond windowRadius of the forager is drawn while the bloom burns, differing from the flat fog by more than an RGB distance of 25 of 441, a rock tile and the corridor tile beneath it inside the same bloom differ from each other by more than that, and the tile is painted back to that fog once the bloom ends."
+description = "A Flarefish blooming beyond the forager's vision circle draws the maze inside its bloom: a tile inside FLARE_RADIUS (192) of the Flarefish but beyond windowRadius of the forager is drawn while the bloom burns, reading as something other than the flat fog, and is painted back to that fog once the bloom ends."
 domains = ["sensing", "predators"]
 failure_cap = "passable"
 # Automated validation: pose a Flarefish well beyond the vision circle, let it
@@ -142,7 +142,7 @@ title = "The HUD"
 [[review.categories.items]]
 id = "dive-label"
 title = "The dive label reads KINDLE"
-description = "While a maze is on screen a small, dim label reading KINDLE is drawn legibly in the top strip, y in [0, 80], as specs/ui.md fixes for this dive."
+description = "While a maze is on screen a small, dim label reading KINDLE is drawn in the top strip, y in [0, 80], as specs/ui.md fixes for this dive."
 domains = ["progression", "presentation"]
 failure_cap = "great"
 # The cap is `great` where the other five HUD points are `passable`, and the

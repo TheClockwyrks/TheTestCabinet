@@ -30,7 +30,6 @@ import {
   parkUnit,
   standComponent,
 } from "../harness";
-import { serveProducedAssets } from "./produced";
 import { evidence } from "./region";
 import { EFFECTS, authoredShape, readSystem } from "./systems";
 import { tileCenter } from "../constants";
@@ -38,7 +37,6 @@ import { tileCenter } from "../constants";
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 

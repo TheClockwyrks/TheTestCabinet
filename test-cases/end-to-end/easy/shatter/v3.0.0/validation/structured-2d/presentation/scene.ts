@@ -141,21 +141,6 @@ export function sampleField(p: Painted): Rgb {
 }
 
 /**
- * The field's own background, read as the MEDIAN of {@link BARE_POINTS}.
- *
- * A check on the background's own LUMINANCE wants the opposite guard from
- * {@link sampleField}: a build that painted one bright decoration over one bare
- * point still reads dark, and a build whose field is simply not dark reads bright at
- * every point and cannot hide behind one.
- */
-export function medianField(p: Painted): Rgb {
-  const byLuminance = BARE_POINTS.map((point) => sampleColor(p, point)).sort(
-    (a, b) => luminance(a) - luminance(b),
-  );
-  return byLuminance[Math.floor((byLuminance.length - 1) / 2)];
-}
-
-/**
  * The upper portion of the field the HUD is drawn in, as a rectangle to read.
  *
  * `specs/ui.md` puts the HUD "in the upper portion of the field and clear of the

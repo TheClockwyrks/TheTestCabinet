@@ -32,8 +32,33 @@ test is worse than no test.
 Specs state what must be visible or present (a dark field, distinguishable
 paddles, the scores near the top, the title and menu on the title screen) and
 leave palettes, fonts, layouts, and styling to the build. Appearance is what the
-reviewer's per-domain ratings judge; a validator asserting appearance checks
-presence and distinguishability only.
+reviewer's per-domain ratings judge. A validator reads the picture only to decide
+whether the build drew something where the spec says something is drawn, and
+**NEVER** measures a palette, a contrast, an extent, or a placement.
+
+### Produced Files Must Load
+
+A case whose build produces its own files states that the built site is
+self-contained and serves every produced file under the root the spec names.
+Specs state **NO** behavior for a load that fails, and validators **NEVER**
+withhold, refuse, or intercept a load. Degradation wording makes a fallback path
+a requirement and takes the produced files out from under every check that reads
+what the build drew.
+
+### Validators Grade The Build, Not The Engine
+
+A validator decides behavior the model wrote. Behavior an engine supplies to
+every build on it, such as the debug overlay's panel and its toggle key, returns
+the same verdict for every build and is scoped with the validation `engines` key
+to the engines where the build owns it, or deleted where no engine leaves it to
+the build.
+
+### Validators Pose Entities Within Spec Bounds
+
+A validator arranges worlds normal play never reaches, and poses every entity
+inside the range the specs allow it. The arrangement is the validator's to
+choose; an entity's own state is the spec's. An entity driven past a stated
+bound tests behavior no requirement describes and fails compliant builds.
 
 ### Every Review Item Is Validated
 

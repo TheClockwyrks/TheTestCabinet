@@ -81,7 +81,8 @@ Every gem on the board is a produced sprite. Produce a single PNG per sprite
 with `draw`, on a `64 x 64` transparent (straight-alpha) canvas, sized to the
 `GEM_R` (`30`) gem radius the board draws at. These are pixel art, drawn at
 native size and displayed crisply at the logical stage size, with the pixel grid
-intact rather than smoothed. Land them under `public/assets/gems/`.
+intact rather than smoothed. Land them directly in `public/assets/gems/`, with
+each `draw-sheet` sequence in its own directory beside them.
 
 - The seven kinds at each of four strain states, one sprite each. The lit,
   faceted look of a lapidary's bench is the target, and each kind is told apart

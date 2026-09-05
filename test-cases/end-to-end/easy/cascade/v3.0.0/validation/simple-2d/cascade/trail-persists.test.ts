@@ -19,8 +19,8 @@
 // hundred units away and cannot be what the sample is reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThanOrEqual } from "../assert";
-import { CARD_H, CARD_W } from "../constants";
+import { assertGreaterThan } from "../assert";
+import { CARD_H, CARD_W, LAUNCH_VX_MAX } from "../constants";
 import {
   captureStill,
   colorDistance,
@@ -32,8 +32,14 @@ import {
 } from "../harness";
 import { openFlight, poseFlyer } from "./flight";
 
-/** Where the card starts, and how fast. Driven right, well clear of the floor. */
-const START = { x: 100, y: 100, vx: 600, vy: 0 };
+/**
+ * Where the card starts, and how fast. Driven right, well clear of the floor.
+ *
+ * `LAUNCH_VX_MAX` is the fastest a launched card may travel (specs/victory.md
+ * draws `vx` uniformly from `[LAUNCH_VX_MIN, LAUNCH_VX_MAX]`), so this is the
+ * quickest card the game can ever produce and no faster.
+ */
+const START = { x: 100, y: 100, vx: LAUNCH_VX_MAX, vy: 0 };
 
 /**
  * Where the table is sampled: the middle of the card's footprint on its first frame.
@@ -50,19 +56,16 @@ const SAMPLE = {
 /** How long the card flies on for after that first stamp, in frames. */
 const HOLD_FRAMES = framesFor(1.5);
 
-/**
- * How far the sampled color must move for the table to count as painted, out of the
- * `441` an RGB distance runs to.
+/*
+ * The reading itself: the sampled point has to have MOVED from the bare felt.
  *
- * The case fixes no palette: specs/overview.md fixes what a player must be able to
- * tell apart and leaves every color to the build. A stamp is a card drawn onto the
- * layer, and the legibility table requires a card face to read apart from the table
- * it sits on, which the `presentation` group holds at `90` of `441`. This point is
- * not that contrast check and must not dock a faint palette twice, so it asks for a
- * third of that figure: far more than the couple of units an antialiased edge or a
- * rounding can move a sample, and far less than a legible card face.
+ * Nothing is measured beyond that. The case fixes no palette — specs/overview.md
+ * leaves every colour to the build — so how far a stamp reads from the felt is
+ * the reviewer's. The point is read twice, once before anything painted and once
+ * after the card has flown on; rendering is deterministic, the world holds this
+ * one card and nothing else, and the card is no longer over the point, so any
+ * difference at all is the stamp the painted layer kept.
  */
-const PAINTED_DISTANCE = 30;
 
 let harness: Harness;
 
@@ -86,10 +89,10 @@ it("leaves a card's stamp on the table after the card has flown on", async () =>
   const painted = sampleColor(harness, SAMPLE.x, SAMPLE.y);
   captureStill(harness, "trail");
 
-  assertGreaterThanOrEqual(
+  assertGreaterThan(
     colorDistance(painted, bare),
-    PAINTED_DISTANCE,
-    `how far the table at (${SAMPLE.x}, ${SAMPLE.y}) moved from bare felt, ` +
-      `${seconds(HOLD_FRAMES)} s after a card was stamped there`,
+    0,
+    `the table at (${SAMPLE.x}, ${SAMPLE.y}) to read differently from bare ` +
+      `felt, ${seconds(HOLD_FRAMES)} s after a card was stamped there`,
   );
 });

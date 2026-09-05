@@ -8,9 +8,10 @@
 // rotation, or both may produce it." So a ball drifting purely radially inside
 // ring 2's contact band, its center angle fixed, is hit when the rotating
 // arc's boundary sweeps across that angle — the rotation alone produces the
-// crossing. The arc starts 9.5 degrees short of the ball and closes at 5
-// degrees per tick, so the hit lands about two ticks in and never on a posed
-// boundary equality.
+// crossing. The ring runs at RING2_SPEED_CAP, the fastest orbit specs/rings.md
+// gives ring 2, which is 0.75 degrees a tick: the arc's leading edge starts
+// 1.125 degrees short of the ball's angle and reaches it on the second tick,
+// 0.375 degrees clear of the boundary on either side of that tick.
 //
 // THE WORLD IS ONE TARGET AND ONE BALL. Ring 2, slot 0, full hit points; the
 // ball inside the band at 90 degrees, drifting slowly inward so its own motion
@@ -23,6 +24,7 @@ import {
   assertEqual,
   assertTrue,
 } from "../assert";
+import { RING2_SPEED_CAP } from "../constants";
 import { captureReplay, isolate, openHarness, type Harness } from "../harness";
 import {
   ballPolar,
@@ -31,8 +33,8 @@ import {
   spawnBallRadial,
 } from "./rings";
 
-/** The posed orbit: 5 degrees per tick toward the ball's angle. */
-const RING_DEG_PER_SEC = 300;
+/** The posed orbit: ring 2's stated ceiling, toward the ball's angle. */
+const RING_DEG_PER_SEC = RING2_SPEED_CAP;
 
 /** The ball: mid-band, fixed angle, a slow radial drift. */
 const BALL_R = 380;
@@ -52,8 +54,10 @@ afterEach(() => {
 it("scores an edge hit when the rotation carries the arc across the ball", async () => {
   isolate(h);
   h.debug.spawnTarget(2, 0, 2);
-  // At 60 the slot-0 arc is [62, 80.5], short of the ball's 90 by 9.5.
-  h.debug.setRingAngle(2, 60);
+  // At 68.375 the slot-0 arc is [70.375, 88.875], short of the ball's 90 by
+  // 1.125. Tick one carries it to [71.125, 89.625], still short; tick two to
+  // [71.875, 90.375], which has swept across the ball.
+  h.debug.setRingAngle(2, 68.375);
   h.debug.setRingSpeed(2, RING_DEG_PER_SEC);
   spawnBallRadial(h, BALL_R, BALL_THETA, BALL_DRIFT);
 

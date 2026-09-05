@@ -13,9 +13,9 @@
 // and it is the half a player notices; the item this file decides is worded for
 // both presses, so both are here. Two presses is still ONE requirement in one
 // direction — "this key toggles" — rather than two, and no other point in the
-// suite grades it: `audio.mute-silences` grades what muting does to the sound,
-// which is a different requirement that a build can fail with a perfectly good
-// key.
+// suite grades it: `audio.mute-produces-no-sound` grades what muting does to
+// the sound, which is a different requirement that a build can fail with a
+// perfectly good key.
 //
 // THE STARTING BIT IS READ, NOT ASSUMED. No specification file fixes what `muted`
 // is on a freshly loaded build, and `reset` explicitly leaves it as it stands

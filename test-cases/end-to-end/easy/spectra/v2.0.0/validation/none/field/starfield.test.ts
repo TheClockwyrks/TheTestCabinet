@@ -64,22 +64,13 @@ import { countMarks } from "./canvas";
 const MARK_DISTANCE = 12;
 
 /**
- * The largest a mark may be, in logical units, on either axis.
- *
- * A bound on what the word "mark" can mean rather than a demand on how a build
- * draws one. `SHARD_SIZE` (28) is the smallest drone on the field, and a starfield
- * mark that reads as big as a drone is the very thing specs/overview.md's
- * legibility row rules out — "so nothing on it is mistaken for something to shoot".
- * 32 is that, rounded up.
- */
-const MARK_MAX_EXTENT = 32;
-
-/**
  * How far either side of a pixel the field it sits on is read, in logical units.
  *
- * Above half of `MARK_MAX_EXTENT`, so the reading always lands off the mark it is
- * reading and a mark of any size this check will count is found. 20 is the least
- * that clears 32.
+ * A mark is found by LOCAL contrast, so the reading has to land OFF the mark it is
+ * reading. 20 units clears half of `SHARD_SIZE` (28), the smallest drone on the
+ * field, and specs/overview.md rules a starfield mark that reads as big and bright
+ * as a drone out of the design. It is part of the reading rather than a bound this
+ * check asserts.
  */
 const MARK_SPAN = 20;
 
@@ -112,14 +103,12 @@ it("draws at least STARFIELD_MIN marks behind an empty play field", async () => 
   const marks = await countMarks(harness, PLAY_FIELD, {
     minDistance: MARK_DISTANCE,
     span: MARK_SPAN,
-    maxExtent: MARK_MAX_EXTENT,
   });
 
   assertGreaterThanOrEqual(
     marks,
     STARFIELD_MIN,
-    `marks no wider than ${MARK_MAX_EXTENT} units standing out from the field ` +
-      `either side of them, across the empty play field ` +
-      `(specs/field.md asks for at least ${STARFIELD_MIN})`,
+    `marks standing out from the field either side of them, across the empty ` +
+      `play field (specs/field.md asks for at least ${STARFIELD_MIN})`,
   );
 });

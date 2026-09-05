@@ -41,32 +41,16 @@ import {
   startPosed,
   type Harness,
 } from "../harness";
-import { BOTTOM_STRIP, countMoved, driftOverOneFrame } from "./reading";
+import {
+  BOTTOM_STRIP,
+  PAINT_MIN,
+  countMoved,
+  driftOverOneFrame,
+} from "./reading";
 
 /** The three readings the review item names. */
 const EMPTY = 0;
 const HALF = RESONANCE_MAX / 2;
-
-/**
- * How far a pixel must move to count as filled, as a Euclidean RGB distance out of
- * the `441` an RGB cube is across.
- *
- * The case's figure, since `specs/ui.md` states the rule and leaves the palette to
- * the build: `40` is about a tenth of the space, which is the least a player reads as
- * a filled part of a bar against its empty part, and far above the rounding two
- * readings of one unchanged pixel differ by.
- */
-const FILLED_MIN = 40;
-
-/**
- * How many pixels the half-full meter must have painted.
- *
- * At the harness's default shape the canvas is the stage at one device pixel per
- * logical unit, so `64` pixels is an eight-by-eight mark, well under any bar legible
- * at the stage's `1280 x 720` (`specs/ui.md`). It is a floor under anti-aliasing
- * noise on the fill's own edge rather than a demand on how long a build's bar is.
- */
-const FILLED_MIN_PIXELS = 64;
 
 let h: Harness;
 
@@ -88,7 +72,7 @@ it("paints more of the strip at half the meter than at none, and more again at f
     "the meter is posed empty (specs/instrumentation.md)",
   );
 
-  const drift = await driftOverOneFrame(h, BOTTOM_STRIP, FILLED_MIN);
+  const drift = await driftOverOneFrame(h, BOTTOM_STRIP, PAINT_MIN);
   const atEmpty = drift.reading;
 
   h.debug.setResonance(HALF);
@@ -108,12 +92,12 @@ it("paints more of the strip at half the meter than at none, and more again at f
   const atFull = readRegion(h, BOTTOM_STRIP);
   captureStill(h, "meter");
 
-  const filledAtHalf = countMoved(atEmpty, atHalf, FILLED_MIN);
-  const filledAtFull = countMoved(atEmpty, atFull, FILLED_MIN);
+  const filledAtHalf = countMoved(atEmpty, atHalf, PAINT_MIN);
+  const filledAtFull = countMoved(atEmpty, atFull, PAINT_MIN);
 
   assertGreaterThan(
     filledAtHalf,
-    Math.max(drift.count, FILLED_MIN_PIXELS),
+    drift.count,
     `pixels of the bottom HUD strip the meter painted at ${String(HALF)} that ` +
       `it did not paint at ${String(EMPTY)} — the meter is a bar whose filled ` +
       "extent grows with it from EMPTY at 0 (specs/ui.md); the strip moved on " +

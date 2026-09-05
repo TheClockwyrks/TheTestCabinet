@@ -20,6 +20,12 @@
 // diagonal steps. So those tile centers are where a drawn ground route has to
 // pass, and they are read with the pointer off the bar, on the readout, and off
 // it again — because a route that appears and never leaves is not a hover.
+//
+// AND WHAT COUNTS AS DRAWN OVER. `DRAWN`, the floor below which a sampling cannot
+// tell a drawing from the host's own rounding — or how far those same centers
+// travel on their own with the pointer nowhere near the bar, whichever is
+// further. Nothing here reads what the route looks like: a line, a dotted trail,
+// a tinted lane and a row of chevrons all clear it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -30,9 +36,10 @@ import {
 import {
   captureStill,
   createHarness,
-  DISTINCT,
+  DRAWN,
   type Harness,
   hoverReadout,
+  idleSpread,
   openYard,
   rgbDistance,
   sample,
@@ -44,6 +51,15 @@ const MAP = "substation";
 const OFF = { x: 500, y: 400 };
 /** How many of the route's tile centers a drawn route has to reach. */
 const ENOUGH = 3;
+/**
+ * How many frames the route's tile centers are watched over, pointer off.
+ *
+ * Two seconds of them, which outlasts a full turn of any plausible idle pulse.
+ * `specs/hud.md` fixes what the yard draws and nothing that forbids a build from
+ * breathing it, so a point counts as drawn over only once it moves further than
+ * the ground moves unasked.
+ */
+const IDLE_MOMENTS = 120;
 
 let h: Harness;
 
@@ -72,12 +88,15 @@ it("draws the ground route while the pointer is over the maze readout", async ()
     "how many tile centers the leg gives",
   );
 
+  // How far those tile centers travel on their own, with the pointer nowhere
+  // near the bar: the control the two readings below are held against.
   await h.debug.pointerMove(OFF.x, OFF.y);
+  const floor = Math.max(DRAWN, await idleSpread(h, along, IDLE_MOMENTS));
   const bare = await sample(h, along);
 
   const moved = async (): Promise<number> => {
     const now = await sample(h, along);
-    return now.filter((p, i) => rgbDistance(p, bare[i]!) > DISTINCT).length;
+    return now.filter((p, i) => rgbDistance(p, bare[i]!) > floor).length;
   };
 
   const read = await hoverReadout(h, "maze-length");

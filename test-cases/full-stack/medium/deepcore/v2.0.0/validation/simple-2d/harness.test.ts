@@ -49,7 +49,6 @@ import {
 import { REQUIRED_OPS } from "./surface";
 import {
   ACTION_KEY,
-  DISTINCT_MIN,
   UNBOUND_KEY,
   callsTo,
   captureReplay,
@@ -508,7 +507,7 @@ it("samples a posed cell, and tells two kinds apart", async () => {
   const snapshot = h.snapshot();
   const rock = sampleCell(h, snapshot, 8, 20);
   const lava = sampleCell(h, snapshot, 12, 20);
-  expect(colorDistance(rock, lava)).toBeGreaterThan(DISTINCT_MIN);
+  expect(colorDistance(rock, lava)).toBeGreaterThan(0);
 });
 
 it("reads the runs of text a frame drew, and where they landed", async () => {
@@ -546,26 +545,17 @@ it("attributes a cue to the frame of the drive that played it", async () => {
 /* The host the produced files and the save slot need                         */
 /* -------------------------------------------------------------------------- */
 
-it("leaves the produced sprites unloaded unless a check asks for them", async () => {
-  openScene(h);
-  await h.advance(2);
-
-  // A Node process has no `fetch`, so the build's own loading path refuses every
-  // sprite and draws its fallbacks — which is what a check about the simulation
-  // wants, and it is what makes those checks cost nothing.
-  expect(h.assetFailures.some((failure) => failure.path.endsWith(".png"))).toBe(
-    true,
-  );
-});
-
-it("stands the produced files up off disk when a check asks for them", async () => {
-  const loaded = await createHarness({ assets: true });
+it("stands the produced files up off disk for every check", async () => {
+  const loaded = await createHarness();
   try {
     openScene(loaded);
     layCamp(loaded);
     standAtCamp(loaded);
     await loaded.advance(2);
 
+    // A Node process has no `fetch`, so the harness reads each file the build's
+    // own loading path asks for off disk. Every harness installs it, so a check
+    // never reads a fallback where a produced sprite belongs.
     const refused = loaded.assetFailures.filter((failure) =>
       failure.path.endsWith(".png"),
     );

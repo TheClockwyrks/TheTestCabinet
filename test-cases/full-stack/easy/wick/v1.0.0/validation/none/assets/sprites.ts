@@ -169,21 +169,6 @@ export const ALL_SPRITES: readonly SpriteEntry[] = [
 /* Reading a file                                                             */
 /* -------------------------------------------------------------------------- */
 
-/**
- * How much of a canvas must carry paint for the file to be a sprite rather than
- * a stray pixel: one hundredth of its area.
- *
- * specs/assets.md fixes no coverage figure — it asks that each sprite be "pixel
- * art drawn at one unit per pixel", "drawn centered on the thing it depicts",
- * and that every enemy be "told from every other at a glance" — so a file with
- * a pixel or two set is not the deliverable, and this floor is the smallest
- * share worth calling a drawing. It sits an order of magnitude below the
- * thinnest mark any of these could legibly be: a one-pixel ring on the `160`
- * halo canvas is a fiftieth of it, and the sparsest frame of a `128` flare
- * burst a fifteenth.
- */
-export const PAINT_MIN_SHARE = 0.01;
-
 /** Alpha at or under this of `255` reads as clear ground rather than paint. */
 export const GROUND_ALPHA = 32;
 
@@ -257,13 +242,13 @@ export async function decodeSprites(
   return read;
 }
 
-/** How much of a sprite carries paint: the share of pixels that are not clear. */
-export function paintShare(sprite: Sprite): number {
+/** How many pixels of a sprite carry paint: the pixels that are not clear. */
+export function paintedPixels(sprite: Sprite): number {
   let painted = 0;
   for (let i = 3; i < sprite.pixels.length; i += 4) {
     if (sprite.pixels[i]! > 0) painted += 1;
   }
-  return painted / (sprite.width * sprite.height);
+  return painted;
 }
 
 /** How much of a sprite is clear ground: alpha at or under {@link GROUND_ALPHA}. */
@@ -455,8 +440,13 @@ export async function paintSprites(
  * path and gives its row a canvas — "a transparent, straight-alpha canvas of
  * exactly the size its row states" — and a canvas of the stated size is exact,
  * not approximate, since "a sprite `24` pixels wide stands `24` units wide in
- * the world". The paint floor is {@link PAINT_MIN_SHARE}, which the constant
- * explains; each point's own header names the row it is reading.
+ * the world". Each point's own header names the row it is reading.
+ *
+ * The paint reading is PRESENCE and nothing more — the canvas carries at least
+ * one pixel that is not clear — because specs/assets.md fixes each canvas
+ * exactly and fixes no coverage figure for what is drawn on it. How much of a
+ * canvas a sprite fills, and whether the picture reads at a glance, are the art
+ * bar the presentation domain's rating judges.
  */
 export function assertProducedAt(entry: SpriteEntry, read: SpriteRead): void {
   const sprite =
@@ -474,11 +464,12 @@ export function assertProducedAt(entry: SpriteEntry, read: SpriteRead): void {
       `${sprite.width} x ${sprite.height}`,
     );
   }
-  assertGreaterThanOrEqual(
-    paintShare(sprite),
-    PAINT_MIN_SHARE,
-    `the share of ${entry.file} carrying paint`,
-  );
+  if (paintedPixels(sprite) === 0) {
+    fail(
+      `${entry.file} carrying non-transparent paint`,
+      "a wholly transparent canvas",
+    );
+  }
 }
 
 /**

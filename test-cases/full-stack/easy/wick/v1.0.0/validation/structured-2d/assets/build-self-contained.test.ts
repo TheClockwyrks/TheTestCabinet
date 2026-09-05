@@ -46,9 +46,12 @@ import { installLifecycleToolCommands, rebuildWithoutTools } from "./rebuild";
 /** A leading URI scheme: `http:`, `data:`, `file:`, and the rest. */
 const SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
+/** A reference carrying its own content in the attribute, fetching nothing. */
+const INLINE = /^data:/i;
+
 /** A reference the built page resolves outside its own output. */
 function leavesTheBuild(ref: string): boolean {
-  return SCHEME.test(ref) || ref.startsWith("//");
+  return (SCHEME.test(ref) && !INLINE.test(ref)) || ref.startsWith("//");
 }
 
 /** The rebuild runs a real `npm run build`; the point's own budget covers it. */

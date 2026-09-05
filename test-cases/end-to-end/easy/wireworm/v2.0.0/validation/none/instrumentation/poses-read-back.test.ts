@@ -82,8 +82,14 @@ const BOLT_R = 18;
  * `playing` there, the phase `active`, the level `1`, the cooldown `0` — so a
  * build that ignores a pose reads back the value it already held rather than the
  * one asked for, and the failure names the operation.
+ *
+ * The screen is `paused` because the menu row is posed on it. `setMenuIndex(n)`
+ * "Sets the highlighted item of whatever menu the current screen shows"
+ * (specs/instrumentation.md), so the index has to name an item of that screen's
+ * own menu: `paused` shows `PAUSE_ITEMS`, whose three entries run `0` to `2`
+ * (specs/ui.md).
  */
-const SCREEN = "howto" as const;
+const SCREEN = "paused" as const;
 const PHASE = "respawn" as const;
 const PHASE_TIMER = 0.75;
 const MENU_INDEX = 2;

@@ -5,9 +5,10 @@
 // impact", and it is spawned "at the position of the event that raised it: ... the
 // impact where a shot connects".
 //
-// THE PRODUCED FILES ARE SERVED TO THE LOADER HERE, by `./produced.ts`: the system
-// so it can be played, and the sprites so the unit under the reading looks and
-// behaves as it does in a page.
+// THE PRODUCED FILES REACH THE LOADER THROUGH THE HARNESS, which stands the
+// committed `assets/` tree up for every check it builds: the system so it can be
+// played, and the sprites so the unit under the reading looks and behaves as it
+// does in a page.
 //
 // THE WORLD. One Scrap Capacitor and one held Mote inside its stated range, and
 // nothing else. `specs/components.md` puts the hit on the projectile — "when the
@@ -29,11 +30,7 @@
 // left out, because a health bar dropping is not a burst.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertGreaterThanOrEqual,
-} from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -44,7 +41,6 @@ import {
   ticks,
   unitById,
 } from "../harness";
-import { serveProducedAssets } from "./produced";
 import { lattice, motion } from "./region";
 import { structureCenter } from "../constants";
 
@@ -59,12 +55,10 @@ const AT = { x: HEAD.x + 80, y: HEAD.y };
 const POINTS = lattice(AT, 18, 3).filter((point) => point.y >= AT.y - 8);
 
 const WINDOW = ticks(0.1);
-const MOVING = WINDOW / 2;
 
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 
@@ -101,11 +95,5 @@ it("sets the impact point moving on the frame a shot connects", async () => {
     "the point a shot connected at to change on more frames than the same " +
       "ground did before the shot, so an impact burst is played there " +
       `(specs/assets.md); it changed on ${still} of ${WINDOW} frames before`,
-  );
-  assertGreaterThanOrEqual(
-    played.moving,
-    MOVING,
-    "the burst to keep moving across the tenth of a second after the hit, as " +
-      "a live particle system does (specs/assets.md)",
   );
 });

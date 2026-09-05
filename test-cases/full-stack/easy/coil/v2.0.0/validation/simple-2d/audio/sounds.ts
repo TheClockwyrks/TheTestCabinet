@@ -10,10 +10,10 @@
 // WHY THE FILE IS READ HERE RATHER THAN THROUGH THE ENGINE. The engine's loader
 // decodes a sound through a Web Audio context, and this process has none: a cue's
 // produced file cannot be loaded through the engine in a Node run whatever its
-// bytes are. `specs/assets.md` requires a build that keeps playing when its files
-// do not arrive, so the cues still sound and the `*-cue-plays` points still read
-// them; what has to happen here instead is the bytes being read where they
-// actually live, which is on disk.
+// bytes are. That is a limit of this host and says nothing about the build — the
+// cue bus still names the cue the build asked to play, so the `*-cue-plays`
+// points still read it; what has to happen here instead is the bytes being read
+// where they actually live, which is on disk.
 //
 // WHY A READER WRITTEN HERE IS THE HONEST ONE, WHICH IT IS NOT ALWAYS. The
 // authoring guide warns against a decoder that covers only some of the formats a

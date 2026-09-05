@@ -31,7 +31,9 @@
 // mirrors it at the bottom.
 //
 // WHAT THIS ITEM DOES NOT DECIDE, AND DELIBERATELY SO. That the speakers went
-// QUIET. `audio/mute-silences` is the item that reads the sounds. Nor that muting
+// QUIET: under this engine `specs/audio.md` puts the silencing with the runtime,
+// so no item on this engine reads it, and `audio/mute-silences` decides instead
+// that the game stays fully playable with the bit set. Nor that muting
 // SURVIVES a reset, which `specs/instrumentation.md` fixes ("`muted` is left
 // exactly as it stands") and `instrumentation/reset-restores-title` grades.
 

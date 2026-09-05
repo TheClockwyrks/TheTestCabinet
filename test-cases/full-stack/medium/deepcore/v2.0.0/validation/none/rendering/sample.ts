@@ -1,30 +1,18 @@
 // Deepcore — the pixel readings the rendering checks share. CASE-PROVIDED.
 //
 // `specs/overview.md` fixes no palette. What a build draws the rock, the ore,
-// the lava and the carved tunnels in is its own, and the specification asks only
-// that a player TELLS THEM APART. So nothing here carries a colour of its own
-// and nothing reads the reference: every reading below is either one sampled
-// patch against another sampled in the same frame, or the DISPLACEMENT of the
-// same screen points between two frames.
+// the lava and the carved tunnels in is its own, so nothing here carries a
+// colour of its own and nothing reads the reference: the reading below is the
+// DISPLACEMENT of the same screen points between two frames.
 //
-// Two readings the checks are built from:
-//
-//   - {@link meanAt} and {@link nearer}, for the shaping checks. A carved cell's
-//     lip, the seam between two joined cells and the nub at a bend are all read
-//     as "this point is nearer the band dirt than the tunnel fill", with both
-//     ends of that comparison sampled from the same posed scene.
-//   - {@link readLuma} and {@link bestShift}, for the screen shake. A jitter of
-//     the drawn world moves the picture under a FIXED run of screen points, and
-//     the shift that best realigns one frame's profile onto another's is how far
-//     it moved. A flash or a fade changes the levels along the profile without
-//     moving its structure, so this reads displacement rather than brightness.
+// {@link readLuma} and {@link bestShift} are what the screen shake is read
+// with. A jitter of the drawn world moves the picture under a FIXED run of
+// screen points, and the shift that best realigns one frame's profile onto
+// another's is how far it moved. A flash or a fade changes the levels along the
+// profile without moving its structure, so this reads displacement rather than
+// brightness.
 
-import {
-  type Harness,
-  type Rgb,
-  colorDistance,
-  worldToStage,
-} from "../harness";
+import { type Harness, type Rgb, worldToStage } from "../harness";
 import type { DeepcoreSnapshot } from "../harness";
 
 /** A point on the logical stage. */
@@ -40,51 +28,6 @@ export function stageOf(
   wy: number,
 ): StagePoint {
   return worldToStage(snapshot, wx, wy);
-}
-
-/** The mean colour over a run of stage points, read in one crossing. */
-export async function meanAt(
-  h: Harness,
-  points: readonly StagePoint[],
-): Promise<Rgb> {
-  const read = await h.pixels(points);
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  for (const [pr, pg, pb] of read) {
-    r += pr;
-    g += pg;
-    b += pb;
-  }
-  return { r: r / read.length, g: g / read.length, b: b / read.length };
-}
-
-/**
- * A tight cluster around one stage point: the point itself and four neighbours
- * `spread` units out.
- *
- * Tighter than the harness's own {@link sampleColor} cluster, because these
- * checks read points a few units from a cell's edge, where a wider cluster would
- * straddle the very boundary it is trying to place.
- */
-export function cluster(at: StagePoint, spread: number): StagePoint[] {
-  return [
-    at,
-    { x: at.x + spread, y: at.y },
-    { x: at.x - spread, y: at.y },
-    { x: at.x, y: at.y + spread },
-    { x: at.x, y: at.y - spread },
-  ];
-}
-
-/** Whether `sample` sits nearer `a` than `b`. */
-export function nearer(sample: Rgb, a: Rgb, b: Rgb): boolean {
-  return colorDistance(sample, a) < colorDistance(sample, b);
-}
-
-/** How a sampled point reads, against the two colours the scene established. */
-export function readsAs(sample: Rgb, dirt: Rgb, fill: Rgb): "dirt" | "fill" {
-  return nearer(sample, dirt, fill) ? "dirt" : "fill";
 }
 
 /** Perceived brightness of a sampled colour, 0 to 255. */

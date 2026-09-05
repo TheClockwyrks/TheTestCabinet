@@ -4,12 +4,13 @@
 // and the tier ladder from specs/modes/cascade.md, the board extent from the
 // cell center formula in specs/board.md, and the HUD reading from
 // specs/modes/cascade.md "The count" ("show the count beside the label ...
-// clear of the board"). Nothing poses; each helper reads a snapshot or a
-// frame's text spans and asserts one clause a suite in this directory names.
+// clear of the board in play"). Nothing poses; each helper reads a snapshot
+// or a frame's text spans and asserts one clause a suite in this directory
+// names.
 
 import { fail } from "../assert";
+import { HUD_VALUE_GAP } from "../constants";
 import {
-  CELL_PITCH,
   cellX,
   cellY,
   CHANNELS,
@@ -194,11 +195,10 @@ export function numbersIn(span: TextSpan): number[] {
 }
 
 /**
- * "Beside" as a measurable reading: two runs are adjacent when the gap
- * between their horizontal extents and the distance between their anchors'
- * baselines are both within one CELL_PITCH (96) — the specification's own
- * unit of adjacent placement on the stage. A run is adjacent to itself, so a
- * label drawn with its value in one run ("SOLVED 1") reads as beside it.
+ * "Beside" as specs/modes/cascade.md reads it: two runs are adjacent when the
+ * gap between their horizontal extents and the distance between their anchors'
+ * baselines are both within `HUD_VALUE_GAP` (96). A run is adjacent to itself,
+ * so a label drawn with its value in one run ("SOLVED 1") reads as beside it.
  */
 export function spansAdjacent(a: TextSpan, b: TextSpan): boolean {
   const gapX = Math.max(
@@ -206,7 +206,7 @@ export function spansAdjacent(a: TextSpan, b: TextSpan): boolean {
     Math.max(a.left, b.left) - Math.min(a.right, b.right),
   );
   const gapY = Math.abs(a.y - b.y);
-  return gapX <= CELL_PITCH && gapY <= CELL_PITCH;
+  return gapX <= HUD_VALUE_GAP && gapY <= HUD_VALUE_GAP;
 }
 
 /**
@@ -245,7 +245,7 @@ export function assertLabeledDigitClear(
   );
   if (pair.length === 0) {
     fail(
-      `the number ${value} within one CELL_PITCH (96) of the ` +
+      `the number ${value} within HUD_VALUE_GAP (96) of the ` +
         `${JSON.stringify(label)} label (specs/modes/cascade.md: the value ` +
         `is shown beside its label)`,
       spans.map(
@@ -257,7 +257,8 @@ export function assertLabeledDigitClear(
     for (const span of [labelSpan, digitSpan]) {
       if (!spanClearOf(span, keepOut)) {
         fail(
-          `the readout outside the board's extent widened by NODE_R, x ` +
+          `the readout outside the extent of the board in play, widened by ` +
+            `NODE_R: x ` +
             `${keepOut.left}..${keepOut.right} by y ${keepOut.top}..` +
             `${keepOut.bottom} (specs/modes/cascade.md: the readouts sit ` +
             `clear of the board)`,

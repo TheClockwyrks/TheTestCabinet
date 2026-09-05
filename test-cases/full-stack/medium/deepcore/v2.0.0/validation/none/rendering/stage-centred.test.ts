@@ -5,11 +5,19 @@
 // is filled exactly, so nothing is cropped and the picture is not pinned to a
 // corner.
 //
+// NO ENGINE IS WHERE THIS IS THE BUILD'S. specs/overview.md hands an engine "the
+// uniform scale that preserves the aspect ratio, the letterboxed centering, and
+// the device pixel ratio", so under one the offsets read here are the runtime's
+// own arithmetic and every build on that engine gets the same verdict. The item
+// is therefore scoped to `none`, where the build owns its presentation layer, and
+// no copy of this check exists under the engine projects.
+//
 // THREE POINTS. The requirement names three separable things — the whole stage
 // inside the surface at its own aspect, the stage CENTRED with even bars, and the
 // bars themselves carrying the game's background — and a build that fits the stage
 // and pins it to one corner must grade differently from one that does none of the
-// three. The other two are `rendering/stage-fit` and `rendering/letterbox-carries-the-background`.
+// three. The other two are `rendering/stage-fit` and
+// `rendering/letterbox-carries-the-background`.
 //
 // THREE SHAPES, THREE WINDOWS. A window wider than the stage, a window taller
 // than it, and an off-aspect window at twice the device pixel ratio. A pixel

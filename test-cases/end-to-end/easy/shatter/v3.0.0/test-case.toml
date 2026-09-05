@@ -675,11 +675,20 @@ validation = { script = "instrumentation/set-wave-spawns-nothing.test.ts", outpu
 [[review.categories.items]]
 id = "overlay"
 title = "The debug overlay reports the game"
-description = "Toggling the overlay over a posed field draws the facts specs/instrumentation.md lists, and the snapshot is identical before and after."
+description = "Toggling the overlay over a posed field draws every fact specs/instrumentation.md lists as a diagnostic source."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "instrumentation/overlay.test.ts", outputs = [
   { id = "overlay", name = "The debug overlay over a posed field", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overlay-is-a-read-only-toggle"
+title = "The overlay goes up and down on its key and changes nothing"
+description = "The backtick key puts the panel up over a posed field; the screen, the score, the ships, the wave, the rosters and the ship's pose all read the same either side of it and the accumulated simulation time advances by exactly the tick the press spent; and a second press takes the panel down again. Scoped to `none`: under an engine the panel, its key and its read-only-ness are the runtime's."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/overlay-is-a-read-only-toggle.test.ts", engines = ["none"], outputs = [
+  { id = "toggled", name = "The overlay the backtick key put up", kind = "image" },
 ] }
 
 # --- The field ---------------------------------------------------------------
@@ -703,7 +712,7 @@ validation = { script = "field/field-fit.test.ts", outputs = [
 [[review.categories.items]]
 id = "star-fixed-at-centre"
 title = "The star sits at the field's centre and never moves"
-description = "The star's core is drawn centred on (640, 360) and is still centred there after a minute of play."
+description = "The disc within CORE_R of (640, 360) carries pixels differing from the background the build drew, and nothing of the star is drawn beyond 1.5 x HALO_R — on the first tick of play, and still after a minute of it."
 domains = ["gravity", "presentation"]
 failure_cap = "scuffed"
 validation = { script = "field/star-fixed-at-centre.test.ts", outputs = [
@@ -1234,15 +1243,6 @@ domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "bullets/trail-drawn.test.ts", outputs = [
   { id = "trail", name = "The tail drawn behind a moving round", kind = "image" },
-] }
-[[review.categories.items]]
-id = "trail-length-scales-with-speed"
-title = "The trail is a slice of time, not of distance"
-description = "The drawn trail behind a bullet at 900 units per second is measurably longer than behind one at 300, in the ratio of their speeds within 25 percent."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "bullets/trail-length-scales-with-speed.test.ts", outputs = [
-  { id = "trails", name = "The two trails, at 300 and at 900 units per second", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "trail-follows-the-wrap"
@@ -1967,7 +1967,7 @@ validation = { script = "lives/game-over-at-zero.test.ts", outputs = [
 [[review.categories.items]]
 id = "a-fast-approach-still-costs-a-life"
 title = "A rock closing fast is not passed through"
-description = "With the contact gate on, a Small posed one tick's travel from the ship and closing at 1200 units per second — a per-tick step of 10 units against a combined radius of SHIP_R + ROCK_RADIUS.small (28) — costs exactly one life on the next tick. This is the ship's half of the swept-or-continuous requirement specs/collision.md states; bullets/no-tunnelling-at-speed is the bullet's."
+description = "With the contact gate on, a Small drifting at the top of its own stated range (210) meets a ship flying at SHIP_MAX (680) head-on — neither body posed past its own bound, the pair closing at 890 units per second — from just outside the combined radius of SHIP_R + ROCK_RADIUS.small (28), and costs exactly one life on the next tick. This is the ship's half of the swept-or-continuous requirement specs/collision.md states; bullets/no-tunnelling-at-speed is the bullet's."
 domains = ["flight"]
 failure_cap = "broken"
 validation = { script = "lives/a-fast-approach-still-costs-a-life.test.ts", outputs = [
@@ -2546,31 +2546,21 @@ validation = { script = "touch/drag-cancels.test.ts", outputs = [
 ] }
 
 # --- Look and readouts -------------------------------------------------------
-# Every item here checks that a thing is PRESENT and TOLD APART from what is
-# behind or beside it, against a stated RGB distance out of 441, and never a hex value: no palette and no typeface is seeded
-# or asserted, and the look is the build's. `field-background-is-dark` is the one
-# item that fixes a color bound at all, because specs/overview.md states the dark
-# field as a requirement in its own right and every other item here measures
-# distance FROM whatever background the build chose. No item mandates a drawing
-# style: a build drawing cratered, textured or lumpy-but-round rocks is legible and
-# conformant, and a build blinking its invulnerable ship by color, by outline
-# weight or by alpha is too.
+# Every item here checks that a thing is PRESENT where the specification says
+# something is drawn, or that it CHANGES when the specification says it changes,
+# always measured against whatever background the build itself painted and never
+# against a color this checklist names. No palette and no typeface is seeded or
+# asserted, and how any of it looks is the reviewer's to rate. No item mandates a
+# drawing style either: a build drawing cratered, textured or lumpy-but-round rocks
+# is legible and conformant, and a build blinking its invulnerable ship by color,
+# by outline weight or by alpha is too.
 [[review.categories]]
 id = "presentation"
 title = "Look and readouts"
 [[review.categories.items]]
-id = "field-background-is-dark"
-title = "The field reads as deep space"
-description = "The field's background, sampled clear of every body, is dark: its luminance is below a quarter of full. The bound is the one specs/overview.md states as a requirement in its own right; every other item in this group measures distance from whatever background the build chose, so this is the only one that needs it fixed."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "presentation/field-background-is-dark.test.ts", outputs = [
-  { id = "field", name = "The field sampled clear of every body", kind = "image" },
-] }
-[[review.categories.items]]
 id = "ship-is-drawn-and-distinct"
-title = "The ship reads apart from the field"
-description = "Pixels within SHIP_R of the posed ship's centre differ from the background by more than 60 of 441."
+title = "The ship is drawn on the field"
+description = "Pixels within SHIP_R of the posed ship's centre differ from the background the build drew."
 domains = ["presentation"]
 failure_cap = "broken"
 validation = { script = "presentation/ship-is-drawn-and-distinct.test.ts", outputs = [
@@ -2579,7 +2569,7 @@ validation = { script = "presentation/ship-is-drawn-and-distinct.test.ts", outpu
 [[review.categories.items]]
 id = "ship-facing-is-legible"
 title = "The ship's facing is legible"
-description = "The drawn ship is asymmetric about its centre along its facing: the pixels ahead of the centre differ measurably in extent from those behind, sampled at four facings."
+description = "The drawn ship changes between two facings a half turn apart: samples inside the hull's own disc are redrawn between the two frames."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/ship-facing-is-legible.test.ts", outputs = [
@@ -2587,8 +2577,8 @@ validation = { script = "presentation/ship-facing-is-legible.test.ts", outputs =
 ] }
 [[review.categories.items]]
 id = "rocks-are-drawn-and-distinct"
-title = "A rock reads apart from the field and the ship"
-description = "Pixels inside a posed rock differ from the background by more than 60 of 441 and from the ship's own color by more than 40."
+title = "A rock is drawn on the field"
+description = "Pixels inside a posed rock differ from the background the build drew."
 domains = ["presentation"]
 failure_cap = "broken"
 validation = { script = "presentation/rocks-are-drawn-and-distinct.test.ts", outputs = [
@@ -2597,7 +2587,7 @@ validation = { script = "presentation/rocks-are-drawn-and-distinct.test.ts", out
 [[review.categories.items]]
 id = "star-core-is-drawn"
 title = "The star's core is drawn at its radius"
-description = "Pixels within CORE_R of (640, 360) differ from the background by more than 60 of 441."
+description = "Pixels within CORE_R of (640, 360) differ from the background the build drew."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/star-core-is-drawn.test.ts", outputs = [
@@ -2605,8 +2595,8 @@ validation = { script = "presentation/star-core-is-drawn.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "star-halo-fades-outward"
-title = "The star's halo fades outward"
-description = "The pixel difference from the background falls monotonically, within noise, from CORE_R out to HALO_R, and nothing of the star is drawn beyond 1.5 x HALO_R. specs/field.md states both bounds, so a halo with a bright rim or a corona spike fails a rule it was told."
+title = "The star's halo is drawn, and stops where it must"
+description = "The annulus between CORE_R and HALO_R carries pixels differing from the background the build drew, and nothing of the star is drawn beyond 1.5 x HALO_R."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/star-halo-fades-outward.test.ts", outputs = [
@@ -2614,8 +2604,8 @@ validation = { script = "presentation/star-halo-fades-outward.test.ts", outputs 
 ] }
 [[review.categories.items]]
 id = "saucer-is-drawn-and-distinct"
-title = "The saucer reads apart from the rocks"
-description = "Pixels inside a posed saucer differ from the background by more than 60 of 441 and from a posed rock's color by more than 40."
+title = "The saucer is drawn on the field"
+description = "Pixels inside a posed saucer differ from the background the build drew."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/saucer-is-drawn-and-distinct.test.ts", outputs = [
@@ -2623,8 +2613,8 @@ validation = { script = "presentation/saucer-is-drawn-and-distinct.test.ts", out
 ] }
 [[review.categories.items]]
 id = "bullet-is-drawn-and-distinct"
-title = "A bullet reads apart from the field"
-description = "Pixels within BULLET_R of a posed bullet differ from the background by more than 60 of 441."
+title = "A bullet is drawn on the field"
+description = "Pixels within BULLET_R of a posed bullet differ from the background the build drew."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/bullet-is-drawn-and-distinct.test.ts", outputs = [
@@ -2642,7 +2632,7 @@ validation = { script = "presentation/thrust-flame-while-thrusting.test.ts", out
 [[review.categories.items]]
 id = "invulnerable-ship-blinks"
 title = "A ship in its grace reads as protected"
-description = "Over the grace window the ship's drawn appearance — the pixels within the hull's nose-to-tail length (34) of its centre — differs from its steady appearance at some sampled instant: at least 12 of the 441 points sampled over that disc read more than 40 from their steady readings, of the 441 an RGB distance can span. Once the grace has run out the ship reads as the steady ship again, with no more than 4 of those points still that far from it. Presence and difference, not one blink implementation: a build that blinks and a build that holds one changed look for the whole window both pass."
+description = "Over the grace window the ship's drawn appearance — the pixels within the hull's nose-to-tail length (34) of its centre — differs from its steady appearance at some sampled instant: at least 12 of the 441 points sampled over that disc read further from their steady readings than the sensing floor of 8, of the 441 an RGB distance can span — the level below which a sampling cannot tell a redrawing from the rounding of an 8-bit channel. Once the grace has run out the ship reads as the steady ship again, with no more than 4 of those points still that far from it. Presence and difference, not one blink implementation: a build that blinks and a build that holds one changed look for the whole window both pass."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/invulnerable-ship-blinks.test.ts", outputs = [
@@ -2686,8 +2676,8 @@ validation = { script = "presentation/extra-ship-indication.test.ts", outputs = 
 ] }
 [[review.categories.items]]
 id = "screen-text-is-legible"
-title = "Every screen's text reads against its background"
-description = "On each of the five screens, the drawn text differs from the pixels immediately around it by more than 80 of 441."
+title = "Every screen draws text"
+description = "On each of the five screens, the build submits at least one non-empty text draw."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/screen-text-is-legible.test.ts", outputs = [
@@ -2770,21 +2760,12 @@ validation = { script = "audio/extra-ship-cue.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "mute-silences"
-title = "Mute silences every cue"
-description = "With mute on, a shot, a shatter and a death play nothing audible."
+title = "A muted game stays fully playable"
+description = "With sound muted through its action, a shot is taken, a rock is destroyed and the ship is lost, and under `none` no sound starts across any of them."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "audio/mute-silences.test.ts", outputs = [
   { id = "muted", name = "The muted game the three events were driven in", kind = "image" },
-] }
-[[review.categories.items]]
-id = "runs-without-audio"
-title = "The game runs whether or not audio does"
-description = "The game runs, draws and is fully playable before any audio has started, and never fails to run if audio cannot start at all: with the audio bus unavailable, a full game is opened, flown, fired and scored, and every reading is what the same scenario gives with audio working."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "audio/runs-without-audio.test.ts", outputs = [
-  { id = "silent", name = "The game played through with no audio bus at all", kind = "image" },
 ] }
 
 # --- Showcase ----------------------------------------------------------------

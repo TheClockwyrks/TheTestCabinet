@@ -30,9 +30,10 @@
 // THE TITLE SCREEN, because the key works on every screen and the title is the
 // one the game opens on: nothing has to be posed for the reading to be honest.
 //
-// WHAT THIS DOES NOT DECIDE. That a muted bus is actually SILENT — the gain a
-// cue plays at is `audio/mute-silences`'s — nor that the game keeps running
-// without audio (`audio/runs-without-audio`).
+// WHAT THIS DOES NOT DECIDE. That a muted bus is actually SILENT: under this
+// engine `specs/audio.md` puts the silencing with the runtime, so no item on this
+// engine reads it. Nor that the game keeps playing with the bit set, which is
+// `audio/mute-silences`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

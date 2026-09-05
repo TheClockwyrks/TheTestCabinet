@@ -1,5 +1,4 @@
-// Meltdown — instrumentation/overlay: the debug overlay reports the game, and
-// reading it leaves the game exactly as it is.
+// Meltdown — instrumentation/overlay: the debug overlay reports the game.
 //
 // THE RULE. `specs/instrumentation.md`, under Diagnostics: the overlay "shows the
 // values the game registers with it as diagnostic sources", and it names the
@@ -46,17 +45,14 @@
 // length is a sum of `1`s and `sqrt(2)`s (`specs/mazing.md`) and so a fraction, so
 // it is looked for under any of the roundings a build might print it at.
 //
-// THE SECOND HALF IS THAT NOTHING MOVED. The whole snapshot is read either side of
-// the toggle over a floor posed to be motionless — an untimed opening phase, a
-// tower with both faculties held, a unit with its locomotion held, the world gate
-// shut — so the only field a conformant build may differ in is `simTime`, which
-// gains the one frame the press ran on. `muted` is in that comparison on purpose:
-// a build that bound the backtick to something of its own is caught by it.
+// WHAT IT DOES NOT DECIDE. That reading the overlay changes nothing is
+// `instrumentation.overlay-is-read-only`, which only `none` carries: under an
+// engine the panel, the backtick key, the hidden-at-start state and the purity of
+// the read are all the engine's, and what stays the build's under every engine is
+// the sources it registers and the values they report, which is this item.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
-  assertCloseTo,
-  assertDeepEqual,
   assertEqual,
   assertGreaterThan,
   assertNotEqual,
@@ -79,11 +75,9 @@ import {
   poseTower,
   poseWalker,
   requireTower,
-  seconds,
   startRun,
   toggleOverlay,
   type Harness,
-  type MeltdownSnapshot,
 } from "../harness";
 
 /** The floor the overlay is read over, posed to distinguishing figures. */
@@ -118,17 +112,6 @@ if (!isEmitter(TOWER_DEF)) throw new TypeError(`${TOWER} is not an emitter`);
 /** Where the tower stands and where the unit is held. Geometry, not a threshold. */
 const TOWER_SITE = freeSite(0);
 const UNIT_TILE = laneTile("left", 6);
-
-/**
- * How close `simTime` must come to the one frame the toggle ran, in decimal
- * places: within `5e-7`.
- *
- * Not a behavioural tolerance. The press runs exactly one frame of the harness's
- * clock and `simTime` accumulates the game time it was handed
- * (`specs/instrumentation.md`), so the only difference a conformant build can
- * introduce is the float's own representation.
- */
-const TIME_DIGITS = 6;
 
 let h: Harness;
 
@@ -353,70 +336,4 @@ it("draws the game's own facts once the backtick opens it", async () => {
     beforeTower,
     "the tower's overlay line, against the same line before the kill",
   );
-});
-
-it("changes nothing about the game", async () => {
-  await poseAStillFloor();
-
-  await h.advance(1);
-  const before: MeltdownSnapshot = await h.snapshot();
-
-  await toggleOverlay(h);
-  const after: MeltdownSnapshot = await h.snapshot();
-
-  // The one field a frame is allowed to move, and by exactly one frame's worth.
-  assertCloseTo(
-    after.simTime - before.simTime,
-    seconds(1),
-    TIME_DIGITS,
-    "the game time the toggle's own frame added",
-  );
-
-  for (const field of [
-    "version",
-    "screen",
-    "phase",
-    "menuIndex",
-    "mode",
-    "difficulty",
-    "money",
-    "lives",
-    "score",
-    "wave",
-    "waveCount",
-    "startMoney",
-    "startLives",
-    "interest",
-    "buildTimer",
-    "wavePending",
-    "waveRemaining",
-    "speed",
-    "muted",
-    "waveSpawning",
-    "autoStep",
-    "selected",
-    "hoverShop",
-  ] as const) {
-    assertEqual(
-      after[field],
-      before[field],
-      `${field} across the overlay toggle`,
-    );
-  }
-  for (const field of [
-    "nextWave",
-    "build",
-    "buildZone",
-    "pointer",
-    "paths",
-    "controls",
-    "towers",
-    "surge",
-  ] as const) {
-    assertDeepEqual(
-      after[field],
-      before[field],
-      `${field} across the overlay toggle`,
-    );
-  }
 });

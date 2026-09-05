@@ -81,7 +81,6 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   createCaseHarness,
-  darkestOf,
   mouseGlide,
   mousePress,
   mouseRelease,
@@ -107,6 +106,7 @@ import {
   P1_X1,
   P2_X0,
   P2_X1,
+  PADDLE_MIN_CY,
   SPEED_CAP,
   SPEED_MULT,
   TRAIL_TIME,
@@ -2103,12 +2103,17 @@ export const STILL_MAX = 6;
 /* ---- Colour --------------------------------------------------------------- */
 
 /**
- * The RGB distance two sampled colours must exceed to count as "clearly
- * apart" (specs/overview.md): 50 of the 441 the RGB cube spans. The
- * specification fixes no palette, so distinguishability is the whole of what a
- * visibility check reads.
+ * How far two readings of the SAME unchanged ground may sit apart, in RGB
+ * distance, and still be the same ground: rasterization rounding and nothing
+ * else.
+ *
+ * The specification fixes no palette (specs/overview.md), so what a colour check
+ * reads is PRESENCE: the same point sampled with a body standing on it and again
+ * with the field bare under it. This floor is what separates "the build drew
+ * something here" from two reads of one pixel, and nothing beyond presence — no
+ * palette, no contrast, no separation between two bodies — is asserted anywhere.
  */
-export const DISTINCT_MIN = 50;
+export const READ_NOISE = 8;
 
 /** The obstacle the colour scene keeps on the field: the first one. */
 export const COLOR_OBSTACLE = 0;
@@ -2119,8 +2124,22 @@ export const COLOR_OBSTACLE = 0;
  */
 export const COLOR_BALL_AT = { x: 300, y: FIELD_CY } as const;
 
-/** The bodies the colour checks sample, beside the bare field behind them. */
+/**
+ * Where {@link arrangeBareScene} sends the ball instead: down near the bottom of
+ * the field, clear of every point {@link colorPoints} reads.
+ */
+export const BARE_BALL_AT = { x: FIELD_CX, y: 650 } as const;
+
+/** The bodies the colour checks sample. */
 export type ColorBody = "leftPaddle" | "rightPaddle" | "obstacle" | "ball";
+
+/** Where each body stood, and the colour the canvas held there. */
+export interface SceneSample {
+  /** The points the reading was taken at, for a second reading at the same ones. */
+  at: Record<ColorBody, { x: number; y: number }>;
+  /** What the canvas held at each of those points. */
+  color: Record<ColorBody, Rgb>;
+}
 
 /**
  * Where each body the colour checks sample actually IS, read off the snapshot.
@@ -2154,48 +2173,28 @@ export async function colorPoints(
 }
 
 /**
- * Candidate patches of empty field, in logical units, clear of every element
- * {@link arrangeColorScene} leaves on it: the paddles, the one obstacle at every
- * gyre pose, the net, the parked ball, and the top of the field where the scores
- * sit.
- *
- * The field is dark and every body on it is bright (specs/overview.md), but the
- * mode label's copy and placement are the build's, so no single patch is
- * guaranteed bare. The darkest of several is: a label is drawn to be read, so
- * it is lighter than the field it sits on, and a patch it covers reads lighter
- * than one it does not.
- */
-export const FIELD_POINTS: readonly { x: number; y: number }[] = [
-  { x: 500, y: 650 },
-  { x: 200, y: 600 },
-  { x: 1000, y: 300 },
-  { x: 1100, y: 620 },
-];
-
-/**
- * The bare field's colour: the darkest of the {@link FIELD_POINTS} patches,
- * sampled off the canvas as it stands.
+ * Read the canvas at four named points, as it stands.
  *
  * The shared reading's default sample radius is what this case wants: 4 logical
  * units out, which stays inside the solid body of every shape sampled, so one
  * stray anti-aliased or glow pixel cannot swing it.
  */
-export function sampleField(h: AnyHarness): Promise<Rgb> {
-  return darkestOf(h, FIELD_POINTS);
-}
-
-/** Every body of {@link colorPoints} and the bare field, sampled as they stand. */
-export async function sampleScene(
+export async function sampleAt(
   h: AnyHarness,
-): Promise<Record<ColorBody | "background", Rgb>> {
-  const at = await colorPoints(h);
+  at: Record<ColorBody, { x: number; y: number }>,
+): Promise<Record<ColorBody, Rgb>> {
   return {
     leftPaddle: await sampleColor(h, at.leftPaddle.x, at.leftPaddle.y),
     rightPaddle: await sampleColor(h, at.rightPaddle.x, at.rightPaddle.y),
     obstacle: await sampleColor(h, at.obstacle.x, at.obstacle.y),
     ball: await sampleColor(h, at.ball.x, at.ball.y),
-    background: await sampleField(h),
   };
+}
+
+/** Where every body of {@link colorPoints} stands, and what the canvas holds there. */
+export async function sampleScene(h: AnyHarness): Promise<SceneSample> {
+  const at = await colorPoints(h);
+  return { at, color: await sampleAt(h, at) };
 }
 
 /**
@@ -2213,5 +2212,29 @@ export async function arrangeColorScene(h: AnyHarness): Promise<void> {
   await isolateBall(h, 0, [COLOR_OBSTACLE]);
   await centerPaddles(h);
   await placeBall(h, COLOR_BALL_AT);
+  await h.advance(Math.ceil(TRAIL_TIME * TICK_HZ) + 4);
+}
+
+/**
+ * Re-pose the same live match with the field bare under every point
+ * {@link colorPoints} named, so those points can be read a second time with
+ * nothing standing on them.
+ *
+ * The obstacle comes off the field outright and the ball goes to
+ * {@link BARE_BALL_AT}, with the same settle {@link arrangeColorScene} takes so
+ * its wake is retired again. One ball is left on the field rather than none,
+ * because an empty field is a state the match rules are free to serve into. Both
+ * paddles go to `PADDLE_MIN_CY`, the top of the travel specs/playfield.md gives
+ * them: a paddle centred there spans the field's top 110 units, which clears the
+ * mid-field row {@link arrangeColorScene} sampled it on outright. Neither paddle
+ * is taken from the player, and in a Versus match with no key held nothing moves
+ * them back.
+ *
+ * Called on a match {@link arrangeColorScene} already opened.
+ */
+export async function arrangeBareScene(h: AnyHarness): Promise<void> {
+  await isolateBall(h, 0, []);
+  await clearPaddles(h, PADDLE_MIN_CY);
+  await placeBall(h, BARE_BALL_AT);
   await h.advance(Math.ceil(TRAIL_TIME * TICK_HZ) + 4);
 }

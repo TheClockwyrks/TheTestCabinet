@@ -30,20 +30,17 @@
 // `assets/cut-aura-animates`, reads a `brilliant` instead, which carries no
 // produced sequence of its own and so can only be moving because of the aura.
 //
-// THE MEASURE, AND WHY IT IS THE CASE'S OWN. `patchDistance` is the mean
-// per-pixel RGB distance the suite reads every appearance point at, and
-// `PATCH_SAME_MAX` is the distance below which the case calls two patches the
-// same picture. So a build passes when at least one sampled instant is NOT the
-// same picture as the first — a change large enough that the case would not call
-// the two identical. It says nothing about the palette, the form, the direction
-// of the rotation or the length of the loop, all of which are the build's.
+// THE MEASURE. `patchDistance` is the mean per-pixel RGB distance between two
+// readings of one box, and the reading is whether it is zero: a build passes
+// when at least one sampled instant is not the same picture as the first. How
+// far the picture travelled, the palette, the form, the direction of the
+// rotation and the length of the loop are all the build's, and none is read.
 //
 // Nothing is selected while the cell is watched: specs/ui.md marks the cell at
 // `state.selection`, and `loadBoard` leaves nothing selected.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
-import { PATCH_SAME_MAX } from "../constants";
 import {
   hasPrism,
   isPrism,
@@ -131,7 +128,7 @@ it("changes the pixels in a prism's cell while the board rests", async () => {
   );
   assertGreaterThan(
     moved,
-    PATCH_SAME_MAX,
+    0,
     "the largest mean per-pixel distance between the prism's cell at the " +
       "first sampled instant and any later one",
   );

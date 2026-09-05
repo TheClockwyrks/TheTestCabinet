@@ -13,8 +13,10 @@
 // lifecycle scripts `npm ci` would run, because reinstalling dependencies
 // needs the network a validator must not. "Fetches nothing from outside
 // itself" is read off the rebuilt page: no reference in its `index.html`
-// carries a scheme or a protocol-relative host. The still keeps the committed
-// build running as the evidence that the game those files make is this one.
+// names a location outside the site, which is a scheme or a protocol-relative
+// host — a `data:`, `blob:`, or `about:` reference carries its own content and
+// fetches nothing, so it is not one. The still keeps the committed build
+// running as the evidence that the game those files make is this one.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { fail } from "../assert";

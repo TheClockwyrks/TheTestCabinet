@@ -8,11 +8,12 @@
 //
 // WHAT IT DECIDES, AND WHAT IT LEAVES ALONE. The two cascade sources. The screen
 // and the mode are `presentation/overlay-shows-screen`, the pile counts
-// `presentation/overlay-shows-pile-counts`, the drag
-// `presentation/overlay-shows-drag`, and that watching the panel costs the game
-// nothing is `presentation/overlay-changes-nothing`. What the cascade DOES — the
-// cadence, the launch, the arc, the bounce, the retirement — is the whole
-// `cascade` group and none of it is decided again here.
+// `presentation/overlay-shows-pile-counts`, and the drag
+// `presentation/overlay-shows-drag`. That watching the panel costs the game
+// nothing is the engine's under this engine and is graded on `none` alone. What
+// the cascade DOES — the cadence, the launch, the arc, the bounce, the
+// retirement — is the whole `cascade` group and none of it is decided again
+// here.
 //
 // THE CASCADE IS ENTERED THE WAY A PLAYER ENTERS IT. `startCascade` poses a board
 // one card short of a win and sends that card home through the build's own move

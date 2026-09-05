@@ -29,7 +29,7 @@
 // WHAT THIS ITEM DOES NOT DECIDE. The wave, which is
 // `screens/game-over-shows-the-wave`; where either is drawn, which `specs/ui.md`
 // leaves to the build; or whether the text is legible against what is behind it,
-// which is `presentation/screen-text-is-legible`.
+// which the reviewer judges.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertMatches } from "../assert";

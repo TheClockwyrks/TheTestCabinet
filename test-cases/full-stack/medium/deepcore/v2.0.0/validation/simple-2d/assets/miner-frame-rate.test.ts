@@ -17,8 +17,7 @@
 // The scene is a cleared mine with a laid floor, the miner still and its drill
 // held, so nothing but the cycle can move a pixel inside its box: no particles, no
 // other actor, and a camera that has been let settle before the window opens. The
-// idle state is the one with no effect attached to it. The produced sprites are
-// stood up off disk, because the cycle this is about is the produced one.
+// idle state is the one with no effect attached to it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { ANIM_FPS } from "../constants";
@@ -44,10 +43,7 @@ const TOLERANCE = 0.25;
 let h: Harness;
 
 beforeEach(async () => {
-  // The produced sprites are stood up off disk: the cycle whose rate this is
-  // about is the produced one, and a build falling back to a code drawing is
-  // deciding a different question.
-  h = await createHarness({ assets: true });
+  h = await createHarness();
 });
 
 afterEach(() => {

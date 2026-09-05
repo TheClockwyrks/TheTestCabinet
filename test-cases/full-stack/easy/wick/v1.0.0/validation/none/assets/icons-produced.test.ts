@@ -10,7 +10,7 @@
 //
 // THE TOLERANCES. Every path and the `24 x 24` canvas are exact figures and are
 // read exactly. That each file carries a drawing rather than an empty canvas is
-// read against `PAINT_MIN_SHARE`, whose reasoning `assets/sprites.ts` states.
+// read as presence: at least one pixel of the canvas is not clear.
 //
 // WHAT IT DELIBERATELY DOES NOT READ. That the twenty-seven differ from one
 // another is `assets/icons-distinct`; that the HUD's slots and the two overlays

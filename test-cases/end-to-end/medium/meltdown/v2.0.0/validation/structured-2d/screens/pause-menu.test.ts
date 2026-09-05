@@ -22,7 +22,11 @@
 // the floor entirely shows the same pixels both times.
 //
 // THE PATCH IS THE TOWER'S OWN FOOTPRINT, taken from the snapshot the build
-// itself reports, so nothing here assumes where a tower is drawn inside it.
+// itself reports, so nothing here assumes where a tower is drawn inside it. Every
+// pixel of it is read and what the two photographs are asked is where they
+// diverge MOST, so a build drawing its towers as thin outlines answers as clearly
+// as one drawing them solid. How much of the footprint moved is never counted:
+// how a tower is drawn is specs/overview.md's to leave to the build.
 //
 // THE TOWER IS POSED WITH ONLY WHAT THE READING NEEDS: its guns are held off and
 // its heat is `0`, so nothing about it animates between the two photographs and
@@ -53,40 +57,30 @@ import {
   towerById,
   type Harness,
 } from "../harness";
-import { differing, pixelsOver, readScreen, requireRun } from "./menu";
+import { largestShift, pixelsOver, readScreen, requireRun } from "./menu";
 
 /**
  * The footprint's top-left tile: the largest tower in the game, standing clear of
  * both corridors and of the four openings.
  *
  * The Lance's `4`-tile footprint (specs/towers.md) is the biggest patch of floor
- * one tower covers, which is what makes the presence-or-absence reading below a
- * reading of a large area rather than of a few dozen pixels.
+ * one tower covers, so wherever inside its footprint a build draws the tower, the
+ * patch read below takes the drawing in.
  */
 const SITE = { type: "lance", col: 4, row: 4 } as const;
 
 /**
- * How far apart two renders of the same patch must be to count as different:
- * `4` of the `441` a full swing across the RGB cube is.
+ * How far the footprint has to move between the two photographs for the floor
+ * under the menu to have been drawn at all: `8` of the `441` a full swing across
+ * the RGB cube is, the floor every reading of the picture in this project takes.
  *
- * It is deliberately small. specs/screens.md requires the floor to be drawn
- * behind the menu and says nothing about how strongly a build may wash over it,
- * so a build that dims the floor to a tenth of its contrast has still drawn it —
- * and this reading has to pass that build while failing one that painted the
- * floor out altogether.
+ * An instrument reading presence needs a floor under it, and this one is set so
+ * that any drawing of the floor whatsoever clears it: 8 is under two per cent of
+ * the scale, so a build that dims the floor behind a heavy wash still shows its
+ * tower arrive and leave. A build that painted the floor out altogether shows the
+ * same pixels both times and reads 0.
  */
-const VISIBLE_DISTANCE = 4;
-
-/**
- * How much of the footprint must read differently: a twentieth of its pixels.
- *
- * A tower drawn on the floor covers its footprint (specs/hud.md draws its heat
- * read across it), so a build showing one is showing far more than this; the
- * floor is set low so that a build drawing its towers as outlines, or under a
- * heavy wash, still clears it. A mark smaller than a twentieth of a `4`-tile
- * footprint is not a tower.
- */
-const MIN_CHANGED_FRACTION = 0.05;
+const FLOOR_REDRAWN_MIN = 8;
 
 let h: Harness;
 
@@ -142,9 +136,11 @@ it("draws RESUME, RESTART and QUIT TO MENU, with the floor still drawn behind th
     "the screen both photographs were taken on",
   );
   assertGreaterThanOrEqual(
-    differing(withTower, withoutTower, VISIBLE_DISTANCE),
-    Math.round(withTower.length * MIN_CHANGED_FRACTION),
-    "pixels of the footprint that read differently with the tower standing on " +
-      "the floor and with it gone, both taken on the pause screen",
+    largestShift(withTower, withoutTower),
+    FLOOR_REDRAWN_MIN,
+    "how far the tower's footprint moved between the tower standing on the " +
+      "floor and the tower gone, both photographs taken on the pause screen; " +
+      "the floor is still drawn behind the menu (specs/screens.md), and a " +
+      "floor painted out altogether reads 0",
   );
 });

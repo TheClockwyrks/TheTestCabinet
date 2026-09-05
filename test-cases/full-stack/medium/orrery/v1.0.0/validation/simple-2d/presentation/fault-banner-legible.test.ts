@@ -1,5 +1,5 @@
 // presentation/fault-banner-legible — the words the fault display puts up are
-// legible against the frozen machine behind them.
+// drawn over the frozen machine behind them.
 //
 // THE RULE. "While `sim.status` is `faulted`, the field shows the machine frozen
 // at the cycle the fault stopped, the parts and motes `specs/simulation.md` names
@@ -52,14 +52,11 @@
 // the size the rule names.
 //
 // THE VERDICT. The halt puts at least one line on the FIELD that the live run did
-// not carry there, and every such line stands off the ground behind it.
+// not carry there, and every such line carries paint standing off the ground
+// behind it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertGreaterThanOrEqual,
-} from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { STAGE_H, STAGE_W, TICK_HZ } from "../constants";
 import { at, contains, FIELD_REGION, type Region } from "../field";
 import { armPart, solution } from "../formats";
@@ -68,11 +65,12 @@ import {
   advanceCycles,
   captureStill,
   createHarness,
-  luminance,
+  CHANNEL_EPSILON,
+  meanRect,
+  shareAwayFrom,
   openBareRun,
   textDraws,
   type Harness,
-  type PixelRect,
   type TextDraw,
 } from "../harness";
 
@@ -99,18 +97,15 @@ afterEach(async () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* Reading a line of type against the ground behind it                        */
+/* Reading that a line of type was drawn                                      */
 /* -------------------------------------------------------------------------- */
 //
 // `specs/ui.md` fixes no palette, no font and no background, so nothing about
-// HOW a line is set can be read. What "legible against whatever sits behind it"
-// leaves observable is the one thing every legible setting has: the glyphs stand
-// off the ground drawn behind them. So a line is read as a band of the stage,
-// the ground it is drawn on is taken as the MEDIAN luminance of that band — a
-// line of type covers a minority of the band around it whatever it says, so the
-// middle of its luminances is what sits behind the glyphs, be that the sky, a
-// panel, a highlight or the frozen machine — and what is counted is how much of
-// the band stands clear of that ground.
+// HOW a line is set can be read, and how well it reads is the reviewer's. What a
+// check decides is that the line reached the frame: the build submitted the run,
+// and the band of the stage it anchored that run in carries paint standing off
+// the flat ground behind it — the band is not one colour, so something was drawn
+// into it.
 
 /** How far past the outermost anchors of a line its band reaches. */
 const BAND_PAD = 80;
@@ -118,40 +113,6 @@ const BAND_PAD = 80;
 /** How far over the baseline the band reaches, and how far under it. */
 const BAND_ABOVE = 18;
 const BAND_BELOW = 6;
-
-/**
- * How far in luminance a glyph must stand from the ground behind it.
- *
- * Forty of the two hundred and fifty-five a channel spans: below any setting a
- * player would call legible, and far above what an anti-aliased edge or a
- * gradient in the background moves.
- */
-const LEGIBLE_SEPARATION = 40;
-
-/**
- * How many of a band's pixels must stand that far from its ground.
- *
- * A band is at least a hundred and sixty units wide and twenty-four deep, so this
- * is one pixel in eighty. Fewer than the strokes of a single glyph at any size a
- * player could read, and more than a stray edge can supply.
- */
-const MIN_INK_PIXELS = 48;
-
-/**
- * How many pixels of ONE COLUMN of a band count as that column carrying ink, and
- * how many of its columns must carry it.
- *
- * A count of pixels alone is not enough, because an edge crossing the band — a
- * panel's border, a rule under a heading — supplies as many of them as a short
- * word does. Type is the one thing on a stage that is WIDE and DEEP at once: a
- * line of it marks a stroke's depth in column after column, where an edge marks
- * one column deeply or every column shallowly. So a column carries ink when three
- * of its pixels stand clear of the ground, and a line is read when six columns
- * do: narrower than one glyph at any size a player could read, and three times
- * what a two-pixel border can reach.
- */
-const MIN_COLUMN_INK = 3;
-const MIN_INK_COLUMNS = 6;
 
 /** One baseline the frame drew text on, and the runs on it read left to right. */
 interface Line {
@@ -221,70 +182,20 @@ function bandOf(line: Line, bounds: Region): Region {
   };
 }
 
-/** The luminance of pixel `i` of a read-back rectangle, on Rec. 709 weights. */
-function levelAt(rect: PixelRect, i: number): number {
-  return luminance({
-    r: rect.data[i] as number,
-    g: rect.data[i + 1] as number,
-    b: rect.data[i + 2] as number,
-  });
-}
-
-/** The ground a band is drawn on: the median luminance of its pixels. */
-function groundOf(rect: PixelRect): number {
-  const levels: number[] = [];
-  for (let i = 0; i < rect.data.length; i += 4) levels.push(levelAt(rect, i));
-  levels.sort((a, b) => a - b);
-  return levels[levels.length >> 1] ?? 0;
-}
-
-/** How many of a band's pixels stand `LEGIBLE_SEPARATION` or further from its ground. */
-function inkOf(rect: PixelRect): number {
-  const ground = groundOf(rect);
-  let ink = 0;
-  for (let i = 0; i < rect.data.length; i += 4) {
-    if (Math.abs(levelAt(rect, i) - ground) >= LEGIBLE_SEPARATION) ink += 1;
-  }
-  return ink;
-}
-
-/** How many COLUMNS of a band carry `MIN_COLUMN_INK` pixels of that ink. */
-function inkColumnsOf(rect: PixelRect): number {
-  const ground = groundOf(rect);
-  let columns = 0;
-  for (let x = 0; x < rect.width; x += 1) {
-    let ink = 0;
-    for (let y = 0; y < rect.height; y += 1) {
-      const at = (y * rect.width + x) * 4;
-      if (Math.abs(levelAt(rect, at) - ground) >= LEGIBLE_SEPARATION) ink += 1;
-    }
-    if (ink >= MIN_COLUMN_INK) columns += 1;
-  }
-  return columns;
-}
-
-/** Decide whether one line stands off the ground the frame drew behind it. */
-async function assertLegible(
+/** Decide whether one line was drawn into the band the frame anchored it in. */
+async function assertDrawn(
   line: Line,
   bounds: Region,
   what: string,
 ): Promise<void> {
   const band = bandOf(line, bounds);
   const rect = await h.pixelRect(band.x, band.y, band.w, band.h);
-  assertGreaterThanOrEqual(
-    inkOf(rect),
-    MIN_INK_PIXELS,
-    `${what} is legible against whatever sits behind it at the logical stage ` +
-      `size ${STAGE_W} x ${STAGE_H}: the line reads ` +
-      `${JSON.stringify(line.text)}, and the band drawn around it stands off ` +
-      `the ground behind it`,
-  );
-  assertGreaterThanOrEqual(
-    inkColumnsOf(rect),
-    MIN_INK_COLUMNS,
-    `${what} stands off its ground as a LINE OF TYPE does, across column after ` +
-      `column, rather than as one edge crossing the band: the line reads ` +
-      `${JSON.stringify(line.text)}`,
+  assertGreaterThan(
+    shareAwayFrom(rect, meanRect(rect), CHANNEL_EPSILON),
+    0,
+    `${what} is drawn at the logical stage size ${STAGE_W} x ${STAGE_H}: the ` +
+      `line reads ${JSON.stringify(line.text)}, and the band the frame ` +
+      `anchored it in carries paint standing off the ground behind it`,
   );
 }
 
@@ -296,7 +207,7 @@ function onTheField(draws: readonly TextDraw[]): TextDraw[] {
   );
 }
 
-it("puts up a banner naming the fault, legible over the frozen machine", async () => {
+it("puts up a banner naming the fault, drawn over the frozen machine", async () => {
   await openBareRun(h, {
     challenge: BARE,
     machine: solution([armPart("arm", ANCHOR.q, ANCHOR.r, 0, 1, [...TAPE])]),
@@ -345,10 +256,6 @@ it("puts up a banner naming the fault, legible over the frozen machine", async (
       )}`,
   );
   for (const line of fresh) {
-    await assertLegible(
-      line,
-      FIELD_REGION,
-      "the line the halt put on the field",
-    );
+    await assertDrawn(line, FIELD_REGION, "the line the halt put on the field");
   }
 });

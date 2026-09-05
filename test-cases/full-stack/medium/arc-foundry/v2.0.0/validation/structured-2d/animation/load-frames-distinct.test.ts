@@ -23,13 +23,11 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual } from "../assert";
 import { createHarness, type Harness, openYard, releaseUnit } from "../harness";
 import { cycleFrames, decodeAll, duplicatePairs, evidence } from "./images";
-import { serveProducedAssets } from "./produced";
 import { SPAWN_TYPES } from "../constants";
 
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 

@@ -15,12 +15,13 @@
 // that needs a real 2D context outside a browser.
 
 import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { fail } from "../assert";
 import { captureStill, type Harness } from "../harness";
-import { ASSETS } from "./produced";
 
-export { ASSETS } from "./produced";
+/** `assets/` at the root of the produced repository, as `specs/assets.md` fixes it. */
+export const ASSETS = fileURLToPath(new URL("../../assets/", import.meta.url));
 
 /** A decoded produced sprite. */
 export interface Bitmap {

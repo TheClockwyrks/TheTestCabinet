@@ -165,42 +165,6 @@ export function bandColor(h: Harness, col: number, row: number): Rgb {
   return sampleColor(h, mapCX(col), mapCY(row));
 }
 
-/**
- * The tint strait `row` is drawn in, read across the full width of the band.
- *
- * ONE READING PER COLUMN, AND THE CHANNELWISE MEDIAN OF THEM. specs/strait.md
- * makes each band one strip across the whole stage, so the reading has to be of
- * the whole strip: a tint that only holds in the middle of it is not the band
- * reading distinct, and forty samples is every tile centre of the row.
- *
- * The MEDIAN rather than the mean, because a band is a tint with the build's own
- * marking over it — a ridge tick along the shelf, a crest across the water, a
- * hairline down each lane — and a mean lets that marking stand in for the tint.
- * A build whose two safe strips are the same colour and are told apart only by a
- * few ticks would then read as two distinct bands, which is not what
- * specs/overview.md's table asks for: it asks that they "render in tints" a player
- * tells apart. A marking that covers a minority of the row's width moves a
- * minority of the readings and cannot move a median; one that covers most of it
- * has become the band's tint, and reading it as such is right.
- */
-export function bandTint(h: Harness, row: number): Rgb {
-  const samples = Array.from({ length: COLS }, (_, col) =>
-    bandColor(h, col, row),
-  );
-  const middle = (of: (sample: Rgb) => number): number => {
-    const sorted = samples.map(of).sort((a, b) => a - b);
-    const half = sorted.length >> 1;
-    return sorted.length % 2 === 0
-      ? (sorted[half - 1] + sorted[half]) / 2
-      : sorted[half];
-  };
-  return {
-    r: middle((sample) => sample.r),
-    g: middle((sample) => sample.g),
-    b: middle((sample) => sample.b),
-  };
-}
-
 /* ---- The scenarios --------------------------------------------------------- */
 
 /** One tile of the strait, as the two map items name it. */

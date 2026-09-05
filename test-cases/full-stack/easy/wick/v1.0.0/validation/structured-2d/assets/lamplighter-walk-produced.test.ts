@@ -25,7 +25,7 @@
 // picture is the six files themselves, magnified.
 //
 // THE TOLERANCE. The canvas is exact, because the specification states it
-// exactly. The paint floor is `PAINT_MIN_SHARE`, one pixel in a thousand.
+// exactly. The paint reading is presence: at least one pixel not clear.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { captureStill, createHarness, type Harness } from "../harness";

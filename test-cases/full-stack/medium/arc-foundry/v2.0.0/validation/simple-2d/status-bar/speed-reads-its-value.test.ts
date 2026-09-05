@@ -17,7 +17,7 @@ import { assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
-  DISTINCT,
+  DRAWN,
   type Harness,
   lattice,
   maxDistance,
@@ -50,8 +50,8 @@ it("draws the speed control differently at 1 and at 8", async () => {
 
   assertGreaterThan(
     maxDistance(slow, fast),
-    DISTINCT,
-    "how far the speed control's pixels move between multiplier 1 and 8, in " +
-      "RGB distance",
+    DRAWN,
+    "how far the speed control's pixels move between multiplier 1 and 8, " +
+      "against the floor a reading needs to call anything drawn",
   );
 });

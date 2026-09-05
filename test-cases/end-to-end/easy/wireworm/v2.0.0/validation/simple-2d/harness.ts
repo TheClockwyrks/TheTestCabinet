@@ -2293,26 +2293,6 @@ export function samplesAlong(
   return samples;
 }
 
-/**
- * The build's exported `BACKGROUND`, rasterized: the colour the engine clears the
- * whole canvas to each frame (specs/overview.md), read back through the same
- * canvas implementation the harness samples with, so a pixel the game never drew
- * over compares against it exactly.
- *
- * The fill is repeated rather than applied once so a translucent colour reads as
- * the engine leaves it: the engine composites its clear over the previous frame
- * every frame, which converges on the colour's own channels, and a single fill
- * over a transparent canvas would not.
- */
-export function clearColor(): Rgb {
-  const probe = createCanvas(1, 1);
-  const ctx = probe.getContext("2d");
-  ctx.fillStyle = BACKGROUND;
-  for (let i = 0; i < 255; i += 1) ctx.fillRect(0, 0, 1, 1);
-  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-  return { r, g, b };
-}
-
 /* -------------------------------------------------------------------------- */
 /* The menus, where the build drew them                                       */
 /* -------------------------------------------------------------------------- */

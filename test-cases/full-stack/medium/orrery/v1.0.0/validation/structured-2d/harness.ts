@@ -44,9 +44,10 @@
 // than about the build. {@link installAssetHost} supplies the three things a
 // browser gives the engine's loader: a `fetch` that reads the file the build
 // committed, a `createImageBitmap` that decodes one, and an `AudioContext` that
-// decodes a produced `.wav` far enough for the cue to bind. `specs/assets.md` also
-// requires a build that keeps playing when its files do NOT arrive, and
-// `HarnessOptions.withoutAssets` is how a check poses that.
+// decodes a produced `.wav` far enough for the cue to bind. Every request the
+// loader makes is recorded and then served, so a check that needs to know WHICH
+// file the build asked for reads {@link Harness.assetRequests} and the load still
+// succeeds.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -124,8 +125,14 @@ const blobSource = new WeakMap<object, string>();
 /** Where a decoded image came from, or absent for one the build painted itself. */
 const imageSource = new WeakMap<object, string>();
 
-/** Paths currently withheld, so a check can pose a load that fails. */
-let withheld: RegExp | null = null;
+/**
+ * Every page-relative URL the build's loader has asked for, oldest first.
+ *
+ * The transport below records each request and then serves it. Reset as a harness
+ * is built, because the shim is installed once per process and a check reads what
+ * THIS run of the build reached for.
+ */
+let requested: string[] = [];
 
 /** The file a page-relative URL names, or `null` when no root holds it. */
 function assetFile(url: string): string | null {
@@ -215,9 +222,7 @@ function installAssetHost(): void {
     init?: unknown,
   ): Promise<Response> => {
     const url = typeof input === "string" ? input : String(input);
-    if (withheld !== null && withheld.test(url)) {
-      throw new Error(`orrery harness: "${url}" is withheld by this check`);
-    }
+    requested.push(url);
     const file = assetFile(url);
     if (file === null) {
       if (platformFetch === undefined) {
@@ -539,29 +544,6 @@ export interface HarnessOptions {
   cssHeight?: number;
   /** Device pixels per CSS pixel. Defaults to 1, so one device pixel is one unit. */
   dpr?: number;
-  /**
-   * Produced files whose path matches are NOT served, so the build's load of them
-   * fails.
-   *
-   * `specs/assets.md`: "A load that fails leaves the game running... so a missing
-   * file costs the game its polish rather than its playability." This is how a
-   * check poses that: the transport this harness installs refuses every matching
-   * path, the engine announces each refusal as an `asset:failed`, and what is read
-   * back is that the game still initializes, still ticks, still takes input and
-   * still draws.
-   *
-   * The pattern is tested against the path the build handed the LOADER — the
-   * authored `assets/sprites/motes/sol.png` — because nothing is bundled in this
-   * process. That is not the name the engineless project matches on, which is the
-   * bundler's; a suite that runs in all three states the pattern loosely enough
-   * for both, such as `/sol/` or `/\.wav$/`.
-   *
-   * ONE PROCESS, ONE TRANSPORT. The shim is installed once per process and this
-   * option sets what it withholds, so a harness built while another is still open
-   * changes what BOTH of them can load. Build one harness at a time when a check
-   * withholds anything; `dispose` puts the transport back.
-   */
-  withoutAssets?: RegExp;
 }
 
 /**
@@ -582,6 +564,17 @@ export interface Harness {
   readonly cues: TimedCue[][];
   /** Every produced file the build asked for and did not get, oldest first. */
   readonly assetFailures: AssetFailure[];
+  /**
+   * Every produced file the build asked for, oldest first, and each one served.
+   *
+   * WHAT THE BUILD REACHED FOR is a reading in its own right: a point about
+   * which of two committed files the game runs is decided by which of them the
+   * build requested, and nothing about the request is interfered with. A path
+   * appears here whether its load went on to succeed or not, so a file named
+   * here and named in {@link assetFailures} is one the build asked for and did
+   * not get.
+   */
+  assetRequests(): Promise<string[]>;
   /** Everything the runtime reported as an error, oldest first. */
   readonly pageErrors: string[];
 
@@ -750,7 +743,7 @@ export async function createHarness(
   options: HarnessOptions = {},
 ): Promise<Harness> {
   installAssetHost();
-  withheld = options.withoutAssets ?? null;
+  requested = [];
 
   const frameMs = options.frameMs ?? 1000 / TICK_HZ;
   const cssWidth = options.cssWidth ?? STAGE_W;
@@ -898,6 +891,7 @@ export async function createHarness(
     surfaceFault,
     cues,
     assetFailures,
+    assetRequests: () => Promise.resolve([...requested]),
     pageErrors,
 
     frame: () => frameCount,
@@ -1075,7 +1069,7 @@ export async function createHarness(
 
     dispose: () => {
       engine.destroy();
-      withheld = null;
+      requested = [];
       return Promise.resolve();
     },
 

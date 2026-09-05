@@ -12,8 +12,8 @@
 // WHY A COUNT AND NOT A DIFFERENCE. Every differential reading passes the build that
 // draws one glyph too many: it too adds one glyph per reserve ship and its row grows
 // at the same rate. The only reading that separates them is an ABSOLUTE one, and the
-// absolute one this check makes is the number of separated marks in the row at each
-// of the three life counts: two, one, and none at all.
+// absolute one this check makes is how many glyphs' worth of ink the row carries at
+// each of the three life counts: two, one, and none at all.
 //
 // HOW THE ROW IS FOUND, WITHOUT KNOWING WHERE THE BUILD PUT IT. `specs/ui.md` puts
 // the HUD "in the upper portion of the field and clear of the field's centre" and
@@ -29,11 +29,15 @@
 // `specs/ui.md` explicitly welcomes on the HUD — cannot be counted as a ship unless
 // the build put it inside the ship row itself.
 //
-// WHAT COUNTS AS A MARK. A column of the band carries ink when any cell in it does;
-// a run of inked columns is one mark, and two marks are separated by at least
-// `MIN_GAP` bare columns. `specs/ui.md` draws the glyphs "in a row", which is to say
-// as separated marks — glyphs drawn touching are not one per ship to look at, and
-// nothing can count them.
+// HOW A GLYPH IS COUNTED, AND WHY THE GLYPH IS MEASURED RATHER THAN NAMED. The two
+// glyphs the reserve added are the build's own drawing of one, so the ink they carry,
+// halved, is what ONE glyph of this build costs in cells. The row's own ink is then
+// read against that: a row carrying two glyphs' worth of ink holds two glyphs, one
+// carrying none holds none. `specs/overview.md` lets a build paint what it likes
+// behind its HUD, and at the level below which a sampling cannot tell a drawing from
+// the rounding of a channel a speck of a starfield is ink like any other — but a
+// speck is a cell or two where a glyph is scores of them, so a decorated field moves
+// the count by a fraction of a glyph and never by one.
 //
 // THE READING IS OF INK RATHER THAN OF COLOUR, and each cell carries the FURTHEST
 // any pixel in it fell from the field the build drew, so a glyph drawn as a thin
@@ -50,7 +54,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { changedCells, marksInBand, readInk, type InkGrid } from "./ink";
+import { changedCells, inkedInBand, readInk, type InkGrid } from "./ink";
 import { clearOfStar, HUD_REGION, SHIP_SPOT } from "./scene";
 
 /** The life counts read, and how many reserve glyphs each must draw. */
@@ -70,20 +74,28 @@ const READINGS = [
  */
 const CELL = 2;
 
-/** How far a pixel must be from the field for its cell to carry ink, of 441. */
-const INK = 60;
-
-/** How much a cell's ink must move between two life counts to be the reserve's. */
-const CHANGE = 60;
+/**
+ * The sensing floor: how far a square unit's reading must sit from the field the
+ * build drew before the cell can be called painted, of the 441 an RGB distance can
+ * span.
+ *
+ * Eight. Below that a sampling cannot tell a drawing from the rounding of an 8-bit
+ * channel and the host's own anti-aliasing; above it nothing is decided about how
+ * strongly the mark reads. Anything the build painted over the sample clears it,
+ * in whatever colour it chose, over whatever field it chose.
+ */
+const INK = 8;
 
 /**
- * How many bare columns separate two marks.
+ * The sensing floor on a change: how far a reading must move between two frames
+ * before the move can be called a redrawing, of the 441 an RGB distance can span.
  *
- * Two cells, four logical units. Wide enough that the anti-aliased edges of two
- * glyphs a few units apart do not run into one mark, and narrow enough that a row
- * drawn tightly still reads as separate ships.
+ * Eight. Below that a sampling cannot tell a redrawing from the rounding of an
+ * 8-bit channel and the host's own anti-aliasing; above it nothing is decided
+ * about how strongly the two readings differ. Anything the build drew differently
+ * clears it, however faintly it drew it.
  */
-const MIN_GAP = 2;
+const CHANGE = 8;
 
 /** The score posed, so the HUD has its other readout drawn throughout. */
 const SCORE = 730;
@@ -144,13 +156,18 @@ it("draws two reserve glyphs at three ships, one at two, and none at one", async
     toCol: rightCol + pitch,
   };
 
+  // What one glyph of this build costs, in cells: the ink the reserve added between
+  // one ship and START_LIVES, over the glyphs those ships put in the row.
+  const added = READINGS[0].glyphs - READINGS[READINGS.length - 1].glyphs;
+  const glyphInk = reserve.length / added;
+
   for (const { lives, glyphs } of READINGS) {
     const grid = grids.get(lives);
     if (grid === undefined) continue;
     assertEqual(
-      marksInBand(grid, band, INK, MIN_GAP),
+      Math.round(inkedInBand(grid, band, INK) / glyphInk),
       glyphs,
-      `the separated marks the build drew in its reserve-ship row with ${lives} ship(s) left, where one glyph is drawn per ship in reserve (specs/ui.md)`,
+      `the glyphs' worth of ink the build drew in its reserve-ship row with ${lives} ship(s) left, against the ${glyphInk.toFixed(1)} cells one of its own glyphs carries, where one glyph is drawn per ship in reserve (specs/ui.md)`,
     );
   }
 });

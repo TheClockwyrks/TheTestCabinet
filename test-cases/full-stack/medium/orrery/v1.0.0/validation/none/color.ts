@@ -4,8 +4,9 @@
 // The companion to `drawing.ts`: that one reads the operations a frame ISSUED,
 // this one reads what they LEFT on the canvas. A check about placement reads the
 // operations, because a pixel cannot say which source painted it; a check about
-// legibility, about the field being visible, about the sky, or about two things
-// reading apart reads the pixels, because that is what a player sees.
+// whether something was drawn where the specification says something is drawn
+// reads the pixels, and presence is the whole of what they decide. A palette, the
+// contrast between two shapes, and the extent of a mark are the reviewer's.
 //
 // EVERY READING IS TAKEN THROUGH THE HARNESS, so a point is addressed in the
 // stage's logical units and the harness's own fit is what turns it into a device

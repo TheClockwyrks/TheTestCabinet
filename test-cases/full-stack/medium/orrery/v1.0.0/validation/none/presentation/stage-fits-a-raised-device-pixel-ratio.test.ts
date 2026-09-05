@@ -18,14 +18,13 @@
 // the runtime alone" — rather than the `1280 x 720` a build that ignored the ratio
 // would leave, which is what would make the picture soft at that density.
 //
-// AND WHAT "IN LOGICAL UNITS" IS READ AS. The picture at twice the density is the
-// SAME picture: a mote on a hex covers the same square of the STAGE, measured in
-// logical units, that it covers at a ratio of `1`. A build that took the raised
-// backing store and went on drawing at device coordinates of its own would draw
-// that mote at half its logical size and cover a quarter of the square; one that
-// drew in logical units under the runtime's scale covers the same share it always
-// did. Both densities are driven identically and the same logical square is read
-// on each, so the comparison is between two pictures of one scene.
+// AND WHAT "IN LOGICAL UNITS" IS READ AS. A mote spawned on a hex is looked for
+// at that hex's own LOGICAL centre, on the same square of the stage at both
+// densities. A build that took the raised backing store and went on drawing at
+// device coordinates of its own puts nothing there; one that drew in logical
+// units under the runtime's scale draws it where the hex is. How much of the
+// square the mote covers is not read, because a picture rasterized at two
+// densities is not the same pixels either way.
 //
 // THE STAGE IS STILL WHOLE. Four motes on the hexes furthest out on the field's
 // axes are each looked for at their own logical hex centre, and the stage's four
@@ -34,15 +33,10 @@
 //
 // THE VERDICT. The canvas carries the window's size times the ratio, all four
 // landmarks are drawn at their logical hex centres, the stage's corners are on the
-// surface, and a mote covers the same logical square at both densities.
+// surface, and a mote is drawn on the square about its own hex at both densities.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertLength,
-  assertNear,
-} from "../assert";
+import { assertEqual, assertGreaterThan, assertLength } from "../assert";
 import { STAGE_H, STAGE_W } from "../constants";
 import { at, hexCenter, type Hex } from "../field";
 import { BARE, ORIGIN } from "../fixtures";
@@ -64,18 +58,6 @@ const LANDMARKS: readonly Hex[] = [at(-5, 0), at(5, 0), at(0, -5), at(0, 5)];
 
 /** Half the side of the square a landmark is read over; inside its own hex. */
 const HALF = 16;
-
-/** The least share of that square a landmark's mote must redraw. */
-const MIN_DISTINCT_SHARE = 0.05;
-
-/**
- * How far the share a mote covers of a logical square may drift between densities.
- *
- * The two pictures are rasterized at different densities, so the edges of a drawn
- * sprite fall on different pixels and the share moves a little; a build that drew
- * at device coordinates instead of logical ones would move it by three quarters.
- */
-const SHARE_TOLERANCE = 0.15;
 
 let h: Harness;
 
@@ -143,7 +125,7 @@ it("draws the whole stage at a raised pixel density, in the same logical units",
   for (const [index, hex] of LANDMARKS.entries()) {
     assertGreaterThan(
       differingShare(bare[index] as PixelRect, await square(h, hex)),
-      MIN_DISTINCT_SHARE,
+      0,
       `the mote on hex (${hex.q}, ${hex.r}) is drawn at that hex's own stage position at a device pixel ratio of ${DPR}, so the complete stage is still fitted at its own aspect ratio`,
     );
   }
@@ -160,22 +142,19 @@ it("draws the whole stage at a raised pixel density, in the same logical units",
     "all four corners of the 1280 x 720 stage fall on the canvas, so the complete stage is on screen at the raised density",
   );
 
-  // The same scene at the density a logical unit is a device pixel at, so what
-  // the two shares differ by is the density and nothing else.
+  // The same scene at the density a logical unit is a device pixel at, so the
+  // reading is taken at both densities and what it can differ by is the density.
   const plain = await createHarness({ cssWidth: STAGE_W, cssHeight: STAGE_H });
   try {
-    const atOne = await shareOfOneMote(plain, ORIGIN);
-    const atTwo = await shareOfOneMote(h, ORIGIN);
     assertGreaterThan(
-      atOne,
-      MIN_DISTINCT_SHARE,
-      "one mote covers a readable share of the square about its hex at a ratio of 1, which is the share the raised density is read against",
+      await shareOfOneMote(plain, ORIGIN),
+      0,
+      "one mote is drawn on the square about its own hex at a ratio of 1, which is the reading the raised density is taken against",
     );
-    assertNear(
-      atTwo,
-      atOne,
-      SHARE_TOLERANCE,
-      `a mote covers the same square of the STAGE at a device pixel ratio of ${DPR} as it does at 1, so the game still draws in logical units and the runtime alone carries the density`,
+    assertGreaterThan(
+      await shareOfOneMote(h, ORIGIN),
+      0,
+      `and on the same square of the STAGE at a device pixel ratio of ${DPR}, so the game still draws in logical units and the runtime alone carries the density`,
     );
   } finally {
     await plain.dispose();

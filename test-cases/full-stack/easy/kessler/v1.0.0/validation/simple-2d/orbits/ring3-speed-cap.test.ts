@@ -14,11 +14,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo } from "../assert";
+import { RING3_SPEED_CAP } from "../constants";
 import { captureReplay, isolate, openHarness, type Harness } from "../harness";
 import { advanceDeg, ringAngle, ringSpeed } from "./rings";
 
 /** The cap of specs/rings.md's ring 3 formula, signed toward -theta. */
-const CAP_DEG_PER_SEC = -30;
+const CAP_DEG_PER_SEC = RING3_SPEED_CAP;
 
 let h: Harness;
 

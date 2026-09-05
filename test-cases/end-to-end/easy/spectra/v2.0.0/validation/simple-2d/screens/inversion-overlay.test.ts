@@ -8,13 +8,13 @@
 // in `[FIELD_TOP, FIELD_BOTTOM]` (`[64, 656]`), `x` in `[FIELD_LEFT, FIELD_RIGHT]`
 // (`[0, 1280]`).
 //
-// WHAT IS MEASURED, AND WHY IT IS A MEAN. "Field-wide" is the word the specification
-// chose, so what is read is the MEAN distance between the field with an inversion
-// running and the same field without one, over every pixel of it. A mean, not a
-// maximum: a mark on one corner would clear any maximum and is not field-wide, while
-// a wash, a tint, a scanline, a border pattern repeated across the field or an
-// inverted palette all move the mean. The review item states the figure: at least `20`
-// of the `441` an RGB cube is across.
+// WHAT IS MEASURED. How many pixels of the play field the inversion repainted, over
+// every pixel of it: the field with an inversion running, held pixel for pixel
+// against the same field without one. A wash, a tint, a scanline, a border pattern
+// repeated across the field and an inverted palette all repaint pixels the plain
+// field does not carry; a build that draws nothing at all repaints none. How BROADLY
+// the mark reads across the field, and what it looks like, are the reviewer's
+// presentation rating.
 //
 // THE FIELD IS EMPTY AND NOTHING ELSE MOVES. `startPosed` clears the four rosters and
 // shuts the three world gates, so the two readings differ by exactly one thing — the
@@ -24,8 +24,7 @@
 //
 // THE CONTROL. `specs/field.md` lets a build's starfield move if it likes, so the
 // field's own frame-to-frame drift is measured first, with no inversion posed between
-// the two readings, and the inversion's mark has to beat it as well as the stated
-// figure.
+// the two readings, and the inversion's mark has to beat it.
 //
 // THE INVERSION IS POSED, NOT TRIGGERED. `setInversion` is what
 // `specs/instrumentation.md` provides, and `inversionActive` is read back off the
@@ -43,18 +42,7 @@ import {
   startPosed,
   type Harness,
 } from "../harness";
-import { PLAY_FIELD, meanDistance } from "./reading";
-
-/**
- * How far apart the two fields must read, as a mean Euclidean RGB distance out of the
- * `441` an RGB cube is across.
- *
- * The figure the review item states. `20` is about a twentieth of the space averaged
- * over the WHOLE field, which a wash, a tint or a repeated pattern all reach and which
- * a mark on one corner cannot — and it is far above the fraction of a unit two
- * readings of one unchanged field differ by.
- */
-const MARK_MIN = 20;
+import { PAINT_MIN, PLAY_FIELD, countMoved } from "./reading";
 
 let h: Harness;
 
@@ -82,7 +70,7 @@ it("marks the whole play field while an inversion runs and not otherwise", async
   await h.advance(1);
   const plain = readRegion(h, PLAY_FIELD);
   captureStill(h, "plain");
-  const drift = meanDistance(plainFirst, plain);
+  const drift = countMoved(plainFirst, plain, PAINT_MIN);
 
   h.debug.setInversion(INVERSION_TIME);
   await h.advance(1);
@@ -97,12 +85,11 @@ it("marks the whole play field while an inversion runs and not otherwise", async
   captureStill(h, "inverted");
 
   assertGreaterThan(
-    meanDistance(plain, marked),
-    Math.max(MARK_MIN, drift),
-    "the mean RGB distance of 441 between the play field with an inversion " +
-      "running and the same field without one, over every pixel of the field — " +
-      "an active inversion carries a FIELD-WIDE mark that is absent otherwise " +
-      "(specs/ui.md); the field moved on its own across one frame by " +
-      `${drift.toFixed(2)}`,
+    countMoved(plain, marked, PAINT_MIN),
+    drift,
+    "pixels of the play field the inversion repainted, over every pixel of the " +
+      "field — an active inversion carries a mark that is absent otherwise " +
+      "(specs/ui.md); the field moved on its own across one frame in " +
+      `${String(drift)} pixels`,
   );
 });
