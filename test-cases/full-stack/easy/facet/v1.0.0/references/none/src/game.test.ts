@@ -10,6 +10,7 @@ import {
   createInitialState,
   loadBoard,
   requestSwap,
+  setScreen,
   startRound,
   tick,
   type FacetState,
@@ -159,21 +160,29 @@ const NEAR_RUN = quietRowsWith({
   "4,4": "J0",
 });
 
+/**
+ * A board posed on a round in play, which is where a move can be made: a swap
+ * asked for off the `playing` screen is not a request at all, and `loadBoard`
+ * writes the board and nothing else.
+ */
+const play = (rows: readonly string[], seed?: number): FacetState =>
+  setScreen(loadBoard(createInitialState(seed), rows), "playing");
+
 describe("reportFor", () => {
   it("reports nothing when no chain step ran", () => {
-    const state = loadBoard(createInitialState(), NEAR_RUN);
+    const state = play(NEAR_RUN);
     expect(reportFor(state, state)).toBeNull();
   });
 
   it("reports nothing for a swap still travelling between its cells", () => {
-    const before = loadBoard(createInitialState(), NEAR_RUN);
+    const before = play(NEAR_RUN);
     const { swapped } = played(before, { col: 4, row: 5 }, { col: 4, row: 4 });
     expect(swapped.phase).toBe("swapping");
     expect(reportFor(before, swapped)).toBeNull();
   });
 
   it("reports the cells step 1 of a swap's chain cleared", () => {
-    const before = loadBoard(createInitialState(), NEAR_RUN);
+    const before = play(NEAR_RUN);
     const { swapped, resolved } = played(
       before,
       { col: 4, row: 5 },
@@ -200,7 +209,7 @@ describe("reportFor", () => {
       "4,4": "J0",
       "2,5": "J3",
     });
-    const before = loadBoard(createInitialState(), rows);
+    const before = play(rows);
     const { swapped, resolved } = played(
       before,
       { col: 4, row: 5 },
@@ -225,7 +234,7 @@ describe("reportFor", () => {
       "4,5": "R0",
       "4,4": "J0",
     });
-    const before = loadBoard(createInitialState(), rows);
+    const before = play(rows);
     const { swapped, resolved } = played(
       before,
       { col: 4, row: 5 },
@@ -236,7 +245,7 @@ describe("reportFor", () => {
 
   it("reads step 1 of a prism chain off the prism's own seed", () => {
     const rows = quietRowsWith({ "3,3": "X0", "4,3": "R0" });
-    const before = loadBoard(createInitialState(), rows);
+    const before = play(rows);
     const { swapped, resolved } = played(
       before,
       { col: 3, row: 3 },
@@ -255,7 +264,7 @@ describe("reportFor", () => {
 
   it("reads a step the cadence set off off the board as it stands", () => {
     const before = {
-      ...loadBoard(createInitialState(), NEAR_RUN),
+      ...play(NEAR_RUN),
       phase: "resolving" as const,
       chainStep: 1,
       stepTimer: 0,
@@ -341,7 +350,7 @@ describe("the game the runtime drives", () => {
   it("plays the cue for each event the frame raised, once", () => {
     const { game } = started();
     const bench = harness();
-    const posed = loadBoard(createInitialState(), NEAR_RUN);
+    const posed = play(NEAR_RUN);
     const [x, y] = cellCenter({ col: 4, row: 5 });
     const [bx, by] = cellCenter({ col: 4, row: 4 });
     bench.feed([
@@ -360,7 +369,7 @@ describe("the game the runtime drives", () => {
   it("sounds the clear cue at the rung step 1 stands on", () => {
     const { game } = started();
     const bench = harness();
-    const posed = loadBoard(createInitialState(), NEAR_RUN);
+    const posed = play(NEAR_RUN);
     const [x, y] = cellCenter({ col: 4, row: 5 });
     const [bx, by] = cellCenter({ col: 4, row: 4 });
     bench.feed([
@@ -395,7 +404,7 @@ describe("the game the runtime drives", () => {
       scratch: counting,
     });
     const bench = harness(assets);
-    const posed = loadBoard(createInitialState(), NEAR_RUN);
+    const posed = play(NEAR_RUN);
     game.update(posed, bench.api, 1 / 60);
     const swapped = requestSwap(posed, {
       a: { col: 4, row: 5 },
@@ -411,7 +420,10 @@ describe("the game the runtime drives", () => {
   it("plays no cue for a pose, only for a frame", () => {
     const { game, debug } = started();
     const bench = harness();
-    const posed = debug.loadBoard(createInitialState(), NEAR_RUN);
+    const posed = debug.setScreen(
+      debug.loadBoard(createInitialState(), NEAR_RUN),
+      "playing",
+    );
     const swapped = debug.requestSwap(posed, 4, 5, 4, 4);
     expect(swapped.phase).toBe("swapping");
     expect(bench.played).toEqual([]);
@@ -422,7 +434,7 @@ describe("the game the runtime drives", () => {
   });
 
   it("reaches the same board from one long frame as from sixty short ones", () => {
-    const posed = loadBoard(createInitialState(1234), NEAR_RUN);
+    const posed = play(NEAR_RUN, 1234);
     const swapped = requestSwap(posed, {
       a: { col: 4, row: 5 },
       b: { col: 4, row: 4 },
@@ -486,7 +498,7 @@ describe("the game the runtime drives", () => {
 
   it("plays a move only on the release, and only with an offer standing", () => {
     const { game } = started();
-    const posed = loadBoard(createInitialState(), NEAR_RUN);
+    const posed = play(NEAR_RUN);
     const [x, y] = cellCenter({ col: 4, row: 5 });
     const [bx, by] = cellCenter({ col: 4, row: 4 });
 
@@ -508,7 +520,7 @@ describe("the game the runtime drives", () => {
   it("carries a hold back where it started and plays nothing", () => {
     const { game } = started();
     const bench = harness();
-    const posed = loadBoard(createInitialState(), NEAR_RUN);
+    const posed = play(NEAR_RUN);
     const [x, y] = cellCenter({ col: 4, row: 5 });
     const [bx, by] = cellCenter({ col: 4, row: 4 });
     bench.feed([
@@ -525,7 +537,7 @@ describe("the game the runtime drives", () => {
   it("acts on the primary pointer alone", () => {
     const { game } = started();
     const bench = harness();
-    const posed = loadBoard(createInitialState(), NEAR_RUN);
+    const posed = play(NEAR_RUN);
     const [x, y] = cellCenter({ col: 4, row: 5 });
     bench.feed([sample("down", x, y, "touch", false)]);
     expect(game.update(posed, bench.api, 1 / 60).selection).toBeNull();
@@ -534,7 +546,7 @@ describe("the game the runtime drives", () => {
   it("runs an absurdly long frame to its end rather than hanging on it", () => {
     const { game } = started();
     const bench = harness();
-    const posed = loadBoard(createInitialState(), NEAR_RUN);
+    const posed = play(NEAR_RUN);
     const swapped = requestSwap(posed, {
       a: { col: 4, row: 5 },
       b: { col: 4, row: 4 },
