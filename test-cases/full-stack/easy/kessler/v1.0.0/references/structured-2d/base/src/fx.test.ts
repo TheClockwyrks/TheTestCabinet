@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // The effects layer through the engine: a destruction spawns the committed
 // burst system into the layer, the layer composites it frame by frame on the
 // game's tick clock, and a finished play leaves the layer empty. The stub

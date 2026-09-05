@@ -20,6 +20,12 @@
 //     no page to resolve against, so {@link loadTestSprites} reads the frames off
 //     the project's own `assets/` tree.
 
+/// <reference types="node" />
+// This file is the Node half of the build: it reads the seeded art off disk and
+// draws through a Node canvas. The project compiles with `"types": []`, so the
+// Node type definitions it needs are named here rather than picked up by
+// accident from a dependency that happens to reference them.
+
 import { createCanvas, loadImage, type Canvas } from "@napi-rs/canvas";
 import { fileURLToPath } from "node:url";
 import { FOLDERS, type Sprites } from "./assets";

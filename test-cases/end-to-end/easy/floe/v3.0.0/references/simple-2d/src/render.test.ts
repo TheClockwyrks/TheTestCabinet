@@ -1,3 +1,8 @@
+/// <reference types="node" />
+// This suite runs in Node and reads the disk. The project's tsconfig sets
+// `types: []` to keep the game's own sources browser-only, so the suites that
+// need Node's types name them here instead.
+
 // Floe — what the render puts on the stage, read off real pixels and real art.
 //
 // These checks draw onto an `@napi-rs/canvas` canvas at the logical stage size, so

@@ -115,7 +115,6 @@ function resolveBullets(
     if (state.saucer !== null && prev.saucer !== null) {
       const t = meets(from, prev.saucer, BULLET_R + SAUCER_R);
       if (t !== null && t < best) {
-        best = t;
         target = { kind: "saucer" };
       }
     }

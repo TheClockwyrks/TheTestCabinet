@@ -130,12 +130,16 @@ async function fetchBytes(url: string): Promise<ArrayBuffer> {
  * ships all eight.
  */
 export function decodeModel(name: ModelName, bytes: ArrayBuffer): PartMesh {
-  let mesh: PartMesh;
+  let mesh: PartMesh | null = null;
+  let unreadable: string | null = null;
   try {
     mesh = parseGlb(bytes);
   } catch (cause) {
+    unreadable = String(cause);
+  }
+  if (mesh === null) {
     throw new Error(
-      `gantry: ${name}.glb is not a readable glb (${String(cause)})`,
+      `gantry: ${name}.glb is not a readable glb (${unreadable})`,
     );
   }
   const vertices = mesh.positions.length;

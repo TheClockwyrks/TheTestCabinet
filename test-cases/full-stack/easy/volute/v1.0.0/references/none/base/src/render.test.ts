@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // What the hall actually draws, checked against a real 2D context.
 //
 // `@napi-rs/canvas` supplies the context, so these run in Node with no browser:

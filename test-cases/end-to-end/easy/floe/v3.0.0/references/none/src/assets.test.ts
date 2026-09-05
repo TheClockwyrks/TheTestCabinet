@@ -1,3 +1,8 @@
+/// <reference types="node" />
+// This suite runs in Node and reads the disk. The project's tsconfig sets
+// `types: []` to keep the game's own sources browser-only, so the suites that
+// need Node's types name them here instead.
+
 // The seeded sprite art: the seven folders, their frame counts, the frame layout
 // each set is read by, and the sub-rect the two long rafts are drawn from.
 //

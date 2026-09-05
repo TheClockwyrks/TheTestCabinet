@@ -18,16 +18,16 @@
     "three": "~0.182.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9",
+    "@eslint/js": "^10",
     "@napi-rs/canvas": "^1",
     "@types/three": "~0.182.0",
-    "@vitest/coverage-istanbul": "^3",
-    "eslint": "^9",
-    "playwright": "^1.61.0",
+    "@vitest/coverage-istanbul": "^5",
+    "eslint": "^10",
+    "playwright": "^1.63.0",
     "prettier": "^3",
-    "typescript": "^5",
+    "typescript": "^6",
     "typescript-eslint": "^8",
-    "vite": "^6",
-    "vitest": "^3"
+    "vite": "^8",
+    "vitest": "^5"
   }
 }

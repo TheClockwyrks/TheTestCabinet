@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // The pure pieces the rest of the build rests on: the channel's arc-length
 // measure, the seeded generator, the two numeric helpers, and the produced files
 // on disk.

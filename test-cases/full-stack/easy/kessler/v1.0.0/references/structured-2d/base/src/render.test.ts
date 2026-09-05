@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // The picture, sprites or no sprites: every screen draws through a real 2D
 // context from the code fallbacks, the ball's spin frame runs on simulation
 // time (specs/assets.md "The ball sheet"), and the committed particle

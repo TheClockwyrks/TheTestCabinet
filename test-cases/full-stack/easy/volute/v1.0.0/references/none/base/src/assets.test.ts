@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // The produced set as the bundler resolves it: that every file the game names is
 // there, at the size `specs/assets.md` fixes, and that every URL is page-relative.
 

@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // What this build asks the engine's loader for, and what it does with what
 // comes back (specs/assets.md, ASSET-LAYOUT.md).
 //

@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // Volute under the engine, in process — the harness the rest of the tests drive
 // the game through, and its own checks.
 //

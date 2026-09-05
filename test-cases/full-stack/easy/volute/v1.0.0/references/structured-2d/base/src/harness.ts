@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // Volute — the shared test harness every check in this build runs on.
 //
 // Every check in this build runs the REAL engine, in process, over an
