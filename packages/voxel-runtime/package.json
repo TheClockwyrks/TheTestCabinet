@@ -29,12 +29,12 @@
     "@clockwyrks/asset-contract": "*"
   },
   "peerDependencies": {
-    "three": "~0.182.0"
+    "three": "~0.185.0"
   },
   "devDependencies": {
-    "@types/three": "~0.182.0",
-    "three": "~0.182.0",
-    "typescript": "^5",
-    "vitest": "^3"
+    "@types/three": "~0.185.0",
+    "three": "~0.185.0",
+    "typescript": "^6",
+    "vitest": "^5"
   }
 }

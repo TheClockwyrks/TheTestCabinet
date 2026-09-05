@@ -9,7 +9,7 @@
     "packages/*"
   ],
   "overrides": {
-    "three": "~0.182.0"
+    "three": "~0.185.0"
   },
   "scripts": {
     "build": "npm run build --workspaces --if-present",

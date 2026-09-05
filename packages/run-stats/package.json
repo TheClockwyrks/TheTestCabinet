@@ -33,7 +33,7 @@
     "@clockwyrks/run-record": "*"
   },
   "devDependencies": {
-    "typescript": "^5",
-    "vitest": "^3"
+    "typescript": "^6",
+    "vitest": "^5"
   }
 }

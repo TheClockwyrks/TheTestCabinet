@@ -17,9 +17,9 @@
     "test": "vitest run --passWithNoTests"
   },
   "devDependencies": {
-    "@types/node": "^25.9.3",
-    "playwright": "1.61.0",
-    "typescript": "^5",
-    "vitest": "^3"
+    "@types/node": "^26",
+    "playwright": "1.63.0",
+    "typescript": "^6",
+    "vitest": "^5"
   }
 }

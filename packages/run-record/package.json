@@ -84,7 +84,7 @@
     "typecheck": "tsc -b"
   },
   "devDependencies": {
-    "typescript": "^5"
+    "typescript": "^6"
   },
   "dependencies": {
     "@clockwyrks/asset-contract": "*"
