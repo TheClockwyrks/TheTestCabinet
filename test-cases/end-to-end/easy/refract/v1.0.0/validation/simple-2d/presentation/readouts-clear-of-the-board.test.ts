@@ -99,13 +99,18 @@ function textBoundsFrom(from: number): TextBounds[] {
     if (typeof text !== "string" || typeof ax !== "number") return;
     if (typeof ay !== "number") return;
 
-    // The anchor in logical units, through the transform held at the call.
-    const { transform: m, width, textAlign } = call.text;
-    const deviceX = m.a * ax + m.c * ay + m.e;
-    const deviceY = m.b * ax + m.d * ay + m.f;
+    // The anchor in logical units, through the transform held at the call. The
+    // harness records it as the six numbers `[a, b, c, d, e, f]` a canvas
+    // reports its matrix as, so the reading is the same arithmetic under names
+    // taken off the tuple.
+    const { transform, width, textAlign } = call.text;
+    if (transform === undefined) return;
+    const [ma, mb, mc, md, me, mf] = transform;
+    const deviceX = ma * ax + mc * ay + me;
+    const deviceY = mb * ax + md * ay + mf;
     const x = (deviceX - view.offsetX) / view.scale;
     const y = (deviceY - view.offsetY) / view.scale;
-    const w = (width * Math.hypot(m.a, m.b)) / view.scale;
+    const w = (width * Math.hypot(ma, mb)) / view.scale;
     const before =
       textAlign === "center"
         ? w / 2
@@ -115,7 +120,7 @@ function textBoundsFrom(from: number): TextBounds[] {
 
     // A generous em box about the baseline, under the vertical scale the
     // transform applies.
-    const size = (fontPx(font) * Math.hypot(m.c, m.d)) / view.scale;
+    const size = (fontPx(font) * Math.hypot(mc, md)) / view.scale;
     let top: number;
     let bottom: number;
     switch (baseline) {

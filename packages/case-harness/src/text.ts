@@ -73,6 +73,16 @@ export interface TextDraw {
    */
   left: number;
   right: number;
+  /**
+   * The alignment in force at the draw — at the run's FIRST draw, for a merged
+   * run — which is what places the glyphs about the anchor.
+   *
+   * Carried so {@link reanchoredTextRuns} can put a merged run's anchor back
+   * under it. Optional because a `TextDraw` a case builds by hand names no
+   * alignment, and every reading here treats an absent one as
+   * {@link DEFAULT_TEXT_ALIGN}.
+   */
+  align?: string;
 }
 
 /**
@@ -114,11 +124,14 @@ export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
     const [text] = args;
     const at = numbers(args.slice(1), 2);
     if (typeof text !== "string" || at === null) continue;
-    const anchor = apply(current, at[0], at[1]);
+    // The transform the recorder took at the call, when it took one, and
+    // otherwise the one this walk has carried to here. See {@link TextGeometry}.
+    const placed = call.text?.transform ?? current;
+    const anchor = apply(placed, at[0], at[1]);
     // The run's width under the same horizontal scale the anchor took, and the
     // alignment that places it about that anchor. A call the measurement pass
     // never reached carries no width, and stands as a point.
-    const width = (call.text?.width ?? 0) * Math.hypot(current[0], current[1]);
+    const width = (call.text?.width ?? 0) * Math.hypot(placed[0], placed[1]);
     const align = call.text?.textAlign ?? DEFAULT_TEXT_ALIGN;
     const before =
       align === "center"
@@ -131,6 +144,7 @@ export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
       ...anchor,
       left: anchor.x - before,
       right: anchor.x - before + width,
+      align,
     });
   }
   return draws;
@@ -213,4 +227,40 @@ export function drawnTextRuns(calls: readonly DrawCall[]): TextDraw[] {
 /** Every logical run of text the frame spelled, as the strings it spells. */
 export function drawnTextLines(calls: readonly DrawCall[]): string[] {
   return drawnTextRuns(calls).map((run) => run.text);
+}
+
+/**
+ * The same runs, RE-ANCHORED about the whole of what each one spells.
+ *
+ * A SECOND READING OF ONE MERGE, NOT A BETTER ONE. Both this and
+ * {@link drawnTextRuns} coalesce the same draws into the same runs with the same
+ * extents; they answer differently only about where a merged run's `x` sits, and
+ * the two answers are genuinely different questions:
+ *
+ *   - {@link drawnTextRuns} keeps the anchor the build's FIRST draw named. That is
+ *     what a check comparing a run against the coordinate the build was told to
+ *     draw at wants.
+ *   - This puts the anchor back under the MERGED extent, under that first draw's
+ *     alignment — so a centred heading drawn a glyph per `fillText` answers the
+ *     centre of the heading rather than the centre of its first glyph. That is
+ *     what a check reading a run's placement on the screen wants.
+ *
+ * They agree exactly on a run of ONE draw, and on any run drawn `start`-aligned,
+ * which is why the disagreement went unnoticed while these lived in separate
+ * files. Folding them would have silently moved every centred and right-aligned
+ * merged run in one vocabulary's suites, so both ship — see the README's
+ * collision table — and a case binds the one it has always meant.
+ */
+export function reanchoredTextRuns(calls: readonly DrawCall[]): TextDraw[] {
+  return drawnTextRuns(calls).map((run) => {
+    const width = run.right - run.left;
+    const align = run.align ?? DEFAULT_TEXT_ALIGN;
+    const before =
+      align === "center"
+        ? width / 2
+        : align === "right" || align === "end"
+          ? width
+          : 0;
+    return { ...run, x: run.left + before };
+  });
 }

@@ -16,18 +16,26 @@
 // second the value it measured. Keep new helpers to that shape: one `Expected:`
 // line, one `Actual:` line, no file paths and no prose around them.
 //
-// WHY THIS IS A COPY AND `validation/none/assert.ts` IS NOT. The vocabulary is
-// the shared validator harness's (`@clockwyrks/case-harness`), and the
-// engineless project re-exports it — but that package is staged only into an
-// engineless project, so an ENGINE project cannot reach it. Orrery's rule is that
-// a suite deciding one review item is the SAME TEXT under all three engines, so
-// `../assert` has to resolve to the same names, the same signatures and the same
-// message shape whichever project a suite is sitting in. This file is that
-// vocabulary written out: byte-identical in `validation/simple-2d/` and
-// `validation/structured-2d/`, and the same 26 names the engineless project's
-// one-line re-export answers to. A message thrown here is the message the runner
-// already knows how to render, which is the whole point of not inventing a
-// second one.
+// WHY THIS IS STILL A COPY, AND WHY IT SHOULD NOT BE. The vocabulary is the
+// shared validator harness's (`@clockwyrks/case-harness`), which the engineless
+// project re-exports in one line. An earlier note here claimed that package is
+// staged only into an engineless project so an ENGINE project cannot reach it.
+// THAT IS FALSE, and it is why these ~290 lines exist: `stage_case_harness` is
+// called unconditionally from `stage_project` in
+// `crates/core/src/vitest_validator.rs`, so the package lands beside the case's
+// own files in EVERY engine's project, and `./case-harness/assert` resolves here
+// exactly as it does under `none`. Gantry's two 3D projects already re-export it
+// that way, and Refract's two 2D projects now do too.
+//
+// Orrery's own rule is unaffected and is the reason the file is byte-identical
+// across its projects: a suite deciding one review item is the SAME TEXT under
+// all three engines, so `../assert` has to resolve to the same names, the same
+// signatures and the same message shape whichever project a suite sits in. A
+// one-line re-export in all three satisfies that rule better than three copies
+// do. This file collapses to that when Orrery is migrated onto the shared engine
+// harness; it is left standing here only because nothing else about Orrery has
+// moved yet, and a re-export beside a hand-copied harness would be half a
+// migration.
 //
 // Every helper takes an optional trailing `context`: what a check that runs the
 // same comparison many times over says to tell one failure from another

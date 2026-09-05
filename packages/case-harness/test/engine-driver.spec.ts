@@ -1,0 +1,183 @@
+// The three driver strategies, and the state model each of them answers.
+//
+// A case does not pick one of these; its engine's state model does. What these
+// checks pin is that each strategy really does what its name says — and, for the
+// apply-threaded one, that a pose reaches `apply` and a reading does not, which
+// is the distinction nothing about a pure surface makes at run time.
+
+import { expect, it } from "vitest";
+import {
+  applyDriver,
+  identityDriver,
+  promiseDriver,
+  type ApplyEngine,
+  type PureDriver,
+} from "../src/engine/driver";
+import { absentSurface } from "../src/engine/surface";
+
+/* ---- identity -------------------------------------------------------------- */
+
+it("the identity driver is the surface itself", () => {
+  const raw = { reset: () => undefined, version: 2 };
+  expect(identityDriver(raw)).toBe(raw);
+});
+
+/* ---- promise-wrap ---------------------------------------------------------- */
+
+interface Imperative {
+  setScreen(name: string): void;
+  snapshot(): { screen: string };
+  version: number;
+}
+
+it("the promise driver answers a promise for every call, and the raw value for the rest", async () => {
+  let screen = "title";
+  const raw: Imperative = {
+    setScreen: (name) => {
+      screen = name;
+    },
+    snapshot: () => ({ screen }),
+    version: 3,
+  };
+  const driver = promiseDriver<Imperative>(raw);
+  expect(driver.version).toBe(3);
+
+  const posed = driver.setScreen("select");
+  expect(posed).toBeInstanceOf(Promise);
+  await posed;
+  await expect(driver.snapshot()).resolves.toEqual({ screen: "select" });
+});
+
+it("the promise driver calls the member on the raw surface, not on the proxy", async () => {
+  const raw = {
+    marker: "raw" as string,
+    read(this: { marker: string }): string {
+      return this.marker;
+    },
+  };
+  await expect(promiseDriver<typeof raw>(raw).read()).resolves.toBe("raw");
+});
+
+/* ---- apply-threaded -------------------------------------------------------- */
+
+interface State {
+  screen: string;
+  seed: number;
+}
+
+interface PureSurface {
+  setScreen(state: Readonly<State>, name: string): State;
+  reset(state: Readonly<State>, seed: number): State;
+  snapshot(state: Readonly<State>): { screen: string; seed: number };
+  version: number;
+}
+
+function engineOver(initial: State): ApplyEngine<Readonly<State>, State> & {
+  applied: number;
+} {
+  let held = initial;
+  let applied = 0;
+  return {
+    get state() {
+      return held;
+    },
+    get applied() {
+      return applied;
+    },
+    apply(transition) {
+      applied += 1;
+      held = transition(held);
+      return held;
+    },
+  };
+}
+
+const RAW: PureSurface = {
+  setScreen: (state, name) => ({ ...state, screen: name }),
+  reset: (state, seed) => ({ ...state, seed }),
+  snapshot: (state) => ({ screen: state.screen, seed: state.seed }),
+  version: 4,
+};
+
+type Driver = PureDriver<Readonly<State>, State, PureSurface>;
+
+it("a reading is handed the state and answers what the surface answered", () => {
+  const engine = engineOver({ screen: "title", seed: 1 });
+  const driver = applyDriver<Readonly<State>, State, Driver>(engine, RAW, {
+    readings: ["snapshot"],
+  });
+  expect(driver.snapshot()).toEqual({ screen: "title", seed: 1 });
+  expect(engine.applied).toBe(0);
+});
+
+it("a pose runs through apply, so the next frame sees what it returned", () => {
+  const engine = engineOver({ screen: "title", seed: 1 });
+  const driver = applyDriver<Readonly<State>, State, Driver>(engine, RAW, {
+    readings: ["snapshot"],
+  });
+  driver.setScreen("select");
+  driver.reset(9);
+  expect(engine.applied).toBe(2);
+  expect(driver.snapshot()).toEqual({ screen: "select", seed: 9 });
+});
+
+it("a pose answers nothing, because the runtime holds what it returned", () => {
+  const engine = engineOver({ screen: "title", seed: 1 });
+  const driver = applyDriver<Readonly<State>, State, Driver>(engine, RAW, {
+    readings: ["snapshot"],
+  });
+  expect(driver.setScreen("select")).toBeUndefined();
+});
+
+it("a projection narrows the named reading and leaves the others alone", () => {
+  const engine = engineOver({ screen: "title", seed: 1 });
+  const seen: string[] = [];
+  const driver = applyDriver<Readonly<State>, State, Driver>(engine, RAW, {
+    readings: ["snapshot"],
+    project: (op, value) => {
+      seen.push(op);
+      return op === "snapshot"
+        ? { ...(value as object), narrowed: true }
+        : value;
+    },
+  });
+  expect(driver.snapshot()).toEqual({
+    screen: "title",
+    seed: 1,
+    narrowed: true,
+  });
+  expect(seen).toEqual(["snapshot"]);
+});
+
+it("a member that is not a function comes back as it is, so typeof can probe it", () => {
+  const engine = engineOver({ screen: "title", seed: 1 });
+  const partial = { snapshot: RAW.snapshot, version: 4 };
+  const driver = applyDriver<Readonly<State>, State, Driver>(engine, partial, {
+    readings: ["snapshot"],
+  });
+  expect(driver.version).toBe(4);
+  // The operation the build left out: `undefined`, not a stand-in that would
+  // read as present.
+  expect(typeof driver.setScreen).toBe("undefined");
+});
+
+it("the machinery's own probes are answered without touching the surface", () => {
+  const engine = engineOver({ screen: "title", seed: 1 });
+  const driver = applyDriver<Readonly<State>, State, Record<string, unknown>>(
+    engine,
+    RAW,
+    { readings: ["snapshot"] },
+  );
+  expect(driver.then).toBeUndefined();
+  expect(driver.constructor).toBeUndefined();
+});
+
+it("every driver is LAZY, so a missing surface fails the check and not the hook", () => {
+  const engine = engineOver({ screen: "title", seed: 1 });
+  const absent = absentSurface<PureSurface>("the surface", "none returned");
+  // Building the driver must not touch the surface at all.
+  const driver = applyDriver<Readonly<State>, State, Driver>(engine, absent, {
+    readings: ["snapshot"],
+  });
+  expect(() => driver.snapshot).toThrow(/none returned/);
+});

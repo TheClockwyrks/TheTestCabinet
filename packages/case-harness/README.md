@@ -1,23 +1,54 @@
 # `@clockwyrks/case-harness`
 
-The shared engineless (`none`) validation harness a test case's validator project
-is built on: the browser lifecycle, the driven-frame loop, the injected
-draw-command recorder and audio probe, and the readings a check makes over them.
+The shared validation harness a test case's validator project is built on, on
+**every engine**: the frame loop a check drives, the draw-command recorder, the
+debug surface and the stand-in for a missing one, and the readings a check makes
+over what a frame left behind.
 
 ## What this is
 
-Every case that supports the `none` engine validates a produced build the same
-way — serve the built site, hold one Chromium, drive the build one frame at a
-time through the debug surface `specs/instrumentation.md` told it to install, and
-read what it drew. That machinery is the case's _harness_, and it used to be
-copied whole into each case's `validation/none/` directory. This package is the
-one copy.
+A case is validated the same way whichever engine it is built on: pose the game
+through the debug surface `specs/instrumentation.md` told the build to install,
+drive it one frame at a time, and read what it drew. That machinery is the case's
+_harness_, and it used to be copied whole into each case's `validation/<engine>/`
+directory — once per engine, per case. This package is the one copy.
+
+It has two halves, because there are two genuinely different ways to reach a
+build:
+
+- **Engineless (`none`) — the top level of `src/`.** With no engine there is
+  nothing to import: the run seeds no `src/` at all, so the build wrote its own
+  frame loop, its own canvas fit, its own keyboard, its own audio and its own
+  debug surface, and the only place all of that exists is a page that has loaded
+  the bundle. So the harness serves the built site, holds one Chromium, and
+  drives the build across a crossing.
+- **Engine-backed — `src/engine/`.** Under an engine a check runs in the SAME
+  PROCESS as the build: it imports the engine and the build's own modules,
+  constructs an engine over a canvas the harness owns and a clock the check
+  chose, and steps the game with `engine.advance`. Nothing drives a browser,
+  nothing polls, and no wall-clock time passes.
 
 What stays with the case is what is genuinely the case's: its handle
-(`window.__refract`), the operations its specification requires, its snapshot and
-debug-surface types, its stage size and tick rate, and every helper that reads
-its own game. Those arrive here as **types by generics** and **values by config** —
-one `CaseConfig` object, threaded through one factory.
+(`window.__refract`) or its engine's construction, the operations its
+specification requires, its snapshot and debug-surface types, its stage size and
+tick rate, and every helper that reads its own game. Those arrive here as
+**types by generics** and **values by config** — one config object, threaded
+through one factory, per half.
+
+### The engine half names no engine, and cannot
+
+There are four engines — `simple-2d`, `structured-2d`, `simple-3d`,
+`structured-3d` — and a case's validator project has exactly one of them on its
+import graph. If this package named one, every case on the other three would
+carry it into its project for nothing, and a fifth engine would mean editing this
+package to add it.
+
+So the engine half adds a third rule to the two above: **the engine arrives as
+values too.** `createEngine`, the clock, the game definition, the background, the
+layout — the case closes over all of it and hands it to the kit as functions.
+What this package knows about an engine is the structural contract in
+`src/engine/contract.ts`: the members all four engines carry, member for member.
+A fifth engine needs no change here at all.
 
 ## How it reaches a case
 
@@ -44,11 +75,11 @@ tree, and there is none.
   `packages` key would vendor the validators into the run repo and hand the model
   the tests.
 
-## How a case wires it up
+## How an ENGINELESS case wires it up
 
-Four files in a case's `validation/<engine>/` directory, and nothing else
-changes — every suite goes on importing `../harness` and `../assert`, which
-become thin re-exports.
+Four files in a case's `validation/none/` directory, and nothing else changes —
+every suite goes on importing `../harness` and `../assert`, which become thin
+re-exports.
 
 ```ts
 // harness.ts — the kit, plus everything that is genuinely this case's
@@ -118,6 +149,141 @@ silent or total, and neither is caught by a compiler.
   never from a file URL. Derived here it would name the staged validator project,
   find no `dist/`, and throw — and a `globalSetup` that throws takes down the
   whole project, leaving every point the run's validators decide undecided.
+
+## How an ENGINE-BACKED case wires it up
+
+Three files in a case's `validation/<engine>/` directory — there is no
+`globalSetup.ts` and no `setup.ts`, because an engine project stands nothing up
+and has nothing to give back. Every suite goes on importing `../harness` and
+`../assert` exactly as it did.
+
+```ts
+// harness.ts — the kit, plus everything that is genuinely this case's
+import {
+  createEngineCaseHarness,
+  identityDriver,
+  type EngineHarness,
+} from "./case-harness/engine/index";
+import { makeReplayCapture } from "./case-harness/engine/2d";
+
+const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
+
+const kit = createEngineCaseHarness<
+  RefractSnapshot,
+  RefractDriver,
+  RefractEngine,
+  WorldModel
+>({
+  slug: "refract",
+  projectRoot: PROJECT_ROOT,
+  stage: { width: STAGE_W, height: STAGE_H },
+  tickHz: TICK_HZ,
+  surfaceRequirement: SURFACE_REQUIREMENT,
+  recorder: { measureText: true },
+  defaultClock: () => new ConstantClock(TICK_MS),
+  createEngine: ({ canvas, clock, surface }) =>
+    createEngine<RefractSurface>({
+      canvas,
+      width: STAGE_W,
+      height: STAGE_H,
+      game,
+      background: BACKGROUND,
+      layout: LAYOUT,
+      clock,
+      surface,
+    }),
+  driver: (_engine, raw) => identityDriver(raw as RefractSurface),
+  snapshot: (debug) => projectCells(debug.snapshot()),
+  toLogical: (engine, x, y) => engine.world.camera.worldToLogical({ x, y }),
+  pointerPrecision: "device-pixel",
+  extend: (_base, engine, initialized) => ({
+    get world() {
+      return engine.world;
+    },
+    get state() {
+      return engine.world.state;
+    },
+    instance: initialized as GameInstance<RefractSurface>,
+  }),
+});
+
+export const createHarness = kit.createHarness;
+export const captureStill = kit.captureStill;
+export const captureReplay = makeReplayCapture("refract", PROJECT_ROOT);
+export type Harness = EngineHarness<
+  RefractSnapshot,
+  RefractDriver,
+  RefractEngine
+> &
+  WorldModel;
+```
+
+```ts
+// assert.ts
+export * from "./case-harness/assert";
+```
+
+```ts
+// vitest.config.ts
+import { defineEngineValidationConfig } from "./case-harness/engine/vitest-config";
+export default defineEngineValidationConfig({
+  root: new URL("..", import.meta.url).pathname,
+});
+```
+
+### The three barrels, and what a case may not drag in
+
+| Specifier                     | What is in it                                                                                                                                                                                       |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `./case-harness/engine/index` | Everything true of all four engines: the contract, the key and pointer events, the surface read and its stand-in, the three drivers, the canvas and its recorder, the evidence writer, and the kit. |
+| `./case-harness/engine/2d`    | The 2D-only readings: pixels, colours and placed text over the canvas, and the replay stack that thins and re-tables a 2D engine's draw-op recording.                                               |
+| `./case-harness/engine/3d`    | The 3D-only pieces: the WebGL2 stub a `THREE.WebGLRenderer` stands up over, and the `self` its disposal path reaches for.                                                                           |
+
+**A 3D case must not drag in the 2D replay stack, and a 2D case must not drag in
+the WebGL stub.** That is not tidiness. A 3D engine's `stopRecording` answers a
+PROMISE of VP9 video and its contract declares no `DrawOp`, `DrawState`,
+`PathSegment` or `CapturedImage` at all, so the 2D replay stack has nothing to
+operate on there; a 3D case captures stills only, through the neutral writers,
+and says so where its `captureStill` is declared.
+
+The line falls in one perhaps-surprising place: **the canvas and its recorder are
+neutral**, not 2D-only. All four engines draw through a 2D context — the two 3D
+ones over a `@napi-rs/canvas` SCREEN layer beside their WebGL stub, which is
+where their HUD is really drawn and what their stills are encoded from. A STILL
+is neutral for the same reason. The REPLAY is what is 2D-only, which is why it is
+bound by `engine/2d`'s `makeReplayCapture` rather than carried on the kit.
+
+`./case-harness/index` — the ENGINELESS barrel — must not be imported by an
+engine project at all: it re-exports the Chromium half, and an engine validator
+project has no Playwright in its tree. An engine case names the modules it wants
+(`./case-harness/assert`, `./case-harness/color`, `./case-harness/text`).
+
+### Why `engine/vitest-config` is not in the barrel either
+
+Same rule as `vitest-config` and `global-setup` one level up, and stated again in
+its own file rather than inherited: it is loaded by vite's own config path before
+the test runtime exists, and it is the file whose failure mode is "the project
+would not load at all". Reaching it through `engine/index` would drag the kit,
+`@napi-rs/canvas` and the whole vite graph into every worker that imports
+anything, for one function no suite ever calls.
+
+### The three driver strategies
+
+A case does not choose one of these. Its engine's state model does.
+
+| Strategy         | The state model that forces it                                                                                                                                                  | What a check holds                                                                                                                                                          |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `identityDriver` | A structured engine: `Engine<D>` with `instance`, `world`, `renderer`. Its surface is already imperative.                                                                       | The object the build returned, untouched.                                                                                                                                   |
+| `promiseDriver`  | The same imperative surface, where the case shares one suite with an engine whose driver must be asynchronous.                                                                  | Every member answering a promise — one microtask, against two copies of every check.                                                                                        |
+| `applyDriver`    | A simple engine: `Engine<S, D>` holds the state BY VALUE, so the surface is PURE — a pose is `(state, …args) => State`, a reading is `(state) => R`, and neither has the state. | A reading handed `engine.state`; a pose run through `engine.apply`. Needs the case's `READINGS` list, because nothing about a pure surface tells the two apart at run time. |
+
+### The one root that must come from the case
+
+`EngineCaseConfig.projectRoot` addresses a produced output, and this package is
+staged one directory DEEPER than the case's files — so a root derived here would
+address every replay and still one directory too far down, silently, because both
+writers are required not to raise. It is a required field, and a root the running
+suite is not inside throws rather than misplacing a file where nothing will look.
 
 ## What a case reaches for past the driven frame
 
@@ -225,12 +391,13 @@ given is not one TypeScript can infer from the calls alone, so a case names it:
 
 ## Names that collided, and what each case binds
 
-Four copies of this machinery drifted for as long as they existed, and the drift
-that matters is not the code — it is the **names**. Six readings were spelled the
-same way in two cases and meant different things, and a seventh was spelled two
-ways and meant one thing. Folding either kind together silently rescales a
-threshold or drops a call site, and nothing type-checks a case's validator tree
-before it runs, so neither failure has anywhere to surface.
+Forty-odd copies of this machinery drifted for as long as they existed — four
+engineless ones, and one per engine per case — and the drift that matters is not
+the code, it is the **names**. Readings were spelled the same way in two cases
+and meant different things; others were spelled two ways and meant one thing.
+Folding either kind together silently rescales a threshold or drops a call site,
+and nothing type-checks a case's validator tree before it runs, so neither
+failure has anywhere to surface.
 
 So both halves of every genuine disagreement ship, under names that say which is
 which, and a case binds the one it has always meant. The rule this follows is the
@@ -257,3 +424,61 @@ winner.**
 | —                                              | Cascade's `Harness.pose(calls)` — `{ op, args }` objects, answering what each call RETURNED — is a **different function**, and stays in cascade's own `harness.ts`                | cascade                                                                    |
 | `Harness.samples(frames, …)`                   | A reading per frame, taken IN THE PAGE by a `project` carried in as source, in one crossing                                                                                       | spectra                                                                    |
 | —                                              | Cascade's `Harness.sample(frames)` — the shared `stepWatching` under cascade's own name, one round trip per frame — is a **near neighbour of that name and not the same reading** | cascade                                                                    |
+
+### The engine half's own collisions
+
+Everything above came out of the four engineless harnesses. Extracting the engine
+half turned up seven more, and two of them are disagreements **inside one case**,
+between its own two engine projects — which is exactly how invisible this drift
+was.
+
+| Package name                         | What it is                                                                                                                                                                     | Bound by                                                                                                                                                                                                                                                   |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `nearestTo(samples, reference)`      | The barest of several patches, measured against a colour known from OUTSIDE the picture — the rasterized clear colour                                                          | refract's `structured-2d`, as its own `sampleBackground`                                                                                                                                                                                                   |
+| `medoidOf(samples)`                  | The barest of several patches, measured against the other samples ALONE, with no reference colour                                                                              | refract's `simple-2d`, as its own `sampleBackground` — over four different points                                                                                                                                                                          |
+| `darkestOf(h, points, radius?)`      | The barest of several patches, ASSUMING the ground is dark                                                                                                                     | orrery                                                                                                                                                                                                                                                     |
+| `drawnTextRuns(calls)`               | A merged run of text left at its FIRST DRAW's anchor                                                                                                                           | the engineless half                                                                                                                                                                                                                                        |
+| `reanchoredTextRuns(calls)`          | The same run, re-anchored about the whole of what it spells, under that first draw's alignment                                                                                 | refract's two engine projects, as their own `drawnTextRuns`. The two agree exactly on a run of one draw and on any `start`-aligned run, and disagree on every centred or right-aligned MERGED run                                                          |
+| `PointerPositionEvent`               | A pointer event carrying `clientX`/`clientY`/`isPrimary` and nothing else. An engine that reads `button`/`buttons`/`pointerType` finds them ABSENT and applies its own default | refract's `structured-2d`, carom's `structured-2d`, volute                                                                                                                                                                                                 |
+| `DevicePointerEvent`                 | The same, plus `pointerId`, `pointerType`, `button` and `buttons` — a real button mask, held through a press and a move and gone on a release                                  | refract's `simple-2d`, carom's `simple-2d`, coil, wick                                                                                                                                                                                                     |
+| `absentSurface(requirement, reason)` | A stand-in for a surface the build never returned, failing at the property ACCESS                                                                                              | every ENGINE project — the apply-threaded driver decides pose-or-reading by `typeof`, and an `instrumentation` suite asks `typeof h.debug.op` outright, so answering a plausible function to a build that shipped nothing is how a check passes on nothing |
+| `unexposedSurface(reason, fail)`     | The same stand-in, answering every member with a FUNCTION that fails when CALLED                                                                                               | every ENGINELESS project — the surface lives in the page and every member is called across a crossing, so failing at the access would fail the harness's own probing before a check ran                                                                    |
+| `pixelsChanged(before, after)`       | How many BYTES differ between two whole-frame captures, with no tolerance: "did the build draw anything different at all"                                                      | refract, cascade, floe, shatter, spectra, wireworm, meltdown — the `structured-2d` side of each                                                                                                                                                            |
+| `pixelsDiffering(a, b, tolerance?)`  | How many PIXELS of two rectangles moved by more than a tolerance                                                                                                               | the engineless half. A threshold stated over one is meaningless over the other                                                                                                                                                                             |
+| `captureStill` (sync)                | A still off a 2D canvas, which is already rasterized, so `toBuffer` answers now                                                                                                | thirteen of the seventeen engine cases; a suite that calls it without an `await` is not asked to grow one                                                                                                                                                  |
+| `captureOutput` (async)              | The same writer for an encoder that cannot answer now — a 3D still that has to come out of a renderer                                                                          | volute's `simple-2d`, orrery, gantry's `simple-3d`                                                                                                                                                                                                         |
+| `UntilResult.frames` / `.ticks`      | ONE counter under two names, both filled                                                                                                                                       | fourteen cases count `.frames`; coil, kessler, wick and volute count `.ticks`. Same for `UntilOptions.maxFrames`/`maxTicks`                                                                                                                                |
+| `TimedCue.frame` / `.tick`           | ONE counter under two names, both filled, on a cue stamped with the frame that was running when it sounded                                                                     | most cases spell it `frame`; volute spells it `tick`                                                                                                                                                                                                       |
+
+Two more disagreements are recorded here as ones the package deliberately does
+**not** resolve, because resolving them would be picking a winner:
+
+- **`Harness.cues` subscribes `cue:played` alone by default.** A LOOP IS NOT A
+  PLAY: a case whose specification counts firings would have every count moved by
+  folding the two together, and a case whose specification is about a bed
+  STARTING cannot read it without them. `EngineCaseConfig.cueEvents` is the case's
+  to name, and `TimedCue.looped` tells the two apart afterwards.
+- **`pointerPrecision`.** `"exact"` maps a logical point straight through the fit;
+  `"device-pixel"` rounds to the pixel a reading would sample first. Half a pixel
+  decides a point whenever a build's hit radius passes through it, so a case binds
+  the one its verdicts were taken under — refract's two engine projects disagree
+  here too, and always have.
+
+## What has NOT been extracted yet
+
+Stated so the next pass knows where the line is rather than rediscovering it.
+
+- **The asset host.** Six cases shim `fetch`, `createImageBitmap`,
+  `AudioContext` and `document.createElement` so an engine's loader can resolve a
+  build's produced files off disk, and they do it two different ways — some onto
+  `globalThis`, some into a `host` object handed to the engine. `decodeWav`, the
+  RIFF parser beside it, is the same function four times over. None of it is
+  reachable by a case that loads no assets, so extracting it correctly needs a
+  case that does; refract loads none, so nothing here would have proved it.
+- **The recorder's image interning** is extracted (`RecorderOptions.internImages`)
+  but only volute and orrery use it, and neither is migrated yet — the first case
+  onto it should check its `ImageRef` field-for-field against `src/draw-calls.ts`.
+- **Gantry's `runUntil`** is not a sweep this kit can serve as it stands: it fails
+  the test outright at its cap rather than answering `{ hit: false }`. That is a
+  materially different contract and it belongs to gantry until a second case wants
+  it.

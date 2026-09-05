@@ -335,6 +335,58 @@ export function brightestIn(
 }
 
 /**
+ * The sample nearest a reference colour, and the FIRST of two equally near.
+ *
+ * What reads the bare ground on a case that fixes no palette: whatever a build
+ * draws over a candidate patch — a readout, a texture louder than quiet — moves
+ * that patch away from the colour the frame was cleared to, so the patch nearest
+ * the clear is the barest of the candidates. It says nothing about whether the
+ * ground is light or dark, which is what {@link darkestOf} assumes and some cases
+ * may not.
+ *
+ * A SIBLING OF {@link medoidOf}, NOT A REPLACEMENT FOR IT. Both answer "the
+ * barest of these patches" and they answer it differently — this one against a
+ * colour known from outside the picture, the medoid against the other samples
+ * alone — so a threshold stated over one does not transfer to the other. Both
+ * ship; see the README's collision table.
+ */
+export function nearestTo(samples: readonly Rgb[], reference: Rgb): Rgb {
+  return samples.reduce((nearest, sample) =>
+    colorDistance(sample, reference) < colorDistance(nearest, reference)
+      ? sample
+      : nearest,
+  );
+}
+
+/**
+ * The MEDOID of a run of samples: the one closest to all the others in total.
+ *
+ * The other reading of "the barest of these patches", for a case that has no
+ * reference colour to compare against — the ground is whatever most of the
+ * candidates agree it is, so one patch a build happens to decorate cannot stand
+ * in for it. Nothing here assumes the ground is dark, or light, or any
+ * particular colour at all.
+ *
+ * The first of two equally central samples is kept, so a symmetric set answers
+ * the same colour every time.
+ */
+export function medoidOf(samples: readonly Rgb[]): Rgb {
+  let best = samples[0] as Rgb;
+  let bestTotal = Number.POSITIVE_INFINITY;
+  for (const candidate of samples) {
+    const total = samples.reduce(
+      (sum, other) => sum + colorDistance(candidate, other),
+      0,
+    );
+    if (total < bestTotal) {
+      best = candidate;
+      bestTotal = total;
+    }
+  }
+  return best;
+}
+
+/**
  * A binary luminance mask of a {@link PixelRect}, thresholded at its own median.
  *
  * What tells two sprites apart WITH COLOUR REMOVED: the mask is the shape a

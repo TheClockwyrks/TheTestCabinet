@@ -20,6 +20,18 @@ import { distance, type Point } from "./point";
 export interface TextGeometry {
   width: number;
   textAlign: string;
+  /**
+   * The transform in force at the call, when the recorder could take it.
+   *
+   * The injected page recorder cannot: it writes the console player's replay
+   * format, which carries the operation list and no context state, so under no
+   * engine the transform is RECONSTRUCTED by walking that list ({@link
+   * textDraws}). An engine harness records against a real context and asks it
+   * outright, which is exact under any pipeline — including a `setTransform` an
+   * engine's own fit issues and a `reset` an operation walk cannot see through —
+   * so when it is here it is used and the walk is not.
+   */
+  transform?: Matrix;
 }
 
 /** One recorded operation on the 2D context, in the order the render made it. */
