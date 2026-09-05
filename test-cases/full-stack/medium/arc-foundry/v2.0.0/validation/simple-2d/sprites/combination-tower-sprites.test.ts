@@ -10,12 +10,6 @@ import { assertEqual } from "../assert";
 import { captureStill, createHarness, openYard, standCombo } from "../harness";
 import { COMBO_IDS } from "../constants";
 import { canvasOf, comboBase, comboHead } from "./png";
-import { serveProducedAssets } from "./host";
-
-// The produced files, served to the engine off disk, so the still beside this
-// point's verdict shows the art the run made rather than the fallback a build
-// draws when nothing arrived.
-serveProducedAssets();
 
 it("produces a mount and a head for every combination tower", async () => {
   for (const id of COMBO_IDS) {

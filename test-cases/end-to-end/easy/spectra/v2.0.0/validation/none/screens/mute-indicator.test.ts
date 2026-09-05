@@ -35,7 +35,11 @@
 // `audio/mute-silences`'s. This point reads what mute DRAWS.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import { BINDINGS } from "../constants";
 import {
   captureStill,
@@ -44,34 +48,15 @@ import {
   startPosed,
   type Harness,
 } from "../harness";
-import { BOTTOM_STRIP, changedSamples, driftOverOneFrame } from "./reading";
+import {
+  BOTTOM_STRIP,
+  PAINT_MIN,
+  changedSamples,
+  driftOverOneFrame,
+} from "./reading";
 
 /** The key `specs/controls.md` binds `mute` to. It is its only binding. */
 const MUTE_KEY = BINDINGS.mute[0];
-
-/**
- * How far a sample must move to count as repainted, as a Euclidean RGB distance
- * out of the `441` an RGB cube is across.
- *
- * The case's figure, since `specs/ui.md` states the rule and leaves the palette to
- * the build: `40` is about a tenth of the space, which is the least a player reads
- * as a mark appearing at a glance, and far above the nothing that separates two
- * readings of one unchanged pixel.
- */
-const REPAINT_MIN = 40;
-
-/**
- * How many samples of the strip the indicator must repaint to count as drawn —
- * and, unmuted again, must NOT repaint, for it to count as gone.
- *
- * One figure for both directions on purpose: "drawn whenever muted and absent
- * whenever it is not" is one mark, so what counts as present has to be what counts
- * as absent. The lattice below is one sample every two logical units in each
- * direction, so `16` samples is about `64` square units — an eight-by-eight mark,
- * smaller than one glyph of type legible at the stage's `1280 x 720`
- * (`specs/ui.md`).
- */
-const INDICATOR_SAMPLES = 16;
 
 /** One sample every two logical units: `20480` over the whole strip. */
 const READ_STEP = 2;
@@ -95,12 +80,7 @@ it("draws a mute indicator in the bottom strip while muted and none when unmuted
     "the game starts unmuted, which is the state this reading is held against",
   );
 
-  const drift = await driftOverOneFrame(
-    h,
-    BOTTOM_STRIP,
-    READ_STEP,
-    REPAINT_MIN,
-  );
+  const drift = await driftOverOneFrame(h, BOTTOM_STRIP, READ_STEP, PAINT_MIN);
   const unmuted = drift.reading;
 
   await h.tap(MUTE_KEY);
@@ -122,17 +102,21 @@ it("draws a mute indicator in the bottom strip while muted and none when unmuted
   const unmutedAgain = await readRegion(h, BOTTOM_STRIP, READ_STEP);
   await captureStill(h, "unmuted");
 
+  // One floor for both directions: a strip that moves on its own moves whether the
+  // game is muted or not, so it raises the bar the mark must clear and the bar the
+  // absent mark must stay under by the same amount.
+  const floor = drift.count;
   assertGreaterThan(
-    changedSamples(unmuted, muted, REPAINT_MIN),
-    Math.max(drift.count, INDICATOR_SAMPLES),
+    changedSamples(unmuted, muted, PAINT_MIN),
+    floor,
     "samples of the bottom HUD strip the mute indicator painted — it is drawn " +
       "whenever sound is muted (specs/ui.md) and sits in that strip " +
       `(specs/field.md); the strip moved on its own across one frame in ` +
       `${drift.count} samples`,
   );
-  assertLessThan(
-    changedSamples(unmuted, unmutedAgain, REPAINT_MIN),
-    INDICATOR_SAMPLES,
+  assertLessThanOrEqual(
+    changedSamples(unmuted, unmutedAgain, PAINT_MIN),
+    floor,
     "samples of the strip still standing apart from the unmuted reading once " +
       "the game was unmuted again — the indicator is ABSENT whenever sound is " +
       "not muted (specs/ui.md), so it is gone rather than latched on",

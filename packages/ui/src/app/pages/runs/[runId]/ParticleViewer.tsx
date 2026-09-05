@@ -2,8 +2,8 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
-import { ParticleSystemPlayer } from "@test-cabinet/particle-runtime/three";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
+import { ParticleSystemPlayer } from "@clockwyrks/particle-runtime/three";
 import { useViewportWheelLock } from "./useViewportWheelLock";
 
 // How the effect blends: additive reads right for fire/energy/spark VFX, normal for

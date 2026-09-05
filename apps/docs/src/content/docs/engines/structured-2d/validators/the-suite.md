@@ -133,7 +133,7 @@ import {
   type Engine,
   type GameDefinition,
   type SurfaceMetrics,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { FIELD_H, FIELD_W } from "./constants";
 import { game } from "../src/game";
 import type { Debug } from "./debug";

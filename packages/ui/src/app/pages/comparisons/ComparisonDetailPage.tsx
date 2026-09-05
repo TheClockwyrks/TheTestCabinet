@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
-import type { Comparison } from "@test-cabinet/run-record/comparison";
+import type { Comparison } from "@clockwyrks/run-record/comparison";
 import {
   ChartWidget,
   distributionChart,
   stackedBarChart,
-} from "@test-cabinet/ui";
-import type { DistributionGroup } from "@test-cabinet/ui";
+} from "@clockwyrks/ui";
+import type { DistributionGroup } from "@clockwyrks/ui";
 import type { ComparisonPublishOutcome } from "../../../client/clients";
 import { useAuth } from "../../../client/auth";
 import {

@@ -12,7 +12,7 @@
 // LIVE READ of the engine's own mute bit at the call, because under this engine
 // the surface holds the live world.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { FLOE_DEBUG_VERSION, crossingTimer } from "./constants";
 import { bearsOf, critterOf, floesOf, vehiclesOf } from "./bodies";
 import { critterCol, critterFooting, critterRow } from "./entities";

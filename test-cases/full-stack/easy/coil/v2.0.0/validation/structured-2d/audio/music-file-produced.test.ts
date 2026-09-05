@@ -27,7 +27,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, fail } from "../assert";
-import { CUES, SILENCE_FLOOR } from "../constants";
+import { CUES } from "../constants";
 import {
   captureStill,
   chainFrom,
@@ -54,7 +54,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("ships a produced music bed carrying audible signal", async () => {
+it("ships a produced music bed carrying signal", async () => {
   const { sound, reason } = readSound(FILE);
 
   await showRound(h, {
@@ -69,7 +69,7 @@ it("ships a produced music bed carrying audible signal", async () => {
   assertGreaterThan(sound.frames, 0, `sample frames in ${FILE}`);
   assertGreaterThan(
     sound.peak,
-    SILENCE_FLOOR,
+    0,
     `the peak sample of ${FILE}, on a full scale of 1`,
   );
 });

@@ -20,7 +20,7 @@ import {
   type Engine,
   type SurfaceMetrics,
   type Viewport,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   BALL_R,
@@ -45,7 +45,7 @@ import {
 import type { BallSnapshot, CaromDebugApi, CaromSnapshot } from "./debug";
 import { BACKGROUND, game, type CaromState, type Mode } from "./game";
 import { itemCenter, TITLE_MENU } from "./menus";
-import type { Transition } from "@test-cabinet/simple-2d";
+import type { Transition } from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 // ---- The harness --------------------------------------------------------

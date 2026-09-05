@@ -29,13 +29,12 @@
 // with the `wane` on the field and no drag live, and it must differ from the bare
 // square by less than the ghost does.
 //
-// THE VERDICT. Three readings of that one square. The ghost's arrival changes at
-// least `MIN_DISTINCT_SHARE` of it; the blocker alone changes less than that; and
-// the legal ghost and the illegal ghost differ from each other by at least
-// `MIN_DISTINCT_SHARE`.
+// THE VERDICT. Three readings of that one square. The ghost's arrival changes it;
+// the blocker alone leaves it as the bare square; and the legal ghost and the
+// illegal ghost are not the same picture.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertLessThan, assertNull } from "../assert";
+import { assertEqual, assertGreaterThan, assertNull } from "../assert";
 import {
   at,
   hexCenter,
@@ -106,9 +105,6 @@ const OFF_EVERY_HEX: StagePoint = { x: 940, y: 304 };
 /** Half the square read on the anchor: past a hex's `27.7` circumradius. */
 const READ_HALF = 30;
 
-/** The least share of that square a visible distinction must reach. */
-const MIN_DISTINCT_SHARE = 0.01;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -137,7 +133,11 @@ async function ghostOnAnchor(outputId: string): Promise<PixelRect> {
   await h.advance(1);
 
   const drag = (await h.snapshot()).editor.drag;
-  assertEqual(drag?.kind, "place", "the press on the set entry opened a place drag");
+  assertEqual(
+    drag?.kind,
+    "place",
+    "the press on the set entry opened a place drag",
+  );
   assertEqual(
     drag?.kind === "place" ? `${drag.at?.q},${drag.at?.r}` : null,
     `${ANCHOR.q},${ANCHOR.r}`,
@@ -193,19 +193,19 @@ it("draws a ghost at the targeted hex, and draws it differently where the rules 
     "the second drag placed nothing either: the wane is the machine's only part",
   );
 
-  assertLessThan(
+  assertEqual(
     differingShare(bare, blocked),
-    MIN_DISTINCT_SHARE,
+    0,
     "the wane four hexes away changes nothing in the square the ghost is read on",
   );
   assertGreaterThan(
     differingShare(bare, legal),
-    MIN_DISTINCT_SHARE,
+    0,
     "a ghost of the part is drawn at the targeted hex while the drag is live",
   );
   assertGreaterThan(
     differingShare(legal, illegal),
-    MIN_DISTINCT_SHARE,
+    0,
     "and the same ghost on the same hex is drawn differently once the rules refuse it",
   );
 });

@@ -22,7 +22,7 @@
 // evidence picture is painted on.
 //
 // THE TOLERANCE. The canvas is exact, because the specification states it
-// exactly; the paint floor is `PAINT_MIN_SHARE`, one pixel in a thousand; and
+// exactly; the paint reading is presence, at least one pixel not clear; and
 // two sprites are the same picture within `PIXEL_CHANNEL_EPS`, eight levels
 // of 255 per channel.
 

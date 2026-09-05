@@ -12,18 +12,14 @@
 // its vertical field of view, both from `src/project.ts`, which is the same
 // lens `pick` measures through, so what is picked is what is drawn.
 
-import type { RenderApi } from "@test-cabinet/simple-3d";
+import type { RenderApi } from "@clockwyrks/simple-3d";
 import * as THREE from "three";
 import { thaw, type ReadonlyPoint } from "./convert";
 import { applyClick } from "./editor";
 import type { ReadonlyGantryState, Tool, Vec3 } from "./game";
 import { pick, type Pick } from "./pick";
 import { CAMERA_FOV, cameraPosition, TARGET } from "./project";
-import {
-  collectedTextRuns,
-  drawHud,
-  type HudHint,
-} from "./render-hud";
+import { collectedTextRuns, drawHud, type HudHint } from "./render-hud";
 import {
   describeFrame,
   measureModelObject,
@@ -210,7 +206,9 @@ export function drawFrame(state: ReadonlyGantryState, api: RenderApi): void {
       loadStarts: true,
       pads: true,
       pendingNode:
-        build && state.pendingNode !== null ? toTriple(state.pendingNode) : null,
+        build && state.pendingNode !== null
+          ? toTriple(state.pendingNode)
+          : null,
       pickedNode: picked.node === null ? null : toTriple(picked.node),
     },
     texts: collectedTextRuns().map((text, index) => ({

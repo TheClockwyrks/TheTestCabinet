@@ -90,19 +90,15 @@ const WINDOW_TICKS = ticksFor(INVULN_TIME);
 const AFTER_TICKS = ticksFor(0.2);
 
 /**
- * How far a sample's colour must move to count as changed, of the 441 an RGB
- * distance can span.
+ * The sensing floor on a change: how far a reading must move between two frames
+ * before the move can be called a redrawing, of the 441 an RGB distance can span.
  *
- * Forty, two thirds of the sixty `presentation/ship-is-drawn-and-distinct` calls
- * "drawn apart from the field". `specs/overview.md` asks that the appearance change
- * VISIBLY, so the bar is what a player would see at a sample rather than what a
- * measurement can detect: a hull dimmed, recoloured or outlined differently moves
- * its samples by well over a hundred, and a build's own anti-aliasing between two
- * frames of one picture moves them by a handful. The same forty the `simple-2d` and
- * `structured-2d` projects hold this item to, so one build is graded the same
- * whichever engine its run draws.
+ * Eight. Below that a sampling cannot tell a redrawing from the rounding of an
+ * 8-bit channel and the host's own anti-aliasing; above it nothing is decided
+ * about how strongly the two readings differ. Anything the build drew differently
+ * clears it, however faintly it drew it.
  */
-const POINT_CHANGE = 40;
+const POINT_CHANGE = 8;
 
 /**
  * How many of the {@link DISC_SAMPLES} readings must move for the ship to read

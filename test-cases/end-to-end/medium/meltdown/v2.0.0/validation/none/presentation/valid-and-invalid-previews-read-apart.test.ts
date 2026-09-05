@@ -18,12 +18,16 @@
 // money across the type's cost between them. Every pixel that differs is the
 // build's answer to "valid or not", because nothing else in the picture moved.
 //
-// WHERE IT IS READ. The footprint's own rectangle, `specs/floor.md`'s
-// `size x size` tiles anchored at `(col, row)`: a ring of points just inside its
-// edge, where a build that outlines its preview draws, and a grid over its
-// interior, where one that tints it draws. The reading is the position at which
-// the two frames diverge MOST (`widestGap`), because either treatment alone
-// satisfies "drawn plainly apart" and neither is required.
+// WHERE IT IS READ, AND WHERE THE BAR COMES FROM. The footprint's own rectangle,
+// `specs/floor.md`'s `size x size` tiles anchored at `(col, row)`: a ring of
+// points just inside its edge, where a build that outlines its preview draws, and
+// a grid over its interior, where one that tints it draws. The reading is the
+// position at which the two frames diverge MOST (`widestGap`), because either
+// treatment alone satisfies the requirement and neither is required. How far the
+// two must diverge is not a stated distance — `specs/overview.md` hands the
+// palette to the build — so it is measured: the valid footprint is read on two
+// frames, which is how much the preview moves on its own, and the refusal has to
+// beat that by `NOISE_MARGIN`.
 //
 // WHY THE REPORTED VALIDITY IS CHECKED FIRST. The scenario needs the game to be
 // holding a valid preview on the first frame and an invalid one on the second;
@@ -53,17 +57,13 @@ import {
   type Harness,
   type Rgb,
 } from "../harness";
-import { readPixels, showRgb, widestGap, type Point } from "./read";
-
-/**
- * How far the two footprints must diverge somewhere, out of the 441 the RGB cube
- * spans.
- *
- * This group's figure for "plainly apart" (`specs/overview.md`), the same 50 every
- * other point in this group draws its line at, under this engine and under the
- * other two.
- */
-const APART_MIN = 50;
+import {
+  NOISE_MARGIN,
+  readPixels,
+  showRgb,
+  widestGap,
+  type Point,
+} from "./read";
 
 /** The type held, its cost, and where it is carried. */
 const TYPE: TowerType = "arc";
@@ -146,6 +146,9 @@ it("draws a refused footprint apart from one it would accept", async () => {
   await h.debug.setPreview(AT.col, AT.row);
 
   const accepted = await previewAt(h, RICH, "valid");
+  await h.advance(1);
+  const held = await readPixels(h, footprintPoints(AT.col, AT.row, SIZE));
+  const noise = widestGap(accepted.pixels, held).distance;
   const refused = await previewAt(h, POOR, "invalid");
 
   assertEqual(
@@ -164,13 +167,14 @@ it("draws a refused footprint apart from one it would accept", async () => {
       `reads as refused (specs/building.md)`,
   );
 
-  const gap = widestGap(accepted.pixels, refused.pixels);
+  const gap = widestGap(held, refused.pixels);
   assertGreaterThanOrEqual(
     gap.distance,
-    APART_MIN,
+    noise + NOISE_MARGIN,
     `the held ${TYPE} on tile (${AT.col}, ${AT.row}): valid ` +
       `(${showRgb(gap.left)}) against the same footprint refused ` +
-      `(${showRgb(gap.right)}), at the point the two frames differ most ` +
+      `(${showRgb(gap.right)}), at the point the two frames differ most, past ` +
+      `the ${noise} two frames of the valid footprint moved on their own ` +
       `(specs/building.md: the footprint is drawn plainly apart valid and ` +
       `invalid)`,
   );

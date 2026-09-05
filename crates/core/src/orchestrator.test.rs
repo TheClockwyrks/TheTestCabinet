@@ -21,8 +21,8 @@ fn parses_a_manifest_with_params() {
         runner = "runner.sh"
 
         [params]
-        marker_file = ".tcab/done"
-        status_file = ".tcab/status.md"
+        marker_file = ".vendor/done"
+        status_file = ".vendor/status.md"
     "#;
     let manifest: OrchestratorManifest = toml::from_str(toml_src).expect("manifest parses");
     assert_eq!(manifest.slug, "looper");
@@ -30,7 +30,7 @@ fn parses_a_manifest_with_params() {
     assert_eq!(manifest.runner, "runner.sh");
     assert_eq!(
         manifest.params.get("marker_file").map(String::as_str),
-        Some(".tcab/done")
+        Some(".vendor/done")
     );
     assert_eq!(manifest.params.len(), 2);
 }
@@ -658,7 +658,7 @@ exit 0
 
 /// The marker file the external multi-session orchestrator declares, relative to
 /// the workspace.
-const MULTI_SESSION_MARKER: &str = ".tcab/looper/done";
+const MULTI_SESSION_MARKER: &str = ".vendor/looper/done";
 
 /// Write the external multi-session orchestrator into `dir` and return a
 /// selection pointing at it.
@@ -722,7 +722,7 @@ async fn drive_with_stream_tail_dropped(
         .params
         .get("marker_file")
         .map(|rel| workspace.join(rel))
-        .unwrap_or_else(|| workspace.join(".tcab/unused-marker"));
+        .unwrap_or_else(|| workspace.join(".vendor/unused-marker"));
 
     let count_file = root.path().join("session-count");
     let harness = RecordingHarness {

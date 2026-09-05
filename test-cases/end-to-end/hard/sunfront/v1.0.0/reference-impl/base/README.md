@@ -17,10 +17,10 @@ build` produces a static site that runs from any base path).
 - **TypeScript + [Vite](https://vitejs.dev/)** — a plain npm static build.
 - **[three.js](https://threejs.org/)** — the 3D battlefield (WebGL). The HUD and
   menus are a 2D overlay over the 3D view.
-- **`@test-cabinet/voxel-runtime`** — decodes and poses the provided **rigid voxel
+- **`@clockwyrks/voxel-runtime`** — decodes and poses the provided **rigid voxel
   rigs** (every unit and structure): `parseGlb` + `poseRig` + `sampleAnimation`, and
   the `/three` binding's `buildPartGeometry` for the GPU-instanced renderer.
-- **`@test-cabinet/particle-runtime`** — plays the provided **muzzle-flash** particle
+- **`@clockwyrks/particle-runtime`** — plays the provided **muzzle-flash** particle
   effects via its `/three` billboard player.
 
 Both runtimes are **vendored** under `vendor/` (their prebuilt `dist` plus a stripped

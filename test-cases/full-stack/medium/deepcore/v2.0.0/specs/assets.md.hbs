@@ -169,7 +169,7 @@ Spawn an instance of the matching system at the event's position and let it play
 out: the debris at the bit, the exhaust under the jetpack, the sparkle at the
 pickup, the blast at the pocket, the launch exhaust under the rocket.
 
-`@test-cabinet/particle-runtime` is already a dependency of this project, resolved
+`@clockwyrks/particle-runtime` is already a dependency of this project, resolved
 by a `file:` entry in `package.json`. Import it like any other dependency and do
 not fetch or reimplement it. Its `/canvas` binding plays a parsed `system.json`
 into a 2D drawing context, advanced by the frame's delta time; its own types are
@@ -241,7 +241,10 @@ There is no tool for interface art, so all of the following are drawn in code:
   one pool.
 - The screen shake: a short render-space jitter of the world on a gas detonation,
   an explosives blast, a hard landing, or the Core Sample's detonation, scaled to
-  the event and decaying out. It is purely visual and never moves the simulation.
+  the event and decaying out. The jitter displaces the drawn world by at least
+  `SHAKE_MIN` (`2`) logical units at its peak, and the world is back where it
+  started within `SHAKE_SETTLE` (`3`) seconds of the event. It is purely visual
+  and never moves the simulation.
 - The first-time hazard notice card.
 
 ## The bar

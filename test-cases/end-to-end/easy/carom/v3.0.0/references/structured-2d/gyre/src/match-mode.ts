@@ -21,12 +21,12 @@
 // are placed by the instance as it dresses the world (`src/carry.ts`), which is
 // what makes an absent ball or a cleared field survive into a new world.
 
-import { AIController, PlayerController } from "@test-cabinet/structured-2d";
+import { AIController, PlayerController } from "@clockwyrks/structured-2d";
 import type {
   Controller,
   InputReader,
   Transform,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { aiVelocity } from "./ai";
 import { CaromMode } from "./carom-mode";
 import { FIELD_CY, PADDLE_SPEED, TAGS } from "./constants";

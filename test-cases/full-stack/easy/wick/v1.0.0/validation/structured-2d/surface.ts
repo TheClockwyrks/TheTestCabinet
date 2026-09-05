@@ -124,6 +124,7 @@ export const REQUIRED_OPS = [
   "setProgression",
   "setTick",
   "setSpawnTimer",
+  "advanceRng",
   "setPlayerPosition",
   "setFacing",
   "setHp",
@@ -414,6 +415,13 @@ export interface WickDebugApi {
   setTick(tick: number): void;
   /** Sets `spawnTimer`, at least `0`. A run screen. */
   setSpawnTimer(seconds: number): void;
+  /**
+   * Takes `draws` draws off the seeded generator and discards them, so
+   * `rngState` lands where `draws` random choices would have left it, and
+   * `0` leaves it where it stands. `draws` is a whole number of at least
+   * `0`. Nothing is chosen with what was drawn. Every screen.
+   */
+  advanceRng(draws: number): void;
 
   /** Sets the lamplighter's center; nothing else moves. A run screen. */
   setPlayerPosition(x: number, y: number): void;

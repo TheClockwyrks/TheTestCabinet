@@ -11,6 +11,13 @@
 // figure — so a check that read a fresh dive's score would pass on nothing. The
 // posed figure has no run of digits any other readout carries.
 //
+// AND HOW THE FIGURE IS WRITTEN IS THE BUILD'S. The readout is found by the
+// FIGURE, in any of the ways a build writes one, so a score drawn with its digit
+// triples grouped — `4,731`, which is what `Number.prototype.toLocaleString()`
+// writes by default — is read as carrying the score just as `4731` is. The ASCII
+// space is not one of the separators, because two figures drawn side by side are
+// two readings rather than one; `figures.ts` states that in full.
+//
 // AND IT IS READ AGAIN AFTER A MOUTHFUL, so the readout is shown to FOLLOW the
 // state rather than to have been drawn once. The plankton is laid on a tile beside
 // the forager and the forager put on it, which is the eating specs/gameplay.md
@@ -33,7 +40,12 @@ import {
 import { corridorDirs, stepTile } from "../maze";
 import { textDraws } from "../text";
 import { frameOps } from "../states/screens";
-import { LEGIBLE_MIN, TOP_STRIP, legibility, readoutOf } from "./readouts";
+import {
+  LEGIBLE_MIN,
+  TOP_STRIP,
+  figureReadoutOf,
+  legibility,
+} from "./readouts";
 import { ticksFor } from "../constants";
 
 /**
@@ -69,7 +81,7 @@ it("draws the score in the top strip, legibly, and follows it", async () => {
   // Before the assertions, so a failing check still leaves the HUD it read.
   await captureStill(h, "hud");
 
-  const run = readoutOf(drawn, TOP_STRIP, String(posed.score));
+  const run = figureReadoutOf(drawn, TOP_STRIP, posed.score);
   assertNotNull(
     run,
     `a run of text carrying the score ${String(posed.score)} the snapshot ` +
@@ -107,7 +119,7 @@ it("draws the score in the top strip, legibly, and follows it", async () => {
   );
   const after = textDraws(await frameOps(h));
   assertNotNull(
-    readoutOf(after, TOP_STRIP, String(eaten.score)),
+    figureReadoutOf(after, TOP_STRIP, eaten.score),
     `a run of text carrying the new score ${String(eaten.score)} in the top ` +
       "strip, once the forager has eaten a plankton (specs/ui.md)",
   );

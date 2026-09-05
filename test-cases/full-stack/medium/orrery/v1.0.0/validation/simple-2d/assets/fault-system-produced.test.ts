@@ -9,7 +9,7 @@
 // of this repository, at the path named below, and is committed."
 //
 // WHAT MAKES A FILE A SYSTEM. The runtime, and nothing else: "Play them through
-// `@test-cabinet/particle-runtime`, an installed dependency imported by its bare
+// `@clockwyrks/particle-runtime`, an installed dependency imported by its bare
 // name, using its `./canvas` binding: a player is constructed over a parsed system
 // and a 2D rendering context ... the package's own types are the authoritative API."
 // So this point parses the file as JSON, hands it to the package's own simulator, and
@@ -39,7 +39,7 @@ it("commits a fault.json the particle runtime accepts", async () => {
 
   if (read.system === null) {
     fail(
-      `a particle system @test-cabinet/particle-runtime accepts at ${file}`,
+      `a particle system @clockwyrks/particle-runtime accepts at ${file}`,
       read.reason,
     );
   }

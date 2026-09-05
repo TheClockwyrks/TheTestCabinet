@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import type { TestType } from "@test-cabinet/run-record";
+import type { TestType } from "@clockwyrks/run-record";
 import type { TestCaseSummary } from "../../data/testCases";
 import { routes } from "../../routes";
 import { OtherPage, type OtherTab } from "./OtherPage";

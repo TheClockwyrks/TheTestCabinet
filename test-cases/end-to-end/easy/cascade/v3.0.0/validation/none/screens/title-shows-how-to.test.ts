@@ -17,8 +17,8 @@
 // screen that shows precisely the right words.
 //
 // WHAT THIS DOES NOT DECIDE. Where the label landed, which is
-// `presentation/*`'s; whether it can be READ against what it sits on, which is
-// `presentation/text-legible`'s; and what the item DOES, which is
+// `presentation/*`'s; how legibly it reads against what it sits on, which is the
+// reviewer's; and what the item DOES, which is
 // `screens/title-how-to-opens`'s.
 
 import { afterEach, beforeEach, it } from "vitest";

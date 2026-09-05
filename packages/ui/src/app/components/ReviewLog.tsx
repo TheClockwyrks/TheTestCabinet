@@ -5,7 +5,7 @@ import {
   GradeBadge,
   RatingBadge,
   canonicalModelId,
-} from "@test-cabinet/ui";
+} from "@clockwyrks/ui";
 import type { MyReview } from "../../client/types";
 import {
   overallGradeOf,

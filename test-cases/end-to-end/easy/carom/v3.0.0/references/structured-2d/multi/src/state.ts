@@ -21,8 +21,8 @@
 // the RULES they run over that state — the title level's menu and the match
 // level's match — rather than in the vocabulary they keep it in.
 
-import { GameState } from "@test-cabinet/structured-2d";
-import type { World } from "@test-cabinet/structured-2d";
+import { GameState } from "@clockwyrks/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import type { CaromGame } from "./game";
 import type { Side } from "./sim";
 

@@ -137,7 +137,7 @@ host Chromium is required only for the local commands that render directly:
 the pinned revision through the pinning workspace:
 
 ```sh
-npm exec -w @test-cabinet/browser-driver -- playwright install chromium
+npm exec -w @clockwyrks/browser-driver -- playwright install chromium
 ```
 
 The host driver script (`packages/browser-driver/driver.mjs`) is located relative

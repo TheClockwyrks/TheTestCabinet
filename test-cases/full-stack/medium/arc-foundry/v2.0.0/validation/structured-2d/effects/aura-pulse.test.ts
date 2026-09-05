@@ -8,9 +8,10 @@
 // no firing head, no projectile, and no targeting priority, and its aura is its
 // whole reach".
 //
-// THE PRODUCED FILES ARE SERVED TO THE LOADER HERE, by `./produced.ts`: the system
-// so it can be played, and the sprites so the mount under the control reading is
-// the one the build produced.
+// THE PRODUCED FILES REACH THE LOADER THROUGH THE HARNESS, which stands the
+// committed `assets/` tree up for every check it builds: the system so it can be
+// played, and the sprites so the mount under the control reading is the one the
+// build produced.
 //
 // THE READING IS A COMPARISON, BECAUSE THE PULSE IS NOT AN EVENT. Every other
 // effect has a frame it is raised on and a frame before it; this one is played the
@@ -40,7 +41,6 @@ import {
   standComponent,
   ticks,
 } from "../harness";
-import { serveProducedAssets } from "./produced";
 import { annulus, motion } from "./region";
 import { structureCenter } from "../constants";
 
@@ -55,7 +55,6 @@ const WINDOW = ticks(0.2);
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 

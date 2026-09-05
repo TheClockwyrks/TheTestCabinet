@@ -17,7 +17,7 @@ import { MENU_BACK, MENU_CONFIRM, MENU_DOWN, MENU_UP } from "./constants";
 import { menuItems, wrapMenuIndex } from "./menus";
 import { activateMenuItem } from "./pointer";
 import type { Sim } from "./sim";
-import type { UpdateApi } from "@test-cabinet/simple-2d";
+import type { UpdateApi } from "@clockwyrks/simple-2d";
 
 /** Apply the frame's menu-action edges, in the order the specification fixes. */
 export function applyMenuActions(sim: Sim, api: UpdateApi): void {

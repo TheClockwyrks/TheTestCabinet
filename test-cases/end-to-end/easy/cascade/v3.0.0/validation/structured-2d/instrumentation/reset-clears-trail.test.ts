@@ -34,6 +34,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
+import { LAUNCH_VX_MAX } from "../constants";
 import {
   KING,
   captureStill,
@@ -54,9 +55,17 @@ const PROBE = { x: 280, y: 340, w: 200, h: 200 };
 
 /**
  * The card in flight, posed to the LEFT of the probe band and carried across it
- * and out to its right, so the stamps it leaves fall inside the band.
+ * and out to its right at `LAUNCH_VX_MAX`, the fastest a launched card may travel
+ * (specs/victory.md draws `vx` uniformly from `[LAUNCH_VX_MIN, LAUNCH_VX_MAX]`),
+ * so the stamps it leaves fall inside the band.
  */
-const FLYER = { spec: card("hearts", KING), x: 150, y: 400, vx: 500, vy: 0 };
+const FLYER = {
+  spec: card("hearts", KING),
+  x: 150,
+  y: 400,
+  vx: LAUNCH_VX_MAX,
+  vy: 0,
+};
 
 /** How long the flyer is left to paint. */
 const FLIGHT_SECONDS = 1;

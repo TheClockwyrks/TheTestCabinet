@@ -11,7 +11,7 @@
 // `dist/` run at the root of a static host or mounted under a sub-path of one. The build
 // is self-contained — it bundles these committed files and generates nothing.
 
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import { COMBO_ORDER, COMPONENT_ORDER, CUES } from "./constants";
 import type { ComboType, ComponentType, Cue, FxKind, Tier } from "./types";
 

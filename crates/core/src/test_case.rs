@@ -241,8 +241,8 @@ struct Manifest {
     #[serde(default)]
     assets: Vec<PathBuf>,
     /// The Test Cabinet runtime libraries this case's build `import`s — the repo's
-    /// own `@test-cabinet/*` packages, named by npm name (for example
-    /// `@test-cabinet/particle-runtime`). Each is baked into the run image under
+    /// own `@clockwyrks/*` packages, named by npm name (for example
+    /// `@clockwyrks/particle-runtime`). Each is baked into the run image under
     /// [`TCAB_PACKAGES_DIR`], and the case's own workspace `package.json` already
     /// declares it as the matching `file:` dependency (see
     /// [`tcab_package_file_dep`]) — the harness does not modify `package.json`, so
@@ -1690,7 +1690,7 @@ pub const TCAB_AUDIO_STORE_DIR: &str = "/opt/tcab-audio";
 /// here (see `tcab_package_file_dep`), so the dependency resolves identically
 /// wherever the tree lives — the run container, the validation host, and any clone
 /// of the published repository — with no absolute path to break when it moves.
-pub const TCAB_VENDOR_DIR: &str = ".tcab/packages";
+pub const TCAB_VENDOR_DIR: &str = ".vendor/packages";
 
 /// The in-repository directory the selected [engine](crate::engine)'s runtime is
 /// vendored into at seed time (relative to the run root), when the run selects an
@@ -1706,16 +1706,16 @@ pub const TCAB_VENDOR_DIR: &str = ".tcab/packages";
 /// run, so nothing in the case's tree can mention it and the seeder is what
 /// writes the dependency into `package.json`. Keeping the two trees apart keeps
 /// that distinction legible in the produced repository (and in its diff): what is
-/// under `.tcab/packages` is the case's, what is under `.tcab/engine` is the
+/// under `.vendor/packages` is the case's, what is under `.vendor/engine` is the
 /// run's.
-pub const TCAB_ENGINE_DIR: &str = ".tcab/engine";
+pub const TCAB_ENGINE_DIR: &str = ".vendor/engine";
 
-/// One of the Test Cabinet's own `@test-cabinet/*` runtime libraries a case may
+/// One of the Test Cabinet's own `@clockwyrks/*` runtime libraries a case may
 /// ship into a run via the manifest's `packages` key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShippablePackage {
     /// The npm package name a case declares in `packages` (for example
-    /// `@test-cabinet/particle-runtime`).
+    /// `@clockwyrks/particle-runtime`).
     pub name: &'static str,
     /// A short, human-readable description of what the package does, surfaced in
     /// the Inputs UI beside the case's declared packages. This is **UI-only**: it
@@ -1725,7 +1725,7 @@ pub struct ShippablePackage {
     pub description: &'static str,
 }
 
-/// The Test Cabinet's own `@test-cabinet/*` runtime libraries an end-to-end case
+/// The Test Cabinet's own `@clockwyrks/*` runtime libraries an end-to-end case
 /// may request via the manifest's `packages` key. Each is baked into the host
 /// package store ([`TCAB_PACKAGES_DIR`]) and, at seed time, vendored into the run
 /// repository under [`TCAB_VENDOR_DIR`], which the case's workspace `package.json`
@@ -1750,14 +1750,14 @@ pub struct ShippablePackage {
 /// own engine selection is supposed to choose.
 pub const SHIPPABLE_PACKAGES: &[ShippablePackage] = &[
     ShippablePackage {
-        name: "@test-cabinet/particle-runtime",
+        name: "@clockwyrks/particle-runtime",
         description: "The particle runtime the review UI plays produced effects with. A build \
                       imports its `/canvas` binding to load a seeded particle `system.json` and \
                       simulate it live on a canvas, so a produced burst plays the same way the \
                       gallery plays it.",
     },
     ShippablePackage {
-        name: "@test-cabinet/voxel-runtime",
+        name: "@clockwyrks/voxel-runtime",
         description: "The voxel runtime the review UI poses and renders a produced voxel rig \
                       with. A build imports it to load a produced rig and play its authored \
                       animations in-game the same way the gallery's viewer does.",
@@ -3074,12 +3074,18 @@ pub struct AudioSpec {
 
 /// The resolved `[model]` of a voxel-animation case: the rig the model must
 /// produce — named parts in a parent/child hierarchy and the named joints a
-/// consuming game (or an auto-play clip) drives. This is the **required** contract
-/// (the scoring targets and the stable, game-facing joint interface); at run time
-/// the model may add further parts and joints of its own, which are recorded in
-/// the produced `rig.json` but are not required here. Carried into the run record
-/// (see [`crate::validation::VoxelGenResult`]) so the review and viewer UIs know
-/// the joint interface without a separate catalog lookup.
+/// consuming game (or an auto-play clip) drives. This is the **required**
+/// interface, the parts and joints a consuming game may rely on by name; a
+/// produced rig may carry further parts and joints of its own, which `rig.json`
+/// records and nothing here requires.
+//
+// Note for maintainers, deliberately NOT a doc comment: this type is emitted into
+// `@clockwyrks/asset-contract`, which is vendored into a model's own workspace, and
+// `ts_rs` copies doc comments through verbatim. Anything written above with `///`
+// is read by the model. So the internal half lives here instead: the spec is
+// carried into the run record on `crate::validation::VoxelGenResult`, which is how
+// the review and viewer UIs know the joint interface without a catalog lookup.
+// `scripts/ci/seeded-contract-check.sh` is the gate that keeps the two apart.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -4328,7 +4334,7 @@ pub struct TestCaseVersion {
     pub init: Option<String>,
     /// Paths to assets the model should use (seeded).
     pub asset_paths: Vec<PathBuf>,
-    /// The Test Cabinet runtime libraries (`@test-cabinet/*` npm names) this
+    /// The Test Cabinet runtime libraries (`@clockwyrks/*` npm names) this
     /// case's build consumes, from the manifest's `packages` key. The case's
     /// workspace `package.json` declares each as a `file:` dependency resolving
     /// under [`TCAB_PACKAGES_DIR`]; the harness does not modify that file. Empty

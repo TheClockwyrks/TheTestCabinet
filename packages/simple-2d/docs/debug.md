@@ -56,7 +56,7 @@ before any frame runs: a caller finds it as soon as `initialize` resolves, and
 there is no moment at which the engine holds a state with no surface beside it.
 
 ```ts
-import type { Game } from "@test-cabinet/simple-2d";
+import type { Game } from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 interface State {
@@ -122,7 +122,7 @@ replaces the state with the one the pose returns and hands the new state back;
 a reading is given `engine.state`.
 
 ```ts
-import { createEngine, ConstantClock } from "@test-cabinet/simple-2d";
+import { createEngine, ConstantClock } from "@clockwyrks/simple-2d";
 
 const engine = createEngine({
   canvas,

@@ -9,9 +9,9 @@
 //
 // WHAT IT DECIDES, AND WHAT IT LEAVES ALONE. The pile counts. The screen and the
 // mode are `presentation/overlay-shows-screen`, the drag
-// `presentation/overlay-shows-drag`, the cascade
-// `presentation/overlay-shows-cascade`, and that watching the panel costs the
-// game nothing is `presentation/overlay-changes-nothing`.
+// `presentation/overlay-shows-drag`, and the cascade
+// `presentation/overlay-shows-cascade`. That watching the panel costs the game
+// nothing is the engine's under this engine and is graded on `none` alone.
 //
 // THE BOARD IS POSED SO EVERY COUNT IS OWED. The thirteen piles are given
 // `11`, `5`, `1 2 3 4` and `1 2 3 4 5 5 6` cards, one full deck between them, and

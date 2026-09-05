@@ -15,7 +15,7 @@ import {
   createEngine,
   type Engine,
   type SurfaceMetrics,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import { describe, expect, it } from "vitest";
 import {
   BULLET_LIFE,

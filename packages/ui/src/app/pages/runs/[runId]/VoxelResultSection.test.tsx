@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import type { ModelSpec } from "@test-cabinet/run-record";
+import type { ModelSpec } from "@clockwyrks/run-record";
 import { describe, expect, it, vi } from "vitest";
 import type { VoxelResultView } from "../../../data/galleryContext";
 

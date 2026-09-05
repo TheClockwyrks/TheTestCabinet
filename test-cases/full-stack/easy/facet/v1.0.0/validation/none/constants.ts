@@ -610,39 +610,21 @@ export const MAX_CHAIN_STEPS = 64;
 export const MAX_REPLAY_FRAMES = 300;
 
 /* -------------------------------------------------------------------------- */
-/* The suite's own sampling tolerances — NOT specification figures            */
+/* Where a cell is sampled — NOT a specification figure                       */
 /* -------------------------------------------------------------------------- */
 //
-// specs/board.md requires that the seven kinds, the four cuts and the four
-// strain states be told apart, and fixes no palette, no form and no style. These
-// are the numbers this suite reads that requirement at, so no check here asserts
-// a hue, a layout, or a style — only that two things a player must tell apart
-// are drawn differently, and by how much.
+// One figure, and it grades nothing: it fixes the size of the box a pixel
+// reading is cut from rather than anything that reading has to clear. Every
+// check here that reads pixels reads PRESENCE — whether the build drew
+// something where the specification says something is drawn — so no threshold
+// stands beside it, and no check reads a hue, a contrast, an extent or a
+// placement.
 
 /**
- * Half the side of the pixel box a cell's appearance is read from.
+ * Half the side of the pixel box a cell is read through.
  *
  * 20 gives a 41x41 box centered on the cell center: inside `GEM_R` (`30`), so it
  * lands on the gem rather than on whatever the board draws around it, and well
  * inside half of `CELL_PITCH` (`36`), so no neighbor's gem reaches into it.
  */
 export const PATCH_HALF = 20;
-
-/**
- * The mean per-pixel RGB distance (`0..441`) at which two patches are told
- * apart.
- *
- * Deliberately low. The measure registers a hue difference and a form difference
- * alike, so a build that tells two kinds apart by silhouette on one palette is
- * not failed for having chosen a quiet palette; what it rules out is a build
- * that draws two of them identically. Large enough that anti-aliasing, an idle
- * animation phase, or compression noise does not reach it.
- */
-export const PATCH_DISTINCT_MIN = 12;
-
-/**
- * The distance below which two patches are the same picture — the control
- * reading a check about telling two things apart is measured against. Not zero,
- * because a build is entitled to an idle animation.
- */
-export const PATCH_SAME_MAX = 2;

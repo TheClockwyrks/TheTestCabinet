@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import type { HarnessSlug } from "@test-cabinet/run-record";
+import type { HarnessSlug } from "@clockwyrks/run-record";
 import type {
   Comparison,
   ComparisonArm,
   ComparisonInput,
-} from "@test-cabinet/run-record/comparison";
+} from "@clockwyrks/run-record/comparison";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";

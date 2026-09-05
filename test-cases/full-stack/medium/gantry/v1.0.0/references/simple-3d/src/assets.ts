@@ -13,8 +13,8 @@
 // templates live here, beside the retained scene, and the yard clones one for
 // each subject it draws (`specs/assets.md`).
 
-import { cloneModel } from "@test-cabinet/simple-3d";
-import type { InitApi, Model } from "@test-cabinet/simple-3d";
+import { cloneModel } from "@clockwyrks/simple-3d";
+import type { InitApi, Model } from "@clockwyrks/simple-3d";
 import * as THREE from "three";
 import { CUES, VOXELS_PER_UNIT, type CueName } from "./constants";
 import type { GantryState } from "./game";

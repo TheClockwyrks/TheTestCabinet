@@ -34,10 +34,7 @@ import {
 } from "./kit";
 import { HintBar, SiteStrip, StartBlock } from "./pieces";
 import type { GantryState, StartIssue } from "../game";
-import type {
-  ShapeComponent,
-  TextComponent,
-} from "@test-cabinet/structured-3d";
+import type { ShapeComponent, TextComponent } from "@clockwyrks/structured-3d";
 
 const PALETTE_RECT: Rect = { x: MARGIN, y: 132, w: 200, h: 24 + 6 * 32 };
 const HELD_RECT: Rect = {

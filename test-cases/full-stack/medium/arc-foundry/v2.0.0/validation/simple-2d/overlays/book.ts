@@ -20,7 +20,7 @@
 // ingredient changing state.
 
 import {
-  DISTINCT,
+  DRAWN,
   type Harness,
   lattice,
   type RecipeEntry,
@@ -62,15 +62,16 @@ export function readCell(h: Harness, cell: RecipeEntry): Promise<Pixel[]> {
 /**
  * How many of two samplings of the same points read as told apart.
  *
- * `DISTINCT` is this project's own line for something clearly drawn, `50` of the
- * `441` the colour cube spans, and it is the line "told apart at a glance" is held
- * to: two states a player is meant to separate without looking twice have to differ
- * by more than a shade.
+ * `DRAWN` is the floor any presence reading in this project clears, so what is
+ * counted is points the build painted differently between the two poses. How far
+ * apart the two states LOOK is not decided here: `specs/hud.md` fixes neither
+ * state's colour, and the still beside this point is what the reviewer judges
+ * "told apart at a glance" on.
  */
 export function movedPoints(a: readonly Pixel[], b: readonly Pixel[]): number {
   let moved = 0;
   for (let i = 0; i < Math.min(a.length, b.length); i += 1) {
-    if (rgbDistance(a[i]!, b[i]!) > DISTINCT) moved += 1;
+    if (rgbDistance(a[i]!, b[i]!) > DRAWN) moved += 1;
   }
   return moved;
 }

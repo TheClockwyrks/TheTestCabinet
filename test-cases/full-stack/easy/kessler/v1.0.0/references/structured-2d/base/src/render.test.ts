@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // The picture, sprites or no sprites: every screen draws through a real 2D
 // context from the code fallbacks, the ball's spin frame runs on simulation
 // time (specs/assets.md "The ball sheet"), and the committed particle
@@ -5,8 +6,8 @@
 
 import { createCanvas, type Canvas } from "@napi-rs/canvas";
 import { readFileSync } from "node:fs";
-import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import { describe, expect, it } from "vitest";
 import { kesslerAssets } from "./assets";
 import {

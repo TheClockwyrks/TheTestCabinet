@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import type { RunRecord, RunSubject } from "@test-cabinet/run-record";
-import type { CodeAnalysisDocument } from "@test-cabinet/run-record/code-analysis";
-import type { Comparison } from "@test-cabinet/run-record/comparison";
-import type { HarnessEvent, ProgressCallback } from "@test-cabinet/ui/client";
-import { readTextWithProgress } from "@test-cabinet/ui/client";
+import type { RunRecord, RunSubject } from "@clockwyrks/run-record";
+import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
+import type { Comparison } from "@clockwyrks/run-record/comparison";
+import type { HarnessEvent, ProgressCallback } from "@clockwyrks/ui/client";
+import { readTextWithProgress } from "@clockwyrks/ui/client";
 import {
   DEFAULT_ENGINE_SLUG,
   findModelByModelId,
@@ -17,7 +17,7 @@ import {
   type RunDetail,
   type RunQuery,
   type VariantSummary,
-} from "@test-cabinet/ui/app";
+} from "@clockwyrks/ui/app";
 import {
   runSummaries as publishedRunSummaries,
   writeups as publishedWriteups,

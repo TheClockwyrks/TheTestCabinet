@@ -6,13 +6,12 @@
 // per name in `INSTRUCTIONS` for that reason: a tape is a row of cells a player
 // reads at a glance, and which instruction sits in a cell is read off its glyph.
 //
-// WHAT IT READS. Every one of the forty-five pairs differs on at least
-// `DIFFER_MIN_SHARE` of the canvas the two share. One file shipped ten times
-// differs by exactly nothing, since a PNG carries its pixels losslessly, so the
-// floor is one hundredth — the smallest share worth calling measurable, six pixels
-// of a `24`-unit cell. Two clear pixels count as the same pixel whatever bytes sit
-// under them, because a straight-alpha canvas leaves those bytes undefined and a
-// player sees nothing either way.
+// WHAT IT READS. Every one of the forty-five pairs differs somewhere on the
+// canvas the two share. One file shipped ten times differs by exactly nothing,
+// since a PNG carries its pixels losslessly, so any pixel of difference is the
+// whole of the reading. Two clear pixels count as the same pixel whatever bytes
+// sit under them, because a straight-alpha canvas leaves those bytes undefined
+// and a player sees nothing either way.
 //
 // WHAT IT DOES NOT DECIDE. Whether a pair is told apart IN A `24`-UNIT TAPE CELL is
 // the art bar itself, and the reviewer's judgement. This point decides that a tape
@@ -22,11 +21,10 @@
 // by eye beside the verdict.
 
 import { it } from "vitest";
-import { assertGreaterThanOrEqual, assertLength, fail } from "../assert";
+import { assertGreaterThan, assertLength, fail } from "../assert";
 import { INSTRUCTIONS } from "../constants";
 import { INSTRUCTION_SPRITES } from "./files";
 import {
-  DIFFER_MIN_SHARE,
   type Sprite,
   decodeProduced,
   differingShare,
@@ -51,9 +49,9 @@ it("draws a glyph of its own for each of the ten instructions", async () => {
 
   for (let i = 0; i < glyphs.length; i += 1) {
     for (let j = i + 1; j < glyphs.length; j += 1) {
-      assertGreaterThanOrEqual(
+      assertGreaterThan(
         differingShare(glyphs[i], glyphs[j]),
-        DIFFER_MIN_SHARE,
+        0,
         `${INSTRUCTION_SPRITES[i].label} against ${INSTRUCTION_SPRITES[j].label}: the share of the canvas that differs`,
       );
     }

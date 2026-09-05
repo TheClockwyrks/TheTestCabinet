@@ -47,6 +47,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 
 import { assertEqual, assertTrue } from "../assert";
+import { figurePattern } from "../figures";
 import { poseApart, spawnPredator } from "../fixtures";
 import {
   captureStill,
@@ -135,9 +136,17 @@ it("registers every fact the specification names, and reading it changes nothing
     );
   };
 
-  /** A number, matched as a figure rather than as a run of digits inside one. */
+  /**
+   * A number, matched as a figure rather than as a run of digits inside one.
+   *
+   * Every conventional writing of the figure counts, so a source that groups a
+   * score's digit triples — `4,731`, which is what `toLocaleString()` writes by
+   * default — reports the figure the snapshot reports just as `4731` does. The
+   * ASCII space is not one of the separators, because `40` beside `130` is two
+   * figures rather than `40130`; `figures.ts` states that in full.
+   */
   const reportsNumber = (value: number, what: string): void => {
-    const figure = new RegExp(`(?<!\\d)${String(value)}(?!\\d)`);
+    const figure = figurePattern(value);
     assertTrue(
       values.some((one) => figure.test(one)),
       `${what}, which specs/instrumentation.md names among the sources a ` +

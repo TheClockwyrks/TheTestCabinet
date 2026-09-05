@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // Volute under the engine, in process — the harness the rest of the tests drive
 // the game through, and its own checks.
 //
@@ -33,7 +34,7 @@ import {
   type Engine,
   type SurfaceMetrics,
   type Viewport,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 import { describe, expect, it } from "vitest";
 import {

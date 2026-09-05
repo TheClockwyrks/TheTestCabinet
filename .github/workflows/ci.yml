@@ -4,9 +4,10 @@ name: CI
 # Azure runs the full suite, including linting; GitHub runs only the checks that
 # would otherwise let a genuinely broken change through — the headless Rust crates
 # (build/tests), the front-end build, the front-end unit tests, the desktop app
-# (whose runner image matches the one release.yml bundles on), the frozen-version
-# gate (which protects already-recorded run results, needs no toolchain, and takes
-# seconds), the audio-pack gate (the only enforcement anywhere of the rule that
+# (whose runner image matches the one release.yml bundles on), the validator
+# type-check (the only thing anywhere that compiles a case's validators), the
+# frozen-version gate (which protects already-recorded run results, needs no
+# toolchain, and takes seconds), the audio-pack gate (the only enforcement anywhere of the rule that
 # every non-frozen full-stack version and every game jam declares the packs its
 # runs are staged with — a version that declares none is staged with none, which
 # no other check would notice), and the container build-context gate (which
@@ -150,6 +151,22 @@ jobs:
       - run: ./scripts/ci/install-nextest.sh
       - run: ./scripts/ci/desktop-build.sh
 
+  # The only thing anywhere that compiles a case's validators. They are staged
+  # into a produced tree and run by vitest, which transpiles without checking
+  # types, so a validator that does not compile is invisible until it fails every
+  # review point it decides, on every run of its case — which is exactly the
+  # class of genuinely broken change this workflow exists to stop.
+  validators:
+    name: Validators (type-check)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.23.1
+          cache: npm
+      - run: ./scripts/ci/validators-typecheck.sh
+
   frozen:
     name: Frozen test-case versions (unchanged)
     runs-on: ubuntu-24.04
@@ -211,3 +228,6 @@ jobs:
       # If this step ever needs to come back, the thing to check first is whether something
       # taught the contract generator to build gg again.
       - run: ./scripts/ci/contract-drift.sh
+      # Runs after the drift check, so it greps a package the generator has just
+      # re-emitted rather than whatever was committed.
+      - run: ./scripts/ci/seeded-contract-check.sh

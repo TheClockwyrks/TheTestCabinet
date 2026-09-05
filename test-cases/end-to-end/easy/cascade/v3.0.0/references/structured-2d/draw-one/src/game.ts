@@ -30,12 +30,8 @@
 // `screen` rather than the match phase, so the mode never calls `setPhase` and
 // the inherited `phase` stays `"waiting"`.
 
-import { GameInstance, GameMode, GameState } from "@test-cabinet/structured-2d";
-import type {
-  GameDefinition,
-  InitApi,
-  World,
-} from "@test-cabinet/structured-2d";
+import { GameInstance, GameMode, GameState } from "@clockwyrks/structured-2d";
+import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
 import { applyAudio, defineCues, noCues } from "./audio";
 import { advanceCascade } from "./cascade";
 import { DEFAULT_SEED, LEVELS, MENU_BINDINGS, TAGS } from "./constants";

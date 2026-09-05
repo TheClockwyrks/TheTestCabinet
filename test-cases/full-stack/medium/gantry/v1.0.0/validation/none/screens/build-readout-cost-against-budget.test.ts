@@ -52,15 +52,33 @@ async function frameText(harness: Harness): Promise<string[]> {
 }
 
 /**
+ * The separators a build may set between a figure's digit triples.
+ *
+ * ASCII space is deliberately absent: a frame's text is assembled by joining
+ * separate draw runs with one, so accepting it would read the two figures in
+ * `40 130` as the single number 40130. `.` is absent for the same sort of
+ * reason — it is the decimal point, and a build drawing `1.5` means one and a
+ * half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One drawn number: a grouped figure, or a plain one. */
+const DRAWN = new RegExp(
+  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/**
  * Every number a run of text carries.
  *
- * A group separator inside a number is closed up first — a build is free to set
- * `5600` as `5 600` or `5,600` — so what is compared is the figure rather than
- * how it was typeset.
+ * A grouped figure reads as the one figure it is — a build is free to set `5600`
+ * as `5,600` or `5'600`, and what is compared is the figure rather than how it
+ * was typeset.
  */
 function numbersIn(text: string): number[] {
-  const closed = text.replace(/(\d)[\s,'](?=\d)/g, "$1");
-  return (closed.match(/\d+(?:\.\d+)?/g) ?? []).map(Number);
+  return (text.match(DRAWN) ?? []).map((one) =>
+    Number(one.replace(new RegExp(GROUP, "g"), "")),
+  );
 }
 
 let h: Harness;

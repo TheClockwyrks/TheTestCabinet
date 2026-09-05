@@ -15,8 +15,8 @@
 // a computation one ball can do alone, and doing it here would tie the outcome
 // to the order the balls happened to be spawned in.
 
-import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
-import type { DrawApi } from "@test-cabinet/structured-2d";
+import { Actor, DrawComponent } from "@clockwyrks/structured-2d";
+import type { DrawApi } from "@clockwyrks/structured-2d";
 import { BALL_R } from "./constants";
 import { glowCircle, type Ctx } from "./draw";
 import { parkedBall, type BallSim, type RallyBall } from "./sim";

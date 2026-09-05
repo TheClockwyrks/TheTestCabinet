@@ -364,21 +364,17 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
         }
         // Repo-local identity so committing does not depend on the host's global
         // git configuration (matching how seeding configures the seed repo).
+        self.require("git", &["config", "user.name", "Clockwyrks"], Some(dir))
+            .await?;
         self.require(
             "git",
-            &["config", "user.name", "The Test Cabinet"],
-            Some(dir),
-        )
-        .await?;
-        self.require(
-            "git",
-            &["config", "user.email", "runs@test-cabinet.invalid"],
+            &["config", "user.email", "runs@clockwyrks.invalid"],
             Some(dir),
         )
         .await?;
         self.require("git", &["add", "--all"], Some(dir)).await?;
         // A `packages`-declaring case vendors its runtime libraries under
-        // `.tcab/packages/`, whose `dist/` subtrees the case's own `.gitignore`
+        // `.vendor/packages/`, whose `dist/` subtrees the case's own `.gitignore`
         // excludes; force them in (as seeding's initial commit does) so a published
         // repo that the publisher re-inits, or whose vendored tree is otherwise
         // untracked, is still self-contained and installable. Already-tracked files

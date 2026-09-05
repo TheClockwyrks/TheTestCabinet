@@ -19,7 +19,7 @@ import type {
   GgTelemetryEvent,
   GgTelemetryKind,
   GgTransitionModule,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import type { HarnessEvent } from "../../../../client/types";
 import {
   coHolders,

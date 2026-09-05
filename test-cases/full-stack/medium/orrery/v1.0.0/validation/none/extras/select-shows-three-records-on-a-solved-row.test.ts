@@ -163,6 +163,30 @@ function runsOnRow(
     .sort((a, b) => a.y - b.y || a.x - b.x);
 }
 
+/** A string as a literal the regexes below can carry. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+/**
+ * Every conventional rendering of a whole figure: plain, and grouped by triples.
+ *
+ * The specification fixes the figure and leaves its presentation to the build, and
+ * grouping the digits is what `Number.prototype.toLocaleString` does by default,
+ * so `1234` and `1,234` are the one figure written two ways and a row drawing
+ * either has drawn it. ASCII space is not among the separators: a row's runs are
+ * read joined by one, so accepting it would read the two figures in `40 130` as
+ * the single figure `40130`. A figure of three digits or fewer has nothing to
+ * group and so has exactly one rendering.
+ */
+function renderings(figure: number): string[] {
+  const plain = String(figure);
+  const grouped = [",", "'", "\u00A0", "\u202F", "\u2009"].map((separator) =>
+    plain.replace(/\B(?=(?:\d{3})+$)/gu, separator),
+  );
+  return [plain, ...grouped.filter((rendering) => rendering !== plain)];
+}
+
 /**
  * Whether a row's runs carry `value` as a whole number.
  *
@@ -170,12 +194,17 @@ function runsOnRow(
  * once with the runs butted together, which is how a row drawn glyph by glyph
  * reads, and once with a space between them, which is how two numbers drawn as
  * neighbouring runs read. A figure counts only with no digit either side of it,
- * so `137` is not found inside `1370`.
+ * so `137` is not found inside `1370`, and it counts under any of its renderings,
+ * so a row grouping it into digit triples has carried it.
  */
 function carriesNumber(runs: readonly TextDraw[], value: number): boolean {
-  const digits = new RegExp(`(?<!\\d)${value}(?!\\d)`, "u");
   const texts = runs.map((run) => run.text);
-  return digits.test(texts.join("")) || digits.test(texts.join(" "));
+  const butted = texts.join("");
+  const spaced = texts.join(" ");
+  return renderings(value).some((rendering) => {
+    const digits = new RegExp(`(?<!\\d)${escapeRegExp(rendering)}(?!\\d)`, "u");
+    return digits.test(butted) || digits.test(spaced);
+  });
 }
 
 it("draws a solved row's three records, each labelled, as the challenge holds them", async () => {

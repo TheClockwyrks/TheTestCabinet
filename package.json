@@ -9,12 +9,12 @@
     "packages/*"
   ],
   "overrides": {
-    "three": "~0.182.0"
+    "three": "~0.185.0"
   },
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "build:packages": "npm run build -w @test-cabinet/run-record -w @test-cabinet/run-stats -w @test-cabinet/simple-2d -w @test-cabinet/structured-2d -w @test-cabinet/simple-3d -w @test-cabinet/structured-3d -w @test-cabinet/voxel-runtime -w @test-cabinet/particle-runtime",
-    "build:site": "npm run build:packages && npm run build -w @test-cabinet/site",
+    "build:packages": "npm run build -w @clockwyrks/run-record -w @clockwyrks/run-stats -w @clockwyrks/simple-2d -w @clockwyrks/structured-2d -w @clockwyrks/simple-3d -w @clockwyrks/structured-3d -w @clockwyrks/voxel-runtime -w @clockwyrks/particle-runtime",
+    "build:site": "npm run build:packages && npm run build -w @clockwyrks/site",
     "dev": "npm run dev --workspaces --if-present",
     "gen:contract": "node scripts/gen-contract.mjs",
     "lint": "npm run lint --workspaces --if-present && npm run lint:specs",
@@ -23,7 +23,8 @@
     "spell": "cspell lint --no-progress --cache",
     "test": "npm run test --workspaces --if-present",
     "test:scripts": "node --test scripts/lib/*.test.mjs",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck:validators": "node scripts/typecheck-validators.mjs"
   },
   "devDependencies": {
     "cspell": "^10.0.1",

@@ -14,7 +14,7 @@ import type {
   GgTelemetryKind,
   GgTurnErrorKind,
   GgTurnErrorType,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import type { HarnessEvent } from "../../../../client/types";
 import { programStatusOf, reduceGgEvents } from "./useGgRunState";
 import type { GgAgentSurface } from "./useGgRunState";

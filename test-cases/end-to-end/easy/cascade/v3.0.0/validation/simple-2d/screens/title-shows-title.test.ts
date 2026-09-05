@@ -18,9 +18,9 @@
 // the build's, and requiring the exact run would fail a screen showing precisely
 // the right word.
 //
-// WHAT THIS DOES NOT DECIDE. Where the title is drawn, how big it is, or whether
-// it reads against what is behind it, which is `presentation/text-legible`. The
-// tagline and the two items are their own points.
+// WHAT THIS DOES NOT DECIDE. Where the title is drawn, how big it is, or how it
+// reads against what is behind it, all of which are the reviewer's. The tagline
+// and the two items are their own points.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

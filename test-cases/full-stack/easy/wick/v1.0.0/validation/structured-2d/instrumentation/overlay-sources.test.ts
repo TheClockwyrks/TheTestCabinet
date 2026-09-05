@@ -76,9 +76,32 @@ function linesNaming(lines: readonly string[], id: string): string[] {
   return lines.filter((line) => line.toLowerCase().includes(wanted));
 }
 
-/** Every number a line carries. */
+/**
+ * The separators a build may set between the digit triples of a figure.
+ *
+ * `Number.prototype.toLocaleString` groups by default and the panel's wording is
+ * the build's, so `1,234` and `1234` are one figure written two ways. ASCII
+ * space is deliberately absent: a panel's readings are read as separate lines
+ * and a build sets its own spacing within one, so accepting it would read the
+ * two figures of `40 130` as the single figure `40130`. `.` is absent because it
+ * is the decimal point, and a build writing `1.5` means one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One number a line carries: a grouped figure, or a plain one. */
+const NUMBER = new RegExp(
+  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/** Every separator in a written figure, for reading it back as its digits. */
+const GROUPS = new RegExp(GROUP, "g");
+
+/** Every number a line carries, a grouped figure read as the one figure it is. */
 function numbersIn(line: string): number[] {
-  return (line.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
+  return (line.match(NUMBER) ?? []).map((written) =>
+    Number(written.replace(GROUPS, "")),
+  );
 }
 
 /** A reading's value as the panel draws it (`engine/diagnostics.md`). */

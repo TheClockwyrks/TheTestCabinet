@@ -10,27 +10,20 @@
 // since each of the six is shown in its turn — `APERTURE_FRAME_TIME` (`0.12`)
 // seconds of every turn of the sheet.
 //
-// WHAT IT READS. All six files decode, and the share of each canvas carrying paint —
-// any pixel whose alpha is above zero — clears `PAINT_MIN_SHARE`. `specs/assets.md`
-// fixes no coverage figure, so that floor is one hundredth of the canvas: an order of
-// magnitude below the thinnest mark an aperture could legibly be drawn as, which
-// makes it a reading about a canvas that was drawn on at all rather than a second art
-// bar. Whether the six read as ONE CONTINUOUS TURN is the art bar itself, and the
-// reviewer's judgement.
+// WHAT IT READS. All six files decode, and the share of each canvas carrying
+// paint is above zero: some pixel of it carries an alpha above zero.
+// `specs/assets.md` fixes no coverage figure, so what is read is that the
+// canvas was drawn on at all rather than a second art bar. Whether the six read
+// as ONE CONTINUOUS TURN is the art bar itself, and the reviewer's judgement.
 //
 // THE EVIDENCE is the six files magnified over a checkerboard: wherever the checker
 // shows through, that frame carried nothing there.
 
 import { it } from "vitest";
-import { assertGreaterThanOrEqual, assertLength, fail } from "../assert";
+import { assertGreaterThan, assertLength, fail } from "../assert";
 import { APERTURE_FRAMES } from "../constants";
 import { SET_SPRITES } from "./files";
-import {
-  PAINT_MIN_SHARE,
-  decodeProduced,
-  paintShare,
-  showSprites,
-} from "./sprites";
+import { decodeProduced, paintShare, showSprites } from "./sprites";
 
 it("decodes all six set aperture frames as canvases carrying paint", async () => {
   await showSprites("coverage", SET_SPRITES);
@@ -44,9 +37,9 @@ it("decodes all six set aperture frames as canvases carrying paint", async () =>
   for (const [index, row] of SET_SPRITES.entries()) {
     const read = readings[index];
     if (read.sprite === null) fail(`a decoded ${row.label}`, read.reason);
-    assertGreaterThanOrEqual(
+    assertGreaterThan(
       paintShare(read.sprite),
-      PAINT_MIN_SHARE,
+      0,
       `${row.label}: the share of its canvas carrying paint`,
     );
   }

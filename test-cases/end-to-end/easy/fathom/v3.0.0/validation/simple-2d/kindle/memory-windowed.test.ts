@@ -56,6 +56,7 @@ import {
 } from "../harness";
 import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import {
+  DRAWN_FLOOR,
   FOG_MATCH,
   MASKED_MATCH,
   fromFog,
@@ -93,8 +94,15 @@ const AWAY_TILES = 11; // 352 units: past R at G = 1 (320)
  */
 const UNSEEN_TILES = 5;
 
-/** The review item's bound on "drawn", as an RGB distance out of `441`. */
-const DRAWN_MIN = FOG_MATCH;
+/**
+ * The sensing floor a remembered tile owes against the fog, as an RGB distance
+ * out of `441`.
+ *
+ * `8` of `441` is the level below which a sampling cannot tell a drawing from
+ * eight-bit channel rounding and the host's antialiasing. Anything the build
+ * painted there clears it, in whatever palette and however dim.
+ */
+const DRAWN_MIN = DRAWN_FLOOR;
 
 /** Ticks the forager stands at each berth, so the build has drawn what it lit. */
 const SETTLE_TICKS = 4;

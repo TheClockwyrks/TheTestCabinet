@@ -16,12 +16,8 @@
 // the engine, which hands it back as `engine.debug` — the debug and automation
 // surface `specs/instrumentation.md` fixes (`src/debug.ts`).
 
-import { GameInstance } from "@test-cabinet/structured-2d";
-import type {
-  GameDefinition,
-  InitApi,
-  World,
-} from "@test-cabinet/structured-2d";
+import { GameInstance } from "@clockwyrks/structured-2d";
+import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
 import { ACTIONS, BINDINGS, DEFAULT_SEED, WORLDS } from "./constants";
 import type { ChargeId, WorldName } from "./constants";
 import { loadAssets } from "./assets";

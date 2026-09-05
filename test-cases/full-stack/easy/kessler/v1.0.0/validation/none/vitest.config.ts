@@ -42,7 +42,6 @@ export default defineConfig({
     // browser process rather than a core, and the host running this is running a
     // model's build under it.
     maxWorkers: 4,
-    minWorkers: 1,
     // A scenario that drains a whole 600-tick effect timer, or watches a wave
     // clear through its 180-tick interstitial, is hundreds of ticks driven a
     // crossing at a time.

@@ -13,8 +13,8 @@
 // host.
 
 import { createCanvas, type Canvas } from "@napi-rs/canvas";
-import { ConstantClock, createEngine } from "@test-cabinet/simple-2d";
-import type { Engine } from "@test-cabinet/simple-2d";
+import { ConstantClock, createEngine } from "@clockwyrks/simple-2d";
+import type { Engine } from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CARD_H,

@@ -1,3 +1,8 @@
+/// <reference types="node" />
+// This suite runs in Node and reads the disk. The project's tsconfig sets
+// `types: []` to keep the game's own sources browser-only, so the suites that
+// need Node's types name them here instead.
+
 // Floe — the seeded art, loaded the way the produced site loads it.
 //
 // `src/render.test.ts` reads the seeded PNGs off disk and hands them to the render
@@ -20,7 +25,7 @@ import {
   ConstantClock,
   createEngine,
   type SurfaceMetrics,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

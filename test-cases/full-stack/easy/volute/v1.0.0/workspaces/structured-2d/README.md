@@ -39,7 +39,7 @@ the engine's asset loaders, each image with `loadImage` and each sound with
 `audio.load`, awaited so everything is decoded before the frame that needs it.
 `specs/assets.md` is the production contract, and the engine's `assets.md` and
 `audio.md` state the asset root, the path rules, and the looping cues. A
-produced particle system is played through `@test-cabinet/particle-runtime`'s
+produced particle system is played through `@clockwyrks/particle-runtime`'s
 `./canvas` binding, which is installed as an ordinary dependency and composites
 a running system into a 2D rendering context. The tools are absent when the
 build is installed and rebuilt elsewhere, so the build bundles the committed
@@ -79,7 +79,7 @@ testing a game this way.
 - The toolchain: `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`,
   `.prettierignore`, and `.gitignore`.
-- `.tcab/` and `engine/`, the vendored engine and its documentation.
+- `.vendor/` and `engine/`, the vendored engine and its documentation.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the
 `package-lock.json`; the build is installed with `npm ci`. Leave the existing

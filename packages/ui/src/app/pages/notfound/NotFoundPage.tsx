@@ -1,4 +1,4 @@
-import { Panel } from "@test-cabinet/ui";
+import { Panel } from "@clockwyrks/ui";
 import { Link, useLocation } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { useGalleryData } from "../../data/galleryContext";

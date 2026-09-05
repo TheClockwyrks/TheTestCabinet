@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // The renderer draws every screen through a real 2D context, sprites or no
 // sprites, and the ball's spin frame runs on simulation time
 // (specs/assets.md "The ball sheet").

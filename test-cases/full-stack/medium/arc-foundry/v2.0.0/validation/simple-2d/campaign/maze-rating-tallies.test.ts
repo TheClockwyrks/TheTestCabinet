@@ -17,9 +17,22 @@
 // The Dynamo is reached through `spawnUnit` and its travel is held, so it stands
 // in reach of both for the whole reading and nothing else on the yard can add a
 // point to either total.
+//
+// THE TEN SECONDS ARE THE SAMPLE; THE FRAMES THEY ARE CUT INTO ARE NOT. The
+// simulation is frame-division independent (`specs/controls.md`: "an interval of
+// simulation time reaches the same state however it was divided into frames"), so
+// the same ten seconds are driven at the COARSEST step this check may use. That
+// step is bounded, and the bound is computed rather than guessed: a Capacitor's
+// shot is a projectile, and a projectile that stepped more than `2 *
+// PROJECTILE_HIT_R` between two frames could pass its target without ever coming
+// within `PROJECTILE_HIT_R` of it. `MAX_STEP_MS` below is that bound out of the
+// project's own transcription of `specs/components.md`, and the clock is the
+// coarsest whole step inside it.
 
+import { ConstantClock } from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
+import { PROJECTILE_HIT_R, PROJECTILE_SPEED } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -34,13 +47,29 @@ const GUN = { col: 10, row: 10 };
 const BURNER = { col: 16, row: 10 };
 const TARGET = { x: 280, y: 300 };
 
+/**
+ * The longest frame a bolt in flight is still readable on, in milliseconds.
+ *
+ * A shot travels at `PROJECTILE_SPEED` and lands when it is within
+ * `PROJECTILE_HIT_R` of its target, so a frame that carried it further than the
+ * diameter of that circle could step it straight over. Both figures come from
+ * this project's `constants.ts`.
+ */
+const MAX_STEP_MS = (2 * PROJECTILE_HIT_R * 1000) / PROJECTILE_SPEED;
+
+/** The frame this check runs at: the coarsest whole `5` ms inside that bound. */
+const CLOCK_MS = Math.floor(MAX_STEP_MS / 5) * 5;
+
 /** Ten seconds: many cadences of both, and several burn durations. */
-const WINDOW = 10 * 120;
+const WINDOW_SECONDS = 10;
+
+/** Those ten seconds, in frames of this check's own clock. */
+const WINDOW = (WINDOW_SECONDS * 1000) / CLOCK_MS;
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ clock: new ConstantClock(CLOCK_MS) });
 });
 
 afterEach(() => {

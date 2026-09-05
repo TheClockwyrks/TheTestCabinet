@@ -189,7 +189,6 @@ function resolveShipBullets(sim: Sim, ev: TickEvents): void {
 
     const at = sweepTouch(shot, fixed(STAR_X, STAR_Y, CORE_R));
     if (at !== null && at < bestAt) {
-      bestAt = at;
       hitRock = null;
       hitSaucer = false;
       hitCore = true;

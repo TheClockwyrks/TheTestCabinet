@@ -1,6 +1,6 @@
 # Dependencies — reinstalled with `npm ci`; never committed. The engine,
-# `@test-cabinet/simple-2d`, and the particle playback library,
-# `@test-cabinet/particle-runtime`, are resolved from the repository's own
+# `@clockwyrks/simple-2d`, and the particle playback library,
+# `@clockwyrks/particle-runtime`, are resolved from the repository's own
 # `packages/` through relative `file:` dependencies that npm installs as
 # symlinks, so nothing of either is written here.
 node_modules/

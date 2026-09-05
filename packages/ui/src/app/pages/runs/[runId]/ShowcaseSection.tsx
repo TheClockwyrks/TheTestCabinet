@@ -3,8 +3,8 @@ import type {
   RunRecord,
   RunShowcase,
   ShowcaseMedia,
-} from "@test-cabinet/run-record";
-import { Markdown, Panel } from "@test-cabinet/ui";
+} from "@clockwyrks/run-record";
+import { Markdown, Panel } from "@clockwyrks/ui";
 import { MediaView } from "../../../components/MediaView";
 import { useGalleryData } from "../../../data/galleryContext";
 import { ReplayPlayer } from "../replay/ReplayPlayer";

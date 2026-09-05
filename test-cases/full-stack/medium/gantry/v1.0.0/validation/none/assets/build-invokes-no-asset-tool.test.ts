@@ -25,7 +25,7 @@
 // built, and the workspace itself is never written to.
 //
 // THE COPY IS PLACED SO THAT A `file:` DEPENDENCY STILL RESOLVES. A workspace
-// may depend on a package by relative path — `@test-cabinet/voxel-runtime` is
+// may depend on a package by relative path — `@clockwyrks/voxel-runtime` is
 // one, under this engine — and such a path is relative to the package's own
 // directory, so a copy elsewhere would break the install for a reason that has
 // nothing to do with the build. The copy is therefore placed deep enough inside

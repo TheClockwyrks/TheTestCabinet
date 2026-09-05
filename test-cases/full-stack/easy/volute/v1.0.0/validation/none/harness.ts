@@ -14,7 +14,7 @@
 // recorder and the audio probe, bracketing each driven tick around one
 // `step(1)` of the build's surface, reading pixels and draw calls back out, and
 // writing the evidence a review point declares — every engineless case needs
-// exactly that, and it lives once, in `@test-cabinet/case-harness`, staged beside
+// exactly that, and it lives once, in `@clockwyrks/case-harness`, staged beside
 // this file as `./case-harness/`. What is left here is what is genuinely
 // Volute's: the shape of its snapshot, the operations `specs/instrumentation.md`
 // requires, the channel's own geometry, and the hall a scenario poses.
@@ -62,10 +62,8 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   createCaseHarness,
-  sampleDisc as sampleDiscOf,
   type Harness as BaseHarness,
   type PixelRect,
-  type Rgb,
   type UntilResult as BaseUntilResult,
 } from "./case-harness/index";
 import { assertTruthy } from "./assert";
@@ -74,7 +72,6 @@ import {
   CELLS,
   CHANNEL,
   CHANNEL_ARC,
-  CORE_RADIUS,
   DEFAULT_SEED,
   FIELD_H,
   FIELD_W,
@@ -370,7 +367,6 @@ export type {
   RecordedResource,
   RecordedState,
   Recording,
-  Rgb,
   TextDraw,
   TimedCue,
   UntilOptions,
@@ -380,7 +376,6 @@ export type {
 export {
   callsTo,
   closeWorkerBrowser,
-  colorDistance,
   differingPoints,
   distance,
   drawnPoints,
@@ -389,14 +384,9 @@ export {
   drewText,
   imageDraws,
   imageRef,
-  luminance,
-  luminanceMask,
-  maskDifference,
-  meanColor,
   pixelsDiffering,
   pointsNear,
   retable,
-  samplePatch,
   setsOf,
   stepUntilBed,
   stepUntilSound,
@@ -680,34 +670,15 @@ export function loopsStarted(h: Harness): Promise<number> {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Colour                                                                     */
+/* Reading a frame back                                                       */
 /* -------------------------------------------------------------------------- */
 //
 // `specs/ui.md`: "Volute fixes no palette, no font, no layout, and no styling for
-// any screen." So nothing here reads a hex value. What the appearance points may
-// assert is PRESENCE and DISTINGUISHABILITY — that a charge stands apart from the
-// field, from the plate, and from every other charge — and the reading is the
-// distance between two sampled colours on the 0-441 scale the case's standing
-// tolerance names. The readings themselves are the shared harness's, re-exported
-// above; the two below are the ones that carry a figure of this case's.
-
-/**
- * The mean colour of the disc of `radius` centred on a logical point.
- *
- * What a check about a CORE reads: a core is a disc of {@link CORE_RADIUS} that
- * carries a glyph over its face, so one pixel is either the mineral or the glyph
- * and the mean over the disc is the charge. The package's version takes the
- * radius as a required argument — how big the body is, is the case's — and the
- * default is supplied here, a unit inside the rim so the read never straddles it.
- */
-export function sampleDisc(
-  h: Harness,
-  x: number,
-  y: number,
-  radius = CORE_RADIUS - 1,
-): Promise<Rgb> {
-  return sampleDiscOf(h, x, y, radius);
-}
+// any screen." So nothing here reads a colour, a contrast, or how far a drawn
+// mark reaches. A frame is read against ANOTHER frame of the same hall, through
+// the shared package's `differingPoints` re-exported above, and what that reports
+// is where the picture changed — which is presence, the one thing a pixel may
+// decide.
 
 /** The whole field, read back as RGBA. */
 export function fieldPixels(h: Harness): Promise<PixelRect> {

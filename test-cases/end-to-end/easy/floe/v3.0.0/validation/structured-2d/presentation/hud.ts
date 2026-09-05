@@ -47,15 +47,38 @@ export function hudCopy(h: Harness): string {
 }
 
 /**
- * Every whole number the HUD bar's readouts carry, in the order they were drawn.
+ * The separators a build may set between a figure's digit triples.
+ *
+ * `Number.prototype.toLocaleString` groups by default, so a build that reaches for
+ * it draws its score as `1,240`, or as `1'240` or `1\u202F240` in another locale.
+ * Every one of those sets the one figure `1240`, and each separator is dropped
+ * before the digits are read.
+ *
+ * THE ASCII SPACE IS DELIBERATELY NOT ONE OF THEM. A frame's text is read run by
+ * run and joined with a space, so accepting it would read the two readouts of
+ * `40  130` as the single figure `40130`. `.` is left out for its own reason: it is
+ * the decimal point, and a build drawing `1.5` means one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One figure as a build may have set it: grouped, or plain. */
+const DRAWN = new RegExp(
+  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/**
+ * Every number the HUD bar's readouts carry, in the order they were drawn.
  *
  * A digit run is one number however it is set, so `LEVEL 1 / 8` yields `1` and
- * `8`, `TIME 07` yields `7`, and `SCORE 1,240` yields `1` and `240` — which is
- * why the points that read a figure this way pose one that no other readout can
+ * `8`, `TIME 07` yields `7`, and `SCORE 1,240` yields the one figure `1240` — which
+ * is why the points that read a figure this way pose one that no other readout can
  * produce, and say in the point which ones they ruled out.
  */
 export function hudNumbers(h: Harness): number[] {
   return hudRuns(h).flatMap((span) =>
-    (span.text.match(/\d+/g) ?? []).map((digits) => Number(digits)),
+    (span.text.match(DRAWN) ?? []).map((figure) =>
+      Number(figure.replace(new RegExp(GROUP, "g"), "")),
+    ),
   );
 }

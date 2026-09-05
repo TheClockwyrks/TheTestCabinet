@@ -38,7 +38,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, it } from "vitest";
-import { ParticleSimulator } from "@test-cabinet/particle-runtime";
+import { ParticleSimulator } from "@clockwyrks/particle-runtime";
 import {
   assertBetween,
   assertCloseTo,

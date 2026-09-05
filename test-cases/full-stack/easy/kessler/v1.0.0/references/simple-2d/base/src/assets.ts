@@ -11,8 +11,8 @@
 // polish rather than its playability. The produced sounds load through the
 // engine's cue bus in `src/audio.ts`.
 
-import type { ParticleSystem as SystemSpec } from "@test-cabinet/particle-runtime";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { ParticleSystem as SystemSpec } from "@clockwyrks/particle-runtime";
+import type { InitApi } from "@clockwyrks/simple-2d";
 import {
   PARTICLE_PATHS,
   POD_KINDS,

@@ -15,12 +15,14 @@
 // tally rather than as damage. It is released frozen inside every tower's reach,
 // so it neither walks out of range nor grounds out.
 //
-// FOUR TOWERS, ONE TARGET. specs/components.md keeps a running total of the
+// SIXTEEN TOWERS, ONE TARGET. specs/components.md keeps a running total of the
 // damage each firing structure dealt, so the increase in ONE tower's tally
-// between two samples is one of that tower's shots. Four towers ring the unit,
-// each read as its own series, which is what makes a hundred shots affordable at
-// a cadence of one every `1.667` s. Samples are `0.5` s apart, so no sample of
-// any one tower can hold two of its shots.
+// between two samples is one of that tower's shots. Sixteen towers ring the unit,
+// each read as its own series, which is what makes ninety-six shots affordable at
+// a cadence of one every `1.667` s: the SAMPLE is bought with subjects rather than
+// with seconds, so the same ninety-six shots fall inside ten seconds of simulation
+// rather than forty. Samples are `0.5` s apart, so no sample of any one tower can
+// hold two of its shots.
 //
 // Every increase must be the shot's damage or `critMult` times it and nothing
 // else, and across `96` shots at the seeded generator both must appear: a build
@@ -29,14 +31,22 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { comboDamage, comboDef, structureCenter } from "../constants";
+import {
+  comboDamage,
+  comboDef,
+  PROJECTILE_HIT_R,
+  PROJECTILE_SPEED,
+  structureCenter,
+} from "../constants";
 import {
   captureReplay,
+  ConstantClock,
   createHarness,
   openYard,
   parkUnit,
   standCombo,
   structureById,
+  TICK_HZ,
   type Harness,
 } from "../harness";
 
@@ -45,29 +55,67 @@ const TOWER = comboDef("slagdriver");
 const CRIT_MULT = TOWER.abilities.crit!.multiplier;
 const LEVEL = 3;
 
-/** Four anchors around one point, every one inside the `175 + 12` they reach. */
-const ANCHORS = [
-  { col: 10, row: 10 },
-  { col: 16, row: 10 },
-  { col: 10, row: 16 },
-  { col: 16, row: 16 },
-];
-/** The middle of the four, `85` units from each tower's center. */
+/**
+ * Sixteen anchors around one point: a four-by-four block, two tiles apart so no
+ * two footprints overlap, every one inside the `175 + 12` they reach.
+ */
+const ANCHOR_COLS = [10, 12, 14, 16];
+const ANCHOR_ROWS = [10, 12, 14, 16];
+const ANCHORS = ANCHOR_ROWS.flatMap((row) =>
+  ANCHOR_COLS.map((col) => ({ col, row })),
+);
+/** The middle of the block, about `85` units from the furthest tower's center. */
 const TARGET = {
   x:
     (structureCenter(ANCHORS[0]!.col, ANCHORS[0]!.row).x +
-      structureCenter(ANCHORS[3]!.col, ANCHORS[3]!.row).x) /
+      structureCenter(
+        ANCHORS[ANCHORS.length - 1]!.col,
+        ANCHORS[ANCHORS.length - 1]!.row,
+      ).x) /
     2,
   y:
     (structureCenter(ANCHORS[0]!.col, ANCHORS[0]!.row).y +
-      structureCenter(ANCHORS[3]!.col, ANCHORS[3]!.row).y) /
+      structureCenter(
+        ANCHORS[ANCHORS.length - 1]!.col,
+        ANCHORS[ANCHORS.length - 1]!.row,
+      ).y) /
     2,
 };
 
-/** Frames between two readings of a tally: well inside the `1.667` s cadence. */
-const SAMPLE = 60;
-/** `40` s at `0.6` /s across four towers is `96` shots. */
-const SAMPLES = (40 * 120) / SAMPLE;
+/**
+ * The frame the counted interval is stepped in, in Hz.
+ *
+ * THE BOUND IS COMPUTED FROM FIGURES THE SPECS STATE. A shot flies straight at the
+ * point it was aimed at, at `PROJECTILE_SPEED`, and lands "when the projectile
+ * comes within `PROJECTILE_HIT_R` of that position" (`specs/components.md`); the
+ * target is held still, so the aim point does not move and the flight closes on it
+ * monotonically. A step shorter than the full width of that window —
+ * `2 * PROJECTILE_HIT_R` — cannot carry a shot from outside the window to outside
+ * it in one frame, which makes `PROJECTILE_SPEED / (2 * PROJECTILE_HIT_R)` the
+ * floor on the rate. `specs/instrumentation.md` fixes no frame size otherwise, and
+ * `instrumentation/frame-division-movement` and
+ * `instrumentation/frame-division-projectile` are the two items that decide that
+ * guarantee, so the interval takes half the project's own frame, which clears the
+ * floor with room to spare.
+ *
+ * WHAT THE SAMPLING DOES NOT DEPEND ON IS THE FRAME. Two readings of a tally fall
+ * {@link SAMPLE_SECONDS} apart in SIMULATION time, so the argument that no sample
+ * of one tower can hold two of its shots is the cadence's, not the clock's.
+ */
+const CRIT_HZ = Math.max(
+  TICK_HZ / 2,
+  Math.ceil(PROJECTILE_SPEED / (2 * PROJECTILE_HIT_R)),
+);
+
+/** How far apart two readings of a tally fall, in seconds of simulation. */
+const SAMPLE_SECONDS = 0.5;
+
+/** That interval, in frames of the counting clock. */
+const SAMPLE = Math.round(SAMPLE_SECONDS * CRIT_HZ);
+
+/** The counted interval: `10` s at `0.6` /s across sixteen towers is `96` shots. */
+const SECONDS = 10;
+const SAMPLES = Math.round(SECONDS / SAMPLE_SECONDS);
 
 /** A tally moved by less than this is floating-point noise, not a shot. */
 const NOISE = 1e-6;
@@ -75,7 +123,7 @@ const NOISE = 1e-6;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ clock: new ConstantClock(1000 / CRIT_HZ) });
 });
 
 afterEach(async () => {

@@ -10,7 +10,7 @@
 // drawn and watching it changes nothing. Each line is short enough to read
 // at a glance while the game runs.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { formatClock } from "./render/hud";
 import { runTime, spawnWindow } from "./sim/enemies";
 import { SWITCH_NAMES, wickState, type WickState } from "./state";

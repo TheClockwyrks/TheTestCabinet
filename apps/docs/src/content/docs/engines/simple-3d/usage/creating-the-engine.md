@@ -6,15 +6,15 @@ The engine is an ordinary dependency of the build's workspace, already present
 in its `package.json`. One import brings in the factory.
 
 ```ts
-import { createEngine } from "@test-cabinet/simple-3d";
+import { createEngine } from "@clockwyrks/simple-3d";
 ```
 
 The clock catalogue, the touch layout catalogue, `cloneModel`, and every type
 the engine names come from the same specifier.
 
 ```ts
-import { cloneModel, createEngine, PacedClock, TOUCH_LAYOUTS } from "@test-cabinet/simple-3d";
-import type { CueSpec, Engine, EngineOptions, Game } from "@test-cabinet/simple-3d";
+import { cloneModel, createEngine, PacedClock, TOUCH_LAYOUTS } from "@clockwyrks/simple-3d";
+import type { CueSpec, Engine, EngineOptions, Game } from "@clockwyrks/simple-3d";
 ```
 
 ## `three` is the build's own
@@ -23,7 +23,7 @@ import type { CueSpec, Engine, EngineOptions, Game } from "@test-cabinet/simple-
 `package.json` beside the engine itself. The engine re-exports nothing from it,
 so a game imports `three` directly wherever it constructs a mesh, a material, a
 light, or a color, and the engine, the build, and
-`@test-cabinet/voxel-runtime/three` share the one instance the workspace
+`@clockwyrks/voxel-runtime/three` share the one instance the workspace
 installed.
 
 ```ts
@@ -60,7 +60,7 @@ game's own `initialize` and resolves once the state is built, and `engine.run`
 drives frames from there.
 
 ```ts
-import { createEngine } from "@test-cabinet/simple-3d";
+import { createEngine } from "@clockwyrks/simple-3d";
 import { game } from "./game";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");

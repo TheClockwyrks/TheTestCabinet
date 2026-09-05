@@ -24,7 +24,7 @@
 // the face is standing where `OBSTACLES` puts it.
 
 import { afterEach, it } from "vitest";
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import {
   BALL_R,
   MAX_SUBSTEP,

@@ -73,8 +73,17 @@ const BAND_HALF_WIDTH = 14;
 /** How far apart two samples of the band are, in logical units. */
 const BAND_STEP = 1;
 
-/** How far a sample must be from the field to be drawn, of 441. */
-const APART = 60;
+/**
+ * The sensing floor: how far a sample must sit from the field the build drew
+ * before the reading can be called the build's own ink, of the 441 an RGB distance
+ * can span.
+ *
+ * Eight. Below that a sampling cannot tell a drawing from the rounding of an 8-bit
+ * channel and the host's own anti-aliasing; above it nothing is decided about how
+ * strongly the mark reads. Anything the build painted over the sample clears it,
+ * in whatever colour it chose, over whatever field it chose.
+ */
+const SENSING_FLOOR = 8;
 
 /**
  * How many ticks each of the three windows is read over.
@@ -138,13 +147,13 @@ function bandPoints(ship: ShipView): { x: number; y: number }[] {
   return points;
 }
 
-/** How many samples of the band behind the ship are drawn apart from the field. */
+/** How many samples of the band behind the ship carry ink the build painted. */
 async function bandInk(h: Harness, field: Rgb): Promise<number> {
   const ship = (await h.snapshot()).ship;
   const look = await readPoints(h, bandPoints(ship));
   let marked = 0;
   for (const sample of look) {
-    if (colorDistance(sample, field) > APART) marked += 1;
+    if (colorDistance(sample, field) > SENSING_FLOOR) marked += 1;
   }
   return marked;
 }

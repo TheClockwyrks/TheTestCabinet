@@ -190,6 +190,19 @@ export function ringSpec(ring: number): RingSpec {
   return RING_SPECS[ring - 1];
 }
 
+/**
+ * The wave at which both moving rings' formulas have reached the ceiling
+ * `specs/rings.md` states for them: `12 + 3 * 11` is past ring 2's `45`, and
+ * `8 + 2 * 11` is past ring 3's `30`.
+ */
+const CAPPED_WAVE = 12;
+
+/** Ring 2's fastest orbit, the `45` its formula's `min` caps at. */
+export const RING2_SPEED_CAP = ringSpec(2).orbitSpeedAtWave(CAPPED_WAVE);
+
+/** Ring 3's fastest orbit, the `-30` its formula's `min` caps at. */
+export const RING3_SPEED_CAP = ringSpec(3).orbitSpeedAtWave(CAPPED_WAVE);
+
 /* ---- Salvage pods (specs/pods.md) --------------------------------------- */
 
 /** The five pod kinds. */
@@ -323,6 +336,17 @@ export const BED_PATHS = {
 
 /** The least each bed runs before looping seamlessly, in seconds. */
 export const MUSIC_MIN_SECONDS = 12;
+
+/**
+ * The seam figures of `specs/assets.md`: the junction's half-second windows
+ * must carry at least a tenth of the bed's own level, and the level across the
+ * junction, read over the second either side, may move by no more than 6
+ * decibels.
+ */
+export const MUSIC_SEAM_LEVEL_SHARE = 0.1;
+export const MUSIC_SEAM_LEVEL_JUMP_DB = 6;
+export const MUSIC_SEAM_WINDOW_SECONDS = 0.5;
+export const MUSIC_LEVEL_WINDOW_SECONDS = 1;
 
 /* ---- Produced sprites and particles (specs/assets.md) ------------------- */
 

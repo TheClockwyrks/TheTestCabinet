@@ -82,12 +82,32 @@ export const RUN_HZ = 40;
 /** Frames between two samples while a wave is being emptied. */
 export const CLEAR_POLL = RUN_HZ / 2;
 
-/** Three minutes of simulation: past any wave, and a verdict if a build has none. */
+/**
+ * How many frames a sweep for a wave's clear may run.
+ *
+ * Three minutes of simulation at `RUN_HZ`, and longer at the coarser rate a caller
+ * of `createRunHarness` may have chosen, so it is past any wave this game composes
+ * either way. It is a cap on a build with no clear at all rather than a budget
+ * anything spends, and it costs the same wall clock whatever the rate, because it
+ * counts frames rather than seconds.
+ */
 const CLEAR_MAX = 180 * RUN_HZ;
 
-/** A harness whose clock runs at the rate a wave-playing check reads at. */
-export async function createRunHarness(): Promise<Harness> {
-  return createHarness({ clock: new ConstantClock((TICK_MS * 120) / RUN_HZ) });
+/**
+ * A harness whose clock runs at the rate a wave-playing check reads at.
+ *
+ * A check whose frames are spent on a SPAN of simulation rather than on a reading
+ * — a minute sat through, a wave played out, one unit walking the whole chain —
+ * asks for a coarser one. The specification fixes no frame size and guarantees
+ * that "an interval of simulation time reaches the same state however it was
+ * divided into frames"; `instrumentation/frame-division-movement` and
+ * `instrumentation/frame-division-projectile` are the two points that decide that
+ * guarantee, and the second of them covers a fifth of a second in a single frame.
+ * So the rate is the caller's to choose, and each caller states the bound it chose
+ * under.
+ */
+export async function createRunHarness(hz: number = RUN_HZ): Promise<Harness> {
+  return createHarness({ clock: new ConstantClock((TICK_MS * 120) / hz) });
 }
 
 /** Commit the level's harvest, and check the wave it launched is the one wanted. */
@@ -133,7 +153,7 @@ export async function clearWave(h: Harness): Promise<Cleared> {
       fail(
         `the live wave to clear once its schedule is exhausted ` +
           `(specs/campaign.md); it was still running after ` +
-          `${CLEAR_MAX / RUN_HZ} seconds`,
+          `${CLEAR_MAX} frames`,
         "a wave that never clears",
       );
     }
@@ -173,6 +193,50 @@ export async function reachFinale(
   const waves = await openFinalWave(h, difficulty);
   await harvestWave(h, waves);
   return { cleared: await clearWave(h), waves };
+}
+
+/** How far the sweep for the finale's opening may run: it lands on the next advance. */
+const FINALE_SWEEP = 60;
+
+/**
+ * A run AT its finale: wave `N` cleared, the Overload Dynamo standing at the entry.
+ *
+ * The finale is entered the game's own way — wave `N` clears with Grid Integrity
+ * remaining and the finale opens behind it — but the wave that clears is the
+ * empty-schedule one `spawnUnit` opens rather than the composed wave `N`. That
+ * composed wave is half a minute of simulation and a check ABOUT THE FINALE reads
+ * nothing of it: one unit is released, swept off with `clearUnits`, which "kills
+ * nothing and leaks nothing, so no bounty is paid and no Grid Integrity is lost",
+ * and "a wave with nothing left to release and nothing left on the yard clears on
+ * the next advance" (specs/instrumentation.md). Clearing wave `N` with Grid
+ * Integrity remaining is exactly the victory condition specs/campaign.md states,
+ * so the finale that follows, and the Dynamo it releases, are the game's own.
+ *
+ * This is the pose `screens/outcomes.ts` already reaches the victory screen
+ * through. THAT THE COMPOSED WAVE `N` CLEARS INTO THE FINALE IS ITS OWN
+ * REQUIREMENT, and `campaign/final-wave-enters-the-finale` is the point that
+ * decides it: that check plays the composed wave and is the one in this family
+ * that does, so the expensive drive is paid once rather than once per finale rule.
+ */
+export async function poseFinale(
+  h: Harness,
+  difficulty: DifficultyId,
+): Promise<{ snapshot: FoundrySnapshot; waves: number }> {
+  const waves = difficultyById(difficulty).waves;
+  await openYard(h, { difficulty, wave: waves });
+  await releaseUnit(h, "mote");
+  await h.debug.clearUnits();
+  const opened = await h.until((s) => s.phase === "finale", {
+    maxFrames: FINALE_SWEEP,
+    poll: 1,
+  });
+  assertEqual(
+    opened.hit,
+    true,
+    `clearing wave ${waves}, the last of a ${difficulty} run, to open the ` +
+      "finale (specs/campaign.md)",
+  );
+  return { snapshot: opened.snapshot, waves };
 }
 
 /** The one live unit of that type, or a failure naming what is on the yard. */

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunRecord } from "@clockwyrks/run-record";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RunVariantState } from "../../../data/useRunVariant";
 import { RunInputsPage } from "./RunInputsPage";

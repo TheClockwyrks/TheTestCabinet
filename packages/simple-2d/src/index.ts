@@ -1,5 +1,5 @@
 /**
- * `@test-cabinet/simple-2d` — the **Simple 2D** engine: the runtime a produced 2D
+ * `@clockwyrks/simple-2d` — the **Simple 2D** engine: the runtime a produced 2D
  * game is built on, and the wiring that assembles it.
  *
  * The engine owns the parts of a browser game that are the same in every browser

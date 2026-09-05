@@ -20,7 +20,7 @@ defaults are specified in the [audio
 API](/engines/structured-2d/apis/audio/).
 
 ```ts
-import { GameInstance, type InitApi } from "@test-cabinet/structured-2d";
+import { GameInstance, type InitApi } from "@clockwyrks/structured-2d";
 
 export class ArenaGame extends GameInstance<null> {
   override async initialize(api: InitApi): Promise<null> {
@@ -60,7 +60,7 @@ module the actors that need it import.
 
 ```ts
 // sprites.ts
-import type { LoadApi } from "@test-cabinet/structured-2d";
+import type { LoadApi } from "@clockwyrks/structured-2d";
 
 let sheet: ImageBitmap | null = null;
 
@@ -79,7 +79,7 @@ them.
 
 ```ts
 // levels.ts
-import type { LevelDefinition, LoadApi } from "@test-cabinet/structured-2d";
+import type { LevelDefinition, LoadApi } from "@clockwyrks/structured-2d";
 import { Asteroid } from "./actors";
 import { ArenaMode } from "./modes";
 import { loadSheet } from "./sprites";
@@ -104,7 +104,7 @@ component's `source` rectangle.
 
 ```ts
 // actors.ts
-import { Actor, SpriteComponent } from "@test-cabinet/structured-2d";
+import { Actor, SpriteComponent } from "@clockwyrks/structured-2d";
 import { sheetImage } from "./sprites";
 
 export class Asteroid extends Actor {
@@ -130,7 +130,7 @@ in one frame, and succeeds while muted.
 
 ```ts
 // An actor plays the cue for what happened to it.
-import { Pawn } from "@test-cabinet/structured-2d";
+import { Pawn } from "@clockwyrks/structured-2d";
 import { FIELD_WIDTH } from "./constants";
 
 export class Ship extends Pawn {
@@ -152,7 +152,7 @@ actor.
 
 ```ts
 // modes.ts
-import { GameMode } from "@test-cabinet/structured-2d";
+import { GameMode } from "@clockwyrks/structured-2d";
 import { Asteroid, Ship } from "./actors";
 import { ShipController } from "./controllers";
 
@@ -186,7 +186,7 @@ on every tick rather than tracking whether it was started.
 
 ```ts
 // A pawn holds its engine hum for as long as it is thrusting.
-import { Pawn } from "@test-cabinet/structured-2d";
+import { Pawn } from "@clockwyrks/structured-2d";
 
 export class Ship extends Pawn {
   thrusting = false;
@@ -212,7 +212,7 @@ drive the bus from there.
 
 ```ts
 // controllers.ts
-import { PlayerController } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
 
 export class ShipController extends PlayerController {
   tick(): void {
@@ -237,7 +237,7 @@ source puts the failed paths on the
 [overlay](/engines/structured-2d/apis/diagnostics/).
 
 ```ts
-import { GameInstance, type InitApi } from "@test-cabinet/structured-2d";
+import { GameInstance, type InitApi } from "@clockwyrks/structured-2d";
 
 export class ArenaGame extends GameInstance<null> {
   private failed: string[] = [];

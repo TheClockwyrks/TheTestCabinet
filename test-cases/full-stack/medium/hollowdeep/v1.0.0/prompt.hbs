@@ -8,7 +8,7 @@ Your project root is `{{workspace}}`. Create the game there.
 
 A starter project is already in place at `{{workspace}}`: a `package.json` that
 pins **Playwright** as a dev dependency and depends on the
-**`@test-cabinet/particle-runtime`** library (below). Its dependencies have already
+**`@clockwyrks/particle-runtime`** library (below). Its dependencies have already
 been installed for you — `node_modules/` is populated and Playwright's headless
 **Chromium** is downloaded — so you can build and verify right away. Build on this
 project rather than replacing it: keep the `package.json`, add your framework,
@@ -51,7 +51,7 @@ them:
   authoritative contract**: it enumerates every sprite, animation, particle system,
   and sound the game needs, names which tool produces each and where it lands under
   `assets/`, and states how each is wired into the build — including that the
-  particle systems are played live through the **`@test-cabinet/particle-runtime`**
+  particle systems are played live through the **`@clockwyrks/particle-runtime`**
   library already installed as a dependency of your project (import it like any
   other dependency; do not fetch or reimplement it). Load every produced file with
   page-relative URLs so it resolves from the served sub-path.

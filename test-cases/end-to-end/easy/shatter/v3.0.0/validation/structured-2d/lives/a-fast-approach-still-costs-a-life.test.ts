@@ -1,5 +1,5 @@
-// lives/a-fast-approach-still-costs-a-life — a rock closing fast takes the ship
-// on the tick their paths meet, not a tick later.
+// lives/a-fast-approach-still-costs-a-life — a rock and a ship closing as fast as
+// the two of them can meet on the tick their paths cross, not a tick later.
 //
 // THE RULE. `specs/collision.md`: "Collision is swept or continuous. Two bodies
 // whose paths over a tick bring them within the sum of their radii at any point
@@ -9,13 +9,20 @@
 // the two are separate items so a grade names which body a build resolves
 // against stale positions.
 //
-// THE POSE. A Small is placed `RANGE` (36) units from the ship's centre and
-// closed at `CLOSING_SPEED` (1200) units per second — a step of `10` units a
-// tick, against the `SHIP_R + ROCK_RADIUS.small` (28) at which
-// `specs/collision.md` says two bodies touch. So at the START of the tick the
-// two are 8 units clear of contact, and at its END they are 2 units inside it.
-// Neither figure is anywhere near the boundary, so nothing here is decided by
-// rounding.
+// EACH BODY IS POSED INSIDE ITS OWN STATED RANGE, AND THE CLOSING SPEED IS THE
+// SUM. `specs/ship.md` caps the ship's speed at `SHIP_MAX` (680), and
+// `specs/rocks.md` gives a Small a base drift speed of 130 to 210, so a Small at
+// `ROCK_SPEED_MAX.small` flown head-on into a ship at its cap closes at
+// `CLOSING_SPEED` (890) units per second. Neither body carries a figure its own
+// specification does not allow it; how the pair is ARRANGED is this validator's.
+//
+// THE POSE. The Small is placed `RANGE` units from the ship's centre along the
+// line the ship is charging out from the star on, against the
+// `SHIP_R + ROCK_RADIUS.small` (28) at which `specs/collision.md` says two bodies
+// touch. `RANGE` is eight tenths of a tick's closing outside that, so at the
+// START of the tick the two are a fifth of a step clear of contact and at its END
+// they are a fifth of a step inside it. Neither figure is anywhere near the
+// boundary, so nothing here is decided by rounding.
 //
 // WHAT THAT SEPARATES. A build that resolves contact against the positions the
 // bodies MOVED TO reads the overlap and spends the life on this tick. A build
@@ -28,8 +35,8 @@
 // EXACTLY ONE, because a build that resolves the same pair once per position
 // and once per sweep drops two.
 //
-// AND THE MISS IS THE CONTROL. The same rock, on the same approach at the same
-// speed, run down a parallel line displaced `MISS_ACROSS` (32) units across it —
+// AND THE MISS IS THE CONTROL. The same pair, on the same approach at the same
+// speeds, run down a parallel line displaced `MISS_ACROSS` (32) units across it —
 // four more than the 28 at which the pair touches — must leave every ship
 // standing. Without it a build that spent a life for any rock passing anywhere
 // near the ship would pass the reading above, and this item would be grading
@@ -37,11 +44,18 @@
 // field is laid fresh before the approach that counts, so neither reading can be
 // the other one's leftovers.
 //
-// The ship is posed at rest on quiet ground with its lethal contact test on and
-// no respawn grace, and the field holds nothing but the two bodies.
+// The ship is posed on quiet ground with its lethal contact test on and no
+// respawn grace, and the field holds nothing but the two bodies.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_RADIUS, SHIP_R, START_LIVES, TICK_DT } from "../constants";
+import {
+  ROCK_RADIUS,
+  ROCK_SPEED_MAX,
+  SHIP_MAX,
+  SHIP_R,
+  START_LIVES,
+  TICK_DT,
+} from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { speedOf, wrappedDistance } from "../geometry";
 import {
@@ -52,27 +66,29 @@ import {
   type Harness,
   type ShatterSnapshot,
 } from "../harness";
-import { poseDuel, poseRockAtRange } from "./duel";
+import { chargeVelocity, poseDuel, poseRockAtRange } from "./duel";
 
 /** The size the rock is posed at: the tightest of the three collision radii. */
 const ROCK = "small" as const;
 
-/** The speed the rock closes at, in units per second. The figure the item names. */
-const CLOSING_SPEED = 1200;
+/** The fastest a Small enters the field, of its own stated range: 210. */
+const ROCK_SPEED = ROCK_SPEED_MAX[ROCK];
 
-/** How far the rock travels in one simulation tick, in units: 10. */
+/** What the two of them close at with each at its own bound: 890 units/second. */
+const CLOSING_SPEED = SHIP_MAX + ROCK_SPEED;
+
+/** How far the pair closes in one simulation tick, in units. */
 const STEP = CLOSING_SPEED * TICK_DT;
 
 /** Contact, as `specs/collision.md` defines it for a ship and a Small: 28. */
 const CONTACT = SHIP_R + ROCK_RADIUS[ROCK];
 
 /**
- * The separation the rock is posed at, in units: 36.
+ * The separation the pair is posed at, in units.
  *
- * Contact plus eight tenths of a tick's travel, so the tick that runs carries
- * the rock from 8 units clear of contact to 2 units inside it. Both margins are
- * a fifth of the step, so neither the reading before the tick nor the one after
- * sits on the boundary.
+ * Contact plus eight tenths of a tick's closing, so the tick that runs carries
+ * them from a fifth of a step clear of contact to a fifth of a step inside it.
+ * Neither margin sits on the boundary.
  */
 const RANGE = CONTACT + STEP * 0.8;
 
@@ -87,7 +103,7 @@ const RANGE = CONTACT + STEP * 0.8;
 const MISS_ACROSS = CONTACT + 4;
 
 /** How long the control is flown for: long enough to carry it past the ship. */
-const MISS_TICKS = 6;
+const MISS_TICKS = Math.ceil((RANGE + CONTACT) / STEP);
 
 /** More of the field after the contact, filmed for the replay. */
 const DWELL_TICKS = ticksFor(0.25);
@@ -106,21 +122,23 @@ it("spends exactly one life on the tick a fast rock reaches the ship, and none o
   // The control first: the same rock at the same closing speed, on a line that
   // misses the ship's centre by more than the two touch at, flown until it is
   // past the ship entirely.
-  poseDuel(h);
+  poseDuel(h, chargeVelocity(SHIP_MAX));
   poseRockAtRange(h, ROCK, RANGE, CLOSING_SPEED, MISS_ACROSS);
   await h.advance(MISS_TICKS);
   assertEqual(
     h.snapshot().lives,
     START_LIVES,
-    `the ships left after a ${ROCK} closing at ${String(CLOSING_SPEED)} units ` +
-      `per second passed the ship ${String(MISS_ACROSS)} units across its ` +
+    `the ships left after a ${ROCK} drifting at ${String(ROCK_SPEED)} units ` +
+      `per second met a ship flying at ${String(SHIP_MAX)} — ` +
+      `${String(CLOSING_SPEED)} between them — and passed it ` +
+      `${String(MISS_ACROSS)} units across its ` +
       `approach, which is more than the SHIP_R + ROCK_RADIUS.${ROCK} ` +
       `(${String(CONTACT)}) at which the two touch — a body that never came ` +
       "within the sum of the radii never collided (specs/collision.md)",
   );
 
   // And the approach that counts, on ground laid fresh.
-  poseDuel(h);
+  poseDuel(h, chargeVelocity(SHIP_MAX));
   const rockId = poseRockAtRange(h, ROCK, RANGE, CLOSING_SPEED);
 
   const armed = h.snapshot();
@@ -148,9 +166,10 @@ it("spends exactly one life on the tick a fast rock reaches the ship, and none o
   );
   assertEqual(
     Math.round(speedOf(rock)),
-    CLOSING_SPEED,
+    ROCK_SPEED,
     "setRockVelocity to be reported by the snapshot, so the rock really " +
-      "closes at the speed this item names (specs/instrumentation.md)",
+      "drifts at the top of a Small's own stated range " +
+      "(specs/instrumentation.md, specs/rocks.md)",
   );
   assertEqual(
     armed.lives,
@@ -170,8 +189,8 @@ it("spends exactly one life on the tick a fast rock reaches the ship, and none o
   assertEqual(
     struck.lives,
     START_LIVES - 1,
-    "the ships left one tick after a rock 8 units clear of contact closed " +
-      "10 units — the tick their paths meet on is the tick they collide on " +
-      "(specs/collision.md)",
+    `the ships left one tick after a pair ${(RANGE - CONTACT).toFixed(1)} ` +
+      `units clear of contact closed ${STEP.toFixed(1)} — the tick their paths ` +
+      "meet on is the tick they collide on (specs/collision.md)",
   );
 });

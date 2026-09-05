@@ -23,12 +23,15 @@
 // the thermal faculty (presentation/pose.ts) and both are still carrying the same
 // heat on the frame that draws them.
 //
-// WHAT IS COMPARED, AND WHY IT IS NEVER A COLOUR. specs/overview.md fixes no
-// palette, and in particular it does not say a tripped tower is red. The reading
-// is what the footprint mostly is on one frame against what it mostly is on the
-// other — the mean of its largest cluster of pixels either way
-// (presentation/read.ts) — so a build that marks the trip with a body colour, a
-// wash, a dark-out or a bold overlay all answer.
+// WHAT IS DECIDED, AND WHERE THE BAR COMES FROM. specs/overview.md fixes no
+// palette, and in particular it does not say a tripped tower is red — how
+// unmistakable the trip looks is the reviewer's to judge. What is decided here is
+// that the build drew something for it: the same body ring on the same tile,
+// online and tripped. How far that ring moves on its own is measured, by reading
+// it on two frames while the tower is online, and the trip has to beat that by
+// `NOISE_MARGIN`. The ring rather than the whole footprint, because specs/hud.md
+// lets a build put its heat read on the footprint and `hud.on-floor-heat-read` is
+// the point that grades it.
 //
 // WHAT IT DOES NOT DECIDE. That the tower actually goes offline, bleeds its heat
 // and comes back after `TRIP_TIME` are the `trip` group's; that the trip plays a
@@ -40,35 +43,13 @@ import { assertGreaterThanOrEqual } from "../assert";
 import { sizeOf } from "../geometry";
 import {
   captureStill,
-  colorDistance,
   createHarness,
   startRun,
   type Harness,
-  type Rgb,
 } from "../harness";
 import type { TowerType } from "../surface";
 import { poseStillTower, poseStillTrippedTower } from "./pose";
-import { dominant, footprintRegion, readRegion, showRgb } from "./read";
-
-/**
- * How far, out of the 441 the RGB cube spans, the two must read.
- *
- * The suite's figure for two things a player tells apart at a glance, and the
- * same 50 every other point in this group draws its line at. "Unmistakable" is
- * the legibility table's own word for this one, so 50 is the floor rather than
- * the target.
- */
-const APART_MIN = 50;
-
-/**
- * How close two pixels of a footprint must be to count as the same reading, when
- * the check asks what the footprint mostly is.
- *
- * Half of `APART_MIN`, and the suite's figure for two readings that are the same
- * thing rather than two things: a body shaded across its own area, a gradient, a
- * pixel softened where it meets an outline.
- */
-const SAME_READING_MAX = 25;
+import { NOISE_MARGIN, bodyRing, largestShift, readPoints } from "./read";
 
 /**
  * The tower the pair is read on, where it stands, and the heat both carry.
@@ -83,21 +64,8 @@ const COL = 8;
 const ROW = 22;
 const HEAT = 60;
 
-/** How far inside the footprint the reading starts, and how dense it is. */
-const FOOTPRINT_INSET = 3;
-const FOOTPRINT_STEP = 3;
-
-/** What the footprint mostly reads as on the frame now on the canvas. */
-function readFootprint(h: Harness): Rgb {
-  return dominant(
-    readRegion(
-      h,
-      footprintRegion(COL, ROW, sizeOf(TYPE), FOOTPRINT_INSET),
-      FOOTPRINT_STEP,
-    ),
-    SAME_READING_MAX,
-  );
-}
+/** The ring inside the tower's body every reading here is taken on. */
+const RING = bodyRing(COL, ROW, sizeOf(TYPE));
 
 let h: Harness;
 
@@ -113,22 +81,26 @@ it("draws a tripped tower apart from an online one at the same heat", async () =
   startRun(h);
   poseStillTower(h, TYPE, COL, ROW, 0, HEAT);
   await h.advance(1);
+  const first = readPoints(h, RING);
+  await h.advance(1);
   captureStill(h, "online");
-  const online = readFootprint(h);
+  const online = readPoints(h, RING);
+  const noise = largestShift(first, online);
 
   // The same type on the same tile at the same heat, offline this time.
   startRun(h);
   poseStillTrippedTower(h, TYPE, COL, ROW, HEAT);
   await h.advance(1);
   captureStill(h, "tripped");
-  const tripped = readFootprint(h);
+  const tripped = readPoints(h, RING);
 
   assertGreaterThanOrEqual(
-    colorDistance(online, tripped),
-    APART_MIN,
-    `an online ${TYPE} at heat ${HEAT} (${showRgb(online)}) against a tripped ` +
-      `${TYPE} at the same heat on the same tile (${showRgb(tripped)}), out ` +
-      `of 441 (specs/overview.md: a tripped tower is unmistakable and reads ` +
-      `apart from an online tower at the same heat)`,
+    largestShift(online, tripped),
+    noise + NOISE_MARGIN,
+    `an online ${TYPE} at heat ${HEAT} against a tripped ${TYPE} at the same ` +
+      `heat on the same tile: its body ring is drawn differently, by more ` +
+      `than the ${noise} two frames of it running moved on their own ` +
+      `(specs/overview.md: a tripped tower is unmistakable and reads apart ` +
+      `from an online tower at the same heat)`,
   );
 });

@@ -15,16 +15,27 @@
 // reaches it — so the one this check later eats is on a tile it chose, and neither
 // can wander onto the forager and lift the ceiling by accident.
 //
-// THE STRETCH IS FAR LONGER THAN THE CADENCE. Two and a half intervals, so a build
-// that admits on the cadence regardless of the ceiling has had two chances to do
-// it, and the reading is taken at several points across the stretch rather than
-// only at its end.
+// THE CEILING IS TESTED AT THE INSTANT AN ADMISSION WOULD FIRE, not across a
+// stretch of play in which one might have. specs/state.md puts `drifterIn` on the
+// snapshot — the countdown that admits the next drifter — and
+// specs/instrumentation.md's `setDrifterIn` poses it, so this check stands the
+// countdown at `0` on a maze already holding DRIFTER_MAX, runs the game on, and
+// reads the maze again. It does that CHECKPOINTS times over. Sitting through two
+// and a half cadences asks the same question and answers it worse: it depends on
+// where in its interval the build's own clock happened to be, and it costs seven
+// and a half thousand ticks of a full board simulated and drawn to ask it.
+//
+// AND THE CEILING LIFTS ON A BITE. The drifter is held where it stands and the
+// forager put on its tile, which is the contact specs/gameplay.md defines; the
+// countdown is then posed a short lead from expiry, and the maze is back at
+// DRIFTER_MAX when it runs out. That is "admits none UNTIL one is eaten" read in
+// the other direction, and it is the same admission the cadence would have made.
 //
 // THE BOARD IS THE GAME'S OWN, because the cadence runs on the maze the build laid
 // out and its condition is that "plankton remain" there. The roster is taken off
 // it, which specs/instrumentation.md's `clearPredators` does without touching the
-// plankton: over the minute and a half this watches, a released hunter would
-// otherwise reach the forager and end the dive under the measurement.
+// plankton: a released hunter would otherwise reach the forager and end the dive
+// under the measurement.
 
 import { afterEach, beforeEach, it } from "vitest";
 
@@ -40,23 +51,37 @@ import {
 import { corridorTiles } from "../maze";
 import { ticks } from "../harness";
 
-/** How long the ceiling is watched, in intervals of the cadence. */
-const WATCH_INTERVALS = 2.5;
+/** How many times the ceiling is stood at the instant an admission would fire. */
+const CHECKPOINTS = 4;
 
-/** Ticks of that watch, run off camera between readings. */
-const WATCH_TICKS = ticks(DRIFTER_INTERVAL * WATCH_INTERVALS);
-
-/** How many readings the watch is broken into. */
-const CHECKPOINTS = 5;
+/**
+ * Ticks the game runs on with the countdown standing at `0`, in ticks.
+ *
+ * A quarter of a second, thirty ticks of the real cadence code running with
+ * nothing left on its clock. A build that admits regardless of the ceiling
+ * admits on the first of them.
+ */
+const HOLD_TICKS = ticks(0.25);
 
 /** Ticks allowed for the bite once the forager stands on a drifter's tile. */
 const EAT_TICKS = ticks(0.25);
 
-/** How long the admission after the bite is waited for, in ticks. */
-const REFILL_TICKS = ticks(DRIFTER_INTERVAL + 4);
+/**
+ * The countdown the bite is taken under, in seconds.
+ *
+ * The full `DRIFTER_INTERVAL`, so nothing is admitted while the forager crosses
+ * onto the drifter's tile and the reading below is the bite alone.
+ */
+const BITE_LEAD = DRIFTER_INTERVAL;
+
+/** The lead the refill is then posed with, in seconds. */
+const REFILL_LEAD = 0.5;
+
+/** How far past that lead the refill is waited for, in ticks. */
+const REFILL_TICKS = ticks(REFILL_LEAD + 1);
 
 /** How often that wait reads, in ticks. */
-const REFILL_POLL = 30;
+const REFILL_POLL = 6;
 
 /** Ticks of live play the clip carries once the maze is back at its ceiling. */
 const CLIP_TICKS = 60;
@@ -105,22 +130,26 @@ it("admits none while the maze holds DRIFTER_MAX, and one once it does not", asy
     "the drifters standing on the board before the ceiling is watched",
   );
 
-  // The ceiling, watched across two and a half cadences.
+  // The ceiling, held against a spent countdown as many times over.
   for (let checkpoint = 1; checkpoint <= CHECKPOINTS; checkpoint += 1) {
-    await h.skip(Math.round(WATCH_TICKS / CHECKPOINTS));
+    h.debug.setDrifterIn(0);
+    await h.advance(HOLD_TICKS);
     const seen = h.snapshot();
     assertEqual(
       seen.drifters.length,
       DRIFTER_MAX,
-      "the drifters in the maze " +
-        `${(seen.simTime - opened.simTime).toFixed(1)} s into a stretch of ` +
-        `${String(WATCH_INTERVALS)} cadences, on a maze already holding ` +
-        `DRIFTER_MAX (${String(DRIFTER_MAX)}) of them (specs/gameplay.md)`,
+      `the drifters in the maze ${String(HOLD_TICKS)} ticks after the ` +
+        `cadence's countdown was stood at 0, on checkpoint ` +
+        `${String(checkpoint)} of ${String(CHECKPOINTS)}, with the maze ` +
+        `already holding DRIFTER_MAX (${String(DRIFTER_MAX)}) of them ` +
+        "(specs/gameplay.md)",
     );
   }
 
-  // And the ceiling lifts on the bite. The drifter is held where it stands and
-  // the forager put on its tile, which is the contact specs/gameplay.md defines.
+  // And the ceiling lifts on the bite. The countdown is stood a whole interval
+  // off first, so nothing is admitted under the bite itself and the reading is
+  // the contact alone.
+  h.debug.setDrifterIn(BITE_LEAD);
   const eaten = h.snapshot().drifters[0];
   h.debug.setForagerTile(eaten.tx, eaten.ty);
   await h.advance(EAT_TICKS);
@@ -136,6 +165,7 @@ it("admits none while the maze holds DRIFTER_MAX, and one once it does not", asy
   h.debug.setForagerTile(home.tx, home.ty);
 
   const refilled = await captureReplay(h, "cap", async () => {
+    h.debug.setDrifterIn(REFILL_LEAD);
     const seen = await h.until((s) => s.drifters.length >= DRIFTER_MAX, {
       maxFrames: REFILL_TICKS,
       poll: REFILL_POLL,
@@ -146,8 +176,10 @@ it("admits none while the maze holds DRIFTER_MAX, and one once it does not", asy
   assertEqual(
     refilled.hit,
     true,
-    `the maze was topped back up to DRIFTER_MAX (${String(DRIFTER_MAX)}) ` +
-      `within one DRIFTER_INTERVAL (${String(DRIFTER_INTERVAL)} s) of one ` +
-      "being eaten (specs/gameplay.md)",
+    `the maze was topped back up to DRIFTER_MAX (${String(DRIFTER_MAX)}) once ` +
+      `one had been eaten, on the countdown posed ${String(REFILL_LEAD)} s ` +
+      `from expiry — a maze under the ceiling admits again, on the ` +
+      `DRIFTER_INTERVAL (${String(DRIFTER_INTERVAL)} s) cadence ` +
+      "(specs/gameplay.md)",
   );
 });

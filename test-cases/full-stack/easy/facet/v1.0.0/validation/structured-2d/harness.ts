@@ -84,7 +84,7 @@ import {
   type SurfaceMetrics,
   type Viewport,
   type World,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { BACKGROUND as buildBackground, game as buildGame } from "../src/game";
 import { fail } from "./assert";
 import {
@@ -116,7 +116,6 @@ import {
   type ActionName,
   type PointerDevice,
 } from "./constants";
-import { setAssetTransport } from "./dom-shim";
 import type { FacetDebugApi, FacetSnapshot, Screen } from "./surface";
 
 export { ConstantClock, JitterClock, SequenceClock };
@@ -393,15 +392,8 @@ export interface AssetFailure {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Color and patches                                                          */
+/* Pixels and patches                                                         */
 /* -------------------------------------------------------------------------- */
-
-/** A sampled color, each channel 0-255. */
-export interface Rgb {
-  r: number;
-  g: number;
-  b: number;
-}
 
 /** One device pixel, as `[r, g, b, a]`. */
 export type Rgba = [number, number, number, number];
@@ -415,37 +407,15 @@ export interface Patch {
   data: Uint8ClampedArray;
 }
 
-/** Euclidean distance between two colors, 0 to about 441. */
-export function colorDistance(a: Rgb, b: Rgb): number {
-  return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
-}
-
-/** The mean color of a patch, or black when the patch holds no pixels. */
-export function meanColor(patch: Patch): Rgb {
-  const pixels = patch.width * patch.height;
-  if (pixels === 0) return { r: 0, g: 0, b: 0 };
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  for (let i = 0; i < pixels; i += 1) {
-    const at = i * 4;
-    r += patch.data[at];
-    g += patch.data[at + 1];
-    b += patch.data[at + 2];
-  }
-  return { r: r / pixels, g: g / pixels, b: b / pixels };
-}
-
 /**
  * The mean per-pixel Euclidean RGB distance between two patches, 0 to about 441.
  *
- * THE DISTINGUISHABILITY INSTRUMENT. Per-pixel rather than between the two mean
- * colors, because a build is entitled to tell two kinds apart by FORM — the same
- * hue, a different facet pattern — and two patches with identical means can still
- * differ in every pixel. A hue difference and a form difference both register
- * here, which is what makes this reading fair to a build whose look is not the
- * reference's. It says nothing about which colors were used, and no check may
- * ask it to.
+ * THE PRESENCE INSTRUMENT. Per-pixel rather than between the two mean colors,
+ * because two patches with identical means can still differ in every pixel, so a
+ * mean would call a cell unchanged that the build redrew. Every check that reads
+ * it asks one question of the number — whether it is zero — and a check that
+ * asked how LARGE it is would be grading a build's palette, its contrast or its
+ * treatment, which the reviewer judges and no check here may.
  *
  * Two patches of different shapes are a fixture fault rather than a reading, and
  * a patch of no pixels at all measures no distance.
@@ -487,23 +457,17 @@ export interface HarnessOptions {
   /** The seed `reset` is posed with. Defaults to `DEFAULT_SEED`. */
   seed?: number;
   /**
-   * Whether the build's own produced files are served. Defaults to `true`.
-   *
-   * `false` answers every asset request 404, for the one kind of point that is
-   * about a build surviving assets that never arrive.
-   */
-  assets?: boolean;
-  /**
    * The sub-path the build is served from, as though the page sat there.
    * Defaults to `"/"`.
    *
    * specs/assets.md has a build load every produced file PAGE-RELATIVE, so that
-   * the same tree works wherever it is mounted. Serving from a sub-path is how
-   * that is decided: a request written relative to the page still resolves, and
-   * one written from the site root no longer does. Under this engine the loader
-   * refuses a root-absolute path before it ever reaches a transport, so a
-   * conformant build loads identically at any `basePath` — which is the reading
-   * the point wants, arrived at through the same option under all three engines.
+   * the same tree works wherever it is mounted. A non-root value moves where a
+   * page-relative path is resolved from, and every request still succeeds: the
+   * produced files stand up for every check this project runs, and
+   * `assets/assets-load-page-relative` reads its verdict off the paths the build
+   * resolved. Under this engine the loader refuses a root-absolute path before
+   * it ever reaches a transport, and that refusal is recorded in
+   * `assetFailures` as the build's own.
    */
   basePath?: string;
 }
@@ -648,9 +612,6 @@ export interface Harness {
     predicate: (snapshot: FacetSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
-  /** Drive the engine's own frame loop for `ms` of real time, then halt it. */
-  runFor(ms: number): Promise<void>;
-
   /** Press a key and leave it down, as a player holding it would. */
   hold(code: string): void;
   /** Release a key held by `hold`. */
@@ -979,12 +940,13 @@ function normalizeBase(basePath: string): string {
 
 /**
  * The path below the served tree a request names, or `null` when the request
- * leaves the page's own sub-path.
+ * names a place outside the page's own sub-path.
  *
  * A page-relative request (`assets/gems/ruby.png`) names a file below wherever
  * the page is mounted, so it resolves at every `basePath`. A root-absolute one
- * names a place on the site, so it resolves only when the page is mounted there
- * — which is the whole of what the page-relative point asks.
+ * names a place on the site rather than below the page; `null` says so, and the
+ * caller serves it from the tree root instead, since a request a check observes
+ * is a request that succeeds.
  */
 function servedPath(basePath: string, asked: string): string | null {
   let path = asked;
@@ -1031,35 +993,30 @@ export async function createHarness(
   const cssHeight = options.cssHeight ?? STAGE_H;
   const dpr = options.dpr ?? 1;
   const basePath = normalizeBase(options.basePath ?? "/");
-  const serveAssets = options.assets !== false;
 
   // EVERY request the build makes passes through here, which is what makes
   // `requests` the whole record rather than only what failed. The transport
-  // underneath is the disk fetch `setup.ts` installed; this wrapper decides only
-  // which paths reach it, and under which mounted sub-path.
+  // underneath is the disk fetch `setup.ts` installed; this wrapper writes each
+  // request down and then hands it on.
   //
-  // A harness asked for no assets answers 404 itself — the status a static
-  // server gives for a file that is not there — and ALSO turns the shared
-  // transport off, so a build holding a `fetch` it captured before this harness
-  // existed is refused by the same option. Both are put back on `dispose`.
+  // IT REFUSES NOTHING. A path written relative to the page is served from below
+  // the mount, and a path the build rooted at the origin is served from the tree
+  // root, so every produced file stands up for every check this project runs and
+  // `assets/assets-load-page-relative` decides its point off the paths the build
+  // resolved rather than off a refusal.
   const requests: string[] = [];
   const previousFetch = globalThis.fetch;
   const transport = previousFetch.bind(globalThis) as (
     input: unknown,
     init?: unknown,
   ) => Promise<Response>;
-  if (!serveAssets) setAssetTransport(false);
   (globalThis as unknown as Record<string, unknown>).fetch = (
     input: unknown,
     init?: unknown,
   ): Promise<Response> => {
     const asked = String(input);
     requests.push(asked);
-    const served = serveAssets ? servedPath(basePath, asked) : null;
-    if (served === null) {
-      return Promise.resolve(new Response(null, { status: 404 }));
-    }
-    return transport(served, init);
+    return transport(servedPath(basePath, asked) ?? asked, init);
   };
 
   // Everything the build writes to `console.error` while this harness is alive.
@@ -1274,14 +1231,6 @@ export async function createHarness(
       return { hit: false, frames, snapshot };
     },
 
-    async runFor(ms) {
-      const controller = new AbortController();
-      const running = engine.run({ signal: controller.signal });
-      await new Promise((done) => setTimeout(done, ms));
-      controller.abort();
-      await running;
-    },
-
     hold: (code) => dispatch("keydown", code),
     release: (code) => dispatch("keyup", code),
     // Down, up, THEN one frame. The engine arms an edge that survives to the
@@ -1354,7 +1303,6 @@ export async function createHarness(
       engine.destroy();
       (globalThis as unknown as Record<string, unknown>).fetch = previousFetch;
       console.error = previousConsoleError;
-      if (!serveAssets) setAssetTransport(true);
     },
   };
 
@@ -1366,20 +1314,6 @@ export async function createHarness(
 /* -------------------------------------------------------------------------- */
 
 /**
- * The rendered color at a logical point: ONE device pixel, not an average.
- *
- * An average silently reads points the check never named. This is what the
- * letterbox-bar items and the background item sample with, and near a bar edge an
- * average of a cluster blends the bar with the stage — turning a check about
- * where the bar ENDS into a reading of a gradient that is not there. A check that
- * wants an area asks for a {@link Patch}, which says so in its name.
- */
-export function sampleColor(h: Harness, x: number, y: number): Rgb {
-  const [r, g, b] = h.pixel(x, y);
-  return { r, g, b };
-}
-
-/**
  * The device-pixel box centered on a cell's center.
  *
  * `half` defaults to `PATCH_HALF` (20) LOGICAL units, so the box sits inside
@@ -1389,9 +1323,9 @@ export function sampleColor(h: Harness, x: number, y: number): Rgb {
  * The box is `2 * round(half * scale) + 1` device pixels on a side — ODD, so it
  * is centered on the cell center rather than half a pixel off it — and it is that
  * size wherever the cell sits: at a canvas edge the ORIGIN slides inward and the
- * size holds. `patchDistance` is a MEAN over the box, and `PATCH_DISTINCT_MIN`
- * and `PATCH_SAME_MAX` are one pair of thresholds under all three engines, so a
- * box that changed shape near an edge would make them mean different things.
+ * size holds. `patchDistance` is a MEAN over the box, so a box that changed
+ * shape near an edge would make two readings of one cell answer differently for
+ * the box rather than for what was drawn in it.
  */
 export function readPatch(
   h: Harness,

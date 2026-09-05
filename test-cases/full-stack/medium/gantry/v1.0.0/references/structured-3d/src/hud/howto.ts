@@ -5,8 +5,8 @@
 // `DrawComponent` — the path the engine offers for a picture the built-in
 // components cannot state (`engine/rendering.md`).
 
-import { DrawComponent } from "@test-cabinet/structured-3d";
-import type { DrawApi } from "@test-cabinet/structured-3d";
+import { DrawComponent } from "@clockwyrks/structured-3d";
+import type { DrawApi } from "@clockwyrks/structured-3d";
 import { STAGE_H, STAGE_W } from "../constants";
 import { LAYER } from "../layers";
 import { ACCENT, display, INK, INK_DIM, INK_FAINT, mono } from "../palette";

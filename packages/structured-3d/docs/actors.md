@@ -109,8 +109,8 @@ import {
   ColliderComponent,
   MeshComponent,
   vec3,
-} from "@test-cabinet/structured-3d";
-import type { Vec3 } from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
+import type { Vec3 } from "@clockwyrks/structured-3d";
 import { BALL_RADIUS, CHANNELS, LAYER, PALETTE, TAGS } from "./constants";
 
 export class Ball extends Actor {
@@ -179,7 +179,7 @@ an actor writes down is per second. The transform is mutable in place, so
 movement is an assignment:
 
 ```ts
-import { add, scale } from "@test-cabinet/structured-3d";
+import { add, scale } from "@clockwyrks/structured-3d";
 
 export class Ball extends Actor {
   override tick(dt: number): void {
@@ -215,7 +215,7 @@ import {
   quatFromEuler,
   quatRotate,
   scale,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { SPEED } from "./constants";
 
 export class Ship extends Pawn {

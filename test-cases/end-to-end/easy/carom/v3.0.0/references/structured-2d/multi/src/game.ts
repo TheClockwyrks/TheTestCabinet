@@ -30,12 +30,8 @@
 // indices as they are" (specs/instrumentation.md) across a rebuild it did not
 // ask for.
 
-import { GameInstance } from "@test-cabinet/structured-2d";
-import type {
-  GameDefinition,
-  InitApi,
-  World,
-} from "@test-cabinet/structured-2d";
+import { GameInstance } from "@clockwyrks/structured-2d";
+import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
 import { defineCues } from "./audio";
 import { DEFAULT_SEED, LEVELS } from "./constants";
 import { createDebugSurface, type CaromDebug } from "./debug";

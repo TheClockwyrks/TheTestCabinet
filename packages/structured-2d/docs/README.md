@@ -1,6 +1,6 @@
 # Structured 2D
 
-`@test-cabinet/structured-2d` is the runtime a 2D browser game is built inside.
+`@clockwyrks/structured-2d` is the runtime a 2D browser game is built inside.
 Where a minimal engine hands a game a loop and a drawing context, this one hands
 it an object model and owns everything around it: the frame loop, rendering,
 collision detection, the camera and the canvas fit, input, audio, asset loading,
@@ -52,12 +52,12 @@ import {
   PacedClock,
   ShapeComponent,
   createEngine,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import type {
   Engine,
   GameDefinition,
   InitApi,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 ```
 
 ## A game is a definition
@@ -236,8 +236,8 @@ A complete game: one actor that drifts and reflects off the field's edges, one
 game mode with no rules of its own, one level placing the actor, and the boot.
 
 ```ts
-import { Actor, GameMode, ShapeComponent, createEngine } from "@test-cabinet/structured-2d";
-import type { GameDefinition } from "@test-cabinet/structured-2d";
+import { Actor, GameMode, ShapeComponent, createEngine } from "@clockwyrks/structured-2d";
+import type { GameDefinition } from "@clockwyrks/structured-2d";
 
 const BOX = 48;
 const SPEED = 220;

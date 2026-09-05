@@ -79,6 +79,7 @@ import {
   firingStructureById,
   keep,
   liveUnitById,
+  liveWaveCount,
   placeBlocker,
   placeCombo,
   placeComponent,
@@ -128,7 +129,7 @@ import type { ReadoutName } from "./layout";
 import { abilityTags } from "./tables";
 import { foundryState, type FoundryState } from "./state";
 import type { RecipeCell, Unit } from "./types";
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 
 // ---- The shapes the readings return (specs/instrumentation.md) -----------
 
@@ -291,6 +292,7 @@ export interface FoundryDebugApi {
   statusControls(): StatusSnapshot[];
   statusReadouts(): ReadoutSnapshot[];
   recipeEntries(): RecipeEntrySnapshot[];
+  waveCount(type: string): number;
 
   // The run.
   reset(options?: { seed?: number }): void;
@@ -660,6 +662,14 @@ export function createDebugApi(world: () => World): FoundryDebugApi {
       const state = live();
       return state.showCombos ? state.bookCells.map((c) => ({ ...c })) : [];
     },
+
+    // The live wave's own schedule, filtered — the array the spawner is working
+    // through, so the count and what arrives are one thing (specs/instrumentation.md).
+    waveCount: (type) =>
+      liveWaveCount(
+        live(),
+        oneOf("waveCount", "type", type, SPAWNABLE) as LoadType | "overload",
+      ),
 
     // ---- The run ----------------------------------------------------------
 

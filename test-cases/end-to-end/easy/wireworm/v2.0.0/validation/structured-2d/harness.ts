@@ -92,7 +92,7 @@ import {
   type SurfaceMetrics,
   type Viewport,
   type World,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import {
   BINDINGS,
   BOARD_Y,
@@ -1991,99 +1991,9 @@ export function sampleTile(h: Harness, c: number, r: number): Rgb {
   return sampleColor(h, x, y);
 }
 
-/** How bright a colour is, on the 0–255 scale (Rec. 601). */
-export function luminance(colour: Rgb): number {
-  return 0.299 * colour.r + 0.587 * colour.g + 0.114 * colour.b;
-}
-
-/**
- * How far inside a tile's edges {@link litTile} reads, in logical units.
- *
- * A build is free to rule its board, and any such ruling runs along the tile
- * boundaries, so a box that reached the edges would read the ruling rather than
- * what stands on the tile. Four units of margin on a `TILE` of `32` leaves a
- * `24 x 24` box, which still covers the middle three quarters of the
- * `SPRITE_SIZE` (`32`) frame drawn on it.
- */
-const LIT_INSET = 4;
-
-/**
- * The fraction of a tile's pixels {@link litTile} reads a colour from: the
- * brightest of them.
- *
- * A twentieth of a `24 x 24` box is about 29 pixels — a mark a player sees
- * rather than a stray pixel, and small enough that a sparse seeded frame is read
- * by its own lit core rather than by the board around it.
- */
-const LIT_FRACTION = 0.05;
-
-/**
- * The colour of whatever is LIT on tile `(c, r)`: the mean of the brightest
- * {@link LIT_FRACTION} of the pixels inside the tile.
- *
- * {@link sampleTile} reads five points around a tile's centre, which is the
- * right reading for a body drawn as a solid shape — a bolt, the cursor's mark,
- * the band — and the wrong one for a sparse figure. Every seeded frame under
- * `assets/` is a sparse mark on a transparent field: the node art is a lit core
- * inside a dark casing, and a five-point cross through its centre can land
- * wholly on the casing and read the same colour for two states the art draws
- * differently. This reads the mark instead, which is what specs/overview.md's
- * legibility table is written about.
- *
- * On bare board every pixel is the ground, so this reads the ground, and an
- * element and the ground behind it are always compared like with like.
- */
-export function litTile(h: Harness, c: number, r: number): Rgb {
-  const half = TILE / 2 - LIT_INSET;
-  const centre = tileCenter(c, r);
-  const from = h.device(centre.x - half, centre.y - half);
-  const to = h.device(centre.x + half, centre.y + half);
-  const { data } = h.ctx.getImageData(
-    from.x,
-    from.y,
-    Math.max(1, to.x - from.x),
-    Math.max(1, to.y - from.y),
-  );
-  const pixels: Rgb[] = [];
-  for (let i = 0; i < data.length; i += 4) {
-    pixels.push({ r: data[i], g: data[i + 1], b: data[i + 2] });
-  }
-  pixels.sort((a, b) => luminance(b) - luminance(a));
-  const taken = Math.max(1, Math.round(pixels.length * LIT_FRACTION));
-  let red = 0;
-  let green = 0;
-  let blue = 0;
-  for (let i = 0; i < taken; i += 1) {
-    red += pixels[i].r;
-    green += pixels[i].g;
-    blue += pixels[i].b;
-  }
-  return { r: red / taken, g: green / taken, b: blue / taken };
-}
-
 /** Euclidean distance between two colours, 0 to about 441. */
 export function colorDistance(a: Rgb, b: Rgb): number {
   return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
-}
-
-/**
- * The build's exported `BACKGROUND`, rasterized: the colour the engine clears
- * the whole canvas to each frame (specs/overview.md), read back through the
- * same canvas implementation the harness samples with, so a pixel the game
- * never drew over compares against it exactly.
- *
- * The fill is repeated rather than applied once so a translucent colour reads
- * as the engine leaves it: the engine composites its clear over the previous
- * frame every frame, which converges on the colour's own channels, and a single
- * fill over a transparent canvas would not.
- */
-export function clearColor(): Rgb {
-  const probe = createCanvas(1, 1);
-  const ctx = probe.getContext("2d");
-  ctx.fillStyle = BACKGROUND;
-  for (let i = 0; i < 255; i += 1) ctx.fillRect(0, 0, 1, 1);
-  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-  return { r, g, b };
 }
 
 /**

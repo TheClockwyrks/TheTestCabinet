@@ -16,8 +16,8 @@
 // system below for the same reason: a pop is an outcome the rules produce, and it
 // should not depend on a fetch.
 
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
+import type { InitApi } from "@clockwyrks/structured-2d";
 import { BURST_FIELD, BURST_SYSTEM, SPRITES } from "./constants";
 
 /** One seeded sprite, or `null` where it did not arrive. */

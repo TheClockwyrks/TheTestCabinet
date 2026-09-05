@@ -8,8 +8,8 @@
 // column is cannot see where a King may go.
 //
 // WHAT IT DECIDES, AND WHAT IT LEAVES ALONE. That the mark is DRAWN, at every one
-// of the thirteen anchors. Whether it reads apart from the felt is
-// `presentation/slot-distinct-from-table`, and where each anchor lies is the
+// of the thirteen anchors. How the mark is drawn — its colour against the felt,
+// its weight, its form — is the reviewer's, and where each anchor lies is the
 // `table` group's (`table.column-anchors`, `table.foundation-anchors`,
 // `table.stock-anchor`, `table.waste-anchor`).
 //

@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import type { Model } from "@test-cabinet/structured-3d";
+import type { Model } from "@clockwyrks/structured-3d";
 import { CREAK_THRESHOLD, VOXELS_PER_UNIT } from "../constants";
 import { OVER_LIMIT, utilizationColour } from "../palette";
 import { boxOf, disposeTree, place, poseBar, Pool } from "./three-kit";

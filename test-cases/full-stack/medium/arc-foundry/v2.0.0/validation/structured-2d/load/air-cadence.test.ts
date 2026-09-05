@@ -7,17 +7,28 @@
 // line does.
 //
 // The rule runs in both directions, and both are read here off waves the game
-// composed itself: every fourth wave carries at least one Filament, and every
-// wave that is not a fourth carries none. The sample walks the run's first
+// composed and launched itself: every fourth wave's schedule holds at least one
+// Filament, and no other wave's holds any. The sample walks the run's first
 // twelve waves, which holds three multiples of four and nine waves that are not,
 // and then reaches the end of the run — `39` and `40` — so a build
 // whose cadence drifts or stops late fails here rather than passing on an
 // opening that happened to be right.
+//
+// WHAT IS READ is `waveCount("filament")` on the frame the harvest launched the
+// wave: the live wave's own schedule, which is the array the spawner is working
+// through (specs/instrumentation.md). That the schedule and what the spawner
+// actually releases are the same thing is `instrumentation/wave-count-matches-the-
+// spawner`'s requirement, decided once there over a wave driven to its clear.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { captureReplay, type Harness } from "../harness";
-import { collectWave, countOf, createWaveHarness, openWave } from "./waves";
+import type { Harness } from "../harness";
+import {
+  composedWave,
+  composedWaveOnCamera,
+  countIn,
+  createWaveHarness,
+} from "./waves";
 
 /** The run this check reads. Every difficulty runs the same cadence rule. */
 const DIFFICULTY = "easy";
@@ -40,19 +51,18 @@ afterEach(() => {
 
 it("carries Filaments on every fourth wave and on no other", async () => {
   for (const wave of SAMPLE) {
-    openWave(h, wave, DIFFICULTY);
-    const released =
+    const counts =
       wave === EVIDENCE
-        ? await captureReplay(h, "air", () => collectWave(h, wave))
-        : await collectWave(h, wave);
+        ? await composedWaveOnCamera(h, wave, DIFFICULTY, "air")
+        : composedWave(h, wave, DIFFICULTY);
 
-    const flyers = countOf(released, "filament");
+    const flyers = countIn(counts, "filament");
     if (wave % 4 === 0) {
       assertEqual(
         flyers > 0,
         true,
-        `wave ${wave} is a multiple of 4 and carries Filaments; it released ` +
-          `${released.length} units and none of them flew`,
+        `wave ${wave} is a multiple of 4 and carries Filaments; its schedule ` +
+          `holds no Filament`,
       );
     } else {
       assertEqual(

@@ -170,9 +170,10 @@ title-screen value: the title screen with `menuIndex` at `0` and `titleIndex` at
 `0`, so its first menu item is highlighted, the score at `0`, `START_LIVES`
 (`3`) lives, depth `1`, brightness `0` with its hold spent, a freshly laid out
 maze with a plankton on every corridor tile, the fog fully unrevealed, no
-drifters, the roster depth `1` gives with every predator on a den tile and
-unreleased, every creature's mind and travel running, both cooldowns ready, no
-pulses and no ink clouds in flight, and `simTime` at `0`.
+drifters and the drifter cadence armed at `DRIFTER_INTERVAL`, the roster depth
+`1` gives with every predator on a den tile and unreleased, every creature's mind
+and travel running, both cooldowns ready, no pulses and no ink clouds in flight,
+and `simTime` at `0`.
 `seed` seeds the game's random generator. It is optional, and an omitted `seed`
 takes `DEFAULT_SEED` (`1`).
 {{#if (eq engine.slug "none")}}
@@ -563,6 +564,22 @@ With its travel off, that drifter's body holds the tile it stands on, however lo
 the scenario runs and whatever its wander decides. It is still drawn, still eaten
 by a forager whose tile it shares, and still worth the ordinary bonus. Every other
 drifter, and everything else in the game, carries on untouched.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setDrifterIn(state, seconds)`
+{{else}}
+### `setDrifterIn(seconds)`
+{{/if}}
+
+Sets `drifterIn`, the seconds left on the bonus-drifter cadence, from `0` to
+`DRIFTER_INTERVAL` (`25 s`). The countdown runs down from the posed value exactly
+as one the game armed itself does, so reaching `0` admits a drifter under the
+rules `specs/gameplay.md` fixes — while plankton remain and the maze holds fewer
+than `DRIFTER_MAX` of them — and re-arms the countdown to `DRIFTER_INTERVAL`.
+
+The call itself admits nothing and moves nothing: it sets the countdown and
+leaves the drifters already in the maze, the plankton, and everything else
+exactly as they stand.
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `setSonarCooldown(state, seconds)`

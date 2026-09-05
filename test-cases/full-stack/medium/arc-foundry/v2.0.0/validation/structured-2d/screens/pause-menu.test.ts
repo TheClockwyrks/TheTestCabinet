@@ -21,6 +21,7 @@
 //   is drawn behind the menu the two readings differ; if the menu paints over it,
 //   they are the same colour.
 
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { PAUSE_ITEMS, structureCenter } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -32,12 +33,31 @@ import {
   openYard,
   sampleColor,
   standComponent,
-  ticks,
 } from "../harness";
 import { SAMPLE_SPREAD, drewText } from "./reading";
 
 /** A corner of the yard a centred pause menu does not reach. */
 const CORNER = { col: 2, row: 29 };
+
+/**
+ * The frame rate the frozen span is driven at: `10` Hz, a twelfth of this
+ * project's default.
+ *
+ * What is read across the span is one number that must not move — the simulation
+ * clock, which `specs/controls.md` says "advances by nothing" while the pause menu
+ * is open. Nothing positional, no projectile and no rate is measured over it, so
+ * no bound on the size of a frame arises; `specs/instrumentation.md` fixes none,
+ * and `instrumentation/frame-division-movement` and
+ * `instrumentation/frame-division-projectile` are the two items that decide that
+ * guarantee. The ten seconds the claim is stated over are unchanged; the frames
+ * they are divided into are a hundred rather than twelve hundred.
+ */
+const FROZEN_HZ = 10;
+
+/** Frames of that clock covering `s` seconds, rounded up. */
+function frozenFrames(seconds: number): number {
+  return Math.ceil(seconds * FROZEN_HZ);
+}
 
 /** How long the frozen yard is watched for. */
 const FROZEN_SECONDS = 10;
@@ -46,18 +66,19 @@ const FROZEN_SECONDS = 10;
  * How far apart the two samples must sit before the structure counts as visible
  * behind the menu.
  *
- * Well below `DISTINCT_MIN`, deliberately: `specs/ui.md` asks for a yard that is
- * "visible" behind the menu and says nothing about how strongly, so a build that
- * dims the whole yard under a scrim is conforming and its structure is still
- * there to be seen. What this rules out is a menu that paints the yard away
- * entirely, which leaves the two samples identical.
+ * The floor any presence reading in this project clears, and nothing over it.
+ * `specs/ui.md` asks for a yard that is "visible" behind the menu and says
+ * nothing about how strongly, so a build that dims the whole yard under a scrim
+ * is conforming and its structure is still there to be seen. What this rules out
+ * is a menu that paints the yard away entirely, which leaves the two samples
+ * identical.
  */
 const VISIBLE_MIN = 8;
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ clock: new ConstantClock(1000 / FROZEN_HZ) });
 });
 
 afterEach(() => {
@@ -99,7 +120,7 @@ it("draws its three entries over a yard that is visible and frozen", async () =>
 
   // And frozen: the simulation clock does not move while the menu is up.
   const before = h.snapshot().simTime;
-  await h.advance(ticks(FROZEN_SECONDS));
+  await h.advance(frozenFrames(FROZEN_SECONDS));
   assertEqual(
     h.snapshot().simTime,
     before,

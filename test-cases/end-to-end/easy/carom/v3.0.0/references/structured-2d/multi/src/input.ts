@@ -20,7 +20,7 @@
 // vocabulary plus the menu vocabulary every layout carries, and
 // `src/constants.ts` lists them in the layout's order.
 
-import type { InitApi, InputReader } from "@test-cabinet/structured-2d";
+import type { InitApi, InputReader } from "@clockwyrks/structured-2d";
 import { ACTIONS, BINDINGS, LAYOUT, type ActionName } from "./constants";
 import {
   menuOf,

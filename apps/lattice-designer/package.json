@@ -1,5 +1,5 @@
 {
-  "name": "@test-cabinet/lattice-designer",
+  "name": "@clockwyrks/lattice-designer",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -21,8 +21,8 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^4",
-    "typescript": "^5",
+    "typescript": "^6",
     "vite": "^6",
-    "vitest": "^3"
+    "vitest": "^5"
   }
 }

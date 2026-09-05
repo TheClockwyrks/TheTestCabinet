@@ -5,7 +5,7 @@
 // live, and refuses the alternative outright: "A flat opacity flash or a
 // hand-coded loop in place of a produced system does not satisfy this contract."
 //
-// So each file is read off disk and handed to `@test-cabinet/particle-runtime` —
+// So each file is read off disk and handed to `@clockwyrks/particle-runtime` —
 // the runtime `specs/assets.md` names as the one the build plays them through, and
 // whose own types are the authoritative description of a system. Building a
 // simulator over the parsed file is the acceptance test: a file that is not a
@@ -19,8 +19,8 @@
 // review item declares is a picture of one of the systems actually playing in the
 // mine, so a reviewer sees what the files turn into as well as that they parse.
 
-import { ParticleSimulator } from "@test-cabinet/particle-runtime";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import { ParticleSimulator } from "@clockwyrks/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import { afterEach, beforeEach, it } from "vitest";
 import { BAND_HEALTH, FX_SYSTEMS, PLAYABLE_COL_MIN } from "../constants";
 import { assertEqual } from "../assert";
@@ -55,7 +55,7 @@ const SEED = 1;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ assets: true });
+  h = await createHarness();
 });
 
 afterEach(() => {

@@ -122,6 +122,11 @@ spawn timing within a wave are yours to design, subject to the rules below and t
 progression of `specs/campaign.md`. A run's wave count `N` comes from the chosen
 difficulty.
 
+A wave's composition is settled when the wave begins. The sequence of releases is fixed
+at that moment and the wave releases exactly that sequence, so what the wave will carry is
+knowable from its first frame — which is what the next-wave preview of `specs/hud.md`
+draws and what `specs/instrumentation.md`'s `waveCount` reads.
+
 | Rule | Requirement |
 | --- | --- |
 | Air cadence | A wave whose number is a multiple of `4` carries Filaments. No other wave carries a Filament. |

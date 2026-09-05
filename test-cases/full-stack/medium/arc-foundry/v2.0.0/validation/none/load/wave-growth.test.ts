@@ -2,9 +2,19 @@
 //
 // specs/enemies.md, under the rules a wave's composition obeys: "Growth — A
 // wave's total health pool is at least that of the wave before it." A wave's
-// pool is the sum of the maximum health of every unit it releases, and
-// specs/instrumentation.md reports each unit's `maxHp` at the wave it was scaled
-// to, so the pool is read rather than inferred.
+// pool is the sum of the maximum health of every unit it releases, which is
+// `Σ count(t) × HP(t, w)` over the six roster types: the counts come off the
+// wave's own schedule and `HP` is the per-wave scaling this project transcribes
+// from specs/enemies.md and specs/difficulty.md, so every figure compared here is
+// the validator's own.
+//
+// WHY THE POOL IS COMPUTED RATHER THAN SUMMED OFF SPAWNED UNITS. Two rules meet
+// in a wave's pool — what the wave carries and what a unit of that type is worth
+// at that wave — and they are two requirements. Reading `maxHp` off arrivals
+// makes a build whose composition grows correctly but whose scaling is wrong fail
+// HERE as well as at `load/health-scales-by-wave`, blaming the composer for the
+// spawner's defect. Taking the scaling from this project's own constants leaves
+// each defect failing its own check.
 //
 // The rule is about CONSECUTIVE waves, so the sample is three consecutive runs
 // of waves rather than a scatter: the run's opening eight, the three around its
@@ -16,12 +26,24 @@
 // The milestone waves are inside two of those runs deliberately: a Dynamo is a
 // large pool of its own, and the wave after a milestone is where a naive
 // composer dips.
+//
+// WHAT IS READ is `waveCount` over the six roster types on the frame the harvest
+// launched the wave: the live wave's own schedule, which is the array the spawner
+// is working through (specs/instrumentation.md). That the schedule and what the
+// spawner actually releases are the same thing is
+// `instrumentation/wave-count-matches-the-spawner`'s requirement, decided once
+// there over a wave driven to its clear.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual } from "../assert";
+import type { Harness } from "../harness";
+import {
+  composedWave,
+  composedWaveOnCamera,
+  createWaveHarness,
+  poolOf,
+} from "./waves";
 import { difficultyById, milestoneWaves } from "../constants";
-import { captureReplay, type Harness } from "../harness";
-import { collectWave, createWaveHarness, healthPool, openWave } from "./waves";
 
 const DIFFICULTY = "easy";
 const [MIDDLE, LAST] = milestoneWaves(difficultyById(DIFFICULTY).waves);
@@ -50,12 +72,11 @@ it("never releases a wave whose pool is smaller than the wave before it", async 
   for (const run of RUNS) {
     let previous: { wave: number; pool: number } | null = null;
     for (const wave of run) {
-      await openWave(h, wave, DIFFICULTY);
-      const released =
+      const counts =
         wave === EVIDENCE
-          ? await captureReplay(h, "growth", () => collectWave(h, wave))
-          : await collectWave(h, wave);
-      const pool = healthPool(released);
+          ? await composedWaveOnCamera(h, wave, DIFFICULTY, "growth")
+          : await composedWave(h, wave, DIFFICULTY);
+      const pool = poolOf(counts, wave, DIFFICULTY);
 
       if (previous !== null) {
         assertGreaterThanOrEqual(

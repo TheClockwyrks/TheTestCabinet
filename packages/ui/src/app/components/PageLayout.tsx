@@ -1,6 +1,6 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router";
-import { Avatar } from "@test-cabinet/ui";
+import { Avatar } from "@clockwyrks/ui";
 import { routes } from "../routes";
 import { useGalleryData } from "../data/galleryContext";
 import { useAuth } from "../../client/auth";

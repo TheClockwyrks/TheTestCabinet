@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { GgRunDataStandIn } from "@test-cabinet/run-record/gg-reference";
+import type { GgRunDataStandIn } from "@clockwyrks/run-record/gg-reference";
 import { toolParameters } from "./toolParameters";
 import styles from "./GgReference.module.scss";
 

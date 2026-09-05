@@ -11,7 +11,7 @@
 // a cue leaves it on `state.cues` for the update that runs next to play
 // (`specs/ui.md`), which is what keeps every one of them pure and poseable.
 
-import type { DeepReadonly } from "@test-cabinet/simple-3d";
+import type { DeepReadonly } from "@clockwyrks/simple-3d";
 import {
   CAMERA_DIST_MAX,
   CAMERA_DIST_MIN,

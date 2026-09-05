@@ -48,6 +48,7 @@ import {
 import {
   BINDINGS,
   BRIGHT_HOLD,
+  DRIFTER_INTERVAL,
   GRID_COLS,
   GRID_ORIGIN_X,
   GRID_ORIGIN_Y,
@@ -245,6 +246,14 @@ it("reports every documented field, with its documented type", async () => {
   assertNumber(snap, "lives", "snapshot().lives");
   assertBoolean(snap, "muted", "snapshot().muted");
   assertNumber(snap, "planktonRemaining", "snapshot().planktonRemaining");
+  assertNumber(snap, "drifterIn", "snapshot().drifterIn");
+  assertBetween(
+    snap.drifterIn,
+    0,
+    DRIFTER_INTERVAL,
+    `snapshot().drifterIn, the seconds left on the bonus-drifter cadence, ` +
+      `from 0 to DRIFTER_INTERVAL (${DRIFTER_INTERVAL} s)`,
+  );
   assertNumber(snap, "brightness", "snapshot().brightness");
   assertBetween(snap.brightness, 0, 1, "snapshot().brightness, G in [0, 1]");
   assertNumber(snap, "brightHold", "snapshot().brightHold");

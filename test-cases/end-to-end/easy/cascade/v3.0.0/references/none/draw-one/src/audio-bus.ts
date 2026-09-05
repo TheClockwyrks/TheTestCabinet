@@ -147,7 +147,7 @@ export class AudioBus implements AudioPort {
   /** Open the context, degrading to silence where the platform has none. */
   private open(): void {
     if (this.context !== null) return;
-    let context: AudioContext | null = null;
+    let context: AudioContext | null;
     try {
       context = this.source();
     } catch {

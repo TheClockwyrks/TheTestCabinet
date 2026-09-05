@@ -11,7 +11,7 @@
 // pure transitions raised are played and where the `motor` loop and the music
 // bed are held to what the state says (`specs/ui.md`).
 
-import type { UpdateApi } from "@test-cabinet/simple-3d";
+import type { UpdateApi } from "@clockwyrks/simple-3d";
 import {
   ACTIONS,
   CLICK_SLOP,

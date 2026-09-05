@@ -49,7 +49,7 @@ canvas's top-left corner, and a suite that pins the surface to the stage's own
 size at a ratio of `1` dispatches logical coordinates directly.
 
 ```ts
-import type { Vec2 } from "@test-cabinet/structured-3d";
+import type { Vec2 } from "@clockwyrks/structured-3d";
 
 function pointerEvent(
   type: "pointerdown" | "pointermove" | "pointerup",
@@ -208,7 +208,7 @@ build that positions every cue at the origin fails while a build that positions
 it at the paddle passes at every step size.
 
 ```ts
-import { VEC3_ZERO, distance, type Vec3 } from "@test-cabinet/structured-3d";
+import { VEC3_ZERO, distance, type Vec3 } from "@clockwyrks/structured-3d";
 
 const played: { cue: string; at: Vec3 | null }[] = [];
 const off = engine.events.on("cue:played", ({ cue, at }) => played.push({ cue, at }));

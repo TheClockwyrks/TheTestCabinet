@@ -21,7 +21,6 @@ import {
   tapAction,
   type Harness,
 } from "../harness";
-import { GRID_COLS } from "./helpers";
 
 let h: Harness;
 

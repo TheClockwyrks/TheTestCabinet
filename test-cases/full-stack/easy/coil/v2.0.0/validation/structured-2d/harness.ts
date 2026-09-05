@@ -92,7 +92,7 @@ import {
   type SurfaceMetrics,
   type Viewport,
   type World,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import {
   BOARD_X,
   BOARD_Y,
@@ -433,18 +433,16 @@ export interface AssetFailure {
 //
 // That is the same kind of thing the harness's canvas, surface metrics and clock
 // are — the HOST the engine runs on — and without it the build is asked to draw
-// from art nobody gave it. A check about the missing-art path asks for a root
-// with nothing under it (see {@link HarnessOptions.assetRoot}) rather than for a
-// host that cannot load at all, so what it exercises is a file that is absent
-// rather than a machine that is broken.
+// from art nobody gave it. Every produced file is stood up for every check this
+// project runs: nothing here withholds a path, refuses a request, or offers a
+// switch that leaves the art out.
 //
 // AUDIO IS THE ONE THING THIS CANNOT SERVE. `loadAudio` decodes through a Web
 // Audio context and this host has none, so every cue's produced file fails to
-// load here whatever the root says. `specs/assets.md` requires a build that
-// keeps playing when its files do not arrive, so the cues still sound and
-// `cue:played` still names them; what a check cannot read in this process is the
-// bytes behind one. The points that are about the FILES read them off disk
-// directly, which is where they live.
+// load here. That is a fact about this process rather than a requirement on the
+// build: the cue bus still names the cue the build asked to play, so
+// `cue:played` still answers WHICH one sounded, and the points that are about
+// the FILES read their bytes off disk directly, which is where they live.
 
 /**
  * The directory this harness sits in, which is the validator project's root.
@@ -568,12 +566,6 @@ export interface HarnessOptions {
   cssHeight?: number;
   /** Device pixels per CSS pixel. Defaults to 1, so one device pixel is one unit. */
   dpr?: number;
-  /**
-   * The root the engine resolves every asset path under. Defaults to the
-   * engine's own `assets/`, which is where `specs/assets.md` puts the produced
-   * files; a check about the missing-art path names a root with nothing under it.
-   */
-  assetRoot?: string;
 }
 
 /** How far a sweep may run, in whole ticks. */
@@ -1032,9 +1024,6 @@ export async function createHarness(
     layout: LAYOUT,
     clock: options.clock ?? new ConstantClock(FRAME_MS),
     surface,
-    ...(options.assetRoot === undefined
-      ? {}
-      : { assetRoot: options.assetRoot }),
   });
 
   // Subscribed BEFORE `initialize`, which is what makes the game's own loading
@@ -1616,9 +1605,9 @@ export function drawnPoints(
 //
 // The produced `.wav` behind each cue cannot be loaded in this process, because
 // the engine decodes audio through a Web Audio context and there is none here.
-// `specs/assets.md` requires a build that keeps playing when its files do not
-// arrive, so the cues still sound; the points that are about the FILES read them
-// off disk instead.
+// That is this host's limit and not the build's: the cue bus still announces the
+// cue the build asked for, so what these checks read is unaffected, and the
+// points that are about the FILES read their bytes off disk instead.
 
 /**
  * Record every cue the build plays from this call onward.
@@ -1666,11 +1655,10 @@ export function colorDistance(a: Rgb, b: Rgb): number {
 /**
  * The colour rendered at the centre of cell `(col, row)`.
  *
- * The centre pixel itself rather than an average over a cluster, because that is
- * how the visibility points are worded and because a cell is `CELL` (32) units
- * across: its centre is sixteen units from the nearest edge, far outside any
- * anti-aliased rim, and a build's own ruling or glow at a cell's border cannot
- * reach it.
+ * The centre pixel itself rather than an average over a cluster, because a cell
+ * is `CELL` (32) units across: its centre is sixteen units from the nearest
+ * edge, far outside any anti-aliased rim, and a build's own ruling or glow at a
+ * cell's border cannot reach it.
  */
 export function sampleCell(h: Harness, col: number, row: number): Rgb {
   const middle = cellCenter(col, row);

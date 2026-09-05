@@ -5,7 +5,7 @@
 // everything both of those and the debug surface need in the same words: how a
 // body is placed on a tile, what its footing is, and what a fresh one looks like.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import {
   MAX_BEARS,
   ROW_BAYS,

@@ -10,7 +10,7 @@
 // travel with it, so nothing here maps a client position.
 // `Backquote` is absent: the overlay's toggle is engine chrome.
 
-import type { InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type { InitApi, UpdateApi } from "@clockwyrks/simple-2d";
 import { ACTIONS, BINDINGS, type ActionName } from "./constants";
 import type { PointerInput } from "./flow";
 import type { Held } from "./sim/context";

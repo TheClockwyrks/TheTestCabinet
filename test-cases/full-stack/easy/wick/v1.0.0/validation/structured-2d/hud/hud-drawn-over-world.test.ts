@@ -6,6 +6,19 @@
 // live world", and "`playing`": "The HUD is drawn over the world and reads
 // against it."
 //
+// WHAT "OVER" IS READ AS. The order the frame drew them in, which is what "over"
+// means to a canvas and the one reading that does not assume a style: `specs/ui.md`
+// fixes "no palette, no font, and no styling for any screen", so a build is free
+// to draw its bar solid, outlined, or part transparent, and a reading that asked
+// whether the moth's colours survived under the bar would fail a perfectly
+// legible translucent HUD. So the frame is read as the sequence it is: the moth
+// is found among the bitmaps the frame blitted, and something must paint over
+// the bar AFTER the last of them, so a build that lays the HUD down and then
+// draws the world again over it answers no. Every way a build has of painting
+// over a rectangle counts — a rectangle filled outright, a path filled or
+// stroked, a bitmap blitted, a run of text anchored inside — so a HUD drawn as
+// shapes and a HUD composed offscreen and blitted in one call both answer.
+//
 // THE DRIVE. A moth is posed where the health bar is drawn, and the frame is
 // compared with the same frame without it. `specs/instrumentation.md` gives
 // `spawnEnemy(type, x, y)`, which "Spawns one enemy of `type` ... centered at
@@ -25,18 +38,8 @@
 // whose health bar does not scale, which `hud/health-bar-scales` is the point
 // about, leaves this point nothing to pose under and fails here too.
 //
-// THE READING, AND THE CONTROL. A third run poses the same moth in the open, out
-// in the world beside the lamplighter, and how much of the canvas it changes
-// there is what one moth is worth on this build. The moth under the bar is then
-// read against that, over the same part of the same sprite: a HUD drawn over the
-// world leaves the bar's own pixels as they were, so almost none of that worth
-// reaches them, while a HUD drawn under the world lets the moth through and
-// nearly all of it does. `SHOWING_THROUGH` (a quarter) is the bound, and what it
-// leaves room for is a build that draws its HUD slightly clear of the night
-// beneath rather than one that draws the night on top of it. The control is also
-// what makes the reading honest: a build whose moth is invisible everywhere
-// changes nothing in the open and fails there rather than passing here for the
-// wrong reason.
+// THE CONTROL. The moth's own blit must be there to find, which is the moth
+// being drawn at all, so a build that draws no enemy passes nothing here.
 
 import { afterEach, it } from "vitest";
 import {
@@ -45,13 +48,14 @@ import {
   STAGE_CX,
   STAGE_CY,
   TICK_HZ,
+  assetFile,
   enemyFrame,
 } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
   assertGreaterThanOrEqual,
-  assertLessThanOrEqual,
+  assertNotNull,
   assertPointNear,
 } from "../assert";
 import {
@@ -68,11 +72,12 @@ import {
 } from "../harness";
 import { textSpansDiffering } from "./readouts";
 import {
-  changeEnergy,
   changedBand,
   differenceMask,
   frame,
   holds,
+  lastBlitIndex,
+  paintsIn,
   roundRect,
   stagePointOf,
   withoutColumns,
@@ -86,19 +91,8 @@ const FULL = BASE_MAX_HP;
 /** Ticks run after each pose, so an eased bar has arrived. */
 const SETTLE_TICKS = TICK_HZ;
 
-/** The share of one moth's worth of change the bar may let through. */
-const SHOWING_THROUGH = 0.25;
-
 /** How far the posed point may land from the point it was computed for. */
 const PLACEMENT_DRIFT = 1;
-
-/**
- * How far to the side of the lamplighter the control moth stands, in world
- * units. Far enough to clear the lamplighter it would otherwise be drawn over,
- * and near enough to stay in the middle of the view, which is the part of the
- * stage a HUD leaves clear so the night can be played.
- */
-const CONTROL_OFFSET = 150;
 
 /** The enemy posed under the bar, the commonest of the night. */
 const UNDER = "moth";
@@ -152,19 +146,14 @@ function mothBox(drawn: Frame): Rect {
   return roundRect({ x: sprite.x, y: sprite.y, w: sprite.w, h: sprite.h });
 }
 
-/** The rectangle two rectangles share. */
-function overlapOf(a: Rect, b: Rect): Rect {
-  const x = Math.max(a.x, b.x);
-  const y = Math.max(a.y, b.y);
-  return {
-    x,
-    y,
-    w: Math.min(a.x + a.w, b.x + b.w) - x,
-    h: Math.min(a.y + a.h, b.y + b.h) - y,
-  };
-}
+/** The ids of every frame of the moth's produced sheet, as the loader names them. */
+const MOTH_IDS = new Set(
+  Array.from({ length: ENEMY_FRAMES }, (_, at) =>
+    assetFile(enemyFrame(UNDER, at)),
+  ),
+);
 
-it("draws the HUD over the world", async () => {
+it("paints the HUD over the world", async () => {
   const full = await frameAt(FULL);
   const empty = await frameAt(NEARLY_EMPTY);
   const bar = changedBand(
@@ -180,10 +169,6 @@ it("draws the HUD over the world", async () => {
   const over = stagePointOf(full.h, centre.x, centre.y);
   const covered = await frameAt(FULL, mothAtStage(over.x, over.y));
   captureStill(covered.h, "over");
-  const beside = await frameAt(
-    FULL,
-    mothAtStage(STAGE_CX + CONTROL_OFFSET, STAGE_CY),
-  );
 
   const posed = covered.h.snapshot();
   assertEqual(posed.run.enemies.length, 1, "the enemies the posed world holds");
@@ -201,28 +186,33 @@ it("draws the HUD over the world", async () => {
     "the moth's sprite drawn inside the health bar",
   );
 
-  const overlap = roundRect(overlapOf(hiddenBox, bar));
+  const overlap = roundRect({
+    x: Math.max(hiddenBox.x, bar.x),
+    y: Math.max(hiddenBox.y, bar.y),
+    w:
+      Math.min(hiddenBox.x + hiddenBox.w, bar.x + bar.w) -
+      Math.max(hiddenBox.x, bar.x),
+    h:
+      Math.min(hiddenBox.y + hiddenBox.h, bar.y + bar.h) -
+      Math.max(hiddenBox.y, bar.y),
+  });
   assertGreaterThanOrEqual(
     overlap.w * overlap.h,
     1,
     "the overlap of the moth's sprite and the bar, in pixels",
   );
 
-  // The same part of the same sprite, out in the open: the overlap's offset
-  // inside the hidden moth's box, carried onto the control moth's box.
-  const openBox = mothBox(beside);
-  const slice: Rect = {
-    x: openBox.x + (overlap.x - hiddenBox.x),
-    y: openBox.y + (overlap.y - hiddenBox.y),
-    w: overlap.w,
-    h: overlap.h,
-  };
-  const worth = changeEnergy(full.pixels, beside.pixels, slice);
-  assertGreaterThan(worth, 0, "how much one moth changes standing in the open");
-
-  assertLessThanOrEqual(
-    changeEnergy(full.pixels, covered.pixels, overlap) / worth,
-    SHOWING_THROUGH,
-    `the share of one moth's change the bar let through (${overlap.w} x ${overlap.h} pixels of overlap, ${worth.toFixed(1)} of change in the open)`,
+  const drewMoth = lastBlitIndex(covered.calls, (blit) =>
+    MOTH_IDS.has(blit.id),
+  );
+  assertNotNull(
+    drewMoth,
+    `a blit of ${UNDER}'s produced sheet among the frame's recorded calls`,
+  );
+  assertGreaterThan(
+    paintsIn(covered.calls, overlap) -
+      paintsIn(covered.calls.slice(0, drewMoth ?? 0), overlap),
+    0,
+    "the drawing operations that painted inside the health bar after the frame had finished drawing the moth beneath it",
   );
 });

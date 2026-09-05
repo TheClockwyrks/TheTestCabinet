@@ -182,7 +182,7 @@ frames on a timer so the motion reads. It is fine to reuse a body across tints; 
 point is that the Load visibly crackles, firing components visibly charge and
 discharge, and the Dynamo visibly seethes.
 
-## Particle systems — `particle-2d`, played via `@test-cabinet/particle-runtime` (the headline)
+## Particle systems — `particle-2d`, played via `@clockwyrks/particle-runtime` (the headline)
 
 The electrical effects are what this case measures. Every arc, spark shower,
 chain-lightning leap, and discharge is a particle system you author with `particle-2d`
@@ -223,7 +223,7 @@ chain, the Emitter's spray, the Arc-Node's ring, and the Discharge Rig's crack. 
 escalation is a scored expectation, not a nicety. A muzzle glow at a firing head and a
 small collector-arc ambience at the sink are welcome extras.
 
-Play them with the provided runtime. `@test-cabinet/particle-runtime` is already a
+Play them with the provided runtime. `@clockwyrks/particle-runtime` is already a
 dependency of your project (its `file:` entry is in your `package.json`; install and
 import it like any other dependency; do not fetch or reimplement it). For this 2D game
 use its `/canvas` binding, its `ParticleCanvasPlayer`: construct one from a parsed

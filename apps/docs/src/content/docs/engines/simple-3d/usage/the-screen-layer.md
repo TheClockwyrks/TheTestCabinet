@@ -13,7 +13,7 @@ scene shows through.
 
 ```ts
 import * as THREE from "three";
-import type { Game } from "@test-cabinet/simple-3d";
+import type { Game } from "@clockwyrks/simple-3d";
 
 interface State {
   readonly score: number;
@@ -85,7 +85,7 @@ Draw back to front: the panels, then the text over them, then anything that
 sits on top of both.
 
 ```ts
-import type { RenderApi } from "@test-cabinet/simple-3d";
+import type { RenderApi } from "@clockwyrks/simple-3d";
 import type { DeepReadonly } from "ts-essentials";
 
 function render(state: DeepReadonly<Yard>, api: RenderApi): void {

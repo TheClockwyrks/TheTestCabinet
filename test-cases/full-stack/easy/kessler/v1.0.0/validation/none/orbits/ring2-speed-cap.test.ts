@@ -13,11 +13,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo } from "../assert";
+import { RING2_SPEED_CAP } from "../constants";
 import { captureReplay, isolate, openHarness, type Harness } from "../harness";
 import { advanceDeg, ringAngle, ringSpeed } from "./rings";
 
 /** The cap of specs/rings.md's ring 2 formula, degrees per second. */
-const CAP_DEG_PER_SEC = 45;
+const CAP_DEG_PER_SEC = RING2_SPEED_CAP;
 
 let h: Harness;
 

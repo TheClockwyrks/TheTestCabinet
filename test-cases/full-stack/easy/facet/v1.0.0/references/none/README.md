@@ -137,7 +137,7 @@ mounted under a sub-path.
 | `audio/{title,play}.*` | The title theme and the play bed, each a `.wav` beside its `.mid` score     | `music`                   |
 
 The four particle systems are played through
-`@test-cabinet/particle-runtime`'s `ParticleCanvasPlayer` — the only runtime
+`@clockwyrks/particle-runtime`'s `ParticleCanvasPlayer` — the only runtime
 dependency this build has — each simulated into a scratch canvas of its system's
 own field size and blitted, additively, at the cell it belongs to. The scratch
 canvases are pooled per system, and the auras are capped, so a board that has
@@ -267,7 +267,7 @@ same opening board and the same refills exactly.
 npm ci
 ```
 
-The one runtime dependency is `@test-cabinet/particle-runtime`, resolved by
+The one runtime dependency is `@clockwyrks/particle-runtime`, resolved by
 relative path out of this monorepo. Everything else the game runs on is in
 `src/`.
 

@@ -14,12 +14,6 @@ import {
   standBlocker,
 } from "../harness";
 import { BLOCKER, canvasOf } from "./png";
-import { serveProducedAssets } from "./host";
-
-// The produced files, served to the engine off disk, so the still beside this
-// point's verdict shows the art the run made rather than the fallback a build
-// draws when nothing arrived.
-serveProducedAssets();
 
 it("produces the blocker at the size specs/assets.md fixes", async () => {
   const canvas = canvasOf(BLOCKER);

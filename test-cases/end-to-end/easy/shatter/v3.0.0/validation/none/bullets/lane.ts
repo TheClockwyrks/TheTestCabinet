@@ -1,15 +1,15 @@
 // bullets — reading what the build painted along one horizontal lane of the
 // field. Local to this group.
 //
-// WHY THIS IS HERE AND NOT IN THE HARNESS. Three items in this group
-// (`trail-drawn`, `trail-length-scales-with-speed`, `trail-follows-the-wrap`)
-// have to decide where on the canvas a build drew a bullet's tail, and no other
-// group in this project asks that question. The harness already carries the two
-// primitives it takes — `Harness.scanDevice`, which reads a whole line of the
-// backing store in one crossing, and `Harness.viewport`, which says where a
-// logical point lands — so what is left is the small amount of arithmetic that
-// turns two readings of the same line into "which columns changed", and that
-// lives beside the checks that read it.
+// WHY THIS IS HERE AND NOT IN THE HARNESS. Two items in this group
+// (`trail-drawn` and `trail-follows-the-wrap`) have to decide where on the canvas
+// a build drew a bullet's tail, and no other group in this project asks that
+// question. The harness already carries the two primitives it takes —
+// `Harness.scanDevice`, which reads a whole line of the backing store in one
+// crossing, and `Harness.viewport`, which says where a logical point lands — so
+// what is left is the small amount of arithmetic that turns two readings of the
+// same line into "which columns changed", and that lives beside the checks that
+// read it.
 //
 // WHY A LINE RATHER THAN A HANDFUL OF POINTS. A tail is a thin streak, and the
 // question `trail-follows-the-wrap` asks is a question about EVERY drawn pixel

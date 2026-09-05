@@ -40,7 +40,7 @@
 // shore, which specs/strait.md gives no lane — so nothing that happens over the
 // wait can cost a life or put anything on the strait the check did not put there.
 
-import { WallClock } from "@test-cabinet/structured-2d";
+import { WallClock } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { ICE_LANES, TICK_DT } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";

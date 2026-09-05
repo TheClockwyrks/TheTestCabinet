@@ -245,7 +245,7 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   end-to-end, full-stack, and game-jam types only. The case must ship a
   `workspace` whose `package.json` depends on each declared package, as a
   dependency or a dev dependency, via its in-repo `file:` spec under
-  `.tcab/packages/`. A declared package missing from that file or pointing
+  `.vendor/packages/`. A declared package missing from that file or pointing
   anywhere else is rejected at resolution. Each declared package is surfaced on
   the case's Inputs tab, tagged `Package`, with a description defined centrally
   in `core` rather than per case. See
@@ -545,10 +545,9 @@ The case's build config must write both files. `reporters: ["default", "json"]`
 with `outputFile: { json: "coverage/test-report.json" }` produces the run's
 results: the totals, a row per test file, and each failure with its message.
 Coverage declared as `provider: "istanbul"` with
-`reporter: ["text", "json-summary"]` produces `coverage/coverage-summary.json`,
-which carries istanbul's four metrics for the whole measured source and per
-file. `reportOnFailure: true` is what makes a failing suite write its coverage at
-all.
+`reporter: ["json-summary"]` produces `coverage/coverage-summary.json`, which
+carries istanbul's four metrics for the whole measured source and per file.
+`reportOnFailure: true` is what makes a failing suite write its coverage at all.
 
 Coverage is measured over the build's own `src/`, excluding its tests and any
 source the workspace seeded and forbade the build to edit, so the denominator is
@@ -559,7 +558,7 @@ report out of the commit, out of the analyzer's authored set, and out of the
 
 The lint and format configuration covers the `.ts` and `.js` files the run
 holds: the ones the workspace seeded and the ones the build wrote. The vendored
-engine under `.tcab/`, the build output, and the report directories are ignored,
+engine under `.vendor/`, the build output, and the report directories are ignored,
 so the recorded figures describe the model's own code. Markdown is left to its
 own linter, so the seeded specs stay as the case authored them.
 

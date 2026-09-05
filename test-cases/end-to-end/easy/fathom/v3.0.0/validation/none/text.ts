@@ -14,7 +14,7 @@
 // this.
 //
 // UNDER `none` THE SHARED HARNESS ALREADY WALKS THE TRANSFORM. The recorder in
-// `@test-cabinet/case-harness` keeps every operation of a frame in order, and its
+// `@clockwyrks/case-harness` keeps every operation of a frame in order, and its
 // `textDraws` carries the transform through `save`/`restore` and every operation
 // that moves it, so a run comes back placed in canvas pixels — which, at the shape
 // every check in this project builds its harness at, is the logical stage at one

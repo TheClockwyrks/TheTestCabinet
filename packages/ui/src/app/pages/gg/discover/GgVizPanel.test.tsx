@@ -15,7 +15,7 @@ import type {
   GgBucket,
   GgGroupKey,
   GgRunDoc,
-} from "@test-cabinet/run-record/gg-query";
+} from "@clockwyrks/run-record/gg-query";
 import { compileQuery, evaluate, parseQuery } from "../query";
 import { GgVizPanel } from "./GgVizPanel";
 

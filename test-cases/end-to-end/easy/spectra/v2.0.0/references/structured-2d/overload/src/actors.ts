@@ -22,8 +22,8 @@
 // `src/contacts.ts`, and declaring colliders the game never reads would only
 // describe the field twice.
 
-import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
-import type { ActorSpec, DrawApi, World } from "@test-cabinet/structured-2d";
+import { Actor, DrawComponent } from "@clockwyrks/structured-2d";
+import type { ActorSpec, DrawApi, World } from "@clockwyrks/structured-2d";
 import { SHIP_Y, TAGS } from "./constants";
 import { spectraState, type SpectraState } from "./game";
 import {

@@ -56,10 +56,12 @@ import { countMoved, readLattice } from "./canvas";
  * How far a sample must move between two readings, on the 0–441 RGB scale, to
  * count as having changed.
  *
- * The same twentieth-of-the-scale bar the rest of this group uses for "something
- * was painted here": well under anything the legibility table's "told apart from
- * the field behind it" could measure, and well over the rounding a canvas round
- * trip leaves.
+ * This figure sits on the LENIENT side of the claim it feeds. The changed samples
+ * are bounded ABOVE, so a larger figure counts fewer of them and asks LESS of the
+ * build: it is slack on "the posed field drew nothing into either strip" rather
+ * than a bar anything has to clear, and it says nothing about how anything looks.
+ * `25` is well over the rounding a canvas round trip leaves on a strip that was
+ * redrawn unchanged.
  */
 const MOVED_MIN = 25;
 

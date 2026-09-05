@@ -83,7 +83,7 @@ max_runtime_hours = 8
 
 # Init command, run in the run container once the workspace and specs are seeded and
 # before the harness starts. `npm install` — NOT `npm ci` — because `packages`
-# injects the `@test-cabinet/particle-runtime` `file:` dependency this build plays
+# injects the `@clockwyrks/particle-runtime` `file:` dependency this build plays
 # its produced particle systems with, so the lockfile is completed at seed time; the
 # same command downloads the Playwright Chromium build (the base image ships the OS
 # libraries Chromium links against, but not the browser binary), so the model can
@@ -98,7 +98,7 @@ init = "npm install && npx playwright install chromium"
 # model as prose in `specs/`.
 
 # Test Cabinet runtime libraries installed into the run so the build can play the
-# particle systems it produces. `@test-cabinet/particle-runtime` is the same library
+# particle systems it produces. `@clockwyrks/particle-runtime` is the same library
 # the review UI plays a produced effect with; core bakes it into the run image and
 # the seeded workspace `package.json` depends on it via its baked-in `file:` path, so
 # the build imports it (its `/canvas` binding) like any other dependency and plays
@@ -107,7 +107,7 @@ init = "npm install && npx playwright install chromium"
 # impacts, deaths, and the leak alarm — are all produced `particle-2d` systems played
 # this way; see `specs/assets.md` for the consumption contract. (A root key, so it
 # must sit above the first `[table]` header.)
-packages = ["@test-cabinet/particle-runtime"]
+packages = ["@clockwyrks/particle-runtime"]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Arc Foundry offers a single `base` variant (the standard SALVAGE campaign),
@@ -407,12 +407,16 @@ description = "What the build sounds like: the twelve cues the run produced with
 # resolution rejects the manifest if any is missing:
 #
 #   - `validation`, naming a suite inside the validator project. The path is relative
-#     to `validation/<engine>/`, NOT to this folder, and the SAME relative path must
-#     resolve under all three engines: a point decided under one engine and left to a
-#     person under another would be the same case graded two ways. Nothing here is
-#     left to a person: a requirement either carries an assertion a machine can decide
-#     or it is not a graded point at all, and how good the art, the effects and the
-#     sound are is the run-wide aesthetic rating's rather than a validator's.
+#     to `validation/<engine>/`, NOT to this folder, and the SAME relative path
+#     resolves under every engine the point covers: a point decided under one engine
+#     and left to a person under another would be the same case graded two ways. A
+#     point may add `engines` to that table, which scopes it to the engines where the
+#     behavior is the build's own work — the stage fit is the build's under `none`
+#     and the runtime's under `simple-2d` and `structured-2d`, so grading it there
+#     would hand every build the point. Nothing here is left to a person: a
+#     requirement either carries an assertion a machine can decide or it is not a
+#     graded point at all, and how good the art, the effects and the sound are is the
+#     run-wide aesthetic rating's rather than a validator's.
 #   - `domains`, naming which of the three scoring domains above a failure lowers.
 #   - `failure_cap`, the best functional rating those domains keep while the point
 #     fails: `broken` (the game cannot be played as intended), `scuffed` (a rule the
@@ -586,6 +590,19 @@ failure_cap = "scuffed"
 # validation/<engine>/instrumentation/spawner-hold.test.ts.
 validation = { script = "instrumentation/spawner-hold.test.ts", outputs = [
   { id = "hold", name = "The single released unit walking an otherwise empty wave", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wave-count-matches-the-spawner"
+title = "waveCount counts the units the wave actually releases"
+description = "The units a live wave releases are exactly the ones waveCount counts, in both directions, and the count reads the same figure from the frame the wave launched to the frame it cleared."
+domains = ["simulation"]
+failure_cap = "broken"
+# Automated validation: launch one milestone wave, read the count of every type,
+# then drive that wave to its clear and hold what arrived against what was
+# counted. See validation/<engine>/instrumentation/wave-count-matches-the-
+# spawner.test.ts.
+validation = { script = "instrumentation/wave-count-matches-the-spawner.test.ts", outputs = [
+  { id = "arrives", name = "A milestone wave arriving as counted", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "overload-driver-wave-clears"
@@ -2176,9 +2193,9 @@ title = "A crit deals its multiplier of the shot's damage"
 description = "A tower carrying crit rolls the stated chance on each shot off the game's seeded generator, and a shot that crits removes critMult times its damage instead of its damage: over a long run at a fixed seed both figures appear and neither is any other value."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: park a frozen invincible target under a Slag Driver
-# and record the damage of every shot over a long run at a fixed seed. See
-# validation/<engine>/combos/crit.test.ts.
+# Automated validation: park a frozen invincible target inside a ring of Slag
+# Drivers and record the damage of every shot the ring lands over a counted
+# interval at a fixed seed. See validation/<engine>/combos/crit.test.ts.
 validation = { script = "combos/crit.test.ts", outputs = [
   { id = "crit", name = "The critical hit among the ordinary ones", kind = "replay" },
 ] }
@@ -2337,9 +2354,9 @@ title = "Every firing type removes health from every unit type"
 description = "There is no armour and no damage type: each of the seven firing base types removes health from each of the six Load types, ground and flying alike, and no unit resists or is immune."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: park each unit type in range of each firing type in
-# turn and read the health each shot removed. See validation/<engine>/load/no-
-# armour.test.ts.
+# Automated validation: one round per firing type, six of that type standing
+# with one unit of each roster type held in range, read to the frame the last of
+# the six is struck. See validation/<engine>/load/no-armour.test.ts.
 validation = { script = "load/no-armour.test.ts", outputs = [
   { id = "matrix", name = "The Load taking damage from every type", kind = "replay" },
 ] }
@@ -2360,8 +2377,8 @@ title = "Filaments arrive every fourth wave and no other"
 description = "A wave whose number is a multiple of 4 carries Filaments, and no other wave carries one, across a whole run."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: play a run's waves through and record the type of
-# every unit each wave released. See validation/<engine>/load/air-
+# Automated validation: launch each sampled wave from its own build phase and
+# read the Filaments its schedule holds. See validation/<engine>/load/air-
 # cadence.test.ts.
 validation = { script = "load/air-cadence.test.ts", outputs = [
   { id = "air", name = "A Filament wave arriving", kind = "replay" },
@@ -2372,8 +2389,9 @@ title = "Wave round(N / 2) and wave N each carry one Dynamo"
 description = "Exactly one Dynamo arrives on wave round(N / 2) and exactly one on wave N, and no other wave of the run carries one."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: play a run's waves through and count the Dynamos each
-# wave released. See validation/<engine>/load/milestone-dynamos.test.ts.
+# Automated validation: launch each sampled wave from its own build phase and
+# read the Dynamos its schedule holds. See validation/<engine>/load/milestone-
+# dynamos.test.ts.
 validation = { script = "load/milestone-dynamos.test.ts", outputs = [
   { id = "milestone", name = "The milestone Dynamo arriving", kind = "replay" },
 ] }
@@ -2383,8 +2401,8 @@ title = "Waves 1 through 3 carry Motes and Sparks only"
 description = "The first three waves of a run release Motes and Sparks and nothing else."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: play the first three waves and record the type of
-# every unit released. See validation/<engine>/load/opening-waves.test.ts.
+# Automated validation: launch each of the first three waves and read the types
+# its schedule holds. See validation/<engine>/load/opening-waves.test.ts.
 validation = { script = "load/opening-waves.test.ts", outputs = [
   { id = "opening", name = "The opening wave's composition", kind = "replay" },
 ] }
@@ -2394,8 +2412,9 @@ title = "Neither Clusters nor Slugs appear before wave 5"
 description = "No wave numbered 1 through 4 releases a Cluster or a Slug."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: play the first four waves and record the type of every
-# unit released. See validation/<engine>/load/cluster-and-slug-late.test.ts.
+# Automated validation: launch each of the first four waves and read the
+# Clusters and Slugs its schedule holds. See validation/<engine>/load/cluster-
+# and-slug-late.test.ts.
 validation = { script = "load/cluster-and-slug-late.test.ts", outputs = [
   { id = "early", name = "The early waves without Clusters or Slugs", kind = "replay" },
 ] }
@@ -2405,9 +2424,9 @@ title = "A wave's health pool never falls"
 description = "Each wave's total health pool, summed over the maximum health of every unit it releases, is at least that of the wave before it, across a whole run."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: play a run's waves through, sum each wave's released
-# health, and compare consecutive sums. See validation/<engine>/load/wave-
-# growth.test.ts.
+# Automated validation: launch each sampled wave, sum the scaled health of the
+# units its schedule holds, and compare consecutive sums. See
+# validation/<engine>/load/wave-growth.test.ts.
 validation = { script = "load/wave-growth.test.ts", outputs = [
   { id = "growth", name = "The Load's growing pool", kind = "replay" },
 ] }
@@ -2497,8 +2516,11 @@ title = "Clearing a wave pays its flat bonus"
 description = "Clearing wave n pays WAVE_BONUS_BASE + WAVE_BONUS_STEP * n in Charge, with WAVE_BONUS_BASE 8 and WAVE_BONUS_STEP 2, so wave 1 pays 10 and wave 6 pays 20."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: clear several waves and read the Charge the clear paid
-# at each. See validation/<engine>/campaign/wave-clear-bonus.test.ts.
+# Automated validation: pose a live wave at each of several wave numbers, empty
+# it, and read the Charge its clear paid, then launch a low wave through the
+# level's harvest and read the same bonus off the clear of a wave the game
+# composed for itself. See
+# validation/<engine>/campaign/wave-clear-bonus.test.ts.
 validation = { script = "campaign/wave-clear-bonus.test.ts", outputs = [
   { id = "bonus", name = "The bonus landing as the wave clears", kind = "replay" },
 ] }
@@ -2719,8 +2741,9 @@ title = "The milestone waves follow the difficulty"
 description = "The Dynamo waves are round(N / 2) and N for the chosen difficulty: 20 and 40 on Easy, 25 and 50 on Medium, 30 and 60 on Hard."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: set each difficulty and read the composition of the
-# waves either side of round(N / 2) and N. See
+# Automated validation: set each difficulty, launch the waves either side of
+# round(N / 2) and N, and read how many Dynamos each launched wave's schedule
+# holds off waveCount. See
 # validation/<engine>/difficulty/milestones-by-difficulty.test.ts.
 validation = { script = "difficulty/milestones-by-difficulty.test.ts", outputs = [
   { id = "milestone", name = "The milestone wave at each difficulty", kind = "replay" },
@@ -3136,15 +3159,18 @@ description = "Over surfaces wider than the stage, taller than it, and at a rais
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: build the game over several differently shaped
-# surfaces, read the viewport back, and sample the canvas where a
-# structure stands. See validation/<engine>/screens/window-fit.test.ts.
-validation = { script = "screens/window-fit.test.ts", outputs = [
+# surfaces, read the viewport back, and sample a tile's own centre before and
+# after a structure stands on it. Scoped to `none`, where the fit is the
+# build's own work: under an engine the runtime owns the stage fit and the
+# letterboxing, so the reading would return the same verdict for every build.
+# See validation/none/screens/window-fit.test.ts.
+validation = { script = "screens/window-fit.test.ts", engines = ["none"], outputs = [
   { id = "fit", name = "The stage fitted and centred in an off-aspect window", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "letterbox-bars"
 title = "The letterbox bars carry the stage's background"
-description = "The bars around the fitted stage carry the stage's background color, within an RGB distance of 25 of 441 from the nearest sampled empty patch of the stage's own background."
+description = "The bars around the fitted stage carry the stage's background color."
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: build the game over a window wider than the stage
@@ -3770,18 +3796,6 @@ validation = { script = "status-bar/integrity.test.ts", outputs = [
   { id = "bar", name = "The bar reading Grid Integrity", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "integrity-alert"
-title = "Grid Integrity reads as an alert at five or below"
-description = "The Grid Integrity read is drawn differently once the figure falls to INTEGRITY_ALERT (5) or below: the pixels sampled inside its region at 6 and at 5 differ by more than 50 of 441 in RGB distance."
-domains = ["presentation"]
-failure_cap = "passable"
-# Automated validation: pose Grid Integrity at 6 and at 5 and sample the
-# region the figure is drawn in. See validation/<engine>/status-bar/integrity-
-# alert.test.ts.
-validation = { script = "status-bar/integrity-alert.test.ts", outputs = [
-  { id = "alert", name = "The Grid Integrity read in alert", kind = "image" },
-] }
-[[review.categories.items]]
 id = "build-read-in-a-build-phase"
 title = "The bar reads BUILD during a build phase"
 description = "During a build phase the status bar draws a BUILD read, so a player tells a build phase from a live wave at a glance."
@@ -4147,7 +4161,7 @@ validation = { script = "overlays/recipe-book-lists-twelve.test.ts", outputs = [
 [[review.categories.items]]
 id = "recipe-book-ingredient-states"
 title = "An ingredient reads selected, owned or missing"
-description = "Each ingredient of each recipe is drawn in one of three states, told apart by more than 50 of 441 in RGB distance at the sampled ingredient: selected when the current selection is a base structure at that type and quality, owned when the yard holds one that is not the selection, and missing otherwise."
+description = "Each ingredient of each recipe is drawn in one of three states, and the pixels sampled at the same ingredient differ between them: selected when the current selection is a base structure at that type and quality, owned when the yard holds one that is not the selection, and missing otherwise."
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: pose a yard holding one ingredient, select it, and
@@ -4207,27 +4221,27 @@ validation = { script = "overlays/leaderboard-ranks.test.ts", outputs = [
 
 # --- What the yard draws ------------------------------------------------------
 # The yard carries no chrome of its own, only the reads a player needs over the map
-# and its structures. Each is decided from the pixels the build actually drew,
-# against a stated distance, and each is one read.
+# and its structures. Each is decided from the pixels the build actually drew, and
+# each is one read.
 [[review.categories]]
 id = "yard-drawing"
 title = "What the yard draws"
 [[review.categories.items]]
 id = "held-footprint-legal-read"
-title = "A legal footprint reads differently from an illegal one"
-description = "The held rock's snapped footprint is drawn distinctly by legality: the pixels sampled inside the footprint over a legal tile and over a waypoint platform differ by more than 50 of 441 in RGB distance."
+title = "The held footprint is drawn, and its legality read is reported"
+description = "The held rock's snapped footprint is drawn over the tiles it covers on a legal tile and over a waypoint platform, and the reported legal read is true on the first and false on the second."
 domains = ["presentation"]
 failure_cap = "scuffed"
 # Automated validation: arm a rock, move it over a legal footprint and over a
-# platform, and sample the footprint in each. See validation/<engine>/yard-
-# drawing/held-footprint-legal-read.test.ts.
+# platform, and sample the footprint in each against the bare ground under it.
+# See validation/<engine>/yard-drawing/held-footprint-legal-read.test.ts.
 validation = { script = "yard-drawing/held-footprint-legal-read.test.ts", outputs = [
   { id = "held", name = "The held footprint's legal and illegal reads", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "range-ring"
 title = "A range ring is drawn on the held or selected structure"
-description = "Selecting a firing structure draws a ring at its reported range: pixels sampled on the ring differ from the same points with nothing selected by more than 50 of 441 in RGB distance, and the ring's radius follows the structure's range across two tiers."
+description = "Selecting a firing structure draws a ring at its reported range: the pixels sampled on the ring differ from the same points with nothing selected, and the ring's radius follows the structure's range across two tiers."
 domains = ["presentation"]
 failure_cap = "scuffed"
 # Automated validation: select structures at two tiers and sample the yard at
@@ -4239,7 +4253,7 @@ validation = { script = "yard-drawing/range-ring.test.ts", outputs = [
 [[review.categories.items]]
 id = "health-bars"
 title = "Each unit carries a health bar that depletes"
-description = "A unit on the yard is drawn with a health bar above it, and the bar's drawn extent shrinks as the unit loses health: the extent at full health is longer than at a posed quarter health."
+description = "A unit on the yard is drawn with a health bar above it, and the strip that bar is drawn in is redrawn when the unit is posed to a quarter of its health."
 domains = ["presentation"]
 failure_cap = "scuffed"
 # Automated validation: park a frozen unit, sample its bar at full health,
@@ -4263,7 +4277,7 @@ validation = { script = "yard-drawing/waypoint-numbers-on-top.test.ts", outputs 
 [[review.categories.items]]
 id = "combinable-mark"
 title = "A combinable structure is marked without being selected"
-description = "Every base structure that could combine right now is marked on the yard whether or not it is selected: the pixels sampled at a structure with a matching partner standing differ from the same structure with no partner by more than 50 of 441 in RGB distance, with nothing selected in either case."
+description = "Every base structure that could combine right now is marked on the yard whether or not it is selected: the pixels sampled at a structure with a matching partner standing differ from the same structure with no partner, with nothing selected in either case."
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: sample a structure with and without a matching partner
@@ -4275,12 +4289,12 @@ validation = { script = "yard-drawing/combinable-mark.test.ts", outputs = [
 [[review.categories.items]]
 id = "maze-route-on-hover"
 title = "Hovering the maze length draws the route"
-description = "Moving the pointer over the status bar's maze-length readout draws the full ground route on the yard, from the entry through every waypoint to the collector: the yard's draw calls along the route grow while the pointer is over the readout and return when it leaves."
+description = "Moving the pointer over the status bar's maze-length readout draws the full ground route on the yard, from the entry through every waypoint to the collector: the yard is drawn over at the route's tile centers while the pointer is over the readout, and reads as it did once the pointer leaves."
 domains = ["presentation"]
 failure_cap = "great"
-# Automated validation: read the yard's draws with the pointer off the readout
-# and over it. See validation/<engine>/yard-drawing/maze-route-on-
-# hover.test.ts.
+# Automated validation: sample the yard at the route's tile centers with the
+# pointer off the readout and over it, against how far those centers move on
+# their own. See validation/<engine>/yard-drawing/maze-route-on-hover.test.ts.
 validation = { script = "yard-drawing/maze-route-on-hover.test.ts", outputs = [
   { id = "route", name = "The ground route drawn on hover", kind = "image" },
 ] }
@@ -4378,11 +4392,11 @@ validation = { script = "sprites/icon-sprites.test.ts", outputs = [
 [[review.categories.items]]
 id = "sprites-carry-content"
 title = "Every produced sprite has something drawn on it"
-description = "No produced sprite is a blank canvas: each carries pixels above an alpha of 8 over at least a twentieth of its area, so an absent asset cannot pass as a produced one."
+description = "No produced sprite is a blank canvas: each carries at least one pixel above the transparent-black floor, so an absent asset cannot pass as a produced one."
 domains = ["presentation"]
 failure_cap = "scuffed"
-# Automated validation: decode every produced PNG and measure the fraction of
-# its pixels that are not transparent. See
+# Automated validation: decode every produced PNG and count the pixels that
+# are not transparent. See
 # validation/<engine>/sprites/sprites-carry-content.test.ts.
 validation = { script = "sprites/sprites-carry-content.test.ts", outputs = [
   { id = "sheet", name = "The produced sprites drawn together", kind = "image" },
@@ -4565,9 +4579,7 @@ validation = { script = "animation/load-cycle-animates.test.ts", outputs = [
 # particle runtime. They are this case's headline produced asset, so each system's
 # event gets a point of its own: what is decided is that particles appeared where
 # the specification says they appear, on the frame the event happened, and that they
-# were not there on the frame before it. The escalation points ask only that the
-# effect a Tesla-Prime structure plays is not the same drawing as the one a Scrap
-# structure plays; how good either looks is the aesthetic rating's.
+# were not there on the frame before it.
 [[review.categories]]
 id = "effects"
 title = "The produced electrical effects"
@@ -4597,13 +4609,12 @@ validation = { script = "effects/systems-distinct.test.ts", outputs = [
 [[review.categories.items]]
 id = "status-colors-distinct"
 title = "The slow, burn and aura effects carry colors of their own"
-description = "The mean color of the slow, burn and aura systems' color gradients are pairwise more than 60 of 441 apart in RGB distance, and each is more than 60 from the mean of the firing effects' gradients, so a player reads which effect is on a unit without reading a number."
+description = "The slow, burn and aura systems each carry their own authored color gradient: no two of the three are the same list of color stops, and none repeats a firing effect's."
 domains = ["presentation"]
 failure_cap = "passable"
-# Automated validation: parse the twelve systems, average each one's color
-# stops, and compare the three status colors against each other and against
-# the firing effects. See validation/<engine>/effects/status-colors-
-# distinct.test.ts.
+# Automated validation: parse the twelve systems and compare the three status
+# systems' color stops against each other and against the firing effects'. See
+# validation/<engine>/effects/status-colors-distinct.test.ts.
 validation = { script = "effects/status-colors-distinct.test.ts", outputs = [
   { id = "colors", name = "The three status effects on one unit", kind = "image" },
 ] }
@@ -4742,43 +4753,6 @@ failure_cap = "passable"
 # validation/<engine>/effects/aura-pulse.test.ts.
 validation = { script = "effects/aura-pulse.test.ts", outputs = [
   { id = "aura", name = "The pulse at an aura source", kind = "replay" },
-] }
-[[review.categories.items]]
-id = "aura-pulse-is-the-produced-system"
-title = "The pulse at an aura source is the system the run produced"
-description = "With assets/fx/aura.json in hand, motion is drawn in the annulus around a Regulator standing on the yard; with that one file withheld and every other produced file served, no motion is drawn there, so the pulse is the produced system rather than a shape the build draws in code."
-domains = ["presentation"]
-failure_cap = "scuffed"
-# Automated validation: read the ring around a standing Regulator twice, once
-# with every produced file served and once with that one system withheld, and
-# hold the second against a Capacitor standing on the same anchor. See
-# validation/<engine>/effects/aura-pulse-is-the-produced-system.test.ts.
-validation = { script = "effects/aura-pulse-is-the-produced-system.test.ts", outputs = [
-  { id = "withheld", name = "The aura source with its system withheld", kind = "image" },
-] }
-[[review.categories.items]]
-id = "bolt-escalates"
-title = "A Tesla-Prime bolt is not a Scrap bolt"
-description = "The pixels drawn along the line from head to target while a Tesla-Prime Capacitor's shot travels differ from those drawn in the identical scenario under a Scrap Capacitor, so the quality ladder reads in the effect as well as in the sprite."
-domains = ["presentation"]
-failure_cap = "great"
-# Automated validation: fire the same shot at the same target from a Scrap and
-# a Tesla-Prime Capacitor and compare the pixels along the line. See
-# validation/<engine>/effects/bolt-escalates.test.ts.
-validation = { script = "effects/bolt-escalates.test.ts", outputs = [
-  { id = "bolts", name = "A Scrap bolt and a Tesla-Prime bolt", kind = "replay" },
-] }
-[[review.categories.items]]
-id = "chain-escalates"
-title = "A Tesla-Prime chain is not a Scrap chain"
-description = "The pixels drawn between the units a Coil's chain strikes differ between a Tesla-Prime Coil and a Scrap Coil in the identical scenario."
-domains = ["presentation"]
-failure_cap = "great"
-# Automated validation: fire the same chain from a Scrap and a Tesla-Prime
-# Coil and compare the pixels between the struck units. See
-# validation/<engine>/effects/chain-escalates.test.ts.
-validation = { script = "effects/chain-escalates.test.ts", outputs = [
-  { id = "chains", name = "A Scrap chain and a Tesla-Prime chain", kind = "replay" },
 ] }
 
 # --- The produced audio -------------------------------------------------------

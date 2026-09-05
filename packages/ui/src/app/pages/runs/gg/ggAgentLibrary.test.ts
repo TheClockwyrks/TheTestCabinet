@@ -19,7 +19,7 @@ import type {
   GgAgentConfig,
   GgConfig,
   GgSavedAgent,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import {
   agentOverrides,
   agentSourcesFromDraft,

@@ -60,8 +60,8 @@ nothing, as `engine.debug.snapshot()`. Nothing is published to the page.
 exact path it lands at under `assets/`, and the bar it meets. Commit the produced
 files and load them through the engine's asset loader, which resolves every path
 under that root. The finished repository builds and runs with those tools absent,
-so nothing is generated at build time. `@test-cabinet/particle-runtime` is
-already a dependency, vendored under `.tcab/`; the declarative pipeline draws no
+so nothing is generated at build time. `@clockwyrks/particle-runtime` is
+already a dependency, vendored under `.vendor/`; the declarative pipeline draws no
 particles, so a produced system is played through its canvas binding from a draw
 component handed the raw context.
 
@@ -84,7 +84,7 @@ every piece of that recipe.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
   `.gitignore`.
-- **`.tcab/`** — the vendored engine and the produced-effect runtime.
+- **`.vendor/`** — the vendored engine and the produced-effect runtime.
 - **`engine/`** — the engine's own documentation.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the

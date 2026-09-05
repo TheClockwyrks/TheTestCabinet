@@ -15,15 +15,18 @@
 // `N` comes from the chosen difficulty (specs/difficulty.md) rather than being
 // written here, so the check reads the run the build says it is running.
 //
-// HOW IT IS DECIDED. The run is taken to its finale — which the sibling point
-// `final-wave-enters-the-finale` is what decides — and the finale is then run to
-// its end by walking its Overload Dynamo the last three tiles into the collector,
-// which specs/campaign.md ends with "the game advances to the victory screen".
+// HOW IT IS DECIDED. The run is taken to its finale by clearing wave `N` with the
+// spawner held, which is the victory condition of specs/campaign.md and leaves the
+// finale, and the Dynamo it releases, to the game — the first transition is the
+// sibling point and it is what plays the composed wave `N`. The finale is then run
+// to its end by walking its Overload Dynamo the last three tiles into the
+// collector, which specs/campaign.md ends with "the game advances to the victory
+// screen".
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { captureReplay, type Harness } from "../harness";
-import { createRunHarness, leakOne, onlyUnit, reachFinale } from "./runs";
+import { createRunHarness, leakOne, onlyUnit, poseFinale } from "./runs";
 import { difficultyById } from "../constants";
 
 const DIFFICULTY = "easy";
@@ -40,13 +43,13 @@ afterEach(() => {
 
 it("reaches the victory screen once the finale has run", async () => {
   const finale = await captureReplay(h, "victory", async () => {
-    const { cleared, waves } = await reachFinale(h, DIFFICULTY);
+    const { snapshot, waves } = await poseFinale(h, DIFFICULTY);
     assertEqual(
       waves,
       difficultyById(DIFFICULTY).waves,
       `the last wave of a ${DIFFICULTY} run`,
     );
-    return cleared.snapshot;
+    return snapshot;
   });
 
   const dynamo = onlyUnit(finale, "overload");

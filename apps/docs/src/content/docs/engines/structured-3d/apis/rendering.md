@@ -205,6 +205,6 @@ ticks and its picture from the pipeline.
 ## Exports
 
 `RenderMode`, `RenderSpace`, `Renderer`, and `DrawApi` are exported as types,
-and `DrawComponent` as an abstract class, from `@test-cabinet/structured-3d`. The
+and `DrawComponent` as an abstract class, from `@clockwyrks/structured-3d`. The
 render components the pipeline draws are exported from the same specifier and
 listed on the [components](/engines/structured-3d/apis/components/) page.

@@ -9,7 +9,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { GgSavedQueryInput } from "@test-cabinet/run-record/gg-query";
+import type { GgSavedQueryInput } from "@clockwyrks/run-record/gg-query";
 import {
   BackendProvider,
   type BackendContextValue,

@@ -1,4 +1,4 @@
-import { Panel } from "@test-cabinet/ui";
+import { Panel } from "@clockwyrks/ui";
 import { Link } from "react-router";
 import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
 import { routes } from "../../../routes";

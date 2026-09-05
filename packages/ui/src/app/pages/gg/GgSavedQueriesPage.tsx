@@ -22,7 +22,7 @@ import { Link, useSearchParams } from "react-router";
 import type {
   GgSavedQuery,
   GgSavedQueryInput,
-} from "@test-cabinet/run-record/gg-query";
+} from "@clockwyrks/run-record/gg-query";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { useConfirm } from "../../components/ConfirmDialog";

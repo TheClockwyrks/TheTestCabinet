@@ -16,7 +16,7 @@
 // `state.pointer` reports the engine's own snapshot for the frame being drawn
 // (specs/state.md).
 
-import { PlayerController } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
 import { playEvents } from "./audio";
 import { CAMPAIGN_LENGTH, SOLVED_ITEMS, TITLE_ITEMS } from "./constants";
 import {

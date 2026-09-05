@@ -2,8 +2,8 @@
  * The differential pixel-parity suite: an engine's recorder against this player,
  * over real pixels.
  *
- * Two engines write recording format 1 — `@test-cabinet/simple-2d` and
- * `@test-cabinet/structured-2d` — and both are replayed by this one player, so
+ * Two engines write recording format 1 — `@clockwyrks/simple-2d` and
+ * `@clockwyrks/structured-2d` — and both are replayed by this one player, so
  * both carry the same drift risk against the hand-maintained copy in
  * `format.ts`. The whole suite lives here, parameterized over the one thing
  * that differs between them: how a recorder is constructed. Each engine gets a

@@ -1841,6 +1841,21 @@ export class Game {
     return Math.min(1, this.spawnCursor / w.events.length);
   }
 
+  // How many units of `type` the LIVE wave releases across the whole of its schedule
+  // (specs/instrumentation.md). A filter over the very array the spawner is indexing
+  // into with `spawnCursor`, so the count and what arrives are one thing rather than two
+  // that could disagree: a unit already released counts, one still to come counts, and
+  // one that has died, leaked or been swept away by `clearUnits` goes on counting.
+  // `0` for every type with no wave running, and `0` on a wave the spawner hold opened,
+  // whose schedule is empty. `overload` is never a wave's to release, so it reads `0`.
+  liveWaveCount(type: LoadType | "overload"): number {
+    const w = this.activeWave;
+    if (!w) return 0;
+    let n = 0;
+    for (const e of w.events) if (e.type === type) n++;
+    return n;
+  }
+
   // ---- Maze length (specs/pathing.md, specs/hud.md) ---------------------------
   // The GROUND route the Load walks: the shortest OPEN path through the ordered waypoint
   // chain around the current walls, as tile-center points. Flyers ignore the maze, so this is

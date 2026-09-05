@@ -79,7 +79,7 @@ const PHASE = "ready" as const;
 const PHASE_TIMER = 0.75;
 const MENU_INDEX = 2;
 const SCORE = 4321;
-const LIVES = START_LIVES + 2;
+const LIVES = START_LIVES + 1;
 const STAGE = 7;
 const CHALLENGE_HITS = 17;
 const RESONANCE = 42;
@@ -89,6 +89,14 @@ const SHIP_BAND = "magenta" as const;
 const LOCKOUT = 0.22;
 const COOLDOWN = 0.09;
 const DIVE_CLOCK = 1.25;
+
+/**
+ * The figure `setDiveGap` poses, in seconds.
+ *
+ * Inside `[DIVE_GAP_MIN, DIVE_GAP_MAX]` (`[1.4, 2.6]`) at `diveGapScale(1)`, so it
+ * is a gap the wave could itself have drawn (specs/swarm.md).
+ */
+const DIVE_GAP = 1.75;
 
 /** Where the three posed drones stand, and where the posed bullet hangs. */
 const SHARD_AT = { x: 300, y: 300 } as const;
@@ -292,6 +300,13 @@ it("reports every posed field back through snapshot", async () => {
     DIVE_CLOCK,
     `snapshot().diveClock, in seconds since the last launch, after ` +
       `setDiveClock(${DIVE_CLOCK})`,
+  );
+  await readsBack(
+    () => h.debug.setDiveGap(DIVE_GAP),
+    (s) => s.diveGap,
+    DIVE_GAP,
+    `snapshot().diveGap, the figure the dive clock must reach, after ` +
+      `setDiveGap(${DIVE_GAP})`,
   );
 
   // ---- The drones ----------------------------------------------------------

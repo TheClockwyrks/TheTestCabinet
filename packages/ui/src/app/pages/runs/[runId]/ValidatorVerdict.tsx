@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import type { RunRecord } from "@test-cabinet/run-record";
-import { AestheticBadge, RatingBadge } from "@test-cabinet/ui";
+import type { RunRecord } from "@clockwyrks/run-record";
+import { AestheticBadge, RatingBadge } from "@clockwyrks/ui";
 import {
   AESTHETIC_META,
   RATING_META,

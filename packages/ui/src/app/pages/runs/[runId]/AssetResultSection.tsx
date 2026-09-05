@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Panel } from "@test-cabinet/ui";
-import type { AssetSheet, RunRecord } from "@test-cabinet/run-record";
+import { Panel } from "@clockwyrks/ui";
+import type { AssetSheet, RunRecord } from "@clockwyrks/run-record";
 import {
   useGalleryData,
   type AssetFrameView,

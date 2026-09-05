@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { RunRecord } from "@test-cabinet/run-record";
-import { CODE_METRICS } from "@test-cabinet/run-record/code-metrics";
+import type { RunRecord } from "@clockwyrks/run-record";
+import { CODE_METRICS } from "@clockwyrks/run-record/code-metrics";
 import {
   codeFigureFamilies,
   codeMetric,

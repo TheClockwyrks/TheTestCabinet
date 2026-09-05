@@ -55,7 +55,6 @@ export default defineConfig({
     // wrong way round. (The engine projects have no shared browser to contend
     // for, and cap higher for that reason.)
     maxWorkers: 4,
-    minWorkers: 1,
     // Every scenario is posed rather than played into, so a suite is a few dozen
     // crossings into the page rather than thousands of real-time frames. The
     // ceiling is not a figure any check is sized against: what it bounds is a

@@ -96,7 +96,7 @@ The pose lives in the state like every other quantity the picture depends on:
 copies it onto the camera. An orbit is three numbers and a point.
 
 ```ts
-import type { Game, Vec3 } from "@test-cabinet/simple-3d";
+import type { Game, Vec3 } from "@clockwyrks/simple-3d";
 
 const ORBIT_RATE = 1.6;      // radians per second
 const ZOOM_PER_UNIT = 0.002; // fraction of the distance per logical unit of wheel
@@ -295,7 +295,7 @@ show. That keeps the pick agreeing with the simulation whatever detail the mesh
 that shows it has.
 
 ```ts
-import type { Ray, Vec3 } from "@test-cabinet/simple-3d";
+import type { Ray, Vec3 } from "@clockwyrks/simple-3d";
 
 interface Body {
   readonly id: number;
@@ -394,7 +394,7 @@ is posed:
 
 ```ts
 import * as THREE from "three";
-import type { SceneCamera, Vec2, Vec3, Viewport } from "@test-cabinet/simple-3d";
+import type { SceneCamera, Vec2, Vec3, Viewport } from "@clockwyrks/simple-3d";
 
 function projectNow(camera: SceneCamera, point: Vec3, vp: Viewport): Vec2 {
   camera.updateMatrixWorld();

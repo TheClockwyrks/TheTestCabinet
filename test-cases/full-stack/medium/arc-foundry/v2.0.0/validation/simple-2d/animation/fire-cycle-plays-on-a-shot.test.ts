@@ -7,11 +7,10 @@
 // inside a firing structure's footprint while it is discharging differs from what
 // it draws inside that same footprint while the structure is holding fire.
 //
-// THE PRODUCED FILES ARE SERVED TO THE LOADER HERE, which is what makes this the
-// point the specification states rather than a weaker one about the build's own
-// geometry: `./produced.ts` answers the engine's asset requests from the committed
-// `assets/` tree, so the cycle the build asked for is the cycle it was given and
-// the pixels read below are the ones it drew from it.
+// THE PRODUCED FILES REACH THE LOADER THROUGH THE HARNESS, which answers the
+// engine's asset requests from the committed `assets/` tree, so the cycle the build
+// asked for is the cycle it was given and the pixels read below are the ones it
+// drew from it.
 //
 // THE SCENARIO, AND WHY IT IS BUILT THIS WAY. One Scrap Capacitor on an empty
 // yard and one held Slug in range, and nothing else — the yard is cleared first,
@@ -48,7 +47,6 @@ import {
   standComponent,
   ticks,
 } from "../harness";
-import { serveProducedAssets } from "./produced";
 import { read } from "./region";
 import { type Point, structureCenter } from "../constants";
 
@@ -81,7 +79,6 @@ const POINTS = footprintPoints();
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 

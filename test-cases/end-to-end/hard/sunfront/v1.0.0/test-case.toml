@@ -104,19 +104,19 @@ assets = [
 ]
 
 # Provided library packages: core bakes each into the run image and vendors it into
-# the run repository under `.tcab/packages/` at seed time (see the end-to-end
+# the run repository under `.vendor/packages/` at seed time (see the end-to-end
 # `packages` manifest key). The build imports both by bare name.
-# `@test-cabinet/voxel-runtime` is the model runtime: it decodes each entity's
+# `@clockwyrks/voxel-runtime` is the model runtime: it decodes each entity's
 # `meshes/*.glb` parts and poses/animates the rigid voxel rig from its `rig.json`
 # authored animations (its `three` binding builds the vertex-colored geometry the
-# build instances). `@test-cabinet/particle-runtime` is the effect runtime the build
+# build instances). `@clockwyrks/particle-runtime` is the effect runtime the build
 # imports (its `three` binding) to PLAY the provided muzzle-flash particle systems by
 # simulating them live — the same library the effects were authored against. The
-# workspace `package.json` must depend on each via the exact `file:./.tcab/packages/…`
+# workspace `package.json` must depend on each via the exact `file:./.vendor/packages/…`
 # spec (already declared in `workspaces/base/package.json`) so `npm ci` resolves them
 # to the vendored copies; the build then imports them by bare name. See
 # `specs/assets.md`. This is a root key, so it must precede the first table header.
-packages = ["@test-cabinet/voxel-runtime", "@test-cabinet/particle-runtime"]
+packages = ["@clockwyrks/voxel-runtime", "@clockwyrks/particle-runtime"]
 
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
@@ -295,5 +295,5 @@ weight = 2
 [[review_item]]
 id = "plays-muzzle-flashes"
 title = "Plays the provided muzzle flashes"
-text = "When a unit fires a weapon, the build plays one instance of that unit's provided muzzle-flash particle system (seeded under `assets/effects/`, selected per unit by the `muzzle` key in `assets/models.json`) at its muzzle, oriented along the barrel — simulated live via the seeded `@test-cabinet/particle-runtime`, not a hand-coded or substituted effect — once per shot, in sync with the unit's firing cadence so the flash rate matches its fire rate: the small-arms flash for the Sentinel/Trooper/Flakhound/Sunhawk, the heavy-cannon blast for the Bombard/Monolith/Aegis (at each firing turret), and the rail-lance discharge for the Lancer. Melee units (Scarab, Bulwark) and the support Lumen play none. Because the systems are simulated, each flash varies slightly while its character stays the same."
+text = "When a unit fires a weapon, the build plays one instance of that unit's provided muzzle-flash particle system (seeded under `assets/effects/`, selected per unit by the `muzzle` key in `assets/models.json`) at its muzzle, oriented along the barrel — simulated live via the seeded `@clockwyrks/particle-runtime`, not a hand-coded or substituted effect — once per shot, in sync with the unit's firing cadence so the flash rate matches its fire rate: the small-arms flash for the Sentinel/Trooper/Flakhound/Sunhawk, the heavy-cannon blast for the Bombard/Monolith/Aegis (at each firing turret), and the rail-lance discharge for the Lancer. Melee units (Scarab, Bulwark) and the support Lumen play none. Because the systems are simulated, each flash varies slightly while its character stays the same."
 weight = 2

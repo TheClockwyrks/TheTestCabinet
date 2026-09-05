@@ -40,7 +40,7 @@
 // resolve, exactly as a player expects: the key arrives, then the time it
 // steers.
 
-import { PlayerController } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
 import { SCREEN_ACTIONS } from "./figures";
 import { actionContext, handleAction, handlePointer } from "./flow";
 import { pointerSamples, pressedActions } from "./input";

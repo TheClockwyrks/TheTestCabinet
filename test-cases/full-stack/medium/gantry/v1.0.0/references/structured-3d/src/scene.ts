@@ -11,7 +11,7 @@
 // world's camera, and the screen pass over it in the stage's logical units. The
 // yard is the first; the readouts are the second.
 
-import type { World } from "@test-cabinet/structured-3d";
+import type { World } from "@clockwyrks/structured-3d";
 import { GantryView, viewFrame } from "./actor-view";
 import { GroundActor } from "./yard/ground";
 import { SiteActor } from "./yard/site";

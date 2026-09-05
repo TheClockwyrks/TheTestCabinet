@@ -36,7 +36,7 @@ asset-generation tools on the run image's `PATH` (`draw`, `draw-sheet`,
 [`assets/`](assets/) — see the case's `specs/assets.md` and
 [`ASSETS.md`](ASSETS.md). At runtime the game only *loads* those committed files;
 the tools are not invoked by the build. The gas overlays and one-shot bursts are
-played live through **`@test-cabinet/particle-runtime`** (vendored under
+played live through **`@clockwyrks/particle-runtime`** (vendored under
 [`vendor/`](vendor/) so a plain `npm ci` resolves it outside the monorepo), and
 the sounds through the Web Audio API.
 
@@ -105,7 +105,7 @@ path, including a per-run sub-path.
   systems, and audio (`delver/`, `tiles/`, `machines/`, `items/`, `icons/`,
   `fx/`, `audio/`).
 - [`vendor/particle-runtime/`](vendor/) — a vendored, prebuilt copy of
-  `@test-cabinet/particle-runtime`.
+  `@clockwyrks/particle-runtime`.
 - [`scripts/`](scripts/) — `gen-sprites.sh`, `gen-animations.sh`,
   `gen-particles.sh`, and `gen-audio.sh` (produce the committed assets with the
   on-`PATH` asset tools; not run by the build).

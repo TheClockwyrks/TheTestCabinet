@@ -4,7 +4,7 @@ import type {
   DebugScriptResult,
   Inconclusive,
   RunRecord,
-} from "@test-cabinet/run-record";
+} from "@clockwyrks/run-record";
 import type { ProofMedia, ReferenceShot } from "../../../../client/types";
 import {
   useGalleryData,

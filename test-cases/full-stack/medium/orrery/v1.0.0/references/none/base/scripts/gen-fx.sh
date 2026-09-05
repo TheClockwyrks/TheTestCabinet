@@ -2,7 +2,7 @@
 # Orrery — author the three particle EFFECTS as simulated systems with the
 # on-PATH `particle-2d` tool (specs/assets.md → "The particle effects"). Each
 # `render` emits a compact `system.json` the game plays LIVE through
-# @test-cabinet/particle-runtime's `./canvas` binding, on the same context the
+# @clockwyrks/particle-runtime's `./canvas` binding, on the same context the
 # field is drawn into; because the systems are simulated, every play varies,
 # and that variation is the contract.
 #

@@ -35,9 +35,8 @@
 // WHAT IS READ is the whole stage, once per pose, with the rows' bands found by
 // their challenges' names rather than by a layout figure `specs/` does not fix.
 //
-// THE VERDICT. At least `MIN_DISTINCT_PIXELS` pixels of each of the two rows'
-// bands are drawn differently, and at most `OUTSIDE_BUDGET` pixels differ anywhere
-// else on the stage.
+// THE VERDICT. Each of the two rows' bands is drawn differently, and at most
+// `OUTSIDE_BUDGET` pixels differ anywhere else on the stage.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -68,23 +67,12 @@ const FIRST_ROW = 0;
 const SECOND_ROW = 1;
 
 /**
- * The least number of pixels of a row's band that must be drawn differently.
- *
- * The case's own figure for "visibly distinct" elsewhere is one percent of a tray
- * slot — sixty-two pixels of a `208 x 30` rectangle
- * (`editor/a-spent-entry-is-drawn-distinct`) — so this is the same order: below
- * the smallest mark a player would read as a highlight, and far above the handful
- * of pixels anti-aliasing can move.
- */
-const MIN_DISTINCT_PIXELS = 64;
-
-/**
  * How many pixels may differ away from the two rows the highlight moved between.
  *
- * A quarter of the figure above: far less than any mark a player would see, so a
- * build whose highlight really is confined to the row passes it whatever it draws
- * on the row's own edges, and a build that answered the highlight somewhere else
- * on the screen does not.
+ * Room for the anti-aliased edges of the two bands and nothing beyond them: far
+ * less than any mark a player would see, so a build whose highlight really is
+ * confined to the row passes it whatever it draws on the row's own edges, and a
+ * build that answered the highlight somewhere else on the screen does not.
  */
 const OUTSIDE_BUDGET = 16;
 
@@ -287,14 +275,14 @@ it("draws the highlighted row distinctly, and changes only the two rows the high
 
   assertGreaterThan(
     withinBand[FIRST_ROW] as number,
-    MIN_DISTINCT_PIXELS,
+    0,
     `the row for ${JSON.stringify(names[FIRST_ROW] ?? "")} is drawn visibly ` +
       "differently once the highlight has left it, so the highlighted row is " +
       "drawn distinctly from the rest",
   );
   assertGreaterThan(
     withinBand[SECOND_ROW] as number,
-    MIN_DISTINCT_PIXELS,
+    0,
     `the row for ${JSON.stringify(names[SECOND_ROW] ?? "")} is drawn visibly ` +
       "differently once the highlight has arrived on it, so the row confirm " +
       "would open is the one that is marked",

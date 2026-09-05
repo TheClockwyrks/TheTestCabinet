@@ -2,7 +2,7 @@
 // the build's.
 //
 // THE RULE, from The particle effects of `specs/assets.md`: "Play them through
-// `@test-cabinet/particle-runtime`, an installed dependency imported by its bare
+// `@clockwyrks/particle-runtime`, an installed dependency imported by its bare
 // name, using its `./canvas` binding: a player is constructed over a parsed
 // system and a 2D rendering context and advanced each frame with that frame's
 // delta, and it simulates the system and composites the particles itself. Its
@@ -18,7 +18,7 @@
 // correct" is the runtime's seeded randomness, not the build's.
 //
 // WHAT IT READS. The build's own source, for the bare specifier
-// `@test-cabinet/particle-runtime/canvas` in any of the forms an import takes —
+// `@clockwyrks/particle-runtime/canvas` in any of the forms an import takes —
 // static, dynamic, or `require`. The import is a fact about the source, so it is
 // read where it is written; a binding only a test file imports plays nothing on a
 // field and does not count.

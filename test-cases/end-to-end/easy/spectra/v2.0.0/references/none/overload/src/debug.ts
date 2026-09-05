@@ -147,6 +147,7 @@ export interface SpectraSnapshot {
   diveLaunching: boolean;
   stageClearing: boolean;
   diveClock: number;
+  diveGap: number;
   droneSpeedScale: number;
   bulletSpeedScale: number;
   diveGapScale: number;
@@ -196,6 +197,7 @@ export interface SpectraDebugApi {
   setStageClearing(enabled: boolean): void;
   setShipContact(enabled: boolean): void;
   setDiveClock(seconds: number): void;
+  setDiveGap(seconds: number): void;
 
   // The ship and its cannon.
   setShipX(x: number): void;
@@ -261,6 +263,7 @@ export function snapshotOf(state: SpectraState): SpectraSnapshot {
     diveLaunching: state.diveLaunching,
     stageClearing: state.stageClearing,
     diveClock: state.diveClock,
+    diveGap: state.nextDiveGap,
     droneSpeedScale: droneSpeedScale(state.stage),
     bulletSpeedScale: bulletSpeedScale(state.stage),
     diveGapScale: diveGapScale(state.stage),
@@ -455,6 +458,11 @@ export function createDebugApi(
     /** Set the wave's own dive timer. It launches nothing itself. */
     setDiveClock(seconds) {
       state.diveClock = Math.max(0, seconds);
+    },
+
+    /** Set the figure that timer must reach. It launches nothing and redraws nothing. */
+    setDiveGap(seconds) {
+      state.nextDiveGap = Math.max(0, seconds);
     },
 
     /** Place the ship's centre; the lane's own clamp still applies. */

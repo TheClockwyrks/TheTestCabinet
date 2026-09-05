@@ -180,6 +180,8 @@ export const REQUIRED_OPS: readonly string[] = [
   // The clock
   "setTick",
   "setSpawnTimer",
+  // The generator
+  "advanceRng",
   // The lamplighter
   "setPlayerPosition",
   "setFacing",
@@ -2227,23 +2229,16 @@ export const SAME_COLOR_TOL = 2;
  * The ground read under a movement of the lamplighter (specs/world.md — "The
  * camera and the view": "The ground is drawn as a pattern fixed in world space
  * and repeating on both axes, so that the lamplighter's motion reads against
- * it"). Both are the harness's own allowances, not the specification's figures.
+ * it"): the share of a region's pixels that, after the lamplighter has moved,
+ * match the pixels that stood the movement's distance further along before it.
  *
- * `GROUND_SHIFT_MATCH_MIN`: the share of a region's pixels that, after the
- * lamplighter has moved, match the pixels that stood the movement's distance
- * further along before it. A ground fixed in world space matches everywhere the
- * region holds ground alone; a tenth is left for whatever a build lays over the
- * ground in screen space — a HUD element, a vignette, a lamp's glow — since the
- * specification fixes no layout for those.
- *
- * `GROUND_CHANGE_MIN`: the share of the region's pixels that differ between the
- * two pictures at the SAME stage point, which is what "motion reads against it"
- * asks for at all. A ground that is one flat colour changes nothing under any
- * movement and reads as no motion; one pixel in two hundred is the least a
- * pattern can put in a region for a movement to read against.
+ * A ground fixed in world space matches everywhere the region holds ground
+ * alone; a tenth is left for whatever a build lays over the ground in screen
+ * space — a HUD element, a vignette, a lamp's glow — since the specification
+ * fixes no layout for those. It is this harness's own allowance on the rule,
+ * not a figure the specification states.
  */
 export const GROUND_SHIFT_MATCH_MIN = 0.9;
-export const GROUND_CHANGE_MIN = 0.005;
 
 /**
  * The seeded drop roll (specs/world.md — "The drop roll"), read over a fixed
@@ -2260,23 +2255,6 @@ export const GROUND_CHANGE_MIN = 0.005;
 export const DROP_ROLL_KILLS = 4000;
 export const BREAD_COUNT_RANGE = { min: 40, max: 125 } as const;
 export const DRAFT_COUNT_RANGE = { min: 3, max: 45 } as const;
-
-/**
- * The kills the check that a kill drops at most ONE of the two pickups reads,
- * which is a larger sample than the counting checks above need.
- *
- * The rule is "Only when it did not, a second draw drops a draft"
- * (specs/world.md — "The drop roll"), and the design that breaks it most simply
- * makes the second draw unconditionally. Its only visible mark is the kill on
- * which BOTH draws land, which the two stated chances put at
- * `BREAD_CHANCE × DRAFT_CHANCE` (`0.02 × 0.005`, `1e-4`) per kill. Over
- * `DROP_ROLL_KILLS` that design leaves `0.4` shared centers expected and so
- * escapes about two times in three; over `60000` it leaves `6` expected and
- * escapes about one time in four hundred. The figure is derived from the two
- * chances the specification states and the number of shared centers the check
- * means to expect, never from a build.
- */
-export const DROP_PAIR_KILLS = 60_000;
 
 /* -------------------------------------------------------------------------- */
 /* The snapshot's fields (specs/instrumentation.md — "Snapshot shape")         */

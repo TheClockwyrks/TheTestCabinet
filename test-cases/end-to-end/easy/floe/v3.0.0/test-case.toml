@@ -288,8 +288,9 @@ tick_hz = 120
 # uniform fit, the centre convention for the critter and the bears against the
 # left-edge convention for a lane item, the fixed timestep, and the legibility
 # table that says what a player must be able to tell apart without fixing a single
-# color. It branches on the engine for what the runtime supplies, which modules
-# are seeded, where the figures come from, and how the fixed tick is driven.
+# color — a table the reviewer judges rather than any item here. It branches on
+# the engine for what the runtime supplies, which modules are seeded, where the
+# figures come from, and how the fixed tick is driven.
 [[spec]]
 source = "specs/overview.md.hbs"
 
@@ -401,15 +402,16 @@ source = "specs/showcase.md.hbs"
 # is expected to look different, and a screenshot diff would score the build that
 # copied the mockup best rather than the build that designed the best strait. What
 # the specification does fix about appearance is stated as legibility a player
-# depends on (the five bands told apart, open water distinct from a floe on the
-# same row, an open bay distinct from the shore beside it and a filled bay from an
-# open one, the critter and a bear apart from what they stand on, a submerged bear
-# still trackable, and a vehicle apart from the ice under it and covering every
-# tile it spans), and the `strait` and `presentation` items below decide exactly
-# that, from the pixels the build renders and against thresholds each item states —
-# while how GOOD the strait looks is rated through the run-wide aesthetic rating,
-# not scored here. The seeded sprite art is the one thing a picture IS seeded for,
-# and it is seeded as art to draw with rather than as a target to match.
+# depends on — the five bands told apart, open water distinct from a floe on the
+# same row, a bay distinct from the shore, a body distinct from the band under it,
+# a submerged bear still trackable — and that whole table is the REVIEWER's, rated
+# through the run-wide aesthetic rating and through the `presentation` domain. No
+# item below compares two things the build drew, because deciding whether they can
+# be told apart means holding the build's own colors against a figure this case
+# does not state. Where a pixel is read at all it answers presence: the picture at
+# a point changed when the thing the specification puts there was posed or taken
+# away. The seeded sprite art is the one thing a picture IS seeded for, and it is
+# seeded as art to draw with rather than as a target to match.
 #
 # `[[proof]]` is likewise empty: no proof media is asked of the build. Every piece
 # of media a reviewer sees beside a verdict is captured by this case's own
@@ -503,12 +505,15 @@ description = "What the game looks and sounds like: the seeded sprite art and ho
 # another. Both are evidence beside the verdict rather than any part of it: an
 # item passes or fails on its assertions alone.
 #
-# Nothing on this checklist asks a reviewer to judge how a screen looks.
-# Appearance is rated through the run-wide aesthetic rating; the rendering items
-# here assert only what the specification fixes about what is drawn — the tile
-# geometry, the seeded frame a thing is drawn from, a legibility floor stated as an
-# RGB distance out of 441 — and capture the frame as evidence. Not one item names
-# a color.
+# Nothing on this checklist asks a reviewer to judge how a screen looks, and no
+# item on it grades how the build looks either. Appearance — the palette, the
+# contrast between two things the build drew, the size of a mark and where inside
+# a region it landed — is rated through the run-wide aesthetic rating. The
+# rendering items here assert only what the specification fixes about what is
+# drawn: the tile geometry, the seeded frame a thing is drawn from, and, where a
+# pixel is read at all, PRESENCE alone — that the picture at a point changed when
+# the thing the specification puts there was posed or taken away. No item names a
+# color, and none states a distance, a coverage or an extent.
 #
 # EVERY item also carries `domains` and `failure_cap`, because this case is
 # validator-rated: an item's validator, not a reviewer, decides the functional
@@ -906,28 +911,48 @@ validation = { script = "instrumentation/overlay.test.ts", outputs = [
 # (35,36) — so `bay-columns` and `far-shore-solid` between them close every column
 # of row 1: ten accept a hop up and thirty refuse one.
 #
-# `bays-read-apart` and `filled-bay-reads-filled` are likewise two items, because
-# they come from two separate rows of specs/overview.md's legibility table and
-# fail independently: telling an opening in the shore from the shore is one
-# reading, and telling a filled opening from an open one is another.
+# `filled-bay-reads-filled` reads a bay against ITSELF: the same point of the same
+# bay, open and then posed filled, and the two readings must differ. That is the
+# whole of what a pixel decides here — the build drew something where the
+# specification says something is drawn.
+#
+# NO ITEM HERE READS ONE BAND AGAINST ANOTHER, AND THE GAP IS DELIBERATE. That the
+# five bands are told apart, and that an open bay is told from the shore beside
+# it, are appearance, which the reviewer's `presentation` rating judges; a check
+# could only decide them by comparing two things the build drew in colors
+# specs/overview.md leaves to the build. There is no presence reading to put in
+# their place either: a band is the backdrop rather than an entity the debug
+# surface can take off the strait, and "the row differs from the cleared
+# background" would be the build's own background color compared with itself.
+# So the reading is not made, and this note stands where it was rather than
+# leaving the gap to be read as closed.
 [[review.categories]]
 id = "strait"
 title = "The strait"
 [[review.categories.items]]
 id = "stage-fit"
-title = "The whole stage stays visible and centred"
-description = "The entire 1280x720 stage, the full HUD bar, the whole strait and all four edges, is visible, fitted and centred at three window sizes and two pixel densities, including on load before any input."
+title = "The build draws into the fitted stage"
+description = "The critter posed on each of the strait's four extreme tiles changes what is drawn at that tile's own logical centre, mapped through the fit, at three window sizes and two pixel densities. Under none the fit itself is derived and read too, and the letterbox bars stay unchanged across a live crossing."
 domains = ["presentation"]
 failure_cap = "scuffed"
 # THIS POINT IS THE BUILD'S ON ALL THREE ENGINES, which is why it declares no
-# `engines`. Under `none` the fit is the runtime layer the build writes. Under
-# either engine the fit itself is the engine's, and what stays the build's is the
-# obligation `specs/overview.md` puts beside it: "Draw in logical units, and take
-# the canvas element's own size from the runtime alone." A build that draws in
-# device pixels, fits the stage a second time itself, or anchors to a corner of
-# the canvas moves what lands on the surface away from the map, and this point is
-# what catches it — which is why the check reads the four extreme tiles, where a
-# wrong fit shows, rather than the middle, where it hides.
+# `engines`. What it grades under every engine is the BUILD DRAWING INTO THE FIT:
+# `specs/overview.md` puts the obligation on the build beside the runtime's own —
+# "Draw in logical units, and take the canvas element's own size from the runtime
+# alone" — and a build that draws in device pixels, fits the stage a second time
+# itself, or anchors to a corner of the canvas moves what lands on the surface
+# away from the map. That is why the check reads the four extreme tiles, where a
+# wrong fit shows, rather than the middle, where it hides, and why
+# `strait/tiles-drawn-on-the-map` does not cover it: that item reads logical
+# draw-call centres on one surface size and cannot see any of those three faults.
+#
+# UNDER `none` THE DERIVATION IS THE BUILD'S TOO, and only there. The engineless
+# build writes the runtime layer, so the engineless script additionally reads the
+# fit `specs/overview.md` requires against the surface it was given, and reads the
+# letterbox bars across two frames of a live crossing: whatever the build drew in
+# the bars, the moving lanes must not have changed it. Under either engine the
+# canvas size, the viewport and the bars are the engine's, so those readings are
+# not made there — the engine's viewport is used as the coordinate map alone.
 validation = { script = "strait/stage-fit.test.ts", outputs = [
   { id = "fit", name = "The whole stage fitted and centred", kind = "image" },
 ] }
@@ -1008,45 +1033,18 @@ validation = { script = "strait/median-carries-nothing.test.ts", outputs = [
   { id = "median", name = "The median shelf beside ten seconds of live lanes", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "bands-read-apart"
-title = "The five bands read distinct"
-description = "The near shore, the ice band, the median, the water band and the far shore render in tints each separated from the others by at least 40 of 441 RGB distance, sampled across the full width of each."
-domains = ["presentation"]
-failure_cap = "scuffed"
-# `scuffed` rather than `great`. Bands a player cannot tell apart do not stop the
-# game running, but the whole of play is reading which strip is safe and which is
-# not, so a build that renders them alike makes ordinary play unpleasant — which
-# is the second clause of `scuffed`. It joins every other legibility point on this
-# checklist — `bays-read-apart` and `filled-bay-reads-filled` here,
-# `submerged-bear-visible`, `critter-reads-apart`, `bear-reads-apart`,
-# `water-reads-apart`, `vehicles-read-apart` and `text-legible` under
-# `presentation` — all of which are `scuffed` for the same reason.
-validation = { script = "strait/bands-read-apart.test.ts", outputs = [
-  { id = "scene", name = "The five bands sampled across the full width", kind = "image" },
-] }
-[[review.categories.items]]
-id = "bays-read-apart"
-title = "An open bay reads distinct from the shore"
-description = "An open bay renders in a tint at least 60 of 441 from the solid far shore beside it, sampled well inside each."
-domains = ["presentation"]
-failure_cap = "scuffed"
-# `scuffed` for the same reason as `bands-read-apart`: a bay a player cannot pick
-# out of the shore leaves them hopping at the shore to find one, which is normal
-# play made unpleasant rather than a flow left unaffected.
-validation = { script = "strait/bays-read-apart.test.ts", outputs = [
-  { id = "scene", name = "An open bay beside the solid shore", kind = "image" },
-] }
-[[review.categories.items]]
 id = "filled-bay-reads-filled"
-title = "A filled bay reads distinct from an open one"
-description = "A filled bay renders apart from the same bay left open, read well inside the mouth: a tint at least 20 of 441 away under none and under simple-2d, and at least a twentieth of the bay's own pixels changed under structured-2d."
+title = "A filled bay is drawn as something"
+description = "The mouth of a bay posed filled is drawn differently from the same point of the same bay left open, so a filled bay is marked rather than left looking open."
 domains = ["presentation"]
 failure_cap = "scuffed"
-# The other half of the same row of specs/overview.md's legibility table, and its
-# own item because the two fail independently: a build can cut its bays out of the
-# shore clearly and then mark a filled one with nothing at all. This is the half
-# that costs the player more — a filled bay that still looks open is a hop the
-# rules refuse, so the miss reads as the game ignoring an input.
+# specs/overview.md's "a filled bay reads as filled", read as presence: the same
+# point of the same bay is read before and after `setBay`, so the two pictures
+# differ in the bay's state and in nothing else, and what is asserted is that they
+# differ at all. HOW a build marks a filled bay — a plug of ice, a change of tint,
+# a critter resting in it — is appearance, which the reviewer's `presentation`
+# rating judges. A filled bay that still looks open is a hop the rules refuse, so
+# the miss reads as the game ignoring an input, which is why it caps at `scuffed`.
 validation = { script = "strait/filled-bay-reads-filled.test.ts", outputs = [
   { id = "scene", name = "A filled bay beside an open one", kind = "image" },
 ] }
@@ -1995,6 +1993,16 @@ validation = { script = "hunter/at-most-two-bears.test.ts", outputs = [
 # the DURATION alone, posing the cheapest death to reach, because that the other
 # four reach `dying` at all is each of their own items' requirement.
 #
+# `bonus-life-at-10000` IS THE ONLY BOUNDARY ITEM, and that is deliberate.
+# specs/progression.md pays a life per boundary the score passes, "so a single
+# award that carries it over two boundaries earns two lives" — but no award the
+# rules can pay spans two boundaries. The largest single gain in play is a last-bay
+# hop at level 8, which pays a little under two thousand against a ten-thousand
+# boundary, and the only ways to stage a bigger one are to pose a crossing timer or
+# a lives count far outside anything the specification allows. So the per-boundary
+# clause is unreachable in play, and the boundary rule is decided in the one
+# direction that is reachable rather than by posing a world the specs exclude.
+#
 # `game-over-at-zero` and `posed-zero-lives-does-not-end` are the paired item.
 # `setLives(0)` is a PRECONDITION, not an ending: it leaves the game playing and
 # the next death ends it. A build that ends the run the moment the counter hits
@@ -2201,15 +2209,6 @@ domains = ["run"]
 failure_cap = "passable"
 validation = { script = "progression/bonus-life-at-10000.test.ts", outputs = [
   { id = "bonus", name = "The life awarded at ten thousand", kind = "replay" },
-] }
-[[review.categories.items]]
-id = "bonus-life-per-boundary"
-title = "A big gain awards a life per boundary"
-description = "A single real award crossing two BONUS_LIFE_EVERY boundaries raises lives by two."
-domains = ["run"]
-failure_cap = "passable"
-validation = { script = "progression/bonus-life-per-boundary.test.ts", outputs = [
-  { id = "bonus", name = "The two lives one award paid", kind = "replay" },
 ] }
 
 # --- Scoring ------------------------------------------------------------------
@@ -2610,10 +2609,10 @@ title = "M toggles mute both ways"
 description = "KeyM during a live crossing turns muted on, and a second press turns it off."
 domains = ["presentation"]
 failure_cap = "scuffed"
-# `scuffed`, matching `audio.mute-silences`. The two are the two halves of one
-# path — the key that reaches mute, and the silence mute produces — and both cost
-# the player the same thing: a game they cannot turn the sound off in. Grading one
-# `great` and the other `scuffed` said they cost different amounts, which was
+# `scuffed`, matching `audio.mute-produces-no-sound`. The two are the two halves of
+# one path — the key that reaches mute, and the silence mute produces — and both
+# cost the player the same thing: a game they cannot turn the sound off in. Grading
+# one `great` and the other `scuffed` said they cost different amounts, which was
 # never argued anywhere.
 validation = { script = "controls/mute-m.test.ts", outputs = [
   { id = "muted", name = "Mute turned on with M, then off again", kind = "image" },
@@ -2627,16 +2626,16 @@ failure_cap = "great"
 # The snapshot is read across both toggles because the overlay is read-only: an
 # overlay that changes what the game reports is not an overlay.
 #
-# THIS POINT IS THE BUILD'S ON ALL THREE ENGINES, which is why it declares no
-# `engines`. Under `none` the key and the panel are both the runtime layer the
-# build writes. Under either engine the engine handles `Backquote` itself and
-# draws the panel, and two things are still the build's: it must leave `Backquote`
-# alone — a build that bound it to an action of its own, or that swallowed the
-# event before the engine's listener saw it, breaks the toggle — and its
-# registered diagnostic sources must be pure reads, since the engine calls every
-# one of them on every frame the panel is up. The engine's half cannot be
-# separated from the build's from outside, which is why it is asserted here too.
-validation = { script = "controls/overlay-backquote.test.ts", outputs = [
+# `engines = ["none"]`, BECAUSE THE TOGGLE AND THE PANEL ARE THE ENGINE'S UNDER AN
+# ENGINE. Under `none` the key and the panel are both the runtime layer the build
+# writes, so the toggle, the panel and its purity are the build's own work. Under
+# either engine `specs/controls.md` says the engine handles that key itself rather
+# than through a registered action, and it draws the panel, so pressing the key and
+# finding a panel returns the same verdict for every build on that engine. What
+# stays the build's under every engine is which diagnostic sources it registers and
+# that they are pure reads, and that is `instrumentation.overlay`, which declares no
+# `engines` and runs on all three.
+validation = { script = "controls/overlay-backquote.test.ts", engines = ["none"], outputs = [
   { id = "overlay", name = "The overlay shown with Backquote, then hidden", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -2708,8 +2707,8 @@ validation = { script = "screens/title-contents.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "title-highlight"
-title = "The highlighted menu item reads as highlighted"
-description = "The highlighted title item is drawn differently from the item that is not highlighted, by at least 40 of 441 RGB distance over its glyph pixels."
+title = "The highlighted menu item is drawn differently"
+description = "The first title item's own line is drawn differently with the highlight on it than with the highlight moved off it, read across the full stage width of that line."
 domains = ["presentation"]
 failure_cap = "scuffed"
 # `scuffed`, not `great`. Selecting a menu item is the standard flow — it is how a
@@ -3139,8 +3138,7 @@ validation = { script = "touch/ending-tap-confirms.test.ts", outputs = [
 ] }
 
 # --- Presentation -------------------------------------------------------------
-# That the game draws from the seeded sprites, in colors a player can tell apart,
-# with the HUD it must show.
+# That the game draws from the seeded sprites, and shows the HUD it must show.
 #
 # THE SPRITE ITEMS ASSERT A SEEDED FRAME: the critter, the bear in three states,
 # and the six lane-item kinds are each drawn from art this case ships, and each is
@@ -3155,21 +3153,18 @@ validation = { script = "touch/ending-tap-confirms.test.ts", outputs = [
 # which is why specs/assets.md states how a frame is drawn and not merely which
 # frame.
 #
-# THE LEGIBILITY ITEMS ASSERT A DISTANCE, NEVER A COLOR. Floe fixes no palette, so
-# each of these reads the pixels the build rendered and holds them against an RGB
-# distance out of 441 that the item states, sampled well inside a shape because an
-# edge is anti-aliased. Between them and the `strait` category's three they reach
-# every row of specs/overview.md's legibility table, though not every clause of
-# one: that a plow, a dogsled and a car read apart FROM ONE ANOTHER is left to the
-# reviewer, since the three sprite items already fix which frame each is drawn
-# from and a distance between two seeded sprites would grade the art this case
-# ships. `submerged-bear-visible` is the one that matters most: a bear over open
-# water is drawn as a silhouette and a wake rather than a full sprite, and a
-# build that draws nothing at all leaves the hunt invisible exactly where it is
-# most dangerous. All of them lower `presentation` and nothing else: `hunter` is
-# declared as a domain of behavior — a bear that emerges, routes, swims, catches
-# and doubles — so a build that hunts flawlessly and draws the wrong frame has a
-# drawing fault, not a hunting one.
+# EVERY ROW OF specs/overview.md's LEGIBILITY TABLE IS THE REVIEWER'S. Floe fixes
+# no palette, so whether two things the build drew can be told apart at a glance
+# is appearance and the `presentation` rating judges it; no item here compares one
+# drawn thing with another. `submerged-bear-visible` is the one reading a pixel
+# still answers, and it answers it as PRESENCE: a bear over open water is drawn as
+# a silhouette and a wake under the water layer rather than as a full sprite, so
+# `sprite-bear-swim`'s draw-call reading proves the frame was submitted and not
+# that anything survived on the canvas, and the item takes the tile with the bear
+# on it against the same tile with the bear cleared. It lowers `presentation` and
+# nothing else: `hunter` is declared as a domain of behavior — a bear that
+# emerges, routes, swims, catches and doubles — so a build that hunts flawlessly
+# and draws the wrong frame has a drawing fault, not a hunting one.
 #
 # `hud-timer` poses the timer at two values with `setTimerRunning` OFF throughout,
 # so it reads the readout following the field rather than the drain, and stays
@@ -3344,66 +3339,19 @@ validation = { script = "presentation/mirror-leftward-vehicle.test.ts", outputs 
 ] }
 [[review.categories.items]]
 id = "submerged-bear-visible"
-title = "A submerged bear stays trackable"
-description = "Where a swimming bear stands, the pixels drawn are at least 60 of 441 from the water around it, so it is never invisible."
+title = "A submerged bear is drawn where it swims"
+description = "The tile a swimming bear holds is drawn differently from the same tile with the bear cleared off it, so something is drawn where the bear is."
 domains = ["presentation"]
 failure_cap = "scuffed"
-# The legibility requirement the case cares most about. A submerged bear is drawn
-# as something other than a full sprite, and a build that draws nothing at all
-# leaves the hunt invisible exactly where it is most dangerous. The threshold is an
-# RGB distance, never a color.
+# The one place a draw call cannot answer for the picture. A submerged bear is
+# drawn as something other than a full sprite and the water layer goes over it, so
+# `sprite-bear-swim` deciding that the swim frame was submitted leaves open that
+# nothing reached the canvas — and a build that draws nothing at all leaves the
+# hunt invisible exactly where it is most dangerous. The reading is the bear's
+# tile against the same tile with the bear cleared: presence, with no color, no
+# distance and no share of the tile asserted.
 validation = { script = "presentation/submerged-bear-visible.test.ts", outputs = [
   { id = "swim", name = "A submerged bear against the water around it", kind = "replay" },
-] }
-[[review.categories.items]]
-id = "critter-reads-apart"
-title = "The critter reads apart from its footing"
-description = "The critter's drawn pixels are at least 60 of 441 from the band under it, on the near shore, on the ice band, on the median and on a floe."
-domains = ["presentation"]
-failure_cap = "scuffed"
-validation = { script = "presentation/critter-reads-apart.test.ts", outputs = [
-  { id = "scene", name = "The critter on each footing it can stand on", kind = "image" },
-] }
-[[review.categories.items]]
-id = "bear-reads-apart"
-title = "A bear reads apart from its footing"
-description = "A bear's drawn pixels are at least 60 of 441 from the band under it, on the near shore, on the ice band and on the median."
-domains = ["presentation"]
-failure_cap = "scuffed"
-validation = { script = "presentation/bear-reads-apart.test.ts", outputs = [
-  { id = "scene", name = "A bear on each band it can travel on", kind = "image" },
-] }
-[[review.categories.items]]
-id = "water-reads-apart"
-title = "Open water reads apart from a floe"
-description = "A water tile no floe covers renders at least 60 of 441 from a floe on the same row, both sampled well inside the tile."
-domains = ["presentation"]
-failure_cap = "scuffed"
-# specs/overview.md's "Deep water" row: "A water tile carrying no floe reads as
-# water a player must not stand on, distinct from a floe on the same row." It is
-# the reading the whole water band is played by — every hop across it is a bet on
-# which tiles carry a floe — and a build whose water and floes render alike drowns
-# the player over and over, which is normal play made unpleasant rather than an
-# optional path lost. Read on ONE row so the comparison is between two things a
-# player is choosing between, and sampled well inside each tile because an edge is
-# anti-aliased.
-validation = { script = "presentation/water-reads-apart.test.ts", outputs = [
-  { id = "scene", name = "Open water beside a floe on the same row", kind = "image" },
-] }
-[[review.categories.items]]
-id = "vehicles-read-apart"
-title = "A vehicle reads apart from the ice under it"
-description = "A plow, a dogsled and a car each render at least 60 of 441 from the ice band around them, sampled well inside each."
-domains = ["presentation"]
-failure_cap = "scuffed"
-# specs/overview.md's "The vehicles" row, the half the sprite items do not decide.
-# `sprite-plow`, `sprite-dogsled` and `sprite-car` assert which frame is drawn and
-# how wide, and `ice.covers-every-tile` asserts what the span refuses, but neither
-# says the drawn result can be told from the ice it is sliding over — and traffic a
-# player cannot see is the same miss as water a player cannot see, so it carries
-# the same cap and the same threshold.
-validation = { script = "presentation/vehicles-read-apart.test.ts", outputs = [
-  { id = "scene", name = "The three vehicle kinds against the ice band", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "hud-score"
@@ -3451,21 +3399,12 @@ validation = { script = "presentation/hud-timer.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "hud-bays"
-title = "The HUD marks the filled bays"
-description = "The HUD's bay readout, the fifth readout specs/ui.md fixes, marks each bay at that bay's own position: the mark for a bay changes when that bay is posed filled, and the mark for a bay that stays open does not."
+title = "Each bay has its own mark in the HUD"
+description = "The HUD's bay readout, the fifth readout specs/ui.md fixes, carries one mark per bay: posing a bay filled changes something in the bar, and the five bays change five sets of pixels no two of which overlap."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/hud-bays.test.ts", outputs = [
   { id = "hud", name = "The bay readout with one bay filled", kind = "image" },
-] }
-[[review.categories.items]]
-id = "text-legible"
-title = "Every readout and screen text is legible"
-description = "Every HUD readout and every screen's text is drawn at least 60 of 441 from the background behind it."
-domains = ["presentation"]
-failure_cap = "scuffed"
-validation = { script = "presentation/text-legible.test.ts", outputs = [
-  { id = "text", name = "Every readout and screen text against its background", kind = "image" },
 ] }
 
 # --- Audio --------------------------------------------------------------------
@@ -3479,9 +3418,13 @@ validation = { script = "presentation/text-legible.test.ts", outputs = [
 # were paid. One missing cue takes that feedback away and leaves the game entirely
 # playable, which is `passable` exactly. Nothing distinguishes one cue from another
 # here — a silent bonus life and a silent catch cost the same thing — so nothing
-# distinguishes their caps either. `mute-silences` is the one item in this category
-# that sits a step lower, because a game whose sound cannot be turned off is one a
-# player has to leave the room to escape, and `controls.mute-m` matches it.
+# distinguishes their caps either. `mute-silences` and `mute-produces-no-sound` are
+# the two items in this category that sit a step lower, because a game whose sound
+# cannot be turned off is one a player has to leave the room to escape, and
+# `controls.mute-m` matches them. They are two items rather than one because they
+# are decided on different engines: that the game keeps running while muted is the
+# build's under all three, while that nothing comes out is only the build's where
+# the build owns the audio layer, which is `none` alone.
 #
 # `controls.menu-up` and `controls.menu-down` decide the selection alone and say
 # nothing about a cue; `cue-menu` here decides the sound. An item asserting both
@@ -3588,12 +3531,34 @@ validation = { script = "audio/cue-menu.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "mute-silences"
-title = "Mute silences the cues"
-description = "With muted on, an accepted hop and a filled bay produce no audible output, and the game keeps running."
+title = "The game stays playable with sound muted"
+description = "With muted on, an accepted hop moves the critter, a hop into an open bay fills it and is scored, and the fresh crossing that follows the hold begins from the near shore."
 domains = ["presentation"]
 failure_cap = "scuffed"
+# The playability half of `specs/ui.md`'s "the game stays fully playable with sound
+# muted", and the half that is the build's under every engine: whatever the mute bit
+# does to the audio, the simulation goes on around it. That nothing came out is the
+# item below, which is `engines = ["none"]`.
 validation = { script = "audio/mute-silences.test.ts", outputs = [
   { id = "muted", name = "A hop and a bay fill with mute on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mute-produces-no-sound"
+title = "Nothing sounds while muted"
+description = "With muted on, a quarter second of held strait, an accepted hop and a filled bay emit no sound at all, read both as the emissions attributed to the driven ticks and as the page's own running total."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# `engines = ["none"]`, BECAUSE SILENCE IS THE ENGINE'S UNDER AN ENGINE. The
+# engineless build owns its whole audio layer, so whether the mute bit actually
+# stops sound reaching the output is its own work and is read here. Under either
+# engine the mute bit is the engine's own and its cue bus reports `gain: 0` for
+# anything played on a muted bus, so "no cue sounded above zero gain" holds for
+# every build on that engine and grades the engine rather than the build.
+#
+# THE MUTE BIT ITSELF IS `controls.mute-m`'s, and is read back here only as the
+# situation the silence was heard in. What this item asserts is the silence alone.
+validation = { script = "audio/mute-produces-no-sound.test.ts", engines = ["none"], outputs = [
+  { id = "silent", name = "A muted hop and bay fill, with nothing emitted", kind = "image" },
 ] }
 
 # --- Showcase -----------------------------------------------------------------

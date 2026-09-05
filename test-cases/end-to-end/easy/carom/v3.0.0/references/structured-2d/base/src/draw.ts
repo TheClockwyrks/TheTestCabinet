@@ -9,7 +9,7 @@
 // overlay panels, each honoring the pipeline's render mode (`shaded` is the
 // full picture, `wireframe` outlines alone, `unlit` and `silhouette` flat).
 
-import type { RenderMode } from "@test-cabinet/structured-2d";
+import type { RenderMode } from "@clockwyrks/structured-2d";
 import { menuItemY, type MenuLayout } from "./menu";
 import { COLOR, MONO } from "./theme";
 

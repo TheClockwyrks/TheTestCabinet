@@ -1,5 +1,5 @@
 # Dependencies — reinstalled with `npm ci`; never committed. The engine,
-# `@test-cabinet/structured-2d`, is resolved from the repository's own
+# `@clockwyrks/structured-2d`, is resolved from the repository's own
 # `packages/` through a relative `file:` dependency that npm installs as a
 # symlink, so nothing of it is written here.
 node_modules/
@@ -29,4 +29,4 @@ playwright-report/
 *.log
 
 # Scratch that `tcab validate --implementation` writes beside the build.
-.tcab/
+.vendor/

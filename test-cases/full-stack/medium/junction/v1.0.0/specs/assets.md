@@ -138,7 +138,7 @@ junction, the construction sequence while a lot builds — advancing frames on a
 the motion reads. It is fine to reuse art across cycles; the point is that at least a
 couple of things visibly animate from produced sheets rather than being static.
 
-## Particle systems — `particle-2d`, played via `@test-cabinet/particle-runtime`
+## Particle systems — `particle-2d`, played via `@clockwyrks/particle-runtime`
 
 The city's atmospheric and celebratory effects are **particle systems** you author with
 `particle-2d` and **play live** — not flat tints or hand-coded effects. `particle-2d`
@@ -153,7 +153,7 @@ Produce at least:
 - **Milestone fireworks** — a **one-shot** celebratory burst for a milestone
   (`specs/flow.md`) — a first rail line, a population threshold, a maxed district.
 
-**Play them with the provided runtime.** `@test-cabinet/particle-runtime` is already a
+**Play them with the provided runtime.** `@clockwyrks/particle-runtime` is already a
 dependency of your project (its `file:` entry is in your `package.json`; install and
 import it like any other dependency — do **not** fetch or reimplement it). For this 2D
 game use its **`/canvas`** binding — its `ParticleCanvasPlayer`: construct one from a

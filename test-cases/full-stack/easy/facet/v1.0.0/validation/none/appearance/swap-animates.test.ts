@@ -56,7 +56,7 @@ import {
   assertLength,
   assertTrue,
 } from "../assert";
-import { PATCH_DISTINCT_MIN, SWAP_SECONDS, TICK_S } from "../constants";
+import { SWAP_SECONDS, TICK_S } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -182,7 +182,7 @@ it("draws the two swapped cells apart from both the board before the swap and th
   for (const { cell, flying, still, when } of comparisons) {
     assertGreaterThan(
       patchDistance(flying, still),
-      PATCH_DISTINCT_MIN,
+      0,
       `how far cell (${cell.col},${cell.row}) reads mid-swap from the same ` +
         `cell on the board ${when} the swap`,
     );

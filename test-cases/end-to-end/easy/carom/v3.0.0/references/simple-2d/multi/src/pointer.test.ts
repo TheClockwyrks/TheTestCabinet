@@ -12,7 +12,7 @@ import { createInitialState } from "./flow";
 import { menuItemRect } from "./menu";
 import { readPointerMenu } from "./pointer";
 import type { CaromState, Screen } from "./game";
-import type { PointerSample, UpdateApi } from "@test-cabinet/simple-2d";
+import type { PointerSample, UpdateApi } from "@clockwyrks/simple-2d";
 
 /** The middle of item `index` on `screen`'s menu. */
 function center(screen: Screen, index: number): { x: number; y: number } {

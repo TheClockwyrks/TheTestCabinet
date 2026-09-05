@@ -86,7 +86,7 @@ import {
   type Resource,
   type SurfaceMetrics,
   type Viewport,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 // The build's own module, for the game object the engine is stood up over and
 // for the state type. Every FIGURE a point is decided against, and the one
@@ -417,10 +417,9 @@ export interface AssetLoaded {
 //
 // WHAT WOULD HAPPEN WITHOUT IT. Every produced file would fail to load, and
 // every point about a produced sprite or a bound cue would fail every build
-// ever written, a fact about Node rather than about the build. `specs/assets.md`
-// requires a build that keeps playing when its files do not arrive, so a check
-// about the missing-art path still has one: it withholds a named file through
-// {@link HarnessOptions.withhold} and reads `assetFailures`.
+// ever written, a fact about Node rather than about the build. Every file the
+// build committed is served to every harness this project builds, so a check
+// that reads `assetFailures` is reading whether the build's own files loaded.
 
 /**
  * The directory this harness sits in, which is the validator project's root.
@@ -470,9 +469,6 @@ const imageSource = new WeakMap<object, string>();
 
 /** Where a decoded sound came from, or absent for one the build synthesized. */
 const audioSource = new WeakMap<object, string>();
-
-/** The produced paths the host currently refuses to serve. */
-const withheld = new Set<string>();
 
 /** The file a page-relative URL names, or `null` when no root holds it. */
 function assetFile(url: string): string | null {
@@ -719,14 +715,6 @@ function installAssetHost(): void {
       }
       return platformFetch(input as RequestInfo, init as RequestInit);
     }
-    if (withheld.has(normalizeUrl(url))) {
-      return {
-        ok: false,
-        status: 404,
-        blob: () => Promise.reject(new Error("withheld")),
-        arrayBuffer: () => Promise.reject(new Error("withheld")),
-      } as unknown as Response;
-    }
     const bytes = readFileSync(file);
     const source = normalizeUrl(url);
     const blob = new Blob([bytes]);
@@ -818,13 +806,6 @@ export interface HarnessOptions {
    * engine's own `assets/`.
    */
   assetRoot?: string;
-  /**
-   * Produced paths, relative to the `assets/` root (`sprites/enemies/moth/0.png`,
-   * `audio/hit.wav`), the host refuses to serve while this harness initializes,
-   * so a check about the missing-art path can withhold exactly the files it
-   * names and read the build's `assetFailures`.
-   */
-  withhold?: readonly string[];
   /**
    * Whether to give the engine the gesture that unlocks its audio once the game
    * has initialized, so the sounds the bus starts are recorded from the first
@@ -1264,12 +1245,7 @@ export async function createHarness(
     if (at >= 0) loops.splice(at, 1);
   });
 
-  for (const path of options.withhold ?? []) withheld.add(assetPath(path));
-  try {
-    await engine.initialize();
-  } finally {
-    for (const path of options.withhold ?? []) withheld.delete(assetPath(path));
-  }
+  await engine.initialize();
 
   const raw: unknown = engine.debug;
   const surfaceFault = readDebugSurface(raw);
@@ -2660,13 +2636,50 @@ export function minusLines(
 }
 
 /**
+ * The separators a build may set between the digit triples of a figure.
+ *
+ * `Number.prototype.toLocaleString` groups by default, so a build showing a
+ * kill count of `1234` is free to write it `1,234`; the specification fixes the
+ * figure and leaves how it is written to the build. ASCII space is not among
+ * them: a frame's runs are read as separate strings and a build sets its own
+ * spacing within one, so accepting it would read the two figures of `40 130` as
+ * the single figure `40130`.
+ */
+const GROUP_SEPARATORS = [",", "'", "\u00A0", "\u202F", "\u2009"];
+
+/**
+ * Every way a build may write `value`: the value itself, and, where its whole
+ * part runs past three digits, the same digits with each separator a build may
+ * group them by. A figure of three digits or fewer is written one way, so `48`
+ * stays `48`, and anything that is not a number is left as it stands.
+ */
+function spellings(value: string): string[] {
+  const parsed = /^(-?)(\d{4,})(\.\d+)?$/.exec(value);
+  if (parsed === null) return [value];
+  const [, sign, whole, fraction = ""] = parsed;
+  const grouped = GROUP_SEPARATORS.map((separator) => {
+    const triples: string[] = [];
+    for (let at = whole.length; at > 0; at -= 3) {
+      triples.unshift(whole.slice(Math.max(0, at - 3), at));
+    }
+    return `${sign}${triples.join(separator)}${fraction}`;
+  });
+  return [value, ...grouped];
+}
+
+/**
  * Whether `value` appears in `lines` as its own token: digit runs match whole
  * (`48` is found in `48 units` and not in `348`), words match case-insensitively.
+ * A figure is looked for as any of its {@link spellings}, so a build that groups
+ * a figure's digits shows the same figure; the bound either side is unchanged,
+ * so `50` is still not found in `150`.
  */
 export function hasToken(lines: readonly string[], value: string): boolean {
-  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`(?<![\\w])${escaped}(?![\\w])`, "i");
-  return lines.some((line) => pattern.test(line));
+  return spellings(value).some((written) => {
+    const escaped = written.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`(?<![\\w])${escaped}(?![\\w])`, "i");
+    return lines.some((line) => pattern.test(line));
+  });
 }
 
 /**

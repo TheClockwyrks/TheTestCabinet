@@ -2,42 +2,26 @@
 // links.
 //
 // specs/board.md: a drawn beam visibly connects the centers of the cells it
-// links, so its route is unambiguous, and it carries its channel's hue. The
-// check draws one orthogonal and one diagonal segment on two different
-// channels, and reads each segment's midpoint — the point a beam joining the
-// two centers must pass through whichever way it is styled:
+// links, so its route is unambiguous. The check draws one orthogonal and one
+// diagonal segment on two different channels, and reads each segment's midpoint
+// — the point a beam joining the two centers must pass through whichever way it
+// is styled.
 //
-//   - the midpoint cluster differs from the background sample by more than 50
-//     of 441 RGB distance (the beam is there);
-//   - it sits closer in RGB to its own channel's hue than to either other
-//     channel's (it carries its channel's hue).
+// THE COMPARAND IS THE SAME POINT WITH THE BEAM EMPTY. Each midpoint is read
+// twice on the same posed board: once with no segment traced and once with the
+// segment drawn, both one advanced frame after the state they read. Nothing
+// else about the board moves between the two frames, so a difference at the
+// midpoint is the beam and nothing else — where a background sample would
+// instead measure whatever the build painted between the board and the stage's
+// edge.
 //
-// The three channel colors are read off the same posed board's lens forms
-// before anything is traced, so the references and the beams come from the
-// same build and the same frame size.
-//
-// HOW A CHANNEL'S HUE IS READ. As the median color of that channel's lens
-// form, against the board's own ground, and not as the lens's center pixel:
-// specs/board.md fixes that each channel carries one distinct hue and fixes
-// nothing about where inside a node its hue is shown, so a build that lays an
-// iris or a socket over the middle of its filled silhouette would hand all
-// three comparisons one ornament color. Nor as the form's loudest pixel, which
-// on a dark board is a white specular pip or a white outline rather than the
-// hue it sits on; the median is the color the form is mostly made of, and no
-// ornament covering a minority of it can move it. The three references are read BEFORE
-// anything is traced, so no beam's own pixels color them.
-//
-// A KNOWN NARROWING, recorded here and deliberately not acted on. "Sits closer
-// in RGB to its own channel's color than to either other channel's" is a proxy
-// for specs/board.md's "it carries its channel's hue", and it is a narrow one:
-// specs/board.md pins beam rendering nowhere, so a build drawing a pale core
-// inside a colored halo carries its channel's hue perfectly well while its
-// midpoint reads nearest white. No build of this cohort fails on it, so the
-// reading stands as written and the requirement is one for the next version of
-// this case to state exactly or for the assertion to drop.
+// WHAT IS NOT DECIDED HERE. specs/board.md pins beam rendering nowhere: the
+// hue, the width, the styling and any animation are the build's, and whether
+// they look right is the reviewer's presentation rating. This point decides
+// only that the build drew something along the line joining the two centers.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertGreaterThan, assertLessThan } from "../assert";
+import { assertDeepEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
   colorDistance,
@@ -45,24 +29,16 @@ import {
   loadBoard,
   nodeCenter,
   resetTo,
-  sampleBackground,
   sampleColor,
   traceRoute,
   type Harness,
-  type Rgb,
 } from "../harness";
-import { CHANNELS, NODE_R, parseBoard, type Channel } from "../notation";
-import { bodyColor, bodyMask, groundSample } from "./masks";
-
-/** The review item's distance: the beam clearly apart from the background. */
-const APART_MIN = 50;
 
 /**
  * A 5x3 board carrying all three channels, each with its two emitters as a
  * board must have (specs/board.md): the traced triangle emitter and lens are
- * orthogonal neighbours on the top row, the traced square emitter S(3,2) and
- * lens s(2,1) are diagonal neighbours in their own 2x2 block, and the
- * diamond lens d(4,0) stands clear as the third hue's reference.
+ * orthogonal neighbours on the top row, and the traced square emitter S(3,2)
+ * and lens s(2,1) are diagonal neighbours in their own 2x2 block.
  */
 const ROUTE_BOARD = `
 Tt..d
@@ -73,13 +49,6 @@ TS.SD
 /** The board's dimensions. */
 const COLS = 5;
 const ROWS = 3;
-
-/** Where each channel's reference node (a lens) sits. */
-const LENS_AT: Readonly<Record<Channel, { col: number; row: number }>> = {
-  triangle: { col: 1, row: 0 },
-  square: { col: 2, row: 1 },
-  diamond: { col: 4, row: 0 },
-};
 
 /** The orthogonal segment: triangle T(0,0) -> t(1,0). */
 const ORTHOGONAL: readonly (readonly [number, number])[] = [
@@ -115,22 +84,21 @@ function midpoint(route: readonly (readonly [number, number])[]): {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
 
-it("draws each segment through its midpoint, in its own channel's hue", async () => {
+it("draws each segment through its midpoint", async () => {
   await resetTo(h, 1);
   await loadBoard(h, ROUTE_BOARD);
 
-  // The three channel hues, read before anything is traced.
-  const background = sampleBackground(h);
-  const ground = groundSample(h, parseBoard(ROUTE_BOARD));
-  const reference = new Map<Channel, Rgb>();
-  for (const channel of CHANNELS) {
-    const at = LENS_AT[channel];
-    const center = nodeCenter(at.col, at.row, COLS, ROWS);
-    reference.set(
-      channel,
-      bodyColor(bodyMask(h, center.x, center.y, NODE_R, ground)),
-    );
-  }
+  const segments = [
+    { name: "orthogonal", route: ORTHOGONAL },
+    { name: "diagonal", route: DIAGONAL },
+  ].map((segment) => ({ ...segment, at: midpoint(segment.route) }));
+
+  // The two midpoints with every beam empty, one advanced frame after the
+  // board was posed.
+  await h.advance(1);
+  const before = segments.map((segment) =>
+    sampleColor(h, segment.at.x, segment.at.y),
+  );
 
   // Draw the two segments; each trace takes effect as it is made.
   traceRoute(h, ORTHOGONAL);
@@ -150,33 +118,14 @@ it("draws each segment through its midpoint, in its own channel's hue", async ()
   await h.advance(1);
   captureStill(h, "beams");
 
-  const segments: readonly {
-    name: string;
-    channel: Channel;
-    route: readonly (readonly [number, number])[];
-  }[] = [
-    { name: "orthogonal", channel: "triangle", route: ORTHOGONAL },
-    { name: "diagonal", channel: "square", route: DIAGONAL },
-  ];
-  for (const segment of segments) {
-    const mid = midpoint(segment.route);
-    const sampled = sampleColor(h, mid.x, mid.y);
+  for (const [index, segment] of segments.entries()) {
+    const after = sampleColor(h, segment.at.x, segment.at.y);
     assertGreaterThan(
-      colorDistance(sampled, background),
-      APART_MIN,
-      `the ${segment.name} segment's midpoint (specs/board.md: a drawn beam ` +
-        "visibly connects the centers of the cells it links)",
+      colorDistance(after, before[index]),
+      0,
+      `the ${segment.name} segment's midpoint, drawn against the same point ` +
+        "with its beam empty (specs/board.md: a drawn beam visibly connects " +
+        "the centers of the cells it links)",
     );
-    const own = colorDistance(sampled, reference.get(segment.channel) as Rgb);
-    for (const other of CHANNELS) {
-      if (other === segment.channel) continue;
-      assertLessThan(
-        own,
-        colorDistance(sampled, reference.get(other) as Rgb),
-        `the ${segment.name} segment's midpoint against the ${other} ` +
-          `channel's hue (specs/board.md: a beam carries its channel's ` +
-          "hue)",
-      );
-    }
   }
 });

@@ -24,8 +24,8 @@
 // game on its title screen, `match` opens a fresh match, and specs/ui.md fixes
 // the whole arrangement each of those two acts performs.
 
-import { GameState } from "@test-cabinet/structured-2d";
-import type { World } from "@test-cabinet/structured-2d";
+import { GameState } from "@clockwyrks/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import type { CaromGame } from "./game";
 import type { Side } from "./sim";
 

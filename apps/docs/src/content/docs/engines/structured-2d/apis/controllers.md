@@ -144,5 +144,5 @@ The action registry itself belongs to the whole game and is declared once, from
 ## Exports
 
 `Controller`, `PlayerController`, and `AIController` are exported as classes
-from `@test-cabinet/structured-2d`, and `ControllerClass` and `InputReader` are
+from `@clockwyrks/structured-2d`, and `ControllerClass` and `InputReader` are
 exported as types.

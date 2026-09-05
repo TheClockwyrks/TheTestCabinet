@@ -3,7 +3,7 @@
 // (loading its body into context). See gg/skills.md. Rendered as a list; the read
 // state is the only per-skill signal, so it drives a compact badge.
 
-import type { GgSkillState } from "@test-cabinet/run-record/gg";
+import type { GgSkillState } from "@clockwyrks/run-record/gg";
 import styles from "./GgPanels.module.scss";
 import { ModuleStat, ModuleStats } from "./ModuleStats";
 

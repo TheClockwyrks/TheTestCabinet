@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CueSpec, WorldAudio } from "@test-cabinet/structured-2d";
+import type { CueSpec, WorldAudio } from "@clockwyrks/structured-2d";
 
 import { CUE_FALLBACKS, defineCues, looping, syncBed } from "./audio";
 import { CUES, CUE_PATHS, LOOPING_CUES } from "./constants";

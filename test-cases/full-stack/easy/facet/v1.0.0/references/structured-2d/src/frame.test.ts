@@ -1,11 +1,11 @@
 // One frame of simulation, and what it does when the world is not a whole one.
 
 import { describe, expect, it, vi } from "vitest";
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { advanceFrame } from "./frame";
 import { applyCore } from "./bridge";
 import { FacetState } from "./game";
-import { createInitialState, loadBoard, requestSwap } from "./core";
+import { createInitialState, loadBoard, requestSwap, setScreen } from "./core";
 import { quietRowsWith } from "./core/fixtures";
 import { CUES } from "./constants";
 
@@ -47,12 +47,17 @@ describe("advanceFrame", () => {
   it("carries the chain forward with no controller and no bench", () => {
     const { world, played, looped } = bareWorld();
     const state = new FacetState();
+    // `loadBoard` writes the board and nothing else, so the round is opened
+    // for it: a swap asked for off `playing` is refused before the rules run.
     applyCore(
       state,
-      requestSwap(loadBoard(createInitialState(), CASCADE), {
-        a: { col: 3, row: 6 },
-        b: { col: 4, row: 6 },
-      }).state,
+      requestSwap(
+        setScreen(loadBoard(createInitialState(), CASCADE), "playing"),
+        {
+          a: { col: 3, row: 6 },
+          b: { col: 4, row: 6 },
+        },
+      ).state,
     );
 
     advanceFrame(world, state, 1);

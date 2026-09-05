@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { InputReader, PointerSample } from "@test-cabinet/structured-2d";
+import type { InputReader, PointerSample } from "@clockwyrks/structured-2d";
 
 import { ACTIONS, BINDINGS, type ActionName } from "./constants";
 import { pointerSamples, pressedActions, registerActions } from "./input";

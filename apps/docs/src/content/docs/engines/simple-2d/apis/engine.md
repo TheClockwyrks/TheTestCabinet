@@ -273,4 +273,4 @@ the loop and leaves the engine usable, so the two are separate acts.
 
 `createEngine` is the root entry point's only function. `EngineOptions`,
 `SurfaceMetrics`, `Engine`, `RunOptions`, `Transition`, and `DeepReadonly` are
-exported as types from `@test-cabinet/simple-2d`.
+exported as types from `@clockwyrks/simple-2d`.

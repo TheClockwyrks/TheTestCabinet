@@ -22,7 +22,7 @@ import type {
   InitApi,
   InputReader,
   PointerSample,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 
 /** Everything a frame's input amounts to, resolved once per frame. */
 export interface FrameInput {

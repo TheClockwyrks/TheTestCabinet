@@ -89,7 +89,7 @@ export function stepAxis(axis: AxisState, name: AxisName): AxisStep {
   const d = target - axis.value;
   const s = Math.sign(d);
   let v = axis.rate;
-  let reported = 0;
+  let reported: number;
   if (v * s > 0 && Math.abs(d) <= (v * v) / (2 * accel)) {
     v = v - s * accel * DT;
     reported = -s * accel;

@@ -13,7 +13,7 @@
 
 import { COMBO_WINDOW } from "./constants";
 import type { CoilState } from "./game";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 
 function cell(
   value: { readonly col: number; readonly row: number } | null,

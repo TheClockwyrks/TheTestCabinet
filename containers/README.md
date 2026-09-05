@@ -314,9 +314,9 @@ Some produced assets are **not self-describing data** the way a sprite PNG is: a
 effect is a `system.json` a game plays by **simulating it live**, and a voxel/mesh
 rig is **posed** at runtime. A game that consumes one needs the *runtime that
 plays it*, not just the asset. Those runtimes already exist in this repo as the
-`@test-cabinet/*` libraries the in-repo viewers use
-([`@test-cabinet/particle-runtime`](../packages/particle-runtime),
-[`@test-cabinet/voxel-runtime`](../packages/voxel-runtime)); an end-to-end case
+`@clockwyrks/*` libraries the in-repo viewers use
+([`@clockwyrks/particle-runtime`](../packages/particle-runtime),
+[`@clockwyrks/voxel-runtime`](../packages/voxel-runtime)); an end-to-end case
 names the ones it needs with the manifest's
 [`packages`](../apps/docs/src/content/docs/testing/end-to-end/overview.md#packages)
 key, and the run consumes them as ordinary installed dependencies.
@@ -324,30 +324,30 @@ key, and the run consumes them as ordinary installed dependencies.
 Because these packages are private (never npm-published) and must match the format
 the validator and review UI play, they are **staged from this repo into a host
 package store** rather than fetched from a registry. The store lives at
-`/opt/tcab-packages/@test-cabinet/<name>/` (world-readable) on the
+`/opt/tcab-packages/@clockwyrks/<name>/` (world-readable) on the
 [driver image](../deployments/images/services.Dockerfile) — the image that seeds
 runs — each a publish-shaped copy: its `package.json` plus its built `dist/`. Any
 dependency **between** two shippable packages (for example `particle-runtime`'s
-type-only dependency on `run-record`) is rewritten to a relative `file:` path
+type-only dependency on `asset-contract`) is rewritten to a relative `file:` path
 within the store, so the staged set resolves with no npm-published
-`@test-cabinet/*` package required.
+`@clockwyrks/*` package required.
 
 Staging is done by [`scripts/stage-tcab-packages.mjs`](../scripts/stage-tcab-packages.mjs),
 run in a builder stage of the shared services Dockerfile (the build context is the
 repository root, so the stage can see `packages/`). The script builds the
 npm workspace, then for each package in its **shippable list** copies the package's
 `package.json` and the files its `files` field publishes into
-`/opt/tcab-packages/@test-cabinet/<name>/`, pulling in and rewriting transitive
-`@test-cabinet/*` dependencies. The runtime stage `COPY --from`s that tree in.
+`/opt/tcab-packages/@clockwyrks/<name>/`, pulling in and rewriting transitive
+`@clockwyrks/*` dependencies. The runtime stage `COPY --from`s that tree in.
 
 **How a case uses them, end to end.** A case declares
-`packages = ["@test-cabinet/particle-runtime"]` **and** ships a workspace whose
+`packages = ["@clockwyrks/particle-runtime"]` **and** ships a workspace whose
 `package.json` depends on it via an in-repo relative path:
-`"@test-cabinet/particle-runtime": "file:./.tcab/packages/@test-cabinet/particle-runtime"`.
+`"@clockwyrks/particle-runtime": "file:./.vendor/packages/@clockwyrks/particle-runtime"`.
 The harness does not modify that `package.json` — it only validates at resolution
 that the shipped file declares each declared package via exactly this `file:` spec.
-At seed time the core copies the declared packages (and their `@test-cabinet`
-closure) out of the store into `.tcab/packages/` inside the run repo and commits
+At seed time the core copies the declared packages (and their `@clockwyrks`
+closure) out of the store into `.vendor/packages/` inside the run repo and commits
 them, so the seeded workspace is ready to `npm install` and the relative `file:`
 dependency resolves wherever the produced tree later lives — the run container, the
 validation host, or a clone of the published repo — with no absolute path to break.
@@ -357,7 +357,7 @@ The model imports the library like any other dependency (see
 **Engine runtimes share the store.** An [engine](../engines/README.md) is the
 runtime a produced game is built on, and its package is staged into the same store
 by the same script. An engine is selected per run rather than declared by a case,
-so seeding vendors the selected engine into `.tcab/engine/` and writes its `file:`
+so seeding vendors the selected engine into `.vendor/engine/` and writes its `file:`
 dependency into the seeded workspace's `package.json`. The version of the staged
 engine package is read at seed time and recorded on the run.
 
@@ -368,7 +368,7 @@ design: the script's shippable list is everything staged into the store, while t
 `SHIPPABLE_PACKAGES` allowlist in
 [`crates/core/src/test_case.rs`](../crates/core/src/test_case.rs) is the smaller
 set a case may declare with `packages`. An engine package appears in the staging
-list alone, because a run selects it. So does `@test-cabinet/case-harness`, the
+list alone, because a run selects it. So does `@clockwyrks/case-harness`, the
 shared harness a case's engineless validators are written over: nothing seeds it
 into a run repository at all, the reporter copying it out of the store into the
 staged validator project once the container is gone (see
@@ -390,7 +390,7 @@ To add one:
    on an npm-published package is not.
 2. **Add it to the shippable list** in
    [`scripts/stage-tcab-packages.mjs`](../scripts/stage-tcab-packages.mjs). Any
-   `@test-cabinet/*` package it depends on is staged and rewritten automatically;
+   `@clockwyrks/*` package it depends on is staged and rewritten automatically;
    it need not be listed separately unless a case imports it directly.
 3. **Add its name to the `SHIPPABLE_PACKAGES` allowlist** in
    [`crates/core/src/test_case.rs`](../crates/core/src/test_case.rs) so a case may

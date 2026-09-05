@@ -1,3 +1,8 @@
+/// <reference types="node" />
+// This file runs in Node and reads the disk. The project's tsconfig sets
+// `types: []` to keep the game's own sources browser-only, so the files that
+// need Node's types name them here instead.
+
 // The test harness the build's own suite stands the game up with.
 //
 // A harness builds a REAL engine over an `@napi-rs/canvas` canvas and a
@@ -25,7 +30,7 @@ import {
   createEngine,
   type Engine,
   type SurfaceMetrics,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { LAYOUT, STAGE_H, STAGE_W } from "./constants";
 import {
   BACKGROUND,

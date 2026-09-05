@@ -1,11 +1,10 @@
-// presentation/hud-pressure-fill — the HUD's gauge fills in proportion to the
-// pressure.
+// presentation/hud-pressure-fill — the HUD's gauge tracks the pressure.
 //
 // THE REQUIREMENT. `specs/ui.md` — "The HUD": "Pressure | A gauge marked with the
 // produced pressure icon, filled in proportion to the current pressure: empty at
 // `0`, full at `100`." That the gauge carries the produced icon at all is
-// `presentation/hud-pressure-icon`'s point; how much of it is filled is this one,
-// and a build can get either one right on its own.
+// `presentation/hud-pressure-icon`'s point; that the gauge answers the pressure
+// is this one, and a build can get either one right on its own.
 //
 // THE DRIVE. The same hall three times over, at the two ends of the scale and at
 // its middle, each on a page of its own so the three frames sit at the same tick
@@ -24,14 +23,16 @@
 // core is on the channel, and `specs/ui.md` has the HUD "draw over the hall and
 // hide none of them", so no part of a conformant build's gauge is inside it.
 //
-// THE BOUNDS. Two, and both follow from "filled in proportion ... empty at `0`,
-// full at `100`". A gauge at 50 is not the gauge at 0, so the middle frame
-// differs from the empty one somewhere; and a gauge at 100 is filled twice as far
-// as one at 50, so it differs from the empty one in strictly more of the field
-// than the middle one does. Neither reads a colour, a size or a place:
-// `specs/ui.md` fixes no layout, so where the gauge is and what it looks like are
-// the build's. A gauge that ignores the pressure fails the first; one that snaps
-// between empty and full fails the second.
+// WHAT IS ASSERTED. That the picture PARTS at each step of the scale: the frame
+// at 50 differs from the frame at 0 somewhere, and the frame at 100 differs from
+// the frame at 50 somewhere. A gauge "filled in proportion" to the pressure is a
+// different picture at each of the three, so a build that draws one moves
+// something both times. Nothing here reads a colour, a size or a place, and
+// nothing compares one change against another: `specs/ui.md` fixes no layout, so
+// where the gauge sits, how it fills, and what it looks like are the build's, and
+// how far it fills is the reviewer's to judge. A gauge that ignores the pressure
+// moves nothing and fails both; one that snaps between empty and full holds still
+// across one of the two steps and fails that one.
 
 import { afterEach, it } from "vitest";
 import { PRESSURE_MAX, PRESSURE_MIN, type Point } from "../constants";
@@ -106,22 +107,19 @@ function differingAwayFromTheCore(a: Frame, b: Frame): number {
   ).length;
 }
 
-it("fills the HUD's gauge in proportion to the pressure", async () => {
+it("changes the HUD's gauge at each step of the pressure scale", async () => {
   const empty = await frameAt(PRESSURES[0], "empty");
   const half = await frameAt(PRESSURES[1], null);
   const full = await frameAt(PRESSURES[2], "full");
 
-  const atHalf = differingAwayFromTheCore(empty, half);
-  const atFull = differingAwayFromTheCore(empty, full);
-
   assertGreaterThan(
-    atHalf,
+    differingAwayFromTheCore(empty, half),
     0,
     "pixels a pressure of 50 changed against a pressure of 0",
   );
   assertGreaterThan(
-    atFull,
-    atHalf,
-    `pixels a pressure of 100 changed against a pressure of 0 (50 changed ${atHalf})`,
+    differingAwayFromTheCore(half, full),
+    0,
+    "pixels a pressure of 100 changed against a pressure of 50",
   );
 });

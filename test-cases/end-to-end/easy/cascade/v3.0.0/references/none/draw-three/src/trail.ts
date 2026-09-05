@@ -77,8 +77,8 @@ export class TrailLayer {
   private readonly ctx: CanvasRenderingContext2D | null;
 
   constructor(make: LayerFactory = platformLayer) {
-    let canvas: LayerCanvas | null = null;
-    let ctx: CanvasRenderingContext2D | null = null;
+    let canvas: LayerCanvas | null;
+    let ctx: CanvasRenderingContext2D | null;
     try {
       canvas = make(STAGE_W, STAGE_H);
       ctx = canvas?.getContext("2d") ?? null;

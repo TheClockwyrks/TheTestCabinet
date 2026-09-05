@@ -19,7 +19,7 @@ import type { ComponentType } from "react";
 import type {
   GgCapabilitySet,
   GgModuleKind,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import { agentCapabilityOn } from "./ggCatalog";
 import type { GgModuleInstance } from "./ggModules";
 import type { GgAgentSurface } from "./useGgRunState";

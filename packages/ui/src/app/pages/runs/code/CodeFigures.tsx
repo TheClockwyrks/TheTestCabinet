@@ -16,7 +16,7 @@
 // analyzer's summary appears here correctly the day it ships, and a renamed one fails the
 // analyzer's own test rather than silently losing its label.
 
-import type { CodeAnalysisSummary } from "@test-cabinet/run-record/code-analysis";
+import type { CodeAnalysisSummary } from "@clockwyrks/run-record/code-analysis";
 import {
   APPROXIMATE_MARK,
   APPROXIMATE_NOTE,

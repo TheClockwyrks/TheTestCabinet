@@ -13,7 +13,7 @@
 // Compilation (`compile.ts`) is the one-way step from this tree to the wire form, and it
 // is where a relative date becomes absolute milliseconds — which is why a *saved* query
 // stores its source text and re-resolves on every run.
-import type { GgAggFunc, GgCompareOp, GgIntervalUnit } from "@test-cabinet/run-record/gg-query";
+import type { GgAggFunc, GgCompareOp, GgIntervalUnit } from "@clockwyrks/run-record/gg-query";
 import type { Span } from "./lex";
 
 /** A parse problem, with the span the editor should underline. Never fatal: the parser

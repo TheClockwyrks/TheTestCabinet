@@ -75,8 +75,8 @@ npm ci
 
 # The desktop UI imports the run-record package's compiled types, so build it
 # before the Tauri build runs the UI's own vite build (its beforeBuildCommand).
-log "Building @test-cabinet/run-record"
-npm run build -w @test-cabinet/run-record
+log "Building @clockwyrks/run-record"
+npm run build -w @clockwyrks/run-record
 
 # The shipped app stands up its own k3d cluster, so it bundles k3d and kubectl as
 # Tauri externalBin sidecars. Fetch the host-triple build of each into

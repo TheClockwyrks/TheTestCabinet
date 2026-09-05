@@ -317,8 +317,8 @@ asserted.
 whole checklist: an item whose claim is a difference between two renders declares
 the before-and-after pair, and an item measuring a difference inside one render
 declares the single render its assertion turns on.
-`presentation.ship-reads-band` is the first kind and declares `cyan` and
-`magenta`; `overload.telegraph-drawn` is the second and declares one capture of
+`screens.mute-indicator` is the first kind and declares `muted` and
+`unmuted`; `overload.telegraph-drawn` is the second and declares one capture of
 three drones at charge zero, one and two.
 
 ## The build ships a showcase, and no proof captures

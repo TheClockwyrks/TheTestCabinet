@@ -31,7 +31,7 @@
 // overlay drawing or toggle (the engine draws the panel and owns the backtick
 // key).
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { CAROM_DEBUG_VERSION, DEFAULT_SEED } from "./constants";
 import {
   ballAt,

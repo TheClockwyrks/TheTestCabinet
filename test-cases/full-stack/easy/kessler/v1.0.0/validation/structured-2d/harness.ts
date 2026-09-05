@@ -78,7 +78,7 @@ import {
   type SurfaceMetrics,
   type Viewport,
   type World,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { BACKGROUND, game as build } from "../src/game";
 import { fail } from "./assert";
 import {
@@ -303,10 +303,9 @@ export interface AssetFailure {
 //
 // AUDIO IS THE ONE THING THIS CANNOT SERVE. `loadAudio` decodes through a Web
 // Audio context and this host has none, so every cue's produced `.wav` fails
-// to load here whatever the root says. `specs/assets.md` requires a build that
-// keeps playing when its files do not arrive, so the cues still sound on the
-// cue bus and a check reads WHICH cue sounded; the points that are about the
-// FILES read them off disk directly, which is where they live.
+// to decode here — a fact about the host rather than about the build. So the
+// cue points read WHICH cue sounded off the cue bus, and the points that are
+// about the FILES read them off disk directly, which is where they live.
 
 /**
  * The directory this harness sits in, which is the validator project's root.
@@ -408,12 +407,6 @@ export interface HarnessOptions {
   cssHeight?: number;
   /** Device pixels per CSS pixel. Defaults to 1, one device pixel per unit. */
   dpr?: number;
-  /**
-   * The root the engine resolves every asset path under. Defaults to the
-   * engine's own `assets/`; a check about the missing-art path names a root
-   * with nothing under it.
-   */
-  assetRoot?: string;
 }
 
 /** How far a sweep may run, in whole ticks. */
@@ -697,9 +690,6 @@ export async function openHarness(
     background: BACKGROUND,
     clock: options.clock ?? new ConstantClock(TICK_MS),
     surface,
-    ...(options.assetRoot === undefined
-      ? {}
-      : { assetRoot: options.assetRoot }),
   });
 
   // Subscribed BEFORE `initialize`, which is what makes the game's own loading

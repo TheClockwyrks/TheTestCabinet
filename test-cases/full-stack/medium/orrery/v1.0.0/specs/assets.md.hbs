@@ -82,12 +82,6 @@ and each audio cue below is bound to its produced file with `api.audio.load`
 under its name in `CUES`, awaited in the instance's `initialize`, so every
 asset is decoded before the first frame and survives every level transition.
 {{/if}}
-
-A load that fails leaves the game running. The game still initializes, still
-ticks, still takes keyboard and pointer input, and still draws a legible field,
-tray, and tape panel when a sprite, a sheet frame, a system, or a sound is
-unavailable, so a missing file costs the game its polish rather than its
-playability.
 {{#if (ne engine.slug "none")}}
 
 ### The names in `src/constants.ts`
@@ -197,7 +191,7 @@ A play is watched rather than glimpsed: an instance fired on one frame goes on
 changing the picture at its event's position over the frames that follow it,
 decaying to empty across them rather than being over by the next frame.
 
-Play them through `@test-cabinet/particle-runtime`, an installed dependency
+Play them through `@clockwyrks/particle-runtime`, an installed dependency
 imported by its bare name, using its `./canvas` binding: a player is
 constructed over a parsed system and a 2D rendering context and advanced each
 frame with that frame's delta, and it simulates the system and composites the

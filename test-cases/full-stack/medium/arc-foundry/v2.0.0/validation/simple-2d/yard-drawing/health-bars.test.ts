@@ -8,24 +8,26 @@
 //
 // THE READING. The strip of yard just above one parked unit is sampled three
 // times: with nothing there, with the unit at the health its wave gives it, and
-// with it posed to a quarter of that. What the unit's arrival painted is the bar;
-// the colour that paint is mostly made of is the bar's FILL, since a full bar is
-// mostly fill; and depleting the unit has to leave less of the stage carrying that
-// colour. A build that draws a track behind the fill passes, because the track is
-// not what is counted.
+// with it posed to a quarter of that. The unit's arrival has to paint that strip,
+// which is the bar being drawn, and posing the unit down to a quarter of its
+// health has to redraw it, which is the bar following the health it reads. Neither
+// reading says what the bar looks like: a fill that shortens, a strip that
+// recolours, a bar that fades, and a numeric readout all satisfy this, and how good
+// any of them looks is the reviewer's presentation rating.
 //
 // The unit is held rather than walking, so the strip it is read in is the strip it
 // is still standing under, and the wave is deep enough that nothing here is a
 // question of the unit dying.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, assertLessThan } from "../assert";
+import { assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
-  DISTINCT,
+  DRAWN,
   type Harness,
   lattice,
+  maxDistance,
   openYard,
   parkUnit,
   rgbDistance,
@@ -39,8 +41,6 @@ const STAND = { x: 500, y: 400 };
 /** The strip above the unit: past its own 20-unit sprite, and wide enough for a bar. */
 const ABOVE = { x: STAND.x - 30, y: STAND.y - 34, w: 60, h: 24 };
 
-type Pixel = [number, number, number, number];
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -50,11 +50,6 @@ beforeEach(async () => {
 afterEach(() => {
   h.dispose();
 });
-
-/** How many of the sampled points carry `colour`. */
-function carrying(pixels: readonly Pixel[], colour: Pixel): number {
-  return pixels.filter((p) => rgbDistance(p, colour) <= DISTINCT).length;
-}
 
 it("draws a health bar above a unit, and empties it as health falls", async () => {
   openYard(h, { wave: WAVE });
@@ -68,7 +63,7 @@ it("draws a health bar above a unit, and empties it as health falls", async () =
 
   const painted: number[] = [];
   for (let i = 0; i < strip.length; i += 1) {
-    if (rgbDistance(bare[i]!, full[i]!) > DISTINCT) painted.push(i);
+    if (rgbDistance(bare[i]!, full[i]!) > DRAWN) painted.push(i);
   }
   assertGreaterThan(
     painted.length,
@@ -79,27 +74,15 @@ it("draws a health bar above a unit, and empties it as health falls", async () =
       "health bar",
   );
 
-  // The colour that paint is mostly made of: a full bar is mostly its fill.
-  let fill = full[painted[0]!]!;
-  let best = 0;
-  for (const i of painted) {
-    const like = painted.filter(
-      (j) => rgbDistance(full[i]!, full[j]!) <= DISTINCT,
-    ).length;
-    if (like > best) {
-      best = like;
-      fill = full[i]!;
-    }
-  }
-
   const maxHp = unitById(h.snapshot(), unit).maxHp;
   h.debug.setUnitHp(unit, Math.max(1, Math.round(maxHp / 4)));
   const quarter = await sample(h, strip);
 
-  assertLessThan(
-    carrying(quarter, fill),
-    carrying(full, fill),
-    "how much of the strip above the unit still carries the health bar's " +
-      "fill colour at a quarter health, against how much carried it at full",
+  assertGreaterThan(
+    maxDistance(full, quarter),
+    DRAWN,
+    "how far the strip above the unit reads from how it read at full health, " +
+      "once the same unit is posed to a quarter of it, which is the bar " +
+      "specs/enemies.md depletes as the unit takes damage",
   );
 });

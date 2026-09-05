@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ACTIONS, BINDINGS, LAYOUT, OVERLAY_KEY } from "./constants";
 import { registerActions } from "./input";
 import { CUE_SPECS, defineCues, noCues, playCues } from "./audio";
-import type { CueSpec, InitApi, WorldAudio } from "@test-cabinet/structured-2d";
+import type { CueSpec, InitApi, WorldAudio } from "@clockwyrks/structured-2d";
 
 function inputApi(layout: string | null) {
   const registered = new Map<string, string[]>();

@@ -3,12 +3,10 @@
 // specs/mode.md closes the telegraph's rule with the case the overload creates: "A
 // drone that has just overloaded is back at charge `0` and draws none."
 //
-// THE READING IS THE SAME ONE `overload/telegraph-drawn` TAKES, in the other
-// direction and against the same floor: how much of the drone's own footprint sits
-// more than 25 of 441 away from the same footprint at charge 0. There it must be at
-// least the floor; here it must be under it. So a build that never clears the
-// telegraph fails here and passes there, and a build that draws none at all passes
-// here and fails there — the pair cannot both be satisfied by doing nothing.
+// THE READING IS HOW MUCH OF THE DRONE'S OWN FOOTPRINT still sits away from the
+// same footprint at charge 0, once a mismatched shot has tipped it over. A build
+// that never clears the telegraph leaves a mark there and fails; a build that
+// empties it comes back to the reading it started from.
 //
 // THE TWO READINGS ARE OF ONE DRONE AT ONE PLACE IN ONE PHASE, which is what makes
 // the comparison a reading of the telegraph rather than of anything else. The
@@ -63,17 +61,20 @@ const AT_Y = 300;
  * How far apart two readings of the same pixel must sit to count as changed, on
  * the 0-to-441 scale.
  *
- * The figure this case's manifest states for the telegraph: 25 of 441, the same
- * one `overload/telegraph-drawn` requires the charge to move the drone by.
+ * This check's own bound on what counts as one place having been drawn on again.
+ * 25 of 441 is above the couple of units an anti-aliased edge moves by and far
+ * below what a mark drawn over a drone reaches, so it separates a telegraph that
+ * is still there from the noise of two renders of one unchanged drone.
  */
 const MIN_DISTANCE = 25;
 
 /**
  * How much of the footprint may differ and still count as no telegraph.
  *
- * The floor `overload/telegraph-drawn` requires a telegraph to reach, read the
- * other way: under three per cent of the drone's own footprint is less than that
- * point counts as drawn at all, so the two are one figure with a side each.
+ * This check's own bound, read as a tolerance rather than as a demand: under three
+ * per cent of the drone's own footprint is small enough that no mark a build draws
+ * to say "charged" fits inside it, so a reading under it is a drone with nothing
+ * left of its telegraph.
  */
 const MIN_FRACTION = 0.03;
 

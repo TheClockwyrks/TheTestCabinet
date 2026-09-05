@@ -1,14 +1,14 @@
 import { Suspense, lazy, useMemo, useState } from "react";
-import { Panel } from "@test-cabinet/ui";
+import { Panel } from "@clockwyrks/ui";
 import type {
   AnimationSpec,
   AssetSheet,
   JointSpec,
   ModelSpec,
-} from "@test-cabinet/run-record";
-import type { PartMesh } from "@test-cabinet/voxel-runtime";
-import { parseSkinnedGlb } from "@test-cabinet/voxel-runtime";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+} from "@clockwyrks/run-record";
+import type { PartMesh } from "@clockwyrks/voxel-runtime";
+import { parseSkinnedGlb } from "@clockwyrks/voxel-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { AssetPreview } from "../../../../client/types";
 import { GuardedVoxelViewer } from "./GuardedVoxelViewer";
 import { prefersReducedMotion, supportsWebGL } from "../../../components/webgl";

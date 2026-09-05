@@ -18,15 +18,17 @@
 //     specification fixes.
 //
 // THIS FILE FIXES NO FIGURE AND NO TOLERANCE. Every window a point compares a
-// number in, every pixel distance it calls "plainly apart", and every margin it
+// number in, every pixel distance it holds a reading to, and every margin it
 // allows a glyph outside a box is stated in the point that uses it, beside the
 // figure `specs/hud.md` gives it.
 //
 // WHY NUMBERS RATHER THAN STRINGS. `specs/hud.md` fixes the three readout LABELS
 // as constants and fixes not one thing about how a value is formatted — a build
-// may draw a fire rate as `0.92`, `0.920` or `0.92/s`, and a countdown rounded
-// down, up or to nearest. So a value is looked for as a NUMBER parsed out of a
-// run, compared inside a window the point states, rather than as a literal.
+// may draw a fire rate as `0.92`, `0.920` or `0.92/s`, a countdown rounded down,
+// up or to nearest, and a sum of money grouped into digit triples as `1,250`. So
+// a value is looked for as a NUMBER parsed out of a run, compared inside a window
+// the point states, rather than as a literal, and a grouped figure is read as the
+// one figure it is.
 
 import { PANEL_W, PANEL_X, STAGE_H, type Rect } from "../constants";
 import {
@@ -67,9 +69,32 @@ export async function readPanel(h: Harness): Promise<TextDraw[]> {
   return panelRuns(await h.frameCalls());
 }
 
+/**
+ * The separators a build may group a figure's digit triples with.
+ *
+ * Grouping is formatting, and formatting is the build's: `1,250` is the one
+ * figure `1250` drawn the way `Number.prototype.toLocaleString` draws it by
+ * default. The ASCII space is deliberately not one of them, because a run's text
+ * may carry two figures with a space between them and `40 130` is a reading of
+ * `40` and `130` rather than one of `40130`. Nor is the full stop, which is the
+ * decimal point: a build drawing `1.5` drew one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One figure as a run may carry it: grouped into triples, or plain. */
+const DRAWN = new RegExp(
+  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/** Every group separator inside one figure, for dropping before it is read. */
+const GROUPS = new RegExp(GROUP, "g");
+
 /** Every number a run's text carries, in the order it carries them. */
 export function numbersIn(run: TextDraw): number[] {
-  return (run.text.match(/\d+(?:\.\d+)?/g) ?? []).map(Number);
+  return (run.text.match(DRAWN) ?? []).map((figure) =>
+    Number(figure.replace(GROUPS, "")),
+  );
 }
 
 /** Every number the panel drew, across every run. */
@@ -384,25 +409,25 @@ export function pixelsOver(h: Harness, rect: Rect): Promise<Pixel[]> {
 }
 
 /**
- * How many of the paired pixels differ by an RGB distance of at least
- * `distance`, out of the 441 a full swing across the cube is.
+ * The largest RGB distance between two readings of the same pixels, out of the
+ * 441 a full swing across the cube is.
  *
- * `specs/overview.md` fixes no palette, so every colour reading in this project
- * is a comparison between two things the build drew and the distance it demands
- * is the point's own figure.
+ * `specs/overview.md` fixes no palette, so no reading in this project says what
+ * a control looks like. What a reading can say is whether the SAME rectangle was
+ * drawn differently once one thing about the game changed, and everything the
+ * build drew there that did not change cancels between the two.
  */
-export function differing(
+export function largestChange(
   a: readonly Pixel[],
   b: readonly Pixel[],
-  distance: number,
 ): number {
-  let count = 0;
+  let most = 0;
   for (let i = 0; i < Math.min(a.length, b.length); i += 1) {
     const one = { r: a[i][0], g: a[i][1], b: a[i][2] };
     const other = { r: b[i][0], g: b[i][1], b: b[i][2] };
-    if (colorDistance(one, other) >= distance) count += 1;
+    most = Math.max(most, colorDistance(one, other));
   }
-  return count;
+  return most;
 }
 
 /* ---- One field the info area draws --------------------------------------- */

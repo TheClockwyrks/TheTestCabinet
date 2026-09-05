@@ -21,7 +21,7 @@
 // What the rally does NOT do is score: judging the goals is the match rules'
 // job, and the mode's tick runs after every actor's (src/match-mode.ts).
 
-import { Actor } from "@test-cabinet/structured-2d";
+import { Actor } from "@clockwyrks/structured-2d";
 import type { Ball } from "./ball";
 import { CUES, SERVE_SPEED, TAGS } from "./constants";
 import { ballsOf, obstaclesOf } from "./field";

@@ -30,7 +30,7 @@ import { jettisonCoreSample, useItem } from "./items";
 import { menuItems } from "./menus";
 import type { Draft } from "./state";
 import { itemForHotkey } from "./tuning";
-import type { InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type { InitApi, UpdateApi } from "@clockwyrks/simple-2d";
 
 /** The six supply hotkeys, in the order the number keys select them. */
 const SUPPLY_ACTIONS = [

@@ -15,7 +15,7 @@
 // recorder and the audio probe, bracketing each driven frame around one step of
 // the build's surface, and writing the evidence a review item declares — every
 // engineless case needs exactly that, and it lives once, in
-// `@test-cabinet/case-harness`, staged beside this file as `./case-harness/`.
+// `@clockwyrks/case-harness`, staged beside this file as `./case-harness/`.
 // What is left here is what is genuinely Gantry's: the handle, the operations its
 // specification requires, its snapshot and surface types, its stage and tick
 // rate, its cue naming, and the compound sequences below.
@@ -977,7 +977,7 @@ async function poseAll(h: Harness, calls: readonly PoseCall[]): Promise<void> {
         (surface[name] as (...a: unknown[]) => unknown)(...args);
       }
     },
-    { handle: HANDLE, ops: calls as (string | number | boolean)[][] },
+    { handle: HANDLE, ops: calls },
   );
 }
 
@@ -1279,33 +1279,6 @@ async function onScreen<T>(
   }
 }
 
-/**
- * Run `body` on a screen the SITE poses apply on, and put the screen back.
- *
- * `specs/instrumentation.md`: "The site poses apply on the build and program
- * screens, with no run in progress." Either of the two will do, so a check
- * already standing on the program screen is left there and only one that is
- * somewhere else is moved — to `build`, which is where a site opening leaves a
- * check anyway.
- *
- * THE SECOND HALF OF THAT PRECONDITION IS THE CALLER'S. A run in progress refuses
- * every site pose whatever screen is showing, and nothing here aborts a run to get
- * around it: a helper that ended a check's run to empty its yard would be posing
- * an outcome. A check that wants a different yard poses it before it starts the
- * run, which is also the only order in which it means anything — "the loads a run
- * carries are the ones standing when it starts".
- */
-async function onEditScreen<T>(h: Harness, body: () => Promise<T>): Promise<T> {
-  const was = (await h.snapshot()).screen;
-  if (was === "build" || was === "program") return body();
-  await h.debug.setScreen("build");
-  try {
-    return await body();
-  } finally {
-    await h.debug.setScreen(was);
-  }
-}
-
 /** A design's lattice triple as the vector the snapshot reports. */
 function nodeOf(node: LatticeNode): Vec3 {
   return { x: node[0], y: node[1], z: node[2] };
@@ -1375,33 +1348,6 @@ export function entriesNear(
       distance3(entryAt(entry), at) <= reach,
   );
 }
-
-/**
- * How far apart two colours are, summed across the channels, out of 765.
- *
- * What a check may ask about colour is whether two things are told apart, never
- * what either one is: "Palettes, fonts, layouts, and styling are the build's
- * choices", and `specs/overview.md` asks only that a strut, a cable and a rail
- * are "told apart at a glance" and that a broken member is "unmistakable".
- */
-export function colourDistance(
-  a: readonly [number, number, number],
-  b: readonly [number, number, number],
-): number {
-  return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
-}
-
-/**
- * The ramp's heat: how far a colour leans red of its own blue and green.
- *
- * `specs/overview.md` has each member's colour read "its utilization on a
- * monotone ramp from slack to its limit". Monotone is a fact about the ORDER two
- * colours stand in and not about either one, so this is the quantity a check
- * compares — it rises along any ramp that climbs toward heat, whatever palette a
- * build picks for it.
- */
-export const colourHeat = (c: readonly [number, number, number]): number =>
-  c[0] - (c[1] + c[2]) / 2;
 
 /**
  * Where a lattice node is drawn, as a point a click can pick it by.

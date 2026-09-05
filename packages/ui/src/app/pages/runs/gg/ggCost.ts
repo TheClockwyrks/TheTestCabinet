@@ -23,8 +23,8 @@
 // distinct cached price, rather than dropping those tokens from the split.
 
 import { useMemo } from "react";
-import type { TokenMetrics } from "@test-cabinet/run-record";
-import type { GgCapabilitySet } from "@test-cabinet/run-record/gg";
+import type { TokenMetrics } from "@clockwyrks/run-record";
+import type { GgCapabilitySet } from "@clockwyrks/run-record/gg";
 import { useFindModelOptional } from "../../../data/useModels";
 import type { ModelPrices } from "../../../data/models";
 import { agentProfileName } from "./ggCatalog";

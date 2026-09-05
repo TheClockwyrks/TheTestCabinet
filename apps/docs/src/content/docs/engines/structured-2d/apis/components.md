@@ -277,7 +277,7 @@ after it.
 
 `Component`, `RenderComponent`, `SpriteComponent`, `ShapeComponent`,
 `TextComponent`, `DrawComponent`, `CameraComponent`, and `ColliderComponent` are
-exported as classes from `@test-cabinet/structured-2d`. `ComponentClass`,
+exported as classes from `@clockwyrks/structured-2d`. `ComponentClass`,
 `RenderSpace`, `SpriteOptions`, `Shape`, `ShapeOptions`, `TextOptions`,
 `DrawApi`, `ColliderOptions`, `Vec2`, and `Rect` are exported as types from the
 same entry point.

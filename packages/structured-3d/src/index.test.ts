@@ -100,7 +100,7 @@ import type {
  * export fails `tsc`, not vitest, which is exactly where a build would feel it.
  */
 
-/** Every value the API pages promise `@test-cabinet/structured-3d` exports. */
+/** Every value the API pages promise `@clockwyrks/structured-3d` exports. */
 const DOCUMENTED_VALUES: readonly string[] = [
   // Actors — apis/actors.md
   "Actor",

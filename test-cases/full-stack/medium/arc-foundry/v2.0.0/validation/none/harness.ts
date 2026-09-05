@@ -15,11 +15,10 @@
 // frame around one `advance(dt, 1)` of the build's surface, reading pixels and
 // draw calls back out, and writing the evidence a review point declares — every
 // engineless case needs exactly that, and it lives once, in
-// `@test-cabinet/case-harness`, staged beside this file as `./case-harness/`.
+// `@clockwyrks/case-harness`, staged beside this file as `./case-harness/`.
 // What is left here is what is genuinely Arc Foundry's: the shape of its
-// snapshot, the operations `specs/instrumentation.md` requires, the withholding
-// of one produced file, the snapshot readers, and the compound sequences that
-// pose an isolated yard.
+// snapshot, the operations `specs/instrumentation.md` requires, the snapshot
+// readers, and the compound sequences that pose an isolated yard.
 //
 // The seam is one call. `createCaseHarness` takes the case's TYPES as type
 // arguments and the case's VALUES as one object, and hands back the machinery
@@ -31,8 +30,9 @@
 // build output before it chooses between the vitest and browser paths, so `dist/`
 // is on disk by the time this project runs. Staying a vitest project is what lets
 // the case name ONE script per review item and have it resolve under every engine
-// — `validation/firing/in-range.test.ts` is the same path whichever runtime the
-// run selected — and what keeps `format = 2` resolution passing.
+// that point covers — `validation/firing/in-range.test.ts` is the same path
+// whichever runtime the run selected — and what keeps `format = 2` resolution
+// passing.
 //
 // WHAT A CHECK READS. The game's own state (through `window.__foundry`'s
 // `snapshot`), the seven control and layout readings, the frames the harness
@@ -62,10 +62,8 @@
 // hundred suites say what their scenario is about in one line and say it the same
 // way. A check that needs only part of a sequence calls the operations it needs.
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Page } from "playwright";
 import {
   createCaseHarness,
   type DrawCall,
@@ -141,82 +139,11 @@ export {
 } from "./surface";
 
 /* -------------------------------------------------------------------------- */
-/* Withholding one produced file                                              */
+/* The harness, bound to this case                                            */
 /* -------------------------------------------------------------------------- */
-//
-// The one thing this project arranges on the PAGE rather than through the debug
-// surface, which is why it is the case's own and why the shared harness takes it
-// as a `beforeLoad` hook rather than owning it: a check that has to tell a played
-// particle system apart from geometry the build draws in code gives the build
-// everything it produced except one file, and that routing has to be in place
-// before the bundle is ever fetched.
 
 /** This module's directory: the validator project's root. */
 const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
-
-/** `assets/` at the root of the produced repository, as `specs/assets.md` fixes it. */
-const PRODUCED_ASSETS = join(PROJECT_ROOT, "..", "assets");
-
-/** What a build that never produced a file gets when it asks the site for one. */
-const WITHHELD_BODY = "withheld";
-
-/** The kinds of response a produced file can reach the page inside. */
-const CARRIERS = /\.(?:js|mjs|css|html|json)$/;
-
-/**
- * Keep the produced files named out of this page, whichever way the site carries
- * them.
- *
- * Two shapes, because a bundler chooses between them by size and the choice is not
- * the build's to make here:
- *
- * - **Its own file.** Answered `404`, exactly as the site answers a path the build
- *   never produced. Matched on the body rather than the URL, since the emitted name
- *   is a hash rather than the path the file was committed at.
- * - **Base64 inside another file.** The payload is swapped for bytes that will not
- *   parse as what the build asked for, which is what its loader would see from a
- *   file that did not arrive. The carrier itself still arrives, so nothing else in
- *   it is disturbed.
- *
- * Only the response kinds a produced file can be carried in are inspected, so the
- * sprites, the audio and the bundle's own requests are not copied through the host
- * for nothing.
- */
-async function withholdProduced(
-  page: Page,
-  withhold: readonly string[],
-): Promise<void> {
-  if (withhold.length === 0) return;
-  const files = withhold.map((path) =>
-    readFileSync(join(PRODUCED_ASSETS, path)),
-  );
-  const inlined = files.map((file) => file.toString("base64"));
-  const replacement = Buffer.from(WITHHELD_BODY).toString("base64");
-
-  await page.route(
-    (url) => CARRIERS.test(url.pathname),
-    async (route) => {
-      const response = await route.fetch();
-      const body = Buffer.from(await response.body());
-      if (files.some((file) => file.equals(body))) {
-        await route.fulfill({ status: 404, body: WITHHELD_BODY });
-        return;
-      }
-      let text = body.toString("utf8");
-      let touched = false;
-      for (const payload of inlined) {
-        if (!text.includes(payload)) continue;
-        text = text.split(payload).join(replacement);
-        touched = true;
-      }
-      await route.fulfill({ response, body: touched ? text : body });
-    },
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* The harness, bound to this case                                            */
-/* -------------------------------------------------------------------------- */
 
 /**
  * The frame the suite steps in.
@@ -325,32 +252,7 @@ export interface Harness extends FoundryHarness {
 }
 
 /** How a harness opens its page, and what it steps in. */
-export interface HarnessOptions extends BaseHarnessOptions {
-  /**
-   * Produced files this page is not given, named by the path `specs/assets.md`
-   * fixes for each under `assets/` (`fx/aura.json`).
-   *
-   * WHY A CHECK WOULD WANT THIS. A produced particle system played at a place and a
-   * shape the build draws in code at the same place look alike from outside, and
-   * only the first stops when its file does not arrive. So a check that has to tell
-   * them apart gives the build everything it produced except one file and reads the
-   * same scene again.
-   *
-   * WHY IT IS MATCHED ON CONTENT RATHER THAN ON A URL. An engineless build bundles
-   * its own files, and the bundler configuration is seeded rather than the build's
-   * to write: a produced file leaves the build under a hashed name of the bundler's
-   * choosing, and a small one leaves it carried inside another file as a base64
-   * `data:` URI. Neither is the path the file was committed at, so the file is
-   * recognised by its BYTES, read off disk here, in both of the shapes a site can
-   * carry it in — see {@link withholdProduced}.
-   *
-   * WHAT IT CANNOT REACH, which every check built on it states in its own header: a
-   * build that imports a produced file as a module carries it as parsed source, and
-   * neither shape is on the wire. Such a build is out of this reading's reach, so a
-   * withheld reading may only ever PASS one, never fail it.
-   */
-  withhold?: readonly string[];
-}
+export type HarnessOptions = BaseHarnessOptions;
 
 /**
  * Load the built site in a browser, take the game off the wall clock, and hand
@@ -363,15 +265,7 @@ export interface HarnessOptions extends BaseHarnessOptions {
 export async function createHarness(
   options: HarnessOptions = {},
 ): Promise<Harness> {
-  const { withhold, ...rest } = options;
-  const base = await kit.createHarness(
-    withhold === undefined || withhold.length === 0
-      ? rest
-      : {
-          ...rest,
-          beforeLoad: (page: Page) => withholdProduced(page, withhold),
-        },
-  );
+  const base = await kit.createHarness(options);
   return Object.assign(base, {
     advanceSeconds: (s: number): Promise<void> => base.advance(ticks(s)),
   });
@@ -1606,22 +1500,38 @@ export function drew(
   );
 }
 
-/** `1,234` reads as one figure rather than as `1` beside `234`. */
-function stripGrouping(line: string): string {
-  let out = line;
-  for (;;) {
-    const next = out.replace(/(\d),(\d{3})(?!\d)/g, "$1$2");
-    if (next === out) return out;
-    out = next;
-  }
-}
+/**
+ * The separators a build may set between the digit triples of a figure.
+ *
+ * The specification fixes the figure and leaves its presentation to the build,
+ * and grouping is what `Number.prototype.toLocaleString()` does by default —
+ * with whichever separator the locale uses: a comma, an apostrophe, a no-break
+ * space, a narrow no-break space, a thin space. `1,234` therefore reads as the
+ * one figure `1234` rather than as `1` beside `234`, and a build that draws
+ * `1234` and one that draws `1,234` are read the same.
+ *
+ * The ASCII space is deliberately absent from the class. {@link textLines} joins
+ * the separate draws of a row with one, so accepting it would read the two
+ * figures of `40 130` as the single `40130`. `.` is absent for a related reason:
+ * it is the decimal point, and a build drawing `1.5` means one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** The same separators again, to take back off a figure once it is matched. */
+const GROUPS = new RegExp(GROUP, "g");
+
+/** One figure a line draws: a grouped one, or a plain one. */
+const FIGURE = new RegExp(
+  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
+  "g",
+);
 
 /** Every number a region's text draws, in reading order. */
 export function figures(calls: readonly DrawCall[], region: Region): number[] {
   const found: number[] = [];
   for (const line of textLines(calls, region)) {
-    for (const match of stripGrouping(line).matchAll(/\d+(?:\.\d+)?/g)) {
-      found.push(Number(match[0]));
+    for (const match of line.matchAll(FIGURE)) {
+      found.push(Number(match[0].replace(GROUPS, "")));
     }
   }
   return found;
@@ -1666,9 +1576,6 @@ export interface Rect {
   h: number;
 }
 
-/** The distance two pixels are told apart by, of the 441 the cube spans. */
-export const DISTINCT = 50;
-
 /** A lattice of logical points inside a rectangle, `step` units apart. */
 export function lattice(rect: Rect, step = 2): { x: number; y: number }[] {
   const points: { x: number; y: number }[] = [];
@@ -1697,18 +1604,14 @@ export function maxDistance(
   return worst;
 }
 
-/** How many of two samplings of the same points read as told apart. */
-export function changedPoints(
-  before: readonly Pixel[],
-  after: readonly Pixel[],
-  threshold = DISTINCT,
-): number {
-  let changed = 0;
-  for (let i = 0; i < Math.min(before.length, after.length); i += 1) {
-    if (rgbDistance(before[i]!, after[i]!) > threshold) changed += 1;
-  }
-  return changed;
-}
+/**
+ * The floor a presence reading clears: below it a sampling cannot tell a drawing
+ * from the rounding of eight-bit channels and the antialiasing the host applied.
+ * It is not a line about how a mark looks. A wash, a low-alpha tint and an opaque
+ * fill are all drawings, and `specs/hud.md` fixes what the yard draws and nothing
+ * about how strongly, so anything the build painted clears this.
+ */
+export const DRAWN = 8;
 
 /** Draw one frame and sample it at every point given. */
 export async function sample(
@@ -1717,4 +1620,25 @@ export async function sample(
 ): Promise<Pixel[]> {
   await h.advance(1);
   return h.pixels(points);
+}
+
+/**
+ * How far the same points read from themselves over `moments` frames, unchanged.
+ *
+ * The control a reading that expects NOTHING is held against. Nothing in
+ * `specs/hud.md` forbids a build from animating its yard, so "these points did
+ * not change" can only ever mean "these points moved no further than they move
+ * when nothing at all is asked of them".
+ */
+export async function idleSpread(
+  h: Harness,
+  points: readonly { x: number; y: number }[],
+  moments = 4,
+): Promise<number> {
+  const first = await sample(h, points);
+  let worst = 0;
+  for (let i = 1; i < moments; i += 1) {
+    worst = Math.max(worst, maxDistance(first, await sample(h, points)));
+  }
+  return worst;
 }

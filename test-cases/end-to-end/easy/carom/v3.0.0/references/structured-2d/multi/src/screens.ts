@@ -13,8 +13,8 @@
 // chooses where an item goes: the layout is the one `menuItemRect` reports, so
 // the item a player clicks is the item they were shown.
 
-import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
-import type { DrawApi, RenderMode, World } from "@test-cabinet/structured-2d";
+import { Actor, DrawComponent } from "@clockwyrks/structured-2d";
+import type { DrawApi, RenderMode, World } from "@clockwyrks/structured-2d";
 import {
   FIELD_CX,
   FIELD_CY,

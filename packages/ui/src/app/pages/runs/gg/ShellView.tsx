@@ -12,7 +12,7 @@
 import type {
   GgShellCwd,
   GgShellOrigin,
-} from "@test-cabinet/run-record/gg-session-record";
+} from "@clockwyrks/run-record/gg-session-record";
 import panels from "./GgPanels.module.scss";
 import type { ShellCommandEntry } from "./useGgRunState";
 import { ExpandablePre } from "./MessageOverlay";

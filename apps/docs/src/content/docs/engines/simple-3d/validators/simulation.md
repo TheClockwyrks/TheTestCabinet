@@ -18,7 +18,7 @@ usual choice: sixty frames of `new ConstantClock(1000 / 60)` is one second of
 simulated time, whatever the machine running the suite is doing.
 
 ```ts
-import { ConstantClock } from "@test-cabinet/simple-3d";
+import { ConstantClock } from "@clockwyrks/simple-3d";
 import { BED_Y, TRUCK_X, TRUCK_Z } from "../src/constants";
 import { createHarness } from "../harness";
 

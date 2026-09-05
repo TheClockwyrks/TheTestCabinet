@@ -3,7 +3,7 @@ import type {
   CodeAnalysisDocument,
   CodeFileEntry,
   CodeSymbolEntry,
-} from "@test-cabinet/run-record/code-analysis";
+} from "@clockwyrks/run-record/code-analysis";
 import {
   buildCodeTree,
   codeBreadcrumb,

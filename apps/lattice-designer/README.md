@@ -16,7 +16,7 @@ scenario** below).
 
 ```sh
 npm install                       # once, from the repo root (adds this workspace)
-npm run dev -w @test-cabinet/lattice-designer
+npm run dev -w @clockwyrks/lattice-designer
 ```
 
 Then open the printed URL (defaults to <http://localhost:1431>).
@@ -79,7 +79,7 @@ failure this tool makes easy to cause.
 ## How it reuses the engine
 
 There is no second simulation here. The tool aliases straight to the console UI's
-Lattice player (`@test-cabinet/ui`'s `pages/runs/lattice`) for:
+Lattice player (`@clockwyrks/ui`'s `pages/runs/lattice`) for:
 
 - the **engine** — `lattice-core` compiled to wasm (the same one the CLI, validator,
   and run player use), stepped through its playback ABI;

@@ -264,6 +264,6 @@ The nearest collider on a channel the query answers is the hit.
 
 ## Exports
 
-`ColliderComponent` is exported as a class from `@test-cabinet/structured-3d`.
+`ColliderComponent` is exported as a class from `@clockwyrks/structured-3d`.
 `ColliderShape`, `CollisionResponse`, `ColliderOptions`, `Manifold`, `Overlap`,
 `Hit`, `QueryOptions`, and `CollisionWorld` are exported as types.

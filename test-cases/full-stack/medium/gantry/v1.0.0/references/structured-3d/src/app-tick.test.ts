@@ -3,7 +3,7 @@ import type {
   InputReader,
   PointerSample,
   PointerSnapshot,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import {
   CLICK_SLOP,
   ORBIT_KEY_RATE,

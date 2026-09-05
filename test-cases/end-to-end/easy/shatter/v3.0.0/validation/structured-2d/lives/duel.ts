@@ -108,6 +108,16 @@ export function poseDuel(
   h.debug.setShipCollision(true);
 }
 
+/**
+ * The velocity a ship charging straight out from the star at `speed` carries.
+ *
+ * A body {@link poseRockAtRange} places comes in along that same line, so a ship
+ * given this meets it head-on and the pair closes at the sum of the two speeds.
+ */
+export function chargeVelocity(speed: number): { vx: number; vy: number } {
+  return { vx: AWAY_FROM_STAR.x * speed, vy: AWAY_FROM_STAR.y * speed };
+}
+
 /** Where a body is posed: `centres` units from the ship, on the far side from the star. */
 function doorstep(centres: number): Vec {
   return {

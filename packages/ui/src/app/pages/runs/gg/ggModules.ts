@@ -38,7 +38,7 @@ import type {
   GgMemoryScope,
   GgModuleKind,
   GgModuleOrigin,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import {
   MODULE_CAPABILITY_IDS,
   agentProfile,

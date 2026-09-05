@@ -38,7 +38,7 @@
 // broken keyboard fails the `controls/move-*` points and is judged here on the
 // clock alone.
 
-import { WallClock } from "@test-cabinet/simple-2d";
+import { WallClock } from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { ARROW_KEY, BRIGHT_HOLD, DRIFTER_SPEED } from "../constants";

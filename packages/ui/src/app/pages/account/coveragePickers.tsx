@@ -4,7 +4,7 @@ import type {
   CoverageAxis,
   ReviewPlanCase,
   ReviewPlanCombo,
-} from "@test-cabinet/run-record/coverage";
+} from "@clockwyrks/run-record/coverage";
 import { useAuth } from "../../../client/auth";
 import type { Model } from "../../../client/types";
 import { harnesses, recordedHarnesses } from "../../data/harnesses";

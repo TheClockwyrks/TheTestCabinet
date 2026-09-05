@@ -1,4 +1,4 @@
-// Meltdown — presentation/range-ring-on-a-selection — a selected tower draws a ring at its
+// presentation/range-ring-on-a-selection — a selected tower draws a ring at its
 // own range, centred on its footprint.
 //
 // THE RULE. specs/building.md: selecting a placed tower "draws a range ring at
@@ -10,34 +10,40 @@
 // ONE SURFACE, BECAUSE THE PREVIEW AND THE SELECTION ARE TWO DRAWINGS. A build
 // commonly draws one and not the other, so a build that draws the selection's
 // ring and no preview ring must not grade as one that draws neither. The
-// preview's ring is `presentation.range-ring-on-the-preview`'s.
+// preview's ring is `presentation.range-ring-on-the-preview`'s.//
+// HOW A RING IS READ, AND WHY IT IS A DIFFERENCE BETWEEN TWO FRAMES. Nothing
+// fixes what a ring looks like — its colour, its width, whether it is dashed or
+// washed — and specs/floor.md puts a grid line on every tile boundary, which a
+// hairline ring can be no brighter than. So the ring is not looked for as a
+// colour, and it is never held against the floor the same build drew: the same
+// points are read with nothing armed and nothing selected, and then again with
+// the preview held or the tower selected, and the ring is what MOVED. The floor
+// art, the grid and the tower itself are identical in the two frames and cancel
+// exactly. How much the picture moves on its own is measured rather than assumed:
+// two quiet frames are read first, and the ring has to beat that movement by
+// `NOISE_MARGIN`. No figure here says how strongly a ring must be drawn, so a
+// quiet hairline over the floor reads exactly as a bright one does.
 //
-// WHAT IS READ, AND WHY IT IS READ AT TWO RADII. A ring that is merely SOMEWHERE
-// is not the requirement — a build that draws every ring at a fixed radius, or
-// that reads the range in units where the specification states tiles, has drawn a
-// ring that lies to the player. So the reading is taken twice: at the range,
-// where a mark must be found nearly all the way round, and a quarter further out,
-// where nearly none may be. A quarter of the range is far wider than any line a
-// build draws its ring with, so the two readings cannot both be answered by one
-// ring, and a ring at the wrong radius answers neither the way a right one does.
+// AND WHY THE CIRCLE IS READ AT EVERY ANGLE. Sixteen bearings around the centre,
+// each read across a narrow band of radii. A build that centred its ring on the
+// footprint's top-left corner, or on the pointer, draws a circle that crosses
+// this one at two bearings and misses it at the other fourteen, so requiring
+// every bearing is what makes "centred on the footprint's centre" a reading
+// rather than a hope.
 //
-// TWO CHECKS, NOT ONE. The held preview and the selected tower are separate
-// requirements in specs/building.md, so a build that draws one ring and not the
-// other grades differently from one that draws neither.
-//
-// WHAT IS COMPARED, AND WHY IT IS NEVER A COLOUR. specs/overview.md fixes no
-// palette, so the ring is whatever the build chose. Each reading asks only
-// whether the floor at that point still looks like the floor: the reference is
-// what the floor around the tower mostly reads as, taken from the centres of the
-// tiles about it, so a build that shades or textures its floor is compared
-// against its own floor. The bar is set well above what a tile grid line reads,
-// so the grid — which specs/overview.md requires to be visible at all times —
-// cannot be mistaken for a ring.
+// HOW THE RADIUS IS PINNED. A second band of the same sixteen bearings, two tiles
+// further out, must stay inside its OWN measured movement — nothing new drawn
+// there. A ring drawn too small is already refused by the first band finding
+// nothing; this refuses one drawn too large, and one drawn across the whole
+// floor. There is deliberately no equivalent band INSIDE the ring:
+// specs/building.md says a ring at the range and says nothing against a build
+// that also washes the ground it covers, and a check that forbade the wash would
+// be inventing a rule.
 //
 // AN ARC, AND WHY IT STANDS WHERE IT DOES. Its `6.0` tiles put the whole ring,
-// and the quarter-wider circle the check reads as well, comfortably inside the
-// floor from the tile chosen, so no part of either reading falls on the casing or
-// on the build panel.
+// and the quiet band two tiles outside it, comfortably inside the floor from the
+// tile chosen, so no part of either reading falls on the casing or on the build
+// panel.
 //
 // WHAT IT DOES NOT DECIDE. What a tower can actually hit at that range is
 // `combat.range`; that arming holds a preview and that pressing a tower selects
@@ -46,14 +52,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
-import {
-  TILE,
-  TOWER_DEFS,
-  emitterStats,
-  inBounds,
-  tileCX,
-  tileCY,
-} from "../constants";
+import { TILE, TOWER_DEFS, emitterStats } from "../constants";
 import {
   captureStill,
   colorDistance,
@@ -66,66 +65,29 @@ import {
   type TowerType,
 } from "../harness";
 import { poseStillTower } from "./pose";
-import { dominant, pixelAt, showRgb } from "./read";
+import { NOISE_MARGIN, readPoints } from "./read";
+
+/** The bearings the circle is read at. */
+const BEARINGS = 16;
 
 /**
- * How far, out of the 441 the RGB cube spans, a point on the ring must sit from
- * the floor for the ring to have been drawn there.
+ * How far either side of the exact radius the ring is looked for, in units.
  *
- * The group's figure for two things a player tells apart at a glance, and the
- * same 50 every other point in this group draws its line at. It is also what
- * keeps the grid out of the reading: `floor.grid-visible` counts a grid line at
- * eight of 441 above the floor, deliberately quiet so it does not compete with
- * what stands on it, and a ring drawn that quietly is not a ring a player
- * follows.
+ * specs/building.md fixes the radius and leaves the line width, the softness of
+ * its edge and any glow under it to the build. Five units is about a quarter of a
+ * `TILE`, which admits a thick ring and an anti-aliased one, and is a long way
+ * inside the two tiles the quiet band sits out at.
  */
-const APART_MIN = 50;
+const RADIUS_SLACK = 5;
 
 /**
- * How much of the circle at the range must carry the ring, and how much of the
- * circle a quarter further out may.
+ * How far outside the ring the quiet band is read, in tiles.
  *
- * A ring is a closed curve, so nearly every direction from the centre crosses it;
- * the tenth this leaves is for a build that dashes its ring or opens it where a
- * label sits. The same tenth is the ceiling further out, where a ring at the
- * range puts nothing at all.
+ * Two tiles: eight times the slack above, so a build whose ring is where the
+ * specification puts it cannot reach the quiet band with any line width a player
+ * would call a ring, while a ring drawn a whole tile wrong is refused.
  */
-const ON_RING_MIN = 0.9;
-const OFF_RING_MAX = 0.1;
-
-/**
- * How far outside the range the second reading is taken, as a multiple of it.
- *
- * A quarter of the range is 28 units at the range read here — far more than the
- * width of any line, and far more than the few units of anti-aliasing around one,
- * so a ring drawn at the range cannot reach it.
- */
-const OFF_RING_SCALE = 1.25;
-
-/** How many directions from the centre each circle is read along. */
-const ANGLES = 24;
-
-/**
- * How far either side of a radius the reading looks, in units.
- *
- * A ring is a line with a width and the specification fixes neither, so a point
- * exactly at the radius may fall just inside or just outside the stroke the build
- * laid down. Three units either way is wider than any ordinary line weight and
- * far narrower than the quarter-range gap between the two circles read.
- */
-const RADIAL_WINDOW = 3;
-
-/**
- * How close two tile centres must be to count as the same reading, when the check
- * asks what the floor around the tower mostly is.
- *
- * Half of `APART_MIN`, and the group's figure for two readings that are the same
- * thing rather than two things: a plate texture, lane shading, a vignette.
- */
-const SAME_READING_MAX = 25;
-
-/** How far around the tower the floor reference is gathered, in tiles. */
-const FLOOR_SPREAD = 10;
+const QUIET_TILES_OUT = 2;
 
 /** The tower the ring is read on, and the tile it is anchored at. */
 const TYPE: TowerType = "arc";
@@ -139,63 +101,80 @@ if (DEF.kind !== "emitter") {
   // A fault in this check rather than a verdict about the build: only an emitter
   // has a range for a ring to be drawn at (specs/towers.md).
   throw new Error(
-    `meltdown presentation/range-ring-drawn.test.ts: ${TYPE} is not an emitter`,
+    `meltdown presentation/range-ring-on-a-selection.test.ts: ${TYPE} is not an emitter`,
   );
 }
 /** Level I, which is what a held preview and a freshly placed tower carry. */
 const RANGE = emitterStats(DEF, 1).range;
 const RADIUS = RANGE * TILE;
 
-/** What the floor around the tower reads as, from the centres of its tiles. */
-function floorReading(h: Harness): Rgb {
-  const samples: Rgb[] = [];
-  for (let c = COL - FLOOR_SPREAD; c <= COL + FLOOR_SPREAD; c += 1) {
-    for (let r = ROW - FLOOR_SPREAD; r <= ROW + FLOOR_SPREAD; r += 1) {
-      if (!inBounds(c, r)) continue;
-      samples.push(pixelAt(h, tileCX(c), tileCY(r)));
+/** One band of points: `BEARINGS` bearings, each across a slack of radii. */
+function bandPoints(radius: number): Point[] {
+  const points: Point[] = [];
+  for (let n = 0; n < BEARINGS; n += 1) {
+    const theta = (2 * Math.PI * n) / BEARINGS;
+    for (let d = -RADIUS_SLACK; d <= RADIUS_SLACK; d += 1) {
+      points.push({
+        x: CENTRE.x + (radius + d) * Math.cos(theta),
+        y: CENTRE.y + (radius + d) * Math.sin(theta),
+      });
     }
   }
-  return dominant(samples, SAME_READING_MAX);
+  return points;
 }
 
-/** What proportion of the circle at `radius` carries a mark on the floor. */
-function ringFraction(h: Harness, radius: number, floor: Rgb): number {
-  let marked = 0;
-  for (let i = 0; i < ANGLES; i += 1) {
-    const angle = (i / ANGLES) * Math.PI * 2;
+/** The two bands, ring first, read in one pass over the frame on the canvas. */
+const RING = bandPoints(RADIUS);
+const OUTSIDE = bandPoints(RADIUS + QUIET_TILES_OUT * TILE);
+const POINTS = [...RING, ...OUTSIDE];
+
+/** How far each bearing's strongest pixel moved between two readings. */
+function shiftPerBearing(
+  before: readonly Rgb[],
+  after: readonly Rgb[],
+): number[] {
+  const stride = 2 * RADIUS_SLACK + 1;
+  const shifts: number[] = [];
+  for (let n = 0; n < BEARINGS; n += 1) {
     let best = 0;
-    for (let d = -RADIAL_WINDOW; d <= RADIAL_WINDOW; d += 1) {
-      const at = pixelAt(
-        h,
-        CENTRE.x + Math.cos(angle) * (radius + d),
-        CENTRE.y + Math.sin(angle) * (radius + d),
-      );
-      best = Math.max(best, colorDistance(at, floor));
+    for (let i = n * stride; i < (n + 1) * stride; i += 1) {
+      best = Math.max(best, colorDistance(before[i], after[i]));
     }
-    if (best >= APART_MIN) marked += 1;
+    shifts.push(best);
   }
-  return marked / ANGLES;
+  return shifts;
 }
 
-/** Both readings of the frame on the canvas, and the floor they were taken over. */
-function readRing(h: Harness): { on: number; off: number; floor: Rgb } {
-  const floor = floorReading(h);
+/**
+ * Read the two bands twice quietly and once with `show` done, and hand back what
+ * moved at each bearing on each band, against the floor's own movement.
+ */
+async function ringReading(
+  h: Harness,
+  show: () => void,
+): Promise<{
+  ring: number[];
+  quiet: number[];
+  noise: number[];
+  quietNoise: number[];
+}> {
+  await h.advance(1);
+  const first = readPoints(h, POINTS);
+  await h.advance(1);
+  const second = readPoints(h, POINTS);
+
+  show();
+  await h.advance(1);
+  captureStill(h, "ring");
+  const shown = readPoints(h, POINTS);
+
+  const split = RING.length;
   return {
-    on: ringFraction(h, RADIUS, floor),
-    off: ringFraction(h, RADIUS * OFF_RING_SCALE, floor),
-    floor,
+    ring: shiftPerBearing(second.slice(0, split), shown.slice(0, split)),
+    quiet: shiftPerBearing(second.slice(split), shown.slice(split)),
+    noise: shiftPerBearing(first.slice(0, split), second.slice(0, split)),
+    quietNoise: shiftPerBearing(first.slice(split), second.slice(split)),
   };
-}
-
-/** What a failure names: whose ring, at what radius, and why that radius. */
-function because(whose: string, floor: Rgb): string {
-  return (
-    `${whose}: the proportion of the circle ${RANGE} tiles (${RADIUS} units) ` +
-    `from the footprint's centre carrying a mark at least ${APART_MIN} of 441 ` +
-    `from the floor around it (${showRgb(floor)}) (specs/building.md: a range ` +
-    `ring at the tower's range, centred on the footprint's centre; ` +
-    `specs/towers.md: an ${TYPE}'s range is ${RANGE})`
-  );
 }
 
 let h: Harness;
@@ -211,16 +190,28 @@ afterEach(() => {
 it("draws a ring at a selected tower's range around it", async () => {
   startRun(h);
   const id = poseStillTower(h, TYPE, COL, ROW);
-  h.debug.setSelected(id);
-  await h.advance(1);
-  captureStill(h, "ring");
+  const reading = await ringReading(h, () => {
+    h.debug.setSelected(id);
+  });
 
-  const { on, off, floor } = readRing(h);
-  assertGreaterThanOrEqual(on, ON_RING_MIN, because("a selected tower", floor));
-  assertLessThanOrEqual(
-    off,
-    OFF_RING_MAX,
-    `${because("a selected tower", floor)}, read instead at ${OFF_RING_SCALE} ` +
-      `times that radius, where a ring drawn at the range puts nothing`,
-  );
+  for (let n = 0; n < BEARINGS; n += 1) {
+    assertGreaterThanOrEqual(
+      reading.ring[n],
+      reading.noise[n] + NOISE_MARGIN,
+      `a selected ${TYPE} on tile (${COL}, ${ROW}): something is drawn ` +
+        `${RANGE} tiles (${RADIUS} units) from its footprint centre on ` +
+        `bearing ${n} of ${BEARINGS} that was not there while it stood ` +
+        `unselected (specs/building.md: selecting draws a range ring at that ` +
+        `tower's range, centred on its footprint's centre; specs/towers.md ` +
+        `gives an ${TYPE} ${RANGE} tiles)`,
+    );
+    assertLessThanOrEqual(
+      reading.quiet[n],
+      reading.quietNoise[n] + NOISE_MARGIN,
+      `a selected ${TYPE}: the floor ${QUIET_TILES_OUT} tiles OUTSIDE that ` +
+        `ring, on bearing ${n} of ${BEARINGS}, is untouched, so the ring is ` +
+        `at the ${RANGE}-tile range rather than a larger one ` +
+        `(specs/building.md)`,
+    );
+  }
 });

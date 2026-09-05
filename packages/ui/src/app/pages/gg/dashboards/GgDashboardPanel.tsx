@@ -20,8 +20,8 @@
 //   range, so "why is that number that" is one click from the editor, the field sidebar
 //   and the completer.
 import { Link } from "react-router";
-import { Spinner } from "@test-cabinet/ui";
-import type { GgQueryResponse } from "@test-cabinet/run-record/gg-query";
+import { Spinner } from "@clockwyrks/ui";
+import type { GgQueryResponse } from "@clockwyrks/run-record/gg-query";
 import { GgBucketTable } from "../discover/GgBucketTable";
 import { GgDocTable } from "../discover/GgDocTable";
 import { GgVizPanel } from "../discover/GgVizPanel";

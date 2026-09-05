@@ -73,8 +73,8 @@ reads `engine.debug` holds the same object for the life of the engine, across
 every level the game opens.
 
 ```ts
-import { GameInstance, vec3 } from "@test-cabinet/structured-3d";
-import type { InitApi } from "@test-cabinet/structured-3d";
+import { GameInstance, vec3 } from "@clockwyrks/structured-3d";
+import type { InitApi } from "@clockwyrks/structured-3d";
 import { Ball } from "./actors";
 import { ArenaMode } from "./modes";
 import { TAGS } from "./constants";
@@ -139,7 +139,7 @@ instance's own methods, so long as the value `initialize` returns carries them.
 engine handle is the whole route to it. A caller drives an operation directly:
 
 ```ts
-import { ConstantClock, createEngine } from "@test-cabinet/structured-3d";
+import { ConstantClock, createEngine } from "@clockwyrks/structured-3d";
 
 const engine = createEngine({
   canvas,

@@ -19,8 +19,8 @@
 // nothing. A missing file costs the game its polish rather than its
 // playability (specs/assets.md).
 
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
+import type { InitApi } from "@clockwyrks/simple-2d";
 import {
   APERTURE_FRAMES,
   APERTURE_SHEETS,

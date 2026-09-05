@@ -6,7 +6,7 @@ import type {
   GgConfig,
   GgSavedAgent,
   GgSubagentRef,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import {
   AGENT_MODES,
   CAPABILITIES,

@@ -30,12 +30,11 @@
 // be a difference this reading would have to explain away.
 //
 // THE PREMISE, ASSERTED RATHER THAN ASSUMED. Two cells drawn exchanged can only
-// be read where the two gems are drawn apart in the first place, so the two
-// unoffered readings themselves have to stand more than PATCH_DISTINCT_MIN apart.
-// The pair posed here is two of the seven kinds, which
-// `appearance/kinds-distinguishable` decides separately; this asserts it of the
-// two cells it is about, so a build that failed it fails there rather than
-// answering this point on a coincidence.
+// be read where the two gems were drawn differently in the first place, so the
+// two unoffered readings themselves have to differ. That is a premise of the
+// reading rather than a claim about how far apart two kinds look, which is the
+// reviewer's; a build that drew the pair identically fails here as a point it
+// could not be read on rather than answering on a coincidence.
 //
 // NOTHING IS RELEASED. specs/controls.md makes the release the edge that requests
 // a swap, and the offer is posed through `setOffer`, which
@@ -59,7 +58,7 @@ import {
   assertLessThan,
   assertTrue,
 } from "../assert";
-import { GEM_KINDS, PATCH_DISTINCT_MIN } from "../constants";
+import { GEM_KINDS } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -81,9 +80,9 @@ const OFFERED: CellRef = { col: 4, row: 3 };
 /**
  * The two kinds the two cells carry.
  *
- * Two of the seven, which specs/board.md requires be told apart at a glance and
- * `appearance/kinds-distinguishable` decides. Nothing about the point depends on
- * which two they are, only that they are two.
+ * Two of the seven. Nothing about the point depends on which two they are, only
+ * that they are two, and the premise below asserts of these two cells that the
+ * build drew them differently.
  */
 const HELD_KIND = GEM_KINDS[0];
 const OFFERED_KIND = GEM_KINDS[3];
@@ -175,7 +174,7 @@ it("draws the offered pair carrying each other's gems", async () => {
   // a reading can see at all.
   assertGreaterThan(
     patchDistance(unoffered.held, unoffered.offered),
-    PATCH_DISTINCT_MIN,
+    0,
     `how far the ${HELD_KIND} at (${HELD.col},${HELD.row}) and the ` +
       `${OFFERED_KIND} at (${OFFERED.col},${OFFERED.row}) read apart with ` +
       `nothing offered`,

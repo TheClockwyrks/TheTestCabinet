@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { ASSET_ROOT, CUES, VOXELS_PER_UNIT } from "./constants";
-import type { InitApi, Model } from "@test-cabinet/simple-3d";
+import type { InitApi, Model } from "@clockwyrks/simple-3d";
 import type { GantryState } from "./game";
 import {
   cuePath,

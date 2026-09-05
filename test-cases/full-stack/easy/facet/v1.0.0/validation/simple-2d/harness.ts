@@ -44,12 +44,12 @@
 //
 // POSES DO NOT ADVANCE. No helper here runs a frame implicitly except
 // `swapAndStep`, `advanceStep`, `resolveChain`, `swapAndResolve`, `frameCalls`,
-// `frameText` and `tap`; `warmAudio` and `runFor` run frames too, and each says
-// so where it is declared. A pose takes effect at the call, so `simTime`,
-// `stepTimer` and the refusal timer stay readable exactly as the specs state
-// them, and a check that needs the frame DRAWN calls `h.advance(1)` itself. A
-// cue, by contrast, is played by a frame and never by a pose (specs/ui.md), so a
-// check about a cue advances one.
+// `frameText` and `tap`; `warmAudio` runs frames too, and says so where it is
+// declared. A pose takes effect at the call, so `simTime`, `stepTimer` and the
+// refusal timer stay readable exactly as the specs state them, and a check that
+// needs the frame DRAWN calls `h.advance(1)` itself. A cue, by contrast, is
+// played by a frame and never by a pose (specs/ui.md), so a check about a cue
+// advances one.
 //
 // A WHOLE POINTER GESTURE IS A POSE. A press, the moves that carry it, and the
 // release all take effect at their calls, so `dragGem` poses the whole of a move
@@ -80,7 +80,7 @@ import {
   type Resource,
   type SurfaceMetrics,
   type Viewport,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 import {
   BACKGROUND as buildBackground,
@@ -123,7 +123,6 @@ import {
   type FacetSnapshot,
   type Screen,
 } from "./surface";
-import { setAssetTransport } from "./dom-shim";
 
 export { ConstantClock, JitterClock, SequenceClock };
 export type { Clock, Viewport };
@@ -378,13 +377,6 @@ export interface AssetFailure {
   reason: string;
 }
 
-/** A sampled color, each channel 0-255. */
-export interface Rgb {
-  r: number;
-  g: number;
-  b: number;
-}
-
 /** A sampled pixel, as `[r, g, b, a]`. */
 export type Rgba = [number, number, number, number];
 
@@ -408,20 +400,14 @@ export interface HarnessOptions {
   /** The seed `reset` is posed with. Defaults to DEFAULT_SEED. */
   seed?: number;
   /**
-   * Whether the disk transport serves the build's produced files. `false` is
-   * for the one kind of check that is about a build surviving assets that never
-   * arrive. It is process-global, so such a harness must be the only one alive.
-   */
-  assets?: boolean;
-  /**
    * The sub-path the build is served from. Defaults to `"/"`, the site root.
    *
    * specs/assets.md has a build load its produced files PAGE-RELATIVE, so a
    * deployment under a sub-path serves them unchanged. Set to something like
-   * `"/facet/"` and every request the build makes is answered as a browser on a
-   * page at that base would answer it: a relative path still resolves, and a
-   * path the build rooted at `/` does not — which is the whole of what
-   * `assets/assets-load-page-relative` is about.
+   * `"/facet/"` and the mount the build resolved its paths against is recorded
+   * beside every request it made, which is what
+   * `assets/assets-load-page-relative` reads. Every request still succeeds: the
+   * produced files stand up for every check this project runs.
    */
   basePath?: string;
 }
@@ -540,12 +526,6 @@ export interface Harness {
     predicate: (snapshot: FacetSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
-  /**
-   * Hand the game to its OWN frame loop for `ms` of real time, then take it
-   * back. `instrumentation/advances-in-real-time` is the one item that needs it.
-   */
-  runFor(ms: number): Promise<void>;
-
   /**
    * Press a key and leave it down, as a player holding it would. `code` is a
    * `KeyboardEvent.code`. A KEYBOARD verb, never a pointer one.
@@ -877,28 +857,16 @@ interface Transport {
 }
 
 /**
- * Whether a page served at `basePath` would reach `url`.
- *
- * At the site root everything resolves. Under a sub-path a PAGE-RELATIVE path
- * still resolves — that is what specs/assets.md asks a build for — while a path
- * the build rooted at `/` names a file the deployment does not serve, and an
- * absolute URL is off-site and the check's own business rather than this
- * function's.
- */
-function servedUnder(basePath: string, url: string): boolean {
-  if (basePath === "/") return true;
-  if (/^[a-z][a-z0-9+.-]*:/iu.test(url)) return true;
-  return !url.startsWith("/") || url.startsWith(basePath);
-}
-
-/**
  * Every live harness's request log, and the one `fetch` wrapper that feeds them.
  *
  * Installed once, over whatever transport `dom-shim.ts` put in place, for the
- * same reason the console wrapper is. A harness records only while it is alive —
- * from its construction to its `dispose` — so two harnesses up at once would
- * each see the other's requests, which is why a check that reads `requests` or
- * poses a `basePath` keeps one harness alive at a time.
+ * same reason the console wrapper is. It OBSERVES and refuses nothing: every
+ * request the build makes is written down and handed straight to the transport,
+ * so a check that is about which paths a build resolved reads them off this log
+ * with every produced file still standing up. A harness records only while it is
+ * alive — from its construction to its `dispose` — so two harnesses up at once
+ * would each see the other's requests, which is why a check that reads
+ * `requests` or poses a `basePath` keeps one harness alive at a time.
  */
 const transports = new Set<Transport>();
 let fetchWrapped = false;
@@ -912,14 +880,7 @@ function wrapFetch(): void {
   const previous = globals.fetch.bind(globalThis);
   globals.fetch = async (input: unknown, init?: unknown): Promise<Response> => {
     const asked = String(input);
-    let refused = false;
-    for (const transport of transports) {
-      transport.requests.push(asked);
-      if (!servedUnder(transport.basePath, asked)) refused = true;
-    }
-    if (refused) {
-      return new Response(null, { status: 404, statusText: "Not Found" });
-    }
+    for (const transport of transports) transport.requests.push(asked);
     return previous(input, init);
   };
 }
@@ -1015,7 +976,6 @@ export async function createHarness(
     heard += 1;
   });
 
-  if (options.assets === false) setAssetTransport(false);
   await engine.initialize();
   const surfaceFault = surfaceFaultOf(engine);
   const debug = driveSurface(engine, readDebugSurface(engine));
@@ -1116,14 +1076,6 @@ export async function createHarness(
       return { hit: false, frames, snapshot };
     },
 
-    async runFor(ms) {
-      const controller = new AbortController();
-      const running = engine.run({ signal: controller.signal });
-      await wait(ms);
-      controller.abort();
-      await running;
-    },
-
     hold: (code) => dispatch("keydown", code),
     release: (code) => dispatch("keyup", code),
     client: (x, y) => toClient(engine.viewport(), dpr, x, y),
@@ -1192,7 +1144,6 @@ export async function createHarness(
       engine.destroy();
       errorSinks.delete(pageErrors);
       transports.delete(transport);
-      if (options.assets === false) setAssetTransport(true);
     },
   };
 
@@ -2026,17 +1977,6 @@ export function drawOps(calls: readonly DrawCall[]): number {
 /* Pixels                                                                     */
 /* -------------------------------------------------------------------------- */
 
-/** The color at a logical stage point. */
-export function sampleColor(h: Harness, x: number, y: number): Rgb {
-  const [r, g, b] = h.pixel(x, y);
-  return { r, g, b };
-}
-
-/** The Euclidean distance between two colors, 0..441. */
-export function colorDistance(a: Rgb, b: Rgb): number {
-  return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
-}
-
 /**
  * The device-pixel box centered on a cell's center.
  *
@@ -2047,9 +1987,9 @@ export function colorDistance(a: Rgb, b: Rgb): number {
  * The box is `2 * round(half * scale) + 1` device pixels on a side — ODD, so it
  * is centered on the cell center rather than half a pixel off it — and it is that
  * size wherever the cell sits: at a canvas edge the ORIGIN slides inward and the
- * size holds. `patchDistance` is a MEAN over the box, and `PATCH_DISTINCT_MIN`
- * and `PATCH_SAME_MAX` are one pair of thresholds under all three engines, so a
- * box that changed shape near an edge would make them mean different things.
+ * size holds. `patchDistance` is a MEAN over the box, so a box that changed
+ * shape near an edge would make two readings of one cell answer differently for
+ * the box rather than for what was drawn in it.
  */
 export function readPatch(
   h: Harness,
@@ -2076,13 +2016,12 @@ export function readPatch(
 /**
  * The mean per-pixel Euclidean RGB distance between two patches, 0 to about 441.
  *
- * THE DISTINGUISHABILITY INSTRUMENT. Per-pixel rather than between the two mean
- * colors, because a build is entitled to tell two kinds apart by FORM — the same
- * hue, a different facet pattern — and two patches with identical means can still
- * differ in every pixel. A hue difference and a form difference both register
- * here, which is what makes this reading fair to a build whose look is not the
- * reference's. It says nothing about which colors were used, and no check may
- * ask it to.
+ * THE PRESENCE INSTRUMENT. Per-pixel rather than between the two mean colors,
+ * because two patches with identical means can still differ in every pixel, so a
+ * mean would call a cell unchanged that the build redrew. Every check that reads
+ * it asks one question of the number — whether it is zero — and a check that
+ * asked how LARGE it is would be grading a build's palette, its contrast or its
+ * treatment, which the reviewer judges and no check here may.
  *
  * Two patches of different shapes are a fixture fault rather than a reading, and
  * a patch of no pixels at all measures no distance.
@@ -2106,22 +2045,6 @@ export function patchDistance(a: Patch, b: Patch): number {
     );
   }
   return total / pixels;
-}
-
-/** The mean color of a patch, or black when the patch holds no pixels. */
-export function meanColor(patch: Patch): Rgb {
-  const pixels = patch.width * patch.height;
-  if (pixels === 0) return { r: 0, g: 0, b: 0 };
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  for (let i = 0; i < pixels; i += 1) {
-    const at = i * 4;
-    r += patch.data[at];
-    g += patch.data[at + 1];
-    b += patch.data[at + 2];
-  }
-  return { r: r / pixels, g: g / pixels, b: b / pixels };
 }
 
 /* -------------------------------------------------------------------------- */

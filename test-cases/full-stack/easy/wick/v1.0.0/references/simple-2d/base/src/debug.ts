@@ -27,7 +27,7 @@ import {
 import { choose as chooseOffer } from "./flow";
 import type { Screen, WickDebugApi, WickSnapshot, WickState } from "./game";
 import { menuRects, tabRects } from "./menus";
-import { seedState } from "./rng";
+import { nextRandom, seedState } from "./rng";
 import {
   cloneState,
   initialState,
@@ -343,6 +343,21 @@ export function createDebugApi(): WickDebugApi {
       return pose(state, (draft) => {
         draft.run.spawnTimer = value;
       });
+    },
+
+    /**
+     * Take `draws` draws off the generator and discard them, so `rngState`
+     * lands where `draws` random choices would have left it. Nothing is
+     * chosen with what was drawn. Applies on every screen, so it clones the
+     * state itself rather than going through `pose`.
+     */
+    advanceRng(state, draws) {
+      const count = whole(draws, "draws", 0);
+      const draft = cloneState(state);
+      for (let i = 0; i < count; i += 1) {
+        draft.rngState = nextRandom(draft.rngState).state;
+      }
+      return draft;
     },
 
     setPlayerPosition(state, x, y) {

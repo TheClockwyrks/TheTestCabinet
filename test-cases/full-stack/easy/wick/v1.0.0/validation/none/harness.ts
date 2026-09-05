@@ -14,7 +14,7 @@
 // recorder and the counting audio probe, bracketing each driven frame around one
 // `step(1)` of the build's surface, reading pixels and draw calls back out, and
 // writing the evidence a review point declares — every engineless case needs
-// exactly that, and it lives once, in `@test-cabinet/case-harness`, staged beside
+// exactly that, and it lives once, in `@clockwyrks/case-harness`, staged beside
 // this file as `./case-harness/`. What is left here is what is genuinely Wick's:
 // the shape of its snapshot, the operations `specs/instrumentation.md` requires,
 // the audio probe that NAMES a cue, the camera's arithmetic, and the isolated
@@ -379,6 +379,12 @@ export interface WickDebugApi {
   /** Set `tick`, `0` to `MAX_POSED_TICK`; nothing else changes. */
   setTick(tick: number): Promise<void>;
   setSpawnTimer(seconds: number): Promise<void>;
+  /**
+   * Take `draws` draws off the seeded generator and discard them, so
+   * `rngState` lands where `draws` random choices would have left it.
+   * Nothing is chosen with what was drawn. Every screen.
+   */
+  advanceRng(draws: number): Promise<void>;
   setPlayerPosition(x: number, y: number): Promise<void>;
   setFacing(facing: Facing): Promise<void>;
   /** Set `hp`, at most `maxHp`; at or below `0` ends the run on the next tick. */

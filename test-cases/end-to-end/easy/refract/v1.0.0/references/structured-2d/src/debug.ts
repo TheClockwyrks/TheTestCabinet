@@ -21,7 +21,7 @@
 // The surface holds no state and is inert during normal play: nothing below
 // runs until something calls it.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { playEvents } from "./audio";
 import { cellCenter, emptyBeams, parseBoard } from "./board";
 import { DEFAULT_SEED, REFRACT_DEBUG_VERSION } from "./constants";

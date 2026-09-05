@@ -24,7 +24,7 @@ unlocked by the one before it: it teaches the machine one idea at a time, from a
 single arm carrying a single mote up to a turning zodiac wheel feeding four
 essences into one quintessence.
 
-This build runs on the **Simple 2D** engine (`@test-cabinet/simple-2d`), which
+This build runs on the **Simple 2D** engine (`@clockwyrks/simple-2d`), which
 owns the frame loop and the delta time, the letterboxed fit of the fixed
 1280 × 720 logical stage, the input actions and the pointer, the audio cue bus,
 the asset loader, and the diagnostics overlay. The game owns everything else:

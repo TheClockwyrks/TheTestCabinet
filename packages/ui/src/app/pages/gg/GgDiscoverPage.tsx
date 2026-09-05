@@ -29,7 +29,7 @@ import type {
   GgFieldCatalog,
   GgQuery,
   GgQueryResponse,
-} from "@test-cabinet/run-record/gg-query";
+} from "@clockwyrks/run-record/gg-query";
 import { formatTimestamp } from "../../format";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";

@@ -5,7 +5,7 @@
 // says can be tested without a canvas. Nothing in this module draws, and
 // nothing in it reads anything but its arguments.
 
-import type { DeepReadonly } from "@test-cabinet/simple-3d";
+import type { DeepReadonly } from "@clockwyrks/simple-3d";
 import {
   FAIL_TEXT,
   RUN_SPEEDS,

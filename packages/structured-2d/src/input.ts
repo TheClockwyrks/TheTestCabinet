@@ -933,9 +933,9 @@ function resolveValue(state: ActionState): number {
  * The catalogue entry a layout name selects, or `null` for none.
  *
  * The catalogue is closed: a name outside it fails here, at construction,
- * naming every valid layout — a silent fallback to a default would let a run
- * be configured for one control scheme and executed under another, leaving the
- * run record describing a run that never happened.
+ * naming every valid layout — a silent fallback to a default would let a game
+ * be configured for one control scheme and played under another, so what
+ * shipped would not be what was asked for.
  */
 function resolveLayout(name: string | undefined): TouchLayout | null {
   if (name === undefined) return null;

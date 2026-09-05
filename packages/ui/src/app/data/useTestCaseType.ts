@@ -1,4 +1,4 @@
-import type { TestType } from "@test-cabinet/run-record";
+import type { TestType } from "@clockwyrks/run-record";
 import { useTestCases } from "./useTestCases";
 
 // A resolver bound to the host's current catalog, mapping a run's `testCaseSlug`

@@ -39,8 +39,17 @@ import {
 import { DISC_SAMPLES, markedCount, readDisc } from "./ink";
 import { BULLET_SPOT, FAR_SHIP } from "./scene";
 
-/** How far a sample must be from the field to be the round's, of 441. The item's figure. */
-const APART = 60;
+/**
+ * The sensing floor: how far a sample must sit from the field the build drew
+ * before the reading can be called the build's own ink, of the 441 an RGB distance
+ * can span.
+ *
+ * Eight. Below that a sampling cannot tell a drawing from the rounding of an 8-bit
+ * channel and the host's own anti-aliasing; above it nothing is decided about how
+ * strongly the mark reads. Anything the build painted over the sample clears it,
+ * in whatever colour it chose, over whatever field it chose.
+ */
+const SENSING_FLOOR = 8;
 
 /**
  * How many of the {@link DISC_SAMPLES} readings inside `BULLET_R` must be the round's.
@@ -75,8 +84,8 @@ it("paints the disc of BULLET_R about a posed round apart from the field", async
   await captureStill(harness, "bullet");
 
   assertGreaterThanOrEqual(
-    markedCount(look, field, APART),
+    markedCount(look, field, SENSING_FLOOR),
     MIN_MARKED,
-    `of ${DISC_SAMPLES} samples inside BULLET_R of the round's centre, how many are more than ${APART} of 441 from the field the build drew (specs/overview.md)`,
+    `of ${DISC_SAMPLES} samples inside BULLET_R of the round's centre, how many are more than ${SENSING_FLOOR} of 441 from the field the build drew (specs/overview.md)`,
   );
 });

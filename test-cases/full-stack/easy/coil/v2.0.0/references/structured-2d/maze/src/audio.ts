@@ -18,7 +18,7 @@
 
 import { CUES, CUE_PATHS, type CueName, type Screen } from "./constants";
 import type { TickEvents } from "./sim";
-import type { CueSpec, InitApi, WorldAudio } from "@test-cabinet/structured-2d";
+import type { CueSpec, InitApi, WorldAudio } from "@clockwyrks/structured-2d";
 
 /**
  * The shape each cue falls back to when its produced file is unavailable.

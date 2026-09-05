@@ -156,11 +156,11 @@ rosters and the live discharge; it places the ship at the center of its lane (`6
 on the cyan band with `0` seconds of fire lockout and `0` seconds of fire cooldown;
 it turns the four world gates `waveEntry`, `diveLaunching`, `stageClearing`, and
 `ship.contact` back on; it returns the wave's entry, sway, and dive clocks, and the
-gap the next dive waits for, to their fresh-wave values, `diveClock` at `0` and the
-gap at `DIVE_FIRST_DELAY`; it sets `extraLifeAwarded` to `false` and `challengeHits`
-to `0`; and it sets `simTime` to `0` and the counter the next entity's id is taken
-from back to the first id, so two runs reset with the same seed report the same ids
-for the same scenario.
+gap the next dive waits for, to their fresh-wave values, `diveClock` at `0` and
+`diveGap` at `DIVE_FIRST_DELAY`; it sets `extraLifeAwarded` to `false` and
+`challengeHits` to `0`; and it sets `simTime` to `0` and the counter the next
+entity's id is taken from back to the first id, so two runs reset with the same seed
+report the same ids for the same scenario.
 
 `options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the game's
 randomness. `muted` is left exactly as it stands, because muting is a player
@@ -232,11 +232,19 @@ default and restored to on by `reset`, and each is reported by `snapshot`.
 | `setStageClearing(enabled)` | The live stage's own end-of-stage test, which is the rule `specs/stages.md` states for a standard stage clearing and for a challenge stage ending. Off, no stage clears or ends however the field empties, and nothing else changes: drones are still destroyed, still scored, and still burst as usual. It is reported as `stageClearing`. |
 | `setShipContact(enabled)` | The ship's contact test, which is whether an enemy bullet or a drone body reaching the ship costs a life. Off, the ship still draws, still moves under input, and still fires, and no contact costs anything. It is reported as `ship.contact`. |
 
-The wave carries one clock of its own beside those gates.
+The wave carries one clock of its own beside those gates, and the figure that clock
+is racing.
 
 | Operation | Effect |
 | --- | --- |
 | `setDiveClock(seconds)` | Sets the seconds the wave's dive timer has accumulated since its last launch, `0` for none. It launches nothing itself. `specs/swarm.md` states the rule it feeds. The clock advances only while `diveLaunching` is on. It is reported as `diveClock`. |
+| `setDiveGap(seconds)` | Sets the figure the wave's dive clock must reach for the next dive to launch, in seconds. It launches nothing itself, it redraws nothing, and it leaves `diveClock` exactly where it stands; the next launch draws a fresh figure over it, as `specs/swarm.md` states. It is reported as `diveGap`. |
+
+`diveGap` is the wave's own state rather than a figure derived at the read: a fresh
+wave holds `DIVE_FIRST_DELAY`, and each launch returns `diveClock` to `0` and draws
+the next one over it by the rule `specs/swarm.md` states. `snapshot` reports what the
+launcher is actually waiting for, so a caller reads the gap the wave drew rather than
+inferring it from when a dive went.
 
 ### The ship and its cannon
 
@@ -353,6 +361,7 @@ so every operation is verifiable by setting a value and reading it back.
   diveLaunching: <boolean>,          // the assault's own dive choice runs
   stageClearing: <boolean>,          // the stage's own end-of-stage test runs
   diveClock: <number>,               // seconds since the wave's last dive launch
+  diveGap: <number>,                 // seconds that clock must reach for the next launch
   droneSpeedScale: <number>,         // derived from stage
   bulletSpeedScale: <number>,        // derived from stage
   diveGapScale: <number>,            // derived from stage
@@ -441,10 +450,13 @@ their own, and the notes that go with them:
 - `mode` names the mode this build ships, which `specs/mode.md` defines.
 - `muted` is the game's copy of the runtime's mute bit, refreshed in every update. No
   operation sets it; the `mute` action does.
-- `diveClock` is the wave's own dive timer, `extraLifeAwarded` is the run's
-  one-extra-life latch, and `challengeHits` is the current challenge stage's tally of
-  drones destroyed. All three are plain settable state rather than derived figures,
-  and all three are restored by `reset`.
+- `diveClock` is the wave's own dive timer, `diveGap` is the figure that timer must
+  reach for the next dive to launch, `extraLifeAwarded` is the run's one-extra-life
+  latch, and `challengeHits` is the current challenge stage's tally of drones
+  destroyed. All four are plain settable state rather than derived figures, and all
+  four are restored by `reset`. `diveGap` is the wave's alone, so it is a figure the
+  launcher waits on rather than one derived from `stage`: it already carries
+  `diveGapScale(stage)` at the moment it was drawn.
 - `bursts[].particles` is the count the burst's own particle simulation holds at the
   call.
 - `simTime` accumulates the time the game's sub-steps cover, as

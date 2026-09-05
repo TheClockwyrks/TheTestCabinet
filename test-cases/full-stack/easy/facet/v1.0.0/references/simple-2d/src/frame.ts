@@ -45,7 +45,7 @@ import {
 import { pressed } from "./input";
 import type { AssetStore } from "./assets";
 import type { Presentation, StepReport } from "./effects";
-import type { UpdateApi } from "@test-cabinet/simple-2d";
+import type { UpdateApi } from "@clockwyrks/simple-2d";
 
 /**
  * The most slices one frame's delta is cut into before the rest of it is run in

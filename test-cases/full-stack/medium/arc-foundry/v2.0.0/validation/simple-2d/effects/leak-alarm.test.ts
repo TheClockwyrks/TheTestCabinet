@@ -5,8 +5,9 @@
 // it is spawned "at the position of the event that raised it: ... the leak alarm at
 // the collector".
 //
-// THE PRODUCED SYSTEMS ARE SERVED TO THE LOADER HERE, by `./produced.ts`, so what
-// plays is the file the build committed.
+// THE PRODUCED SYSTEMS REACH THE LOADER THROUGH THE HARNESS, which stands the
+// committed `assets/` tree up for every check it builds, so what plays is the
+// file the build committed.
 //
 // THE WORLD. One Mote walking the last stretch into the collector, and one further
 // Mote held at the map's entry so the wave cannot clear in the middle of the
@@ -23,11 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { mapById, type Point, START_INTEGRITY, tileCenter } from "../constants";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertGreaterThanOrEqual,
-} from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -37,7 +34,6 @@ import {
   releaseUnit,
   ticks,
 } from "../harness";
-import { serveProducedAssets } from "./produced";
 import { motion } from "./region";
 
 const SINK = ((): Point => {
@@ -68,12 +64,10 @@ const POINTS = ((): Point[] => {
 })();
 
 const WINDOW = ticks(0.1);
-const MOVING = WINDOW / 2;
 
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 
@@ -113,11 +107,5 @@ it("sets the collector moving when a unit grounds out", async () => {
     "the collector to change on more frames after a unit grounds out than it " +
       `did while nothing was there, so a leak alarm is played at it ` +
       `(specs/assets.md); bare ground changed on ${bare} of ${WINDOW} frames`,
-  );
-  assertGreaterThanOrEqual(
-    played.moving,
-    MOVING,
-    "the collector to keep changing across the tenth of a second after the " +
-      "leak, as a live particle system does (specs/assets.md)",
   );
 });

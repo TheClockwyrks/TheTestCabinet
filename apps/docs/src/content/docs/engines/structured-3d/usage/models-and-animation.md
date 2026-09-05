@@ -17,15 +17,15 @@ models in a module the actors read:
 
 ```ts
 // ./models.ts
-import type { Model } from "@test-cabinet/structured-3d";
+import type { Model } from "@clockwyrks/structured-3d";
 
 export const models: Record<string, Model> = {};
 ```
 
 ```ts
 // ./levels.ts
-import type { LevelDefinition } from "@test-cabinet/structured-3d";
-import { vec3 } from "@test-cabinet/structured-3d";
+import type { LevelDefinition } from "@clockwyrks/structured-3d";
+import { vec3 } from "@clockwyrks/structured-3d";
 import { Match } from "./mode";
 import { models } from "./models";
 import { Walker } from "./walker";
@@ -61,7 +61,7 @@ mesh in the clone keeps its own skeleton, so the two walkers above share one
 `Model` and pose independently.
 
 ```ts
-import { Actor, ModelComponent, vec3 } from "@test-cabinet/structured-3d";
+import { Actor, ModelComponent, vec3 } from "@clockwyrks/structured-3d";
 import { LAYER } from "./constants";
 import { models } from "./models";
 
@@ -94,8 +94,8 @@ tick, and the guard on `animation()` keeps a clip already playing from
 restarting:
 
 ```ts
-import { length } from "@test-cabinet/structured-3d";
-import type { Vec3 } from "@test-cabinet/structured-3d";
+import { length } from "@clockwyrks/structured-3d";
+import type { Vec3 } from "@clockwyrks/structured-3d";
 
 export class Walker extends Actor {
   velocity: Vec3 = { x: 0, y: 0, z: 0 };
@@ -168,7 +168,7 @@ import {
   ModelComponent,
   quatFromEuler,
   type NodeHandle,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { models } from "./models";
 
 export class Turret extends Actor {

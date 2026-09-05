@@ -32,20 +32,6 @@ import { CUE_FILES, ONE_SHOT_CUES } from "./files";
 
 export { CUE_FILES, ONE_SHOT_CUES };
 
-/**
- * The peak sample a file must reach to be carrying signal rather than silence:
- * a hundredth of full scale, which is 40 dB down.
- *
- * `specs/assets.md` asks for "a distinct sound for each of the six one-shot
- * cues"
- * and fixes no level, so what a check can honestly read is the difference
- * between a sound and no sound. Forty decibels below full scale is inaudible
- * under any mix, so a file that fails this carries nothing a player could
- * hear, while a file mastered as quietly as anyone would sensibly master a
- * game cue clears it many times over.
- */
-export const SILENCE_FLOOR = 0.01;
-
 /** One produced sound, as its container describes it. */
 export interface Sound {
   /** The path `specs/assets.md` fixes for it, relative to the repository root. */

@@ -78,6 +78,36 @@ import { BAY_PAIRS, HUD_H, ICE_TOP, ROW_BAYS, WATER_TOP } from "./harness";
  */
 const POSED_SCORE = 12345;
 
+/**
+ * The separators a build may set between the score's digit triples.
+ *
+ * `Number.prototype.toLocaleString` groups by default, so a build that reaches for
+ * it draws a score of `12345` as `12,345`, and another locale's grouping gives
+ * `12'345` or `12\u202F345`. Every one of those draws the one figure, and
+ * specs/ui.md — which leaves the HUD's "arrangement and styling" to the build —
+ * fixes none of them, so the score's run is looked for under each.
+ *
+ * THE ASCII SPACE IS DELIBERATELY NOT ONE OF THEM. It is what separates two
+ * readouts a build set in the same run, so accepting it would take the `40` and
+ * the `130` of "SCORE 40  TIME 130" for the single figure `40130`. `.` is left out
+ * for its own reason: it is the decimal point.
+ */
+const GROUPS: readonly string[] = [",", "'", "\u00A0", "\u202F", "\u2009"];
+
+/** Every setting of `figure` a build may have drawn: plain, and grouped by each of {@link GROUPS}. */
+function settings(figure: number): string[] {
+  const digits = String(figure);
+  return [
+    digits,
+    ...GROUPS.map((group) => digits.replace(/\B(?=(\d{3})+$)/g, group)),
+  ];
+}
+
+/** Whether a run of text carries the score, under any of {@link settings}. */
+function carriesScore(text: string): boolean {
+  return settings(POSED_SCORE).some((setting) => text.includes(setting));
+}
+
 /** The column the critter is posed at: a column of the middle bay of row `1`. */
 const BAY_COL = BAY_PAIRS[2][0];
 
@@ -147,7 +177,7 @@ it("draws the readouts inside the HUD bar and none of the strait's bodies there"
     },
     {
       what: `the score readout, posed at ${POSED_SCORE}`,
-      found: runs.filter((run) => run.text.includes(String(POSED_SCORE))),
+      found: runs.filter((run) => carriesScore(run.text)),
     },
   ];
   for (const { what, found } of readouts) {

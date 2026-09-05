@@ -3,8 +3,8 @@
 // channels. Mirrors `crates/desktop/src/arena.rs`. The per-match replays are
 // served to the webview over the shell's `tcab-tournament://` scheme (see
 // `crates/desktop/src/tournament.rs`).
-import type { ControllerRef } from "@test-cabinet/run-record";
-import type { ArenaApi } from "@test-cabinet/ui/app";
+import type { ControllerRef } from "@clockwyrks/run-record";
+import type { ArenaApi } from "@clockwyrks/ui/app";
 import * as api from "../api";
 
 export function createTauriArena(): ArenaApi {

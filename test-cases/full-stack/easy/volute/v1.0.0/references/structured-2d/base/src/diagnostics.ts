@@ -9,7 +9,7 @@
 // Every source below is a pure read of the live game, short enough to sit on one
 // line, so watching the panel leaves the game exactly as it found it.
 
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 import { HallMode, inDanger } from "./hall-mode";
 import type { VoluteGame } from "./game";
 

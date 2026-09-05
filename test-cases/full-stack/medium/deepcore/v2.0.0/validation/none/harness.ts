@@ -14,7 +14,7 @@
 // recorder and the audio probe, bracketing each driven frame around one
 // `advance` of the build's surface, reading pixels and draw calls back out, and
 // writing the evidence a review item declares — every engineless case needs
-// exactly that, and it lives once, in `@test-cabinet/case-harness`, staged beside
+// exactly that, and it lives once, in `@clockwyrks/case-harness`, staged beside
 // this file as `./case-harness/`. What is left here is what is genuinely
 // Deepcore's: the shape of its snapshot, the operations
 // `specs/instrumentation.md` requires, the mine's own geometry, and the scene a
@@ -1225,18 +1225,6 @@ export async function driveFall(
 /* -------------------------------------------------------------------------- */
 /* Rendering and colour                                                       */
 /* -------------------------------------------------------------------------- */
-
-/**
- * The RGB distance two sampled colours must exceed to count as "clearly apart".
- *
- * `specs/overview.md` requires that a player tells one band's rock from the next,
- * an ore vein from plain rock, a gemstone from an ore, and lava from safe ground,
- * and it deliberately fixes no palette — so distinguishability is the whole of
- * what a visibility check can read, and a number is the only way to read it. 50
- * of the 441 the RGB cube spans: comfortably crossed by two colours a player
- * would call different, and not by two shades of the same one.
- */
-export const DISTINCT_MIN = 50;
 
 /**
  * How far out a colour sample's four neighbours sit, in logical units.

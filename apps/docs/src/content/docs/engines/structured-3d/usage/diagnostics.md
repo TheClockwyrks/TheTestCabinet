@@ -11,7 +11,7 @@ Where a source is registered decides how long it lives. A value that spans
 levels is registered on the game instance, in `initialize`.
 
 ```ts
-import { GameInstance, type InitApi } from "@test-cabinet/structured-3d";
+import { GameInstance, type InitApi } from "@clockwyrks/structured-3d";
 
 export class ArcadeGame extends GameInstance<null> {
   highScore = 0;
@@ -37,7 +37,7 @@ Register those in the game mode's `beginPlay`, which runs once per world after
 every declared actor has begun play.
 
 ```ts
-import { GameMode } from "@test-cabinet/structured-3d";
+import { GameMode } from "@clockwyrks/structured-3d";
 import { Ball } from "./actors";
 import { TAG_BRICK } from "./constants";
 

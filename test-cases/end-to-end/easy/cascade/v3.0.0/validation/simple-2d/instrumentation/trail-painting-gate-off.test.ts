@@ -95,8 +95,8 @@ const MIN_TRAVEL = 24;
  *
  * The two readings are the same point of the same screen drawn by the same build,
  * so an unpainted layer puts them at a distance of zero. Six is left for a build
- * that dithers or noises its felt, and it is a quarter of the contrast a stamp has
- * to clear above, so no stamp can hide inside it.
+ * that dithers or noises its felt, and it is a rasterizer tolerance rather than a
+ * figure about how anything looks.
  */
 const MAX_BARE_DRIFT = 6;
 

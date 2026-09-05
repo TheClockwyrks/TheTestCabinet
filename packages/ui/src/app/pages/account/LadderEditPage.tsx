@@ -3,13 +3,13 @@ import { useNavigate, useParams } from "react-router";
 import type {
   CoverageGroup,
   ReviewPlanCombo,
-} from "@test-cabinet/run-record/coverage";
+} from "@clockwyrks/run-record/coverage";
 import type {
   Gate,
   LadderAxis,
   LadderInput,
   LadderRungInput,
-} from "@test-cabinet/run-record/ladders";
+} from "@clockwyrks/run-record/ladders";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";

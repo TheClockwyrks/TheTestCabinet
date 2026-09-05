@@ -10,10 +10,11 @@
 // grades apart from one that never wins.
 //
 // THE FIGURES. The score is a four-digit figure no other readout on the screen
-// carries, matched at word boundaries so a build that draws a different number
-// cannot satisfy it by accident, and TOTAL_LEVELS is matched the same way. The
-// items are matched by substring, because a highlighted entry is commonly drawn
-// with a marker beside it.
+// carries, matched at word boundaries and in every grouping a build may draw it
+// with, so a build that draws a different number cannot satisfy it by accident
+// and one that draws `8,460` is read as drawing `8460`; TOTAL_LEVELS is matched
+// the same way. The items are matched by substring, because a highlighted entry
+// is commonly drawn with a marker beside it.
 //
 // THE LIVES ARE READ AS A DEPENDENCE, NOT AS DIGITS. `specs/ui.md` lets a lives
 // readout be "a row of icons or as a count", so demanding the digits would fail
@@ -44,16 +45,25 @@ const RUN_LIVES = 3;
 const OTHER_LIVES = 1;
 
 /**
- * How many bytes of the canvas the lives figure has to move, over and above
- * whatever the screen changes on its own between two frames.
+ * A pattern matching `figure` drawn on its own, however the build grouped it.
  *
- * One digit's glyphs are the smallest a compliant readout can be — a build that
- * draws icons or a longer phrase changes far more — and a single digit of body
- * type covers well over a hundred pixels, each carrying four bytes. 120 bytes is
- * a fraction of one such glyph: beyond the reach of a rounding difference, and
- * unreachable by a screen that never mentions the lives at all.
+ * `specs/ui.md` fixes the figure the screen reports and leaves the drawing of it
+ * to the build, so the plain digits and the same digits grouped in threes —
+ * `1,234`, `1'234`, and the same with a non-breaking or a thin space — are all
+ * the one figure and all match. An ASCII space is not a grouping separator: the
+ * screen's runs are joined with one to make the copy read below, so a copy
+ * reading `40 130` drew the two figures `40` and `130`, not `40130`. The word
+ * boundaries on both sides are kept, so a copy showing `150` still does not
+ * report `50`.
  */
-const LIVES_BYTES = 120;
+function drawnFigure(figure: number): RegExp {
+  const plain = String(figure);
+  const forms = new Set([plain]);
+  for (const separator of [",", "'", "\u00A0", "\u202F", "\u2009"]) {
+    forms.add(plain.replace(/\B(?=(\d{3})+(?!\d))/g, separator));
+  }
+  return new RegExp(`\\b(?:${[...forms].join("|")})\\b`);
+}
 
 let h: Harness;
 
@@ -103,12 +113,12 @@ it("reports the score, the twelve levels cleared, the lives and both ending item
   const copy = drawnText(drawn).join("  ");
   assertMatches(
     copy,
-    new RegExp(`\\b${RUN_SCORE}\\b`),
+    drawnFigure(RUN_SCORE),
     "the victory screen draws the run's final score (specs/ui.md)",
   );
   assertMatches(
     copy,
-    new RegExp(`\\b${TOTAL_LEVELS}\\b`),
+    drawnFigure(TOTAL_LEVELS),
     "the victory screen draws the twelve levels cleared (specs/ui.md)",
   );
   for (const item of ENDING_ITEMS) {
@@ -135,7 +145,7 @@ it("reports the score, the twelve levels cleared, the lives and both ending item
   );
   assertGreaterThan(
     pixelsChanged(again, atOne),
-    restless + LIVES_BYTES,
+    restless,
     "the victory screen is drawn differently at one life than at three, so " +
       "it reports the lives remaining (specs/ui.md)",
   );

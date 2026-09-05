@@ -11,7 +11,7 @@ object when the state gains a thing and removing it when the state loses one.
 
 ```ts
 import * as THREE from "three";
-import type { Game } from "@test-cabinet/simple-3d";
+import type { Game } from "@clockwyrks/simple-3d";
 
 interface Crate {
   readonly id: number;
@@ -223,7 +223,7 @@ names, each posed on its own.
 
 ```ts
 import * as THREE from "three";
-import { cloneModel, type Model } from "@test-cabinet/simple-3d";
+import { cloneModel, type Model } from "@clockwyrks/simple-3d";
 
 const templates = new Map<string, Model>();
 

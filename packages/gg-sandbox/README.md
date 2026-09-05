@@ -1,4 +1,4 @@
-# `@test-cabinet/gg-sandbox` — gg's ECMAScript guest
+# `@clockwyrks/gg-sandbox` — gg's ECMAScript guest
 
 The **ECMAScript** guest for gg's
 [responses-as-code](../../apps/docs/src/content/docs/gg/responses-as-code/overview.md)

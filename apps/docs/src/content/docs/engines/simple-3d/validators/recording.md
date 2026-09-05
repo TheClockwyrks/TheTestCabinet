@@ -85,7 +85,7 @@ harness.
 ```ts
 // validation/replay.ts
 import { commands } from "@vitest/browser/context";
-import type { Recording } from "@test-cabinet/simple-3d";
+import type { Recording } from "@clockwyrks/simple-3d";
 
 declare module "@vitest/browser/context" {
   interface BrowserCommands {

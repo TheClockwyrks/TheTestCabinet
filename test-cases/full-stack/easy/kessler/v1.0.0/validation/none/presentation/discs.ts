@@ -2,7 +2,7 @@
 // this frame.
 //
 // specs/assets.md fixes HOW every effect is played: "Play them through
-// `@test-cabinet/particle-runtime` ... using its `./canvas` binding: a player
+// `@clockwyrks/particle-runtime` ... using its `./canvas` binding: a player
 // is constructed over a parsed system and a 2D rendering context ... and it
 // simulates the system and composites the particles itself", and "The build
 // hands the player the same context it draws the field into". The player is a

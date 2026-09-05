@@ -7,7 +7,7 @@
 //     run gave up, the maw's swallow over the intake, and the barrel's recoil over
 //     the injector;
 //   * the PARTICLE SYSTEMS, simulated live through
-//     `@test-cabinet/particle-runtime`'s canvas binding — the extraction burst,
+//     `@clockwyrks/particle-runtime`'s canvas binding — the extraction burst,
 //     the bore detonation, the intake spray, and the shimmer that separates a
 //     grant from an ordinary extraction.
 //
@@ -26,7 +26,7 @@
 // the event calls for; the two maps compose to a uniform scale, so a particle
 // lands exactly where the simulation put it.
 
-import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
+import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
 import type { Assets, SheetName, Sprite, SystemName } from "./assets";
 import { FIRE_COOLDOWN } from "./constants";
 import type { ChargeId } from "./constants";

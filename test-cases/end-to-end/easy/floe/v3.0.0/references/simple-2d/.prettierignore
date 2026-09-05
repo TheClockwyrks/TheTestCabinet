@@ -6,5 +6,8 @@ node_modules/
 /out/
 coverage/
 proof/
-.tcab/
+.vendor/
 package-lock.json
+
+# Seeded reading material rather than this project's source: the specification.
+specs/

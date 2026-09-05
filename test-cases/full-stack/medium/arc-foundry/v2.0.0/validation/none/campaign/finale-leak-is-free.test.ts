@@ -8,10 +8,17 @@
 // build that runs the Dynamo through its ordinary leak path takes `5` — the
 // Dynamo's leak value — off a run it had already won.
 //
-// The run is played to its last clear so that the Dynamo grounding out is a real
-// finale ending a real run, which is what the victory screen is on the other side
-// of. The Dynamo is then walked the last three tiles into the collector rather
-// than being followed the whole way round, because the length of its walk is the
+// The finale is a real one, ending a real run: wave `N` clears with Grid
+// Integrity remaining, which is the victory condition of specs/campaign.md, and
+// the game opens its own finale and releases its own Dynamo behind it. What is
+// posed is the wave that clears — `poseFinale` clears the empty-schedule wave the
+// spawner hold opens rather than playing the composed wave `N`, whose half minute
+// of simulation this check reads nothing of. That the COMPOSED wave `N` opens the
+// finale is the sibling point `final-wave-enters-the-finale`, which is the one
+// check in this family that plays it.
+//
+// The Dynamo is then walked the last three tiles into the collector rather than
+// being followed the whole way round, because the length of its walk is the
 // sibling `finale-dynamo-walks` check and what this one is about is the frame it
 // arrives on.
 //
@@ -20,7 +27,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { captureReplay, type Harness } from "../harness";
-import { createRunHarness, leakOne, onlyUnit, reachFinale } from "./runs";
+import { createRunHarness, leakOne, onlyUnit, poseFinale } from "./runs";
 
 const DIFFICULTY = "easy";
 
@@ -35,13 +42,13 @@ afterEach(async () => {
 });
 
 it("takes no Grid Integrity when the Dynamo grounds out, and wins the run", async () => {
-  const { cleared } = await reachFinale(h, DIFFICULTY);
-  assertEqual(cleared.snapshot.phase, "finale", "the finale is running");
+  const { snapshot: finale } = await poseFinale(h, DIFFICULTY);
+  assertEqual(finale.phase, "finale", "the finale is running");
 
-  const before = cleared.snapshot.integrity;
+  const before = finale.integrity;
   assertGreaterThan(before, 0, "the run reached its finale with a grid intact");
 
-  const dynamo = onlyUnit(cleared.snapshot, "overload");
+  const dynamo = onlyUnit(finale, "overload");
   const grounded = await captureReplay(h, "ground", () =>
     leakOne(h, "overload", dynamo.id),
   );

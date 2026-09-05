@@ -1,63 +1,78 @@
-// presentation/node-ramp-distinct — the four charge states are told apart.
+// presentation/node-ramp-distinct — each charge state is drawn from its own
+// frame of the seeded node art.
 //
-// specs/overview.md's legibility table states the requirement in one line: "The
-// four charge states of a node are told apart at a glance, and they read as a
-// ramp". This point owns the FIRST half of that sentence — that the four states
-// are four different things to look at — and presentation/node-ramp-brightens
-// owns the second, that they climb.
+// specs/assets.md fixes the mapping outright: `assets/node/` holds five frames,
+// frame `0` is drawn for a node at charge `0`, frame `1` for charge `1`, frame
+// `2` for charge `2`, frame `3` for charge `3`, and frame `4` is "the alternate
+// critical frame" a charge `3` node alternates with. "A node below charge `3`
+// holds the single frame for its charge." So the four states are told apart by
+// the ART THE BUILD DREW THEM FROM, which the file states, rather than by any
+// colour, which it deliberately leaves open ("The palette, the type, the glow,
+// and every other aspect of the look are yours").
 //
-// THE READING IS A COMPARISON, NEVER A COLOUR. specs/overview.md fixes no
-// palette: "The palette, the type, the glow, and every other aspect of the look
-// are yours." So there is no hex value on this checklist to assert, and what is
-// asserted is that the four states differ FROM EACH OTHER — pairwise, all six
-// pairs, so a build that told three of them apart and drew two the same is named
-// for the pair it collapsed. A build that designs a beautiful ramp its own way
-// passes.
+// SO THE READING IS THE IMAGE SOURCE ITSELF, NOT THE PIXELS ON THE STAGE. Every
+// `drawImage` of one frame is captured with the bitmap it was handed, and that
+// bitmap's own pixels are held against the seeded PNGs read off the workspace's
+// own `assets/` tree. What is asserted is the frame INDEX on each node's tile: a
+// build that drew charge `2` from frame `1` is named for the state it drew
+// wrong, and a build that drew all four from one frame is named four times over.
 //
-// FOUR TILES, SPREAD, ON ONE ROW. Each node is posed on its own tile with four
-// tiles of clear board between it and the next, so a glow a build draws around a
-// critical node cannot reach the tile the charge-2 node stands on and lend it
-// brightness it does not have. The row is well above the player band, so the
-// cursor — the one body no scenario can pose away — is nowhere near any of them.
+// WHAT THIS ADDS OVER presentation/node-from-sprite. That point asks whether SOME
+// frame of the folder was drawn on a node's tile. This one asks whether it was
+// the frame the charge names, which is the whole of "the four states are told
+// apart".
 //
-// The colour of a node is the colour of its lit mark, read as presentation/reading
-// explains: on a dark board (specs/overview.md) a node is a sparse figure on a
-// transparent field, and most of the pixels of its tile are the board showing
-// through it.
+// THE CRITICAL STATE ALLOWS EITHER OF ITS PAIR, because specs/assets.md gives it
+// two frames and one drawn frame shows whichever of them the pulse was on. That
+// the pair alternates is presentation/critical-pulses's requirement.
+//
+// THE FOUR NODES ARE THE ONLY THINGS ON THE BOARD. `startPlaying` poses an
+// empty, quiet board, and the four nodes are then set one charge at a time, six
+// tiles apart along one row well clear of the player band, where the cursor
+// rests.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CHARGE_MAX } from "../constants";
-import { assertGreaterThan } from "../assert";
+import {
+  CHARGE_MAX,
+  NODE_CRITICAL_FRAMES,
+  TILE,
+  tileCX,
+  tileCY,
+} from "../constants";
+import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,
-  colorDistance,
+  chargeAt,
   createHarness,
+  drawFrame,
+  drawnImages,
   startPlaying,
   type Harness,
 } from "../harness";
-import { litTile } from "./reading";
+import { framesDrawnAt, frameName, spriteReader } from "./reading";
 
 /**
- * How far two charge states must read apart, in RGB distance on the 0–441 scale.
+ * How far a draw's destination centre may sit from the tile it is attributed to,
+ * in logical units.
  *
- * `441` is the whole scale, `sqrt(3) * 255`, the distance from black to white.
- * specs/overview.md requires the four states be "told apart at a glance" and
- * fixes no colour, so the bar is what a measurement can honestly call a
- * different colour rather than a shade of the same one: 40 is under a tenth of
- * the scale — about 23 levels on each of three channels — comfortably below
- * anything legible and far above the nothing that separates two readings of one
- * colour. It is the figure every colour point in this group is set at.
+ * specs/board.md: "A node fills its tile and is drawn centered on that point", so
+ * a node's own draw is centred on the tile centre and half a tile (`TILE / 2`,
+ * `16`) is the whole of the slack. It is an ATTRIBUTION radius rather than a
+ * placement bound: where a node is drawn is board/tile-centres' requirement, and
+ * the tiles here are six apart so nothing can be attributed to the wrong one.
  */
-const APART_MIN = 40;
+const ATTRIBUTION_MAX = TILE / 2;
 
-/** The row the ramp is posed on: mid-board, far from the band and the entry row. */
+/** The row the four nodes are posed on: mid-board, clear of the player band. */
 const RAMP_ROW = 8;
 
-/** The four charge states, each on its own tile, four tiles apart. */
-const RAMP = [0, 1, 2, CHARGE_MAX].map((charge, i) => ({
-  charge,
-  c: 12 + 4 * i,
-}));
+/** The column each charge is posed in, six tiles apart so no draw overlaps. */
+const RAMP_COLUMN = [6, 12, 18, 24] as const;
+
+/** The frames of `assets/node/` specs/assets.md draws each charge from. */
+function nodeFrames(charge: number): readonly number[] {
+  return charge === CHARGE_MAX ? NODE_CRITICAL_FRAMES : [charge];
+}
 
 let h: Harness;
 
@@ -69,27 +84,45 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("draws the four charge states in four colours a player tells apart", async () => {
+it("draws each of the four charge states from the frame its charge names", async () => {
   startPlaying(h);
-  for (const node of RAMP) h.debug.setNode(node.c, RAMP_ROW, node.charge);
-  await h.advance(1);
+  for (let charge = 0; charge <= CHARGE_MAX; charge += 1) {
+    h.debug.setNode(RAMP_COLUMN[charge], RAMP_ROW, charge);
+  }
+
+  const drawn = drawnImages(h, await drawFrame(h));
+  // The four states side by side, as the build drew them.
   captureStill(h, "ramp");
 
-  const sampled = RAMP.map((node) => ({
-    charge: node.charge,
-    color: litTile(h, node.c, RAMP_ROW),
-  }));
+  const snapshot = h.snapshot();
+  const read = spriteReader();
+  for (let charge = 0; charge <= CHARGE_MAX; charge += 1) {
+    const column = RAMP_COLUMN[charge];
+    assertEqual(
+      chargeAt(snapshot, column, RAMP_ROW),
+      charge,
+      `the node posed at (${column}, ${RAMP_ROW}) holds charge ${charge}`,
+    );
 
-  for (let i = 0; i < sampled.length; i += 1) {
-    for (let j = i + 1; j < sampled.length; j += 1) {
-      const apart = colorDistance(sampled[i].color, sampled[j].color);
-      assertGreaterThan(
-        apart,
-        APART_MIN,
-        `the charge ${sampled[i].charge} node against the charge ` +
-          `${sampled[j].charge} one, in RGB distance out of 441 ` +
-          "(specs/overview.md: the four charge states are told apart at a glance)",
-      );
-    }
+    const wanted = nodeFrames(charge);
+    const matches = await framesDrawnAt(
+      read,
+      drawn,
+      tileCX(column),
+      tileCY(RAMP_ROW),
+      ATTRIBUTION_MAX,
+    );
+    const nodeFramesDrawn = matches.filter((match) => match.folder === "node");
+    const named = wanted
+      .map((index) => `assets/node/${index}.png`)
+      .join(" or ");
+    assertTrue(
+      nodeFramesDrawn.length > 0 &&
+        nodeFramesDrawn.every((match) => wanted.includes(match.index)),
+      `the node at charge ${charge}, on tile (${column}, ${RAMP_ROW}), drawn ` +
+        `from ${named} (specs/assets.md: frame ${charge} is drawn for a node ` +
+        `at charge ${charge}) — the seeded art drawn on that tile was ` +
+        `${matches.map(frameName).join(", ") || "none"}`,
+    );
   }
 });

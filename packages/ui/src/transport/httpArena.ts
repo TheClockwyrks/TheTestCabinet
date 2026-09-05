@@ -11,7 +11,7 @@ import type {
   ControllerRef,
   MatchSummary,
   TournamentRecord,
-} from "@test-cabinet/run-record";
+} from "@clockwyrks/run-record";
 import type {
   ArenaApi,
   ArenaWorkerOption,

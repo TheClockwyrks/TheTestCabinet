@@ -10,14 +10,14 @@ reference.
 
 ## Entry point
 
-The package `@test-cabinet/structured-3d` has one entry point.
+The package `@clockwyrks/structured-3d` has one entry point.
 
 | Specifier | Provides |
 | --- | --- |
-| `@test-cabinet/structured-3d` | `createEngine`, the framework classes, the built-in components, the clocks, `TOUCH_LAYOUTS`, the viewport functions, the math helpers and constants, and every type a game or a validator names. |
+| `@clockwyrks/structured-3d` | `createEngine`, the framework classes, the built-in components, the clocks, `TOUCH_LAYOUTS`, the viewport functions, the math helpers and constants, and every type a game or a validator names. |
 
 `three` is a peer dependency of the package. A build declares `three` itself,
-and the engine, the build, and `@test-cabinet/voxel-runtime/three` share that
+and the engine, the build, and `@clockwyrks/voxel-runtime/three` share that
 one instance. The engine re-exports nothing from `three`; a game imports it
 directly where it needs a three object, such as a texture, a geometry, or an
 `Object3D`.

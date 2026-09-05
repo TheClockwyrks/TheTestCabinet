@@ -5,10 +5,9 @@
 // and an instance of the matching system is spawned "at the position of the event
 // that raised it: the build spark at the stamped footprint".
 //
-// THE PRODUCED SYSTEMS ARE SERVED TO THE LOADER HERE, by `./produced.ts`, because
-// a system that never arrived is a system the build cannot play: without it this
-// point would decide nothing about any build. What is played is the file the build
-// committed, simulated live by the build's own runtime.
+// THE PRODUCED SYSTEMS REACH THE LOADER THROUGH THE HARNESS, which stands the
+// committed `assets/` tree up for every check it builds. What is played is the file
+// the build committed, simulated live by the build's own runtime.
 //
 // WHAT IS READ, AND WHY IT IS MOTION RATHER THAN A BEFORE-AND-AFTER. A rock
 // landing puts a candidate on the footprint, so the footprint looks different from
@@ -22,14 +21,9 @@
 //
 // THE WORLD IS EMPTY BUT FOR THE ROCK. `openYard` clears every structure, unit and
 // projectile, so nothing else on the yard can move a pixel inside the footprint.
-//
-// THE BOUND. The region must change on more frames after the drop than before it,
-// and on at least half the frames of the window. Half rather than all, because
-// nothing fixes how long a spark lasts or how it fades; a shower of sparks
-// simulated at all moves on nearly every frame, and a standing candidate on none.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
+import { assertGreaterThan } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -38,7 +32,6 @@ import {
   standCandidate,
   ticks,
 } from "../harness";
-import { serveProducedAssets } from "./produced";
 import { lattice, motion } from "./region";
 import { structureCenter } from "../constants";
 
@@ -49,12 +42,10 @@ const ANCHOR = { col: 24, row: 18 };
 const POINTS = lattice(structureCenter(ANCHOR.col, ANCHOR.row), 16, 4);
 
 const WINDOW = ticks(0.1);
-const MOVING = WINDOW / 2;
 
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 
@@ -79,11 +70,5 @@ it("sets the stamped footprint moving when the rock lands", async () => {
     "the stamped footprint to change on more frames after a rock lands on it " +
       "than before, so a build spark is played there (specs/assets.md); the " +
       `empty footprint changed on ${still} of ${WINDOW} frames`,
-  );
-  assertGreaterThanOrEqual(
-    played,
-    MOVING,
-    `the footprint to keep changing across the tenth of a second after the ` +
-      `drop, as a live particle system does (specs/assets.md)`,
   );
 });

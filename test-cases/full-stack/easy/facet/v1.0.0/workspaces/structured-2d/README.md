@@ -51,7 +51,7 @@ every gem sprite, break sheet, particle system, cue, and piece of music with the
 asset tools on this machine's `PATH`, commit the files under `public/assets/`,
 and wire them in, the images and sounds through the engine's asset loading and
 its audio, and the `system.json` particle systems through
-`@test-cabinet/particle-runtime`, which is already a dependency of this project.
+`@clockwyrks/particle-runtime`, which is already a dependency of this project.
 `specs/assets.md` is the contract, and it also fixes the loading rule: every
 reference is page-relative, so the built site runs from a sub-path. The tools
 are absent when the build is installed and rebuilt elsewhere, so the build
@@ -89,7 +89,7 @@ every piece of that recipe.
 - The toolchain: `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
   and `.gitignore`.
-- `.tcab/` and `engine/`, the vendored packages and the engine's own
+- `.vendor/` and `engine/`, the vendored packages and the engine's own
   documentation.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the

@@ -18,7 +18,7 @@
 import { BALL_COUNT } from "./constants";
 import { ballSpeed } from "./entities";
 import type { BallState, CaromState } from "./game";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 type State = DeepReadonly<CaromState>;

@@ -1331,12 +1331,12 @@ fn the_media_directory_is_named_to_the_suites_in_the_environment() {
         "env",
         &[(
             VALIDATION_MEDIA_ENV,
-            "/runs/impl/.tcab/validation".to_string(),
+            "/runs/impl/.vendor/validation".to_string(),
         )],
     )
     .expect("the command runs");
 
-    assert_eq!(ran.stdout, "/runs/impl/.tcab/validation");
+    assert_eq!(ran.stdout, "/runs/impl/.vendor/validation");
 }
 
 #[test]
@@ -1345,7 +1345,7 @@ fn the_exported_media_directory_is_absolute() {
     // directory to the runner and another to the suite.
     let media = tempfile::tempdir().expect("a scratch media root");
     assert!(
-        Path::new(&absolute(&media.path().join(".tcab/validation"))).is_absolute(),
+        Path::new(&absolute(&media.path().join(".vendor/validation"))).is_absolute(),
         "the suites are handed a path they cannot resolve differently",
     );
     assert!(Path::new(&absolute(Path::new("relative/media"))).is_absolute());
@@ -1353,7 +1353,7 @@ fn the_exported_media_directory_is_absolute() {
 
 // --- Staging the shared harness ---------------------------------------------
 
-/// A package store carrying `@test-cabinet/case-harness` with `src/` holding
+/// A package store carrying `@clockwyrks/case-harness` with `src/` holding
 /// `index.ts` and a `page/` subdirectory, returned with the temp dir that owns it.
 fn package_store_with_case_harness() -> tempfile::TempDir {
     let store = tempfile::tempdir().expect("a scratch package store");

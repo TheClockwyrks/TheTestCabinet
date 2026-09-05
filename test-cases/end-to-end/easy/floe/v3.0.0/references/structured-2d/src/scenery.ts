@@ -11,11 +11,7 @@
 // Both components read the live game state at the draw and write nothing, so the
 // dependency runs one way (specs/instrumentation.md).
 
-import {
-  Actor,
-  DrawComponent,
-  type DrawApi,
-} from "@test-cabinet/structured-2d";
+import { Actor, DrawComponent, type DrawApi } from "@clockwyrks/structured-2d";
 import {
   BAY_COUNT,
   ICE_BOTTOM,

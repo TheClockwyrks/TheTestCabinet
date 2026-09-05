@@ -80,14 +80,15 @@ import { KILL_SPOT, WHOLE_FIELD, sampleField } from "./scene";
 const CELL = 2;
 
 /**
- * How much a square unit's reading must move between two frames to count as changed,
- * of 441.
+ * The sensing floor on a change: how far a reading must move between two frames
+ * before the move can be called a redrawing, of the 441 an RGB distance can span.
  *
- * Forty, two thirds of the sixty this group calls "drawn apart from the field", so an
- * announcement drawn faintly still registers while a build's own dithering between
- * two frames of one picture does not.
+ * Eight. Below that a sampling cannot tell a redrawing from the rounding of an
+ * 8-bit channel and the host's own anti-aliasing; above it nothing is decided
+ * about how strongly the two readings differ. Anything the build drew differently
+ * clears it, however faintly it drew it.
  */
-const CHANGE = 40;
+const CHANGE = 8;
 
 /**
  * How wide a disc around the kill is left unread, in logical units.

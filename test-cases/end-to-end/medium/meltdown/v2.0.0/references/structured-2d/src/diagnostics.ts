@@ -10,7 +10,7 @@
 // one is a pure read of the live state, so the panel reports the frame being
 // drawn and watching the overlay never changes what the simulation does.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { redlineOf } from "./stats";
 import { unitTile } from "./surge";
 import { figuresOf } from "./waves";

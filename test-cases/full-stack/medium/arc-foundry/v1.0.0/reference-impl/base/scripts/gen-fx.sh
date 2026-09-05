@@ -3,7 +3,7 @@
 # tool (specs/assets.md — "Particle systems … THE HEADLINE"). Every arc, spark shower,
 # chain-lightning leap and discharge is a simulated system (emitters + forces + per-particle
 # size/opacity/color curves), NOT baked frames: `render` emits a compact `system.json` the
-# game plays LIVE via @test-cabinet/particle-runtime's ParticleCanvasPlayer (src/particles.ts).
+# game plays LIVE via @clockwyrks/particle-runtime's ParticleCanvasPlayer (src/particles.ts).
 #
 # Thirteen systems land under assets/fx/, one per FxKind the game loads (src/assets.ts FX_SOURCE):
 #   buildspark  a stamp lands hot — spark shower + arc snap (specs/build.md)

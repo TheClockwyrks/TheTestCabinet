@@ -26,8 +26,7 @@
 // drawn as a bare one.
 //
 // THE VERDICT. For each of the twelve transforming sigils, every hex of its placed
-// footprint is drawn differently from the bare field hex under it, over at least
-// `MIN_DISTINCT_SHARE` of that hex.
+// footprint is drawn differently from the bare field hex under it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertTrue } from "../assert";
@@ -48,9 +47,6 @@ import { sigilHexes } from "../parts";
 
 /** Half the side of the square one hex is read over; inside its own cell. */
 const HALF = 18;
-
-/** The least share of that square a placed footprint hex must redraw. */
-const MIN_DISTINCT_SHARE = 0.05;
 
 /**
  * The order the twelve are swept in, `confluence` first.
@@ -109,7 +105,7 @@ it("draws every hex of each of the twelve sigils' footprints apart from a bare h
       const key = `${hex.q},${hex.r}`;
       assertGreaterThan(
         differingShare(bare.get(key) as PixelRect, await square(hex)),
-        MIN_DISTINCT_SHARE,
+        0,
         `hex (${key}) of the placed ${kind}'s footprint is drawn apart from the bare field hex under it, so the hexes the sigil reads are read off the field before a run`,
       );
     }

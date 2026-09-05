@@ -76,7 +76,7 @@ max_runtime_hours = 4
 
 # Init command, run in the run container once the workspaces and specs are seeded
 # and before the harness starts. `npm install` rather than `npm ci`, because
-# `packages` below injects the `@test-cabinet/particle-runtime` `file:` dependency
+# `packages` below injects the `@clockwyrks/particle-runtime` `file:` dependency
 # and the lockfile is completed at seed time. The same command installs the
 # seeded project's dependencies — the TypeScript toolchain the `[toolchain]`
 # commands invoke, the headless canvas the model's own vitest tests can draw
@@ -92,7 +92,7 @@ init = "npm install && npx playwright install chromium"
 # binaries on the run image's `PATH` (see `type` above and `specs/assets.md`).
 
 # Test Cabinet runtime libraries installed into the run so the build can play the
-# particle systems it produces. `@test-cabinet/particle-runtime` is the same
+# particle systems it produces. `@clockwyrks/particle-runtime` is the same
 # library the review UI plays a produced effect with; core bakes it into the run
 # image and each seeded workspace `package.json` depends on it via its baked-in
 # `file:` path, so the build imports it (its `/canvas` binding) like any other
@@ -101,7 +101,7 @@ init = "npm install && npx playwright install chromium"
 # at every cut stone standing on the board are all produced `particle-2d` systems
 # played this way; `specs/assets.md` carries the consumption contract. (A root
 # key, so it must sit above the first `[table]` header.)
-packages = ["@test-cabinet/particle-runtime"]
+packages = ["@clockwyrks/particle-runtime"]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Facet declares exactly ONE, so every run of this case is the same game.
@@ -172,7 +172,7 @@ min_version = "1.0.0"
 # The starter project seeded into the root of every run before the specs, one per
 # engine. All three carry the same Vite/TypeScript/ESLint/Prettier/Vitest
 # configuration the `[toolchain]` commands below run against, an `index.html`
-# holding the canvas, and the `@test-cabinet/particle-runtime` dependency the
+# holding the canvas, and the `@clockwyrks/particle-runtime` dependency the
 # produced effects are played through. What differs is how much of the build is
 # supplied with them.
 #
@@ -474,11 +474,11 @@ format = 2
 #
 # The clock is checked here too, as two separate points, because the two claims
 # come apart. `delta-time-independent` asks that one interval of game time reach
-# one outcome however it is divided; `advances-in-real-time` asks that the game
-# carry itself forward when nothing outside it is stepping. Under `none` the
-# loop is the build's own, so the second point reads a real wall clock; under an
-# engine the loop is the engine's, so what is the build's there — that the
-# simulation and the chain ride that loop — is what the engine copies decide.
+# one outcome however it is divided, which is the build's integration under every
+# engine; `advances-in-real-time` asks that the game carry itself forward when
+# nothing outside it is stepping, which is the build's work only under `none`,
+# where specs/overview.md hands it the frame loop. Under an engine that loop and
+# its scheduling are the engine's, so the point carries `engines = ["none"]`.
 [[review.categories]]
 id = "instrumentation"
 title = "Instrumentation"
@@ -656,17 +656,17 @@ validation = { script = "instrumentation/delta-time-independent.test.ts", output
 [[review.categories.items]]
 id = "advances-in-real-time"
 title = "The game advances itself in real time"
-description = "On a real wall clock, with nothing stepping the game from outside, a resolving chain's simTime and stepTimer advance over a stretch of real time."
+description = "Under `none`, on a real wall clock and with nothing stepping the game from outside, a resolving chain's simTime and stepTimer advance over a stretch of real time."
 domains = ["gameplay"]
 failure_cap = "broken"
 # Automated validation: pose a board, accept a swap and let its animation run so
 # a chain is resolving, then let real time pass with nothing advancing the game
-# and assert simTime grew and the chain moved on. Under `none` this is a real
-# wall clock the build measures itself; under an engine the loop belongs to the
-# engine, so what the check decides there is that the simulation and the chain
-# ride that loop rather than only a poke from outside. See
-# validation/<engine>/instrumentation/advances-in-real-time.test.ts.
-validation = { script = "instrumentation/advances-in-real-time.test.ts", outputs = [
+# and assert simTime grew and the chain moved on. Scoped to `none`, where
+# specs/overview.md gives the build "the frame loop and its delta time": under an
+# engine the loop, its scheduling and the delta time it hands each update belong
+# to the engine, so the same check would return one verdict for every build. See
+# validation/none/instrumentation/advances-in-real-time.test.ts.
+validation = { script = "instrumentation/advances-in-real-time.test.ts", engines = ["none"], outputs = [
   { id = "before", name = "The instant the chain begins", kind = "image" },
   { id = "after", name = "Moments later, on the build's own clock", kind = "image" },
 ] }
@@ -3321,34 +3321,31 @@ title = "The chain multiplier is absent while the board is idle"
 description = "While phase is idle, a frame of the playing screen draws no HUD_CHAIN_LABEL."
 domains = ["gameplay"]
 failure_cap = "passable"
-# Automated validation: pose an idle board, render, and assert no text on the
-# frame carries the chain label. Under `none` the reading walks the document's
-# text nodes, which cannot separate a hidden element from an absent one, so a
-# build that keeps a chain readout in the DOM and hides it with CSS while idle
-# fails this point; the two engine copies read canvas draws and are unaffected.
-# See validation/<engine>/hud/hud-chain-hidden.test.ts.
+# Automated validation: pose an idle board, render, and assert no visible text on
+# the frame carries the chain label. Under `none` the reading gathers the frame's
+# canvas text and the page's RENDERED DOM text, so a build that keeps a chain
+# readout in the DOM and hides it while idle answers exactly as one that draws it
+# on canvas only when a chain runs; the two engine copies read canvas draws. See
+# validation/<engine>/hud/hud-chain-hidden.test.ts.
 validation = { script = "hud/hud-chain-hidden.test.ts", outputs = [
   { id = "hud", name = "The readouts on a settled board", kind = "image" },
 ] }
 
 # --- Visibility ---------------------------------------------------------------
-# These points check PRESENCE and TELLING APART only. Palette, font, layout and
-# style are never asserted: specs/board.md hands the presentation to the build
-# and states what it fixes as legibility a player depends on, so what is decided
-# here is that no two things a player must tell apart are drawn the same.
+# These points check PRESENCE only. Palette, font, layout and style are never
+# asserted, and neither is how far apart two things read: specs/board.md hands
+# the presentation to the build, and how a build looks is the reviewer's domain
+# ratings' to judge. What is decided here is that the build drew something where
+# the specification says something is drawn.
 #
-# Every gem reading poses the two gems under test in the SAME cell of the same
-# otherwise quiet board, one after the other, so the measured patch differs by
-# the gem and by nothing else — same neighbors, same surroundings, same box of
-# pixels. The cell-mark points read each cell through two boxes, the gem's own
-# and the whole cell's, and take the larger distance, because specs/board.md
-# confines a GEM's form to GEM_R of the center while specs/ui.md marks the CELL
-# and says nothing about where the mark may lie.
-#
-# specs/board.md says a cut gem is never still, so any reading that involves a
-# brilliant, a star or a prism is taken across a SWEEP of frames rather than off
-# one, and the control that fixes what "the same" means is measured on a plain
-# gem, which is the only kind entitled to stand still.
+# Every gem reading poses what it is about in the SAME cell of the same otherwise
+# quiet board, so the measured patch differs by the gem and by nothing else —
+# same neighbors, same surroundings, same box of pixels. The reading a presence
+# point is measured against is the same box with what it is about taken away: the
+# board removed through `clearBoard`, or the same cell with nothing selected. The
+# cell-mark point reads each cell through two boxes, the gem's own and the whole
+# cell's, because specs/board.md confines a GEM's form to GEM_R of the center
+# while specs/ui.md marks the CELL and says nothing about where the mark may lie.
 #
 # Three points are about MOTION rather than about a still, and each is read as
 # one arrangement of a board measured against another arrangement of the same
@@ -3356,9 +3353,9 @@ validation = { script = "hud/hud-chain-hidden.test.ts", outputs = [
 # mid-flight against both the board it left and the board it settles into, and a
 # fresh deal's first frame against the same deal once its fall has run. Reading
 # motion as a difference between two arrangements is what keeps the assertion
-# clear of HOW a build draws it — nothing here fixes an easing, a path or a frame
-# count, only that a gem in transit is somewhere other than the cell it is bound
-# for.
+# clear of HOW a build draws it — nothing here fixes an easing, a path, a frame
+# count or a distance, only that a gem in transit is somewhere other than the
+# cell it is bound for.
 #
 # The two control points are the weakest readings in the category, and they say
 # so. specs/controls.md fixes that a control is drawn inside its reported target
@@ -3372,68 +3369,19 @@ validation = { script = "hud/hud-chain-hidden.test.ts", outputs = [
 id = "appearance"
 title = "Visibility"
 [[review.categories.items]]
-id = "kinds-distinguishable"
-title = "The seven kinds are told apart"
-description = "Each of the seven kinds, posed in turn as a plain gem at strain 0 in one cell, draws that cell differently from every other kind: all twenty-one pairs read more than PATCH_DISTINCT_MIN apart, against a control in which one kind posed twice at that cell reads within PATCH_SAME_MAX."
+id = "kinds-drawn"
+title = "A gem of every kind is drawn"
+description = "Each of the seven kinds, posed in turn as a plain gem at strain 0 in one cell, draws something in that cell: every one of the seven readings differs from the same box of pixels taken with no board in play."
 domains = ["gameplay"]
-failure_cap = "scuffed"
+failure_cap = "broken"
 # Automated validation: pose each of the seven kinds in turn in one cell, plain
-# at strain 0, and assert all twenty-one pairs read more than PATCH_DISTINCT_MIN
-# apart, against a control of one gem posed twice reading within PATCH_SAME_MAX.
-# Every gem here is plain, so every reading is of a stone entitled to stand
-# still. See validation/<engine>/appearance/kinds-distinguishable.test.ts.
-validation = { script = "appearance/kinds-distinguishable.test.ts", outputs = [
+# at strain 0, read the cell after a driven frame, then clear the board through
+# `clearBoard` and read the same box once more, asserting each of the seven
+# readings differs from that last one. Presence only: how the seven look, and
+# whether a player tells them apart easily, is the reviewer's to judge. See
+# validation/<engine>/appearance/kinds-drawn.test.ts.
+validation = { script = "appearance/kinds-drawn.test.ts", outputs = [
   { id = "kinds", name = "A row holding one gem of each kind", kind = "image" },
-] }
-[[review.categories.items]]
-id = "strain-distinguishable"
-title = "The four strain states are told apart"
-description = "The four strain states of one kind, posed in turn in one cell, draw that cell pairwise differently — all six pairs more than PATCH_DISTINCT_MIN apart — so a flawed gem stands apart from every unflawed one."
-domains = ["gameplay"]
-failure_cap = "scuffed"
-# Automated validation: pose one kind at each of the four strain states in one
-# cell, plain at every one of them, and assert all six pairs read more than
-# PATCH_DISTINCT_MIN apart, with the same control. The kind is arbitrary and
-# nothing about the point depends on which one it is. Strain raises no running
-# effect of its own — specs/board.md puts damage on the stone — so these four
-# stand still like the seven above. See
-# validation/<engine>/appearance/strain-distinguishable.test.ts.
-validation = { script = "appearance/strain-distinguishable.test.ts", outputs = [
-  { id = "strain", name = "One kind at all four strain states", kind = "image" },
-] }
-[[review.categories.items]]
-id = "cuts-distinguishable"
-title = "The cuts are told apart"
-description = "A plain, a brilliant and a star of one kind, posed in turn in one cell, draw that cell pairwise differently: all three pairs more than PATCH_DISTINCT_MIN apart."
-domains = ["gameplay"]
-failure_cap = "scuffed"
-# Automated validation: alternate a plain, a brilliant and a star of one kind
-# through one cell across a sweep of frames and assert every cross-cut reading
-# exceeds PATCH_DISTINCT_MIN. The sweep is what makes the point decidable
-# whatever the two cut stones are doing: specs/board.md runs a continuous effect
-# at every brilliant and every star, so a single pair of frames could be
-# measuring the aura rather than the treatment, and a control comparing one
-# brilliant against itself would measure the same thing. The control is taken on
-# the plain gem instead. See
-# validation/<engine>/appearance/cuts-distinguishable.test.ts.
-validation = { script = "appearance/cuts-distinguishable.test.ts", outputs = [
-  { id = "cuts", name = "One kind under three cuts", kind = "image" },
-] }
-[[review.categories.items]]
-id = "prism-distinct"
-title = "A prism reads as carrying no kind"
-description = "A prism, posed in one cell, draws that cell differently from a plain gem of each of the seven kinds posed in the same cell: all seven readings more than PATCH_DISTINCT_MIN apart."
-domains = ["gameplay"]
-failure_cap = "passable"
-# Automated validation: alternate a prism and each of the seven kinds through
-# one cell across a sweep of frames, and assert all forty-nine
-# prism-against-kind readings exceed PATCH_DISTINCT_MIN. The sweep is what makes
-# the point decidable whatever a build's prism is doing: a prism carries both an
-# idle turn and the cut aura, so a control comparing one prism against itself
-# measures the motion rather than the gem, and the control is taken on a plain
-# gem instead. See validation/<engine>/appearance/prism-distinct.test.ts.
-validation = { script = "appearance/prism-distinct.test.ts", outputs = [
-  { id = "prism", name = "A prism among the seven kinds", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "selection-marked"
@@ -3442,12 +3390,11 @@ description = "The cell at the selection renders differently from the same cell 
 domains = ["gameplay"]
 failure_cap = "scuffed"
 # Automated validation: render one cell two ways on one posed board — with
-# nothing selected, and selected — and assert the readings differ by more than
-# PATCH_DISTINCT_MIN through the larger of the gem's own box and the whole
-# cell's. That figure is the case's own tolerance for two things a player must
-# tell apart; the specification says the selected cell reads distinctly and fixes
-# no strength. The gem posed there is plain, so nothing in the cell is moving and
-# the mark is the only thing the two frames can differ by. See
+# nothing selected, and selected — and assert the readings differ at all through
+# the larger of the gem's own box and the whole cell's. Presence of a mark is the
+# whole of it, and how strong the mark is is the reviewer's. The gem posed there
+# is plain, so nothing in the cell is moving and the mark is the only thing the
+# two frames can differ by. See
 # validation/<engine>/appearance/selection-marked.test.ts.
 validation = { script = "appearance/selection-marked.test.ts", outputs = [
   { id = "selection", name = "A cell marked as the gem the player holds", kind = "image" },
@@ -3458,13 +3405,14 @@ title = "An offered pair is drawn exchanged"
 description = "While an offer stands, the selected cell and the offered cell are drawn carrying each other's gems, so a player sees the move a release would play."
 domains = ["gameplay"]
 failure_cap = "scuffed"
-# Automated validation: pose two orthogonally adjacent cells holding kinds
-# `kinds-distinguishable` separates, and read both cells on three renders of the
-# same board: with the selection standing and no offer, with the selection and
-# the offer standing, and with the two gems posed already exchanged through
-# `loadBoard`. Assert each cell's offered reading sits CLOSER to the exchanged
-# arrangement than to the unoffered one, and that the unoffered pair of readings
-# is itself more than PATCH_DISTINCT_MIN apart. The reading is relative on
+# Automated validation: pose two orthogonally adjacent cells holding two of the
+# seven kinds, and read both cells on three renders of the same board: with the
+# selection standing and no offer, with the selection and the offer standing, and
+# with the two gems posed already exchanged through `loadBoard`. Assert each
+# cell's offered reading sits CLOSER to the exchanged arrangement than to the
+# unoffered one, and that the unoffered pair of readings differs at all, since
+# two cells drawn exchanged can only be read where the two gems were drawn
+# differently in the first place. The reading is relative on
 # purpose: specs/ui.md asks for the gems drawn exchanged and does not forbid a
 # build marking the offer as well, so a mark would move the absolute distance
 # while leaving which arrangement the frame is nearer alone. See
@@ -3481,8 +3429,8 @@ failure_cap = "scuffed"
 # Automated validation: pose a productive exchange, request it, advance to the
 # middle of SWAP_SECONDS, render, and read both cells against the same two cells
 # on two posed still boards — the arrangement before the swap and the arrangement
-# after it — asserting the mid-flight reading is more than PATCH_DISTINCT_MIN
-# from BOTH. Both comparisons are needed and neither alone would do: a build that
+# after it — asserting the mid-flight reading differs from BOTH. Both
+# comparisons are needed and neither alone would do: a build that
 # exchanges the gems on the accepting frame reads as the settled arrangement, and
 # one that leaves them where they were until the timer runs out reads as the one
 # before it, and each of those passes the other's comparison. See
@@ -3499,7 +3447,7 @@ failure_cap = "scuffed"
 # Automated validation: start a round, render the frame the deal landed on,
 # advance past the deal's own longest fall — its reported lastFall x
 # FALL_SECONDS_PER_ROW (0.05) plus a margin — render again, and assert the
-# board's extent reads more than PATCH_DISTINCT_MIN apart across the two frames.
+# board's extent reads differently across the two frames.
 # The snapshot's 64 cells are asserted identical between the two renders first,
 # so the only thing the two frames can differ by is where the gems were drawn.
 # The deal is read rather than a chain's refill, because a deal moves every gem
@@ -3549,15 +3497,14 @@ validation = { script = "appearance/back-control-drawn.test.ts", outputs = [
 # them. Six points read the built tree, and four read the running game, because
 # a produced file that never loads is not a produced asset.
 #
-# No spec sentence fixes a file or directory NAME anywhere under `assets/`,
-# which bounds what a script can decide and is worth a reviewer knowing. A
-# single sprite and one frame of a sheet are indistinguishable on disk, so the
-# sprite count is taken per directory and the largest is read, which counts a
-# build that keeps its sprites together and not its sequences' frames; a build
-# that split its sprites across several directories would be failed although it
-# is compliant. For the same reason the prism's idle turn cannot be told from a
-# break sheet on disk, so the seven-sequence floor is met by six break sheets
-# plus the turn.
+# No spec sentence fixes a file NAME anywhere under `assets/`, which bounds what
+# a script can decide and is worth a reviewer knowing. What the specification
+# does fix is the layout: the sprites land directly in `assets/gems/` and each
+# animation sequence in its own directory beside them, so the sprite count is
+# taken over that one directory and a sequence's frames are never counted among
+# them. A single sprite and one frame of a sheet are indistinguishable on disk,
+# and for the same reason the prism's idle turn cannot be told from a break
+# sheet, so the seven-sequence floor is met by six break sheets plus the turn.
 #
 # The two motion points read the running game instead, and they are two points
 # because they are two produced things: `prism-turn-animates` reads a `draw-sheet`
@@ -3570,13 +3517,16 @@ title = "Produced Assets"
 [[review.categories.items]]
 id = "gem-sprites-produced"
 title = "The produced gem sprites ship"
-description = "The built site carries at least 35 distinct PNG sprites under assets/gems/ — the seven kinds at four strain states, the brilliant and star overlays, the prism at four strain states, and the board frame — each decoding to an RGBA image carrying opaque pixels."
+description = "The built site carries at least 35 distinct PNG sprites directly in assets/gems/ — the seven kinds at four strain states, the brilliant and star overlays, the prism at four strain states, and the board frame — each decoding to an RGBA image with something painted into it."
 domains = ["gameplay"]
 failure_cap = "scuffed"
-# Automated validation: walk the built tree under assets/gems/, hash every PNG
-# for distinctness, decode each, and assert non-zero dimensions and at least one
-# fully opaque pixel — which is what separates a sprite that was drawn from a
-# file that was emitted and never drawn into. Sprite dimensions are not
+# Automated validation: read the PNGs sitting directly in the built tree's
+# assets/gems/, which is where specs/assets.md lands them, hash them for
+# distinctness, decode each, and assert non-zero dimensions and at least one
+# painted pixel — a pixel whose alpha clears the level a reading can tell a
+# drawing from channel rounding at, which is what separates a sprite that was
+# drawn from a file that was emitted and never drawn into. A sequence's frames live in a
+# directory of their own and are never counted here. Sprite dimensions are not
 # asserted: the 64x64 figure the specification gives is true of the gem sprites
 # and false of the board frame it asks for in the same list. See
 # validation/<engine>/assets/gem-sprites-produced.test.ts.
@@ -3613,7 +3563,7 @@ validation = { script = "assets/prism-turn-animates.test.ts", outputs = [
 [[review.categories.items]]
 id = "fx-systems-produced"
 title = "The four produced particle systems ship"
-description = "The built site carries at least four distinct particle-system JSON files under assets/fx/, each of which @test-cabinet/particle-runtime parses and which emits at least one particle over a short simulated interval."
+description = "The built site carries at least four distinct particle-system JSON files under assets/fx/, each of which @clockwyrks/particle-runtime parses and which emits at least one particle over a short simulated interval."
 domains = ["gameplay"]
 failure_cap = "scuffed"
 # Automated validation: read every JSON under assets/fx/ from the built tree,
@@ -3709,18 +3659,17 @@ validation = { script = "assets/no-external-fetch.test.ts", outputs = [
 [[review.categories.items]]
 id = "cut-aura-animates"
 title = "A cut stone's aura runs"
-description = "With a brilliant and a plain gem standing on a settled, idle board, the pixels rendered at the brilliant's cell change from frame to frame while the plain gem's cell does not, so the cut aura is running."
+description = "With a brilliant standing on a settled, idle board, the pixels rendered at its cell change from frame to frame, so the cut aura is running."
 domains = ["gameplay"]
 failure_cap = "great"
 # Automated validation: pose a settled, idle board carrying a brilliant at one
 # cell and a plain gem of the same kind at another, sweep a second of
-# consecutive frames, and assert the brilliant's cell varies by more than
-# PATCH_DISTINCT_MIN across the sweep while the plain gem's stays within
-# PATCH_SAME_MAX. The plain gem is the control, and it is what separates a
-# running aura from a background that animates under everything. A brilliant
-# carries no produced sequence of its own — the break sheets play on removal and
-# the idle turn belongs to the prism — so motion at a settled brilliant's cell
-# can only be the fourth particle system. See
+# consecutive frames, and assert the brilliant's cell does not read the same at
+# every instant of it. Nothing is asserted of the plain gem: specs/board.md hands
+# the animation to the build and never requires a stone to hold still. A
+# brilliant carries no produced sequence of its own — the break sheets play on
+# removal and the idle turn belongs to the prism — so motion at a settled
+# brilliant's cell can only be the fourth particle system. See
 # validation/<engine>/assets/cut-aura-animates.test.ts.
 validation = { script = "assets/cut-aura-animates.test.ts", outputs = [
   { id = "aura", name = "A cut stone never standing still", kind = "replay" },

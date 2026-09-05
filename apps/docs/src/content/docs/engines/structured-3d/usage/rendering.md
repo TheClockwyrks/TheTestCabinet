@@ -29,7 +29,7 @@ export const PALETTE = {
 component's transform, with a material declared as a spec.
 
 ```ts
-import { Actor, MeshComponent } from "@test-cabinet/structured-3d";
+import { Actor, MeshComponent } from "@clockwyrks/structured-3d";
 import { LAYER, PALETTE } from "./constants";
 
 export class Ball extends Actor {
@@ -85,8 +85,8 @@ export const textures: Record<string, THREE.Texture> = {};
 
 ```ts
 // ./levels.ts
-import type { LevelDefinition } from "@test-cabinet/structured-3d";
-import { vec3 } from "@test-cabinet/structured-3d";
+import type { LevelDefinition } from "@clockwyrks/structured-3d";
+import { vec3 } from "@clockwyrks/structured-3d";
 import { Match } from "./mode";
 import { Ship } from "./ship";
 import { textures } from "./textures";
@@ -104,7 +104,7 @@ The component then reads the texture as a plain value through the material's
 `map`:
 
 ```ts
-import { Actor, MeshComponent } from "@test-cabinet/structured-3d";
+import { Actor, MeshComponent } from "@clockwyrks/structured-3d";
 import { LAYER } from "./constants";
 import { textures } from "./textures";
 
@@ -144,7 +144,7 @@ import {
   LightComponent,
   quatLookAt,
   vec3,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 
 export class Rig extends Actor {
   constructor() {
@@ -185,7 +185,7 @@ import {
   Actor,
   SpriteComponent,
   TextComponent,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { HEIGHT, LAYER, PALETTE, WIDTH } from "./constants";
 import { images } from "./images";
 
@@ -353,7 +353,7 @@ import {
   MeshComponent,
   Object3DComponent,
   quatFromEuler,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { LAYER, PALETTE } from "./constants";
 
 const SPARKS = 48;
@@ -408,7 +408,7 @@ logical units. A world point lands under its pen through the camera's
 `worldToLogical`:
 
 ```ts
-import { DrawComponent, type DrawApi } from "@test-cabinet/structured-3d";
+import { DrawComponent, type DrawApi } from "@clockwyrks/structured-3d";
 import { PALETTE } from "./constants";
 
 export class Marker extends DrawComponent {

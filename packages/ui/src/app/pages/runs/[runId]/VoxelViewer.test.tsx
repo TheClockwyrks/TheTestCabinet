@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { act, render } from "@testing-library/react";
-import type { ModelSpec } from "@test-cabinet/run-record";
-import type { PartMesh } from "@test-cabinet/voxel-runtime";
+import type { ModelSpec } from "@clockwyrks/run-record";
+import type { PartMesh } from "@clockwyrks/voxel-runtime";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // A stand-in for the three.js `VoxelRig` that records every instance built and
@@ -46,7 +46,7 @@ vi.mock("@react-three/fiber", () => ({
   useFrame: () => {},
 }));
 vi.mock("@react-three/drei", () => ({ OrbitControls: () => null }));
-vi.mock("@test-cabinet/voxel-runtime/three", () => ({
+vi.mock("@clockwyrks/voxel-runtime/three", () => ({
   VoxelRig: rigMock.FakeVoxelRig,
 }));
 

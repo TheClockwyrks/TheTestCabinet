@@ -3,8 +3,8 @@
 // specs/assets.md seeds `assets/node/` and states outright that "Every node on
 // the board is drawn from this folder, centered on its tile", one frame per
 // charge state plus the alternate critical frame. A build that draws four
-// convincing shapes in code satisfies every colour point in this group and
-// misses this one, which is the whole reason the point exists.
+// convincing shapes in code misses this point, which is the whole reason the
+// point exists.
 //
 // SO THE READING IS THE IMAGE SOURCE ITSELF, NOT THE PIXELS ON THE STAGE. Every
 // `drawImage` of one frame is captured with the bitmap it was handed, and that

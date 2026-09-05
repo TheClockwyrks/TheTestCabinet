@@ -15,11 +15,11 @@ import type {
   GgTelemetryKind,
   GgTurnErrorKind,
   GgTurnErrorType,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import {
   GG_TURN_ERROR_TYPE_LABELS,
   GG_TURN_ERROR_TYPES,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import type { HarnessEvent } from "../../../../client/types";
 import type { ModelNameLookup, ModelPriceLookup } from "./ggCost";
 import { deriveGgAgentSummaries } from "./ggAgentAggregate";

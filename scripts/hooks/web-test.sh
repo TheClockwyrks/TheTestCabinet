@@ -47,6 +47,6 @@ fi
 if ! npm run --silent test --workspaces --if-present; then
 	echo >&2
 	echo "Front-end tests failed. Run them directly to iterate:" >&2
-	echo "    npm run test -w @test-cabinet/ui" >&2
+	echo "    npm run test -w @clockwyrks/ui" >&2
 	exit 1
 fi

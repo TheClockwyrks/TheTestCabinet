@@ -33,7 +33,7 @@ run image's `PATH` (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sampl
 `music`) and committed under [`assets/`](assets/) — see the case's `specs/assets.md` and
 this directory's `ASSETS.md`. At runtime the game only *loads* those committed files; the
 tools are not invoked by the build. The particle effects (fireworks, steam, sparkle,
-cleanup puffs) are played live through **`@test-cabinet/particle-runtime`** (vendored
+cleanup puffs) are played live through **`@clockwyrks/particle-runtime`** (vendored
 under [`vendor/`](vendor/) so a plain `npm ci` resolves it outside the monorepo), and the
 sounds through the Web Audio API.
 
@@ -95,6 +95,6 @@ correctly when served from any base path, including a per-run sub-path.
 - [`assets/`](assets/) — the produced sprites, sprite-sheet frames, particle systems, and
   audio.
 - [`vendor/particle-runtime/`](vendor/) — a vendored, prebuilt copy of
-  `@test-cabinet/particle-runtime`.
+  `@clockwyrks/particle-runtime`.
 - [`scripts/`](scripts/) — `gen-sprites.sh`, `gen-animations.sh`, `gen-particles.sh`, and
   `gen-audio.sh` (reproduce the produced assets with the on-`PATH` tools).

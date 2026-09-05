@@ -312,5 +312,5 @@ actions, so `TOUCH_LAYOUTS["single-vertical"].actions` is `["up", "down",
 `ActionKind`, `ActionBinding`, `RegisteredAction`, `TouchLayout`,
 `InputReader`, `PointerDevice`, `PointerButton`, `PointerSampleType`,
 `PointerSample`, `PointerSnapshot`, `PointerContact`, and `WheelDelta` are
-exported as types from `@test-cabinet/structured-2d`, and `TOUCH_LAYOUTS` is
+exported as types from `@clockwyrks/structured-2d`, and `TOUCH_LAYOUTS` is
 exported as a value.

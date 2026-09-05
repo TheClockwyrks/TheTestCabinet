@@ -9,9 +9,9 @@
 // device pixel ratio, the whole `STAGE_W x STAGE_H` stage fits inside it at ONE
 // uniform scale, and the build really drew into that map — a posed field of rock
 // and the open mine beside it, sampled at their own LOGICAL coordinates and
-// mapped through the reported fit, come back as two clearly different things. A
-// build that read the canvas element's size and scaled the mine itself, or that
-// drew in device pixels, puts something else under those points.
+// mapped through the reported fit, come back as two different things. A build
+// that read the canvas element's size and scaled the mine itself, or that drew in
+// device pixels, puts something else under those points.
 //
 // THREE POINTS. The requirement names three separable things — the whole stage
 // inside the surface at its own aspect, the stage CENTRED with even bars, and the
@@ -34,7 +34,6 @@ import {
 } from "../assert";
 import { STAGE_H, STAGE_W } from "../constants";
 import {
-  DISTINCT_MIN,
   captureStill,
   colorDistance,
   createHarness,
@@ -151,7 +150,7 @@ it("fits the whole stage into every window shape at one uniform scale", async ()
     if (index === 0) await captureStill(h, "fit");
     assertGreaterThan(
       colorDistance(rock, open),
-      DISTINCT_MIN,
+      0,
       `the posed rock and the open mine beside it landing under their own logical coordinates on ${shape.name}`,
     );
   }

@@ -75,7 +75,6 @@ function earliestHit(
     const at = sweptPair(moves, round, saucer, radius + SAUCER_R);
     if (at !== null && at < bestAt) {
       best = { kind: "saucer" };
-      bestAt = at;
     }
   }
 

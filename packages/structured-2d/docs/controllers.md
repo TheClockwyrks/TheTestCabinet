@@ -64,7 +64,7 @@ the whole interface a controller uses, and `tick` applies the intent it was
 given and returns the pawn to rest:
 
 ```ts
-import { Pawn, ShapeComponent } from "@test-cabinet/structured-2d";
+import { Pawn, ShapeComponent } from "@clockwyrks/structured-2d";
 import { FIELD, PADDLE } from "./constants";
 
 export class Paddle extends Pawn {
@@ -105,7 +105,7 @@ signed axis as the difference between two directions so holding both cancels
 out, and use `pressed` for anything that happens once per press.
 
 ```ts
-import { PlayerController } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
 import { Ball } from "./ball";
 import { Paddle } from "./paddle";
 
@@ -144,7 +144,7 @@ the world's own object model, so the bot decides from what it can see rather
 than from input.
 
 ```ts
-import { AIController } from "@test-cabinet/structured-2d";
+import { AIController } from "@clockwyrks/structured-2d";
 import { AI_DEADZONE } from "./constants";
 import { Ball } from "./ball";
 import { Paddle } from "./paddle";

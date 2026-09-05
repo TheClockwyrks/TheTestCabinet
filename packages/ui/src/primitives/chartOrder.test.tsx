@@ -4,7 +4,7 @@
 // alphabetically. These render the real figures and read the axis back.
 
 import { render, screen } from "@testing-library/react";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { describe, expect, it } from "vitest";
 import { MetricChartWidget } from "./MetricChartWidget";
 import { RatingsChartWidget, type RatingCounts } from "./RatingsChartWidget";

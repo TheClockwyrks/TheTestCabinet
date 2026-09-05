@@ -173,6 +173,39 @@ const REVIEW_DEFS: &[&str] = &[
     "ReviewRevision",
 ];
 
+/// The package holding the evaluation contract: run records, reviews, ladders,
+/// snapshots, the job and backend APIs. Consumed by the console and the gallery,
+/// which are ours; **never** vendored into a run, because every one of those shapes
+/// would tell a model that its output is scored, ranked and reviewed.
+const RUN_RECORD_PKG: &str = "@clockwyrks/run-record";
+
+/// The package holding the asset shapes a produced rig is described by — the
+/// `rig.json` a run *writes* and the runtimes then pose and render.
+///
+/// Split out of [`RUN_RECORD_PKG`] because its audience is different in kind: the
+/// voxel and particle runtimes are vendored into a model's own workspace, so
+/// whatever they depend on travels with them. These types describe the artifact
+/// the model is building and say nothing about evaluation, so they are safe to
+/// seed; the rest of the contract is not, and no longer rides along.
+const ASSET_CONTRACT_PKG: &str = "@clockwyrks/asset-contract";
+
+/// The asset shapes [`ASSET_CONTRACT_PKG`] owns. `index.ts` still uses them (a
+/// voxel result carries the rig it resolved), and the console imports them from
+/// the aggregate package, so the run-record module both imports and re-exports
+/// them — named once here so the two lists cannot drift apart.
+const ASSET_SPEC_TYPES: &[&str] = &[
+    "ModelSpec",
+    "PartSpec",
+    "JointSpec",
+    "JointKindSpec",
+    "AxisSpec",
+    "DriveKindSpec",
+    "InterpSpec",
+    "KeyframeSpec",
+    "AnimationSpec",
+    "AnimationTrackSpec",
+];
+
 /// The generated module that carries the `code.*` display catalog.
 ///
 /// Named once because it is referenced twice — as the module's file name and as the
@@ -313,9 +346,25 @@ fn main() -> Result<()> {
 
     // --- TypeScript modules ------------------------------------------------
     let modules = vec![
+        // The asset contract: the resolved rig a produced model is described by and
+        // the F-curve animations that drive it. Its own package because it is the
+        // only slice of the contract that may be seeded — see [`ASSET_CONTRACT_PKG`].
+        // Ordered structure-first: the rig, then the joints, then the animation.
+        TsModule {
+            package: ASSET_CONTRACT_PKG,
+            reexports: &[],
+            file: "index.ts",
+            decls: ts_decls![&cfg;
+                tc::ModelSpec, tc::PartSpec,
+                tc::JointSpec, tc::JointKindSpec, tc::AxisSpec, tc::DriveKindSpec,
+                tc::InterpSpec, tc::KeyframeSpec, tc::AnimationSpec, tc::AnimationTrackSpec,
+            ],
+        },
         // The run-record + arena contract. Ordered to mirror the run-record
         // document: identity, metrics, validation results, arena, the record.
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: ASSET_SPEC_TYPES,
             file: "index.ts",
             decls: ts_decls![&cfg;
                 rr::HarnessSlug, rr::HarnessFamily, rr::RunState, rr::AuthMode, rr::RunEnvironment, rr::RunTooling,
@@ -323,9 +372,7 @@ fn main() -> Result<()> {
                 tc::MediaKind, val::ProofResult, val::CheckResult, val::StepResult,
                 val::DebugScriptResult, val::Inconclusive, val::AutoVerdict, val::Assertion, val::DebugScriptOutput,
                 val::AssetGenResult, val::AssetFrameResult, tc::SheetSpec, tc::SheetSequence,
-                val::VoxelGenResult, val::VoxelPartResult, tc::ModelSpec, tc::PartSpec,
-                tc::JointSpec, tc::JointKindSpec, tc::AxisSpec, tc::DriveKindSpec,
-                tc::InterpSpec, tc::KeyframeSpec, tc::AnimationSpec, tc::AnimationTrackSpec,
+                val::VoxelGenResult, val::VoxelPartResult,
                 tc::NineSlice, val::UiGenResult, val::UiElementResult, val::MaterialGenResult,
                 val::MaterialMapResult, val::ParticleGenResult, val::AudioGenResult,
                 val::AdversarialTeam, val::AdversarialOutcome, val::AdversarialReplay,
@@ -345,6 +392,8 @@ fn main() -> Result<()> {
         // contracts) plus the published `Review` wire shape. The scoring and
         // aggregation logic stays hand-written in the UI.
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: "review.ts",
             decls: ts_decls![&cfg;
                 rv::Rating, rv::AestheticRating, rv::FailureCap, rv::VerdictStatus,
@@ -358,6 +407,8 @@ fn main() -> Result<()> {
         // published Events tab both render these. `HarnessEvent` carries the
         // common fields with the `EventKind` discriminator flattened inline.
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: "event.ts",
             decls: ts_decls![&cfg;
                 ev::OrchestrationAction, ev::SystemStage, ev::SystemStatus, ev::EventKind,
@@ -373,6 +424,8 @@ fn main() -> Result<()> {
         // named capability set, so it belongs beside the set it wraps — as do the
         // saved-agent shapes (`/gg/agents`), which wrap one agent profile out of it.
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: GG_MODULE,
             decls: ts_decls![&cfg;
                 gg::GgAgentConfig, gg::GgOpeningTurn, gg::GgOpeningTree, gg::GgSubagentRef,
@@ -416,6 +469,8 @@ fn main() -> Result<()> {
         // `GgCapabilitySet`, `GgAgentStatus`, `GgLimitBreach` and `GgContextSource` are
         // owned by `gg.ts`, so those imports resolve cross-module.
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: "gg-session-record.ts",
             decls: ts_decls![&cfg;
                 ggr::GgSessionRecorder,
@@ -447,6 +502,8 @@ fn main() -> Result<()> {
         // query *source text* rather than a compiled query — so they belong beside the
         // language they are written in, not beside the run they describe.
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: "gg-query.ts",
             decls: ts_decls![&cfg;
                 ggq::GgValue, ggq::GgRunDoc,
@@ -475,6 +532,8 @@ fn main() -> Result<()> {
         // module's rustdoc gives, and both are declared here because a console that fetches
         // the second by picking an arm off the first needs both shapes.
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: "gg-reference.ts",
             decls: ts_decls![&cfg;
                 ggref::GgReferenceCategory, ggref::GgReferenceModule, ggref::GgToolVariant,
@@ -493,6 +552,8 @@ fn main() -> Result<()> {
         // has one: the document is a self-contained artifact fetched on one tab, and
         // nothing that merely lists runs should pay for its types.
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: "code-analysis.ts",
             decls: ts_decls![&cfg;
                 code::CodeAuthoredBasis, code::CodeTreeBasis, code::CodeLanguage,
@@ -515,6 +576,8 @@ fn main() -> Result<()> {
         // docs page cannot disagree about whether a figure rests on approximation. A
         // hand-kept TypeScript copy is exactly the drift the flag exists to prevent.
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: CODE_METRICS_MODULE,
             decls: ts_decls![&cfg; code::CodeMetricUnit, code::CodeMetricDef],
         },
@@ -523,6 +586,8 @@ fn main() -> Result<()> {
         // automated-only score, diagnostics, confounds). The descriptive statistics
         // (`MetricSummary`, `PassRate`) are shared leaves the arm results embed.
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: "comparison.ts",
             decls: ts_decls![&cfg;
                 cstats::MetricSummary, cstats::PassRate,
@@ -535,6 +600,8 @@ fn main() -> Result<()> {
         // The auth surface: accounts and the register/login request + token
         // response.
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: "account.ts",
             decls: ts_decls![&cfg;
                 acct::Account, acct::RegisterRequest, acct::LoginRequest, acct::AuthnResponse,
@@ -543,6 +610,8 @@ fn main() -> Result<()> {
         // The published snapshot documents (the static gallery's data): the index,
         // the runs index + summary cards, the per-run document, and case metadata.
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: "snapshot.ts",
             decls: ts_decls![&cfg;
                 snap::SnapshotIndex, snap::SubjectOut, snap::LinksOut, snap::RunSummary,
@@ -567,6 +636,8 @@ fn main() -> Result<()> {
         },
         // The backend HTTP API response envelopes (error + catalog/versions).
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: "backend-api.ts",
             decls: ts_decls![&cfg;
                 berr::ErrorBody, berr::ErrorEnvelope,
@@ -599,6 +670,8 @@ fn main() -> Result<()> {
         // shapes live in `backend`. `ClientConfig` is the console's `GET /config`
         // body (today just the artifact-service base URL).
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: "jobs-api.ts",
             decls: ts_decls![&cfg;
                 bapi::DriverState, bapi::LaunchBody, bapi::GgRunRequest, bapi::ClaimedJob,
@@ -625,6 +698,8 @@ fn main() -> Result<()> {
         // controls around the buffer: the account-wide target, one top-up's decision,
         // the plan-scoped review queue, and what a halt cancelled.
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: "coverage.ts",
             decls: ts_decls![&cfg;
                 bapi::ReviewPlanCase, bapi::ReviewPlanCombo,
@@ -651,6 +726,8 @@ fn main() -> Result<()> {
         // either the ladder's declaration, its per-combination progress board, or one
         // of the manual controls (hold, promote, reorder) over it.
         TsModule {
+            package: RUN_RECORD_PKG,
+            reexports: &[],
             file: "ladders.ts",
             decls: ts_decls![&cfg;
                 gate::GateThreshold, gate::Gate, gate::GateOutcome,
@@ -665,21 +742,26 @@ fn main() -> Result<()> {
             ],
         },
     ];
-    for (file, mut content) in finalize_ts(modules, TS_HEADER) {
+    for (package, file, mut content) in finalize_ts(modules, TS_HEADER) {
+        // The two appended tables below belong to run-record modules. Both are matched
+        // on file name alone, and `index.ts` is now a file name two packages have, so
+        // the package is part of the test — otherwise a rename could silently append a
+        // console's lookup table to the package that gets vendored into runs.
+        let run_record = package == RUN_RECORD_PKG;
         // The one module that carries a value as well as its types. `ts_rs` renders
         // types, not data, so the catalog is serialized here and appended to the module
         // that declares its element type — which is why the file name is a constant
         // rather than a literal in two places.
-        if file == CODE_METRICS_MODULE {
+        if run_record && file == CODE_METRICS_MODULE {
             content.push_str(&code_metrics_catalog()?);
         }
         // The gg module carries the error taxonomy's labels for the same reason: a label is data,
         // and a hand-kept copy of it in the console is exactly the drift the tables exist to
         // prevent.
-        if file == GG_MODULE {
+        if run_record && file == GG_MODULE {
             content.push_str(&gg_error_labels()?);
         }
-        write_ts(&root, file, &content)?;
+        write_ts(&root, package, file, &content)?;
     }
 
     // --- JSON Schema documents ---------------------------------------------
@@ -1134,8 +1216,15 @@ fn anon(rel_path: &'static str, schema: serde_json::Value) -> SchemaDoc {
 }
 
 /// Write a generated TypeScript module under `packages/run-record/src/`.
-fn write_ts(root: &Path, file: &str, content: &str) -> Result<()> {
-    let path = root.join("packages/run-record/src").join(file);
+fn write_ts(root: &Path, package: &str, file: &str, content: &str) -> Result<()> {
+    // Every generated package is an npm workspace member under `packages/`, named
+    // after the package's unscoped half, so the scope is all that separates the
+    // specifier from the directory.
+    let dir = package
+        .rsplit_once('/')
+        .map(|(_scope, name)| name)
+        .unwrap_or(package);
+    let path = root.join("packages").join(dir).join("src").join(file);
     fs::write(&path, content).with_context(|| format!("writing {}", path.display()))?;
     Ok(())
 }

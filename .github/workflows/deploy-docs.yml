@@ -48,7 +48,7 @@ jobs:
           node-version: 22.23.1
           cache: npm
       - run: npm ci
-      - run: npm run build -w @test-cabinet/docs
+      - run: npm run build -w @clockwyrks/docs
       # Pick the Pages project from the branch this run is on (works for both the
       # push trigger and a manual dispatch, which reports the branch it was run
       # from in github.ref_name).

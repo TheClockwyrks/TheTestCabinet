@@ -85,6 +85,36 @@ import {
 const POSED_SCORE = 12345;
 
 /**
+ * The separators a build may set between the score's digit triples.
+ *
+ * `Number.prototype.toLocaleString` groups by default, so a build that reaches for
+ * it draws a score of `12345` as `12,345`, and another locale's grouping gives
+ * `12'345` or `12\u202F345`. Every one of those draws the one figure, and
+ * specs/ui.md — which leaves the HUD's "arrangement and styling" to the build —
+ * fixes none of them, so the score's run is looked for under each.
+ *
+ * THE ASCII SPACE IS DELIBERATELY NOT ONE OF THEM. It is what separates two
+ * readouts a build set in the same run, so accepting it would take the `40` and
+ * the `130` of "SCORE 40  TIME 130" for the single figure `40130`. `.` is left out
+ * for its own reason: it is the decimal point.
+ */
+const GROUPS: readonly string[] = [",", "'", "\u00A0", "\u202F", "\u2009"];
+
+/** Every setting of `figure` a build may have drawn: plain, and grouped by each of {@link GROUPS}. */
+function settings(figure: number): string[] {
+  const digits = String(figure);
+  return [
+    digits,
+    ...GROUPS.map((group) => digits.replace(/\B(?=(\d{3})+$)/g, group)),
+  ];
+}
+
+/** Whether a run of text carries the score, under any of {@link settings}. */
+function carriesScore(text: string): boolean {
+  return settings(POSED_SCORE).some((setting) => text.includes(setting));
+}
+
+/**
  * How far below `HUD_H` a body's drawn box may begin, in stage units.
  *
  * `specs/strait.md` puts the boundary at exactly `HUD_H`, and the topmost body
@@ -131,7 +161,7 @@ it("draws the readouts inside the HUD bar and none of the strait's bodies there"
   const level = runs.filter((run) =>
     run.text.toUpperCase().includes(HUD_LEVEL_LABEL),
   );
-  const score = runs.filter((run) => run.text.includes(String(POSED_SCORE)));
+  const score = runs.filter((run) => carriesScore(run.text));
   assertLength(
     level,
     1,

@@ -19,7 +19,7 @@ import {
   createEngine,
   type Engine,
   type SurfaceMetrics,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CUES, LAYOUT, STAGE_H, STAGE_W } from "./constants";
 import type { FoundryDebugApi } from "./debug";
@@ -169,7 +169,7 @@ describe("initialization", () => {
     const snap = h.debug.snapshot(h.state);
     expect(snap.screen).toBe("title");
     expect(snap.phase).toBeNull();
-    expect(snap.version).toBe(3);
+    expect(snap.version).toBe(4);
   });
 
   it("draws a frame without a produced file behind it", async () => {

@@ -18,7 +18,7 @@
 // which set — are facts about the supplied art rather than figures over the
 // simulation, which is why they are here and not in `src/constants.ts`.
 
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 import {
   BEAR_FRAMES,
   CAR_FRAMES,

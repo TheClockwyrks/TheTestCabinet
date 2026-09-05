@@ -65,16 +65,12 @@ const GRID_ROWS = 24;
 /** The whole stage, which is the table the fraction is measured over. */
 const TABLE = { x: 0, y: 0, w: STAGE_W, h: STAGE_H };
 
-/**
- * How far a cell's color must move from its bare reading to count as painted, out of
- * the `441` an RGB distance runs to.
- *
- * The same figure `trail-persists` reads a single stamp at, and it is chosen the same
- * way: a third of the `90` the `presentation` group holds a card face against its
- * table to, so a build with a faint palette is docked there and not again here, and
- * far above the couple of units an antialiased edge can move a sample.
+/*
+ * A cell counts as painted when it reads DIFFERENTLY from its own bare reading,
+ * and nothing more is measured. The case fixes no palette, so how far a stamp
+ * reads from the felt is the reviewer's; rendering is deterministic and each cell
+ * is compared against itself, so any difference at all is paint.
  */
-const PAINTED_DISTANCE = 30;
 
 /**
  * The cells three cards in flight can cover, which is what the growth must beat.
@@ -92,9 +88,7 @@ const FLYER_CELLS = Math.ceil(
 
 /** How many cells have moved from what the same cell read on the bare table. */
 function paintedCells(bare: readonly Rgb[], now: readonly Rgb[]): number {
-  return now.filter(
-    (cell, at) => colorDistance(cell, bare[at]) >= PAINTED_DISTANCE,
-  ).length;
+  return now.filter((cell, at) => colorDistance(cell, bare[at]) > 0).length;
 }
 
 let harness: Harness;

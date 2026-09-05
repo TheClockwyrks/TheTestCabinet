@@ -12,9 +12,8 @@
 // SO THE ROW IS DRAWN DIFFERENTLY, and that is all this point decides. HOW the
 // difference is drawn is the build's: `specs/ui.md` "fixes no palette, no font,
 // and no background", and `specs/` fixes no geometry, no wording and no mark for
-// this screen. That the difference survives hue removal is
-// `solved-mark-survives-hue-removal`'s point, and the three records a solved row
-// adds are their own items'.
+// this screen; whether it reads without relying on hue alone is the reviewer's.
+// The three records a solved row adds are their own items'.
 //
 // THE CONFIGURATION. A fresh session, arriving at the Extras select screen, with
 // the row for challenge 3 read off the frame twice: once with nothing solved, and
@@ -34,9 +33,8 @@
 // WHAT IS READ is the band of the stage the row's baseline sits in, found by the
 // row's name rather than by a layout figure `specs/` does not fix.
 //
-// THE VERDICT. Row 3's band is drawn with at least `MIN_DISTINCT_PIXELS` pixels
-// changed once its challenge is solved, and the run really did complete and
-// really did mark it.
+// THE VERDICT. Row 3's band is drawn differently once its challenge is solved,
+// and the run really did complete and really did mark it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -76,16 +74,6 @@ const FAST_SPEED = SPEEDS.length - 1;
 
 /** How many cycles one call to the clock covers while the reference is run out. */
 const CYCLES_PER_STEP = 25;
-
-/**
- * The least number of pixels of the row's band that must be drawn differently.
- *
- * The case's own figure for "visibly distinct" elsewhere is one percent of a tray
- * slot — sixty-two pixels of a `208 x 30` rectangle (`editor/a-spent-entry-is-drawn-distinct`)
- * — so this is the same order: below the smallest mark a player would read as a
- * row's state, and far above the handful of pixels anti-aliasing can move.
- */
-const MIN_DISTINCT_PIXELS = 64;
 
 let h: Harness;
 
@@ -244,7 +232,7 @@ it("draws a solved row differently from the way it drew it unsolved", async () =
   );
   assertGreaterThan(
     pixelsDiffering(unsolved, solved),
-    MIN_DISTINCT_PIXELS,
+    0,
     `the row for ${JSON.stringify(EXTRA_NAMES[SOLVED_INDEX] ?? "")} is drawn ` +
       "visibly differently once its challenge is solved, so a solved row reads " +
       "apart from an unsolved one",

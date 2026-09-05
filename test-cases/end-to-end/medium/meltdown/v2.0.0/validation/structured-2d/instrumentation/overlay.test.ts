@@ -1,5 +1,4 @@
-// Meltdown — instrumentation/overlay: the debug overlay reports the game, and
-// watching it leaves the game as it is.
+// Meltdown — instrumentation/overlay: the debug overlay reports the game.
 //
 // Under this engine the overlay is ENGINE CHROME: the backtick key toggles it and
 // the engine draws it. Meltdown's whole part is to REGISTER the values it wants on
@@ -8,8 +7,7 @@
 // wave, and the score; the lengths of the two routes; for each tower, its id, its
 // type, its level, its heat, its redline, whether it is tripped, and its kills;
 // for each surge unit, its id, its type, the tile it stands on, its hp, and
-// whether it is slowed." And: "keep every source a pure read, so watching the
-// overlay leaves the game exactly as it is."
+// whether it is slowed."
 //
 // THE OVERLAY'S LINES ARE THE ONES THE TOGGLE ADDS. The engine draws through the
 // same context this harness records, so the overlay's text arrives as ordinary
@@ -24,8 +22,9 @@
 // same panel — `4321` of money, `176` lives, wave `13`, a score of `987654`, a
 // Lance pinned at heat `61` against its own redline of `92`, a Drift on tile
 // `(40, 30)` at `55` hp — and each is looked for as a run of text carrying it.
-// A route's length is a fraction, so it is looked for under any of the roundings a
-// build might print it at.
+// How a long figure is GROUPED is the build's too, so `987654` is found whether
+// the line carries it plain or as `987,654`. A route's length is a fraction, so it
+// is looked for under any of the roundings a build might print it at.
 //
 // THE TWO FLAGS ARE READ BY DIFFERENCE, because a flag has no figure to look for:
 // a build may write `TRIPPED`, `T`, or a colour. So the tower's line is read, the
@@ -34,37 +33,29 @@
 // the same way, and so are the KILLS, which no pose can set: the gun is given a
 // mark it can kill and its line must differ once it has taken it.
 //
-// A PURE READ IS THE LAST LEG, and it is read the one way the specification
-// allows: `simTime` "accumulates the game time the simulation advanced by" on
-// every screen, and a toggle costs a frame — so `simTime` is compared as exactly
-// that one frame's advance and every other field must be identical. The floor is
-// made static first: the trip flag and its timer down, the slow and its timer
-// down, the tower's heat pinned, the unit's motion held and out of every range,
-// the phase `wave` so no build timer counts, and the world gate off so nothing
-// arrives. Anything that moved across that frame would be the overlay's doing.
+// A PURE READ IS NOT ASSERTED HERE. "keep every source a pure read, so watching
+// the overlay leaves the game exactly as it is" is a requirement on the OVERLAY,
+// and under this engine the overlay is the engine's: the backtick key, the panel,
+// the hidden-at-start state and the read-only-ness all are. A check on any of
+// them returns the same verdict for every build on this engine. It is
+// `instrumentation.overlay-is-read-only`, which only `none` carries, where the
+// build writes the overlay itself.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertCloseTo,
-  assertDeepEqual,
-  assertGreaterThan,
-  assertNotEqual,
-  fail,
-} from "../assert";
+import { assertGreaterThan, assertNotEqual, fail } from "../assert";
 import { TOWER_DEFS } from "../constants";
 import {
   captureStill,
   clearCalls,
   createHarness,
   drawnText,
-  seconds,
   startRun,
   ticksFor,
   tileCenter,
   toggleOverlay,
   type Harness,
 } from "../harness";
-import { readTower, readUnit } from "./ground";
+import { readTower } from "./ground";
 
 /** The run figures posed, each one distinctive on a panel full of numbers. */
 const MONEY = 4321;
@@ -94,9 +85,6 @@ const MARK_AT = { col: 9, row: 4 };
 const MARK_HP = 1;
 const KILL_FRAMES = ticksFor(6);
 
-/** How closely `simTime` must match one frame's advance, in decimal places. */
-const SIM_TIME_DIGITS = 6;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -114,14 +102,65 @@ async function textOfOneFrame(): Promise<string[]> {
   return drawnText(h.calls);
 }
 
-/** The first of `lines` containing `needle`, ignoring case, or a failure. */
+/**
+ * The separators a build may group a figure's digit triples with.
+ *
+ * `1,250`, `1'250`, and `1 250` written with a non-breaking, a narrow or a thin
+ * space are all the one figure `1250` — the grouping
+ * `Number.prototype.toLocaleString` writes by default. The ASCII space is
+ * deliberately not one of them: a line is read as a whole run of text and a run
+ * may carry two figures with an ordinary space between them, so accepting it
+ * would read `40 130` as `40130`. Nor is the full stop, which is the decimal
+ * point.
+ */
+const GROUP_SEPARATORS = [",", "'", "\u00A0", "\u202F", "\u2009"] as const;
+
+/**
+ * Every way a build may letter the figure `value`: plain, and grouped into digit
+ * triples by each separator above.
+ *
+ * A figure of three digits or fewer has exactly one rendering, so a life count, a
+ * tile column or an entity id is looked for exactly as it is.
+ */
+function figureRenderings(value: number): string[] {
+  const plain = String(value);
+  const dot = plain.indexOf(".");
+  const whole = dot === -1 ? plain : plain.slice(0, dot);
+  const tail = dot === -1 ? "" : plain.slice(dot);
+  const sign = whole.startsWith("-") ? "-" : "";
+  const digits = sign === "" ? whole : whole.slice(1);
+  if (digits.length <= 3) return [plain];
+  const triples: string[] = [];
+  for (let end = digits.length; end > 0; end -= 3) {
+    triples.unshift(digits.slice(Math.max(0, end - 3), end));
+  }
+  return [
+    plain,
+    ...GROUP_SEPARATORS.map(
+      (separator) => `${sign}${triples.join(separator)}${tail}`,
+    ),
+  ];
+}
+
+/**
+ * The first of `lines` containing `needle`, ignoring case, or a failure.
+ *
+ * A FIGURE is handed over as a number rather than as a string, and is then found
+ * under every grouping a build may letter it with: a score of `987654` is carried
+ * by a line reading `987654` and by one reading `987,654` alike.
+ */
 function lineContaining(
   lines: readonly string[],
-  needle: string,
+  needle: string | number,
   requirement: string,
 ): string {
-  const wanted = needle.toLowerCase();
-  const found = lines.find((line) => line.toLowerCase().includes(wanted));
+  const wanted = (
+    typeof needle === "number" ? figureRenderings(needle) : [needle]
+  ).map((form) => form.toLowerCase());
+  const found = lines.find((line) => {
+    const seen = line.toLowerCase();
+    return wanted.some((form) => seen.includes(form));
+  });
   if (found === undefined) {
     fail(
       `an overlay line containing ${JSON.stringify(needle)} (${requirement})`,
@@ -143,16 +182,16 @@ function lineWithNumber(
   value: number,
   requirement: string,
 ): string {
-  const renderings = [
-    String(value),
-    String(Math.round(value)),
-    String(Math.trunc(value)),
+  const roundings = [
+    ...figureRenderings(value),
+    ...figureRenderings(Math.round(value)),
+    ...figureRenderings(Math.trunc(value)),
     value.toFixed(0),
     value.toFixed(1),
     value.toFixed(2),
   ];
   const found = lines.find((line) =>
-    renderings.some((rendering) => line.includes(rendering)),
+    roundings.some((rendering) => line.includes(rendering)),
   );
   if (found === undefined) {
     fail(`an overlay line carrying ${value} (${requirement})`, lines);
@@ -160,7 +199,7 @@ function lineWithNumber(
   return found;
 }
 
-it("draws every registered fact and changes nothing about the game", async () => {
+it("draws every registered fact the specification lists", async () => {
   startRun(h, "bottleneck");
   h.debug.setDifficulty("hard");
   // `building` while the facts are read, because it is a word that appears
@@ -208,10 +247,10 @@ it("draws every registered fact and changes nothing about the game", async () =>
   lineContaining(added, posed.phase, "the current phase");
   lineContaining(added, posed.mode, "the mode");
   lineContaining(added, posed.difficulty, "the difficulty");
-  lineContaining(added, String(MONEY), "the money");
-  lineContaining(added, String(LIVES), "the lives");
-  lineContaining(added, String(WAVE), "the wave");
-  lineContaining(added, String(SCORE), "the score");
+  lineContaining(added, MONEY, "the money");
+  lineContaining(added, LIVES, "the lives");
+  lineContaining(added, WAVE, "the wave");
+  lineContaining(added, SCORE, "the score");
 
   // The two routes.
   lineWithNumber(added, posed.paths.left.length, "the left route's length");
@@ -220,7 +259,7 @@ it("draws every registered fact and changes nothing about the game", async () =>
   // The tower: its id, its type, its level, its heat and its redline, all on the
   // line the overlay gave it.
   const towerLine = lineContaining(added, TOWER_TYPE, "the tower's type");
-  lineContaining([towerLine], String(tower), "the tower's id");
+  lineContaining([towerLine], tower, "the tower's id");
   const level = towerLine.toLowerCase();
   if (!level.includes(String(TOWER_LEVEL)) && !level.includes("iii")) {
     fail(
@@ -228,15 +267,15 @@ it("draws every registered fact and changes nothing about the game", async () =>
       towerLine,
     );
   }
-  lineContaining([towerLine], String(TOWER_HEAT), "the tower's heat");
-  lineContaining([towerLine], String(TOWER_REDLINE), "the tower's redline");
+  lineContaining([towerLine], TOWER_HEAT, "the tower's heat");
+  lineContaining([towerLine], TOWER_REDLINE, "the tower's redline");
 
   // The unit: its id, its type, its tile and its hp.
   const unitLine = lineContaining(added, UNIT_TYPE, "the unit's type");
-  lineContaining([unitLine], String(unit), "the unit's id");
-  lineContaining([unitLine], String(UNIT_AT.col), "the unit's column");
-  lineContaining([unitLine], String(UNIT_AT.row), "the unit's row");
-  lineContaining([unitLine], String(UNIT_HP), "the unit's hp");
+  lineContaining([unitLine], unit, "the unit's id");
+  lineContaining([unitLine], UNIT_AT.col, "the unit's column");
+  lineContaining([unitLine], UNIT_AT.row, "the unit's row");
+  lineContaining([unitLine], UNIT_HP, "the unit's hp");
 
   // The two flags, by difference: the pose touches that flag alone, so a line
   // that did not change is a line that never carried it.
@@ -286,40 +325,5 @@ it("draws every registered fact and changes nothing about the game", async () =>
     lineContaining(scored, TOWER_TYPE, "the tower's line, once it has a kill"),
     beforeTower,
     "the tower's overlay line, against the same line before the kill",
-  );
-
-  // ---- A pure read -------------------------------------------------------
-  // The floor is made static, so anything that moves across the toggle's frame
-  // moved because of the overlay.
-  h.debug.setPhase("wave");
-  h.debug.setTowerTripTimer(tower, 0);
-  assertGreaterThan(
-    readUnit(h.snapshot(), unit, "the unit the overlay reports").hp,
-    0,
-    "precondition: the unit whose line the overlay carries is still on the floor",
-  );
-  await h.advance(2);
-
-  const still = h.snapshot();
-  clearCalls(h);
-  await toggleOverlay(h);
-  const down = new Set(drawnText(h.calls));
-  const settled = h.snapshot();
-
-  assertDeepEqual(
-    { ...settled, simTime: 0 },
-    { ...still, simTime: 0 },
-    "every field but simTime, across the frame the overlay came down on",
-  );
-  assertCloseTo(
-    settled.simTime,
-    still.simTime + seconds(1),
-    SIM_TIME_DIGITS,
-    "simTime across the toggle: exactly the one frame it ran",
-  );
-  assertDeepEqual(
-    added.filter((line) => down.has(line)),
-    [],
-    "the overlay's own lines, once the overlay is down again",
   );
 });

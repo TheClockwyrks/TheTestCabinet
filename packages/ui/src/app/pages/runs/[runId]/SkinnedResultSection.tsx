@@ -4,9 +4,9 @@ import type {
   AnimationSpec,
   JointSpec,
   ModelSpec,
-} from "@test-cabinet/run-record";
-import type { SkinnedMesh } from "@test-cabinet/voxel-runtime";
-import { SegmentedControl, type SegmentedOption } from "@test-cabinet/ui";
+} from "@clockwyrks/run-record";
+import type { SkinnedMesh } from "@clockwyrks/voxel-runtime";
+import { SegmentedControl, type SegmentedOption } from "@clockwyrks/ui";
 import {
   fetchSkinnedMesh,
   useSkinnedMesh,

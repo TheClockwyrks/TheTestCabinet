@@ -16,18 +16,15 @@
 //      `select`, and `editor` alike". Nothing a player did can sound there, so a
 //      sound on that screen is the bed.
 //
-//   2. AND WHAT IT RUNS IS THE `.WAV`. A second run of the game has BOTH the bed
-//      and its score withheld, and the ledger of produced files the build asked
-//      for and did not get names the `.wav` and does not name the `.mid`. A build
+//   2. AND WHAT IT RUNS IS THE `.WAV`. The produced files the same run asked for
+//      are read back: they name the `.wav` and do not name the `.mid`. A build
 //      that synthesized its bed asks for neither; a build that tried to play the
 //      score asks for it.
 //
-// WHY THE WITHHELD RUN IS READ FOR ITS REQUESTS RATHER THAN FOR ITS SILENCE.
-// `specs/assets.md` requires that "A load that fails leaves the game running", and
-// a build is free to meet that by falling back to something it synthesizes — so a
-// bed that still sounds with its file withheld is conformant, and silence is not
-// a reading a check may demand. What the withheld run can honestly see is what
-// the build REACHED FOR.
+// WHY THE REQUESTS ARE THE READING RATHER THAN THE SOUND. Every produced file is
+// served here, exactly as it is to every other check, so what the bed SOUNDS LIKE
+// is never compared against a file — that is the reviewer's. What the run can
+// honestly see is what the build REACHED FOR.
 //
 // WHAT THIS POINT DOES NOT DECIDE. That the bed keeps looping across screens,
 // across a paused, faulted or complete run, and through a level change is the
@@ -57,9 +54,6 @@ const BED_BOUND = 300;
 
 /** How many frames the recording holds of the game running its bed. */
 const BED_FRAMES = 8;
-
-/** How many frames the withheld run is given to ask for its files in. */
-const LOAD_FRAMES = 3;
 
 /**
  * The produced bed and its score, as a request for either looks.
@@ -113,22 +107,16 @@ it("runs the bed from assets/audio/music.wav rather than from its score", async 
     `sounds the build has emitted within ${BED_BOUND} frames of the game opening, which on the title screen is the bed`,
   );
 
-  const withheld = await createHarness({
-    withoutAssets: new RegExp(`${BED_REQUEST.source}|${SCORE_REQUEST.source}`),
-  });
-  try {
-    await withheld.advance(LOAD_FRAMES);
-    const asked = withheld.assetFailures.map((failure) => failure.path);
-    assertNotNull(
-      asked.find((path) => BED_REQUEST.test(path)) ?? null,
-      `a request for the produced bed, ${BED_FILE}, among ${JSON.stringify(asked)}`,
-    );
-    assertEqual(
-      asked.filter((path) => SCORE_REQUEST.test(path)).length,
-      0,
-      `requests for the committed score, ${SCORE_FILE}, which is not what the game plays`,
-    );
-  } finally {
-    await withheld.dispose();
-  }
+  // And what it runs is the `.wav`: the files this run asked for name the bed and
+  // do not name the score beside it.
+  const asked = await h.assetRequests();
+  assertNotNull(
+    asked.find((path) => BED_REQUEST.test(path)) ?? null,
+    `a request for the produced bed, ${BED_FILE}, among ${JSON.stringify(asked)}`,
+  );
+  assertEqual(
+    asked.filter((path) => SCORE_REQUEST.test(path)).length,
+    0,
+    `requests for the committed score, ${SCORE_FILE}, which is not what the game plays`,
+  );
 });

@@ -5,8 +5,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { SegmentedControl, type SegmentedOption } from "@test-cabinet/ui";
-import type { GgCapabilitySet } from "@test-cabinet/run-record/gg";
+import { SegmentedControl, type SegmentedOption } from "@clockwyrks/ui";
+import type { GgCapabilitySet } from "@clockwyrks/run-record/gg";
 import panels from "./GgPanels.module.scss";
 import type { GgRunState } from "./useGgRunState";
 import { GgAgentsExplorer } from "./GgAgentsExplorer";

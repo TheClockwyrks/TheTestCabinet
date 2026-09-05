@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { Spinner } from "@test-cabinet/ui";
+import { Spinner } from "@clockwyrks/ui";
 import { engineName, orderEngines } from "../data/engines";
 import styles from "./PlayableEmbed.module.scss";
 

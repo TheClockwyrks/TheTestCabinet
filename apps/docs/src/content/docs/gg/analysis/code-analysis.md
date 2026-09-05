@@ -59,7 +59,7 @@ directory. The anchoring is what makes the rule safe: a model's own
 creates, so the check tests the tree's first path segment rather than a name at
 any depth.
 
-`.tcab/` is floored on every tree and wholesale. It is a namespace the host owns
+`.vendor/` is floored on every tree and wholesale. It is a namespace the host owns
 outright, holding the vendored engine runtime, the case's vendored packages and
 its validation media, so a child added to it later stays out of the authored set
 without a second edit.

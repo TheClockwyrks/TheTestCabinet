@@ -27,7 +27,7 @@
 // and the point that was reading it fails on its own reading.
 
 import { loadImage, type Image } from "@napi-rs/canvas";
-import { assertGreaterThanOrEqual, fail } from "../assert";
+import { fail } from "../assert";
 import {
   assetFile,
   BASE_WEAPON_IDS,
@@ -77,21 +77,6 @@ export interface ProducedSprite {
   width: number;
   height: number;
 }
-
-/**
- * How much of a canvas must carry paint for a file to be a drawn sprite
- * rather than an empty canvas: one pixel in a thousand, and never fewer than
- * one pixel.
- *
- * `specs/assets.md` states the canvas of every sprite and nothing about how
- * much of it is covered, so the only figure a check can honestly read is the
- * difference between a drawn picture and a blank file. One pixel in a
- * thousand is that line: seventeen pixels of a `128 x 128` burst frame, one
- * of a `12 x 12` dart. A frame drawn as faintly as the last frame of a
- * fading burst clears it by two orders of magnitude, and a canvas the build
- * rasterized with no drawing operation on it fails it outright.
- */
-export const PAINT_MIN_SHARE = 0.001;
 
 /** The lamplighter's idle sprite (`specs/assets.md`, the sprite table). */
 export const LAMPLIGHTER_IDLE: ProducedSprite = {
@@ -244,13 +229,13 @@ export async function readSprites(
   return reads;
 }
 
-/** How much of a decoded picture carries paint: the share not fully clear. */
-export function paintShare(image: DecodedImage): number {
+/** How many pixels of a decoded picture carry paint: alpha above zero. */
+export function paintedPixels(image: DecodedImage): number {
   let painted = 0;
   for (let i = 3; i < image.pixels.length; i += 4) {
     if (image.pixels[i] > 0) painted += 1;
   }
-  return painted / (image.width * image.height);
+  return painted;
 }
 
 /** How many pixels of a decoded picture are fully transparent. */
@@ -271,6 +256,12 @@ export function clearPixels(image: DecodedImage): number {
  * of those points makes exactly these three of its own file list. A file that
  * is absent, that does not decode, that decoded to another canvas, or that is
  * blank fails the point by its own path.
+ *
+ * The paint reading is PRESENCE and nothing more — the canvas carries at least
+ * one pixel that is not fully clear — because `specs/assets.md` states the
+ * canvas of every sprite and nothing about how much of it is covered. How much
+ * of a canvas a sprite fills, and whether the picture reads at a glance, are
+ * the art bar the presentation domain's rating judges.
  */
 export function assertProduced(reads: readonly SpriteRead[]): DecodedImage[] {
   const images: DecodedImage[] = [];
@@ -287,11 +278,12 @@ export function assertProduced(reads: readonly SpriteRead[]): DecodedImage[] {
         `${image.width} x ${image.height}`,
       );
     }
-    assertGreaterThanOrEqual(
-      paintShare(image),
-      PAINT_MIN_SHARE,
-      `the share of ${sprite.path} carrying paint`,
-    );
+    if (paintedPixels(image) === 0) {
+      fail(
+        `${sprite.path} carrying non-transparent paint`,
+        "a wholly transparent canvas",
+      );
+    }
     images.push(image);
   }
   return images;

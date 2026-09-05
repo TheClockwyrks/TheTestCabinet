@@ -126,9 +126,9 @@ export function recycleRock(state: ShatterState, rock: RockState): void {
   );
   const spread = (nextFloat(state) - 0.5) * 2 * RECYCLE_SPREAD;
 
-  let x = 0;
-  let y = 0;
-  let inward = 0;
+  let x: number;
+  let y: number;
+  let inward: number;
   switch (edge) {
     case 0:
       x = RECYCLE_MARGIN;

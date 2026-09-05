@@ -1,11 +1,11 @@
 /**
- * `@test-cabinet/simple-3d` — the **Simple 3D** engine: the runtime a produced 3D
+ * `@clockwyrks/simple-3d` — the **Simple 3D** engine: the runtime a produced 3D
  * game is built on, and the wiring that assembles it.
  *
  * The package has one entry point, this module, and it is what a game and a
  * validator both import. `three` is a peer dependency: a build declares it itself
  * and imports it directly wherever it needs a three object, so the engine, the
- * build, and `@test-cabinet/voxel-runtime/three` share one instance. The engine
+ * build, and `@clockwyrks/voxel-runtime/three` share one instance. The engine
  * re-exports nothing from `three`.
  *
  * The engine owns the parts of a browser game that are the same in every browser

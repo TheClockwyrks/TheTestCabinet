@@ -13,7 +13,7 @@
 // spawn order and a contact has to read each paddle's integrated velocity for
 // the frame (src/ball.ts).
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { Ball } from "./ball";
 import { OBSTACLE_CENTERS, TAGS } from "./constants";
 import { Paddle } from "./paddle";

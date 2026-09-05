@@ -59,7 +59,7 @@ invokes the tools — see [`../../specs/assets.md`](../../specs/assets.md) and
 
 ## The engine
 
-Deepcore is built on **Structured 2D** (`@test-cabinet/structured-2d`), which owns the
+Deepcore is built on **Structured 2D** (`@clockwyrks/structured-2d`), which owns the
 frame loop and the delta time each tick is handed, the letterboxed
 device-pixel-ratio-aware fit of the fixed `1280x720` stage onto the canvas, the
 **camera**, the **rendering pipeline**, the named input actions the game registers, the
@@ -97,7 +97,7 @@ Requires Node 20+. From this directory:
 npm ci
 ```
 
-The engine and `@test-cabinet/particle-runtime` are resolved through relative `file:`
+The engine and `@clockwyrks/particle-runtime` are resolved through relative `file:`
 dependencies, so a plain `npm ci` resolves everything offline.
 
 ## Develop

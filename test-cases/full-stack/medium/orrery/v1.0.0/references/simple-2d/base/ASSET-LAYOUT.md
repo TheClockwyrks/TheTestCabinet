@@ -106,7 +106,7 @@ Each rise and set on the field shows frame
 
 ## Particle systems — `scripts/gen-fx.sh`
 
-Each is a simulated `system.json` played live through `@test-cabinet/particle-runtime`'s
+Each is a simulated `system.json` played live through `@clockwyrks/particle-runtime`'s
 `./canvas` binding, on the same context the field is drawn into; every play varies. All
 three are authored **radially symmetric** (centered point/disc emitters, 360-degree
 cones, no gravity and no wind — only radial push or pull, drag, and a symmetric vortex)

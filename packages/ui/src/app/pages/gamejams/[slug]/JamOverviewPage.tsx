@@ -1,4 +1,4 @@
-import { Markdown, Panel } from "@test-cabinet/ui";
+import { Markdown, Panel } from "@clockwyrks/ui";
 import type { TestCaseDetail } from "../../../data/testCases";
 import { JamDetailLayout } from "../../../layouts/gamejams/JamDetailLayout";
 import styles from "../../testcases/[slug]/TestCaseDetailPages.module.scss";

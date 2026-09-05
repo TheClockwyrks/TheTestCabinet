@@ -34,10 +34,11 @@ export default defineConfig({
     coverage: { enabled: false },
     // A scenario that runs a Flare cooldown of 60 seconds out, walks the
     // director through a window, or carries the clock to dawn is thousands of
-    // ticks of the real simulation. The longest is the drop roll's pair check,
-    // which kills `DROP_PAIR_TRIALS` (60000) moths and takes the better part of
-    // a minute; this leaves it room on a machine several times slower, so a
-    // conformant build is never failed by the clock.
+    // ticks of the real simulation, and the drop roll's four thousand seeded
+    // kills are thousands more. Every check here is authored to finish in
+    // seconds; the ceiling is deliberately far above that so a loaded host
+    // never turns a conformant build into a lost point, and it is not an
+    // allowance any check is written up to.
     testTimeout: 180_000,
   },
 });

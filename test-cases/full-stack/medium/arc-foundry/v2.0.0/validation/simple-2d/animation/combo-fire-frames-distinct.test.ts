@@ -16,12 +16,10 @@ import { COMBO_IDS } from "../constants";
 import { assertDeepEqual } from "../assert";
 import { createHarness, openYard, standCombo, type Harness } from "../harness";
 import { cycleFrames, decodeAll, duplicatePairs, evidence } from "./images";
-import { serveProducedAssets } from "./produced";
 
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 

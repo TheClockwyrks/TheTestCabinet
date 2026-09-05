@@ -122,7 +122,7 @@ import {
   type Engine,
   type Game,
   type SurfaceMetrics,
-} from "@test-cabinet/simple-3d";
+} from "@clockwyrks/simple-3d";
 import { RAIL_Y, STAGE_H, STAGE_W } from "../src/constants";
 import { game, type State } from "../src/game";
 import type { Debug, Mode, Screen, Snapshot } from "./debug";

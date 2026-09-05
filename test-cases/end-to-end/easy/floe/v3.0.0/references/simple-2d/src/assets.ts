@@ -21,7 +21,7 @@ import {
   PLOW_FRAMES,
   RAFT_FRAMES,
 } from "./constants";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 
 /** One folder's frames, in index order. A frame that failed to load is `null`. */
 export type Frames = readonly (ImageBitmap | null)[];

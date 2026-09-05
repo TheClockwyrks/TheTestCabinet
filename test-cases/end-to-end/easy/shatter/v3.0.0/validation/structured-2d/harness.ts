@@ -107,7 +107,7 @@ import {
   type SurfaceMetrics,
   type Viewport,
   type World,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import {
   BINDINGS,
   BULLET_LIFE,
@@ -2542,37 +2542,6 @@ export function litAround(
     blue += pixels[i].b;
   }
   return { r: red / taken, g: green / taken, b: blue / taken };
-}
-
-/**
- * The mean brightness within `radius` logical units of a point, over every pixel
- * in the box around it.
- *
- * The reading for "is anything drawn here at all", and for a gradient: the halo
- * fading outward from the core is a fall in this figure with distance, which no
- * single sample and no brightest-fifth can show.
- */
-export function meanLuminance(
-  h: Harness,
-  x: number,
-  y: number,
-  radius: number,
-): number {
-  const from = h.device(x - radius, y - radius);
-  const to = h.device(x + radius, y + radius);
-  const { data } = h.ctx.getImageData(
-    from.x,
-    from.y,
-    Math.max(1, to.x - from.x),
-    Math.max(1, to.y - from.y),
-  );
-  let total = 0;
-  let count = 0;
-  for (let i = 0; i < data.length; i += 4) {
-    total += luminance({ r: data[i], g: data[i + 1], b: data[i + 2] });
-    count += 1;
-  }
-  return count === 0 ? 0 : total / count;
 }
 
 /**

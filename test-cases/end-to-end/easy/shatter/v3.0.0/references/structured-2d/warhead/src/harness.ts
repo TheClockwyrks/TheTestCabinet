@@ -21,7 +21,7 @@ import {
   createEngine,
   type Engine,
   type SurfaceMetrics,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import {
   FIELD_H,
   FIELD_W,

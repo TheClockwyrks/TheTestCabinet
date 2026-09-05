@@ -66,7 +66,7 @@ import {
 import { startBurst, stepBursts } from "./bursts";
 import { highlightedItem, itemAt, menuOf } from "./menus";
 import { stepDiveLaunching, stepSwarm } from "./swarm";
-import type { PointerSample } from "@test-cabinet/structured-2d";
+import type { PointerSample } from "@clockwyrks/structured-2d";
 
 import type { FrameInput } from "./input";
 import type { FrameEvents } from "./events";

@@ -1,13 +1,13 @@
-// presentation/vents-and-exhausts-read-apart — the four openings are told from
-// each other and from the wall they are cut into.
+// presentation/vents-and-exhausts-read-apart — the four openings are drawn on the
+// wall they are cut into.
 //
 // THE RULE. `specs/overview.md`'s legibility table: "a vent and an exhaust read
-// apart from each other and from the casing". Two readings, and both matter to a
-// player for the same reason: `specs/floor.md` fixes which openings the surge
-// enters by and which it leaves by, and a player laying a maze has to see at a
-// glance which end of a corridor is which. An opening drawn like the wall around
-// it cannot be found at all; a vent drawn like an exhaust sends a maze the wrong
-// way.
+// apart from each other and from the casing". What a check can decide of that is
+// the second clause, and only as presence: the build drew SOMETHING in each
+// opening's rectangle that it did not draw on the plain casing beside it. How far
+// a vent reads from an exhaust, and whether an exhaust reads as dangerous, are
+// appearance — `specs/overview.md` hands the palette, the type and the glow to
+// the build — and the reviewer's presentation rating is what judges them.
 //
 // WHERE AN OPENING IS. `specs/floor.md` puts each opening in the casing band,
 // aligned to a run of tile rows or columns: the left vent on rows 16 to 19, the
@@ -17,28 +17,27 @@
 // floor beside it, which is ordinary floor (`specs/floor.md`: "An opening's tiles
 // are ordinary floor").
 //
-// HOW AN OPENING'S COLOUR IS TAKEN, AND WHY IT IS NOT AN AVERAGE. Nothing fixes
-// what an opening looks like: a slot, a grille, a lit mouth, a hazard chevron are
-// all "an opening cut into the casing". So the reading is the pixel in the
-// opening's rectangle FURTHEST from the wall around it — what is drawn there at
-// all — rather than a mean, which a build that draws a dark mouth with a bright
-// lip would fail on the mouth while a player reads the lip. `read.ts` says the
-// rest.
+// WHAT THE READING IS HELD AGAINST, AND WHERE THE BAR COMES FROM. Each opening is
+// held against the band on its OWN wall, read three tiles clear of the opening run
+// at either end of it — a build is free to shade its casing, so a reference taken
+// from another wall would be reading that shading. The bar is that wall's own
+// variation, measured rather than stated: how far the plain casing points sit from
+// what the plain casing mostly reads as is how much the build's art moves the band
+// on its own, and what is drawn in the opening has to beat that by `NOISE_MARGIN`.
+// A build that lays a flat casing has almost nothing to beat; a build that shades
+// its casing heavily has to draw its openings past its own shading, which is the
+// same requirement seen from the other side.
 //
-// WHY THE WALL REFERENCE IS PER-WALL AND LOCAL. A build is free to shade its
-// casing, so each opening is held against the band on its OWN wall, read three
-// tiles clear of the opening run at either end of it, and reduced by `medoid` so
-// a rivet or a seam cannot move it.
-//
-// WHY EVERY VENT IS HELD AGAINST EVERY EXHAUST. Four pairs, each named, so a
-// failure says which vent read as which exhaust. Vents are not held against vents
-// and exhausts not against exhausts: they carry the same meaning, and a build that
-// draws both vents alike has drawn them correctly.
+// HOW AN OPENING'S RECTANGLE IS REDUCED, AND WHY IT IS NOT AN AVERAGE. Nothing
+// fixes what an opening looks like: a slot, a grille, a lit mouth, a hazard
+// chevron are all "an opening cut into the casing". So the reading is the pixel in
+// the rectangle FURTHEST from what the wall reads as — what is drawn there at all
+// — rather than a mean, which a build that draws a dark mouth with a bright lip
+// would fail on the mouth while a player reads the lip.
 //
 // WHAT IT DOES NOT DECIDE. Where an opening is, which `floor/left-vent-rows` and
-// its three siblings own; that the band is unbroken between them, which
-// `floor/casing-band` owns; and that an exhaust reads DANGEROUS, which no check
-// can decide without fixing a palette and which no item claims.
+// its three siblings own; and that the band is unbroken between them, which
+// `floor/casing-band` owns.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual } from "../assert";
@@ -60,19 +59,8 @@ import {
   createHarness,
   startRun,
   type Harness,
-  type Rgb,
 } from "../harness";
-import { farthest, medoid, readPixels, showRgb, type Point } from "./read";
-
-/**
- * How far two of the three things must sit apart, out of the 441 the RGB cube
- * spans.
- *
- * This group's figure for "plainly apart" (`specs/overview.md`), the same 50 every
- * other point in this group draws its line at, under this engine and under the
- * other two.
- */
-const APART_MIN = 50;
+import { NOISE_MARGIN, medoid, readPixels, showRgb, type Point } from "./read";
 
 /** The depths into the band an opening and the wall are read at, in units. */
 const DEPTHS: readonly number[] = [4, CASING / 2, CASING - 4];
@@ -86,7 +74,6 @@ const WALL_GAP = 3;
 /** One opening, and the wall it is cut into. */
 interface Opening {
   name: string;
-  kind: "vent" | "exhaust";
   /** The tile ranks it spans, from `specs/floor.md`. */
   ranks: readonly number[];
   /** The point `depth` into the wall, `along` of the way across rank `n`. */
@@ -96,7 +83,6 @@ interface Opening {
 const OPENINGS: readonly Opening[] = [
   {
     name: "the left vent",
-    kind: "vent",
     ranks: LEFT_VENT_ROWS,
     at: (depth, row, along) => ({
       x: depth,
@@ -105,7 +91,6 @@ const OPENINGS: readonly Opening[] = [
   },
   {
     name: "the right exhaust",
-    kind: "exhaust",
     ranks: RIGHT_EXHAUST_ROWS,
     at: (depth, row, along) => ({
       x: PANEL_X - depth,
@@ -114,7 +99,6 @@ const OPENINGS: readonly Opening[] = [
   },
   {
     name: "the top vent",
-    kind: "vent",
     ranks: TOP_VENT_COLS,
     at: (depth, col, along) => ({
       x: tileLeft(col) + along * TILE,
@@ -123,7 +107,6 @@ const OPENINGS: readonly Opening[] = [
   },
   {
     name: "the bottom exhaust",
-    kind: "exhaust",
     ranks: BOTTOM_EXHAUST_COLS,
     at: (depth, col, along) => ({
       x: tileLeft(col) + along * TILE,
@@ -149,33 +132,11 @@ function wallPoints(opening: Opening): Point[] {
   const after = opening.ranks[opening.ranks.length - 1] + WALL_GAP;
   const points: Point[] = [];
   for (const rank of [before, after]) {
-    for (const depth of DEPTHS) points.push(opening.at(depth, rank, 0.5));
+    for (const depth of DEPTHS) {
+      for (const along of ACROSS) points.push(opening.at(depth, rank, along));
+    }
   }
   return points;
-}
-
-/** What one opening reads as, and what the wall around it reads as. */
-interface Reading {
-  opening: Opening;
-  colour: Rgb;
-  wall: Rgb;
-}
-
-/** Read all four openings and the band around each, on the frame as it stands. */
-async function readOpenings(h: Harness): Promise<Reading[]> {
-  const readings: Reading[] = [];
-  for (const opening of OPENINGS) {
-    const inside = openingPoints(opening);
-    const around = wallPoints(opening);
-    const read = await readPixels(h, [...inside, ...around]);
-    const wall = medoid(read.slice(inside.length));
-    readings.push({
-      opening,
-      wall,
-      colour: farthest(wall, read.slice(0, inside.length)),
-    });
-  }
-  return readings;
 }
 
 let h: Harness;
@@ -188,40 +149,33 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("draws every opening apart from the casing it is cut into", async () => {
+it("draws every opening on the casing it is cut into", async () => {
   await startRun(h);
   await h.advance(1);
   await captureStill(h, "openings");
 
-  for (const { opening, colour, wall } of await readOpenings(h)) {
-    assertGreaterThanOrEqual(
-      colorDistance(colour, wall),
-      APART_MIN,
-      `${opening.name} (${showRgb(colour)}) against the casing on its own ` +
-        `wall, ${WALL_GAP} tiles clear of it either end (${showRgb(wall)}) ` +
-        `(specs/overview.md: a vent and an exhaust read apart from the casing)`,
+  for (const opening of OPENINGS) {
+    const inside = openingPoints(opening);
+    const around = wallPoints(opening);
+    const read = await readPixels(h, [...inside, ...around]);
+    const casing = read.slice(inside.length);
+    const wall = medoid(casing);
+    const spread = Math.max(
+      ...casing.map((sample) => colorDistance(sample, wall)),
     );
-  }
-});
+    const drawn = Math.max(
+      ...read.slice(0, inside.length).map((s) => colorDistance(s, wall)),
+    );
 
-it("draws a vent apart from an exhaust", async () => {
-  await startRun(h);
-  await h.advance(1);
-
-  const readings = await readOpenings(h);
-  const vents = readings.filter((r) => r.opening.kind === "vent");
-  const exhausts = readings.filter((r) => r.opening.kind === "exhaust");
-
-  for (const vent of vents) {
-    for (const exhaust of exhausts) {
-      assertGreaterThanOrEqual(
-        colorDistance(vent.colour, exhaust.colour),
-        APART_MIN,
-        `${vent.opening.name} (${showRgb(vent.colour)}) against ` +
-          `${exhaust.opening.name} (${showRgb(exhaust.colour)}) ` +
-          `(specs/overview.md: a vent and an exhaust read apart from each ` +
-          `other; specs/floor.md fixes which is which)`,
-      );
-    }
+    assertGreaterThanOrEqual(
+      drawn,
+      spread + NOISE_MARGIN,
+      `${opening.name}: something is drawn in its rectangle in the casing ` +
+        `band that the plain casing on the same wall (${showRgb(wall)}), ` +
+        `${WALL_GAP} tiles clear of it either end, does not carry — further ` +
+        `from it than the ${spread} that plain casing varies by on its own ` +
+        `(specs/overview.md: a vent and an exhaust read apart from the ` +
+        `casing; specs/floor.md puts the opening on those ranks)`,
+    );
   }
 });

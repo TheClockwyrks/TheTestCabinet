@@ -20,7 +20,7 @@ export default tseslint.config(
       "coverage/",
       "specs/",
       "engine/",
-      ".tcab/",
+      ".vendor/",
     ],
   },
   js.configs.recommended,

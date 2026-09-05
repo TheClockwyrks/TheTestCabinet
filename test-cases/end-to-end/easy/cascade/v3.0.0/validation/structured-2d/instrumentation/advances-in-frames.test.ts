@@ -41,7 +41,7 @@
 // LAUNCHING IS OFF, so the cascade adds no second card to the flight and no
 // launch draw separates the two runs.
 
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {

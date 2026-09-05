@@ -12,7 +12,7 @@
 // and the menu words alone, and the thirteen the game adds to them sit outside
 // it, which the engine allows.
 
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 import { ACTIONS, BINDINGS, LAYOUT } from "./constants";
 
 /**

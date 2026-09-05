@@ -10,7 +10,7 @@ registries are drawn on the overlay while the game runs.
 ## src/main.ts
 
 ```ts
-import { createEngine } from "@test-cabinet/structured-2d";
+import { createEngine } from "@clockwyrks/structured-2d";
 import { patrol } from "./game";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
@@ -34,8 +34,8 @@ values, so each line stays in step with what produces it.
 ## src/instance.ts
 
 ```ts
-import { GameInstance } from "@test-cabinet/structured-2d";
-import type { InitApi } from "@test-cabinet/structured-2d";
+import { GameInstance } from "@clockwyrks/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 
 const BUILD = "patrol 1.4.0";
 
@@ -63,8 +63,8 @@ world's game mode has begun play.
 ## src/game.ts
 
 ```ts
-import { Actor, ShapeComponent } from "@test-cabinet/structured-2d";
-import type { GameDefinition } from "@test-cabinet/structured-2d";
+import { Actor, ShapeComponent } from "@clockwyrks/structured-2d";
+import type { GameDefinition } from "@clockwyrks/structured-2d";
 import { PatrolInstance } from "./instance";
 import { PatrolMode, TAG } from "./levels/patrol-mode";
 
@@ -92,7 +92,7 @@ export const patrol: GameDefinition<null> = {
 ## src/levels/patrol-mode.ts
 
 ```ts
-import { GameMode } from "@test-cabinet/structured-2d";
+import { GameMode } from "@clockwyrks/structured-2d";
 
 export const TAG = "drone";
 

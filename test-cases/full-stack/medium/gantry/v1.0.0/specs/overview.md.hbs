@@ -44,7 +44,7 @@ specification speaks of the runtime it means that layer, and it states only what
 Gantry needs from it. How the layer is structured is yours to decide.
 
 Rendering is also yours. `three` is a dependency of the project for the 3D
-scene, and `@test-cabinet/voxel-runtime` for decoding the models the build
+scene, and `@clockwyrks/voxel-runtime` for decoding the models the build
 produces; how the scene is put together on top of them is your design.
 {{else if (eq engine.slug "simple-3d")}}
 ## The runtime
@@ -131,7 +131,7 @@ and `specs/instrumentation.md` states the one contract fixed over it.
 ### What stays as it is
 
 - `index.html`, the page and the canvas the stage is fitted into.
-- `.tcab/`, holding the vendored `@test-cabinet/voxel-runtime` that
+- `.vendor/`, holding the vendored `@clockwyrks/voxel-runtime` that
   `package.json` resolves that dependency from.
 - The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
   `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
@@ -187,7 +187,7 @@ uses.
   canvas, binds `game` to it, and runs.
 - `src/constants.ts`, holding every figure this specification fixes.
 - `index.html`, the page and the canvas the engine fits the stage into.
-- `.tcab/`, holding the vendored engine that `package.json` resolves that
+- `.vendor/`, holding the vendored engine that `package.json` resolves that
   dependency from.
 - `engine/`, the engine's own documentation.
 - The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
@@ -262,7 +262,7 @@ your yard uses.
   canvas, binds `game` to it, and runs.
 - `src/constants.ts`, holding every figure this specification fixes.
 - `index.html`, the page and the canvas the engine fits the stage into.
-- `.tcab/`, holding the vendored engine that `package.json` resolves that
+- `.vendor/`, holding the vendored engine that `package.json` resolves that
   dependency from.
 - `engine/`, the engine's own documentation.
 - The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,

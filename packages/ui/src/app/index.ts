@@ -1,4 +1,4 @@
-// `@test-cabinet/ui/app` — the shared, routed gallery application.
+// `@clockwyrks/ui/app` — the shared, routed gallery application.
 //
 // This is the whole site UI (the routed pages, the topbar, the synthwave
 // backdrop) plus the run-execution extensions, packaged so every GUI renders the

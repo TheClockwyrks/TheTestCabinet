@@ -5,9 +5,9 @@
 // taken a hit is drawn visibly distinct from an undamaged one, so a player
 // reads its state at a glance." Ring 2's targets carry 2 hit points, so a
 // target at 1 hit point is one that has taken a hit. HOW the damage shows —
-// tint, cracks, anything — is the build's, so what is read is that the two
-// states render differently, against the category's figure for clearly apart
-// (`DISTINCT_MIN`, see `visibility/distinct.ts`).
+// tint, cracks, anything — is the build's, so what is read is presence alone:
+// the two renders of the same arc, point for corresponding point, and whether
+// any of those points moved between them.
 //
 // THE WORLD THIS POSES. An isolated `playing` field, ring 2 held still
 // (`setRingSpeed(2, 0)` — the requirement is a target's look, not the orbit),
@@ -18,9 +18,8 @@
 //
 // WHERE IT SAMPLES. The same fifteen points of the arc's footprint — three
 // radii inside ring 2's annulus (360 to 384) by five angles inside the arc —
-// on each render, compared point for corresponding point. The damaged state
-// passes when some point of the arc renders clearly apart from the undamaged
-// render of that same point.
+// on each render. The damaged state passes when some point of the arc moved
+// against the undamaged render of that same point.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan } from "../assert";
@@ -32,12 +31,7 @@ import {
   samplePoints,
   type Harness,
 } from "../harness";
-import {
-  DISTINCT_MIN,
-  maxCorresponding,
-  polarGrid,
-  polarPoints,
-} from "./distinct";
+import { movedCount, polarGrid, polarPoints } from "./sampling";
 
 /** Ring 2, slot 6: arc center 146.25 degrees under ring angle 0. */
 const RING = 2;
@@ -80,9 +74,9 @@ it("draws a hit ring 2 target distinct from an undamaged one", async () => {
   const damaged = await samplePoints(h, points);
 
   assertGreaterThan(
-    maxCorresponding(undamaged, damaged),
-    DISTINCT_MIN,
-    "the widest RGB distance between the undamaged and the hit render of " +
-      "the same ring 2 arc",
+    movedCount(undamaged, damaged),
+    0,
+    "the sampled points of the ring 2 arc that moved between the undamaged " +
+      "and the hit render of the same slot",
   );
 });

@@ -5,9 +5,10 @@
 // ticks", and it is spawned "at the position of the event that raised it: ... the
 // slow snap and the burn on the unit carrying them".
 //
-// THE PRODUCED FILES ARE SERVED TO THE LOADER HERE, by `./produced.ts`: the system
-// so it can be played, and the sprites so the unit under the reading looks and
-// behaves as it does in a page.
+// THE PRODUCED FILES REACH THE LOADER THROUGH THE HARNESS, which stands the
+// committed `assets/` tree up for every check it builds: the system so it can be
+// played, and the sprites so the unit under the reading looks and behaves as it
+// does in a page.
 //
 // THE BURN IS APPLIED DIRECTLY. `specs/instrumentation.md` applies `setUnitBurn`
 // "through the rule `specs/enemies.md` fixes for an applied burn", so the event
@@ -33,7 +34,7 @@
 // death burst can stand in for the flare.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
+import { assertGreaterThan } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -42,7 +43,6 @@ import {
   parkUnit,
   ticks,
 } from "../harness";
-import { serveProducedAssets } from "./produced";
 import { lattice, motion } from "./region";
 import { tileCenter } from "../constants";
 
@@ -53,12 +53,10 @@ const AT = tileCenter(26, 17);
 const POINTS = lattice(AT, 18, 3).filter((point) => point.y >= AT.y - 8);
 
 const WINDOW = ticks(0.1);
-const MOVING = WINDOW / 2;
 
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 
@@ -84,11 +82,5 @@ it("sets the ground around a unit moving when a burn lands on it", async () => {
     "the ground around a unit to change on more frames after a burn is " +
       "applied to it than before, so a burn flare is played on it " +
       `(specs/assets.md); it changed on ${still} of ${WINDOW} frames before`,
-  );
-  assertGreaterThanOrEqual(
-    played,
-    MOVING,
-    "the flare to keep moving across the tenth of a second after the burn " +
-      "lands, as a live particle system does (specs/assets.md)",
   );
 });

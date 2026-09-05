@@ -12,7 +12,7 @@
 // title screen forever. Watching the overlay never changes what the simulation
 // does, and each line is short enough to read at a glance while the game runs.
 
-import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
+import type { DiagnosticValue, World } from "@clockwyrks/structured-2d";
 import { ballOf, paddleOf } from "./field";
 import type { CaromGame } from "./game";
 import type { Side } from "./sim";

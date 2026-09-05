@@ -29,12 +29,12 @@
 // one. Wick's screens run on `screen` rather than the match phase, so the
 // mode never calls `setPhase` and the inherited `phase` stays `"waiting"`.
 
-import { GameInstance, GameMode } from "@test-cabinet/structured-2d";
+import { GameInstance, GameMode } from "@clockwyrks/structured-2d";
 import type {
   GameDefinition,
   InitApi,
   Transform,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import {
   GroundActor,
   HudActor,

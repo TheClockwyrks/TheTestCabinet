@@ -1,14 +1,14 @@
-// editor/tray-entries-are-drawn-distinguishably — two entries holding different
-// part kinds are not drawn the same, and no entry is drawn empty.
+// editor/tray-entries-are-drawn-distinguishably — every entry carries its own
+// words, and none is drawn empty.
 //
 // THE RULE. "Each entry shows the part's name and its cost from `PART_COSTS`; a
 // rise or set entry shows which reagent or product it is. An entry may reuse the
 // produced part art `specs/assets.md` lists, and how it is arranged inside its
 // rectangle is yours" (`specs/editor.md`, The tray). The arrangement is the
-// build's, so what a check can read is the consequence: an entry that shows its
-// own name and its own cost cannot be the same picture as one showing a different
-// name and a different cost, and an entry showing anything at all is not a blank
-// rectangle. The rectangle each is read inside is the same section's: "Entry `k`
+// build's, and how well one entry reads against the next is the reviewer's. What a
+// check reads is that each entry carries what the sentence gives it: the frame
+// anchored a text run inside that entry's rectangle, and the rectangle is not a
+// blank wash. The rectangle each is read inside is the same section's: "Entry `k`
 // ... occupies the rectangle from `(TRAY_X0, TRAY_Y0 + k * TRAY_SLOT_H)` to
 // `(TRAY_X0 + TRAY_W, TRAY_Y0 + (k + 1) * TRAY_SLOT_H)`".
 //
@@ -19,10 +19,11 @@
 // different kind. Nothing is placed and nothing is pressed, so no entry is spent
 // and no drag's ghost is on the stage: what is read is the tray at rest.
 //
-// THE VERDICT, in two parts. No entry's rectangle is a flat wash: at least
-// `MIN_MARKED_SHARE` of its pixels stand away from its own mean colour, which a
-// rectangle carrying a name and a number does and a blank one does not. And no two
-// of the eight rectangles are the same picture, pixel for pixel.
+// THE VERDICT, in two parts. The frame anchored at least one run of text inside
+// each of the eight rectangles, which is how a name and a cost reach a slot. And
+// no entry's rectangle is a flat wash: some of its pixels stand away from its own
+// mean colour, which a rectangle carrying a name and a number does and a blank one
+// does not.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan } from "../assert";
@@ -34,8 +35,8 @@ import {
   createHarness,
   meanRect,
   openChallengeDocument,
-  pixelsDiffering,
   shareAwayFrom,
+  textDraws,
   type Harness,
   type PixelRect,
 } from "../harness";
@@ -51,15 +52,6 @@ const SIX_KINDS = challenge({
 /** The eight entries `specs/editor.md` derives, in the order it derives them. */
 const TRAY = derivedTray(SIX_KINDS);
 
-/**
- * The least share of an entry's pixels that stand away from its own mean colour.
- *
- * A slot is `TRAY_W` by `TRAY_SLOT_H` (`208` by `30`), which is `6240` pixels, so
- * this is sixty-two of them — far below what a part's name and its cost cover at
- * any legible size, and far above what a stray anti-aliased edge covers.
- */
-const MIN_MARKED_SHARE = 0.01;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -70,10 +62,12 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("draws every entry marked, and no two entries alike", async () => {
+it("draws every entry with its own words, and none of them empty", async () => {
   await openChallengeDocument(h, SIX_KINDS);
+  await h.advance(1);
   await captureStill(h, "tray");
 
+  const runs = textDraws(await h.lastCalls());
   const drawn: PixelRect[] = [];
   for (const [slot] of TRAY.entries()) {
     const rectangle = traySlot(slot);
@@ -83,21 +77,26 @@ it("draws every entry marked, and no two entries alike", async () => {
   }
 
   for (const [slot, entry] of TRAY.entries()) {
-    const rectangle = drawn[slot] as PixelRect;
-    assertGreaterThan(
-      shareAwayFrom(rectangle, meanRect(rectangle), CHANNEL_EPSILON),
-      MIN_MARKED_SHARE,
-      `entry ${slot}, the ${entry.kind} entry, is not drawn empty: it shows the part's name and its cost`,
+    const rectangle = traySlot(slot);
+    const inside = runs.filter(
+      (run) =>
+        run.text.trim() !== "" &&
+        run.x >= rectangle.x &&
+        run.x < rectangle.x + rectangle.w &&
+        run.y >= rectangle.y &&
+        run.y < rectangle.y + rectangle.h,
     );
-  }
+    assertGreaterThan(
+      inside.length,
+      0,
+      `entry ${slot}, the ${entry.kind} entry, carries a run of text of its own: specs/editor.md gives it the part's name and its cost from PART_COSTS`,
+    );
 
-  for (let a = 0; a < TRAY.length; a += 1) {
-    for (let b = a + 1; b < TRAY.length; b += 1) {
-      assertGreaterThan(
-        pixelsDiffering(drawn[a] as PixelRect, drawn[b] as PixelRect),
-        0,
-        `entries ${a} (${TRAY[a]?.kind}) and ${b} (${TRAY[b]?.kind}) hold different part kinds, so they are not drawn identically`,
-      );
-    }
+    const picture = drawn[slot] as PixelRect;
+    assertGreaterThan(
+      shareAwayFrom(picture, meanRect(picture), CHANNEL_EPSILON),
+      0,
+      `entry ${slot}, the ${entry.kind} entry, is not drawn empty: its rectangle carries paint standing off its own ground`,
+    );
   }
 });

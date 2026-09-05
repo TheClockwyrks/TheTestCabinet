@@ -50,7 +50,7 @@ that level reads its image as a plain value and hands it straight to a
 
 ```ts
 // sprites.ts
-import type { LoadApi } from "@test-cabinet/structured-2d";
+import type { LoadApi } from "@clockwyrks/structured-2d";
 
 let sheet: ImageBitmap | null = null;
 
@@ -66,7 +66,7 @@ export function sheetImage(): ImageBitmap {
 
 ```ts
 // actors.ts
-import { Actor, SpriteComponent } from "@test-cabinet/structured-2d";
+import { Actor, SpriteComponent } from "@clockwyrks/structured-2d";
 import { sheetImage } from "./sprites";
 
 export class Asteroid extends Actor {

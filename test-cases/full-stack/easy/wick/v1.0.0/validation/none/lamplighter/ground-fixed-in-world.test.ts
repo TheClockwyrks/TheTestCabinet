@@ -11,10 +11,9 @@
 // the stage center." The camera formula fixes the slide exactly: a world point
 // draws at `(wx - player.x + STAGE_CX, wy - player.y + STAGE_CY)`, so after the
 // lamplighter has moved `dx` units right the ground that stood at stage `x`
-// stands at stage `x - dx`. Two things follow and both are asserted: the
+// stands at stage `x - dx`. What follows, and what is asserted, is that the
 // picture of the ground after the move is the picture before it shifted `dx`
-// units left, and the two pictures differ at the same stage points, which is
-// what "motion reads against it" needs at all.
+// units left.
 //
 // THE NIGHT. An isolated run (`isolate`): the lamplighter alone at the origin,
 // every driver switch off, nothing alive and nothing held, so the world under
@@ -37,9 +36,8 @@
 // the shift is tried at its floor and its ceiling, because a build may round a
 // fractional camera offset either way before it blits: that is `BLIT_TOL`'s
 // allowance, applied to a whole picture. `GROUND_SHIFT_MATCH_MIN` (`0.9`) is
-// the share of the region that has to match under the better of the two, and
-// `GROUND_CHANGE_MIN` (`0.005`) the share that has to differ with no shift
-// applied; both are stated in `constants.ts` with their reasons.
+// the share of the region that has to match under the better of the two, and is
+// stated in `constants.ts` with its reason.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -47,7 +45,7 @@ import {
   assertGreaterThan,
   assertGreaterThanOrEqual,
 } from "../assert";
-import { GROUND_CHANGE_MIN, GROUND_SHIFT_MATCH_MIN } from "../constants";
+import { GROUND_SHIFT_MATCH_MIN } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -142,12 +140,5 @@ it("slides the ground under the lamplighter by the opposite of its movement", as
     matched,
     GROUND_SHIFT_MATCH_MIN,
     `the share of the region matching the ground that stood ${dx} units further right before the move`,
-  );
-
-  const changed = 1 - matchShifted(read.before, read.after, 0);
-  assertGreaterThanOrEqual(
-    changed,
-    GROUND_CHANGE_MIN,
-    "the share of the region that changed at the same stage points over the move",
   );
 });

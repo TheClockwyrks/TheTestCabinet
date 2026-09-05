@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Panel } from "@test-cabinet/ui";
-import type { CoverageSettings } from "@test-cabinet/run-record/coverage";
+import { Panel } from "@clockwyrks/ui";
+import type { CoverageSettings } from "@clockwyrks/run-record/coverage";
 import { LoadingState } from "../../components/LoadingState";
 import { useRevealNotice } from "../../components/SubmitNotice";
 import { SettingsLayout } from "../../layouts/settings/SettingsLayout";

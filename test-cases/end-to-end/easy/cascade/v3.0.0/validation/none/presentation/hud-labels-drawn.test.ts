@@ -14,8 +14,8 @@
 // it answers on fails.
 //
 // WHAT IT DECIDES, AND WHAT IT LEAVES ALONE. That each of the three labels is
-// drawn, and drawn inside its own rectangle. Not whether it can be READ against
-// what it sits on, which is `presentation/text-legible`; not what a click on it
+// drawn, and drawn inside its own rectangle. Not how legibly it reads against
+// what it sits on, which is the reviewer's; not what a click on it
 // DOES, which is `screens.hud-new-game-deals`, `screens.hud-menu-returns` and
 // `screens.hud-sound-mutes`; and not the deal-mode label the strip also
 // carries, which is `screens.hud-shows-mode-label` and which specs/screens.md

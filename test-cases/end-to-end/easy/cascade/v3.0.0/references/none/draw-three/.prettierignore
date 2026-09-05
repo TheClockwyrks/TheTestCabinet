@@ -6,3 +6,6 @@ build/
 out/
 coverage/
 package-lock.json
+
+# Seeded reading material rather than this project's source: the specification.
+specs/

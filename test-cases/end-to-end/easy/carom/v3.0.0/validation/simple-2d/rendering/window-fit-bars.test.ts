@@ -1,64 +1,45 @@
-// Carom — rendering/window-fit-bars: the letterbox bars show the field's
-// background.
+// Carom — rendering/window-fit-bars: the letterbox bars hold nothing the game
+// drew.
 //
-// specs/overview.md: the letterbox bars around the field are the field's
-// background color. `window-fit` reads that the field was fitted and drawn into
-// the map the runtime reported; this reads what is OUTSIDE it, which costs the
-// look alone and nothing of how the game plays.
+// specs/overview.md puts the whole field inside the surface, letterboxed and
+// centred, so everything the game draws lands inside the fitted field and the
+// bars either side of it hold the ground the canvas was cleared to.
 //
-// TWO READINGS, because under an engine both are available. The bars are outside
-// the logical space, so a conformant build never touches them and they hold
-// exactly what the engine cleared the canvas to — the build's own exported
-// `BACKGROUND`, rasterized by `clearColor` — which is the tight reading. The
-// second is the one every project shares: the bar against the NEAREST of the
-// empty field patches, because the look is the build's and a field shaded toward
-// its edges has no single colour, but every empty patch shows the colour it was
-// cleared to through that shading.
+// WHAT IS READ IS PRESENCE, NOT COLOUR. Which colour a build clears its surface
+// to is its own (specs/overview.md), and whether the bars look right beside the
+// field is the reviewer's to judge. So the bars are read twice, over two poses of
+// the same match that differ across the whole field — bodies at the centre, then
+// the obstacles off the field and the paddles at the top of their travel — and
+// the two readings must be the same ground. A build whose field spilled past its
+// fit paints those columns with field content, and field content moved between
+// the two poses.
+//
+// THE COLUMNS. The bars are outside the logical space, so they are sampled in
+// device pixels directly, level with the field's middle. Two of the four are the
+// columns a build that ignored the fit would land a paddle in: 56 is where the
+// left paddle's own logical centre sits if the field was drawn unscaled, and 1530
+// is where the right paddle's lands if the field was stretched to the full
+// window.
 //
 // ONE OFF-ASPECT WINDOW. A bar exists only where the surface is not the field's
 // shape, so the reading is taken on the one window that has bars to read: 1600
-// wide against a 1280-wide field, an 80 CSS pixel bar on each side.
-//
-// The scene is the still, isolated one `arrangeColorScene` poses, so what the
-// field patches read is the field's ground rather than a body standing on it.
+// wide against a 1280-wide field, a 160 device pixel bar on each side.
 
 import { afterEach, it } from "vitest";
 import { assertLessThanOrEqual } from "../assert";
 import {
-  FIELD_POINTS,
+  READ_NOISE,
+  arrangeBareScene,
   arrangeColorScene,
   captureStill,
-  clearColor,
   colorDistance,
   createHarness,
-  sampleColor,
   type Harness,
+  type Rgb,
 } from "../harness";
 
-/**
- * How far a bar pixel may sit from the rasterized `BACKGROUND`, in RGB distance.
- *
- * Rounding room for the rasterization of a CSS color string, not a style
- * allowance: the bar holds exactly what the engine cleared to.
- */
-const CLEAR_MAX = 3;
-
-/**
- * How far a bar pixel may sit from the nearest sampled empty-field patch, in RGB
- * distance: the review item's 25/441.
- *
- * The bar holds the raw clear colour, while an empty patch of field shows that
- * colour through whatever the build legitimately lays over its field — a
- * vignette, a gradient, a faint texture — because the look is the build's.
- * Builds inspected and judged correct have measured up to about 9 here, so a
- * bound of 8 failed fine builds; 25 gives that drift close to a three-fold
- * margin while staying at half of the scale's own line for a body clearly apart
- * from the field, so a bar carrying anything the game visibly drew still fails.
- */
-const SHADE_MAX = 25;
-
 /** The device columns the two bars are sampled in, level with the field's middle. */
-const BAR_COLUMNS = [40, 1560];
+const BAR_COLUMNS = [40, 56, 1530, 1560];
 const BAR_ROW = 360;
 
 let h: Harness;
@@ -67,21 +48,25 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("paints the letterbox bars the field's own background", async () => {
-  // 1600 wide against a 1280-wide field: an 80 CSS pixel bar on each side.
+/** The bars as they stand, one reading per column of {@link BAR_COLUMNS}. */
+function readBars(harness: Harness): Rgb[] {
+  return BAR_COLUMNS.map((deviceX) => {
+    const bar = harness.ctx.getImageData(deviceX, BAR_ROW, 1, 1).data;
+    return { r: bar[0], g: bar[1], b: bar[2] };
+  });
+}
+
+it("leaves the letterbox bars untouched by what it draws", async () => {
+  // 1600 wide against a 1280-wide field: a 160 device pixel bar on each side.
   h = await createHarness({ cssWidth: 1600, cssHeight: 720, dpr: 1 });
+
   await arrangeColorScene(h);
   captureStill(h, "bars");
+  const drawn = readBars(h);
 
-  const background = clearColor();
-  const patches = FIELD_POINTS.map((point) => sampleColor(h, point.x, point.y));
-  for (const deviceX of BAR_COLUMNS) {
-    const bar = h.ctx.getImageData(deviceX, BAR_ROW, 1, 1).data;
-    const barColor = { r: bar[0], g: bar[1], b: bar[2] };
-    assertLessThanOrEqual(colorDistance(barColor, background), CLEAR_MAX);
-    const nearest = Math.min(
-      ...patches.map((patch) => colorDistance(barColor, patch)),
-    );
-    assertLessThanOrEqual(nearest, SHADE_MAX);
-  }
+  await arrangeBareScene(h);
+  const bare = readBars(h);
+
+  for (const [index, bar] of drawn.entries())
+    assertLessThanOrEqual(colorDistance(bar, bare[index]), READ_NOISE);
 });

@@ -26,7 +26,7 @@ export const PALETTE = {
 component's transform.
 
 ```ts
-import { Actor, ShapeComponent } from "@test-cabinet/structured-2d";
+import { Actor, ShapeComponent } from "@clockwyrks/structured-2d";
 import { LAYER, PALETTE } from "./constants";
 
 export class Ball extends Actor {
@@ -62,7 +62,7 @@ export const textures: Record<string, ImageBitmap> = {};
 
 ```ts
 // ./levels.ts
-import type { LevelDefinition } from "@test-cabinet/structured-2d";
+import type { LevelDefinition } from "@clockwyrks/structured-2d";
 import { Match } from "./mode";
 import { Ship } from "./ship";
 import { textures } from "./textures";
@@ -79,7 +79,7 @@ export const arena: LevelDefinition = {
 The component then reads the image as a plain value:
 
 ```ts
-import { Actor, SpriteComponent } from "@test-cabinet/structured-2d";
+import { Actor, SpriteComponent } from "@clockwyrks/structured-2d";
 import { LAYER } from "./constants";
 import { textures } from "./textures";
 
@@ -136,7 +136,7 @@ to `"16px sans-serif"`, `fill` to `"#ffffff"`, `align` to `"center"`, and
 `baseline` to `"middle"`.
 
 ```ts
-import { Actor, TextComponent } from "@test-cabinet/structured-2d";
+import { Actor, TextComponent } from "@clockwyrks/structured-2d";
 import { LAYER, PALETTE } from "./constants";
 
 export class Scoreboard extends Actor {
@@ -259,7 +259,7 @@ import {
   DrawComponent,
   type DrawApi,
   type Vec2,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { PALETTE } from "./constants";
 
 export class Trail extends DrawComponent {

@@ -145,6 +145,7 @@ function assertShape(s: SpectraSnapshot): void {
       "resonance",
       "inversion",
       "diveClock",
+      "diveGap",
       "droneSpeedScale",
       "bulletSpeedScale",
       "diveGapScale",

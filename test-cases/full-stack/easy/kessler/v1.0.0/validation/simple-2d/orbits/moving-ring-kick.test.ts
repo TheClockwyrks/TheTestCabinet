@@ -8,11 +8,12 @@
 // radians per second times the ball's center radius", then "Renormalize the
 // speed to the speed the ball arrived with", then orbital decay rotates the
 // velocity toward the radial "by `min(6, |phi|)` degrees". A radially arriving
-// ball face-hits a ring driven at a posed 60 degrees per second
-// (specs/instrumentation.md: "the ring kick ... follows the posed speed at
-// once"), so the specular bounce is purely radial and the whole outgoing
-// deflection is the kick less the decay's fixed 6 degrees:
-// atan2(0.5 * omega * r, speed) - 6, about 23.6 degrees toward +theta. The
+// ball face-hits a ring driven at RING2_SPEED_CAP, the fastest orbit
+// specs/rings.md gives ring 2 (specs/instrumentation.md: "the ring kick ...
+// follows the posed speed at once"), so the specular bounce is purely radial
+// and the whole outgoing deflection is the kick less the decay's fixed 6
+// degrees: atan2(0.5 * omega * r, speed) - 6, about 17.1 degrees toward
+// +theta. The
 // 1-degree window is honest slack for where along the contact a build reads
 // the surface velocity's radius (the contact radius against the ball's
 // center, a 0.1-degree difference) — a kick unhalved, unsigned, or missing
@@ -29,6 +30,7 @@ import {
   assertEqual,
   assertGreaterThan,
 } from "../assert";
+import { RING2_SPEED_CAP } from "../constants";
 import { captureReplay, isolate, openHarness, type Harness } from "../harness";
 import {
   ballVelocityPolar,
@@ -37,8 +39,8 @@ import {
   spawnBallRadial,
 } from "./rings";
 
-/** The posed orbit, degrees per second toward +theta. */
-const RING_DEG_PER_SEC = 60;
+/** The posed orbit: ring 2's stated ceiling, toward +theta. */
+const RING_DEG_PER_SEC = RING2_SPEED_CAP;
 
 /** The ball: radius 397 crosses the 392 contact on tick one, arriving radially. */
 const BALL_R = 397;
@@ -61,9 +63,9 @@ afterEach(() => {
 it("leaves the ball deflected toward the ring's motion at its arriving speed", async () => {
   isolate(h);
   h.debug.spawnTarget(2, 0, 2);
-  // After the contact tick's advance the ring stands at 168.75, its slot-0
-  // arc [170.75, 189.25] centered on the ball's 180.
-  h.debug.setRingAngle(2, 167.75);
+  // After the contact tick's advance of 0.75 degrees the ring stands at
+  // 168.75, its slot-0 arc [170.75, 189.25] centered on the ball's 180.
+  h.debug.setRingAngle(2, 168);
   h.debug.setRingSpeed(2, RING_DEG_PER_SEC);
   spawnBallRadial(h, BALL_R, BALL_THETA, -BALL_SPEED);
 

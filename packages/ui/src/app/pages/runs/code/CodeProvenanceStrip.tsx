@@ -18,7 +18,7 @@
 import type {
   CodeAnalysisSummary,
   CodeLanguage,
-} from "@test-cabinet/run-record/code-analysis";
+} from "@clockwyrks/run-record/code-analysis";
 import { formatCodeBytes, formatCodeNumber } from "./codeFormat";
 import styles from "./CodePanels.module.scss";
 

@@ -154,4 +154,4 @@ plays from its own initialization onward.
 ## Exports
 
 `CueSpec` and `AudioState` are exported as types from
-`@test-cabinet/simple-2d`.
+`@clockwyrks/simple-2d`.

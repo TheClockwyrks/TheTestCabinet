@@ -16,7 +16,7 @@
 // ink, a falling violet chirp for a hunter's ping, a bright flare burst, a harsh
 // low hit for a catch, and a long descending tone for a maze cleared.
 
-import type { CueSpec, InitApi, WorldAudio } from "@test-cabinet/structured-2d";
+import type { CueSpec, InitApi, WorldAudio } from "@clockwyrks/structured-2d";
 import { CUES, type CueName } from "./constants";
 
 export const CUE_SPECS: Readonly<Record<CueName, CueSpec>> = {

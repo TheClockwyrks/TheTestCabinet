@@ -15,7 +15,7 @@
 // declaration buys is that a file which fails to load leaves the game
 // running: a name never declared throws when it is played.
 
-import type { CueSpec, InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type { CueSpec, InitApi, UpdateApi } from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 import { CUES, CUE_PATHS, LOOPING_CUES, type CueName } from "./constants";
 import type { WickState } from "./game";

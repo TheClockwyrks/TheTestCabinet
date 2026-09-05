@@ -156,7 +156,7 @@ const fn full_stack_preamble(asset_dimension: AssetDimension) -> &'static str {
 /// model at.
 ///
 /// The engine's manifest names the documentation directory *inside its package*
-/// (`docs`, for `@test-cabinet/simple-2d`), but seeding flattens it to this one
+/// (`docs`, for `@clockwyrks/simple-2d`), but seeding flattens it to this one
 /// fixed place in the run workspace, so every engine's documentation is found at
 /// the same path and a template never has to know the package's internal layout.
 /// The path a template sees therefore depends only on *whether* the engine

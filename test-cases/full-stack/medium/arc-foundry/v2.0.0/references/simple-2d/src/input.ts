@@ -12,7 +12,7 @@
 // wherever a press is resolved and never consumes anything.
 
 import { ACTIONS, BINDINGS, LAYOUT, type ActionName } from "./constants";
-import type { InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type { InitApi, UpdateApi } from "@clockwyrks/simple-2d";
 
 /**
  * Register every action against its keys.

@@ -17,7 +17,7 @@
 // is the movement this frame's keys asked for, and the mine drawn at the end of
 // the frame is the one those keys produced.
 
-import { PlayerController } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
 import type { ActionName } from "./constants";
 import { controlAt, controlsFor, inside } from "./controls";
 import type { Control } from "./controls";

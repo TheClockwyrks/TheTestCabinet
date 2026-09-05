@@ -34,7 +34,7 @@ is what `render` draws, what [`engine.state`](/engines/simple-2d/apis/engine/)
 reads, and what the next `update` receives.
 
 `DeepReadonly<S>` is the `ts-essentials` type of that name, re-exported from
-`@test-cabinet/simple-2d`. Every reader of the state is handed it, so `render`
+`@clockwyrks/simple-2d`. Every reader of the state is handed it, so `render`
 cannot change the state and nothing but a transition advances it, and the
 compiler is what says so. A game writes `update` as a pure function that builds
 the next state from the current one, with spreads over the parts that changed:
@@ -259,6 +259,6 @@ into a crash on an unrelated line of the next frame.
 
 `Game`, `Transition`, `DeepReadonly`, `InitApi`, `UpdateApi`, `RenderApi`,
 `EngineEvents`, `EngineEventMap`, and `FrameInfo` are exported as types from
-`@test-cabinet/simple-2d`. `DeepReadonly` is the `ts-essentials` type, re-exported
+`@clockwyrks/simple-2d`. `DeepReadonly` is the `ts-essentials` type, re-exported
 so a game names the view of its own state without a second import; game code may
 equally import it from `ts-essentials` directly.

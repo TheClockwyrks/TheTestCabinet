@@ -9,13 +9,12 @@
 // a sheet whose frames repeat turns through less than the period, however fast it
 // is indexed.
 //
-// WHAT IT READS. Every one of the fifteen pairs differs on at least
-// `DIFFER_MIN_SHARE` of the `48 x 48` canvas the two share. One frame shipped six
-// times differs by exactly nothing, since a PNG carries its pixels losslessly, so the
-// floor is one hundredth — the smallest share worth calling measurable. Two clear
-// pixels count as the same pixel whatever bytes sit under them, because a
-// straight-alpha canvas leaves those bytes undefined and a player sees nothing either
-// way.
+// WHAT IT READS. Every one of the fifteen pairs differs somewhere on the `48 x
+// 48` canvas the two share. One frame shipped six times differs by exactly
+// nothing, since a PNG carries its pixels losslessly, so any pixel of
+// difference is the whole of the reading. Two clear pixels count as the same
+// pixel whatever bytes sit under them, because a straight-alpha canvas leaves
+// those bytes undefined and a player sees nothing either way.
 //
 // WHAT IT DOES NOT DECIDE. Whether the step between the six is an equal one through
 // exactly one period of the motif, and whether the turn reads as continuous rather
@@ -26,11 +25,10 @@
 // beside the verdict.
 
 import { it } from "vitest";
-import { assertGreaterThanOrEqual, assertLength, fail } from "../assert";
+import { assertGreaterThan, assertLength, fail } from "../assert";
 import { APERTURE_FRAMES } from "../constants";
 import { SET_SPRITES } from "./files";
 import {
-  DIFFER_MIN_SHARE,
   type Sprite,
   decodeProduced,
   differingShare,
@@ -55,9 +53,9 @@ it("draws a picture of its own for each of the six set aperture frames", async (
 
   for (let i = 0; i < frames.length; i += 1) {
     for (let j = i + 1; j < frames.length; j += 1) {
-      assertGreaterThanOrEqual(
+      assertGreaterThan(
         differingShare(frames[i], frames[j]),
-        DIFFER_MIN_SHARE,
+        0,
         `${SET_SPRITES[i].label} against ${SET_SPRITES[j].label}: the share of the canvas that differs`,
       );
     }

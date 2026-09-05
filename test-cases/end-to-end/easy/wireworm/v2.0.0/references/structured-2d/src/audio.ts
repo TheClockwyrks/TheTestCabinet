@@ -19,7 +19,7 @@
 // lost life, a two-note lift for a cleared level, a long fanfare for the win, a
 // long fall for the loss, and a small blip as a highlight moves.
 
-import type { CueSpec, InitApi, WorldAudio } from "@test-cabinet/structured-2d";
+import type { CueSpec, InitApi, WorldAudio } from "@clockwyrks/structured-2d";
 import { CUES, type CueName } from "./constants";
 
 export const CUE_SPECS: Readonly<Record<CueName, CueSpec>> = {

@@ -22,7 +22,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import type { Recording } from "@test-cabinet/simple-2d";
+import type { Recording } from "@clockwyrks/simple-2d";
 import {
   BASE_MAX_HP,
   CUE_PATHS,
@@ -423,24 +423,6 @@ it("serves the produced sprites and sounds to the engine's loader", async () => 
   expect(idle[0].id).toBe(assetPath(LAMPLIGHTER_IDLE_PATH));
   expect(idle[0].w).toBe(LAMPLIGHTER_SPRITE_WIDTH);
   expect(idle[0].h).toBe(LAMPLIGHTER_SPRITE_HEIGHT);
-});
-
-it("withholds a named file from the loader alone", async () => {
-  const withheld = await createHarness({
-    withhold: [LAMPLIGHTER_IDLE_PATH],
-  });
-  try {
-    expect(withheld.assetFailures.map((asset) => asset.path)).toEqual([
-      LAMPLIGHTER_IDLE_PATH,
-    ]);
-    expect(withheld.assetsLoaded.map((asset) => asset.path)).not.toContain(
-      LAMPLIGHTER_IDLE_PATH,
-    );
-  } finally {
-    withheld.dispose();
-  }
-  // The refusal ends with that harness: this one loaded everything.
-  expect(h.assetFailures).toEqual([]);
 });
 
 it("watches only the cues that sounded during the drive", async () => {

@@ -78,7 +78,7 @@ later module depends on them; write them first and freeze them.
 | `sim.ts` | The **`Game` class** — the orchestrator (valence's `sim.ts`). Owns `World`, `guests[]`, `staff[]`, `attractions[]`, `scenery[]`, the `Ledger`, `rating`, day clock, active `Tool`/selection, `state`, milestones, and the `fxQueue`/`sndQueue`. `fixedStep(dt)` advances everything on the tick; the tool/command methods mutate the park. | `Game` class: `fixedStep`, arrivals/spawn, `layPath`, `placeAttraction`, `placeScenery`, `hireStaff`, `assignStaff`, `setPrice`, `demolish`, `selectAt`, `cycleSpeed`, `togglePause`, `restart`, plus `fxQueue`, `sndQueue`, `pointerX/Y`, `state` |
 | `assets.ts` | Load the **produced** files through Vite `import.meta.glob` (page-relative under any base path). Maps sprite names → `HTMLImageElement`, animation prefixes → frame arrays, `fx/*.system.json` → `ParticleSystem`, `audio/*.wav` → URL. | `loadAssets()` → `Assets` ( `sprite(name)`, `frames(prefix)`, `guest`, `ride`, `staff`, `fx`, `audioUrl` ) |
 | `audio.ts` | Web Audio playback (`specs/assets.md` "Audio"): decode the produced `.wav`s on first gesture, play cues on events, loop the crowd hum + carnival music, mute toggle, no autostart. Direct copy of valence's `Audio` class shape. | `Audio` class (`resume`, `play(cue)`, `toggleMute`, `muted`) |
-| `particles.ts` | Play the produced particle systems live via `@test-cabinet/particle-runtime`'s `/canvas` binding. **One-shots** (fireworks, cleanup puff) simulated on an offscreen canvas and composited; **loops** (steam, sparkle) held while a stall/ride is active and stopped when idle/broken. | `Particles` class (`spawnOneShot`, `ensureLoop`, `stopLoop`, `update`, `draw`) |
+| `particles.ts` | Play the produced particle systems live via `@clockwyrks/particle-runtime`'s `/canvas` binding. **One-shots** (fireworks, cleanup puff) simulated on an offscreen canvas and composited; **loops** (steam, sparkle) held while a stall/ride is active and stopped when idle/broken. | `Particles` class (`spawnOneShot`, `ensureLoop`, `stopLoop`, `update`, `draw`) |
 | `input.ts` | Pointer + keyboard capture, drag state (for the path tool), wheel (zoom), viewport→logical mapping. Valence's `input.ts` plus drag + wheel. | `Input` class (`attach`, `pointerLogical`, `clicks`, `drag`, `wheel`, `keys`, `setViewport`, `drain`) |
 | `menus.ts` | One source of truth for each menu's items so `render` draws them and keyboard nav drives the same list. | `menuItems(state, game)` |
 | `main.ts` | Bootstrap: load assets, fit the fixed 1280×720 stage (letterboxed, centered, crisp at any DPR and on load), wire input, run the fixed-step loop, route clicks/keys to tools & menus, expose `window.__midway` dev hooks for the proof script. | `main()` |
@@ -418,7 +418,7 @@ invalidated on those edits.
 ## 7. Build, config, and packaging (mirror valence exactly)
 
 - `package.json`: `type: module`; scripts `dev` (`vite --host`), `build`
-  (`tsc --noEmit && vite build`), `preview`; deps `@test-cabinet/particle-runtime`
+  (`tsc --noEmit && vite build`), `preview`; deps `@clockwyrks/particle-runtime`
   (the seeded `file:` dep — vendored under `vendor/` so a plain `npm ci` resolves it),
   devDeps `playwright`, `typescript`, `vite`. **Commit `package-lock.json`** (`npm ci`
   requires it).

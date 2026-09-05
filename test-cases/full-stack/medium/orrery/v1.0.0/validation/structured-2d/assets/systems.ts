@@ -32,7 +32,7 @@ import type {
   ParticleSimulator,
   ParticleSystem,
   RenderParticle,
-} from "@test-cabinet/particle-runtime";
+} from "@clockwyrks/particle-runtime";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { WORKSPACE, writeImageBytes } from "../media";
@@ -100,7 +100,7 @@ export interface SystemPlay {
  * hand back what the runtime reported frame by frame.
  *
  * The stages are the claims a point makes of the file, in order: it is there, it
- * parses as JSON, and `@test-cabinet/particle-runtime`'s own `ParticleSimulator`
+ * parses as JSON, and `@clockwyrks/particle-runtime`'s own `ParticleSimulator`
  * constructs over it and steps without throwing. Each stage that cannot be passed
  * comes back as the `reason`.
  */
@@ -133,11 +133,11 @@ export async function playSystem(file: string): Promise<SystemPlay> {
   let Simulator: typeof ParticleSimulator;
   try {
     ({ ParticleSimulator: Simulator } =
-      await import("@test-cabinet/particle-runtime"));
+      await import("@clockwyrks/particle-runtime"));
   } catch (error) {
     return {
       ...empty,
-      reason: `@test-cabinet/particle-runtime could not be imported: ${String(error)}`,
+      reason: `@clockwyrks/particle-runtime could not be imported: ${String(error)}`,
     };
   }
 

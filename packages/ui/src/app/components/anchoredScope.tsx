@@ -13,7 +13,7 @@
 
 import { useCallback } from "react";
 import { useSearchParams } from "react-router";
-import { SegmentedControl, type SegmentedOption } from "@test-cabinet/ui";
+import { SegmentedControl, type SegmentedOption } from "@clockwyrks/ui";
 import { parseVersion } from "../data/versions";
 import styles from "./anchoredScope.module.scss";
 

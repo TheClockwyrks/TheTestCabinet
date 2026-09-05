@@ -9,7 +9,7 @@
 // the verdict a clear records.
 
 import { beforeAll, describe, expect, it } from "vitest";
-import type { PointerSample, UpdateApi } from "@test-cabinet/simple-3d";
+import type { PointerSample, UpdateApi } from "@clockwyrks/simple-3d";
 import { ORBIT_PER_PX, RUN_SPEEDS, TICK_HZ } from "./constants";
 import { createDebugSurface } from "./debug";
 import type { GantryDebugApi, GantryState } from "./game";

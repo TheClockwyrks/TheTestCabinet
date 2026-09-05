@@ -28,13 +28,13 @@
 // calls `setPhase`, so the inherited match phase stays `"waiting"` and `elapsed`
 // stays `0`, and the two vocabularies never meet.
 
-import { GameInstance, GameMode, GameState } from "@test-cabinet/structured-2d";
+import { GameInstance, GameMode, GameState } from "@clockwyrks/structured-2d";
 import type {
   GameDefinition,
   InitApi,
   LoadApi,
   World,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { syncField } from "./actors";
 import { defineCues, playCues } from "./audio";
 import { loadArt } from "./assets";
@@ -53,7 +53,7 @@ import { newFrameEvents } from "./events";
 import { forgetPresses, stepFrame } from "./simulate";
 import { Ship, Stage } from "./actors";
 import { COLOR } from "./theme";
-import type { ParticleSimulator } from "@test-cabinet/particle-runtime";
+import type { ParticleSimulator } from "@clockwyrks/particle-runtime";
 
 // The surface is part of the module contract and is declared beside the game it
 // types, so the type is exported from here whichever module implements it.

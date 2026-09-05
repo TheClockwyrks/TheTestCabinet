@@ -84,17 +84,15 @@ const LOOK_R = HULL_LEN;
 const SAMPLE_STRIDE = 3;
 
 /**
- * How far one point's reading must move between two frames to count as moved, of the
- * 441 an RGB distance can span.
+ * The sensing floor on a change: how far a reading must move between two frames
+ * before the move can be called a redrawing, of the 441 an RGB distance can span.
  *
- * Forty, two thirds of the sixty this group calls "drawn apart from the field".
- * `specs/overview.md` asks that the appearance change VISIBLY, so the bar is what a
- * player would see at a point rather than what a measurement can detect: a hull
- * dimmed, recoloured or outlined differently moves its points by well over a
- * hundred, and a build's own anti-aliasing between two frames of one picture moves
- * them by a handful.
+ * Eight. Below that a sampling cannot tell a redrawing from the rounding of an
+ * 8-bit channel and the host's own anti-aliasing; above it nothing is decided
+ * about how strongly the two readings differ. Anything the build drew differently
+ * clears it, however faintly it drew it.
  */
-const POINT_CHANGE = 40;
+const POINT_CHANGE = 8;
 
 /**
  * How many of the {@link DISC_SAMPLES} points must have moved at some instant of the

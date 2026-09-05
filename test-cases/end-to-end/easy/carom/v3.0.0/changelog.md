@@ -207,12 +207,12 @@ Every review item carries a validation script, and descriptions state the
 mechanically checked claim. Items that bundled several behaviors are split so a
 build fails exactly the rule it breaks: `hit-edge` into `hit-top-edge` and
 `hit-bottom-edge`, `no-tunnel` into `no-tunnel-obstacle`, `no-tunnel-paddle` and
-`no-tunnel-wall`, `ui.trail` into `trail-length` and `trail-scales`. New points
-cover what the rules already implied: `ai-homes`, `serve-angle`, the paddle
-bounds, the obstacles' top and bottom faces, the two wall bounces, the sign of
-spin's curve, spin surviving wall and obstacle bounces, a `navigation` category
-for every menu transition, and a `hud` category for the two scores. `color` is
-renamed `visibility`, since it checks a color distance rather than a palette.
+`no-tunnel-wall`. New points cover what the rules already implied: `ai-homes`,
+`serve-angle`, the paddle bounds, the obstacles' top and bottom faces, the two
+wall bounces, the sign of spin's curve, spin surviving wall and obstacle bounces,
+a `navigation` category for every menu transition, and a `hud` category for the
+two scores. `color` is renamed `visibility`, since it checks whether each body
+was drawn rather than what it was drawn in.
 The reviewer's judgement is the domain ratings; overriding a verdict is the
 exception.
 

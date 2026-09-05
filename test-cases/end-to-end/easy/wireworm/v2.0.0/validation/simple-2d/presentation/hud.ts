@@ -17,9 +17,17 @@
 // HOW A FIGURE IS READ OUT OF A RUN. specs/ui.md fixes the figures a readout
 // shows and leaves its composition to the build — "How the level readout is
 // composed around those three parts is yours" — so what is read from a run is its
-// DIGIT RUNS: the maximal runs of digits in it, each as a number. `SCORE 12,345`
-// and `012345` and `12 345` all carry the figure `12345`; `LEVEL 7 / 12` carries
-// `7` and `12`, and neither of them is `712`.
+// DIGIT RUNS: the maximal runs of digits in it, each as a number, with a run
+// grouped in threes read as the one figure it spells. `SCORE 12,345`, `12'345`,
+// `012345` and `12 345` written with a non-breaking or a thin space all carry
+// the figure `12345`; `LEVEL 7 / 12` carries `7` and `12`, and neither of them
+// is `712`.
+//
+// AN ASCII SPACE IS NOT A GROUPING SEPARATOR. The bar's runs are read as the
+// build anchored them, and a run that reads `40 130` drew the two figures `40`
+// and `130` — a reading that joined them would answer a check for `40130` with a
+// bar that never drew it. Nor is the decimal point: a run drawing `1.5` drew one
+// and a half.
 
 import { HUD_H } from "../constants";
 import { drawnTextSpans, type Harness, type TextSpan } from "../harness";
@@ -29,9 +37,45 @@ export function hudSpans(h: Harness): TextSpan[] {
   return drawnTextSpans(h).filter((span) => span.y >= 0 && span.y <= HUD_H);
 }
 
+/** The separators a build may draw between the digit triples of a figure. */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One drawn figure: digits grouped in threes, or a plain run of digits. */
+const FIGURE = new RegExp(`\\d{1,3}(?:${GROUP}\\d{3})+|\\d+`, "g");
+
 /** The maximal runs of digits in a span, each as the number it spells. */
 export function figuresIn(span: TextSpan): number[] {
-  return (span.text.match(/\d+/g) ?? []).map((run) => Number.parseInt(run, 10));
+  return (span.text.match(FIGURE) ?? []).map((run) =>
+    Number.parseInt(run.replace(new RegExp(GROUP, "g"), ""), 10),
+  );
+}
+
+/**
+ * Every conventional drawing of a whole figure: its plain digits, and the same
+ * digits grouped in threes by each separator above. A figure of three digits or
+ * fewer has exactly one drawing. Each form is digits and separators alone, so it
+ * carries nothing a pattern would read as syntax.
+ */
+function drawingsOf(figure: number): string[] {
+  const plain = String(figure);
+  const forms = new Set([plain]);
+  for (const separator of [",", "'", "\u00A0", "\u202F", "\u2009"]) {
+    forms.add(plain.replace(/\B(?=(\d{3})+(?!\d))/g, separator));
+  }
+  return [...forms];
+}
+
+/**
+ * A standalone occurrence of `figure` in a run: not part of a longer number.
+ *
+ * Every drawing of the figure is looked for, so a build that groups its
+ * thousands names it as surely as one that does not, and the digit boundary is
+ * held on both sides, so a run showing `150` still does not name `50`.
+ */
+export function names(span: TextSpan, figure: number): boolean {
+  return drawingsOf(figure).some((form) =>
+    new RegExp(`(?<![0-9])${form}(?![0-9])`).test(span.text),
+  );
 }
 
 /** Every digit the bar drew, left to right: how a run of single glyphs reads. */

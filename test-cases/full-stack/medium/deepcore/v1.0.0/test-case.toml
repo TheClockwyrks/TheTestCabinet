@@ -84,7 +84,7 @@ workspace = "workspaces/base"
 
 # Init command, run in the run container once the workspace and specs are seeded and
 # before the harness starts. `npm install` — NOT `npm ci` — because `packages` injects
-# the `@test-cabinet/particle-runtime` `file:` dependency this build plays its produced
+# the `@clockwyrks/particle-runtime` `file:` dependency this build plays its produced
 # particle systems with, so the lockfile is completed at seed time; the same command
 # downloads the Playwright Chromium build (the base image ships the OS libraries
 # Chromium links against, but not the browser binary), so the model can build and
@@ -98,7 +98,7 @@ init = "npm install && npx playwright install chromium"
 # targets rendered via `[[reference]]`, not seeded game assets.
 
 # Test Cabinet runtime libraries installed into the run so the build can play the
-# particle systems it produces. `@test-cabinet/particle-runtime` is the same library
+# particle systems it produces. `@clockwyrks/particle-runtime` is the same library
 # the review UI plays a produced effect with; core bakes it into the run image and the
 # seeded workspace `package.json` depends on it via its baked-in `file:` path, so the
 # build imports it (its `/canvas` binding) like any other dependency and plays each
@@ -107,7 +107,7 @@ init = "npm install && npx playwright install chromium"
 # exhaust, and death bursts — are all produced `particle-2d` systems played this way;
 # see `specs/assets.md` for the consumption contract. (A root key, so it must sit above
 # the first `[table]` header.)
-packages = ["@test-cabinet/particle-runtime"]
+packages = ["@clockwyrks/particle-runtime"]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Deepcore offers a single `base` variant (the standard expedition), declared in its

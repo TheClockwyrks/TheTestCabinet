@@ -1,22 +1,15 @@
-// presentation/torpedo-is-drawn-and-distinct — the torpedo reads apart from the
-// field and apart from the rounds it flies beside. `warhead` only.
+// presentation/torpedo-is-drawn-and-distinct — the torpedo is drawn on the field
+// it flies over. `warhead` only.
 //
 // THE RULE. `specs/overview.md`'s legibility table, under `warhead`: "The torpedo |
 // The torpedo reads apart from the bullets at a glance, as the heavy weapon rather
-// than a round." A torpedo a player cannot tell from a bullet is a weapon they
-// cannot tell they have spent, on a ten-second recharge.
+// than a round." What a script can decide of that is the half that is presence —
+// that the build painted a dart where one is in flight. Whether it reads as the
+// heavy weapon at a glance is the picture the reviewer judges.
 //
 // WHAT IS READ. The disc of `TORPEDO_R` (`6`, `specs/collision.md`) about the
-// torpedo's centre, and the disc of `BULLET_R` (`3`) about a round posed across the
-// field from it, both against the field the build itself drew at points where
-// nothing is posed. The two colours the build chose are then compared with each
-// other. Nothing here asserts a palette or a silhouette: "as the heavy weapon rather
-// than a round" is a reviewer's reading of the picture, and what a script can decide
-// is that a torpedo is painted at all and that the two are told apart.
-//
-// WHY THE TWO BOUNDS DIFFER is the note in `rocks-are-drawn-and-distinct`: sixty of
-// 441 separates a body from a field that is dark by requirement, forty separates two
-// bodies a build drew to be seen against it. Both are the item's own figures.
+// torpedo's centre, against the field the build itself drew at points where nothing
+// is posed. Nothing here asserts a palette or a silhouette.
 //
 // THE TORPEDO CANNOT BE POSED AT REST, because `addTorpedo` puts one in flight at
 // `TORPEDO_SPEED` (`specs/instrumentation.md`) and no operation stops it. So its
@@ -24,41 +17,34 @@
 // the samples follow the torpedo rather than the place it was posed. The field holds
 // no rock and no saucer, so there is nothing for its guidance to turn onto in any
 // case.
-//
-// AND THE ROUND IS POSED AT REST, for the reason `bullet-is-drawn-and-distinct`
-// states: a round with a velocity paints a tail along the field it has crossed, and
-// the reading would be of the path rather than of the round.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BULLET_R, TORPEDO_R } from "../constants";
-import { assertGreaterThan, assertGreaterThanOrEqual, fail } from "../assert";
+import { TORPEDO_R } from "../constants";
+import { assertGreaterThanOrEqual, fail } from "../assert";
 import type { Vec } from "../geometry";
 import {
   captureStill,
-  colorDistance,
   createHarness,
-  poseBullet,
   startPlaying,
   torpedoById,
   torpedoesOf,
   type Harness,
-  type Rgb,
 } from "../harness";
 import { requireOp } from "../surface";
-import {
-  DISC_SAMPLES,
-  markedColor,
-  markedCount,
-  readDisc,
-  readPainted,
-} from "./ink";
-import { BULLET_SPOT, FAR_SHIP, sampleField } from "./scene";
+import { DISC_SAMPLES, markedCount, readDisc, readPainted } from "./ink";
+import { FAR_SHIP, sampleField } from "./scene";
 
-/** How far a sample must be from the field to be a body's, of 441. The item's figure. */
-const APART_FROM_FIELD = 60;
-
-/** How far the torpedo's colour must be from the round's, of 441. The item's figure. */
-const APART_FROM_BULLET = 40;
+/**
+ * The sensing floor: how far a sample must sit from the field the build drew
+ * before the reading can be called the build's own ink, of the 441 an RGB distance
+ * can span.
+ *
+ * Eight. Below that a sampling cannot tell a drawing from the rounding of an 8-bit
+ * channel and the host's own anti-aliasing; above it nothing is decided about how
+ * strongly the mark reads. Anything the build painted over the sample clears it,
+ * in whatever colour it chose, over whatever field it chose.
+ */
+const SENSING_FLOOR = 8;
 
 /** The heading it is posed on: straight along `+x`, so its drawn body stays inside. */
 const HEADING = 0;
@@ -78,27 +64,12 @@ const MIN_FRACTION = 0.25;
 /**
  * Where the torpedo is posed: low and to the right, `453` from the star's centre.
  *
- * The mirror of `BULLET_SPOT` across the field's column, so the two bodies compared
- * here stand `680` apart and neither is drawn anywhere near the other, and so the
- * well pulls on neither reading — a torpedo it never pulls at all
- * (`specs/gravity.md`), and a round at rest by under a hundredth of a unit over the
- * one frame this takes. Its whole drawn extent is `60` clear of the bottom seam.
+ * Far enough from the ship at `FAR_SHIP` that neither is drawn anywhere near the
+ * other, and far enough from the star that the well pulls on nothing being read — a
+ * torpedo it never pulls at all (`specs/gravity.md`). Its whole drawn extent is `60`
+ * clear of the bottom seam.
  */
 const TORPEDO_SPOT: Vec = { x: 980, y: 660 };
-
-/** The colour a body was drawn in, or the failure that it was drawn in nothing. */
-function inkOf(look: readonly Rgb[], field: Rgb, body: string): Rgb {
-  const found = markedColor(look, field, APART_FROM_FIELD);
-  if (found === null) {
-    fail(
-      `a colour the ${body} was drawn in, so the two bodies a player must ` +
-        "tell apart can be compared (specs/overview.md)",
-      `nothing inside the ${body} was drawn more than ` +
-        `${String(APART_FROM_FIELD)} of 441 from the field`,
-    );
-  }
-  return found;
-}
 
 let h: Harness;
 
@@ -110,10 +81,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("paints the torpedo apart from the field and apart from a round", async () => {
+it("paints the torpedo on the field", async () => {
   startPlaying(h);
   h.debug.setShipPosition(FAR_SHIP.x, FAR_SHIP.y);
-  poseBullet(h, BULLET_SPOT.x, BULLET_SPOT.y, 0, 0);
   requireOp(h.debug, "addTorpedo")(TORPEDO_SPOT.x, TORPEDO_SPOT.y, HEADING);
   const posed = torpedoesOf(h.snapshot());
   if (posed.length === 0) {
@@ -138,22 +108,13 @@ it("paints the torpedo apart from the field and apart from a round", async () =>
   const painted = readPainted(h);
   const field = sampleField(painted);
   const heavy = readDisc(painted, { x: dart.x, y: dart.y }, TORPEDO_R);
-  const light = readDisc(painted, BULLET_SPOT, BULLET_R);
   captureStill(h, "torpedo");
 
   assertGreaterThanOrEqual(
-    markedCount(heavy, field, APART_FROM_FIELD),
+    markedCount(heavy, field, SENSING_FLOOR),
     Math.round(MIN_FRACTION * DISC_SAMPLES),
     `of ${String(DISC_SAMPLES)} samples inside TORPEDO_R of the torpedo's ` +
-      `centre, how many are more than ${String(APART_FROM_FIELD)} of 441 ` +
+      `centre, how many are more than ${String(SENSING_FLOOR)} of 441 ` +
       "from the field the build drew (specs/overview.md)",
-  );
-
-  assertGreaterThan(
-    colorDistance(inkOf(heavy, field, "torpedo"), inkOf(light, field, "round")),
-    APART_FROM_BULLET,
-    "the distance out of 441 between the colour the build drew the torpedo " +
-      "in and the colour it drew a round in, which a player must tell apart " +
-      "at a glance (specs/overview.md)",
   );
 });

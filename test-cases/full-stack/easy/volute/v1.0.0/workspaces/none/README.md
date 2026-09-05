@@ -34,7 +34,7 @@ You also produce the game's sprites, sheets, particle systems, and audio with
 the asset tools on this machine's `PATH` and commit the produced files under
 `assets/`; `specs/assets.md` is the contract. The tools are absent when the
 build is installed and rebuilt elsewhere, so the build bundles the committed
-files and invokes no tool. `@test-cabinet/particle-runtime` is already installed
+files and invokes no tool. `@clockwyrks/particle-runtime` is already installed
 as a dependency, and its `./canvas` binding is how a produced particle system is
 played live.
 
@@ -53,7 +53,7 @@ a browser.
 - The toolchain: `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`,
   `.prettierignore`, and `.gitignore`.
-- `.tcab/`, the vendored library `package.json` resolves its dependency from.
+- `.vendor/`, the vendored library `package.json` resolves its dependency from.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the
 `package-lock.json`; the build is installed with `npm ci`. Leave the existing

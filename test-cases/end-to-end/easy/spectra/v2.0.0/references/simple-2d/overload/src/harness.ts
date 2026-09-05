@@ -1,3 +1,8 @@
+/// <reference types="node" />
+// This file runs in Node and reads the disk. The project's tsconfig sets
+// `types: []` to keep the game's own sources browser-only, so the files that
+// need Node's types name them here instead.
+
 // Spectra — the build's own test harness.
 //
 // Nothing in the shipped game imports this file: it is what `src/**/*.test.ts`
@@ -29,7 +34,7 @@ import {
   type Engine,
   type SurfaceMetrics,
   type Viewport,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import {
   FORM_CENTER_X,
   LAYOUT,

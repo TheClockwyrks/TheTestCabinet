@@ -38,7 +38,7 @@ black until an actor carries a `LightComponent`. A level's lighting rig is an
 actor that carries them, placed by the level like any other:
 
 ```ts
-import { Actor, LightComponent, vec3 } from "@test-cabinet/structured-3d";
+import { Actor, LightComponent, vec3 } from "@clockwyrks/structured-3d";
 
 export class Rig extends Actor {
   constructor() {
@@ -226,7 +226,7 @@ A HUD is an actor whose components are `screen` components, each offset to its
 logical position, on a layer above the field:
 
 ```ts
-import { Actor, ShapeComponent, TextComponent, vec3 } from "@test-cabinet/structured-3d";
+import { Actor, ShapeComponent, TextComponent, vec3 } from "@clockwyrks/structured-3d";
 import { LAYER, WIDTH } from "./constants";
 
 export class Hud extends Actor {
@@ -271,8 +271,8 @@ component draws in logical units. A component that draws against the world reads
 `api.camera()` and projects world points through `camera.worldToLogical`.
 
 ```ts
-import { DrawComponent } from "@test-cabinet/structured-3d";
-import type { DrawApi } from "@test-cabinet/structured-3d";
+import { DrawComponent } from "@clockwyrks/structured-3d";
+import type { DrawApi } from "@clockwyrks/structured-3d";
 import { PALETTE } from "./constants";
 
 export class Markers extends DrawComponent {

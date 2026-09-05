@@ -6,8 +6,8 @@
 // `draw-sheet` | `6` | `24 x 32`", and fixes the shape a sheet lands in: "A
 // sheet's frames are separate PNG files, numbered from `0`, each on a canvas of
 // the sheet's size." The six paths, the exact canvas, and a drawn frame rather
-// than an empty one are what this reads, against `PAINT_MIN_SHARE`, whose
-// reasoning `assets/sprites.ts` states.
+// than an empty one are what this reads, the last as presence: at least one
+// pixel of the canvas is not clear.
 //
 // WHAT IT DELIBERATELY DOES NOT READ. That the six differ from one another is
 // `assets/lamplighter-walk-frames-distinct`; that the cycle advances one frame

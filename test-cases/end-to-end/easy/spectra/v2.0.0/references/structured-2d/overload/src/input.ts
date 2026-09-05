@@ -11,7 +11,7 @@
 // (`dpad-4-two-buttons`: a four-way pad and two buttons) plus `discharge` and the
 // menu and system actions every layout carries.
 
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 import { ACTIONS, BINDINGS, LAYOUT } from "./constants";
 
 /**

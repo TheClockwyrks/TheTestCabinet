@@ -23,7 +23,7 @@
 
 import { ACTIONS, BINDINGS } from "./constants";
 import type { FacetState } from "./game";
-import type { InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type { InitApi, UpdateApi } from "@clockwyrks/simple-2d";
 
 /** Register every action in `ACTIONS`, bound to the keys in `BINDINGS`. */
 export function registerActions(api: Pick<InitApi<FacetState>, "input">): void {

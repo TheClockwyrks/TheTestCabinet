@@ -17,7 +17,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import { fail } from "../assert";
 
 /** `assets/` at the root of the produced repository, as `specs/assets.md` fixes it. */
@@ -119,26 +119,6 @@ export function colorStops(system: ParticleSystem): [number, number, number][] {
     }
   }
   return stops;
-}
-
-/** The mean of a set of colors, channel by channel. */
-export function meanColor(
-  stops: readonly [number, number, number][],
-): [number, number, number] {
-  const n = stops.length;
-  return [
-    stops.reduce((t, s) => t + s[0], 0) / n,
-    stops.reduce((t, s) => t + s[1], 0) / n,
-    stops.reduce((t, s) => t + s[2], 0) / n,
-  ];
-}
-
-/** The RGB distance between two colors, `0` to `441`. */
-export function colorDistance(
-  a: readonly [number, number, number],
-  b: readonly [number, number, number],
-): number {
-  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 
 /**

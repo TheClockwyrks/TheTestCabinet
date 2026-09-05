@@ -19,7 +19,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import type { GgReference } from "@test-cabinet/run-record/gg-reference";
+import type { GgReference } from "@clockwyrks/run-record/gg-reference";
 import {
   BackendProvider,
   type BackendContextValue,

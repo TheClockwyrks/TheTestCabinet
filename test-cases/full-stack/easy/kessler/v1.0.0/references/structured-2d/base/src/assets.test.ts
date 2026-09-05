@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // The committed produced files against the contract of specs/assets.md and
 // ASSET-LAYOUT.md: every path `src/constants.ts` names exists at its stated
 // native size, every cue has its `.wav`, and both beds run at least the

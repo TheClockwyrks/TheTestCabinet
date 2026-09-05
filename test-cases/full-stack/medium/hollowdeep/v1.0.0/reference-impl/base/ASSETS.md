@@ -118,7 +118,7 @@ the cycle matching the delver's action, advancing frames on a timer.
 
 ---
 
-## Particle systems — `particle-2d` (played live via `@test-cabinet/particle-runtime`)
+## Particle systems — `particle-2d` (played live via `@clockwyrks/particle-runtime`)
 
 Each writes a `system.json` on a **128×128** authored field. The gas overlays are driven
 from tile concentration by `src/particles.ts` (`GasOverlay`) — spawned/scaled where a gas

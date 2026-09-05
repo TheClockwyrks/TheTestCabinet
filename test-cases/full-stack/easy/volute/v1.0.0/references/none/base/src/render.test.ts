@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // What the hall actually draws, checked against a real 2D context.
 //
 // `@napi-rs/canvas` supplies the context, so these run in Node with no browser:
@@ -9,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createCanvas, loadImage, type Canvas } from "@napi-rs/canvas";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import {
   CHARGE_IDS,
   CORE_RADIUS,

@@ -67,7 +67,7 @@ export default defineConfig({
     // project that fits the fifteen-minute budget everywhere else misses it on
     // the machine that grades it.
     //
-    // Eight — the count `@test-cabinet/case-harness` sets for the ENGINELESS
+    // Eight — the count `@clockwyrks/case-harness` sets for the ENGINELESS
     // project — is the opposite mistake here. That project's workers each hold a
     // page of one shared browser and spend almost all of their time waiting on a
     // crossing into it, so a worker waiting holds no core and overlapping them is
@@ -80,6 +80,5 @@ export default defineConfig({
     // So the count is the core count: both cores busy, and every file running at
     // the speed the machine can actually give it.
     maxWorkers: WORKERS,
-    minWorkers: WORKERS,
   },
 });

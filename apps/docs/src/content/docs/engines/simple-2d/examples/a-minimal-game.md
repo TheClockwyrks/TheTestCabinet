@@ -33,7 +33,7 @@ follow the window and fits the logical field into whatever size it reports.
 ## src/main.ts
 
 ```ts
-import { createEngine } from "@test-cabinet/simple-2d";
+import { createEngine } from "@clockwyrks/simple-2d";
 import { drifter } from "./game";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
@@ -60,7 +60,7 @@ that actually elapsed.
 ## src/game.ts
 
 ```ts
-import type { Game, RenderApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type { Game, RenderApi, UpdateApi } from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 const BOX = 48;

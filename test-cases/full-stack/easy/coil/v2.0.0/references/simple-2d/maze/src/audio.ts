@@ -17,7 +17,7 @@
 
 import { CUES, CUE_PATHS, type CueName } from "./constants";
 import type { TickEvents } from "./sim";
-import type { CueSpec, InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type { CueSpec, InitApi, UpdateApi } from "@clockwyrks/simple-2d";
 
 /**
  * The shape each cue falls back to when its produced file is unavailable.

@@ -23,7 +23,7 @@
 // the build's surface, driving the real mouse and the real finger, reading pixels
 // and draw calls back out, and writing the evidence a review point declares —
 // every engineless case needs exactly that, and it lives once, in
-// `@test-cabinet/case-harness`, staged beside this file as `./case-harness/`.
+// `@clockwyrks/case-harness`, staged beside this file as `./case-harness/`.
 // What is left here is what is genuinely Floe's: the operations its
 // `specs/instrumentation.md` requires, the shape of its snapshot, the way it
 // divides an interval into calls, the readings it makes off its own seeded art,
@@ -84,7 +84,6 @@ import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  contextFor,
   createCaseHarness,
   imageDraws,
   sampleColor,
@@ -778,7 +777,6 @@ export interface SkipResult {
 export async function createHarness(
   options: HarnessOptions = {},
 ): Promise<Harness> {
-  await answerFavicon(options);
   const base = await kit.createHarness(options);
   // Taken before the seven readings below are put on the object, because three
   // of them are written over the pair they delegate to.
@@ -890,52 +888,6 @@ export async function createHarness(
       await driveTicks(1);
     },
   }) as unknown as Harness;
-}
-
-/**
- * The browsing contexts this worker has already been told to answer a favicon
- * request in.
- *
- * A context is shared by every page of one window shape, so the route goes on
- * once and covers every page opened in it afterwards.
- */
-const faviconAnswered = new WeakSet<object>();
-
-/**
- * Answer the browser's own `/favicon.ico` request, so it never 404s.
- *
- * NOT A COURTESY — A READING THIS PROJECT MAKES. Forty-eight checks assert that
- * the page logged no error while the harness drove it, and `specs/overview.md`
- * asks the build for a canvas and nothing else in the page, so there is no site
- * icon to serve. The request is the BROWSER's, fired at a moment of its own
- * choosing after load, and the 404 it collects would turn "the build logged an
- * error" into "this check ran long enough for Chromium to ask for an icon".
- *
- * Answered rather than filtered out of the log, because the log carries a
- * message and not a URL: a filter would have to drop every "failed to load
- * resource" the page reported, including one from an asset the BUILD asked for
- * and did not get.
- *
- * ON THE CONTEXT, AND BEFORE THE PAGE EXISTS. A route added to a page that has
- * already navigated is a race against a request the browser fires when it likes,
- * so the context is opened here first — through the shared harness's own
- * `contextFor`, which caches by window shape, so the harness built next reuses
- * exactly this one — and the route goes on while it is still empty.
- */
-async function answerFavicon(options: HarnessOptions): Promise<void> {
-  const context = await contextFor(
-    {
-      cssWidth: options.cssWidth ?? STAGE_W,
-      cssHeight: options.cssHeight ?? STAGE_H,
-      dpr: options.dpr ?? 1,
-    },
-    kit.config,
-  );
-  if (faviconAnswered.has(context)) return;
-  faviconAnswered.add(context);
-  await context.route("**/favicon.ico", (route) =>
-    route.fulfill({ status: 200, contentType: "image/x-icon", body: "" }),
-  );
 }
 
 /* ---- What the shared harness reads, under this project's own names --------- */
@@ -1405,21 +1357,19 @@ export function itemArtCentre(item: { x: number; row: number; len: number }): {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Colour: the two readings that are the strait's own                         */
+/* Pixels: the two readings that are the strait's own                         */
 /* -------------------------------------------------------------------------- */
 //
 // `specs/overview.md` fixes NO PALETTE — the colours, the type and the look are
-// the build's — and states instead what a player must read at a glance: the five
-// bands told apart, deep water apart from a floe on the same row, an open bay
-// apart from the shore beside it, the critter apart from every band it can stand
-// on, a bear apart from every band it can travel on, and the three vehicles
-// apart from one another. So every colour check is a comparison between two
-// things the build drew, never against a hex value, and the DISTANCE it demands
-// is the check's own figure, stated in the check. Nothing here fixes one.
+// the build's — and what it states instead, that a player can tell the bands, the
+// water, the bays and the bodies apart at a glance, is the REVIEWER's to judge. No
+// check here holds one thing the build drew against another. A pixel reading
+// answers presence and nothing else: that the picture at a point changed when the
+// thing the specification puts there was posed or taken away.
 //
-// The sampling itself — a small cluster averaged, a distance between two
-// colours — is the shared harness's `sampleColor` and `colorDistance`,
-// re-exported above. What is Floe's is WHERE a band is read: a tile of the
+// The sampling itself — a small cluster averaged, a difference between two
+// readings — is the shared harness's `sampleColor` and `colorDistance`,
+// re-exported above. What is Floe's is WHERE a reading is taken: a tile of the
 // strait, and a row of it read across five columns.
 
 /** {@link sampleColor} at a tile's centre. */
@@ -1430,10 +1380,10 @@ export function sampleTile(h: Harness, col: number, row: number): Promise<Rgb> {
 /**
  * The colour of a row, read across five columns spread along it and averaged.
  *
- * What a band check reads. A single tile is a poor reading of a band a build is
- * free to texture, drift or shade, and the specification requires the BAND to be
- * told apart rather than any one tile of it; the columns are spread so no one
- * readout, banner or item a scenario put on the row dominates the average.
+ * How a reading of a whole BAND is taken rather than of one tile of it: a single
+ * tile is a poor reading of a strip a build is free to texture, drift or shade,
+ * and the columns are spread so no one readout, banner or item a scenario put on
+ * the row dominates the average.
  */
 export const BAND_COLUMNS: readonly number[] = [4, 12, 20, 28, 36];
 

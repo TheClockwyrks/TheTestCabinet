@@ -12,7 +12,7 @@
 // what the game does. Each line is short enough to read at a glance while the
 // game runs.
 
-import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
+import type { DiagnosticValue, World } from "@clockwyrks/structured-2d";
 import { DEAL_MODE, DEAL_MODE_LABEL } from "./constants";
 import { cascadeState, type CascadeState } from "./game";
 import { wasteVisibleCount } from "./layout";

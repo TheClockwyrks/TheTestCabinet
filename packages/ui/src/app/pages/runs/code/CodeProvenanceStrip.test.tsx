@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { CodeAnalysisSummary } from "@test-cabinet/run-record/code-analysis";
+import type { CodeAnalysisSummary } from "@clockwyrks/run-record/code-analysis";
 import { CodeProvenanceStrip } from "./CodeProvenanceStrip";
 
 // The strip is the display half of R5's mitigation, and the risk register says plainly

@@ -26,7 +26,11 @@
 // The copy is read through `frameText`, which gathers a frame's canvas text and
 // the page's own DOM text alike, because specs/assets.md has an engineless
 // build draw its chrome "in code (canvas or DOM)" and this point is not about
-// which of the two it chose.
+// which of the two it chose. Its DOM half reads what is RENDERED, so an element
+// the build keeps in the document and hides while the board is idle has shown a
+// player nothing and is read as nothing — which is what specs/ui.md asks for,
+// the label "shown while `state.phase` is `resolving` and absent while it is
+// `idle`".
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, fail } from "../assert";

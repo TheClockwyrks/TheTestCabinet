@@ -3,7 +3,7 @@
 // A destruction plays the burst at the target's arc center, a paddle,
 // containment, or shield reflection plays the spark at the contact, and a
 // ball or pod reaching the planet plays the burn-up at it. Each is the
-// produced `system.json`, simulated by `@test-cabinet/particle-runtime`'s
+// produced `system.json`, simulated by `@clockwyrks/particle-runtime`'s
 // canvas binding — and THE PLAYER IS HANDED THE SAME CONTEXT THE FIELD IS
 // DRAWN INTO: the one the engine's pipeline hands this draw component, in its
 // place in the layer order, exactly as `specs/assets.md` asks. The player
@@ -17,8 +17,8 @@
 // clock, so effects hold with the simulation under a stepped scenario and a
 // replayed frame reproduces what a played one shows.
 
-import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
-import { DrawComponent, type DrawApi } from "@test-cabinet/structured-2d";
+import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
+import { DrawComponent, type DrawApi } from "@clockwyrks/structured-2d";
 import { kesslerAssets } from "./assets";
 import { TICK_DT } from "./constants";
 import { kesslerState } from "./state";

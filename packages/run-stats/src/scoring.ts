@@ -3,7 +3,7 @@
 // run's several reviews into one figure.
 //
 // This module is the framework-free half of what used to live in
-// `@test-cabinet/ui`'s `ratings` module. The rules are shared by everything that
+// `@clockwyrks/ui`'s `ratings` module. The rules are shared by everything that
 // has to agree on a number — the consoles, the static gallery, the public read
 // edge, and anything that freezes a figure and later recomputes it — so they
 // cannot live in a React package. The *display* metadata that went with them
@@ -14,7 +14,7 @@
 // (`crates/core/src/review.rs`); the mirrors are named per function and must be
 // kept in lockstep, since the backend and these clients score the same runs.
 
-import type { DebugScriptResult } from "@test-cabinet/run-record";
+import type { DebugScriptResult } from "@clockwyrks/run-record";
 import type {
   AestheticRating,
   DomainAesthetic,
@@ -23,7 +23,7 @@ import type {
   Rating,
   ReviewVerdict,
   VerdictStatus,
-} from "@test-cabinet/run-record/review";
+} from "@clockwyrks/run-record/review";
 
 /** Every rating, ordered best to worst. */
 export const RATINGS: readonly Rating[] = [

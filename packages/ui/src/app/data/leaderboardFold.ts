@@ -6,7 +6,7 @@
 // runs are in scope (case, variant, version scope, engine scope) is the
 // caller's filter, applied before folding.
 
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { canonicalModelId } from "../../modelId";
 import { isGgRun } from "./runLinks";
 import {

@@ -87,7 +87,7 @@ the game needs, each posed independently.
 
 ```ts
 import * as THREE from "three";
-import { cloneModel, type Model } from "@test-cabinet/simple-3d";
+import { cloneModel, type Model } from "@clockwyrks/simple-3d";
 
 const templates = new Map<string, Model>();
 const ships = new Map<string, THREE.Group>();
@@ -162,4 +162,4 @@ resolves to the model.
 ## Exports
 
 `Model` is exported as a type and `cloneModel` as a function from
-`@test-cabinet/simple-3d`.
+`@clockwyrks/simple-3d`.

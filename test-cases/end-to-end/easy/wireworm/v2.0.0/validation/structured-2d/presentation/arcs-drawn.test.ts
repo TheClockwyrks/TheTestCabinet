@@ -6,17 +6,31 @@
 // set off which." The same file reports one arc per link the chain conducted
 // along, each naming the two tiles it joined, and gives every arc an `ARC_LIFE`
 // (`0.32` s) life. The colour and the form of the lightning are the build's;
-// that it joins those two centres is not.
+// that it runs BETWEEN those two centres is not.
 //
-// SO THE READING IS THE PIXELS ALONG THE CHORD BETWEEN THE TWO REPORTED TILE
-// CENTRES. At each of five stations along it, something must be drawn that no
-// bare tile of the same board carries: the pixel nearest that station which sits
-// furthest from the board's own colour must sit more than `DISTINCT_MIN` of 441
-// away from it. Lightning is jagged by nature and the specification says the
-// form is the build's, so "nearest" allows `WANDER_MAX` — a third of a tile — of
-// wander off the straight chord. A build whose lightning wanders further than
-// that no longer reads as joining two particular tile centres, which is what the
-// file asks it to do.
+// SO THE READING IS THE STRETCH OF BOARD BETWEEN THE TWO REPORTED TILE CENTRES,
+// taken twice: while the arc is live and again once its life has run out.
+// Something in it must MOVE AT ALL between the two readings — which is to say
+// the arc drew something there that the board does not carry on its own.
+//
+// WHAT "BETWEEN" IS. The box spans the chord and is held one half-tile in from
+// each end, so the two tiles the arc joins are outside it and only what runs
+// between them is read; on either axis it is never narrower than a tile, which
+// is the room specs/discharge.md's "the form of the lightning is yours" needs —
+// lightning is drawn jagged, and a form that wandered off the chord entirely
+// would no longer read as joining two particular tile centres.
+//
+// WHY THE CONTROL IS THE SAME BOARD ONCE THE ARC HAS GONE. specs/overview.md
+// fixes no palette and leaves the board's look entirely to the build, so a box
+// held against some other tile's colour would read a build's own trace as
+// lightning. Held against itself, the only thing that can move is what the arc
+// drew — and both detonated nodes are removed by the chain, so they are absent
+// from both readings and cannot be mistaken for it.
+//
+// NO FIGURE IS ASSERTED. `getImageData` returns the bytes that are there, so a
+// box the arc drew nothing into comes back byte-identical to itself and measures
+// exactly `0`. How brightly the lightning reads is appearance, and the
+// reviewer's from the captured still.
 //
 // THE ARCS ARE REACHED THE ONLY WAY THEY EXIST: by detonating a critical node. A
 // bolt is posed in the critical node's own column seven tiles below it on an
@@ -32,51 +46,43 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { ARC_LIFE, CHARGE_MAX, DISCHARGE_RADIUS, TILE } from "../constants";
-import { assertGreaterThan, assertTrue } from "../assert";
+import { assertGreaterThan, assertLength, assertTrue } from "../assert";
 import {
   captureStill,
-  colorDistance,
   createHarness,
   poseBoltAtTile,
   resetTo,
-  sampleTile,
   startPlaying,
   ticksFor,
   tileCenter,
+  type ArcSnapshot,
   type Harness,
-  type Rgb,
 } from "../harness";
-
-/**
- * How far the drawn lightning must sit from the board's own colour, as a
- * Euclidean RGB distance out of the `441` an RGB cube is across. The case's
- * figure, since the specification states the rule — "bright lightning" — and
- * leaves the colour to the build.
- */
-const DISTINCT_MIN = 40;
-
-/**
- * How far off the straight chord the lightning may wander, in logical units.
- *
- * A third of a tile. specs/discharge.md leaves the form of the lightning to the
- * build, and lightning is drawn jagged, so the chord is where the arc runs
- * rather than where every one of its pixels lies. Wander wider than this and the
- * arc no longer reads as joining two particular tile centres, which is the one
- * thing the file does fix about the drawing.
- */
-const WANDER_MAX = Math.round(TILE / 3);
-
-/** Where along the chord the lightning is looked for, as fractions of it. */
-const STATIONS = [0.1, 0.3, 0.5, 0.7, 0.9] as const;
 
 /** The critical node, the charged neighbour, and the bolt's row. */
 const CRITICAL_COLUMN = 20;
 const CRITICAL_ROW = 10;
 const NEIGHBOUR_COLUMN = CRITICAL_COLUMN + DISCHARGE_RADIUS;
+const NEIGHBOUR_CHARGE = 1;
 const BOLT_ROW = 17;
 
-/** A bare tile of the same row: the board the lightning is read against. */
-const BARE_COLUMN = 6;
+/**
+ * How long the sweep waits for the discharge, in seconds.
+ *
+ * Half a second is twice the `0.249` s a bolt at `BOLT_SPEED` takes to climb the
+ * seven tiles from its posed row into the critical node, so a build whose bolt
+ * travels and whose chain runs has reached it with room to spare.
+ */
+const SWEEP_SECONDS = 0.5;
+
+/** The stretch of stage one arc's lightning is read over, in logical units. */
+interface Between {
+  arc: ArcSnapshot;
+  x: number;
+  y: number;
+  halfX: number;
+  halfY: number;
+}
 
 let h: Harness;
 
@@ -88,28 +94,62 @@ afterEach(() => {
   h?.dispose();
 });
 
-/** The pixel within `WANDER_MAX` of `(x, y)` furthest from `board`. */
-function furthestFromBoard(x: number, y: number, board: Rgb): number {
-  let furthest = -1;
-  for (let dy = -WANDER_MAX; dy <= WANDER_MAX; dy += 1) {
-    for (let dx = -WANDER_MAX; dx <= WANDER_MAX; dx += 1) {
-      if (dx * dx + dy * dy > WANDER_MAX * WANDER_MAX) continue;
-      const [r, g, b] = h.pixel(x + dx, y + dy);
-      furthest = Math.max(furthest, colorDistance({ r, g, b }, board));
-    }
+/**
+ * The board between the two tiles an arc links: the chord's own box, held half a
+ * tile in from each end so neither linked tile is inside it, and never narrower
+ * than a tile on either axis.
+ */
+function between(arc: ArcSnapshot): Between {
+  const from = tileCenter(arc.from.c, arc.from.r);
+  const to = tileCenter(arc.to.c, arc.to.r);
+  return {
+    arc,
+    x: (from.x + to.x) / 2,
+    y: (from.y + to.y) / 2,
+    halfX: Math.max(TILE / 2, Math.abs(to.x - from.x) / 2 - TILE / 2),
+    halfY: Math.max(TILE / 2, Math.abs(to.y - from.y) / 2 - TILE / 2),
+  };
+}
+
+/** Every device pixel of one stretch of board. */
+function readBetween(span: Between): Uint8ClampedArray {
+  const from = h.device(span.x - span.halfX, span.y - span.halfY);
+  const to = h.device(span.x + span.halfX, span.y + span.halfY);
+  return h.ctx.getImageData(
+    from.x,
+    from.y,
+    Math.max(1, to.x - from.x),
+    Math.max(1, to.y - from.y),
+  ).data;
+}
+
+/** How far the furthest pixel of one reading moved against the other. */
+function furthestMove(
+  before: Uint8ClampedArray,
+  after: Uint8ClampedArray,
+): number {
+  let furthest = 0;
+  const length = Math.min(before.length, after.length);
+  for (let at = 0; at + 2 < length; at += 4) {
+    const moved = Math.hypot(
+      after[at] - before[at],
+      after[at + 1] - before[at + 1],
+      after[at + 2] - before[at + 2],
+    );
+    if (moved > furthest) furthest = moved;
   }
   return furthest;
 }
 
-it("draws lightning along the chord joining each linked pair of tiles", async () => {
+it("draws lightning between each linked pair of tiles", async () => {
   resetTo(h);
   startPlaying(h);
   h.debug.setNode(CRITICAL_COLUMN, CRITICAL_ROW, CHARGE_MAX);
-  h.debug.setNode(NEIGHBOUR_COLUMN, CRITICAL_ROW, 1);
+  h.debug.setNode(NEIGHBOUR_COLUMN, CRITICAL_ROW, NEIGHBOUR_CHARGE);
   poseBoltAtTile(h, CRITICAL_COLUMN, BOLT_ROW);
 
   const live = await h.until((snapshot) => snapshot.arcs.length > 0, {
-    maxFrames: ticksFor(0.5),
+    maxFrames: ticksFor(SWEEP_SECONDS),
   });
   // The lightning joining the linked tiles, on the frame it first appeared.
   captureStill(h, "arcs");
@@ -119,31 +159,37 @@ it("draws lightning along the chord joining each linked pair of tiles", async ()
     `a bolt into the critical node at (${CRITICAL_COLUMN}, ${CRITICAL_ROW}) ` +
       `to detonate it and chain to the charged node ${DISCHARGE_RADIUS} tiles ` +
       `away, so the snapshot reports the arc that link conducted along ` +
-      `(specs/discharge.md); nothing was reported within 0.5 s, which is ` +
-      `twice the bolt's climb, and an arc lasts ARC_LIFE (${ARC_LIFE}) s`,
+      `(specs/discharge.md); nothing was reported within ${SWEEP_SECONDS} s, ` +
+      `which is twice the bolt's climb, and an arc lasts ARC_LIFE ` +
+      `(${ARC_LIFE}) s`,
   );
 
-  const board = sampleTile(h, BARE_COLUMN, CRITICAL_ROW);
-  for (const arc of live.snapshot.arcs) {
-    const from = tileCenter(arc.from.c, arc.from.r);
-    const to = tileCenter(arc.to.c, arc.to.r);
-    for (const station of STATIONS) {
-      const x = from.x + (to.x - from.x) * station;
-      const y = from.y + (to.y - from.y) * station;
-      assertGreaterThan(
-        furthestFromBoard(x, y, board),
-        DISTINCT_MIN,
-        `the arc joining (${arc.from.c}, ${arc.from.r}) to (${arc.to.c}, ` +
-          `${arc.to.r}) to carry drawn pixels more than ${DISTINCT_MIN} of ` +
-          `441 from the board's own colour within ${WANDER_MAX} units of the ` +
-          `point ${station} of the way along the chord between those two tile ` +
-          `centres, (${x.toFixed(0)}, ${y.toFixed(0)}) ` +
-          `(specs/discharge.md: an arc is drawn as bright lightning joining ` +
-          `the centers of the two tiles it links); the bare tile at ` +
-          `(${BARE_COLUMN}, ${CRITICAL_ROW}) sampled rgb(` +
-          `${board.r.toFixed(0)}, ${board.g.toFixed(0)}, ` +
-          `${board.b.toFixed(0)})`,
-      );
-    }
-  }
+  const spans = live.snapshot.arcs.map(between);
+  const drawn = spans.map(readBetween);
+
+  // The same stretches of the same board once every arc's life has run out: the
+  // control each reading above is held against.
+  await h.advance(ticksFor(ARC_LIFE) + 1);
+  assertLength(
+    h.snapshot().arcs,
+    0,
+    `every arc gone once ARC_LIFE (${ARC_LIFE} s) has run out ` +
+      `(specs/discharge.md)`,
+  );
+  const bare = spans.map(readBetween);
+
+  spans.forEach((span, index) => {
+    const { arc } = span;
+    assertGreaterThan(
+      furthestMove(bare[index], drawn[index]),
+      0,
+      `the arc joining (${arc.from.c}, ${arc.from.r}) to (${arc.to.c}, ` +
+        `${arc.to.r}) to carry drawn pixels that differ from what that same ` +
+        `board carries once the arc has gone, over the stretch between those ` +
+        `two tile centres — ${(2 * span.halfX).toFixed(0)} by ` +
+        `${(2 * span.halfY).toFixed(0)} units about (${span.x.toFixed(0)}, ` +
+        `${span.y.toFixed(0)}) (specs/discharge.md: an arc is drawn as bright ` +
+        `lightning joining the centers of the two tiles it links)`,
+    );
+  });
 });

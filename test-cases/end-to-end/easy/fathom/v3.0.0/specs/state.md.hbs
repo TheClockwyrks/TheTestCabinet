@@ -52,6 +52,7 @@ field below. It is a pure read that changes nothing.
   autoStep: <boolean>,           // whether the frame loop advances the simulation
 {{/if}}
   planktonRemaining: <number>,   // plankton left in the current maze
+  drifterIn: <number>,           // seconds until the cadence admits the next drifter
   brightness: <number>,          // G, in [0, 1]
   brightHold: <number>,          // seconds left on the brightness hold
   visionRadius: <number>,        // V, the line-of-sight light radius, in logical units
@@ -255,6 +256,13 @@ leaves the list.
   amber-light rule `specs/sensing.md` fixes, so `lit` answers for the body alone.
 - `mind` is `true` while it decides its own wander.
 - `travel` is `true` while its body carries those decisions through the maze.
+
+`drifterIn` is the seconds left on the bonus-drifter cadence: the countdown that
+admits the next drifter at the den gate, as `specs/gameplay.md` fixes it. It is
+`DRIFTER_INTERVAL` (`25 s`) at the top of a maze and again from each admission,
+and it never exceeds that. What it does while the maze already holds
+`DRIFTER_MAX` of them is the cadence's own business, because such a maze admits
+none whatever the countdown reads.
 
 ## The predators
 

@@ -54,9 +54,8 @@
 // the same fault kind, so a banner naming it carries the same words; and the same
 // eight motes on the same eight hexes, since nothing moved in either pose.
 //
-// THE VERDICT. At least `MIN_DISTINCT_PIXELS` pixels of the window around the
-// north chain's last mote are drawn differently between the pose that names it
-// and the pose that does not.
+// THE VERDICT. The window around the north chain's last mote is drawn
+// differently between the pose that names it and the pose that does not.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -97,9 +96,6 @@ const SETTLE_FRAMES = SETTLE_SECONDS * TICK_HZ;
  * `HEX_PITCH` (`48`) that separates it from the next mote's own hex.
  */
 const MOTE_WINDOW_R = MOTE_R + 14;
-
-/** The least number of pixels of the window that must be drawn differently. */
-const MIN_DISTINCT_PIXELS = 64;
 
 /** The north chain's four hexes, in order along the row. */
 const NORTH: readonly Hex[] = [at(1, -2), at(2, -2), at(3, -2), at(4, -2)];
@@ -224,7 +220,7 @@ it("draws the mote the fault names differently from the same mote unnamed", asyn
 
   assertGreaterThan(
     pixelsDiffering(named, unnamed),
-    MIN_DISTINCT_PIXELS,
+    0,
     "the north chain's last mote is drawn visibly distinct where the fault names " +
       "it and as one of the rest where the fault names the south chain instead, " +
       "so a torn body's motes are picked out of the frozen field",

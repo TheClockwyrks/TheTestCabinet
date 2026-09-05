@@ -27,14 +27,18 @@
 // it is not a value the build named and its figures would otherwise answer for
 // one.
 //
-// HOW A VALUE IS RECOGNISED. Every figure below is checked as a whole run of
-// digits rather than as a substring, so a `9` on the panel is not answered by the
-// `9` inside some other number, and the field is posed so that no two of the
-// values asserted share a figure. Two of them cannot be made unique — a bullet
-// count and an entity id are both small integers — and those are the weakest
-// readings here. The two DURATIONS are looser still, and deliberately: seconds
-// remaining is a quantity a build may honestly print in seconds, in tenths, or in
-// milliseconds, so each is accepted at any of those scales. HOW each value is
+// HOW A VALUE IS RECOGNISED. Every figure below is checked as a whole number the
+// panel drew rather than as a substring, so a `9` on the panel is not answered by
+// the `9` inside some other number, and the field is posed so that no two of the
+// values asserted share a figure. A figure the panel grouped its digits in — a
+// score drawn as `4,271` — reads as the one number it draws, since how a panel
+// presents a figure is the build's; the ASCII space alone is not read as a
+// grouping character, because it is what stands between two figures on a line.
+// Two of them cannot be made unique — a bullet count and an entity id are both
+// small integers — and those are the weakest readings here. The two DURATIONS
+// are looser still, and deliberately: seconds remaining is a quantity a build may
+// honestly print in seconds, in tenths, or in milliseconds, so each is accepted
+// at any of those scales. HOW each value is
 // drawn is likewise the build's — the engine fixes the line as `name: value` and
 // nothing fixes the name — so the facts that are not numbers are accepted in any
 // of the forms a build would honestly draw them in, a drone's kind and a band
@@ -69,11 +73,19 @@
 // sub-steps cover", and specs/ui.md freezes the field — so a build that advances
 // it across the toggle and one that does not are both conformant.
 //
-// WHAT THIS DOES NOT DECIDE. The binding, which is `controls/overlay-backquote`,
-// and that the panel is off when the game starts, which is that point's too.
+// WHAT THIS DOES NOT DECIDE. The binding, the panel itself, and that it is off
+// when the game starts, all of which this engine supplies to every build on it.
+// What is read here is the sources the BUILD registered into it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { RESONANCE_MAX, fluxHold, fluxWindow } from "../constants";
+import {
+  FLIP_LOCKOUT,
+  INVERSION_TIME,
+  RESONANCE_MAX,
+  START_LIVES,
+  fluxHold,
+  fluxWindow,
+} from "../constants";
 import { assertDeepEqual, assertEqual, fail } from "../assert";
 import {
   captureStill,
@@ -89,7 +101,7 @@ import { poseBursts } from "./bursts";
 
 /** The run posed: three figures no other value on this field carries. */
 const SCORE = 4271;
-const LIVES = 14;
+const LIVES = START_LIVES + 1;
 const SHIP_X = 417;
 
 /**
@@ -101,9 +113,17 @@ const STAGE = 9;
 /** The meter, posed at the ceiling so a discharge is ready to be reported. */
 const RESONANCE = RESONANCE_MAX;
 
-/** The two durations, in seconds. Both are whole, so any scale reads cleanly. */
-const INVERSION = 4;
-const LOCKOUT = 8;
+/**
+ * The two durations, in seconds, each at the top of the range its own rule fixes.
+ *
+ * `specs/bands.md` runs an inversion for `INVERSION_TIME` (`5.0`) seconds and
+ * `specs/ship.md` sets the fire lockout to `FLIP_LOCKOUT` (`0.30`) on a flip, so
+ * these are the largest values the game can hold and no value here is one the
+ * game could never produce. Both read cleanly at every scale a build may print
+ * them in, from seconds to milliseconds.
+ */
+const INVERSION = INVERSION_TIME;
+const LOCKOUT = FLIP_LOCKOUT;
 
 /** Where the three drones stand, at coordinates no other figure here carries. */
 const SHARD_AT = { x: 688, y: 296 } as const;
@@ -123,7 +143,7 @@ const BAND_CLOCK = 1.5;
 /** How many drones are popped for the bursts the panel must count. */
 const BURSTS = 2;
 
-/** Where the five posed bullets hang: three of the player's, two of the enemy's. */
+/** Where the six posed bullets hang: three of the player's and three of the enemy's. */
 const FRIENDLY_AT: readonly { x: number; y: number }[] = [
   { x: 100, y: 620 },
   { x: 180, y: 620 },
@@ -132,6 +152,7 @@ const FRIENDLY_AT: readonly { x: number; y: number }[] = [
 const ENEMY_AT: readonly { x: number; y: number }[] = [
   { x: 1100, y: 120 },
   { x: 1200, y: 160 },
+  { x: 1020, y: 208 },
 ];
 
 /** The one key the engine binds the overlay toggle to. */
@@ -201,9 +222,39 @@ function newLines(
   });
 }
 
-/** Every maximal run of digits the lines carry. */
-function digitRuns(lines: readonly string[]): string[] {
-  return lines.flatMap((line) => line.match(/\d+/g) ?? []);
+/**
+ * The characters a build may group a run of digits with.
+ *
+ * A comma, an apostrophe and the three spaces a locale groups thousands by —
+ * between them every separator `Number.prototype.toLocaleString` reaches for. The
+ * ASCII space is deliberately absent: a plain space is what stands between two
+ * figures on one panel line, so accepting it would read the two figures of
+ * `40 130` as the single number `40130`. The full stop is absent for a reason of
+ * its own — it is the decimal point, and a panel drawing `1.5` means one and a
+ * half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One number as a panel may have drawn it: grouped in threes, or plain. */
+const DRAWN = new RegExp(
+  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/**
+ * Every number the lines drew, read with any grouping taken back out.
+ *
+ * A figure is read whole rather than digit by digit, so a panel that drew the
+ * score as `4,271` reports the one number `4271` and not the two numbers `4` and
+ * `271`. `specs/ui.md` fixes no presentation for a panel it never mentions, so
+ * how a build groups its digits is the build's.
+ */
+function drawnNumbers(lines: readonly string[]): number[] {
+  return lines.flatMap((line) =>
+    (line.match(DRAWN) ?? []).map((drawn) =>
+      Number(drawn.replace(new RegExp(GROUP, "g"), "")),
+    ),
+  );
 }
 
 /** Some line carries `value` as a whole figure; fails naming what was wanted. */
@@ -212,7 +263,7 @@ function assertFigure(
   value: number,
   what: string,
 ): void {
-  if (!digitRuns(lines).includes(String(value))) {
+  if (!drawnNumbers(lines).includes(value)) {
     fail(`an overlay line carrying ${what} (${String(value)})`, lines);
   }
 }
@@ -223,12 +274,12 @@ function assertDuration(
   seconds: number,
   what: string,
 ): void {
-  const runs = digitRuns(lines);
-  const wanted = DURATION_SCALES.map((scale) => String(seconds * scale));
-  if (!wanted.some((figure) => runs.includes(figure))) {
+  const drawn = drawnNumbers(lines);
+  const wanted = DURATION_SCALES.map((scale) => seconds * scale);
+  if (!wanted.some((figure) => drawn.includes(figure))) {
     fail(
       `an overlay line carrying ${what} (${String(seconds)} s, as any of ` +
-        `${wanted.join(", ")})`,
+        `${wanted.map(String).join(", ")})`,
       lines,
     );
   }

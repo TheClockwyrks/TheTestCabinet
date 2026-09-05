@@ -4,7 +4,7 @@ import {
   Avatar,
   GradeBadge,
   RatingBadge,
-} from "@test-cabinet/ui";
+} from "@clockwyrks/ui";
 import {
   formatPoints,
   overallGradeOf,

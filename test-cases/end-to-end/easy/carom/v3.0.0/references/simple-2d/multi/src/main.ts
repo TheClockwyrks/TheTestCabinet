@@ -10,7 +10,7 @@
 //
 // What is left is `src/game.ts`.
 
-import { createEngine } from "@test-cabinet/simple-2d";
+import { createEngine } from "@clockwyrks/simple-2d";
 import { FIELD_H, FIELD_W, LAYOUT } from "./constants";
 import { BACKGROUND, game } from "./game";
 

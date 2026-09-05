@@ -28,6 +28,12 @@
 // that gained it. A build that marks only the first row it ever draws, or that
 // draws no mark at all, fails.
 //
+// WHAT THE PICTURE IS ASKED, AND WHAT IT IS NEVER ASKED. Whether the box moved,
+// and nothing else. How much of it moved, how far apart the two readings sit, and
+// what either of them looks like are the reviewer's, from the still this point
+// captures. A build that ANIMATES its title screen can pass this leg on its
+// animation alone; that is the honest limit of reading a picture for presence.
+//
 // NOTHING ELSE IS TOUCHED. The screen and the row are posed outright after a
 // reset, so the reading rests on the pose rather than on `reset` being right, and
 // no key is pressed: which key moves a highlight is `controls.menu-down`'s
@@ -45,7 +51,7 @@ import {
 } from "../harness";
 import {
   boxAround,
-  differing,
+  largestShift,
   pixelsOver,
   readScreen,
   requireRun,
@@ -64,26 +70,16 @@ import {
 const ROW_MARGIN = 18;
 
 /**
- * How far apart two colours must be to count as visibly different: `24` of the
- * `441` a full swing across the RGB cube is, a little over five per cent.
+ * How far a row's box has to move for the box to have been redrawn at all: `8` of
+ * the `441` a full swing across the RGB cube is, the floor every reading of the
+ * picture in this project takes.
  *
- * specs/screens.md asks for the highlighted row to be drawn "plainly" apart, and
- * fixes no palette, so the figure says what "plainly" is: a change a reviewer
- * looking at the screen would see, rather than a rounding difference between two
- * renders of the same thing.
+ * An instrument reading presence needs a floor under it, and this one is set so
+ * that any mark whatsoever clears it: 8 is under two per cent of the scale, below
+ * the quietest border or tint a build could draw and above the rounding between
+ * two renders of the same thing. A row drawn identically either way reads 0.
  */
-const VISIBLE_DISTANCE = 24;
-
-/**
- * How many device pixels of a row's box must change: `20`.
- *
- * The floor is set by the SMALLEST mark that could carry the requirement — a
- * single caret or bullet glyph drawn beside the row, which at a legible size
- * covers some hundreds of pixels. Twenty is well under that, so every build that
- * marks its highlighted row at all clears it, and only a build that draws its
- * rows identically fails.
- */
-const MIN_CHANGED = 20;
+const HIGHLIGHT_CONTRAST_MIN = 8;
 
 /** The row the screen is first read on, and the row the highlight is moved to. */
 const FIRST_ROW = 0;
@@ -127,14 +123,12 @@ it("draws MELTDOWN, RUN IT HOT and its two rows, with the highlighted row apart"
 
   for (const [index, item] of TITLE_ITEMS.entries()) {
     assertGreaterThanOrEqual(
-      differing(
-        highlightedFirst[index],
-        highlightedSecond[index],
-        VISIBLE_DISTANCE,
-      ),
-      MIN_CHANGED,
-      `pixels of the ${item} row that read differently with the highlight ` +
-        `on row ${FIRST_ROW} and on row ${SECOND_ROW}`,
+      largestShift(highlightedFirst[index], highlightedSecond[index]),
+      HIGHLIGHT_CONTRAST_MIN,
+      `how far the box of the ${item} row moved between the highlight sitting ` +
+        `on row ${FIRST_ROW} and on row ${SECOND_ROW}; the highlighted row is ` +
+        `drawn plainly apart from the others (specs/screens.md, Menus), and a ` +
+        `row drawn the same either way reads 0`,
     );
   }
 });

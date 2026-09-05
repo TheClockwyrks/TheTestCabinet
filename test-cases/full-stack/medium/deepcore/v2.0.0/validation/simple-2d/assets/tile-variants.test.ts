@@ -54,7 +54,7 @@ const TO_COL = FROM_COL + 9;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ assets: true });
+  h = await createHarness();
 });
 
 afterEach(() => {

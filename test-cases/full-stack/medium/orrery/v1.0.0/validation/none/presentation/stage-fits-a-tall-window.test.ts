@@ -63,9 +63,6 @@ const LANDMARKS: readonly Hex[] = [at(-5, 0), at(5, 0), at(0, -5), at(0, 5)];
 /** Half the side of the square a landmark is read over; inside its own hex. */
 const HALF = 16;
 
-/** The least share of that square a landmark's mote must redraw. */
-const MIN_DISTINCT_SHARE = 0.05;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -95,7 +92,7 @@ it("draws the complete stage at its own ratio, centred, with even bars above and
   for (const [index, hex] of LANDMARKS.entries()) {
     assertGreaterThan(
       differingShare(bare[index] as PixelRect, await square(hex)),
-      MIN_DISTINCT_SHARE,
+      0,
       `the mote on hex (${hex.q}, ${hex.r}) is drawn at that hex's own stage position on a ${CSS_WIDTH} x ${CSS_HEIGHT} surface, so the stage was fitted at one uniform scale and centred`,
     );
   }

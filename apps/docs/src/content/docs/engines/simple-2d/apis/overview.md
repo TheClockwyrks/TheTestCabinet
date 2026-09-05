@@ -9,11 +9,11 @@ satisfies these pages; a game and a validator read them as reference.
 
 ## Entry point
 
-The package `@test-cabinet/simple-2d` has one entry point.
+The package `@clockwyrks/simple-2d` has one entry point.
 
 | Specifier | Provides |
 | --- | --- |
-| `@test-cabinet/simple-2d` | `createEngine`, the clocks, `TOUCH_LAYOUTS`, the viewport functions, `RECORDING_FORMAT`, and every type a game names. |
+| `@clockwyrks/simple-2d` | `createEngine`, the clocks, `TOUCH_LAYOUTS`, the viewport functions, `RECORDING_FORMAT`, and every type a game names. |
 
 A game and a validator both import it. A validator constructs the engine over the
 game's own module, installs a scripted

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link, NavLink, useLocation, useParams } from "react-router";
-import { Panel } from "@test-cabinet/ui";
+import { Panel } from "@clockwyrks/ui";
 import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
 import { BackChevron } from "../../components/BackChevron";

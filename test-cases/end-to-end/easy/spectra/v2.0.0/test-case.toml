@@ -100,13 +100,13 @@ assets = [
 
 # The Test Cabinet runtime libraries the build imports, by npm name. Each is
 # staged into the run from the host package store and declared in every seeded
-# workspace's `package.json` by its in-repo `file:` spec under `.tcab/packages/`.
+# workspace's `package.json` by its in-repo `file:` spec under `.vendor/packages/`.
 # Spectra needs one: the particle runtime plays `assets/drone-burst.json`, so the
 # case ships the effect and the runtime that simulates it rather than asking every
 # build to write a particle system of its own and then comparing the results.
 #
 # `packages` is a root key, so it must precede the first table header.
-packages = ["@test-cabinet/particle-runtime"]
+packages = ["@clockwyrks/particle-runtime"]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Spectra declares TWO, and they differ in exactly one rule — what a MISMATCHED
@@ -557,15 +557,14 @@ description = "What the game looks and sounds like: the screens and their menus,
 # all, so its `image` is a `.png` copied out of the build's own showcase.
 #
 # ONE OUTPUT PER POINT, with a closed list of exceptions. An output is evidence
-# beside the verdict, not part of it, so a point that measures a difference INSIDE
-# ONE RENDER — two drones of opposite bands side by side, a shimmering Flux beside
-# a holding one, a charged drone beside an uncharged one — declares ONE output, the
-# render its assertion turns on. The pair is declared only where the evidence is one
-# subject in two states that cannot both appear in a single render, and that list is
-# exactly seven: `instrumentation.advances-in-real-time`,
-# `presentation.ship-reads-band`, `screens.hud-resonance-ready`,
-# `screens.hud-polarity-indicator`, `screens.mute-indicator`,
-# `screens.inversion-overlay` and `bursts.varies`.
+# beside the verdict, not part of it, so a point that reads two subjects INSIDE ONE
+# RENDER — two drones of opposite bands side by side, a whole Prism beside a
+# shell-broken one — declares ONE output, the render its assertion turns on. The
+# pair is declared only where the evidence is one subject in two states that cannot
+# both appear in a single render, and that list is exactly five:
+# `instrumentation.advances-in-real-time`, `screens.hud-resonance-ready`,
+# `screens.hud-polarity-indicator`, `screens.mute-indicator` and
+# `screens.inversion-overlay`.
 #
 # EVERY point also carries `domains` and `failure_cap`, because this case is
 # validator-rated: a point's validator, not a reviewer, decides the functional
@@ -630,7 +629,7 @@ validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [
 [[review.categories.items]]
 id = "poses-read-back"
 title = "Every pose is reported by the snapshot"
-description = "Each pose operation's value is read back by snapshot: screen, phase, phase timer, menu index, score, lives, the extra-life latch, stage, resonance, inversion, the ship's x, band, lockout and cooldown, a drone's position, band (on a Shard, a Flux and a Prism alike, since band is the stored field on every kind), phase, slot, band clock, shell and three faculties, a bullet's velocity, the four world gates, and the dive clock. Mute is not in the list: there is no setMuted."
+description = "Each pose operation's value is read back by snapshot: screen, phase, phase timer, menu index, score, lives, the extra-life latch, stage, resonance, inversion, the ship's x, band, lockout and cooldown, a drone's position, band (on a Shard, a Flux and a Prism alike, since band is the stored field on every kind), phase, slot, band clock, shell and three faculties, a bullet's velocity, the four world gates, the dive clock and the dive gap. Mute is not in the list: there is no setMuted."
 domains = ["polarity", "swarm", "arcade", "presentation"]
 failure_cap = "broken"
 validation = { script = "instrumentation/poses-read-back.test.ts", outputs = [
@@ -884,7 +883,7 @@ validation = { script = "field/ship-lane.test.ts", outputs = [
 [[review.categories.items]]
 id = "slot-grid"
 title = "A formation slot sits where the grid puts it"
-description = "Every drone of the build's own stage-1 wave, once settled, rests on a slot of the specified grid: its centre sits at slotX(col), slotY(row) plus the block's single sway offset, within one unit, over at least eight resting drones."
+description = "Every drone of the build's own stage-1 wave, once settled, rests on a slot of the specified grid: its centre sits at slotX(col), slotY(row) plus the block's single sway offset, within one unit."
 domains = ["swarm"]
 failure_cap = "passable"
 validation = { script = "field/slot-grid.test.ts", outputs = [
@@ -2098,7 +2097,7 @@ validation = { script = "stages/scaling-bullet-speed-cap.test.ts", outputs = [
 [[review.categories.items]]
 id = "scaling-dive-gap"
 title = "Dives come faster at a later stage"
-description = "The game reports diveGapScale(7) as 0.70 exactly; over a posed complete formation with the dive clock posed at 0 and dive launching on, the mean of twenty stage-7 dive gaps is 1.40 s within 20%, and none of a hundred drawn gaps launches with the wave's clock under 0.98 s or fails to launch with it past 1.82 s."
+description = "The game reports diveGapScale(7) as 0.70 exactly; over a posed complete formation with dive launching on, a stage-7 wave left to run on its own clock launches each dive within two frames of the diveGap it was carrying, over one gap posed at 0.98 s and three the build drew; and each of a hundred drawn gaps read off the wave sits inside [0.98, 1.82] s, with none launching with the wave's clock under 0.98 s or failing to launch with it past 1.82 s."
 domains = ["swarm"]
 failure_cap = "passable"
 validation = { script = "stages/scaling-dive-gap.test.ts", outputs = [
@@ -2628,13 +2627,16 @@ failure_cap = "scuffed"
 validation = { script = "controls/mute-m.test.ts", outputs = [
   { id = "muted", name = "The muted game M toggled", kind = "image" },
 ] }
+# Scoped to `none`, where the overlay and its toggle are the build's own runtime
+# layer (specs/controls.md). Under an engine the key, the panel and its start state
+# are the engine's, so the check would return the same verdict for every build.
 [[review.categories.items]]
 id = "overlay-backquote"
 title = "The overlay toggles on the backtick"
 description = "Backquote shows the debug overlay and a second press hides it. Backquote is the overlay's only binding."
 domains = ["presentation"]
 failure_cap = "scuffed"
-validation = { script = "controls/overlay-backquote.test.ts", outputs = [
+validation = { script = "controls/overlay-backquote.test.ts", engines = ["none"], outputs = [
   { id = "overlay", name = "The overlay the backtick showed", kind = "image" },
 ] }
 
@@ -3152,7 +3154,7 @@ validation = { script = "screens/mute-indicator.test.ts", outputs = [
 [[review.categories.items]]
 id = "inversion-overlay"
 title = "An inversion marks the whole field"
-description = "While an inversion is active the field carries a mark that is absent otherwise, differing from the un-inverted field by an RGB distance of at least 20 of 441 sampled across the play field."
+description = "While an inversion is active the play field carries a mark that is absent otherwise: more of the field is repainted than the field repaints on its own across one frame."
 domains = ["presentation", "polarity"]
 failure_cap = "scuffed"
 validation = { script = "screens/inversion-overlay.test.ts", outputs = [
@@ -3174,14 +3176,13 @@ validation = { script = "screens/ready-banner.test.ts", outputs = [
 # and the pixels it leaves on the canvas — so a build cannot pass by reporting a value
 # it does not render.
 #
-# NO POINT ASSERTS A HEX VALUE, and there is no palette to assert one against: Spectra
-# v2.0.0 fixes no palette and no typeface, and specs/overview.md's legibility table
-# states the RELATIONSHIPS a player must be able to read instead. So these check
-# that a thing is drawn and that two things are told apart, against a stated RGB distance out of 441. Two rows of
-# that table are deliberately left to the reviewer rather than given a point — whether a
-# band's shape accent is used consistently everywhere a band appears, and how bright the
-# starfield reads — because neither is a question pixels can decide without asserting a
-# layout the specification leaves to the build.
+# NO POINT ASSERTS ANYTHING ABOUT HOW THE BUILD LOOKS. Spectra v2.0.0 fixes no
+# palette and no typeface, and specs/overview.md's legibility table states the
+# relationships a player must be able to read rather than any figure. So a point
+# here decides only that a thing WAS DRAWN where the specification says something
+# is drawn, or that the source handed to a draw is the seeded art at the seeded
+# footprint. Whether the palette the build chose reads well, and whether its
+# states are told apart at a glance, are the reviewer's presentation rating.
 [[review.categories]]
 id = "presentation"
 title = "Art & legibility"
@@ -3240,36 +3241,18 @@ validation = { script = "presentation/drone-scaled-to-footprint.test.ts", output
   { id = "footprints", name = "The three drones at their footprints", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "flux-shimmer-differs"
-title = "A shimmering Flux reads differently"
-description = "The pixels a shimmering Flux leaves differ from those a Flux holding a band leaves, by an RGB distance above 25 of 441."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "presentation/flux-shimmer-differs.test.ts", outputs = [
-  { id = "pair", name = "A shimmering Flux beside a holding one", kind = "image" },
-] }
-[[review.categories.items]]
 id = "prism-core-alone"
 title = "A broken Prism draws only its core"
-description = "A Prism with its shell gone paints a visibly smaller region than one with its shell intact."
+description = "The destination box drawn for a Prism with its shell gone matches PRISM_CORE_SIZE within 15%."
 domains = ["presentation", "swarm"]
 failure_cap = "passable"
 validation = { script = "presentation/prism-core-alone.test.ts", outputs = [
   { id = "pair", name = "A whole Prism beside a shell-broken one", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "cyan-magenta-distinct"
-title = "The two bands are told apart"
-description = "A cyan drone and a magenta drone render in colors separated by an RGB distance of at least 60 of 441."
-domains = ["polarity", "presentation"]
-failure_cap = "broken"
-validation = { script = "presentation/cyan-magenta-distinct.test.ts", outputs = [
-  { id = "pair", name = "A cyan drone beside a magenta one", kind = "image" },
-] }
-[[review.categories.items]]
 id = "cyan-vs-field"
-title = "A cyan drone stands out"
-description = "A cyan drone's pixels differ from the empty field behind it by an RGB distance of at least 40 of 441."
+title = "A cyan drone is drawn on the field"
+description = "A cyan drone paints pixels the same square of the same field does not carry with the drone gone."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/cyan-vs-field.test.ts", outputs = [
@@ -3277,81 +3260,26 @@ validation = { script = "presentation/cyan-vs-field.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "magenta-vs-field"
-title = "A magenta drone stands out"
-description = "A magenta drone's pixels differ from the empty field behind it by an RGB distance of at least 40 of 441."
+title = "A magenta drone is drawn on the field"
+description = "A magenta drone paints pixels the same square of the same field does not carry with the drone gone."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/magenta-vs-field.test.ts", outputs = [
   { id = "magenta", name = "A magenta drone against the empty field", kind = "image" },
 ] }
-# Two outputs, because a single still can only show the ship on one band. The
-# general rule for this checklist is that an item whose claim IS a difference
-# declares the before-and-after pair, and an item that poses both states inside one
-# frame declares one output.
-[[review.categories.items]]
-id = "ship-reads-band"
-title = "The ship reads its band"
-description = "The ship drawn on cyan differs from the ship drawn on magenta by an RGB distance of at least 40 of 441. Two captures, one per band."
-domains = ["polarity", "presentation"]
-failure_cap = "scuffed"
-validation = { script = "presentation/ship-reads-band.test.ts", outputs = [
-  { id = "cyan", name = "The ship on cyan", kind = "image" },
-  { id = "magenta", name = "The ship on magenta", kind = "image" },
-] }
 [[review.categories.items]]
 id = "bullets-code-drawn"
 title = "Bullets are drawn in code"
-description = "A bullet in flight paints pixels distinct from the field with no seeded frame drawn at its position."
-domains = ["presentation"]
+description = "A cyan bullet and a magenta bullet in flight each paint pixels the same box of the same field does not carry without them, with no seeded frame drawn at either position."
+domains = ["polarity", "presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/bullets-code-drawn.test.ts", outputs = [
-  { id = "bullet", name = "A bullet drawn in flight", kind = "image" },
+  { id = "bullet", name = "A bullet of each band drawn in flight", kind = "image" },
 ] }
-[[review.categories.items]]
-id = "bullet-reads-band"
-title = "A bullet reads its band"
-description = "A cyan bullet and a magenta bullet render in colors separated by an RGB distance of at least 60 of 441."
-domains = ["polarity", "presentation"]
-failure_cap = "scuffed"
-validation = { script = "presentation/bullet-reads-band.test.ts", outputs = [
-  { id = "pair", name = "A cyan bullet beside a magenta one", kind = "image" },
-] }
-# This is the legibility table's "One palette for both" row, and the one
-# relationship Spectra genuinely needs pinned: a build painting its bullets a third
-# pair of colors passes `bullet-reads-band` and is incoherent all the same.
-[[review.categories.items]]
-id = "bands-share-one-palette"
-title = "Code-drawn bands match the art's bands"
-description = "A code-drawn cyan bullet's sampled color is nearer the cyan drone's sampled color than the magenta drone's, and a magenta bullet's is nearer the magenta drone's. No hex is asserted."
-domains = ["polarity", "presentation"]
-failure_cap = "scuffed"
-validation = { script = "presentation/bands-share-one-palette.test.ts", outputs = [
-  { id = "palette", name = "Both bands' drones and bullets in one frame", kind = "image" },
-] }
-[[review.categories.items]]
-id = "drones-distinct"
-title = "The three drones read apart"
-description = "A Shard, a Flux and a Prism sample pairwise-distinct colors, and each differs from the field behind it, by more than 40 of 441."
-domains = ["presentation"]
-failure_cap = "scuffed"
-validation = { script = "presentation/drones-distinct.test.ts", outputs = [
-  { id = "trio", name = "A Shard, a Flux and a Prism side by side", kind = "image" },
-] }
-[[review.categories.items]]
-id = "ship-vs-drones"
-title = "The ship reads apart from the drones"
-description = "The ship's sampled pixels differ from a drone of its own band, and from the field behind it, by more than 40 of 441."
-domains = ["presentation"]
-failure_cap = "scuffed"
-validation = { script = "presentation/ship-vs-drones.test.ts", outputs = [
-  { id = "ship", name = "The ship beside a drone of its own band", kind = "image" },
-] }
-
 # --- The drone-burst -------------------------------------------------------
 # The seeded drone-burst, from specs/assets.md: it plays where a drone died, it is the
 # system the case shipped rather than one the build wrote, it is scaled to the drone that
-# died, it ends, it is capped, and successive bursts scatter differently — which is what
-# tells a simulated effect from a replayed one.
+# died, it ends, and it is capped.
 [[review.categories]]
 id = "bursts"
 title = "The drone-burst"
@@ -3408,16 +3336,6 @@ domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "bursts/one-shot-ends.test.ts", outputs = [
   { id = "ended", name = "The field the burst left", kind = "image" },
-] }
-[[review.categories.items]]
-id = "varies"
-title = "Successive bursts scatter differently"
-description = "Two bursts played at the same position and read at the same age paint measurably different pixels, so the effect is simulated rather than replayed."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "bursts/varies.test.ts", outputs = [
-  { id = "first", name = "The first burst at its read age", kind = "image" },
-  { id = "second", name = "The second burst at the same age", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "drawn"

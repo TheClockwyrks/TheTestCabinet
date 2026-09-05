@@ -22,7 +22,7 @@ import type { CascadeState } from "./game";
 import { menuItems, wrapMenuIndex } from "./layout";
 import type { Outcome } from "./moves";
 import { activateMenuItem } from "./pointer";
-import type { UpdateApi } from "@test-cabinet/simple-2d";
+import type { UpdateApi } from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 /** The state a frame's menu-action edges left, and whatever they raised. */

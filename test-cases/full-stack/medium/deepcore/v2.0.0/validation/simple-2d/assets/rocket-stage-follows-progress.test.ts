@@ -37,7 +37,7 @@ const SHOWN = 3;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ assets: true });
+  h = await createHarness();
 });
 
 afterEach(() => {

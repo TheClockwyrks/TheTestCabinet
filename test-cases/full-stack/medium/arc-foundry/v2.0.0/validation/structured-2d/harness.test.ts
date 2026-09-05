@@ -20,7 +20,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
-import type { Recording } from "@test-cabinet/structured-2d";
+import type { Recording } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   BAR_H,

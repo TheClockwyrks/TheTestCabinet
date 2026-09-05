@@ -16,9 +16,11 @@
 // into spokes.
 //
 // AND WHY POLAR MATTERS FOR THE FLASH. `specs/rocks.md` gives every rock a slow
-// drawn rotation, which is cosmetic and which a check cannot switch off. A mean
-// taken over complete rings is very nearly invariant under that rotation, so the
-// flash check reads a brightening rather than a rock having turned.
+// drawn rotation, which is cosmetic and which a check cannot switch off. Samples
+// laid on complete rings move little under that rotation, and `armor/hit-flash`
+// measures what the rotation alone does over a span of the same length and holds
+// the flash to that too, so what it counts is the flash rather than a rock having
+// turned.
 
 import { colorDistance, sample, type Harness, type Rgb } from "../harness";
 import { wrap, type Point } from "../geometry";
@@ -66,24 +68,6 @@ export function lookPoints(rock: RockSnapshot): Point[] {
  */
 export function readLook(h: Harness, rock: RockSnapshot): Rgb[] {
   return lookPoints(rock).map((point) => sample(h, point.x, point.y));
-}
-
-/**
- * A colour's luminance, out of 255: the reading a flash brightens along.
- *
- * The usual Rec. 709 weighting, so a build that flashes in any hue reads brighter
- * rather than only a build that flashes white.
- */
-export function luminance(c: Rgb): number {
-  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
-}
-
-/** The mean brightness of a look, out of 255. */
-export function meanLuminance(look: readonly Rgb[]): number {
-  if (look.length === 0) return 0;
-  let total = 0;
-  for (const reading of look) total += luminance(reading);
-  return total / look.length;
 }
 
 /** How many of the samples changed colour by more than `threshold`, of 441. */

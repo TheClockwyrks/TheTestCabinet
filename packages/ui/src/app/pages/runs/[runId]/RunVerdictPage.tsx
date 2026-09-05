@@ -1,4 +1,4 @@
-import { GradeBadge, Markdown, Panel, RatingBadge } from "@test-cabinet/ui";
+import { GradeBadge, Markdown, Panel, RatingBadge } from "@clockwyrks/ui";
 import {
   RATING_META,
   formatPoints,
@@ -14,7 +14,7 @@ import {
   type RunStatePresentation,
 } from "../../../data/runState";
 import { LoadingState } from "../../../components/LoadingState";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunRecord } from "@clockwyrks/run-record";
 import type { StoredReview } from "../../../../client/types";
 import { useAuth } from "../../../../client/auth";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";

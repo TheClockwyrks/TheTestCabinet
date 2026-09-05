@@ -74,7 +74,7 @@ The ship and the three drones are rendered from the **provided sprites** under
 `src/assets/` (`fighter`, `shard`, `flux`, `prism`), re-tinted per band at load
 time; the ring/diamond band glyph is drawn in code on top so the band always reads
 correctly. When a drone pops, the build plays the **provided** `drone-burst.json`
-particle system through **`@test-cabinet/particle-runtime`** (its `/canvas`
+particle system through **`@clockwyrks/particle-runtime`** (its `/canvas`
 binding), simulated live so each detonation scatters differently. That library is
 vendored, prebuilt, under `vendor/particle-runtime/` so this project installs and
 builds with a plain `npm ci` outside the monorepo.
@@ -100,7 +100,7 @@ a per-run sub-path.
 ```
 index.html               Vite entry; hosts the <canvas>
 vite.config.ts           Build config (base: "./", emits to dist/)
-vendor/particle-runtime  Vendored, prebuilt @test-cabinet/particle-runtime
+vendor/particle-runtime  Vendored, prebuilt @clockwyrks/particle-runtime
 src/
   main.ts                Bootstrap: canvas fit/letterbox + fixed-timestep loop
   constants.ts           Palette, geometry, tuning (logical 1280x720), overload tuning

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pagination, Panel } from "@test-cabinet/ui";
+import { Pagination, Panel } from "@clockwyrks/ui";
 import { LoadingState } from "../../../components/LoadingState";
 import {
   RunLog,

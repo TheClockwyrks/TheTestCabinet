@@ -129,10 +129,28 @@ async function courseNames(count: number): Promise<string[]> {
   return names;
 }
 
+/**
+ * The separators a build may draw between a figure's digit triples.
+ *
+ * A row's number is the case's and how the row draws it is the build's, and
+ * grouping is what `Number.prototype.toLocaleString` does by default, so a row
+ * that drew `1,234` drew the one figure 1234 and reads as that. ASCII space is
+ * deliberately absent from the set: a row is read as its runs of text joined
+ * together, so accepting it would read the two figures in `40 130` as the single
+ * figure `40130`. The decimal point is absent for the same kind of reason — a
+ * build drawing `1.5` means one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One whole number as a build may draw it: grouped into triples, or plain. */
+const WHOLE = new RegExp(`\\d{1,3}(?:${GROUP}\\d{3})+|\\d+`, "g");
+
 /** The whole number a run of text carries, when it carries exactly one. */
 function soleNumber(text: string): number | null {
-  const digits = text.match(/\d+/g);
-  return digits?.length === 1 ? Number(digits[0]) : null;
+  const digits = text.match(WHOLE);
+  return digits?.length === 1
+    ? Number(digits[0].replace(new RegExp(GROUP, "g"), ""))
+    : null;
 }
 
 it("draws each row's challenge number, running 1 upward down the list", async () => {

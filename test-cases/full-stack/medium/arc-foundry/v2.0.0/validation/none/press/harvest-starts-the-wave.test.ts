@@ -15,11 +15,33 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import {
   captureReplay,
+  ConstantClock,
   createHarness,
   openYard,
   standCandidate,
   type Harness,
 } from "../harness";
+
+/**
+ * The frame rate the wait is driven at: `10` Hz, a twelfth of this project's
+ * default.
+ *
+ * What the wait watches for is an ABSENCE — a build phase that starts no wave of
+ * its own — and nothing read across it is a position, a projectile or anything
+ * else whose reading a step size bounds. `specs/instrumentation.md` fixes no frame
+ * size and guarantees that an interval of simulation time reaches the same state
+ * however it was divided into frames, which `instrumentation/frame-division-movement`
+ * and `instrumentation/frame-division-projectile` are the two items that decide.
+ * So the same ten seconds of untimed build phase are covered by a hundred frames
+ * rather than twelve hundred, and the span the requirement is stated over is
+ * unchanged.
+ */
+const WAIT_HZ = 10;
+
+/** Frames of that clock covering `s` seconds of simulation, rounded up. */
+function waitFrames(seconds: number): number {
+  return Math.ceil(seconds * WAIT_HZ);
+}
 
 /** How long the untimed build phase is sat in before anything is committed. */
 const WAIT_SECONDS = 10;
@@ -31,7 +53,7 @@ const AT = { col: 20, row: 10 };
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ clock: new ConstantClock(1000 / WAIT_HZ) });
 });
 
 afterEach(async () => {
@@ -46,7 +68,7 @@ it("waits for the harvest, and starts the wave on it", async () => {
 
   const driven = await captureReplay(h, "launch", async () => {
     // The phase is untimed: a long stretch of simulation starts nothing.
-    await h.advanceSeconds(WAIT_SECONDS);
+    await h.advance(waitFrames(WAIT_SECONDS));
     const waited = await h.snapshot();
 
     const candidate = await standCandidate(
@@ -59,7 +81,7 @@ it("waits for the harvest, and starts the wave on it", async () => {
     await h.debug.keep(candidate);
     const launched = await h.snapshot();
 
-    await h.advanceSeconds(2);
+    await h.advance(waitFrames(2));
     return { waited, launched };
   });
 

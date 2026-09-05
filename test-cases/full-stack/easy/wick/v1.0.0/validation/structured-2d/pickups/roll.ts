@@ -26,8 +26,18 @@
 // of the real simulation rather than four thousand. Nothing about the roll
 // depends on how the kills are divided between ticks: each is a common killed by
 // a weapon, and the draws are the build's own, in whatever order it makes them.
-// A caller may pose a wider batch, and `drop-at-most-one` does: its sample is
-// fifteen times the others', and the width is what keeps its ticks near theirs.
+// A caller may pose a narrower or a wider batch.
+//
+// WHAT THE GENERATOR IS READ FOR. `rngState` is reported before the first kill
+// and after the last, so a check can say how far the sample moved the build's
+// own generator. `specs/instrumentation.md` ("A deterministic core"): the game
+// "holds one pseudo-random generator, seeded by `reset` and keeping its whole
+// state in `rngState`, and every random draw comes from it", and the sample
+// makes no other draw — every switch but `drops` is off, no slot is held, and a
+// pose "changes the state alone" — so the distance between the two readings is
+// exactly the draws the sample's kills made. `drop-at-most-one` reads that
+// distance against `advanceRng`, which takes a stated count of draws off the
+// same generator.
 //
 // WHERE THE MOTHS STAND. On a lattice `SPACING` (`200`) units apart, starting
 // `FIELD` (`4000`) units from the lamplighter on both axes. That spacing is far
@@ -74,6 +84,17 @@ export const PULSE_DAMAGE = OIL_SPLASH_LEVELS[0].damage;
 /** How many kills share one tick. */
 export const BATCH = 100;
 
+/**
+ * How many kills share one tick for a check that would rather spend ticks than
+ * field.
+ *
+ * A tick's work over a posed field grows with the puddles and the moths
+ * standing on it at once, and the fixed cost of a tick does not, so the same
+ * sample is cheaper in narrower batches over more ticks. Nothing about the roll
+ * depends on how the kills are divided between ticks.
+ */
+export const NARROW_BATCH = 20;
+
 /** How far apart the lattice's points stand, in units. */
 export const SPACING = 200;
 
@@ -96,6 +117,13 @@ export interface Sample {
   kills: number;
   /** Every pickup those kills dropped, in the order the ticks reported them. */
   drops: Drop[];
+  /**
+   * `rngState` as the isolated night stood before the first kill, which is
+   * where a replay of the sample's draws begins.
+   */
+  startRng: number;
+  /** `rngState` after the last kill's tick, the whole sample's draws behind it. */
+  endRng: number;
 }
 
 /** The lattice point kill `n` of the sample is made at. */
@@ -116,8 +144,7 @@ function post(at: Point, n: number): Point {
  *
  * `batch` is how many kills share one tick. It changes nothing about the roll
  * — each kill is still a common killed by a weapon at its own lattice point —
- * and the check that needs a far larger sample raises it so the extra kills
- * cost lattice rows rather than ticks.
+ * so a caller free to spend more ticks may narrow it.
  */
 export async function sampleDrops(
   h: Harness,
@@ -125,9 +152,12 @@ export async function sampleDrops(
   trials: number = DROP_TRIALS,
   batch: number = BATCH,
 ): Promise<Sample> {
-  const at = isolate(h, { seed }).run.player;
+  const posed = isolate(h, { seed });
+  const at = posed.run.player;
   enable(h, "drops");
   const drops: Drop[] = [];
+  const startRng = posed.rngState;
+  let endRng = startRng;
   let killed = 0;
 
   while (killed < trials) {
@@ -136,14 +166,14 @@ export async function sampleDrops(
       const where = post(at, killed + n);
       h.debug.spawnEnemy("moth", where.x, where.y);
     }
-    const posed = h.snapshot();
-    if (posed.run.enemies.length !== size) {
+    const standing = h.snapshot();
+    if (standing.run.enemies.length !== size) {
       fail(
         `${size} moths alive after ${size} calls to spawnEnemy (specs/instrumentation.md)`,
-        posed.run.enemies.length,
+        standing.run.enemies.length,
       );
     }
-    for (const moth of posed.run.enemies) {
+    for (const moth of standing.run.enemies) {
       h.debug.setEnemyHp(moth.id, Math.min(PULSE_DAMAGE, ENEMIES.moth.hp));
       h.debug.spawnPuddle("oil-splash", moth.x, moth.y);
     }
@@ -155,15 +185,16 @@ export async function sampleDrops(
         `${after.run.enemies.length} still alive`,
       );
     }
-    if (after.run.kills !== posed.run.kills + size) {
+    if (after.run.kills !== standing.run.kills + size) {
       fail(
-        `${posed.run.kills + size} kills after the tick that killed ${size} moths (specs/enemies.md, The life of an enemy)`,
+        `${standing.run.kills + size} kills after the tick that killed ${size} moths (specs/enemies.md, The life of an enemy)`,
         after.run.kills,
       );
     }
     for (const pickup of after.run.pickups) {
       drops.push({ kind: pickup.kind, x: pickup.x, y: pickup.y });
     }
+    endRng = after.rngState;
 
     h.debug.clearPickups();
     h.debug.clearGems();
@@ -171,7 +202,7 @@ export async function sampleDrops(
     killed += size;
   }
 
-  return { kills: killed, drops };
+  return { kills: killed, drops, startRng, endRng };
 }
 
 /** How many of `drops` are of kind `kind`. */

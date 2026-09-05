@@ -19,7 +19,7 @@
 // frame's ticks resolve, exactly as a player expects: the key arrives, then
 // the tick it steers.
 
-import { PlayerController } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
 import { handleAction, handlePointer } from "./flow";
 import { kesslerState } from "./state";
 import { pointerMoves, pressedActions } from "./input";

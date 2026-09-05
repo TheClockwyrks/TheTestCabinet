@@ -20,7 +20,7 @@ import { useState } from "react";
 import type {
   CodeFileEntry,
   CodeSymbolEntry,
-} from "@test-cabinet/run-record/code-analysis";
+} from "@clockwyrks/run-record/code-analysis";
 import {
   APPROXIMATE_MARK,
   APPROXIMATE_NOTE,

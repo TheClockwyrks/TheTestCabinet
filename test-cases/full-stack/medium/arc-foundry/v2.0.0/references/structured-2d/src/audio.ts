@@ -24,7 +24,7 @@ import {
   type CueName,
 } from "./constants";
 import type { Component } from "./types";
-import type { CueSpec, WorldAudio } from "@test-cabinet/structured-2d";
+import type { CueSpec, WorldAudio } from "@clockwyrks/structured-2d";
 
 /**
  * The synthesized shape each cue is declared with, before the produced clip is loaded

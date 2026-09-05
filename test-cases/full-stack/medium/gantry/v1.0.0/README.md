@@ -50,7 +50,7 @@ Gantry is designed for three engines, and seeds a different project for each:
 
 | Engine | What the seeded project supplies |
 | --- | --- |
-| `none` | The toolchain configuration and `index.html`, and nothing else. There is no `src/`. The build writes the runtime, the frame loop and its delta time, the canvas fit, keyboard and pointer input, audio, asset loading, the diagnostics overlay and the `window.__gantry` surface, and then the game on top of it. It carries `@test-cabinet/voxel-runtime` as a baked-in `file:` dependency, which is what decodes a produced `.glb`. |
+| `none` | The toolchain configuration and `index.html`, and nothing else. There is no `src/`. The build writes the runtime, the frame loop and its delta time, the canvas fit, keyboard and pointer input, audio, asset loading, the diagnostics overlay and the `window.__gantry` surface, and then the game on top of it. It carries `@clockwyrks/voxel-runtime` as a baked-in `file:` dependency, which is what decodes a produced `.glb`. |
 | `simple-3d` | The [Simple 3D](/engines/simple-3d/) package, vendored at seed time, plus `src/constants.ts`, `src/main.ts`, and a stub `src/game.ts`. The build implements `src/game.ts`: the state, the debug surface, and the game's update and render. The engine holds the state by value, so a pose takes the current state and returns the next, applied through `engine.apply`, and a reading takes the state and returns what it read. |
 | `structured-3d` | The [Structured 3D](/engines/structured-3d/) package, vendored at seed time, plus the same three case-owned modules. The build implements `src/game.ts`: the game definition the engine drives, its instance, its mode, its live state class, and the debug surface its instance's `initialize` returns. The world is live, so a pose acts on it at the call and a reading returns plain data. |
 
@@ -139,18 +139,23 @@ for every one. `experimental` is off.
 What is committed: all thirteen specs (the five that branch three ways included),
 all three starter workspaces, the prompt, `asset_dimension = "3d"` so a run
 schedules onto the 3D full-stack image, the four scoring domains, a checklist of
-827 validator-rated points across 14 categories, a validator suite per engine, a
+820 validator-rated points across 14 categories, a validator suite per engine, a
 reference implementation per engine, the produced asset set with the scripts
 that made it, baseline media per engine, and a showcase.
 
 ### The validator suites, and where they differ
 
-The three harnesses export **one async API**, so 743 of the 827 suite files are
+The three harnesses export **one async API**, so 734 of the 820 suite files are
 byte-identical across the three engine directories and the same point is decided
-by the same file whichever runtime a run selected. The 84 forks are where the
-picture is genuinely read differently, plus four that are per-engine by the
+by the same file whichever runtime a run selected. The 80 forks are where the
+scene is genuinely read differently, plus four that are per-engine by the
 specification itself (where the debug surface is reached, and that nothing is
-installed on the page under an engine).
+installed on the page under an engine). Six further points carry
+`engines = ["none"]` and live under `validation/none/` alone: the debug
+overlay's visibility, its toggle key and its reading the game without changing
+it, the clock going off real time, and the stage's fit to the window are all the
+engine's under the two 3D runtimes, and a check on them there would grade the
+engine rather than the build.
 
 The two engine projects run **in process**, not in vitest browser mode. The
 engine takes a `webgl2` context from its canvas the moment it is created, and
@@ -158,25 +163,28 @@ engine takes a `webgl2` context from its canvas the moment it is created, and
 and the game's own `update` and `render` run for real against it. What that
 costs is pixels: nothing is rasterized, so a check that would read the drawn yard
 reads the retained scene instead — the bodies the game submitted, their world
-extents and their materials — which is why the `presentation` suites are forked.
+extents and their places — which is why the `presentation` suites are forked.
 The readouts are still read as drawing operations, through the seam the engine's
 own `rendering.ts` documents for exactly this.
 
-Pixel-level coverage comes from the `none` project, which drives the built site
-in real headless Chromium through `window.__gantry` and reads real pixels. The
-same 827 points are decided there, so every point is checked against a real
-browser on at least one engine.
+What every project reads first is the frame's own account of itself: `drawn()`
+reports one entry per thing the last frame put on screen, with its kind, its
+name, the produced file its geometry came from, the world position it stands at
+and the extent it covers. The `none` project drives the built site in real
+headless Chromium through `window.__gantry`, so the 814 points it shares are
+decided against a real browser as well as against the two in-process runtimes,
+and the six it carries alone are decided there only.
 
 ### What a suite run costs
 
 The `none` project is the largest validator suite in the repository and the only
-one that pays a browser crossing per tick: 827 suites, each loading the built
+one that pays a browser crossing per tick: 820 suites, each loading the built
 site into its own page. It is configured at eight workers rather than the shared
 default's four because the whole run must fit inside the platform's
 twenty-minute cap on a validator suite (`VITEST_TIMEOUT` in
 `crates/core/src/vitest_validator.rs`) — at four it measured 39 minutes, which
 the runner stops, and a stopped suite decides no point at all. The two engine
-projects run the same 827 points in about half a minute each.
+projects run the 814 points they share in about half a minute each.
 
 The numbers pass this list used to call for is **done**. Every site in
 `specs/sites.md` has a worked crane and a tape that clears it inside its budget,

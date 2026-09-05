@@ -11,8 +11,8 @@
 // the region a pointer selects an item from (`menuItemRect`) and the place that
 // item is drawn cannot drift apart.
 
-import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
-import type { DrawApi, RenderMode } from "@test-cabinet/structured-2d";
+import { Actor, DrawComponent } from "@clockwyrks/structured-2d";
+import type { DrawApi, RenderMode } from "@clockwyrks/structured-2d";
 import {
   FIELD_CX,
   FIELD_CY,

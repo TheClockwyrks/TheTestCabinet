@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type {
   GgCapabilitySet,
   GgModuleKind,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import panels from "./GgPanels.module.scss";
 import { formatEventTime } from "../../../eventFeed";
 import type {

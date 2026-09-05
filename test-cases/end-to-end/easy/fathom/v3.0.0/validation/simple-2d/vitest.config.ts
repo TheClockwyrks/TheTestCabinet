@@ -42,10 +42,13 @@ export default defineConfig({
     coverage: { enabled: false },
     // The longest checks here are minutes of GAME time: `gloamfin/wander-speed`
     // reads a patrol a minute apart because specs/predators/gloamfin.md states the
-    // claim in that unit, which is 7,200 ticks of real simulation with a full tile
-    // grid drawn on each. Half a minute of wall clock on an idle machine, and
-    // several times that on a loaded one, so the ceiling is set well clear of both:
-    // it exists to stop a build that never terminates, not to time the host.
+    // claim in that unit, which is 7,200 ticks of real simulation. A march like
+    // that is run off camera through the harness's `skip`, which spends it
+    // several ticks a frame — the same ticks, and specs/movement.md is what makes
+    // that the same simulation — so the minute costs a fraction of a second of
+    // wall clock rather than the ten it cost drawn tick by tick. The ceiling
+    // stays well clear of anything measured here either way: it exists to stop a
+    // build that never terminates, not to time the host.
     testTimeout: 300_000,
     // The same ceiling on a hook as on a check, rather than vitest's own 10 s
     // default. `beforeEach` here constructs the engine, loads every seeded sheet

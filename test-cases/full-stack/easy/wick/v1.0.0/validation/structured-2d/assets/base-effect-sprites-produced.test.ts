@@ -29,9 +29,9 @@
 // evidence picture is painted on.
 //
 // THE TOLERANCE. Each canvas is exact, because the specification states it
-// exactly. The paint floor is `PAINT_MIN_SHARE`, one pixel in a thousand:
-// seventeen pixels of a `128 x 128` burst frame, so even the faintest tail of
-// a burst played once clears it, while a canvas nothing was drawn on fails.
+// exactly. The paint reading is presence: at least one pixel of the canvas is
+// not clear, so even the faintest tail of a burst played once answers, while a
+// canvas nothing was drawn on fails.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { captureStill, createHarness, type Harness } from "../harness";

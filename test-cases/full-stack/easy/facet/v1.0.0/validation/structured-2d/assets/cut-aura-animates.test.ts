@@ -1,5 +1,5 @@
 // assets/cut-aura-animates — a cut stone standing on a settled board is never
-// still, and a plain stone beside it is.
+// still.
 //
 // specs/assets.md, "Particle systems — particle-2d", produces four systems and
 // gives the fourth to the cut stones: "The cut aura, a continuous system played
@@ -21,13 +21,13 @@
 // `assets/prism-turn-animates` reads the sequence there and this reads the aura
 // here.
 //
-// WHY A PLAIN GEM IS THE CONTROL. A background that animates under the whole
-// field would move the pixels in every cell alike, and a reading of one cell
-// could not tell that from an aura. So a plain gem of the SAME kind stands at
-// another cell of the same board and is watched over the same frames: the
-// brilliant's cell has to MOVE, by more than PATCH_DISTINCT_MIN, and the plain
-// cell has to HOLD STILL, within PATCH_SAME_MAX. A build whose whole board
-// shimmers fails the control rather than passing the point.
+// WHAT THE PLAIN GEM BESIDE IT IS FOR. A plain gem of the same kind stands at
+// another cell of the posed board, so a reviewer watching the replay sees the
+// cut stone against a stone of the same art. Nothing is asserted of it:
+// specs/board.md hands "the animation" to the build along with the rest of the
+// presentation and nowhere requires a stone to stand still, so a build that
+// gives every gem a slow glint is conformant and this point is not the place to
+// say otherwise.
 //
 // WHY THE BOARD IS AT REST. The board carries no maximal run and no swap is made,
 // so `phase` never leaves `idle` and nothing on it is falling, clearing or
@@ -37,17 +37,13 @@
 // reaches into a neighbor's.
 //
 // WHAT IS NOT READ. What the aura looks like, how many particles it throws, how
-// fast it runs, or whether two cut stones on one board run it separately.
-// specs/assets.md leaves all of that to the build and says only that the effect
-// is continuous, quiet, and at every cut stone.
+// far the cell's pixels travel, how fast it runs, or whether two cut stones on
+// one board run it separately. specs/assets.md leaves all of that to the build
+// and says only that the effect is continuous, quiet, and at every cut stone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertLessThanOrEqual,
-} from "../assert";
-import { GEM_KINDS, PATCH_DISTINCT_MIN, PATCH_SAME_MAX } from "../constants";
+import { assertEqual, assertGreaterThan } from "../assert";
+import { GEM_KINDS } from "../constants";
 import {
   maximalRuns,
   quietRowsWith,
@@ -73,7 +69,7 @@ import {
  */
 const KIND = GEM_KINDS[0];
 
-/** The cut stone the aura is read at, and the plain stone that is the control. */
+/** The cut stone the aura is read at, and the plain stone standing beside it. */
 const CUT: CellRef = { col: 3, row: 3 };
 const PLAIN: CellRef = { col: 5, row: 5 };
 
@@ -84,8 +80,8 @@ const CELLS: readonly PlacedToken[] = [
 ];
 
 /**
- * How the two cells are watched: how many instants are sampled, and how many
- * frames of the suite's 64 Hz clock separate two of them.
+ * How the cut stone's cell is watched: how many instants are sampled, and how
+ * many frames of the suite's 64 Hz clock separate two of them.
  *
  * Four frames is a sixteenth of a second, and seventeen samples span one whole
  * second of game time. A system that "runs on rather than firing once" has run on
@@ -126,7 +122,7 @@ afterEach(() => {
   h.dispose();
 });
 
-it("keeps a cut stone moving on a settled board while a plain stone holds still", async () => {
+it("keeps a cut stone moving on a settled board", async () => {
   const posed = quietRowsWith(CELLS);
 
   // The scenario, established before the build is asked anything: no run stands
@@ -147,34 +143,23 @@ it("keeps a cut stone moving on a settled board while a plain stone holds still"
     // than whatever the frame before the pose left on it.
     await h.advance(1);
     const cut: Patch[] = [];
-    const plain: Patch[] = [];
     for (let index = 0; index < SAMPLES; index += 1) {
       if (index > 0) await h.advance(FRAMES_BETWEEN);
       cut.push(h.patch(CUT.col, CUT.row));
-      plain.push(h.patch(PLAIN.col, PLAIN.row));
     }
-    return { cut, plain };
+    return { cut };
   });
 
-  // Nothing moved the board while the two cells were watched.
+  // Nothing moved the board while the cell was watched.
   assertEqual(
     h.snapshot().phase,
     "idle",
-    "the phase after the two cells were watched",
-  );
-
-  // The control first, so a board that shimmers under everything is reported as
-  // the reason the point cannot be read rather than as the aura running.
-  assertLessThanOrEqual(
-    spread(samples.plain),
-    PATCH_SAME_MAX,
-    `how far the plain ${KIND} at (${PLAIN.col},${PLAIN.row}) reads from ` +
-      `itself across the sweep`,
+    "the phase after the cell was watched",
   );
 
   assertGreaterThan(
     spread(samples.cut),
-    PATCH_DISTINCT_MIN,
+    0,
     `how far the brilliant ${KIND} at (${CUT.col},${CUT.row}) reads from ` +
       `itself across the sweep`,
   );

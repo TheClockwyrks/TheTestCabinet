@@ -1,16 +1,15 @@
 // assets/site — serving the built site under conditions the shared server never
 // varies. CASE-PROVIDED.
 //
-// Three review items in this category are about HOW the built site is served.
+// Two review items in this category are about HOW the built site is served.
 // specs/assets.md requires that "the site runs unchanged whether it is served
-// from the root of a static host or mounted under a sub-path", that "a load that
-// fails leaves the game running", and that "every image is decoded and every
-// sound is bound to its cue before the first frame draws". The project's shared
-// server (`globalSetup.ts`) serves the build at the root with every file present
-// and injects the harness's own probes, so those three suites bring their own
+// from the root of a static host or mounted under a sub-path", and that "every
+// image is decoded and every sound is bound to its cue before the first frame
+// draws". The project's shared server (`globalSetup.ts`) serves the build at the
+// root and injects the harness's own probes, so those two suites bring their own
 // server: the same handful of lines, with the knobs those requirements vary —
-// the path the site is mounted under, the files withheld with a 404, and the
-// scripts injected before a line of the build runs.
+// the path the site is mounted under, and the scripts injected before a line of
+// the build runs. Every produced file is served, here as everywhere.
 //
 // The page opens in the project's one shared Chromium, in a context of this
 // module's own that is closed with the site, so nothing here disturbs the pages
@@ -80,8 +79,6 @@ export interface Site {
   url: string;
   /** Every same-origin request the page made, in order. */
   requests: SiteRequest[];
-  /** The request paths the `block` pattern answered with a 404. */
-  blocked: string[];
   close(): Promise<void>;
 }
 
@@ -89,32 +86,24 @@ export interface Site {
 export interface SiteOptions {
   /** The path the site is mounted under, e.g. `/mounted/deep/`. Default `/`. */
   prefix?: string;
-  /** Requests whose path matches are answered 404, as an unavailable file. */
-  block?: RegExp;
   /** Scripts injected into the page before a line of the build's own runs. */
   initScripts?: readonly string[];
 }
 
 /**
  * Serve the build output on a loopback port — optionally mounted under a
- * sub-path, optionally with matching files withheld, optionally with scripts of
- * this category's own injected first — and open it in a fresh page of the
- * project's shared Chromium.
+ * sub-path, optionally with scripts of this category's own injected first — and
+ * open it in a fresh page of the project's shared Chromium. Every file the build
+ * produced is served.
  */
 export async function openSite(options: SiteOptions = {}): Promise<Site> {
   const prefix = options.prefix ?? "/";
   const root = resolve(buildOutput());
-  const blocked: string[] = [];
 
   const server: Server = createServer((request, response) => {
     const path = normalize(
       decodeURI(new URL(request.url ?? "/", "http://localhost").pathname),
     );
-    if (options.block?.test(path) === true) {
-      blocked.push(path);
-      response.writeHead(404).end("not found");
-      return;
-    }
     if (path === "/favicon.ico") {
       response.writeHead(204).end();
       return;
@@ -186,7 +175,6 @@ export async function openSite(options: SiteOptions = {}): Promise<Site> {
     page,
     url,
     requests,
-    blocked,
     close: async () => {
       await context.close().catch(() => undefined);
       await browser.close().catch(() => undefined);

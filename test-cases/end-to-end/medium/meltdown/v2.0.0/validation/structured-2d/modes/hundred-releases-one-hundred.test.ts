@@ -56,7 +56,7 @@
 // and carries no tolerance.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { assertEqual, assertTrue } from "../assert";
 import {
   BUILD_PHASE_TIME,

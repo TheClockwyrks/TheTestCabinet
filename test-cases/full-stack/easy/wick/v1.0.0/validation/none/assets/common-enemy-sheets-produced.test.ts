@@ -10,8 +10,8 @@
 // sheet's frames are separate PNG files, numbered from `0`, each on a canvas of
 // the sheet's size." So the canvas each frame must stand on is twice that
 // enemy's radius, exactly, and the four paths are fixed. That each file carries
-// a drawing rather than an empty canvas is read against `PAINT_MIN_SHARE`, whose
-// reasoning `assets/sprites.ts` states.
+// a drawing rather than an empty canvas is read as presence: at least one pixel
+// of the canvas is not clear.
 //
 // WHAT IT DELIBERATELY DOES NOT READ. That a sheet's four frames differ from one
 // another is `assets/common-enemy-frames-distinct`; that the ten sheets differ

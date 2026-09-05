@@ -108,7 +108,7 @@ import {
   type SurfaceMetrics,
   type Transform,
   type World,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import type { Canvas } from "@napi-rs/canvas";
 import { expect } from "vitest";
 
@@ -282,46 +282,6 @@ export function speedOverTicks(distance: number, count: number): number {
 /** A rate per second from a gain measured over `count` ticks. */
 export function gainOverTicks(gain: number, count: number): number {
   return (gain * TICK_HZ) / count;
-}
-
-/** How the logical stage is mapped onto a canvas of that CSS size. */
-export interface Viewport {
-  width: number;
-  height: number;
-  scale: number;
-  offsetX: number;
-  offsetY: number;
-  cssScale: number;
-  cssOffsetX: number;
-  cssOffsetY: number;
-}
-
-/**
- * The letterboxed fit of Gantry's stage onto a canvas of that CSS size.
- *
- * The same arithmetic the engine's own viewport does, stated here so a check
- * about the fit has the figure the specification implies to compare against
- * rather than the one the engine computed.
- */
-export function fitViewport(
-  cssWidth: number,
-  cssHeight: number,
-  dpr = 1,
-): Viewport {
-  const deviceWidth = Math.round(cssWidth * dpr);
-  const deviceHeight = Math.round(cssHeight * dpr);
-  const cssScale = Math.min(cssWidth / STAGE_W, cssHeight / STAGE_H);
-  const scale = cssScale * dpr;
-  return {
-    width: STAGE_W,
-    height: STAGE_H,
-    scale,
-    offsetX: (deviceWidth - STAGE_W * scale) / 2,
-    offsetY: (deviceHeight - STAGE_H * scale) / 2,
-    cssScale,
-    cssOffsetX: (cssWidth - STAGE_W * cssScale) / 2,
-    cssOffsetY: (cssHeight - STAGE_H * cssScale) / 2,
-  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -775,7 +735,7 @@ class PointerEvt extends Event {
  * gave it.
  *
  * THE SAME DOCUMENT THE ENGINELESS PROJECT'S INJECTED RECORDER WRITES
- * (`RecordedOp` in `@test-cabinet/case-harness`), so a check reads a frame's
+ * (`RecordedOp` in `@clockwyrks/case-harness`), so a check reads a frame's
  * drawing through the same helpers — `toDrawCall`, `drawnText`, `textDraws` —
  * whichever project it is running in.
  */
@@ -2088,33 +2048,6 @@ export function entriesNear(
       distance3(entryAt(entry), at) <= reach,
   );
 }
-
-/**
- * How far apart two colours are, summed across the channels, out of 765.
- *
- * What a check may ask about colour is whether two things are told apart, never
- * what either one is: "Palettes, fonts, layouts, and styling are the build's
- * choices", and `specs/overview.md` asks only that a strut, a cable and a rail
- * are "told apart at a glance" and that a broken member is "unmistakable".
- */
-export function colourDistance(
-  a: readonly [number, number, number],
-  b: readonly [number, number, number],
-): number {
-  return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
-}
-
-/**
- * The ramp's heat: how far a colour leans red of its own blue and green.
- *
- * `specs/overview.md` has each member's colour read "its utilization on a
- * monotone ramp from slack to its limit". Monotone is a fact about the ORDER two
- * colours stand in and not about either one, so this is the quantity a check
- * compares — it rises along any ramp that climbs toward heat, whatever palette a
- * build picks for it.
- */
-export const colourHeat = (c: readonly [number, number, number]): number =>
-  c[0] - (c[1] + c[2]) / 2;
 
 /**
  * Where a lattice node is drawn, as a point a click can pick it by.

@@ -18,8 +18,8 @@
 // Nothing here is a score. A red suite is recorded and shown; it gates no rating, no
 // verdict and no point, exactly as the toolchain contract says.
 
-import { MetricTile } from "@test-cabinet/ui";
-import type { ToolchainTests as ToolchainTestsRecord } from "@test-cabinet/run-record";
+import { MetricTile } from "@clockwyrks/ui";
+import type { ToolchainTests as ToolchainTestsRecord } from "@clockwyrks/run-record";
 import { formatCodeNumber } from "./codeFormat";
 import styles from "./CodePanels.module.scss";
 

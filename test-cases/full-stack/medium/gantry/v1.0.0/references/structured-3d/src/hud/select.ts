@@ -5,12 +5,12 @@
 // strokes rather than glyphs so no font can fail to carry them, which is what
 // the one `DrawComponent` here is for.
 
-import { DrawComponent } from "@test-cabinet/structured-3d";
+import { DrawComponent } from "@clockwyrks/structured-3d";
 import type {
   DrawApi,
   ShapeComponent,
   TextComponent,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { STAGE_H } from "../constants";
 import { LAYER } from "../layers";
 import {

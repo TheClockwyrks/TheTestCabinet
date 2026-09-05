@@ -2,14 +2,23 @@
 // its form.
 //
 // specs/board.md: a crystal carries `charges` (1 to MAX_CHARGES) and a running
-// `spent` count, and "the two read apart at a glance" — a player tracks a
-// crystal without counting segments. What that looks like is the build's; what
-// a script can decide is that the charge readout is really THERE, as the review
-// item states it: a 1-charge and a 3-charge crystal render differently within
-// NODE_R (30) of their centers — somewhere over their index-aligned samples the
-// two regions differ by more than 50 of 441 RGB distance.
+// `spent` count, and its form shows both — a player tracks a crystal without
+// counting segments. What that looks like is the build's; what a script decides
+// is that the RENDER MOVES WITH THE NUMBER, and nothing about what it moves to.
 //
-// The board poses both crystals at once, T1..3.T.
+// THE SAME CELL, POSED TWICE. The 1-charge and the 3-charge readings are taken
+// at one cell center on two boards that differ in that cell alone: "T1..T" and
+// "T3..T". Comparing two DIFFERENT cells of one board instead would let any
+// gradient, vignette or dithered texture between the two positions answer for
+// the crystal, so a build drawing identical art for 1 and 3 charges would still
+// read as differing — the exact failure this point exists to catch. Posed in
+// turn at the same cell, the neighbouring cells and the background behind the
+// region are identical between the two readings and the only thing that moved
+// is the charge count.
+//
+// THE STILL is a third pose carrying both counts at once, because a reviewer
+// judging whether a charge count reads without counting slowly wants the two
+// forms side by side; the decision above is taken on the two same-cell frames.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan } from "../assert";
@@ -24,48 +33,49 @@ import {
 import { NODE_R } from "../notation";
 import { diskPixels, maxRegionDifference } from "./masks";
 
-/** The review item's distance: regions clearly apart over their samples. */
-const DIFFER_MIN = 50;
+/** The two poses the reading is taken on: one cell, two charge counts. */
+const ONE_CHARGE = "T1..T";
+const THREE_CHARGES = "T3..T";
 
-/** A 1-charge crystal beside the triangle emitter, a 3-charge crystal apart. */
-const READOUT_BOARD = "T1..3.T";
+/** The reviewer's frame: both counts on one board, side by side. */
+const BOTH_COUNTS = "T1.3T";
 
-/** The board's dimensions. */
-const COLS = 7;
+/** Every pose is one channel across a 5x1 row, the crystal one cell in. */
+const COLS = 5;
 const ROWS = 1;
-
-/** Where the two crystals sit. */
-const ONE_CHARGE_COL = 1;
-const THREE_CHARGE_COL = 4;
+const CRYSTAL_COL = 1;
 
 let h: Harness;
 
 beforeEach(async () => {
   h = await createHarness();
+  await resetTo(h, 1);
 });
 
 afterEach(() => {
   h?.dispose();
 });
 
-/** Every rendered pixel within NODE_R of the crystal at `col`. */
-function crystalRegion(col: number): ReturnType<typeof diskPixels> {
-  const center = nodeCenter(col, 0, COLS, ROWS);
+/** Every rendered pixel within NODE_R of the posed crystal's cell center. */
+function crystalRegion(): ReturnType<typeof diskPixels> {
+  const center = nodeCenter(CRYSTAL_COL, 0, COLS, ROWS);
   return diskPixels(h, center.x, center.y, NODE_R);
 }
 
 it("renders a 1-charge and a 3-charge crystal differently", async () => {
-  await resetTo(h, 1);
-  await loadBoard(h, READOUT_BOARD);
+  await loadBoard(h, BOTH_COUNTS);
   captureStill(h, "charges");
 
+  await loadBoard(h, ONE_CHARGE);
+  const one = crystalRegion();
+
+  await loadBoard(h, THREE_CHARGES);
+  const three = crystalRegion();
+
   assertGreaterThan(
-    maxRegionDifference(
-      crystalRegion(ONE_CHARGE_COL),
-      crystalRegion(THREE_CHARGE_COL),
-    ),
-    DIFFER_MIN,
-    "the 1-charge and 3-charge crystals' regions within NODE_R (30) " +
-      "(specs/board.md: a crystal shows its charge count)",
+    maxRegionDifference(one, three),
+    0,
+    "the same cell posed at 1 charge and at 3 charges, over its NODE_R (30) " +
+      "region (specs/board.md: a crystal's form shows its charge count)",
   );
 });

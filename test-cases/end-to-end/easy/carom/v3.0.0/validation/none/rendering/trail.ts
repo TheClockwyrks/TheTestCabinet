@@ -1,12 +1,13 @@
-// Carom — the trail reading the two trail checks share. CASE-PROVIDED.
+// Carom — the trail reading the trail check uses. CASE-PROVIDED.
 //
 // specs/overview.md fixes one thing about the motion trail: behind the ball, the
-// build draws the ball's path over the last `TRAIL_TIME` seconds of travel, so
-// its length is proportional to the ball's speed. How it is styled is the
-// build's. So the reading here is of LENGTH alone: how far behind the ball the
-// lane is lit, against a reading of the same lane taken before the ball entered
-// it, so that whatever static furniture the build draws there (the net, a mode
-// label) is not mistaken for the trail.
+// build draws the ball's path over the last `TRAIL_TIME` seconds of travel. How
+// it is styled is the build's, and how long the streak looks and how it tapers
+// are appearance the reviewer judges, so the reading here is PRESENCE alone:
+// whether the lane behind the ball holds anything the flight put there, against a
+// reading of the same lane taken before the ball entered it, so that whatever
+// static furniture the build draws there (the net, a mode label) is not mistaken
+// for the trail.
 //
 // The field is emptied and one ball is spawned back onto it, so both obstacles
 // are off the field entirely rather than shot around; the paddles cannot be
@@ -21,6 +22,7 @@
 
 import { BALL_R } from "../constants";
 import {
+  READ_NOISE,
   arrangeLiveBall,
   ball0,
   colorDistance,
@@ -40,23 +42,7 @@ const BARE_X = 1100;
 /** Frames of flight before the read: longer than `TRAIL_TIME`, so the trail is full. */
 export const FILL_TICKS = 24; // 0.2 s
 
-/**
- * How far from the bare reading a pixel must be to count as lit, in RGB
- * distance. Small, since the far end of a styled trail is faint, and well above
- * the noise of two reads of the same empty field.
- */
-const LIT_MIN = 10;
-
-/**
- * How many unlit pixels in a row end the streak.
- *
- * A trail drawn from samples may be drawn sample by sample, and at the speed
- * cap consecutive samples on the suite's clock are `SPEED_CAP / TICK_HZ`, about
- * eight units, apart; a gap a little wider than that is still the same trail.
- */
-const GAP_MAX = 12;
-
-/** How far behind the ball the lane is scanned, in logical units. */
+/** How far behind the ball the lane is looked at, in logical units. */
 const SCAN = 240;
 
 /** The closest the scan comes to the ball, so the disc itself is never read. */
@@ -68,18 +54,19 @@ const LANE_X0 = 20;
 export interface TrailReading {
   /** Where the ball was on the frame that was read. */
   ball: { x: number; y: number };
-  /** How far behind the ball the painted streak reaches, in logical units. */
-  paintedReach: number;
+  /** Whether the lane behind the ball holds anything the flight put there. */
+  painted: boolean;
 }
 
 /**
- * Drive the ball down the lane at `speed` and read the trail behind it.
+ * Drive the ball down the lane at `speed` and read the lane behind it.
  *
  * The lane is read BARE first, with the ball parked far down the lane and still
  * for longer than the trail lives, so the baseline is the field as the build
  * draws it with no trail in it. The ball is then posed at the start of the lane
  * at `speed`, flown for `FILL_TICKS`, and the lane is read again: a pixel is
- * part of the trail when it differs from its own bare reading.
+ * part of the trail when it differs from its own bare reading by more than the
+ * rounding two reads of one unchanged pixel carry.
  */
 export async function readTrail(
   h: Harness,
@@ -102,16 +89,16 @@ export async function readTrail(
 
   return {
     ball: at,
-    paintedReach: await paintedReach(h, at, bare),
+    painted: await paintedBehind(h, at, bare),
   };
 }
 
-/** How far behind the ball the lane is lit, against its bare reading. */
-async function paintedReach(
+/** Whether the lane behind the ball holds anything its bare reading did not. */
+async function paintedBehind(
   h: Harness,
   ball: { x: number; y: number },
   bare: Map<number, [number, number, number, number]>,
-): Promise<number> {
+): Promise<boolean> {
   const ballX = Math.round(ball.x);
   const distances: number[] = [];
   for (let d = SCAN_FROM; d <= SCAN; d += 1) {
@@ -121,19 +108,9 @@ async function paintedReach(
   const read = await h.pixels(
     distances.map((d) => ({ x: ballX - d, y: LANE_Y })),
   );
-  let reach = 0;
-  let gap = 0;
-  for (const [index, d] of distances.entries()) {
+  return distances.some((d, index) => {
     const [r, g, b] = read[index];
     const [br, bg, bb] = bare.get(ballX - d) ?? [r, g, b];
-    const level = colorDistance({ r, g, b }, { r: br, g: bg, b: bb });
-    if (level > LIT_MIN) {
-      reach = d;
-      gap = 0;
-    } else {
-      gap += 1;
-      if (gap > GAP_MAX) break;
-    }
-  }
-  return reach;
+    return colorDistance({ r, g, b }, { r: br, g: bg, b: bb }) > READ_NOISE;
+  });
 }

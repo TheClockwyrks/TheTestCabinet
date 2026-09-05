@@ -7,7 +7,7 @@ It provides a gameplay framework a game is written inside, engine-owned
 rendering, and the services around both: the frame loop, collision detection,
 input, audio, assets, and diagnostics.
 
-The runtime is the npm package `@test-cabinet/structured-2d`, written entirely
+The runtime is the npm package `@clockwyrks/structured-2d`, written entirely
 in TypeScript and imported by a build as an ordinary dependency. Its source is
 `packages/structured-2d/`, and the documentation seeded into a run workspace is
 that package's own `docs/` directory.

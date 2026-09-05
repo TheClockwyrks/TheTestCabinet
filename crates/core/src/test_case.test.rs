@@ -1623,21 +1623,21 @@ fn every_shippable_package_carries_a_ui_description() {
             package.name
         );
     }
-    assert!(!is_shippable_package("@test-cabinet/not-a-real-package"));
-    assert!(shippable_package_description("@test-cabinet/not-a-real-package").is_none());
+    assert!(!is_shippable_package("@clockwyrks/not-a-real-package"));
+    assert!(shippable_package_description("@clockwyrks/not-a-real-package").is_none());
 }
 
 #[test]
 fn the_shared_validator_harness_is_not_a_package_a_case_may_declare() {
-    // `@test-cabinet/case-harness` is staged into the same host package store as the
+    // `@clockwyrks/case-harness` is staged into the same host package store as the
     // shippable runtimes (scripts/stage-tcab-packages.mjs), and the vitest validator
     // copies it into the STAGED validator project after the container is gone. This
     // allowlist is the other direction entirely: what it admits, a case's manifest
     // `packages` key may name, and the seeder then vendors into the run repository —
     // in front of the model. Admitting the harness here would hand a model the suites
     // it is about to be measured by, so its absence is asserted rather than assumed.
-    assert!(!is_shippable_package("@test-cabinet/case-harness"));
-    assert!(shippable_package_description("@test-cabinet/case-harness").is_none());
+    assert!(!is_shippable_package("@clockwyrks/case-harness"));
+    assert!(shippable_package_description("@clockwyrks/case-harness").is_none());
 }
 
 /// Write a `demo/v1.0.0` version with the given manifest and supporting files
@@ -1727,7 +1727,7 @@ fn workspace_files_resolve_with_run_relative_dests_and_init() {
 #[test]
 fn packages_resolve_when_the_workspace_package_json_declares_the_file_dependency() {
     let manifest = manifest_with(
-        "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n",
+        "workspace = \"workspaces/base\"\npackages = [\"@clockwyrks/particle-runtime\"]\n",
         "",
     );
     // The case's own `package.json` already declares the package as its baked-in
@@ -1736,20 +1736,20 @@ fn packages_resolve_when_the_workspace_package_json_declares_the_file_dependency
         &manifest,
         &[(
             "workspaces/base/package.json",
-            r#"{"name":"demo","dependencies":{"@test-cabinet/particle-runtime":"file:./.tcab/packages/@test-cabinet/particle-runtime"}}"#,
+            r#"{"name":"demo","dependencies":{"@clockwyrks/particle-runtime":"file:./.vendor/packages/@clockwyrks/particle-runtime"}}"#,
         )],
     );
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
     assert_eq!(
         version.packages,
-        vec!["@test-cabinet/particle-runtime".to_string()]
+        vec!["@clockwyrks/particle-runtime".to_string()]
     );
 }
 
 #[test]
 fn packages_reject_an_unknown_name() {
     let manifest = manifest_with(
-        "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/not-a-real-package\"]\n",
+        "workspace = \"workspaces/base\"\npackages = [\"@clockwyrks/not-a-real-package\"]\n",
         "",
     );
     let (_dir, catalog) = catalog_with_files(&manifest, &[("workspaces/base/package.json", "{}")]);
@@ -1762,7 +1762,7 @@ fn packages_reject_an_unknown_name() {
 #[test]
 fn packages_reject_a_workspace_package_json_that_does_not_declare_the_dependency() {
     let manifest = manifest_with(
-        "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n",
+        "workspace = \"workspaces/base\"\npackages = [\"@clockwyrks/particle-runtime\"]\n",
         "",
     );
     // Shippable name, ships a package.json — but it does not depend on the package.
@@ -1782,7 +1782,7 @@ fn packages_reject_a_workspace_package_json_that_does_not_declare_the_dependency
 #[test]
 fn packages_reject_a_wrong_file_dependency_spec() {
     let manifest = manifest_with(
-        "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n",
+        "workspace = \"workspaces/base\"\npackages = [\"@clockwyrks/particle-runtime\"]\n",
         "",
     );
     // Declares the package, but points somewhere other than the baked-in copy.
@@ -1790,7 +1790,7 @@ fn packages_reject_a_wrong_file_dependency_spec() {
         &manifest,
         &[(
             "workspaces/base/package.json",
-            r#"{"name":"demo","dependencies":{"@test-cabinet/particle-runtime":"^1.0.0"}}"#,
+            r#"{"name":"demo","dependencies":{"@clockwyrks/particle-runtime":"^1.0.0"}}"#,
         )],
     );
     let err = catalog
@@ -1799,7 +1799,7 @@ fn packages_reject_a_wrong_file_dependency_spec() {
     let msg = format!("{err}");
     assert!(msg.contains("must be"), "got: {err}");
     assert!(
-        msg.contains("file:./.tcab/packages/@test-cabinet/particle-runtime"),
+        msg.contains("file:./.vendor/packages/@clockwyrks/particle-runtime"),
         "got: {err}"
     );
 }
@@ -1807,7 +1807,7 @@ fn packages_reject_a_wrong_file_dependency_spec() {
 #[test]
 fn packages_require_a_workspace_package_json() {
     let manifest = manifest_with(
-        "workspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n",
+        "workspace = \"workspaces/base\"\npackages = [\"@clockwyrks/particle-runtime\"]\n",
         "",
     );
     // The workspace exists but ships no package.json for the dependency to land in.
@@ -1821,8 +1821,7 @@ fn packages_require_a_workspace_package_json() {
 #[test]
 fn packages_are_end_to_end_only() {
     // `packages` is a root key, so it must precede the first table; prepend it.
-    let manifest =
-        format!("packages = [\"@test-cabinet/particle-runtime\"]\n{VALID_ASSET_MANIFEST}");
+    let manifest = format!("packages = [\"@clockwyrks/particle-runtime\"]\n{VALID_ASSET_MANIFEST}");
     let err = asset_catalog(&manifest)
         .1
         .resolve("sprite", "v1.0.0")

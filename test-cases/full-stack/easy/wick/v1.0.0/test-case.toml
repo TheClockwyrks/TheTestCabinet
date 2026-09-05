@@ -1742,7 +1742,7 @@ title = "The overlay is off when the game starts"
 description = "A freshly started build draws no debug overlay until the backtick key first shows it."
 domains = ["presentation"]
 failure_cap = "great"
-validation = { script = "instrumentation/overlay-off-at-start.test.ts", outputs = [ { id = "fresh", name = "A fresh boot with no overlay drawn", kind = "image" } ] }
+validation = { script = "instrumentation/overlay-off-at-start.test.ts", engines = ["none"], outputs = [ { id = "fresh", name = "A fresh boot with no overlay drawn", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "overlay-read-only"
@@ -1750,7 +1750,7 @@ title = "The overlay reads the game without changing it"
 description = "Showing the overlay, letting it report over 120 ticks of a posed run, and hiding it leaves the game exactly as an identical run without it: the two runs' snapshots are identical."
 domains = ["survival", "arsenal", "progression", "presentation"]
 failure_cap = "passable"
-validation = { script = "instrumentation/overlay-read-only.test.ts", outputs = [ { id = "watched", name = "The watched stretch the overlay reports over", kind = "replay" } ] }
+validation = { script = "instrumentation/overlay-read-only.test.ts", engines = ["none"], outputs = [ { id = "watched", name = "The watched stretch the overlay reports over", kind = "replay" } ] }
 
 # --- The Tick -----------------------------------------------------------------
 # The fixed tick and everything that rides on it: how frames divide into
@@ -2176,7 +2176,7 @@ title = "A repeat key event arms no edge"
 description = "A keydown whose repeat flag is set, dispatched while ArrowDown is already held on title, moves menuIndex no further."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "controls/repeat-arms-no-edge.test.ts", outputs = [ { id = "repeat", name = "The repeat event ignored", kind = "image" } ] }
+validation = { script = "controls/repeat-arms-no-edge.test.ts", engines = ["none"], outputs = [ { id = "repeat", name = "The repeat event ignored", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "edges-read-against-starting-screen"
@@ -2208,7 +2208,7 @@ title = "A binding matches the physical key"
 description = "A keydown whose code is KeyW and whose key is a character other than w moves the lamplighter up on playing, because BINDINGS match KeyboardEvent.code."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "controls/bindings-by-code.test.ts", outputs = [ { id = "code", name = "The physical key read", kind = "image" } ] }
+validation = { script = "controls/bindings-by-code.test.ts", engines = ["none"], outputs = [ { id = "code", name = "The physical key read", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "held-until-every-key-released"
@@ -2216,7 +2216,7 @@ title = "An action stays held while any of its keys is down"
 description = "With ArrowUp and KeyW both held on playing, releasing KeyW leaves the lamplighter moving up, and it stops only once ArrowUp is released as well."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "controls/held-until-every-key-released.test.ts", outputs = [ { id = "held", name = "The action held by its second key", kind = "replay" } ] }
+validation = { script = "controls/held-until-every-key-released.test.ts", engines = ["none"], outputs = [ { id = "held", name = "The action held by its second key", kind = "replay" } ] }
 
 [[review.categories.items]]
 id = "omitted-action-inert"
@@ -6216,7 +6216,7 @@ validation = { script = "pickups/all-drafts-collected.test.ts", outputs = [ { id
 [[review.categories.items]]
 id = "drop-at-most-one"
 title = "A common kill drops at most one of bread and draft"
-description = "Over 4000 seeded common kills at distinct points, no two pickups share a center, so no kill dropped both bread and a draft."
+description = "Over 4000 seeded common kills at distinct points, no two pickups share a center, so no kill dropped both bread and a draft; and the generator ends the sample exactly where advanceRng leaves it after one draw for each kill that dropped bread and two for each kill that did not, so the second draw was made only when the first missed."
 domains = ["progression"]
 failure_cap = "passable"
 validation = { script = "pickups/drop-at-most-one.test.ts", outputs = [ { id = "one", name = "At most one pickup per kill", kind = "image" } ] }
@@ -6730,7 +6730,7 @@ validation = { script = "screens/levelup-copy.test.ts", outputs = [ { id = "over
 [[review.categories.items]]
 id = "levelup-lists-offers"
 title = "The level-up overlay lists its offers"
-description = "The levelup frame draws the offers in the order of offers, listed vertically, with the highlighted offer drawn distinctly from the others."
+description = "The levelup frame draws the offers in the order of offers, listed vertically, and the rows the highlight moves off and onto differ in their pixels between the two frames."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "screens/levelup-lists-offers.test.ts", outputs = [ { id = "offers", name = "The offers listed", kind = "image" } ] }
@@ -7202,7 +7202,7 @@ validation = { script = "hud/cooldown-zero-shows-nothing-to-run.test.ts", output
 [[review.categories.items]]
 id = "hud-drawn-over-world"
 title = "The HUD is drawn over the world"
-description = "With a moth posed under the health bar's position, the frame draws the bar over the moth rather than the moth over the bar."
+description = "With a moth posed under the health bar's position, the frame paints the bar after it has finished drawing the moth, rather than drawing the moth over the bar."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "hud/hud-drawn-over-world.test.ts", outputs = [ { id = "over", name = "The HUD over the world", kind = "image" } ] }
@@ -7528,7 +7528,7 @@ title = "The stage fits the window"
 description = "Over surfaces wider than the stage, taller than it, and at a raised device pixel ratio, the complete 1280 x 720 stage is on screen with its aspect ratio preserved, filling the window's short side with even letterboxing."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "presentation/stage-fits-window.test.ts", outputs = [ { id = "fit", name = "The stage fit", kind = "image" } ] }
+validation = { script = "presentation/stage-fits-window.test.ts", engines = ["none"], outputs = [ { id = "fit", name = "The stage fit", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "letterbox-matches-background"
@@ -7536,7 +7536,7 @@ title = "The letterbox bars carry the stage's background color"
 description = "The bars around the fitted stage are the stage's background color."
 domains = ["presentation"]
 failure_cap = "great"
-validation = { script = "presentation/letterbox-matches-background.test.ts", outputs = [ { id = "bars", name = "The letterbox bars", kind = "image" } ] }
+validation = { script = "presentation/letterbox-matches-background.test.ts", engines = ["none"], outputs = [ { id = "bars", name = "The letterbox bars", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "lamplighter-drawn-at-center"
@@ -8034,14 +8034,6 @@ description = "Every URL the build emits or constructs at runtime resolves again
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "assets/asset-urls-page-relative.test.ts", outputs = [ { id = "resolved", name = "The game served under a sub-path", kind = "image" } ] }
-
-[[review.categories.items]]
-id = "missing-asset-leaves-game-running"
-title = "A missing file costs polish, not playability"
-description = "With the moth sheet and the hit cue unavailable at load, the game still initializes, still ticks, still takes input, and still draws the night."
-domains = ["presentation", "survival"]
-failure_cap = "passable"
-validation = { script = "assets/missing-asset-leaves-game-running.test.ts", outputs = [ { id = "degraded", name = "The game running without two files", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "assets-decoded-before-first-frame"

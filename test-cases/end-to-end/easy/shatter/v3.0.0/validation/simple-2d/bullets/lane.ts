@@ -1,15 +1,14 @@
 // bullets — reading what the build painted along one horizontal lane of the
 // field. Local to this group.
 //
-// WHY THIS IS HERE AND NOT IN THE HARNESS. Three items in this group
-// (`trail-drawn`, `trail-length-scales-with-speed`, `trail-follows-the-wrap`)
-// have to decide where on the canvas a build drew a round's tail, and no other
-// group in this project asks that question. The harness already carries the two
-// primitives it takes — the real 2D context, for `getImageData`, and
-// `engine.viewport()`, which says where a logical point lands in the backing
-// store — so what is left is the arithmetic that turns two readings of the same
-// band into "which columns changed", and that lives beside the checks that read
-// it.
+// WHY THIS IS HERE AND NOT IN THE HARNESS. Two items in this group
+// (`trail-drawn` and `trail-follows-the-wrap`) have to decide where on the canvas
+// a build drew a round's tail, and no other group in this project asks that
+// question. The harness already carries the two primitives it takes — the real 2D
+// context, for `getImageData`, and `engine.viewport()`, which says where a logical
+// point lands in the backing store — so what is left is the arithmetic that turns
+// two readings of the same band into "which columns changed", and that lives
+// beside the checks that read it.
 //
 // WHY A BAND OF ROWS RATHER THAN A HANDFUL OF POINTS. A tail is a thin streak,
 // and the question `trail-follows-the-wrap` asks is a question about EVERY drawn

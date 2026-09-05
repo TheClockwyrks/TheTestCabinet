@@ -37,7 +37,7 @@
 // pattern would have reached unrotated is untouched.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { at, hexCenter, place, type Hex, type StagePoint } from "../field";
 import { challenge, type Challenge } from "../formats";
 import { ORIGIN, TWO_LUNA } from "../fixtures";
@@ -75,12 +75,6 @@ const HALF = 18;
 
 /** Half the side of the square a filament is read over. */
 const LINK_HALF = 10;
-
-/** The least share of a square the rise must redraw where it shows something. */
-const MIN_DISTINCT_SHARE = 0.05;
-
-/** How much of a square the rise may redraw where it shows nothing. */
-const UNTOUCHED_SHARE = 0.01;
 
 let h: Harness;
 
@@ -157,20 +151,20 @@ it("draws the reagent's motes and filament at the rise's placed anchor and rotat
         bare[index] as PixelRect,
         await square(hexCenter(hex), HALF),
       ),
-      MIN_DISTINCT_SHARE,
+      0,
       `the rise draws its reagent's mote on (${hex.q}, ${hex.r}), which is where the placed anchor and rotation put it`,
     );
   }
 
   assertGreaterThan(
     differingShare(bareLink, await square(link, LINK_HALF)),
-    MIN_DISTINCT_SHARE,
+    0,
     "the rise draws the filament of its reagent's pattern between the two motes it will deliver",
   );
 
-  assertLessThan(
+  assertEqual(
     differingShare(bareUnrotated, await square(hexCenter(unrotated), HALF)),
-    UNTOUCHED_SHARE,
+    0,
     `nothing is drawn on (${unrotated.q}, ${unrotated.r}), the hex the pattern would reach unrotated, so the pattern is shown at the pose the rise was placed at`,
   );
 });

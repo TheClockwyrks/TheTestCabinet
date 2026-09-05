@@ -7,11 +7,7 @@
 // polyline rather than tiled leg by leg: the corners then miter cleanly and the
 // tile carries across a turn.
 
-import {
-  Actor,
-  DrawComponent,
-  type DrawApi,
-} from "@test-cabinet/structured-2d";
+import { Actor, DrawComponent, type DrawApi } from "@clockwyrks/structured-2d";
 import { assets } from "./assets";
 import { INLET, INTAKE, pointAt } from "./channel";
 import {

@@ -5,7 +5,7 @@
 // vocabulary, the membership test, and the control that picks it live on here.
 
 import { useState } from "react";
-import { SegmentedControl, type SegmentedOption } from "@test-cabinet/ui";
+import { SegmentedControl, type SegmentedOption } from "@clockwyrks/ui";
 import { parseVersion } from "../data/versions";
 import styles from "./VersionScope.module.scss";
 

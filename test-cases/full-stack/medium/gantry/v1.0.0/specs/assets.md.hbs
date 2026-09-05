@@ -56,9 +56,10 @@ the first column:
 | drum | the `drum` load class | its class box, `2 x 3 x 2` units |
 
 The three load models fill their class boxes: a load's collisions and
-placement use the class dimensions from `specs/world.md` whatever is drawn, so
-a model well short of its box would read as missing what it visibly overlaps.
-The part models are sized to sit believably on the structure; the figures
+placement use the class dimensions from `specs/world.md` whatever is drawn.
+Each load model's mesh spans at least `LOAD_MODEL_FILL` (`0.85`) of its class
+box on every axis, so a load cannot read as missing what it visibly overlaps.
+The part models are sized to sit believably on the structure; their figures
 above are the intent, not a tolerance. Art direction is yours: one coherent
 machine across the parts, loads that read at a glance as a crate, a container,
 and a drum, and forms that read from every camera angle, since the player
@@ -73,10 +74,10 @@ at its pose, waiting, hanging, or placed.
 ## Consuming a model
 
 {{#if (eq engine.slug "none")}}
-`@test-cabinet/voxel-runtime` is already a dependency of the project; import
+`@clockwyrks/voxel-runtime` is already a dependency of the project; import
 it like any other. Decode each committed `.glb` with its `parseGlb`, which
 returns the mesh as plain typed arrays with per-vertex colors, and render it
-through the `three` binding, `@test-cabinet/voxel-runtime/three`, whose
+through the `three` binding, `@clockwyrks/voxel-runtime/three`, whose
 `buildPartGeometry` wraps the mesh into a `BufferGeometry` for the scene. The
 package's own types are the authoritative API. `three` is the project's, so
 the runtime shares the build's single instance.

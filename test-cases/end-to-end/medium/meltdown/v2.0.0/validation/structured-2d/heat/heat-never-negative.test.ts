@@ -37,7 +37,7 @@
 // and `heat/mass-divides-the-cooling` alone. A shorter frame would have made this
 // item fail for the mass as well, which is a different requirement.
 
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertGreaterThanOrEqual } from "../assert";
 import {

@@ -187,6 +187,6 @@ after it.
 
 ## Exports
 
-`Actor` and `Pawn` are exported as classes from `@test-cabinet/structured-2d`.
+`Actor` and `Pawn` are exported as classes from `@clockwyrks/structured-2d`.
 `ActorClass`, `Transform`, and `EndPlayReason` are exported as types from the
 same entry point.

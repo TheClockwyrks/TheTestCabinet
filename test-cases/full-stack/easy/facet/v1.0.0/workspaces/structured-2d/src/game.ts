@@ -49,11 +49,11 @@
 // tools on this machine's `PATH`, where each produced file lands under
 // `public/assets/`, and how it is wired in. The sprites and sheets go through
 // the engine's asset loading, the cues through its audio, and the `system.json`
-// particle systems through `@test-cabinet/particle-runtime`, which is already a
+// particle systems through `@clockwyrks/particle-runtime`, which is already a
 // dependency of this project.
 
-import { GameInstance, GameMode } from "@test-cabinet/structured-2d";
-import type { GameDefinition, InitApi } from "@test-cabinet/structured-2d";
+import { GameInstance, GameMode } from "@clockwyrks/structured-2d";
+import type { GameDefinition, InitApi } from "@clockwyrks/structured-2d";
 
 /**
  * The stage background, a CSS color string. `src/main.ts` hands it to the

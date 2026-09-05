@@ -18,7 +18,7 @@
 // bit rather than the game's: the engine owns it, the mode's tick copies the
 // result onto `state.muted`, and the snapshot reports that copy.
 
-import { PlayerController } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
 import { IDLE_INPUT, readInput, type FrameInput } from "./input";
 
 export class SpectraController extends PlayerController {

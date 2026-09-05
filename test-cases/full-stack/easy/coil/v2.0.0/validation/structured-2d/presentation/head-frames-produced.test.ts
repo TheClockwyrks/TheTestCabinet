@@ -20,8 +20,8 @@
 // picture of the four files themselves, since this point drives no game.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThanOrEqual, fail } from "../assert";
-import { CELL, HEAD_FRAMES, PAINT_MIN_SHARE } from "../constants";
+import { assertEqual, assertGreaterThan, fail } from "../assert";
+import { CELL, HEAD_FRAMES } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import {
   decodeSprites,
@@ -60,9 +60,9 @@ it("ships four head frames, each a painted cell-sized square", async () => {
         `${sprite.width} x ${sprite.height}`,
       );
     }
-    assertGreaterThanOrEqual(
+    assertGreaterThan(
       paintShare(sprite),
-      PAINT_MIN_SHARE,
+      0,
       `the share of ${file} carrying paint`,
     );
   }

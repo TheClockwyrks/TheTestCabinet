@@ -53,7 +53,7 @@
 // amount of game time on each clock, so the two legs would no longer be covering
 // the same second.
 
-import { ConstantClock } from "@test-cabinet/simple-2d";
+import { ConstantClock } from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import {
   assertCloseTo,

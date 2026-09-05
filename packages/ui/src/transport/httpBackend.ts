@@ -69,35 +69,35 @@ import type {
   AssetSheet,
   ModelSpec,
   RunRecord,
-} from "@test-cabinet/run-record";
+} from "@clockwyrks/run-record";
 import type {
   RunScoreOut,
   RunSummary,
-} from "@test-cabinet/run-record/snapshot";
+} from "@clockwyrks/run-record/snapshot";
 import type {
   CabinetStatsResponse,
   TestCaseGroupOut,
   TestCaseGroupsResponse,
-} from "@test-cabinet/run-record/backend-api";
+} from "@clockwyrks/run-record/backend-api";
 import type {
   BulkCancelOut,
   GgRunRequest,
   LaunchAck,
   LaunchBody,
   StreamOpened,
-} from "@test-cabinet/run-record/jobs-api";
+} from "@clockwyrks/run-record/jobs-api";
 import type {
   GgConfig,
   GgConfigInput,
   GgSavedAgent,
   GgSavedAgentInput,
   GgProgramLanguage,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import type {
   GgReference,
   GgReferenceApi,
-} from "@test-cabinet/run-record/gg-reference";
-import type { CodeAnalysisDocument } from "@test-cabinet/run-record/code-analysis";
+} from "@clockwyrks/run-record/gg-reference";
+import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
 import type {
   GgDashboard,
   GgDashboardInput,
@@ -108,7 +108,7 @@ import type {
   GgQueryResponse,
   GgSavedQuery,
   GgSavedQueryInput,
-} from "@test-cabinet/run-record/gg-query";
+} from "@clockwyrks/run-record/gg-query";
 import type {
   CoverageGroup,
   CoverageGroupInput,
@@ -122,11 +122,11 @@ import type {
   CoverageSettingsInput,
   HaltResult,
   TopUpResult,
-} from "@test-cabinet/run-record/coverage";
+} from "@clockwyrks/run-record/coverage";
 import type {
   Comparison,
   ComparisonInput,
-} from "@test-cabinet/run-record/comparison";
+} from "@clockwyrks/run-record/comparison";
 import type {
   LadderClimberInput,
   LadderInput,
@@ -138,7 +138,7 @@ import type {
   LadderRungOutcome,
   LadderSchedule,
   StoredClimberOut,
-} from "@test-cabinet/run-record/ladders";
+} from "@clockwyrks/run-record/ladders";
 import {
   delJson,
   delVoid,

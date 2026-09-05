@@ -312,7 +312,7 @@ pub async fn upload_proofs_to_backend(
 /// the published site degrades the reviewer's side-by-side to presence-only.
 ///
 /// Each present output is read from the produced tree at
-/// `{out_dir}/{id}/implementation/.tcab/validation/<item>__<output>.<ext>` — the flat
+/// `{out_dir}/{id}/implementation/.vendor/validation/<item>__<output>.<ext>` — the flat
 /// [`validation_media_name`](test_cabinet_core::validation_media_name) spelling
 /// `playable::serve_validation_file` serves and the gallery requests — and uploaded
 /// under that same name, so the snapshot key matches the UI lookup. The captured
@@ -331,7 +331,7 @@ pub async fn upload_validation_to_backend(
     let validation_dir = out_dir
         .join(&record.id)
         .join("implementation")
-        .join(".tcab")
+        .join(".vendor")
         .join("validation");
     let client = HttpBackendClient::new(backend_url);
 

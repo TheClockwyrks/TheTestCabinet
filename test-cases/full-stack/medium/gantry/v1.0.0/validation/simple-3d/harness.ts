@@ -92,15 +92,13 @@ import {
   applyViewport,
   ConstantClock,
   createEngine,
-  fitViewport as fitStageViewport,
   type Clock,
   type DeepReadonly,
   type Engine,
   type Game,
   type RenderApi,
   type SurfaceMetrics,
-  type Viewport,
-} from "@test-cabinet/simple-3d";
+} from "@clockwyrks/simple-3d";
 import * as THREE from "three";
 import { expect } from "vitest";
 
@@ -282,48 +280,6 @@ export function ticksFor(duration: number): number {
   return Math.ceil(duration * TICK_HZ);
 }
 
-/**
- * How the stage maps onto a surface of this shape: one uniform scale and a
- * letterbox.
- *
- * THE SAME SHAPE THE OTHER TWO PROJECTS ANSWER WITH, which is the engine's
- * `Viewport` plus the CSS trio. `scale`/`offsetX`/`offsetY` are DEVICE pixels,
- * which is what a pixel reading is addressed in; `cssScale`/`cssOffsetX`/
- * `cssOffsetY` are CSS pixels, which is what a window position is delivered in.
- * On a device pixel ratio of `1` — the shape almost every check runs at — the two
- * agree, which is exactly why carrying only one of them is a trap.
- */
-export interface StageViewport extends Viewport {
-  /** CSS pixels per logical unit, which is what a window position is in. */
-  cssScale: number;
-  cssOffsetX: number;
-  cssOffsetY: number;
-}
-
-/**
- * How Gantry's stage maps onto a surface of this shape.
- *
- * The stage is the case's — the fixed `STAGE_W` by `STAGE_H` logical field
- * `specs/overview.md` gives — so a check states only the window it is asking
- * about. The device half of the fit is the ENGINE's, because the fit under test
- * is the one the engine performs; the CSS half is that same fit read back in the
- * units a window position is delivered in, which is the device fit over the
- * density.
- */
-export function fitViewport(
-  cssWidth: number,
-  cssHeight: number,
-  dpr = 1,
-): StageViewport {
-  const view = fitStageViewport(STAGE_W, STAGE_H, cssWidth, cssHeight, dpr);
-  return {
-    ...view,
-    cssScale: view.scale / dpr,
-    cssOffsetX: view.offsetX / dpr,
-    cssOffsetY: view.offsetY / dpr,
-  };
-}
-
 /* -------------------------------------------------------------------------- */
 /* The project's own directory                                                */
 /* -------------------------------------------------------------------------- */
@@ -470,14 +426,6 @@ function recordingContext(
   }) as CanvasRenderingContext2D;
 }
 
-/** One produced file answered with other bytes, for a check about that file. */
-export interface AssetSubstitution {
-  /** The bytes the workspace holds, which is how the file is recognized. */
-  from: Uint8Array;
-  /** The bytes answered in their place. */
-  to: Uint8Array;
-}
-
 /** How a harness's engine is built, where a check wants something other than the default. */
 
 export type { DrawnEntry };
@@ -485,18 +433,6 @@ export type { DrawnEntry };
 export interface HarnessOptions {
   /** The clock each frame takes its delta from. Defaults to one tick a frame. */
   clock?: Clock;
-  /**
-   * Produced files to answer with other bytes while this harness's build runs.
-   *
-   * THE FILE IS MATCHED BY ITS BYTES, NEVER BY ITS PATH. What a bundler names the
-   * copy it emits into `dist/` is the build's business — `specs/assets.md` asks
-   * only that each asset be referenced page-relative through the bundler — so a
-   * response is recognized by comparing it against the bytes of the committed
-   * file rather than against any path. It is what lets a check ask whether what
-   * is on screen came out of a particular produced file: serve other bytes under
-   * it and see whether the picture follows.
-   */
-  substituteAssets?: readonly AssetSubstitution[];
   /** The element's laid-out CSS width. Defaults to the logical stage width. */
   cssWidth?: number;
   /** The element's laid-out CSS height. Defaults to the logical stage height. */
@@ -666,8 +602,6 @@ export interface Harness {
    * consumes and how it addresses them.
    */
   assetRequests(): { path: string; found: boolean }[];
-  /** How many responses this harness answered with substituted bytes. */
-  substitutedAssets(): number;
   /**
    * Draw the game as it stands into the engine's scene, advancing nothing.
    *
@@ -682,17 +616,6 @@ export interface Harness {
    * A check that has just advanced a frame needs none of this: the frame drew.
    */
   draw(): Promise<void>;
-
-  /**
-   * Move the pointer to a WINDOW position, in CSS pixels off the surface's own
-   * origin, rather than to a logical stage point.
-   *
-   * The one door past the fit, for the one check that is ABOUT the fit: every
-   * other check states a stage point and lets {@link Harness.pointerMove} put it
-   * where the stage was fitted. Under `none` the same event is delivered through
-   * Playwright's own mouse, which is what a window position means there.
-   */
-  windowPointerMove(cssX: number, cssY: number): Promise<void>;
 
   /** The canvas the engine drew the screen layer on, which {@link capture} encodes. */
   readonly screen: Canvas;
@@ -972,13 +895,6 @@ export async function createHarness(
   // before `initialize`, which is where a build loads what it draws with.
   const assetsFrom = assetLog.length;
 
-  // In force from here until this harness is disposed, so a build that loads its
-  // models on `initialize` gets the substituted bytes.
-  const swaps: ActiveSubstitution[] = (options.substituteAssets ?? []).map(
-    (one) => ({ from: one.from, to: one.to, count: 0 }),
-  );
-  activeSubstitutions.push(...swaps);
-
   await engine.initialize();
 
   const { raw, fault } = readDebugSurface(engine.debug);
@@ -1111,10 +1027,6 @@ export async function createHarness(
 
   const harness: Harness = {
     async dispose() {
-      for (const swap of swaps) {
-        const at = activeSubstitutions.indexOf(swap);
-        if (at >= 0) activeSubstitutions.splice(at, 1);
-      }
       engine.destroy();
     },
     debug,
@@ -1261,12 +1173,6 @@ export async function createHarness(
       poseCameraNow();
     },
 
-    async windowPointerMove(cssX, cssY) {
-      pointerX = cssX;
-      pointerY = cssY;
-      dispatchPointer(events, "pointermove", cssX, cssY);
-    },
-
     engine,
     get state() {
       return engine.state;
@@ -1276,8 +1182,6 @@ export async function createHarness(
     playedCues,
     assetFailures,
     assetRequests: () => assetLog.slice(assetsFrom).map((one) => ({ ...one })),
-    substitutedAssets: () =>
-      swaps.reduce((total, swap) => total + swap.count, 0),
     screen,
     async screenOps() {
       return [...drawLog.ops];
@@ -2072,33 +1976,6 @@ export function entriesNear(
 }
 
 /**
- * How far apart two colours are, summed across the channels, out of 765.
- *
- * What a check may ask about colour is whether two things are told apart, never
- * what either one is: "Palettes, fonts, layouts, and styling are the build's
- * choices", and `specs/overview.md` asks only that a strut, a cable and a rail
- * are "told apart at a glance" and that a broken member is "unmistakable".
- */
-export function colourDistance(
-  a: readonly [number, number, number],
-  b: readonly [number, number, number],
-): number {
-  return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
-}
-
-/**
- * The ramp's heat: how far a colour leans red of its own blue and green.
- *
- * `specs/overview.md` has each member's colour read "its utilization on a
- * monotone ramp from slack to its limit". Monotone is a fact about the ORDER two
- * colours stand in and not about either one, so this is the quantity a check
- * compares — it rises along any ramp that climbs toward heat, whatever palette a
- * build picks for it.
- */
-export const colourHeat = (c: readonly [number, number, number]): number =>
-  c[0] - (c[1] + c[2]) / 2;
-
-/**
  * Where a lattice node is drawn, as a point a click can pick it by.
  *
  * `specs/controls.md` fixes how a click PICKS rather than how the yard is drawn,
@@ -2459,33 +2336,6 @@ let assetFetchInstalled = false;
  */
 const assetLog: { path: string; found: boolean }[] = [];
 
-/** One live byte-for-byte substitution, and how often it has answered. */
-interface ActiveSubstitution {
-  from: Uint8Array;
-  to: Uint8Array;
-  count: number;
-}
-
-/**
- * The substitutions in force right now, one entry per {@link HarnessOptions}
- * `substituteAssets` of every harness that is still open.
- *
- * Module-level because the fetch shim is installed once on the process, and
- * emptied of a harness's own entries when it is disposed, so a check that opens
- * two harnesses gets the substituted bytes in one and the committed bytes in the
- * other.
- */
-const activeSubstitutions: ActiveSubstitution[] = [];
-
-/** Whether two byte strings are the same file. */
-function sameBytes(one: Uint8Array, two: Uint8Array): boolean {
-  if (one.length !== two.length) return false;
-  for (let at = 0; at < one.length; at += 1) {
-    if (one[at] !== two[at]) return false;
-  }
-  return true;
-}
-
 /**
  * Serve the produced files off the workspace, the way the page serves them.
  *
@@ -2527,11 +2377,6 @@ function installAssetFetch(): void {
       try {
         const bytes = new Uint8Array(readFileSync(at));
         assetLog.push({ path: url, found: true });
-        for (const swap of activeSubstitutions) {
-          if (!sameBytes(bytes, swap.from)) continue;
-          swap.count += 1;
-          return new Response(swap.to.buffer as ArrayBuffer, { status: 200 });
-        }
         // `BodyInit` does not admit a `Uint8Array<ArrayBufferLike>` in this
         // TypeScript, though the runtime takes one; the buffer it views is
         // the same bytes and is admitted.

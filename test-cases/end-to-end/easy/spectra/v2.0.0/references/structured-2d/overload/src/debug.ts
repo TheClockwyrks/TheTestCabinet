@@ -24,7 +24,7 @@
 // The surface holds no state and is inert during normal play: nothing below runs
 // until something calls it.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import {
   DEFAULT_SEED,
   RESONANCE_MAX,
@@ -145,6 +145,7 @@ export interface SpectraSnapshot {
   diveLaunching: boolean;
   stageClearing: boolean;
   diveClock: number;
+  diveGap: number;
   droneSpeedScale: number;
   bulletSpeedScale: number;
   diveGapScale: number;
@@ -185,6 +186,7 @@ export interface SpectraDebugApi {
   setStageClearing(enabled: boolean): void;
   setShipContact(enabled: boolean): void;
   setDiveClock(seconds: number): void;
+  setDiveGap(seconds: number): void;
 
   setShipX(x: number): void;
   setShipBand(band: Band): void;
@@ -282,6 +284,7 @@ export function createDebugApi(world: () => World): SpectraDebugApi {
         diveLaunching: state.diveLaunching,
         stageClearing: state.stageClearing,
         diveClock: state.diveClock,
+        diveGap: state.diveTarget,
         droneSpeedScale: droneSpeedScale(state.stage),
         bulletSpeedScale: bulletSpeedScale(state.stage),
         diveGapScale: diveGapScale(state.stage),
@@ -400,6 +403,10 @@ export function createDebugApi(world: () => World): SpectraDebugApi {
 
     setDiveClock(seconds) {
       read().diveClock = atLeast(seconds);
+    },
+
+    setDiveGap(seconds) {
+      read().diveTarget = atLeast(seconds);
     },
 
     /** The ship's centre, with the lane's own clamp applied. */

@@ -11,7 +11,7 @@
 // actually started its first turn from, resolved from the de-duplicated message log.
 
 import type { CSSProperties } from "react";
-import type { GgContextSource } from "@test-cabinet/run-record/gg";
+import type { GgContextSource } from "@clockwyrks/run-record/gg";
 import panels from "./GgPanels.module.scss";
 import { useAppSettings } from "../../../store/appSettings";
 import { cx } from "./ggFsTree";

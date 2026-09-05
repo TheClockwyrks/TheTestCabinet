@@ -17,7 +17,7 @@
 
 import { ACTIONS, BINDINGS, type ActionName } from "./constants";
 import type { PointerMove } from "./flow";
-import type { InitApi, InputReader } from "@test-cabinet/structured-2d";
+import type { InitApi, InputReader } from "@clockwyrks/structured-2d";
 
 /** The actions read as one press edge per press, in `ACTIONS` order. */
 export const EDGE_ACTIONS: readonly ActionName[] = ACTIONS.filter(

@@ -211,6 +211,12 @@ export interface FathomSnapshot {
   muted: boolean;
   /** Plankton left in the current maze. */
   planktonRemaining: number;
+  /**
+   * The seconds left on the bonus-drifter cadence: the countdown that admits
+   * the next drifter at the den gate. `DRIFTER_INTERVAL` at the top of a maze
+   * and again from each admission, and never more than that (specs/state.md).
+   */
+  drifterIn: number;
   /** `G`, in `[0, 1]`. */
   brightness: number;
   /** The seconds left on the `BRIGHT_HOLD` hold, `0` once it has expired. */
@@ -332,6 +338,8 @@ export interface FathomDebugApi<S = unknown> {
   setDrifterMind(state: DeepReadonly<S>, index: number, enabled: boolean): S;
   /** Gates its locomotion alone: its wander runs on untouched. */
   setDrifterTravel(state: DeepReadonly<S>, index: number, enabled: boolean): S;
+  /** Poses the seconds left on the bonus-drifter cadence, `0` to `DRIFTER_INTERVAL`. */
+  setDrifterIn(state: DeepReadonly<S>, seconds: number): S;
   setSonarCooldown(state: DeepReadonly<S>, seconds: number): S;
   setInkCooldown(state: DeepReadonly<S>, seconds: number): S;
 }
@@ -376,6 +384,7 @@ export const REQUIRED_OPS = [
   "clearDrifters",
   "setDrifterMind",
   "setDrifterTravel",
+  "setDrifterIn",
   "setSonarCooldown",
   "setInkCooldown",
 ] as const;

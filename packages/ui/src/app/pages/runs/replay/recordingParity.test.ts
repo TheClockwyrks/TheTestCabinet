@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * `@test-cabinet/simple-2d`'s recorder against this player, over real pixels.
+ * `@clockwyrks/simple-2d`'s recorder against this player, over real pixels.
  *
  * The whole differential suite — the rig, the scenarios, the generator, and the
  * long account of why it runs in Node over `@napi-rs/canvas`, must not move to
@@ -10,7 +10,7 @@
  * driven directly, the way the engine itself brackets a frame.
  */
 
-import { ContextRecorder } from "@test-cabinet/simple-2d/recording";
+import { ContextRecorder } from "@clockwyrks/simple-2d/recording";
 import { describeRecordingParity } from "./recordingParitySuite";
 
 describeRecordingParity((ctx) => new ContextRecorder(ctx));

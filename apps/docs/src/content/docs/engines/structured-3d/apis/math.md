@@ -75,7 +75,7 @@ Sixteen entries in column-major order, exactly the layout of a three
 
 ```ts
 import * as THREE from "three";
-import type { Component } from "@test-cabinet/structured-3d";
+import type { Component } from "@clockwyrks/structured-3d";
 
 function matrixOf(component: Component): THREE.Matrix4 {
   return new THREE.Matrix4().fromArray(component.worldMatrix());
@@ -130,7 +130,7 @@ import {
   quatFromEuler,
   quatRotate,
   scale,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 
 class Ship extends Pawn {
   yaw = 0;
@@ -271,4 +271,4 @@ scale and treats a non-uniform parent scale as acting along the child's axes.
 as types,
 `VEC3_ZERO`, `VEC3_ONE`, `UP`, `FORWARD`, `RIGHT`, and `QUAT_IDENTITY` as
 values, and every helper above as a function, from
-`@test-cabinet/structured-3d`.
+`@clockwyrks/structured-3d`.

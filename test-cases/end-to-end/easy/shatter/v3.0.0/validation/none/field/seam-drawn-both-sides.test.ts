@@ -55,17 +55,15 @@ const RIGHT_COLUMNS = [1240, 1255, 1270];
 const LEFT_COLUMNS = [8, 20, 32];
 
 /**
- * How much brighter or darker than the bare field a pixel must read to count as
- * the rock, out of 255.
+ * The sensing floor on a change: how far a pixel's reading must move before the
+ * move can be called a drawing, of the 255 a channel mean can span.
  *
- * `specs/overview.md` makes the field dark — "the luminance of that background is
- * below a quarter of full" — and requires a rock to read apart from it at a
- * glance. Thirty out of 255 is well under the step that requirement implies (a
- * rock legible against a ground below 64 is a long way above it) and well over
- * what a build's own vignette, gradient or starfield varies by between two
- * consecutive frames of a still field.
+ * Eight of 255. Below that a scan cannot tell a redrawing from the rounding of an
+ * 8-bit channel and the host's own anti-aliasing; above it nothing is decided
+ * about how strongly the two readings differ. Anything the build drew differently
+ * clears it, however faintly it drew it.
  */
-const CHANGE_MIN = 30;
+const CHANGE_MIN = 8;
 
 /**
  * How many such pixels a side must show, summed over its three columns.

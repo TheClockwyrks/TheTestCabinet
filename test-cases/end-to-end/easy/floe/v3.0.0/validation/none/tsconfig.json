@@ -2,7 +2,19 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
-    "moduleResolution": "bundler"
+    "moduleResolution": "bundler",
+    // The two paths a validator addresses the staged tree by, mapped onto what
+    // the checkout holds at those names. Staged, this project IS `validation/`,
+    // so `../src/*` is the build's own source and `./case-harness/*` is the
+    // shared harness copied in beside the suites. In the checkout the project
+    // sits one level deeper, so the first is the case's reference implementation
+    // for this engine and the second is the harness package's source.
+    "rootDirs": [
+      "..",
+      "../../references/none",
+      "case-harness",
+      "../../../../../../../packages/case-harness/src"
+    ]
   },
   "include": ["."]
 }

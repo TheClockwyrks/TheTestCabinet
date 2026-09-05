@@ -24,7 +24,7 @@ import {
   createEngine,
   type Engine,
   type SurfaceMetrics,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import { afterEach, describe, expect, it } from "vitest";
 import { assetManifest } from "./assets";
 import { ladderCue, MUSIC_PLAY, MUSIC_TITLE } from "./audio";
@@ -258,6 +258,17 @@ function startRound(harness: Harness): void {
   harness.pose((state) => d.setScreen(state, "playing"));
 }
 
+/**
+ * A round in play with a board of its own posed onto it. A swap asked for off
+ * the `playing` screen is not a request at all, and `loadBoard` writes the
+ * board and nothing else (specs/instrumentation.md), so the round is begun
+ * first and the fixture board written over the one it dealt.
+ */
+function poseRound(harness: Harness, rows: string[]): void {
+  startRound(harness);
+  harness.pose((state) => harness.debug.loadBoard(state, rows));
+}
+
 afterEach(() => {
   while (restorers.length > 0) restorers.pop()?.();
 });
@@ -462,7 +473,7 @@ describe("the keyboard drives the menus", () => {
 describe("a move played on a posed board", () => {
   it("resolves a chain and plays the cues the frames raised", async () => {
     const harness = await createHarness();
-    harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
+    poseRound(harness, threeInARow());
     harness.played.length = 0;
 
     // Take hold of a stone, carry it onto its neighbor, and let go.
@@ -495,7 +506,7 @@ describe("a move played on a posed board", () => {
 
   it("plays nothing where the hold is carried back where it started", async () => {
     const harness = await createHarness();
-    harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
+    poseRound(harness, threeInARow());
     const before = harness.debug.snapshot(harness.state).board;
 
     const [fromX, fromY] = cellCenter({ col: 3, row: 2 });
@@ -517,7 +528,7 @@ describe("a move played on a posed board", () => {
 
   it("refuses a barren swap, marks both cells, and lets the mark expire", async () => {
     const harness = await createHarness();
-    harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
+    poseRound(harness, threeInARow());
     harness.played.length = 0;
 
     harness.pose((state) => harness.debug.requestSwap(state, ...BARREN));
@@ -535,7 +546,7 @@ describe("a move played on a posed board", () => {
 
   it("plays the refusal cue when a frame refuses the move", async () => {
     const harness = await createHarness();
-    harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
+    poseRound(harness, threeInARow());
     harness.played.length = 0;
     harness.play({ col: 6, row: 6 }, { col: 7, row: 6 });
     await harness.engine.advance(1);
@@ -545,7 +556,7 @@ describe("a move played on a posed board", () => {
 
   it("climbs the ladder as the chain runs on", async () => {
     const harness = await createHarness();
-    harness.pose((state) => harness.debug.loadBoard(state, cascade()));
+    poseRound(harness, cascade());
     harness.pose((state) => harness.debug.requestSwap(state, 3, 6, 3, 7));
     harness.played.length = 0;
 
@@ -569,7 +580,7 @@ describe("a move played on a posed board", () => {
 
   it("sounds the landing of a long fall", async () => {
     const harness = await createHarness();
-    harness.pose((state) => harness.debug.loadBoard(state, tallFall()));
+    poseRound(harness, tallFall());
     harness.pose((state) => harness.debug.requestSwap(state, 3, 2, 4, 2));
     harness.played.length = 0;
 
@@ -581,7 +592,7 @@ describe("a move played on a posed board", () => {
 
   it("ends a level onto its own screen without dealing anything", async () => {
     const harness = await createHarness();
-    harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
+    poseRound(harness, threeInARow());
     harness.pose((state) => harness.debug.setLevelScore(state, 1990));
     const board = harness.debug.snapshot(harness.state).board;
     harness.pose((state) => harness.debug.requestSwap(state, 3, 1, 3, 2));
@@ -621,7 +632,7 @@ describe("a move played on a posed board", () => {
 
   it("settles the chain and refills every cell", async () => {
     const harness = await createHarness();
-    harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
+    poseRound(harness, threeInARow());
     harness.pose((state) => harness.debug.requestSwap(state, 3, 1, 3, 2));
     await harness.engine.advance(60);
 
@@ -641,7 +652,7 @@ describe("a move played on a posed board", () => {
 describe("the pointer plays the board", () => {
   it("takes hold on a press, offers on a carry, and plays on the release", async () => {
     const harness = await createHarness();
-    harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
+    poseRound(harness, threeInARow());
 
     const [fromX, fromY] = cellCenter({ col: 3, row: 2 });
     const [toX, toY] = cellCenter({ col: 3, row: 1 });
@@ -667,7 +678,7 @@ describe("the pointer plays the board", () => {
 
   it("plays the board from a finger exactly as from a mouse", async () => {
     const harness = await createHarness();
-    harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
+    poseRound(harness, threeInARow());
     harness.play({ col: 3, row: 2 }, { col: 3, row: 1 }, "touch");
     await harness.engine.advance(30);
 
@@ -678,7 +689,7 @@ describe("the pointer plays the board", () => {
 
   it("acts on the primary pointer alone", async () => {
     const harness = await createHarness();
-    harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
+    poseRound(harness, threeInARow());
     const [x, y] = cellCenter({ col: 3, row: 2 });
     // A second finger resting on the screen changes nothing.
     harness.point("pointerdown", x, y, "touch", false);
@@ -730,7 +741,7 @@ describe("the pointer plays the board", () => {
 
     // And on the board, a hold let go over a neighbor plays that move even
     // where no move sample was delivered between the press and the release.
-    harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
+    poseRound(harness, threeInARow());
     const [fromX, fromY] = cellCenter({ col: 3, row: 2 });
     const [toX, toY] = cellCenter({ col: 3, row: 1 });
     harness.point("pointerdown", fromX, fromY);
@@ -741,7 +752,7 @@ describe("the pointer plays the board", () => {
 
   it("leaves the board through the pause control without taking a stone", async () => {
     const harness = await createHarness();
-    harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
+    poseRound(harness, threeInARow());
     const [pause] = targetsFor("playing");
     harness.point("pointerdown", pause.x + pause.w / 2, pause.y + pause.h / 2);
     harness.point("pointerup", pause.x + pause.w / 2, pause.y + pause.h / 2);
@@ -753,7 +764,7 @@ describe("the pointer plays the board", () => {
 
   it("ignores a press that lands on no cell", async () => {
     const harness = await createHarness();
-    harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
+    poseRound(harness, threeInARow());
     const before = harness.debug.snapshot(harness.state);
 
     harness.point("pointerdown", 20, 20);
@@ -767,7 +778,7 @@ describe("the pointer plays the board", () => {
     // All three samples land in one input frame, so the carry is only seen if
     // the frame resolves them in arrival order.
     const harness = await createHarness();
-    harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
+    poseRound(harness, threeInARow());
     harness.play({ col: 3, row: 2 }, { col: 3, row: 1 });
     await harness.engine.advance(1);
 
@@ -795,8 +806,7 @@ describe("the simulation is deterministic", () => {
     const harness = await createHarness();
     harness.engine.setClock(new ConstantClock(stepMs));
     harness.pose((state) => harness.debug.reset(state, { seed: 7 }));
-    startRound(harness);
-    harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
+    poseRound(harness, threeInARow());
     harness.pose((state) => harness.debug.requestSwap(state, 3, 1, 3, 2));
     await harness.engine.advance(frames);
     return harness.state as FacetState;
@@ -851,7 +861,7 @@ describe("the produced files", () => {
     // Nothing was served, so every load failed and every cue fell back.
     expect(harness.failed.length).toBeGreaterThan(100);
 
-    harness.pose((state) => harness.debug.loadBoard(state, threeInARow()));
+    poseRound(harness, threeInARow());
     harness.pose((state) => harness.debug.requestSwap(state, 3, 1, 3, 2));
     await harness.engine.advance(120);
 

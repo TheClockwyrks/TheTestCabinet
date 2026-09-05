@@ -31,7 +31,7 @@ import { stepWorms } from "./worm";
 import type { Screen } from "./game";
 import type { FrameInput } from "./input";
 import type { FrameEvents, Sim } from "./sim";
-import type { PointerSample } from "@test-cabinet/simple-2d";
+import type { PointerSample } from "@clockwyrks/simple-2d";
 
 /** Take the highlighted item of whatever menu the current screen shows. */
 function confirmMenuItem(sim: Sim): void {

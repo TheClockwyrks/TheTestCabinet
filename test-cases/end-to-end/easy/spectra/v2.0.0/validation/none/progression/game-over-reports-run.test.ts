@@ -83,20 +83,59 @@ const POSED_STAGE = 7;
 const BELOW_HUD = HUD_TOP_H;
 
 /**
+ * The characters a build may group a run of digits with.
+ *
+ * A comma, an apostrophe and the three spaces a locale groups thousands by —
+ * between them every separator `Number.prototype.toLocaleString` reaches for. The
+ * ASCII space is deliberately absent: a plain space is what stands between two
+ * figures in one run of text, so accepting it would read the two figures of
+ * `40 130` as the single number `40130`. The full stop is absent for a reason of
+ * its own — it is the decimal point.
+ */
+const GROUPERS = [",", "'", "\u00A0", "\u202F", "\u2009"] as const;
+
+/** The characters a regular expression would otherwise read as syntax. */
+function quoted(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Every conventional rendering of `value`: plain, and grouped in threes by each
+ * separator above.
+ *
+ * `24680` renders as `24680`, `24,680`, `24'680` and the three spaced forms.
+ * specs/ui.md fixes the score as digits and says nothing about how they are
+ * grouped, so every one of those reports the run exactly as the plain figure
+ * does. A value of three digits or fewer — the stage — has exactly one rendering.
+ */
+function renderings(value: number): string[] {
+  const plain = String(value);
+  const point = plain.indexOf(".");
+  const whole = point === -1 ? plain : plain.slice(0, point);
+  const rest = point === -1 ? "" : plain.slice(point);
+  const sign = whole.startsWith("-") ? "-" : "";
+  const digits = sign === "" ? whole : whole.slice(1);
+  if (digits.length <= 3) return [plain];
+  const triples = digits.match(/\d{1,3}(?=(?:\d{3})*$)/g) ?? [digits];
+  return [plain, ...GROUPERS.map((by) => `${sign}${triples.join(by)}${rest}`)];
+}
+
+/**
  * Whether the frame drew `value` as a standalone number below the top HUD strip.
  *
- * Leading zeros are allowed, because a build is free to pad a readout, and the
- * three characters a build might group thousands with are dropped from each run
- * before the match, because `specs/ui.md` fixes the score as digits and says
- * nothing about how they are grouped. Everything else is required: the digits
- * must not be part of a longer number.
+ * Leading zeros are allowed, because a build is free to pad a readout, and every
+ * grouped rendering counts, because `specs/ui.md` fixes the score as digits and
+ * leaves how they are grouped to the build. Everything else is required: the
+ * figure must not have a digit or a decimal point against either end of it, so a
+ * screen reading `1975` does not report a stage of `7`.
  */
 function reported(calls: readonly DrawCall[], value: number): boolean {
-  const pattern = new RegExp(`(^|[^0-9])0*${String(value)}([^0-9]|$)`);
+  const patterns = renderings(value).map(
+    (rendering) => new RegExp(`(?<![\\d.])0*${quoted(rendering)}(?![\\d.])`),
+  );
   return textDraws(calls).some(
     (draw) =>
-      draw.y > BELOW_HUD &&
-      pattern.test(draw.text.replace(/[,\u00a0\u202f\u2009]/g, "")),
+      draw.y > BELOW_HUD && patterns.some((pattern) => pattern.test(draw.text)),
   );
 }
 

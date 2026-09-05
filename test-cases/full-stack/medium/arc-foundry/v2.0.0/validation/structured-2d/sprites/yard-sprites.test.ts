@@ -14,12 +14,6 @@ import { it } from "vitest";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, openYard } from "../harness";
 import { YARD_SPRITES, canvasOf } from "./png";
-import { serveProducedAssets } from "./host";
-
-// The produced files, served to the engine off disk, so the still beside this
-// point's verdict shows the art the run made rather than the fallback a build
-// draws when nothing arrived.
-serveProducedAssets();
 
 it("produces the yard's five sprites at the sizes specs/assets.md fixes", async () => {
   for (const sprite of YARD_SPRITES) {

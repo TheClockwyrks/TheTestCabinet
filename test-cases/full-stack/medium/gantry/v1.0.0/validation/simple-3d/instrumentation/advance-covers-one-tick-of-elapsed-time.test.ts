@@ -1,20 +1,18 @@
 // instrumentation/advance-covers-one-tick-of-elapsed-time — each advanced frame
 // covers one tick's worth of elapsed time.
 //
-// `specs/instrumentation.md` § The clock: "`advance(ticks)` | Runs `ticks` whole
-// frames, immediately and in order, each covering `1 / TICK_HZ` seconds of
-// elapsed time and each followed by a render." What that elapsed time reaches is
-// fixed by `specs/state.md`: "`simTime`, accumulating every update's delta time
-// in seconds, whatever the screen", and the snapshot repeats it — "`simTime`
-// accumulates every update's delta time whatever the screen". So `TICK_HZ`
-// frames raise `simTime` by exactly one second, and that is the reading the
-// requirement is decided on.
+// The frames driven here are `1 / TICK_HZ` seconds of elapsed time each. What
+// that elapsed time reaches is fixed by `specs/state.md`: "`simTime`,
+// accumulating every update's delta time in seconds, whatever the screen", and
+// the snapshot repeats it — "`simTime` accumulates every update's delta time
+// whatever the screen". So `TICK_HZ` frames raise `simTime` by exactly one
+// second, and that is the reading the requirement is decided on.
 //
-// OFF THE RUN SCREEN, DELIBERATELY. "Off the run screen nothing ticks, and the
-// frame is still real": the frame's own length is what this decides, not what
-// the run's pipeline does with it, so the check stands on the build screen where
-// no run is in progress and nothing but the clock can move. The watch speed,
-// which scales what a frame covers during a run, cannot reach it there either.
+// OFF THE RUN SCREEN, DELIBERATELY. What the frame's own length reaches is what
+// this decides, not what the run's pipeline does with it, so the check stands on
+// the build screen where no run is in progress and nothing but the clock can
+// move. The watch speed, which scales how many ticks a second of watching covers
+// during a run, cannot reach it there either.
 //
 // The world is emptied first, so nothing stands in it that a frame could act on.
 //

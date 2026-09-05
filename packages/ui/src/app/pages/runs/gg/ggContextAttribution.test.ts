@@ -19,7 +19,7 @@ import { describe, expect, it } from "vitest";
 import type {
   GgTelemetryEvent,
   GgTelemetryKind,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import type { HarnessEvent } from "../../../../client/types";
 import type { ModelPrices } from "../../../data/models";
 import type { ModelPriceLookup } from "./ggCost";

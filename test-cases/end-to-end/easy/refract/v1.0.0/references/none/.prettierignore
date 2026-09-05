@@ -7,5 +7,9 @@ out/
 coverage/
 package-lock.json
 
+# Seeded reading material rather than this project's source: the specification
+# the run is built against.
+specs/
+
 # Prose. The formatter handles code; Markdown is left to its own linter.
 *.md

@@ -1226,10 +1226,10 @@ describe("the container", () => {
     );
     expect(TIMECODE_SCALE_NS).toBe(1000);
     expect(textOf(find(info?.children ?? [], 0x4d80))).toBe(
-      "@test-cabinet/structured-3d",
+      "@clockwyrks/structured-3d",
     );
     expect(textOf(find(info?.children ?? [], 0x5741))).toBe(
-      "@test-cabinet/structured-3d",
+      "@clockwyrks/structured-3d",
     );
   });
 

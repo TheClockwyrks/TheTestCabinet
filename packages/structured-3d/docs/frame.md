@@ -190,7 +190,7 @@ against `dt` rather than assuming a frame rate. Every speed is stated per second
 and multiplied by `dt`:
 
 ```ts
-import { add, scale } from "@test-cabinet/structured-3d";
+import { add, scale } from "@clockwyrks/structured-3d";
 
 override tick(dt: number): void {
   this.velocity = add(this.velocity, scale(GRAVITY, dt));

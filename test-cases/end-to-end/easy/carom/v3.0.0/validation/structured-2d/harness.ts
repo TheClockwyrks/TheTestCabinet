@@ -100,7 +100,7 @@ import {
   type SurfaceMetrics,
   type Viewport,
   type World,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import {
   BALL_COUNT,
   BALL_R,
@@ -118,11 +118,11 @@ import {
   WIN_SCORE,
 } from "./constants";
 // `game` is the build's entry, and `BACKGROUND` is the clear colour it exports
-// beside it. `BACKGROUND` is a value specs/overview.md leaves to the build, read
-// only to locate the colour a bare pixel was cleared to and never compared as a
-// figure: {@link clearColor} rasterizes it so a patch the game never drew over
-// can be told from one it did. Those two names are the whole of what this
-// project takes from the build outside a type.
+// beside it. `BACKGROUND` is a value specs/overview.md leaves to the build, and
+// it is handed straight back to the engine as the colour the canvas is cleared
+// to, exactly as the seeded `src/main.ts` does; nothing compares it against
+// anything. Those two names are the whole of what this project takes from the
+// build outside a type.
 import { BACKGROUND, game as build } from "../src/game";
 import { assertEqual, assertTruthy, fail } from "./assert";
 import type {
@@ -444,38 +444,6 @@ export interface UntilResult {
   snapshot: CaromSnapshot;
 }
 
-/** How long a free-running watch may last, and how often it reads. */
-export interface RunUntilOptions {
-  /** The real time the runtime's own loop is given. Defaults to 30 s. */
-  timeoutMs?: number;
-  /** The real interval between readings. Defaults to 25 ms. */
-  pollMs?: number;
-}
-
-/** What a free-running watch found. */
-export interface RunUntilResult {
-  /** Whether the predicate ever held before the deadline. */
-  hit: boolean;
-  /** The reading that ended the watch. */
-  snapshot: CaromSnapshot;
-  /** The real time the loop was left running, in milliseconds. */
-  elapsedMs: number;
-}
-
-/**
- * How long {@link Harness.runUntil} leaves the runtime's own loop running before
- * it gives up on the predicate.
- *
- * The deadline is the ONLY wall clock a free-running watch answers to, and it is
- * a ceiling rather than a measurement: what a watch reports is how far the game's
- * own clock got, so the deadline only has to be long enough that a machine which
- * starves the frame callback still lets a running build reach its floor.
- */
-const RUN_UNTIL_TIMEOUT_MS = 30_000;
-
-/** How often a free-running watch reads the game's clock, in real milliseconds. */
-const RUN_UNTIL_POLL_MS = 25;
-
 export interface Harness {
   readonly engine: Engine<CaromSurface>;
   /**
@@ -543,21 +511,6 @@ export interface Harness {
     predicate: (snapshot: CaromSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
-  /**
-   * Hand the game to the runtime's own frame loop, let REAL time pass until
-   * `predicate` holds of a fresh reading, then halt it.
-   *
-   * Nothing here steps the game: the runtime's loop is what moves it, and the
-   * only thing this does while it runs is read. What bounds the wait is the
-   * game's own clock reaching the predicate, not a fixed stretch of wall clock,
-   * so a machine that starves the loop makes the wait longer rather than making
-   * the reading smaller.
-   */
-  runUntil(
-    predicate: (snapshot: CaromSnapshot) => boolean,
-    options?: RunUntilOptions,
-  ): Promise<RunUntilResult>;
-
   /** Press a key and leave it down, as a player holding it would. */
   hold(code: string): void;
   /** Release a key held by `hold`. */
@@ -1065,27 +1018,6 @@ export async function createHarness(
         await breathe();
       }
       return { hit: false, frames, snapshot };
-    },
-
-    async runUntil(predicate, runOptions = {}) {
-      const timeoutMs = runOptions.timeoutMs ?? RUN_UNTIL_TIMEOUT_MS;
-      const pollMs = Math.max(1, runOptions.pollMs ?? RUN_UNTIL_POLL_MS);
-      const controller = new AbortController();
-      const running = engine.run({ signal: controller.signal });
-      const started = Date.now();
-      // A reading only: `snapshot` poses nothing, so the loop under watch is the
-      // only thing moving the game while this waits.
-      let snapshot = debug.snapshot();
-      let hit = predicate(snapshot);
-      while (!hit && Date.now() - started < timeoutMs) {
-        await new Promise((resolve) => setTimeout(resolve, pollMs));
-        snapshot = debug.snapshot();
-        hit = predicate(snapshot);
-      }
-      const elapsedMs = Date.now() - started;
-      controller.abort();
-      await running;
-      return { hit, snapshot, elapsedMs };
     },
 
     hold: (code) => dispatch("keydown", code),
@@ -2712,10 +2644,17 @@ export async function arrangeLiveBall(
 // a colour sampler over the rendered canvas, and a way to ask what a single
 // frame's render actually asked the context for. The palette is the build's
 // own (specs/overview.md), so nothing here knows a colour: the samplers compare
-// what was painted against what else was painted. They are gathered here rather
-// than folded in above so the two halves of this file stay separable.
+// one point painted against the same point with the field bare under it. They are
+// gathered here rather than folded in above so the two halves of this file stay
+// separable.
 
-import { OBSTACLE_CENTERS, P1_X0, P2_X1, TRAIL_TIME } from "./constants";
+import {
+  OBSTACLE_CENTERS,
+  P1_X0,
+  P2_X1,
+  PADDLE_MIN_CY,
+  TRAIL_TIME,
+} from "./constants";
 
 /* ---- Controls tolerances -------------------------------------------------- */
 
@@ -2772,6 +2711,19 @@ export interface Rgb {
 }
 
 /**
+ * How far two readings of the SAME unchanged ground may sit apart, in RGB
+ * distance, and still be the same ground: rasterization rounding and nothing
+ * else.
+ *
+ * The specification fixes no palette (specs/overview.md), so what a colour check
+ * reads is PRESENCE: the same point sampled with a body standing on it and again
+ * with the field bare under it. This floor is what separates "the build drew
+ * something here" from two reads of one pixel, and nothing beyond presence — no
+ * palette, no contrast, no separation between two bodies — is asserted anywhere.
+ */
+export const READ_NOISE = 8;
+
+/**
  * The on-field points the visibility checks sample, in logical units, valid on
  * the scene `arrangeColorScene` poses.
  *
@@ -2790,22 +2742,10 @@ export const COLOR_POINTS = {
 } as const;
 
 /**
- * Candidate patches of empty field, in logical units, clear of every element
- * this specification places: the paddles, both obstacles at every gyre pose,
- * the net, the parked ball, and the top of the field where the scores sit.
- *
- * The field is dark and every body on it is bright (specs/overview.md), but the
- * mode label's copy and placement are the build's, so no single patch is
- * guaranteed bare. The darkest of several is: a label is drawn to be read, so
- * it is lighter than the field it sits on, and a patch it covers reads lighter
- * than one it does not.
+ * Where {@link arrangeBareScene} sends the ball instead: down near the bottom of
+ * the field, clear of every point {@link COLOR_POINTS} names.
  */
-export const FIELD_POINTS: readonly { x: number; y: number }[] = [
-  { x: 500, y: 650 },
-  { x: 200, y: 600 },
-  { x: 1000, y: 300 },
-  { x: 1100, y: 620 },
-];
+export const BARE_BALL_AT = { x: FIELD_CX, y: 650 } as const;
 
 /**
  * The rendered colour at a logical point, averaged over a small cluster.
@@ -2843,46 +2783,10 @@ export function colorDistance(a: Rgb, b: Rgb): number {
   return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
 }
 
-/** A colour's luminance, the reading the field is darkest on. */
-function luminance(c: Rgb): number {
-  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
-}
-
-/**
- * The bare field's colour: the darkest of the {@link FIELD_POINTS} patches,
- * sampled off the canvas as it stands.
- */
-export function sampleField(h: Harness): Rgb {
-  const samples = FIELD_POINTS.map((point) => sampleColor(h, point.x, point.y));
-  return samples.reduce((darkest, sample) =>
-    luminance(sample) < luminance(darkest) ? sample : darkest,
-  );
-}
-
-/**
- * The build's exported `BACKGROUND`, rasterized: the color the engine clears
- * the whole canvas to each frame (specs/overview.md), read back through the
- * same canvas implementation the harness samples with, so a pixel the game
- * never drew over compares against it exactly.
- *
- * The fill is repeated rather than applied once so a translucent color reads
- * as the engine leaves it: the engine composites its clear over the previous
- * frame every frame, which converges on the color's own channels, and a single
- * fill over a transparent canvas would not.
- */
-export function clearColor(): Rgb {
-  const probe = createCanvas(1, 1);
-  const ctx = probe.getContext("2d");
-  ctx.fillStyle = BACKGROUND;
-  for (let i = 0; i < 255; i += 1) ctx.fillRect(0, 0, 1, 1);
-  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-  return { r, g, b };
-}
-
-/** Every point in `COLOR_POINTS` and the bare field, sampled as they stand. */
+/** Every point in `COLOR_POINTS`, sampled as the canvas stands. */
 export function sampleScene(
   h: Harness,
-): Record<keyof typeof COLOR_POINTS | "background", Rgb> {
+): Record<keyof typeof COLOR_POINTS, Rgb> {
   return {
     leftPaddle: sampleColor(
       h,
@@ -2896,7 +2800,6 @@ export function sampleScene(
     ),
     obstacle: sampleColor(h, COLOR_POINTS.obstacle.x, COLOR_POINTS.obstacle.y),
     ball: sampleColor(h, COLOR_POINTS.ball.x, COLOR_POINTS.ball.y),
-    background: sampleField(h),
   };
 }
 
@@ -2927,6 +2830,33 @@ export async function arrangeColorScene(h: Harness): Promise<void> {
   drivePaddle(h, "right", { cy: FIELD_CY, vy: 0 });
   const ops = ballOps(h);
   ops.setBallPosition(COLOR_POINTS.ball.x, COLOR_POINTS.ball.y);
+  ops.setBallVelocity(0, 0);
+  ops.setBallSpin(0);
+  await h.advance(Math.ceil(TRAIL_TIME * TICK_HZ) + 4);
+}
+
+/**
+ * Pose the same match with the field bare under every point
+ * {@link COLOR_POINTS} names, so those points can be read a second time with
+ * nothing standing on them.
+ *
+ * The obstacles are left off the field outright and the ball goes to
+ * {@link BARE_BALL_AT}, with the same settle {@link arrangeColorScene} takes so
+ * its wake is retired again. One ball is left on the field rather than none,
+ * because an empty field is a state the match rules are free to serve into. Both
+ * paddles go to `PADDLE_MIN_CY`, the top of the travel specs/playfield.md gives
+ * them: a paddle centred there spans the field's top 110 units, which clears the
+ * mid-field row {@link COLOR_POINTS} samples it on outright.
+ */
+export async function arrangeBareScene(h: Harness): Promise<void> {
+  await openIsolatedPlay(h, {
+    mode: "versus",
+    contents: { balls: 1, obstacles: [] },
+  });
+  drivePaddle(h, "left", { cy: PADDLE_MIN_CY, vy: 0 });
+  drivePaddle(h, "right", { cy: PADDLE_MIN_CY, vy: 0 });
+  const ops = ballOps(h);
+  ops.setBallPosition(BARE_BALL_AT.x, BARE_BALL_AT.y);
   ops.setBallVelocity(0, 0);
   ops.setBallSpin(0);
   await h.advance(Math.ceil(TRAIL_TIME * TICK_HZ) + 4);
@@ -3187,19 +3117,7 @@ export const TRAIL_BARE_X = 1100;
 /** Frames of flight before the frame that is read: longer than the trail's life. */
 export const TRAIL_FILL_TICKS = 24;
 
-/** How far a pixel must sit from the bare field to count as lit. */
-const LIT_MIN = 10;
-
-/**
- * The widest run of bare field a streak may contain and still be one streak.
- *
- * A trail drawn from samples may be drawn sample by sample, and at the speed
- * cap consecutive samples on the suite's clock are `SPEED_CAP / TICK_HZ`, about
- * eight units, apart; a gap a little wider than that is still the same trail.
- */
-const GAP_MAX = 12;
-
-/** How far behind the ball the lane is read, in logical units. */
+/** How far behind the ball the lane is looked at, in logical units. */
 const TRAIL_SCAN = 240;
 
 /** The lane's bare pixels, by logical x, read with nothing drawn on it. */
@@ -3248,32 +3166,24 @@ export async function driveTrail(
 }
 
 /**
- * How far behind the ball the unbroken run of lit pixels reaches along its lane,
- * in logical units, measured from the ball's center.
+ * Whether the lane behind the ball holds anything its bare reading did not.
  *
  * Each pixel is read against the same pixel of the bare lane, so whatever the
  * build's palette and whatever else it draws there, a lit pixel is one the
- * flight changed.
+ * flight changed. How far the paint reaches and how it tapers are the build's
+ * styling, which the reviewer judges, so nothing here measures a length.
  */
-export function trailReach(
+export function trailPainted(
   h: Harness,
   ball: { x: number; y: number; bare: BareLane },
-): number {
+): boolean {
   const ballX = Math.round(ball.x);
-  let reach = 0;
-  let gap = 0;
   for (let d = TRAIL_SCAN_FROM; d <= TRAIL_SCAN; d += 1) {
     const x = ballX - d;
     const bare = ball.bare.get(x);
     if (bare === undefined) break;
     const [r, g, b] = h.pixel(x, TRAIL_LANE_Y);
-    if (colorDistance({ r, g, b }, bare) > LIT_MIN) {
-      reach = d;
-      gap = 0;
-    } else {
-      gap += 1;
-      if (gap > GAP_MAX) break;
-    }
+    if (colorDistance({ r, g, b }, bare) > READ_NOISE) return true;
   }
-  return reach;
+  return false;
 }

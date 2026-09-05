@@ -8,7 +8,7 @@
 // writers — really does what the suites assume of it, because a helper that
 // silently did less would turn every item that leans on it into a wrong verdict
 // with a confident face. Most of that machinery is
-// `@test-cabinet/case-harness`'s, which carries its own tests; what is pinned
+// `@clockwyrks/case-harness`'s, which carries its own tests; what is pinned
 // here is that the case's own layer over it — its poses, its two clocks, its
 // arithmetic — behaves as the suites assume against a real build.
 //

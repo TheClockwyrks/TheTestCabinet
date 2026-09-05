@@ -19,8 +19,8 @@
 // Three actors carry the picture, each under the tag `src/constants.ts` fixes
 // for it, so `world.byTag` finds them under the names the specification uses.
 
-import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
-import type { DrawApi } from "@test-cabinet/structured-2d";
+import { Actor, DrawComponent } from "@clockwyrks/structured-2d";
+import type { DrawApi } from "@clockwyrks/structured-2d";
 import { cascadeState, type CascadeState } from "./game";
 import {
   renderDrag,

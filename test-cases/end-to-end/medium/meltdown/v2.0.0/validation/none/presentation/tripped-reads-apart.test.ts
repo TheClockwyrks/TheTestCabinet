@@ -1,5 +1,5 @@
-// presentation/tripped-reads-apart — a tripped tower is drawn plainly apart from
-// an online one carrying the same heat.
+// presentation/tripped-reads-apart — a tripped tower is drawn differently from an
+// online one carrying the same heat.
 //
 // THE RULE. `specs/overview.md`'s legibility table: "A tripped tower — A tripped
 // tower is unmistakable and reads apart from an online tower at the same heat."
@@ -8,39 +8,50 @@
 // draws nothing for the trip and lets the heat ramp speak still shows SOME
 // difference between a tripped tower and an online one, because a tower that just
 // tripped is hot and one that is running is usually not. So the two readings are
-// taken at ONE heat, and the trip must be visible there.
+// taken at ONE heat, and the build has to draw something for the trip there.
+//
+// WHAT IS DECIDED AND WHAT IS NOT. That the build drew the trip. How
+// unmistakable it is — the colour it chose, how much of the tower it covers,
+// whether it flashes — is appearance, which `specs/overview.md` hands to the
+// build with the rest of the look and the reviewer judges.
 //
 // THE ONE VARIABLE. Both readings are of the SAME tower, on the same tile, at the
 // same type, level, rotation and heat, one frame apart, with nothing between them
 // but `setTowerTripped`. That is what makes the reading a reading of the trip:
 // `specs/heat.md` makes the drawn colour a function of the heat, so two towers
 // posed side by side would differ in their tiles as well as their state, and the
-// same tower before and after differs in exactly one thing.
+// same tower before and after differs in exactly one thing. How much the picture
+// moves on its own is measured first, by reading the same points on two frames
+// while the tower is online, and the trip has to beat that by `NOISE_MARGIN`.
 //
 // WHY THE THERMAL MODEL IS OFF. `posePinnedTower` holds the tower's part in the
 // heat model (`specs/instrumentation.md`), so the heat this check posed is the
-// heat both frames drew. Air cooling is proportional to heat (`specs/heat.md`),
-// so an unpinned tower would be a little cooler on the second frame and the
+// heat every frame drew. Air cooling is proportional to heat (`specs/heat.md`),
+// so an unpinned tower would be a little cooler on each following frame and the
 // reading would be part trip and part ramp. The guns are off for the same reason
-// in the other direction: nothing is fired, so no shot is drawn over either frame.
+// in the other direction: nothing is fired, so no shot is drawn over any frame.
 //
-// WHY THE HEAT IS RE-POSED AFTER THE TRIP. `specs/heat.md` makes a trip a state
-// the tower enters, and leaves what happens to the heat on entering it to the
-// model rather than to this check; re-posing the heat after the flag is set is
-// what guarantees the two frames are at the SAME heat whatever the build does
-// with it.
+// WHY THE TRIP TIMER IS SET AND THE HEAT RE-POSED. `specs/heat.md` runs a
+// cooldown from the trip, so a tripped tower with no time left on it is a tower
+// about to come back online; `setTowerTripTimer` puts the full `TRIP_TIME` on it
+// so the frame reads a tower that is really tripped. And the specification leaves
+// what happens to the heat on entering the trip to the model rather than to this
+// check, so re-posing the heat after the flag is set is what guarantees the two
+// frames are at the SAME heat whatever the build does with it.
 //
 // WHY THREE HEATS AND THE WHOLE EMITTER ROSTER. `specs/heat.md` lets a tripped
 // tower sit anywhere below `TRIP_HEAT` while its cooldown runs, so "the same
 // heat" is not one heat; a build whose trip look happens to land on its own ramp
-// at one point is caught by the other two. And `specs/towers.md` gives each
-// emitter its own figures, so nothing says the six share one ramp or one trip
-// look. The Forge and the Sink are not read: `specs/towers.md` says both "carry no
-// heat", and `specs/heat.md` never trips them.
+// at one point is caught by the other two, and `TRIP_HEAT - 1` is the hardest
+// case because it is the hottest a tower can be while still online. And
+// `specs/towers.md` gives each emitter its own figures, so nothing says the six
+// share one ramp or one trip look. The Forge and the Sink are not read:
+// `specs/towers.md` says both "carry no heat", and `specs/heat.md` never trips
+// them.
 //
 // WHAT IT DOES NOT DECIDE. Whether the tower actually TRIPS at 100 is
 // `trip/trips-at-100`, what a tripped tower stops doing is `trip/`'s items, and
-// what the ramp does between heats is `presentation/heat-glow-ramp`.
+// what the drawing does across the heat range is `presentation/heat-glow-ramp`.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual } from "../assert";
@@ -48,25 +59,13 @@ import { EMITTER_TYPES, TRIP_HEAT, TRIP_TIME } from "../constants";
 import type { TowerType } from "../constants";
 import {
   captureStill,
-  colorDistance,
   createHarness,
   posePinnedTower,
   requireTower,
   startRun,
   type Harness,
 } from "../harness";
-import { bodyColor, showRgb } from "./read";
-
-/**
- * How far the two must sit apart, out of the 441 the RGB cube spans.
- *
- * This group's figure for "plainly apart" (`specs/overview.md`), the same 50 every
- * other point in this group draws its line at, under this engine and under the
- * other two. "Unmistakable" in the legibility table reads as at least that and
- * arguably more; the group's own figure is the honest floor, and a build that
- * clears it by a hair has still drawn a tower a player can tell has tripped.
- */
-const APART_MIN = 50;
+import { NOISE_MARGIN, bodyPoints, readPixels, widestGap } from "./read";
 
 /**
  * The heats the pair is read at, all of them reachable by a tripped tower.
@@ -107,29 +106,30 @@ it.each(EMITTER_TYPES)(
 
       await h.advance(1);
       const capture = type === CAPTURE_TYPE && heat === CAPTURE_AT;
-      if (capture) await captureStill(h, "online");
-      const online = await bodyColor(
-        h,
+      const ring = bodyPoints(
         requireTower(await h.snapshot(), id, `the online ${type}`),
       );
+      const first = await readPixels(h, ring);
+      await h.advance(1);
+      if (capture) await captureStill(h, "online");
+      const online = await readPixels(h, ring);
+      const noise = widestGap(first, online).distance;
 
       await h.debug.setTowerTripped(id, true);
       await h.debug.setTowerTripTimer(id, TRIP_TIME);
       await h.debug.setTowerHeat(id, heat);
       await h.advance(1);
       if (capture) await captureStill(h, "tripped");
-      const tripped = await bodyColor(
-        h,
-        requireTower(await h.snapshot(), id, `the tripped ${type}`),
-      );
+      const tripped = await readPixels(h, ring);
 
       assertGreaterThanOrEqual(
-        colorDistance(online, tripped),
-        APART_MIN,
-        `a ${type} at heat ${heat}: online (${showRgb(online)}) against the ` +
-          `same tower tripped (${showRgb(tripped)}), on the same tile at the ` +
-          `same heat (specs/overview.md: a tripped tower reads apart from an ` +
-          `online tower at the same heat)`,
+        widestGap(online, tripped).distance,
+        noise + NOISE_MARGIN,
+        `a ${type} at heat ${heat}: its body ring is drawn differently once ` +
+          `the tower trips, on the same tile at the same heat, by more than ` +
+          `the ${noise} two frames of it running moved on their own ` +
+          `(specs/overview.md: a tripped tower reads apart from an online ` +
+          `tower at the same heat)`,
       );
     }
   },

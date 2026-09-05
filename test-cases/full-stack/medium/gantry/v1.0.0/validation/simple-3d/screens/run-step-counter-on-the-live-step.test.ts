@@ -99,10 +99,48 @@ async function readoutLines(harness: Harness): Promise<string[]> {
   return lines;
 }
 
+/**
+ * The separators a build may set between a figure's digit triples.
+ *
+ * ASCII space is deliberately absent: a line here is made by joining the frame's
+ * separate runs of text with one, so accepting it would read the two figures in
+ * `40 130` as the single number 40130. `.` is absent for the same sort of
+ * reason — it is the decimal point, and a build drawing `1.5` means one and a
+ * half.
+ */
+const GROUP_SEPARATORS = [",", "'", "\u00A0", "\u202F", "\u2009"];
+
+/**
+ * Every conventional way a build might write the whole figure `value`.
+ *
+ * A figure of three digits or fewer has the one rendering; a longer one is also
+ * written grouped, which is what `Number.prototype.toLocaleString` does by
+ * default. Reading every rendering is what lets a build that draws `1234` and a
+ * build that draws `1,234` grade the same.
+ */
+function renderings(value: number): string[] {
+  const plain = String(value);
+  const grouped = GROUP_SEPARATORS.map((separator) =>
+    plain.replace(/\B(?=(\d{3})+$)/g, separator),
+  );
+  return [plain, ...grouped.filter((one) => one !== plain)];
+}
+
+/** `text` with every regular-expression metacharacter escaped. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /** Whether some line reads the step counter as `m / n`. */
 function readsCounter(lines: readonly string[], m: number, n: number): boolean {
-  const wanted = new RegExp(`(?<!\\d)${m}\\s*/\\s*${n}(?!\\d)`);
-  return lines.some((line) => wanted.test(line));
+  return renderings(m).some((left) =>
+    renderings(n).some((right) => {
+      const wanted = new RegExp(
+        `(?<!\\d)${escapeRegExp(left)}\\s*/\\s*${escapeRegExp(right)}(?!\\d)`,
+      );
+      return lines.some((line) => wanted.test(line));
+    }),
+  );
 }
 
 it("reads step m / n on the tape step the run is on", async () => {

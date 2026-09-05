@@ -20,11 +20,11 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { GgProgramLanguage } from "@test-cabinet/run-record/gg";
+import type { GgProgramLanguage } from "@clockwyrks/run-record/gg";
 import type {
   GgReference,
   GgReferenceApi,
-} from "@test-cabinet/run-record/gg-reference";
+} from "@clockwyrks/run-record/gg-reference";
 import {
   BackendProvider,
   type BackendContextValue,

@@ -14,6 +14,7 @@
 // released has died or leaked, and clearing it opens the next build phase. So the
 // released unit is grounded out at the collector and the run is read again.
 
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import {
@@ -25,19 +26,40 @@ import {
 } from "../harness";
 import { COLLECTOR_WAYPOINT, mapById, tileCenter } from "../constants";
 
+/**
+ * The frame rate the hold is watched at: `10` Hz, a twelfth of this project's
+ * default.
+ *
+ * The hold is an ABSENCE — nothing the surface did not ask for arrives — and what
+ * is read across it is a count of units, an id and the wave counter. No position,
+ * no projectile and no rate is measured over those seconds, so nothing here is
+ * bounded by the size of a frame. `specs/instrumentation.md` fixes none: an
+ * interval of simulation time reaches the same state however it was divided into
+ * frames, which `instrumentation/frame-division-movement` and
+ * `instrumentation/frame-division-projectile` are the two items that decide. The
+ * ten seconds the hold is stated over are unchanged; only the frames they are
+ * divided into are.
+ */
+const HOLD_HZ = 10;
+
+/** Frames of that clock covering `s` seconds of simulation, rounded up. */
+function holdFrames(seconds: number): number {
+  return Math.ceil(seconds * HOLD_HZ);
+}
+
 /** The wave the run is posed at: deep enough to compose a crowd of its own. */
 const WAVE = 6;
 
 /** How long the yard is watched for an arrival the surface never asked for. */
 const HOLD_SECONDS = 10;
 
-/** How long the grounding-out is waited for, in frames of the 120 Hz clock. */
-const LEAK_FRAMES = 600;
+/** How long the grounding-out is waited for, in seconds of simulation. */
+const LEAK_SECONDS = 5;
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ clock: new ConstantClock(1000 / HOLD_HZ) });
 });
 
 afterEach(() => {
@@ -55,7 +77,7 @@ it("releases one unit into a wave that spawns nothing else, and clears", async (
 
     // Ten seconds of the wave running itself. A composed wave of this depth
     // would have released a good deal by now.
-    await h.advanceSeconds(HOLD_SECONDS);
+    await h.advance(holdFrames(HOLD_SECONDS));
     const held = h.snapshot();
 
     // Then ground the released unit out, which is the ordinary way this wave has
@@ -63,7 +85,7 @@ it("releases one unit into a wave that spawns nothing else, and clears", async (
     h.debug.setUnitWaypoint(id, COLLECTOR_WAYPOINT);
     h.debug.setUnitPosition(id, sink.x, sink.y);
     const cleared = await h.until((s) => !s.waveActive, {
-      maxFrames: LEAK_FRAMES,
+      maxFrames: holdFrames(LEAK_SECONDS),
     });
     return { id, opened, held, cleared };
   });

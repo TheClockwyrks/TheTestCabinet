@@ -17,8 +17,8 @@ import {
   quatFromEuler,
   quatRotate,
   vec3,
-} from "@test-cabinet/structured-3d";
-import type { Model, Vec3 } from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
+import type { Model, Vec3 } from "@clockwyrks/structured-3d";
 import { VOXELS_PER_UNIT } from "../constants";
 import { LAYER } from "../layers";
 import { models, type ModelName } from "../assets";

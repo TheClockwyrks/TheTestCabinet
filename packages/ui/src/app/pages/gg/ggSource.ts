@@ -21,7 +21,7 @@ import type {
   GgFieldCatalog,
   GgQuery,
   GgQueryResponse,
-} from "@test-cabinet/run-record/gg-query";
+} from "@clockwyrks/run-record/gg-query";
 import { useAuth } from "../../../client/auth";
 import { useOptionalBackend } from "../../../client/context";
 import { useGalleryData } from "../../data/galleryContext";

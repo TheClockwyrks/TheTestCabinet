@@ -11,12 +11,8 @@
 // `apply` walks the tree once a frame, so a panel and its lines appear and
 // disappear together.
 
-import {
-  ShapeComponent,
-  TextComponent,
-  vec3,
-} from "@test-cabinet/structured-3d";
-import type { Actor, RenderComponent, Vec3 } from "@test-cabinet/structured-3d";
+import { ShapeComponent, TextComponent, vec3 } from "@clockwyrks/structured-3d";
+import type { Actor, RenderComponent, Vec3 } from "@clockwyrks/structured-3d";
 import { LAYER } from "../layers";
 import { display, INK, mono, PANEL, PANEL_EDGE } from "../palette";
 

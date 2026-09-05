@@ -10,7 +10,7 @@
 // It works off the token stream rather than the tree, because the input is by definition
 // half-typed: `cap.` is not a parseable predicate, but it is exactly the moment the
 // operator wants the capability fields listed.
-import type { GgFieldCatalog, GgFieldInfo } from "@test-cabinet/run-record/gg-query";
+import type { GgFieldCatalog, GgFieldInfo } from "@clockwyrks/run-record/gg-query";
 import { AGG_FUNCS, STAGE_KEYWORDS } from "./ast";
 import { type Token, keywordOf, tokenize } from "./lex";
 import { asDisplay } from "./values";

@@ -9,7 +9,7 @@
 // to code-drawn stand-ins and the cue is simply silent, so a missing file
 // costs polish rather than playability.
 
-import type { ParticleSystem as SystemSpec } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem as SystemSpec } from "@clockwyrks/particle-runtime";
 import {
   BALL_FRAME_COUNT,
   CUES,

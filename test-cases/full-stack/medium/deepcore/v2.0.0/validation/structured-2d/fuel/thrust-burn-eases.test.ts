@@ -8,13 +8,19 @@
 //
 // The upward speed is posed and the miner's body held still, so it stays exactly
 // where it was posed for the whole hold and each reading falls at one named point
-// on the curve: half of `CRUISE_SPEED`, `CRUISE_SPEED` itself, and half again
-// above it, which is where the `min` clamps. In the open sky there is no life
+// on the curve: half of `CRUISE_SPEED`, `CRUISE_SPEED` itself, and the fastest
+// climb specs/character.md allows the posed miner — the tier-1 jetpack's
+// `emptyClimb` of `950`, which an empty bay leaves uncapped and which sits above
+// `CRUISE_SPEED`, so it is where the `min` clamps. In the open sky there is no life
 // support on the meter and with nothing held laterally there is no air burn, so
 // each spend is the thrust burn alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CRUISE_SPEED, THRUST_BURN_SIZE_MULT } from "../constants";
+import {
+  CRUISE_SPEED,
+  JETPACK_TIERS,
+  THRUST_BURN_SIZE_MULT,
+} from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   ACTION_KEY,
@@ -35,8 +41,16 @@ const COL = 8;
 /** How long thrust is held at each speed, in seconds. */
 const HOLD_SECONDS = 1;
 
-/** The upward speeds the curve is read at. */
-const SPEEDS = [CRUISE_SPEED / 2, CRUISE_SPEED, CRUISE_SPEED * 1.5];
+/**
+ * The upward speeds the curve is read at.
+ *
+ * The fastest is the climb cap itself. specs/character.md caps upward speed at
+ * `emptyClimb * (1 - (1 - CLIMB_CAP_FLOOR) * min(1, load))`, and the scene poses
+ * an empty bay on the tier-1 jetpack, so `JETPACK_TIERS[0].emptyClimb` (`950`)
+ * is the boundary: no faster climb is reachable, and it is already past
+ * `CRUISE_SPEED`, where the `min` in the burn curve clamps.
+ */
+const SPEEDS = [CRUISE_SPEED / 2, CRUISE_SPEED, JETPACK_TIERS[0].emptyClimb];
 
 let h: Harness;
 

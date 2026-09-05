@@ -16,9 +16,21 @@
 // per-wave scaling was never applied at all fails here rather than passing on a
 // yard where nothing moved between the two waves.
 
+// THE CLOCK. Twelve ground-outs is twelve walks of three tiles, and the walk is
+// the whole cost of the check: what it decides is the Grid Integrity a leak took,
+// which is a figure the collector pays once. The specification deliberately fixes
+// no frame size — "an interval of simulation time reaches the same state however
+// it was divided into frames and whatever frame rate produced it"
+// (specs/instrumentation.md), which `instrumentation/frame-division-movement`
+// decides — and nothing read here is a projectile: the Capacitor `openField`
+// stands is `310` units from the walk, far outside its `100` reach, and the
+// unit walks away from it. So the frames are taken at {@link HZ}, where the
+// fastest unit in the roster still steps a fifth of a tile.
+
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { LOAD_ROSTER } from "../constants";
+import { ConstantClock } from "@clockwyrks/simple-2d";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { leakFor, openField } from "./vitals";
 import {
@@ -29,10 +41,17 @@ import {
   healthStillScales,
 } from "./constant";
 
+/**
+ * The frame rate the walks are taken at: `30` Hz, a quarter of this project's
+ * default. The Spark, the roster's fastest unit at `120` units per second, still
+ * steps `4` units a frame, a fifth of a tile.
+ */
+const HZ = 30;
+
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ clock: new ConstantClock(1000 / HZ) });
 });
 
 afterEach(() => {

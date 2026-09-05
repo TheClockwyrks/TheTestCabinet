@@ -197,8 +197,13 @@ pointer target, so the screen carries two.
 
 - During `playing`, show the count beside the label `HUD_SOLVED_LABEL` (`SOLVED`)
   and the current tier beside `HUD_TIER_LABEL` (`TIER`).
-- Both are legible at the logical stage size and sit clear of the board, whose
-  extent is given in `specs/board.md`.
+- Beside means within `HUD_VALUE_GAP` (`96`): a value drawn separately from its
+  label leaves at most that gap between the two runs horizontally, and their
+  baselines sit at most that far apart. A value drawn in the label's own run is
+  beside it already.
+- Both are legible at the logical stage size and sit clear of the board in play,
+  whose extent is the box its own cell centers span, given in `specs/board.md`,
+  widened by `NODE_R` on every side.
 - Where they sit and how they are styled is the build's to design, alongside the
   rest of the presentation.
 

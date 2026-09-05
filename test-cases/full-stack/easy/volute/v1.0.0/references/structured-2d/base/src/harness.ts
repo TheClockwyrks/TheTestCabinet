@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // Volute — the shared test harness every check in this build runs on.
 //
 // Every check in this build runs the REAL engine, in process, over an
@@ -34,7 +35,7 @@ import {
   type Engine,
   type SurfaceMetrics,
   type Viewport,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, vi } from "vitest";
 import type { Core, Injector } from "./actors";
 import { FIELD_H, FIELD_W, INJECTOR_X, INJECTOR_Y } from "./constants";

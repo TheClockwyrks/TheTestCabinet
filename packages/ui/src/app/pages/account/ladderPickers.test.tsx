@@ -1,6 +1,6 @@
 import { act, render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { Gate, LadderRungInput } from "@test-cabinet/run-record/ladders";
+import type { Gate, LadderRungInput } from "@clockwyrks/run-record/ladders";
 import type { BackendClient } from "../../../client/clients";
 import { BackendProvider } from "../../../client/context";
 import {

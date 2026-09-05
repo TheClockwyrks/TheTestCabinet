@@ -25,7 +25,7 @@
 // The four acts differ only in which carry they build, which is why each is one
 // short function here rather than a special case somewhere in the transition.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { FIELD_CX, FIELD_CY, HOLD_TIME, OBSTACLE_CENTERS } from "./constants";
 import {
   ballOf,

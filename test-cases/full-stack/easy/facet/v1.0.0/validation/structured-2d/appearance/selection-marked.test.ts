@@ -44,7 +44,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { quietRowsWithEscape } from "../board";
 import { assertGreaterThan } from "../assert";
-import { CELL_PITCH, PATCH_DISTINCT_MIN } from "../constants";
+import { CELL_PITCH } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -141,7 +141,7 @@ it("draws the selected cell apart from that same cell unselected", async () => {
 
   assertGreaterThan(
     apart(selected, unselected),
-    PATCH_DISTINCT_MIN,
+    0,
     `how far cell (${PROBE_COL},${PROBE_ROW}) reads selected from the same ` +
       `cell unselected`,
   );

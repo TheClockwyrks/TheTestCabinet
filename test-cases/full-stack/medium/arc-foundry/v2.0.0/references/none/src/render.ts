@@ -1588,7 +1588,7 @@ function drawStatusBar(
   text(ctx, `/ ${N}`, 412, 37, 13, COL.text2, "left", "500");
   readout(clicks, "wave", `${wnum} / ${N}`, 380, 8, 80, 40);
 
-  let sub = "";
+  let sub: string;
   let subColor: string = COL.text2;
   if (game.paused) {
     sub = "PAUSED";

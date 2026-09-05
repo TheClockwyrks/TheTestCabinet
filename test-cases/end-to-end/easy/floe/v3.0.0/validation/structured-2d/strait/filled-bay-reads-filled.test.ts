@@ -6,15 +6,18 @@
 // filled from then until the level is over — and this point is the second of
 // them.
 //
-// THE OTHER HALF OF THAT SENTENCE IS ITS OWN POINT. That an open bay reads as an
-// opening in the shore is `strait/bays-read-apart`; the two fail separately, so
-// they are graded separately.
+// WHAT AN OPEN BAY LOOKS LIKE AGAINST THE SHORE IS NOT DECIDED ANYWHERE, and is
+// not meant to be: telling one drawn thing from another is appearance, which the
+// reviewer's `presentation` rating judges. What a pixel can decide is that
+// something was drawn where the specification says something is drawn, and that
+// is the whole of this point.
 //
 // THE COMPARISON IS A BAY AGAINST ITSELF. The same point of the same bay is read
 // before and after the bay is filled, so the two pictures differ in the bay's
 // state and in nothing else at all — same build, same tile, same frame boundary,
-// same everything else on the strait. What is read is a distance, never a
-// colour: Floe fixes no palette.
+// same everything else on the strait. What is asserted is that the two readings
+// DIFFER, and nothing more: no colour, no distance and no share of the mouth
+// enters into it, and how a build marks a filled bay is its own.
 //
 // THE MIDDLE BAY is the one it is read on: neither the leftmost nor the
 // rightmost, and its two neighbours of solid shore are both well inside the
@@ -30,7 +33,7 @@
 // the mouth when either reading is taken.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThanOrEqual } from "../assert";
+import { assertGreaterThan } from "../assert";
 import { BAYS, ROW_BAYS, TILE } from "../constants";
 import {
   captureStill,
@@ -39,16 +42,6 @@ import {
   tileCenter,
   type Harness,
 } from "../harness";
-/**
- * The fraction of a bay's own pixels that must change when it fills.
- *
- * The specification gives this half no distance, only that a filled bay reads as
- * filled, so what is required is a mark rather than a tint: a twentieth of the
- * two tiles sampled is about seventy pixels, which is something drawn rather
- * than a stray pixel or an edge that rasterized a shade over.
- */
-const CHANGED_MIN = 0.05;
-
 /**
  * How far inside a tile's edges the pixels are read, in stage units.
  *
@@ -111,12 +104,10 @@ it("renders a filled bay apart from the same bay open", async () => {
   captureStill(filled, "scene");
 
   let differing = 0;
-  let total = 0;
   for (const col of BAYS[FILLED_BAY]) {
     const before = tilePixels(open, col);
     const after = tilePixels(filled, col);
     for (let i = 0; i < before.length; i += 4) {
-      total += 1;
       if (
         before[i] !== after[i] ||
         before[i + 1] !== after[i + 1] ||
@@ -127,11 +118,13 @@ it("renders a filled bay apart from the same bay open", async () => {
     }
   }
 
-  assertGreaterThanOrEqual(
-    differing / total,
-    CHANGED_MIN,
+  assertGreaterThan(
+    differing,
+    0,
     `bay ${FILLED_BAY}, columns ${BAYS[FILLED_BAY][0]} and ` +
-      `${BAYS[FILLED_BAY][1]}: the fraction of its own pixels that changed ` +
-      `when it filled (specs/overview.md, specs/bays.md)`,
+      `${BAYS[FILLED_BAY][1]}: the pixels of its own mouth that changed when ` +
+      `it filled — a filled bay reads as filled (specs/overview.md, ` +
+      `specs/bays.md), so something is drawn there that an open bay does not ` +
+      `have`,
   );
 });

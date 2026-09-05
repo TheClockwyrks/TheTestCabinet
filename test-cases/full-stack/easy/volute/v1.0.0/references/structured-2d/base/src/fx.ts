@@ -8,7 +8,7 @@
 //     over the injector, the last two played by swapping the frame onto the
 //     sprite the actor already carries;
 //   * the PARTICLE SYSTEMS, simulated live through
-//     `@test-cabinet/particle-runtime`'s canvas binding — the extraction burst,
+//     `@clockwyrks/particle-runtime`'s canvas binding — the extraction burst,
 //     the bore detonation, the intake spray, and the shimmer that separates a
 //     grant from an ordinary extraction.
 //
@@ -20,12 +20,8 @@
 // transform that folds that box down onto the footprint the event calls for; the
 // two maps compose, so a particle lands where the event put it.
 
-import {
-  Actor,
-  DrawComponent,
-  type DrawApi,
-} from "@test-cabinet/structured-2d";
-import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
+import { Actor, DrawComponent, type DrawApi } from "@clockwyrks/structured-2d";
+import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
 import { assets, type SheetName, type SystemName } from "./assets";
 import { Injector, Intake } from "./actors";
 import { TAGS } from "./constants";

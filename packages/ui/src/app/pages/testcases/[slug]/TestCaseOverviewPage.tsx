@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Markdown, Panel } from "@test-cabinet/ui";
+import { Markdown, Panel } from "@clockwyrks/ui";
 import { MediaView } from "../../../components/MediaView";
 import { ReferencePlayable } from "../../../components/PlayableEmbed";
 import { engineName } from "../../../data/engines";

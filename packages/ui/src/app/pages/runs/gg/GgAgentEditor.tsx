@@ -2,9 +2,9 @@ import { useState } from "react";
 import {
   DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE,
   DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE,
-} from "@test-cabinet/run-record/gg-system-prompt";
-import type { GgSubagentScope } from "@test-cabinet/run-record/gg";
-import { SegmentedControl } from "@test-cabinet/ui";
+} from "@clockwyrks/run-record/gg-system-prompt";
+import type { GgSubagentScope } from "@clockwyrks/run-record/gg";
+import { SegmentedControl } from "@clockwyrks/ui";
 import type { Model } from "../../../../client/types";
 import { ModelCombobox } from "../../../components/ModelCombobox";
 import { ResetControl } from "../../../components/ResetControl";

@@ -53,10 +53,33 @@ async function screenDraws(harness: Harness): Promise<TextDraw[]> {
   return textDraws(ops.map(toDrawCall));
 }
 
-/** Every number a run of text carries, as figures rather than characters. */
+/**
+ * The separators a build may set between a figure's digit triples.
+ *
+ * ASCII space is deliberately absent: a frame's text is assembled by joining
+ * separate draw runs with one, so accepting it would read the two figures in
+ * `40 130` as the single number 40130. `.` is absent for the same sort of
+ * reason — it is the decimal point, and a build drawing `1.5` means one and a
+ * half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One drawn number: a grouped figure, or a plain one. */
+const DRAWN = new RegExp(
+  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/**
+ * Every number a run of text carries, as figures rather than characters.
+ *
+ * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
+ * come back as 1234 and a build is free to group the figure it draws.
+ */
 function figuresIn(text: string): number[] {
-  const digits = text.replace(/(?<=\d)[\s,'](?=\d)/g, "");
-  return [...digits.matchAll(/\d+(?:\.\d+)?/g)].map((one) => Number(one[0]));
+  return (text.match(DRAWN) ?? []).map((one) =>
+    Number(one.replace(new RegExp(GROUP, "g"), "")),
+  );
 }
 
 let h: Harness;

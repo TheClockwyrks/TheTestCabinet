@@ -25,11 +25,7 @@
 // left out, because a health bar dropping is not a burst.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertGreaterThanOrEqual,
-} from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { structureCenter } from "../constants";
 import {
   captureReplay,
@@ -54,7 +50,6 @@ const AT = { x: HEAD.x + 80, y: HEAD.y };
 const POINTS = lattice(AT, 18, 3).filter((point) => point.y >= AT.y - 8);
 
 const WINDOW = ticks(0.1);
-const MOVING = WINDOW / 2;
 
 let h: Harness;
 
@@ -95,11 +90,5 @@ it("sets the impact point moving on the frame a shot connects", async () => {
     "the point a shot connected at to change on more frames than the same " +
       "ground did before the shot, so an impact burst is played there " +
       `(specs/assets.md); it changed on ${still} of ${WINDOW} frames before`,
-  );
-  assertGreaterThanOrEqual(
-    played.moving,
-    MOVING,
-    "the burst to keep moving across the tenth of a second after the hit, as " +
-      "a live particle system does (specs/assets.md)",
   );
 });

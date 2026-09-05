@@ -1,4 +1,4 @@
-import type { DebugScriptResult, RunRecord } from "@test-cabinet/run-record";
+import type { DebugScriptResult, RunRecord } from "@clockwyrks/run-record";
 import type {
   FailureCap,
   ReviewItem,

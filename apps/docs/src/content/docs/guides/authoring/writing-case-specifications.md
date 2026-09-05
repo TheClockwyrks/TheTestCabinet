@@ -5,7 +5,8 @@ title: Writing Case Specifications and Prompts
 ## Overview
 
 The seeded specs and the rendered prompt are the whole world a model sees when it
-builds a case. The rules on this page apply to every
+builds a case, alongside the starter project the case seeds beside them. The
+rules on this page apply to every
 [end-to-end](/testing/end-to-end/overview/) and
 [full-stack](/testing/full-stack/overview/) case, whether you are authoring one,
 revising one, or adding a variant. The per-type authoring guides say which files
@@ -42,9 +43,9 @@ Every seeded spec and the prompt exclude:
   the product needs;
 - URLs, paths, and identifiers that point at this repository or the gallery.
 
-The seeded workspace carries the same rule. Its `index.html`, its
-`package.json`, and its tool configuration name the build's own files and its
-entry point, so what the model opens describes the game alone.
+The seeded workspace carries the same rule, as
+[The workspace describes the game alone](/guides/authoring/writing-workspaces-and-references/#the-workspace-describes-the-game-alone)
+covers.
 
 Requirements that exist for validation are written as ordinary product
 requirements. The [instrumentation](/testing/end-to-end/instrumentation/)
@@ -54,13 +55,6 @@ overlay are specified as debugging features the game needs.
 Mentioning reviewers is acceptable. Work gets reviewed whether or not it is part
 of a benchmark, so "reviewers will check X" reads as ordinary engineering
 process.
-
-## Declare an inert icon in `index.html`
-
-Use `<link rel="icon" href="data:," />` in seeded `index.html` files.
-
-Omitting this results in 404 errors getting reported in the console, which
-validators may detect and fail on.
 
 ## Never help the model
 
@@ -122,8 +116,22 @@ scores near the top during a match, a title screen showing the title and the
 menu. Palettes, fonts, layouts, and styling are the build's choices.
 
 How the build looks is what the reviewer's
-[domain ratings](/testing/end-to-end/evaluation/#review) judge. A validator
-asserting appearance checks presence and distinguishability, never a hex value.
+[domain ratings](/testing/end-to-end/evaluation/#review) judge. A validator reads
+the picture only to decide whether the build drew something where the spec says
+something is drawn, and reads palettes, contrast, extent, and placement never.
+
+### Produced files are required to load
+
+A case whose build produces its own files states that the built site is
+self-contained and carries every file it draws and plays, and that the site
+serves every produced file under the root the spec names. Producing those files
+and getting them to the page is the build's work, and a build that fails at it
+fails the checks that read what it drew.
+
+The spec states no behavior for a load that fails. Wording that keeps the game
+running through a missing sprite or a silent cue makes degradation a requirement,
+which puts a fallback path under test and invites a validator to withhold the
+files every other check depends on.
 
 ### Showcase media exists and is reviewed
 
@@ -141,10 +149,8 @@ manifest, and the media files, at the paths the
 [showcase format](/components/core/showcase/) fixes. The showcase is a
 deliverable of the build like any other, so the spec states it as one.
 
-A reference implementation carries the least that satisfies the existence
-validator: the description, the carousel manifest, and one small file the
-carousel names. The media a case presents is captured once into the variant's
-`showcase/<variant>/` directory, which is the copy every surface renders.
+What a reference implementation carries for that validator is covered by
+[It carries the least its showcase validator needs](/guides/authoring/writing-workspaces-and-references/#it-carries-the-least-its-showcase-validator-needs).
 
 ### Every review item carries a validator
 
@@ -171,18 +177,40 @@ with human developers, and names the checks that must pass: the project's
 type-check, lint, format, and test commands. The practices that get it there stay
 out of the spec, as [Never help the model](#never-help-the-model) covers.
 
-The workspace ships the configuration those commands run under, and what the
-test command writes is read as the run's own results and coverage. See
-[The TypeScript toolchain](/testing/end-to-end/manifests/#the-typescript-toolchain).
+The workspace ships the configuration those commands run under, as
+[The shared toolchain](/guides/authoring/writing-workspaces-and-references/#the-shared-toolchain)
+covers.
 
 ### Engineless configurations
 
 A case's `none` workspace follows the principles above best-effort, since without
 an engine a validator drives the build through its
 [debug API](/testing/end-to-end/instrumentation/) in a browser rather than in
-process. The hard rule is that the seeded workspace supplies configuration only:
-a `package.json`, tool configuration, and an `index.html`, with no source code.
-The model owns as much of the code as possible.
+process. What that workspace holds is covered by
+[Engineless workspaces ship configuration only](/guides/authoring/writing-workspaces-and-references/#engineless-workspaces-ship-configuration-only).
+
+## Validators type-check where they are authored
+
+A case ships one validator project per engine at `validation/<engine>/`, and a
+run stages that project into the collected tree at `validation/`. Each project's
+`tsconfig.json` extends `../tsconfig.json`, which is the build's own root
+tsconfig at run time.
+
+The version supplies that parent at `validation/tsconfig.json`, a copy of the
+seeded workspace's `tsconfig.json`, so a validator is checked under the options
+it runs under. Nothing seeds or stages it.
+
+Two module paths a validator uses exist only in the staged tree. `../src/*` is
+the build's own source, and `./case-harness/*` is the shared harness copied in
+beside the suites. Each project's `tsconfig.json` maps both onto the checkout
+with `rootDirs`, pointing the first at the case's reference implementation for
+that engine and the second at `packages/case-harness/src`. The reference is the
+one for the project's own engine at the case's default variant, and every suite
+in the project is checked against it.
+
+Run `npm run typecheck:validators` after editing a validator or a reference
+implementation's exported surface. It covers every project of every case, and
+both CI systems run it.
 
 ## Menus and screens
 
@@ -297,6 +325,8 @@ When you finish revising a case's specs or prompt, confirm each of the following
   behavior written as a concrete number or an explicit bound.
 - Appearance is specified as what must be visible or present, leaving palette,
   type, layout, and styling to the build.
+- A case producing its own files requires the built site to be self-contained and
+  to serve every produced file, and states no behavior for a load that fails.
 - Every menu is navigable by pointer and touch as well as by the keyboard, and
   the build reports each item's hit region through its debug API.
 - Every transition between screens is stated, and a pause menu opens on Escape
@@ -304,19 +334,15 @@ When you finish revising a case's specs or prompt, confirm each of the following
 - Navigating back to a menu selects the entry that led away from it.
 - Every review item asserts one observable behavior and carries a validation
   script for each engine it covers, with every threshold derived from the spec.
+- Every validator project type-checks, with `npm run typecheck:validators`.
 - A required showcase carries one review item whose validator checks only that
   the showcase exists, weighted above the default, with no other item asserting
   anything about the media.
-- The seeded set states the showcase as a deliverable of the build, and the
-  reference implementation carries the least its existence validator needs.
+- The seeded set states the showcase as a deliverable of the build.
 - The spec requires clean, maintainable code and names the checks that must
   pass, without listing the practices that produce it.
-- The workspace ships the configuration those checks run under, and its test
-  command writes the report files the run's results and coverage are read from.
 - The specs carry no coaching: nothing states how to build the game or how to
   write the code, only what the finished build must be and do.
-- An engineless workspace contains configuration only.
-- Every seeded `index.html` declares an inert icon.
 - The seeded set carries no historical or changelog wording.
 - Specs, prompt, file names, and the seeded workspace carry no mention of
   testing, benchmarking, scoring, or this project.
@@ -333,6 +359,8 @@ output rather than the sources. The seeded tree is what the model receives.
 
 ## Next steps
 
+- [Writing workspaces and reference implementations](/guides/authoring/writing-workspaces-and-references/)
+  covers the starter project a run begins from and the case's own answer.
 - [Authoring an end-to-end case](/guides/authoring/authoring-an-end-to-end-test-case/)
   gives the structural procedure for a playable case.
 - [Authoring a full-stack case](/guides/authoring/authoring-a-full-stack-test-case/)

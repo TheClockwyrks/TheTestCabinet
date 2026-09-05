@@ -12,7 +12,7 @@
 // What is left is `src/game.ts`: the mine, the miner, the economy, the render,
 // and the camera the game scrolls the mine under, which this engine does not own.
 
-import { createEngine } from "@test-cabinet/simple-2d";
+import { createEngine } from "@clockwyrks/simple-2d";
 import { STAGE_H, STAGE_W } from "./constants";
 import { BACKGROUND, game } from "./game";
 

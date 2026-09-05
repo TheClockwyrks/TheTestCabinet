@@ -16,7 +16,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { CARD_W } from "../constants";
+import { CARD_W, LAUNCH_VX_MAX } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -28,19 +28,22 @@ import { openFlight, poseFlyer } from "./flight";
 /**
  * Where the card starts, and how fast.
  *
- * Its left corner is on the stage's left edge, driven left at a speed inside the
- * launch range, so it has cleared the edge entirely once it has traveled its own
- * width: a sixth of a second.
+ * Its left corner is on the stage's left edge, driven left at `LAUNCH_VX_MAX`, the
+ * fastest a launched card may travel (specs/victory.md draws `vx` uniformly from
+ * `[LAUNCH_VX_MIN, LAUNCH_VX_MAX]` with a sign chosen either way), so it has
+ * cleared the edge entirely once it has travelled its own width: `100 / 420` =
+ * `0.24` s.
  */
-const START = { x: 0, y: 300, vx: -600, vy: 0 };
+const START = { x: 0, y: 300, vx: -LAUNCH_VX_MAX, vy: 0 };
 
 /**
  * How long the card is flown for, in frames.
  *
- * A quarter of a second, which is half again the `CARD_W / 600` seconds the crossing
- * takes, so a build whose flight runs slightly slow still clears the edge inside it.
+ * Four tenths of a second, which is half again the `CARD_W / LAUNCH_VX_MAX` seconds
+ * the crossing takes, so a build whose flight runs slightly slow still clears the
+ * edge inside it.
  */
-const HOLD_FRAMES = framesFor(0.25);
+const HOLD_FRAMES = framesFor(0.4);
 
 let harness: Harness;
 

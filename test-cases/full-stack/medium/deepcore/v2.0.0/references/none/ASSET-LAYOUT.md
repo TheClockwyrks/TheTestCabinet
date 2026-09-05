@@ -94,7 +94,7 @@ face west.
 
 ## Particle VFX — `scripts/gen-fx.sh` (`particle-2d` → `system.json`)
 
-Simulated live via `@test-cabinet/particle-runtime`'s canvas binding (`src/particles.ts`),
+Simulated live via `@clockwyrks/particle-runtime`'s canvas binding (`src/particles.ts`),
 spawned at each event's world position; each is read as `assets.fx[kind]`. The on-screen
 footprint per kind is set in `src/particles.ts` (`FOOTPRINT`), scaled to the 80px world.
 

@@ -27,7 +27,7 @@
 // scenario once did — leaves this gate nothing to compare and every drawn frame
 // unverified.
 
-import type { PerformanceSnapshotCheck } from "@test-cabinet/run-record";
+import type { PerformanceSnapshotCheck } from "@clockwyrks/run-record";
 import type { Snapshot } from "./renderer";
 
 /** A frame that disagreed with the run's record at a graded tick. */

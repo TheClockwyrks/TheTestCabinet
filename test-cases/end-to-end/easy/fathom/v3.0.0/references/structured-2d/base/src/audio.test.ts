@@ -1,7 +1,7 @@
 // Fathom — the cues the game declares, and how a tick sounds the ones it raised.
 
 import { describe, expect, it } from "vitest";
-import type { CueSpec, InitApi, WorldAudio } from "@test-cabinet/structured-2d";
+import type { CueSpec, InitApi, WorldAudio } from "@clockwyrks/structured-2d";
 import { CUES, type CueName } from "./constants";
 import { CUE_SPECS, defineCues, noCues, playCues } from "./audio";
 

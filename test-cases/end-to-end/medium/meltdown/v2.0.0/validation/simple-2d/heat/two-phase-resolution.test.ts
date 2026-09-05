@@ -37,7 +37,7 @@
 // the ends of the chain having an extra open radiator face, that the middle
 // tower's loss never equals its neighbours' gains in a conformant build either.
 
-import { ConstantClock } from "@test-cabinet/simple-2d";
+import { ConstantClock } from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo } from "../assert";
 import { sizeOf } from "../geometry";

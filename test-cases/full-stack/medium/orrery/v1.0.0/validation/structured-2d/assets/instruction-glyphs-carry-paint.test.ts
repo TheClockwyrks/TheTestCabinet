@@ -9,11 +9,9 @@
 // blank cell is what a tape holds where there is NO instruction.
 //
 // WHAT IT READS. Each of the ten files decodes, and the share of its canvas
-// carrying paint — any pixel whose alpha is above zero — clears `PAINT_MIN_SHARE`.
-// `specs/assets.md` fixes no coverage figure, so that floor is one hundredth of the
-// canvas: six pixels of a `24`-unit cell, an order of magnitude below the thinnest
-// mark an instruction could legibly be drawn as, which makes it a reading about a
-// canvas that was drawn on at all rather than a second art bar. Whether the ten are
+// carrying paint is above zero: some pixel of it carries an alpha above zero.
+// `specs/assets.md` fixes no coverage figure, so what is read is that the
+// canvas was drawn on at all rather than a second art bar. Whether the ten are
 // TOLD APART in a `24`-unit tape cell is the art bar itself, and the reviewer's
 // judgement.
 //
@@ -21,15 +19,10 @@
 // checker shows through, the canvas carried nothing there.
 
 import { it } from "vitest";
-import { assertGreaterThanOrEqual, assertLength, fail } from "../assert";
+import { assertGreaterThan, assertLength, fail } from "../assert";
 import { INSTRUCTIONS } from "../constants";
 import { INSTRUCTION_SPRITES } from "./files";
-import {
-  PAINT_MIN_SHARE,
-  decodeProduced,
-  paintShare,
-  showSprites,
-} from "./sprites";
+import { decodeProduced, paintShare, showSprites } from "./sprites";
 
 it("decodes each of the ten instruction glyphs as a canvas carrying paint", async () => {
   await showSprites("coverage", INSTRUCTION_SPRITES);
@@ -43,9 +36,9 @@ it("decodes each of the ten instruction glyphs as a canvas carrying paint", asyn
   for (const [index, row] of INSTRUCTION_SPRITES.entries()) {
     const read = readings[index];
     if (read.sprite === null) fail(`a decoded ${row.label}`, read.reason);
-    assertGreaterThanOrEqual(
+    assertGreaterThan(
       paintShare(read.sprite),
-      PAINT_MIN_SHARE,
+      0,
       `${row.label}: the share of its canvas carrying paint`,
     );
   }

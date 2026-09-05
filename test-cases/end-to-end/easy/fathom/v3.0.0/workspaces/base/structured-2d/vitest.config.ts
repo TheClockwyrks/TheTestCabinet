@@ -22,8 +22,8 @@
 //                                   failure with its message
 //   coverage/coverage-summary.json  istanbul's four metrics, whole and per file
 //
-// The `default` reporter and the coverage summary's `text` output print for a
-// person reading the log; nothing reads back what this command prints.
+// The `default` reporter prints for a person reading the log; nothing reads
+// back what this command prints.
 //
 // `src/constants.ts` and `src/main.ts` are supplied with the project and must not
 // be edited, so they are excluded from coverage: they are not this build's work
@@ -41,7 +41,7 @@ export default defineConfig({
     outputFile: { json: "coverage/test-report.json" },
     coverage: {
       provider: "istanbul",
-      reporter: ["text", "json-summary"],
+      reporter: ["json-summary"],
       // A failing suite is exactly the build whose coverage is most worth having,
       // and vitest writes no coverage report on failure without this.
       reportOnFailure: true,

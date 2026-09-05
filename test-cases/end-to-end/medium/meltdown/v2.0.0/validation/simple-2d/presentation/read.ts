@@ -1,28 +1,39 @@
-// presentation — reading the picture as COLOUR, for the checks in this group.
+// presentation — reading the picture, for the checks in this group that decide
+// whether the build drew something where the specification says something is
+// drawn.
 //
-// WHY THIS GROUP READS PIXELS AND NOTHING ELSE. specs/overview.md fixes no
+// WHAT THIS GROUP READS, AND WHAT IT NEVER READS. specs/overview.md fixes no
 // palette and no typeface: "The palette, the type, the glow, and every other
-// aspect of the look are yours." What it fixes instead is a table of things a
-// player must READ AT A GLANCE, each of them a statement that two things look
-// different from each other. So every reading here is a comparison between two
-// things the BUILD drew, on the 0-441 scale the RGB cube spans, and no check in
-// this group ever names a colour.
+// aspect of the look are yours." So no reading in this group is a colour, a
+// contrast, or a distance between two things the build drew. Every distance
+// below is on the 0-441 scale the RGB cube spans, and every one of them is
+// between two readings of the SAME region.
+//
+// WHAT A READING IS ALLOWED TO BE. A comparison between two things the build drew
+// is appearance, and specs/overview.md gives appearance to the build. So a
+// reading in this group is one of two shapes: the region the specification puts a
+// thing on differs from the same region with that thing taken away through the
+// debug surface, or the region changes when one thing about the world changes.
+// How far it has to change is MEASURED rather than stated — the same region read
+// on two frames with nothing changed is how far the picture moves on its own, and
+// a reading has to beat that by {@link NOISE_MARGIN}.
 //
 // WHY IT IS LOCAL TO THIS GROUP. `harness.ts` already carries `sampleColor`,
 // `sampleTile`, `samplesAlong` and `colorDistance`, and every one of them is used
 // here through the functions below. What is added is the shape of the reading
 // this group needs and no other does: a whole REGION of the picture read at once,
-// the FRACTION of a region that answers a comparison, and the colour a region
-// mostly reads as. Nothing here carries a threshold — every distance and every
-// proportion is stated in the check that asserts it, derived from the figure the
-// specification fixes for it.
+// a ring of points inside a footprint, the colour a region mostly reads as, and
+// how far one set of points moved between two frames. The only figure any of it
+// carries is {@link NOISE_MARGIN}, and that is a tolerance on a measurement
+// rather than a bar a build is held to.
 //
 // WHY A REGION AND NOT A POINT. A build draws a tower, a preview or an opening
 // however it likes: a body with a label on it, an outline, a bar, a stripe down
 // one face. A single sampled point can land on any of those and say nothing about
 // what the thing reads as. So a check here reads every pixel of the region it
-// cares about and then says, in its own terms, how much of that region has to
-// answer for the reading to hold.
+// cares about, and what it takes from two readings of that region is the point at
+// which they diverge MOST: a mark one pixel wide still reads, and a build that
+// drew nothing there moves no point at all.
 
 import { fail } from "../assert";
 import { TILE, tileLeft, tileTop } from "../constants";
@@ -94,7 +105,7 @@ export function spotColor(h: Harness, x: number, y: number): Rgb {
  * ONE `getImageData` over the whole region rather than one per point, because a
  * check here reads thousands of pixels and the region is contiguous. The order is
  * fixed by the region and the step alone, so the same region read on two
- * different frames comes back point-for-point aligned and {@link movedFraction}
+ * different frames comes back point-for-point aligned and {@link largestShift}
  * can compare them.
  */
 export function readRegion(h: Harness, region: Region, step = 1): Rgb[] {
@@ -214,36 +225,27 @@ export function faceBand(
 /* -------------------------------------------------------------------------- */
 
 /**
- * The colour a region MOSTLY reads as: the mean of its largest cluster of
- * samples, where two samples join one cluster when they are within `sameMax` of
- * each other.
+ * The colour a set of samples shows most often: a region's own ground.
  *
- * How a check asks "what colour is this tower" of a footprint carrying a body, a
- * label, an outline and a bar. The caller states `sameMax`, because how close two
- * readings must be to count as the same reading is a claim about what a player
- * tells apart and belongs in the check that makes it.
+ * Exact rather than clustered, so no figure decides how close two readings have
+ * to be to count as one. Text covers a minority of the box it is laid in,
+ * whatever the face, so the commonest reading in that box is what the text was
+ * laid on.
  */
-export function dominant(samples: readonly Rgb[], sameMax: number): Rgb {
+export function modal(samples: readonly Rgb[]): Rgb {
   if (samples.length === 0) {
     fail("a region of the stage with pixels in it to read", "no pixels read");
   }
-  const clusters: { seed: Rgb; r: number; g: number; b: number; n: number }[] =
-    [];
-  for (const sample of samples) {
-    const found = clusters.find(
-      (cluster) => colorDistance(cluster.seed, sample) <= sameMax,
-    );
-    if (found === undefined) {
-      clusters.push({ seed: sample, ...sample, n: 1 });
-      continue;
-    }
-    found.r += sample.r;
-    found.g += sample.g;
-    found.b += sample.b;
-    found.n += 1;
+  const counts = new Map<string, { colour: Rgb; n: number }>();
+  for (const colour of samples) {
+    const key = `${colour.r},${colour.g},${colour.b}`;
+    const seen = counts.get(key);
+    if (seen === undefined) counts.set(key, { colour, n: 1 });
+    else seen.n += 1;
   }
-  const best = clusters.reduce((a, b) => (b.n > a.n ? b : a));
-  return { r: best.r / best.n, g: best.g / best.n, b: best.b / best.n };
+  let best = { colour: samples[0], n: 0 };
+  for (const entry of counts.values()) if (entry.n > best.n) best = entry;
+  return best.colour;
 }
 
 /** The sample of a region furthest from `from`, and how far it sits. */
@@ -266,49 +268,97 @@ export function furthestFrom(
   return { colour, distance };
 }
 
-/** What proportion of a region sits at least `minDistance` from `reference`. */
-export function apartFraction(
-  samples: readonly Rgb[],
-  reference: Rgb,
-  minDistance: number,
-): number {
-  if (samples.length === 0) {
-    fail("a region of the stage with pixels in it to read", "no pixels read");
-  }
-  const apart = samples.filter(
-    (sample) => colorDistance(sample, reference) >= minDistance,
-  ).length;
-  return apart / samples.length;
-}
-
-/**
- * What proportion of a region CHANGED by at least `minDistance` between two
- * frames.
- *
- * The two readings must come from the same region at the same step, so they are
- * point-for-point aligned; a length mismatch is a fault in the check rather than
- * a verdict about the build, so it throws.
- */
-export function movedFraction(
-  before: readonly Rgb[],
-  after: readonly Rgb[],
-  minDistance: number,
-): number {
-  if (before.length === 0 || before.length !== after.length) {
-    throw new Error(
-      "meltdown presentation/read.ts: movedFraction compares one region read " +
-        `on two frames, so the two readings must be the same length; got ` +
-        `${before.length} and ${after.length}`,
-    );
-  }
-  let moved = 0;
-  for (let i = 0; i < before.length; i += 1) {
-    if (colorDistance(before[i], after[i]) >= minDistance) moved += 1;
-  }
-  return moved / before.length;
-}
-
 /** A colour, rendered for a failure message. */
 export function showRgb(c: Rgb): string {
   return `rgb(${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)})`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Reading a change                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * How far above the movement two unchanged frames show a reading must sit for
+ * the build to count as having drawn something, out of the 441 the RGB cube
+ * spans.
+ *
+ * NOT A LEGIBILITY BAR. specs/overview.md gives the palette, the glow and every
+ * other aspect of the look to the build, so no figure here says how far apart two
+ * things a build drew must read. This is the tolerance on the noise measurement
+ * itself: two frames of an animated build do not move by exactly the same amount
+ * every pair, so a reading has to clear the measured movement by a little rather
+ * than by nothing. Eight units is under two per cent of the scale — far below
+ * anything a player would call a difference, and far above the rounding a
+ * repeated read of an unchanged frame shows.
+ */
+export const NOISE_MARGIN = 8;
+
+/** A logical stage point. */
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/** How far out of the footprint's half-width the body ring is read at. */
+const BODY_RING_FRACTION = 0.3;
+/** How many points the body ring carries. */
+const BODY_RING_POINTS = 12;
+
+/**
+ * A ring of points inside a tower's body, well clear of both its edges and its
+ * centre.
+ *
+ * specs/floor.md fixes the footprint — `size x size` tiles anchored at
+ * `(col, row)` — and that is all a check may assume about where a tower's own
+ * pixels are. So the ring sits at 30% of the footprint's half-width from its
+ * centre: outside the centre, where specs/hud.md lets a build draw a heat read
+ * and a build commonly draws a label, and a long way inside the faces, where
+ * specs/towers.md puts the radiator marking and where reopening a tile moves a
+ * route overlay.
+ */
+export function bodyRing(col: number, row: number, size: number): Point[] {
+  const span = size * TILE;
+  const centre = { x: tileLeft(col) + span / 2, y: tileTop(row) + span / 2 };
+  const radius = (span / 2) * BODY_RING_FRACTION;
+  const points: Point[] = [];
+  for (let n = 0; n < BODY_RING_POINTS; n += 1) {
+    const theta = (2 * Math.PI * n) / BODY_RING_POINTS;
+    points.push({
+      x: centre.x + radius * Math.cos(theta),
+      y: centre.y + radius * Math.sin(theta),
+    });
+  }
+  return points;
+}
+
+/** The device pixel under each of a run of logical points, in order. */
+export function readPoints(h: Harness, points: readonly Point[]): Rgb[] {
+  return points.map((point) => pixelAt(h, point.x, point.y));
+}
+
+/**
+ * The largest distance between two equal-length readings of the same points.
+ *
+ * The reading behind every "something changed here" check in this group: the two
+ * runs are the SAME points read on two frames, so everything the build drew that
+ * did not change cancels and what is left is the one thing that did. A length
+ * mismatch is a fault in the check rather than a verdict about the build, so it
+ * throws.
+ */
+export function largestShift(
+  before: readonly Rgb[],
+  after: readonly Rgb[],
+): number {
+  if (before.length === 0 || before.length !== after.length) {
+    throw new Error(
+      "meltdown presentation/read.ts: largestShift compares one set of points " +
+        "read on two frames, so the two readings must be the same length; got " +
+        `${before.length} and ${after.length}`,
+    );
+  }
+  let most = 0;
+  for (let i = 0; i < before.length; i += 1) {
+    most = Math.max(most, colorDistance(before[i], after[i]));
+  }
+  return most;
 }

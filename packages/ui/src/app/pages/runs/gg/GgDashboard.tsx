@@ -2,7 +2,7 @@ import { useMemo, type ReactNode } from "react";
 import type {
   GgAgentStatus,
   GgCapabilitySet,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import type {
   AgentTreeNode,
   DerivedGgState,

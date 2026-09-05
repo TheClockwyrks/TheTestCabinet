@@ -10,12 +10,8 @@
 // change at any moment (specs/instrumentation.md) rather than a figure fixed
 // for the life of a world.
 
-import {
-  Actor,
-  DrawComponent,
-  TextComponent,
-} from "@test-cabinet/structured-2d";
-import type { DrawApi } from "@test-cabinet/structured-2d";
+import { Actor, DrawComponent, TextComponent } from "@clockwyrks/structured-2d";
+import type { DrawApi } from "@clockwyrks/structured-2d";
 import { drawText, type Ctx } from "./draw";
 import { caromState, type Screen } from "./state";
 import {

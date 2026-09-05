@@ -22,6 +22,7 @@
 // The span is stated in SECONDS rather than in frames, because the frame is the
 // harness's choice and the requirement is about game time.
 
+import { ConstantClock } from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import {
@@ -29,10 +30,31 @@ import {
   createHarness,
   openYard,
   releaseUnit,
-  ticks,
   unitById,
   type Harness,
 } from "../harness";
+
+/**
+ * The frame rate this check is driven at: `10` Hz, a twelfth of this project's
+ * default.
+ *
+ * The frozen span reads three things that must not move — the simulation clock and
+ * each unit's `x` and `y` — and a frozen unit does not move whatever the step is.
+ * The settling second before it only has to get each unit off the entry, which one
+ * second of travel does at any division of it. `specs/instrumentation.md` fixes no
+ * frame size and guarantees an interval of simulation time reaches the same state
+ * however it was divided into frames, which
+ * `instrumentation/frame-division-movement` and
+ * `instrumentation/frame-division-projectile` are the two items that decide. Both
+ * spans are stated in SECONDS and both are unchanged; only the frames they are
+ * divided into are fewer.
+ */
+const PAUSE_HZ = 10;
+
+/** Frames of that clock covering `s` seconds of simulation, rounded up. */
+function pauseFrames(seconds: number): number {
+  return Math.ceil(seconds * PAUSE_HZ);
+}
 
 /** How long the units walk before the pause is engaged. */
 const SETTLE_SECONDS = 1;
@@ -46,7 +68,7 @@ const RELEASED = ["mote", "spark", "filament"] as const;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ clock: new ConstantClock(1000 / PAUSE_HZ) });
 });
 
 afterEach(() => {
@@ -57,7 +79,7 @@ it("holds the clock and every unit still, with no menu over the yard", async () 
   openYard(h, { wave: 6, integrity: 10_000 });
   const ids: number[] = [];
   for (const type of RELEASED) ids.push(releaseUnit(h, type));
-  await h.advance(ticks(SETTLE_SECONDS));
+  await h.advance(pauseFrames(SETTLE_SECONDS));
 
   h.debug.setPaused(true);
   const frozen = h.snapshot();
@@ -73,7 +95,9 @@ it("holds the clock and every unit still, with no menu over the yard", async () 
     "the screen under an in-place pause, which opens no menu (specs/ui.md)",
   );
 
-  await captureReplay(h, "paused", () => h.advance(ticks(FROZEN_SECONDS)));
+  await captureReplay(h, "paused", () =>
+    h.advance(pauseFrames(FROZEN_SECONDS)),
+  );
 
   const after = h.snapshot();
   assertEqual(

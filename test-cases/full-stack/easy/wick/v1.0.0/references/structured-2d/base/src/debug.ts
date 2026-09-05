@@ -10,7 +10,7 @@
 // screen the operation does not apply to leaves the state as it was; no pose
 // sounds a cue, and no pose decides an outcome.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { reconcileActors } from "./actors";
 import {
   DAWN_TIME,
@@ -33,6 +33,7 @@ import {
 } from "./constants";
 import { RUN_SCREENS, SILENT, choose, setSwitch } from "./flow";
 import { menuRects, tabRects, type WickRect } from "./menus";
+import { nextRandom } from "./rng";
 import { forgetHits } from "./sim/effects";
 import {
   aliveCommons,
@@ -184,6 +185,7 @@ export interface WickDebugApi {
   setProgression(on: boolean): void;
   setTick(tick: number): void;
   setSpawnTimer(seconds: number): void;
+  advanceRng(draws: number): void;
   setPlayerPosition(x: number, y: number): void;
   setFacing(facing: Facing): void;
   setHp(hp: number): void;
@@ -488,6 +490,20 @@ export function createDebugApi(worldOf: () => World): WickDebugApi {
       pose(() => {
         run().spawnTimer = value;
       });
+    },
+
+    /**
+     * Take `draws` draws off the generator and discard them, so `rngState`
+     * lands where `draws` random choices would have left it. Nothing is
+     * chosen with what was drawn. Applies on every screen, so it runs outside
+     * `pose`.
+     */
+    advanceRng(draws) {
+      const count = whole(draws, "draws", 0);
+      const s = state();
+      for (let i = 0; i < count; i += 1) {
+        s.rngState = nextRandom(s.rngState).state;
+      }
     },
 
     setPlayerPosition(x, y) {

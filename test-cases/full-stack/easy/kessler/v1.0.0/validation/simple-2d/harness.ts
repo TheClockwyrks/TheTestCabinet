@@ -71,7 +71,7 @@ import {
   type Resource,
   type SurfaceMetrics,
   type Viewport,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 import { BACKGROUND, game as build, type KesslerState } from "../src/game";
 import { fail } from "./assert";
@@ -410,10 +410,9 @@ export interface AssetFailure {
 //
 // WHAT WOULD HAPPEN WITHOUT IT. Every produced file would fail to load, and
 // every point about a produced sprite or a bound cue would fail every build
-// ever written — a fact about Node rather than about the build. `specs/assets.md`
-// requires a build that keeps playing when its files do not arrive, so a check
-// about the missing-art path still has one: it reads `assetFailures` under a
-// path nothing serves.
+// ever written — a fact about Node rather than about the build. So every check
+// this project runs gets the produced files, and `assetFailures` records the
+// loads that failed for the checks that read that the tree arrived whole.
 
 /**
  * The directory this harness sits in, which is the validator project's root.
@@ -617,12 +616,6 @@ export interface HarnessOptions {
   cssHeight?: number;
   /** Device pixels per CSS pixel. Defaults to 1, one device pixel per unit. */
   dpr?: number;
-  /**
-   * The root the engine resolves every asset path under. Defaults to the
-   * engine's own `assets/`; a check about the missing-art path names a root
-   * with nothing under it.
-   */
-  assetRoot?: string;
 }
 
 /** How far a sweep may run, in whole ticks. */
@@ -833,9 +826,6 @@ export async function openHarness(
     background: BACKGROUND,
     clock: options.clock ?? new ConstantClock(TICK_MS),
     surface,
-    ...(options.assetRoot === undefined
-      ? {}
-      : { assetRoot: options.assetRoot }),
   });
 
   // Subscribed BEFORE `initialize`, which is what makes the game's own loading

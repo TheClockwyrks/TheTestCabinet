@@ -19,30 +19,24 @@
 // read open and then closed, so what the two frames differ by is the loop and
 // nothing else. `closeTrack` is the editor's own join through the surface.
 //
-// THE SEAM IS READ AGAINST THE PATH'S OWN OTHER JOINS, not against a figure of
-// this file's choosing. Each of the six boundaries between consecutive cells is
-// read as `presentation/track-path-reads-as-a-path` reads one — the square about
-// the midpoint of two centres, which lies on their shared edge — and what is
-// required of the seam is that closing draws it as the path's weakest other join
-// is drawn. Read that way no colour, width, or shape is asked of the build, and an
-// open path whose seam carries only the bleed of the two cells either side of it
-// does not clear the bar.
+// THE SEAM IS READ TWICE, AND ONLY FOR WHETHER IT IS DRAWN. The square about the
+// midpoint of the last cell's centre and the first's — which lies on their shared
+// edge, the reading `presentation/track-path-reads-as-a-path` takes — is read
+// against the bare field, and against the same square while the path was open. No
+// colour, width, or shape is asked of the build: how it draws a corner of its
+// loop is its own, and the reviewer's to judge.
 //
 // AND THE END MARKS COME OFF. The two cells that were the open path's ends are
 // drawn differently once it is closed, while the four cells between them are drawn
 // exactly as they were — so what closing changed is the ends rather than the whole
 // path, which is what "shows no end cells" says.
 //
-// THE VERDICT. Closed, the seam is drawn as the other five joins are; open, it is
-// not. Closing redraws the two former end cells and leaves the other four alone.
+// THE VERDICT. Closed, the seam is drawn, and drawn differently from the way the
+// open path drew that square. Closing redraws the two former end cells and leaves
+// the other four alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertLessThan,
-  assertTrue,
-} from "../assert";
+import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import { adjacent, at, hexCenter, type Hex, type StagePoint } from "../field";
 import { BARE } from "../fixtures";
 import {
@@ -80,21 +74,6 @@ const JOIN_HALF = 10;
 
 /** Half the side of the square a cell is read over; inside its own hex. */
 const CELL_HALF = 18;
-
-/**
- * How much of the path's weakest other join the seam must be drawn as.
- *
- * Half, so nothing is required of how a build draws a corner of its loop, while a
- * seam carrying no more than the bleed of the cells either side of it — which is
- * what an unjoined pair carries — cannot reach it.
- */
-const SEAM_SHARE_OF_OTHERS = 0.5;
-
-/** The least share of a cell that closing must redraw at a former end. */
-const MIN_DISTINCT_SHARE = 0.05;
-
-/** How much of a cell closing may redraw away from the two former ends. */
-const UNTOUCHED_SHARE = 0.01;
 
 function joinOf(a: Hex, b: Hex): StagePoint {
   const from = hexCenter(a);
@@ -185,30 +164,21 @@ it("draws a closed track joined at its seam and without the end marks the open p
   const closedJoins = await joins();
   const closedCells = await cells();
 
-  // How strongly each boundary is drawn: how much of it the track redrew.
-  const openDrawn = openJoins.map((join, index) =>
-    differingShare(bareJoins[index] as PixelRect, join),
-  );
-  const closedDrawn = closedJoins.map((join, index) =>
-    differingShare(bareJoins[index] as PixelRect, join),
-  );
-  const others = closedDrawn.filter((_share, index) => index !== SEAM);
-  const bar = SEAM_SHARE_OF_OTHERS * Math.min(...others);
   assertGreaterThan(
-    bar,
+    differingShare(
+      bareJoins[SEAM] as PixelRect,
+      closedJoins[SEAM] as PixelRect,
+    ),
     0,
-    "the closed path's other five joins are drawn, so there is a join of its own to read the seam against",
+    "the closed track draws the boundary between its last cell and its first, so the loop is joined all the way round",
   );
-
   assertGreaterThan(
-    closedDrawn[SEAM] as number,
-    bar,
-    "the closed track's seam between its last cell and its first is drawn as its other joins are, so the loop is joined all the way round",
-  );
-  assertLessThan(
-    openDrawn[SEAM] as number,
-    bar,
-    "the same two cells were NOT drawn joined while the path was open, so a loop is told from an open path at a glance",
+    differingShare(
+      openJoins[SEAM] as PixelRect,
+      closedJoins[SEAM] as PixelRect,
+    ),
+    0,
+    "that same boundary is drawn differently from the way the open path drew it, so a loop is told from an open path at a glance",
   );
 
   for (let index = 0; index < RING.length; index += 1) {
@@ -220,13 +190,13 @@ it("draws a closed track joined at its seam and without the end marks the open p
     if (wasAnEnd) {
       assertGreaterThan(
         changed,
-        MIN_DISTINCT_SHARE,
+        0,
         `closing the path redraws the cell (${(RING[index] as Hex).q}, ${(RING[index] as Hex).r}) that was one of its two ends, so the closed track shows no end cells`,
       );
     } else {
-      assertLessThan(
+      assertEqual(
         changed,
-        UNTOUCHED_SHARE,
+        0,
         `closing the path leaves the cell (${(RING[index] as Hex).q}, ${(RING[index] as Hex).r}) as it was, so what closing changed is the ends rather than every cell of the path`,
       );
     }

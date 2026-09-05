@@ -33,10 +33,10 @@
 // frame-to-frame drift is measured first, with nothing posed between the two
 // readings, and the change the band causes has to beat it.
 //
-// WHAT IS NOT ASSERTED. That the indicator AGREES with the band drawn on the ship
-// — the ship's own two readings are `presentation/ship-reads-band`'s — and that
-// the two bands are told apart by colour at all, which is
-// `presentation/cyan-magenta-distinct`'s.
+// WHAT IS NOT ASSERTED. Anything about how the indicator LOOKS. What colour,
+// accent or type the build chose, and how far apart its two bands read, are the
+// reviewer's presentation rating; the reading here is that the strip was
+// repainted when the band moved.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -48,32 +48,16 @@ import {
   startPosed,
   type Harness,
 } from "../harness";
-import { BOTTOM_STRIP, changedSamples, driftOverOneFrame } from "./reading";
+import {
+  BOTTOM_STRIP,
+  PAINT_MIN,
+  changedSamples,
+  driftOverOneFrame,
+} from "./reading";
 
 /** The band the ship starts every run on (specs/bands.md), and the other one. */
 const FIRST_BAND = "cyan" as const;
 const SECOND_BAND = opposite(FIRST_BAND);
-
-/**
- * How far a sample must move to count as repainted, as a Euclidean RGB distance
- * out of the `441` an RGB cube is across.
- *
- * The case's figure, since `specs/ui.md` states the rule and leaves the palette to
- * the build: `40` is about a tenth of the space, which is the least a player reads
- * as a different band at a glance, and far above the nothing that separates two
- * readings of one unchanged pixel.
- */
-const REPAINT_MIN = 40;
-
-/**
- * How many samples of the strip the indicator must repaint.
- *
- * The lattice below is one sample every two logical units in each direction, so
- * `16` samples is about `64` square units — an eight-by-eight mark, smaller than
- * one glyph of a `BAND_LABELS` label legible at the stage's `1280 x 720`
- * (`specs/ui.md`), let alone the colour and shape accent beside it.
- */
-const REPAINT_MIN_SAMPLES = 16;
 
 /** One sample every two logical units: `20480` over the whole strip. */
 const READ_STEP = 2;
@@ -98,12 +82,7 @@ it("repaints the bottom strip when the ship's band changes", async () => {
     "the ship is posed on the first band",
   );
 
-  const drift = await driftOverOneFrame(
-    h,
-    BOTTOM_STRIP,
-    READ_STEP,
-    REPAINT_MIN,
-  );
+  const drift = await driftOverOneFrame(h, BOTTOM_STRIP, READ_STEP, PAINT_MIN);
   const onFirst = drift.reading;
   await captureStill(h, FIRST_BAND);
 
@@ -118,8 +97,8 @@ it("repaints the bottom strip when the ship's band changes", async () => {
   await captureStill(h, SECOND_BAND);
 
   assertGreaterThan(
-    changedSamples(onFirst, onSecond, REPAINT_MIN),
-    Math.max(drift.count, REPAINT_MIN_SAMPLES),
+    changedSamples(onFirst, onSecond, PAINT_MIN),
+    drift.count,
     `samples of the bottom HUD strip repainted when the ship went from ` +
       `${FIRST_BAND} to ${SECOND_BAND} — the polarity indicator shows the ` +
       `ship's CURRENT band, in that band's colour and shape accent, with its ` +

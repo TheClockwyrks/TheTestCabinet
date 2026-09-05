@@ -2,7 +2,7 @@
 title: Overview
 ---
 
-The particle runtime (`@test-cabinet/particle-runtime`, in
+The particle runtime (`@clockwyrks/particle-runtime`, in
 `packages/particle-runtime`) is the shared TypeScript library that turns a
 [particle](/testing/asset-generation/overview/#particle-effects) run's produced
 `system.json` into a playable effect by simulating it live: stepping its
@@ -19,25 +19,25 @@ component: it ships no service and runs in no process of its own.
 
 The package ships three subpath entries so a consumer takes only what it needs.
 
-`@test-cabinet/particle-runtime`, the root, is the pure core: the contract
+`@clockwyrks/particle-runtime`, the root, is the pure core: the contract
 types, the curve and gradient sampling, the deterministic PRNG, and the
 `ParticleSimulator`. It carries no rendering dependency and captures
 render-ready particles as plain `RenderParticle[]` data, so any renderer can
 draw them.
 
-`@test-cabinet/particle-runtime/three` is the three.js binding: a
+`@clockwyrks/particle-runtime/three` is the three.js binding: a
 `ParticleSystemPlayer` that draws the simulator's particles as a GPU billboard
 point cloud, additive by default for fire and energy effects and normal for
 smoke and debris. `three` is a peer dependency, so a consuming game shares its
 single `three` instance with the runtime.
 
-`@test-cabinet/particle-runtime/canvas` is the 2D-canvas binding: a
+`@clockwyrks/particle-runtime/canvas` is the 2D-canvas binding: a
 `ParticleCanvasPlayer` that composites the same simulated particles as soft
 radial-gradient discs into a `CanvasRenderingContext2D`, additive by default. It
 serves a `particle-2d` effect that composites into a flat scene.
 
 The core re-exports `InterpSpec`, the F-curve interpolation enum, from
-[`@test-cabinet/run-record`](/components/core/run-records/), so that shape has a
+[`@clockwyrks/run-record`](/components/core/run-records/), so that shape has a
 single source of truth. The rest of the `system.json` shapes are declared
 locally, matching the documented contract.
 
@@ -118,12 +118,12 @@ view](/components/live-streaming/) plays the in-progress system as it streams. A
 game and the review UI therefore simulate a produced effect identically.
 
 A game reaches the runtime through the manifest `packages` key.
-`@test-cabinet/particle-runtime` is one of the shippable Test Cabinet runtime
-libraries, alongside `@test-cabinet/voxel-runtime`, that an
+`@clockwyrks/particle-runtime` is one of the shippable Test Cabinet runtime
+libraries, alongside `@clockwyrks/voxel-runtime`, that an
 [end-to-end](/testing/end-to-end/manifests/) case may request. When a case
 declares it, the driver vendors it into the run repository as an in-repo `file:`
 dependency, so the built game can import `ParticleCanvasPlayer` from
-`@test-cabinet/particle-runtime/canvas`, load a seeded cross-asset
+`@clockwyrks/particle-runtime/canvas`, load a seeded cross-asset
 `system.json`, and simulate it live in-game. The allowlist of shippable packages
 lives in `crates/core/src/test_case.rs` as `SHIPPABLE_PACKAGES` and must stay in
 lockstep with `scripts/stage-tcab-packages.mjs`, which bakes them into the run

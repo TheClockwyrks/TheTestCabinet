@@ -20,7 +20,7 @@
 //     falling through the gap.
 //   * A PARTICLE BURST per cleared gem and per created cut — one of the
 //     one-shot `particle-2d` systems, simulated live through
-//     `@test-cabinet/particle-runtime`'s `ParticleCanvasPlayer`
+//     `@clockwyrks/particle-runtime`'s `ParticleCanvasPlayer`
 //     (specs/assets.md). A cleared cell's burst waits out the same wave its
 //     sheet does, so the two land together.
 //   * An AURA per cut stone — the looping system, running continuously at every
@@ -39,7 +39,7 @@
 // would churn a dozen canvases a step. The players are not pooled, so each
 // burst draws its own random play rather than replaying a pooled one.
 
-import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
+import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
 import {
   BREAK_FRAMES,
   FX_AURA,

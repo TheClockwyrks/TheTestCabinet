@@ -1,3 +1,8 @@
+/// <reference types="node" />
+// This file runs in Node and reads the disk. The project's tsconfig sets
+// `types: []` to keep the game's own sources browser-only, so the files that
+// need Node's types name them here instead.
+
 // Spectra under the engine, in process.
 //
 // Every check here builds a real engine over an `@napi-rs/canvas` canvas and a
@@ -28,7 +33,7 @@ import {
   type Engine,
   type SurfaceMetrics,
   type Viewport,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

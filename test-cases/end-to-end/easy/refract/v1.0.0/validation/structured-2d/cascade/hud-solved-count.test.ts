@@ -2,14 +2,15 @@
 // while playing.
 //
 // specs/modes/cascade.md "The count": during playing, show the count beside
-// the label HUD_SOLVED_LABEL (SOLVED), clear of the board, whose extent
-// specs/board.md gives. TWO real solves put the count at 2, NEXT BOARD
-// returns to playing, and the frame's text runs are read back: a run
-// carrying the label, a run reading 2 beside it — within one CELL_PITCH,
-// the spec's own unit of adjacent placement, or in the label's own run — and
-// both clear of the current board's extent widened by NODE_R. Where the
-// readout sits and how it is styled is the build's; only "beside" and "clear
-// of the board" are measured.
+// the label HUD_SOLVED_LABEL (SOLVED), clear of the board in play, whose
+// extent specs/board.md gives for its own cols and rows, widened by NODE_R.
+// TWO real solves put the count at 2, NEXT BOARD returns to playing, and the
+// frame's text runs are read back: a run carrying the label, a run reading 2
+// beside it — within HUD_VALUE_GAP (96), the figure specs/modes/cascade.md
+// states for "beside", or in the label's own run — and both clear of the
+// extent of the BOARD IN PLAY widened by NODE_R.
+// Where the readout sits and how it is styled is the build's; only "beside"
+// and "clear of the board" are measured.
 //
 // WHY TWO SOLVES AND NOT ONE. After one solve the count and the tier both
 // read 1, so a build that drew only "TIER 1" beside a bare SOLVED label would

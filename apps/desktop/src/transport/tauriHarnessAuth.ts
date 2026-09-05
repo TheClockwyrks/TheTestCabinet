@@ -2,7 +2,7 @@
 // credentials its self-contained cluster authenticates runs with (API keys, auth
 // methods, and subscription files), persisting them and applying them to the
 // running cluster. Mirrors `crates/desktop/src/harness_auth.rs`.
-import type { HarnessAuthApi } from "@test-cabinet/ui/app";
+import type { HarnessAuthApi } from "@clockwyrks/ui/app";
 import * as api from "../api";
 
 export function createTauriHarnessAuth(): HarnessAuthApi {

@@ -55,7 +55,7 @@ The JavaScript/TypeScript side is a **view and I/O layer** only. It owns:
 - **Input capture** — reading pointer and keyboard events and turning them into calls
   into the core (place a tool here, set the tax rate, change speed, navigate a menu).
 - **Playback** — Web Audio for the produced sounds and music, and
-  `@test-cabinet/particle-runtime` for the produced particle systems.
+  `@clockwyrks/particle-runtime` for the produced particle systems.
 - **Asset loading** and fitting the stage to the window (`specs/overview.md`).
 
 ## Properties the boundary must have

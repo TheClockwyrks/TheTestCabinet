@@ -34,7 +34,7 @@ import type {
 export const HANDLE = "__foundry";
 
 /** The version the surface reports (`FOUNDRY_DEBUG_VERSION`). */
-export const FOUNDRY_DEBUG_VERSION = 3;
+export const FOUNDRY_DEBUG_VERSION = 4;
 
 /**
  * Every operation `specs/instrumentation.md` requires on the surface under this
@@ -57,6 +57,7 @@ export const REQUIRED_OPS = [
   "statusControls",
   "statusReadouts",
   "recipeEntries",
+  "waveCount",
   // The run.
   "reset",
   "setMap",
@@ -124,7 +125,12 @@ export const REQUIRED_OPS = [
  * they apply: the `PAUSED` read and the finale's `OVERLOAD` read.
  */
 export type ReadoutName =
-  "charge" | "integrity" | "wave" | "maze-length" | "paused" | "overload";
+  | "charge"
+  | "integrity"
+  | "wave"
+  | "maze-length"
+  | "paused"
+  | "overload";
 
 /** The three states `specs/hud.md` fixes for a recipe's ingredient. */
 export type IngredientState = "selected" | "owned" | "missing";
@@ -411,6 +417,19 @@ export interface FoundryDebugApi {
   statusReadouts(): StatusReadout[];
   recipeEntries(): RecipeEntry[];
 
+  /**
+   * How many units of `type` the LIVE wave releases across the whole of its
+   * schedule, those it has already released and those still to come
+   * (specs/instrumentation.md).
+   *
+   * The wave's OWN schedule — the sequence of releases the spawner is working
+   * through — so a unit that has died, leaked or been swept away by `clearUnits`
+   * goes on counting, and the figure does not move across the wave. `0` for every
+   * type with no wave running and on a wave the driver's hold on the spawner
+   * opened, whose schedule is empty; `overload` reads `0` always.
+   */
+  waveCount(type: SpawnType): number;
+
   /* The run. */
   reset(options?: { seed?: number }): void;
   setMap(map: MapId): void;
@@ -487,9 +506,9 @@ export interface FoundryDebugApi {
  * reads it).
  */
 export type Driven<T> = {
-  [
-    K in keyof T as T[K] extends (...args: never[]) => unknown ? K : never
-  ]: T[K] extends (...args: infer A) => infer R
+  [K in keyof T as T[K] extends (...args: never[]) => unknown
+    ? K
+    : never]: T[K] extends (...args: infer A) => infer R
     ? (...args: A) => Promise<R>
     : never;
 };

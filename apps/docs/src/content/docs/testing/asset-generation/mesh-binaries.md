@@ -306,7 +306,7 @@ through each other's code.
 
 The `.glb` is the single source of geometry for every consumer, and the Rust
 mesher runs once. The preview renderer draws the in-memory mesh,
-[`@test-cabinet/voxel-runtime`](/components/voxel-runtime/overview/) decodes the
+[`@clockwyrks/voxel-runtime`](/components/voxel-runtime/overview/) decodes the
 file directly into a `PartMesh` with no re-meshing in TypeScript, and
 `scripts/voxel-to-gltf.mjs` decodes each part's `.glb` and packs it with
 `rig.json` into a single whole-rig

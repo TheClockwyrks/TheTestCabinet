@@ -17,7 +17,7 @@
 // image; the size each sprite is drawn at is the figure `src/constants.ts`
 // states.
 
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 import {
   EFFECT_SPRITES,
   ENEMY_IDS,

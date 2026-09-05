@@ -21,7 +21,7 @@
 // batch threw, and the auras, which are reconciled against the board this frame
 // ends on rather than fired at it.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { playFrameEvents, updateMusic } from "./audio";
 import { assets } from "./assets";
 import { Bench } from "./bench";

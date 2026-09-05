@@ -1,5 +1,5 @@
 // instrumentation/overlay — toggling the debug overlay over a posed field draws
-// the facts the specification lists, and watching it leaves the game as it is.
+// the facts the specification lists.
 //
 // THE RULE. `specs/instrumentation.md`, Diagnostics: "The debug overlay is
 // read-only and shows the values the game registers with it as diagnostic
@@ -11,15 +11,26 @@
 // Shatter's part ... Drawing the panel and toggling it are the engine's", and
 // `specs/controls.md` fixes the toggle as the backtick key.
 //
+// SO ONLY THE VALUES ARE READ HERE. The panel, the backtick key, the hidden-at-start
+// state and the read-only-ness are the ENGINE's under this engine, and a check on
+// any of them returns the same verdict for every build on it; they are
+// `instrumentation/overlay-is-a-read-only-toggle`, which names
+// `engines = ["none"]`. The overlay is toggled on below to read what it drew, and
+// nothing about the toggle itself is asserted.
+//
 // WHAT IS ASSERTED IS THE VALUE, NEVER THE WORDING. A build names its sources
 // itself, so every reading below is of a NUMBER the game holds, posed to a
 // distinctive value and looked for among the lines the toggle ADDED to an
-// otherwise identical frame. Each figure is matched as a WHOLE RUN OF DIGITS
-// rather than as a substring, so the `4` of the bullet count is not answered by
-// the `4` inside `448`, and the field is posed so that no two of the asserted
-// figures collide. A build reporting the wrong field, or a placeholder, produces
-// a different number. This is the same fact list and the same reading the two
-// other engines' suites use: the case's review items do not differ by engine.
+// otherwise identical frame. Each figure is matched as a WHOLE FIGURE rather
+// than as a substring, so the `4` of the bullet count is not answered by the
+// `4` inside `448`, and the field is posed so that no two of the asserted
+// figures collide. A figure the build GROUPED reads as the one figure it is —
+// `45,310` and `45310` are the same score — while an ASCII space is not read
+// as a separator, because a panel's lines are the runs of text the frame drew
+// and two figures a run apart stay two figures. A build reporting the wrong
+// field, or a placeholder, produces a different number. This is the same fact
+// list and the same reading the two other engines' suites use: the case's
+// review items do not differ by engine.
 //
 // NOTHING ABOUT THE LAYOUT IS ASSERTED, and that is deliberate. A position is two
 // figures, but the specification asks a build to register the position and to
@@ -57,24 +68,9 @@
 // pause menu — "No body moves, no timer runs down" — so the ship the velocity was
 // posed onto is still standing where the reading expects it when the panel is
 // drawn.
-//
-// THE READ-ONLY HALF IS ITS OWN LEG, over an EMPTY, QUIET, STILL field. On that
-// field a tick changes exactly one reported number — `simTime`, which
-// `specs/instrumentation.md` has accumulating "every tick's `TICK_DT`, whatever
-// the screen" — because there is no body to move, no timer to run down and no
-// spawner running. So "the snapshot is identical before and after" can be read
-// as literally as it is written: every other field must match exactly, and
-// `simTime` must have moved by exactly the one frame the toggle costs. Posing
-// the full field for this leg instead would have meant excusing every rock the
-// well moved, which is a weaker claim about a different thing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertCloseTo,
-  assertDeepEqual,
-  assertGreaterThan,
-  fail,
-} from "../assert";
+import { fail } from "../assert";
 import {
   captureStill,
   clearCalls,
@@ -83,7 +79,6 @@ import {
   poseBullet,
   poseRock,
   poseSaucer,
-  seconds,
   startPlaying,
   ticksFor,
   toggleOverlay,
@@ -133,9 +128,6 @@ const BULLET_SPOTS = [
 const ROCK_COUNT = ROCK_ROWS.length * ROCK_COLUMNS.length;
 const BULLET_COUNT = BULLET_SPOTS.length;
 
-/** How closely `simTime` must equal one frame's worth, in decimal places. */
-const SIM_TIME_DIGITS = 6;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -146,9 +138,48 @@ afterEach(() => {
   h?.dispose();
 });
 
-/** Every maximal run of digits the lines carry. */
-function digitRuns(lines: readonly string[]): string[] {
-  return lines.flatMap((line) => line.match(/\d+/g) ?? []);
+/**
+ * The characters a build may GROUP a figure's digit triples with.
+ *
+ * A figure reaches a panel through the build's own formatter, and the ordinary one
+ * — `Number.prototype.toLocaleString` — groups by default, with the comma, the
+ * apostrophe or one of the thin and non-breaking spaces its locale calls for. All
+ * of them write the same number.
+ *
+ * ASCII SPACE IS NOT ONE OF THEM. A panel's lines are the runs of text the frame
+ * drew, and a build is free to draw a figure and its neighbour as runs one space
+ * apart — so reading a space as a separator would take the two figures in `40 130`
+ * for the single number `40130`. `.` is left out for the neighbouring reason: it is
+ * the decimal point, and a build drawing `1.5` means one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/**
+ * One figure as a build may write it: grouped into triples, or plain.
+ *
+ * A LEADING SIGN IS NOT PART OF THE FIGURE. What is read here is the digits, so a
+ * build that writes a velocity component as `-448` and one that writes the
+ * magnitude `448` are read alike — which is what the reading of a component posed
+ * negative rests on.
+ */
+const DRAWN = new RegExp(
+  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/**
+ * Every figure the lines carry, as the numbers they read as.
+ *
+ * The separators are dropped from each match, so a panel that groups a figure
+ * (`45,310`) and one that does not (`45310`) report the same number: the
+ * specification fixes the FIGURE and leaves how it is written to the build.
+ */
+function drawnNumbers(lines: readonly string[]): number[] {
+  return lines.flatMap((line) =>
+    (line.match(DRAWN) ?? []).map((figure) =>
+      Number(figure.replace(new RegExp(GROUP, "g"), "")),
+    ),
+  );
 }
 
 /** Fail unless some line carries `value` as a whole figure. */
@@ -157,7 +188,7 @@ function assertFigure(
   value: number,
   requirement: string,
 ): void {
-  if (digitRuns(lines).includes(String(value))) return;
+  if (drawnNumbers(lines).includes(value)) return;
   fail(
     `an overlay line reporting ${String(value)} — ${requirement} ` +
       "(specs/instrumentation.md, Diagnostics)",
@@ -226,8 +257,6 @@ it("draws the facts the specification lists, over a posed field", async () => {
   // shows it.)
   captureStill(h, "overlay");
 
-  assertGreaterThan(added.length, 0, "the toggle draws the overlay's lines");
-
   assertForm(added, /paused/i, "the current screen, 'paused'");
   assertFigure(added, POSED.score, "the score");
   assertFigure(added, POSED.lives, "the lives");
@@ -255,57 +284,5 @@ it("draws the facts the specification lists, over a posed field", async () => {
     added,
     SIM_SECONDS,
     "the accumulated simulation time, in seconds",
-  );
-});
-
-it("is read-only: the snapshot is identical across the toggle, but for the frame", async () => {
-  // An empty, quiet, still field: no body to move, no timer to run down, no
-  // spawner running, so a tick changes exactly one reported number.
-  startPlaying(h);
-
-  // A baseline frame of the bare playing screen's own text, so the lines the
-  // toggle adds can be told from the ones the game draws either way.
-  clearCalls(h);
-  await h.advance(1);
-  const bare = new Set(drawnText(h.calls));
-
-  const before = h.snapshot();
-
-  clearCalls(h);
-  await toggleOverlay(h);
-  const added = drawnText(h.calls).filter((line) => !bare.has(line));
-  assertGreaterThan(added.length, 0, "the toggle draws the overlay's lines");
-
-  const after = h.snapshot();
-  assertDeepEqual(
-    { ...after, simTime: 0 },
-    { ...before, simTime: 0 },
-    "every reported field but simTime is identical with the overlay up",
-  );
-  assertCloseTo(
-    after.simTime,
-    before.simTime + seconds(1),
-    SIM_TIME_DIGITS,
-    "simTime advanced by exactly the one frame the toggle ran",
-  );
-
-  // Toggling again takes it down, and leaves the game exactly as it was too.
-  clearCalls(h);
-  await toggleOverlay(h);
-  const stillDrawn = new Set(drawnText(h.calls));
-  const lingering = added.filter((line) => stillDrawn.has(line));
-  assertDeepEqual(lingering, [], "the overlay's lines leave with the toggle");
-
-  const down = h.snapshot();
-  assertDeepEqual(
-    { ...down, simTime: 0 },
-    { ...before, simTime: 0 },
-    "every reported field but simTime is identical after the overlay comes down",
-  );
-  assertCloseTo(
-    down.simTime,
-    before.simTime + seconds(2),
-    SIM_TIME_DIGITS,
-    "simTime advanced by exactly the two frames the two toggles ran",
   );
 });

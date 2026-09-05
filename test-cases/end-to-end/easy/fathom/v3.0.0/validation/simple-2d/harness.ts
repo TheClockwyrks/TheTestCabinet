@@ -44,12 +44,16 @@
 // runtime's current value, read fresh on every access, and the only way to change
 // it is a pose.
 //
-// THE CLOCK. `ConstantClock(TICK_MS)` is the default, at the simulation's own
+// THE CLOCK. A constant `TICK_MS` step is the default, at the simulation's own
 // tick length, so ONE ADVANCED FRAME IS ONE TICK: the frame's delta completes
 // exactly one `TICK_DT` and carries no remainder (specs/movement.md). Every
 // duration in this suite is therefore a whole number of frames, which is the unit
-// a frame-counted tolerance is stated in. A check that is specifically about the
-// step size builds harnesses with clocks of its own.
+// a frame-counted tolerance is stated in. `skip` is the one exception, and it is
+// the reason the default clock is the harness's own `StepClock` rather than the
+// engine's `ConstantClock`: a march run off camera hands the engine several
+// ticks' worth of delta at a time and draws once, which specs/movement.md makes
+// the same simulation. A check that is specifically about the step size builds
+// harnesses with clocks of its own.
 //
 // WHERE THE SCENARIOS LIVE. The geometry a check poses is in `fixtures.ts`, the
 // helpers that empty a world and read what a posed one did are in `scene.ts`,
@@ -65,7 +69,6 @@ import { gzipSync } from "node:zlib";
 import { createCanvas, type Canvas, type SKRSContext2D } from "@napi-rs/canvas";
 import { expect } from "vitest";
 import {
-  ConstantClock,
   createEngine,
   type CapturedImage,
   type Clock,
@@ -80,7 +83,7 @@ import {
   type Resource,
   type SurfaceMetrics,
   type Viewport,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 import { BACKGROUND, game as build, type FathomState } from "../src/game";
 import { assertTruthy, fail } from "./assert";
@@ -235,6 +238,33 @@ export interface Rgb {
 /* The harness                                                                */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Ticks a {@link Harness.skip} spends in one frame.
+ *
+ * Half a second of game time. specs/movement.md has the simulation advance "the
+ * whole `TICK_DT` ticks that delta completes", so a frame this long runs sixty
+ * real ticks and draws once — which is what makes a march of a minute cost the
+ * wall clock a fraction of a second rather than tens of them.
+ */
+const COAST_TICKS = 60;
+
+/**
+ * The default clock, whose step {@link Harness.skip} retunes for the length of a
+ * march and puts back.
+ *
+ * It is a constant clock in every respect a check can observe — it ignores the
+ * host timestamp and reports the step it was built with — and the only reason
+ * it is not the engine's own `ConstantClock` is that `skip` has to reach in and
+ * change that step.
+ */
+class StepClock implements Clock {
+  constructor(public ms: number) {}
+
+  delta(): number {
+    return this.ms;
+  }
+}
+
 export interface HarnessOptions {
   /** The clock each frame takes its delta from. Defaults to one tick a frame. */
   clock?: Clock;
@@ -298,12 +328,26 @@ export interface Harness {
   advance(frames: number): Promise<void>;
   /**
    * Run `ticks` that cost a captured section nothing, for setup rather than for
-   * measurement.
+   * measurement — and run them in as few frames as the fixed-step core allows.
    *
-   * This harness's recorder is the draw-call log a `captureReplay` opens and
-   * closes around a scenario, so ticks outside one are already free and this is
-   * an ordinary {@link Harness.advance}. The engineless harness records per tick
-   * and has a march of its own, which is why the operation exists at all.
+   * WHY THIS IS NOT {@link Harness.advance}. `advance` steps FRAMES, and a frame
+   * of this harness's clock is worth one tick, so a march measured in minutes of
+   * game time is a march measured in tens of thousands of RENDERS — which is
+   * what a long setup actually costs, the simulation itself being the cheap
+   * half. specs/movement.md fixes the core so that "the number of ticks run over
+   * an interval of game time is the same however that interval was divided into
+   * frames", so this hands the engine {@link COAST_TICKS} ticks' worth of delta
+   * at a time and the game runs every one of those ticks through its own
+   * `TICK_DT` loop. The ticks are real, in order, and identical to the ones
+   * `advance` would have run; what is spared is the drawing between them.
+   *
+   * A section under a `captureReplay` is a section being measured or recorded,
+   * and neither is what this is for: it records nothing and, spending several
+   * ticks a frame, it reports nothing about WHEN inside the march anything
+   * happened. A check reading a moment steps it with `advance`.
+   *
+   * A harness built with a clock of its own falls back to `advance`, because the
+   * step it hands the engine is that clock's to decide.
    */
   skip(ticks: number): Promise<void>;
   /** Advance until `predicate` holds, sampling every `poll` frames. */
@@ -684,6 +728,8 @@ export async function createHarness(
     events: () => keys,
   };
 
+  const clock = options.clock ?? new StepClock(TICK_MS);
+
   const engine = createEngine<FathomState, FathomSurface>({
     canvas: element,
     width: STAGE_W,
@@ -693,7 +739,7 @@ export async function createHarness(
     // seeded `src/main.ts` hands it (specs/overview.md).
     background: BACKGROUND,
     layout: LAYOUT,
-    clock: options.clock ?? new ConstantClock(TICK_MS),
+    clock,
     surface,
   });
 
@@ -758,7 +804,21 @@ export async function createHarness(
 
     snapshot: () => debug.snapshot(),
 
-    skip: (ticks) => harness.advance(ticks),
+    async skip(ticks) {
+      if (!(clock instanceof StepClock) || ticks < COAST_TICKS) {
+        await engine.advance(ticks);
+        return;
+      }
+      const frames = Math.floor(ticks / COAST_TICKS);
+      const rest = ticks - frames * COAST_TICKS;
+      clock.ms = TICK_MS * COAST_TICKS;
+      try {
+        await engine.advance(frames);
+      } finally {
+        clock.ms = TICK_MS;
+      }
+      if (rest > 0) await engine.advance(rest);
+    },
 
     advance: (frames) => engine.advance(frames),
 

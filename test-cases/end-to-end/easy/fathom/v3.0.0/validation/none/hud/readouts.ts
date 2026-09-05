@@ -37,6 +37,7 @@
 // state says, and it can be seen.
 
 import { STAGE_H, STAGE_W } from "../constants";
+import { figureAnywherePattern } from "../figures";
 import { colorDistance, rgbOf, type Harness, type Rgb } from "../harness";
 import type { TextDraw } from "../text";
 
@@ -59,14 +60,14 @@ export interface Strip {
 export const LEGIBLE_MIN = 50;
 
 /**
- * How far a sampled point must sit from the strip's ground to count as drawn on,
- * for the two gauge points.
+ * The sensing floor a sampled point owes to count as drawn on, as an RGB distance
+ * out of the `441` that separates black from white.
  *
- * `25` of `441`, the same figure every other point in this case uses for "this is
- * not the background". Lower than {@link LEGIBLE_MIN} on purpose: a gauge is a
- * shape rather than a glyph, and a build is free to draw it dim.
+ * `8` of `441` is the level below which a sampling cannot tell a drawing from
+ * eight-bit channel rounding and the host's antialiasing. Anything the build
+ * painted there clears it, in whatever palette and however dim.
  */
-export const DRAWN_MIN = 25;
+export const DRAWN_MIN = 8;
 
 /**
  * How far apart two samples stand across a strip, in units.
@@ -99,8 +100,11 @@ export function inStrip(run: TextDraw, strip: Strip): boolean {
  * The run drawn in `strip` whose words carry `text`, or `null` where none does.
  *
  * Matched by substring and folded to upper case, because specs/ui.md fixes the
- * FIGURE a readout carries and leaves its wording to the build: `SCORE 00210`,
- * `210` and `210 PTS` all report the same score.
+ * WORDING a readout carries and leaves everything around it to the build:
+ * `DEPTH 4`, `> DEPTH 4` and `DEPTH 4 OF 8` all name the same depth.
+ *
+ * A readout whose content is a number rather than a wording is
+ * {@link figureReadoutOf}'s, which reads the figure however the build wrote it.
  */
 export function readoutOf(
   runs: readonly TextDraw[],
@@ -112,6 +116,28 @@ export function readoutOf(
     runs.find(
       (run) => inStrip(run, strip) && run.text.toUpperCase().includes(wanted),
     ) ?? null
+  );
+}
+
+/**
+ * The run drawn in `strip` whose words carry the figure `value`, or `null` where
+ * none does.
+ *
+ * The same reading as {@link readoutOf}, for a readout whose content is a NUMBER
+ * rather than a wording: every conventional writing of the figure is looked for,
+ * so a build that groups a score's digit triples — `4,731`, which is what
+ * `Number.prototype.toLocaleString()` writes by default — carries the figure just
+ * as a build drawing `4731` does. `figures.ts` states which separators count and
+ * why the ASCII space is not one of them.
+ */
+export function figureReadoutOf(
+  runs: readonly TextDraw[],
+  strip: Strip,
+  value: number,
+): TextDraw | null {
+  const figure = figureAnywherePattern(value);
+  return (
+    runs.find((run) => inStrip(run, strip) && figure.test(run.text)) ?? null
   );
 }
 

@@ -4,9 +4,9 @@
 // traces its recent path", and it "spans a fixed slice of recent travel, the last
 // `TRAIL_TICKS` (`18`) ticks of the bullet's motion". This item decides the
 // existence of that tail and the one thing about it that is not a matter of
-// degree: WHICH SIDE OF THE ROUND IT IS ON. How long it is for a given speed is
-// `bullets/trail-length-scales-with-speed`'s item, and how it behaves at a seam
-// is `bullets/trail-follows-the-wrap`'s.
+// degree: WHICH SIDE OF THE ROUND IT IS ON. How it behaves at a seam is
+// `bullets/trail-follows-the-wrap`'s item; how long it looks for a given speed is
+// the picture the reviewer judges.
 //
 // WHAT IS READ. A round is flown along an empty lane at `MUZZLE_SPEED` for long
 // enough to have a full `TRAIL_TICKS` of history behind it, and the band of

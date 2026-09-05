@@ -59,9 +59,50 @@ const REACHED_LEVEL = 6;
  */
 const POSED_SCORE = 1250;
 
-/** Whether some run of text carries `figure` with no letter or digit either side. */
+/**
+ * The separators a build may set between a figure's digit triples.
+ *
+ * `Number.prototype.toLocaleString` groups by default, so a build that reaches for
+ * it reports the score as `1,250`, and another locale's grouping gives `1'250` or
+ * `1\u202F250`. Every one of those reports the one figure, so a figure is looked for
+ * under each of its conventional settings.
+ *
+ * THE ASCII SPACE IS DELIBERATELY NOT ONE OF THEM. A run of the screen's copy
+ * carries a label and often more than one figure, separated by exactly that, so
+ * accepting it would read the `40` and the `130` of "LEVEL 40  SCORE 130" as the
+ * single figure `40130`. `.` is left out for its own reason: it is the decimal
+ * point, and a build drawing `1.5` means one and a half.
+ */
+const GROUPS: readonly string[] = [",", "'", "\u00A0", "\u202F", "\u2009"];
+
+/**
+ * Every conventional setting of `figure`: the plain one, and — when it runs to
+ * more than three digits — the same figure with its triples grouped by each of
+ * {@link GROUPS}. A figure of three digits or fewer has exactly one setting.
+ */
+function settings(figure: number): string[] {
+  const text = String(figure);
+  const parts = /^(-?)(\d+)(\.\d+)?$/.exec(text);
+  if (parts === null) return [text];
+  const [, sign, digits, fraction = ""] = parts;
+  if (digits.length <= 3) return [text];
+  return [
+    text,
+    ...GROUPS.map(
+      (group) => sign + digits.replace(/\B(?=(\d{3})+$)/g, group) + fraction,
+    ),
+  ];
+}
+
+/**
+ * Whether some run of that text carries `figure`, under any of its settings, with
+ * no letter or digit either side — so a `6` is still not found inside `1250`.
+ */
 function names(runs: readonly string[], figure: number): boolean {
-  const pattern = new RegExp(`(^|[^A-Za-z0-9])${figure}([^A-Za-z0-9]|$)`);
+  const wanted = settings(figure)
+    .map((setting) => setting.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|");
+  const pattern = new RegExp(`(^|[^A-Za-z0-9])(?:${wanted})([^A-Za-z0-9]|$)`);
   return runs.some((run) => pattern.test(run));
 }
 

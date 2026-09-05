@@ -14,20 +14,20 @@
     "test": "vitest run --coverage"
   },
   "dependencies": {
-    "@test-cabinet/simple-2d": "file:./.tcab/engine/@test-cabinet/simple-2d",
-    "@test-cabinet/particle-runtime": "file:./.tcab/packages/@test-cabinet/particle-runtime",
+    "@clockwyrks/simple-2d": "file:./.vendor/engine/@clockwyrks/simple-2d",
+    "@clockwyrks/particle-runtime": "file:./.vendor/packages/@clockwyrks/particle-runtime",
     "ts-essentials": "^10.2.1"
   },
   "devDependencies": {
-    "@eslint/js": "^9",
-    "@napi-rs/canvas": "^0.1",
-    "@vitest/coverage-istanbul": "^3",
-    "eslint": "^9",
-    "playwright": "^1.61.0",
+    "@eslint/js": "^10",
+    "@napi-rs/canvas": "^1",
+    "@vitest/coverage-istanbul": "^5",
+    "eslint": "^10",
+    "playwright": "^1.63.0",
     "prettier": "^3",
-    "typescript": "^5",
+    "typescript": "^6",
     "typescript-eslint": "^8",
-    "vite": "^6",
-    "vitest": "^3"
+    "vite": "^8",
+    "vitest": "^5"
   }
 }

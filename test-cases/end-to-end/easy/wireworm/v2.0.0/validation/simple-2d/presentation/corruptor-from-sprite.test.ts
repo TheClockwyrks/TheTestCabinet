@@ -1,8 +1,8 @@
 // presentation/corruptor-from-sprite — the corruptor is drawn from its seeded art.
 //
 // specs/assets.md seeds `assets/corruptor/` and states what it covers: "Four frames, played as a loop at `CORRUPTOR_FPS` (`8`) frames per second while the corruptor crawls", so any of the four is the art of a corruptor. A build that
-// draws a convincing shape in code satisfies presentation/foes-distinct and
-// misses this point, which is the whole reason the point exists.
+// draws a convincing shape in code misses this point, which is the whole reason
+// the point exists.
 //
 // THE READING IS THE IMAGE SOURCE ITSELF, NOT THE PIXELS ON THE STAGE. The bitmap
 // the build handed the context is held against the seeded PNGs read off the

@@ -759,7 +759,7 @@ async fn a_stored_recording_is_served_as_json_framed_in_gzip() {
         .header("authorization", format!("Bearer {GOOD_JOB_TOKEN}"))
         .header("x-tcab-job-id", GOOD_JOB_ID)
         .body(Body::from(tarball(&[(
-            "implementation/.tcab/validation/no-tunnel__serve.json.gz",
+            "implementation/.vendor/validation/no-tunnel__serve.json.gz",
             stored,
         )])))
         .unwrap();

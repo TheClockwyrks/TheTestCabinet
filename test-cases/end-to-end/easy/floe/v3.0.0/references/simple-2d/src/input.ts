@@ -33,11 +33,7 @@
 // and "a touch contact lands inside an item's region, or travels onto one".
 
 import { ACTIONS, BINDINGS, LAYOUT, type ActionName } from "./constants";
-import type {
-  InitApi,
-  PointerSample,
-  UpdateApi,
-} from "@test-cabinet/simple-2d";
+import type { InitApi, PointerSample, UpdateApi } from "@clockwyrks/simple-2d";
 
 /** One thing a pointer or a touch contact did, in logical stage units. */
 export interface PointerEdge {

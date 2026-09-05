@@ -1,35 +1,41 @@
-// presentation/towers-read-apart-from-the-floor — a tower is not the floor.
+// presentation/towers-read-apart-from-the-floor — a tower is drawn on the
+// footprint it stands on.
 //
 // THE RULE. specs/overview.md's legibility table: "A tower reads apart from the
-// floor behind it." A tower's colour changes with its heat (the same table's
-// first row), so a build could satisfy the rule at one end of the ramp and lose
-// the floor at the other; the reading is therefore taken at the cold end, at the
-// middle of the scale, and just under the trip, and every one of the eight towers
+// floor behind it." A tower's drawing changes with its heat (the same table's
+// first row), so a build could draw a tower at one end of the ramp and nothing at
+// the other; the reading is therefore taken at the cold end, at the middle of the
+// scale, and just under the trip, and every one of the eight towers
 // specs/towers.md rosters is read, because every one of them is a tower.
 //
-// WHAT IS COMPARED, AND WHY IT IS NEVER A COLOUR. specs/overview.md fixes no
-// palette, so what a tower looks like and what the floor looks like are both the
-// build's. Every reading here is a comparison between two things the BUILD drew:
-// the pixels of a footprint against the floor beside that footprint. The floor
-// reference is LOCAL — the centre of a tile two tiles out on the same row — so a
-// build free to shade its floor is measured against the floor it actually drew
-// there rather than against a colour sampled from somewhere else.
+// WHY THE READING IS A REMOVAL. specs/overview.md fixes no palette — "The
+// palette, the type, the glow, and every other aspect of the look are yours" — so
+// how far a tower's colour sits from a floor colour is the reviewer's to judge
+// and not a figure any check may invent. What a check can decide is whether the
+// build drew a tower there at all, and specs/instrumentation.md gives it the
+// operation that answers that: the body is read with the tower standing and again
+// after the towers have been cleared away, and the tower is what disappeared.
+// Every other thing the build drew on that patch — its floor art, its plate
+// texture, its grid — is identical in the two frames and cancels exactly.
 //
-// WHY A PROPORTION OF THE FOOTPRINT. A build draws things ON a tower that are not
-// the tower: a type label, an outline, the heat read specs/hud.md asks for. Any
-// of those may legitimately be drawn in a colour near the floor's — a label
-// knocked out of the body, a bar with a dark trough. What the rule asks is that
-// the TOWER read apart, so the reading is the proportion of the footprint that
-// does, and the bar below says how much of it must.
+// HOW MUCH MOVEMENT COUNTS. Measured rather than assumed. The same points are
+// read on two frames with the tower standing, which is how far the picture moves
+// on its own under a build that animates its glow, and the removal has to beat
+// that by `NOISE_MARGIN`.
 //
-// WHAT IT DOES NOT DECIDE. Whether the colour tracks the heat is
-// `heat-glow-ramp`; whether a tripped tower reads apart from an online one is
+// WHERE THE READING IS TAKEN. The body ring of presentation/read.ts, well inside
+// the footprint: specs/instrumentation.md says removing a tower reopens its tiles
+// and repaths, so a build that tints a build zone or draws a route overlay moves
+// pixels at the footprint's EDGE for reasons other than the tower, and the ring
+// sits a long way inside it.
+//
+// WHAT IT DOES NOT DECIDE. Whether the drawing tracks the heat is
+// `heat-glow-ramp`; whether a tripped tower is drawn apart from an online one is
 // `tripped-reads-apart`; whether the tower sits where the tile map puts it is
 // `floor.tile-map`. Nothing here asserts a shape, a label or an outline.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual } from "../assert";
-import { tileCX, tileCY } from "../constants";
 import { isEmitter, sizeOf } from "../geometry";
 import {
   captureStill,
@@ -39,31 +45,13 @@ import {
 } from "../harness";
 import type { TowerType } from "../surface";
 import { poseStillTower } from "./pose";
-import { apartFraction, footprintRegion, pixelAt, readRegion } from "./read";
-
-/**
- * How far, out of the 441 the RGB cube spans, a pixel of the footprint must sit
- * from the floor beside it to count as reading apart from it.
- *
- * The suite's figure for two things a player tells apart at a glance, and the
- * same 50 every other point in this group draws its line at. It is comfortably
- * above the drift a build's own floor art carries across a couple of tiles — a
- * plate texture, lane shading, a grid line — so a tower cannot pass this by
- * standing on a patch of floor that happens to be shaded.
- */
-const APART_MIN = 50;
-
-/**
- * How much of a footprint must read apart from the floor.
- *
- * The rule is about the TOWER, and a tower reads as what most of it is drawn in.
- * Half is the line at which what a player sees on the footprint is more the tower
- * than the floor, and the half it leaves is room for everything a build draws on
- * a tower that is not the tower: a type label knocked through the body, an
- * outline, the heat read of specs/hud.md and its trough. A build that draws its
- * towers in the floor's own colour reads near zero, whatever it writes on them.
- */
-const FOOTPRINT_APART_MIN = 0.5;
+import {
+  NOISE_MARGIN,
+  bodyRing,
+  largestShift,
+  readPoints,
+  type Point,
+} from "./read";
 
 /** The three heats the roster is read at: cold, mid-scale, just under the trip. */
 const HEATS: readonly number[] = [0, 50, 99];
@@ -75,8 +63,7 @@ const SHOWN_HEAT = 50;
  * Where each of the eight stands.
  *
  * Two rows of the floor, every footprint clear of the next, and every one clear
- * of the vent and exhaust runs specs/floor.md fixes. The floor each is read
- * against is the tile two columns to its left, which is open floor for all eight.
+ * of the vent and exhaust runs specs/floor.md fixes.
  */
 const ROSTER: readonly { type: TowerType; col: number; row: number }[] = [
   { type: "arc", col: 3, row: 4 },
@@ -89,39 +76,46 @@ const ROSTER: readonly { type: TowerType; col: number; row: number }[] = [
   { type: "lance", col: 10, row: 24 },
 ];
 
-/** How far the floor reference sits from the footprint, in tiles. */
-const FLOOR_REFERENCE_TILES = 2;
+/** The ring each of the eight is read on, in roster order. */
+const RINGS: readonly Point[][] = ROSTER.map(({ type, col, row }) =>
+  bodyRing(col, row, sizeOf(type)),
+);
 
-/** How far inside the footprint the reading starts, and how dense it is. */
-const FOOTPRINT_INSET = 3;
-const FOOTPRINT_STEP = 3;
-
-/** The whole roster posed at one heat, and each footprint read against the floor. */
-async function readRoster(h: Harness, heat: number): Promise<number[]> {
+/**
+ * The whole roster posed at one heat, then taken away: how far each body ring
+ * moved when its tower went, and how far it moved on its own beforehand.
+ */
+async function readRoster(
+  h: Harness,
+  heat: number,
+): Promise<{ gone: number[]; noise: number[] }> {
   startRun(h);
   for (const { type, col, row } of ROSTER) {
     poseStillTower(h, type, col, row, 0, heat);
   }
   await h.advance(1);
+  const first = RINGS.map((ring) => readPoints(h, ring));
+  await h.advance(1);
+  const second = RINGS.map((ring) => readPoints(h, ring));
   if (heat === SHOWN_HEAT) captureStill(h, "towers");
 
-  return ROSTER.map(({ type, col, row }) => {
-    const samples = readRegion(
-      h,
-      footprintRegion(col, row, sizeOf(type), FOOTPRINT_INSET),
-      FOOTPRINT_STEP,
-    );
-    const floor = pixelAt(h, tileCX(col - FLOOR_REFERENCE_TILES), tileCY(row));
-    return apartFraction(samples, floor, APART_MIN);
-  });
+  h.debug.clearTowers();
+  await h.advance(1);
+  const cleared = RINGS.map((ring) => readPoints(h, ring));
+
+  return {
+    gone: second.map((read, index) => largestShift(read, cleared[index])),
+    noise: first.map((read, index) => largestShift(read, second[index])),
+  };
 }
 
 /** The context a failure names: which tower, at what heat, and what was asked. */
-function because(type: TowerType, heat: number): string {
+function because(type: TowerType, heat: number, noise: number): string {
   return (
-    `a ${type} at heat ${heat}: the proportion of its footprint drawn at ` +
-    `least ${APART_MIN} of 441 from the floor two tiles beside it ` +
-    `(specs/overview.md: a tower reads apart from the floor behind it)`
+    `a ${type} at heat ${heat}: its body ring changes when the tower is taken ` +
+    `away, by more than the ${noise} two frames with it standing moved on ` +
+    `their own (specs/overview.md: a tower reads apart from the floor behind ` +
+    `it)`
   );
 }
 
@@ -135,30 +129,30 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("draws every emitter apart from the floor at every heat", async () => {
+it("draws every emitter on its footprint at every heat", async () => {
   for (const heat of HEATS) {
     const read = await readRoster(h, heat);
     ROSTER.forEach(({ type }, index) => {
       if (!isEmitter(type)) return;
       assertGreaterThanOrEqual(
-        read[index],
-        FOOTPRINT_APART_MIN,
-        because(type, heat),
+        read.gone[index],
+        read.noise[index] + NOISE_MARGIN,
+        because(type, heat, read.noise[index]),
       );
     });
   }
 });
 
-it("draws the Forge and the Sink apart from the floor", async () => {
+it("draws the Forge and the Sink on their footprints", async () => {
   // Both movers carry no heat and report `0` for it forever (specs/heat.md), so
   // one reading is every reading they have.
   const read = await readRoster(h, 0);
   ROSTER.forEach(({ type }, index) => {
     if (isEmitter(type)) return;
     assertGreaterThanOrEqual(
-      read[index],
-      FOOTPRINT_APART_MIN,
-      because(type, 0),
+      read.gone[index],
+      read.noise[index] + NOISE_MARGIN,
+      because(type, 0, read.noise[index]),
     );
   });
 });

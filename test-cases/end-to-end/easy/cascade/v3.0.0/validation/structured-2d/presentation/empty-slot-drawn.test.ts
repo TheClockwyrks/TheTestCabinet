@@ -7,10 +7,8 @@
 // apart from the bare table."
 //
 // WHAT IT DECIDES, AND WHAT IT LEAVES ALONE. That the mark is DRAWN, and drawn
-// at the pile's anchor. Whether it reads apart from the felt is
-// `presentation/slot-distinct-from-table`, which measures the colour; a build
-// that draws its slot in exactly the felt's colour fails there and passes here,
-// which is the honest split of one row into two points.
+// at the pile's anchor. How it is drawn — its colour against the felt, its
+// weight, its form — is the reviewer's to judge and no point measures it.
 //
 // HOW THE MARK IS FOUND. The shapes the frame painted, each as the box it covers
 // in logical units, filtered to those a card's footprint across. A build may

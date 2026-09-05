@@ -79,7 +79,7 @@ across, the top or bottom edge sends it off at up to ~55°.
 
 ## How the game maps onto the engine
 
-`@test-cabinet/structured-2d` supplies the gameplay framework the game is
+`@clockwyrks/structured-2d` supplies the gameplay framework the game is
 written _inside_, and the build's own code is the subclasses:
 
 - **One world hosts all six screens.** The debug surface's `setScreen` is an
@@ -192,10 +192,10 @@ Then, in this directory:
 npm ci
 ```
 
-The engine, `@test-cabinet/structured-2d`, is a relative `file:` dependency on
+The engine, `@clockwyrks/structured-2d`, is a relative `file:` dependency on
 the repository's `packages/structured-2d`, which npm installs as a symlink, so
 this project builds and tests against the engine's current source. A run
-receives the same package at `.tcab/engine/@test-cabinet/structured-2d/`
+receives the same package at `.vendor/engine/@clockwyrks/structured-2d/`
 instead, so the import in the sources is the same either way.
 
 ## Run in development

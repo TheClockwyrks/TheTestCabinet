@@ -175,4 +175,4 @@ the cues a game plays from its start level onward and across every transition.
 ## Exports
 
 `CueSpec`, `AudioState`, and `WorldAudio` are exported as types from
-`@test-cabinet/structured-2d`.
+`@clockwyrks/structured-2d`.

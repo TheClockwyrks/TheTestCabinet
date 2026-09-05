@@ -16,7 +16,7 @@
 // changes what the simulation does. Each line is short enough to read at a
 // glance while the game runs.
 
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 import { challengeCount } from "./challenges";
 import { liveEffectCount } from "./effects";
 import { machinePeriod } from "./machine";

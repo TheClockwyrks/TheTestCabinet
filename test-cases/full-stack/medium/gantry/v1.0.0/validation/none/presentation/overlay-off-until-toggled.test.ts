@@ -7,130 +7,29 @@
 // OFF UNTIL TOGGLED, and it reads the game without changing it." So what a player
 // sees on load is the game's own display and nothing else.
 //
+// THE READING IS THE FRAME'S OWN ACCOUNT OF THE PANEL. The same section fixes it
+// exactly: "Each line the overlay draws while it is shown comes back through
+// `drawn()` as a `text` entry named `overlay`, carrying that line as its `text`,
+// so a caller reads the panel without reading pixels. It is the one `text` entry
+// whose `name` this file fixes." So the panel is up exactly when the frame
+// reports `overlay` lines, and a build's own choice of where to put its panel,
+// what to say on it and what it looks like never enters into it.
+//
 // THE READING IS TAKEN WHERE THE GAME LOADS, on the title screen, before any
 // input reaches the game. The harness has pressed one key the game binds to
 // nothing (specs/controls.md) to arm the page's audio, and nothing else.
 //
-// TELLING THE TWO STATES APART IS THE WHOLE PROBLEM, and pixels alone cannot do
-// it: pressing the key changes the picture whichever way round the overlay
-// started, and what a panel looks like is the build's own. What separates them is
-// what the panel IS — "The debug overlay shows the values the game registers with
-// it as diagnostic sources. Register at least the current screen and site... AND
-// THE CAMERA POSE." So the region the key draws over is put to that test. The
-// camera is posed somewhere else entirely, and:
-//
-//   - a stage that is REPORTING the camera pose redraws that region, because
-//     every number in the line changed;
-//   - a stage that is only drawing the game does not, because no screen in
-//     specs/ui.md shows the camera's numbers.
-//
-// The title screen is where this reads cleanest: what it is required to draw —
-// `TITLE_TEXT`, `TAGLINE_TEXT` and the menu (specs/ui.md § Title) — carries
-// nothing of the camera, so the picture stands still under a pose that the
-// overlay would answer.
-//
-// THE FIGURES. The region compared is the region the key itself changed, so this
-// asks nothing about where a build puts its panel. Two dozen pixels is the floor
-// for "reported": a line of legible text whose every number has changed cannot
-// move fewer than that at the logical stage size. And the state before the press
-// has to report it several times less than the state after, which is what says
-// the panel appeared on the press rather than went away on it.
-
-// WHY THIS ONE STILL READS THE PICTURE, when nothing else in this project does.
-//
-// Every other check about drawing asks `drawn()`, which is the frame's own
-// account of what it put on screen. This one cannot: what it is about is the
-// DEBUG OVERLAY, and `specs/instrumentation.md` gives the panel to a different
-// owner on each engine — "The overlay is part of the runtime layer you write"
-// with no engine, and "Drawing the panel, showing and hiding it with the backtick
-// key … are the engine's" under both of them. So under two of the three engines
-// the panel is not the build's drawing at all, and there is nothing for a build
-// to report about it. Neither engine exposes whether its panel is up.
-//
-// The picture is therefore the only instrument that answers the same question on
-// all three, and the question — is the panel there — is one a reader can settle
-// at a glance from the still beside the verdict.
+// THE PRESS IS THE SECOND HALF. A build that reports no lines either side would
+// pass a check that only looked at the load, so the same press this point is
+// about is made and the panel must then be reporting: the state before the press
+// is the off state because the press turns it on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { createCanvas, loadImage } from "@napi-rs/canvas";
-import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
-import {
-  CAMERA_START_DIST,
-  CAMERA_START_PITCH,
-  CAMERA_START_YAW,
-} from "../constants";
+import { assertEqual, assertLength, assertTrue } from "../assert";
 import { createHarness, type Harness } from "../harness";
 
 /** The key the specification names, as a `KeyboardEvent.code`. */
 const TOGGLE = "Backquote";
-
-/** A camera pose with every number different, inside the limits it is clamped to. */
-const MOVED_CAMERA = { yaw: 100, pitch: 70, dist: 70 } as const;
-
-/** How far two colours must stand apart, of the 441 the colour cube spans. */
-const CHANGED = 50;
-/** How far a colour must move to count as redrawn by the camera pose. */
-const MOVED = 30;
-
-/** The share of the stage the key must draw over for there to be a region. */
-const PANEL_SHARE = 0.002;
-
-/** Pixels of the region that must answer a camera pose once the panel is up. */
-const REPORTED = 24;
-
-/** How many times less the region may answer it before the key is pressed. */
-const FACTOR = 3;
-
-interface Picture {
-  width: number;
-  height: number;
-  data: Uint8ClampedArray;
-}
-
-async function picture(harness: Harness): Promise<Picture> {
-  // One held frame first: the page is off its own paint clock (see
-  // `paint-gate.js`), and a screenshot is the whole page rather than just the
-  // canvas `advance` has already drawn.
-  await harness.paintFrame();
-  const png = await harness.page.screenshot({ type: "png" });
-  const image = await loadImage(png);
-  const canvas = createCanvas(image.width, image.height);
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(image, 0, 0);
-  const { data } = ctx.getImageData(0, 0, image.width, image.height);
-  return { width: image.width, height: image.height, data };
-}
-
-/** Every pixel `b` draws differently from `a`, as a mask. */
-function differenceMask(a: Picture, b: Picture, gap: number): Uint8Array {
-  const mask = new Uint8Array(a.width * a.height);
-  for (let pixel = 0; pixel < mask.length; pixel += 1) {
-    const i = pixel * 4;
-    const apart = Math.hypot(
-      a.data[i]! - b.data[i]!,
-      a.data[i + 1]! - b.data[i + 1]!,
-      a.data[i + 2]! - b.data[i + 2]!,
-    );
-    if (apart > gap) mask[pixel] = 1;
-  }
-  return mask;
-}
-
-/** How many pixels of `mask` are also in `within`. */
-function countWithin(mask: Uint8Array, within: Uint8Array): number {
-  let count = 0;
-  for (let pixel = 0; pixel < mask.length; pixel += 1) {
-    if (mask[pixel] === 1 && within[pixel] === 1) count += 1;
-  }
-  return count;
-}
-
-/** How many pixels a mask holds. */
-function count(mask: Uint8Array): number {
-  let total = 0;
-  for (const pixel of mask) total += pixel;
-  return total;
-}
 
 let h: Harness;
 
@@ -146,82 +45,32 @@ it("draws no overlay before the backtick key is pressed", async () => {
   await h.advance(1);
   await h.capture("off", "The stage with the overlay hidden");
 
-  const opening = await h.snapshot();
   assertEqual(
-    opening.screen,
+    (await h.snapshot()).screen,
     "title",
     "the screen a loaded game stands on, which this reading is taken on " +
       "(specs/ui.md § Title)",
   );
-  assertEqual(
-    opening.camera.yaw,
-    CAMERA_START_YAW,
-    "the camera yaw this reading starts from (specs/state.md)",
+
+  const before = await h.diagnostics();
+  assertLength(
+    before,
+    0,
+    "the overlay lines the loaded game's first frame reports, before any " +
+      "key has reached it: the overlay is off until toggled, and each line it " +
+      "draws while it is shown comes back through drawn() as a text entry " +
+      "named overlay (specs/instrumentation.md § Diagnostics)",
   );
 
-  /** The stage as it stands, and the stage with the camera posed elsewhere. */
-  const underACameraPose = async (): Promise<[Picture, Picture]> => {
-    await h.debug.setCamera(
-      CAMERA_START_YAW,
-      CAMERA_START_PITCH,
-      CAMERA_START_DIST,
-    );
-    await h.advance(1);
-    const held = await picture(h);
-    await h.debug.setCamera(
-      MOVED_CAMERA.yaw,
-      MOVED_CAMERA.pitch,
-      MOVED_CAMERA.dist,
-    );
-    await h.advance(1);
-    const posed = await picture(h);
-    return [held, posed];
-  };
-
-  const [beforeHeld, beforePosed] = await underACameraPose();
   await h.press(TOGGLE);
   await h.advance(1);
-  const [afterHeld, afterPosed] = await underACameraPose();
 
-  // The region the key itself draws over: wherever this build puts its panel.
-  const region = differenceMask(beforeHeld, afterHeld, CHANGED);
-  const pixels = beforeHeld.width * beforeHeld.height;
-  assertGreaterThan(
-    count(region) / pixels,
-    PANEL_SHARE,
-    `the share of the stage the ${TOGGLE} key draws over on the title ` +
-      "screen, which this reading needs in order to have a panel to ask " +
-      "about: the overlay is shown by the backtick key and draws the sources " +
-      "the specification asks a build to register (specs/instrumentation.md " +
+  const after = await h.diagnostics();
+  assertTrue(
+    after.length > 0,
+    `the overlay to report its lines once ${TOGGLE} has been pressed, which ` +
+      "is what makes the frame before the press an OFF state rather than a " +
+      "build that draws no overlay at all (specs/instrumentation.md " +
       "§ Diagnostics)",
-  );
-
-  const reportedAfter = countWithin(
-    differenceMask(afterHeld, afterPosed, MOVED),
-    region,
-  );
-  const reportedBefore = countWithin(
-    differenceMask(beforeHeld, beforePosed, MOVED),
-    region,
-  );
-
-  assertGreaterThan(
-    reportedAfter,
-    REPORTED,
-    "the pixels of that region that answer a camera pose once the key has " +
-      "been pressed, which is what says the panel standing there is the " +
-      "overlay reporting the game: the camera pose is one of the sources " +
-      "§ Diagnostics requires registered (specs/instrumentation.md)",
-  );
-
-  assertLessThan(
-    reportedBefore,
-    reportedAfter / FACTOR,
-    `the pixels of that same region that answered the same camera pose ` +
-      "BEFORE the key was pressed, of the " +
-      `${reportedAfter} that answer it after: on load the stage carries the ` +
-      "game's own display, which shows the camera's numbers nowhere " +
-      "(specs/ui.md), and the overlay is off until toggled " +
-      "(specs/instrumentation.md § Diagnostics)",
   );
 });

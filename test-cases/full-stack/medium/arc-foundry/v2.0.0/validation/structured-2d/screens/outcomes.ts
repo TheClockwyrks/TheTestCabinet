@@ -11,7 +11,7 @@
 // `0`. What is posed is the precondition each ending needs: which wave the run is
 // on, and how much Grid Integrity is left.
 
-import { assertEqual } from "../assert";
+import { assertEqual, assertTruthy } from "../assert";
 import { type Harness, openYard, releaseUnit, ticks } from "../harness";
 import {
   COLLECTOR_WAYPOINT,
@@ -46,8 +46,25 @@ export const OVERLOAD_WAVE = 17;
  * and "a wave with nothing left to release and nothing left on the yard clears on
  * the next advance" (`specs/instrumentation.md`). Clearing wave `N` with Grid
  * Integrity remaining is exactly the victory condition of `specs/campaign.md`, so
- * everything after that — the finale, the Overload Dynamo's walk to the collector,
- * and the victory screen behind it — is the game's own.
+ * everything after that — the finale, the Overload Dynamo's grounding out at the
+ * collector, and the victory screen behind it — is the game's own.
+ *
+ * THE DYNAMO IS PUT ON THE COLLECTOR RATHER THAN WALKED TO IT, which is the same
+ * posing `reachOverload` does below with the mote that ends a lost run: the unit
+ * the game itself released is moved to a point, and the game then decides what
+ * that means. Nothing about the ending is posed — the wave still clears on its
+ * own advance, the finale still opens on `endWave`'s own rule, and the victory
+ * screen still arrives through the leak the Dynamo grounds out on.
+ *
+ * WHY IT IS NOT WALKED. The walk is a minute of simulated time — 7440 rendered
+ * frames on `substation` — and `harness.ts`'s recorder retains every draw call of
+ * every one of them, since nothing drains it until `frameCalls()` is asked for.
+ * Walking it cost 18.5M records and a measured 6.3GB of resident memory for ONE
+ * suite, against a grading host `vitest.config.ts` describes as two-core; two such
+ * workers exhaust it, and a worker that dies takes its file's point with it. That
+ * is a defect in the check rather than in the build, so the drive is bounded
+ * instead. The walk itself is decided where it belongs, by
+ * `campaign/finale-dynamo-walks`, which is the point about the walk.
  */
 export async function reachVictory(h: Harness): Promise<void> {
   openYard(h, {
@@ -69,18 +86,36 @@ export async function reachVictory(h: Harness): Promise<void> {
       "to put the run into the finale (specs/campaign.md)",
   );
 
-  // The Overload Dynamo walks the whole chain at OVERLOAD_SPEED, which is a
-  // minute or so of simulation on any of the three maps.
+  // The finale releases exactly one Overload Dynamo; it is the only unit the
+  // emptied yard can be carrying.
+  const released = cleared.snapshot.units.filter(
+    (unit) => unit.type === "overload",
+  );
+  assertTruthy(
+    released.length === 1,
+    "the finale to release its Overload Dynamo onto the emptied yard " +
+      `(specs/campaign.md); the yard carries ${
+        cleared.snapshot.units.length === 0
+          ? "no units"
+          : cleared.snapshot.units.map((unit) => unit.type).join(", ")
+      }`,
+  );
+  const dynamo = released[0]!;
+
+  const collector = mapById(cleared.snapshot.map).collector;
+  const at = tileCenter(collector.col, collector.row);
+  h.debug.setUnitWaypoint(dynamo.id, COLLECTOR_WAYPOINT);
+  h.debug.setUnitPosition(dynamo.id, at.x, at.y);
+
   const won = await h.until((s) => s.screen === "victory", {
-    maxFrames: ticks(180),
-    poll: 120,
+    maxFrames: ticks(5),
+    poll: 12,
   });
   assertEqual(
     won.hit,
     true,
-    "the finale's Overload Dynamo to reach the collector and the run to " +
-      "arrive at the victory screen within three minutes of simulation " +
-      "(specs/campaign.md)",
+    "the finale's Overload Dynamo to ground out at the collector and the run " +
+      "to arrive at the victory screen (specs/campaign.md)",
   );
 }
 

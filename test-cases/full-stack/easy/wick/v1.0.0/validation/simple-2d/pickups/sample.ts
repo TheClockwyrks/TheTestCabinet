@@ -37,6 +37,14 @@
 // than five times the 18 that an Ember bolt's radius (8) and a moth's (10) add
 // up to, so each bolt kills its own moth and no other.
 //
+// WHAT THE GENERATOR IS READ FOR. The sample reports `rngState` as the night
+// stood before its first kill and as it stood after its last. specs/
+// instrumentation.md ("A deterministic core"): the game "holds one
+// pseudo-random generator, seeded by `reset` and keeping its whole state in
+// `rngState`, and every random draw comes from it". Nothing else here draws, so
+// the distance between the two readings is exactly the draws the sample's kills
+// made, and `drop-at-most-one` measures it against `advanceRng`.
+//
 // The gems and pickups a batch left are cleared at the start of the next one,
 // which "Removes every gem; no experience is gained" and "Removes every pickup;
 // nothing is collected" (specs/instrumentation.md), neither of which draws
@@ -94,6 +102,13 @@ export interface DropSample {
   strays: number;
   /** The night after the last batch's tick. */
   after: WickSnapshot;
+  /**
+   * `rngState` as the isolated night stood before the first kill, which is
+   * where a replay of the sample's draws begins.
+   */
+  startRng: number;
+  /** `rngState` after the last batch's tick, the sample's draws behind it. */
+  endRng: number;
 }
 
 /** A kill point's key, to the unit; points are 100 units apart. */
@@ -110,10 +125,11 @@ export async function drawDrops(
   h: Harness,
   outputId: string,
 ): Promise<DropSample> {
-  isolate(h);
+  const opened = isolate(h);
   // The drop roll is the requirement this sample decides, so `drops` is the
   // one faculty turned back on.
   enable(h, "drops");
+  const startRng = opened.rngState;
   const points = new Set<string>();
   const pickups: SampledPickup[] = [];
   const perPoint = new Map<string, number>();
@@ -163,5 +179,7 @@ export async function drawDrops(
     mostPerPoint,
     strays,
     after,
+    startRng,
+    endRng: after.rngState,
   };
 }

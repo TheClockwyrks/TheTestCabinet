@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import { particleGifPlan } from "./particleGif";
 
 // A minimal emitter carrying just the lifetime the plan reads; the rest is filled

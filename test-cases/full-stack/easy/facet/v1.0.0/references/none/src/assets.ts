@@ -21,7 +21,7 @@
 // what `specs/instrumentation.md` asks the build not to do.
 
 import { GEM_KINDS, MAX_STRAIN } from "./constants";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 
 /** The directory the produced tree is served at, relative to the page. */
 export const ASSET_ROOT = "assets/";

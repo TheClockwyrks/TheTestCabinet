@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { describe, expect, it } from "vitest";
 import {
   GalleryDataProvider,

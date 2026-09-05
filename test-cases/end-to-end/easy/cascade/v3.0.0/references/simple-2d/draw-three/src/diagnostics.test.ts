@@ -7,7 +7,7 @@ import { openingState } from "./flow";
 import { dealFresh, turnStock } from "./table";
 import { toSim } from "./sim";
 import type { CascadeState } from "./game";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 type Source = (state: DeepReadonly<CascadeState>) => unknown;

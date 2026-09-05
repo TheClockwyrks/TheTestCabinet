@@ -28,7 +28,7 @@
 // WHAT THIS ITEM DOES NOT DECIDE. The MENU on the title screen, which is
 // `screens/title-menu-entries`, nor which entry is highlighted, which is
 // `screens/title-menu-highlight`, nor whether the copy is legible against what is
-// behind it, which is `presentation/screen-text-is-legible`.
+// behind it, which the reviewer judges.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { TAGLINE_TEXT, TITLE_TEXT } from "../constants";

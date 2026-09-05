@@ -29,7 +29,7 @@
 // asserted here. What is asserted is that they agree, and that the worm moved at
 // all — two runs that both stood still would agree vacuously.
 
-import { ConstantClock } from "@test-cabinet/simple-2d";
+import { ConstantClock } from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertDeepEqual, assertEqual } from "../assert";
 import {

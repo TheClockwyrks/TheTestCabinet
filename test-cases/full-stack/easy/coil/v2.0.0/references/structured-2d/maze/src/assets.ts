@@ -14,7 +14,7 @@
 // its input. That costs the game its polish rather than its playability.
 
 import { HEAD_FRAMES, SPRITE_PATHS } from "./constants";
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 
 /** The snake's produced sprite set, `null` wherever a file did not arrive. */
 export interface SnakeSprites {

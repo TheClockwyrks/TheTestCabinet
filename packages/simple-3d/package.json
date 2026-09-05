@@ -1,5 +1,5 @@
 {
-  "name": "@test-cabinet/simple-3d",
+  "name": "@clockwyrks/simple-3d",
   "version": "1.0.0",
   "private": true,
   "license": "MIT",
@@ -23,14 +23,14 @@
     "test": "vitest run"
   },
   "peerDependencies": {
-    "three": "~0.182.0"
+    "three": "~0.185.0"
   },
   "devDependencies": {
-    "@types/three": "~0.182.0",
-    "jsdom": "^25",
-    "three": "~0.182.0",
-    "typescript": "^5",
-    "vitest": "^3"
+    "@types/three": "~0.185.0",
+    "jsdom": "^26",
+    "three": "~0.185.0",
+    "typescript": "^6",
+    "vitest": "^5"
   },
   "dependencies": {
     "ts-essentials": "^10.2.1"

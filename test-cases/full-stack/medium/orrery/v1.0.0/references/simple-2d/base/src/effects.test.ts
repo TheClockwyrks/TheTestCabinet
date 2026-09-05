@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { createCanvas } from "@napi-rs/canvas";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";

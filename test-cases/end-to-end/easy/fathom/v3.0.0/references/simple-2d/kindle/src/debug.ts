@@ -38,6 +38,7 @@
 import {
   BRIGHT_HOLD,
   DEFAULT_SEED,
+  DRIFTER_INTERVAL,
   FATHOM_DEBUG_VERSION,
   LINGER_TIME,
   PREDATOR_KINDS,
@@ -162,6 +163,7 @@ export interface FathomDebugApi {
     index: number,
     enabled: boolean,
   ): FathomState;
+  setDrifterIn(state: DeepReadonly<FathomState>, seconds: number): FathomState;
   setSonarCooldown(
     state: DeepReadonly<FathomState>,
     seconds: number,
@@ -745,6 +747,21 @@ export function createDebugApi(): FathomDebugApi {
           travel: enabled,
         }),
       };
+    },
+
+    /**
+     * The seconds left on the bonus-drifter cadence, which runs down from there
+     * and admits at `0` exactly as one the game armed itself does
+     * (`specs/instrumentation.md`). It admits nothing at the call.
+     */
+    setDrifterIn(state, seconds) {
+      const left = requireSeconds("setDrifterIn", seconds);
+      if (left > DRIFTER_INTERVAL) {
+        throw new RangeError(
+          `Fathom: setDrifterIn seconds ${seconds} — expected at most ${DRIFTER_INTERVAL}`,
+        );
+      }
+      return { ...state, drifterIn: left };
     },
 
     /** The seconds left on the sonar pulse's cooldown, which runs down from there. */

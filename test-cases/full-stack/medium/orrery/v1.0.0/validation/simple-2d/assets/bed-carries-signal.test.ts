@@ -7,7 +7,7 @@
 // all, which is exactly what the bed is for.
 //
 // WHAT IT READS. The largest absolute sample in any channel of the whole file,
-// against `SILENCE_FLOOR` (`0.01`), which is forty decibels below full scale.
+// against `SAMPLE_EPSILON`, one step of a sixteen-bit container.
 //
 // WHY THE WHOLE FILE AND NOT EACH BAR OF IT. `specs/assets.md` fixes no level for
 // the bed — the sound bar asks only that it "sits under the cues", which is a
@@ -25,11 +25,10 @@
 // the level sits, beside the peak the verdict read.
 
 import { it } from "vitest";
-import { assertGreaterThanOrEqual, fail } from "../assert";
+import { assertGreaterThan, fail } from "../assert";
 import { peak } from "./bed-audio";
-import { readClip, showClips } from "./clips";
+import { readClip, SAMPLE_EPSILON, showClips } from "./clips";
 import { BED_FILE } from "./files";
-import { SILENCE_FLOOR } from "./sounds";
 
 it("carries audible signal in the produced music bed", () => {
   const read = readClip("music bed", BED_FILE);
@@ -39,9 +38,9 @@ it("carries audible signal in the produced music bed", () => {
   const loudest = Math.max(
     ...read.clip.channels.map((channel) => peak(channel)),
   );
-  assertGreaterThanOrEqual(
+  assertGreaterThan(
     loudest,
-    SILENCE_FLOOR,
+    SAMPLE_EPSILON,
     `${BED_FILE}: its loudest sample in any channel, on a full scale of 1`,
   );
 });

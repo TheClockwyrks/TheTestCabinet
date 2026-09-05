@@ -6,22 +6,21 @@
 // on which the distance left EQUALS the stopping distance is a braking tick, and
 // a build that wrote `<` there drives instead.
 //
-// THE BOUNDARY IS POSED EXACTLY, in figures rather than by driving up to it. The
-// hoist starts every run at `HOIST_START` (`2`) and the step targets `5`, so the
-// distance to go on the run's first tick is exactly `3`. A rate of `6` is posed
-// onto the axis before that tick, and `v * v / (2 * a)` is `36 / 12`, exactly
-// `3` — the two sides of the test are the same number, in floating point as well
-// as in arithmetic, which is what makes this the boundary rather than a reading
-// near it.
+// THE BOUNDARY IS POSED EXACTLY, in figures rather than by driving up to it. A
+// rate of `3` is posed onto the hoist before its first tick, so its stopping
+// distance `v * v / (2 * a)` is `9 / 12`, exactly `0.75`; the hoist starts every
+// run at `HOIST_START` (`2`) and the step targets `2.75`, so the distance to go on
+// that tick is exactly `0.75` as well. The two sides of the test are the same
+// number, in floating point as well as in arithmetic, which is what makes this the
+// boundary rather than a reading near it.
 //
 // `setAxisRate` is what poses it: it "sets an axis's signed rate, leaving its
 // value and its command as they are" (`specs/instrumentation.md`), and the axis
 // it is posed onto takes its command on the very tick that follows, from the tape
 // stage that runs before the axis motion (`specs/program.md` § The tick
-// pipeline). The posed rate is above the command's `HOIST_MAX_RATE`, which is
-// allowed and deliberate: the clamp `[-r, +r]` belongs to the drive branch alone,
-// so the two branches answer apart — braking leaves
-// `6 - HOIST_ACCEL / TICK_HZ = 5.9`, driving and clamping leaves `4`.
+// pipeline). The posed rate sits inside the axis's `HOIST_MAX_RATE` of `4`, which
+// is the range the specs allow a hoist rate, and the two branches still answer
+// apart — braking leaves `3 - HOIST_ACCEL / TICK_HZ = 2.9`, driving leaves `3.1`.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertClose } from "../assert";
@@ -44,9 +43,9 @@ import {
 } from "../harness";
 
 /** The rate posed onto the hoist before its first tick. */
-const POSED_RATE = 6;
+const POSED_RATE = 3;
 
-/** Its stopping distance, `v * v / (2 * a)`: exactly `3`. */
+/** Its stopping distance, `v * v / (2 * a)`: exactly `0.75`. */
 const STOPPING = (POSED_RATE * POSED_RATE) / (2 * HOIST_ACCEL);
 
 /** The target that leaves exactly that distance to go on the first tick. */

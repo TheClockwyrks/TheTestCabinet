@@ -41,7 +41,7 @@
 // they leave behind is the same floor.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { assertGreaterThan, assertLessThan } from "../assert";
 import {
   captureStill,

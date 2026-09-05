@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Panel } from "@test-cabinet/ui";
+import { Panel } from "@clockwyrks/ui";
 import { SettingsLayout } from "../../layouts/settings/SettingsLayout";
 import { useBackend } from "../../../client/context";
 import styles from "../runs/RunExec.module.scss";

@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
-import { Panel } from "@test-cabinet/ui";
+import { Panel } from "@clockwyrks/ui";
 import type {
   MatchSummary,
   Standing,
   TournamentRecord,
-} from "@test-cabinet/run-record";
+} from "@clockwyrks/run-record";
 import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";

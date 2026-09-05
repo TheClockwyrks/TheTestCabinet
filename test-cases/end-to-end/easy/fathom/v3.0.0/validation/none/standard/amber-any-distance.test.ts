@@ -21,11 +21,12 @@
 // hue test is the item's own — red above blue — rather than a match against a
 // palette `specs/overview.md` leaves to the build.
 //
-// HOW FAR ABOVE THE FOG is the item's bound too, and it is the same `25` of `441`
-// its Kindle mirror `kindle/beyond-circle` uses for the opposite verdict: a mote
-// within `25` of the surrounding fog has been clipped away, and one further off
-// than that is drawn. The fog it is measured against is sampled from a sealed
-// pocket of this same fixture, so the reading holds whatever palette a build chose.
+// HOW FAR ABOVE THE FOG IS THE SENSING FLOOR AND NOTHING MORE. No figure anywhere
+// fixes how bright an amber mote is, so the reading is held to `8` of `441`: the
+// level below which a sampling cannot tell a drawing from eight-bit channel
+// rounding and the host's antialiasing. The fog it is measured against is sampled
+// from a sealed pocket of this same fixture, so the reading holds whatever palette
+// a build chose.
 //
 // THE BOARD HOLDS THE DRIFTER AND NOTHING ELSE, and the drifter is held still by
 // `setDrifterMind(index, false)`, which holds it "exactly where it stands" while
@@ -67,15 +68,16 @@ const FAR_TILES = 16;
 const VISION_MAX = VISION_MIN + VISION_GAIN;
 
 /**
- * How far from the surrounding fog the mote must be drawn, as an RGB distance out
- * of `441`.
+ * The sensing floor the mote owes against the surrounding fog, as an RGB distance
+ * out of `441`.
  *
- * The bound `kindle/beyond-circle` states for the same reading in the other
- * direction — "within an RGB distance of 25 of 441 of the surrounding flat fog"
- * is a light that has been clipped away — so anything further off than that is a
- * light that is drawn.
+ * `8` of `441` is the level below which a sampling cannot tell a drawing from
+ * eight-bit channel rounding and the host's antialiasing. Anything the build
+ * painted there clears it, in whatever palette and however dim.
+ *
+ * How bright the light burns and what tint it carries are the build's.
  */
-const DRAWN_MIN = 25;
+const DRAWN_MIN = 8;
 
 /** Ticks run before the reading, so the build has drawn the posed board. */
 const SETTLE_TICKS = 2;

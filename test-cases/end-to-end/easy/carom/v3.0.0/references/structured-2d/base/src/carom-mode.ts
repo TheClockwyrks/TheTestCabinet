@@ -35,12 +35,12 @@
 // serve happens on the first frame the hold reaches zero, and a point lands on
 // the frame the advanced ball is past a goal edge (specs/balls.md).
 
-import { GameMode, PlayerController } from "@test-cabinet/structured-2d";
+import { GameMode, PlayerController } from "@clockwyrks/structured-2d";
 import type {
   Controller,
   InputReader,
   Transform,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { aiVelocity } from "./ai";
 import { Ball, ballOf, spawnBallActor } from "./ball";
 import {

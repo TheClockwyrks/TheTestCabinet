@@ -10,7 +10,7 @@
 // scatter differently while a replay from the same seed reproduces the run exactly.
 
 import { BURST_DURATION, MAX_BURSTS } from "./constants";
-import { ParticleSimulator } from "@test-cabinet/particle-runtime";
+import { ParticleSimulator } from "@clockwyrks/particle-runtime";
 import { drawSeed, takeId, type Sim } from "./sim";
 
 /**

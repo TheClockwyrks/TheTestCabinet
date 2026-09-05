@@ -40,7 +40,7 @@ import type {
   GgModuleKind,
   GgTelemetryEvent,
   GgTelemetryKind,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import type { HarnessEvent } from "../../../../client/types";
 import { GgAgentsSummary } from "./GgAgentsSummary";
 import { GgExplorerNavContext, type GgExplorerNav } from "./GgExplorerNav";

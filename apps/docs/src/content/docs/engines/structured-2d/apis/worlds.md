@@ -256,4 +256,4 @@ game mode has begun play.
 ## Exports
 
 `LevelDefinition`, `ActorSpec`, `LoadApi`, `World`, `SpawnSpec`, `TimerHandle`,
-and `WorldAudio` are exported as types from `@test-cabinet/structured-2d`.
+and `WorldAudio` are exported as types from `@clockwyrks/structured-2d`.

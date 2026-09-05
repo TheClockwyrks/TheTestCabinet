@@ -7,7 +7,7 @@
 // player hears cannot drift apart.
 
 import { CUES, type CueName } from "./constants";
-import type { CueSpec, InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type { CueSpec, InitApi, UpdateApi } from "@clockwyrks/simple-2d";
 
 /** What each of the ten cues sounds like, so the events are told apart by ear. */
 const SPECS: Readonly<Record<CueName, CueSpec>> = {

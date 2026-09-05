@@ -9,13 +9,16 @@
 // `+min(12 + 3 * (w - 1), 45)`, ring 3 at `-min(8 + 2 * (w - 1), 30)`, ring 1
 // stationary, and the ball at `240 + 30 * (w - 1)` capped at `480`.
 //
-// A ring speed is posed to 77 first, so "overwriting any setRingSpeed" is read
-// against a value that would otherwise survive, and the wave-4 ball speed is
-// read off the game's own launch of a parked ball — the operation the spec
-// names as a consumer of the figure.
+// Ring 2 is posed at RING2_SPEED_CAP first — the `45` its own formula caps at,
+// so the pose stays inside the range specs/rings.md gives the ring — and wave 4
+// puts it at `21`, so "overwriting any setRingSpeed" is read against a value
+// that would otherwise survive. The wave-4 ball speed is read off the game's
+// own launch of a parked ball — the operation the spec names as a consumer of
+// the figure.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual } from "../assert";
+import { RING2_SPEED_CAP } from "../constants";
 import { captureReplay, isolate, openHarness, type Harness } from "../harness";
 import { RING_FIGURES, speedOf, waveBallSpeed } from "./helpers";
 
@@ -34,7 +37,7 @@ afterEach(async () => {
 
 it("sets the counter, the ring speeds, and the ball speed a launch uses", async () => {
   await isolate(h);
-  await h.debug.setRingSpeed(2, 77);
+  await h.debug.setRingSpeed(2, RING2_SPEED_CAP);
   await h.debug.setWave(WAVE);
   const s = await h.snapshot();
 
@@ -44,7 +47,7 @@ it("sets the counter, the ring speeds, and the ball speed a launch uses", async 
       s.rings[i].speedDegPerSec,
       figures.speedAtWave(WAVE),
       6,
-      `ring ${i + 1}'s wave-${WAVE} orbit speed, the posed 77 overwritten`,
+      `ring ${i + 1}'s wave-${WAVE} orbit speed, the posed cap overwritten`,
     );
   }
 

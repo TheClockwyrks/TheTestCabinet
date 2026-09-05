@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PerformanceSnapshotCheck } from "@test-cabinet/run-record";
+import type { PerformanceSnapshotCheck } from "@clockwyrks/run-record";
 import { firstDrift } from "./drift";
 import type { Snapshot } from "./renderer";
 

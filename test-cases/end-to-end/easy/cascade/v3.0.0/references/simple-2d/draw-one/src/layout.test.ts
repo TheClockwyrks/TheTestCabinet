@@ -144,12 +144,11 @@ describe("the drop rectangles", () => {
       0,
       Array.from({ length: 8 }, () => true),
     );
-    let hits = 0;
     for (const point of [
       { x: STOCK_X + 5, y: TOP_ROW_Y + 5 },
       { x: COLUMN_X[0] + 5, y: 400 },
     ]) {
-      hits = 0;
+      let hits = 0;
       for (const pile of ["stock", "waste"] as const) {
         if (pointIn(dropRect(state, pile, 0), point.x, point.y)) hits++;
       }

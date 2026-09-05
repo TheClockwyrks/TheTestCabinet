@@ -13,7 +13,7 @@
 // recorder and the audio probe, bracketing each driven tick around one
 // `advance(1)` of the build's surface, reading pixels and draw calls back out,
 // and writing the evidence a review point declares — every engineless case needs
-// exactly that, and it lives once, in `@test-cabinet/case-harness`, staged beside
+// exactly that, and it lives once, in `@clockwyrks/case-harness`, staged beside
 // this file as `./case-harness/`. What is left here is what is genuinely
 // Fathom's: the shape of its snapshot, the thirty operations its
 // `specs/instrumentation.md` requires, and the readings a trench of dark water
@@ -151,6 +151,7 @@ export const REQUIRED_OPS = [
   "clearDrifters",
   "setDrifterMind",
   "setDrifterTravel",
+  "setDrifterIn",
   "setSonarCooldown",
   "setInkCooldown",
 ] as const;
@@ -294,6 +295,12 @@ export interface FathomSnapshot extends FixtureBoard {
   muted: boolean;
   autoStep: boolean;
   planktonRemaining: number;
+  /**
+   * The seconds left on the bonus-drifter cadence: the countdown that admits
+   * the next drifter at the den gate. `DRIFTER_INTERVAL` at the top of a maze
+   * and again from each admission, and never more than that (specs/state.md).
+   */
+  drifterIn: number;
   brightness: number;
   brightHold: number;
   visionRadius: number;
@@ -385,6 +392,8 @@ export interface FathomDebugApi extends FixtureOps {
   clearDrifters(): Promise<void>;
   setDrifterMind(index: number, enabled: boolean): Promise<void>;
   setDrifterTravel(index: number, enabled: boolean): Promise<void>;
+  /** Poses the seconds left on the bonus-drifter cadence, `0` to `DRIFTER_INTERVAL`. */
+  setDrifterIn(seconds: number): Promise<void>;
   setSonarCooldown(seconds: number): Promise<void>;
   setInkCooldown(seconds: number): Promise<void>;
 }

@@ -1,5 +1,5 @@
-// Cascade — table/stage-fit: the whole `1280 x 720` table is on the canvas,
-// fitted and centred, at every window shape and every pixel density.
+// Cascade — table/stage-fit: the whole `1280 x 720` table is drawn in logical
+// units, so it is on the canvas at every window shape and every pixel density.
 //
 // specs/overview.md fixes the stage and gives the fit away: "`STAGE_W x STAGE_H`
 // is the game's logical design size. Fitting it to the browser window is the
@@ -11,120 +11,91 @@
 // "Draw in logical units, and take the canvas element's own size from the
 // runtime alone."
 //
-// THAT LAST LINE IS WHY THIS POINT IS WORTH READING. The fit itself belongs to
-// the engine, so the map is right whatever the build does with it — and a build
-// that measured the canvas element and worked out its own positions from it
-// draws a table that is fitted on one window and adrift on the next, while the
-// map says otherwise the whole time. So the three checks read three different
-// things:
+// THAT LAST LINE IS THE WHOLE OF WHAT THIS POINT DECIDES. Under this engine the
+// scale, the centering and the pixel ratio are the ENGINE's arithmetic, and a
+// check that read them back would return the same verdict for every build on it.
+// What is the BUILD's is that it drew in logical units and nowhere else: a build
+// that measured the canvas element and worked out its own positions from it draws
+// a table that is fitted on one window and adrift on the next. So the engine's
+// map is used only to carry what the build drew BACK into logical units, and what
+// is graded is where the build's own drawing landed in that space.
 //
-//  1. THE MAP, over four window shapes at two pixel densities, BEFORE a frame
-//     has run, because the requirement includes the state on load: the whole
-//     stage inside the surface, at one scale on both axes, centred, with the
-//     leftover split into two bars.
-//  2. THE PAINT, as the same table drawn at four of those surfaces and compared
-//     AT THE SAME LOGICAL POINTS. A build that draws in logical units paints the
-//     same table at every one of them, up to the rasterization of two different
-//     scales; a build that read the canvas element's size paints a different
-//     table at each. Nothing here says where any pile is — which anchor a pile
-//     stands at is the business of the six anchor points in this group — only
-//     that whatever the build drew, it drew the same thing in the same logical
-//     space every time, and that it drew something.
-//  3. THE BARS, at the narrowest window, which carry the background and nothing
-//     the game drew.
+// FOUR WINDOW SHAPES AT TWO PIXEL DENSITIES, so eight surfaces: a window the size
+// of the stage, one wider than it, a portrait one, and one smaller than it, each
+// at one device pixel per CSS pixel and at two. A build that drew in device
+// pixels, or that anchored its table to a corner of the element, lands its cards
+// away from their own anchors at one of the eight.
+//
+// WHAT IS READ AT EACH SURFACE. A card is posed on the four corner-most piles of
+// the table — the stock and the last foundation across the top row, and the first
+// and last columns beneath them — and every card-sized shape the frame painted is
+// read back into logical units and held against those four anchors. The four span
+// `224` to `1056` across and `24` to `320` down, so a map that is wrong in its
+// scale or its offset on either axis is wrong at one of them by many units. The
+// `none` and `simple-2d` suites read this point the same way.
+//
+// AND THE BARS CARRY NOTHING THE GAME DREW, read at the smallest window, where
+// they are widest. They lie outside the logical space, so a build that draws only
+// in that space never touches them.
+//
+// WHAT IS DELIBERATELY NOT READ. The footprint of the cards found at those
+// anchors, which is `table.card-size`'s, and where each of the thirteen anchors
+// lies, which is the rest of this group's.
 
 import { afterEach, it } from "vitest";
+import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
-  assertCloseTo,
-  assertDeepEqual,
-  assertEqual,
-  assertGreaterThan,
-  assertGreaterThanOrEqual,
-  assertLessThanOrEqual,
-} from "../assert";
-import { STAGE_H, STAGE_W } from "../constants";
+  CARD_H,
+  CARD_W,
+  COLUMN_X,
+  FOUNDATION_X,
+  STAGE_H,
+  STAGE_W,
+  STOCK_X,
+  TABLEAU_Y,
+  TOP_ROW_Y,
+} from "../constants";
 import {
   ACE,
   ALL_SUITS,
-  alternatingRun,
   captureStill,
   card,
   clearColor,
   colorDistance,
-  COLUMNS,
   createHarness,
   down,
-  FOUNDATIONS,
+  drawnShapes,
   KING,
   openTable,
   poseCard,
   poseColumn,
-  poseWaste,
-  sampleColor,
   SEVEN,
-  THREE,
+  shapesAt,
+  type DrawnShape,
   type Harness,
 } from "../harness";
 
 /**
- * How far a letterbox pixel may sit from the rasterized `BACKGROUND`, in RGB
- * distance on the 0–441 scale.
+ * How far a drawn shape's size may sit from the card footprint and still be read
+ * as a card, in logical units.
  *
- * The bars lie outside the logical stage, so a build that draws in logical units
- * never reaches them and they hold exactly what the engine cleared the canvas
- * to — the build's own exported `BACKGROUND`, which specs/overview.md fixes as
- * what the bars carry. Three units is rounding room for rasterizing a CSS colour
- * string, not an allowance for anything drawn there.
+ * A card's footprint is fixed at `CARD_W x CARD_H` (specs/table.md), so this is
+ * not a size tolerance: `table.card-size` is what grades a footprint. It is room
+ * for the unit a build may lose insetting a stroke or rounding a corner, and a
+ * shape that is not a card misses by tens of units.
  */
-const CLEAR_MAX = 3;
+const CARD_BOX_TOLERANCE = 2;
 
-/**
- * How far the same logical point may differ between two renderings of the same
- * table and still count as the same paint, in RGB distance on the 0–441 scale.
- *
- * The two frames are the same drawing rasterized at different scales, so what
- * separates them is edge coverage and glyph hinting rather than anything the
- * build decided. Forty-eight is about a ninth of the scale: wide enough to
- * absorb a card's antialiased border sampled half on and half off, and far
- * narrower than the difference between a card and the felt it sits on.
- */
-const SAME_PAINT_MAX = 48;
+/** The shapes among `shapes` that cover a card's footprint (specs/table.md). */
+function cardShapes(shapes: readonly DrawnShape[]): DrawnShape[] {
+  return shapes.filter(
+    (shape) =>
+      Math.abs(shape.w - CARD_W) <= CARD_BOX_TOLERANCE &&
+      Math.abs(shape.h - CARD_H) <= CARD_BOX_TOLERANCE,
+  );
+}
 
-/**
- * The share of the sampled points that may differ between two surfaces.
- *
- * A grid this coarse mostly lands in the flat interiors of cards and felt, and
- * only the points that fall on an edge or on a glyph can move: measured against
- * the reference implementation the worst of the four surfaces differs on about
- * one point in fifty. Fifteen per cent is that with a wide margin, and it is
- * nowhere near what a build that positioned its drawing from the canvas
- * element's own size would produce — such a build puts its whole table somewhere
- * else on one of the two surfaces, and disagrees almost everywhere.
- */
-const MISMATCH_MAX = 0.15;
-
-/**
- * The share of the sampled points that must carry something other than the
- * background before the agreement above means anything.
- *
- * Two blank canvases agree perfectly, so a build that drew nothing at all would
- * otherwise pass. On the table this check poses — a card on every one of the
- * thirteen piles, with the columns fanned one to seven cards deep — about a
- * third of the grid falls on a card. Fifteen per cent is well under that and
- * well over nothing.
- */
-const PAINTED_MIN = 0.15;
-
-/**
- * How far apart the sampled points are, in logical units.
- *
- * Twenty units across a `1280 x 720` stage is a grid of 2304 points, five to a
- * card's width and seven to its height, so every pile is sampled many times over
- * and no feature of the table is missed between two points.
- */
-const GRID_STEP = 20;
-
-/** The four window shapes the fit is read over, each at both pixel densities. */
+/** The four window shapes the point is read over, each at both densities. */
 const WINDOWS = [
   {
     name: "a window the size of the stage",
@@ -138,60 +109,75 @@ const WINDOWS = [
 
 const DENSITIES = [1, 2] as const;
 
+/** The smallest window, where the still is taken and the bars are read. */
+const SMALLEST = { cssWidth: 640, cssHeight: 480, dpr: 1 } as const;
+
 const SURFACES = WINDOWS.flatMap((window) =>
   DENSITIES.map((dpr) => ({
     ...window,
     dpr,
-    at: `${window.name} at dpr ${dpr}`,
+    at: `${window.name} at dpr ${String(dpr)}`,
+    smallest:
+      window.cssWidth === SMALLEST.cssWidth &&
+      window.cssHeight === SMALLEST.cssHeight &&
+      dpr === SMALLEST.dpr,
   })),
 );
 
-/** The surface every other one is compared against: one logical unit per pixel. */
-const BASE = { cssWidth: STAGE_W, cssHeight: STAGE_H, dpr: 1 } as const;
+/** The foundation the top row's rightmost card is posed on: the last of four. */
+const FOUNDATION = FOUNDATION_X.length - 1;
+
+/** The two columns posed: the leftmost and the rightmost of the seven. */
+const LEFT_COLUMN = 0;
+const RIGHT_COLUMN = COLUMN_X.length - 1;
 
 /**
- * The surfaces the paint is compared at: a window smaller than the stage, one
- * wider, a portrait one, and the stage's own size at twice the density, so the
- * comparison spans four shapes and both pixel ratios.
+ * The four corners of the table this scenario poses a card at, as the anchors
+ * specs/table.md fixes them.
  */
-const COMPARED = [
+const CORNERS = [
+  { x: STOCK_X, y: TOP_ROW_Y, where: "the stock, the top row's leftmost pile" },
   {
-    at: "a window smaller than the stage",
-    cssWidth: 640,
-    cssHeight: 480,
-    dpr: 1,
+    x: FOUNDATION_X[FOUNDATION],
+    y: TOP_ROW_Y,
+    where: `foundation ${String(FOUNDATION)}, the top row's rightmost pile`,
   },
   {
-    at: "a window wider than the stage",
-    cssWidth: 1600,
-    cssHeight: 720,
-    dpr: 1,
+    x: COLUMN_X[LEFT_COLUMN],
+    y: TABLEAU_Y,
+    where: `column ${String(LEFT_COLUMN)}'s card, the tableau's leftmost`,
   },
-  { at: "a portrait window at dpr 2", cssWidth: 720, cssHeight: 1000, dpr: 2 },
   {
-    at: "the stage's own size at dpr 2",
-    cssWidth: STAGE_W,
-    cssHeight: STAGE_H,
-    dpr: 2,
+    x: COLUMN_X[RIGHT_COLUMN],
+    y: TABLEAU_Y,
+    where: `column ${String(RIGHT_COLUMN)}'s card, the tableau's rightmost`,
   },
-] as const;
+];
 
 /**
- * The narrowest window tested, and the one the still is taken at: the stage is
- * scaled to half size there, so a table that did not fit shows it.
+ * How far a drawn shape's top-left, carried back into logical units, may sit from
+ * a pile's anchor and still be read as the card drawn AT it, in logical units.
+ *
+ * Not a placement tolerance on the build: the anchor points of this group are what
+ * hold a build to specs/table.md's figures. This is room for the stroke a build
+ * insets and for the half device pixel a build may lose rounding a coordinate,
+ * which at the coarsest fit here is under half a unit. It stays far under the
+ * `122` pitch between two piles, so a card can never be read as sitting on its
+ * neighbour's anchor.
  */
-const SMALLEST = COMPARED[0];
+const AT_ANCHOR = 3;
 
-/** Every logical point the paint is compared at. */
-const GRID: readonly { x: number; y: number }[] = (() => {
-  const points: { x: number; y: number }[] = [];
-  for (let x = GRID_STEP / 2; x < STAGE_W; x += GRID_STEP) {
-    for (let y = GRID_STEP / 2; y < STAGE_H; y += GRID_STEP) {
-      points.push({ x, y });
-    }
-  }
-  return points;
-})();
+/**
+ * How far a letterbox pixel may sit from the rasterized `BACKGROUND`, in RGB
+ * distance on the 0–441 scale.
+ *
+ * The bars lie outside the logical stage, so a build that draws in logical units
+ * never reaches them and they hold exactly what the engine cleared the canvas
+ * to — the build's own exported `BACKGROUND`, which specs/overview.md fixes as
+ * what the bars carry. Three units is rounding room for rasterizing a CSS colour
+ * string, not an allowance for anything drawn there.
+ */
+const CLEAR_MAX = 3;
 
 let harnesses: Harness[] = [];
 
@@ -210,125 +196,53 @@ async function surface(options: {
   return h;
 }
 
-/**
- * The same table, posed on a surface of the given shape: a card on each of the
- * thirteen piles, the columns fanned one to seven cards deep, so paint reaches
- * every corner of the table's furniture.
- */
-async function board(options: {
-  cssWidth: number;
-  cssHeight: number;
-  dpr: number;
-}): Promise<Harness> {
-  const h = await surface(options);
+/** One card on each of the table's four corner-most piles, and nothing else. */
+function poseCorners(h: Harness): void {
   openTable(h);
   poseCard(h, "stock", 0, down(card("spades", SEVEN)));
-  poseWaste(h, [card("hearts", THREE)], [1]);
-  FOUNDATIONS.forEach((index) =>
-    poseCard(h, "foundation", index, card(ALL_SUITS[index], ACE)),
-  );
-  COLUMNS.forEach((index) =>
-    poseColumn(h, index, alternatingRun(KING, index + 1)),
-  );
-  await h.advance(1);
-  return h;
+  poseCard(h, "foundation", FOUNDATION, card(ALL_SUITS[FOUNDATION], ACE));
+  poseColumn(h, LEFT_COLUMN, [card("hearts", KING)]);
+  poseColumn(h, RIGHT_COLUMN, [card("spades", KING)]);
 }
 
 it.each(SURFACES)(
-  "fits the whole table into $at, centred, on load",
-  async ({ cssWidth, cssHeight, dpr }) => {
+  "draws the whole table in logical units at $at",
+  async ({ cssWidth, cssHeight, dpr, smallest }) => {
     const h = await surface({ cssWidth, cssHeight, dpr });
+    poseCorners(h);
 
-    // Read before anything has been driven: the fit is right on load.
-    const view = h.engine.viewport();
-    const deviceWidth = Math.round(cssWidth * dpr);
-    const deviceHeight = Math.round(cssHeight * dpr);
-    const uniform = Math.min(cssWidth / STAGE_W, cssHeight / STAGE_H) * dpr;
+    const calls = await h.drawFrame();
+    if (smallest) captureStill(h, "fitted");
 
-    // The logical space the game draws in is the whole `1280 x 720` table, at
-    // one scale on both axes, so the aspect ratio is preserved.
-    assertEqual(view.width, STAGE_W);
-    assertEqual(view.height, STAGE_H);
-    assertCloseTo(view.scale, uniform, 9);
-
-    // The whole stage is inside the surface, on both axes: nothing is clipped.
-    assertLessThanOrEqual(STAGE_W * view.scale, deviceWidth + 1e-6);
-    assertLessThanOrEqual(STAGE_H * view.scale, deviceHeight + 1e-6);
-
-    // And it is centred: what is left over on each axis is split into two bars.
-    assertGreaterThanOrEqual(view.offsetX, 0);
-    assertGreaterThanOrEqual(view.offsetY, 0);
-    assertCloseTo(view.offsetX * 2 + STAGE_W * view.scale, deviceWidth, 6);
-    assertCloseTo(view.offsetY * 2 + STAGE_H * view.scale, deviceHeight, 6);
-
-    // One axis is filled exactly, so the letterboxing is on the other alone.
-    assertCloseTo(Math.min(view.offsetX, view.offsetY), 0, 6);
-
-    // Both far corners of the table land on the surface.
-    assertDeepEqual(h.device(0, 0), {
-      x: Math.round(view.offsetX),
-      y: Math.round(view.offsetY),
-    });
-    assertDeepEqual(h.device(STAGE_W, STAGE_H), {
-      x: Math.round(view.offsetX + STAGE_W * view.scale),
-      y: Math.round(view.offsetY + STAGE_H * view.scale),
-    });
-
-    // Running frames does not move it.
-    await h.advance(2);
-    assertDeepEqual(h.engine.viewport(), view);
+    const cards = cardShapes(drawnShapes(h, calls));
+    for (const corner of CORNERS) {
+      const here = shapesAt(cards, corner.x, corner.y, AT_ANCHOR);
+      assertGreaterThan(
+        here.length,
+        0,
+        `a card-sized shape drawn with its top-left at (${String(corner.x)}, ` +
+          `${String(corner.y)}), where this scenario put a card on ` +
+          `${corner.where}, read back into logical units through the fit a ` +
+          `${String(cssWidth)} x ${String(cssHeight)} window at dpr ` +
+          `${String(dpr)} produces (specs/overview.md: draw in logical units, ` +
+          "and take the canvas element's own size from the runtime alone) — " +
+          `the frame drew ${String(cards.length)} card-sized shape(s), at ` +
+          `${cards.map((shape) => `(${shape.x.toFixed(0)}, ${shape.y.toFixed(0)})`).join(", ") || "nowhere"} ` +
+          `(within ${String(CARD_BOX_TOLERANCE)} units of the footprint)`,
+      );
+    }
   },
 );
 
-it("paints the same table in the same logical space at every window", async () => {
-  const base = await board(BASE);
-
-  // The table carries paint, so what follows is agreement about a table that was
-  // drawn rather than agreement between two empty canvases.
-  const background = clearColor();
-  const painted =
-    GRID.filter(
-      (point) =>
-        colorDistance(sampleColor(base, point.x, point.y), background) >
-        SAME_PAINT_MAX,
-    ).length / GRID.length;
-  assertGreaterThan(
-    painted,
-    PAINTED_MIN,
-    "the share of the table carrying something other than the background, " +
-      "with a card posed on all thirteen piles",
-  );
-
-  for (const options of COMPARED) {
-    const other = await board(options);
-    if (options === SMALLEST) captureStill(other, "fitted");
-
-    const unlike =
-      GRID.filter(
-        (point) =>
-          colorDistance(
-            sampleColor(base, point.x, point.y),
-            sampleColor(other, point.x, point.y),
-          ) > SAME_PAINT_MAX,
-      ).length / GRID.length;
-
-    assertLessThanOrEqual(
-      unlike,
-      MISMATCH_MAX,
-      `the share of the ${GRID.length} sampled logical points that ${options.at} ` +
-        "paints differently from the same table drawn one logical unit to " +
-        "the pixel",
-    );
-  }
-});
-
 it("carries nothing but the background in the letterbox bars", async () => {
-  const h = await board(SMALLEST);
+  const h = await surface(SMALLEST);
+  poseCorners(h);
+  await h.drawFrame();
 
   // This window is wider in proportion than the stage, so the fit letterboxes it
-  // vertically and the two bands are outside the logical table entirely. They
-  // are read in device pixels directly, and what is there is exactly the
-  // background the build handed the engine to clear to.
+  // vertically and the two bands lie outside the logical table entirely. They are
+  // read in device pixels directly, and the engine's own map is used only to find
+  // them.
   const view = h.engine.viewport();
   const deviceWidth = Math.round(SMALLEST.cssWidth * SMALLEST.dpr);
   const deviceHeight = Math.round(SMALLEST.cssHeight * SMALLEST.dpr);
@@ -347,7 +261,10 @@ it("carries nothing but the background in the letterbox bars", async () => {
     assertLessThanOrEqual(
       colorDistance(bar, background),
       CLEAR_MAX,
-      `the letterbox bar at device y ${deviceY}`,
+      `the letterbox bar at device y ${String(deviceY)}, against the ` +
+        "background the build handed the engine to clear to " +
+        "(specs/overview.md: the letterbox bars around the stage carry the " +
+        "stage's background color)",
     );
   }
 });

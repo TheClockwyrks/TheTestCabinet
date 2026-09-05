@@ -55,7 +55,7 @@ import {
   startPlaying,
 } from "../harness";
 import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
-import { FOG_MATCH, MASKED_MATCH, tileFromForager } from "./circle";
+import { DRAWN_FLOOR, MASKED_MATCH, tileFromForager } from "./circle";
 
 /**
  * The board: one long corridor, and across eight tiles of solid rock a sealed
@@ -73,14 +73,18 @@ const INSIDE_TILES = 5; // 160 units: past V (96), inside R (192)
 const OUTSIDE_TILES = 8; // 256 units: past R (192)
 
 /**
- * How far from the fog a tile must be drawn to count as drawn, as an RGB distance
- * out of `441`.
+ * The sensing floor a tile inside the circle owes against the unrevealed fog, as
+ * an RGB distance out of `441`.
  *
- * The review item's own bound, in both directions: inside the circle a tile
- * differs from unrevealed fog "by more than an RGB distance of 25 of 441", and
- * beyond it a tile is "within 25 of 441 of it".
+ * `8` of `441` is the level below which a sampling cannot tell a drawing from
+ * eight-bit channel rounding and the host's antialiasing. Anything the build
+ * painted there clears it, in whatever palette and however dim.
+ *
+ * What a tile BEYOND the circle owes is the other direction and the other
+ * figure, {@link MASKED_MATCH}: it is painted with that fog rather than merely
+ * near it.
  */
-const DRAWN_MIN = FOG_MATCH;
+const DRAWN_MIN = DRAWN_FLOOR;
 
 /** Ticks the forager stands at each berth, so the build has drawn what it lit. */
 const SETTLE_TICKS = 4;

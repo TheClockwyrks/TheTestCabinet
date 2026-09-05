@@ -9,11 +9,10 @@
  * meant to speak as a static fact instead of inferring it from behaviour.
  *
  * The catalogue is **closed**, and an unknown name throws rather than falling back
- * to a default. A silent fallback would let a run be configured for one control
- * scheme and executed under another, so the run record would describe a run that
- * never happened; failing at selection time keeps the configuration and the run in
- * agreement. Adding a layout is a deliberate edit here (and an engine version bump),
- * not something a case can do from its manifest.
+ * to a default. A silent fallback would let a game be configured for one control
+ * scheme and played under another, so what shipped would not be what was asked
+ * for; failing at selection time keeps the configuration and the behavior in
+ * agreement. Adding a layout is a deliberate edit here, and an engine version bump.
  */
 
 import type { TouchLayout } from "./contract";

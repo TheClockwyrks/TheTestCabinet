@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   DEFAULT_SEED,
+  DIVE_FIRST_DELAY,
   ENEMY_BULLET_SPEED,
   PLAYER_BULLET_SPEED,
   RESONANCE_MAX,
@@ -67,6 +68,7 @@ describe("the surface", () => {
         "diveLaunching",
         "stageClearing",
         "diveClock",
+        "diveGap",
         "droneSpeedScale",
         "bulletSpeedScale",
         "diveGapScale",
@@ -198,6 +200,7 @@ describe("reset", () => {
     expect(s.stageClearing).toBe(true);
     expect(s.ship.contact).toBe(true);
     expect(s.diveClock).toBe(0);
+    expect(s.diveGap).toBe(DIVE_FIRST_DELAY);
     expect(s.ship.x).toBe(LANE_CENTER);
     expect(s.ship.band).toBe("cyan");
     expect(s.ship.lockout).toBe(0);
@@ -307,6 +310,8 @@ describe("every pose reads back", () => {
     expect(d.snapshot().diveClock).toBe(1.25);
     d.setDiveClock(0);
     expect(d.snapshot().diveClock).toBe(0);
+    d.setDiveGap(1.75);
+    expect(d.snapshot().diveGap).toBe(1.75);
   });
 
   it("poses the ship and its cannon", () => {

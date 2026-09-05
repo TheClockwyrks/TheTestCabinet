@@ -15,7 +15,7 @@ import type {
   InitApi,
   RenderApi,
   UpdateApi,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 import type {
   EnemyId,
@@ -357,6 +357,7 @@ export interface WickDebugApi {
   setProgression(state: DeepReadonly<WickState>, on: boolean): WickState;
   setTick(state: DeepReadonly<WickState>, tick: number): WickState;
   setSpawnTimer(state: DeepReadonly<WickState>, seconds: number): WickState;
+  advanceRng(state: DeepReadonly<WickState>, draws: number): WickState;
   setPlayerPosition(
     state: DeepReadonly<WickState>,
     x: number,

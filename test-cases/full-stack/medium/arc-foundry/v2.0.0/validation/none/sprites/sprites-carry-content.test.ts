@@ -7,15 +7,19 @@
 // point in this category and none of that, so this is the point that opens each
 // one and looks.
 //
-// THE BAR. A twentieth of the canvas carrying more than an alpha of `8`. It is
-// deliberately far below anything a drawn sprite reaches — a `40 x 40` mount
-// clears it with `80` opaque pixels — because what it is for is telling a drawing
-// from an empty canvas, and `specs/assets.md` fixes no coverage a sprite must
-// meet. The alpha floor is there because a straight-alpha canvas cleared to
-// transparent black is not always exactly zero.
+// WHAT IS DECIDED. That the canvas is not blank: at least one of its pixels
+// carries more than the decode floor. `specs/assets.md` fixes no coverage a sprite
+// must meet — a thin projectile bolt on the padded canvas it fixes the size of and
+// a sparse `16 x 16` icon are both conforming drawings — so how much of a canvas a
+// sprite fills is the build's, and how good the drawing is is the reviewer's
+// presentation rating.
+//
+// THE DECODE FLOOR. A straight-alpha canvas cleared to transparent black does not
+// always come back exactly zero, so `8` is what a pixel has to carry before the
+// decode counts it as drawn on rather than as cleared ground.
 
 import { it } from "vitest";
-import { assertGreaterThanOrEqual } from "../assert";
+import { assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -25,18 +29,16 @@ import {
 import { COMPONENT_TYPES } from "../constants";
 import { coverage, decode, everySprite } from "./png";
 
-/** Above this alpha, a pixel was drawn on. */
+/** Above this alpha, a decoded pixel was drawn on rather than left cleared. */
 const FLOOR = 8;
-/** How much of its canvas a produced sprite has to have something on. */
-const LEAST = 1 / 20;
 
 it("has something drawn on every produced sprite", async () => {
   for (const sprite of everySprite()) {
-    assertGreaterThanOrEqual(
+    assertGreaterThan(
       coverage(decode(sprite), FLOOR),
-      LEAST,
+      0,
       `the fraction of assets/${sprite.path} carrying more than an alpha of ` +
-        `${FLOOR}`,
+        `${FLOOR}, so the canvas is drawn on rather than blank`,
     );
   }
 

@@ -38,7 +38,7 @@ import { resetSession } from "./flow";
 import { coilState, type CoilState } from "./game";
 import { menuItemRect, menuItems, type MenuRect } from "./menus";
 import { HAS_OBSTACLES } from "./mode";
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 
 // ---- The snapshot shape (specs/instrumentation.md) ------------------------
 

@@ -148,19 +148,40 @@ export function saysTargeting(spans: readonly TextSpan[]): boolean {
 }
 
 /**
+ * The separators a build may group a figure's digit triples with.
+ *
+ * Grouping is formatting, and formatting is the build's: `"9,999"` is the one
+ * figure `9999` drawn the way `Number.prototype.toLocaleString` draws it by
+ * default. The ASCII space is deliberately not one of them, because a run's text
+ * may carry two figures with a space between them and `"40 130"` is a reading of
+ * `40` and `130` rather than one of `40130`. Nor is the full stop, which is the
+ * decimal point: a build drawing `"1.5"` drew one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One figure as a run may carry it: grouped into triples, or plain. */
+const DRAWN = new RegExp(
+  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/** Every group separator inside one figure, for dropping before it is read. */
+const GROUPS = new RegExp(GROUP, "g");
+
+/**
  * Every figure the runs carry, as numbers.
  *
- * A run is scanned for maximal runs of digits with an optional decimal part, so
- * `"7/26"` reads as `7` and `26`, `"SIZE 4x4"` as `4` and `4`, `"9.0s"` as `9`,
- * and `"x2.15"` as `2.15`. Thousands separators are dropped first, so a build
- * that writes `"9,999"` reads as the one figure `9999` it drew rather than as two.
+ * A run is scanned for maximal runs of digits with an optional decimal part and
+ * an optional grouping of those digits into triples, so `"7/26"` reads as `7` and
+ * `26`, `"SIZE 4x4"` as `4` and `4`, `"9.0s"` as `9`, `"x2.15"` as `2.15`, and
+ * `"9,999"` as the one figure `9999` the build drew rather than as two.
  */
 export function numbersIn(spans: readonly TextSpan[]): number[] {
   const found: number[] = [];
   for (const span of spans) {
-    const matches = span.text.replace(/,/g, "").match(/\d+(?:\.\d+)?/g);
+    const matches = span.text.match(DRAWN);
     if (matches === null) continue;
-    for (const match of matches) found.push(Number(match));
+    for (const match of matches) found.push(Number(match.replace(GROUPS, "")));
   }
   return found;
 }

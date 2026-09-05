@@ -22,7 +22,7 @@ asserts is the value the specification states.
 
 ```ts
 // validation/constant.test.ts
-import { ConstantClock } from "@test-cabinet/simple-3d";
+import { ConstantClock } from "@clockwyrks/simple-3d";
 import { expect, it } from "vitest";
 import { createHarness } from "./harness";
 
@@ -59,7 +59,7 @@ millisecond stutter, and a 16 millisecond recovery.
 
 ```ts
 // validation/sequence.test.ts
-import { SequenceClock } from "@test-cabinet/simple-3d";
+import { SequenceClock } from "@clockwyrks/simple-3d";
 import { expect, it } from "vitest";
 import { BALL_RADIUS, COURT_DEPTH, createHarness } from "./harness";
 
@@ -112,7 +112,7 @@ again.
 
 ```ts
 // validation/jitter.test.ts
-import { JitterClock, type Clock } from "@test-cabinet/simple-3d";
+import { JitterClock, type Clock } from "@clockwyrks/simple-3d";
 import { expect, it } from "vitest";
 import { createHarness } from "./harness";
 
@@ -168,7 +168,7 @@ reaches the target.
 
 ```ts
 // validation/advance-ms.ts
-import type { Engine } from "@test-cabinet/simple-3d";
+import type { Engine } from "@clockwyrks/simple-3d";
 import type { State } from "../src/game";
 
 export async function advanceMs(engine: Engine<State>, ms: number): Promise<void> {
@@ -212,7 +212,7 @@ import {
   JitterClock,
   SequenceClock,
   type Clock,
-} from "@test-cabinet/simple-3d";
+} from "@clockwyrks/simple-3d";
 import { expect, it } from "vitest";
 import { BALL_RADIUS, COURT_DEPTH, createHarness } from "./harness";
 import { advanceMs } from "./advance-ms";

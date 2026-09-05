@@ -19,9 +19,9 @@
 //
 // The readings themselves are the harness's — `tileColor` for a tile's center,
 // `brightestNear` and `brightestWarmNear` for a creature's mote, `colorDistance`
-// for the gap between two colors — so a Kindle point and a Standard one state one
-// threshold and mean the same thing by it. What is here is the dive's own
-// geometry and the one bound its items share.
+// for the gap between two colors — so a Kindle point and a Standard one read a
+// tile the same way. What is here is the dive's own geometry and the bounds its
+// points share.
 
 import type { FathomSnapshot } from "../harness";
 import { tileCenter, type Tile } from "../maze";
@@ -35,7 +35,8 @@ import { fromForager } from "../scene";
  * enough for dithering, a soft circle edge and anti-aliasing; far too narrow for
  * terrain a build is actually drawing.
  *
- * NOT the bound for the mask itself, which is {@link MASKED_MATCH}.
+ * NOT the sensing floor a drawn sample owes, which is {@link DRAWN_FLOOR},
+ * and NOT the bound for the mask itself, which is {@link MASKED_MATCH}.
  */
 export const FOG_MATCH = 25;
 
@@ -58,6 +59,20 @@ export const FOG_MATCH = 25;
  * mask's own bound is the tight one and the drawn-terrain bound stays wide.
  */
 export const MASKED_MATCH = 8;
+
+/**
+ * The sensing floor a sample owes to count as ground the build is drawing, as an
+ * RGB distance out of that same `441`.
+ *
+ * `8` of `441` is the level below which a sampling cannot tell a drawing from
+ * eight-bit channel rounding and the host's antialiasing. Anything the build
+ * painted there clears it, in whatever palette and however dim.
+ *
+ * What a Kindle point reads it for is whether ground inside the circle was drawn
+ * at all. How boldly it is drawn is the build's: `specs/sensing.md` fixes no
+ * palette and calls remembered ground only "dim".
+ */
+export const DRAWN_FLOOR = 8;
 
 // How far a logical point lies from the forager's center is the scenario
 // module's `fromForager`, shared with every other range reading in the suite.

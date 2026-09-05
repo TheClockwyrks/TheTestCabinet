@@ -12,8 +12,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useWorkers } from "../../../../client/context";
 import type { HarnessEvent, RunOutcome } from "../../../../client/types";
-import type { SystemStage, SystemStatus } from "@test-cabinet/run-record/event";
-import type { CostMetrics, TokenMetrics } from "@test-cabinet/run-record";
+import type { SystemStage, SystemStatus } from "@clockwyrks/run-record/event";
+import type { CostMetrics, TokenMetrics } from "@clockwyrks/run-record";
 import type {
   GgAgentApi,
   GgAgentModule,
@@ -40,17 +40,17 @@ import type {
   GgTurnErrorKind,
   GgTurnErrorType,
   GgAgentTransitionKind,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import {
   GG_TOOL_FAILURE_LABELS,
   GG_TURN_ERROR_KIND_LABELS,
   GG_TURN_ERROR_TYPE_BASE,
   GG_TURN_ERROR_TYPE_LABELS,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import type {
   GgShellCwd,
   GgShellOrigin,
-} from "@test-cabinet/run-record/gg-session-record";
+} from "@clockwyrks/run-record/gg-session-record";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import { agentProfileName } from "./ggCatalog";
 import { apiCallSpellings } from "./ggSurfaceCalls";

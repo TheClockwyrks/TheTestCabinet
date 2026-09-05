@@ -48,7 +48,7 @@ browser.
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
   and `.gitignore`. `vite.config.ts` is what serves `assets/` in development and
   copies the same tree into `dist/` when the site is built.
-- **`.tcab/`** — the vendored particle runtime.
+- **`.vendor/`** — the vendored particle runtime.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the
 `package-lock.json` — the build is installed with `npm ci`. Leave the existing

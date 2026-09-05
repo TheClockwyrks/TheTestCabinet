@@ -23,6 +23,12 @@
 // pass, and they are read with the pointer on the read and with it off, because a
 // route that appears and never leaves is not a hover.
 //
+// AND WHAT COUNTS AS DRAWN OVER. `DRAWN`, the floor below which a sampling cannot
+// tell a drawing from the host's own rounding — or how far those same centers
+// travel on their own with the pointer nowhere near the bar, whichever is
+// further. Nothing here reads what the route looks like: a line, a dotted trail,
+// a tinted lane and a row of chevrons all clear it.
+//
 // THE POINTER IS THE ENGINE'S. `specs/instrumentation.md` puts no pointer
 // operation on the surface under an engine, so a hover is a real pointer event
 // dispatched at the engine's own surface. A position is a LEVEL rather than an
@@ -46,8 +52,9 @@ import {
   captureStill,
   controlCenter,
   createHarness,
-  DISTINCT,
+  DRAWN,
   type Harness,
+  idleSpread,
   openYard,
   rgbDistance,
   sample,
@@ -60,6 +67,15 @@ const MAP = "substation";
 const OFF = { x: 500, y: 400 };
 /** How many of the route's tile centers a drawn route has to reach. */
 const ENOUGH = 3;
+/**
+ * How many frames the route's tile centers are watched over, pointer off.
+ *
+ * Two seconds of them, which outlasts a full turn of any plausible idle pulse.
+ * `specs/hud.md` fixes what the yard draws and nothing that forbids a build from
+ * breathing it, so a point counts as drawn over only once it moves further than
+ * the ground moves unasked.
+ */
+const IDLE_MOMENTS = 120;
 
 type Pixel = [number, number, number, number];
 
@@ -73,9 +89,13 @@ afterEach(() => {
   h.dispose();
 });
 
-/** How many of two samplings of the same points read as told apart. */
-function moved(a: readonly Pixel[], b: readonly Pixel[]): number {
-  return a.filter((p, i) => rgbDistance(p, b[i]!) > DISTINCT).length;
+/** How many of two samplings of the same points read as drawn over. */
+function moved(
+  a: readonly Pixel[],
+  b: readonly Pixel[],
+  floor: number,
+): number {
+  return a.filter((p, i) => rgbDistance(p, b[i]!) > floor).length;
 }
 
 it("draws the ground route while the pointer is over the maze readout", async () => {
@@ -104,6 +124,11 @@ it("draws the ground route while the pointer is over the maze readout", async ()
     return sample(h, along);
   };
 
+  // How far those tile centers travel on their own, with the pointer nowhere
+  // near the bar: the control the two readings below are held against.
+  h.pointerMove(OFF.x, OFF.y);
+  const floor = Math.max(DRAWN, await idleSpread(h, along, IDLE_MOMENTS));
+
   // The route appears with the pointer and leaves with it: three consecutive
   // frames, off the bar, on the read, off the bar again.
   const before = await readAt(false);
@@ -112,14 +137,14 @@ it("draws the ground route while the pointer is over the maze readout", async ()
   const after = await readAt(false);
 
   assertGreaterThanOrEqual(
-    moved(hovered, before),
+    moved(hovered, before, floor),
     ENOUGH,
     "how many of the first leg's tile centers the yard draws over with the " +
       "pointer at the center of the rectangle statusReadouts reports for the " +
       "maze-length read",
   );
   assertEqual(
-    moved(after, before),
+    moved(after, before, floor),
     0,
     "how many of the first leg's tile centers are still drawn over once the " +
       "pointer has left the read",

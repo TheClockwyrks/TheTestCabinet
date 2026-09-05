@@ -7,7 +7,9 @@
 // in logical units through the transform and alignment the build drew it with.
 // The score must be drawn as a run whose digits read as that score — a label
 // around it and zero padding (`07`) are fine, the other score's digit in the
-// same run is not — with the run's midpoint on its side of the field's center.
+// same run is not — anchored on its side of the field's center. The anchor is
+// the point the build PLACED the figure at, which is what specs/overview.md
+// fixes, and it is the point all three projects read.
 //
 // THE FIELD IS EMPTY. This point is about the two figures the HUD draws, so the
 // countdown is opened, the field is CLEARED, and `playing` is posed over it. An
@@ -33,6 +35,34 @@ const P1_SCORE = 7;
 const P2_SCORE = 9;
 
 /**
+ * Group separators a build may draw between a figure's digit triples.
+ *
+ * An ASCII space is deliberately absent. A frame's separate runs of text are
+ * joined with one, so accepting it would read the two figures in `40 130` as the
+ * single figure `40130`. `.` is absent for the same kind of reason: it is the
+ * decimal point, and a build drawing `1.5` means one and a half.
+ */
+const GROUP = [",", "'", "\u00A0", "\u202F", "\u2009"];
+
+/**
+ * Every conventional rendering of `value`: its bare digits, and — once it is
+ * long enough to be grouped — those digits carrying each separator between their
+ * triples. A figure of three digits or fewer has exactly one rendering.
+ */
+function renderings(value: number): readonly string[] {
+  const plain = String(value);
+  const grouped = GROUP.map((sep) =>
+    plain.replace(/\B(?=(\d{3})+(?!\d))/g, sep),
+  );
+  return [...new Set([plain, ...grouped])];
+}
+
+/** `literal` as a pattern that matches itself and nothing else. */
+function escapeRegExp(literal: string): string {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
  * Whether one run of text shows `score` as a figure of its own.
  *
  * specs/overview.md fixes that the two scores are drawn and leaves the
@@ -41,9 +71,20 @@ const P2_SCORE = 9;
  * figure rather than stripped down to its digits: stripping folds `P1 7` into
  * `17` and fails a build that labels its scores. Zero padding reads as the same
  * figure (`07`); a digit standing next to it does not (`17`).
+ *
+ * Digit grouping is presentation as well, so every conventional rendering of the
+ * figure is searched for and a grouped figure reads as the one figure it is:
+ * `1234`, `1,234`, `1'234`, and the three space separators a locale reaches for
+ * (U+00A0, U+202F, U+2009) — which is what `toLocaleString` draws by default. An
+ * ASCII space is not one of them, because the frame's runs of text are joined
+ * with one and reading it as a separator would fold the two figures in `40 130`
+ * into the single figure `40130`. A score short of a thousand has exactly one
+ * rendering, so it is searched for as the bare digits it is.
  */
 function shows(text: string, score: number): boolean {
-  return new RegExp(`(?:^|\\D)0*${score}(?:\\D|$)`).test(text);
+  return renderings(score).some((figure) =>
+    new RegExp(`(?<![\\d.])0*${escapeRegExp(figure)}(?![\\d.])`).test(text),
+  );
 }
 
 let h: Harness;
@@ -74,7 +115,7 @@ it("draws player one's score left of the field's center", async () => {
   );
   assertGreaterThan(runs.length, 0);
   assertEqual(
-    runs.some((span) => (span.left + span.right) / 2 < FIELD_CX),
+    runs.some((span) => span.x < FIELD_CX),
     true,
   );
 });

@@ -74,6 +74,39 @@ export function screenCopy(spans: readonly TextSpan[]): string {
 }
 
 /**
+ * The separators a build may set between a figure's digit triples.
+ *
+ * `Number.prototype.toLocaleString` groups by default, so a build that reaches for
+ * it reports a score of `1240` as `1,240`, and another locale's grouping gives
+ * `1'240` or `1\u202F240`. Every one of those reports the one figure.
+ *
+ * THE ASCII SPACE IS DELIBERATELY NOT ONE OF THEM. {@link screenCopy} joins
+ * separate draw runs with one, so accepting it would read the `40` of one run and
+ * the `130` of the next as the single figure `40130`. `.` is left out for its own
+ * reason: it is the decimal point, and a build drawing `1.5` means one and a half.
+ */
+const GROUPS: readonly string[] = [",", "'", "\u00A0", "\u202F", "\u2009"];
+
+/**
+ * Every conventional setting of `text`: the text itself, and — when it is a plain
+ * figure of more than three digits — the same figure with its triples grouped by
+ * each of {@link GROUPS}. A figure of three digits or fewer has exactly one
+ * setting, and a phrase has exactly one too.
+ */
+function settings(text: string): string[] {
+  const figure = /^(-?)(\d+)(\.\d+)?$/.exec(text);
+  if (figure === null) return [text];
+  const [, sign, whole, fraction = ""] = figure;
+  if (whole.length <= 3) return [text];
+  return [
+    text,
+    ...GROUPS.map(
+      (group) => sign + whole.replace(/\B(?=(\d{3})+$)/g, group) + fraction,
+    ),
+  ];
+}
+
+/**
  * `text` matched as a whole word: with no letter or digit against either end.
  *
  * What the end screens' FIGURES are read with, so the `8` of "LEVELS CLEARED 8"
@@ -81,10 +114,19 @@ export function screenCopy(spans: readonly TextSpan[]): string {
  * is not found inside a score. A menu entry or a phrase is matched by plain
  * substring instead, because a build is free to set a marker against it
  * ("> CROSS <") and that is its own presentation.
+ *
+ * A FIGURE IS LOOKED FOR UNDER EVERY SETTING OF IT. `specs/ui.md` fixes what the
+ * end screens report and leaves how they are set to the build, so a score of
+ * `1240` may be drawn `1240` or grouped `1,240`, and the two must read alike.
+ * {@link settings} lists a figure's conventional settings and the match takes any
+ * of them; the boundary either side is unchanged, so `50` is still not found
+ * inside `150`.
  */
 export function standsAlone(text: string): RegExp {
-  const escaped = String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(^|[^A-Z0-9])${escaped}([^A-Z0-9]|$)`, "i");
+  const wanted = settings(String(text))
+    .map((setting) => setting.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|");
+  return new RegExp(`(^|[^A-Z0-9])(?:${wanted})([^A-Z0-9]|$)`, "i");
 }
 
 /**

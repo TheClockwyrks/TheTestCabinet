@@ -8,15 +8,15 @@
 // fetched from outside the build's own `dist/`, and no asset tool runs at build
 // time — the committed files are the assets.
 //
-// A `.glb` is decoded here, with `parseGlb` from `@test-cabinet/voxel-runtime`,
+// A `.glb` is decoded here, with `parseGlb` from `@clockwyrks/voxel-runtime`,
 // which returns the mesh as plain typed arrays with per-vertex colors; the
 // `three` binding's `buildPartGeometry` wraps one into the `BufferGeometry` the
 // scene draws. A `.wav` is handed on as bytes for the runtime's audio bus to
 // decode, since the bus owns the `AudioContext`.
 
-import { parseGlb } from "@test-cabinet/voxel-runtime";
-import type { PartMesh } from "@test-cabinet/voxel-runtime";
-import { buildPartGeometry } from "@test-cabinet/voxel-runtime/three";
+import { parseGlb } from "@clockwyrks/voxel-runtime";
+import type { PartMesh } from "@clockwyrks/voxel-runtime";
+import { buildPartGeometry } from "@clockwyrks/voxel-runtime/three";
 import type { BufferGeometry } from "three";
 import { CUES, VOXELS_PER_UNIT } from "./constants";
 import type { CueName } from "./constants";
@@ -130,12 +130,16 @@ async function fetchBytes(url: string): Promise<ArrayBuffer> {
  * ships all eight.
  */
 export function decodeModel(name: ModelName, bytes: ArrayBuffer): PartMesh {
-  let mesh: PartMesh;
+  let mesh: PartMesh | null = null;
+  let unreadable: string | null = null;
   try {
     mesh = parseGlb(bytes);
   } catch (cause) {
+    unreadable = String(cause);
+  }
+  if (mesh === null) {
     throw new Error(
-      `gantry: ${name}.glb is not a readable glb (${String(cause)})`,
+      `gantry: ${name}.glb is not a readable glb (${unreadable})`,
     );
   }
   const vertices = mesh.positions.length;

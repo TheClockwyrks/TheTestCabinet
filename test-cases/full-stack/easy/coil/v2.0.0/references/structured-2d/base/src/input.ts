@@ -16,7 +16,7 @@
 // `src/constants.ts` fixes.
 
 import { ACTIONS, BINDINGS, LAYOUT, type ActionName } from "./constants";
-import type { InitApi, InputReader } from "@test-cabinet/structured-2d";
+import type { InitApi, InputReader } from "@clockwyrks/structured-2d";
 
 /**
  * Register every action in `ACTIONS`, bound to its keys.

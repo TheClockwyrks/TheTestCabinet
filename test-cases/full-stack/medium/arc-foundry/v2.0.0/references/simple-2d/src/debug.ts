@@ -83,6 +83,7 @@ import {
   firingStructureById,
   keep,
   liveUnitById,
+  liveWaveCount,
   ownUnit,
   placeBlocker,
   placeCombo,
@@ -313,6 +314,7 @@ export interface FoundryDebugApi {
   statusControls(state: FoundryView): StatusSnapshot[];
   statusReadouts(state: FoundryView): ReadoutSnapshot[];
   recipeEntries(state: FoundryView): RecipeEntrySnapshot[];
+  waveCount(state: FoundryView, type: string): number;
 
   // The run.
   reset(state: FoundryView, options?: { seed?: number }): FoundryWorld;
@@ -717,6 +719,14 @@ export function createDebugApi(): FoundryDebugApi {
         w: e.w,
         h: e.h,
       })),
+
+    // The live wave's own schedule, filtered — the array the spawner is working
+    // through, so the count and what arrives are one thing (specs/instrumentation.md).
+    waveCount: (state, type) =>
+      liveWaveCount(
+        state,
+        oneOf("waveCount", "type", type, SPAWNABLE) as LoadType | "overload",
+      ),
 
     // ---- The run ----------------------------------------------------------
 

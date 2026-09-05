@@ -1,11 +1,11 @@
 /**
- * `@test-cabinet/structured-3d` — the **Structured 3D** engine: the runtime a
+ * `@clockwyrks/structured-3d` — the **Structured 3D** engine: the runtime a
  * produced 3D game is built *inside*.
  *
  * The package has one entry point, this module, and it is what a game and a
  * validator both import. `three` is a peer dependency: a build declares it itself
  * and imports it directly wherever it needs a three object, so the engine, the
- * build, and `@test-cabinet/voxel-runtime/three` share one instance. The engine
+ * build, and `@clockwyrks/voxel-runtime/three` share one instance. The engine
  * re-exports nothing from `three`.
  *
  * Where the Simple family hands a game a loop and a renderer, this engine hands it

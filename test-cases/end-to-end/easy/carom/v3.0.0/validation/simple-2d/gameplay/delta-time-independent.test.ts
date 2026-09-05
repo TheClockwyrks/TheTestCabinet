@@ -30,7 +30,7 @@ import {
   JitterClock,
   SequenceClock,
   type Clock,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import { FIELD_CY, FIELD_H } from "../constants";
 import { assertEqual, assertLessThanOrEqual, assertNotNull } from "../assert";
 import {

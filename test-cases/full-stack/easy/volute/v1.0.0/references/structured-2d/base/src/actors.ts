@@ -18,7 +18,7 @@ import {
   DrawComponent,
   SpriteComponent,
   type DrawApi,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { assets } from "./assets";
 import { pointAt } from "./channel";
 import {

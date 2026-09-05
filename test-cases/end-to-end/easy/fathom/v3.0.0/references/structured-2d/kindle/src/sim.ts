@@ -251,11 +251,15 @@ function stepDrifters(state: FathomState, dt: number, cues: CueBag): void {
     cues.add(CUES.eat);
   }
 
-  // The cadence tops the maze up to its ceiling and stops there, so the timer
-  // runs only while there is room for another (`specs/gameplay.md`).
-  if (state.drifters.length >= DRIFTER_MAX) return;
+  // The cadence tops the maze up to its ceiling and stops there, and it runs
+  // only while plankton remain, so the countdown holds where it stands whenever
+  // either condition fails rather than banking an admission up
+  // (`specs/gameplay.md`).
+  if (state.drifters.length >= DRIFTER_MAX || state.planktonRemaining === 0) {
+    return;
+  }
   state.drifterTimer -= dt;
-  if (state.drifterTimer > 0 || state.planktonRemaining === 0) return;
+  if (state.drifterTimer > 0) return;
   state.drifterTimer = DRIFTER_INTERVAL;
   const entry = drifterEntry(state);
   if (entry !== null) state.drifters.push(new Drifter(entry));

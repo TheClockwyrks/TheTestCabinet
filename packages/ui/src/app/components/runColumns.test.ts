@@ -1,4 +1,4 @@
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { describe, expect, it } from "vitest";
 import type { Rating } from "../data/ratings";
 import { columnsForScope, sortRuns, type EnrichedRun } from "./runColumns";

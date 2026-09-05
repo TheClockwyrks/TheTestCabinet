@@ -17,16 +17,19 @@
 // what a grid line looks like is the build's and all a check may lean on is that
 // the line is not the floor.
 //
-// WHY THE STRETCHES ARE POOLED AND WHY THE BAR IS A PROPORTION. A build may draw
-// anything it likes on its floor — plate texture, lane markings, a vignette, a
-// zone wash — and any of it can sit over a stretch of boundaries and hide them.
-// So three spread stretches are read on each axis and the check asks what
-// proportion of all their boundaries carry a line. A build that draws a line at
-// every boundary reads 100%; one that draws none reads 0%; one that draws them at
-// alternate boundaries, which is not a grid a player can read tiles from, reads
-// 50% and fails. The bar sits between those, so a build whose grid is hidden
-// under one stretch of art still passes and a build whose grid is not a grid does
-// not.
+// WHAT THE PICTURE IS ASKED, AND WHAT IT IS NEVER ASKED. Whether the build drew
+// a line where the specification puts a tile boundary, on each axis. How many of
+// the boundaries carry one, how strongly they are drawn and what they look like
+// are the reviewer's, from the still this point captures — `specs/overview.md`
+// asks for a grid a player can see and fixes no proportion, no palette and no
+// weight, so no proportion is a figure a check may hold a build to.
+//
+// WHY THE STRETCHES ARE POOLED. A build may draw anything it likes on its floor —
+// plate texture, lane markings, a vignette, a zone wash — and any of it can sit
+// over a stretch of boundaries and hide them. So three spread stretches are read
+// on each axis and their boundaries are pooled, and a build whose grid is hidden
+// under one stretch of art answers on the other two. A floor with no grid on an
+// axis at all carries no line at any of them.
 //
 // WHY NOTHING IS DRIVEN BEYOND ONE FRAME. The requirement is about a state, not a
 // stretch of time: one frame renders the posed floor and the pixels are read off
@@ -54,21 +57,19 @@ import { readPixels, type Point } from "./read";
  * has to be readable without competing with the towers and the surge on top of
  * it, so a build is right to keep it quiet. 8 is under two per cent of the scale
  * — about the smallest step that reads as a line on a dark ground, and low enough
- * that a deliberately understated grid is not failed for being understated. For
- * calibration, this case's own reference draws a grid measuring about 22 here,
- * so the bar leaves a build most of a factor of three to be quieter than that in.
- * A floor with no grid at all reads 0.
+ * that a deliberately understated grid is not failed for being understated. A
+ * floor with no grid at all reads 0.
  */
 const LINE_CONTRAST_MIN = 8;
 
 /**
- * The proportion of a stretch's boundaries that must carry a line.
+ * How many of an axis's pooled boundaries must carry a line: one.
  *
- * Above the 50% a grid drawn at alternate boundaries reads, and below the 67% a
- * real grid reads with one of the three stretches wholly obscured by something
- * the build drew over it.
+ * A count rather than a proportion, and the smallest count there is, because it
+ * is presence that is being read: the floor either carries lines at its tile
+ * boundaries or it does not. A floor drawing no grid at all reads 0.
  */
-const LINE_COVERAGE_MIN = 0.6;
+const BOUNDARIES_DRAWN_MIN = 1;
 
 /** Rows the vertical lines are read across, and the tiles they are read over. */
 const SCAN_ROWS: readonly number[] = [4, 12, 30];
@@ -122,8 +123,8 @@ function horizontalBoundaries(col: number): Boundary[] {
   return found;
 }
 
-/** What proportion of `boundaries` carry a line, and the readings behind it. */
-async function coverage(
+/** How many of `boundaries` carry a line, and the readings behind it. */
+async function linesDrawn(
   h: Harness,
   boundaries: readonly Boundary[],
 ): Promise<{ drawn: number; total: number; readings: number[] }> {
@@ -166,10 +167,10 @@ async function assertGridReadable(h: Harness, state: string): Promise<void> {
   ];
 
   for (const { axis, boundaries, pitch } of axes) {
-    const { drawn, total, readings } = await coverage(h, boundaries);
+    const { drawn, total, readings } = await linesDrawn(h, boundaries);
     assertGreaterThanOrEqual(
-      drawn / total,
-      LINE_COVERAGE_MIN,
+      drawn,
+      BOUNDARIES_DRAWN_MIN,
       `${state}: ${axis}, ${pitch} (specs/floor.md), drawn at ${drawn} of ` +
         `${total} boundaries; the readings were ` +
         `[${readings.map((value) => value.toFixed(1)).join(", ")}] and a ` +

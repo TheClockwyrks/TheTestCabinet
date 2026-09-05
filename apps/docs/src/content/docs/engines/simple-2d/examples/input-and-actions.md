@@ -30,7 +30,7 @@ initialization, and the simulation asks for actions by name.
 ## src/main.ts
 
 ```ts
-import { createEngine } from "@test-cabinet/simple-2d";
+import { createEngine } from "@clockwyrks/simple-2d";
 import { hopper } from "./game";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
@@ -61,7 +61,7 @@ import type {
   InitApi,
   RenderApi,
   UpdateApi,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 /** Every action `TOUCH_LAYOUTS["dpad-4-two-buttons"]` names, with its keys. */
@@ -181,8 +181,8 @@ own bindings rather than a parallel entry point.
 
 ```ts
 import { createCanvas } from "@napi-rs/canvas";
-import { ConstantClock, createEngine } from "@test-cabinet/simple-2d";
-import type { Engine, SurfaceMetrics } from "@test-cabinet/simple-2d";
+import { ConstantClock, createEngine } from "@clockwyrks/simple-2d";
+import type { Engine, SurfaceMetrics } from "@clockwyrks/simple-2d";
 import { expect, test } from "vitest";
 import { hopper } from "../src/game";
 import type { HopperState } from "../src/game";

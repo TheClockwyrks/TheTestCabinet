@@ -7,7 +7,7 @@
 // the `assets/*-system-*` points, which are about FILES rather than about a frame.
 // `specs/assets.md` fixes each system's path — `deliver`, `fault` and `complete`
 // under `assets/particles/` — and what accepts it: "Play them through
-// `@test-cabinet/particle-runtime`, an installed dependency imported by its bare
+// `@clockwyrks/particle-runtime`, an installed dependency imported by its bare
 // name", where "a player is constructed over a parsed system" and "the package's
 // own types are the authoritative API". So the authority on whether a file IS a
 // particle system is the RUNTIME: the file is parsed as JSON and handed to the
@@ -31,7 +31,7 @@ import type {
   ParticleSimulator,
   ParticleSystem,
   RenderParticle,
-} from "@test-cabinet/particle-runtime";
+} from "@clockwyrks/particle-runtime";
 import { WORKSPACE, writeImageBytes } from "../media";
 import { PARTICLE_FILES } from "./files";
 
@@ -73,7 +73,7 @@ export interface SystemRead {
  * Read one produced system and hand it to the runtime.
  *
  * The stages are the point's own claims, in order: the file exists, it parses as
- * JSON, and `@test-cabinet/particle-runtime`'s own `ParticleSimulator` constructs
+ * JSON, and `@clockwyrks/particle-runtime`'s own `ParticleSimulator` constructs
  * over it and steps through one full duration without throwing — which is what "a
  * particle system the runtime accepts" is. Each stage that cannot be passed comes
  * back as the `reason`.
@@ -98,11 +98,11 @@ export async function readSystem(file: string): Promise<SystemRead> {
   let Simulator: typeof ParticleSimulator;
   try {
     ({ ParticleSimulator: Simulator } =
-      await import("@test-cabinet/particle-runtime"));
+      await import("@clockwyrks/particle-runtime"));
   } catch (error) {
     return {
       ...empty,
-      reason: `@test-cabinet/particle-runtime could not be imported: ${String(error)}`,
+      reason: `@clockwyrks/particle-runtime could not be imported: ${String(error)}`,
     };
   }
 
@@ -217,7 +217,7 @@ export function paintParticleSystem(
   ctx.textBaseline = "bottom";
   ctx.font = "14px monospace";
   ctx.fillText(
-    `${file} — ${dots.length} particles, simulated by @test-cabinet/particle-runtime`,
+    `${file} — ${dots.length} particles, simulated by @clockwyrks/particle-runtime`,
     EVIDENCE_SIDE / 2,
     EVIDENCE_SIDE - 16,
   );

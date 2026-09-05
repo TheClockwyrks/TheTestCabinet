@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { GgProgramLanguage } from "@test-cabinet/run-record/gg";
+import type { GgProgramLanguage } from "@clockwyrks/run-record/gg";
 import type {
   GgReference,
   GgReferenceApi,
-} from "@test-cabinet/run-record/gg-reference";
+} from "@clockwyrks/run-record/gg-reference";
 import { useBackend } from "../../client/context";
 
 export interface GgReferenceState {

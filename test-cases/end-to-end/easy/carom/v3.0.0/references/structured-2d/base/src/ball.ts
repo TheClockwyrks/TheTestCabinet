@@ -22,8 +22,8 @@
 // judging a rally and launching a serve are the match rules' job, and the
 // mode's tick runs after every actor's (`src/carom-mode.ts`).
 
-import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
-import type { DrawApi, World } from "@test-cabinet/structured-2d";
+import { Actor, DrawComponent } from "@clockwyrks/structured-2d";
+import type { DrawApi, World } from "@clockwyrks/structured-2d";
 import {
   BALL_R,
   CUES,

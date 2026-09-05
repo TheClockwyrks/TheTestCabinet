@@ -23,8 +23,8 @@
 // `setPhase`, so it rests at `"waiting"` for the whole session and `elapsed` stays `0`.
 // The game's own build/wave/finale phase is `runPhase` below, and the two are unrelated.
 
-import { GameState } from "@test-cabinet/structured-2d";
-import type { World } from "@test-cabinet/structured-2d";
+import { GameState } from "@clockwyrks/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { noAssets, type Assets } from "./assets";
 import {
   START_CHARGE,

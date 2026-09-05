@@ -15,7 +15,7 @@ import { critterCol, critterRow, footingOf } from "./critter";
 import { swimming } from "./hunter";
 import { toSim } from "./sim";
 import type { FloeState } from "./game";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 
 /** One decimal place: enough to see motion, short enough to fit on a line. */
 function fixed(value: number): string {

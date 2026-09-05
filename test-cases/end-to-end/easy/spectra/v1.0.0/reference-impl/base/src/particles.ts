@@ -1,15 +1,15 @@
 // Spectra — the drone-burst effect (specs/assets.md).
 //
 // When a drone pops we play the PROVIDED particle system (assets/drone-burst.json)
-// through the PROVIDED runtime — @test-cabinet/particle-runtime's canvas binding —
+// through the PROVIDED runtime — @clockwyrks/particle-runtime's canvas binding —
 // not a hand-coded effect. Each pop is simulated live on its own 128x128 offscreen
 // canvas (the system's field size), then composited additively over the field at
 // the drone's position, scaled to the drone's footprint. Because it is simulated,
 // the scatter varies pop to pop while the character (flash / ring / two-band
 // sparks) stays the same.
 
-import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 
 const FIELD = 128; // the system's authored field size
 

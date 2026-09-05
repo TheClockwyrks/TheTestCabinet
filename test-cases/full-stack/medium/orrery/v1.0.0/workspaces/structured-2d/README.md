@@ -63,7 +63,7 @@ bar it is held to. The finished files are committed to this repository and
 loaded through the engine's asset loader at runtime, and `npm run build` never
 invokes the tools.
 
-`@test-cabinet/particle-runtime` is already a dependency, vendored into this
+`@clockwyrks/particle-runtime` is already a dependency, vendored into this
 repository and resolved by a `file:` entry in `package.json`. It plays a
 produced `system.json` into a 2D drawing context — the one a component that
 draws directly is handed, since the engine's declarative pipeline does not draw
@@ -89,7 +89,7 @@ every piece of that recipe.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
   and `.gitignore`.
-- **`.tcab/`** — the vendored engine and runtime libraries.
+- **`.vendor/`** — the vendored engine and runtime libraries.
 - **`engine/`** — the engine's own documentation.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the

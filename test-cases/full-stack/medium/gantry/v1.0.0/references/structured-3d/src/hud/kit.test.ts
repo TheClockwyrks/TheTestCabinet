@@ -3,7 +3,7 @@ import {
   Actor,
   ShapeComponent,
   TextComponent,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { GantryState } from "../game";
 import { addMoveStep, setScreen } from "../state";
 import { baseline, fontOf, HudGroup, placeRect } from "./kit";

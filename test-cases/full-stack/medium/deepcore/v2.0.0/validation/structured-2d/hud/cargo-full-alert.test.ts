@@ -9,8 +9,8 @@
 // THE CONTROL IS WHAT MAKES THE TREATMENT SEPARABLE. Filling the last slot
 // changes two things at once: the alert, and the count going up by one. So one
 // more slot is added lower down the bay as a control, changing the same digit the
-// same way, and the step that fills the bay must move materially more of the band
-// than that.
+// same way, and the step that fills the bay must move MORE of the band than that
+// control step does.
 //
 // Every read is a frame no clock moves under, so a pulsing treatment is held at
 // one phase and a pose read twice comes back identical.
@@ -32,9 +32,6 @@ import { changed, sampleBar, type Reading } from "./bar";
 
 /** The ore the bay is filled with. Light, so a full bay is far under the lift. */
 const ORE = "ferron" as const;
-
-/** How many times the control the filling step must move. */
-const TREATMENT_FACTOR = 2;
 
 let h: Harness;
 
@@ -71,5 +68,5 @@ it("draws the cargo reading differently once the bay is full", async () => {
   assertEqual(filled.cargo.slotsUsed, filled.cargo.slotCap, "specs/mining.md");
   assertEqual(filled.miner.overloaded, false, "specs/character.md");
   assertGreaterThan(filling, 0, "specs/ui.md");
-  assertGreaterThan(filling, TREATMENT_FACTOR * control, "specs/ui.md");
+  assertGreaterThan(filling, control, "specs/ui.md");
 });

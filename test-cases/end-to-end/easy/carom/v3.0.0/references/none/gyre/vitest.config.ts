@@ -16,8 +16,8 @@
 //                                   failure with its message
 //   coverage/coverage-summary.json  istanbul's four metrics, whole and per file
 //
-// Neither figure is read off the terminal; the `text` reporter prints its
-// summary for whoever is watching the command.
+// Neither figure is read off the terminal: nothing reads back what this
+// command prints.
 //
 // `reportOnFailure` is what makes a red suite write its coverage at all, which
 // is the suite whose coverage is most worth having.
@@ -39,7 +39,7 @@ export default defineConfig({
     outputFile: { json: "coverage/test-report.json" },
     coverage: {
       provider: "istanbul",
-      reporter: ["text", "json-summary"],
+      reporter: ["json-summary"],
       reportOnFailure: true,
       include: ["src/**/*.ts"],
       exclude: ["src/**/*.test.ts"],

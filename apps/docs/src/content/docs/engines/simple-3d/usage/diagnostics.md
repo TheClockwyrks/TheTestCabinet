@@ -9,7 +9,7 @@ the state current at that read, so each one keeps reporting correctly as the
 state advances.
 
 ```ts
-import type { Game, InitApi } from "@test-cabinet/simple-3d";
+import type { Game, InitApi } from "@clockwyrks/simple-3d";
 
 interface State {
   readonly phase: "build" | "run" | "over";
@@ -90,7 +90,7 @@ A value that comes from the frame counter is captured in `update` and reported
 from the state, since `api.frame()` belongs to the frame the counter describes.
 
 ```ts
-import type { UpdateApi } from "@test-cabinet/simple-3d";
+import type { UpdateApi } from "@clockwyrks/simple-3d";
 import type { DeepReadonly } from "ts-essentials";
 
 interface Timing {

@@ -11,7 +11,7 @@
 // delver sheets are one PNG per frame under "delver/<anim>/<i>". The four fx systems and
 // five audio clips are keyed by their base name.
 
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { Anim, Cue, FxKind } from "./types";
 
 const pngUrls = import.meta.glob<string>("../assets/**/*.png", { eager: true, query: "?url", import: "default" });

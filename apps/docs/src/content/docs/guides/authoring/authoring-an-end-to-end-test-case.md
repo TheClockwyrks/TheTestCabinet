@@ -50,7 +50,8 @@ A workspace is one starter project per supported
 and the entry stub it requires. The engineless (`none`) workspace provides
 configuration only: a `package.json`, tool configuration, and an `index.html`,
 with no source code, so the model owns the code it is judged on. See
-[Engineless configurations](/guides/authoring/writing-case-specifications/#engineless-configurations).
+[Writing workspaces and reference implementations](/guides/authoring/writing-workspaces-and-references/)
+for what each project holds and the toolchain the two share.
 
 ## Procedure
 
@@ -129,7 +130,8 @@ Author one correct build per supported engine, by convention under
 `[reference_implementation]` table. Each is a complete, conformant
 implementation of the variant on that engine: it is built with the case's own
 `[build]` commands, passes the same four toolchain gates a run is held to,
-and is never seeded into a run.
+and is never seeded into a run. See
+[The reference implementation](/guides/authoring/writing-workspaces-and-references/#the-reference-implementation).
 
 The reference implementations are what
 [`tcab capture-baselines`](/components/cli/overview/#commands) drives to

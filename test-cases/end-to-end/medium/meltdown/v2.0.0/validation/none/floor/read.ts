@@ -66,9 +66,9 @@ export function nearer(sample: Rgb, a: Rgb, b: Rgb): "a" | "b" {
  * A distance the two references must clear before {@link nearer} means anything:
  * with the two indistinguishable, every sample would land on whichever side
  * rounding fell, and the reading would be noise wearing a verdict's face. It is
- * deliberately a LOW bar — `presentation/casing-reads-as-a-wall` owns how far
- * apart a player needs them, and this only needs them apart enough to tell which
- * side of a boundary a pixel is on.
+ * deliberately a LOW bar — how far apart a player needs them is appearance,
+ * which `specs/overview.md` hands to the build and the reviewer judges, and this
+ * only needs them apart enough to tell which side of a boundary a pixel is on.
  */
 export function requireDistinct(
   a: Rgb,

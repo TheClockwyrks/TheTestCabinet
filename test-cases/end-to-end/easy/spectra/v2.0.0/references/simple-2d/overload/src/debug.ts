@@ -134,6 +134,7 @@ export interface SpectraSnapshot {
   diveLaunching: boolean;
   stageClearing: boolean;
   diveClock: number;
+  diveGap: number;
   droneSpeedScale: number;
   bulletSpeedScale: number;
   diveGapScale: number;
@@ -212,6 +213,7 @@ export interface SpectraDebugApi {
     state: DeepReadonly<SpectraState>,
     seconds: number,
   ): SpectraState;
+  setDiveGap(state: DeepReadonly<SpectraState>, seconds: number): SpectraState;
 
   setShipX(state: DeepReadonly<SpectraState>, x: number): SpectraState;
   setShipBand(state: DeepReadonly<SpectraState>, band: Band): SpectraState;
@@ -447,6 +449,11 @@ export function createDebugApi(): SpectraDebugApi {
         sim.diveClock = Math.max(0, seconds);
       })(state),
 
+    setDiveGap: (state, seconds) =>
+      pose((sim) => {
+        sim.diveTarget = Math.max(0, seconds);
+      })(state),
+
     // ---- The ship and its cannon -----------------------------------------
 
     setShipX: (state, x) =>
@@ -638,6 +645,7 @@ function snapshot(state: DeepReadonly<SpectraState>): SpectraSnapshot {
     diveLaunching: state.diveLaunching,
     stageClearing: state.stageClearing,
     diveClock: state.diveClock,
+    diveGap: state.diveTarget,
     droneSpeedScale: droneSpeedScale(stage),
     bulletSpeedScale: bulletSpeedScale(stage),
     diveGapScale: diveGapScale(stage),

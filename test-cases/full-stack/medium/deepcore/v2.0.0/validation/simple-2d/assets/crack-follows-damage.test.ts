@@ -15,8 +15,7 @@
 //
 // The healths are named as fractions of the band's own `BAND_HEALTH`, which is
 // what `specs/world.md` gives the band and what the damage fraction is measured
-// against, so nothing here assumes a health figure of its own. The produced sprites
-// are stood up off disk, because the overlay this is about is the produced one.
+// against, so nothing here assumes a health figure of its own.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BAND_HEALTH, PLAYABLE_COL_MIN, TILE } from "../constants";
@@ -49,7 +48,7 @@ const SHARES = [1, 0.5, 0.125] as const;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ assets: true });
+  h = await createHarness();
 });
 
 afterEach(() => {

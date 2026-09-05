@@ -13,7 +13,7 @@
 // the pointer mirror is refreshed last, so `state.pointer` reports the engine's
 // own snapshot for the frame being drawn (specs/state.md).
 
-import { PlayerController } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
 import {
   ACTIONS,
   TOWER_TYPES,

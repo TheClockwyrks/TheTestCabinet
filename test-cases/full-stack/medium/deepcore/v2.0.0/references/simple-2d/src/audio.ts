@@ -21,7 +21,7 @@
 import { CUES } from "./constants";
 import type { CueName } from "./constants";
 import type { Draft } from "./state";
-import type { CueSpec, InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type { CueSpec, InitApi, UpdateApi } from "@clockwyrks/simple-2d";
 
 /** The cues that sound continuously while their condition holds. */
 export const LOOP_CUES = [

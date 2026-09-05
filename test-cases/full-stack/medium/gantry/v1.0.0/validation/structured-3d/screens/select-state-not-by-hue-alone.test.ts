@@ -395,7 +395,7 @@ it("tells cleared, open and locked apart with the hue removed", async () => {
   const drawn: string[] = [];
   for (const state of STATES) drawn.push(await rowWith(state.clear));
 
-  await h.capture("select-grayscale", "The select rows in grayscale");
+  await h.capture("select-grayscale", "The select rows in their three states");
 
   for (const [a, b] of [
     [0, 1],

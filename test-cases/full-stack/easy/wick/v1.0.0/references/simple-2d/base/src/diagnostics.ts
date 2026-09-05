@@ -6,7 +6,7 @@
 // it wants on it. Every source is a pure read of the state it is handed, the
 // state current at the read, so watching the overlay changes nothing.
 
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 import type { WickState } from "./game";
 import { runTime, spawnWindow } from "./sim/enemies";
 import { SWITCH_NAMES } from "./state";

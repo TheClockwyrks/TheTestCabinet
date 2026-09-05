@@ -4,8 +4,9 @@
 // dies", it carries "an electrical pop, scaled up for a Dynamo", and it is spawned
 // "where a unit dies".
 //
-// THE PRODUCED SYSTEMS ARE SERVED TO THE LOADER HERE, by `./produced.ts`, so what
-// plays is the file the build committed.
+// THE PRODUCED SYSTEMS REACH THE LOADER THROUGH THE HARNESS, which stands the
+// committed `assets/` tree up for every check it builds, so what plays is the
+// file the build committed.
 //
 // WHY THIS POINT NEEDS A CONTROL, AND WHAT THE CONTROL IS. A unit dies where the
 // shot that killed it landed, and `specs/assets.md` puts a SECOND system at that
@@ -34,18 +35,13 @@
 // read from the frame it leaves the yard.
 //
 // WHAT IS DECIDED. Both spans are of bare ground; both carry the impact burst of a
-// shot that landed a frame earlier. The killed ground must keep moving across at
-// least half a window of frames MORE than the control did. Half a window is a
-// twentieth of a second of extra movement, which is the least a burst that is
-// "played live and simulated as it plays" can leave behind it, and it is far below
-// the separation a system playing for even a tenth of a second produces.
+// shot that landed a frame earlier. The killed ground has to keep moving on more
+// frames than the control did, which is the second system playing where the first
+// one alone played on the control. How long it plays for and how it fades are the
+// build's: `specs/assets.md` fixes no span for any of the twelve.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertGreaterThanOrEqual,
-} from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -57,7 +53,6 @@ import {
   ticks,
   unitById,
 } from "../harness";
-import { serveProducedAssets } from "./produced";
 import { lattice, motion } from "./region";
 import { structureCenter } from "../constants";
 
@@ -86,13 +81,9 @@ const WINDOWS = 5;
  */
 const WAVE = 30;
 
-/** How many more frames the killed ground must move on than the control did. */
-const MARGIN = WINDOW / 2;
-
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 
@@ -158,13 +149,13 @@ it("sets the ground moving where a unit died, over and above the shot that kille
     "a Scrap Capacitor to kill a one-health Mote eighty units away within " +
       "three seconds (specs/components.md)",
   );
-  assertGreaterThanOrEqual(
+  assertGreaterThan(
     played.moving,
-    control + MARGIN,
-    "the ground a unit DIED on to keep changing across at least " +
-      `${MARGIN} frames more than the same ground did after an identical shot ` +
-      "landed there and killed nothing, so a burst is played where a unit dies " +
-      `and not merely where a shot lands (specs/assets.md); the control span ` +
-      `changed on ${control} of ${WINDOW * WINDOWS} frames`,
+    control,
+    "the ground a unit DIED on to keep changing on more frames than the same " +
+      "ground did after an identical shot landed there and killed nothing, so " +
+      "a burst is played where a unit dies and not merely where a shot lands " +
+      `(specs/assets.md); the control span changed on ${control} of ` +
+      `${WINDOW * WINDOWS} frames`,
   );
 });

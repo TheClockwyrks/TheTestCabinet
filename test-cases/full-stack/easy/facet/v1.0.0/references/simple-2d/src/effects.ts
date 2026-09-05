@@ -21,7 +21,7 @@
 //     board closing on it.
 //   * A PARTICLE BURST per cleared gem and per created cut — one of the three
 //     one-shot `particle-2d` systems, simulated live through
-//     `@test-cabinet/particle-runtime`'s `ParticleCanvasPlayer`
+//     `@clockwyrks/particle-runtime`'s `ParticleCanvasPlayer`
 //     (specs/assets.md). It waits on the same wave its sheet waits on, so the
 //     debris leaves the stone rather than preceding it.
 //   * A CUT AURA per `brilliant`, `star`, and `prism` standing on the board —
@@ -43,8 +43,8 @@
 // dozen canvases a step; the players are not, so each burst draws its own
 // random play rather than replaying a pooled one.
 
-import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import {
   BREAK_FRAMES,
   FX_AURA,

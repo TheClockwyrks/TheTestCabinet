@@ -23,7 +23,7 @@
 // inversion, a low fall for a lost life, a two-note lift for a cleared stage, a
 // small blip as a highlight moves, and a short rising snarl for an overload.
 
-import type { CueSpec, InitApi, WorldAudio } from "@test-cabinet/structured-2d";
+import type { CueSpec, InitApi, WorldAudio } from "@clockwyrks/structured-2d";
 import { CUES, type CueName } from "./constants";
 
 export const CUE_SPECS: Readonly<Record<CueName, CueSpec>> = {

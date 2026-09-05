@@ -27,7 +27,7 @@ import {
   Pawn,
   type DrawApi,
   type World,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { wickAssets } from "./assets";
 import { STAGE_CX, STAGE_CY, TAGS } from "./constants";
 import { dim } from "./render/draw";

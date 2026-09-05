@@ -84,7 +84,7 @@ close enough to see what hangs beneath the bell tells them apart.
 
 ## What the engine owns
 
-`@test-cabinet/simple-2d` supplies everything that is the same in every browser
+`@clockwyrks/simple-2d` supplies everything that is the same in every browser
 game, and none of it is written here:
 
 - **The frame loop and its delta time.** `update(state, api, dt)` receives the
@@ -170,7 +170,7 @@ The operations are `reset`, `snapshot`, `setScreen`, `setScore`, `setLives`,
 `clearPredators`, `addPredator`, `setPredatorTile`, `setPredatorDir`,
 `setPredatorState`, `setPredatorReleased`, `setPredatorMind`,
 `setPredatorTravel`, `spawnDrifter`, `clearDrifters`, `setDrifterMind`,
-`setDrifterTravel`, `setSonarCooldown` and `setInkCooldown`.
+`setDrifterTravel`, `setDrifterIn`, `setSonarCooldown` and `setInkCooldown`.
 
 **Each pose sets one thing** and leaves the rest of the trench as it stands, so a
 caller that wants several things arranged makes several calls, in the order it
@@ -213,10 +213,10 @@ Then, in this directory:
 npm ci
 ```
 
-The engine, `@test-cabinet/simple-2d`, is a relative `file:` dependency on the
+The engine, `@clockwyrks/simple-2d`, is a relative `file:` dependency on the
 repository's `packages/simple-2d`, which npm installs as a symlink, so this
 project builds and tests against the engine's current source. A run receives the
-same package at `.tcab/engine/@test-cabinet/simple-2d/` instead, so the import in
+same package at `.vendor/engine/@clockwyrks/simple-2d/` instead, so the import in
 the sources is the same either way.
 
 ## Run in development

@@ -48,7 +48,7 @@ export default defineConfig({
     outputFile: { json: "coverage/test-report.json" },
     coverage: {
       provider: "istanbul",
-      reporter: ["text", "json-summary"],
+      reporter: ["json-summary"],
       reportOnFailure: true,
       include: ["src/**/*.ts"],
       exclude: ["src/**/*.test.ts"],

@@ -24,7 +24,7 @@ import {
   createEngine,
   type Engine,
   type SurfaceMetrics,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { cellX, cellY } from "./board";
 import { CELL, LAYOUT, STAGE_H, STAGE_W, type Cell } from "./constants";
 import {

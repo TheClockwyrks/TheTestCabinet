@@ -245,4 +245,4 @@ was read in.
 
 `Vec2`, `Rect`, `CameraSnapshot`, `Camera`, and `Viewport` are exported as
 types, and `fitViewport`, `applyViewport`, and `syncCanvas` as functions, from
-`@test-cabinet/structured-2d`.
+`@clockwyrks/structured-2d`.

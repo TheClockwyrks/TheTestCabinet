@@ -9,8 +9,10 @@
 // carried through the transform in force at the call (`textDraws`), so a HUD
 // drawn at a translated origin reads the same as one drawn in stage coordinates,
 // and a figure is looked for among the NUMBERS a run holds rather than as a
-// literal — a build is free to draw `SCORE 1234` as one run or to pad it to
-// `01234`, and both are the same figure to a player.
+// literal — a build is free to draw `SCORE 1234` as one run, to pad it to
+// `01234`, or to group it as `1,234`, and all of them are the same figure to a
+// player. A group separator is read as part of the number it punctuates rather
+// than as a break between two numbers.
 //
 // THE PIXELS, for the two readouts that are not words. The combo BAR and the mute
 // indicator may be any mark a build likes, so the only fair reading of either is
@@ -117,9 +119,9 @@ export function readBand(h: Harness): Rgb[] {
  * How many blocks of the band `other` painted differently from `base`.
  *
  * The two renders are of the same board under the same fit, so a block that
- * differs at all differs because something was drawn there. The floor is well
- * under the distance two colours must hold to be told apart and well over the
- * nothing a deterministic canvas varies by.
+ * differs at all differs because something was drawn there. The floor is a noise
+ * floor and nothing more: well over the nothing a deterministic canvas varies
+ * by, and far under anything a build meant to draw.
  */
 export function bandDifferences(
   base: readonly Rgb[],
@@ -141,16 +143,35 @@ export function runsOf(calls: readonly DrawCall[], text: string): TextDraw[] {
   );
 }
 
+/**
+ * Group separators a build may write between digit triples: the comma, the
+ * apostrophe, and the no-break, narrow no-break and thin spaces. `.` is not one
+ * of them, because it is the decimal point and a build drawing `1.5` means one
+ * and a half. The ASCII space is not one of them either: a run commonly carries
+ * two figures with a space between them, and accepting it would read `40 130` as
+ * the single number 40130.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One number as a build may draw it: a grouped figure, or a plain one. */
+const DRAWN = new RegExp(
+  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/** Every number appearing in a run of text, in the order they appear. */
+function numbersIn(text: string): number[] {
+  return (text.match(DRAWN) ?? []).map((drawn) =>
+    Number(drawn.replace(new RegExp(GROUP, "g"), "")),
+  );
+}
+
 /** Every run of text the frame drew that carries `value` as one of its numbers. */
 export function numberRuns(
   calls: readonly DrawCall[],
   value: number,
 ): TextDraw[] {
-  return textDraws(calls).filter((run) =>
-    [...run.text.matchAll(/\d+/g)].some(
-      (match) => Number.parseInt(match[0], 10) === value,
-    ),
-  );
+  return textDraws(calls).filter((run) => numbersIn(run.text).includes(value));
 }
 
 /** Every run of text the frame drew that matches `pattern`. */
@@ -159,24 +180,4 @@ export function matchingRuns(
   pattern: RegExp,
 ): TextDraw[] {
   return textDraws(calls).filter((run) => pattern.test(run.text));
-}
-
-/**
- * How much ink `other` laid over `base`, summed over every block of the band.
- *
- * The measure a bar is read by, and it is chosen over counting the blocks that
- * differ because of a design the specification plainly allows: a bar drawn as a
- * dim track with a bright fill over the part of the window that is left COVERS
- * the same blocks however full it is, so a count of covered blocks reads the same
- * at a full window and at a spent one while the bar itself is obviously drained.
- * Summing the distance instead reads how much of the band the readout actually
- * put colour into, which is the same figure for a plain bar, for a track and
- * fill, and for a row of pips.
- */
-export function bandInk(base: readonly Rgb[], other: readonly Rgb[]): number {
-  let ink = 0;
-  for (let i = 0; i < base.length && i < other.length; i += 1) {
-    ink += colorDistance(base[i], other[i]);
-  }
-  return ink;
 }

@@ -24,7 +24,7 @@ interface ChartProps {
 // magnitudes.
 //
 // Usage:
-//   import { Chart, barChart } from "@test-cabinet/ui";
+//   import { Chart, barChart } from "@clockwyrks/ui";
 //   <Chart title="Cost by harness"
 //          spec={(p) => barChart(data, p, { y: "USD" })} />
 export function Chart({ spec, title, className }: ChartProps) {

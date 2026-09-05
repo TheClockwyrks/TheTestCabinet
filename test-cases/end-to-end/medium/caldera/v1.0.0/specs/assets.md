@@ -24,13 +24,13 @@ animations as F-curves keyed on joint values. Each part's `.glb` is a standard g
 2.0 binary whose geometry decodes to plain typed arrays — `positions`, `normals`,
 `colors`, `indices`.
 
-Load and pose the models with `@test-cabinet/voxel-runtime`, the same library these
+Load and pose the models with `@clockwyrks/voxel-runtime`, the same library these
 models were authored against. It is injected into your `package.json`, so import it by
 bare name:
 
 - its root `parseGlb(bytes)` decodes a part's `.glb` into a `PartMesh`
   (`{ positions, normals, colors, indices }`), the shape the recolor below walks;
-- its `@test-cabinet/voxel-runtime/three` binding's `VoxelRig` takes a model's parsed
+- its `@clockwyrks/voxel-runtime/three` binding's `VoxelRig` takes a model's parsed
   parts and its `rig.json`, poses the parts on their joints under a `three` group, and
   plays the authored animations **by name** — the names in `models.json`'s `clips`.
   A `VoxelRigOptions.material` lets you supply your own material (used for the

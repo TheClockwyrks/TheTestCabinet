@@ -9,13 +9,13 @@ bounce. Breaking derelicts may shed salvage pods — catch one for a tool. A
 ball you miss burns up against the planet, and the run ends when the last ball
 is lost with no lives left. Play is a score attack over endless waves.
 
-The game is written inside `@test-cabinet/structured-2d`'s framework — a game
+The game is written inside `@clockwyrks/structured-2d`'s framework — a game
 instance, one game mode, actors and their draw components, and the player
 controller that drives the deflector — and the engine owns the frame loop, the
 canvas fit, rendering, the keyboard actions, the audio cue bus with its
 looping beds, asset loading, and the debug overlay. Every contact is the
 simulation's own polar crossing math over the world's game state; the produced
-particle systems play through `@test-cabinet/particle-runtime`'s canvas
+particle systems play through `@clockwyrks/particle-runtime`'s canvas
 binding, from a draw component in the engine's layer order. There is no
 backend: everything needed to play is in `dist/`.
 

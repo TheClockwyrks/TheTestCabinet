@@ -5,11 +5,11 @@ import type {
   GgCapabilitySet,
   GgModelSlot,
   GgModuleKind,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import {
   DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE,
   DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE,
-} from "@test-cabinet/run-record/gg-system-prompt";
+} from "@clockwyrks/run-record/gg-system-prompt";
 import {
   agentSaveError,
   agentStates,

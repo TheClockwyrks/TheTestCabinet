@@ -62,7 +62,7 @@ title = "Standard sensing"
 [[review.categories.items]]
 id = "fog-remembered"
 title = "The whole explored map stays drawn"
-description = "There is no vision-circle mask: a tile revealed earlier and reporting visibility r is still drawn once the forager has swum far beyond any light radius from it — sampled at its center it differs from an unrevealed tile by more than an RGB distance of 25 of 441 — however far across the grid it lies."
+description = "There is no vision-circle mask: a tile revealed earlier and reporting visibility r is still drawn once the forager has swum far beyond any light radius from it — sampled at its center it is drawn as something other than unrevealed fog, in whatever palette and however dim — however far across the grid it lies."
 domains = ["sensing"]
 failure_cap = "scuffed"
 # Automated validation: reveal a tile, swim the forager to the far side of the
@@ -74,9 +74,11 @@ validation = { script = "standard/fog-remembered.test.ts", outputs = [
 [[review.categories.items]]
 id = "amber-any-distance"
 title = "The amber lights show at any distance"
-description = "A bonus drifter posed on unrevealed ground far across the board from the forager still draws its warm mote: the brightest warm pixel within 12 units of its reported center is well above the surrounding fog and has its red channel above its blue, with no distance at which it is clipped away."
+description = "A bonus drifter posed on unrevealed ground far across the board from the forager still draws its mote: a light is drawn within 12 units of its reported center, standing off the surrounding fog, with no distance at which it is clipped away."
 domains = ["sensing"]
 failure_cap = "passable"
+# What color the mote is drawn in is the look and the reviewer reads it off the
+# still.
 # Automated validation: spawn a drifter far from the forager, out of every light,
 # and search its neighborhood for the mote. See
 # validation/<engine>/standard/amber-any-distance.test.ts.
@@ -95,7 +97,7 @@ title = "The HUD"
 [[review.categories.items]]
 id = "dive-label"
 title = "The dive label reads STANDARD"
-description = "While a maze is on screen a small, dim label reading STANDARD is drawn legibly in the top strip, y in [0, 80], as specs/ui.md fixes for this dive."
+description = "While a maze is on screen a small, dim label reading STANDARD is drawn in the top strip, y in [0, 80], as specs/ui.md fixes for this dive."
 domains = ["progression", "presentation"]
 failure_cap = "great"
 # The cap is `great` where the other five HUD points are `passable`, and the

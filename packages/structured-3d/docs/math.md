@@ -63,7 +63,7 @@ one.
 
 ```ts
 import * as THREE from "three";
-import type { Component } from "@test-cabinet/structured-3d";
+import type { Component } from "@clockwyrks/structured-3d";
 
 function matrixOf(component: Component): THREE.Matrix4 {
   return new THREE.Matrix4().fromArray(component.worldMatrix());
@@ -141,7 +141,7 @@ function lerp(a: Vec3, b: Vec3, t: number): Vec3;
 Integrating a velocity is `add` and `scale`:
 
 ```ts
-import { add, scale } from "@test-cabinet/structured-3d";
+import { add, scale } from "@clockwyrks/structured-3d";
 
 override tick(dt: number): void {
   this.transform.position = add(this.transform.position, scale(this.velocity, dt));
@@ -229,7 +229,7 @@ import {
   quatFromEuler,
   quatRotate,
   scale,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 
 export class Ship extends Pawn {
   yaw = 0;

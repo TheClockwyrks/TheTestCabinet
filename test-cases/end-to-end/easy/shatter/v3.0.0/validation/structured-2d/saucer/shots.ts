@@ -38,7 +38,7 @@
 // asserts them, derived from `specs/saucer.md`. What lives here is the one
 // SCENARIO those five points share.
 
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { TICK_HZ } from "../constants";
 import {
   clearCalls,

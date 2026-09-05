@@ -122,14 +122,12 @@ const BETWEEN_RUNS = " | ";
  * by a marker that appears in no piece of screen copy, so nothing matches across
  * the join.
  *
- * Group separators are dropped from BETWEEN DIGITS, and only there, so a score
- * drawn as `4,260` reads as the number it is while `WAVE 13` is left alone.
+ * The runs are laid out AS THE BUILD WROTE THEM, separators and all. What a figure
+ * was grouped with is {@link numberPattern}'s business, and leaving it in the string
+ * is what lets the failure print the readout the reviewer would have seen.
  */
 export function drawnCopy(runs: readonly TextRun[]): string {
-  return runs
-    .map((run) => run.text)
-    .join(BETWEEN_RUNS)
-    .replace(/(?<=\d)[ ,'_](?=\d)/g, "");
+  return runs.map((run) => run.text).join(BETWEEN_RUNS);
 }
 
 /** Every character a regular expression would otherwise read as syntax. */
@@ -149,15 +147,48 @@ export function wordPattern(word: string): RegExp {
 }
 
 /**
- * `value` as a WHOLE number — a run of digits reading `value` with no further
- * digit either side of it.
+ * The characters a build may GROUP a figure's digit triples with.
+ *
+ * `specs/ui.md` shows the score "as digits" and fixes nothing else about the
+ * readout, so a build is free to hand its figure to the ordinary formatter —
+ * `Number.prototype.toLocaleString`, which groups by default, with the comma, the
+ * apostrophe or one of the thin and non-breaking spaces its locale calls for. Every
+ * one of them writes the same number.
+ *
+ * AN ASCII SPACE IS NOT ONE OF THEM. {@link drawnCopy} lays the frame's runs end to
+ * end, and a build that set a label and its figure as separate runs leaves a space
+ * between them — so reading a space as a separator would take the two figures in
+ * `40 130` for the single number `40130`.
+ */
+const GROUP_SEPARATORS = [",", "'", "\u00A0", "\u202F", "\u2009"];
+
+/**
+ * Every conventional writing of `value`: the bare digits, and the same digits
+ * grouped into triples with each separator a build's formatter may reach for.
+ *
+ * A figure of three digits or fewer is grouped by nobody, so it has exactly one
+ * writing and the list is the bare digits alone.
+ */
+function renderings(value: number): string[] {
+  const plain = String(value);
+  const grouped = GROUP_SEPARATORS.map((separator) =>
+    plain.replace(/\B(?=(\d{3})+(?!\d))/g, separator),
+  );
+  return [plain, ...grouped.filter((form) => form !== plain)];
+}
+
+/**
+ * `value` as a WHOLE number — the figure written out in any of its conventional
+ * forms, with no further digit and no decimal point either side of it.
  *
  * `specs/ui.md` shows the score "as digits" and leaves everything else about the
- * readout to the build, so a label beside it (`SCORE 4260`) reads as the number
- * and the `13` inside `1300` does not.
+ * readout to the build, so a label beside it (`SCORE 4260`) reads as the number, a
+ * build that groups the same figure (`4,260`) has drawn the same number, and the
+ * `13` inside `1300` is still not the number `13`.
  */
 export function numberPattern(value: number): RegExp {
-  return new RegExp(`(?<!\\d)${String(value)}(?!\\d)`);
+  const forms = renderings(value).map(literal).join("|");
+  return new RegExp(`(?<![\\d.])(?:${forms})(?![\\d.])`);
 }
 
 /* -------------------------------------------------------------------------- */

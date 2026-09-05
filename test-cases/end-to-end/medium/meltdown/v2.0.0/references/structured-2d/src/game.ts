@@ -28,12 +28,8 @@
 // closure. The one field added beyond the declaration, `routes`, is derived
 // data rebuilt from `towers` whenever the blocked set changes.
 
-import { GameInstance, GameMode, GameState } from "@test-cabinet/structured-2d";
-import type {
-  GameDefinition,
-  InitApi,
-  World,
-} from "@test-cabinet/structured-2d";
+import { GameInstance, GameMode, GameState } from "@clockwyrks/structured-2d";
+import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
 import {
   FloorActor,
   PanelActor,

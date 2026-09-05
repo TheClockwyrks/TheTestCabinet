@@ -8,8 +8,12 @@ coverage/
 test-results/
 playwright-report/
 package-lock.json
-.tcab/
+.vendor/
 assets/
+
+# Seeded reading material rather than this project's source: the
+# specification the run is graded against.
+specs/
 
 # Prose. The formatter handles code; Markdown is left to its own linter.
 *.md

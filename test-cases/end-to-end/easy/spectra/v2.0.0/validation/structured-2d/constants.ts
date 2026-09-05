@@ -431,8 +431,8 @@ export const BINDINGS: Readonly<Record<ActionName, readonly string[]>> = {
  *
  * The overlay is the ENGINE's chrome under this engine, not one of Spectra's
  * actions, and `specs/controls.md` fixes the key all the same. A harness helper
- * presses it to put the panel up; `controls/overlay-backquote`, which decides the
- * toggle, writes `Backquote` out itself.
+ * presses it to put the panel up so the sources the BUILD registered can be read;
+ * the toggle itself is the engine's and is graded under `none` alone.
  */
 export const OVERLAY_KEY = "Backquote";
 

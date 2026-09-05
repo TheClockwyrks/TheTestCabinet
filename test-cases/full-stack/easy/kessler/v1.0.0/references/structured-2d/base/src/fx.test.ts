@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // The effects layer through the engine: a destruction spawns the committed
 // burst system into the layer, the layer composites it frame by frame on the
 // game's tick clock, and a finished play leaves the layer empty. The stub
@@ -11,7 +12,7 @@ import { fxOf } from "./actors";
 import { loadAssets } from "./assets";
 import { createHarness, type Harness } from "./harness";
 import { pointAt } from "./polar";
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 
 /** A loader over the repository's own files: systems load, images do not. */
 const diskApi: Pick<InitApi, "assets"> = {

@@ -963,11 +963,11 @@ fn version_pinning_simple_2d(min: &str, max: Option<&str>) -> TestCaseVersion {
 /// compares against the version a run of it would actually be seeded with.
 fn catalog_staging_simple_2d(version: &str) -> (tempfile::TempDir, EngineCatalog) {
     let store = tempfile::tempdir().expect("temp store");
-    let dir = store.path().join("@test-cabinet/simple-2d");
+    let dir = store.path().join("@clockwyrks/simple-2d");
     std::fs::create_dir_all(&dir).expect("staged package dir");
     std::fs::write(
         dir.join("package.json"),
-        format!("{{\"name\":\"@test-cabinet/simple-2d\",\"version\":\"{version}\"}}"),
+        format!("{{\"name\":\"@clockwyrks/simple-2d\",\"version\":\"{version}\"}}"),
     )
     .expect("write staged package.json");
     let catalog = EngineCatalog::with_package_store(store.path());

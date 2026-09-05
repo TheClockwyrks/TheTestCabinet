@@ -13,7 +13,7 @@
 // The decoded images, parsed systems and undecoded audio bytes are NOT game state:
 // the state advances without them, and the renderer and the audio bus hold them.
 
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import { CHARGE_IDS, CUES, MACHINERY_KINDS } from "./constants";
 import type { ChargeId, CueName, MachineryKind } from "./constants";
 

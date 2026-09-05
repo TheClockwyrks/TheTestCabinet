@@ -15,7 +15,7 @@ selection holds for the engine's lifetime, so every registration is attributed
 against the same vocabulary.
 
 ```ts
-import { createEngine } from "@test-cabinet/structured-2d";
+import { createEngine } from "@clockwyrks/structured-2d";
 import { game } from "./game";
 import { FIELD } from "./constants";
 
@@ -34,7 +34,7 @@ action name registers the layout's whole vocabulary in one pass, and the
 bindings survive every level transition.
 
 ```ts
-import { GameInstance, type InitApi } from "@test-cabinet/structured-2d";
+import { GameInstance, type InitApi } from "@clockwyrks/structured-2d";
 import { KEYS } from "./constants";
 
 export class Rally extends GameInstance<null> {
@@ -73,7 +73,7 @@ controller uses, and `tick` applies the intent it was given and returns the pawn
 to rest.
 
 ```ts
-import { Pawn, ShapeComponent } from "@test-cabinet/structured-2d";
+import { Pawn, ShapeComponent } from "@clockwyrks/structured-2d";
 import { FIELD, PADDLE } from "./constants";
 
 export class Paddle extends Pawn {
@@ -115,7 +115,7 @@ so holding both cancels out, and use `pressed` for anything that happens once
 per press.
 
 ```ts
-import { PlayerController } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
 import { Ball } from "./ball";
 import { Paddle } from "./paddle";
 
@@ -148,7 +148,7 @@ the world's own object model, so the bot decides from what it can see rather
 than from input.
 
 ```ts
-import { AIController } from "@test-cabinet/structured-2d";
+import { AIController } from "@clockwyrks/structured-2d";
 import { AI_DEADZONE } from "./constants";
 import { Ball } from "./ball";
 import { Paddle } from "./paddle";
@@ -185,7 +185,7 @@ import {
   GameMode,
   type Controller,
   type Transform,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { AIPaddleController } from "./ai-controller";
 import { PaddleController } from "./player-controller";
 import { Paddle } from "./paddle";

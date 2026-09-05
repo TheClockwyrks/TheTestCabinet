@@ -1,13 +1,11 @@
 // instrumentation/advance-scales-with-the-watch-speed — a frame covers as many
 // ticks as the watch speed says.
 //
-// `specs/instrumentation.md` § The clock: "During a run at watch speed `1` a
-// frame covers exactly one tick of the pipeline `specs/program.md` fixes, so
-// `advance(n)` runs `n` ticks. The watch speed scales what a frame covers
-// exactly as it scales a real frame, so a scenario counting ticks leaves the
-// speed where a run starts it." `specs/program.md` says the same from the
-// player's side: "speed changes how many ticks a second of watching covers and
-// nothing else", over `RUN_SPEEDS` (`1`, `2`, `4`).
+// A run at watch speed `1` takes one tick of the pipeline `specs/program.md`
+// fixes for each frame the game is given, and the watch speed scales that
+// exactly as it scales a real frame: "speed changes how many ticks a second of
+// watching covers and nothing else", over `RUN_SPEEDS` (`1`, `2`, `4`)
+// (`specs/program.md`).
 //
 // So a frame at `RUN_SPEEDS[i]` covers `RUN_SPEEDS[i]` ticks, and ten frames at
 // each of the three speeds in turn cover `10`, `20` and `40` ticks — a running

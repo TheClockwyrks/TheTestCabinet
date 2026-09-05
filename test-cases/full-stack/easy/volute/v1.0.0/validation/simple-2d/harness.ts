@@ -87,7 +87,7 @@ import {
   type Recording,
   type Resource,
   type SurfaceMetrics,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 import { BACKGROUND, game as build, type VoluteState } from "../src/game";
 import { assertTruthy, fail } from "./assert";
@@ -96,7 +96,6 @@ import {
   CELLS,
   CHANNEL,
   CHANNEL_ARC,
-  CORE_RADIUS,
   DEFAULT_SEED,
   FIELD_H,
   FIELD_W,
@@ -2497,132 +2496,14 @@ export function captureStill(h: Harness, outputId: string): Promise<void> {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Colour                                                                     */
+/* Comparing two frames                                                       */
 /* -------------------------------------------------------------------------- */
 //
 // `specs/ui.md`: "Volute fixes no palette, no font, no layout, and no styling for
-// any screen." So nothing here reads a hex value. What the appearance points may
-// assert is PRESENCE and DISTINGUISHABILITY — that a charge stands apart from the
-// field, from the plate, and from every other charge — and the reading is the
-// distance between two sampled colours on the 0-441 scale the case's standing
-// tolerance names.
-
-/** A sampled colour, each channel 0-255. */
-export interface Rgb {
-  r: number;
-  g: number;
-  b: number;
-}
-
-/** Euclidean distance between two colours, 0 to about 441. */
-export function colorDistance(a: Rgb, b: Rgb): number {
-  return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
-}
-
-/** A colour's luminance, on the same 0-255 scale as its channels. */
-export function luminance(c: Rgb): number {
-  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
-}
-
-/** The mean colour of a {@link PixelRect}, over the pixels `keep` accepts. */
-export function meanColor(
-  rect: PixelRect,
-  keep: (x: number, y: number) => boolean = () => true,
-): Rgb {
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  let n = 0;
-  for (let y = 0; y < rect.height; y += 1) {
-    for (let x = 0; x < rect.width; x += 1) {
-      if (!keep(x, y)) continue;
-      const at = (y * rect.width + x) * 4;
-      r += rect.data[at];
-      g += rect.data[at + 1];
-      b += rect.data[at + 2];
-      n += 1;
-    }
-  }
-  if (n === 0) return { r: 0, g: 0, b: 0 };
-  return { r: r / n, g: g / n, b: b / n };
-}
-
-/**
- * The mean colour of the `size` x `size` patch centred on a logical point.
- *
- * A patch rather than one pixel because every edge on the field is
- * anti-aliased, so a single sample on a rim reads as a mixture rather than as
- * the thing that was drawn.
- */
-export async function samplePatch(
-  h: Harness,
-  x: number,
-  y: number,
-  size = 9,
-): Promise<Rgb> {
-  const half = (size - 1) / 2;
-  return meanColor(await h.pixelRect(x - half, y - half, size, size));
-}
-
-/**
- * The mean colour of the disc of `radius` centred on a logical point.
- *
- * What a check about a CORE reads: a core is a disc of {@link CORE_RADIUS} that
- * carries a glyph over its face, so one pixel is either the mineral or the glyph
- * and the mean over the disc is the charge.
- */
-export async function sampleDisc(
-  h: Harness,
-  x: number,
-  y: number,
-  radius = CORE_RADIUS - 1,
-): Promise<Rgb> {
-  const size = 2 * radius + 1;
-  const rect = await h.pixelRect(x - radius, y - radius, size, size);
-  const cx = (rect.width - 1) / 2;
-  const cy = (rect.height - 1) / 2;
-  const limit = Math.min(cx, cy);
-  return meanColor(rect, (px, py) => Math.hypot(px - cx, py - cy) <= limit);
-}
-
-/**
- * A binary luminance mask of a {@link PixelRect}, thresholded at its own median.
- *
- * What tells two sprites apart WITH COLOUR REMOVED: the mask is the shape the
- * sprite draws rather than the hue it draws it in, so two charges that differ
- * only by hue produce the same mask and two that carry different glyphs do not.
- * A fully transparent pixel is dark, because nothing is drawn there.
- */
-export function luminanceMask(rect: PixelRect): boolean[] {
-  const values: number[] = [];
-  for (let i = 0; i < rect.width * rect.height; i += 1) {
-    const at = i * 4;
-    const alpha = rect.data[at + 3] / 255;
-    values.push(
-      alpha *
-        luminance({
-          r: rect.data[at],
-          g: rect.data[at + 1],
-          b: rect.data[at + 2],
-        }),
-    );
-  }
-  const sorted = [...values].sort((a, b) => a - b);
-  const median = sorted[Math.floor(sorted.length / 2)];
-  return values.map((value) => value > median);
-}
-
-/** The fraction of positions two masks of the same size disagree on, 0 to 1. */
-export function maskDifference(
-  a: readonly boolean[],
-  b: readonly boolean[],
-): number {
-  const n = Math.min(a.length, b.length);
-  if (n === 0) return 0;
-  let differing = 0;
-  for (let i = 0; i < n; i += 1) if (a[i] !== b[i]) differing += 1;
-  return differing / n;
-}
+// any screen." So nothing here reads a colour, a contrast, or how far a drawn
+// mark reaches. A frame is read against ANOTHER frame of the same hall, and what
+// the two readings below report is where the picture changed — which is presence,
+// the one thing a pixel may decide.
 
 /** How many pixels of two equally shaped rectangles differ by more than `tolerance`. */
 export function pixelsDiffering(

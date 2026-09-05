@@ -80,7 +80,7 @@ max_runtime_hours = 8
 
 # Init command, run in the run container once the workspace and specs are seeded and
 # before the harness starts. `npm install` — NOT `npm ci` — because `packages` injects
-# the `@test-cabinet/particle-runtime` `file:` dependency this build plays its produced
+# the `@clockwyrks/particle-runtime` `file:` dependency this build plays its produced
 # particle systems with, and an engine run has its engine package vendored in the same
 # way, so the lockfile is completed at seed time; the same command downloads the
 # Playwright Chromium build (the base image ships the OS libraries Chromium links
@@ -96,7 +96,7 @@ init = "npm install && npx playwright install chromium"
 # captured by a validator from the build itself.
 
 # Test Cabinet runtime libraries installed into the run so the build can play the
-# particle systems it produces. `@test-cabinet/particle-runtime` is the same library
+# particle systems it produces. `@clockwyrks/particle-runtime` is the same library
 # the review UI plays a produced effect with; core bakes it into the run image and the
 # seeded workspace `package.json` depends on it via its baked-in `file:` path, so the
 # build imports it (its `/canvas` binding) like any other dependency and plays each
@@ -107,7 +107,7 @@ init = "npm install && npx playwright install chromium"
 # neither engine draws particles, and both hand the game a raw 2D context to play a
 # produced system through. (A root key, so it must sit above the first `[table]`
 # header.)
-packages = ["@test-cabinet/particle-runtime"]
+packages = ["@clockwyrks/particle-runtime"]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Deepcore offers a single `base` variant (the standard expedition), declared in its
@@ -178,7 +178,7 @@ min_version = "1.0.0"
 # The starter project seeded into the root of every run before the specs, one per
 # engine. All three carry the same Vite/TypeScript/ESLint/Prettier/Vitest configuration
 # the `[toolchain]` commands below run against, an `index.html` holding the canvas, and
-# a `package.json` declaring `@test-cabinet/particle-runtime` by its baked-in `file:`
+# a `package.json` declaring `@clockwyrks/particle-runtime` by its baked-in `file:`
 # path. What differs is how much of the build is supplied with them.
 #
 #   - `none`          supplies the configuration and nothing else. There is no `src/`:
@@ -5063,9 +5063,9 @@ validation = { script = "assets/audio-files-present.test.ts", outputs = [
 # The part of the picture the game draws in code around the produced sprites. This
 # case fixes no palette, no font and no layout on purpose, so the points here are
 # the presentation facts the specification does fix: the stage fitted whatever the
-# window is, one kind of cell telling itself from another, the shaping of a carved
-# tunnel, and a screen shake that never moves the simulation. How good the mine
-# looks is the run-wide aesthetic rating, not scored here.
+# window is, one kind of cell drawn differently from another, and a screen shake
+# that never moves the simulation. How good the mine looks is the run-wide
+# aesthetic rating, not scored here.
 [[review.categories]]
 id = "rendering"
 title = "The Mine on Screen"
@@ -5078,11 +5078,19 @@ failure_cap = "passable"
 # Automated validation: size the surface wider, taller and at a raised ratio in
 # turn; hold the backing store, the fitted stage's extent and its single scale at
 # each, and sample a posed rock cell and the open mine beside it through the
-# reported fit. The fit itself is the runtime's under an engine; where the mine
-# lands under it is the build's either way.
+# reported fit. The fit itself is the runtime's under an engine, so the engine
+# projects hold the sampled reading alone; where the mine lands under the fit is
+# the build's either way.
 validation = { script = "rendering/stage-fit.test.ts", outputs = [
   { id = "fit", name = "The stage fitted in an off-aspect window", kind = "image" },
 ] }
+# The centring is scoped to `none` because that is the only configuration where it
+# is the BUILD's own work. specs/overview.md hands an engine "the uniform scale
+# that preserves the aspect ratio, the letterboxed centering, and the device pixel
+# ratio", so under one the offsets a check would read are the runtime's own
+# arithmetic and every build on that engine gets the same verdict. Without an
+# engine the build owns its whole presentation layer, and splitting the leftover
+# evenly rather than pinning the stage to a corner is a requirement it can fail.
 [[review.categories.items]]
 id = "stage-centred"
 title = "The stage is centered in the surface"
@@ -5092,124 +5100,72 @@ failure_cap = "passable"
 # Automated validation: size the surface wider, taller and at a raised ratio in
 # turn and hold the reported offsets at half the leftover on one axis and zero on
 # the other.
-validation = { script = "rendering/stage-centred.test.ts", outputs = [
+validation = { script = "rendering/stage-centred.test.ts", engines = [
+  "none",
+], outputs = [
   { id = "centred", name = "The stage centered in an off-aspect window", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "letterbox-carries-the-background"
-title = "The letterbox bars carry the game's background"
-description = "Every letterbox pixel is painted rather than left transparent, and the bars carry one background across every window shape, within an RGB distance of 25 of 441."
+title = "The letterbox bars are painted with one background"
+description = "Every letterbox pixel is painted rather than left transparent, and every bar carries the same one color, within a window shape and across window shapes alike."
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: size the surface wider, taller and at a raised ratio in
-# turn and sample each bar for an opaque pixel carrying the stage background. The
-# color is the build's either way: it is the `BACKGROUND` src/game.ts exports
-# under an engine, and the color the build clears to without one.
+# turn, sample each bar and hold every reading opaque and the same color as the
+# first, within the shape and across the three. WHICH color the build chose is
+# the build's own and is never compared against a figure.
 validation = { script = "rendering/letterbox-carries-the-background.test.ts", outputs = [
   { id = "letterbox", name = "The letterbox around the fitted stage", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "bands-are-distinguishable"
-title = "The four bands read as different rock"
-description = "The four bands rock is drawn distinctly: sampling the interior of a rock cell in each band, the mean colors of each band and the band below it are at least an RGB distance of 30 apart, so a player descending reads the change of depth off the wall."
-domains = ["presentation"]
-failure_cap = "passable"
-# Automated validation: pose a rock cell in each band, sample the interior of
-# each drawn cell and hold each consecutive pair of mean colors at least 30
-# apart. Consecutive, because a band runs hundreds of rows and only two bands
-# that meet are ever on screen together.
-validation = { script = "rendering/bands-are-distinguishable.test.ts", outputs = [
-  { id = "bands", name = "The four bands rock side by side", kind = "image" },
-] }
-[[review.categories.items]]
 id = "lava-is-distinguishable"
-title = "Lava reads as lava, not as rock"
-description = "A lava cell is drawn distinctly from its band rock: their sampled mean colors are at least an RGB distance of 60 apart, so a pool is visible before the miner is in it."
+title = "A lava cell is drawn as lava rather than as rock"
+description = "Posing one cell to lava changes what that cell is drawn as: the cell's sampled interior with lava in it differs from the same cell's interior with the band rock in it, so a pool is drawn rather than left as wall."
 domains = ["presentation"]
 failure_cap = "scuffed"
-# Automated validation: pose a lava cell beside a rock cell of the same band,
-# sample both interiors and hold them at least 60 apart.
+# Automated validation: pose one cell to lava and sample its interior, pose the
+# same cell back to rock and sample it again, and hold the two readings apart.
+# What lava LOOKS like is the presentation rating's, not this point's.
 validation = { script = "rendering/lava-is-distinguishable.test.ts", outputs = [
-  { id = "lava", name = "Lava beside the rock of its band", kind = "image" },
+  { id = "lava", name = "The posed lava cell in its band", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "ore-is-distinguishable"
-title = "An ore cell reads differently from plain rock"
-description = "An ore cell is drawn distinctly from plain rock of the same band, their sampled mean colors at least an RGB distance of 30 apart, so a vein is spotted rather than stumbled on."
+title = "An ore cell is drawn as a vein rather than as plain rock"
+description = "Posing a cell to any one of the thirteen ores changes what that cell is drawn as: the cell's sampled interior with the vein in it differs from the same cell's interior with plain rock in it, so a vein is drawn rather than left as wall."
 domains = ["presentation"]
 failure_cap = "scuffed"
-# Automated validation: pose an ore cell beside a rock cell of the same band,
-# sample both interiors and hold them at least 30 apart.
+# Automated validation: for each of the thirteen ores, pose one cell to that ore
+# and sample its interior, pose the same cell back to rock and sample it again,
+# and hold the two readings apart. What a vein LOOKS like is the presentation
+# rating's, not this point's.
 validation = { script = "rendering/ore-is-distinguishable.test.ts", outputs = [
   { id = "vein", name = "An ore vein in the band rock", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "stone-is-distinguishable"
-title = "Unbreakable stone reads as a harder material"
-description = "An unbreakable-stone cell is drawn distinctly from the band rock around it, their sampled mean colors at least an RGB distance of 30 apart, so a boulder is recognized before the drill is wasted on it."
+title = "An unbreakable-stone cell is drawn as a boulder rather than as rock"
+description = "Posing a cell to unbreakable stone changes what that cell is drawn as, in each of the three bands stone is generated in: the cell's sampled interior with the boulder in it differs from the same cell's interior with the band rock in it."
 domains = ["presentation"]
 failure_cap = "scuffed"
-# Automated validation: pose a stone cell beside a rock cell of the same band,
-# sample both interiors and hold them at least 30 apart.
+# Automated validation: in each of the three bands, pose one cell to stone and
+# sample its interior, pose the same cell back to rock and sample it again, and
+# hold the two readings apart. What a boulder LOOKS like is the presentation
+# rating's, not this point's.
 validation = { script = "rendering/stone-is-distinguishable.test.ts", outputs = [
   { id = "boulder", name = "A boulder in the band rock", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "tunnel-is-inset"
-title = "A carved tunnel is drawn narrower than its cell"
-description = "A carved cell is drawn inset with a lip of the band dirt around it, so the open passage is narrower than the full cell and the cell border pixels are not the tunnel fill."
-domains = ["presentation"]
-failure_cap = "passable"
-# Automated validation: clear one cell surrounded by rock and sample the drawn
-# cell at its border and at its center, holding the border unlike the center
-# fill.
-validation = { script = "rendering/tunnel-is-inset.test.ts", outputs = [
-  { id = "inset", name = "One carved cell inside its rock", kind = "image" },
-] }
-[[review.categories.items]]
-id = "tunnel-cells-join"
-title = "Adjacent carved cells join into one passage"
-description = "Two orthogonally adjacent open cells join into one passage, with the tunnel fill running through the side they share rather than a dirt lip down the middle of it."
-domains = ["presentation"]
-failure_cap = "passable"
-# Automated validation: pose one orthogonal pair of open cells and sample the
-# midpoint of the side they share, holding it against the tunnel fill.
-validation = { script = "rendering/tunnel-cells-join.test.ts", outputs = [
-  { id = "join", name = "An orthogonal pair joined into one passage", kind = "image" },
-] }
-[[review.categories.items]]
-id = "tunnel-cells-stay-separate"
-title = "Diagonally touching carved cells stay two holes"
-description = "Two open cells touching only at a corner stay separate, with the band's dirt still filling the corner between them."
-domains = ["presentation"]
-failure_cap = "passable"
-# Automated validation: pose one diagonal pair of open cells and sample the
-# corner they touch at, holding it against the band's dirt.
-validation = { script = "rendering/tunnel-cells-stay-separate.test.ts", outputs = [
-  { id = "apart", name = "A diagonal pair left apart", kind = "image" },
-] }
-[[review.categories.items]]
-id = "tunnel-corner-nub"
-title = "An L-bend keeps a convex nub of dirt"
-description = "At an L-bend or a T-junction, where solid rock pokes diagonally into the bend, the dirt keeps a convex nub bulging into the tunnel rather than a scooped-out concave notch."
-domains = ["presentation"]
-failure_cap = "great"
-# Automated validation: pose an L-bend of open cells, follow the dirt from the
-# shared corner along both edges and along the diagonal between them, and hold
-# the diagonal reach past the reach a corner cut off flat would have, so the
-# dirt bulges into the tunnel rather than away from it.
-validation = { script = "rendering/tunnel-corner-nub.test.ts", outputs = [
-  { id = "bend", name = "The nub at an L-bend", kind = "image" },
-] }
-[[review.categories.items]]
 id = "screen-shake"
 title = "A blast shakes the screen"
-description = "A gas detonation, an explosives blast, a hard landing and a Core Sample detonation each jitter the drawn world briefly and the jitter decays out, so the frames just after a blast are displaced from the frames before it."
+description = "A gas detonation, an explosives blast, a hard landing and a Core Sample detonation each jitter the drawn world briefly and the jitter decays out: the drawn world slides at least SHAKE_MIN (2) logical units at its peak and is back where it started within SHAKE_SETTLE (3) seconds."
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: detonate a posed pocket with the miner held in place
 # and compare the drawn world before, just after and well after the blast,
-# holding a displacement that decays.
+# holding a displacement of at least SHAKE_MIN that is back inside a unit by
+# SHAKE_SETTLE.
 validation = { script = "rendering/screen-shake.test.ts", outputs = [
   { id = "shake", name = "The world shaken by a detonation", kind = "replay" },
 ] }

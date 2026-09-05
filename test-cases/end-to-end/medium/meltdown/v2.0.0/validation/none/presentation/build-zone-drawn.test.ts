@@ -22,13 +22,19 @@
 // THE TWO HALVES OF THE READING, AND WHY BOTH.
 //
 //   1. SOMETHING CHANGED AT THE EDGE. Along each of the four edges, at some point
-//      within a tile of it, the picture moves by this group's "plainly apart"
-//      figure. That refuses a build that draws no zone, and a build that draws one
+//      within a tile of it, the picture moves by more than the floor moves on its
+//      own. That refuses a build that draws no zone, and a build that draws one
 //      somewhere other than where `specs/modes.md` puts it.
 //   2. AND SOMETHING NEARBY DID NOT. Along the same edge, some point within that
 //      same tile is untouched. That is what makes the change an EDGE rather than a
 //      wash: a build that simply tints the whole floor whenever the mode is
 //      Bottleneck has drawn no zone, and it moves every point alike.
+//
+// AND WHERE THE BAR COMES FROM. Not a stated distance — `specs/overview.md` hands
+// the palette to the build, so how strongly a zone is marked is the reviewer's to
+// judge. The same strip is read twice under Containment, which is how far the
+// floor moves between two frames under a build that animates it, and the marking
+// has to beat that by `NOISE_MARGIN` while the untouched point stays inside it.
 //
 // WHY THE STRIP REACHES BOTH WAYS, AND WHY THAT MATTERS. The points run from a
 // tile outside the edge to a tile inside it. Three ways of drawing a zone are all
@@ -51,26 +57,7 @@ import {
   startRun,
   type Harness,
 } from "../harness";
-import { readPixels, type Point } from "./read";
-
-/**
- * How far the picture must move at an edge, out of the 441 the RGB cube spans.
- *
- * This group's figure for "plainly apart" (`specs/overview.md`), the same 50 every
- * other point in this group draws its line at, under this engine and under the
- * other two.
- */
-const MARK_MIN = 50;
-
-/**
- * How far a point may move and still count as untouched.
- *
- * A quarter of the mark. The two frames are deterministic renders of the same
- * empty floor, so an unmarked point moves by nothing at all; the allowance is for
- * the edge of a mark rather than for noise, and it is far enough below `MARK_MIN`
- * that no point can satisfy both halves of the reading.
- */
-const QUIET_MAX = MARK_MIN / 4;
+import { NOISE_MARGIN, readPixels, type Point } from "./read";
 
 /**
  * How far either side of an edge, in logical units, the strip is read.
@@ -137,8 +124,11 @@ afterEach(async () => {
 });
 
 it("marks the zone Bottleneck restricts building to", async () => {
-  // The same empty floor under a mode with no zone, and under the one with one.
+  // The same empty floor under a mode with no zone, twice, so how far the floor
+  // moves on its own is measured rather than assumed.
   await startRun(h, "containment", "medium");
+  await h.advance(1);
+  const first = await readPixels(h, STRIP);
   await h.advance(1);
   const unzoned = await readPixels(h, STRIP);
 
@@ -150,6 +140,7 @@ it("marks the zone Bottleneck restricts building to", async () => {
   for (const [index, edge] of EDGES.entries()) {
     let strongest = 0;
     let quietest = Infinity;
+    let noise = 0;
     let strongestAt: Point = STRIP[index * PER_EDGE];
     for (let n = 0; n < PER_EDGE; n += 1) {
       const i = index * PER_EDGE + n;
@@ -159,21 +150,23 @@ it("marks the zone Bottleneck restricts building to", async () => {
         strongestAt = STRIP[i];
       }
       quietest = Math.min(quietest, moved);
+      noise = Math.max(noise, colorDistance(first[i], unzoned[i]));
     }
 
     assertGreaterThanOrEqual(
       strongest,
-      MARK_MIN,
+      noise + NOISE_MARGIN,
       `${edge.name}, columns ${BOTTLENECK_ZONE.col0}-${BOTTLENECK_ZONE.col1} ` +
         `by rows ${BOTTLENECK_ZONE.row0}-${BOTTLENECK_ZONE.row1}: within a ` +
         `tile of it, at (${Math.round(strongestAt.x)}, ` +
         `${Math.round(strongestAt.y)}), Bottleneck draws something Containment ` +
-        `does not (specs/overview.md: a mode that restricts building draws the ` +
+        `does not, past the ${noise} two Containment frames moved on their own ` +
+        `(specs/overview.md: a mode that restricts building draws the ` +
         `zone; specs/modes.md fixes the rectangle)`,
     );
     assertLessThanOrEqual(
       quietest,
-      QUIET_MAX,
+      noise + NOISE_MARGIN,
       `${edge.name}: some point within a tile of it — ${TILE} units either ` +
         `side — is drawn the same way under both modes, so the marking is an ` +
         `edge a player can place a footprint against rather than a wash over ` +

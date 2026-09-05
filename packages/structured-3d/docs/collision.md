@@ -165,8 +165,8 @@ live on the engine and outlive the world, so a handler left behind would run
 against a level that has closed.
 
 ```ts
-import { add, dot, scale } from "@test-cabinet/structured-3d";
-import type { EngineEventMap, Vec3 } from "@test-cabinet/structured-3d";
+import { add, dot, scale } from "@clockwyrks/structured-3d";
+import type { EngineEventMap, Vec3 } from "@clockwyrks/structured-3d";
 
 export class Ball extends Actor {
   velocity: Vec3 = { x: 0, y: 0, z: 0 };
@@ -306,7 +306,7 @@ the result, and so is every collider owned by an actor `ignore` names — name t
 actor itself so a ray leaving it skips its own collider.
 
 ```ts
-import { FORWARD, quatRotate } from "@test-cabinet/structured-3d";
+import { FORWARD, quatRotate } from "@clockwyrks/structured-3d";
 
 const forward = quatRotate(this.transform.rotation, FORWARD);
 const hit = this.world.collision.raycast(

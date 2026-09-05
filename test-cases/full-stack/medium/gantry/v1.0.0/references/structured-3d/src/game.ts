@@ -19,8 +19,8 @@ import {
   GameState,
   PlayerController,
   vec3,
-} from "@test-cabinet/structured-3d";
-import type { GameDefinition, InitApi } from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
+import type { GameDefinition, InitApi } from "@clockwyrks/structured-3d";
 import {
   ACTIONS,
   BINDINGS,
@@ -112,10 +112,7 @@ export interface SiteState {
 
 /** A structure's readiness issue (specs/structure.md). */
 export type ReadinessIssue =
-  | "no-ring"
-  | "no-rail"
-  | "invalid-rail"
-  | "disconnected-members";
+  "no-ring" | "no-rail" | "invalid-rail" | "disconnected-members";
 
 /** What would refuse a run: a readiness issue, or an empty tape. */
 export type StartIssue = ReadinessIssue | "empty-program";
@@ -267,21 +264,10 @@ export interface PointerState {
 }
 
 export type Screen =
-  | "title"
-  | "howto"
-  | "select"
-  | "build"
-  | "program"
-  | "run"
-  | "results";
+  "title" | "howto" | "select" | "build" | "program" | "run" | "results";
 
 export type Tool =
-  | "strut"
-  | "cable"
-  | "rail"
-  | "ring"
-  | "counterweight"
-  | "delete";
+  "strut" | "cable" | "rail" | "ring" | "counterweight" | "delete";
 
 export class GantryState extends GameState {
   screen: Screen = "title";

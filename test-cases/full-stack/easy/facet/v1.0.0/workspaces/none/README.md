@@ -10,7 +10,7 @@ This build runs on no engine. Nothing here supplies a frame loop, input, audio,
 asset loading, or an overlay, and there is no game code to start from. What the
 project supplies is the toolchain, already configured and installed:
 TypeScript, Vite, Vitest, ESLint and Prettier, wired to the commands below,
-plus `@test-cabinet/particle-runtime` for simulating and drawing the particle
+plus `@clockwyrks/particle-runtime` for simulating and drawing the particle
 systems you produce.
 
 ## What you own
@@ -61,8 +61,8 @@ a browser.
 ## What stays as it is
 
 - `index.html`, the page and the canvas.
-- `.tcab/`, holding the vendored package that `package.json` resolves
-  `@test-cabinet/particle-runtime` from.
+- `.vendor/`, holding the vendored package that `package.json` resolves
+  `@clockwyrks/particle-runtime` from.
 - The toolchain: `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`,
   `.prettierignore`, and `.gitignore`.

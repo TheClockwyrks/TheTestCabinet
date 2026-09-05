@@ -8,10 +8,19 @@
 //
 // THE POINT HAS TWO HALVES AND NEEDS BOTH. That no seeded frame is blitted at the
 // bullet decides nothing on its own — a build that drew no bullet at all would
-// pass it — so the same posed bullet is also read on the pixels: it must paint
-// the square it occupies apart from the field behind it. Together they say what
-// the item claims: something is drawn there, and it is not one of the seeded
-// sprites.
+// pass it — so each posed bullet is also read on the pixels: it must paint at
+// least one place of the square it occupies that the same square of the same
+// field does not carry without it. Together they say what the item claims:
+// something is drawn there, and it is not one of the seeded sprites.
+//
+// A BULLET OF EACH BAND IS POSED. `specs/bands.md` gives the ship's cannon two
+// band states and nothing else in this group reads a bullet, so a build that
+// draws one band's shot and leaves the other blank is caught here rather than
+// nowhere. Both are read in one frame, so the point declares one still.
+//
+// NOTHING ABOUT HOW A BULLET LOOKS IS ASSERTED. `specs/overview.md` fixes no
+// palette, so how the build's bullets read against the field it chose is the
+// reviewer's rating. What is graded here is presence and the source behind it.
 //
 // WHAT "IN CODE" IS NOT TAKEN TO MEAN. `specs/assets.md` says only that no seeded
 // file covers a bullet; it does not forbid a build from pre-rendering a shape of
@@ -20,20 +29,20 @@
 // FRAME was drawn there — whether a source carrying one of the four seeded
 // silhouettes was blitted on the bullet — rather than whether any bitmap was.
 //
-// THE BULLET IS REALLY IN FLIGHT. It is added through the surface and the game's
-// own update is run, so it carries the velocity the build gave it and is drawn
-// wherever that update put it; the square read is the one the snapshot reports it
-// at, so nothing here freezes it or assumes how far it travelled. `specs/ship.md`
-// fixes the drawn size, `PLAYER_BULLET_W` (`4`) by `PLAYER_BULLET_H` (`16`), and
-// that box is the square read.
+// THE BULLETS ARE REALLY IN FLIGHT. Each is added through the surface and the
+// game's own update is run, so it carries the velocity the build gave it and is
+// drawn wherever that update put it; the square read is the one the snapshot
+// reports it at, so nothing here freezes it or assumes how far it travelled.
+// `specs/ship.md` fixes the drawn size, `PLAYER_BULLET_W` (`4`) by
+// `PLAYER_BULLET_H` (`16`), and that box is what is read.
 //
 // NOTHING ELSE IS ON THE FIELD. `startPosed` leaves no drone, no other bullet and
-// no burst, and the ship stands four hundred units away down its own lane, so the
-// only draw near the square is the bullet's own and the fighter blitted on the
-// ship is not among the blits considered.
+// no burst, and both shots stand two hundred units clear of the ship, so the
+// only draw near either square is that bullet's own and the fighter blitted on
+// the hull is not among the blits considered.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThanOrEqual, assertLessThan, fail } from "../assert";
+import { assertGreaterThan, assertLessThan, fail } from "../assert";
 import {
   PLAYER_BULLET_H,
   PLAYER_BULLET_W,
@@ -52,20 +61,7 @@ import {
   type Harness,
   type Rect,
 } from "../harness";
-import { apartFromField, describeBlits } from "./reading";
-
-/**
- * How far the bullet must read from the field behind it, as a Euclidean RGB
- * distance out of the `441` an RGB cube is across, averaged over everything it
- * painted.
- *
- * The case's figure, since the specification states the rule and leaves the
- * palette to the build: `40` is about a tenth of the space, which is what this
- * checklist calls the least a player reads at a glance —
- * `specs/overview.md`'s legibility table asks that "a bullet reads apart from the
- * field along the lane it is travelling".
- */
-const DISTINCT_MIN = 40;
+import { describeBlits, paintedCount } from "./reading";
 
 /**
  * How closely a blitted source would have to agree with a seeded sprite to count
@@ -88,8 +84,9 @@ const AGREE_MIN = 0.99;
  */
 const SPRITE_NEAR = PLAYER_BULLET_H;
 
-/** Where the shot is put: inside the play field, clear of the ship's lane. */
-const FIRED_AT = { x: 400, y: 400 } as const;
+/** Where the two shots are put: in the play field, clear of the ship's lane. */
+const CYAN_AT = { x: 400, y: 400 } as const;
+const MAGENTA_AT = { x: 480, y: 400 } as const;
 
 /**
  * The lattice the bullet's box is read on, in logical units.
@@ -109,73 +106,100 @@ afterEach(async () => {
   await h?.dispose();
 });
 
-it("paints a bullet in flight with no seeded frame drawn on it", async () => {
+it("paints a bullet of each band with no seeded frame drawn on it", async () => {
   await startPosed(h);
-  await h.debug.addPlayerBullet(FIRED_AT.x, FIRED_AT.y, "cyan");
-  const added = lastBullet(await h.snapshot());
-  if (added === undefined) {
+  await h.debug.addPlayerBullet(CYAN_AT.x, CYAN_AT.y, "cyan");
+  const cyanAdded = lastBullet(await h.snapshot());
+  if (cyanAdded === undefined) {
     fail(
-      "addPlayerBullet to append a bullet to the roster " +
+      "addPlayerBullet to append a cyan bullet to the roster " +
         "(specs/instrumentation.md)",
       "the bullet roster was still empty after addPlayerBullet",
     );
   }
+  await h.debug.addPlayerBullet(MAGENTA_AT.x, MAGENTA_AT.y, "magenta");
+  const magentaAdded = lastBullet(await h.snapshot());
+  if (magentaAdded === undefined || magentaAdded.id === cyanAdded.id) {
+    fail(
+      "addPlayerBullet to append a second, magenta bullet to the roster " +
+        "(specs/instrumentation.md)",
+      `the roster still held only bullet ${cyanAdded.id}`,
+    );
+  }
 
-  // One frame of the build's own update, recorded: the bullet is drawn wherever
+  // One frame of the build's own update, recorded: each bullet is drawn wherever
   // that update carried it.
   const blits = await blitsOfFrame(h);
-  const flying = requireBullet(
-    await h.snapshot(),
-    added.id,
-    "the bullet in flight",
-  );
-  const at = { x: flying.x, y: flying.y };
-  const box: Rect = {
-    x: at.x - PLAYER_BULLET_W / 2,
-    y: at.y - PLAYER_BULLET_H / 2,
+  const flying = await h.snapshot();
+  const shots = [
+    {
+      band: "cyan",
+      bullet: requireBullet(flying, cyanAdded.id, "the cyan bullet in flight"),
+    },
+    {
+      band: "magenta",
+      bullet: requireBullet(
+        flying,
+        magentaAdded.id,
+        "the magenta bullet in flight",
+      ),
+    },
+  ];
+  const boxes: Rect[] = shots.map(({ bullet }) => ({
+    x: bullet.x - PLAYER_BULLET_W / 2,
+    y: bullet.y - PLAYER_BULLET_H / 2,
     width: PLAYER_BULLET_W,
     height: PLAYER_BULLET_H,
-  };
-  const drawn = await readRegion(h, box, READ_STEP);
+  }));
+  const drawn = [
+    await readRegion(h, boxes[0], READ_STEP),
+    await readRegion(h, boxes[1], READ_STEP),
+  ];
 
-  // A bullet drawn in flight.
+  // A bullet of each band drawn in flight.
   await captureStill(h, "bullet");
 
-  // The same box of the same field with no bullet in it: the control every place
-  // the bullet painted is held against.
+  // The same boxes of the same field with no bullet in them: the control every
+  // place a bullet painted is held against.
   await h.debug.clearPlayerBullets();
   await h.advance(1);
-  const bare = await readRegion(h, box, READ_STEP);
+  const bare = [
+    await readRegion(h, boxes[0], READ_STEP),
+    await readRegion(h, boxes[1], READ_STEP),
+  ];
 
-  const apart = apartFromField(bare, drawn);
-  assertGreaterThanOrEqual(
-    apart.distance,
-    DISTINCT_MIN,
-    `the bullet to paint its PLAYER_BULLET_W (${PLAYER_BULLET_W}) by ` +
-      `PLAYER_BULLET_H (${PLAYER_BULLET_H}) box at least ${DISTINCT_MIN} of ` +
-      `441 from the field behind it, averaged over the ${apart.samples} ` +
-      `places it painted (specs/overview.md: a bullet reads apart from the ` +
-      `field along the lane it is travelling)`,
-  );
+  for (let i = 0; i < shots.length; i += 1) {
+    const { band, bullet } = shots[i];
+    const at = { x: bullet.x, y: bullet.y };
+    assertGreaterThan(
+      paintedCount(bare[i], drawn[i]),
+      0,
+      `the ${band} bullet to paint at least one place of its ` +
+        `PLAYER_BULLET_W (${PLAYER_BULLET_W}) by PLAYER_BULLET_H ` +
+        `(${PLAYER_BULLET_H}) box that the same box of the same field does ` +
+        `not carry without it (specs/assets.md: every bullet, the player's ` +
+        `and the drones' alike, is drawn in code)`,
+    );
 
-  const near = blitsNear(blits, at, SPRITE_NEAR);
-  const seeded = Math.max(
-    0,
-    ...near.map((blit) =>
-      Math.max(
-        ...(Object.keys(SPRITES) as SpriteName[]).map(
-          (name) => blit.agreement[name],
+    const near = blitsNear(blits, at, SPRITE_NEAR);
+    const seeded = Math.max(
+      0,
+      ...near.map((blit) =>
+        Math.max(
+          ...(Object.keys(SPRITES) as SpriteName[]).map(
+            (name) => blit.agreement[name],
+          ),
         ),
       ),
-    ),
-  );
-  assertLessThan(
-    seeded,
-    AGREE_MIN,
-    `no source carrying one of the four seeded sprites' silhouettes to be ` +
-      `blitted within ${SPRITE_NEAR} units of the bullet at ` +
-      `(${at.x.toFixed(0)}, ${at.y.toFixed(0)}) (specs/assets.md: no seeded ` +
-      `file covers a bullet — every bullet is drawn in code); what was ` +
-      `blitted there was ${describeBlits(near)}`,
-  );
+    );
+    assertLessThan(
+      seeded,
+      AGREE_MIN,
+      `no source carrying one of the four seeded sprites' silhouettes to be ` +
+        `blitted within ${SPRITE_NEAR} units of the ${band} bullet at ` +
+        `(${at.x.toFixed(0)}, ${at.y.toFixed(0)}) (specs/assets.md: no seeded ` +
+        `file covers a bullet — every bullet is drawn in code); what was ` +
+        `blitted there was ${describeBlits(near)}`,
+    );
+  }
 });

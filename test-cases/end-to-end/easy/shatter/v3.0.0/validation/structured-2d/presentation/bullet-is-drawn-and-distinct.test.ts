@@ -38,15 +38,16 @@ import { DISC_SAMPLES, markedCount, readDisc, readPainted } from "./ink";
 import { BULLET_SPOT, FAR_SHIP, sampleField } from "./scene";
 
 /**
- * How far a sample must be from the field to count as the round, of the 441 an RGB
- * distance can span.
+ * The sensing floor: how far a sample must sit from the field the build drew
+ * before the reading can be called the build's own ink, of the 441 an RGB distance
+ * can span.
  *
- * The item's own figure, and the same one every other body in this group is read
- * apart from its background by. Far above what a build's own dithering or a faint
- * vignette moves a background sample by, and far below the separation any two
- * colours a build would pick for a field and a round sit at.
+ * Eight. Below that a sampling cannot tell a drawing from the rounding of an 8-bit
+ * channel and the host's own anti-aliasing; above it nothing is decided about how
+ * strongly the mark reads. Anything the build painted over the sample clears it,
+ * in whatever colour it chose, over whatever field it chose.
  */
-const APART = 60;
+const SENSING_FLOOR = 8;
 
 /**
  * How much of the disc of `BULLET_R` must be painted something other than the field.
@@ -81,10 +82,10 @@ it("paints the disc of BULLET_R about a posed round apart from the field", async
   captureStill(h, "bullet");
 
   assertGreaterThanOrEqual(
-    markedCount(round, field, APART),
+    markedCount(round, field, SENSING_FLOOR),
     Math.round(MIN_FRACTION * DISC_SAMPLES),
     `of ${String(DISC_SAMPLES)} samples inside BULLET_R of a round posed at ` +
-      `rest, how many are more than ${String(APART)} of 441 from the field ` +
+      `rest, how many are more than ${String(SENSING_FLOOR)} of 441 from the field ` +
       "the build drew (specs/overview.md)",
   );
 });

@@ -22,7 +22,7 @@
 // unit's walk and step a projectile, so a projectile's flight is decided by
 // `instrumentation/frame-division-projectile` rather than folded in here.
 
-import { ConstantClock } from "@test-cabinet/simple-2d";
+import { ConstantClock } from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual, assertLessThan } from "../assert";
 import {

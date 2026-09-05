@@ -11,8 +11,8 @@ import type {
   GgBucket,
   GgGroupKey,
   GgRunDoc,
-} from "@test-cabinet/run-record/gg-query";
-import { CATEGORICAL_COLORS } from "@test-cabinet/ui";
+} from "@clockwyrks/run-record/gg-query";
+import { CATEGORICAL_COLORS } from "@clockwyrks/ui";
 import { compileQuery, evaluate, parseQuery } from "../query";
 import { MAX_BARS, MAX_SERIES, chooseVisualizations } from "./viz";
 

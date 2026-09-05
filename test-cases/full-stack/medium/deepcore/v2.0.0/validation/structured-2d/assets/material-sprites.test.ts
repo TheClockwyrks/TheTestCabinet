@@ -36,7 +36,7 @@ const MINER_COL = PLAYABLE_COL_MIN + 4;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ assets: true });
+  h = await createHarness();
 });
 
 afterEach(() => {

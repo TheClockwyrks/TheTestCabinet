@@ -1206,8 +1206,8 @@ export type EffectName = (typeof EFFECTS)[number];
 /* The surface itself (specs/instrumentation.md)                              */
 /* -------------------------------------------------------------------------- */
 
-/** "The surface carries `version` (`FOUNDRY_DEBUG_VERSION`, `3`), a plain number". */
-export const FOUNDRY_DEBUG_VERSION = 3;
+/** "The surface carries `version` (`FOUNDRY_DEBUG_VERSION`, `4`), a plain number". */
+export const FOUNDRY_DEBUG_VERSION = 4;
 
 /** "`options.seed` seeds every random draw, defaulting to `DEFAULT_SEED` (`1`)". */
 export const DEFAULT_SEED = 1;

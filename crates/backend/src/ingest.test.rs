@@ -211,7 +211,7 @@ fn copy_tree_preserves_the_allowlisted_dotfiles_but_skips_others() {
 #[cfg(unix)]
 fn copy_tree_recreates_symlinks_including_to_directories() {
     // A reference-impl's `node_modules` ships relative symlinks, some pointing at
-    // directories (e.g. `@test-cabinet/voxel-runtime -> ../../vendor/...`). These
+    // directories (e.g. `@clockwyrks/voxel-runtime -> ../../vendor/...`). These
     // must be recreated as symlinks rather than dereferenced: `std::fs::copy`
     // follows the link and errors on a symlink-to-directory ("the source path is
     // neither a regular file nor a symlink to a regular file"), which used to abort

@@ -232,4 +232,4 @@ a later render.
 ## Exports
 
 `Vec2`, `Vec3`, `Quat`, `Mat4`, `Ray`, `Projected`, `Box3`, `CameraSnapshot`,
-and `View` are exported as types from `@test-cabinet/simple-3d`.
+and `View` are exported as types from `@clockwyrks/simple-3d`.

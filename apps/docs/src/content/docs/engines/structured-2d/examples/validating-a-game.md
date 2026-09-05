@@ -148,7 +148,7 @@ takes nothing and returns plain data.
 
 ```ts
 // validation/debug.ts
-import type { Vec2 } from "@test-cabinet/structured-2d";
+import type { Vec2 } from "@clockwyrks/structured-2d";
 
 export interface Snapshot {
   level: string;
@@ -192,7 +192,7 @@ import {
   type InitApi,
   type Pawn,
   type Vec2,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { Orb } from "./actors/orb";
 import { Wall } from "./actors/wall";
 import {
@@ -434,7 +434,7 @@ import {
   type SurfaceMetrics,
   type Vec2,
   type World,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import {
   ACTIONS,
   BACKGROUND,
@@ -634,7 +634,7 @@ scenario through the debug surface, advances, and reads a snapshot back.
 
 ```ts
 // validation/simulation.test.ts
-import { ConstantClock, type Vec2 } from "@test-cabinet/structured-2d";
+import { ConstantClock, type Vec2 } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   DASH_SECONDS,
@@ -844,7 +844,7 @@ one reports for a posed world.
 
 ```ts
 // validation/diagnostics.test.ts
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { createHarness, type Harness } from "./harness";
 

@@ -1,5 +1,4 @@
-// audio/mute-silences — with sound muted, the events that raise cues raise nothing
-// audible.
+// audio/mute-silences — a muted game stays fully playable.
 //
 // `specs/audio.md`: "Muting belongs to the engine. The game binds the mute action
 // to the engine's mute bit and toggles it from any screen. While sound is muted
@@ -12,21 +11,21 @@
 // `specs/controls.md`, and the snapshot reports the result" — so the key is really
 // pressed and `muted` is read back before anything else is driven.
 //
-// WHAT SILENCE IS, ON THIS ENGINE. The bus announces every play whether or not
-// anything is audible, and it carries the gain it played at: a play on a muted bus
-// is announced at `gain: 0`, which is the engine saying the cue was silent. So what
-// this point reads is not the absence of announcements — a build is entitled to
-// play its cues while muted, and one that did is still silent — but that NOTHING
-// ANNOUNCED ACROSS THE STRETCH CARRIED A GAIN ABOVE ZERO. A build that never
-// reached the engine's mute bit at all fails one step earlier, on `muted`.
+// WHAT SILENCE IS ON THIS ENGINE IS THE ENGINE'S. `specs/audio.md` puts muting
+// with the runtime — "Muting belongs to the engine" — and the bus zeroes the gain
+// of every play it makes while the mute bit is set, so a reading of that gain
+// returns the same verdict for every build on this engine. What is the BUILD's is
+// that its mute action really reached the bit, and that the game went on running
+// with it set. Under `none` the build writes the audio layer itself, so its
+// silence is its own and `validation/none/audio/mute-silences.test.ts` reads the
+// sounds that started.
 //
-// THREE EVENTS, BECAUSE THE POINT IS ABOUT THE BUS AND NOT ABOUT ONE CUE. A shot
+// THREE EVENTS, BECAUSE THE POINT IS ABOUT THE GAME AND NOT ABOUT ONE CUE. A shot
 // taken with the real fire key, a rock destroyed by a real round, and a real fatal
-// contact: three different cues on three different paths, each of which its own
-// point has already proved sounds when the bus is open. Every one of them is driven
-// here with the bus muted, and each is asserted to have HAPPENED as well as to have
-// been silent — "the game stays fully playable" is half of the sentence this point
-// decides.
+// contact: three of the game's own paths, each raising a cue its own point has
+// already proved sounds when the bus is open. Every one of them is driven here with
+// the bus muted, and each is asserted to have HAPPENED — "the game stays fully
+// playable" is the half of that sentence this point decides.
 //
 // THE LOOP GAINS ARE COLLECTED SEPARATELY. The harness keeps the gain of every
 // PLAY; the gain a LOOP starts at is on the engine's `cue:looped` event too, and it
@@ -39,7 +38,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { MUZZLE_SPEED, ROCK_RADIUS, SHIP_R, START_LIVES } from "../constants";
-import { assertEqual, assertLessThanOrEqual } from "../assert";
+import { assertEqual } from "../assert";
 import {
   aimedRound,
   captureStill,
@@ -55,7 +54,6 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { markOf, sinceMark } from "./cues";
 
 /** The facing the shot is taken along: `+x`, across the field and clear of the star. */
 const ACROSS_THE_FIELD = 0;
@@ -83,16 +81,6 @@ const FLIGHT_TICKS = ticksFor(0.25);
 /** The ticks the fatal contact is watched for: three times the approach it takes. */
 const CONTACT_TICKS = ticksFor(1);
 
-/**
- * The gain every cue announced across the muted stretch must be at or under.
- *
- * Not a tolerance: `specs/audio.md` requires every cue to be SILENT while sound is
- * muted, and the engine's bus expresses a silenced cue as a gain of exactly zero.
- * The bound is stated as an upper one so a failure reads as the level the build
- * sounded at.
- */
-const SILENT_GAIN = 0;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -103,7 +91,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("announces nothing above silence across a shot, a shatter and a death while muted", async () => {
+it("takes a shot, destroys a rock and loses the ship with sound muted", async () => {
   startPlaying(h);
   // One tick, so the game has run an update and `muted` is its refreshed copy of
   // the engine's bit rather than an opening value (specs/instrumentation.md).
@@ -122,13 +110,6 @@ it("announces nothing above silence across a shot, a shatter and a death while m
     `${keysFor("mute")[0]} toggles sound from any screen and the snapshot ` +
       "reports the result (specs/controls.md, specs/instrumentation.md)",
   );
-
-  // Everything announced from here is read for silence.
-  const mark = markOf(h);
-  const loopGains: number[] = [];
-  h.engine.events.on("cue:looped", ({ gain }) => {
-    loopGains.push(gain);
-  });
 
   // 1. A shot, taken with the key rather than placed: the gun is what raises
   //    CUES.fire (specs/audio.md).
@@ -165,13 +146,6 @@ it("announces nothing above silence across a shot, a shatter and a death while m
   });
   captureStill(h, "muted");
 
-  const stretch = sinceMark(h, mark);
-  const loudest = Math.max(
-    0,
-    ...stretch.played.map((one) => one.gain),
-    ...loopGains,
-  );
-
   assertEqual(
     shot.hit,
     true,
@@ -193,14 +167,5 @@ it("announces nothing above silence across a shot, a shatter and a death while m
       `ticks, closing ${String(GAP - SHIP_R - ROCK_RADIUS.small)} units at ` +
       `${String(CLOSING_SPEED)} units per second — a muted game stays fully ` +
       "playable (specs/collision.md, specs/audio.md)",
-  );
-  assertLessThanOrEqual(
-    loudest,
-    SILENT_GAIN,
-    "the loudest gain any cue was announced at across the shot, the shatter " +
-      `and the death, over ${String(stretch.played.length)} plays and ` +
-      `${String(loopGains.length)} loops — while sound is muted every cue is ` +
-      `silent, and the bus announces a silenced cue at a gain of ` +
-      `${String(SILENT_GAIN)} (specs/audio.md)`,
   );
 });

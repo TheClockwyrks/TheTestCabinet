@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunRecord } from "@clockwyrks/run-record";
 import type { ReviewModel } from "../../../data/galleryContext";
 import { ValidatorVerdict, decideValidatorRun } from "./ValidatorVerdict";
 

@@ -27,7 +27,7 @@
 //
 // THE ONE DIAL WIREWORM NAMES IS THE WORKER COUNT, and it is a ceiling on PAGES
 // rather than on cores. Each suite file holds a page of the one shared browser
-// while it runs, and this project is two hundred and twenty-seven files of them; a
+// while it runs, and this project is two hundred and twenty-four files of them; a
 // page costs memory in a single browser process, on a host that is also running a
 // model's build. Four is what this project's suites were measured at. Every other
 // ceiling — the per-check allowance and the hook allowance — is left to the

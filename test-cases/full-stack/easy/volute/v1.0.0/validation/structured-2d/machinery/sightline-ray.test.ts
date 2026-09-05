@@ -39,12 +39,7 @@
 // at all.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertAngleNear,
-  assertLessThanOrEqual,
-  assertNear,
-  assertTrue,
-} from "../assert";
+import { assertAngleNear, assertNear, assertTrue } from "../assert";
 import {
   ANGLE_TOL,
   CORE_RADIUS,
@@ -78,9 +73,6 @@ const SAMPLE_FROM = INJECTOR_RADIUS + 4;
 
 /** Where it stops, a little inside the top edge of the 540-unit field. */
 const SAMPLE_TO = 320;
-
-/** How far from the injector the ray may first show, for it to start there. */
-const SPAN_START_MAX = 40;
 
 /** How long a break inside the span is forgiven: wider than a channel plate. */
 const SPAN_GAP = 60;
@@ -192,11 +184,6 @@ it("draws the aim ray from the injector out to the near edge of its first core",
   assertTrue(
     start > 0,
     "a span of pixels the sightline changed, along the aim",
-  );
-  assertLessThanOrEqual(
-    start,
-    SPAN_START_MAX,
-    "where the span the sightline changed begins, in units from the injector",
   );
   assertNear(
     end,

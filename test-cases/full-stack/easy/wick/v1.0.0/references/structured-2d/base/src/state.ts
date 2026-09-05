@@ -20,8 +20,8 @@
 // `src/game.ts`, which imports all of them. `src/game.ts` re-exports every
 // declared name as the module contract asks.
 
-import { GameState } from "@test-cabinet/structured-2d";
-import type { World } from "@test-cabinet/structured-2d";
+import { GameState } from "@clockwyrks/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import type {
   EnemyId,
   GemTier,

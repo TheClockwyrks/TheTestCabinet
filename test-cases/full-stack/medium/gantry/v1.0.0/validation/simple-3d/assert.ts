@@ -10,7 +10,7 @@
 //
 // THE SHARED HARNESS IS STAGED HERE TOO, which is the fact that decides it. The
 // runner copies `validation/<engine>/` into the produced tree and then lays
-// `@test-cabinet/case-harness` down beside it, for every engine rather than for
+// `@clockwyrks/case-harness` down beside it, for every engine rather than for
 // `none` alone; fifty-nine files in this directory already read draw calls and
 // text through `../case-harness/…`. Its assertions import nothing whatsoever —
 // no browser, no page, no Playwright — so an engine project takes them exactly as

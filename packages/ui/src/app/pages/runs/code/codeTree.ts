@@ -16,7 +16,7 @@ import type {
   CodeAnalysisDocument,
   CodeFileEntry,
   CodeSymbolEntry,
-} from "@test-cabinet/run-record/code-analysis";
+} from "@clockwyrks/run-record/code-analysis";
 
 /** One node of the produced tree: a directory, or one authored file. */
 export interface CodeTreeNode {

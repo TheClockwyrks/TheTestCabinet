@@ -359,8 +359,8 @@ export async function readFelt(h: Harness): Promise<Rgb[]> {
 }
 
 /**
- * Which points of {@link FELT_GRID} the PAINTED LAYER has covered: further than
- * `apart` from the colour that same point held in `bare`, as the frame most
+ * Which points of {@link FELT_GRID} the PAINTED LAYER has covered: painted
+ * differently from the colour that same point held in `bare`, as the frame most
  * recently drawn left it, and not underneath a card in flight.
  *
  * `bare` is a {@link readFelt} reading taken before anything painted, one entry
@@ -374,15 +374,15 @@ export async function readFelt(h: Harness): Promise<Rgb[]> {
  * what the layer itself is carrying, so such a build reads nothing painted at any
  * moment.
  *
- * The threshold is the CALLER'S, stated and derived in the check that applies it:
- * this only reads pixels and compares them. A single pixel per point rather than
- * an averaged cluster, because what is being counted is area rather than the
- * colour of one thing.
+ * THERE IS NO THRESHOLD. The case fixes no palette, so how far a stamp reads from
+ * the felt is the reviewer's; rendering is deterministic and the point is compared
+ * against ITSELF on the bare table, so any difference at all is paint. A single
+ * pixel per point rather than an averaged cluster, because what is being counted
+ * is area rather than the colour of one thing.
  */
 export async function paintedFelt(
   h: Harness,
   bare: readonly Rgb[],
-  apart: number,
   flyers: readonly FlyerView[],
 ): Promise<boolean[]> {
   const read = await h.pixels(FELT_GRID);
@@ -396,6 +396,6 @@ export async function paintedFelt(
         point.y < f.y + CARD_H,
     );
     if (underFlyer) return false;
-    return colorDistance({ r, g, b }, bare[index]) >= apart;
+    return colorDistance({ r, g, b }, bare[index]) > 0;
   });
 }

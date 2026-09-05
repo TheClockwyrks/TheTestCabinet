@@ -54,8 +54,8 @@ declares without a cast. Every actor a level declares exists before any of their
 `beginPlay` runs, so an actor finds its peers there rather than in `configure`.
 
 ```ts
-import { quatFromAxisAngle, vec3, UP } from "@test-cabinet/structured-3d";
-import type { LevelDefinition } from "@test-cabinet/structured-3d";
+import { quatFromAxisAngle, vec3, UP } from "@clockwyrks/structured-3d";
+import type { LevelDefinition } from "@clockwyrks/structured-3d";
 import { ArenaMode } from "./modes";
 import { Goal, Rig, Wall } from "./actors";
 import { CHANNELS, FIELD, TAGS } from "./constants";
@@ -114,7 +114,7 @@ produced in a module the actors import:
 
 ```ts
 // ./assets.ts
-import type { Model } from "@test-cabinet/structured-3d";
+import type { Model } from "@clockwyrks/structured-3d";
 import type * as THREE from "three";
 
 export interface Loaded {
@@ -237,7 +237,7 @@ so a spawned actor is fully live by the time `spawn` returns. Spawning emits
 `actor:spawned`.
 
 ```ts
-import { quatRotate, scale, vec3 } from "@test-cabinet/structured-3d";
+import { quatRotate, scale, vec3 } from "@clockwyrks/structured-3d";
 
 const shard = this.world.spawn(Shard, {
   transform: { position: this.transform.position },
@@ -297,7 +297,7 @@ An actor whose `tickWhenPaused` is `true` ticks anyway, together with its
 components, which is how a pause menu drives itself:
 
 ```ts
-import { Actor, PlayerController, TextComponent } from "@test-cabinet/structured-3d";
+import { Actor, PlayerController, TextComponent } from "@clockwyrks/structured-3d";
 
 export class PauseMenu extends Actor {
   private player: PlayerController | null = null;

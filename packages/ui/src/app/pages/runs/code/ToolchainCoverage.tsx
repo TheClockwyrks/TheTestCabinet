@@ -20,11 +20,11 @@
 //
 // Nothing here is a score. Coverage gates no rating, no verdict and no point.
 
-import { Chart, ProgressBar, horizontalBarChart } from "@test-cabinet/ui";
+import { Chart, ProgressBar, horizontalBarChart } from "@clockwyrks/ui";
 import type {
   CoverageFile as CoverageFileRow,
   ToolchainCoverage as ToolchainCoverageRecord,
-} from "@test-cabinet/run-record";
+} from "@clockwyrks/run-record";
 import { formatCodeNumber } from "./codeFormat";
 import {
   COVERAGE_METRIC_KEYS,

@@ -14,8 +14,8 @@ import type {
   ControllerRef,
   MatchSummary,
   TournamentRecord,
-} from "@test-cabinet/run-record";
-import type { HarnessAuth, HarnessAuthMode } from "@test-cabinet/ui/app";
+} from "@clockwyrks/run-record";
+import type { HarnessAuth, HarnessAuthMode } from "@clockwyrks/ui/app";
 
 export function isTauri(): boolean {
   return (

@@ -20,7 +20,7 @@ import {
   type Screen,
 } from "./constants";
 import type { CoilState } from "./game";
-import type { PointerSample } from "@test-cabinet/structured-2d";
+import type { PointerSample } from "@clockwyrks/structured-2d";
 import { menuItemAt, menuItems } from "./menus";
 import { seedState } from "./rng";
 import { layChain, requestTurn, spawnPellet } from "./sim";

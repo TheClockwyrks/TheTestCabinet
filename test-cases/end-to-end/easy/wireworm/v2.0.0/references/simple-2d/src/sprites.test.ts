@@ -7,6 +7,12 @@
 // build asks for the paths the produced site serves, and makes the pixels below
 // the pixels the seeded frames actually carry.
 
+/// <reference types="node" />
+// This file is the Node half of the build: it reads the seeded art off disk and
+// draws through a Node canvas. The project compiles with `"types": []`, so the
+// Node type definitions it needs are named here rather than picked up by
+// accident from a dependency that happens to reference them.
+
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,7 +21,7 @@ import {
   ConstantClock,
   createEngine,
   type SurfaceMetrics,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { LAYOUT, STAGE_H, STAGE_W, tileCX, tileCY } from "./constants";
 import {

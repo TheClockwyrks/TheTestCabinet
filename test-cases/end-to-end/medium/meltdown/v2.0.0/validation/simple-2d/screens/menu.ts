@@ -111,12 +111,31 @@ export function isRowLabel(text: string, items: readonly string[]): boolean {
 }
 
 /**
- * Every whole number a frame's text drew, as strings.
+ * The separators a build may group a figure's digit triples with.
+ *
+ * Grouping is formatting, and formatting is the build's: `1,350` is the one
+ * figure `1350` drawn the way `Number.prototype.toLocaleString` draws it by
+ * default, so the separators come out of a token as it is read. The ASCII space
+ * is deliberately not one of them, because a run of text may carry two figures
+ * with a space between them and `40 130` is two tokens rather than `40130`. Nor
+ * is the full stop, which is the decimal point.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One whole figure as a run may carry it: grouped into triples, or plain. */
+const DRAWN = new RegExp(`\\d{1,3}(?:${GROUP}\\d{3})+|\\d+`, "g");
+
+/** Every group separator inside one figure, for dropping before it is read. */
+const GROUPS = new RegExp(GROUP, "g");
+
+/**
+ * Every whole number a frame's text drew, as strings, ungrouped.
  *
  * A figure is read as a token rather than as a substring, so `350` is not found
  * inside `1350` and a screen reporting the wrong number cannot pass on the right
  * one being a piece of it. How the number is dressed — a currency mark, a label
- * either side of it — is the build's, and none of it survives the tokenizing.
+ * either side of it, the separators a long figure is grouped by — is the build's,
+ * and none of it survives the tokenizing.
  */
 export function numbersDrawn(calls: readonly DrawCall[]): string[] {
   const found: string[] = [];
@@ -125,7 +144,9 @@ export function numbersDrawn(calls: readonly DrawCall[]): string[] {
     if (call.method !== "fillText" && call.method !== "strokeText") continue;
     const [text] = call.args;
     if (typeof text !== "string") continue;
-    for (const match of text.matchAll(/\d+/g)) found.push(match[0]);
+    for (const match of text.matchAll(DRAWN)) {
+      found.push(match[0].replace(GROUPS, ""));
+    }
   }
   return found;
 }

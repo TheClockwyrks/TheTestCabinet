@@ -12,7 +12,7 @@
 import type {
   GgContextSource,
   GgContextSourceUsage,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import panels from "./GgPanels.module.scss";
 import type { CompactionBoundary } from "./useGgRunState";
 import { retainedSummary, shortTokens } from "./useGgRunState";

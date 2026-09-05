@@ -1,3 +1,8 @@
+/// <reference types="node" />
+// This suite runs in Node and reads the disk. The project's tsconfig sets
+// `types: []` to keep the game's own sources browser-only, so the suites that
+// need Node's types name them here instead.
+
 // The produced particle systems, and the pool that plays them
 // (specs/assets.md).
 //
@@ -9,7 +14,7 @@
 import { createCanvas } from "@napi-rs/canvas";
 import { readFileSync } from "node:fs";
 import { describe, expect, it, afterEach } from "vitest";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import { MINER_H, MINER_W, STAGE_H, STAGE_W, TILE } from "./constants";
 import {
   advanceEffects,

@@ -212,6 +212,6 @@ game that runs and draws nothing.
 
 ## Exports
 
-`GameInstance` is exported as a class from `@test-cabinet/structured-2d`.
+`GameInstance` is exported as a class from `@clockwyrks/structured-2d`.
 `GameDefinition`, `GameInstanceClass`, and `InitApi` are exported as types from
 the same specifier.

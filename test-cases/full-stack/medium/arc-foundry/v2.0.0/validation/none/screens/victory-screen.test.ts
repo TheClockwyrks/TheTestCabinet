@@ -8,10 +8,10 @@
 //
 // HOW IT IS DECIDED. The run is WON rather than posed. The surface carries no
 // operation that ends a run, so the final wave is opened and emptied, the finale
-// runs, the Overload Dynamo walks the chain, and the victory screen arrives on the
-// game's own rules. The run is driven on Easy, so `N` is `40`, and its Grid
-// Integrity is posed to `13`, a number sharing no digits with `40`, so neither can
-// be found in the other.
+// runs, the Overload Dynamo grounds out at the collector, and the victory screen
+// arrives on the game's own rules. The run is driven on Easy, so `N` is `40`, and
+// its Grid Integrity is posed to `13`, a number sharing no digits with `40`, so
+// neither can be found in the other.
 //
 // The frame's own text draws then have to carry all three figures: `40` and `13`
 // as numbers of their own, and a number matching the Maze Rating the game itself

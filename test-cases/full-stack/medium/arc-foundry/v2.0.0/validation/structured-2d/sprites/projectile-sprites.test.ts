@@ -17,13 +17,7 @@ import {
   standComponent,
 } from "../harness";
 import { canvasOf, projectile } from "./png";
-import { serveProducedAssets } from "./host";
 import { FIRING_TYPES, structureCenter } from "../constants";
-
-// The produced files, served to the engine off disk, so the still beside this
-// point's verdict shows the art the run made rather than the fallback a build
-// draws when nothing arrived.
-serveProducedAssets();
 
 it("produces a projectile for every firing base type", async () => {
   for (const type of FIRING_TYPES) {

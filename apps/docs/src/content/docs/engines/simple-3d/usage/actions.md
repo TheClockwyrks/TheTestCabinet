@@ -12,7 +12,7 @@ Pass the touch layout the case asks for to `createEngine`. It is selected before
 any registration happens, so every action the layout names is tagged with it.
 
 ```ts
-import { createEngine } from "@test-cabinet/simple-3d";
+import { createEngine } from "@clockwyrks/simple-3d";
 
 const engine = createEngine({
   canvas,
@@ -43,7 +43,7 @@ which is what lets `value` report the deflection rather than quantizing it to
 `1`. A held key bound to the same action gives full deflection.
 
 ```ts
-import type { InitApi } from "@test-cabinet/simple-3d";
+import type { InitApi } from "@clockwyrks/simple-3d";
 
 const KEYS: Record<string, string[]> = {
   "move-up": ["KeyW"],
@@ -95,7 +95,7 @@ deflection along that axis, in `-1..1`, and a key gives `-1`, `0`, or `1` on
 the same axis.
 
 ```ts
-import type { UpdateApi } from "@test-cabinet/simple-3d";
+import type { UpdateApi } from "@clockwyrks/simple-3d";
 import type { DeepReadonly } from "ts-essentials";
 
 function update(state: DeepReadonly<Walk>, api: UpdateApi, dt: number): Walk {

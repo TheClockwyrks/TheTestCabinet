@@ -10,7 +10,7 @@
 // `waveEntry`, `diveLaunching`, `stageClearing`, and `ship.contact` back on; it
 // returns the wave's
 // entry, sway, and dive clocks, and the gap the next dive waits for, to their
-// fresh-wave values, `diveClock` at `0` and the gap at `DIVE_FIRST_DELAY`; it
+// fresh-wave values, `diveClock` at `0` and `diveGap` at `DIVE_FIRST_DELAY`; it
 // sets `extraLifeAwarded` to `false` and `challengeHits` to `0`; and it sets
 // `simTime` to `0` and the counter the next entity's id is taken from back to the
 // first id".
@@ -45,7 +45,12 @@
 // randomness, which is `instrumentation/reset-seeds-randomness`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, RESONANCE_MAX, START_LIVES } from "../constants";
+import {
+  BINDINGS,
+  DIVE_FIRST_DELAY,
+  RESONANCE_MAX,
+  START_LIVES,
+} from "../constants";
 import {
   assertCloseTo,
   assertEqual,
@@ -80,6 +85,15 @@ const MESSY_INVERSION = 3.5;
 const MESSY_PHASE_TIMER = 0.9;
 const MESSY_MENU_INDEX = 2;
 const MESSY_DIVE_CLOCK = 1.75;
+
+/**
+ * The gap the messy run's next dive is posed to wait for, in seconds.
+ *
+ * Off `DIVE_FIRST_DELAY` (`2.0`), which is the fresh-wave figure a reset restores,
+ * and inside `[DIVE_GAP_MIN, DIVE_GAP_MAX]` at `diveGapScale(1)` so it is a gap the
+ * wave could itself have drawn (specs/swarm.md).
+ */
+const DIVE_GAP = 1.55;
 const MESSY_CHALLENGE_HITS = 12;
 
 /** The ship, posed off the centre of its lane, off its opening band, and with
@@ -190,6 +204,7 @@ it("restores every declared field to its title value, and leaves mute alone", as
   h.debug.setFireLockout(MESSY_LOCKOUT);
   h.debug.setFireCooldown(MESSY_COOLDOWN);
   h.debug.setDiveClock(MESSY_DIVE_CLOCK);
+  h.debug.setDiveGap(DIVE_GAP);
   // `startPosed` shut all four world gates, which is the state a reset has to
   // turn back on.
 
@@ -284,6 +299,12 @@ it("restores every declared field to its title value, and leaves mute alone", as
   assertEqual(title.stageClearing, true, "reset turns stageClearing back on");
   assertEqual(title.ship.contact, true, "reset turns ship.contact back on");
   assertCloseTo(title.diveClock, 0, EXACT_DIGITS, "reset restores diveClock");
+  assertCloseTo(
+    title.diveGap,
+    DIVE_FIRST_DELAY,
+    EXACT_DIGITS,
+    "reset restores diveGap to DIVE_FIRST_DELAY",
+  );
 
   // The rest.
   assertCloseTo(title.simTime, 0, EXACT_DIGITS, "reset restores simTime");

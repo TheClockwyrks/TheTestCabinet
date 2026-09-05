@@ -24,7 +24,7 @@ import {
   type CueName,
 } from "./constants";
 import type { Component } from "./types";
-import type { CueSpec, UpdateApi } from "@test-cabinet/simple-2d";
+import type { CueSpec, UpdateApi } from "@clockwyrks/simple-2d";
 
 /**
  * The synthesized shape each cue is declared with, before the produced clip is loaded

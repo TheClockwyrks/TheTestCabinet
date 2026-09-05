@@ -83,13 +83,13 @@ assets = [
 ]
 
 # Test Cabinet runtime libraries installed into the run so the build can play the
-# provided particle system. `@test-cabinet/particle-runtime` is the same library
+# provided particle system. `@clockwyrks/particle-runtime` is the same library
 # the review UI plays a produced effect with; core bakes it into the run image and
 # injects it into this case's workspace `package.json` as a `file:` dependency, so
 # the build imports it (its `/canvas` binding) like any other dependency and plays
 # `assets/drone-burst.json` by simulating it live. See `specs/assets.md` for the
 # consumption contract. (A root key, so it must sit above the first `[table]` header.)
-packages = ["@test-cabinet/particle-runtime"]
+packages = ["@clockwyrks/particle-runtime"]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each is declared in its own file under `variants/` and listed here in order —

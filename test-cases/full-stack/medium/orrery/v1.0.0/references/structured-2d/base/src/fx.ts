@@ -4,7 +4,7 @@
 // Three systems, authored with `particle-2d` and committed as `system.json`: a
 // delivery on each set that took a constellation, a fault where the run halted,
 // and a completion over the middle of the field. Each is played through
-// `@test-cabinet/particle-runtime`'s `./canvas` binding, which simulates the
+// `@clockwyrks/particle-runtime`'s `./canvas` binding, which simulates the
 // system and composites its particles itself — so every play varies, and that
 // variation is correct.
 //
@@ -21,9 +21,9 @@
 // that has no system — a file this build never produced, or a page with no
 // canvas to scratch on — simply plays nothing, and the game runs on.
 
-import { DrawComponent, type DrawApi } from "@test-cabinet/structured-2d";
-import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import { DrawComponent, type DrawApi } from "@clockwyrks/structured-2d";
+import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import { particleSystemOf } from "./assets";
 import type { EffectEvent } from "./host";
 import type { StagePoint } from "./motion";

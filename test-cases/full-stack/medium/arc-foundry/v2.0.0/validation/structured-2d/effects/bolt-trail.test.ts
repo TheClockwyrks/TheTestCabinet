@@ -7,8 +7,9 @@
 // position of the event that raised it: ... the bolt along the line from a firing
 // head to its target".
 //
-// THE PRODUCED SYSTEMS ARE SERVED TO THE LOADER HERE, by `./produced.ts`, so what
-// plays is the file the build committed.
+// THE PRODUCED SYSTEMS REACH THE LOADER THROUGH THE HARNESS, which stands the
+// committed `assets/` tree up for every check it builds, so what plays is the
+// file the build committed.
 //
 // WHAT IS READ, AND HOW THE PROJECTILE ITSELF IS KEPT OUT OF IT. The line between
 // the head and the target is exactly the line the projectile travels down, so a
@@ -35,7 +36,6 @@ import {
   standComponent,
   ticks,
 } from "../harness";
-import { serveProducedAssets } from "./produced";
 import { read, scanWhen } from "./region";
 import { type Point, structureCenter } from "../constants";
 
@@ -62,7 +62,6 @@ const CLEAR = 20;
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 

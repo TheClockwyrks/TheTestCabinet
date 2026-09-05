@@ -3,10 +3,10 @@
 // Only the `screens` group reads a HUD strip, a menu entry's neighbourhood and a
 // drawn number this way, so they live beside the checks that use them rather than
 // in the shared harness next door. Like everything there they fix a READING
-// alone — which square of the stage a readout may sit in, how many samples of it
+// alone — which square of the stage a readout may sit in, which of its samples
 // moved, and which runs of text carry a number — and never a threshold: every
-// distance, count and tolerance a check asserts is stated in that check, derived
-// from the figure `specs/` fixes for it.
+// count and tolerance a check asserts is stated in that check, derived from the
+// figure `specs/` fixes for it.
 //
 // WHY A HUD CHECK READS A WHOLE STRIP. `specs/field.md` puts each readout in one
 // of the two strips and then says, in as many words, that "how each is composed
@@ -74,14 +74,29 @@ export function insideBand(rect: Rect, y: number): boolean {
 /* -------------------------------------------------------------------------- */
 
 /**
+ * How far a place must move between two readings to count as repainted, as a
+ * Euclidean RGB distance out of the `441` an RGB cube is across.
+ *
+ * THIS IS THE READING, NOT A THRESHOLD. It decides which places of a region
+ * count as having been drawn on again, and how far a readout moves beyond that
+ * is never asserted: `specs/ui.md` fixes each readout's CONTENT and
+ * `specs/field.md` leaves its composition and placement within its strip to the
+ * build, so the palette, the type and the treatment are the reviewer's to rate.
+ * Two readings of one place nothing was drawn on are identical, so anything
+ * above zero would do; `12` is a little above the rounding one composite can put
+ * on a pixel.
+ */
+export const PAINT_MIN = 12;
+
+/**
  * How many samples of two readings of the same region moved further than
  * `minDistance` apart, sample for sample.
  *
  * The harness's own `countDiffering` holds a reading against ONE colour, which is
  * the question "how much of this square is not the field behind it". The question
  * every HUD check here asks is the other one: how much of this square changed
- * when the value it reports changed. `minDistance` is the caller's, because what
- * counts as a sample having moved is the check's own figure.
+ * when the value it reports changed. `minDistance` is the caller's; every check
+ * in this group passes {@link PAINT_MIN}.
  */
 export function changedSamples(
   a: readonly Rgb[],
@@ -128,30 +143,63 @@ export async function driftOverOneFrame(
 /* Reading a number a frame drew                                              */
 /* -------------------------------------------------------------------------- */
 
-/** Every digit of a run, run together, or `null` when it drew none. */
-function digitsOf(text: string): number | null {
-  const digits = text.replace(/\D/g, "");
-  if (digits.length === 0) return null;
-  const value = Number.parseInt(digits, 10);
-  return Number.isFinite(value) ? value : null;
+/**
+ * The characters a build may group a run of digits with.
+ *
+ * A comma, an apostrophe and the three spaces a locale groups thousands by —
+ * between them every separator `Number.prototype.toLocaleString` reaches for. The
+ * ASCII space is deliberately absent: a plain space is what stands between two
+ * figures on one line, so accepting it would read the two figures of `40 130` as
+ * the single number `40130`. The full stop is absent for a reason of its own —
+ * it is the decimal point, and a build drawing `1.5` means one and a half.
+ */
+const GROUPERS = [",", "'", "\u00A0", "\u202F", "\u2009"] as const;
+
+/** The characters a regular expression would otherwise read as syntax. */
+function quoted(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Whether `text` carries `value` as a run of digits no other digit touches. */
-function hasStandaloneNumber(text: string, value: number): boolean {
-  const pattern = new RegExp(`(^|\\D)0*${value}(\\D|$)`);
-  return pattern.test(text);
+/**
+ * Every conventional rendering of `value`: plain, and grouped in threes by each
+ * separator above.
+ *
+ * `1234` renders as `1234`, `1,234`, `1'234` and the three spaced forms. A value
+ * of three digits or fewer has exactly one rendering, so nothing widens for a
+ * figure that could not have been grouped in the first place.
+ */
+function renderings(value: number): string[] {
+  const plain = String(value);
+  const point = plain.indexOf(".");
+  const whole = point === -1 ? plain : plain.slice(0, point);
+  const rest = point === -1 ? "" : plain.slice(point);
+  const sign = whole.startsWith("-") ? "-" : "";
+  const digits = sign === "" ? whole : whole.slice(1);
+  if (digits.length <= 3) return [plain];
+  const triples = digits.match(/\d{1,3}(?=(?:\d{3})*$)/g) ?? [digits];
+  return [plain, ...GROUPERS.map((by) => `${sign}${triples.join(by)}${rest}`)];
+}
+
+/**
+ * Whether one run of text reads as `value`, however a build composed it.
+ *
+ * The figure has to stand as a number of its own, with no digit and no decimal
+ * point against either end of it: that is how `1 / 40` reads as the `1` it
+ * reports rather than as `140`, and how a screen showing `150` is not read as
+ * showing `50`. Around that boundary the reading is as wide as the specification
+ * leaves it — leading zeros count, because a build is free to pad a readout, and
+ * every grouped rendering counts, because `specs/ui.md` fixes the FIGURE and
+ * leaves how it is presented to the build. So `SCORE 4270`, `4,270`, `4'270` and
+ * `004270` all read as `4270`.
+ */
+function readsAs(text: string, value: number): boolean {
+  return renderings(value).some((rendering) =>
+    new RegExp(`(?<![\\d.])0*${quoted(rendering)}(?![\\d.])`).test(text),
+  );
 }
 
 /**
  * Every run of text a frame drew that reads as `value`.
- *
- * A run counts either way a build may have composed it, because both are
- * conformant and the specification fixes neither:
- *
- *   - its digits, taken together and read as one number, are `value` — which is
- *     how `SCORE 4270`, `4,270` and `004270` all read as `4270`;
- *   - or `value` appears in it as a run of digits with no other digit against it,
- *     which is how `1 / 40` reads as the `1` it reports rather than as `140`.
  *
  * Nothing here decides where the run was drawn; a check that cares reads
  * {@link TextDraw.y} against one of the regions above.
@@ -160,17 +208,12 @@ export function numberRuns(
   draws: readonly TextDraw[],
   value: number,
 ): TextDraw[] {
-  return draws.filter(
-    (run) =>
-      digitsOf(run.text) === value || hasStandaloneNumber(run.text, value),
-  );
+  return draws.filter((run) => readsAs(run.text, value));
 }
 
 /** Whether any run of text the frame drew reads as `value`. */
 export function drewNumber(calls: readonly DrawCall[], value: number): boolean {
-  return drawnText(calls).some(
-    (text) => digitsOf(text) === value || hasStandaloneNumber(text, value),
-  );
+  return drawnText(calls).some((text) => readsAs(text, value));
 }
 
 /* -------------------------------------------------------------------------- */

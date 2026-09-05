@@ -26,11 +26,34 @@
 // two Motes at the same posed wave number, which is what makes the four
 // differences comparable at all.
 
+// TWO CLOCKS, AND WHY EACH IS THE ONE IT IS. The simulation is frame-division
+// independent (`specs/controls.md`: "an interval of simulation time reaches the
+// same state however it was divided into frames and whatever frame rate produced
+// it"), so every span below is driven at the coarsest step that span allows.
+//
+//   The four clears carry a Capacitor firing at parked Motes, so a PROJECTILE is
+//   in flight and the step is bounded: a shot travelling further than
+//   `2 * PROJECTILE_HIT_R` in one frame could pass its target without ever coming
+//   within `PROJECTILE_HIT_R` of it. `MAX_STEP_MS` is that bound, computed from
+//   this project's own transcription of `specs/components.md`.
+//
+//   The interest reading holds an EMPTY yard for a minute — no unit, no
+//   structure, no projectile, nothing positional read across it — so it is driven
+//   on a harness of its own at a far coarser step. The minute is the sample and
+//   is unchanged; only the number of frames it is cut into is.
+
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { COLLECTOR_WAYPOINT, loadDef, waveBonus } from "../constants";
+import {
+  COLLECTOR_WAYPOINT,
+  loadDef,
+  PROJECTILE_HIT_R,
+  PROJECTILE_SPEED,
+  waveBonus,
+} from "../constants";
 import {
   captureReplay,
+  ConstantClock,
   createHarness,
   openYard,
   parkUnit,
@@ -48,16 +71,25 @@ const UNITS = 2;
 /** Comfortably above what two Motes leaking costs. */
 const INTEGRITY = 50;
 
-/** Five seconds of the default clock: past two kills and two short walks. */
-const SWEEP = 600;
+/** The longest frame a bolt in flight is still readable on, in milliseconds. */
+const MAX_STEP_MS = (2 * PROJECTILE_HIT_R * 1000) / PROJECTILE_SPEED;
 
-/** A minute of simulation, in frames of the default clock. */
-const IDLE = 60 * 120;
+/** The clock the four clears run at: the coarsest whole `5` ms inside that. */
+const CLOCK_MS = Math.floor(MAX_STEP_MS / 5) * 5;
+
+/** Five seconds of that clock: past two kills and two short walks. */
+const SWEEP = Math.round(5000 / CLOCK_MS);
+
+/** The clock the interest reading runs at, in milliseconds: `10` Hz. */
+const IDLE_CLOCK_MS = 100;
+
+/** A minute of simulation, in frames of that clock. */
+const IDLE = Math.round(60_000 / IDLE_CLOCK_MS);
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ clock: new ConstantClock(CLOCK_MS) });
 });
 
 afterEach(async () => {
@@ -137,12 +169,21 @@ it("pays the same bonus over an empty bank, a hoard, a kill and a leak", async (
       `${UNITS} bounties of ${bounty} the kills paid`,
   );
 
-  // And a bank left sitting through a build phase earns nothing.
-  await openYard(h, { wave: WAVE, charge: 1234 });
-  await h.advance(IDLE);
-  assertEqual(
-    (await h.snapshot()).charge,
-    1234,
-    "a bank left across a minute of a build phase earns no interest",
-  );
+  // And a bank left sitting through a build phase earns nothing. The yard is
+  // empty for the whole minute, so this one span runs on a harness of its own at
+  // the coarser step above.
+  const idle = await createHarness({
+    clock: new ConstantClock(IDLE_CLOCK_MS),
+  });
+  try {
+    await openYard(idle, { wave: WAVE, charge: 1234 });
+    await idle.advance(IDLE);
+    assertEqual(
+      (await idle.snapshot()).charge,
+      1234,
+      "a bank left across a minute of a build phase earns no interest",
+    );
+  } finally {
+    await idle.dispose();
+  }
 });
