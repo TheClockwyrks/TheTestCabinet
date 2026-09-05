@@ -9,7 +9,7 @@ import { GantryView, type ViewFrame } from "../actor-view";
 import { resultsRowRect } from "../menus";
 import { HudGroup, type Rect } from "./kit";
 import { Menu } from "./pieces";
-import type { TextComponent } from "@test-cabinet/structured-3d";
+import type { TextComponent } from "@clockwyrks/structured-3d";
 
 const CARD: Rect = { x: STAGE_W / 2 - 320, y: 120, w: 640, h: 460 };
 

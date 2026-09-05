@@ -13,7 +13,7 @@
 // so the project does not type-check until you create it. That failure is the
 // starting point, not a broken seed.
 
-import { createEngine } from "@test-cabinet/structured-2d";
+import { createEngine } from "@clockwyrks/structured-2d";
 import { FIELD_H, FIELD_W, LAYOUT } from "./constants";
 import { BACKGROUND, game } from "./game";
 

@@ -7,7 +7,7 @@
 
 import { DEAL_MODE, DEAL_MODE_LABEL } from "./constants";
 import type { CascadeState } from "./game";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 
 /** How many cards each pile of a group holds, as one short line. */
 function counts(piles: readonly (readonly unknown[])[]): string {

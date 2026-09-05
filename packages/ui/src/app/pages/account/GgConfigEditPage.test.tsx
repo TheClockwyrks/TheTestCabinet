@@ -8,7 +8,7 @@ import {
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE } from "@test-cabinet/run-record/gg-system-prompt";
+import { DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE } from "@clockwyrks/run-record/gg-system-prompt";
 import {
   BackendProvider,
   type BackendContextValue,

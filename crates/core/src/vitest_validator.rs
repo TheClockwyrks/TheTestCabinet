@@ -31,7 +31,7 @@
 //! The engineless (`none`) validators of every case that has them are written over one
 //! shared harness — the browser lifecycle, the injected draw-command recorder, the
 //! assertions, the replay format — which lives in the repository as the
-//! `@test-cabinet/case-harness` npm package rather than as a copy per case. It is not
+//! `@clockwyrks/case-harness` npm package rather than as a copy per case. It is not
 //! a dependency the produced tree installs: it is TypeScript source vitest transpiles,
 //! so it is COPIED into the staged project as `validation/case-harness/`, a sibling of
 //! the case's own `harness.ts`. That sibling placement is the whole trick — one import
@@ -227,9 +227,9 @@ const VITEST_BIN: &str = "node_modules/.bin/vitest";
 /// Where a directory already standing at [`VALIDATION_SCRIPT_DIR`] is held while the
 /// staged validator project needs that name, relative to the produced tree.
 ///
-/// Inside the tree so the move is a rename, and under `.tcab/` because that is the
+/// Inside the tree so the move is a rename, and under `.vendor/` because that is the
 /// runner's own namespace in a produced tree.
-const DISPLACED_PROJECT_DIR: &str = ".tcab/displaced-validation";
+const DISPLACED_PROJECT_DIR: &str = ".vendor/displaced-validation";
 
 /// The directory inside the staged validator project the shared harness package is
 /// staged at. Every case's suites reach it by a path relative to their own file, so
@@ -242,7 +242,7 @@ const CASE_HARNESS_DIR: &str = "case-harness";
 /// is what a case manifest's `packages` key is validated against, and a case that
 /// could name this one would vendor the validators into the run repository — handing
 /// the model the tests it is being measured by.
-const CASE_HARNESS_PACKAGE: &str = "@test-cabinet/case-harness";
+const CASE_HARNESS_PACKAGE: &str = "@clockwyrks/case-harness";
 
 /// Where the shared harness package's `src/` is looked for when the host package
 /// store does not carry it, relative to the current directory. Mirrors
@@ -631,7 +631,7 @@ impl Drop for StagedProject {
             return;
         }
         // Only the directory this displacement created, and only while it is empty:
-        // a tree that carries `.tcab/` for its own reasons keeps it.
+        // a tree that carries `.vendor/` for its own reasons keeps it.
         if let Some(parent) = held.parent() {
             let _ = std::fs::remove_dir(parent);
         }
@@ -642,7 +642,7 @@ impl Drop for StagedProject {
 /// is held, or `None` when the name is free.
 ///
 /// The holding directory is inside the tree so the move is a rename rather than a
-/// copy, and under `.tcab/` because that is the runner's own namespace in a produced
+/// copy, and under `.vendor/` because that is the runner's own namespace in a produced
 /// tree. Anything left there by an earlier run that died mid-validation is cleared:
 /// what the tree carries now is the only copy worth putting back.
 fn displace(at: &Path) -> Result<Option<PathBuf>, String> {

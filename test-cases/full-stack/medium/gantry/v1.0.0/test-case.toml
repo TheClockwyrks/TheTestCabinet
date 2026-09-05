@@ -82,13 +82,13 @@ init = "npm install && npx playwright install chromium"
 # ENGINELESS build's glTF decoder: that build reads its committed `.glb`s with
 # `parseGlb` and puts them on screen through the package's `three` binding. Only
 # `workspaces/none/package.json` declares it, via its baked-in `file:` path under
-# `.tcab/packages/` — the two engine workspaces declare their engine alone,
+# `.vendor/packages/` — the two engine workspaces declare their engine alone,
 # because both 3D engines' asset loaders decode glTF themselves. The key is
 # case-wide with no per-engine scope, so the library is staged into every run and
 # an engine run simply never imports it; resolution only requires that a shipped
 # workspace `package.json` carry the `file:` spec, which `none`'s does. (A root
 # key, so it sits above the first table header.)
-packages = ["@test-cabinet/voxel-runtime"]
+packages = ["@clockwyrks/voxel-runtime"]
 
 # Variants: exactly one runs per run. Gantry declares exactly ONE — every run is
 # the same game, and the six sites are content within it, not variants. Nothing
@@ -105,7 +105,7 @@ variants = ["variants/base.toml"]
 #                     `src/`: the build writes its own frame loop, canvas fit,
 #                     input, audio, diagnostics overlay and `window.__gantry`
 #                     surface, and every figure the specification fixes, from
-#                     the specs alone. `@test-cabinet/voxel-runtime` is its
+#                     the specs alone. `@clockwyrks/voxel-runtime` is its
 #                     glTF decoder, declared in its `package.json`.
 #   - `simple-3d`     declares the engine in its `package.json`, which is
 #                     vendored in at seed time so the build imports it by its

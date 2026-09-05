@@ -17,7 +17,7 @@ import type {
   GgCapabilitySet,
   GgTelemetryEvent,
   GgTelemetryKind,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import type { HarnessEvent } from "../../../../client/types";
 import { GgDashboard, type GgDashboardStatus } from "./GgDashboard";
 import { deriveGgRuntime } from "./ggRuntime";

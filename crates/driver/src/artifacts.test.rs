@@ -475,12 +475,16 @@ async fn uploads_each_present_validation_output_under_its_flat_name() {
     let out = TempDir::new().unwrap();
 
     // The synthesized actual media lands under the collected tree's
-    // `.tcab/validation/` dir, named `<item>__<output>.<ext>` (png/webm) — the same
+    // `.vendor/validation/` dir, named `<item>__<output>.<ext>` (png/webm) — the same
     // flat name the snapshot keys on and the gallery requests.
-    write_impl_file(out.path(), ".tcab/validation/spin__still.png", b"png-bytes");
     write_impl_file(
         out.path(),
-        ".tcab/validation/spin__rally.webm",
+        ".vendor/validation/spin__still.png",
+        b"png-bytes",
+    );
+    write_impl_file(
+        out.path(),
+        ".vendor/validation/spin__rally.webm",
         b"webm-bytes",
     );
 
@@ -528,7 +532,7 @@ async fn uploads_a_sub_item_output_under_its_composite_verdict_name() {
     // `<item>.<sub>`, so it lands on disk (and uploads) as `<item>.<sub>__<output>`.
     write_impl_file(
         out.path(),
-        ".tcab/validation/ball-spin.stationary__straight.webm",
+        ".vendor/validation/ball-spin.stationary__straight.webm",
         b"webm-bytes",
     );
 
@@ -575,7 +579,7 @@ async fn skips_validation_outputs_the_build_did_not_produce() {
     let out = TempDir::new().unwrap();
 
     // Only the present output's file exists; the absent one must not be uploaded.
-    write_impl_file(out.path(), ".tcab/validation/spin__still.png", b"png");
+    write_impl_file(out.path(), ".vendor/validation/spin__still.png", b"png");
 
     let rec = record_with_debug_scripts(vec![
         DebugScriptOutput {

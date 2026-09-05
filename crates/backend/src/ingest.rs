@@ -954,7 +954,7 @@ fn copy_tree(src: &Path, dst: &Path) -> Result<()> {
             // as a symlink rather than dereferencing it: `std::fs::copy` follows the
             // link and errors on a symlink-to-directory ("the source path is neither
             // a regular file nor a symlink to a regular file") — e.g. a
-            // reference-impl's `node_modules/@test-cabinet/voxel-runtime` link.
+            // reference-impl's `node_modules/@clockwyrks/voxel-runtime` link.
             copy_symlink(&from, &to)?;
         } else if file_type.is_dir() {
             copy_tree(&from, &to)?;

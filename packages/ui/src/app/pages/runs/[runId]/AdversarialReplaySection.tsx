@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Panel } from "@test-cabinet/ui";
-import type { RunRecord } from "@test-cabinet/run-record";
+import { Panel } from "@clockwyrks/ui";
+import type { RunRecord } from "@clockwyrks/run-record";
 import {
   useGalleryData,
   type ReplayMatchView,

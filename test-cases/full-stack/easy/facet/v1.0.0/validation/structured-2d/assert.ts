@@ -26,7 +26,7 @@
 // `assertHasProperty`; a partial object match is `assertEqual` over the fields
 // the check cares about), not added as a new `expect` call.
 //
-// WHY THIS IS A COPY RATHER THAN A RE-EXPORT OF `@test-cabinet/case-harness`.
+// WHY THIS IS A COPY RATHER THAN A RE-EXPORT OF `@clockwyrks/case-harness`.
 // The shared harness carries this same vocabulary, and the engineless project
 // could reach it as `./case-harness/assert` — but the two ENGINE projects cannot:
 // that package is staged only into an engineless project. Facet's rule is that a

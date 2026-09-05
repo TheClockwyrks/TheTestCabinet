@@ -19,7 +19,7 @@
 //
 // The bed loops from the first frame, on every screen (specs/ui.md).
 
-import type { CueSpec, InitApi, WorldAudio } from "@test-cabinet/structured-2d";
+import type { CueSpec, InitApi, WorldAudio } from "@clockwyrks/structured-2d";
 import { CUES, CUE_PATHS, LOOPING_CUES, type CueName } from "./constants";
 import { CUE_NAMES } from "./figures";
 

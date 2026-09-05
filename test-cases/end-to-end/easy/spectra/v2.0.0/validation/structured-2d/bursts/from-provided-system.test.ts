@@ -3,7 +3,7 @@
 // `specs/assets.md` seeds `drone-burst.json` — "a particle system: a description
 // of emitters, forces, and per-particle curves on a `BURST_FIELD` (`128`) square
 // field" — and says of it: "It is played, not hand-coded and not replaced. The
-// runtime that plays it, `@test-cabinet/particle-runtime`, is already a
+// runtime that plays it, `@clockwyrks/particle-runtime`, is already a
 // dependency of the project. Play it with the package's pure
 // `ParticleSimulator`". `specs/instrumentation.md` then reports, per live burst,
 // `particles`: "live particles the burst's own simulation holds at the call".

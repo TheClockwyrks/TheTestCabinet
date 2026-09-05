@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createCanvas } from "@napi-rs/canvas";
 import { readFileSync } from "node:fs";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 
 import { installAssets, spritePaths } from "./assets";
 import { PARTICLE_PATHS } from "./constants";

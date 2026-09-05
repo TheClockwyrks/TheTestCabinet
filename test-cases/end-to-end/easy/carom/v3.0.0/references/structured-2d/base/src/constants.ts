@@ -14,7 +14,7 @@
 // its own. There is deliberately no fixed-step constant: nothing in this game
 // counts frames.
 
-import type { ActionBinding } from "@test-cabinet/structured-2d";
+import type { ActionBinding } from "@clockwyrks/structured-2d";
 
 // ---- Field ---------------------------------------------------------------
 

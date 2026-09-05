@@ -15,7 +15,7 @@
 // the audio probe, bracketing each driven frame around one step of the build's
 // surface, reading pixels and draw calls back out, and writing the evidence a
 // review point declares — every engineless case needs exactly that, and it lives
-// once, in `@test-cabinet/case-harness`, staged beside this file as
+// once, in `@clockwyrks/case-harness`, staged beside this file as
 // `./case-harness/`.
 //
 // WHAT THIS FILE ADDS IS THE THING THE OTHER TWO PROJECTS ALSO HAVE. Orrery ships

@@ -46,7 +46,7 @@
 // The surface is inert during normal play: nothing below runs until something
 // calls it.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { assets } from "./assets";
 import { Bench } from "./bench";
 import { applyCore, toCore } from "./bridge";

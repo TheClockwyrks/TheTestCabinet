@@ -1,5 +1,5 @@
 {
-  "name": "@test-cabinet/desktop",
+  "name": "@clockwyrks/desktop",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,8 +13,8 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
-    "@test-cabinet/run-record": "*",
-    "@test-cabinet/ui": "*",
+    "@clockwyrks/run-record": "*",
+    "@clockwyrks/ui": "*",
     "react": "^19",
     "react-dom": "^19",
     "react-router": "^7.6.0"

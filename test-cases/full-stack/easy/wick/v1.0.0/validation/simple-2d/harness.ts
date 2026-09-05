@@ -86,7 +86,7 @@ import {
   type Resource,
   type SurfaceMetrics,
   type Viewport,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 // The build's own module, for the game object the engine is stood up over and
 // for the state type. Every FIGURE a point is decided against, and the one

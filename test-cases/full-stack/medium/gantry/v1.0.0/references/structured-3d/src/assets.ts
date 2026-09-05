@@ -7,7 +7,7 @@
 // a model component clones, so one load backs every copy of that part on
 // screen. Nothing else in this build fetches or decodes an asset.
 
-import type { InitApi, Model } from "@test-cabinet/structured-3d";
+import type { InitApi, Model } from "@clockwyrks/structured-3d";
 
 /** The eight produced models, under the names `specs/assets.md` gives them. */
 export const MODEL_NAMES = [

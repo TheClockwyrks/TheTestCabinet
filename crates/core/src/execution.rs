@@ -40,7 +40,7 @@ pub const GAME_JAM_PRIOR_ENTRIES_DIR: &str = "previous-entries";
 /// documentation is seeded into, copied out of the engine package's declared
 /// `docs` directory.
 ///
-/// It sits at the run root rather than under `.tcab/` because it is material the
+/// It sits at the run root rather than under `.vendor/` because it is material the
 /// model is *meant to read*: the engine documents itself from its own package, so
 /// a case's specs never restate it and the rendered prompt points at
 /// `/work/engine` instead. Both the seeder (which writes it) and the prompt (which
@@ -90,7 +90,7 @@ pub struct SeedRequest<'a> {
     /// game is built on — when the caller resolved one.
     ///
     /// Seeding is where an engine becomes real: its package (and that package's
-    /// `@test-cabinet` closure) is vendored into
+    /// `@clockwyrks` closure) is vendored into
     /// [`TCAB_ENGINE_DIR`](crate::test_case::TCAB_ENGINE_DIR), its own
     /// documentation is copied to [`ENGINE_DOCS_DIR`], and the seeded workspace
     /// `package.json` gains the matching `file:` dependency — the one file the

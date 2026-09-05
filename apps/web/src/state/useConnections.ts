@@ -6,12 +6,12 @@ import type {
   BackendStatus,
   WorkerHandle,
   WorkersContextValue,
-} from "@test-cabinet/ui/client";
+} from "@clockwyrks/ui/client";
 import {
   createBackendExec,
   createHttpBackend,
   fetchArtifactsUrl,
-} from "@test-cabinet/ui/transport";
+} from "@clockwyrks/ui/transport";
 
 const BACKEND_KEY = "tcab.web.backendUrl";
 

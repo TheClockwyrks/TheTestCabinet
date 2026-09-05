@@ -58,7 +58,7 @@ import {
   type Harness,
 } from "../harness";
 import { CROWD_SITE, poseCrowd } from "./bench";
-import { ConstantClock } from "@test-cabinet/simple-2d";
+import { ConstantClock } from "@clockwyrks/simple-2d";
 
 /**
  * This check's own clock, in frames per second.

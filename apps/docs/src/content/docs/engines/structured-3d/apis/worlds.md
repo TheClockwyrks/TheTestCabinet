@@ -275,4 +275,4 @@ game mode has begun play.
 
 `LevelDefinition`, `ActorSpec`, `LoadApi`, `World`, `SpawnSpec`, `TimerHandle`,
 `WorldAudio`, and `PlayOptions` are exported as types from
-`@test-cabinet/structured-3d`.
+`@clockwyrks/structured-3d`.

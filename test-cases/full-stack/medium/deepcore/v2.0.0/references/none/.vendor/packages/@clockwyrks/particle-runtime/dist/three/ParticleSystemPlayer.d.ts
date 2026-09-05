@@ -25,7 +25,7 @@ export interface ParticleSystemPlayerOptions {
 /**
  * A live three.js particle effect: a {@link THREE.Points} cloud of soft round
  * billboards driven by a {@link ParticleSimulator}. The particle analogue of
- * `@test-cabinet/voxel-runtime`'s `VoxelRig` — but where a rig is *posed* from decoded
+ * `@clockwyrks/voxel-runtime`'s `VoxelRig` — but where a rig is *posed* from decoded
  * geometry, a system is *simulated* from its definition, so {@link update} steps the
  * simulation forward rather than sampling a clip.
  *

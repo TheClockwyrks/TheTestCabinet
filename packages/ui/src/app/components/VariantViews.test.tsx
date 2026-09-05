@@ -22,7 +22,7 @@ function variant(overrides: Partial<VariantSummary> = {}): VariantSummary {
     ],
     packages: [
       {
-        name: "@test-cabinet/particle-runtime",
+        name: "@clockwyrks/particle-runtime",
         description: "Plays a produced particle system live on a canvas.",
       },
     ],
@@ -63,7 +63,7 @@ describe("VariantInputsView", () => {
       screen.getByRole("button", { name: "build.py" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "@test-cabinet/particle-runtime" }),
+      screen.getByRole("button", { name: "@clockwyrks/particle-runtime" }),
     ).toBeInTheDocument();
 
     // Groups the variant has nothing for are omitted from the rail.
@@ -88,7 +88,7 @@ describe("VariantInputsView", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: "@test-cabinet/particle-runtime" }),
+      screen.getByRole("button", { name: "@clockwyrks/particle-runtime" }),
     );
     expect(
       screen.getByText("Plays a produced particle system live on a canvas."),

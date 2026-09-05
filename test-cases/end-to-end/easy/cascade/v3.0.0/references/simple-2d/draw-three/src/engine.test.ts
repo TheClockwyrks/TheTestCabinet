@@ -25,7 +25,7 @@ import {
   type Engine,
   type SurfaceMetrics,
   type Viewport,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CARD_H,

@@ -24,7 +24,7 @@ declaration the pipeline draws from. A check reaches one through
 reads its geometry, its material, its `visible`, and its `opacity` directly.
 
 ```ts
-import { LightComponent, MeshComponent } from "@test-cabinet/structured-3d";
+import { LightComponent, MeshComponent } from "@clockwyrks/structured-3d";
 import { COLORS, TAGS } from "../../src/constants";
 
 const ball = world.byTag(TAGS.ball)[0];
@@ -56,7 +56,7 @@ geometry, and its material.
 
 ```ts
 import * as THREE from "three";
-import type { Vec3 } from "@test-cabinet/structured-3d";
+import type { Vec3 } from "@clockwyrks/structured-3d";
 
 export function meshesAt(
   scene: THREE.Scene,
@@ -166,7 +166,7 @@ logical point and converts it through the viewport alone, and `rgba` states a
 color the case fixed in the same form.
 
 ```ts
-import type { Vec2 } from "@test-cabinet/structured-3d";
+import type { Vec2 } from "@clockwyrks/structured-3d";
 import type { Harness } from "./harness";
 
 function device(h: Harness, point: Vec2): { x: number; y: number } {

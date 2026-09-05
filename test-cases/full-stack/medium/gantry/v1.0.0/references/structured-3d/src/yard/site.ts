@@ -11,7 +11,7 @@
 // structure standing around it.
 
 import * as THREE from "three";
-import { Object3DComponent } from "@test-cabinet/structured-3d";
+import { Object3DComponent } from "@clockwyrks/structured-3d";
 import { LAYER } from "../layers";
 import {
   ANCHOR_PLATE,

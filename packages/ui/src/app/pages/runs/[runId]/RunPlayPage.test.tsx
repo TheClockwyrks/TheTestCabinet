@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import type { RunRecord, RunShowcase } from "@test-cabinet/run-record";
+import type { RunRecord, RunShowcase } from "@clockwyrks/run-record";
 import { routePatterns } from "../../../routes";
 import { RunPlayPage, RunPlayRedirect } from "./RunPlayPage";
 

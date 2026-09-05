@@ -210,6 +210,6 @@ the engine awaits before any actor of that level exists.
 
 ## Exports
 
-`GameInstance` is exported as a class from `@test-cabinet/structured-3d`.
+`GameInstance` is exported as a class from `@clockwyrks/structured-3d`.
 `GameDefinition`, `GameInstanceClass`, and `InitApi` are exported as types from
 the same specifier.

@@ -21,7 +21,7 @@
 // machinery, an empty channel — as its field initializers, and every debug pose
 // works the same whichever level is open.
 
-import { GameState } from "@test-cabinet/structured-2d";
+import { GameState } from "@clockwyrks/structured-2d";
 import { CELLS, LEVELS } from "./constants";
 import type { MachineryKind, ScreenName } from "./constants";
 import type { Core, Projectile } from "./actors";

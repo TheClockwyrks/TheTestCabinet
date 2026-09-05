@@ -1,4 +1,4 @@
-import { Panel, SegmentedControl } from "@test-cabinet/ui";
+import { Panel, SegmentedControl } from "@clockwyrks/ui";
 import { EventFeed } from "../../components/EventFeed";
 import { SAMPLE_FEED_EVENTS } from "../../data/sampleEvents";
 import { SettingsLayout } from "../../layouts/settings/SettingsLayout";

@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createCanvas } from "@napi-rs/canvas";
 import { describe, expect, it } from "vitest";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 
 import { noAssets, type Assets } from "./assets";
 import { EFFECTS, STAGE_H, STAGE_W, type EffectName } from "./constants";

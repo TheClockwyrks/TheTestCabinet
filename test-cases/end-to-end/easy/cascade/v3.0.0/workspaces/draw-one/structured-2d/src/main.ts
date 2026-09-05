@@ -14,7 +14,7 @@
 // module. That failure is the starting point, not a broken seed; creating the
 // module clears it.
 
-import { createEngine } from "@test-cabinet/structured-2d";
+import { createEngine } from "@clockwyrks/structured-2d";
 import { STAGE_H, STAGE_W } from "./constants";
 import { BACKGROUND, game } from "./game";
 

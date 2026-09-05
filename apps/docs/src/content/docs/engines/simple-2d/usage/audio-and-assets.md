@@ -17,7 +17,7 @@ to sweep to, a gain, and a duration in milliseconds. The fields and their
 defaults are specified in the [audio API](/engines/simple-2d/apis/audio/).
 
 ```ts
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 
 function defineCues(api: InitApi): void {
   api.audio.define("paddle", { wave: "square", freq: 440, durationMs: 60 });
@@ -47,7 +47,7 @@ returns immediately, is safe several times in one frame, and succeeds while
 muted.
 
 ```ts
-import type { UpdateApi } from "@test-cabinet/simple-2d";
+import type { UpdateApi } from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 function update(state: DeepReadonly<Match>, api: UpdateApi, dt: number): Match {
@@ -103,7 +103,7 @@ without restarting.
 `render` read them directly.
 
 ```ts
-import type { Game, InitApi } from "@test-cabinet/simple-2d";
+import type { Game, InitApi } from "@clockwyrks/simple-2d";
 
 interface State {
   readonly ship: ImageBitmap;

@@ -17,7 +17,7 @@ import type { Sprites } from "./assets";
 import type { Game, InitApi, UpdateApi } from "./runtime";
 import type { SpectraState } from "./types";
 import type { CueSpec } from "./audio-bus";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 
 import { IDLE_POINTER, type PointerFrame } from "./pointer";
 

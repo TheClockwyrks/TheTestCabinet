@@ -1,5 +1,5 @@
-import { Panel, StatusGlyph } from "@test-cabinet/ui";
-import type { RunRecord, StepResult } from "@test-cabinet/run-record";
+import { Panel, StatusGlyph } from "@clockwyrks/ui";
+import type { RunRecord, StepResult } from "@clockwyrks/run-record";
 import { DebugScriptList } from "./DebugScriptList";
 import styles from "./RunDetailPages.module.scss";
 

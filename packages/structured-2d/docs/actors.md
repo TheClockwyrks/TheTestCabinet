@@ -100,7 +100,7 @@ defaults; anything that reads `this.world` or another actor belongs in
 `beginPlay`.
 
 ```ts
-import { Actor, ColliderComponent, ShapeComponent } from "@test-cabinet/structured-2d";
+import { Actor, ColliderComponent, ShapeComponent } from "@clockwyrks/structured-2d";
 import { LAYER, PADDLE, PALETTE, TAGS } from "./constants";
 
 export class Paddle extends Actor {

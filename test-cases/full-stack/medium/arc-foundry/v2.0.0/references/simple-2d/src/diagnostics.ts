@@ -12,7 +12,7 @@
 
 import { difficulty, reportedPhase, stampsLeft, statsOf } from "./sim";
 import type { FoundryView } from "./world";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 
 /** Register every diagnostic source, each a read of the state it is given. */
 export function registerDiagnostics(

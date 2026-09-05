@@ -16,7 +16,7 @@
 // It is stepped by game time like everything else, which is what keeps
 // `advance(1, 1)` and `advance(1, 60)` reaching the same state.
 
-import { ParticleSimulator } from "@test-cabinet/particle-runtime";
+import { ParticleSimulator } from "@clockwyrks/particle-runtime";
 
 import { BURST_DURATION, BURST_FIELD, MAX_BURSTS } from "./constants";
 import { Rng } from "./rng";

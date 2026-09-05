@@ -12,7 +12,7 @@
 // and unwinds node by node as the pointer travels.
 
 import { ACTIONS, BINDINGS, LAYOUT } from "./constants";
-import type { InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type { InitApi, UpdateApi } from "@clockwyrks/simple-2d";
 
 /**
  * Register every action in ACTIONS, bound to its keys.

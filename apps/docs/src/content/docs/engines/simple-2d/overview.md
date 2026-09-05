@@ -6,7 +6,7 @@ Simple 2D (slug `simple-2d`) is the 2D engine of the Simple family. It provides
 everything a 2D browser game needs around its own code and leaves the game
 itself to the model: the build writes its own simulation and its own drawing.
 
-The runtime is the npm package `@test-cabinet/simple-2d`, written entirely in
+The runtime is the npm package `@clockwyrks/simple-2d`, written entirely in
 TypeScript and imported by a build as an ordinary dependency. Its source is
 `packages/simple-2d/`, and the documentation seeded into a run workspace is that
 package's own `docs/` directory.

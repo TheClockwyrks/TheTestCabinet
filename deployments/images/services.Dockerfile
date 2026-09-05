@@ -264,8 +264,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 
 # ── Package store stage (driver only) ────────────────────────────────────────
 # The driver seeds each run's repository, and a `packages`-declaring case has its
-# requested `@test-cabinet/*` runtime libraries vendored into the run repo at seed
-# time (crates/core seeding → `.tcab/packages/`). Those libraries are read from a
+# requested `@clockwyrks/*` runtime libraries vendored into the run repo at seed
+# time (crates/core seeding → `.vendor/packages/`). Those libraries are read from a
 # host package store, so the driver image bakes one exactly as the base run image
 # does: `npm ci` over the npm workspace (the repo-root `.dockerignore` re-includes
 # the packages slice), then `scripts/stage-tcab-packages.mjs` builds the shippable

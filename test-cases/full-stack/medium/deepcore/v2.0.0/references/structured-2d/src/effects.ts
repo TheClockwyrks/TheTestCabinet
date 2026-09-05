@@ -3,7 +3,7 @@
 // Every world event — a drill bite, a jetpack plume, an ore glint, a gas blast,
 // the core extraction and its detonation, the launch column, a death burst —
 // fires the matching produced `system.json`, simulated live through
-// `@test-cabinet/particle-runtime`'s pure simulator and drawn into the context
+// `@clockwyrks/particle-runtime`'s pure simulator and drawn into the context
 // the engine hands `render`. Being simulated rather than baked, a burst varies
 // shot to shot.
 //
@@ -22,8 +22,8 @@
 // system whose file is missing simply never spawns, which is what lets the
 // project build and run before the assets land.
 
-import { ParticleSimulator } from "@test-cabinet/particle-runtime";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import { ParticleSimulator } from "@clockwyrks/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 
 /** The twelve effects `specs/assets.md` names, by the file each lands at. */
 export const FX_KINDS = [

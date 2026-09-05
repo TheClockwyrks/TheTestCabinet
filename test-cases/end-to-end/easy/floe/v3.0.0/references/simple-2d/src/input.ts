@@ -37,7 +37,7 @@ import type {
   InitApi,
   PointerSample,
   UpdateApi,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 
 /** One thing a pointer or a touch contact did, in logical stage units. */
 export interface PointerEdge {

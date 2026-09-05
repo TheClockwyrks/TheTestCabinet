@@ -1,4 +1,4 @@
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunRecord } from "@clockwyrks/run-record";
 import { describe, expect, it } from "vitest";
 import type { StoredReview, StoredRun } from "../../client/types";
 import type { DomainRating } from "../../ratings";

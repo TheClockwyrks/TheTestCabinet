@@ -43,7 +43,7 @@ import type {
   GgRunLimits,
   GgSubagentRef,
   GgSubagentScope,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import {
   ALWAYS_BOUND_OPERATIONS,
   AUTHORED_HOOK_TIMEOUT_SECS,

@@ -100,13 +100,13 @@ assets = [
 
 # The Test Cabinet runtime libraries the build imports, by npm name. Each is
 # staged into the run from the host package store and declared in every seeded
-# workspace's `package.json` by its in-repo `file:` spec under `.tcab/packages/`.
+# workspace's `package.json` by its in-repo `file:` spec under `.vendor/packages/`.
 # Spectra needs one: the particle runtime plays `assets/drone-burst.json`, so the
 # case ships the effect and the runtime that simulates it rather than asking every
 # build to write a particle system of its own and then comparing the results.
 #
 # `packages` is a root key, so it must precede the first table header.
-packages = ["@test-cabinet/particle-runtime"]
+packages = ["@clockwyrks/particle-runtime"]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Spectra declares TWO, and they differ in exactly one rule — what a MISMATCHED

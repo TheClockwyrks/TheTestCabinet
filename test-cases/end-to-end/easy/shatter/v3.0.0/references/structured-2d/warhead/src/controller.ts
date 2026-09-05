@@ -15,7 +15,7 @@
 // `Escape` pauses while it is being played and leaves the screen otherwise
 // (`specs/controls.md`).
 
-import { PlayerController } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
 import { GAMEOVER_ITEMS, PAUSE_ITEMS, TITLE_ITEMS } from "./constants";
 import { resumeRun, startRun, toTitle } from "./flow";
 import { resolvePointer } from "./pointer";

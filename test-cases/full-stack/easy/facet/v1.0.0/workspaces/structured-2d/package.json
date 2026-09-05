@@ -14,8 +14,8 @@
     "test": "vitest run --coverage"
   },
   "dependencies": {
-    "@test-cabinet/structured-2d": "file:./.tcab/engine/@test-cabinet/structured-2d",
-    "@test-cabinet/particle-runtime": "file:./.tcab/packages/@test-cabinet/particle-runtime"
+    "@clockwyrks/structured-2d": "file:./.vendor/engine/@clockwyrks/structured-2d",
+    "@clockwyrks/particle-runtime": "file:./.vendor/packages/@clockwyrks/particle-runtime"
   },
   "devDependencies": {
     "@eslint/js": "^9",

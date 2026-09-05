@@ -1,7 +1,7 @@
 // Re-vendor the Lattice playback assets the UI bundles from their single source of
 // truth, the lattice case's replay bundle.
 //
-// The shared gallery app (`@test-cabinet/ui`) draws a performance run's factory on
+// The shared gallery app (`@clockwyrks/ui`) draws a performance run's factory on
 // a <canvas> with its own copy of the playback engine + sprite atlas, so the web
 // console and desktop app replay a run identically without each fetching the case
 // bundle. Only run-specific data (the scenario) is fetched per run; the engine and

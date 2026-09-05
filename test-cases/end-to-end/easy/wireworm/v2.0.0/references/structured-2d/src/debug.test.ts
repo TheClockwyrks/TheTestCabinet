@@ -2,7 +2,7 @@
 // and the guard the action registration puts on the engine it is given.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 import { CHARGE_MAX, LAYOUT, TOTAL_LEVELS, tileCX, tileCY } from "./constants";
 import { createHarness, poseWorm, startPlaying, type Harness } from "./harness";
 import { registerActions } from "./input";

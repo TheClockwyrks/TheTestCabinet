@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { ACTIONS, BINDINGS, LAYOUT } from "./constants";
 import { registerActions } from "./input";
-import type { ActionBinding, TouchLayout } from "@test-cabinet/simple-2d";
+import type { ActionBinding, TouchLayout } from "@clockwyrks/simple-2d";
 
 function api(layout: TouchLayout | null): {
   input: {

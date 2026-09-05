@@ -26,7 +26,7 @@ import { game, RefractState } from "./game";
 import { createHarness, FRAME_MS, type Harness } from "./harness";
 import { CHANNEL_COLOR, rgbOf } from "./theme";
 import { createCanvas } from "@napi-rs/canvas";
-import { ConstantClock, createEngine } from "@test-cabinet/structured-2d";
+import { ConstantClock, createEngine } from "@clockwyrks/structured-2d";
 
 let h: Harness;
 

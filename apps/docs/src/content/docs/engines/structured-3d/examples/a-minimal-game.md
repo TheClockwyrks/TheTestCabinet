@@ -31,7 +31,7 @@ whatever size the element reports.
 ## src/main.ts
 
 ```ts
-import { createEngine } from "@test-cabinet/structured-3d";
+import { createEngine } from "@clockwyrks/structured-3d";
 import { drifter } from "./game";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
@@ -56,7 +56,7 @@ callback, on the [`WallClock`](/engines/structured-3d/apis/clocks/) by default.
 ## src/game.ts
 
 ```ts
-import type { GameDefinition } from "@test-cabinet/structured-3d";
+import type { GameDefinition } from "@clockwyrks/structured-3d";
 import { Drifter } from "./actors/drifter";
 import { Lamp } from "./actors/lamp";
 import { Readout } from "./actors/readout";
@@ -86,7 +86,7 @@ units.
 ## src/actors/lamp.ts
 
 ```ts
-import { Actor, LightComponent, quatFromEuler } from "@test-cabinet/structured-3d";
+import { Actor, LightComponent, quatFromEuler } from "@clockwyrks/structured-3d";
 
 export class Lamp extends Actor {
   constructor() {
@@ -110,7 +110,7 @@ hemisphere light fills the faces the sun leaves in shadow.
 ## src/actors/drifter.ts
 
 ```ts
-import { Actor, MeshComponent, vec3 } from "@test-cabinet/structured-3d";
+import { Actor, MeshComponent, vec3 } from "@clockwyrks/structured-3d";
 
 const BOX = 1;
 const SPEED = 6;
@@ -150,7 +150,7 @@ export class Drifter extends Actor {
 ## src/actors/readout.ts
 
 ```ts
-import { Actor, TextComponent } from "@test-cabinet/structured-3d";
+import { Actor, TextComponent } from "@clockwyrks/structured-3d";
 import { Drifter } from "./drifter";
 
 export class Readout extends Actor {
@@ -173,7 +173,7 @@ export class Readout extends Actor {
 ## src/levels/drift-mode.ts
 
 ```ts
-import { GameMode } from "@test-cabinet/structured-3d";
+import { GameMode } from "@clockwyrks/structured-3d";
 
 export class DriftMode extends GameMode {}
 ```

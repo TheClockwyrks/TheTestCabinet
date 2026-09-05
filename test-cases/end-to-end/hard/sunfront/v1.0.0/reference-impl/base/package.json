@@ -11,8 +11,8 @@
     "test": "node test/run.mjs && node test/effects.run.mjs"
   },
   "dependencies": {
-    "@test-cabinet/particle-runtime": "file:vendor/particle-runtime",
-    "@test-cabinet/voxel-runtime": "file:vendor/voxel-runtime",
+    "@clockwyrks/particle-runtime": "file:vendor/particle-runtime",
+    "@clockwyrks/voxel-runtime": "file:vendor/voxel-runtime",
     "three": "~0.182.0"
   },
   "devDependencies": {

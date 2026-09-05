@@ -10,7 +10,7 @@
 // reports the frame being drawn and watching the overlay leaves the game exactly as it
 // is. Each line is short enough to read at a glance while the game runs.
 
-import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
+import type { DiagnosticValue, World } from "@clockwyrks/structured-2d";
 import { foundryState, type FoundryState } from "./state";
 import { difficulty, reportedPhase, stampsLeft, statsOf } from "./sim";
 

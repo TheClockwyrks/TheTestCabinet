@@ -1,7 +1,7 @@
 import { createCanvas } from "@napi-rs/canvas";
 import { describe, expect, it } from "vitest";
-import { DrawComponent } from "@test-cabinet/structured-3d";
-import type { Actor, DrawApi, World } from "@test-cabinet/structured-3d";
+import { DrawComponent } from "@clockwyrks/structured-3d";
+import type { Actor, DrawApi, World } from "@clockwyrks/structured-3d";
 import { STAGE_H, STAGE_W } from "../constants";
 import { GantryState } from "../game";
 import { addMoveStep, setScreen } from "../state";

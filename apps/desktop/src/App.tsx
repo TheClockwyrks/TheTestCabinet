@@ -4,13 +4,13 @@ import {
   AuthProvider,
   BackendProvider,
   WorkersProvider,
-} from "@test-cabinet/ui/client";
+} from "@clockwyrks/ui/client";
 import {
   GalleryApp,
   GalleryDataProvider,
   RunsRuntimeProvider,
   useLiveGallery,
-} from "@test-cabinet/ui/app";
+} from "@clockwyrks/ui/app";
 import { createTauriArena } from "./transport/tauriArena";
 import { createTauriHarnessAuth } from "./transport/tauriHarnessAuth";
 import { useDesktopConnections } from "./state/useConnections";

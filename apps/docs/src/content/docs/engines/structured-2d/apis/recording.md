@@ -525,5 +525,5 @@ pixels, and exact in every other respect.
 
 `Recording`, `RecordedFrame`, `DrawState`, `PathSegment`, `DrawOp`, `DrawValue`,
 `CapturedImage`, `Resource`, and `ResourceOp` are exported as types from
-`@test-cabinet/structured-2d`, and `RECORDING_FORMAT` is exported as a value from
+`@clockwyrks/structured-2d`, and `RECORDING_FORMAT` is exported as a value from
 the same entry point.

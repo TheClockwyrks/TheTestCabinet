@@ -79,7 +79,7 @@ belongs to the engine, not to this game.
 
 ## What the engine owns
 
-`@test-cabinet/structured-2d` is a gameplay framework as much as a runtime, and
+`@clockwyrks/structured-2d` is a gameplay framework as much as a runtime, and
 none of what it owns is written here: the frame loop and its replaceable clock,
 the construction and ticking of the framework objects in a fixed order, the
 rendering pipeline and the camera, the canvas fit (uniform scale, centered
@@ -166,10 +166,10 @@ Then, in this directory:
 npm ci
 ```
 
-The engine, `@test-cabinet/structured-2d`, is a relative `file:` dependency on
+The engine, `@clockwyrks/structured-2d`, is a relative `file:` dependency on
 the repository's `packages/structured-2d`, which npm installs as a symlink, so
 this project builds and tests against the engine's current source. A run
-receives the same package at `.tcab/engine/@test-cabinet/structured-2d/`
+receives the same package at `.vendor/engine/@clockwyrks/structured-2d/`
 instead, so the import in the sources is the same either way.
 
 ## Run in development

@@ -23,7 +23,7 @@
 // position: a sweep that crossed three items between two frames visited them in
 // an order, and the item it came to rest on is the one it ends on.
 
-import type { PointerSample } from "@test-cabinet/simple-2d";
+import type { PointerSample } from "@clockwyrks/simple-2d";
 import type { CaromState, Screen } from "./game";
 import { menuItemAt } from "./menus";
 import { confirmMenuItem } from "./screens";

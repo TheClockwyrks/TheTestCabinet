@@ -69,7 +69,7 @@ import {
   type Recording,
   type SurfaceMetrics,
   type World,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { BACKGROUND, game as build } from "../src/game";
 import { fail } from "./assert";
 import { INERT_KEY, LAYOUT, STAGE_H, STAGE_W, TICK_HZ } from "./constants";

@@ -51,7 +51,7 @@ import {
   quatFromEuler,
   quatRotate,
   scale,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 
 class Rover extends Pawn {
   heading = 0;
@@ -111,7 +111,7 @@ import {
   UP,
   quatFromAxisAngle,
   vec3,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 
 class Tank extends Actor {
   readonly turret = this.attach(

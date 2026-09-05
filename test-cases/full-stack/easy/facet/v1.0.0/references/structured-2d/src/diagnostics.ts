@@ -15,7 +15,7 @@
 // runs, and the set below is exactly the set `specs/instrumentation.md` asks
 // for: the same facts the snapshot reports, two or three to a line.
 
-import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
+import type { DiagnosticValue, World } from "@clockwyrks/structured-2d";
 import { lastFall, legalSwapExists, levelTarget, multiplierFor } from "./core";
 import { boardToCore } from "./bridge";
 import { facetState, type CellRef, type FacetState } from "./game";

@@ -11,7 +11,7 @@
 // chime, and a menu move the shortest tick of the nine.
 
 import { CUES } from "./constants";
-import type { CueSpec, InitApi } from "@test-cabinet/simple-2d";
+import type { CueSpec, InitApi } from "@clockwyrks/simple-2d";
 
 /** Every cue, under the name `CUES` gives it. */
 const SPECS: Readonly<Record<string, CueSpec>> = {

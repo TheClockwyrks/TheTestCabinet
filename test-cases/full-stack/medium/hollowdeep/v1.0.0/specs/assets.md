@@ -124,7 +124,7 @@ looping while mining, etc.). Draw the delver at a size that fits comfortably in 
 (the suit color and a helmet glow from `specs/overview.md`). It is fine to reuse a body
 across cycles; the point is that the delver visibly walks, digs, carries, and idles.
 
-## Particle systems — `particle-2d`, played via `@test-cabinet/particle-runtime`
+## Particle systems — `particle-2d`, played via `@clockwyrks/particle-runtime`
 
 The gas overlays and the world's puffs and vents are **particle systems** you author
 with `particle-2d` and **play live** — not flat tints or hand-coded effects.
@@ -141,7 +141,7 @@ example, `assets/fx/`. Produce at least:
 - **Machine steam / exhaust** — a small looping vent for a running generator/diffuser
   (`specs/power.md`).
 
-**Play them with the provided runtime.** `@test-cabinet/particle-runtime` is already a
+**Play them with the provided runtime.** `@clockwyrks/particle-runtime` is already a
 dependency of your project (its `file:` entry is in your `package.json`; install and
 import it like any other dependency — do **not** fetch or reimplement it). For this 2D
 game use its **`/canvas`** binding — its `ParticleCanvasPlayer`: construct one from a

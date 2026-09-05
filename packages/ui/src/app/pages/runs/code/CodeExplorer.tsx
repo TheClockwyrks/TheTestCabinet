@@ -22,12 +22,12 @@
 // on every other run the table is exactly what it was.
 
 import { useMemo, useState } from "react";
-import { Treemap, type TreemapTile } from "@test-cabinet/ui";
-import type { CoverageFile, ToolchainCoverage } from "@test-cabinet/run-record";
+import { Treemap, type TreemapTile } from "@clockwyrks/ui";
+import type { CoverageFile, ToolchainCoverage } from "@clockwyrks/run-record";
 import type {
   CodeAnalysisDocument,
   CodeFileEntry,
-} from "@test-cabinet/run-record/code-analysis";
+} from "@clockwyrks/run-record/code-analysis";
 import {
   buildCodeTree,
   codeBreadcrumb,

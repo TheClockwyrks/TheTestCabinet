@@ -12,7 +12,7 @@
 // runs, and the predator lines are one per den slot rather than one per live
 // hunter, so the panel keeps its shape as a deeper maze adds to the roster.
 
-import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
+import type { DiagnosticValue, World } from "@clockwyrks/structured-2d";
 import { DEN_ORDER, ROSTER_CAP } from "./constants";
 import { sonarRange } from "./flow";
 import { bodyCell } from "./movement";

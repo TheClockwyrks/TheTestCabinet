@@ -7,7 +7,7 @@ Your project root is `{{workspace}}`. Create the game there.
 ## Your starting point
 
 A starter project is already in place at `{{workspace}}`: a `package.json` that pins
-Playwright as a dev dependency and depends on the `@test-cabinet/particle-runtime`
+Playwright as a dev dependency and depends on the `@clockwyrks/particle-runtime`
 library (below). Its dependencies have already been installed for you: `node_modules/`
 is populated and Playwright's headless Chromium is downloaded, so you can build right
 away (see "Playwright and Chromium" below for what they are there for). Build on this
@@ -70,7 +70,7 @@ harness depends on them:
   and where it lands under `assets/`, and states how each is wired into the build,
   including that the animated miner (the headline of this build: its idle, walk, drill,
   jetpack, fall, hurt, and out-of-fuel cycles) is a set of `draw-sheet` cycles, and that
-  the VFX are `particle-2d` systems played live through the `@test-cabinet/particle-runtime`
+  the VFX are `particle-2d` systems played live through the `@clockwyrks/particle-runtime`
   library already installed as a dependency of your project (import it like any other
   dependency; do not fetch or reimplement it). Load every produced file with
   page-relative URLs so it resolves from the served sub-path.

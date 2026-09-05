@@ -11,7 +11,7 @@
 // compile, runtime — so the rows worth opening are the ones that stand out, and each
 // opens onto the program and the error it met, and nothing else.
 
-import type { GgTurnErrorType } from "@test-cabinet/run-record/gg";
+import type { GgTurnErrorType } from "@clockwyrks/run-record/gg";
 import panels from "./GgPanels.module.scss";
 import type {
   PooledMessage,

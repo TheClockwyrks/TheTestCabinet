@@ -4,8 +4,8 @@ import type {
   AssetSheet,
   MediaKind,
   TestType,
-} from "@test-cabinet/run-record";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+} from "@clockwyrks/run-record";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 
 // Build-time data source: the public R2 snapshot.
 //
@@ -80,14 +80,14 @@ interface SnapshotModelsFile {
 
 interface SnapshotComparisonsFile {
   schemaVersion: number;
-  // Wire `Comparison` shape (`@test-cabinet/run-record/comparison`); consumed as-is.
+  // Wire `Comparison` shape (`@clockwyrks/run-record/comparison`); consumed as-is.
   comparisons: unknown[];
 }
 
 interface SnapshotTestCaseGroupsFile {
   schemaVersion: number;
   // Wire `TestCaseGroupOut` shape (`TestCaseGroupsFile` in
-  // `@test-cabinet/run-record/snapshot`), already in display order; the app
+  // `@clockwyrks/run-record/snapshot`), already in display order; the app
   // consumes it as its `TestCaseGroupSummary`.
   groups: unknown[];
 }
@@ -829,7 +829,7 @@ const RATING_ORDER = ["flawless", "great", "passable", "scuffed", "broken"];
 
 // Aesthetic tiers, ordered best to worst — the second channel, one run-wide
 // tier per review of a validator-rated run. Mirrors `AESTHETIC_RATINGS` in
-// `@test-cabinet/run-stats`.
+// `@clockwyrks/run-stats`.
 const AESTHETIC_ORDER = ["legendary", "amazing", "good", "okay", "slop"];
 
 // The worst (lowest) tier among `tiers` on the given scale, or null when empty.
@@ -876,7 +876,7 @@ async function fetchJson<T>(url: string): Promise<T> {
 // aesthetic tier is one bare `aesthetic: …` line (worst across reviews); a checklist
 // item reads `pass` only when every reviewer who judged it passed it; the body
 // concatenates each reviewer's prose, attributed by display name. Mirrors
-// `frameReviews` in `@test-cabinet/ui`. Returns null for no reviews.
+// `frameReviews` in `@clockwyrks/ui`. Returns null for no reviews.
 function frameWriteup(reviews: SnapshotReview[]): string | null {
   if (reviews.length === 0) return null;
 

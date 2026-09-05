@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
   ComparisonArm,
   ComparisonConfig,
-} from "@test-cabinet/run-record/comparison";
+} from "@clockwyrks/run-record/comparison";
 import {
   appendRunIds,
   harnessArmLaunchItems,

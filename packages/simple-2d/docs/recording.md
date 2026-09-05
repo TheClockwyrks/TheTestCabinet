@@ -88,7 +88,7 @@ itself. The tables are settled when the recording is closed, from the frames it
 holds. Every entry is one some frame names, and a canvas wiped part-way through a
 frame takes the entries of the operations it erased with it.
 
-`RECORDING_FORMAT` is exported from `@test-cabinet/simple-2d`, alongside every
+`RECORDING_FORMAT` is exported from `@clockwyrks/simple-2d`, alongside every
 type on this page.
 
 ## `RecordedFrame`

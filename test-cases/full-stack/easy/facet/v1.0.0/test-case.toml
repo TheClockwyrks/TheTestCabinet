@@ -76,7 +76,7 @@ max_runtime_hours = 4
 
 # Init command, run in the run container once the workspaces and specs are seeded
 # and before the harness starts. `npm install` rather than `npm ci`, because
-# `packages` below injects the `@test-cabinet/particle-runtime` `file:` dependency
+# `packages` below injects the `@clockwyrks/particle-runtime` `file:` dependency
 # and the lockfile is completed at seed time. The same command installs the
 # seeded project's dependencies — the TypeScript toolchain the `[toolchain]`
 # commands invoke, the headless canvas the model's own vitest tests can draw
@@ -92,7 +92,7 @@ init = "npm install && npx playwright install chromium"
 # binaries on the run image's `PATH` (see `type` above and `specs/assets.md`).
 
 # Test Cabinet runtime libraries installed into the run so the build can play the
-# particle systems it produces. `@test-cabinet/particle-runtime` is the same
+# particle systems it produces. `@clockwyrks/particle-runtime` is the same
 # library the review UI plays a produced effect with; core bakes it into the run
 # image and each seeded workspace `package.json` depends on it via its baked-in
 # `file:` path, so the build imports it (its `/canvas` binding) like any other
@@ -101,7 +101,7 @@ init = "npm install && npx playwright install chromium"
 # at every cut stone standing on the board are all produced `particle-2d` systems
 # played this way; `specs/assets.md` carries the consumption contract. (A root
 # key, so it must sit above the first `[table]` header.)
-packages = ["@test-cabinet/particle-runtime"]
+packages = ["@clockwyrks/particle-runtime"]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Facet declares exactly ONE, so every run of this case is the same game.
@@ -172,7 +172,7 @@ min_version = "1.0.0"
 # The starter project seeded into the root of every run before the specs, one per
 # engine. All three carry the same Vite/TypeScript/ESLint/Prettier/Vitest
 # configuration the `[toolchain]` commands below run against, an `index.html`
-# holding the canvas, and the `@test-cabinet/particle-runtime` dependency the
+# holding the canvas, and the `@clockwyrks/particle-runtime` dependency the
 # produced effects are played through. What differs is how much of the build is
 # supplied with them.
 #
@@ -3613,7 +3613,7 @@ validation = { script = "assets/prism-turn-animates.test.ts", outputs = [
 [[review.categories.items]]
 id = "fx-systems-produced"
 title = "The four produced particle systems ship"
-description = "The built site carries at least four distinct particle-system JSON files under assets/fx/, each of which @test-cabinet/particle-runtime parses and which emits at least one particle over a short simulated interval."
+description = "The built site carries at least four distinct particle-system JSON files under assets/fx/, each of which @clockwyrks/particle-runtime parses and which emits at least one particle over a short simulated interval."
 domains = ["gameplay"]
 failure_cap = "scuffed"
 # Automated validation: read every JSON under assets/fx/ from the built tree,

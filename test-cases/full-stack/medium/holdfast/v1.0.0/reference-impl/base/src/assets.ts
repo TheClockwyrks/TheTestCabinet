@@ -13,7 +13,7 @@
 // their FxKind ("muzzle"/"blood"/"impact"/"fire"/"explosion"/"dust"), and the .wav clips
 // by their cue name plus the two looped beds ("ambient", "music").
 
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { Cue, FxKind } from "./types";
 
 const pngUrls = import.meta.glob<string>("../assets/**/*.png", { eager: true, query: "?url", import: "default" });

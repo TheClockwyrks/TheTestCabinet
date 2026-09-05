@@ -29,7 +29,7 @@
 // rather than as part of the verdict.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WallClock } from "@test-cabinet/simple-2d";
+import { WallClock } from "@clockwyrks/simple-2d";
 import { BANNER_TIME } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {

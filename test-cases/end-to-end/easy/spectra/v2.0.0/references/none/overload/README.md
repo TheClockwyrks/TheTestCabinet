@@ -45,7 +45,7 @@ This is a self-contained static web app — plain **TypeScript** drawing to an
 **HTML5 canvas**, bundled with **Vite**, standing on no engine. The ship and the
 three drones are drawn from the seeded sprite art under `assets/`, and a destroyed
 drone pops with the seeded particle system played through
-`@test-cabinet/particle-runtime`; the field, the bullets, the discharge, the HUD
+`@clockwyrks/particle-runtime`; the field, the bullets, the discharge, the HUD
 and every screen are drawn in code, and the ten audio cues are synthesized on the
 spot with the Web Audio API. No backend, accounts, network calls or API keys.
 
@@ -103,15 +103,15 @@ npm test            # vitest run --coverage
 
 This project's `package.json` depends on the repository's own packages by
 relative `file:` paths, **eight levels up** from here, so it builds against
-current source rather than against a vendored copy. `@test-cabinet/run-record` is
-declared even though nothing in Spectra imports it: `@test-cabinet/particle-runtime`
+current source rather than against a vendored copy. `@clockwyrks/run-record` is
+declared even though nothing in Spectra imports it: `@clockwyrks/particle-runtime`
 re-exports a type from it, so a `file:` install of the runtime otherwise leaves
 `tsc` reaching for a package npm would try to fetch from the registry. Build the
 repository's packages first (`npm ci && npm run build:packages` at the repository
 root).
 
 A run never needs any of this: the package store stages the transitive closure
-into `.tcab/packages/` and rewrites the dependency to a path inside it.
+into `.vendor/packages/` and rewrites the dependency to a path inside it.
 
 ## How the source is laid out
 

@@ -11,8 +11,8 @@
 // yaw marks.
 
 import * as THREE from "three";
-import type { PartMesh } from "@test-cabinet/voxel-runtime";
-import { buildPartGeometry } from "@test-cabinet/voxel-runtime/three";
+import type { PartMesh } from "@clockwyrks/voxel-runtime";
+import { buildPartGeometry } from "@clockwyrks/voxel-runtime/three";
 import type { ModelName } from "./assets";
 import { CREAK_THRESHOLD, LATTICE_PITCH, VOXELS_PER_UNIT } from "./constants";
 import { classDimensions, DEG, nodeKey, type Box, type Vec3 } from "./sim";

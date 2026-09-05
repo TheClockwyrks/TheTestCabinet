@@ -15,7 +15,7 @@
 // on the field reports a dash rather than disappearing, so the panel's shape is
 // the same however the field was arranged.
 
-import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
+import type { DiagnosticValue, World } from "@clockwyrks/structured-2d";
 import { BALL_COUNT, TAGS } from "./constants";
 import type { Ball } from "./ball";
 import { ballAt } from "./field";

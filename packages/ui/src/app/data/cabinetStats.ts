@@ -5,8 +5,8 @@
 // this — its `getCabinetStats` asks the backend, whose corpus additionally
 // covers unpublished runs the snapshot cannot hold.
 
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-import type { CabinetStatsResponse } from "@test-cabinet/run-record/backend-api";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+import type { CabinetStatsResponse } from "@clockwyrks/run-record/backend-api";
 import { totalTokens } from "../format";
 
 /** The cabinet's headline figures, as the app consumes them — the wire shape of

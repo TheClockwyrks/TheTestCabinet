@@ -74,7 +74,7 @@ impl FsRepoSeeder {
     }
 
     /// Vendor the case's declared runtime packages — and their transitive
-    /// `@test-cabinet` closure — out of the host package store into
+    /// `@clockwyrks` closure — out of the host package store into
     /// [`TCAB_VENDOR_DIR`](crate::test_case::TCAB_VENDOR_DIR) inside `repo`.
     ///
     /// The case's own workspace `package.json` already declares each one as the
@@ -90,9 +90,9 @@ impl FsRepoSeeder {
     ///
     /// Three things happen here, and only here:
     ///
-    /// 1. the engine's package and its `@test-cabinet` closure are copied into
+    /// 1. the engine's package and its `@clockwyrks` closure are copied into
     ///    [`TCAB_ENGINE_DIR`](crate::test_case::TCAB_ENGINE_DIR) — a *separate*
-    ///    tree from the case's own `.tcab/packages`, so the produced repository
+    ///    tree from the case's own `.vendor/packages`, so the produced repository
     ///    (and its diff) still says which vendored code is the case's and which is
     ///    the run's;
     /// 2. the engine's own documentation is copied to
@@ -118,7 +118,7 @@ impl FsRepoSeeder {
             return Ok(None);
         };
 
-        // The whole `@test-cabinet` closure, exactly as a case's own packages are
+        // The whole `@clockwyrks` closure, exactly as a case's own packages are
         // vendored: the staged engine package references its siblings by relative
         // `file:` paths, which only resolve if the siblings land beside it.
         let roots = [package.to_string()];
@@ -159,13 +159,13 @@ impl FsRepoSeeder {
         Ok(Some(version))
     }
 
-    /// Copy `roots` and their transitive `@test-cabinet` dependency closure out of
+    /// Copy `roots` and their transitive `@clockwyrks` dependency closure out of
     /// the host package store into `dest_root`, one directory per package name.
     ///
     /// Shared by the two things that vendor out of that store — a case's declared
     /// `packages` and the run's engine — because the walk is the same walk and
     /// only the destination differs. The staged packages reference their
-    /// `@test-cabinet` siblings by a relative `file:` path (for example
+    /// `@clockwyrks` siblings by a relative `file:` path (for example
     /// particle-runtime → `file:../run-record`), so copying the whole closure into
     /// one directory layout preserves those links; the dependent's `package.json`
     /// then resolves the top-level package by the in-repo relative path it was
@@ -190,7 +190,7 @@ impl FsRepoSeeder {
                 )));
             }
             copy_into(&src, &dest_root.join(&name))?;
-            // Follow the package's own `@test-cabinet` dependencies so the whole
+            // Follow the package's own `@clockwyrks` dependencies so the whole
             // closure lands and every relative `file:` link inside it resolves.
             for dep in tcab_dependencies(&src)? {
                 queue.push(dep);
@@ -1109,8 +1109,8 @@ fn init_repo(repo: &Path) -> Result<String> {
     git(repo, &["init", "--quiet", "--initial-branch", "main"])?;
     // Use repository-local identity so seeding does not depend on the host's
     // global git configuration.
-    git(repo, &["config", "user.name", "The Test Cabinet"])?;
-    git(repo, &["config", "user.email", "runs@test-cabinet.invalid"])?;
+    git(repo, &["config", "user.name", "Clockwyrks"])?;
+    git(repo, &["config", "user.email", "runs@clockwyrks.invalid"])?;
     // Directories that live in the workspace but are not part of what the model is
     // building, and so must never be tracked. See `exclude_from_git` for why this is
     // `.git/info/exclude` rather than a committed `.gitignore`.
@@ -1131,7 +1131,7 @@ fn init_repo(repo: &Path) -> Result<String> {
     }
     exclude_from_git(repo, &excluded)?;
     git(repo, &["add", "--all"])?;
-    // Vendored code lives under `.tcab/` and carries `dist/` subtrees; a case's own
+    // Vendored code lives under `.vendor/` and carries `dist/` subtrees; a case's own
     // `.gitignore` (which ignores `dist/` for its build output) would otherwise
     // exclude it from `add --all`. Force it in so the produced repository is
     // self-contained and installable — an unforced `dist/` would leave the published
@@ -1382,10 +1382,10 @@ pub(crate) fn audio_store_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(crate::test_case::TCAB_AUDIO_STORE_DIR))
 }
 
-/// The `@test-cabinet/*` dependency names declared in a staged package's
+/// The `@clockwyrks/*` dependency names declared in a staged package's
 /// `package.json` — the edges the vendoring closure walk follows. A package with
 /// no such dependencies (or an unreadable/oddly-shaped manifest) contributes no
-/// edges; only names under the `@test-cabinet/` scope are followed, since those
+/// edges; only names under the `@clockwyrks/` scope are followed, since those
 /// are the siblings that also live in the store.
 fn tcab_dependencies(package_dir: &Path) -> Result<Vec<String>> {
     let manifest = package_dir.join("package.json");
@@ -1406,7 +1406,7 @@ fn tcab_dependencies(package_dir: &Path) -> Result<Vec<String>> {
         .and_then(|v| v.as_object())
         .into_iter()
         .flat_map(|map| map.keys())
-        .filter(|name| name.starts_with("@test-cabinet/"))
+        .filter(|name| name.starts_with("@clockwyrks/"))
         .cloned()
         .collect();
     Ok(deps)

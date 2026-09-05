@@ -1,7 +1,7 @@
 import { Link, useParams } from "react-router";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunRecord } from "@clockwyrks/run-record";
 import type { StoredReview } from "../../../../client/types";
-import { Markdown, Panel } from "@test-cabinet/ui";
+import { Markdown, Panel } from "@clockwyrks/ui";
 import { useAuth } from "../../../../client/auth";
 import { useGalleryData } from "../../../data/galleryContext";
 import { useReviewModel } from "../../../data/useRunVariant";

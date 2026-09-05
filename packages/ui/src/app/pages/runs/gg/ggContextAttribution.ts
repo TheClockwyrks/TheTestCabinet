@@ -61,7 +61,7 @@
 // `known: false` and every list is empty, which is what lets a view say "not recorded"
 // rather than "nothing was used".
 
-import type { GgContextSource } from "@test-cabinet/run-record/gg";
+import type { GgContextSource } from "@clockwyrks/run-record/gg";
 import type { ModelPriceLookup } from "./ggCost";
 import type { DerivedGgState, PooledMessage } from "./useGgRunState";
 

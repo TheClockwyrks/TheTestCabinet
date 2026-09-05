@@ -986,7 +986,7 @@ async fn resolve_version_decodes_object_shaped_packages() {
         "engines": [{ "slug": "none" }],
         "testType": "full-stack",
         "packages": [
-            { "name": "@test-cabinet/particle-runtime", "description": "produced-effect runtime" }
+            { "name": "@clockwyrks/particle-runtime", "description": "produced-effect runtime" }
         ],
         "promptTemplate": "",
         "commonSpecs": [],
@@ -1002,7 +1002,7 @@ async fn resolve_version_decodes_object_shaped_packages() {
         .await
         .expect("resolve version");
 
-    assert_eq!(version.packages, vec!["@test-cabinet/particle-runtime"]);
+    assert_eq!(version.packages, vec!["@clockwyrks/particle-runtime"]);
 }
 
 #[tokio::test]

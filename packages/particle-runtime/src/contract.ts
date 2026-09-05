@@ -9,12 +9,12 @@
  * `apps/docs/.../testing/asset-generation/particle-binaries.md`). The one shared enum
  * that already exists in the generated package — {@link InterpSpec}, the F-curve
  * interpolation — is re-exported from there so there is a single source of truth for
- * it, exactly as `@test-cabinet/voxel-runtime`'s contract re-exports the rig types.
+ * it, exactly as `@clockwyrks/voxel-runtime`'s contract re-exports the rig types.
  */
 
-import type { InterpSpec } from "@test-cabinet/run-record";
+import type { InterpSpec } from "@clockwyrks/run-record";
 
-export type { InterpSpec } from "@test-cabinet/run-record";
+export type { InterpSpec } from "@clockwyrks/run-record";
 
 /** A real 3-vector `[x, y, z]`. In a 2D system every `z` is `0`. */
 export type Vec3 = [number, number, number];

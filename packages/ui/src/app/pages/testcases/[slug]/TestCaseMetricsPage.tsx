@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import {
   canonicalModelId,
   ChartSortControl,
@@ -9,7 +9,7 @@ import {
   RatingsChartWidget,
   type ChartSort,
   type RatingCounts,
-} from "@test-cabinet/ui";
+} from "@clockwyrks/ui";
 import {
   AnchoredScopeControls,
   useAnchoredScope,

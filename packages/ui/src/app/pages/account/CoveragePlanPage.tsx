@@ -11,8 +11,8 @@ import type {
   HaltResult,
   TopUpBlocked,
   TopUpResult,
-} from "@test-cabinet/run-record/coverage";
-import type { GgCapabilitySet } from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/coverage";
+import type { GgCapabilitySet } from "@clockwyrks/run-record/gg";
 import type { BackendClient, WorkerClient } from "../../../client/clients";
 import type { InProgressRun } from "../../../client/types";
 import { useAuth } from "../../../client/auth";

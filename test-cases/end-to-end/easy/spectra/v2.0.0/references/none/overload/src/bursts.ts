@@ -2,7 +2,7 @@
 //
 // `assets/drone-burst.json` is the effect a destroyed drone pops with, and
 // `specs/assets.md` is explicit that it is PLAYED: the build hands it to
-// `@test-cabinet/particle-runtime`'s pure `ParticleSimulator`, steps that
+// `@clockwyrks/particle-runtime`'s pure `ParticleSimulator`, steps that
 // simulation, and draws the particles it reports.
 //
 // The pure simulator rather than the package's canvas player, for two reasons. It
@@ -20,7 +20,7 @@ import {
   ParticleSimulator,
   type ParticleSystem,
   type RenderParticle,
-} from "@test-cabinet/particle-runtime";
+} from "@clockwyrks/particle-runtime";
 import { BURST_DURATION, BURST_FIELD, MAX_BURSTS } from "./constants";
 import { nextSeed } from "./rng";
 import type { SpectraState } from "./types";

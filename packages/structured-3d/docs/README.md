@@ -1,6 +1,6 @@
 # Structured 3D
 
-`@test-cabinet/structured-3d` is the runtime a 3D browser game is built inside.
+`@clockwyrks/structured-3d` is the runtime a 3D browser game is built inside.
 Where a minimal engine hands a game a loop and a renderer, this one hands it an
 object model and owns everything around it: the frame loop, engine-owned
 rendering over three.js with the 2D screen layer composited over it, volumetric
@@ -61,12 +61,12 @@ import {
   PacedClock,
   createEngine,
   vec3,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import type {
   Engine,
   GameDefinition,
   InitApi,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 ```
 
 ## `three` is the build's own
@@ -288,8 +288,8 @@ import {
   MeshComponent,
   createEngine,
   vec3,
-} from "@test-cabinet/structured-3d";
-import type { GameDefinition } from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
+import type { GameDefinition } from "@clockwyrks/structured-3d";
 
 const LIMIT = 6;
 const SPEED = 4;

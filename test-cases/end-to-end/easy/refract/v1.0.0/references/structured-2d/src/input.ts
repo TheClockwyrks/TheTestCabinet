@@ -12,7 +12,7 @@
 // `src/tracing.ts`, because a beam grows and unwinds node by node as the
 // pointer travels.
 
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 import { ACTIONS, BINDINGS, LAYOUT } from "./constants";
 
 /**

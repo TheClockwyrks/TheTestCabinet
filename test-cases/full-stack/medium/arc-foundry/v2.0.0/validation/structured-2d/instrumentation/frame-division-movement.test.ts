@@ -22,7 +22,7 @@
 // integrate one and step the other, so each is decided by its own check. This one
 // is about the unit.
 
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual, assertLessThan } from "../assert";
 import {

@@ -49,7 +49,7 @@ clone keeps its own skeleton, so two components built from one `Model` pose
 independently rather than walking in lockstep.
 
 ```ts
-import { Actor, ModelComponent, vec3 } from "@test-cabinet/structured-3d";
+import { Actor, ModelComponent, vec3 } from "@clockwyrks/structured-3d";
 import { LAYER } from "./constants";
 import { assets } from "./assets";
 
@@ -83,8 +83,8 @@ clip that is playing. A clip is chosen from the actor's state on every tick, and
 the guard on `animation()` keeps a clip already playing from restarting:
 
 ```ts
-import { length } from "@test-cabinet/structured-3d";
-import type { Vec3 } from "@test-cabinet/structured-3d";
+import { length } from "@clockwyrks/structured-3d";
+import type { Vec3 } from "@clockwyrks/structured-3d";
 
 export class Walker extends Actor {
   velocity: Vec3 = { x: 0, y: 0, z: 0 };
@@ -157,8 +157,8 @@ import {
   Actor,
   ModelComponent,
   quatFromEuler,
-} from "@test-cabinet/structured-3d";
-import type { NodeHandle } from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
+import type { NodeHandle } from "@clockwyrks/structured-3d";
 import { assets } from "./assets";
 
 export class Turret extends Actor {

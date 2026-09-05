@@ -14,7 +14,7 @@
 // frame loop, so it names no frame for a cue to belong to.
 
 import { CUES, type CueName } from "./constants";
-import type { CueSpec, InitApi, WorldAudio } from "@test-cabinet/structured-2d";
+import type { CueSpec, InitApi, WorldAudio } from "@clockwyrks/structured-2d";
 
 /**
  * The ten cues, pitched and shaped to be told apart by ear: a dry tick as a

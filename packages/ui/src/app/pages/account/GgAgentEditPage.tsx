@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
-import type { GgSavedAgentInput } from "@test-cabinet/run-record/gg";
+import type { GgSavedAgentInput } from "@clockwyrks/run-record/gg";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";

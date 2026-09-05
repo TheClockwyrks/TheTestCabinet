@@ -14,7 +14,7 @@
     "test": "vitest run --coverage"
   },
   "dependencies": {
-    "@test-cabinet/voxel-runtime": "file:./.tcab/packages/@test-cabinet/voxel-runtime",
+    "@clockwyrks/voxel-runtime": "file:./.vendor/packages/@clockwyrks/voxel-runtime",
     "three": "~0.182.0"
   },
   "devDependencies": {

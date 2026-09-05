@@ -24,7 +24,7 @@ All paths are under
 - **`draw-sheet` emits one PNG per frame** (`--frame <i>` on every op), never a strip.
 - **Particle systems** are authored with `particle-2d` and its `render` step emits the
   `system.json`; they are **simulated live** in-game through
-  `@test-cabinet/particle-runtime`'s `/canvas` binding — never baked frames or flat
+  `@clockwyrks/particle-runtime`'s `/canvas` binding — never baked frames or flat
   shapes.
 - **Page-relative loading.** Assets are loaded via Vite `import.meta.glob('../assets/
   **/*.{png,wav}', …)` / glob of `fx/*.system.json`, with `base: "./"` — never a
@@ -148,7 +148,7 @@ when idle or broken, so a running ride is visibly alive and a dead one visibly s
 
 Authored with `particle-2d` (`add-emitter`/`set-forces`/`set-particle`/
 `add-subemitter`/`set-timeline`, then `render`). Field ~`128×128`; the game composites
-them at the event's world position via `@test-cabinet/particle-runtime`. Fireworks and
+them at the event's world position via `@clockwyrks/particle-runtime`. Fireworks and
 cleanup are **one-shots**; steam and sparkle are **looping overlays** (`set-timeline
 --loop`) played while a stall/ride is active.
 

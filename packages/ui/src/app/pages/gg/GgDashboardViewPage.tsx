@@ -23,7 +23,7 @@ import { useParams, useSearchParams } from "react-router";
 import type {
   GgDashboard,
   GgQueryResponse,
-} from "@test-cabinet/run-record/gg-query";
+} from "@clockwyrks/run-record/gg-query";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { PageLayout } from "../../components/PageLayout";

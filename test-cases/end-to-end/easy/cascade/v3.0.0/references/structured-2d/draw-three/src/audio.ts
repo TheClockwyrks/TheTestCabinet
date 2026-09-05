@@ -24,7 +24,7 @@
 // light tick for a card turning face-up, a bright rise for a card reaching home,
 // a falling pop for a launch, and a long fanfare for the win.
 
-import type { CueSpec, InitApi, WorldAudio } from "@test-cabinet/structured-2d";
+import type { CueSpec, InitApi, WorldAudio } from "@clockwyrks/structured-2d";
 import { CUES, type CueName } from "./constants";
 
 export const CUE_SPECS: Readonly<Record<CueName, CueSpec>> = {

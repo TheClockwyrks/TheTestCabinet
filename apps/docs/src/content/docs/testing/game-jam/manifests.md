@@ -41,7 +41,7 @@ folder.
 | `experimental` | — | Hide the version until a deployment opts in. |
 | `workspace` | — | Starter workspace directory seeded into the run root. |
 | `init` | — | Command run once after the workspace is seeded, before the harness starts. |
-| `packages` | — | The `@test-cabinet/*` runtime libraries the build imports, as on a full-stack case. |
+| `packages` | — | The `@clockwyrks/*` runtime libraries the build imports, as on a full-stack case. |
 | `engines` | — | The [engines](/components/core/engines/) a run of this jam may select, as on a test case. Defaults to `["none"]`. |
 | `[audio]` | — | The audio packs a run may reach. See below. |
 | `[[review_item]]` | — | Graded review categories. See below. |

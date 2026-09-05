@@ -15,7 +15,7 @@
 // their order, not where they are drawn — so it lives here beside the rest of
 // the look rather than in the case-fixed `src/constants.ts`.
 
-import type { PointerSample } from "@test-cabinet/structured-2d";
+import type { PointerSample } from "@clockwyrks/structured-2d";
 import {
   FIELD_CX,
   FIELD_CY,

@@ -18,7 +18,7 @@
 // until a fetch resolved would fall over on a host that could not reach its
 // files instead of carrying on, quieter, exactly as specified.
 
-import type { CueSpec, InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type { CueSpec, InitApi, UpdateApi } from "@clockwyrks/simple-2d";
 import { BED_PATHS, CUES, CUE_PATHS, type CueName } from "./constants";
 import type { ScreenName } from "./figures";
 

@@ -25,8 +25,8 @@
 // one missing sprite would cost the whole game; instead its lookup answers
 // `null`, the renderer draws the fallback beside it, and `failures()` names it.
 
-import type { LoadApi } from "@test-cabinet/structured-2d";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { LoadApi } from "@clockwyrks/structured-2d";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import { GEM_KINDS, MAX_STRAIN } from "./constants";
 
 /** How many frames each kind's break sheet holds (`gems/break/<kind>/`). */

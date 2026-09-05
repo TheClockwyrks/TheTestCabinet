@@ -7,7 +7,7 @@ node_modules/
 coverage/
 test-results/
 playwright-report/
-.tcab/
+.vendor/
 package-lock.json
 
 # The produced assets under `public/`, which the six asset tools wrote: they

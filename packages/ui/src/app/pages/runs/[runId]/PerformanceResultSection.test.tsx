@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   PerformanceCaseResult,
   PerformanceResult,
-} from "@test-cabinet/run-record";
+} from "@clockwyrks/run-record";
 import type { PerformanceScenarioView } from "../../../data/galleryContext";
 import { PerformanceResultBody } from "./PerformanceResultSection";
 import { PlaybackOverlay } from "./LatticePlaybackSection";

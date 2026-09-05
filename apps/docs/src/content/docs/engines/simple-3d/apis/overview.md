@@ -9,15 +9,15 @@ satisfies these pages; a game and a validator read them as reference.
 
 ## Entry point
 
-The package `@test-cabinet/simple-3d` has one entry point.
+The package `@clockwyrks/simple-3d` has one entry point.
 
 | Specifier | Provides |
 | --- | --- |
-| `@test-cabinet/simple-3d` | `createEngine`, `cloneModel`, the clocks, `TOUCH_LAYOUTS`, the viewport functions, and every type a game names. |
+| `@clockwyrks/simple-3d` | `createEngine`, `cloneModel`, the clocks, `TOUCH_LAYOUTS`, the viewport functions, and every type a game names. |
 
 `three` is a peer dependency of the package. A build declares `three` itself
 and imports it directly where it needs a three object, so the engine, the
-build, and `@test-cabinet/voxel-runtime/three` share one instance. The engine
+build, and `@clockwyrks/voxel-runtime/three` share one instance. The engine
 re-exports nothing from `three`.
 
 A game and a validator both import it. A validator constructs the engine over the

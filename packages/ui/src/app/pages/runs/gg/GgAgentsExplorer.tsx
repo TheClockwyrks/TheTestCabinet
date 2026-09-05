@@ -3,7 +3,7 @@ import type {
   GgAgentApi,
   GgCapabilitySet,
   GgModuleKind,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import { FeedView, type FeedLine } from "../../../components/FeedView";
 import { useAppSettings } from "../../../store/appSettings";
 import runExec from "../RunExec.module.scss";

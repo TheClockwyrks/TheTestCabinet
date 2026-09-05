@@ -64,7 +64,7 @@ import type { GlStub } from "./testing/gl";
  *   out of the encoder, which is a question for a browser with a real codec; the
  *   frame accounting the page asserts is untouched by it.
  * - Imports name the engine's own modules rather than the published package
- *   `@test-cabinet/simple-3d` (this file *is* that package), and `DeepReadonly`
+ *   `@clockwyrks/simple-3d` (this file *is* that package), and `DeepReadonly`
  *   comes from the contract's re-export rather than from `ts-essentials`
  *   directly, which is the same type.
  * - `validation/replay.ts` reaches the Node side through

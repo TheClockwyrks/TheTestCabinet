@@ -6,7 +6,7 @@
 //   * the SHEETS, animated frame by frame — the extraction flash over each core a
 //     run gave up, the maw's swallow over the intake, and the barrel's recoil over
 //     the injector;
-//   * the PARTICLE SYSTEMS, simulated live through `@test-cabinet/particle-runtime`'s
+//   * the PARTICLE SYSTEMS, simulated live through `@clockwyrks/particle-runtime`'s
 //     canvas binding — the extraction burst, the bore detonation, the intake spray,
 //     and the shimmer that separates a grant from an ordinary extraction.
 //
@@ -19,7 +19,7 @@
 // footprint the event calls for; the two maps compose to a uniform scale, so a
 // particle lands exactly where the simulation put it.
 
-import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
+import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
 import type { Assets, SheetName, SystemName } from "./assets";
 import type { ChargeId } from "./constants";
 import type { FxEvent } from "./events";

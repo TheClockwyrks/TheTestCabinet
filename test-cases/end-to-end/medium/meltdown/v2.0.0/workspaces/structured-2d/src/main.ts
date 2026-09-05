@@ -14,7 +14,7 @@
 // so `npx tsc --noEmit` on a freshly seeded workspace fails on the missing
 // module. That failure is the starting point, not a broken seed.
 
-import { createEngine } from "@test-cabinet/structured-2d";
+import { createEngine } from "@clockwyrks/structured-2d";
 import { LAYOUT, STAGE_H, STAGE_W } from "./constants";
 import { BACKGROUND, game } from "./game";
 

@@ -11,7 +11,7 @@
 // action, so `specs/controls.md` leaves it outside `ACTIONS` and this file
 // leaves that key free.
 
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 import { ACTIONS, BINDINGS } from "./constants";
 
 /** Register the eight actions against the keys `BINDINGS` gives them. */

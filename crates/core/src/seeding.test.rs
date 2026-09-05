@@ -188,7 +188,7 @@ fn the_replay_journal_lives_under_the_excluded_dotdir() {
 // ---------------------------------------------------------------------------
 
 /// A fake host package store holding the `simple-2d` engine package and the
-/// `@test-cabinet` sibling it depends on, laid out exactly as
+/// `@clockwyrks` sibling it depends on, laid out exactly as
 /// `scripts/stage-tcab-packages.mjs` stages them: each package under its scoped
 /// name, siblings referenced by a relative `file:` path, build output in `dist/`.
 ///
@@ -197,17 +197,17 @@ fn the_replay_journal_lives_under_the_excluded_dotdir() {
 /// directory its manifest promises, so the missing-docs failure can be exercised.
 fn fake_engine_store(version: &str, docs: bool) -> tempfile::TempDir {
     let store = tempfile::tempdir().expect("store dir");
-    let engine = store.path().join("@test-cabinet/simple-2d");
-    let dep = store.path().join("@test-cabinet/run-record");
+    let engine = store.path().join("@clockwyrks/simple-2d");
+    let dep = store.path().join("@clockwyrks/run-record");
     std::fs::create_dir_all(engine.join("dist")).expect("engine dist");
     std::fs::create_dir_all(dep.join("dist")).expect("dep dist");
     std::fs::write(
         engine.join("package.json"),
         format!(
             r#"{{
-  "name": "@test-cabinet/simple-2d",
+  "name": "@clockwyrks/simple-2d",
   "version": "{version}",
-  "dependencies": {{ "@test-cabinet/run-record": "file:../run-record" }}
+  "dependencies": {{ "@clockwyrks/run-record": "file:../run-record" }}
 }}
 "#
         ),
@@ -220,7 +220,7 @@ fn fake_engine_store(version: &str, docs: bool) -> tempfile::TempDir {
     }
     std::fs::write(
         dep.join("package.json"),
-        r#"{"name":"@test-cabinet/run-record","version":"0.0.0"}"#,
+        r#"{"name":"@clockwyrks/run-record","version":"0.0.0"}"#,
     )
     .expect("dep manifest");
     std::fs::write(dep.join("dist/index.js"), "// types").expect("dep dist file");
@@ -273,7 +273,7 @@ const SEEDED_PACKAGE_JSON: &str = r#"{
   },
   "dependencies": {
     "vite": "^5.0.0",
-    "@test-cabinet/simple-2d": "file:./.tcab/engine/@test-cabinet/simple-2d"
+    "@clockwyrks/simple-2d": "file:./.vendor/engine/@clockwyrks/simple-2d"
   },
   "devDependencies": {
     "typescript": "^5.0.0"
@@ -289,7 +289,7 @@ fn workspace_with_package_json(contents: &str) -> tempfile::TempDir {
 }
 
 /// The whole engine delivery in one pass: the package *and its transitive
-/// `@test-cabinet` closure* land under `.tcab/engine/`, the engine's own
+/// `@clockwyrks` closure* land under `.vendor/engine/`, the engine's own
 /// documentation lands at `engine/`, the staged version comes back to be recorded
 /// on the run, and the workspace `package.json` gains the `file:` dependency —
 /// with every key the case authored still in the position it authored it in, at
@@ -314,18 +314,18 @@ fn vendor_engine_vendors_the_closure_the_docs_and_the_dependency() {
         Some("1.4.2"),
         "the recorded version is the one the staged package declares"
     );
-    let vendored = repo.path().join(".tcab/engine/@test-cabinet");
+    let vendored = repo.path().join(".vendor/engine/@clockwyrks");
     assert!(
         vendored.join("simple-2d/dist/index.js").is_file(),
         "the engine package is vendored, build output included"
     );
     assert!(
         vendored.join("run-record/package.json").is_file(),
-        "the transitive @test-cabinet dependency is vendored too, so the staged \
+        "the transitive @clockwyrks dependency is vendored too, so the staged \
          package's relative `file:` link still resolves"
     );
     assert!(
-        !repo.path().join(".tcab/packages").exists(),
+        !repo.path().join(".vendor/packages").exists(),
         "the engine never lands in the case's own vendor tree"
     );
     assert_eq!(
@@ -358,7 +358,7 @@ fn vendor_engine_creates_a_missing_dependencies_object() {
         r#"{
   "name": "carom",
   "dependencies": {
-    "@test-cabinet/simple-2d": "file:./.tcab/engine/@test-cabinet/simple-2d"
+    "@clockwyrks/simple-2d": "file:./.vendor/engine/@clockwyrks/simple-2d"
   }
 }
 "#,
@@ -377,7 +377,7 @@ fn init_repo_commits_both_the_vendored_packages_and_the_vendored_engine() {
     let repo = workspace_with_package_json("{\n  \"name\": \"carom\"\n}\n");
     std::fs::write(repo.path().join(".gitignore"), "node_modules/\ndist/\n").expect("gitignore");
     seeder
-        .vendor_packages(repo.path(), &["@test-cabinet/run-record".to_string()])
+        .vendor_packages(repo.path(), &["@clockwyrks/run-record".to_string()])
         .expect("vendor the case's packages");
     seeder
         .vendor_engine(repo.path(), &simple_2d())
@@ -387,11 +387,11 @@ fn init_repo_commits_both_the_vendored_packages_and_the_vendored_engine() {
 
     let tracked = git_stdout(repo.path(), &["ls-files"]);
     assert!(
-        tracked.contains(".tcab/packages/@test-cabinet/run-record/dist/index.js"),
+        tracked.contains(".vendor/packages/@clockwyrks/run-record/dist/index.js"),
         "the case's vendored packages are committed despite `dist/`: {tracked}"
     );
     assert!(
-        tracked.contains(".tcab/engine/@test-cabinet/simple-2d/dist/index.js"),
+        tracked.contains(".vendor/engine/@clockwyrks/simple-2d/dist/index.js"),
         "the run's vendored engine is committed despite `dist/`: {tracked}"
     );
     assert!(
@@ -422,7 +422,7 @@ fn vendor_engine_writes_nothing_for_an_engine_with_no_runtime() {
         version, None,
         "an engine with no runtime records no version"
     );
-    assert!(!repo.path().join(".tcab").exists(), "nothing is vendored");
+    assert!(!repo.path().join(".vendor").exists(), "nothing is vendored");
     assert!(!repo.path().join("engine").exists(), "no docs are seeded");
     assert_eq!(
         std::fs::read_to_string(repo.path().join("package.json")).expect("read package.json"),
@@ -447,7 +447,7 @@ fn vendor_engine_errors_when_the_package_is_missing_from_the_store() {
         .expect_err("a missing engine package is an error");
 
     let message = err.to_string();
-    assert!(message.contains("@test-cabinet/simple-2d"), "{message}");
+    assert!(message.contains("@clockwyrks/simple-2d"), "{message}");
     assert!(message.contains("stage-tcab-packages.mjs"), "{message}");
     assert!(message.contains("TCAB_PACKAGE_STORE"), "{message}");
 }
@@ -459,8 +459,8 @@ fn vendor_engine_errors_when_the_package_is_missing_from_the_store() {
 fn vendor_engine_errors_when_the_staged_package_declares_no_version() {
     let store = fake_engine_store("1.0.0", true);
     std::fs::write(
-        store.path().join("@test-cabinet/simple-2d/package.json"),
-        r#"{"name":"@test-cabinet/simple-2d"}"#,
+        store.path().join("@clockwyrks/simple-2d/package.json"),
+        r#"{"name":"@clockwyrks/simple-2d"}"#,
     )
     .expect("rewrite the engine manifest");
     let (_base, seeder) = seeder_for(&store);
@@ -471,7 +471,7 @@ fn vendor_engine_errors_when_the_staged_package_declares_no_version() {
         .expect_err("a versionless engine package is an error");
 
     let message = err.to_string();
-    assert!(message.contains("@test-cabinet/simple-2d"), "{message}");
+    assert!(message.contains("@clockwyrks/simple-2d"), "{message}");
     assert!(message.contains("version"), "{message}");
 }
 

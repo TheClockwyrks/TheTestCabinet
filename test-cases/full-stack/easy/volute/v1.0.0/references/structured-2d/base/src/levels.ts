@@ -10,7 +10,7 @@
 // The produced files are loaded once, by the game instance's `initialize`, since
 // both levels draw and play the same set; neither level has a `load` of its own.
 
-import type { ActorSpec, LevelDefinition } from "@test-cabinet/structured-2d";
+import type { ActorSpec, LevelDefinition } from "@clockwyrks/structured-2d";
 import { Injector, Intake } from "./actors";
 import { INTAKE } from "./channel";
 import { TAGS } from "./constants";

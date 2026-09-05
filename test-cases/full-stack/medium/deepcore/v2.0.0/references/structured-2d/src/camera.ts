@@ -15,7 +15,7 @@
 // early and a brief hop barely leads at all. The lead is driven by TIME rather
 // than by speed, so a slow drift and a fast plunge reach it over the same span.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import {
   CAM_LEAD_MAX,
   CAM_LEAD_RAMP,

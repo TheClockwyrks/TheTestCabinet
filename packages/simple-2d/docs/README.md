@@ -1,6 +1,6 @@
 # Simple 2D
 
-`@test-cabinet/simple-2d` is the runtime a 2D browser game is built on. It owns
+`@clockwyrks/simple-2d` is the runtime a 2D browser game is built on. It owns
 the frame loop, the canvas fit, input, audio, asset loading, the debug overlay,
 and the debug surface a game returns for its caller. The game writes its own
 simulation and its own drawing, and nothing else.
@@ -33,15 +33,15 @@ The engine is an ordinary dependency, already present in the workspace's
 `package.json`:
 
 ```ts
-import { createEngine } from "@test-cabinet/simple-2d";
+import { createEngine } from "@clockwyrks/simple-2d";
 ```
 
 The clock catalogue, the touch layout catalogue, and every type named in these
 pages come from the same entry point:
 
 ```ts
-import { createEngine, ConstantClock, TOUCH_LAYOUTS } from "@test-cabinet/simple-2d";
-import type { CueSpec, Engine, EngineOptions, Game } from "@test-cabinet/simple-2d";
+import { createEngine, ConstantClock, TOUCH_LAYOUTS } from "@clockwyrks/simple-2d";
+import type { CueSpec, Engine, EngineOptions, Game } from "@clockwyrks/simple-2d";
 ```
 
 `DeepReadonly`, the view every reader of a game's state is handed, is the
@@ -220,8 +220,8 @@ poses are written as transitions, so a caller drives one with
 ## The shape of a build
 
 ```ts
-import { createEngine } from "@test-cabinet/simple-2d";
-import type { Game } from "@test-cabinet/simple-2d";
+import { createEngine } from "@clockwyrks/simple-2d";
+import type { Game } from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 interface State {

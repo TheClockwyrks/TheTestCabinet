@@ -9,7 +9,7 @@
 import { createCanvas } from "@napi-rs/canvas";
 import { readFileSync } from "node:fs";
 import { describe, expect, it, afterEach } from "vitest";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import { MINER_H, MINER_W, STAGE_H, STAGE_W, TILE } from "./constants";
 import {
   advanceEffects,

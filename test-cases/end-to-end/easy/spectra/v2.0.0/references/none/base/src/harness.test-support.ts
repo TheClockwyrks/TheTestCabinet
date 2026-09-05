@@ -21,7 +21,7 @@ import {
   type Canvas,
   type SKRSContext2D,
 } from "@napi-rs/canvas";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 
 import { deriveArt, type ArtRasters, type Raster } from "./art";
 import {

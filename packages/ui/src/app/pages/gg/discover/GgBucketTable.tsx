@@ -17,7 +17,7 @@ import type {
   GgAggColumn,
   GgBucket,
   GgGroupKey,
-} from "@test-cabinet/run-record/gg-query";
+} from "@clockwyrks/run-record/gg-query";
 import { formatNumber } from "../query";
 import { ABSENT, formatAggValue, formatBucketKey } from "./cells";
 import styles from "./GgDiscover.module.scss";

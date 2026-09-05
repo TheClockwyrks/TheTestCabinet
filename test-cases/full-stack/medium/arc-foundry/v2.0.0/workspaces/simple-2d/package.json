@@ -14,8 +14,8 @@
     "test": "vitest run --coverage"
   },
   "dependencies": {
-    "@test-cabinet/simple-2d": "file:./.tcab/engine/@test-cabinet/simple-2d",
-    "@test-cabinet/particle-runtime": "file:./.tcab/packages/@test-cabinet/particle-runtime",
+    "@clockwyrks/simple-2d": "file:./.vendor/engine/@clockwyrks/simple-2d",
+    "@clockwyrks/particle-runtime": "file:./.vendor/packages/@clockwyrks/particle-runtime",
     "ts-essentials": "^10.2.1"
   },
   "devDependencies": {

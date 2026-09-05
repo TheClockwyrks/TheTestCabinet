@@ -10,8 +10,8 @@
 // rectangles `src/physics.ts` resolves against, so the picture and the
 // collision cannot drift apart.
 
-import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
-import type { DrawApi } from "@test-cabinet/structured-2d";
+import { Actor, DrawComponent } from "@clockwyrks/structured-2d";
+import type { DrawApi } from "@clockwyrks/structured-2d";
 import {
   FIELD_H,
   NET_X,

@@ -26,7 +26,7 @@ state and returns a plain view of it.
 
 ```ts
 // src/game.ts, as a validator sees it
-import type { Game } from "@test-cabinet/simple-3d";
+import type { Game } from "@clockwyrks/simple-3d";
 import type { DeepReadonly } from "ts-essentials";
 
 export interface Ball {
@@ -259,7 +259,7 @@ import {
   type SurfaceMetrics,
   type Vec3,
   type Viewport,
-} from "@test-cabinet/simple-3d";
+} from "@clockwyrks/simple-3d";
 import { game, type Debug, type Snapshot, type State } from "../src/game";
 
 // The figures the case's specification fixes.
@@ -499,7 +499,7 @@ through the surface, advances, and reads a snapshot back.
 
 ```ts
 // validation/simulation.test.ts
-import { ConstantClock } from "@test-cabinet/simple-3d";
+import { ConstantClock } from "@clockwyrks/simple-3d";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { BALL_RADIUS, COURT_DEPTH, createHarness, type Harness } from "./harness";
 
@@ -557,7 +557,7 @@ case fixes as positional is checked for where it sounded beside when.
 
 ```ts
 // validation/audio.test.ts
-import { ConstantClock, type Vec3 } from "@test-cabinet/simple-3d";
+import { ConstantClock, type Vec3 } from "@clockwyrks/simple-3d";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { BALL_RADIUS, COURT_DEPTH, createHarness, type Harness } from "./harness";
 
@@ -614,7 +614,7 @@ one reports for a posed state.
 
 ```ts
 // validation/diagnostics.test.ts
-import { ConstantClock } from "@test-cabinet/simple-3d";
+import { ConstantClock } from "@clockwyrks/simple-3d";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { createHarness, type Harness } from "./harness";
 
@@ -883,7 +883,7 @@ specification states.
 
 ```ts
 // validation/input.test.ts
-import { ConstantClock } from "@test-cabinet/simple-3d";
+import { ConstantClock } from "@clockwyrks/simple-3d";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { COURT_DEPTH, PADDLE_LENGTH, createHarness, type Harness } from "./harness";
 
@@ -956,7 +956,7 @@ from it and the suite needs no name of its own.
 ```ts
 // validation/replay.ts
 import { commands } from "@vitest/browser/context";
-import type { Recording } from "@test-cabinet/simple-3d";
+import type { Recording } from "@clockwyrks/simple-3d";
 
 declare module "@vitest/browser/context" {
   interface BrowserCommands {
@@ -984,7 +984,7 @@ counter and simulated time for each video frame.
 
 ```ts
 // validation/recording.test.ts
-import { ConstantClock } from "@test-cabinet/simple-3d";
+import { ConstantClock } from "@clockwyrks/simple-3d";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { FIELD_HEIGHT, FIELD_WIDTH, createHarness, type Harness } from "./harness";
 import { emitReplay } from "./replay";

@@ -14,7 +14,7 @@
 // places two as furniture, standing where the title-screen state says; the
 // match level's arrive through possession, one per participant, from the mode.
 
-import type { ActorSpec, LevelDefinition } from "@test-cabinet/structured-2d";
+import type { ActorSpec, LevelDefinition } from "@clockwyrks/structured-2d";
 import { FIELD_CY, TAGS } from "./constants";
 import { GameClock } from "./game-clock";
 import { Hud } from "./hud";

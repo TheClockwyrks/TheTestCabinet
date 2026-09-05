@@ -9,7 +9,7 @@
 // `BINDINGS` gives it. Nothing binds `Backquote`: the debug overlay's toggle is
 // the engine's own chrome rather than one of Shatter's actions.
 
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 import { ACTIONS, BINDINGS } from "./constants";
 
 /** Register every action Shatter answers to. */

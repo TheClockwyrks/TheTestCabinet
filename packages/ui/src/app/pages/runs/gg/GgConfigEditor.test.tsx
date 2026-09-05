@@ -24,7 +24,7 @@
 import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { GgSavedAgent } from "@test-cabinet/run-record/gg";
+import type { GgSavedAgent } from "@clockwyrks/run-record/gg";
 import { GgConfigEditor } from "./GgConfigEditor";
 import {
   BUILT_IN_SKILL_OPTIONS,

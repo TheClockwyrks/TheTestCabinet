@@ -4,7 +4,7 @@
 // WHAT THE SPECIFICATION FIXES. `specs/assets.md` puts the impact spark at
 // `assets/particles/spark.json`, "produced with `particle-2d` as a
 // `system.json`", fired at "the contact point of a paddle, containment, or
-// shield reflection", and played "through `@test-cabinet/particle-runtime`, an
+// shield reflection", and played "through `@clockwyrks/particle-runtime`, an
 // installed dependency imported by its bare name", where "a player is
 // constructed over a parsed system" and "the package's own types are the
 // authoritative API". So the file exists, it parses as JSON, and the runtime's
@@ -47,7 +47,7 @@ it("ships a spark system the particle runtime accepts", async () => {
 
   if (system === null) {
     fail(
-      `${FILE} parsing as a particle system @test-cabinet/particle-runtime accepts`,
+      `${FILE} parsing as a particle system @clockwyrks/particle-runtime accepts`,
       reason,
     );
   }

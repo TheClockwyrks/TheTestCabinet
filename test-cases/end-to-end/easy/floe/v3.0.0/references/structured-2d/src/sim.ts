@@ -16,7 +16,7 @@
 // from there, so a scenario driven from code behaves exactly like one played by
 // hand.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import {
   BAYFILL_PAUSE,
   BAY_COUNT,

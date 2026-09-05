@@ -40,7 +40,7 @@
 // carried by its own velocity and by the well, so where it ends up is a reading
 // of the ticks that actually ran.
 
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { TICK_DT } from "../constants";
 import { assertLessThanOrEqual } from "../assert";

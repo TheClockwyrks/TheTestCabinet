@@ -1,5 +1,5 @@
 /**
- * `@test-cabinet/structured-2d` — the **Structured 2D** engine: the runtime a
+ * `@clockwyrks/structured-2d` — the **Structured 2D** engine: the runtime a
  * produced 2D game is built *inside*.
  *
  * Where the Simple family hands a game a loop and a context, this engine hands

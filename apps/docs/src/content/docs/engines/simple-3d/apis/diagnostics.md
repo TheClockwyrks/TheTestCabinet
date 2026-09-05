@@ -200,4 +200,4 @@ A number that is not finite displays as `NaN`, `Infinity`, or `-Infinity`.
 ## Exports
 
 `DiagnosticValue`, `DiagnosticReading`, and `FrameMetrics` are exported as types
-from `@test-cabinet/simple-3d`.
+from `@clockwyrks/simple-3d`.

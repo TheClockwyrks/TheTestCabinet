@@ -3,7 +3,7 @@ node_modules/
 
 # Production build output — produced by `npm run build`. Every pattern here is
 # ANCHORED to the repository root on purpose: the produced-effect runtime is
-# vendored into this repository under `.tcab/`, prebuilt, and its own `dist/` is
+# vendored into this repository under `.vendor/`, prebuilt, and its own `dist/` is
 # committed with the seed. An unanchored `dist/` would match that directory too
 # and leave the build unable to resolve the package.
 /dist/

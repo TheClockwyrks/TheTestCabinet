@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../../apps/desktop/dist",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "npm run dev -w @test-cabinet/desktop",
-    "beforeBuildCommand": "npm run build -w @test-cabinet/desktop"
+    "beforeDevCommand": "npm run dev -w @clockwyrks/desktop",
+    "beforeBuildCommand": "npm run build -w @clockwyrks/desktop"
   },
   "app": {
     "windows": [

@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
-import { GalleryApp, GalleryDataProvider } from "@test-cabinet/ui/app";
+import { GalleryApp, GalleryDataProvider } from "@clockwyrks/ui/app";
 import { useStaticGallery } from "./staticGallery";
 
 // A deep link such as /runs/<id> arrives at its own URL: with no `404.html` in the
@@ -13,7 +13,7 @@ if (!rootElement) {
   throw new Error("Missing #root element");
 }
 
-// The static gallery: the shared app (from @test-cabinet/ui) rendered with the
+// The static gallery: the shared app (from @clockwyrks/ui) rendered with the
 // build-time snapshot as its data source. Its global styles come in as a side
 // effect of importing the shared app entry.
 function SiteApp() {

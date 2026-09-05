@@ -45,7 +45,7 @@ import {
 } from "./flow";
 import { heldOnly, type FrameInput } from "./input";
 import { highlightedItem, itemAt, menuOf } from "./menus";
-import type { PointerSample } from "@test-cabinet/simple-2d";
+import type { PointerSample } from "@clockwyrks/simple-2d";
 
 import type { Screen } from "./game";
 import type { FrameEvents, Sim } from "./sim";

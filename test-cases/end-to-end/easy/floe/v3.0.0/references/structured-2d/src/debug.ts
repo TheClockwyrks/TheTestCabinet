@@ -22,7 +22,7 @@
 // key. And there is no `setMuted`: mute is reached through the mute action, and
 // `muted` is read back from the snapshot.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import {
   BAY_COUNT,
   DEFAULT_SEED,

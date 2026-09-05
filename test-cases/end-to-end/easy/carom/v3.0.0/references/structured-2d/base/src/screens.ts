@@ -11,8 +11,8 @@
 // table the pointer hit-tests against and `menuItemRect` reports, so a player's
 // eye, a finger, and a check all agree on where an item is.
 
-import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
-import type { DrawApi, RenderMode } from "@test-cabinet/structured-2d";
+import { Actor, DrawComponent } from "@clockwyrks/structured-2d";
+import type { DrawApi, RenderMode } from "@clockwyrks/structured-2d";
 import { ballOf } from "./ball";
 import {
   FIELD_CX,

@@ -17,7 +17,7 @@
 // `specs/ui.md` and `specs/assets.md` state what must be legible, and how the
 // hall looks is the build's to design.
 
-import type { ActionBinding } from "@test-cabinet/structured-2d";
+import type { ActionBinding } from "@clockwyrks/structured-2d";
 
 // ---- Field ---------------------------------------------------------------
 

@@ -24,7 +24,7 @@ import type {
  * The documentation's "Pawns and Controllers" example, transcribed and run.
  *
  * The sections below are the example's own modules, verbatim except for the
- * import paths (the example imports `@test-cabinet/structured-2d`; here that is
+ * import paths (the example imports `@clockwyrks/structured-2d`; here that is
  * `./index`). The example's `main.ts` is reproduced inside the harness, with
  * only what a test environment forces: the canvas comes from jsdom with a
  * stubbed 2D context, a `SurfaceMetrics` supplies the measurements and the key

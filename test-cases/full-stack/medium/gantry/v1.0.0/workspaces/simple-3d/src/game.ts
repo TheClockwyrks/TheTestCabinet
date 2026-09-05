@@ -70,7 +70,7 @@ import type {
   InitApi,
   RenderApi,
   UpdateApi,
-} from "@test-cabinet/simple-3d";
+} from "@clockwyrks/simple-3d";
 
 /**
  * The stage background, a CSS color string. `src/main.ts` hands it to the

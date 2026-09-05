@@ -8,7 +8,7 @@
 // array.
 
 import { describe, expect, it } from "vitest";
-import type { PointerSample } from "@test-cabinet/structured-2d";
+import type { PointerSample } from "@clockwyrks/structured-2d";
 import {
   HOWTO_ITEMS,
   itemAtPoint,

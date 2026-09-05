@@ -26,7 +26,7 @@
 // an edge at, and the ticks that follow are what the request rides into
 // (specs/controls.md).
 
-import type { Game, UpdateApi } from "@test-cabinet/simple-2d";
+import type { Game, UpdateApi } from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 import {
   ACTIONS,

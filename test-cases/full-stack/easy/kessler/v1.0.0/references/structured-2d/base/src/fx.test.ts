@@ -11,7 +11,7 @@ import { fxOf } from "./actors";
 import { loadAssets } from "./assets";
 import { createHarness, type Harness } from "./harness";
 import { pointAt } from "./polar";
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 
 /** A loader over the repository's own files: systems load, images do not. */
 const diskApi: Pick<InitApi, "assets"> = {

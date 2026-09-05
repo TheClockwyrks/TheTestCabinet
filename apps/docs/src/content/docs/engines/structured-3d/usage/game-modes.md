@@ -10,7 +10,7 @@ over. A level names the class, and the engine constructs it, ticks it, and ends
 its play with the world.
 
 ```ts
-import { GameMode } from "@test-cabinet/structured-3d";
+import { GameMode } from "@clockwyrks/structured-3d";
 import { PaddlePawn } from "./actors";
 import { PaddleController } from "./controllers";
 import { RallyPlayerState, RallyState } from "./state";
@@ -48,7 +48,7 @@ The level registry names the mode class, and the engine constructs it with
 whatever `world.open` was given.
 
 ```ts
-import type { GameDefinition } from "@test-cabinet/structured-3d";
+import type { GameDefinition } from "@clockwyrks/structured-3d";
 import { Ball, Net } from "./actors";
 import { RallyMode } from "./rally-mode";
 import { TitleMode } from "./title-mode";
@@ -106,7 +106,7 @@ participant counts by subclassing `PlayerState`. Both are plain classes, so a
 field with an initializer is all a figure needs.
 
 ```ts
-import { GameState, PlayerState } from "@test-cabinet/structured-3d";
+import { GameState, PlayerState } from "@clockwyrks/structured-3d";
 
 export class RallyState extends GameState {
   rallies = 0;
@@ -210,7 +210,7 @@ import {
   vec3,
   type Controller,
   type Transform,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { COURT, MARGIN } from "./constants";
 
 spawnPoint(controller: Controller): Transform {
@@ -238,7 +238,7 @@ pawn and the pawn it lost, so a mode reads the pawn's last transform before
 deciding what to do.
 
 ```ts
-import type { Controller, Pawn } from "@test-cabinet/structured-3d";
+import type { Controller, Pawn } from "@clockwyrks/structured-3d";
 import { Debris } from "./actors";
 import { RESPAWN_DELAY, TARGET_SCORE } from "./constants";
 import type { RallyPlayerState } from "./state";
@@ -280,7 +280,7 @@ The options are read by the incoming mode as `this.options`, typed as unknown
 values, so the receiving mode narrows what it uses.
 
 ```ts
-import { GameMode } from "@test-cabinet/structured-3d";
+import { GameMode } from "@clockwyrks/structured-3d";
 import { Banner } from "./actors";
 
 export class TitleMode extends GameMode {

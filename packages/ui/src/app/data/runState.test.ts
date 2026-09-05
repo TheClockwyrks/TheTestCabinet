@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { RunState } from "@test-cabinet/run-record";
+import type { RunState } from "@clockwyrks/run-record";
 import {
   describeRunState,
   hasPlayableOutcome,

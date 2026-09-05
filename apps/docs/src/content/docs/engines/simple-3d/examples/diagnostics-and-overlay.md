@@ -30,7 +30,7 @@ values are readable from outside the page while the game runs.
 ## src/main.ts
 
 ```ts
-import { createEngine } from "@test-cabinet/simple-3d";
+import { createEngine } from "@clockwyrks/simple-3d";
 import { rally } from "./game";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
@@ -60,7 +60,7 @@ import type {
   InitApi,
   RenderApi,
   UpdateApi,
-} from "@test-cabinet/simple-3d";
+} from "@clockwyrks/simple-3d";
 import type { DeepReadonly } from "ts-essentials";
 
 const BALL = 0.4;

@@ -11,7 +11,7 @@
 // — a fresh, wholly owned, mutable state — writes the field it is about, and
 // returns it. The state it was handed is left exactly as it was.
 
-import type { DeepReadonly } from "@test-cabinet/simple-3d";
+import type { DeepReadonly } from "@clockwyrks/simple-3d";
 import type { Obstacle, SiteLoad } from "./constants";
 import { SITES } from "./constants";
 import type {

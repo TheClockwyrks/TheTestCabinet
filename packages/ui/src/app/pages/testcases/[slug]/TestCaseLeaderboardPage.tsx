@@ -1,6 +1,6 @@
 import { useMemo, useRef, type CSSProperties, type ReactNode } from "react";
-import { AestheticBadge, GradeBadge, RatingBadge } from "@test-cabinet/ui";
-import { Panel } from "@test-cabinet/ui";
+import { AestheticBadge, GradeBadge, RatingBadge } from "@clockwyrks/ui";
+import { Panel } from "@clockwyrks/ui";
 import {
   AnchoredScopeControls,
   useAnchoredScope,

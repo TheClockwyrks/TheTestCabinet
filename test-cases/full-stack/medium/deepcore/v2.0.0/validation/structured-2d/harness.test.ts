@@ -38,7 +38,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import type { Recording } from "@test-cabinet/structured-2d";
+import type { Recording } from "@clockwyrks/structured-2d";
 import {
   BAND_HEALTH,
   CAVE_MOUTH_COL,

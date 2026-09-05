@@ -42,7 +42,7 @@
 // likes, and an operation taking an object would make this case's layout a
 // requirement on it.
 
-import type { DeepReadonly } from "@test-cabinet/simple-3d";
+import type { DeepReadonly } from "@clockwyrks/simple-3d";
 
 /* -------------------------------------------------------------------------- */
 /* The state, as far as a validator is concerned                              */

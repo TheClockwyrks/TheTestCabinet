@@ -62,7 +62,7 @@ and its own defaults; `world`, `options`, and `state` are assigned before
 `pawnDied` do nothing, so a mode overrides only what it needs.
 
 ```ts
-import { GameMode } from "@test-cabinet/structured-2d";
+import { GameMode } from "@clockwyrks/structured-2d";
 import { PaddlePawn } from "./actors";
 import { PaddleController } from "./controllers";
 import { RallyPlayerState, RallyState } from "./state";
@@ -165,7 +165,7 @@ subclassing `GameState`, and what each participant counts by subclassing
 figure needs.
 
 ```ts
-import { GameState, PlayerState } from "@test-cabinet/structured-2d";
+import { GameState, PlayerState } from "@clockwyrks/structured-2d";
 
 export class RallyState extends GameState {
   rallies = 0;
@@ -260,7 +260,7 @@ The options are read by the incoming mode as `this.options`, typed as unknown
 values, so the receiving mode narrows what it uses:
 
 ```ts
-import { GameMode } from "@test-cabinet/structured-2d";
+import { GameMode } from "@clockwyrks/structured-2d";
 import { Banner } from "./actors";
 
 export class TitleMode extends GameMode {

@@ -76,8 +76,8 @@
 // no material of its own, so those meshes arrive on the loader's default one,
 // which is yours to replace.
 
-import { GameInstance, GameMode } from "@test-cabinet/structured-3d";
-import type { GameDefinition, InitApi } from "@test-cabinet/structured-3d";
+import { GameInstance, GameMode } from "@clockwyrks/structured-3d";
+import type { GameDefinition, InitApi } from "@clockwyrks/structured-3d";
 /**
  * The stage background, a CSS color string. `src/main.ts` hands it to the
  * engine as the color the whole canvas is cleared to each frame, so the

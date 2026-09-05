@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Markdown } from "@test-cabinet/ui";
+import { Markdown } from "@clockwyrks/ui";
 import type {
   SeededInput,
   VariantSummary,

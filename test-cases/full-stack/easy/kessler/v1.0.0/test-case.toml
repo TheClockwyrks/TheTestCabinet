@@ -83,7 +83,7 @@ max_runtime_hours = 6
 
 # Init command, run in the run container once the workspace and specs are seeded and
 # before the harness starts. `npm install` — NOT `npm ci` — because `packages` injects
-# the `@test-cabinet/particle-runtime` `file:` dependency this build plays its produced
+# the `@clockwyrks/particle-runtime` `file:` dependency this build plays its produced
 # particle systems with, and an engine run has its engine package vendored in the same
 # way, so the lockfile is completed at seed time; the same command downloads the
 # Playwright Chromium build (the base image ships the OS libraries Chromium links
@@ -99,7 +99,7 @@ init = "npm install && npx playwright install chromium"
 # captured from the build itself.
 
 # Test Cabinet runtime libraries installed into the run so the build can play the
-# particle systems it produces. `@test-cabinet/particle-runtime` is the same library
+# particle systems it produces. `@clockwyrks/particle-runtime` is the same library
 # the review UI plays a produced effect with; core bakes it into the run image and the
 # seeded workspace `package.json` depends on it via its baked-in `file:` path, so the
 # build imports it (its `/canvas` binding) like any other dependency and plays each
@@ -110,7 +110,7 @@ init = "npm install && npx playwright install chromium"
 # for every engine: neither engine draws particles, and both hand the game a raw 2D
 # context to play a produced system through. (A root key, so it must sit above the
 # first `[table]` header.)
-packages = ["@test-cabinet/particle-runtime"]
+packages = ["@clockwyrks/particle-runtime"]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Kessler offers a single `base` variant — the endless score-attack expedition through
@@ -179,7 +179,7 @@ min_version = "1.0.0"
 # The starter project seeded into the root of every run before the specs, one per
 # engine. All three carry the same TypeScript, lint, format and test configuration
 # the `[toolchain]` commands below run against, an `index.html` holding the
-# 1000x1000 stage canvas, the `@test-cabinet/particle-runtime` dependency `packages`
+# 1000x1000 stage canvas, the `@clockwyrks/particle-runtime` dependency `packages`
 # injects, and the project-local `playwright` dependency the model drives the built
 # game through. What differs is how much of the build is supplied with them.
 #
@@ -353,7 +353,7 @@ source = "specs/controls.md.hbs"
 # and what stays drawn in code. It branches on the engine, because an engineless
 # build loads and decodes its own files while an engine run goes through the engine's
 # asset loader and cue bus (the particle systems play through
-# `@test-cabinet/particle-runtime` on all three). This is the defining spec of a
+# `@clockwyrks/particle-runtime` on all three). This is the defining spec of a
 # full-stack case.
 [[spec]]
 source = "specs/assets.md.hbs"
@@ -2836,21 +2836,21 @@ validation = { script = "assets/ball-frames-distinct.test.ts", outputs = [ { id 
 [[review.categories.items]]
 id = "burst-system-produced"
 title = "The destruction burst system is produced"
-description = "assets/particles/burst.json exists and parses as a particle system @test-cabinet/particle-runtime accepts."
+description = "assets/particles/burst.json exists and parses as a particle system @clockwyrks/particle-runtime accepts."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "assets/burst-system-produced.test.ts", outputs = [ { id = "system", name = "The burst system simulated by the runtime", kind = "image" } ] }
 [[review.categories.items]]
 id = "spark-system-produced"
 title = "The impact spark system is produced"
-description = "assets/particles/spark.json exists and parses as a particle system @test-cabinet/particle-runtime accepts."
+description = "assets/particles/spark.json exists and parses as a particle system @clockwyrks/particle-runtime accepts."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "assets/spark-system-produced.test.ts", outputs = [ { id = "system", name = "The spark system simulated by the runtime", kind = "image" } ] }
 [[review.categories.items]]
 id = "burnup-system-produced"
 title = "The burn-up system is produced"
-description = "assets/particles/burnup.json exists and parses as a particle system @test-cabinet/particle-runtime accepts."
+description = "assets/particles/burnup.json exists and parses as a particle system @clockwyrks/particle-runtime accepts."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "assets/burnup-system-produced.test.ts", outputs = [ { id = "system", name = "The burn-up system simulated by the runtime", kind = "image" } ] }
@@ -2916,7 +2916,7 @@ validation = { script = "assets/sprites-on-transparent-ground.test.ts", outputs 
 [[review.categories.items]]
 id = "particles-played-through-runtime"
 title = "The particle systems play through the runtime"
-description = "The build plays its particle systems through @test-cabinet/particle-runtime's ./canvas binding, imported by its bare name, rather than through a simulator of its own."
+description = "The build plays its particle systems through @clockwyrks/particle-runtime's ./canvas binding, imported by its bare name, rather than through a simulator of its own."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "assets/particles-played-through-runtime.test.ts", outputs = [ { id = "burst", name = "A burst composited by the runtime", kind = "replay" } ] }

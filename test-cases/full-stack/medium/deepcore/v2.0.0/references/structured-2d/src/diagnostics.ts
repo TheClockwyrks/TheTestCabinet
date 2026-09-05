@@ -13,7 +13,7 @@
 // the simulation does. Each line is short enough to read at a glance while the
 // game runs.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { cutProgress } from "./drill";
 import {
   cargoCap,

@@ -5,7 +5,7 @@
 // core an extraction removes | a sharp outward throw in the extracted charge's
 // color, gone almost as fast as it arrives", produced with `particle-2d` as a
 // `system.json` and "played live". The same section fixes how it reaches the
-// screen: "Play them through `@test-cabinet/particle-runtime` ... using its
+// screen: "Play them through `@clockwyrks/particle-runtime` ... using its
 // `./canvas` binding: a player is constructed over a parsed system and a 2D
 // rendering context and advanced each frame with that frame's delta, and it
 // simulates the system and composites the particles itself." So a live burst is

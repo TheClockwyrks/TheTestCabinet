@@ -9,7 +9,7 @@
 //
 // The scoring and aggregation *rules* used to live here too, but they are shared
 // with consumers that must not depend on React — anything computing the same
-// figure outside a browser bundle — so they moved to `@test-cabinet/run-stats` and
+// figure outside a browser bundle — so they moved to `@clockwyrks/run-stats` and
 // are re-exported below. Every existing import of them from this module keeps
 // working; what this module still owns is the **display** metadata that goes with
 // them (labels, emoji, prose descriptions), which is presentation and belongs to
@@ -29,11 +29,11 @@ import type {
   VerdictChange,
   VerdictStatus,
   WriteupChange,
-} from "@test-cabinet/run-record/review";
+} from "@clockwyrks/run-record/review";
 import {
   GRADE_POINTS,
   type GradeStatus,
-} from "@test-cabinet/run-stats/scoring";
+} from "@clockwyrks/run-stats/scoring";
 
 export type {
   AestheticChange,
@@ -53,7 +53,7 @@ export type {
 
 // The scoring rules themselves, re-exported so this module stays the one place
 // the UI reaches for anything rating-related.
-export * from "@test-cabinet/run-stats/scoring";
+export * from "@clockwyrks/run-stats/scoring";
 
 /** Display metadata for a rating tier. */
 export interface RatingMeta {
@@ -166,7 +166,7 @@ export interface GradeMeta {
 
 /**
  * The five graded tiers keyed by status, worst to best. The point values are read
- * from `GRADE_POINTS` in `@test-cabinet/run-stats` rather than restated, so the
+ * from `GRADE_POINTS` in `@clockwyrks/run-stats` rather than restated, so the
  * scale that scores a run and the scale shown beside it can never disagree.
  */
 export const GRADE_META: Record<GradeStatus, GradeMeta> = {

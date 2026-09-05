@@ -1,13 +1,13 @@
 // assets/particles-played-through-runtime — the particle systems play through
 // the runtime.
 //
-// specs/assets.md: "Play them through `@test-cabinet/particle-runtime`, an
+// specs/assets.md: "Play them through `@clockwyrks/particle-runtime`, an
 // installed dependency imported by its bare name, using its `./canvas`
 // binding: a player is constructed over a parsed system and a 2D rendering
 // context ... and it simulates the system and composites the particles
 // itself." Which module plays a system is a fact about the build's SOURCE, so
 // that is where it is read: some source module of the game — not one of the
-// build's own tests — imports `@test-cabinet/particle-runtime/canvas` by its
+// build's own tests — imports `@clockwyrks/particle-runtime/canvas` by its
 // bare name. A build that wrote a simulator of its own has no reason to
 // import the binding, and a build that imports it has the runtime's player as
 // its one way of playing a system.

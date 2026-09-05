@@ -10,7 +10,7 @@
 // and that number can be zero. The vocabulary follows the recording seam — these views never
 // name a tool, because a responses-as-code agent does not call one.
 
-import type { GgAgentApi } from "@test-cabinet/run-record/gg";
+import type { GgAgentApi } from "@clockwyrks/run-record/gg";
 
 const numberFmt = new Intl.NumberFormat("en-US");
 

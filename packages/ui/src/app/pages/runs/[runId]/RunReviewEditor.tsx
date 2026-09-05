@@ -6,7 +6,7 @@ import {
   GradeBadge,
   Panel,
   RatingBadge,
-} from "@test-cabinet/ui";
+} from "@clockwyrks/ui";
 import { routes } from "../../../routes";
 import { useBackend, useWorkers } from "../../../../client/context";
 import { useAuth } from "../../../../client/auth";
@@ -18,7 +18,7 @@ import type {
   StoredReview,
   VerdictStatus,
 } from "../../../../client/types";
-import type { Assertion, RunRecord } from "@test-cabinet/run-record";
+import type { Assertion, RunRecord } from "@clockwyrks/run-record";
 import {
   useGalleryData,
   type ValidationMedia,

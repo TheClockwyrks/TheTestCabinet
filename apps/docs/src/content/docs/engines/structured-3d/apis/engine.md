@@ -383,7 +383,7 @@ observes the start level being built and every transition after it.
 
 ## Exports
 
-`createEngine` is exported as a function from `@test-cabinet/structured-3d`.
+`createEngine` is exported as a function from `@clockwyrks/structured-3d`.
 `EngineOptions`, `SurfaceMetrics`, `Engine`, `RunOptions`, `FrameInfo`,
 `EngineEvents`, and `EngineEventMap` are exported as types from the same
 specifier, as are `Recording` and `RecordedFrame`, the

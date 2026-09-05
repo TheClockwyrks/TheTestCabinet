@@ -14,9 +14,9 @@
     "test": "vitest run --coverage"
   },
   "dependencies": {
-    "@test-cabinet/particle-runtime": "file:../../../../../../../../packages/particle-runtime",
-    "@test-cabinet/run-record": "file:../../../../../../../../packages/run-record",
-    "@test-cabinet/structured-2d": "file:../../../../../../../../packages/structured-2d"
+    "@clockwyrks/particle-runtime": "file:../../../../../../../../packages/particle-runtime",
+    "@clockwyrks/run-record": "file:../../../../../../../../packages/run-record",
+    "@clockwyrks/structured-2d": "file:../../../../../../../../packages/structured-2d"
   },
   "devDependencies": {
     "@eslint/js": "^9",

@@ -53,7 +53,7 @@ component of the game's own, and writing `offset` moves that piece relative to
 its actor:
 
 ```ts
-import { Component, vec3 } from "@test-cabinet/structured-3d";
+import { Component, vec3 } from "@clockwyrks/structured-3d";
 
 export class Bob extends Component {
   private elapsed = 0;
@@ -320,7 +320,7 @@ any other.
 
 ```ts
 import * as THREE from "three";
-import { Actor, Object3DComponent } from "@test-cabinet/structured-3d";
+import { Actor, Object3DComponent } from "@clockwyrks/structured-3d";
 
 export class Plume extends Actor {
   constructor() {
@@ -457,7 +457,7 @@ whatever the camera does. A scoreboard that shows live figures writes `text`
 from a tick:
 
 ```ts
-import { Actor, TextComponent, vec3 } from "@test-cabinet/structured-3d";
+import { Actor, TextComponent, vec3 } from "@clockwyrks/structured-3d";
 import { LAYER } from "./constants";
 
 export class Scoreboard extends Actor {

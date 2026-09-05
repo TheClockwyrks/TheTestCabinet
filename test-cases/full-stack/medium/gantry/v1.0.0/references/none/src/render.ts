@@ -20,7 +20,7 @@
 // input still reaches the runtime layer's canvas untouched.
 
 import * as THREE from "three";
-import type { PartMesh } from "@test-cabinet/voxel-runtime";
+import type { PartMesh } from "@clockwyrks/voxel-runtime";
 import type { ModelName } from "./assets";
 import { applyClick, pick, type EditOutcome, type Pick } from "./editor";
 import type { Vec3 } from "./sim";

@@ -13,11 +13,11 @@
 // actually laid out — `cap.*`, `tool.*`, `summary.*`, `metric.*` — and a flat list of
 // several hundred names is a list nobody reads.
 import { useMemo, useState } from "react";
-import { Spinner } from "@test-cabinet/ui";
+import { Spinner } from "@clockwyrks/ui";
 import type {
   GgFieldCatalog,
   GgFieldInfo,
-} from "@test-cabinet/run-record/gg-query";
+} from "@clockwyrks/run-record/gg-query";
 import { asDisplay, formatIdentifier, formatLiteral } from "../query";
 import styles from "./GgDiscover.module.scss";
 

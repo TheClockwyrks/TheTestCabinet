@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import type { BackendClient, WorkerClient } from "../../client/clients";
 import {
   BackendProvider,

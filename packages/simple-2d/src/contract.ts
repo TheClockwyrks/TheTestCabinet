@@ -5,7 +5,7 @@
  * These types are declared once, here, rather than beside the subsystem that owns
  * each one, because almost every one of them is spoken by more than one side of
  * the package. Keeping the declarations in a leaf module with no value imports means the
- * entry points cannot drift apart, and that `@test-cabinet/simple-2d` can be
+ * entry points cannot drift apart, and that `@clockwyrks/simple-2d` can be
  * consumed for its types alone without pulling in the DOM-bound engine.
  */
 

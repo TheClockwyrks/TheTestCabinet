@@ -97,7 +97,7 @@ itself. The tables are settled when the recording is closed, from the frames it
 holds. Every entry is one some frame names, and a canvas wiped part-way through
 a frame takes the entries of the operations it erased with it.
 
-`RECORDING_FORMAT` is exported from `@test-cabinet/structured-2d`, alongside
+`RECORDING_FORMAT` is exported from `@clockwyrks/structured-2d`, alongside
 every type on this page. There is one recording format and it is version `1`; a
 player refuses a document stating anything else.
 

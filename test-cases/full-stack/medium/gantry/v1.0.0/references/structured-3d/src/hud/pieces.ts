@@ -38,7 +38,7 @@ import {
 import type {
   ShapeComponent,
   TextComponent,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 
 /**
  * Roughly how wide one character is in the mono face, as a fraction of the

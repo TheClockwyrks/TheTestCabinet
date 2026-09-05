@@ -14,7 +14,7 @@
     "test": "vitest run --coverage"
   },
   "dependencies": {
-    "@test-cabinet/simple-3d": "file:./.tcab/engine/@test-cabinet/simple-3d",
+    "@clockwyrks/simple-3d": "file:./.vendor/engine/@clockwyrks/simple-3d",
     "three": "~0.182.0"
   },
   "devDependencies": {

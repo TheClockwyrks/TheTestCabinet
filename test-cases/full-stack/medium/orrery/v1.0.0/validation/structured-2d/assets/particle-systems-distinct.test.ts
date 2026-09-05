@@ -56,7 +56,7 @@ it("produces a system of its own for each of the three effects", async () => {
     const read = reads[index];
     if (read.system === null) {
       fail(
-        `a particle system @test-cabinet/particle-runtime accepts at ${PARTICLE_FILES[name]}`,
+        `a particle system @clockwyrks/particle-runtime accepts at ${PARTICLE_FILES[name]}`,
         read.reason,
       );
     }

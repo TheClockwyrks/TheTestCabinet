@@ -12,8 +12,8 @@
 // an entity, so a scenario posed from code leaves the world as whole as a
 // scenario reached by playing.
 
-import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
-import type { DrawApi, World } from "@test-cabinet/structured-2d";
+import { Actor, DrawComponent } from "@clockwyrks/structured-2d";
+import type { DrawApi, World } from "@clockwyrks/structured-2d";
 import { TAGS } from "./constants";
 import { sizeOf } from "./geometry";
 import { footprintCentre } from "./constants";

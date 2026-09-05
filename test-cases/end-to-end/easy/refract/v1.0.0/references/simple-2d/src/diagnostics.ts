@@ -13,7 +13,7 @@
 
 import { CHANNELS } from "./constants";
 import { beamComplete, boardSolved, spentAt } from "./rules";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 import type { RefractState } from "./game";
 
 /** Register every diagnostic source, each a read of the state it is given. */

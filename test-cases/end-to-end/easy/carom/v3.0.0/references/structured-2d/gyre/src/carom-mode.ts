@@ -25,8 +25,8 @@
 // obstacle clock winds once, last, after the ball has taken every sub-step
 // (specs/playfield.md).
 
-import { GameMode } from "@test-cabinet/structured-2d";
-import type { InputReader, PointerSample } from "@test-cabinet/structured-2d";
+import { GameMode } from "@clockwyrks/structured-2d";
+import type { InputReader, PointerSample } from "@clockwyrks/structured-2d";
 import { Ball } from "./ball";
 import {
   BALL_R,

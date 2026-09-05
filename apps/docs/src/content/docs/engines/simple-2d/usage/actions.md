@@ -12,7 +12,7 @@ Pass the touch layout the case asks for to `createEngine`. It is selected before
 any registration happens, so every action the layout names is tagged with it.
 
 ```ts
-import { createEngine } from "@test-cabinet/simple-2d";
+import { createEngine } from "@clockwyrks/simple-2d";
 
 const engine = createEngine({
   canvas,
@@ -31,7 +31,7 @@ created with, so a key table indexed by action name registers the whole
 vocabulary in one pass.
 
 ```ts
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 
 const KEYS: Record<string, string[]> = {
   "p1-up": ["KeyW"],
@@ -71,7 +71,7 @@ and take a signed axis as the difference between the two directions so pressing
 both cancels out.
 
 ```ts
-import type { UpdateApi } from "@test-cabinet/simple-2d";
+import type { UpdateApi } from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 function update(state: DeepReadonly<Match>, api: UpdateApi, dt: number): Match {

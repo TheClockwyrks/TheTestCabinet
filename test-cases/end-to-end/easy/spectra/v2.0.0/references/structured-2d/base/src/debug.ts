@@ -55,7 +55,7 @@ import type {
   Phase,
   Screen,
 } from "./game";
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 
 /** The plain, JSON-serializable view `snapshot` returns. */
 export interface SpectraSnapshot {

@@ -1,7 +1,7 @@
 // The cues, the ladder, and the two beds.
 
 import { describe, expect, it, vi } from "vitest";
-import type { WorldAudio } from "@test-cabinet/structured-2d";
+import type { WorldAudio } from "@clockwyrks/structured-2d";
 import {
   cueFiles,
   cueSpecs,

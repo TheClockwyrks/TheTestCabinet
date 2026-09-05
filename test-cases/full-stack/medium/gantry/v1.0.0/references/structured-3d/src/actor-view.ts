@@ -12,7 +12,7 @@
 // every lattice node, and the hint runs the editor's rules — and every actor
 // that needs one needs the same one.
 
-import { Actor } from "@test-cabinet/structured-3d";
+import { Actor } from "@clockwyrks/structured-3d";
 import { pick, type Pick } from "./editor";
 import { pointerHint, type PointerHint } from "./hint";
 import { yardPosture, type YardPosture } from "./posture";

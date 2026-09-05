@@ -7,7 +7,7 @@
 // a query the evaluator accepts, and names only fields the document builder actually emits.
 // A field rename that nobody propagated fails here rather than on somebody's screen.
 import { describe, expect, it } from "vitest";
-import type { GgRunDoc } from "@test-cabinet/run-record/gg-query";
+import type { GgRunDoc } from "@clockwyrks/run-record/gg-query";
 import { compileQuery, evaluate, parseQuery } from "../query";
 import { OVERVIEW_DASHBOARD } from "./overviewDashboard";
 import { compilePanels } from "./dashboardQueries";

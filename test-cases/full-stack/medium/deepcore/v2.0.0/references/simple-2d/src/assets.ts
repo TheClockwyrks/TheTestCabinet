@@ -27,8 +27,8 @@ import {
 import type { BandName, MinerState, OreId } from "./constants";
 import type { FxKind } from "./effects";
 import { FX_KINDS } from "./effects";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
+import type { InitApi } from "@clockwyrks/simple-2d";
 
 /** How many frames each produced miner cycle holds. */
 const MINER_FRAMES: Readonly<Record<MinerState, number>> = {

@@ -69,7 +69,7 @@ Requires Node 20+. From this directory:
 npm ci
 ```
 
-The particle runtime is vendored at `.tcab/packages/@test-cabinet/particle-runtime` as a
+The particle runtime is vendored at `.vendor/packages/@clockwyrks/particle-runtime` as a
 `file:` dependency, so a plain `npm ci` resolves everything offline.
 
 ## Develop
@@ -114,7 +114,7 @@ src/            the runtime layer, the simulation, and the Canvas 2D renderer
 assets/         the produced art, effects, and audio (committed; see ASSET-LAYOUT.md)
 scripts/        the asset-generation scripts (gen-*.sh)
 showcase/       the store-page description and its captured media
-.tcab/          the vendored @test-cabinet/particle-runtime (prebuilt)
+.vendor/          the vendored @clockwyrks/particle-runtime (prebuilt)
 dist/           the production build (git-ignored)
 ```
 

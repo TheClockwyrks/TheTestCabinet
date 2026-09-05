@@ -48,7 +48,7 @@ from a host's root and from a sub-path alike. Three lanes come out of that:
   plain value. They are held by their key, and `orrerySprites()` is what the drawing
   code asks.
 - **Particle systems** are fetched with `InitApi.assets.load(key)` and parsed in the
-  same pass; `src/fx.ts` plays each through `@test-cabinet/particle-runtime`'s
+  same pass; `src/fx.ts` plays each through `@clockwyrks/particle-runtime`'s
   `./canvas` binding, from a `DrawComponent` that takes its place in the layer order
   like any other picture.
 - **Sounds** are bound to the engine's CUE BUS rather than to a graph of this build's:
@@ -112,7 +112,7 @@ Each rise and set on the field shows frame
 
 ## Particle systems — `scripts/gen-fx.sh`
 
-Each is a simulated `system.json` played live through `@test-cabinet/particle-runtime`'s
+Each is a simulated `system.json` played live through `@clockwyrks/particle-runtime`'s
 `./canvas` binding, on the same context the field is drawn into; every play varies. All
 three are authored **radially symmetric** (centered point/disc emitters, 360-degree
 cones, no gravity and no wind — only radial push or pull, drag, and a symmetric vortex)

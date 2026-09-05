@@ -18,4 +18,4 @@ playwright-report/
 *.log
 
 # Scratch that `tcab validate --implementation` writes beside the build.
-.tcab/
+.vendor/

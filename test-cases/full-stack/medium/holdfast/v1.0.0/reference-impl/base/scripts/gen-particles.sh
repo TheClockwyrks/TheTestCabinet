@@ -3,7 +3,7 @@
 # tool (ASSETS.md §3, specs/assets.md "Particle systems"). Each effect is authored as a
 # system (emitters + forces + per-particle size/opacity/color curves), NOT baked frames:
 # `render` emits a compact `system.json` that the game plays LIVE via
-# `@test-cabinet/particle-runtime`'s ParticleCanvasPlayer. Six effects land under
+# `@clockwyrks/particle-runtime`'s ParticleCanvasPlayer. Six effects land under
 # assets/fx/ — muzzle, blood, impact, fire (looping), explosion, dust. Re-run to
 # regenerate. The tool's *.actions.json / *.preview.gif scratch is written to a temp dir
 # (never committed); only the finished system.json files under assets/fx/ are kept.

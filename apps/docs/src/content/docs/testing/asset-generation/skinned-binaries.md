@@ -258,7 +258,7 @@ deforms one mesh rather than posing rigid parts. It is metadata only.
 
 ### Runtime consumption
 
-[`@test-cabinet/voxel-runtime`](/components/voxel-runtime/overview/) poses a
+[`@clockwyrks/voxel-runtime`](/components/voxel-runtime/overview/) poses a
 skinned rig by linear-blend skinning. Its pure core samples the animations and
 caller values into bone matrices and skins the mesh through
 `skinMesh(partMesh, weights, boneMatrices)`, and the `three` binding uses

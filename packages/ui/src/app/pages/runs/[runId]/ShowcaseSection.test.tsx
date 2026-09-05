@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { RunRecord, RunShowcase } from "@test-cabinet/run-record";
+import type { RunRecord, RunShowcase } from "@clockwyrks/run-record";
 import { ShowcaseSection } from "./ShowcaseSection";
 
 // The gallery hands the section a run-scoped resolver; the static site's is a

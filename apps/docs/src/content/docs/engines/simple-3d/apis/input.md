@@ -313,4 +313,4 @@ api.input.register("move-right", { keys: ["KeyD", "ArrowRight"], kind: "analog" 
 `ActionKind`, `ActionBinding`, `RegisteredAction`, `TouchLayout`,
 `PointerDevice`, `PointerButton`, `PointerSampleType`, `PointerSample`,
 `PointerSnapshot`, `PointerContact`, and `WheelDelta` are exported as types from
-`@test-cabinet/simple-3d`, and `TOUCH_LAYOUTS` is exported as a value.
+`@clockwyrks/simple-3d`, and `TOUCH_LAYOUTS` is exported as a value.

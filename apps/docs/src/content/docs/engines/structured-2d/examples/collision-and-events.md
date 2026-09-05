@@ -9,7 +9,7 @@ reports each with a manifold; the game mode decides what every pair costs.
 ## src/constants.ts
 
 ```ts
-import type { ColliderOptions, Shape } from "@test-cabinet/structured-2d";
+import type { ColliderOptions, Shape } from "@clockwyrks/structured-2d";
 
 export const LEVEL = "breaker";
 export const FIELD = { width: 640, height: 360, wall: 16 };
@@ -57,7 +57,7 @@ takes the stronger of the two answers, ordered `ignore`, `overlap`, `block`.
 ## src/main.ts
 
 ```ts
-import { createEngine } from "@test-cabinet/structured-2d";
+import { createEngine } from "@clockwyrks/structured-2d";
 import { FIELD } from "./constants";
 import { breaker } from "./game";
 
@@ -83,8 +83,8 @@ import {
   Actor,
   ColliderComponent,
   ShapeComponent,
-} from "@test-cabinet/structured-2d";
-import type { ActorSpec, GameDefinition } from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
+import type { ActorSpec, GameDefinition } from "@clockwyrks/structured-2d";
 import { Ball } from "./actors/ball";
 import { Brick } from "./actors/brick";
 import { Floor } from "./actors/floor";
@@ -131,8 +131,8 @@ import {
   Actor,
   ColliderComponent,
   ShapeComponent,
-} from "@test-cabinet/structured-2d";
-import type { Vec2 } from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
+import type { Vec2 } from "@clockwyrks/structured-2d";
 import { BALL_COLLIDER, SERVE, SPEED } from "../constants";
 
 export class Ball extends Actor {
@@ -178,7 +178,7 @@ import {
   Actor,
   ColliderComponent,
   ShapeComponent,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { BRICK_COLLIDER } from "../constants";
 
 export class Brick extends Actor {
@@ -194,7 +194,7 @@ export class Brick extends Actor {
 ## src/actors/floor.ts
 
 ```ts
-import { Actor, ColliderComponent } from "@test-cabinet/structured-2d";
+import { Actor, ColliderComponent } from "@clockwyrks/structured-2d";
 import { FLOOR_COLLIDER } from "../constants";
 
 export class Floor extends Actor {
@@ -214,7 +214,7 @@ or the world closes.
 ## src/levels/breaker-mode.ts
 
 ```ts
-import { Actor, GameMode, ShapeComponent } from "@test-cabinet/structured-2d";
+import { Actor, GameMode, ShapeComponent } from "@clockwyrks/structured-2d";
 import { Ball } from "../actors/ball";
 import { Brick } from "../actors/brick";
 import { Floor } from "../actors/floor";

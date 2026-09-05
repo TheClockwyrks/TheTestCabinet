@@ -1,7 +1,7 @@
 // Hollowdeep — the live particle overlays and bursts (ASSETS.md, specs/gas.md).
 //
 // Every gas overlay and puff is a PRODUCED particle-2d system played LIVE through
-// @test-cabinet/particle-runtime's canvas binding — never a flat colored fill or a
+// @clockwyrks/particle-runtime's canvas binding — never a flat colored fill or a
 // hand-coded effect. Each system is simulated on its own offscreen 128x128 canvas (its
 // authored field size) and composited additively over the colony view.
 //
@@ -16,8 +16,8 @@
 // world.camera at draw time (this file defines the camera transform convention the later
 // world.ts conforms to), so overlays and puffs track the world as the camera pans/zooms.
 
-import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { FxEvent, World } from "./types";
 import { GAS_CAPACITY, TILE, VIEW_H, VIEW_W, VIEW_X0, VIEW_Y0, isOpenToGas } from "./constants";
 

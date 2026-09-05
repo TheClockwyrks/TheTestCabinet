@@ -10,7 +10,7 @@
 // different part of the grammar (a glob, a negation, a boolean field, a distribution, a
 // date histogram, an existence test), so a menu entry that stops parsing is a grammar
 // break somebody notices immediately.
-import type { GgInterval } from "@test-cabinet/run-record/gg-query";
+import type { GgInterval } from "@clockwyrks/run-record/gg-query";
 
 /** One example: the question in English, and the query that asks it. */
 export interface QueryExample {

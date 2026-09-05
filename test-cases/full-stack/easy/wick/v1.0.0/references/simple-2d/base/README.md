@@ -8,7 +8,7 @@ what the player decides is where to stand and what to take at each level-up.
 The night lasts ten minutes: reach dawn and the run is won, run out of health
 and the lamplighter has fallen.
 
-The engine (`@test-cabinet/simple-2d`) owns the frame loop and the delta
+The engine (`@clockwyrks/simple-2d`) owns the frame loop and the delta
 time, the letterboxed fit of the fixed 1280 x 720 logical stage, the keyboard
 actions, the pointer in the stage's own coordinates, the audio cue bus with
 its two looping cues, the asset loader, and the debug overlay. The game owns

@@ -11,9 +11,9 @@ import type {
   GgTelemetryEvent,
   GgTelemetryKind,
   GgTransitionModule,
-} from "@test-cabinet/run-record/gg";
-import type { RunRecord } from "@test-cabinet/run-record";
-import type { SystemStage, SystemStatus } from "@test-cabinet/run-record/event";
+} from "@clockwyrks/run-record/gg";
+import type { RunRecord } from "@clockwyrks/run-record";
+import type { SystemStage, SystemStatus } from "@clockwyrks/run-record/event";
 import type { HarnessEvent } from "../../../../client/types";
 import {
   WorkersProvider,

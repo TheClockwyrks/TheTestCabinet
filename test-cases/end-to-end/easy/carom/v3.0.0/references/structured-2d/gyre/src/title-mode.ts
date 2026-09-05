@@ -12,7 +12,7 @@
 // confirming an item does — are `CaromMode`'s, shared with the match level, so
 // the title and the pause menu answer a mouse and a finger identically.
 
-import { PlayerController } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
 import { CaromMode } from "./carom-mode";
 
 export class TitleMode extends CaromMode {

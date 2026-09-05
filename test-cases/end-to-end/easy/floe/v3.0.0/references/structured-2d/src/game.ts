@@ -31,13 +31,13 @@
 // `elapsed` stays `0`. The mute bit is the engine's own, read live from the
 // world's audio rather than copied onto the state.
 
-import { GameInstance, GameMode, GameState } from "@test-cabinet/structured-2d";
+import { GameInstance, GameMode, GameState } from "@clockwyrks/structured-2d";
 import type {
   GameDefinition,
   InitApi,
   LoadApi,
   World,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { CueBag, defineCues } from "./audio";
 import { Critter } from "./bodies";
 import {

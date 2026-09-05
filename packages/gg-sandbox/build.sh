@@ -108,7 +108,7 @@ rm -rf "${ROOT:?}/$PACKAGE/dist"
 #    package installs, so what the SDK's declarations were emitted by and what a program is judged
 #    against are one release.
 echo "Cutting the TypeScript checker ..."
-npm run --workspace @test-cabinet/gg-sandbox checker
+npm run --workspace @clockwyrks/gg-sandbox checker
 
 # WHAT THIS BUILD READS is declared as this arm's rerun set, in `gg-artifact-build`'s table, so a
 # source edited without a rebuild is not a state the tree can reach:

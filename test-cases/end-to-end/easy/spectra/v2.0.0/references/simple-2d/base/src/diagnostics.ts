@@ -13,7 +13,7 @@
 import { isChallengeStage } from "./constants";
 import { droneBand, inverted, isShimmering } from "./bands";
 import { dischargeReady } from "./discharge";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 import type { SpectraState } from "./game";
 import type { DeepReadonly } from "ts-essentials";
 

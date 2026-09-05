@@ -22,7 +22,7 @@
 // warbling swoop as the saucer arrives, a long fall for a lost ship, and a
 // rising two-note lift for an awarded one.
 
-import type { CueSpec, InitApi, WorldAudio } from "@test-cabinet/structured-2d";
+import type { CueSpec, InitApi, WorldAudio } from "@clockwyrks/structured-2d";
 import { CUES, type CueName } from "./constants";
 import type { ShatterState } from "./game";
 

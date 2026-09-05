@@ -68,7 +68,7 @@ The ship and the three drones are drawn from the **seeded art** under `assets/`,
 loaded through the engine's asset loader under the fixed `assets/` root, with the
 band composited over the drawn silhouette so the shape on screen is always the
 seeded one. A destroyed drone pops with the seeded particle system, played
-through `@test-cabinet/particle-runtime`'s pure `ParticleSimulator` and drawn
+through `@clockwyrks/particle-runtime`'s pure `ParticleSimulator` and drawn
 additively. Everything else — the field, the starfield, every bullet, the
 discharge wave, the inversion's mark, the HUD and every screen — is drawn in
 code.
@@ -104,7 +104,7 @@ game.
 
 ## What the engine owns
 
-`@test-cabinet/simple-2d` supplies everything that is the same in every browser
+`@clockwyrks/simple-2d` supplies everything that is the same in every browser
 game, and none of it is written here: the frame loop and its delta time in
 seconds, the state held by value and handed out `DeepReadonly`, the canvas fit
 (uniform scale, centred letterbox, device pixel ratio), named keyboard actions
@@ -189,13 +189,13 @@ Then, in this directory:
 npm ci
 ```
 
-The engine, `@test-cabinet/simple-2d`, and the particle runtime,
-`@test-cabinet/particle-runtime`, are relative `file:` dependencies on the
+The engine, `@clockwyrks/simple-2d`, and the particle runtime,
+`@clockwyrks/particle-runtime`, are relative `file:` dependencies on the
 repository's own `packages/`, which npm installs as symlinks, so this project
 builds and tests against their current source. A run receives the same packages
-at `.tcab/engine/` and `.tcab/packages/` instead, so the imports in the sources
-are the same either way. `@test-cabinet/run-record` is declared here as well,
-even though nothing in Spectra imports it: `@test-cabinet/particle-runtime`
+at `.vendor/engine/` and `.vendor/packages/` instead, so the imports in the sources
+are the same either way. `@clockwyrks/run-record` is declared here as well,
+even though nothing in Spectra imports it: `@clockwyrks/particle-runtime`
 re-exports a type from it, and a `file:` install of the runtime otherwise leaves
 `tsc` reaching for a package npm would try to fetch from the registry.
 

@@ -4,17 +4,17 @@
 // backend's public R2 snapshot. Inlined into the bundle at build time; empty in
 // dev and when no snapshot URL is configured.
 declare module "virtual:tcab-snapshot" {
-  import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-  import type { StoredReview, WorkspaceFileRef } from "@test-cabinet/ui/client";
+  import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+  import type { StoredReview, WorkspaceFileRef } from "@clockwyrks/ui/client";
   import type {
     SeededInput,
     TestCaseDetail,
     TestCaseGroupSummary,
     VariantSummary,
-  } from "@test-cabinet/ui/app";
-  import type { Model } from "@test-cabinet/ui/client";
-  import type { Comparison } from "@test-cabinet/run-record/comparison";
-  import type { GgRunDoc } from "@test-cabinet/run-record/gg-query";
+  } from "@clockwyrks/ui/app";
+  import type { Model } from "@clockwyrks/ui/client";
+  import type { Comparison } from "@clockwyrks/run-record/comparison";
+  import type { GgRunDoc } from "@clockwyrks/run-record/gg-query";
 
   /**
    * The flat summary index (`runs.json`), newest first — the bounded run-summary

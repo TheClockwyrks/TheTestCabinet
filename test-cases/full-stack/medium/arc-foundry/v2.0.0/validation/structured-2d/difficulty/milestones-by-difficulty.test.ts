@@ -30,7 +30,7 @@
 // sensible budget. No unit crosses a whole map in the half-second between two
 // polls, so nothing can arrive and ground out unseen.
 
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue, fail } from "../assert";
 import {

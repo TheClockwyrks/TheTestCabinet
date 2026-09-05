@@ -12,7 +12,7 @@
 // frame advanced (`specs/instrumentation.md`). The game mode owns the queues
 // and drains them in its tick; nothing here knows about the engine.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import type { CueName } from "./constants";
 import type { ParticleSystemName } from "./figures";
 import type { StagePoint } from "./motion";

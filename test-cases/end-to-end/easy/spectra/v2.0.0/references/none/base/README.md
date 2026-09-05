@@ -132,7 +132,7 @@ diamond or a magenta ring. A Prism's core is the same derivation with the shell'
 pixels dropped.
 
 `assets/drone-burst.json` is played, not hand-coded: each destroyed drone gets its
-own `ParticleSimulator` from `@test-cabinet/particle-runtime`, seeded from the
+own `ParticleSimulator` from `@clockwyrks/particle-runtime`, seeded from the
 game's own generator so successive pops scatter differently while the flash, the
 ring and the two-band sparks read the same. `src/bursts.ts` steps it inside the
 sub-step loop and composites the particles additively over the field.
@@ -191,11 +191,11 @@ npm ci
 
 This reference sits inside the repository, so it depends on the repository's own
 packages by relative `file:` paths, eight levels up from here — `npm run
-build:packages` at the repository root builds them first. `@test-cabinet/run-record`
-is declared even though nothing in Spectra imports it: `@test-cabinet/particle-runtime`
+build:packages` at the repository root builds them first. `@clockwyrks/run-record`
+is declared even though nothing in Spectra imports it: `@clockwyrks/particle-runtime`
 re-exports a type from it, so a `file:` install of the runtime would otherwise
 leave `tsc` reaching for a package npm would try to fetch from the registry. A run
-receives the same runtime vendored under `.tcab/`, which is what the seeded
+receives the same runtime vendored under `.vendor/`, which is what the seeded
 workspace's `package.json` names.
 
 ## Run in development

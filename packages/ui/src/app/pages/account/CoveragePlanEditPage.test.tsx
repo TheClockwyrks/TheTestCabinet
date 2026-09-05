@@ -6,7 +6,7 @@ import type {
   CoverageGroup,
   CoveragePlanInput,
   CoveragePlanOut,
-} from "@test-cabinet/run-record/coverage";
+} from "@clockwyrks/run-record/coverage";
 import type { BackendClient } from "../../../client/clients";
 import { BackendProvider } from "../../../client/context";
 import {

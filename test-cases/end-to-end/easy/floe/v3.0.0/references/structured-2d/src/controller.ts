@@ -12,7 +12,7 @@
 // simulation tick would otherwise lose the press inside it, so each edge is
 // OR-ed into the state and the tick that consumes it clears it (`src/sim.ts`).
 
-import { PlayerController } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
 import { floeState } from "./game";
 import type { Facing } from "./game";
 

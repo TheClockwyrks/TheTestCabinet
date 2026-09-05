@@ -6,7 +6,7 @@
 // pure, filter/sort/window logic in this module, matched to the backend's
 // semantics so a page behaves identically on either host.
 
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import type { RunSort, SortDir } from "../../client/clients";
 import { RATINGS, type AestheticRating } from "../../ratings";
 import { totalTokens } from "../format";

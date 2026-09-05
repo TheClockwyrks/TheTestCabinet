@@ -64,8 +64,8 @@
 // asset loader and bind each cue to its file with `api.audio.load`, awaited in
 // `initialize`, so every asset is decoded before the first frame.
 
-import { GameInstance, GameMode } from "@test-cabinet/structured-2d";
-import type { GameDefinition, InitApi } from "@test-cabinet/structured-2d";
+import { GameInstance, GameMode } from "@clockwyrks/structured-2d";
+import type { GameDefinition, InitApi } from "@clockwyrks/structured-2d";
 import { LEVEL_NAME } from "./constants";
 
 /**

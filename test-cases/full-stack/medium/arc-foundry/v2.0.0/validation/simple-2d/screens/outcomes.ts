@@ -11,7 +11,7 @@
 // `0`. What is posed is the precondition each ending needs: which wave the run is
 // on, and how much Grid Integrity is left.
 
-import { ConstantClock } from "@test-cabinet/simple-2d";
+import { ConstantClock } from "@clockwyrks/simple-2d";
 import { assertEqual } from "../assert";
 import {
   createHarness,

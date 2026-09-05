@@ -16,7 +16,7 @@
 // back (specs/state.md), so each ball line answers with a dash rather than
 // inventing a figure for a ball that is not on the field.
 
-import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
+import type { DiagnosticValue, World } from "@clockwyrks/structured-2d";
 import { ballOf } from "./ball";
 import type { CaromGame } from "./game";
 import { paddleOf } from "./paddle";

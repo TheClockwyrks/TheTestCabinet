@@ -14,7 +14,7 @@
     "test": "vitest run --coverage"
   },
   "dependencies": {
-    "@test-cabinet/structured-3d": "file:../../../../../../../packages/structured-3d",
+    "@clockwyrks/structured-3d": "file:../../../../../../../packages/structured-3d",
     "three": "~0.182.0"
   },
   "devDependencies": {

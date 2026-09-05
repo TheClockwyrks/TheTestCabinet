@@ -13,7 +13,7 @@
 // page the produced file replaces it before the first frame, and where nothing
 // can decode, the game runs and reports its cues exactly as it otherwise would.
 
-import type { CueSpec, InitApi } from "@test-cabinet/simple-2d";
+import type { CueSpec, InitApi } from "@clockwyrks/simple-2d";
 import { CUES } from "./constants";
 import type { CueName } from "./constants";
 import type { VoluteState } from "./game";

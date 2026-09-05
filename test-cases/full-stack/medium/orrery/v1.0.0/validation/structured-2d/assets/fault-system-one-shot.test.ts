@@ -45,7 +45,7 @@ it("authors assets/particles/fault.json as a one-shot that decays to empty", asy
 
   if (play.system === null) {
     fail(
-      `a particle system @test-cabinet/particle-runtime accepts at ${play.file}`,
+      `a particle system @clockwyrks/particle-runtime accepts at ${play.file}`,
       play.reason,
     );
   }

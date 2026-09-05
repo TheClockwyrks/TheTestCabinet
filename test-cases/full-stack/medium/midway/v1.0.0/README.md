@@ -29,7 +29,7 @@ no `ui`/`paint`/`texture`/voxel/mesh tool, so all HUD and dashboard chrome is
 drawn in code, and `specs/assets.md` holds the full production contract.
 
 This case declares no `assets = [...]` of pre-made art. It does declare
-`packages = ["@test-cabinet/particle-runtime"]`, the runtime the build plays its
+`packages = ["@clockwyrks/particle-runtime"]`, the runtime the build plays its
 produced particle systems with, and its `init` uses `npm install` so the
 injected `file:` dependency resolves.
 

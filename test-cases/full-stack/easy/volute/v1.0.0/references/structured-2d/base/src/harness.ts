@@ -34,7 +34,7 @@ import {
   type Engine,
   type SurfaceMetrics,
   type Viewport,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, vi } from "vitest";
 import type { Core, Injector } from "./actors";
 import { FIELD_H, FIELD_W, INJECTOR_X, INJECTOR_Y } from "./constants";

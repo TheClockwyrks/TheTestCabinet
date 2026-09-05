@@ -15,8 +15,8 @@
 // for handing a loaded image to an actor that is constructed later, since an
 // actor's constructor runs before it has a world.
 
-import type { InitApi } from "@test-cabinet/structured-2d";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { InitApi } from "@clockwyrks/structured-2d";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import { CHARGE_IDS, CUES, MACHINERY_KINDS } from "./constants";
 import type { ChargeId, CueName, MachineryKind } from "./constants";
 

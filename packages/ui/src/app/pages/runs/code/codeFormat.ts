@@ -17,12 +17,12 @@ import type {
   RunRecord,
   ToolchainCoverage,
   ToolchainTests,
-} from "@test-cabinet/run-record";
-import { CODE_METRICS } from "@test-cabinet/run-record/code-metrics";
+} from "@clockwyrks/run-record";
+import { CODE_METRICS } from "@clockwyrks/run-record/code-metrics";
 import type {
   CodeMetricDef,
   CodeMetricUnit,
-} from "@test-cabinet/run-record/code-metrics";
+} from "@clockwyrks/run-record/code-metrics";
 
 /** The catalog entry for a dotted summary path (`"graph.cycles"`), or `undefined` when
  * the path carries no display metadata. */

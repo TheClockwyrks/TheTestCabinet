@@ -6,7 +6,7 @@
 // registrations and passes every other read through. Each source is then called
 // against the live world, which is what the panel does on every draw.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ROW_MEDIAN, ROW_NEAR, START_COL, TOTAL_LEVELS } from "./constants";
 import { registerDiagnostics } from "./diagnostics";

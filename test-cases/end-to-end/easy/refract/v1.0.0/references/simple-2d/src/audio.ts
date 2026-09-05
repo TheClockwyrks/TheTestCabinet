@@ -14,7 +14,7 @@
 // and a low sweep down when the board is wiped.
 
 import { CUES, type CueName } from "./constants";
-import type { CueSpec, InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type { CueSpec, InitApi, UpdateApi } from "@clockwyrks/simple-2d";
 
 export const CUE_SPECS: Readonly<Record<CueName, CueSpec>> = {
   [CUES.connect]: {

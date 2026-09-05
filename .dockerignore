@@ -173,10 +173,10 @@
 #   - EVERY workspace member's package.json (npm ci validates the whole workspace
 #     against the lockfile, so a missing member's manifest aborts the install), and
 #   - the SOURCE of the packages the console actually bundles: apps/web itself
-#     plus its workspace deps @test-cabinet/ui and @test-cabinet/run-record, which
+#     plus its workspace deps @clockwyrks/ui and @clockwyrks/run-record, which
 #     Vite resolves to their TypeScript sources (packages/ui exports ./src/*), and
-#     @test-cabinet/run-stats, @test-cabinet/voxel-runtime and
-#     @test-cabinet/particle-runtime, whose compiled subpaths the ui library
+#     @clockwyrks/run-stats, @clockwyrks/voxel-runtime and
+#     @clockwyrks/particle-runtime, whose compiled subpaths the ui library
 #     imports (run-stats' scoring rules and rollup; the two runtimes' `./three`).
 #     The Dockerfile builds their dist/ before the console — the sources ride
 #     along here, dist/ is re-excluded below and rebuilt in-image.
@@ -209,14 +209,14 @@
 # (vitest_validator.rs, `stage_case_harness`) later copies its sources out of that
 # store into a case's staged validator project. So the driver image must carry its
 # sources, and a build context missing them fails inside the staging script
-# ("shippable package @test-cabinet/case-harness not found under packages/"), taking
+# ("shippable package @clockwyrks/case-harness not found under packages/"), taking
 # every service image on services.Dockerfile down with it. scripts/ci/build-context.sh
 # asserts every name in that script's SHIPPABLE list survives this allowlist, because
 # a `COPY . .` stage is invisible to the COPY-source checks.
 !/packages/case-harness
 # The run-container BASE image (containers/base/Dockerfile) reuses this same npm
 # slice: its builder stage `npm ci`s the workspace and runs the staging script to
-# bake the shippable @test-cabinet packages — and the simple-2d engine runtime —
+# bake the shippable @clockwyrks packages — and the simple-2d engine runtime —
 # into /opt/tcab-packages (see
 # containers/README.md#the-shippable-test-cabinet-packages). The script is the one
 # extra file that build needs beyond the console's slice, so re-include it.

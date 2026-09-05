@@ -90,14 +90,14 @@ asset:
   the game.
 - Particle systems (`particle-2d`, `particle-3d`) are a `system.json` definition
   a simulator plays live. The game plays it through
-  [`@test-cabinet/particle-runtime`](/testing/asset-generation/particle-binaries/),
+  [`@clockwyrks/particle-runtime`](/testing/asset-generation/particle-binaries/),
   the same runtime the review UI uses, so the case declares that package: the
   `canvas` entry point composites a 2D effect, and the `three` entry point draws
   a volumetric one. See [Manifests](/testing/full-stack/manifests/).
 - Voxel models (`voxel`, `voxel-anim`) are glTF binaries, and an animated model
   adds the `rig.json` describing its parts, joints, and animations. The game
   loads them through
-  [`@test-cabinet/voxel-runtime`](/components/voxel-runtime/overview/), whose
+  [`@clockwyrks/voxel-runtime`](/components/voxel-runtime/overview/), whose
   `parseGlb` decodes a part's mesh and whose `three` entry point poses and draws
   the rig, so the case declares that package as well.
 - Audio (`sfx-synth`, `sfx-sample`, `music`) is a finished `.wav` the game plays

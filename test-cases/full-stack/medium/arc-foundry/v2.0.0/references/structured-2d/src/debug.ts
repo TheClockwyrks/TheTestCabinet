@@ -128,7 +128,7 @@ import type { ReadoutName } from "./layout";
 import { abilityTags } from "./tables";
 import { foundryState, type FoundryState } from "./state";
 import type { RecipeCell, Unit } from "./types";
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 
 // ---- The shapes the readings return (specs/instrumentation.md) -----------
 

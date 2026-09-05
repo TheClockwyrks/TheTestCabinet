@@ -9,7 +9,7 @@
 // The controller possesses nothing: the injector never moves, and there is no
 // pawn to drive.
 
-import { PlayerController } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
 import { AIM_TURN_RATE, INJECTOR_X, INJECTOR_Y } from "./constants";
 import { HallMode } from "./hall-mode";
 import { normalizeAngle } from "./math";

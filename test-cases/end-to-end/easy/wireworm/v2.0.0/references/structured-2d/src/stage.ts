@@ -17,8 +17,8 @@
 // off the world's game state at the call, so the picture is the frame this tick
 // produced.
 
-import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
-import type { DrawApi } from "@test-cabinet/structured-2d";
+import { Actor, DrawComponent } from "@clockwyrks/structured-2d";
+import type { DrawApi } from "@clockwyrks/structured-2d";
 import { BOARD_H, BOARD_W, BOARD_Y } from "./constants";
 import { wirewormState, type WirewormState } from "./game";
 import {

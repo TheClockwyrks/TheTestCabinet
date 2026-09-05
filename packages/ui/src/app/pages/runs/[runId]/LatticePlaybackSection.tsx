@@ -13,7 +13,7 @@ import {
   type Sheet,
   type Snapshot,
 } from "../lattice/renderer";
-import type { PerformanceSnapshotCheck } from "@test-cabinet/run-record";
+import type { PerformanceSnapshotCheck } from "@clockwyrks/run-record";
 import { firstDrift } from "../lattice/drift";
 import { fitZoom, MAX_ZOOM, MIN_ZOOM, stepZoom } from "../lattice/zoom";
 import type { PlaybackWorkerResponse } from "../lattice/playbackWorker";

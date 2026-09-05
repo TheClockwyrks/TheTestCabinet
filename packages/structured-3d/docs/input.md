@@ -199,8 +199,8 @@ button leaves the primary free for picking; the engine's gesture claim is what
 lets the secondary button reach the game rather than opening the context menu.
 
 ```ts
-import { PlayerController } from "@test-cabinet/structured-3d";
-import type { Vec2 } from "@test-cabinet/structured-3d";
+import { PlayerController } from "@clockwyrks/structured-3d";
+import type { Vec2 } from "@clockwyrks/structured-3d";
 import { DRAG_RATE, PITCH_MAX, PITCH_MIN } from "./constants";
 
 export class OrbitController extends PlayerController {
@@ -355,8 +355,8 @@ and the bindings agree. A key table indexed by action name registers the whole
 vocabulary in one pass:
 
 ```ts
-import { GameInstance } from "@test-cabinet/structured-3d";
-import type { ActionKind, InitApi } from "@test-cabinet/structured-3d";
+import { GameInstance } from "@clockwyrks/structured-3d";
+import type { ActionKind, InitApi } from "@clockwyrks/structured-3d";
 import { KEYS, ANALOG } from "./constants";
 
 export class Arena extends GameInstance<null> {

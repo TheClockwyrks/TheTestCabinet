@@ -15,7 +15,7 @@
 //
 // What is left is `src/game.ts`.
 
-import { createEngine } from "@test-cabinet/structured-3d";
+import { createEngine } from "@clockwyrks/structured-3d";
 import { ASSET_ROOT, LAYOUT, STAGE_H, STAGE_W } from "./constants";
 import { BACKGROUND, game } from "./game";
 

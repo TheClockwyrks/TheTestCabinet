@@ -23,7 +23,7 @@
 // `constellation` a bright arrival, `complete` the brightest sound in the game,
 // and the bed a quiet drone under all of them.
 
-import type { CueSpec, InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type { CueSpec, InitApi, UpdateApi } from "@clockwyrks/simple-2d";
 import { CUES, CUE_PATHS } from "./constants";
 import { CUE_NAMES, type Cue } from "./figures";
 

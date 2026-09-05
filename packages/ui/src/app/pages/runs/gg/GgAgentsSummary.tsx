@@ -5,11 +5,11 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { SegmentedControl, type SegmentedOption } from "@test-cabinet/ui";
+import { SegmentedControl, type SegmentedOption } from "@clockwyrks/ui";
 import type {
   GgAgentStatus,
   GgCapabilitySet,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import dash from "./GgDashboard.module.scss";
 import styles from "./GgAgentsSummary.module.scss";
 import {

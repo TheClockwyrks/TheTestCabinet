@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { World } from "@test-cabinet/structured-3d";
+import type { World } from "@clockwyrks/structured-3d";
 import { MUSIC_CUE, silentIo, worldIo } from "./io";
 
 /** A world whose cue bus records what it was asked to do. */

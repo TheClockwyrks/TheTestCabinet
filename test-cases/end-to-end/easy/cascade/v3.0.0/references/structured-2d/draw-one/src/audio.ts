@@ -18,7 +18,7 @@
 // a bright flick as a card turns face-up, a two-note chime as one goes home, a
 // rising whoosh per launch, and a long fanfare for the win.
 
-import type { CueSpec, InitApi, WorldAudio } from "@test-cabinet/structured-2d";
+import type { CueSpec, InitApi, WorldAudio } from "@clockwyrks/structured-2d";
 import { CUES, type CueName } from "./constants";
 import type { CascadeState } from "./game";
 

@@ -2,7 +2,7 @@
 //
 // `assets/drone-burst.json` is an authored particle system, and it is PLAYED
 // rather than hand-coded: each live burst holds its own `ParticleSimulator` from
-// `@test-cabinet/particle-runtime`, stepped with the same slice of time
+// `@clockwyrks/particle-runtime`, stepped with the same slice of time
 // everything else on the field advances by, and `src/render.ts` draws the
 // particles the simulation reports.
 //
@@ -11,7 +11,7 @@
 // reproduces both exactly.
 
 import { BURST_DURATION, MAX_BURSTS } from "./constants";
-import { ParticleSimulator } from "@test-cabinet/particle-runtime";
+import { ParticleSimulator } from "@clockwyrks/particle-runtime";
 import { randomInt } from "./rng";
 import { burstSystem } from "./sprites";
 import type { BurstState, SpectraState } from "./game";

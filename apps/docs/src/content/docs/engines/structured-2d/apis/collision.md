@@ -220,6 +220,6 @@ frame's pass.
 
 ## Exports
 
-`ColliderComponent` is exported as a class from `@test-cabinet/structured-2d`.
+`ColliderComponent` is exported as a class from `@clockwyrks/structured-2d`.
 `CollisionResponse`, `ColliderOptions`, `Manifold`, `Overlap`, `Hit`,
 `QueryOptions`, and `CollisionWorld` are exported as types.

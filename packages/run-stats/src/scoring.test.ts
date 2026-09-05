@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { DebugScriptResult } from "@test-cabinet/run-record";
+import type { DebugScriptResult } from "@clockwyrks/run-record";
 import type {
   DomainAesthetic,
   FailureCap,
   ReviewVerdict,
   VerdictStatus,
-} from "@test-cabinet/run-record/review";
+} from "@clockwyrks/run-record/review";
 import {
   AESTHETIC_RATINGS,
   FAILURE_CAPS,

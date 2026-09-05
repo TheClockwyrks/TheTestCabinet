@@ -23,7 +23,7 @@
 // position: a sweep that crossed three entries between two frames visited them in
 // an order, and the entry it came to rest on is the one it ends on.
 
-import type { PointerSample } from "@test-cabinet/structured-2d";
+import type { PointerSample } from "@clockwyrks/structured-2d";
 import { menuItemAt } from "./menus";
 import type { ShatterState } from "./game";
 

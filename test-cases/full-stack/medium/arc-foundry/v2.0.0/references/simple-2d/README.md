@@ -83,7 +83,7 @@ it, and clear the selection by pressing on empty yard.
 | `src/` | The game: its state, its simulation, its drawing, and its debug surface. |
 | `assets/` | Every produced sprite, animation frame, particle system, and sound. |
 | `public/assets` | A link to `assets/`, so the built site serves every produced file under the asset root the engine resolves against. |
-| `.tcab/packages/` | The prebuilt particle runtime the produced effects are played through. |
+| `.vendor/packages/` | The prebuilt particle runtime the produced effects are played through. |
 
 The engine is resolved from this repository's own `packages/simple-2d` through a relative
 `file:` dependency rather than from the copy a run is seeded with, so the reference is

@@ -6,15 +6,15 @@ The engine is an ordinary dependency of the build's workspace, already present
 in its `package.json`. One import brings in the factory.
 
 ```ts
-import { createEngine } from "@test-cabinet/simple-2d";
+import { createEngine } from "@clockwyrks/simple-2d";
 ```
 
 The clock catalogue, the touch layout catalogue, and every type the engine names
 come from the same specifier.
 
 ```ts
-import { createEngine, PacedClock, TOUCH_LAYOUTS } from "@test-cabinet/simple-2d";
-import type { CueSpec, Engine, EngineOptions, Game } from "@test-cabinet/simple-2d";
+import { createEngine, PacedClock, TOUCH_LAYOUTS } from "@clockwyrks/simple-2d";
+import type { CueSpec, Engine, EngineOptions, Game } from "@clockwyrks/simple-2d";
 ```
 
 ## Pick a logical design size
@@ -37,7 +37,7 @@ then runs the game's own `initialize` and resolves once the state is built, and
 `engine.run` drives frames from there.
 
 ```ts
-import { createEngine } from "@test-cabinet/simple-2d";
+import { createEngine } from "@clockwyrks/simple-2d";
 import { game } from "./game";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");

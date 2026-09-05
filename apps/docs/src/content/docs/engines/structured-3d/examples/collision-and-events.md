@@ -11,12 +11,12 @@ shape has depth, so the manifold the engine reports is a three-dimensional one.
 ## src/constants.ts
 
 ```ts
-import { vec3 } from "@test-cabinet/structured-3d";
+import { vec3 } from "@clockwyrks/structured-3d";
 import type {
   ColliderOptions,
   MeshGeometry,
   Vec3,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 
 export const LEVEL = "breaker";
 export const FIELD = { width: 16, height: 9, depth: 1, wall: 0.5 };
@@ -69,7 +69,7 @@ the player sees.
 ## src/main.ts
 
 ```ts
-import { createEngine } from "@test-cabinet/structured-3d";
+import { createEngine } from "@clockwyrks/structured-3d";
 import { breaker } from "./game";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
@@ -103,8 +103,8 @@ import {
   MeshComponent,
   quatLookAt,
   vec3,
-} from "@test-cabinet/structured-3d";
-import type { ActorSpec, GameDefinition, Vec3 } from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
+import type { ActorSpec, GameDefinition, Vec3 } from "@clockwyrks/structured-3d";
 import { Ball } from "./actors/ball";
 import { Brick } from "./actors/brick";
 import { Floor } from "./actors/floor";
@@ -176,8 +176,8 @@ import {
   scale,
   sub,
   vec3,
-} from "@test-cabinet/structured-3d";
-import type { Vec3 } from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
+import type { Vec3 } from "@clockwyrks/structured-3d";
 import { BALL_COLLIDER, SERVE, SPEED } from "../constants";
 
 export class Ball extends Actor {
@@ -228,7 +228,7 @@ import {
   Actor,
   ColliderComponent,
   MeshComponent,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { BRICK_COLLIDER } from "../constants";
 
 export class Brick extends Actor {
@@ -244,7 +244,7 @@ export class Brick extends Actor {
 ## src/actors/floor.ts
 
 ```ts
-import { Actor, ColliderComponent } from "@test-cabinet/structured-3d";
+import { Actor, ColliderComponent } from "@clockwyrks/structured-3d";
 import { FLOOR_COLLIDER } from "../constants";
 
 export class Floor extends Actor {
@@ -271,7 +271,7 @@ import {
   length,
   normalize,
   scale,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { Ball } from "../actors/ball";
 import { Brick } from "../actors/brick";
 import { Floor } from "../actors/floor";

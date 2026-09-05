@@ -14,7 +14,7 @@
     "test": "vitest run --coverage"
   },
   "dependencies": {
-    "@test-cabinet/structured-2d": "file:../../../../../../../../packages/structured-2d"
+    "@clockwyrks/structured-2d": "file:../../../../../../../../packages/structured-2d"
   },
   "devDependencies": {
     "@eslint/js": "^9",

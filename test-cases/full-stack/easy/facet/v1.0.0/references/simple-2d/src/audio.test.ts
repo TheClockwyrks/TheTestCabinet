@@ -13,7 +13,7 @@ import {
 import { LADDER_RUNGS } from "./assets";
 import { CUES, MAX_MULTIPLIER } from "./constants";
 import { NO_EVENTS, type FacetEvents } from "./core";
-import type { CueSpec, UpdateApi } from "@test-cabinet/simple-2d";
+import type { CueSpec, UpdateApi } from "@clockwyrks/simple-2d";
 
 /** A bus that records what it was asked to do. */
 function bus() {

@@ -29,7 +29,7 @@ per-part `.glb` the voxel binaries emit or a whole-rig export loads the same way
 ## src/constants.ts
 
 ```ts
-import { vec3 } from "@test-cabinet/structured-3d";
+import { vec3 } from "@clockwyrks/structured-3d";
 
 export const LEVEL = "vault";
 
@@ -54,7 +54,7 @@ export const CAMERA = { position: vec3(0, 6, 9), target: vec3(0, 0, 0) };
 ## src/main.ts
 
 ```ts
-import { createEngine } from "@test-cabinet/structured-3d";
+import { createEngine } from "@clockwyrks/structured-3d";
 import { vault } from "./game";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
@@ -83,8 +83,8 @@ in place before the instance is built and before the start level loads anything.
 
 ```ts
 import * as THREE from "three";
-import { GameInstance } from "@test-cabinet/structured-3d";
-import type { InitApi, Model } from "@test-cabinet/structured-3d";
+import { GameInstance } from "@clockwyrks/structured-3d";
+import type { InitApi, Model } from "@clockwyrks/structured-3d";
 import { CUE } from "./constants";
 
 let built: VaultInstance | null = null;
@@ -142,8 +142,8 @@ import {
   quatFromAxisAngle,
   quatLookAt,
   vec3,
-} from "@test-cabinet/structured-3d";
-import type { GameDefinition, LoadApi } from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
+import type { GameDefinition, LoadApi } from "@clockwyrks/structured-3d";
 import { COIN, CUE, LEVEL, PATH } from "./constants";
 import { instance, VaultInstance } from "./instance";
 import { VaultMode } from "./levels/vault-mode";
@@ -229,7 +229,7 @@ the canvas whatever the camera does. Its `z` plays no part in the screen pass.
 ## src/levels/vault-mode.ts
 
 ```ts
-import { GameMode } from "@test-cabinet/structured-3d";
+import { GameMode } from "@clockwyrks/structured-3d";
 import { CAMERA, COIN, CUE } from "../constants";
 
 export class VaultMode extends GameMode {

@@ -9,7 +9,7 @@
 // edges are consume-on-read per controller: a second reader of the same action
 // in one frame would split a single press between them.
 
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 import { ACTION_NAMES, ACTIONS } from "./constants";
 
 /**

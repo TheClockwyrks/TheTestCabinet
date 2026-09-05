@@ -11,8 +11,8 @@
 
 import { createCanvas } from "@napi-rs/canvas";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
+import type { InitApi } from "@clockwyrks/structured-2d";
 import { BURST_DURATION, BURST_FIELD, PRISM_SIZE, SPRITES } from "./constants";
 import { emptyArt, loadArt } from "./assets";
 import {

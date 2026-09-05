@@ -133,7 +133,7 @@ specs alone.
 
 This version seeds four `PNG` sprites — the ship, the Shard, the Flux and the
 Prism — and one particle system, `drone-burst.json`, played when a drone pops
-through the `@test-cabinet/particle-runtime` package the workspace already depends
+through the `@clockwyrks/particle-runtime` package the workspace already depends
 on. The sprites are the finished art produced by The Test Cabinet's own
 asset-generation cases, and each carries one band-state, from which
 `specs/assets.md` states how the other is derived. Every build renders the game

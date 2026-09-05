@@ -70,7 +70,7 @@ const EXCLUDED = new Set([
   "test-results",
   "playwright-report",
   ".git",
-  ".tcab",
+  ".vendor",
 ]);
 
 /** Where `npm run build` may put the site, in the order the runner looks. */

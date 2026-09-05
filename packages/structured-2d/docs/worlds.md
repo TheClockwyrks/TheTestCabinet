@@ -260,7 +260,7 @@ An actor whose `tickWhenPaused` is `true` ticks anyway, together with its
 components, which is how a pause menu drives itself:
 
 ```ts
-import { Actor, PlayerController, TextComponent } from "@test-cabinet/structured-2d";
+import { Actor, PlayerController, TextComponent } from "@clockwyrks/structured-2d";
 
 export class PauseMenu extends Actor {
   private player: PlayerController | null = null;

@@ -17,8 +17,8 @@
 // actor, a component, or a controller holds of its own is derived and rebuilt
 // from these fields.
 
-import { GameState } from "@test-cabinet/structured-2d";
-import type { World } from "@test-cabinet/structured-2d";
+import { GameState } from "@clockwyrks/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { challengeCount } from "./challenges";
 import { DEFAULT_SPEED_INDEX, EXTRA_COUNT } from "./constants";
 import { cloneMachine } from "./machine";

@@ -45,7 +45,7 @@
 // all, so no stray step lands inside it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import type { Clock } from "@test-cabinet/structured-2d";
+import type { Clock } from "@clockwyrks/structured-2d";
 import { WORM_STEP_L1 } from "../constants";
 import { assertDeepEqual } from "../assert";
 import {

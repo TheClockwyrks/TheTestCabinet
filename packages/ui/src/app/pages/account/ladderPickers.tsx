@@ -27,8 +27,8 @@ import type {
   GateThreshold,
   LadderAxis,
   LadderRungInput,
-} from "@test-cabinet/run-record/ladders";
-import type { Rating } from "@test-cabinet/run-record/review";
+} from "@clockwyrks/run-record/ladders";
+import type { Rating } from "@clockwyrks/run-record/review";
 import { RATINGS, RATING_META } from "../../../ratings";
 import {
   CATALOG_CATEGORIES,

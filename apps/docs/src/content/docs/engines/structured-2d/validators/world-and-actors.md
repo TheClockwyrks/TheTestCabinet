@@ -45,7 +45,7 @@ entry `ofType` would return, or `null`. All three answer in spawn order, as a
 copy the caller owns.
 
 ```ts
-import { Pawn } from "@test-cabinet/structured-2d";
+import { Pawn } from "@clockwyrks/structured-2d";
 import { FIELD_W, TAGS } from "../constants";
 
 const paddles = world.byTag(TAGS.paddle);
@@ -94,7 +94,7 @@ two different controllers, and a check exercises a pawn by writing the
 controller that drives it.
 
 ```ts
-import { AIController } from "@test-cabinet/structured-2d";
+import { AIController } from "@clockwyrks/structured-2d";
 import { PADDLE_SPEED } from "../constants";
 
 class Scripted extends AIController {

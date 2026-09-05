@@ -6,7 +6,7 @@ node_modules/
 /out/
 coverage/
 proof/
-.tcab/
+.vendor/
 package-lock.json
 
 # Prose. The formatter handles code; Markdown is left to its own linter.

@@ -8,7 +8,7 @@ and what the player decides is where to stand and what to take at each
 level-up. The night lasts ten minutes: reach dawn and the run is won, run out
 of health and the lamplighter has fallen.
 
-The game is written inside `@test-cabinet/structured-2d`'s framework: a game
+The game is written inside `@clockwyrks/structured-2d`'s framework: a game
 instance, one game mode, a lamplighter pawn and the player controller that
 drives it, and the tagged actors and draw components that populate the night.
 The engine owns the frame loop, the canvas fit, rendering and the camera that

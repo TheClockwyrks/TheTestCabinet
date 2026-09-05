@@ -4,7 +4,7 @@
 // WHAT THE SPECIFICATION FIXES. `specs/assets.md` puts the burn-up at
 // `assets/particles/burnup.json`, "produced with `particle-2d` as a
 // `system.json`", fired at "a ball or pod reaching the planet", and played
-// "through `@test-cabinet/particle-runtime`, an installed dependency imported
+// "through `@clockwyrks/particle-runtime`, an installed dependency imported
 // by its bare name", where "a player is constructed over a parsed system" and
 // "the package's own types are the authoritative API". So the file exists, it
 // parses as JSON, and the runtime's own simulator constructs over it and plays
@@ -48,7 +48,7 @@ it("ships a burn-up system the particle runtime accepts", async () => {
 
   if (system === null) {
     fail(
-      `${FILE} parsing as a particle system @test-cabinet/particle-runtime accepts`,
+      `${FILE} parsing as a particle system @clockwyrks/particle-runtime accepts`,
       reason,
     );
   }

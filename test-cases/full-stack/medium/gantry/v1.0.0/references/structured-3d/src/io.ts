@@ -6,7 +6,7 @@
 // the mute bit, so the systems reach both through this one narrow seam, which is
 // what lets them be driven in a test with no engine standing up.
 
-import type { World } from "@test-cabinet/structured-3d";
+import type { World } from "@clockwyrks/structured-3d";
 import type { CueName } from "./constants";
 
 /** The cue the music bed plays under, beside the eleven `CUES` fix. */

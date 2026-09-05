@@ -43,7 +43,7 @@ machine's `PATH`, commit the files under `public/assets/`, and load them in
 `api.audio.load`, awaited so everything is decoded before the first frame.
 `specs/assets.md` is the contract, and the engine's `assets.md` and `audio.md`
 state the asset root, the path rules, and the looping cues. A produced particle
-system is played through `@test-cabinet/particle-runtime`, an installed
+system is played through `@clockwyrks/particle-runtime`, an installed
 dependency imported by its bare name. The asset tools are absent when the build
 is installed and rebuilt elsewhere, so the build bundles the committed files and
 invokes no tool.
@@ -84,7 +84,7 @@ scenario through the debug surface, and advances it a counted number of frames.
 - The toolchain: `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
   and `.gitignore`.
-- `.tcab/` and `engine/`, the vendored libraries and the engine's documentation.
+- `.vendor/` and `engine/`, the vendored libraries and the engine's documentation.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the
 `package-lock.json`; the build is installed with `npm ci`. Leave the existing

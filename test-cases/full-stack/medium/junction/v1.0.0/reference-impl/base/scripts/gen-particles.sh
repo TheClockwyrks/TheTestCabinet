@@ -3,7 +3,7 @@
 # on-PATH `particle-2d` tool (ASSETS.md §3, specs/assets.md "Particle systems"). Each effect
 # is authored as a system (emitters + forces + per-particle size/opacity/color curves), NOT
 # baked frames: `render` emits a compact `system.json` that the game plays LIVE via
-# `@test-cabinet/particle-runtime`'s ParticleCanvasPlayer (src/particles.ts). Three effects
+# `@clockwyrks/particle-runtime`'s ParticleCanvasPlayer (src/particles.ts). Three effects
 # land under assets/fx/ — pollution (looping smog haze), dust (one-shot construction puff),
 # and fireworks (one-shot milestone burst). Re-run to regenerate. The tool's
 # *.actions.json / *.preview.gif scratch is written to a temp dir (never committed); only the

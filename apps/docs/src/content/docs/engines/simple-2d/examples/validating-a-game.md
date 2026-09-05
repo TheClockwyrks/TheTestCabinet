@@ -24,7 +24,7 @@ state and returns a plain view of it.
 
 ```ts
 // src/game.ts, as a validator sees it
-import type { Game } from "@test-cabinet/simple-2d";
+import type { Game } from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 export interface Ball {
@@ -231,7 +231,7 @@ import {
   type Engine,
   type SurfaceMetrics,
   type Viewport,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import { BACKGROUND, FIELD_HEIGHT, FIELD_WIDTH } from "./constants";
 import { game, type Debug, type Snapshot, type State } from "../src/game";
 
@@ -423,7 +423,7 @@ through the surface, advances, and reads a snapshot back.
 
 ```ts
 // validation/simulation.test.ts
-import { ConstantClock } from "@test-cabinet/simple-2d";
+import { ConstantClock } from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { BALL_RADIUS, FIELD_WIDTH } from "./constants";
 import { createHarness, type Harness } from "./harness";
@@ -480,7 +480,7 @@ subscribes, runs the scenario, and asserts against what the handler collected.
 
 ```ts
 // validation/audio.test.ts
-import { ConstantClock } from "@test-cabinet/simple-2d";
+import { ConstantClock } from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { createHarness, type Harness } from "./harness";
 
@@ -529,7 +529,7 @@ one reports for a posed state.
 
 ```ts
 // validation/diagnostics.test.ts
-import { ConstantClock } from "@test-cabinet/simple-2d";
+import { ConstantClock } from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { createHarness, type Harness } from "./harness";
 
@@ -658,7 +658,7 @@ specification states.
 
 ```ts
 // validation/input.test.ts
-import { ConstantClock } from "@test-cabinet/simple-2d";
+import { ConstantClock } from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { PADDLE_HEIGHT } from "./constants";
 import { createHarness, type Harness } from "./harness";

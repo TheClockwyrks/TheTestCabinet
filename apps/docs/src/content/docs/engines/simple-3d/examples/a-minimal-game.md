@@ -34,7 +34,7 @@ follow the window and fits the logical field into whatever size it reports.
 ## src/main.ts
 
 ```ts
-import { createEngine } from "@test-cabinet/simple-3d";
+import { createEngine } from "@clockwyrks/simple-3d";
 import { drifter } from "./game";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
@@ -63,7 +63,7 @@ camera at the [camera defaults](/engines/simple-3d/apis/view/).
 
 ```ts
 import * as THREE from "three";
-import type { Game, InitApi, RenderApi, UpdateApi } from "@test-cabinet/simple-3d";
+import type { Game, InitApi, RenderApi, UpdateApi } from "@clockwyrks/simple-3d";
 import type { DeepReadonly } from "ts-essentials";
 
 const LIMIT = 8;

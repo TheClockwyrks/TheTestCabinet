@@ -21,7 +21,7 @@
 // the critter is still under it when the critter's center leaves the stage: the
 // off-edge death in `specs/water.md` happens before the floe would wrap.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import {
   ICE_LANES,
   ITEM_LEN,

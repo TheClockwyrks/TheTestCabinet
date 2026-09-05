@@ -12,7 +12,7 @@
 // What is left is `src/game.ts`. It does not exist yet — this module imports it,
 // so the project does not type-check until you create it.
 
-import { createEngine } from "@test-cabinet/structured-2d";
+import { createEngine } from "@clockwyrks/structured-2d";
 import { FIELD_H, FIELD_W } from "./constants";
 import { BACKGROUND, game } from "./game";
 

@@ -5,10 +5,10 @@
  * page-relative, and turns them into the typed per-type {@link RigTemplate}s the
  * renderer and simulation consume. Nothing here writes a glTF loader, an animation
  * mixer, or a particle simulator — it fetches each entity's `rig.json` and its
- * `meshes/*.glb` parts and decodes them with `@test-cabinet/voxel-runtime`
+ * `meshes/*.glb` parts and decodes them with `@clockwyrks/voxel-runtime`
  * (`parseGlb` + the `/three` `buildPartGeometry`), reusing ONE geometry per
  * (entity type, part), and loads each `effects/*.json` as a `ParticleSystem` played
- * later with `@test-cabinet/particle-runtime` (specs/assets.md).
+ * later with `@clockwyrks/particle-runtime` (specs/assets.md).
  *
  * Loading rule (specs/assets.md): every URL is **page-relative** (no leading `/`),
  * resolved against the document base, so the built site loads its models under a

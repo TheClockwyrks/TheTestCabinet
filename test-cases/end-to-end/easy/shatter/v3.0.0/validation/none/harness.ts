@@ -13,7 +13,7 @@
 // browser, bracketing each driven tick around one step of the surface, recording
 // what the build drew and reading pixels and draw calls back out is what EVERY
 // engineless case does, in the same shape — so it lives once, in
-// `@test-cabinet/case-harness`, which the runner stages beside this project at
+// `@clockwyrks/case-harness`, which the runner stages beside this project at
 // `validation/case-harness/`. A fix landed there reaches Shatter; a copy of it
 // here would drift from the day it was made, which is what this file used to be.
 //

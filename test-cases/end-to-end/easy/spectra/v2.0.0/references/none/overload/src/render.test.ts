@@ -33,7 +33,7 @@ import { render } from "./render";
 import { freshState } from "./game";
 import { addDrone, addPlayerBullet } from "./entities";
 import { startBurst, useBurstSystem } from "./bursts";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { Sprites } from "./assets";
 import type { Band, DroneKind, SpectraState } from "./types";
 import { realSprites } from "./art.test-support";

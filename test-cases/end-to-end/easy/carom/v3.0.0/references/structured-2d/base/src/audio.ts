@@ -18,7 +18,7 @@
 // click off a paddle, a low soft thud off a wall, a woodier falling knock off
 // an obstacle, and a longer rising chime for a point.
 
-import type { CueSpec, InitApi } from "@test-cabinet/structured-2d";
+import type { CueSpec, InitApi } from "@clockwyrks/structured-2d";
 import { CUES, type CueName } from "./constants";
 
 export const CUE_SPECS: Readonly<Record<CueName, CueSpec>> = {

@@ -17,8 +17,8 @@
 // state without importing `src/game.ts` — which imports all of them.
 // `src/game.ts` re-exports both names as the module contract asks.
 
-import { GameState } from "@test-cabinet/structured-2d";
-import type { World } from "@test-cabinet/structured-2d";
+import { GameState } from "@clockwyrks/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import {
   DEFAULT_SEED,
   DEFLECTOR_START_ANGLE_DEG,

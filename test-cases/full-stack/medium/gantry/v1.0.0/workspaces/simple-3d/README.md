@@ -5,7 +5,7 @@ specification under `specs/` describes. Read `specs/overview.md` first; it says
 how the rest of the specification is organized.
 
 This build runs on the **Simple 3D** engine, already a dependency of the project
-and vendored under `.tcab/`. The engine documents itself in `engine/` at the
+and vendored under `.vendor/`. The engine documents itself in `engine/` at the
 root of this repository; read all of it before you start. It owns the frame loop
 and the delta time it hands each frame, the letterboxed canvas fit, the renderer
 over the canvas with the retained scene and the camera it draws through, the 2D
@@ -86,7 +86,7 @@ through.
 - **`src/constants.ts`** — every figure the specification fixes, named once.
   Import from it everywhere.
 - **`index.html`** — the page and the canvas the engine fits the stage into.
-- **`.tcab/`** and **`engine/`** — the vendored engine and its documentation.
+- **`.vendor/`** and **`engine/`** — the vendored engine and its documentation.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`,
   `.prettierignore`, and `.gitignore`.

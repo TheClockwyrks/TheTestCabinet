@@ -25,8 +25,8 @@
 // game is paused, and holds still while `setObstacleClockRunning(false)` has
 // stopped it (specs/instrumentation.md).
 
-import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
-import type { DrawApi } from "@test-cabinet/structured-2d";
+import { Actor, DrawComponent } from "@clockwyrks/structured-2d";
+import type { DrawApi } from "@clockwyrks/structured-2d";
 import { FIELD_H, NET_X, OBSTACLE_HH, OBSTACLE_HW } from "./constants";
 import { glowRect, type Ctx } from "./draw";
 import { obstaclePose } from "./obstacles";

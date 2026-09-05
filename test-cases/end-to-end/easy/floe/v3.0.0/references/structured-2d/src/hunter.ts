@@ -15,7 +15,7 @@
 // different questions and the specification keeps them apart, so this file does
 // too.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import {
   BEAR_AVOID_LEAD,
   COLS,

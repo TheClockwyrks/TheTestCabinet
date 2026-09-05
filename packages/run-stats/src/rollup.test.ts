@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { RunState } from "@test-cabinet/run-record";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-import type { Rating } from "@test-cabinet/run-record/review";
+import type { RunState } from "@clockwyrks/run-record";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+import type { Rating } from "@clockwyrks/run-record/review";
 import { rollupRuns } from "./rollup";
 
 interface RunOverrides {

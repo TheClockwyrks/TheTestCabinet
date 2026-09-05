@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type {
   GgTelemetryEvent,
   GgTelemetryKind,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import type { HarnessEvent } from "../../../../client/types";
 import { useAppSettings } from "../../../store/appSettings";
 import { reduceGgEvents } from "./useGgRunState";

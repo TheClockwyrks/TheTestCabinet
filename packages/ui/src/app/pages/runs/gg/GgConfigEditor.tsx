@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { GgSavedAgent } from "@test-cabinet/run-record/gg";
+import type { GgSavedAgent } from "@clockwyrks/run-record/gg";
 import type { Model } from "../../../../client/types";
 import {
   AGENT_MODES,

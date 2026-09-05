@@ -37,7 +37,7 @@ WORK=$(mktemp -d)/wick-showcase
 mkdir -p "$WORK"
 for item in src assets public scripts index.html package.json \
   package-lock.json tsconfig.json vite.config.ts vitest.config.ts \
-  eslint.config.js .prettierrc.json .prettierignore .tcab; do
+  eslint.config.js .prettierrc.json .prettierignore .vendor; do
   cp -r "$REF/$item" "$WORK/"
 done
 ln -s "$REF/node_modules" "$WORK/node_modules"

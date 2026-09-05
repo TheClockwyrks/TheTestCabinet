@@ -623,14 +623,14 @@ fn proof_without_a_record_is_none() {
 
 #[test]
 fn serves_synthesized_validation_media_from_the_collected_tree() {
-    // Validation media is stored flat under `.tcab/validation/` and served by its
+    // Validation media is stored flat under `.vendor/validation/` and served by its
     // exact addressable name — actual and its `.baseline` sibling.
     let dir = run_dir_with_validation(
         ValidationSummary::default(),
         &[
-            (".tcab/validation/spin__rally.webm", b"webm-bytes"),
+            (".vendor/validation/spin__rally.webm", b"webm-bytes"),
             (
-                ".tcab/validation/spin__rally.baseline.webm",
+                ".vendor/validation/spin__rally.baseline.webm",
                 b"baseline-bytes",
             ),
         ],
@@ -644,6 +644,20 @@ fn serves_synthesized_validation_media_from_the_collected_tree() {
 }
 
 #[test]
+fn serves_validation_media_a_run_collected_under_the_previous_host_namespace() {
+    // Trees collected before the host namespace was renamed to `.vendor` hold the same
+    // media under `.tcab/`. Those runs are immutable, so the rename must not turn a
+    // reviewer's already-recorded proof into a 404.
+    let dir = run_dir_with_validation(
+        ValidationSummary::default(),
+        &[(".tcab/validation/spin__rally.webm", b"legacy-bytes")],
+    );
+    let served = serve_validation_file(dir.path(), "spin__rally.webm").expect("legacy served");
+    assert_eq!(served.content_type, "video/webm");
+    assert_eq!(served.body, b"legacy-bytes");
+}
+
+#[test]
 fn a_served_recording_is_labelled_as_the_framed_json_it_is() {
     // A recording is stored and served compressed. The bytes travel exactly as they
     // are stored, and the response says both what the resource is and how the body
@@ -651,7 +665,7 @@ fn a_served_recording_is_labelled_as_the_framed_json_it_is() {
     let dir = run_dir_with_validation(
         ValidationSummary::default(),
         &[(
-            ".tcab/validation/no-tunnel__serve.json.gz",
+            ".vendor/validation/no-tunnel__serve.json.gz",
             &[0x1f, 0x8b, 0x08, 0x00],
         )],
     );
@@ -666,7 +680,7 @@ fn a_served_recording_is_labelled_as_the_framed_json_it_is() {
 fn a_served_still_declares_no_framing() {
     let dir = run_dir_with_validation(
         ValidationSummary::default(),
-        &[(".tcab/validation/no-tunnel__serve.png", b"png-bytes")],
+        &[(".vendor/validation/no-tunnel__serve.png", b"png-bytes")],
     );
     let served = serve_validation_file(dir.path(), "no-tunnel__serve.png").expect("still served");
     assert_eq!(served.content_type, "image/png");

@@ -49,7 +49,7 @@ Arc Foundry is designed for three engines, and seeds a different project for eac
 Neither engine supplies pathfinding, collision response, or a seeded random
 source, so the maze router, the never-seal test, the projectile flight, and the
 scrap-press roll are the build's own work under every one of the three. All three
-carry the produced-effect runtime `@test-cabinet/particle-runtime` as a baked-in
+carry the produced-effect runtime `@clockwyrks/particle-runtime` as a baked-in
 `file:` dependency, because every build plays its produced particle systems by
 simulating them live.
 

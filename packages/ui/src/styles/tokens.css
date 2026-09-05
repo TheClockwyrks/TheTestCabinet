@@ -1,7 +1,7 @@
 /*
  * The `--tcab-*` custom-property contract that every shared UI component reads.
  * These defaults give the library a working synthwave theme out of the box, so
- * an app can simply `@import "@test-cabinet/ui/tokens.css"`. Any app may override
+ * an app can simply `@import "@clockwyrks/ui/tokens.css"`. Any app may override
  * individual properties in its own global styles — the public site, for example,
  * maps these onto its existing `--ttc-*` palette so the moved components render
  * exactly as before.

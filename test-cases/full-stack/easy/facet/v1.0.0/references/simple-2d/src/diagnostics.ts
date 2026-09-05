@@ -22,7 +22,7 @@
 import { toCoreBoard } from "./bridge";
 import { lastFall, legalSwapExists, levelTarget, multiplierFor } from "./core";
 import type { CellRef, FacetState } from "./game";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 /** A cell as one short line, and the game's own word for no cell at all. */

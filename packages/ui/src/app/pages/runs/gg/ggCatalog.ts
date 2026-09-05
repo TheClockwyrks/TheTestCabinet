@@ -19,7 +19,7 @@ import type {
   GgProgramLanguage,
   GgRunLimits,
   GgSubagentScope,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import type { GgHookKind } from "./ggConfigDraft";
 // The arms' names, from the one module that holds them — see PROGRAM_LANGUAGE_LABELS below.
 import { PROGRAM_LANGUAGE_NAMES } from "../../gg/programLanguages";

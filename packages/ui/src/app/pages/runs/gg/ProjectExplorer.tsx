@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Markdown } from "@test-cabinet/ui";
-import type { GgBoardIssue, GgReviewer } from "@test-cabinet/run-record/gg";
+import { Markdown } from "@clockwyrks/ui";
+import type { GgBoardIssue, GgReviewer } from "@clockwyrks/run-record/gg";
 import type {
   BoardState,
   IssueReviewRound,

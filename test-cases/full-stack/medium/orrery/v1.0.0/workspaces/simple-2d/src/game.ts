@@ -50,7 +50,7 @@
 // lands under `assets/`, and the bar it is held to; `src/constants.ts` names
 // the paths. Load the sprites through the engine's asset loader, bind the seven
 // CUES to its cue bus, and play each produced particle system through
-// `@test-cabinet/particle-runtime`'s `./canvas` binding over the context
+// `@clockwyrks/particle-runtime`'s `./canvas` binding over the context
 // `render` receives.
 
 import type {
@@ -58,7 +58,7 @@ import type {
   InitApi,
   RenderApi,
   UpdateApi,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 /**

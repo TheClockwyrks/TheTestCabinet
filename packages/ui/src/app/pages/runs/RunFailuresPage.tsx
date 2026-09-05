@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunRecord } from "@clockwyrks/run-record";
 import type { PublishProgress, StoredRun } from "../../../client/types";
 import { Link } from "react-router";
-import { Panel, canonicalModelId } from "@test-cabinet/ui";
+import { Panel, canonicalModelId } from "@clockwyrks/ui";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { useGalleryData } from "../../data/galleryContext";

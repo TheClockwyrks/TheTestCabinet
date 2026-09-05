@@ -24,7 +24,7 @@
 // removed, so both are driven clear of the probe's line and held still.
 
 import { afterEach, it } from "vitest";
-import { ConstantClock } from "@test-cabinet/simple-2d";
+import { ConstantClock } from "@clockwyrks/simple-2d";
 import {
   BALL_R,
   MAX_SUBSTEP,

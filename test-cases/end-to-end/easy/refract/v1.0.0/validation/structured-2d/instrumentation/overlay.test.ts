@@ -28,7 +28,7 @@
 // it was — no frame runs here, so simTime is held too — and a second read with
 // nothing in between reports the same values.
 
-import type { DiagnosticReading } from "@test-cabinet/structured-2d";
+import type { DiagnosticReading } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertGreaterThan, fail } from "../assert";
 import {

@@ -25,8 +25,8 @@
 // game time reach the same state however it was divided into frames. A collider
 // per entity would report a second, coarser set of contacts that no rule reads.
 
-import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
-import type { DrawApi, World } from "@test-cabinet/structured-2d";
+import { Actor, DrawComponent } from "@clockwyrks/structured-2d";
+import type { DrawApi, World } from "@clockwyrks/structured-2d";
 import { SHIP_Y, TAGS } from "./constants";
 import { spectraState, type SpectraState } from "./game";
 import {

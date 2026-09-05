@@ -19,7 +19,7 @@
 // frame for a cue to belong to. The pointer operations therefore feed exactly
 // the resolution a player's press feeds and discard the cues it raised.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { syncActors } from "./actors";
 import {
   addTowerAt,

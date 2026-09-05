@@ -17,8 +17,8 @@
 // tick before any actor and before the game mode, so the mode's advance runs on the
 // world this frame's input produced, and the yard's draw components render that.
 
-import { PlayerController } from "@test-cabinet/structured-2d";
-import type { WorldAudio } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
+import type { WorldAudio } from "@clockwyrks/structured-2d";
 import { boardOf } from "./board";
 import {
   BOARD_X,

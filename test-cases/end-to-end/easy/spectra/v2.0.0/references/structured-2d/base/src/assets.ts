@@ -19,8 +19,8 @@
 // still reports its state in a host that cannot fetch or decode a file at all.
 
 import { BURST_SYSTEM, SPRITES } from "./constants";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
+import type { InitApi } from "@clockwyrks/structured-2d";
 
 /** The seeded art, loaded once before the level's first frame is drawn. */
 export interface Art {

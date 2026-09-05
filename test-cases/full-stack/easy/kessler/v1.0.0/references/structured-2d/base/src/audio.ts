@@ -24,7 +24,7 @@ import {
   type CueName,
   type Screen,
 } from "./constants";
-import type { CueSpec, InitApi, WorldAudio } from "@test-cabinet/structured-2d";
+import type { CueSpec, InitApi, WorldAudio } from "@clockwyrks/structured-2d";
 
 /** The two music beds, by the cue name each loops under. */
 export const BED_CUES = {

@@ -1,4 +1,4 @@
-import type { GgProgramLanguage } from "@test-cabinet/run-record/gg";
+import type { GgProgramLanguage } from "@clockwyrks/run-record/gg";
 
 /**
  * How each [program language](GgProgramLanguage) — each SDK **arm** — is named to a

@@ -129,7 +129,7 @@ import {
   type Engine,
   type GameDefinition,
   type SurfaceMetrics,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { FIELD_H, FIELD_W } from "../src/constants";
 import { game } from "../src/game";
 import type { Debug } from "./debug";
@@ -258,7 +258,7 @@ the checks decide.
 
 ```ts
 // validation/debug.ts — the surface as the case specifies it
-import type { Vec3 } from "@test-cabinet/structured-3d";
+import type { Vec3 } from "@clockwyrks/structured-3d";
 
 export type Mode = "solo" | "versus";
 

@@ -27,7 +27,7 @@
 // An argument outside the domain `specs/instrumentation.md` states for it fails
 // loudly rather than leaving the caller to guess what the game did with it.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import {
   BAND_HEALTH,
   CAM_LEAD_MAX,

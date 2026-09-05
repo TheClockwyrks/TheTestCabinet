@@ -153,7 +153,7 @@ played at for its duration; `place` moves a running loop, whether or not the
 loop was started with a position.
 
 ```ts
-import { Actor } from "@test-cabinet/structured-3d";
+import { Actor } from "@clockwyrks/structured-3d";
 
 export class Drone extends Actor {
   override beginPlay(): void {

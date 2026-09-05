@@ -8,7 +8,7 @@ import { registerDiagnostics } from "./diagnostics";
 import { parkedBall } from "./entities";
 import { createInitialState, type CaromState } from "./game";
 import type { DeepReadonly } from "ts-essentials";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 
 type Source = (state: DeepReadonly<CaromState>) => unknown;
 

@@ -131,7 +131,7 @@ Readable by silhouette, not color alone.
 ## 3. Particle systems — `particle-2d` (each emits a `system.json`)
 
 Authored as systems (emitters, forces, per-particle size/opacity/color curves) and played
-**live** via `@test-cabinet/particle-runtime`'s `ParticleCanvasPlayer` (see `src/particles.ts`,
+**live** via `@clockwyrks/particle-runtime`'s `ParticleCanvasPlayer` (see `src/particles.ts`,
 DESIGN §4). Field **128×128** (matching valence, composited scaled to the on-board footprint).
 One-shots are non-looping; `fire` loops. Land under `assets/fx/`.
 

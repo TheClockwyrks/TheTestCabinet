@@ -13,7 +13,7 @@
 // draws every element from its folder where the folder arrived and from shapes
 // in code where it did not, so the game still plays.
 
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 import {
   CORRUPTOR_FRAMES,
   CURSOR_FRAMES,

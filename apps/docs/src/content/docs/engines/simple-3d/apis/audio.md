@@ -190,4 +190,4 @@ plays from its own initialization onward.
 ## Exports
 
 `CueSpec`, `PlayOptions`, and `AudioState` are exported as types from
-`@test-cabinet/simple-3d`.
+`@clockwyrks/simple-3d`.

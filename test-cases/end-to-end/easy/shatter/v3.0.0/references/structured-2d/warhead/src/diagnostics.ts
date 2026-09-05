@@ -10,7 +10,7 @@
 // overlay leaves the game exactly as it is, and each is kept short enough to sit
 // on one line.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { shatterState } from "./game";
 
 /** A number rounded for display, so a line stays readable. */

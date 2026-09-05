@@ -47,7 +47,7 @@ again on later frames, and writes its pose from the state.
 
 ```ts
 import * as THREE from "three";
-import type { Game } from "@test-cabinet/simple-3d";
+import type { Game } from "@clockwyrks/simple-3d";
 
 interface Crate {
   readonly id: number;

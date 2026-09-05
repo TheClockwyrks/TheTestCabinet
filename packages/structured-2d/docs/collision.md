@@ -141,7 +141,7 @@ against a level that has closed. The handler belongs on the `Ball` above,
 beside its collider and its `velocity`.
 
 ```ts
-import type { EngineEventMap } from "@test-cabinet/structured-2d";
+import type { EngineEventMap } from "@clockwyrks/structured-2d";
 
 export class Ball extends Actor {
   private off: (() => void) | null = null;

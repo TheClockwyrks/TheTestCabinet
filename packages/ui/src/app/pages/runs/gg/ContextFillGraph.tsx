@@ -24,11 +24,11 @@ import {
   type StackedAreaMarker,
   type StackedAreaPoint,
   type StackedSeries,
-} from "@test-cabinet/ui";
+} from "@clockwyrks/ui";
 import type {
   GgCapabilitySet,
   GgContextSource,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import {
   retainedSummary,
   shortTokens,

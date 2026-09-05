@@ -7,7 +7,7 @@
 // HANDED rather than one it closed over, and that reading them changes
 // nothing.
 
-import type { DiagnosticValue } from "@test-cabinet/simple-2d";
+import type { DiagnosticValue } from "@clockwyrks/simple-2d";
 import { describe, expect, it } from "vitest";
 
 import { createStateOps } from "./debug";

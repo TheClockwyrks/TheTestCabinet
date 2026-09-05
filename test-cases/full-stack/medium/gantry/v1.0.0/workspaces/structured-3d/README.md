@@ -5,7 +5,7 @@ specification under `specs/` describes. Read `specs/overview.md` first; it says
 how the rest of the specification is organized.
 
 This build runs on the **Structured 3D** engine, already a dependency of the
-project and vendored under `.tcab/`. The engine documents itself in `engine/`
+project and vendored under `.vendor/`. The engine documents itself in `engine/`
 at the root of this repository; read all of it before you start. It owns the
 gameplay framework the game is written inside — a game instance that outlives
 every level, the world a level opens into, the game mode and game state that
@@ -93,7 +93,7 @@ through.
 - **`src/constants.ts`** — every figure the specification fixes, named once.
   Import from it everywhere.
 - **`index.html`** — the page and the canvas the engine fits the stage into.
-- **`.tcab/`** and **`engine/`** — the vendored engine and its documentation.
+- **`.vendor/`** and **`engine/`** — the vendored engine and its documentation.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`,
   `.prettierignore`, and `.gitignore`.

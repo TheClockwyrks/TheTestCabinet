@@ -18,8 +18,8 @@
 // Three actors, one per entry of `TAGS`, so `world.byTag` finds each under the
 // name the specification uses.
 
-import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
-import type { DrawApi } from "@test-cabinet/structured-2d";
+import { Actor, DrawComponent } from "@clockwyrks/structured-2d";
+import type { DrawApi } from "@clockwyrks/structured-2d";
 import { cascadeState, type CascadeState } from "./game";
 import {
   renderCards,

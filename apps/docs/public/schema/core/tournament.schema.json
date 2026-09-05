@@ -40,7 +40,7 @@
       "type": "object"
     },
     "MatchSummary": {
-      "description": "One match's result, summarized so a tournament list can show the outcome\nwithout loading (and replaying) the match. Serializes `camelCase` to mirror the\n`@test-cabinet/run-record` TypeScript contract.",
+      "description": "One match's result, summarized so a tournament list can show the outcome\nwithout loading (and replaying) the match. Serializes `camelCase` to mirror the\n`@clockwyrks/run-record` TypeScript contract.",
       "properties": {
         "blueFuel": {
           "description": "Blue's total fuel consumed over the match.",

@@ -77,7 +77,7 @@ import type {
   PointerSample,
   RenderApi,
   UpdateApi,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 
 // The surface is part of the module contract and is declared beside the game it types,
 // so it is exported from here whichever module implements it.

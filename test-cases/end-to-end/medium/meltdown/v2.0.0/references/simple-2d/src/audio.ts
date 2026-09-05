@@ -11,7 +11,7 @@
 
 import { CUES } from "./constants";
 import type { FrameEvents } from "./sim";
-import type { CueSpec, InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type { CueSpec, InitApi, UpdateApi } from "@clockwyrks/simple-2d";
 import type { MeltdownState } from "./game";
 
 const SPECS: Readonly<Record<string, CueSpec>> = {

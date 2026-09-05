@@ -20,7 +20,7 @@
 import {
   PlayerController,
   type PointerSample,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { noCues, playCues, type FrameCues } from "./audio";
 import { ENDING_ITEMS, PAUSE_ITEMS, TITLE_ITEMS } from "./constants";
 import { resolveCursorIntent } from "./cursor";

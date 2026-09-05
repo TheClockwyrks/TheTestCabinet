@@ -84,6 +84,6 @@ it("serves nothing outside the tree it was pointed at", async () => {
   ]) {
     const response = await fetch(new URL(path, inject("tcabUrl")));
     expect([403, 404], path).toContain(response.status);
-    expect(await response.text(), path).not.toContain("@test-cabinet");
+    expect(await response.text(), path).not.toContain("@clockwyrks");
   }
 });

@@ -16,7 +16,7 @@
 // highlights too: a finger has no hover, and the press is what tells the player
 // which item their release will take.
 
-import type { PointerSample } from "@test-cabinet/structured-2d";
+import type { PointerSample } from "@clockwyrks/structured-2d";
 import { confirmItem, goBack } from "./flow";
 import type { PointerDevice, RefractState } from "./game";
 import { boardIndexOf, menuIndexOf, targetAt } from "./layout";

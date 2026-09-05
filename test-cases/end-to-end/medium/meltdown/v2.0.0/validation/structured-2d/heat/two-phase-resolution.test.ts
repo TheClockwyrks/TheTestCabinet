@@ -37,7 +37,7 @@
 // having an extra open radiator face, that the middle tower's loss never equals
 // its neighbours' gains in a conformant build either.
 
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo } from "../assert";
 import {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Panel } from "@test-cabinet/ui";
+import { Panel } from "@clockwyrks/ui";
 // The very player a run's Results tab launches per scored scenario. It is engine
 // agnostic — a module URL and a scenario URL — so the reference drives it unchanged,
 // and a reference factory is watched exactly the way the run compared against it is.

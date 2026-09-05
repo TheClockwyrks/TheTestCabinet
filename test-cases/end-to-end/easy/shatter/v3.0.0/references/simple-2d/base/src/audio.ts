@@ -22,7 +22,7 @@
 // ship, and a rising chime for an extra one.
 
 import { CUES, type CueName } from "./constants";
-import type { CueSpec, InitApi } from "@test-cabinet/simple-2d";
+import type { CueSpec, InitApi } from "@clockwyrks/simple-2d";
 
 export const CUE_SPECS: Readonly<Record<CueName, CueSpec>> = {
   [CUES.fire]: {

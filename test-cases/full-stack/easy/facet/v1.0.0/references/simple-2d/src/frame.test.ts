@@ -35,7 +35,7 @@ import type {
   PointerDevice,
   PointerSample,
   UpdateApi,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 
 /** One pointer sample, as the engine's primary pointer reports it. */
 function sample(

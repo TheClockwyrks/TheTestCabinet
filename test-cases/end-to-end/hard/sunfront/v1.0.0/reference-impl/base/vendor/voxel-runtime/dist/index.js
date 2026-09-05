@@ -1,9 +1,9 @@
 /**
- * `@test-cabinet/voxel-runtime` — framework-agnostic core.
+ * `@clockwyrks/voxel-runtime` — framework-agnostic core.
  *
  * The pure posing/clip math and contract types, with no `three` dependency.
  * The optional three.js binding (mesh building + `VoxelRig`) is exported from
- * the `@test-cabinet/voxel-runtime/three` subpath instead.
+ * the `@clockwyrks/voxel-runtime/three` subpath instead.
  */
 export * from "./contract";
 export * from "./clips";

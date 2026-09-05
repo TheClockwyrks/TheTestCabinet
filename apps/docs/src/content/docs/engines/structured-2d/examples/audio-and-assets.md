@@ -42,7 +42,7 @@ export const COIN = {
 ## src/main.ts
 
 ```ts
-import { createEngine } from "@test-cabinet/structured-2d";
+import { createEngine } from "@clockwyrks/structured-2d";
 import { vault } from "./game";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
@@ -70,8 +70,8 @@ in place before the instance is built and before the start level loads anything.
 ## src/instance.ts
 
 ```ts
-import { GameInstance } from "@test-cabinet/structured-2d";
-import type { InitApi } from "@test-cabinet/structured-2d";
+import { GameInstance } from "@clockwyrks/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 import { CUE } from "./constants";
 
 let built: VaultInstance | null = null;
@@ -120,8 +120,8 @@ import {
   Actor,
   SpriteComponent,
   TextComponent,
-} from "@test-cabinet/structured-2d";
-import type { GameDefinition, LoadApi } from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
+import type { GameDefinition, LoadApi } from "@clockwyrks/structured-2d";
 import { COIN, CUE, LEVEL, PATH } from "./constants";
 import { instance, VaultInstance } from "./instance";
 import { VaultMode } from "./levels/vault-mode";
@@ -180,7 +180,7 @@ rejection is caught; the failure itself is reported by the event.
 ## src/levels/vault-mode.ts
 
 ```ts
-import { GameMode } from "@test-cabinet/structured-2d";
+import { GameMode } from "@clockwyrks/structured-2d";
 import { COIN, CUE } from "../constants";
 
 export class VaultMode extends GameMode {

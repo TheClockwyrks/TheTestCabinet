@@ -41,7 +41,7 @@
 //     npx vitest run --config validation/vitest.config.ts \
 //     validation/showcase-capture.test.ts
 
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { it } from "vitest";
 
 import { MINER_W, SPAWN_COL } from "../src/constants";

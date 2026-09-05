@@ -15,7 +15,7 @@ import { DEN_ORDER, ROSTER_CAP } from "./constants";
 import { bodyTile } from "./entities";
 import { visionRadius, windowRadius } from "./sensing";
 import type { FathomState } from "./state";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 
 /** The deepest roster, which is what fixes how many predator lines there are. */
 const MAX_ROSTER = DEN_ORDER.length * ROSTER_CAP;

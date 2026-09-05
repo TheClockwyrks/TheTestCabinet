@@ -325,5 +325,5 @@ api.input.register("move-right", { keys: ["KeyD", "ArrowRight"], kind: "analog" 
 `ActionKind`, `ActionBinding`, `RegisteredAction`, `TouchLayout`,
 `InputReader`, `PointerDevice`, `PointerButton`, `PointerSampleType`,
 `PointerSample`, `PointerSnapshot`, `PointerContact`, and `WheelDelta` are
-exported as types from `@test-cabinet/structured-3d`, and `TOUCH_LAYOUTS` is
+exported as types from `@clockwyrks/structured-3d`, and `TOUCH_LAYOUTS` is
 exported as a value.

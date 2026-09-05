@@ -510,7 +510,7 @@ fn seeding_vendors_declared_packages_into_the_repo_and_commits_them() {
     // seeder vendors it to, plus a `.gitignore` that ignores `dist/` (as every
     // real case does for its own build output).
     let manifest = format!(
-        "variants = [\"variants/base.toml\"]\nworkspace = \"workspaces/base\"\npackages = [\"@test-cabinet/particle-runtime\"]\n{DEMO_HEAD}"
+        "variants = [\"variants/base.toml\"]\nworkspace = \"workspaces/base\"\npackages = [\"@clockwyrks/particle-runtime\"]\n{DEMO_HEAD}"
     );
     let (dir, catalog) = temp_catalog(&manifest, &[("base.toml", VARIANT_BASE_TITLE)]);
     let workspace = dir
@@ -519,7 +519,7 @@ fn seeding_vendors_declared_packages_into_the_repo_and_commits_them() {
     std::fs::create_dir_all(&workspace).expect("workspace dir");
     std::fs::write(
         workspace.join("package.json"),
-        r#"{"name":"demo","dependencies":{"@test-cabinet/particle-runtime":"file:./.tcab/packages/@test-cabinet/particle-runtime"}}"#,
+        r#"{"name":"demo","dependencies":{"@clockwyrks/particle-runtime":"file:./.vendor/packages/@clockwyrks/particle-runtime"}}"#,
     )
     .expect("workspace package.json");
     std::fs::write(workspace.join(".gitignore"), "node_modules/\ndist/\n").expect("gitignore");
@@ -528,19 +528,19 @@ fn seeding_vendors_declared_packages_into_the_repo_and_commits_them() {
     // run-record via the relative sibling `file:` the staging script writes, so the
     // vendoring closure must follow the edge and copy run-record too.
     let store = tempfile::tempdir().expect("store dir");
-    let pr = store.path().join("@test-cabinet/particle-runtime");
-    let rr = store.path().join("@test-cabinet/run-record");
+    let pr = store.path().join("@clockwyrks/particle-runtime");
+    let rr = store.path().join("@clockwyrks/run-record");
     std::fs::create_dir_all(pr.join("dist")).expect("pr dist");
     std::fs::create_dir_all(rr.join("dist")).expect("rr dist");
     std::fs::write(
         pr.join("package.json"),
-        r#"{"name":"@test-cabinet/particle-runtime","version":"0.0.0","dependencies":{"@test-cabinet/run-record":"file:../run-record"}}"#,
+        r#"{"name":"@clockwyrks/particle-runtime","version":"0.0.0","dependencies":{"@clockwyrks/run-record":"file:../run-record"}}"#,
     )
     .expect("pr manifest");
     std::fs::write(pr.join("dist/index.js"), "// runtime").expect("pr dist file");
     std::fs::write(
         rr.join("package.json"),
-        r#"{"name":"@test-cabinet/run-record","version":"0.0.0"}"#,
+        r#"{"name":"@clockwyrks/run-record","version":"0.0.0"}"#,
     )
     .expect("rr manifest");
     std::fs::write(rr.join("dist/index.js"), "// types").expect("rr dist file");
@@ -565,34 +565,34 @@ fn seeding_vendors_declared_packages_into_the_repo_and_commits_them() {
         })
         .expect("seed demo");
 
-    // The declared package and its transitive `@test-cabinet` closure are vendored
+    // The declared package and its transitive `@clockwyrks` closure are vendored
     // into the repo at the path the case's `package.json` depends on.
-    let vendor = seeded.path.join(".tcab/packages/@test-cabinet");
+    let vendor = seeded.path.join(".vendor/packages/@clockwyrks");
     assert!(
         vendor.join("particle-runtime/package.json").is_file(),
         "the declared package is vendored"
     );
     assert!(
         vendor.join("run-record/package.json").is_file(),
-        "the transitive @test-cabinet dependency is vendored too"
+        "the transitive @clockwyrks dependency is vendored too"
     );
     let vendored_dist = vendor.join("particle-runtime/dist/index.js");
     assert!(vendored_dist.is_file(), "the package's dist is vendored");
 
     // The workspace `package.json` is seeded verbatim — the seeder never rewrites it.
     let pkg = std::fs::read_to_string(seeded.path.join("package.json")).expect("read package.json");
-    assert!(pkg.contains("file:./.tcab/packages/@test-cabinet/particle-runtime"));
+    assert!(pkg.contains("file:./.vendor/packages/@clockwyrks/particle-runtime"));
 
     // The vendored tree is in the initial commit, dist included: the case's
     // `.gitignore` ignores `dist/`, so this only holds if seeding force-adds
-    // `.tcab/`. Without it the published repo would be missing the package code.
+    // `.vendor/`. Without it the published repo would be missing the package code.
     let tracked = git_tracked_files(&seeded.path);
     assert!(
-        tracked.contains(".tcab/packages/@test-cabinet/particle-runtime/dist/index.js"),
+        tracked.contains(".vendor/packages/@clockwyrks/particle-runtime/dist/index.js"),
         "the vendored dist must be committed despite the `dist/` gitignore rule; tracked:\n{tracked}"
     );
     assert!(
-        tracked.contains(".tcab/packages/@test-cabinet/run-record/package.json"),
+        tracked.contains(".vendor/packages/@clockwyrks/run-record/package.json"),
         "the whole vendored closure is committed"
     );
 }
@@ -1153,7 +1153,7 @@ fn jam_root() -> PathBuf {
 /// git-ignored, holds no committed manifest, and is rewritten wholesale by any
 /// build running beside the suite, so the walk stops at them and reads the
 /// committed catalog alone.
-const BUILD_OUTPUT_DIRS: [&str; 4] = ["node_modules", "dist", ".rendered", ".tcab"];
+const BUILD_OUTPUT_DIRS: [&str; 4] = ["node_modules", "dist", ".rendered", ".vendor"];
 
 /// Every committed case manifest on disk: `test-case.toml` under `test-cases/`
 /// and `game-jam.toml` under `game-jams/`, one per version directory.

@@ -97,7 +97,7 @@ import {
   type Resource,
   type SurfaceMetrics,
   type Viewport,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 import {
   ACTIONS,
@@ -152,8 +152,8 @@ export {
   PacedClock,
   SequenceClock,
   WallClock,
-} from "@test-cabinet/simple-2d";
-export type { Clock } from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
+export type { Clock } from "@clockwyrks/simple-2d";
 
 /* -------------------------------------------------------------------------- */
 /* The contract the build owes                                                */

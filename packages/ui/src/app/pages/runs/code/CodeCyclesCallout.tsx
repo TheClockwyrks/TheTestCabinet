@@ -10,7 +10,7 @@
 // state. And, per the site-wide stance, it is descriptive: nothing here influences the
 // run's verdict, its review or whether it publishes.
 
-import type { CodeAnalysisDocument } from "@test-cabinet/run-record/code-analysis";
+import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
 import { formatCodeNumber } from "./codeFormat";
 import styles from "./CodePanels.module.scss";
 

@@ -53,7 +53,7 @@ module level, so a hundred crates upload one box and one shader.
 
 ```ts
 import * as THREE from "three";
-import type { DeepReadonly, RenderApi, Vec3 } from "@test-cabinet/simple-3d";
+import type { DeepReadonly, RenderApi, Vec3 } from "@clockwyrks/simple-3d";
 
 interface State {
   crates: { id: number; x: number; y: number; z: number }[];
@@ -261,7 +261,7 @@ refused where the mistake is.
 ## Exports
 
 `SceneCamera` and `RenderApi` are exported as types, and `cloneModel` as a
-function, from `@test-cabinet/simple-3d`. `three` is a peer dependency the build
+function, from `@clockwyrks/simple-3d`. `three` is a peer dependency the build
 declares itself, and the engine re-exports nothing from it, so a game imports
-`three` directly and the engine, the build, and `@test-cabinet/voxel-runtime/three`
+`three` directly and the engine, the build, and `@clockwyrks/voxel-runtime/three`
 share one instance.

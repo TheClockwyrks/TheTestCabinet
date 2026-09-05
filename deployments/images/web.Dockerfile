@@ -26,7 +26,7 @@
 
 # ── Build stage ──────────────────────────────────────────────────────────────
 # Build the SPA from the repo root so the npm workspace resolves: Vite bundles the
-# console's workspace deps (@test-cabinet/ui, @test-cabinet/run-record) from their
+# console's workspace deps (@clockwyrks/ui, @clockwyrks/run-record) from their
 # TypeScript sources, so the whole workspace must `npm ci` against the root
 # lockfile. The .dockerignore re-includes exactly the slice this needs (the root
 # manifests, every member's package.json, and the three packages' sources).
@@ -36,7 +36,7 @@ COPY . .
 # Deterministic, lockfile-pinned install of the whole workspace, then build the
 # web console. run-record, run-stats, voxel-runtime and particle-runtime are built
 # first: the console's `tsc -b` needs run-record's compiled types, and the
-# @test-cabinet/ui library it bundles from source imports run-stats' `.`/`./rollup`
+# @clockwyrks/ui library it bundles from source imports run-stats' `.`/`./rollup`
 # subpaths and voxel-runtime's and particle-runtime's `./three` subpaths, whose
 # typings only resolve once each package's dist/ exists (none of the three is a tsc
 # project reference of the console, so they must be built explicitly). The npm
@@ -44,11 +44,11 @@ COPY . .
 # across builds instead of refetching every dependency.
 RUN --mount=type=cache,target=/root/.npm \
     npm ci \
-    && npm run build -w @test-cabinet/run-record \
-    && npm run build -w @test-cabinet/run-stats \
-    && npm run build -w @test-cabinet/voxel-runtime \
-    && npm run build -w @test-cabinet/particle-runtime \
-    && npm run build -w @test-cabinet/web
+    && npm run build -w @clockwyrks/run-record \
+    && npm run build -w @clockwyrks/run-stats \
+    && npm run build -w @clockwyrks/voxel-runtime \
+    && npm run build -w @clockwyrks/particle-runtime \
+    && npm run build -w @clockwyrks/web
 
 # ── Runtime stage ────────────────────────────────────────────────────────────
 # nginx-unprivileged: runs as a non-root user (uid 101) and listens on 8080 by

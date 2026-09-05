@@ -319,4 +319,4 @@ was read in.
 
 `Projected`, `Ray`, `CameraSnapshot`, `Camera`, and `Viewport` are exported as
 types, and `fitViewport`, `applyViewport`, and `syncCanvas` as functions, from
-`@test-cabinet/structured-3d`.
+`@clockwyrks/structured-3d`.

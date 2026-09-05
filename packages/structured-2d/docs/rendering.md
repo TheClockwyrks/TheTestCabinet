@@ -168,7 +168,7 @@ Render modes belong to the declarative pipeline, so a `DrawComponent` reads
 `api.mode` and supplies its own.
 
 ```ts
-import { DrawComponent, type DrawApi, type Vec2 } from "@test-cabinet/structured-2d";
+import { DrawComponent, type DrawApi, type Vec2 } from "@clockwyrks/structured-2d";
 import { PALETTE } from "./constants";
 
 export class Trail extends DrawComponent {

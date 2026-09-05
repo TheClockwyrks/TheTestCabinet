@@ -3,7 +3,7 @@
 // A destruction plays the burst at the target's arc center, a paddle,
 // containment, or shield reflection plays the spark at the contact, and a
 // ball or pod reaching the planet plays the burn-up at it. Each is the
-// produced `system.json`, simulated by `@test-cabinet/particle-runtime`'s
+// produced `system.json`, simulated by `@clockwyrks/particle-runtime`'s
 // canvas binding — and THE PLAYER IS HANDED THE SAME CONTEXT THE FIELD IS
 // DRAWN INTO, as `specs/assets.md` asks. The player maps its system's field
 // across the whole backing store, so each instance is drawn under a
@@ -16,7 +16,7 @@
 // effects freeze with `setAutoStep(false)`, advance under `step`, and a
 // stepped scenario reproduces what a played one shows.
 
-import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
+import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
 import type { Assets } from "./assets";
 import type { ParticleSystem } from "./constants";
 

@@ -17,8 +17,8 @@
 // awaits `loadAssets` before the one level opens, so a component constructed
 // for that level reads each image as a plain value.
 
-import type { InitApi } from "@test-cabinet/structured-2d";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { InitApi } from "@clockwyrks/structured-2d";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import {
   APERTURE_FRAMES,
   APERTURE_SHEETS,

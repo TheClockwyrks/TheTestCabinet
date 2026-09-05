@@ -37,13 +37,13 @@ import { renderGame } from "./render";
 import { newFrameEvents, toSim } from "./sim";
 import { forgetPresses, stepFrame } from "./step";
 import { COLOR } from "./theme";
-import type { ParticleSimulator } from "@test-cabinet/particle-runtime";
+import type { ParticleSimulator } from "@clockwyrks/particle-runtime";
 import type {
   Game,
   InitApi,
   RenderApi,
   UpdateApi,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 // The surface's type belongs beside the state it poses, so it is exported from

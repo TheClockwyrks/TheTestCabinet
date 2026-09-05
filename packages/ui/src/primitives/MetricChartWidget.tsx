@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from "react";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { canonicalModelId } from "../modelId";
 import { ChartWidget } from "./ChartWidget";
 import {

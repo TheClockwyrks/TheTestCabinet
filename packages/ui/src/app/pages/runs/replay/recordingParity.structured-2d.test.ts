@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * `@test-cabinet/structured-2d`'s recorder against this player, over real
+ * `@clockwyrks/structured-2d`'s recorder against this player, over real
  * pixels.
  *
  * Structured 2D writes the same recording format 1 through its own
@@ -15,7 +15,7 @@
  * directly, and that is how its own `recording.test.ts` exercises it too.
  */
 
-import { ContextRecorder } from "@test-cabinet/structured-2d/recording";
+import { ContextRecorder } from "@clockwyrks/structured-2d/recording";
 import { describeRecordingParity } from "./recordingParitySuite";
 
 describeRecordingParity((ctx) => new ContextRecorder(ctx));

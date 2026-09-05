@@ -1,8 +1,8 @@
 // Display helpers. These format numbers for the gallery; they don't compute
 // rankings or aggregate scores themselves — that's the leaderboard's job.
 
-import type { RunMetrics } from "@test-cabinet/run-record";
-import type { RunScoreOut } from "@test-cabinet/run-record/snapshot";
+import type { RunMetrics } from "@clockwyrks/run-record";
+import type { RunScoreOut } from "@clockwyrks/run-record/snapshot";
 import { formatPoints as formatPointValue } from "../ratings";
 
 // Add two nullable token counts, treating an unreported (null) category as zero

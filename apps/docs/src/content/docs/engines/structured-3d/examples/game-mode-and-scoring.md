@@ -9,7 +9,7 @@ game mode awards the points, restarts the pawns, and ends the match.
 ## src/constants.ts
 
 ```ts
-import type { ActionBinding } from "@test-cabinet/structured-3d";
+import type { ActionBinding } from "@clockwyrks/structured-3d";
 
 export const WIDTH = 640;
 export const HEIGHT = 360;
@@ -47,7 +47,7 @@ deflection reaches the paddle as a magnitude.
 ## src/main.ts
 
 ```ts
-import { createEngine } from "@test-cabinet/structured-3d";
+import { createEngine } from "@clockwyrks/structured-3d";
 import { BACKGROUND, HEIGHT, WIDTH } from "./constants";
 import { rally } from "./game";
 
@@ -70,8 +70,8 @@ await engine.run();
 ## src/game.ts
 
 ```ts
-import { GameInstance, type InitApi } from "@test-cabinet/structured-3d";
-import type { GameDefinition } from "@test-cabinet/structured-3d";
+import { GameInstance, type InitApi } from "@clockwyrks/structured-3d";
+import type { GameDefinition } from "@clockwyrks/structured-3d";
 import { ACTIONS, CUES, LEVELS, TAGS } from "./constants";
 import { Ball } from "./actors/ball";
 import { Lamp } from "./actors/lamp";
@@ -108,8 +108,8 @@ export const rally: GameDefinition<null> = {
 ## src/state.ts
 
 ```ts
-import { GameState, PlayerState } from "@test-cabinet/structured-3d";
-import type { World } from "@test-cabinet/structured-3d";
+import { GameState, PlayerState } from "@clockwyrks/structured-3d";
+import type { World } from "@clockwyrks/structured-3d";
 
 export class RallyPlayerState extends PlayerState {
   aces = 0;
@@ -128,7 +128,7 @@ export function rallyState(world: World): RallyState {
 ## src/actors/lamp.ts
 
 ```ts
-import { Actor, LightComponent, quatFromEuler } from "@test-cabinet/structured-3d";
+import { Actor, LightComponent, quatFromEuler } from "@clockwyrks/structured-3d";
 
 export class Lamp extends Actor {
   constructor() {
@@ -154,8 +154,8 @@ import {
   add,
   scale,
   vec3,
-} from "@test-cabinet/structured-3d";
-import type { Vec3 } from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
+import type { Vec3 } from "@clockwyrks/structured-3d";
 import { BALL, COLORS, COURT, TAGS } from "../constants";
 import { rallyState } from "../state";
 
@@ -212,7 +212,7 @@ rules, and each move is an assignment of a fresh vector from the math helpers.
 ## src/actors/paddle.ts
 
 ```ts
-import { ColliderComponent, MeshComponent, Pawn } from "@test-cabinet/structured-3d";
+import { ColliderComponent, MeshComponent, Pawn } from "@clockwyrks/structured-3d";
 import { COLORS, PADDLE, TAGS } from "../constants";
 
 const SHAPE = {
@@ -249,8 +249,8 @@ import {
   QUAT_IDENTITY,
   VEC3_ONE,
   vec3,
-} from "@test-cabinet/structured-3d";
-import type { Controller, Transform } from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
+import type { Controller, Transform } from "@clockwyrks/structured-3d";
 import { AXES, COURT, CUES, PADDLE, SCORE_LIMIT } from "../constants";
 import { Ball } from "../actors/ball";
 import { Paddle } from "../actors/paddle";

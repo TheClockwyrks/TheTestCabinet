@@ -12,7 +12,7 @@
 // the shared 120 Hz default is deliberately not used, because the step size is
 // what is under test.
 
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, it } from "vitest";
 import { assertCloseTo } from "../assert";
 import { captureStill, createHarness, resetTo, type Harness } from "../harness";

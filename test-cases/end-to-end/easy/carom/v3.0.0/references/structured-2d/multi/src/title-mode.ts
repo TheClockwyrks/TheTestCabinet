@@ -20,8 +20,8 @@
 // goes back to the title through the one return the instance owns, so the
 // remembered selection is restored the same way from all of them.
 
-import { GameMode, PlayerController } from "@test-cabinet/structured-2d";
-import type { InputReader } from "@test-cabinet/structured-2d";
+import { GameMode, PlayerController } from "@clockwyrks/structured-2d";
+import type { InputReader } from "@clockwyrks/structured-2d";
 import { buildStandardField } from "./field";
 import { driveMenu, readMenuFrame } from "./input";
 import { CaromState, gameOf } from "./state";

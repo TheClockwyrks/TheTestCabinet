@@ -12,7 +12,7 @@
 // watching the overlay never changes what the simulation does. Each line is
 // short enough to read at a glance while the game runs.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { FxActor } from "./actors";
 import { challengeCount } from "./challenges";
 import { machinePeriod } from "./machine";

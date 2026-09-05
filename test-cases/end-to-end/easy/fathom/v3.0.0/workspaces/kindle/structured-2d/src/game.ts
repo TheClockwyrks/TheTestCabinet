@@ -39,8 +39,8 @@
 // `engine/`, defines all of this and the classes below; read it before you
 // start.
 
-import { GameInstance, GameMode } from "@test-cabinet/structured-2d";
-import type { GameDefinition, InitApi } from "@test-cabinet/structured-2d";
+import { GameInstance, GameMode } from "@clockwyrks/structured-2d";
+import type { GameDefinition, InitApi } from "@clockwyrks/structured-2d";
 
 /**
  * The stage background, a CSS color string. `src/main.ts` hands it to the engine

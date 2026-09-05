@@ -9,7 +9,7 @@ initializes, and the game travels afterwards by naming another level.
 
 ```ts
 // src/game.ts
-import type { GameDefinition } from "@test-cabinet/structured-3d";
+import type { GameDefinition } from "@clockwyrks/structured-3d";
 import { Rally } from "./instance";
 import { arena, title } from "./levels";
 
@@ -35,8 +35,8 @@ constructed actor before it begins play.
 
 ```ts
 // src/levels.ts
-import type { LevelDefinition } from "@test-cabinet/structured-3d";
-import { UP, quatFromAxisAngle, vec3 } from "@test-cabinet/structured-3d";
+import type { LevelDefinition } from "@clockwyrks/structured-3d";
+import { UP, quatFromAxisAngle, vec3 } from "@clockwyrks/structured-3d";
 import { ARENA } from "./constants";
 import { ArenaMode } from "./arena-mode";
 import { Goal } from "./goal";
@@ -93,7 +93,7 @@ that needs a peer looks it up in `beginPlay` rather than in `configure`.
 
 ```ts
 // src/goal.ts
-import { Actor, ColliderComponent } from "@test-cabinet/structured-3d";
+import { Actor, ColliderComponent } from "@clockwyrks/structured-3d";
 import { ARENA } from "./constants";
 
 export class Goal extends Actor {
@@ -124,7 +124,7 @@ level's own module and read it as a plain value.
 ```ts
 // src/arena-assets.ts
 import * as THREE from "three";
-import type { Model } from "@test-cabinet/structured-3d";
+import type { Model } from "@clockwyrks/structured-3d";
 
 export interface ArenaAssets {
   court: THREE.Texture;
@@ -173,7 +173,7 @@ fully live when the call returns, and its first `tick` is the next frame.
 
 ```ts
 // src/arena-mode.ts
-import { GameMode, vec3 } from "@test-cabinet/structured-3d";
+import { GameMode, vec3 } from "@clockwyrks/structured-3d";
 import { BALL_SPEED } from "./constants";
 import { Ball } from "./ball";
 
@@ -231,7 +231,7 @@ repeats it, and both return a handle `clearTimer` cancels.
 
 ```ts
 // src/arena-mode.ts
-import { GameMode, type TimerHandle } from "@test-cabinet/structured-3d";
+import { GameMode, type TimerHandle } from "@clockwyrks/structured-3d";
 import { ArenaState } from "./arena-state";
 
 export class ArenaMode extends GameMode {
@@ -281,7 +281,7 @@ import {
   PlayerController,
   TextComponent,
   vec3,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { HEIGHT, WIDTH } from "./constants";
 
 export class PauseMenu extends Actor {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { GgProgramLanguage } from "@test-cabinet/run-record/gg";
+import type { GgProgramLanguage } from "@clockwyrks/run-record/gg";
 import { NavLink } from "react-router";
 import { LoadingState } from "../../../components/LoadingState";
 import { PageLayout } from "../../../components/PageLayout";

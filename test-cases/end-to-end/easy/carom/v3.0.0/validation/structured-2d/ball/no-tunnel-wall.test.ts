@@ -21,7 +21,7 @@
 // the probe can meet on its climb, and both paddles are held off its lane.
 
 import { afterEach, it } from "vitest";
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import {
   BALL_R,
   FIELD_CX,

@@ -11,7 +11,7 @@
 // watching the overlay never changes what the simulation does. Each line is
 // short enough to read at a glance while the game runs.
 
-import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
+import type { DiagnosticValue, World } from "@clockwyrks/structured-2d";
 import { TOTAL_LEVELS } from "./constants";
 import { wirewormState, type WirewormState } from "./game";
 

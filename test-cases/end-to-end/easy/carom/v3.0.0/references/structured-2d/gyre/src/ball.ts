@@ -23,8 +23,8 @@
 // judging a rally is the match rules' job, and the mode's tick runs after every
 // actor's (src/match-mode.ts).
 
-import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
-import type { DrawApi } from "@test-cabinet/structured-2d";
+import { Actor, DrawComponent } from "@clockwyrks/structured-2d";
+import type { DrawApi } from "@clockwyrks/structured-2d";
 import { BALL_R, CUES, HOLD_TIME, TAGS } from "./constants";
 import { glowCircle, type Ctx } from "./draw";
 import { step } from "./physics";

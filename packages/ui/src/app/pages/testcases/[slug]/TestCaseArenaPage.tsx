@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import { Panel } from "@test-cabinet/ui";
-import type { ControllerRef, MatchSummary } from "@test-cabinet/run-record";
+import { Panel } from "@clockwyrks/ui";
+import type { ControllerRef, MatchSummary } from "@clockwyrks/run-record";
 import { useGalleryData, type ArenaApi } from "../../../data/galleryContext";
 import { useControllerName } from "../../../data/useControllerName";
 import type { TestCaseSummary, VariantSummary } from "../../../data/testCases";

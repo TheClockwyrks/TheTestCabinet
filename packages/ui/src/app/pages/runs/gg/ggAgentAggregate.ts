@@ -26,7 +26,7 @@ import type {
   GgAgentConfig,
   GgAgentStatus,
   GgCapabilitySet,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import { useFindModelOptional } from "../../../data/useModels";
 import type { ModelNameLookup, ModelPriceLookup, PricedSlot } from "./ggCost";
 import {

@@ -299,7 +299,7 @@ pub struct StoredManifest {
     pub init: Option<String>,
     /// Asset files, directories already expanded to individual files.
     pub assets: Vec<StoredAsset>,
-    /// The Test Cabinet runtime libraries (`@test-cabinet/*` npm names) this case's
+    /// The Test Cabinet runtime libraries (`@clockwyrks/*` npm names) this case's
     /// build consumes (the manifest's `packages`). Injected into the seeded
     /// workspace `package.json` as `file:` dependencies. Defaulted for manifests
     /// stored before the field existed.

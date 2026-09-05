@@ -21,7 +21,7 @@
 // than a counter ticking up.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WallClock } from "@test-cabinet/structured-2d";
+import { WallClock } from "@clockwyrks/structured-2d";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { TICK_SECONDS } from "../constants";
 import {

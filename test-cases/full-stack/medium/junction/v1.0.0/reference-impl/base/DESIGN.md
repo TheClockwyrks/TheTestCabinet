@@ -7,7 +7,7 @@ WebAssembly** (the case requirement, `specs/simulation.md`) and driven by a thin
 **TypeScript** view layer rendering to a single **HTML5 canvas**, bundled with **Vite**
 (`base: "./"`), no backend/accounts/network/API keys. All produced assets are committed
 under `assets/` and loaded page-relative via `import.meta.glob`; the particle systems play
-through `@test-cabinet/particle-runtime` and the audio through Web Audio.
+through `@clockwyrks/particle-runtime` and the audio through Web Audio.
 
 **The Rust/wasm boundary.** The deterministic city model — the tile world, the network
 graph, transit + congestion, utilities, the economy, development, the tools, and the game
@@ -347,7 +347,7 @@ Two halves: the **Rust simulation core** (`sim-core/src/*.rs`, compiled to wasm)
 | `camera.ts` | Camera pan/zoom, **clamp to map bounds**, `world↔screen` restricted to the `[64,656]` band. This is the one piece of spatial state the FRONT END owns. | `Camera` |
 | `assets.ts` | Load the **produced** files via `import.meta.glob` (page-relative), map `(zone,tier)`→sprite, road-shape→sprite, icon lookups, `FxKind`→system, `Cue`→wav url. | `loadAssets`, `zoneSprite`, `roadSprite`, `iconOf` |
 | `audio.ts` | Web Audio playback of the produced `.wav`s — cues on events, ambient hum + music bed looped, no autostart before gesture, mute toggle. | `Audio` |
-| `particles.ts` | Play produced systems through `@test-cabinet/particle-runtime`'s `/canvas` binding: persistent **pollution-haze** + one-shot dust/fireworks. | `Haze`, `Bursts` |
+| `particles.ts` | Play produced systems through `@clockwyrks/particle-runtime`'s `/canvas` binding: persistent **pollution-haze** + one-shot dust/fireworks. | `Haze`, `Bursts` |
 | `overlays.ts` | The in-code data overlays (traffic/utility/land-value) drawn from the tile views. | `drawOverlay` |
 | `hud.ts` | The in-code HUD chrome (top vitals, bottom RCI + palette + cost readout + tax stepper) + the shared canvas primitives; returns `Clickable[]`. | `drawHud`, `text`, `roundRect`, `blit`, `hexA` |
 | `render.ts` | The frame: terrain/zones/buildings/carriers/utilities (produced sprites), interpolated vehicles + animated sheets, the live haze, then `overlays`, `hud`, selection/tool ghost (from `game.toolPreview`), and the menu/state screens. | `render` |

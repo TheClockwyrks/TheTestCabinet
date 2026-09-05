@@ -24,7 +24,7 @@ import {
   createEngine,
   type Engine,
   type SurfaceMetrics,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { spriteCount } from "./assets";

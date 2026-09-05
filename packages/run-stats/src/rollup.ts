@@ -15,9 +15,9 @@
 // The output is plain JSON — no `undefined`, no `Map`, no `Set` — so it can be
 // serialized into a post verbatim and read back without a revival step.
 
-import type { Rating } from "@test-cabinet/run-record/review";
-import type { RunState } from "@test-cabinet/run-record";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { Rating } from "@clockwyrks/run-record/review";
+import type { RunState } from "@clockwyrks/run-record";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { RATINGS } from "./scoring";
 
 /** Every run state, so a rollup accounts for all of them rather than the handful

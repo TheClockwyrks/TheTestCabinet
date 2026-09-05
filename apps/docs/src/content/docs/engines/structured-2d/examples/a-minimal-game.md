@@ -29,7 +29,7 @@ whatever size the element reports.
 ## src/main.ts
 
 ```ts
-import { createEngine } from "@test-cabinet/structured-2d";
+import { createEngine } from "@clockwyrks/structured-2d";
 import { drifter } from "./game";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
@@ -54,7 +54,7 @@ callback, on the [`WallClock`](/engines/structured-2d/apis/clocks/) by default.
 ## src/game.ts
 
 ```ts
-import type { GameDefinition } from "@test-cabinet/structured-2d";
+import type { GameDefinition } from "@clockwyrks/structured-2d";
 import { Drifter } from "./actors/drifter";
 import { DriftMode } from "./levels/drift-mode";
 
@@ -75,7 +75,7 @@ The definition names no instance class, so the engine builds a plain
 ## src/actors/drifter.ts
 
 ```ts
-import { Actor, ShapeComponent } from "@test-cabinet/structured-2d";
+import { Actor, ShapeComponent } from "@clockwyrks/structured-2d";
 
 const BOX = 48;
 const SPEED = 220;
@@ -112,7 +112,7 @@ export class Drifter extends Actor {
 ## src/levels/drift-mode.ts
 
 ```ts
-import { GameMode } from "@test-cabinet/structured-2d";
+import { GameMode } from "@clockwyrks/structured-2d";
 
 export class DriftMode extends GameMode {}
 ```

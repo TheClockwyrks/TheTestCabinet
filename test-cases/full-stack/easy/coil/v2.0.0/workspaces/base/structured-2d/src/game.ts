@@ -46,8 +46,8 @@
 // lands under `assets/`, and the bar it is held to; `src/constants.ts` names the
 // paths.
 
-import { GameInstance, GameMode } from "@test-cabinet/structured-2d";
-import type { GameDefinition, InitApi } from "@test-cabinet/structured-2d";
+import { GameInstance, GameMode } from "@clockwyrks/structured-2d";
+import type { GameDefinition, InitApi } from "@clockwyrks/structured-2d";
 
 /**
  * The stage background, a CSS color string. `src/main.ts` hands it to the engine

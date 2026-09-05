@@ -7,7 +7,7 @@ import { registerDiagnostics } from "./diagnostics";
 import { homeBall } from "./entities";
 import type { CaromState } from "./game";
 import { createInitialState } from "./match";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 
 type Source = (state: CaromState) => unknown;
 

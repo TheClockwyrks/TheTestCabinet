@@ -5,8 +5,8 @@
 
 import { createCanvas, type Canvas } from "@napi-rs/canvas";
 import { readFileSync } from "node:fs";
-import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import { describe, expect, it } from "vitest";
 import { kesslerAssets } from "./assets";
 import {

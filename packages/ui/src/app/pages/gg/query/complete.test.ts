@@ -6,7 +6,7 @@
 // field visible before it returns nothing — the redesign is a downgrade for the first
 // five minutes of use.
 import { describe, expect, it } from "vitest";
-import type { GgFieldCatalog } from "@test-cabinet/run-record/gg-query";
+import type { GgFieldCatalog } from "@clockwyrks/run-record/gg-query";
 import { completeQuery } from "./complete";
 
 /** A small corpus catalog: two capabilities (total, so both values appear with non-zero

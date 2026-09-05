@@ -26,8 +26,8 @@
 // lets `setScreen` and the menus route a screen change through the transition
 // the engine performs at the end of the frame.
 
-import { GameState } from "@test-cabinet/structured-2d";
-import type { World } from "@test-cabinet/structured-2d";
+import { GameState } from "@clockwyrks/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { LEVELS, type LevelName } from "./constants";
 import type { CaromGame } from "./game";
 import type { Side } from "./sim";

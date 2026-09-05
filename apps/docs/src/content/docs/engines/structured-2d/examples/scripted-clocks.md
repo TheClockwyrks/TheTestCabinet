@@ -37,7 +37,7 @@ import {
   JitterClock,
   SequenceClock,
   type Clock,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { expect, it } from "vitest";
 import { createHarness } from "./harness";
 
@@ -93,7 +93,7 @@ reaches the target.
 
 ```ts
 // validation/advance-ms.ts
-import type { Engine } from "@test-cabinet/structured-2d";
+import type { Engine } from "@clockwyrks/structured-2d";
 
 export async function advanceMs(engine: Engine, ms: number): Promise<void> {
   const target = engine.frame().timeMs + ms;
@@ -138,7 +138,7 @@ import {
   JitterClock,
   SequenceClock,
   type Clock,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { expect, it } from "vitest";
 import { advanceMs } from "./advance-ms";
 import { ORB_POINTS, TAGS } from "./constants";

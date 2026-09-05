@@ -19,8 +19,8 @@ import {
   GameState,
   PlayerController,
   vec3,
-} from "@test-cabinet/structured-3d";
-import type { GameDefinition, InitApi } from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
+import type { GameDefinition, InitApi } from "@clockwyrks/structured-3d";
 import {
   ACTIONS,
   BINDINGS,

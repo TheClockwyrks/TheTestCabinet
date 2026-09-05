@@ -18,7 +18,7 @@ import {
   Actor,
   ColliderComponent,
   ShapeComponent,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { LAYER, PADDLE, PALETTE, TAGS } from "./constants";
 
 export class Paddle extends Actor {
@@ -60,7 +60,7 @@ A level declares the actors it places, and the world spawns anything that
 appears later.
 
 ```ts
-import type { LevelDefinition } from "@test-cabinet/structured-2d";
+import type { LevelDefinition } from "@clockwyrks/structured-2d";
 import { Match } from "./mode";
 import { Ball } from "./ball";
 import { Paddle } from "./paddle";
@@ -103,7 +103,7 @@ where an actor looks up the rest of the world. Find by tag when a case fixed the
 vocabulary, and by type when the class is the build's own.
 
 ```ts
-import { Actor } from "@test-cabinet/structured-2d";
+import { Actor } from "@clockwyrks/structured-2d";
 import { Ball } from "./ball";
 import { TAGS } from "./constants";
 
@@ -128,7 +128,7 @@ as a copy the caller owns.
 and cooldown per second, and multiply by the delta.
 
 ```ts
-import { Actor } from "@test-cabinet/structured-2d";
+import { Actor } from "@clockwyrks/structured-2d";
 import { FIELD, BALL_SPEED } from "./constants";
 
 export class Ball extends Actor {
@@ -158,7 +158,7 @@ component. A component extends `Component`, takes whatever constructor arguments
 it needs, and reads its actor through `this.actor`.
 
 ```ts
-import { Component } from "@test-cabinet/structured-2d";
+import { Component } from "@clockwyrks/structured-2d";
 
 export class Bob extends Component {
   private elapsed = 0;
@@ -183,7 +183,7 @@ while its actor stays where the level placed it. Attach it like any other
 component:
 
 ```ts
-import { Actor, SpriteComponent } from "@test-cabinet/structured-2d";
+import { Actor, SpriteComponent } from "@clockwyrks/structured-2d";
 import { Bob } from "./bob";
 import { textures } from "./textures";
 
@@ -206,7 +206,7 @@ Tags are how a case names things, so take the strings from the case's constants
 module rather than writing them inline.
 
 ```ts
-import { Actor } from "@test-cabinet/structured-2d";
+import { Actor } from "@clockwyrks/structured-2d";
 import { TAGS } from "./constants";
 
 export class Brick extends Actor {
@@ -234,7 +234,7 @@ const cracked = this.world
 leaves the world at the end of the frame.
 
 ```ts
-import { Actor, type EndPlayReason } from "@test-cabinet/structured-2d";
+import { Actor, type EndPlayReason } from "@clockwyrks/structured-2d";
 import { TAGS } from "./constants";
 
 export class Brick extends Actor {

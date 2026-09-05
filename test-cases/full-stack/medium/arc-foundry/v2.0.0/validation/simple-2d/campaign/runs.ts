@@ -23,7 +23,7 @@
 // (specs/instrumentation.md). A wave therefore ends the moment its schedule is
 // exhausted, and the two counters a campaign check reads are untouched on the way.
 
-import { ConstantClock } from "@test-cabinet/simple-2d";
+import { ConstantClock } from "@clockwyrks/simple-2d";
 import { assertEqual, assertTruthy, fail } from "../assert";
 import {
   COLLECTOR_WAYPOINT,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { isPublishable } from "./useRunPublish";
 
 // A summary card carrying only the fields the publish gate reads; everything else

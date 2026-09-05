@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
   LadderClimber,
   LadderProgress,
-} from "@test-cabinet/run-record/ladders";
+} from "@clockwyrks/run-record/ladders";
 import { ladderSummary } from "./LaddersPage";
 
 function climber(over: Partial<LadderClimber> = {}): LadderClimber {

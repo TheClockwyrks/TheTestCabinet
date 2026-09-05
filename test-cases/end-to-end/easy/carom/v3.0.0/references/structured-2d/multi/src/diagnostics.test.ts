@@ -12,7 +12,7 @@ import {
   type DiagnosticValue,
   type Engine,
   type SurfaceMetrics,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   BALL_COUNT,

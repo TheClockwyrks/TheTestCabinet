@@ -245,7 +245,7 @@ const TRACK_TYPE_VIDEO = 1;
 const MAX_BLOCK_OFFSET = 32767;
 
 /** What the file says produced it, in both of the places Matroska asks. */
-const APPLICATION = "@test-cabinet/structured-3d";
+const APPLICATION = "@clockwyrks/structured-3d";
 
 /**
  * The whole file: the EBML header, then one Segment holding the capture.

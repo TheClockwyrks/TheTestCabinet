@@ -30,7 +30,7 @@
 // bullet rosters, three rocks and the saucer at once — and a build that advances
 // one roster off a clock of its own is caught by the roster it advanced.
 
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { TICK_DT } from "../constants";
 import { assertDeepEqual, assertLessThanOrEqual } from "../assert";

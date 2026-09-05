@@ -22,8 +22,8 @@
 
 import { GEM_KINDS, MAX_STRAIN } from "./constants";
 import type { FacetState } from "./game";
-import type { InitApi } from "@test-cabinet/simple-2d";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { InitApi } from "@clockwyrks/simple-2d";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 
 /** How many frames each kind's break sheet holds (`gems/break/<kind>/`). */
 export const BREAK_FRAMES = 6;

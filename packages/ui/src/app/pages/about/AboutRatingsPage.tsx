@@ -1,4 +1,4 @@
-import { Panel } from "@test-cabinet/ui";
+import { Panel } from "@clockwyrks/ui";
 import {
   AESTHETIC_META,
   AESTHETIC_RATINGS,

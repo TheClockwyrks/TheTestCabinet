@@ -74,8 +74,8 @@ import {
   quatRotate,
   scale,
   vec3,
-} from "@test-cabinet/structured-3d";
-import type { Vec2 } from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
+import type { Vec2 } from "@clockwyrks/structured-3d";
 import { FIELD, SHIP } from "./constants";
 
 export class Ship extends Pawn {
@@ -138,7 +138,7 @@ signed axis as the difference between two directions so holding both cancels
 out, and use `pressed` for anything that happens once per press.
 
 ```ts
-import { PlayerController } from "@test-cabinet/structured-3d";
+import { PlayerController } from "@clockwyrks/structured-3d";
 import { Ship } from "./ship";
 import { LOOK_RATE } from "./constants";
 
@@ -184,7 +184,7 @@ the pointer is over turns the position into a world-space ray through the
 camera and casts it against the collision world:
 
 ```ts
-import { PlayerController } from "@test-cabinet/structured-3d";
+import { PlayerController } from "@clockwyrks/structured-3d";
 import { CHANNELS, PICK_RANGE, TAGS } from "./constants";
 
 export class CursorController extends PlayerController {
@@ -213,7 +213,7 @@ the world's own object model, so the bot decides from what it can see rather
 than from input.
 
 ```ts
-import { AIController, distance, sub } from "@test-cabinet/structured-3d";
+import { AIController, distance, sub } from "@clockwyrks/structured-3d";
 import { Ball } from "./ball";
 import { Ship } from "./ship";
 import { AI_DEADZONE } from "./constants";

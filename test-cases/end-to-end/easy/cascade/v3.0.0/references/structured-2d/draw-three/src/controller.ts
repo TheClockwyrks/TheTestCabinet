@@ -17,7 +17,7 @@
 // instance and read here, once per tick, in the order that file fixes for a
 // frame carrying more than one. The overlay's toggle key is engine chrome.
 
-import { PlayerController } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
 import { applyEvents, noEvents } from "./audio";
 import { cascadeState } from "./game";
 import { applyMenuActions } from "./navigation";

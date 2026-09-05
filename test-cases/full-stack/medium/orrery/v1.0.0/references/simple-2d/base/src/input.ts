@@ -28,7 +28,7 @@
 // samples are the ones the editor answers, because the editor is driven by one
 // pointer.
 
-import type { InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type { InitApi, UpdateApi } from "@clockwyrks/simple-2d";
 import { ACTIONS, BINDINGS } from "./constants";
 import type { Action } from "./figures";
 

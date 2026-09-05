@@ -9,7 +9,7 @@ same class, and the side that differs is which controller holds the pawn.
 ## src/constants.ts
 
 ```ts
-import type { ActionBinding } from "@test-cabinet/structured-2d";
+import type { ActionBinding } from "@clockwyrks/structured-2d";
 
 export const WIDTH = 640;
 export const HEIGHT = 360;
@@ -47,7 +47,7 @@ a menu action, so all three carry the layout once the engine is built with it.
 ## src/main.ts
 
 ```ts
-import { createEngine } from "@test-cabinet/structured-2d";
+import { createEngine } from "@clockwyrks/structured-2d";
 import { HEIGHT, WIDTH } from "./constants";
 import { duel } from "./game";
 
@@ -73,8 +73,8 @@ in that layout's vocabulary is tagged with it as the instance registers it.
 ## src/game.ts
 
 ```ts
-import { GameInstance } from "@test-cabinet/structured-2d";
-import type { GameDefinition, InitApi } from "@test-cabinet/structured-2d";
+import { GameInstance } from "@clockwyrks/structured-2d";
+import type { GameDefinition, InitApi } from "@clockwyrks/structured-2d";
 import { BINDINGS, LEVEL } from "./constants";
 import { DuelMode } from "./levels/duel-mode";
 
@@ -100,8 +100,8 @@ level declares no actors: the mode spawns both paddles as it adds its players.
 ## src/actors/paddle.ts
 
 ```ts
-import { Pawn, PlayerController, ShapeComponent } from "@test-cabinet/structured-2d";
-import type { Controller } from "@test-cabinet/structured-2d";
+import { Pawn, PlayerController, ShapeComponent } from "@clockwyrks/structured-2d";
+import type { Controller } from "@clockwyrks/structured-2d";
 import { HEIGHT, PADDLE_HEIGHT, PADDLE_SPEED, PADDLE_WIDTH, TAGS } from "../constants";
 
 export class Paddle extends Pawn {
@@ -145,7 +145,7 @@ driving. `possessedBy` is where the pawn learns which side it is on.
 ## src/controllers/paddle-player.ts
 
 ```ts
-import { PlayerController } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
 import { Paddle } from "../actors/paddle";
 import { ACTIONS } from "../constants";
 
@@ -172,7 +172,7 @@ read, true once per press and consumed by the call, so one press costs one
 ## src/controllers/paddle-ai.ts
 
 ```ts
-import { AIController } from "@test-cabinet/structured-2d";
+import { AIController } from "@clockwyrks/structured-2d";
 import { Paddle } from "../actors/paddle";
 import { DEAD_ZONE, TAGS } from "../constants";
 
@@ -197,8 +197,8 @@ paddle by tag and chases it, and the dead zone keeps it still once aligned.
 ## src/levels/duel-mode.ts
 
 ```ts
-import { GameMode, PlayerController } from "@test-cabinet/structured-2d";
-import type { Controller, Transform } from "@test-cabinet/structured-2d";
+import { GameMode, PlayerController } from "@clockwyrks/structured-2d";
+import type { Controller, Transform } from "@clockwyrks/structured-2d";
 import { Paddle } from "../actors/paddle";
 import { HEIGHT, MARGIN, WIDTH } from "../constants";
 import { PaddleAI } from "../controllers/paddle-ai";

@@ -29,7 +29,7 @@
 // serve leaves the ball far short of either front face inside the window.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WallClock } from "@test-cabinet/structured-2d";
+import { WallClock } from "@clockwyrks/structured-2d";
 import { SERVE_SPEED } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {

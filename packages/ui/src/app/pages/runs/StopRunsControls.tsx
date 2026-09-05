@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { BulkCancelOut } from "@test-cabinet/run-record/jobs-api";
+import type { BulkCancelOut } from "@clockwyrks/run-record/jobs-api";
 import { useAuth } from "../../../client/auth";
 import { useOptionalWorkers } from "../../../client/context";
 import {

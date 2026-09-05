@@ -15,7 +15,7 @@
 // only decodes, rasterizes, and hands the derived rasters back as canvases
 // `drawImage` accepts.
 
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 
 import {
   deriveArt,

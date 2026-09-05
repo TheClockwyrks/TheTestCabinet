@@ -21,9 +21,9 @@ from their asset-generation runs, alongside the three provided muzzle-flash part
 systems under [`effects/`](effects). The `assets` key in `../test-case.toml` is active
 and lists all of them; nothing is held back.
 
-The build loads and poses each provided model with **`@test-cabinet/voxel-runtime`**
+The build loads and poses each provided model with **`@clockwyrks/voxel-runtime`**
 (every rig is decoded from its `meshes/*.glb` parts and posed/animated from its
 `rig.json` authored animations), and plays each firing unit's muzzle-flash effect
-under [`effects/`](effects) with **`@test-cabinet/particle-runtime`**. Both runtimes
+under [`effects/`](effects) with **`@clockwyrks/particle-runtime`**. Both runtimes
 are seeded dependencies of the project. Loading is page-relative, per
 [`../specs/assets.md`](../specs/assets.md).

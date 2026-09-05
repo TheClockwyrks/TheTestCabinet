@@ -12,7 +12,7 @@
 // one seeded generator (which lives on the instance, since it must survive a
 // level transition), raising a cue, and playing an effect.
 
-import { GameMode } from "@test-cabinet/structured-2d";
+import { GameMode } from "@clockwyrks/structured-2d";
 import {
   AIM_START,
   BORE_RADIUS,

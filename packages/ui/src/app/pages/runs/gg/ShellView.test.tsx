@@ -15,7 +15,7 @@ import type {
   GgCapabilitySet,
   GgTelemetryEvent,
   GgTelemetryKind,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import type { HarnessEvent } from "../../../../client/types";
 import { reduceGgEvents, reduceGgEventsPerAgent } from "./useGgRunState";
 import { ShellView, cwdLabel } from "./ShellView";

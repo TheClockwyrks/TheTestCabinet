@@ -229,7 +229,7 @@ serve the built site, hold one Chromium, drive the build a frame at a time
 through the debug API the case's instrumentation spec required, and read what it
 drew.
 
-That machinery is the `@test-cabinet/case-harness` package, staged beside the
+That machinery is the `@clockwyrks/case-harness` package, staged beside the
 project at `validation/case-harness/`, so a `./case-harness/...` import resolves
 in the checkout and in a run alike. The runner stages it rather than the manifest
 naming it, which keeps the suites out of the run repository the model works in.
@@ -442,7 +442,7 @@ When designing or revising a case's debug API and validators:
   implementation, and every spec-honoring design passes.
 - Every figure a suite asserts comes from the project's own `constants.ts`,
   transcribed from the specs.
-- An engineless project is built on the shared `@test-cabinet/case-harness`
+- An engineless project is built on the shared `@clockwyrks/case-harness`
   package, with only what is genuinely the case's held beside it.
 - `constants.ts` re-exports only what the specs leave to the build, `harness.ts`
   takes only the build's entry, and every other reference the project makes

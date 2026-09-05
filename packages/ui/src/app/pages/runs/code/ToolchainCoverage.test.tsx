@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 import type {
   CoverageFile,
   ToolchainCoverage as ToolchainCoverageRecord,
-} from "@test-cabinet/run-record";
+} from "@clockwyrks/run-record";
 import { ToolchainCoverage } from "./ToolchainCoverage";
 
 function file(path: string, lines: [number, number]): CoverageFile {

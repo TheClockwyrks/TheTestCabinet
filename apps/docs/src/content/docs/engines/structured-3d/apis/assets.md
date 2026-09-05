@@ -154,4 +154,4 @@ fallback catches the rejection where it made the call.
 
 ## Exports
 
-`Model` is exported as a type from `@test-cabinet/structured-3d`.
+`Model` is exported as a type from `@clockwyrks/structured-3d`.

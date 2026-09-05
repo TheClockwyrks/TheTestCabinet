@@ -1574,7 +1574,7 @@ export type ControllerRef = {
 /**
  * One match's result, summarized so a tournament list can show the outcome
  * without loading (and replaying) the match. Serializes `camelCase` to mirror the
- * `@test-cabinet/run-record` TypeScript contract.
+ * `@clockwyrks/run-record` TypeScript contract.
  */
 export type MatchSummary = {
     /**

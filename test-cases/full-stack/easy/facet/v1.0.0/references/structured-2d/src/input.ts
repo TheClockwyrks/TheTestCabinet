@@ -13,7 +13,7 @@
 // pointer passed through and by where the hold was let go rather than by where
 // it ended up.
 
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 import { ACTIONS, BINDINGS, LAYOUT } from "./constants";
 
 /**

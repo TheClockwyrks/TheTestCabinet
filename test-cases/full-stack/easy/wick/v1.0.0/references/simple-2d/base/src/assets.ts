@@ -11,7 +11,7 @@
 // renderer draws a code-drawn stand-in of the same size. The produced
 // sounds load through the engine's cue bus in `src/audio.ts`.
 
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 import {
   BASE_WEAPON_IDS,
   EFFECT_SPRITES,

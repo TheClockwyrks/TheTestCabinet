@@ -11,7 +11,7 @@
 // watching the overlay never changes what the simulation does, and each line
 // is short enough to read at a glance while the game runs.
 
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 import { liveFxCount } from "./fx";
 import type { KesslerState } from "./flow";
 import { liveTargetCount } from "./rings";

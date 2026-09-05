@@ -174,4 +174,4 @@ offending value.
 
 `Clock`, `PacedClockOptions`, `WallClock`, `PacedClock`, `ConstantClock`,
 `SequenceClock`, and `JitterClock` are exported from
-`@test-cabinet/structured-3d`.
+`@clockwyrks/structured-3d`.

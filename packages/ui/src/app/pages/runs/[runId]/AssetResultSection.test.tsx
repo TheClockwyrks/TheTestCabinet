@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import type { AssetSheet } from "@test-cabinet/run-record";
+import type { AssetSheet } from "@clockwyrks/run-record";
 import { describe, expect, it, vi } from "vitest";
 import type { AssetFrameView } from "../../../data/galleryContext";
 

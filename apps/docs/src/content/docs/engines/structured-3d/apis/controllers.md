@@ -146,5 +146,5 @@ deflection along each direction in `0..1` and a held key reports `1`.
 ## Exports
 
 `Controller`, `PlayerController`, and `AIController` are exported as classes
-from `@test-cabinet/structured-3d`, and `ControllerClass` and `InputReader` are
+from `@clockwyrks/structured-3d`, and `ControllerClass` and `InputReader` are
 exported as types.

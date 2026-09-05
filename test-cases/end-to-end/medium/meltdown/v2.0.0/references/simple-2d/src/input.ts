@@ -10,7 +10,7 @@
 // readers of one action in one frame would split a single press between them.
 
 import { ACTIONS, BINDINGS, type ActionName } from "./constants";
-import type { InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type { InitApi, UpdateApi } from "@clockwyrks/simple-2d";
 import type { MeltdownState } from "./game";
 
 /** Register every action against the keys `BINDINGS` gives it. */

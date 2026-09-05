@@ -10,7 +10,7 @@ import type {
   Rating,
   ReviewRevision,
   VerdictStatus,
-} from "@test-cabinet/run-record/review";
+} from "@clockwyrks/run-record/review";
 import { formatReviewedAt } from "./ReviewList";
 import styles from "./RunDetailPages.module.scss";
 

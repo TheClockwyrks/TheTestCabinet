@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import type { ShowcaseMedia } from "@test-cabinet/run-record";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { ShowcaseMedia } from "@clockwyrks/run-record";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import {
   AestheticBadge,
   ChartWidget,
@@ -14,7 +14,7 @@ import {
   timeSeriesChart,
   type StackedSeries,
   type TimeSeriesPoint,
-} from "@test-cabinet/ui";
+} from "@clockwyrks/ui";
 import { CabinetIcon } from "../../components/CabinetIcon";
 import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";

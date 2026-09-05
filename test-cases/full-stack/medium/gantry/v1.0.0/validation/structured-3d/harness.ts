@@ -108,7 +108,7 @@ import {
   type SurfaceMetrics,
   type Transform,
   type World,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import type { Canvas } from "@napi-rs/canvas";
 import { expect } from "vitest";
 
@@ -775,7 +775,7 @@ class PointerEvt extends Event {
  * gave it.
  *
  * THE SAME DOCUMENT THE ENGINELESS PROJECT'S INJECTED RECORDER WRITES
- * (`RecordedOp` in `@test-cabinet/case-harness`), so a check reads a frame's
+ * (`RecordedOp` in `@clockwyrks/case-harness`), so a check reads a frame's
  * drawing through the same helpers — `toDrawCall`, `drawnText`, `textDraws` —
  * whichever project it is running in.
  */

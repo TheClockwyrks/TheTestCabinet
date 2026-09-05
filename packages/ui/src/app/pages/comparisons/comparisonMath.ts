@@ -4,7 +4,7 @@
 import type {
   ComparisonArm,
   ComparisonConfig,
-} from "@test-cabinet/run-record/comparison";
+} from "@clockwyrks/run-record/comparison";
 import type { StackedBarSegment, StackedSeries } from "../../../primitives";
 import { OPENROUTER_PROVIDER, resolveLaunchModel } from "../../data/providers";
 import { DEFAULT_ORCHESTRATOR_SLUG } from "../../data/orchestrators";

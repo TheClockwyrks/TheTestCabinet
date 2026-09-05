@@ -98,7 +98,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
-import type { Recording } from "@test-cabinet/structured-2d";
+import type { Recording } from "@clockwyrks/structured-2d";
 
 const WORKSPACE = fileURLToPath(new URL("..", import.meta.url));
 

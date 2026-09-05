@@ -152,7 +152,7 @@ contract: what to produce, which tool makes it, where it lands, and how it is
 played.
 
 The produced particle systems are played live rather than baked to frames, so
-the case declares `packages = ["@test-cabinet/particle-runtime"]` and the seeded
+the case declares `packages = ["@clockwyrks/particle-runtime"]` and the seeded
 `package.json` carries that library as a baked-in `file:` dependency the build
 imports like any other. The produced files are committed and bundled by
 `npm run build`; the tools are on `PATH` only while the run is live, so a build

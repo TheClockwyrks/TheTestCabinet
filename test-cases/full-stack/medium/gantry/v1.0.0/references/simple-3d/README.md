@@ -168,7 +168,7 @@ npm test             # vitest run --coverage
 
 ## The engine, and what this build owns
 
-Gantry stands on the **Simple 3D** engine (`@test-cabinet/simple-3d`), which is
+Gantry stands on the **Simple 3D** engine (`@clockwyrks/simple-3d`), which is
 already a dependency and carries its own documentation in the package's `docs/`
 directory. The engine owns the
 frame loop and the delta time each frame is given, fitting the fixed 1280×720

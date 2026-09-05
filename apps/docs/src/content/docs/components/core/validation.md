@@ -134,7 +134,7 @@ Deciding the run's points means running that project:
   measures the code the model wrote has already measured it.
 - Stage the shared validator harness beside it, at `validation/case-harness/`. The
   engineless validators of every case that has them are written over one harness,
-  which the repository holds as the `@test-cabinet/case-harness` package: the
+  which the repository holds as the `@clockwyrks/case-harness` package: the
   browser lifecycle, the injected draw-command recorder, the assertions, and the
   replay format. It is TypeScript source vitest transpiles rather than a dependency
   the tree installs, so it is copied in as a sibling of the case's own harness: one

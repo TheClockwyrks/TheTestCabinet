@@ -75,7 +75,7 @@ max_runtime_hours = 6
 
 # Init command, run in the run container once the workspace and specs are seeded
 # and before the harness starts. `npm install` — NOT `npm ci` — because
-# `packages` below writes the `@test-cabinet/particle-runtime` `file:` dependency
+# `packages` below writes the `@clockwyrks/particle-runtime` `file:` dependency
 # into the seeded `package.json` at seed time (and an engine run's vendored engine
 # alongside it), so the lockfile is completed here; `[build].install` stays
 # `npm ci` because by then the lockfile the model committed is what a rebuild must
@@ -91,7 +91,7 @@ init = "npm install && npx playwright install chromium"
 # `PATH` (see `type` above and `specs/assets.md`).
 
 # The Test Cabinet runtime libraries installed into the run so the build can play
-# the particle systems it produces. `@test-cabinet/particle-runtime` is the same
+# the particle systems it produces. `@clockwyrks/particle-runtime` is the same
 # library the review UI plays a produced effect with: core stages it into the run
 # and the seeded workspace `package.json` depends on it through its baked-in
 # `file:` path, so the build imports it by its bare name like any other dependency
@@ -100,9 +100,9 @@ init = "npm install && npx playwright install chromium"
 # and the pickup shimmer — are all played this way through the runtime's
 # `./canvas` binding; `specs/assets.md` is the consumption contract. Every
 # workspace under `workspaces/` already declares the dependency at exactly the
-# `file:./.tcab/packages/@test-cabinet/particle-runtime` path resolution requires.
+# `file:./.vendor/packages/@clockwyrks/particle-runtime` path resolution requires.
 # A root key, so it must precede the first table header.
-packages = ["@test-cabinet/particle-runtime"]
+packages = ["@clockwyrks/particle-runtime"]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each is declared in its own file under `variants/` and listed here in order —
@@ -175,7 +175,7 @@ min_version = "1.0.0"
 # The starter project seeded into the root of every run before the specs, one per
 # engine. All three carry the same Vite/TypeScript/ESLint/Prettier/Vitest
 # configuration the `[toolchain]` commands below run against, an `index.html`
-# holding the canvas, and the `@test-cabinet/particle-runtime` dependency the
+# holding the canvas, and the `@clockwyrks/particle-runtime` dependency the
 # produced effects are played through. What differs is how much of the build is
 # supplied with them.
 #

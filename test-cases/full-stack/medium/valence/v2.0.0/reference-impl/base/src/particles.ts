@@ -1,13 +1,13 @@
 // Valence — the decomposition particle bursts (specs/assets.md).
 //
 // Each decomposition event fires the matching PRODUCED particle system, played LIVE
-// through @test-cabinet/particle-runtime's canvas binding — not a flat flash or a
+// through @clockwyrks/particle-runtime's canvas binding — not a flat flash or a
 // hand-coded effect. A burst is simulated on its own offscreen 128x128 canvas (the
 // system's field size) and composited additively over the board at the event's
 // position, so — being simulated — it varies shot to shot.
 
-import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { FxEvent, FxKind } from "./types";
 
 const FIELD = 128; // the authored field size of every fx system

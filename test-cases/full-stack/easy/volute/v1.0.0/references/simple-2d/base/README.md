@@ -111,7 +111,7 @@ caller applies it through `engine.apply`; a reading takes the state and returns
 what it read.
 
 ```ts
-import { createEngine, ConstantClock } from "@test-cabinet/simple-2d";
+import { createEngine, ConstantClock } from "@clockwyrks/simple-2d";
 import { BACKGROUND, game } from "./src/game";
 import { CELLS, FIELD_H, FIELD_W, LAYOUT, TICK_DT } from "./src/constants";
 

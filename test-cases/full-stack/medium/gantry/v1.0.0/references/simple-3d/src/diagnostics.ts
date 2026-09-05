@@ -5,7 +5,7 @@
 // source is handed the state current at the read and reads off that argument,
 // so watching the overlay leaves the game exactly as it is.
 
-import type { DeepReadonly, DiagnosticValue } from "@test-cabinet/simple-3d";
+import type { DeepReadonly, DiagnosticValue } from "@clockwyrks/simple-3d";
 import { SITE_COUNT, TICK_HZ } from "./constants";
 import type { GantryState } from "./game";
 import { craneCost, currentSite, currentSimStructure } from "./state";

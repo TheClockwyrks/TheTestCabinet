@@ -16,7 +16,7 @@
 // frame's picture draws. The cues every sample of the tick raised are played
 // once each at the end of it.
 
-import { PlayerController } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
 import { applyAudio, mergeCues, noCues } from "./audio";
 import { cascadeState } from "./game";
 import { pointerDown, pointerMove, pointerUp } from "./input";

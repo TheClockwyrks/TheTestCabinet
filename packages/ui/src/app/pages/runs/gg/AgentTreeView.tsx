@@ -17,7 +17,7 @@ import type {
   FsmVisit,
 } from "./useGgRunState";
 import { ROOT_ID, moduleFate } from "./useGgRunState";
-import type { GgAgentStatus } from "@test-cabinet/run-record/gg";
+import type { GgAgentStatus } from "@clockwyrks/run-record/gg";
 import styles from "./GgPanels.module.scss";
 
 // --- Successions (exec / fork / FSM transitions) ------------------------------

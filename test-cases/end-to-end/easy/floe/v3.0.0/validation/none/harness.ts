@@ -23,7 +23,7 @@
 // the build's surface, driving the real mouse and the real finger, reading pixels
 // and draw calls back out, and writing the evidence a review point declares —
 // every engineless case needs exactly that, and it lives once, in
-// `@test-cabinet/case-harness`, staged beside this file as `./case-harness/`.
+// `@clockwyrks/case-harness`, staged beside this file as `./case-harness/`.
 // What is left here is what is genuinely Floe's: the operations its
 // `specs/instrumentation.md` requires, the shape of its snapshot, the way it
 // divides an interval into calls, the readings it makes off its own seeded art,

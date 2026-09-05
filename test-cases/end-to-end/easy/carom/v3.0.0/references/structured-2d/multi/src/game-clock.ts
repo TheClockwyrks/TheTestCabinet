@@ -13,7 +13,7 @@
 // clock is already at this frame's value by the time the rally records a trail
 // sample against it.
 
-import { Actor } from "@test-cabinet/structured-2d";
+import { Actor } from "@clockwyrks/structured-2d";
 import { gameOf } from "./state";
 
 export class GameClock extends Actor {

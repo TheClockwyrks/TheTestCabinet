@@ -1,7 +1,7 @@
 // Arc Foundry — the produced electrical bursts (specs/assets.md).
 //
 // Every electrical event fires the matching PRODUCED particle system, simulated live by
-// `@test-cabinet/particle-runtime` and composited additively over the yard at the
+// `@clockwyrks/particle-runtime` and composited additively over the yard at the
 // event's position. A burst is simulated rather than played back, so it varies shot to
 // shot, and its size escalates with the quality of the structure that threw it.
 //
@@ -19,7 +19,7 @@
 // `BurstPlayer` is the narrow surface the state names it under, so nothing outside this
 // module holds the runtime's own type.
 
-import { ParticleSimulator } from "@test-cabinet/particle-runtime";
+import { ParticleSimulator } from "@clockwyrks/particle-runtime";
 import type { EffectName } from "./constants";
 import { qualityIndex } from "./theme";
 import type { Assets } from "./assets";

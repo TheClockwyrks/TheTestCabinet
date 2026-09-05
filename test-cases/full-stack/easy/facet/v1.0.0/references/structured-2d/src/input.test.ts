@@ -1,7 +1,7 @@
 // Registering the actions the engine listens for.
 
 import { describe, expect, it, vi } from "vitest";
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 import { registerActions } from "./input";
 import { ACTIONS, BINDINGS, LAYOUT } from "./constants";
 

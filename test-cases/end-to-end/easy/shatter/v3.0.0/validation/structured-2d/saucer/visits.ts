@@ -41,7 +41,7 @@
 // `specs/saucer.md`. What lives here is the one SCENARIO they share, and no other
 // group in this suite marches minutes of game time.
 
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { FACE_UP, SAFE_X, SAFE_Y, TICK_HZ } from "../constants";
 import {
   clearCalls,

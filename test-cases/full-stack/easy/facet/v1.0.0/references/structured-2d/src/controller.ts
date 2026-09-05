@@ -37,7 +37,7 @@
 // played here, because a swap that clears in this tick and a second step that
 // clears in the same frame's chain are one `clear`, not two (specs/ui.md).
 
-import { PlayerController } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
 import { applyCore, toCore } from "./bridge";
 import { facetState } from "./game";
 import { fold, openBatch, type StepBatch } from "./steps";

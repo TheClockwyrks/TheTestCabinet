@@ -107,7 +107,7 @@ import {
   type SurfaceMetrics,
   type Viewport,
   type World,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import {
   ACTIONS,
   BACKGROUND,
@@ -160,8 +160,8 @@ export {
   PacedClock,
   SequenceClock,
   WallClock,
-} from "@test-cabinet/structured-2d";
-export type { Clock } from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
+export type { Clock } from "@clockwyrks/structured-2d";
 /* -------------------------------------------------------------------------- */
 /* The contract the build owes                                                */
 /* -------------------------------------------------------------------------- */

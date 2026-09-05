@@ -36,7 +36,7 @@ the three:
 `assert.ts` is the one entry in the right-hand column that is not a difference in
 reasoning. The assertions are the shared validator harness's vocabulary, and the
 engineless project re-exports it (`export * from "./case-harness/assert"`) because
-`@test-cabinet/case-harness` is staged only into an engineless project; the two
+`@clockwyrks/case-harness` is staged only into an engineless project; the two
 engine projects write the same 26 names out, byte-identical to each other. A suite
 says `from "../assert"` in all three and gets the same names, the same signatures
 and the same message shape, which is what the rule above is actually about.
@@ -150,7 +150,7 @@ brackets its behavior with `RECORDING_RUN_UP` and `RECORDING_SETTLE` — see bel
 **Produced files** — `assets/files.ts` is the table (every path, canvas and frame
 count, derived from `../constants`); `assets/sprites.ts` decodes and measures
 them; `assets/sounds.ts` and `assets/bed-audio.ts` read the cues and the bed;
-`assets/particles.ts` hands a system to `@test-cabinet/particle-runtime`;
+`assets/particles.ts` hands a system to `@clockwyrks/particle-runtime`;
 `assets/rebuild.ts` rebuilds the workspace with the six generation tools replaced
 by shims; `assets/runtime-import.ts` finds the runtime's `./canvas` binding in the
 build's own source.

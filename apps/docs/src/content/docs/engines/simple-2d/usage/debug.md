@@ -14,7 +14,7 @@ takes the current state and returns what it read. A caller drives a pose through
 `engine.apply` and a reading through `engine.state`.
 
 ```ts
-import type { Game } from "@test-cabinet/simple-2d";
+import type { Game } from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 interface State {

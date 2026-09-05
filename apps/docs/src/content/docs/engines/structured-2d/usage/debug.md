@@ -17,7 +17,7 @@ scalars, so a caller arranges exactly the part of the world its scenario is
 about: a ball's position and its velocity are two operations.
 
 ```ts
-import { GameInstance, type InitApi } from "@test-cabinet/structured-2d";
+import { GameInstance, type InitApi } from "@clockwyrks/structured-2d";
 import { Ball } from "./actors";
 import { RallyMode } from "./modes";
 import { TAG_BALL } from "./constants";

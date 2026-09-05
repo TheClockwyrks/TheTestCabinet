@@ -1,13 +1,13 @@
 import * as THREE from "three";
 import { beforeAll, describe, expect, it } from "vitest";
-import type { Actor, Model, World } from "@test-cabinet/structured-3d";
+import type { Actor, Model, World } from "@clockwyrks/structured-3d";
 import {
   DrawComponent,
   ModelComponent,
   Object3DComponent,
   ShapeComponent,
   TextComponent,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { GantryState } from "./game";
 import { MODEL_NAMES, setModels, type Models } from "./assets";
 import { GantryView } from "./actor-view";

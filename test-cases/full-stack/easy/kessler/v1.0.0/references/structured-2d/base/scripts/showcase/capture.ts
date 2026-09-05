@@ -13,7 +13,7 @@
 // It is served by the dev server and driven by `scripts/capture-showcase.mjs`.
 // Nothing here is bundled into `dist/`.
 
-import { ConstantClock, createEngine } from "@test-cabinet/structured-2d";
+import { ConstantClock, createEngine } from "@clockwyrks/structured-2d";
 import {
   DEFLECTOR_BALL_CONTACT_RADIUS,
   DEFLECTOR_TURN_DEG_PER_SEC,
