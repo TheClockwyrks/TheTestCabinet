@@ -284,6 +284,7 @@ describe("the pointer plays the board", () => {
   it("selects a cell on a press and swaps on a press beside it", async () => {
     const harness = await createHarness();
     try {
+      startRound(harness);
       harness.debug.loadBoard(ONE_RUN);
 
       const [ax, ay] = cellCenter(ONE_RUN_SWAP.a);
@@ -320,6 +321,7 @@ describe("the pointer plays the board", () => {
   it("requests the swap from a drag onto the neighboring cell", async () => {
     const harness = await createHarness();
     try {
+      startRound(harness);
       harness.debug.loadBoard(ONE_RUN);
       const [ax, ay] = cellCenter(ONE_RUN_SWAP.a);
       const [bx, by] = cellCenter(ONE_RUN_SWAP.b);
@@ -342,6 +344,7 @@ describe("the pointer plays the board", () => {
   it("plays nothing when the hold is carried back where it started", async () => {
     const harness = await createHarness();
     try {
+      startRound(harness);
       harness.debug.loadBoard(ONE_RUN);
       const [ax, ay] = cellCenter(ONE_RUN_SWAP.a);
       const [bx, by] = cellCenter(ONE_RUN_SWAP.b);
@@ -413,6 +416,7 @@ describe("the pointer plays the board", () => {
   it("marks a refused swap on its two cells and drops the mark in time", async () => {
     const harness = await createHarness();
     try {
+      startRound(harness);
       harness.debug.loadBoard(quietRowsWith({}));
       const [ax, ay] = cellCenter({ col: 2, row: 2 });
       const [bx, by] = cellCenter({ col: 3, row: 2 });
@@ -438,6 +442,7 @@ describe("a chain runs as the frames advance", () => {
   it("carries a chain from one step to the next on the step timer", async () => {
     const harness = await createHarness();
     try {
+      startRound(harness);
       harness.debug.loadBoard(CASCADE);
       harness.debug.requestSwap(
         CASCADE_SWAP.a.col,
@@ -500,6 +505,10 @@ describe("a chain runs as the frames advance", () => {
       // seed is the one this scenario is written against: the deal is a pure
       // function of `rngState`, so the outcome is exact rather than likely.
       harness.debug.reset({ seed: 1 });
+      // The screen alone, not `startRound`: opening a round deals a board, and
+      // that deal would draw `rngState` off the seed this scenario is written
+      // against before the refill below ever reads it.
+      harness.debug.setScreen("playing");
       harness.debug.loadBoard(ONE_RUN);
       harness.debug.requestSwap(
         ONE_RUN_SWAP.a.col,
@@ -556,6 +565,7 @@ describe("the audio bus", () => {
       // One frame long enough to cross the swap and both of the chain's
       // steps: a build that played a cue per event rather than per frame
       // would sound `clear` twice on it.
+      startRound(harness);
       harness.debug.loadBoard(CASCADE);
       harness.debug.requestSwap(
         CASCADE_SWAP.a.col,
@@ -581,6 +591,7 @@ describe("the audio bus", () => {
     const harness = await createHarness();
     try {
       // The cascade drops a column three rows, which is past LAND_MIN_ROWS.
+      startRound(harness);
       harness.debug.loadBoard(CASCADE);
       harness.debug.requestSwap(
         CASCADE_SWAP.a.col,
@@ -604,6 +615,7 @@ describe("the audio bus", () => {
     const harness = await createHarness();
     try {
       await harness.advance(1);
+      startRound(harness);
       harness.cues.length = 0;
       harness.debug.loadBoard(ONE_RUN);
       harness.debug.requestSwap(

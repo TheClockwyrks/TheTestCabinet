@@ -146,6 +146,9 @@ describe("the world the engine builds", () => {
         "B0 S0 M0 R0 A0 C0 J0 B0",
         "R0 A0 C0 J0 B0 S0 M0 R0",
       ]);
+      // The board is the whole of what `loadBoard` writes, so the round is
+      // opened for it: a swap asked for off `playing` is refused outright.
+      harness.debug.setScreen("playing");
       harness.debug.requestSwap(1, 1, 1, 0);
       // The swap is in motion, so nothing has shattered yet. One frame past
       // SWAP_SECONDS resolves the first step, which spawns the break sheets;

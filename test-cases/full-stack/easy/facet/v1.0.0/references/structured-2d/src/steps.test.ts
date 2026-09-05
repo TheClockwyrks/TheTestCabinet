@@ -19,6 +19,7 @@ import {
   loadBoard,
   quiet,
   requestSwap,
+  setScreen,
   startRound,
   tick,
   type CellPair,
@@ -43,7 +44,10 @@ const CASCADE = quietRowsWith({
 const CASCADE_SWAP: CellPair = { a: { col: 3, row: 6 }, b: { col: 4, row: 6 } };
 
 function posed(rows: readonly string[], seed = 1): CoreState {
-  return loadBoard(createInitialState(seed), rows);
+  // `loadBoard` writes the board and nothing else (specs/instrumentation.md),
+  // so the round is opened for it: off `playing` there is no move to make, and
+  // every swap below would be refused before the rules ever read the board.
+  return setScreen(loadBoard(createInitialState(seed), rows), "playing");
 }
 
 /** A swap accepted, which leaves the two cells exchanged and `swapping`. */
