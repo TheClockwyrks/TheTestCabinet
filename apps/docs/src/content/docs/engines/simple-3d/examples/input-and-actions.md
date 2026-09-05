@@ -31,7 +31,7 @@ actions by name.
 ## src/main.ts
 
 ```ts
-import { createEngine } from "@test-cabinet/simple-3d";
+import { createEngine } from "@clockwyrks/simple-3d";
 import { hopper } from "./game";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
@@ -63,7 +63,7 @@ import type {
   InitApi,
   RenderApi,
   UpdateApi,
-} from "@test-cabinet/simple-3d";
+} from "@clockwyrks/simple-3d";
 import type { DeepReadonly } from "ts-essentials";
 
 /** Every action `TOUCH_LAYOUTS["dual-stick-two-buttons"]` names, with its keys. */
@@ -232,8 +232,8 @@ where the game put the camera off the view.
 ### tests/steering.test.ts
 
 ```ts
-import { ConstantClock, createEngine } from "@test-cabinet/simple-3d";
-import type { Engine, SurfaceMetrics } from "@test-cabinet/simple-3d";
+import { ConstantClock, createEngine } from "@clockwyrks/simple-3d";
+import type { Engine, SurfaceMetrics } from "@clockwyrks/simple-3d";
 import { expect, test } from "vitest";
 import { ORBIT, TURN, hopper } from "../src/game";
 import type { HopperState } from "../src/game";

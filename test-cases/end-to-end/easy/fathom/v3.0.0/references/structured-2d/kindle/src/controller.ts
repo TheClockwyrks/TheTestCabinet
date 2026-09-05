@@ -14,7 +14,7 @@
 // input produced, and the mode's tick advances the simulation from the desired
 // direction settled here.
 
-import { PlayerController } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
 import { noCues, playCues } from "./audio";
 import { GAMEOVER_ITEMS, PAUSE_ITEMS, TITLE_ITEMS } from "./constants";
 import { beginDive, openMenu, toTitle } from "./flow";

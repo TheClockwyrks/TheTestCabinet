@@ -97,7 +97,7 @@ the store now holds resolvable rather than unreadable.
 
 An engine is staged into the same host package store as a case's
 [packages](/testing/end-to-end/overview/#packages) and vendored at seed time into
-`.tcab/engine/` inside the run repository, committed with the initial seed. The
+`.vendor/engine/` inside the run repository, committed with the initial seed. The
 seeded `package.json` has the dependency on that vendored copy written into it,
 so the build imports the engine by its bare name as an ordinary installed
 dependency. This is where an engine differs from a case's packages, which the

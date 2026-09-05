@@ -13,8 +13,8 @@
 // runs the movement they ask for, which is the order the engine fixes:
 // controllers, then actors, then the mode (engine/frame.md).
 
-import { DrawComponent, Pawn } from "@test-cabinet/structured-2d";
-import type { DrawApi } from "@test-cabinet/structured-2d";
+import { DrawComponent, Pawn } from "@clockwyrks/structured-2d";
+import type { DrawApi } from "@clockwyrks/structured-2d";
 import { cameraCorner } from "./camera";
 import { deepcoreState } from "./game";
 import type { DeepcoreState, MoveInput } from "./game";

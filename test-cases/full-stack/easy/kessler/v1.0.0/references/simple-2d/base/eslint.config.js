@@ -18,7 +18,7 @@ export default tseslint.config(
       "out/",
       "coverage/",
       "assets/",
-      ".tcab/",
+      ".vendor/",
       "engine/",
     ],
   },

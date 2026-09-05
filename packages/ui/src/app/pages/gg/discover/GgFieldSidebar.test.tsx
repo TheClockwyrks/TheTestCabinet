@@ -6,7 +6,7 @@
 // than inferred from an empty result.
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { GgFieldCatalog } from "@test-cabinet/run-record/gg-query";
+import type { GgFieldCatalog } from "@clockwyrks/run-record/gg-query";
 import { GgFieldSidebar } from "./GgFieldSidebar";
 
 const CATALOG: GgFieldCatalog = {

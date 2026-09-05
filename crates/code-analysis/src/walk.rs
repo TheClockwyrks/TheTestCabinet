@@ -29,7 +29,7 @@
 //! Two of the floor's entries are matched **only at the tree root**, and one of those two is
 //! matched only when the caller says the host actually wrote it.
 //!
-//! `.tcab/` is the directory The Test Cabinet writes its own material into. The host owns
+//! `.vendor/` is the directory The Test Cabinet writes its own material into. The host owns
 //! that name outright, so it is floored at the root of every tree, unconditionally.
 //!
 //! `engine/` is not that. It is where an engine's documentation is seeded — but only on a run
@@ -145,7 +145,7 @@ const VENDOR_DIRS: [&str; 15] = [
 ///
 /// `const` on purpose, so [`HOST_ROOT_DIR`] can be *derived* from the core crate's own path
 /// constants instead of restating them as literals. The constants name children —
-/// `.tcab/engine`, `.tcab/packages` — and what the floor wants is the parent they share.
+/// `.vendor/engine`, `.vendor/packages` — and what the floor wants is the parent they share.
 const fn root_segment(path: &str) -> &str {
     let bytes = path.as_bytes();
     let mut end = 0;
@@ -159,7 +159,7 @@ const fn root_segment(path: &str) -> &str {
 /// The directory The Test Cabinet writes its own material into, removed **only when it is the
 /// tree's own top-level directory**.
 ///
-/// `.tcab/` is a namespace the host owns end to end: the vendored engine runtime
+/// `.vendor/` is a namespace the host owns end to end: the vendored engine runtime
 /// ([`TCAB_ENGINE_DIR`](test_cabinet_core::test_case::TCAB_ENGINE_DIR)), the case's vendored
 /// packages ([`TCAB_VENDOR_DIR`](test_cabinet_core::test_case::TCAB_VENDOR_DIR)) and the
 /// host-written validation media beside them. Counting any of it as authored code credits the
@@ -174,7 +174,7 @@ const fn root_segment(path: &str) -> &str {
 /// moment an engine shipped its runtime anywhere else.
 ///
 /// **The anchoring is the whole point and is not an optimisation.** [`VENDOR_DIRS`] matches a
-/// name at any depth, which is right for `node_modules` and wrong here: a `.tcab` below the
+/// name at any depth, which is right for `node_modules` and wrong here: a `.vendor` below the
 /// root is not the host's, and only the tree's own first path segment is tested.
 const HOST_ROOT_DIR: &str = root_segment(test_cabinet_core::test_case::TCAB_ENGINE_DIR);
 
@@ -307,7 +307,7 @@ fn relative_path(relative: &Path) -> String {
 /// Three directory tests, deliberately kept apart. [`VENDOR_DIRS`] and the validator's
 /// build-output names match a *segment at any depth*, because a `node_modules` is a
 /// `node_modules` wherever it sits. [`HOST_ROOT_DIR`] matches only the tree's own first
-/// segment, because `.tcab` means "written here by the host" at the root and means the
+/// segment, because `.vendor` means "written here by the host" at the root and means the
 /// model's own work anywhere else. And the engine documentation directory is matched at the
 /// root *and* only when `seeding` says this run's engine put it there — the one test on this
 /// floor that a name alone cannot answer.
@@ -330,7 +330,7 @@ fn floored(path: &str, bytes: u64, seeding: RootSeeding) -> bool {
     }
     // Root-anchored: `dirs` holds every segment but the file name, so `dirs.first()` is the
     // tree's own top-level directory — `None` for a root-level file, which is why `engine.ts`
-    // beside `src/` is kept. `.tcab/` is the host's name at the root of any tree;
+    // beside `src/` is kept. `.vendor/` is the host's name at the root of any tree;
     // `engine/frame.md` is the host's only on a run that seeded engine documentation, and
     // `src/engine/loop.ts` is the model's on every run.
     if let Some(first) = dirs.first() {

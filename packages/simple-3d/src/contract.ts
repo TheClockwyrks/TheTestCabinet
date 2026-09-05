@@ -5,7 +5,7 @@
  * These types are declared once, here, rather than beside the subsystem that owns
  * each one, because almost every one of them is spoken by more than one side of
  * the package. Keeping the declarations in a leaf module with no value imports means
- * the entry points cannot drift apart, and that `@test-cabinet/simple-3d` can be
+ * the entry points cannot drift apart, and that `@clockwyrks/simple-3d` can be
  * consumed for its types alone without pulling in the DOM-bound engine.
  *
  * Two imports reach outside the module, and both are type-only. `DeepReadonly` is
@@ -14,7 +14,7 @@
  * model's node tree. Importing `three` for its types alone is what keeps this module
  * value-free while still naming the objects the rendering surface is written in
  * terms of: `three` is a peer dependency the build declares itself, so the engine,
- * the build, and `@test-cabinet/voxel-runtime/three` share one instance, and the
+ * the build, and `@clockwyrks/voxel-runtime/three` share one instance, and the
  * engine re-exports nothing from it.
  */
 

@@ -15,7 +15,7 @@
 // chrome rather than a game action, so the registry stays exactly the
 // vocabulary `src/constants.ts` fixes.
 
-import type { InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type { InitApi, UpdateApi } from "@clockwyrks/simple-2d";
 import { ACTIONS, BINDINGS, type Action } from "./figures";
 import type { Held, PointerMove } from "./flow";
 

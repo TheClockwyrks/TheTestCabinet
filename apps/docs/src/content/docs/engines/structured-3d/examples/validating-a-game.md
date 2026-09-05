@@ -53,7 +53,7 @@ the validators import.
 
 ```ts
 // src/constants.ts
-import { vec3 } from "@test-cabinet/structured-3d";
+import { vec3 } from "@clockwyrks/structured-3d";
 
 export const DESIGN_WIDTH = 640;
 export const DESIGN_HEIGHT = 360;
@@ -130,7 +130,7 @@ takes nothing and returns plain data.
 
 ```ts
 // validation/debug.ts
-import type { Vec3 } from "@test-cabinet/structured-3d";
+import type { Vec3 } from "@clockwyrks/structured-3d";
 
 export interface Snapshot {
   level: string;
@@ -175,7 +175,7 @@ import {
   type InitApi,
   type Pawn,
   type Vec3,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { Hud } from "./actors/hud";
 import { Lights } from "./actors/lights";
 import { Orb } from "./actors/orb";
@@ -464,7 +464,7 @@ import {
   type Vec2,
   type Vec3,
   type World,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import {
   ACTIONS,
   BACKGROUND,
@@ -702,7 +702,7 @@ scenario through the debug surface, advances, and reads a snapshot back.
 
 ```ts
 // validation/simulation.test.ts
-import { ConstantClock, vec3, type Vec3 } from "@test-cabinet/structured-3d";
+import { ConstantClock, vec3, type Vec3 } from "@clockwyrks/structured-3d";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   ARENA_WIDTH,
@@ -797,7 +797,7 @@ tag, reads the match off the game state, and observes a transition on
 
 ```ts
 // validation/world-and-actors.test.ts
-import { vec3 } from "@test-cabinet/structured-3d";
+import { vec3 } from "@clockwyrks/structured-3d";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { LEVELS, ORB_COUNT, ORB_POINTS, TAGS } from "../src/constants";
 import { createHarness, type Harness } from "./harness";
@@ -911,7 +911,7 @@ one reports for a posed world.
 
 ```ts
 // validation/diagnostics.test.ts
-import { ConstantClock } from "@test-cabinet/structured-3d";
+import { ConstantClock } from "@clockwyrks/structured-3d";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { createHarness, type Harness } from "./harness";
 
@@ -962,7 +962,7 @@ the harness maps the logical point itself.
 ```ts
 // validation/rendering.test.ts
 import * as THREE from "three";
-import { vec3 } from "@test-cabinet/structured-3d";
+import { vec3 } from "@clockwyrks/structured-3d";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   BACKGROUND,
@@ -1152,7 +1152,7 @@ subscribes, runs the scenario, and asserts against what the handler collected.
 
 ```ts
 // validation/input-and-audio.test.ts
-import { vec3, type Vec3 } from "@test-cabinet/structured-3d";
+import { vec3, type Vec3 } from "@clockwyrks/structured-3d";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { ORB_POINTS, TAGS } from "../src/constants";
 import { createHarness, type Harness } from "./harness";
@@ -1264,7 +1264,7 @@ no frames unwritten.
 ```ts
 // validation/replay.ts
 import { commands } from "@vitest/browser/context";
-import type { Recording } from "@test-cabinet/structured-3d";
+import type { Recording } from "@clockwyrks/structured-3d";
 
 declare module "@vitest/browser/context" {
   interface BrowserCommands {
@@ -1293,7 +1293,7 @@ suites are run by hand, and the command writes nothing then, which keeps a local
 
 ```ts
 // validation/recording.test.ts
-import { vec3 } from "@test-cabinet/structured-3d";
+import { vec3 } from "@clockwyrks/structured-3d";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { DESIGN_HEIGHT, DESIGN_WIDTH, LEVELS } from "../src/constants";
 import { createHarness, type Harness } from "./harness";

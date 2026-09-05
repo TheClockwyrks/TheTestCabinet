@@ -42,7 +42,7 @@
 // WHAT THIS DOES NOT DECIDE. What a frame's delta is worth, which
 // `instrumentation/deterministic-core` decides from the other side.
 
-import { WallClock } from "@test-cabinet/simple-2d";
+import { WallClock } from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { DIVE_SPEED } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";

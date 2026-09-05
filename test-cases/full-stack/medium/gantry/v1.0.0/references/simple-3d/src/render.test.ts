@@ -9,7 +9,7 @@
 
 import { beforeAll, describe, expect, it } from "vitest";
 import * as THREE from "three";
-import type { InitApi, Model, RenderApi } from "@test-cabinet/simple-3d";
+import type { InitApi, Model, RenderApi } from "@clockwyrks/simple-3d";
 import { CAMERA_START_DIST, STAGE_H, STAGE_W } from "./constants";
 import { loadProducedAssets, MODEL_NAMES } from "./assets";
 import { point, thaw } from "./convert";

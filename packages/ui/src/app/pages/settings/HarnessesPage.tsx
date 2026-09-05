@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Panel, SegmentedControl } from "@test-cabinet/ui";
+import { Panel, SegmentedControl } from "@clockwyrks/ui";
 import { LoadingState } from "../../components/LoadingState";
 import { useRevealNotice } from "../../components/SubmitNotice";
 import { SettingsLayout } from "../../layouts/settings/SettingsLayout";

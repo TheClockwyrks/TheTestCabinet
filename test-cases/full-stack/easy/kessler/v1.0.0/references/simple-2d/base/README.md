@@ -9,12 +9,12 @@ bounce. Breaking derelicts may shed salvage pods — catch one for a tool. A
 ball you miss burns up against the planet, and the run ends when the last ball
 is lost with no lives left. Play is a score attack over endless waves.
 
-The engine (`@test-cabinet/simple-2d`) owns the frame loop and the delta time,
+The engine (`@clockwyrks/simple-2d`) owns the frame loop and the delta time,
 the letterboxed fit of the fixed 1000 × 1000 logical stage, the keyboard
 actions, the audio cue bus with its looping beds, the asset loader, and the
 debug overlay. The game owns everything else: its fixed 60 Hz tick built over
 the engine's delta, the polar simulation, the six screens, the drawing, and
-the produced assets it plays. `@test-cabinet/particle-runtime` plays the
+the produced assets it plays. `@clockwyrks/particle-runtime` plays the
 produced particle systems into the same context the field is drawn into.
 
 ## Install
@@ -110,7 +110,7 @@ engine binding and the drawing.
 - `src/theme.ts`, `src/draw.ts`, `src/render.ts`, `src/screens.ts` — the
   palette, the drawing helpers, the field, and each screen's chrome.
 - `src/fx.ts` — the three produced particle systems, played live through
-  `@test-cabinet/particle-runtime`'s canvas binding on the render context.
+  `@clockwyrks/particle-runtime`'s canvas binding on the render context.
 - `src/main.ts` — the fixed entry point (supplied with the project).
 
 Tests sit beside what they test as `src/*.test.ts` and run in Node with no

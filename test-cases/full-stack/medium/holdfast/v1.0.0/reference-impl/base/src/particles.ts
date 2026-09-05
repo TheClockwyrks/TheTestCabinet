@@ -1,15 +1,15 @@
 // Holdfast — the effect bursts (ASSETS.md §3 / specs/assets.md).
 //
 // Each combat/work event fires the matching PRODUCED particle system, played LIVE through
-// @test-cabinet/particle-runtime's canvas binding — not a flat flash or a hand-coded
+// @clockwyrks/particle-runtime's canvas binding — not a flat flash or a hand-coded
 // effect. A burst is simulated on its own offscreen 128×128 canvas (the system's field
 // size) and composited additively over the colony view at the event's WORLD position, so
 // — being simulated — it varies event to event. One-shots (muzzle/blood/impact/explosion/
 // dust) fade out after their authored duration; the looping `fire` system is kept alive
 // by re-spawning it each tick while its source burns, and fades shortly after it stops.
 
-import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { FxEvent, FxKind } from "./types";
 import { VIEW_X0, VIEW_Y0 } from "./constants";
 

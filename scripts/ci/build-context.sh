@@ -554,7 +554,7 @@ done < <(grep -Hno 'include_\(str\|bytes\)! *( *"[^"]*"' -- "${rust_sources[@]}"
 # invisible to every check above, because a whole-context copy is deliberately
 # unchecked: it takes whatever the allowlist admits, and the stage then dies on
 #
-#     Error: shippable package @test-cabinet/<name> not found under packages/
+#     Error: shippable package @clockwyrks/<name> not found under packages/
 #
 # which reads as a broken checkout and takes EVERY service image down at once — they
 # all share that Dockerfile. The `tcab-packages` stage is the driver's, but a
@@ -563,7 +563,7 @@ done < <(grep -Hno 'include_\(str\|bytes\)! *( *"[^"]*"' -- "${rust_sources[@]}"
 # The list is read from the staging script rather than restated here, for the reason
 # the include_str! check gives: the next package staged into the store is covered the
 # day it is added, which a hand-kept list would not be. The transitive
-# `@test-cabinet/*` dependencies are walked too, because the script stages the closure
+# `@clockwyrks/*` dependencies are walked too, because the script stages the closure
 # and `npm run build` compiles each member against its siblings.
 #
 # The directory itself must survive, not merely something under it: the script copies
@@ -609,12 +609,12 @@ package_dir_for() {
 	return 1
 }
 
-# The `@test-cabinet/*` names the manifest at `$1` uses as dependency KEYS, in any
+# The `@clockwyrks/*` names the manifest at `$1` uses as dependency KEYS, in any
 # block. Deliberately not only `dependencies`: the staging stage also BUILDS each
 # member, and a dev-time dependency on a sibling is a source tree that build reads.
 # The manifest's own `"name"` line is not matched, the scoped name being its value.
 tcab_dependency_names() {
-	grep -oE '"@test-cabinet/[A-Za-z0-9._-]+"[[:space:]]*:' "$1" |
+	grep -oE '"@clockwyrks/[A-Za-z0-9._-]+"[[:space:]]*:' "$1" |
 		sed -E 's/^"([^"]+)".*/\1/'
 }
 

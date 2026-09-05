@@ -207,7 +207,7 @@ without a container and reports the command instead of executing it.
 ## Packages
 
 A test case may declare a list of packages: The Test Cabinet's own
-`@test-cabinet/*` runtime libraries, which the build imports as ordinary
+`@clockwyrks/*` runtime libraries, which the build imports as ordinary
 dependencies. This exists because some produced assets need a runtime to
 interpret them. A [particle](/testing/asset-generation/particle-binaries/)
 effect is authored as a `system.json` that a game plays by simulating it live,
@@ -219,7 +219,7 @@ Declare them with the manifest's `packages` key, naming each package by its npm
 name:
 
 ```toml
-packages = ["@test-cabinet/particle-runtime"]
+packages = ["@clockwyrks/particle-runtime"]
 ```
 
 Only the repo's shippable packages may be named: the curated set staged into the
@@ -231,11 +231,11 @@ before any run is spent.
 
 The harness leaves your `package.json` alone. Ship a [workspace](#workspace)
 whose `package.json` already declares each named package as an in-repo relative
-`file:` dependency under `.tcab/packages/`:
+`file:` dependency under `.vendor/packages/`:
 
 ```json
 "dependencies": {
-  "@test-cabinet/particle-runtime": "file:./.tcab/packages/@test-cabinet/particle-runtime"
+  "@clockwyrks/particle-runtime": "file:./.vendor/packages/@clockwyrks/particle-runtime"
 }
 ```
 
@@ -248,7 +248,7 @@ run is spent.
 ### Seeding vendors the library into the run repository
 
 Seeding a `packages`-declaring case copies the requested libraries and their
-`@test-cabinet` closure out of the host package store into `.tcab/packages/`
+`@clockwyrks` closure out of the host package store into `.vendor/packages/`
 inside the run repository, committed as part of the initial seed commit. Because
 the `package.json` above points at that in-repo path, the dependency resolves
 wherever the produced tree lives: the run container, the validation host, and
@@ -257,7 +257,7 @@ That is what lets a produced game still validate and build after release.
 
 From the build's point of view a declared package is an installed dependency:
 the model installs its project as usual and imports the library by its bare name
-(`import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas"`).
+(`import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas"`).
 The spec that relies on the package should describe it as a provided dependency
 to import rather than as a file path.
 

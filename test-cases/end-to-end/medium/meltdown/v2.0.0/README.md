@@ -140,7 +140,7 @@ through `window.__meltdown`; the two engine projects run in process against the
 vendored engine and reach the surface through `engine.debug`. The three run the
 same scenarios and differ only in how they reach the build.
 
-The engineless project stands on `@test-cabinet/case-harness`, the shared
+The engineless project stands on `@clockwyrks/case-harness`, the shared
 engineless harness the runner stages beside it: the browser, the driven frame,
 the draw recorder, the audio probe and the evidence writers are that package's.
 What sits beside it is what is Meltdown's own — the contract the build owes, the

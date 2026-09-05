@@ -12,7 +12,7 @@
 // the two. Registration is all that belongs here, and it runs once, from the game
 // instance's `initialize`, before the start level opens.
 
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 import { ACTIONS, BINDINGS, LAYOUT } from "./constants";
 
 /**

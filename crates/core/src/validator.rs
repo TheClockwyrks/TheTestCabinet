@@ -331,7 +331,7 @@ impl BuildValidator {
     /// For each review item that declares a `validation` script, this drives the
     /// model's build through the script against the case's
     /// [instrumentation](crate::test_case::Instrumentation) handle, capturing the
-    /// declared media into the collected tree under `.tcab/validation/` and reading
+    /// declared media into the collected tree under `.vendor/validation/` and reading
     /// back the auto verdicts. A script that could be run but did not complete
     /// against a conformant build is recorded with `ran = false` and fails the
     /// checklist point it backs (see [`script_verdicts`]). Returns an empty vec when
@@ -359,7 +359,7 @@ impl BuildValidator {
         let media_dir = repo.join(VALIDATION_MEDIA_DIR);
 
         // Drive the case's scripted items against the served build, capturing the
-        // *actual* media into the run's `.tcab/validation/` tree. `None` means there
+        // *actual* media into the run's `.vendor/validation/` tree. `None` means there
         // is nothing to do (no scripted items) or nothing can be done (no browser) —
         // either way no results and no gate.
         let Some(drives) =
@@ -866,7 +866,7 @@ fn capture_baseline_suites(
 /// The run-root-relative directory synthesized *actual* validation media is
 /// collected under, so it travels with the published implementation and is served
 /// by [`crate::playable::serve_validation_file`].
-pub(crate) const VALIDATION_MEDIA_DIR: &str = ".tcab/validation";
+pub(crate) const VALIDATION_MEDIA_DIR: &str = ".vendor/validation";
 
 /// The version-folder-relative directory a case's committed **baseline** validation
 /// media lives under, one sub-directory per engine and variant:
@@ -2200,7 +2200,7 @@ struct SystemJson {
 struct SystemJsonEmitter {
     /// The emission source, an internally-tagged `{"mode":"rate","rate":…}` or
     /// `{"mode":"burst","count":…,"atMs":…}` object (the shape `particle-core` and
-    /// `@test-cabinet/particle-runtime` emit). Absent → the emitter declares no source.
+    /// `@clockwyrks/particle-runtime` emit). Absent → the emitter declares no source.
     #[serde(default)]
     emission: Option<SystemJsonEmission>,
 }

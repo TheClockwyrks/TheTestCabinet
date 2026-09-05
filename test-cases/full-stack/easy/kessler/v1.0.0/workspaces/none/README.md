@@ -34,7 +34,7 @@ produce, which tool produces it, the path it lands at, and how it is wired in.
 The finished files are committed to this repository and loaded at runtime, and
 `npm run build` never invokes the tools.
 
-`@test-cabinet/particle-runtime` is already a dependency, vendored into this
+`@clockwyrks/particle-runtime` is already a dependency, vendored into this
 repository and resolved by a `file:` entry in `package.json`. It plays a produced
 `system.json` into a 2D drawing context. Import it like any other dependency.
 

@@ -11,7 +11,7 @@
 // genuinely unresolvable on the client for a query with no time bound at all. Pinning the
 // interval to the range is what makes "sessions over time" a one-click question with a
 // sensible bucket width instead of a guess.
-import type { GgFilter, GgInterval } from "@test-cabinet/run-record/gg-query";
+import type { GgFilter, GgInterval } from "@clockwyrks/run-record/gg-query";
 import styles from "./GgDiscover.module.scss";
 
 /** One offered range. */

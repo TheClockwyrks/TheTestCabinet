@@ -1,5 +1,5 @@
 {
-  "name": "@test-cabinet/site",
+  "name": "@clockwyrks/site",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
@@ -16,8 +16,8 @@
   "dependencies": {
     "@observablehq/plot": "^0.6.16",
     "@react-three/fiber": "^9.6.1",
-    "@test-cabinet/run-record": "*",
-    "@test-cabinet/ui": "*",
+    "@clockwyrks/run-record": "*",
+    "@clockwyrks/ui": "*",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",

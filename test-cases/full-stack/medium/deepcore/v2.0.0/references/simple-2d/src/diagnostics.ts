@@ -25,7 +25,7 @@ import {
 import type { DeepcoreState } from "./game";
 import { isGrounded } from "./physics";
 import { tileAt } from "./state";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 
 function n0(value: number): string {
   return value.toFixed(0);

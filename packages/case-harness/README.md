@@ -1,4 +1,4 @@
-# `@test-cabinet/case-harness`
+# `@clockwyrks/case-harness`
 
 The shared engineless (`none`) validation harness a test case's validator project
 is built on: the browser lifecycle, the driven-frame loop, the injected

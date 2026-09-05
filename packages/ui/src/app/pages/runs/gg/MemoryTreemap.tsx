@@ -11,7 +11,7 @@
 // a memory written by another holder of the same instance takes a distinct edge for the
 // same reason. Both are named in the legend, so identity is never color alone.
 
-import { Treemap, type TreemapTile } from "@test-cabinet/ui";
+import { Treemap, type TreemapTile } from "@clockwyrks/ui";
 
 // One memory to place. `value` is what the area encodes (its body length in
 // characters); `live` distinguishes a memory still held from one since deleted, and

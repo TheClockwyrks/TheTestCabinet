@@ -1,11 +1,11 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { ToolchainCoverage } from "@test-cabinet/run-record";
+import type { ToolchainCoverage } from "@clockwyrks/run-record";
 import type {
   CodeAnalysisDocument,
   CodeFileEntry,
   CodeSymbolEntry,
-} from "@test-cabinet/run-record/code-analysis";
+} from "@clockwyrks/run-record/code-analysis";
 import { CodeExplorer } from "./CodeExplorer";
 import { CodeCyclesCallout } from "./CodeCyclesCallout";
 

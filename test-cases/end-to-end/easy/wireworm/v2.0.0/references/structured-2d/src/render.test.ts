@@ -10,7 +10,7 @@
 
 import { createCanvas } from "@napi-rs/canvas";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 import { ARC_LIFE, BOARD_Y, tileCX, tileCY } from "./constants";
 import { arcPolyline, nodeFrame, segmentFrame } from "./render";
 import { createHarness, poseWorm, startPlaying, type Harness } from "./harness";

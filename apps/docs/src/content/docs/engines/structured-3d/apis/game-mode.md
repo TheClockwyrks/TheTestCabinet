@@ -206,5 +206,5 @@ exact number of frames needs the failure rather than the frames after it.
 ## Exports
 
 `GameMode`, `GameState`, and `PlayerState` are exported as classes from
-`@test-cabinet/structured-3d`. `GameModeClass`, `MatchPhase`, `EndPlayReason`,
+`@clockwyrks/structured-3d`. `GameModeClass`, `MatchPhase`, `EndPlayReason`,
 `PlayerOptions`, and `BotOptions` are exported as types.

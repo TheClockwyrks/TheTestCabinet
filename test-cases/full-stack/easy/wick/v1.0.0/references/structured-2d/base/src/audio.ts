@@ -18,7 +18,7 @@
 // a host that could not reach its files instead of carrying on, quieter,
 // exactly as specified.
 
-import type { CueSpec, InitApi, WorldAudio } from "@test-cabinet/structured-2d";
+import type { CueSpec, InitApi, WorldAudio } from "@clockwyrks/structured-2d";
 import { CUES, CUE_PATHS, LOOPING_CUES, type CueName } from "./constants";
 import { wantedLoops } from "./flow";
 import type { WickState } from "./state";

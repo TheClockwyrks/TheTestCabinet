@@ -137,7 +137,7 @@ pub struct ResolvedController {
 
 /// One match's result, summarized so a tournament list can show the outcome
 /// without loading (and replaying) the match. Serializes `camelCase` to mirror the
-/// `@test-cabinet/run-record` TypeScript contract.
+/// `@clockwyrks/run-record` TypeScript contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]

@@ -49,7 +49,7 @@ fn simple_2d_reports_its_package_and_docs() {
     // These three are the seeding contract: what to copy out of the host package
     // store, what a driver binds to, and which directory is seeded as the
     // workspace's engine documentation.
-    assert_eq!(engine.package(), Some("@test-cabinet/simple-2d"));
+    assert_eq!(engine.package(), Some("@clockwyrks/simple-2d"));
     assert_eq!(engine.docs(), Some("docs"));
 }
 
@@ -64,7 +64,7 @@ fn structured_2d_reports_its_package_and_docs() {
     // These three are the seeding contract: what to copy out of the host package
     // store, what a driver binds to, and which directory is seeded as the
     // workspace's engine documentation.
-    assert_eq!(engine.package(), Some("@test-cabinet/structured-2d"));
+    assert_eq!(engine.package(), Some("@clockwyrks/structured-2d"));
     assert_eq!(engine.docs(), Some("docs"));
 }
 
@@ -79,7 +79,7 @@ fn simple_3d_reports_its_package_and_docs() {
     // These three are the seeding contract: what to copy out of the host package
     // store, what a driver binds to, and which directory is seeded as the
     // workspace's engine documentation.
-    assert_eq!(engine.package(), Some("@test-cabinet/simple-3d"));
+    assert_eq!(engine.package(), Some("@clockwyrks/simple-3d"));
     assert_eq!(engine.docs(), Some("docs"));
 }
 
@@ -94,7 +94,7 @@ fn structured_3d_reports_its_package_and_docs() {
     // These three are the seeding contract: what to copy out of the host package
     // store, what a driver binds to, and which directory is seeded as the
     // workspace's engine documentation.
-    assert_eq!(engine.package(), Some("@test-cabinet/structured-3d"));
+    assert_eq!(engine.package(), Some("@clockwyrks/structured-3d"));
     assert_eq!(engine.docs(), Some("docs"));
 }
 
@@ -180,7 +180,7 @@ fn a_resolved_engine_reports_the_version_of_its_staged_package() {
     // `engine.toml` — the same file the seeder reads when it vendors the package
     // and records the version on the run, so the gate and the record can never
     // disagree.
-    let store = store_with("@test-cabinet/simple-2d", "1.4.2");
+    let store = store_with("@clockwyrks/simple-2d", "1.4.2");
     let engine = EngineCatalog::with_package_store(store.path())
         .resolve(&EngineSelection::new("simple-2d"))
         .expect("`simple-2d` resolves");
@@ -195,7 +195,7 @@ fn a_resolved_engine_reports_the_version_of_its_staged_package() {
 fn the_engineless_engine_reports_no_version() {
     // Not a missing version: `none` vendors no package, so there is nothing to
     // have a version.
-    let store = store_with("@test-cabinet/simple-2d", "1.4.2");
+    let store = store_with("@clockwyrks/simple-2d", "1.4.2");
     let engine = EngineCatalog::with_package_store(store.path())
         .resolve(&EngineSelection::none())
         .expect("`none` resolves");
@@ -221,7 +221,7 @@ fn an_engine_missing_from_the_store_resolves_without_a_version() {
 
 #[test]
 fn a_staged_version_that_is_not_a_semantic_version_reports_none() {
-    let store = store_with("@test-cabinet/simple-2d", "nightly");
+    let store = store_with("@clockwyrks/simple-2d", "nightly");
     let engine = EngineCatalog::with_package_store(store.path())
         .resolve(&EngineSelection::new("simple-2d"))
         .expect("resolution does not depend on the store");

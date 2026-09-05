@@ -7,8 +7,8 @@
 // the hundreds and change with every edit, which is exactly the picture the
 // built-in components cannot state.
 
-import { DrawComponent } from "@test-cabinet/structured-3d";
-import type { DrawApi } from "@test-cabinet/structured-3d";
+import { DrawComponent } from "@clockwyrks/structured-3d";
+import type { DrawApi } from "@clockwyrks/structured-3d";
 import { STAGE_W } from "../constants";
 import { LAYER } from "../layers";
 import {

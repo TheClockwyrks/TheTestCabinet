@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Convert a produced voxel model into a glTF/GLB mesh — the offline counterpart of
-// the `@test-cabinet/voxel-runtime` runtime, for embedding a voxel asset in an
+// the `@clockwyrks/voxel-runtime` runtime, for embedding a voxel asset in an
 // end-to-end game (or any engine) as a standard, animated mesh.
 //
 // It reads the artifacts a voxel-family run produces — `rig.json` (the part

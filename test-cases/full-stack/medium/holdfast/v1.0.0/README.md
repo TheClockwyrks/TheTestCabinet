@@ -30,7 +30,7 @@ sprite, animation, particle effect, and sound the game plays is produced with
 one of them. There is no `ui`, `paint`, `texture`, voxel, or mesh tool, so all
 HUD and dashboard chrome is drawn in code. The full production contract is
 `specs/assets.md`. Accordingly this case declares no `assets = [...]` of
-pre-made art. It does declare `packages = ["@test-cabinet/particle-runtime"]`,
+pre-made art. It does declare `packages = ["@clockwyrks/particle-runtime"]`,
 the runtime the build plays its produced particle systems with, and its `init`
 uses `npm install`, not `npm ci`, so the injected `file:` dependency resolves.
 

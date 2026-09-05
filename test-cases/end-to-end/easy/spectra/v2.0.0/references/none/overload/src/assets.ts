@@ -27,7 +27,7 @@ import { BAND_COLOR } from "./theme";
 import { BURST_SYSTEM, SPRITE_SIZE, SPRITES, opposite } from "./constants";
 import { loadImage, loadParticleSystem, assetUrl } from "./images";
 import type { Band } from "./types";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 
 /** An opaque RGB triple, as the seeded art carries it. */
 export type Rgb = readonly [number, number, number];

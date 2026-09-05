@@ -13,7 +13,7 @@
 // holding one browser, bracketing each driven frame around one step of the
 // build's surface, recording what it drew, and reading pixels, draw calls and
 // sounds back out is the same job in every engineless case, so it lives once in
-// `@test-cabinet/case-harness`, staged beside this project at
+// `@clockwyrks/case-harness`, staged beside this project at
 // `validation/case-harness/`. The seam is one call: `createCaseHarness` takes
 // Meltdown's TYPES as type arguments and Meltdown's VALUES as one object, and
 // hands back that machinery under this case's own names.

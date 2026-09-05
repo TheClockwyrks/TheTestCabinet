@@ -3,7 +3,7 @@ import type {
   GgReference,
   GgReferenceCategory,
   GgToolReference,
-} from "@test-cabinet/run-record/gg-reference";
+} from "@clockwyrks/run-record/gg-reference";
 import {
   FsExplorer,
   FsFileRow,

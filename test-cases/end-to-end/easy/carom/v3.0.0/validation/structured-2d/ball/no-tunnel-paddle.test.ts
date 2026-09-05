@@ -22,7 +22,7 @@
 // struck paddle is driven onto the lane and the far one is held off it.
 
 import { afterEach, it } from "vitest";
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { BALL_R, FIELD_CY, MAX_SUBSTEP, P1_X1, SPEED_CAP } from "../constants";
 import {
   assertEqual,

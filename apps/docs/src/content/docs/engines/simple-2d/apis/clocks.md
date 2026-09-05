@@ -168,4 +168,4 @@ offending value.
 
 `Clock`, `PacedClockOptions`, `WallClock`, `PacedClock`, `ConstantClock`,
 `SequenceClock`, and `JitterClock` are exported from
-`@test-cabinet/simple-2d`.
+`@clockwyrks/simple-2d`.

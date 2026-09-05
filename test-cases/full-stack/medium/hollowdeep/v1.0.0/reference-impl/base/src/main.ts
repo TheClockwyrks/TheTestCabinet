@@ -5,7 +5,7 @@
 // particle / game / input systems, and runs the loop: the simulation advances in fixed
 // FIXED_STEP ticks (scaled by the speed control, frozen while paused) decoupled from
 // rendering, which interpolates and draws every frame while the live gas overlay and dust /
-// steam bursts play through @test-cabinet/particle-runtime. Mirrors valence's main.ts.
+// steam bursts play through @clockwyrks/particle-runtime. Mirrors valence's main.ts.
 
 import {
   FIXED_STEP,

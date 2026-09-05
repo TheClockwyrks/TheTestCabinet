@@ -1,7 +1,7 @@
 // Spectra — the drone-burst, played through the provided runtime.
 
 import { afterEach, describe, expect, it } from "vitest";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import { BURST_DURATION, BURST_FIELD, MAX_BURSTS } from "./constants";
 import {
   burstParticles,

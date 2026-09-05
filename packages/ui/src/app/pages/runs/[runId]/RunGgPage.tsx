@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import { ProgressBar, Spinner } from "@test-cabinet/ui";
-import type { RunRecord } from "@test-cabinet/run-record";
+import { ProgressBar, Spinner } from "@clockwyrks/ui";
+import type { RunRecord } from "@clockwyrks/run-record";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { useRunEvents } from "../../../data/useRunEvents";
 import { useCaseMaxRuntime } from "../../../data/useCaseMaxRuntime";

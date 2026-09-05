@@ -1,7 +1,7 @@
 // Refract — the suite's assertions. CASE-PROVIDED, over the shared harness.
 //
 // The assertions themselves are the shared validator harness's
-// (`@test-cabinet/case-harness`), because what they are FOR is the runner's
+// (`@clockwyrks/case-harness`), because what they are FOR is the runner's
 // contract rather than this case's: the runner stores each failed check as an
 // expected/actual pair and the console renders that pair to the reviewer, so
 // every check in every engineless project throws a message of exactly the shape

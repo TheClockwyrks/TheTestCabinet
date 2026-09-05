@@ -8,7 +8,7 @@ build/
 out/
 coverage/
 package-lock.json
-.tcab/
+.vendor/
 assets/
 specs/
 

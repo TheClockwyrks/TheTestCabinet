@@ -7,7 +7,7 @@ This is the implementation contract for the authored **reference build** of the
 rendering to a single **HTML5 canvas**, bundled with **Vite** (`base: "./"`), no backend,
 no network at runtime, all assets **produced** during the build with the six on-`PATH`
 tools and loaded via `import.meta.glob`. Particle effects play through
-`@test-cabinet/particle-runtime`'s `/canvas` binding; audio through Web Audio.
+`@clockwyrks/particle-runtime`'s `/canvas` binding; audio through Web Audio.
 
 Read this file with `ASSETS.md` (the produced-asset manifest) beside it. Every number and
 color here is taken from the seeded specs (`specs/overview.md`, `world.md`, `settlers.md`,
@@ -390,7 +390,7 @@ set. Every file:
 | `mode.ts` | The base **start config** (`MODE: StartConfig`) and the main-menu entry text (`NEW COLONY`). | `MODE`, `MENU_ENTRY`. |
 | `assets.ts` | Load the **produced** assets via `import.meta.glob` (page-relative, `?url`): terrain/node/structure/item/icon PNGs, the settler/raider sheet frames (grouped `settler/walk/0..3` …), the `assets/fx/*.system.json` particle systems, and the `assets/audio/*.wav`. Exposes typed getters mirroring valence's `Assets`. | `loadAssets(): Promise<Assets>`, `Assets { sprite(name), frames(prefix,n), fx, audioUrl }`. |
 | `audio.ts` | Web Audio playback of the produced `.wav`s: decode on first gesture, play cue buffers on events, loop `music` and the `ambient` bed, **duck/lift** music when a raid lands, `mute` toggle, no autostart. Copied in shape from valence's `audio.ts`. | `class Audio { resume(); play(cue); setRaid(active); toggleMute() }`. |
-| `particles.ts` | The **`Bursts`** manager: play each produced `system.json` live through `ParticleCanvasPlayer` (`@test-cabinet/particle-runtime/canvas`) on its own offscreen canvas, composited over the board at the event's world position; one-shots (`muzzle/blood/impact/explosion/dust`) spawned at events, the `fire` loop played while its condition holds. Copied in shape from valence's `particles.ts`. | `class Bursts { spawn(ev); update(dt); draw(ctx, cam) }`. |
+| `particles.ts` | The **`Bursts`** manager: play each produced `system.json` live through `ParticleCanvasPlayer` (`@clockwyrks/particle-runtime/canvas`) on its own offscreen canvas, composited over the board at the event's world position; one-shots (`muzzle/blood/impact/explosion/dust`) spawned at events, the `fire` loop played while its condition holds. Copied in shape from valence's `particles.ts`. | `class Bursts { spawn(ev); update(dt); draw(ctx, cam) }`. |
 | `input.ts` | Collect pointer (move/click/drag/right-click/wheel) and keyboard into per-frame queues; map screen→logical with the live fit transform. Same shape as valence's `input.ts`. | `class Input { attach(); drain(); pointerLogical; wheel; drag }`. |
 | `render.ts` | All **canvas drawing**: fit transform, the camera view of the tile world (terrain/nodes/structures via produced sprites, nearest-neighbor), designation overlays and build ghosts, settlers/raiders from the produced sheets (facing via mirror/rotate, cycle by activity), tracers, the `Bursts` composite, the **day/night lighting overlay**, selection + cover cursor, and dispatch to `hud.ts` / `screens.ts`. Returns the frame's `Clickable[]`. | `render(ctx, game, assets, bursts): Clickable[]`, `setRenderTime`, `setMuted`, `setMenuIndex`. |
 | `hud.ts` | The **in-code HUD dashboard** (drawn by `render.ts`): the **top strip** (stock readouts with produced icons, colony state, day/time clock + speed, and the prominent threat/raid warning), the **bottom strip** (settler **roster** cards + **build palette / tool bar**), and the **work-priority grid** panel. Emits its `Clickable[]` regions. | `drawTopHud`, `drawBottomHud`, `drawWorkGrid`, `drawTooltip`. |
@@ -407,7 +407,7 @@ Supporting (mirrors valence, dev-only, excluded from the build):
   asserting the survival goals: a do-nothing colony is overrun within a few raids; a
   competent controller (gather → wall + turret + food chain → man the wall) survives
   past a target day count. Same role as valence's `sim/`.
-- `vendor/particle-runtime/` — vendored prebuilt `@test-cabinet/particle-runtime` so a plain
+- `vendor/particle-runtime/` — vendored prebuilt `@clockwyrks/particle-runtime` so a plain
   `npm ci` resolves it outside the monorepo (as valence does).
 
 ---
@@ -531,7 +531,7 @@ population** — shown on the colony-lost screen. Not persisted between sessions
   serve `dist/` from a non-root path). **Never** a root-absolute `/assets/…` URL; all assets
   load through `import.meta.glob(..., { query: "?url" })`.
 - Assets are **produced once** with the tools and committed under `assets/`; the build never
-  invokes the tools. `@test-cabinet/particle-runtime` is the only runtime dependency; audio
+  invokes the tools. `@clockwyrks/particle-runtime` is the only runtime dependency; audio
   and particles play as in §4. A `README.md` documents the game, install/dev/build commands,
   the controls, and every README-stated design choice flagged above (structure costs,
   refund-on-cancel, daylight-only farming, hauling model, skill growth, single designate

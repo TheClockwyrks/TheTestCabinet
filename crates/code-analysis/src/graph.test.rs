@@ -80,15 +80,12 @@ fn external_packages_are_named_not_pathed() {
     let fixtures = vec![source(
         "src/main.ts",
         CodeLanguage::TypeScript,
-        &["@test-cabinet/voxel-runtime", "three/examples/jsm/loader"],
+        &["@clockwyrks/voxel-runtime", "three/examples/jsm/loader"],
     )];
     let graph = build_over(&fixtures);
     assert_eq!(
         graph.external_packages.iter().cloned().collect::<Vec<_>>(),
-        vec![
-            "@test-cabinet/voxel-runtime".to_string(),
-            "three".to_string()
-        ]
+        vec!["@clockwyrks/voxel-runtime".to_string(), "three".to_string()]
     );
 }
 

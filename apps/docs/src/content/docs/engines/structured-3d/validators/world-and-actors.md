@@ -46,7 +46,7 @@ entry `ofType` would return, or `null`. All three answer in spawn order, as a
 copy the caller owns.
 
 ```ts
-import { Pawn } from "@test-cabinet/structured-3d";
+import { Pawn } from "@clockwyrks/structured-3d";
 import { TAGS } from "../../src/constants";
 
 const paddles = world.byTag(TAGS.paddle);
@@ -78,7 +78,7 @@ quaternion and its negation are one rotation and compare unequal field by
 field.
 
 ```ts
-import { FORWARD, distance, quatRotate, quatToEuler } from "@test-cabinet/structured-3d";
+import { FORWARD, distance, quatRotate, quatToEuler } from "@clockwyrks/structured-3d";
 
 const ship = world.byTag(TAGS.ship)[0];
 const goal = world.byTag(TAGS.goal)[0];
@@ -133,7 +133,7 @@ import {
   scale,
   vec3,
   type Vec3,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { PADDLE_SPEED } from "../../src/constants";
 
 class Scripted extends AIController {

@@ -18,7 +18,7 @@ import {
   Actor,
   ColliderComponent,
   MeshComponent,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { LAYER, PADDLE, PALETTE, TAGS } from "./constants";
 
 export class Paddle extends Actor {
@@ -71,8 +71,8 @@ A level declares the actors it places, and the world spawns anything that
 appears later.
 
 ```ts
-import type { LevelDefinition } from "@test-cabinet/structured-3d";
-import { vec3 } from "@test-cabinet/structured-3d";
+import type { LevelDefinition } from "@clockwyrks/structured-3d";
+import { vec3 } from "@clockwyrks/structured-3d";
 import { Match } from "./mode";
 import { Ball } from "./ball";
 import { Paddle } from "./paddle";
@@ -117,7 +117,7 @@ where an actor looks up the rest of the world. Find by tag when a case fixed the
 vocabulary, and by type when the class is the build's own.
 
 ```ts
-import { Actor } from "@test-cabinet/structured-3d";
+import { Actor } from "@clockwyrks/structured-3d";
 import { Ball } from "./ball";
 import { TAGS } from "./constants";
 
@@ -144,7 +144,7 @@ and cooldown per second, and multiply by the delta. The
 sum of the position and the scaled velocity, assigned back onto the transform.
 
 ```ts
-import { Actor, add, scale, vec3, type Vec3 } from "@test-cabinet/structured-3d";
+import { Actor, add, scale, vec3, type Vec3 } from "@clockwyrks/structured-3d";
 import { COURT, BALL_SPEED } from "./constants";
 
 export class Ball extends Actor {
@@ -184,7 +184,7 @@ import {
   quatMultiply,
   quatRotate,
   scale,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { SHIP } from "./constants";
 
 export class Ship extends Actor {
@@ -216,7 +216,7 @@ component. A component extends `Component`, takes whatever constructor arguments
 it needs, and reads its actor through `this.actor`.
 
 ```ts
-import { Component, vec3 } from "@test-cabinet/structured-3d";
+import { Component, vec3 } from "@clockwyrks/structured-3d";
 
 export class Bob extends Component {
   private elapsed = 0;
@@ -241,7 +241,7 @@ while its actor stays where the level placed it. Attach it like any other
 component:
 
 ```ts
-import { Actor, MeshComponent } from "@test-cabinet/structured-3d";
+import { Actor, MeshComponent } from "@clockwyrks/structured-3d";
 import { Bob } from "./bob";
 import { PALETTE } from "./constants";
 
@@ -280,7 +280,7 @@ import {
   transformPoint,
   vec3,
   type Vec3,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { PALETTE, TANK } from "./constants";
 
 export class Tank extends Actor {
@@ -326,7 +326,7 @@ Tags are how a case names things, so take the strings from the case's constants
 module rather than writing them inline.
 
 ```ts
-import { Actor } from "@test-cabinet/structured-3d";
+import { Actor } from "@clockwyrks/structured-3d";
 import { TAGS } from "./constants";
 
 export class Brick extends Actor {
@@ -354,7 +354,7 @@ const cracked = this.world
 leaves the world at the end of the frame.
 
 ```ts
-import { Actor, type EndPlayReason } from "@test-cabinet/structured-3d";
+import { Actor, type EndPlayReason } from "@clockwyrks/structured-3d";
 import { TAGS } from "./constants";
 
 export class Brick extends Actor {

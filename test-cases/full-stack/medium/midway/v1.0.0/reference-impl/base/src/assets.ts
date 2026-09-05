@@ -7,7 +7,7 @@
 // URL, so the built dist/ runs from a per-run sub-path. The keys below are the exact
 // ASSETS.md paths (e.g. "tiles/grass", "icons/cash", "ride/carousel/0").
 
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { RideKind, StaffKind } from "./constants";
 import { RIDE_ORDER, STAFF_ORDER } from "./constants";
 import type { Cue, FxKind, GuestMood } from "./types";

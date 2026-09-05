@@ -44,7 +44,7 @@ needs a reachable backend (`TCAB_BACKEND_URL`) and a logged-in account. See
 - `validate` runs [validation](/components/core/validation/) over a produced
   implementation and reports whether the tree satisfied everything the case
   declares. It leaves the directory as it found it, apart from the install and
-  build it runs there and the media it synthesizes under `.tcab/`, so it is safe
+  build it runs there and the media it synthesizes under `.vendor/`, so it is safe
   to point at a case's committed reference implementation. See [Exit
   codes](#exit-codes) for what makes it fail.
 - `harnesses` lists the supported agent harnesses and whether each one's

@@ -2,7 +2,7 @@
  * Gantry — the injected CUE-NAMING probe. CASE-PROVIDED, beside the shared
  * harness's own audio probe.
  *
- * WHY THIS EXISTS AT ALL. `@test-cabinet/case-harness` already injects an audio
+ * WHY THIS EXISTS AT ALL. `@clockwyrks/case-harness` already injects an audio
  * probe (`window.__tcabAudio`) that counts the sounds a build emits and reports
  * how many are looping, and it says plainly why it stops there: under no engine
  * there is no cue bus to subscribe to, so "the cue's NAME is not observable from

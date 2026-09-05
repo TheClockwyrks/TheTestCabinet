@@ -14,7 +14,7 @@
 // nothing about a file's bytes says whether it is an effect or an empty shell. It
 // is a system of "emitters, forces, and per-particle curves that is simulated
 // live", and the only reading that decides that is to simulate it — with
-// `@test-cabinet/particle-runtime`, which specs/assets.md names as the runtime
+// `@clockwyrks/particle-runtime`, which specs/assets.md names as the runtime
 // the build plays them through and which is a dependency of the project already.
 // A file that the runtime cannot construct a simulator from is not a produced
 // system, and a system that emits no particle over its own whole duration is not
@@ -46,7 +46,7 @@ import {
   ParticleSimulator,
   type ParticleSystem,
   type RenderParticle,
-} from "@test-cabinet/particle-runtime";
+} from "@clockwyrks/particle-runtime";
 import { assertGreaterThanOrEqual, assertNotNull, fail } from "../assert";
 import { FX_DIR, REQUIRED_FX_SYSTEMS } from "../constants";
 import { mediaDestination, siteRoot } from "../harness";
@@ -187,6 +187,6 @@ it("ships four distinct particle systems the runtime plays", () => {
     effects.length,
     REQUIRED_FX_SYSTEMS,
     "distinct produced system.json files under assets/fx/ that " +
-      "@test-cabinet/particle-runtime plays and that emit a particle",
+      "@clockwyrks/particle-runtime plays and that emit a particle",
   );
 });

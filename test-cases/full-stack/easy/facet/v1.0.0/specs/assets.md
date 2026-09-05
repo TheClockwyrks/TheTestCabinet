@@ -114,7 +114,7 @@ frame. Land each sequence under its own directory, for example
   catches the light. Loop it for every prism standing on the board, so a prism
   is picked out from the stones around it by its motion as well as its art.
 
-## Particle systems — `particle-2d`, played via `@test-cabinet/particle-runtime`
+## Particle systems — `particle-2d`, played via `@clockwyrks/particle-runtime`
 
 The bursts a clearing board throws are particle systems you author with
 `particle-2d` and play live rather than flat flashes drawn in code.
@@ -138,7 +138,7 @@ under `public/assets/fx/`. Produce these four:
   cracked stone is read off the stone, and this is what makes the three cuts a
   chain earns feel like the prize they are.
 
-Play them with the provided runtime. `@test-cabinet/particle-runtime` is already
+Play them with the provided runtime. `@clockwyrks/particle-runtime` is already
 a dependency of your project, so import it like any other dependency. For this
 2D game use its `/canvas` binding and its `ParticleCanvasPlayer`: construct one
 from a parsed `system.json` and your 2D canvas context, and advance it each

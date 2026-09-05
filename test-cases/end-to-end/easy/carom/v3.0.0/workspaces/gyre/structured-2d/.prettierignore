@@ -5,7 +5,7 @@ node_modules/
 /build/
 /out/
 coverage/
-.tcab/
+.vendor/
 package-lock.json
 
 # Reading material rather than this project's source: the specification and the

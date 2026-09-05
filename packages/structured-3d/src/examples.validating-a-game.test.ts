@@ -92,7 +92,7 @@ import type { ActorSpec, World } from "./worlds";
  *   `GameDefinition<Debug>` the page's harness makes is unnecessary here because
  *   the two declarations cannot differ.
  * - Imports name the engine's own modules rather than the published package
- *   `@test-cabinet/structured-3d` (this file *is* that package).
+ *   `@clockwyrks/structured-3d` (this file *is* that package).
  * - One assertion is *added*, and it is the only one: the page's wall check
  *   closes on `runner.x < ARENA_WIDTH / 2`, which is exactly where an unblocked
  *   runner arrives after the 120 frames the check advances, so that line alone

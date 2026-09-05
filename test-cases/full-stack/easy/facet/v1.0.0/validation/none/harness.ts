@@ -63,7 +63,7 @@
 // build's surface and reporting what is wrong with it, the frame clocks, the
 // viewport fit, the readings taken off a frame, and the replay document a review
 // point's evidence is written as — every engineless case needs exactly that, and
-// it lives once, in `@test-cabinet/case-harness`, staged beside this file as
+// it lives once, in `@clockwyrks/case-harness`, staged beside this file as
 // `./case-harness/`. What stays here is what is genuinely Facet's.
 //
 // WHAT IS GENUINELY FACET'S, AND WHY THIS FILE STILL BUILDS ITS OWN HARNESS.
@@ -190,7 +190,7 @@ export type {
  * THE SHARED HARNESS'S, not this project's. Under the two engines these are
  * re-exported from the engine package, so a suite imports its clocks from
  * `./harness` whichever engine ran and the three read the same; there is no
- * engine here to re-export from, so they come from `@test-cabinet/case-harness`,
+ * engine here to re-export from, so they come from `@clockwyrks/case-harness`,
  * whose copies are the same names, the same behavior and the same seeded jitter
  * constants. What this project does with a delta is its own: each one becomes a
  * `__facet.advance(dt / 1000, 1)`.
@@ -762,7 +762,7 @@ const AUDIO_WARM_ATTEMPTS = 40;
  * draw-command recorder and the audio probe installed on it before a line of the
  * build's script runs, holding a page per harness inside that context, and
  * shutting the lot when the worker's last file is done — none of that is about
- * Facet, and it lives in `@test-cabinet/case-harness`.
+ * Facet, and it lives in `@clockwyrks/case-harness`.
  *
  * The context split is what the init scripts force and what correctness wants.
  * The recorder and the audio probe are installed on the CONTEXT, so every page

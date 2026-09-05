@@ -9,7 +9,7 @@ design field and `(width, height)` is its bottom-right, whatever size the canvas
 element happens to be.
 
 ```ts
-import type { Game } from "@test-cabinet/simple-2d";
+import type { Game } from "@clockwyrks/simple-2d";
 
 interface State {
   readonly ball: {
@@ -74,7 +74,7 @@ Draw back to front: the background, then the play field, then entities, then any
 in-game HUD.
 
 ```ts
-import type { RenderApi } from "@test-cabinet/simple-2d";
+import type { RenderApi } from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 function render(state: DeepReadonly<Board>, api: RenderApi): void {
@@ -144,8 +144,8 @@ applied inside the engine — so `update` reads positions on the same axes
 `render` draws on, through [`UpdateApi.input`](/engines/simple-2d/apis/input/).
 
 ```ts
-import { createEngine } from "@test-cabinet/simple-2d";
-import type { Game } from "@test-cabinet/simple-2d";
+import { createEngine } from "@clockwyrks/simple-2d";
+import type { Game } from "@clockwyrks/simple-2d";
 
 interface Point {
   readonly x: number;

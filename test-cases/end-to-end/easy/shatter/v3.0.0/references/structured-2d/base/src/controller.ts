@@ -24,7 +24,7 @@
 // same input read as the keys". They drive the menus directly rather than
 // through a registered action, so nothing of `ACTIONS` is raised by either.
 
-import { PlayerController } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
 import { GAMEOVER_ITEMS, PAUSE_ITEMS, TITLE_ITEMS } from "./constants";
 import { startGame, toTitle } from "./flow";
 import { resolvePointer } from "./pointer";

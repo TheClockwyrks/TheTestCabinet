@@ -1,4 +1,4 @@
-import type { GgSavedAgent } from "@test-cabinet/run-record/gg";
+import type { GgSavedAgent } from "@clockwyrks/run-record/gg";
 import { Dialog } from "../../../../primitives/Dialog";
 import { agentModeLabel } from "./ggAgentLibrary";
 import gg from "./GgConfigEditor.module.scss";

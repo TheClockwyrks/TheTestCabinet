@@ -270,7 +270,7 @@ viewer skins a character and treats a prop or mechanism as a rigid native glTF.
 ## Browser rendering
 
 The emitted glTF is rendered in the browser by
-[`@test-cabinet/voxel-runtime`](/components/voxel-runtime/overview/) over
+[`@clockwyrks/voxel-runtime`](/components/voxel-runtime/overview/) over
 three.js, loaded whole and played through a native glTF player. One shared viewer
 serves all three kinds:
 

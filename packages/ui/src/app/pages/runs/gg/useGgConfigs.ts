@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { GgCapabilitySet, GgConfig } from "@test-cabinet/run-record/gg";
+import type { GgCapabilitySet, GgConfig } from "@clockwyrks/run-record/gg";
 import { useAuth } from "../../../../client/auth";
 import { useOptionalBackend } from "../../../../client/context";
 import { attachAgentSources, resolveCapabilitySet } from "./ggAgentLibrary";

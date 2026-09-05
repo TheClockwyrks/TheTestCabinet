@@ -15,8 +15,8 @@ import {
   ShapeComponent,
   TextComponent,
   vec3,
-} from "@test-cabinet/structured-3d";
-import type { Actor, RenderComponent, Vec3 } from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
+import type { Actor, RenderComponent, Vec3 } from "@clockwyrks/structured-3d";
 import { LAYER } from "../layers";
 import { display, INK, mono, PANEL, PANEL_EDGE } from "../palette";
 

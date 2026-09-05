@@ -45,7 +45,7 @@ load the notice on screen reports.
 ## src/main.ts
 
 ```ts
-import { createEngine } from "@test-cabinet/simple-3d";
+import { createEngine } from "@clockwyrks/simple-3d";
 import { runner } from "./game";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
@@ -85,7 +85,7 @@ import {
   type InitApi,
   type RenderApi,
   type UpdateApi,
-} from "@test-cabinet/simple-3d";
+} from "@clockwyrks/simple-3d";
 import type { DeepReadonly } from "ts-essentials";
 
 const SPEED = 12;

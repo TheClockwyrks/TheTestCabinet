@@ -48,28 +48,28 @@ import type {
   VersionInfo,
   WorkerIdentity,
 } from "./types";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import type {
   CabinetStatsResponse,
   TestCaseGroupOut,
-} from "@test-cabinet/run-record/backend-api";
+} from "@clockwyrks/run-record/backend-api";
 import type {
   BulkCancelOut,
   GgRunRequest,
   LaunchAck,
-} from "@test-cabinet/run-record/jobs-api";
+} from "@clockwyrks/run-record/jobs-api";
 import type {
   GgConfig,
   GgConfigInput,
   GgSavedAgent,
   GgSavedAgentInput,
   GgProgramLanguage,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 import type {
   GgReference,
   GgReferenceApi,
-} from "@test-cabinet/run-record/gg-reference";
-import type { CodeAnalysisDocument } from "@test-cabinet/run-record/code-analysis";
+} from "@clockwyrks/run-record/gg-reference";
+import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
 import type {
   GgDashboard,
   GgDashboardInput,
@@ -80,7 +80,7 @@ import type {
   GgQueryResponse,
   GgSavedQuery,
   GgSavedQueryInput,
-} from "@test-cabinet/run-record/gg-query";
+} from "@clockwyrks/run-record/gg-query";
 import type {
   CoverageGroup,
   CoverageGroupInput,
@@ -94,11 +94,11 @@ import type {
   CoverageSettingsInput,
   HaltResult,
   TopUpResult,
-} from "@test-cabinet/run-record/coverage";
+} from "@clockwyrks/run-record/coverage";
 import type {
   Comparison,
   ComparisonInput,
-} from "@test-cabinet/run-record/comparison";
+} from "@clockwyrks/run-record/comparison";
 import type {
   LadderClimberInput,
   LadderInput,
@@ -110,7 +110,7 @@ import type {
   LadderRungOutcome,
   LadderSchedule,
   StoredClimberOut,
-} from "@test-cabinet/run-record/ladders";
+} from "@clockwyrks/run-record/ladders";
 
 // One page of bounded run summary cards from the backend
 // (`GET /runs?fields=summary`), newest first — the lightweight projection of
@@ -849,7 +849,7 @@ export interface BackendClient {
    * enqueued and which were skipped (with why) — a partially-published
    * comparison must never read as if every run is inspectable. This response
    * shape is backend-internal (hand-typed here, not part of the generated
-   * `@test-cabinet/run-record` contract, since the Rust type derives only
+   * `@clockwyrks/run-record` contract, since the Rust type derives only
    * `Serialize`) — mirrors how `PublishStreamLine` below is hand-typed for the
    * same reason. The comparison itself is *not* returned; re-fetch (or
    * optimistically flip `published`) to see the updated record.

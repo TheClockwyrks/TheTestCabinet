@@ -30,12 +30,12 @@
 // Arc Foundry never calls `setPhase` either: the engine's match phase is not the game's
 // build/wave/finale phase, which is `runPhase` on the state.
 
-import { GameInstance, GameMode } from "@test-cabinet/structured-2d";
+import { GameInstance, GameMode } from "@clockwyrks/structured-2d";
 import type {
   GameDefinition,
   InitApi,
   World,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { loadAssets, noAssets, type Assets } from "./assets";
 import { CUE_SPECS, playFrameCues } from "./audio";
 import { FoundryController } from "./controller";

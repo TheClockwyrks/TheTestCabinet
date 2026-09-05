@@ -11,7 +11,7 @@ import {
 import { quietRows, quietRowsWith } from "./core/fixtures";
 import { registerDiagnostics } from "./diagnostics";
 import type { FacetState } from "./game";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 type Source = (state: DeepReadonly<FacetState>) => unknown;

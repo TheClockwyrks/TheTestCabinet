@@ -6,7 +6,7 @@
 // immune to them — so there is nothing for a fixture case to assert against on the Rust
 // side, and a case here is the only place they can be caught.
 import { describe, expect, it } from "vitest";
-import type { GgRunDoc } from "@test-cabinet/run-record/gg-query";
+import type { GgRunDoc } from "@clockwyrks/run-record/gg-query";
 import { evaluate, fieldCatalog, globMatches } from "./evaluate";
 import { compareCodePoints, totalCompare, valueKey } from "./values";
 

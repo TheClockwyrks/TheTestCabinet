@@ -9,7 +9,7 @@
 // a browser.
 
 import { loadImage } from "@napi-rs/canvas";
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { producedImagePaths, wickAssets } from "./assets";
 import {

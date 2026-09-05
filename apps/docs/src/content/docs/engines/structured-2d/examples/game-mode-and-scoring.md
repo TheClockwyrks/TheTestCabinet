@@ -9,7 +9,7 @@ game mode awards the points, restarts the pawns, and ends the match.
 ## src/constants.ts
 
 ```ts
-import type { ActionBinding } from "@test-cabinet/structured-2d";
+import type { ActionBinding } from "@clockwyrks/structured-2d";
 
 export const WIDTH = 640;
 export const HEIGHT = 360;
@@ -35,7 +35,7 @@ export const ACTIONS: Record<string, ActionBinding> = {
 ## src/main.ts
 
 ```ts
-import { createEngine } from "@test-cabinet/structured-2d";
+import { createEngine } from "@clockwyrks/structured-2d";
 import { BACKGROUND, HEIGHT, WIDTH } from "./constants";
 import { rally } from "./game";
 
@@ -58,8 +58,8 @@ await engine.run();
 ## src/game.ts
 
 ```ts
-import { GameInstance, type InitApi } from "@test-cabinet/structured-2d";
-import type { GameDefinition } from "@test-cabinet/structured-2d";
+import { GameInstance, type InitApi } from "@clockwyrks/structured-2d";
+import type { GameDefinition } from "@clockwyrks/structured-2d";
 import { ACTIONS, CUES, LEVELS, TAGS } from "./constants";
 import { Ball } from "./actors/ball";
 import { RallyMode } from "./levels/rally-mode";
@@ -92,8 +92,8 @@ export const rally: GameDefinition<null> = {
 ## src/state.ts
 
 ```ts
-import { GameState, PlayerState } from "@test-cabinet/structured-2d";
-import type { World } from "@test-cabinet/structured-2d";
+import { GameState, PlayerState } from "@clockwyrks/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 
 export class RallyPlayerState extends PlayerState {
   aces = 0;
@@ -112,8 +112,8 @@ export function rallyState(world: World): RallyState {
 ## src/actors/ball.ts
 
 ```ts
-import { Actor, ColliderComponent, ShapeComponent } from "@test-cabinet/structured-2d";
-import type { Shape } from "@test-cabinet/structured-2d";
+import { Actor, ColliderComponent, ShapeComponent } from "@clockwyrks/structured-2d";
+import type { Shape } from "@clockwyrks/structured-2d";
 import { BALL, FILLS, HEIGHT, TAGS, WIDTH } from "../constants";
 import { rallyState } from "../state";
 
@@ -165,8 +165,8 @@ counting the contact are the ball's own rules.
 ## src/actors/paddle.ts
 
 ```ts
-import { ColliderComponent, Pawn, ShapeComponent } from "@test-cabinet/structured-2d";
-import type { Shape } from "@test-cabinet/structured-2d";
+import { ColliderComponent, Pawn, ShapeComponent } from "@clockwyrks/structured-2d";
+import type { Shape } from "@clockwyrks/structured-2d";
 import { FILLS, PADDLE, TAGS } from "../constants";
 
 const SHAPE: Shape = { kind: "rect", width: PADDLE.width, height: PADDLE.height };
@@ -190,8 +190,8 @@ its own, so both paddles are one class driven by two controllers.
 ## src/levels/rally-mode.ts
 
 ```ts
-import { GameMode, PlayerController } from "@test-cabinet/structured-2d";
-import type { Controller, Transform } from "@test-cabinet/structured-2d";
+import { GameMode, PlayerController } from "@clockwyrks/structured-2d";
+import type { Controller, Transform } from "@clockwyrks/structured-2d";
 import { CUES, HEIGHT, PADDLE, SCORE_LIMIT, WIDTH } from "../constants";
 import { Ball } from "../actors/ball";
 import { Paddle } from "../actors/paddle";

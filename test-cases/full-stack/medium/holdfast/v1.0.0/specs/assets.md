@@ -131,7 +131,7 @@ the hostile color with a distinct silhouette (`specs/overview.md`), at a size th
 comfortably in a tile. It is fine to reuse a body across cycles; the point is that the
 settlers and raiders visibly walk, work, fight, and fall.
 
-## Particle systems — `particle-2d`, played via `@test-cabinet/particle-runtime`
+## Particle systems — `particle-2d`, played via `@clockwyrks/particle-runtime`
 
 The combat flashes, the impacts, the fire, and the work puffs are **particle systems**
 you author with `particle-2d` and **play live** — not flat flashes or hand-coded bursts.
@@ -150,7 +150,7 @@ whose `render`/emit step writes a **`system.json`**; land them under, for exampl
 - **Construction / impact dust** — a short one-shot puff thrown when a node is worked or
   a build completes (`specs/world.md`, `specs/economy.md`).
 
-**Play them with the provided runtime.** `@test-cabinet/particle-runtime` is already a
+**Play them with the provided runtime.** `@clockwyrks/particle-runtime` is already a
 dependency of your project (its `file:` entry is in your `package.json`; install and
 import it like any other dependency — do **not** fetch or reimplement it). For this 2D
 game use its **`/canvas`** binding — its `ParticleCanvasPlayer`: construct one from a

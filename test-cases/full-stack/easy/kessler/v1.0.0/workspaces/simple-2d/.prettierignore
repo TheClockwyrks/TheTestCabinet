@@ -8,7 +8,7 @@ coverage/
 test-results/
 playwright-report/
 package-lock.json
-.tcab/
+.vendor/
 assets/
 
 # Prose. The formatter handles code; Markdown is left to its own linter.

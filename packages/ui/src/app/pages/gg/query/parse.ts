@@ -32,7 +32,7 @@ import type {
   GgAggFunc,
   GgCompareOp,
   GgIntervalUnit,
-} from "@test-cabinet/run-record/gg-query";
+} from "@clockwyrks/run-record/gg-query";
 import {
   AGG_FUNCS,
   type AggNode,

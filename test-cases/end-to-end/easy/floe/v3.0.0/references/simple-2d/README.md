@@ -83,7 +83,7 @@ filled. That key belongs to the engine, not to this game.
 
 ## What the engine owns
 
-`@test-cabinet/simple-2d` supplies everything that is the same in every browser
+`@clockwyrks/simple-2d` supplies everything that is the same in every browser
 game, and none of it is written here: the frame loop and its delta time in
 seconds, the state held by value and handed out `DeepReadonly`, the canvas fit
 (uniform scale, centered letterbox, device pixel ratio), named keyboard actions
@@ -159,10 +159,10 @@ Then, in this directory:
 npm ci
 ```
 
-The engine, `@test-cabinet/simple-2d`, is a relative `file:` dependency on the
+The engine, `@clockwyrks/simple-2d`, is a relative `file:` dependency on the
 repository's `packages/simple-2d`, which npm installs as a symlink, so this
 project builds and tests against the engine's current source. A run receives the
-same package at `.tcab/engine/@test-cabinet/simple-2d/` instead, so the import in
+same package at `.vendor/engine/@clockwyrks/simple-2d/` instead, so the import in
 the sources is the same either way.
 
 ## Run in development

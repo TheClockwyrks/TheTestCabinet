@@ -19,18 +19,18 @@ import type {
   RunShowcase,
   RunSubject,
   TournamentRecord,
-} from "@test-cabinet/run-record";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-import type { CodeAnalysisDocument } from "@test-cabinet/run-record/code-analysis";
-import type { Comparison } from "@test-cabinet/run-record/comparison";
-import type { GgRunDoc } from "@test-cabinet/run-record/gg-query";
+} from "@clockwyrks/run-record";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
+import type { Comparison } from "@clockwyrks/run-record/comparison";
+import type { GgRunDoc } from "@clockwyrks/run-record/gg-query";
 import {
   parseGlb,
   parseSkinnedGlb,
   type PartMesh,
   type SkinnedMesh,
-} from "@test-cabinet/voxel-runtime";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+} from "@clockwyrks/voxel-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type {
   ProgressCallback,
   ProofMedia,
@@ -148,7 +148,7 @@ export interface ReviewModel {
 }
 
 // The gallery's data source, injected by the host app. The same routed UI lives
-// in `@test-cabinet/ui`, but its data differs per app: the static site builds
+// in `@clockwyrks/ui`, but its data differs per app: the static site builds
 // this from the build-time public snapshot; the web/desktop consoles build it
 // live from a backend (catalog + published runs) and a worker (in-progress and
 // produced runs). Pages read it through the existing data hooks

@@ -13,7 +13,7 @@
 // draws every element from its sheet where the sheet arrived and from shapes in
 // code where it did not, so the game still plays.
 
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 
 /** One frame of a sheet, or `null` where it did not arrive. */
 export type Frame = ImageBitmap | null;

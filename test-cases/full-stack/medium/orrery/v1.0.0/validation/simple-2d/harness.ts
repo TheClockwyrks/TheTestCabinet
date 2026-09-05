@@ -61,7 +61,7 @@ import {
   type RecordedFrame,
   type Recording,
   type SurfaceMetrics,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 import { BACKGROUND, game as build, type OrreryState } from "../src/game";
 import { fail } from "./assert";

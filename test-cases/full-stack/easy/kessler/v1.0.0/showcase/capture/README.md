@@ -86,7 +86,7 @@ REF=$V/references/structured-2d/base
 WORK=$REPO/tmp/stage/showcase-capture/kessler/v1.0.0/references/structured-2d/base
 
 # The vendored packages are built from source, so build them before installing.
-npm run build -w @test-cabinet/structured-2d -w @test-cabinet/particle-runtime
+npm run build -w @clockwyrks/structured-2d -w @clockwyrks/particle-runtime
 
 mkdir -p "$WORK"
 for item in .prettierrc.json .prettierignore .gitignore src assets public \

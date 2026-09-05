@@ -9,7 +9,7 @@
 // The list is the one specs/instrumentation.md asks for, and each line is short
 // enough to read at a glance.
 
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 import type { VoluteState } from "./game";
 import { inDanger } from "./sim";
 import { effectiveFeed } from "./train";

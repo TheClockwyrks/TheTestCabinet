@@ -28,7 +28,7 @@ through the same library.
 | [Backend](/components/backend/overview/) | A private Rust server that distributes test case definitions, owns the run queue, and stores run results. |
 | [Auth service](/components/auth/overview/) | A standalone Rust server for user accounts: self-registration, password login, and the bearer tokens the backend verifies. |
 | [Site](/components/site/overview/) | The public gallery at [testcabinet.ai](https://testcabinet.ai) where published runs are browsed and played. |
-| [UI library](/components/ui/overview/) | Shared frontend code (`@test-cabinet/ui`): the routed gallery application all three GUIs mount, the primitives they render, and the backend client interfaces. |
+| [UI library](/components/ui/overview/) | Shared frontend code (`@clockwyrks/ui`): the routed gallery application all three GUIs mount, the primitives they render, and the backend client interfaces. |
 | [Voxel runtime](/components/voxel-runtime/overview/) | Poses and renders a produced voxel rig. |
 | [Particle runtime](/components/particle-runtime/overview/) | Simulates and renders a produced particle system. |
 | [Docs](/components/docs/overview/) | This documentation site. |

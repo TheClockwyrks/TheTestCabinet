@@ -158,7 +158,7 @@ advancing frames on a timer so the motion reads. It is fine to reuse a nucleus
 body across element tints; the point is that atoms visibly orbit, towers visibly
 fire, and the boss visibly seethes.
 
-## Particle systems — `particle-2d`, played via `@test-cabinet/particle-runtime`
+## Particle systems — `particle-2d`, played via `@clockwyrks/particle-runtime`
 
 The decomposition events are the game's punctuation, and they are particle
 systems you author with `particle-2d` and play live, not flat flashes or
@@ -182,7 +182,7 @@ per-particle size/opacity/color curves) whose `render`/emit step writes a
 A tower muzzle/impact effect (a shot trail or impact flash for the damage
 towers) and a small collector leak effect are welcome additions.
 
-Play them with the provided runtime. `@test-cabinet/particle-runtime` is already
+Play them with the provided runtime. `@clockwyrks/particle-runtime` is already
 a dependency of your project (its `file:` entry is in your `package.json`;
 install and import it like any other dependency, do not fetch or reimplement
 it). For this 2D game use its `/canvas` binding, its `ParticleCanvasPlayer`:

@@ -60,23 +60,23 @@ the static site into `dist/`, `build/`, or `out/`. Resolution rejects a
 
 ## `packages`
 
-The `packages` key names the repo's shippable `@test-cabinet/*` runtime
+The `packages` key names the repo's shippable `@clockwyrks/*` runtime
 libraries the build imports as ordinary dependencies. It is valid on an
 end-to-end, full-stack, or game-jam case. The same shipped-`package.json`
 `file:` contract and `npm install`-at-`init` rules apply as for an
 [end-to-end case](/testing/end-to-end/manifests/).
 
 Its most common use here is
-[`@test-cabinet/particle-runtime`](/testing/asset-generation/particle-binaries/),
+[`@clockwyrks/particle-runtime`](/testing/asset-generation/particle-binaries/),
 so a game can play a particle `system.json` the model itself produced during the
 run:
 
 ```toml
-packages = ["@test-cabinet/particle-runtime"]
+packages = ["@clockwyrks/particle-runtime"]
 ```
 
 A `3d` case that ships a produced voxel model declares
-[`@test-cabinet/voxel-runtime`](/components/voxel-runtime/overview/) the same
+[`@clockwyrks/voxel-runtime`](/components/voxel-runtime/overview/) the same
 way, so the game can decode each part's `.glb` and pose the produced rig.
 
 ## `[audio]`

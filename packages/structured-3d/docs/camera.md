@@ -101,8 +101,8 @@ The pose is written from a tick, most naturally the game mode's or a camera
 actor's. `lookAt` writes the rotation, so an orbit is three numbers and a point:
 
 ```ts
-import { GameMode, vec3 } from "@test-cabinet/structured-3d";
-import type { Vec3 } from "@test-cabinet/structured-3d";
+import { GameMode, vec3 } from "@clockwyrks/structured-3d";
+import type { Vec3 } from "@clockwyrks/structured-3d";
 
 const PITCH_MIN = 0.15;
 const PITCH_MAX = 1.4;
@@ -154,7 +154,7 @@ import {
   Pawn,
   quatFromEuler,
   vec3,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 
 export class Ship extends Pawn {
   readonly view: CameraComponent;
@@ -243,7 +243,7 @@ const hit = this.world.collision.raycast(ray.origin, ray.direction, 100, {
 A pick against the ground plane is arithmetic the game does itself:
 
 ```ts
-import type { Ray, Vec3 } from "@test-cabinet/structured-3d";
+import type { Ray, Vec3 } from "@clockwyrks/structured-3d";
 
 function onGround(ray: Ray): Vec3 | null {
   if (Math.abs(ray.direction.y) < 1e-6) return null;

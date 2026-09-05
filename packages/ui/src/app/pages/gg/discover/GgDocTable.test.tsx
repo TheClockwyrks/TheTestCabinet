@@ -13,7 +13,7 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
-import type { GgQuery, GgRunDoc } from "@test-cabinet/run-record/gg-query";
+import type { GgQuery, GgRunDoc } from "@clockwyrks/run-record/gg-query";
 import { compileQuery, evaluate, parseQuery } from "../query";
 import { GgDocTable, queryFields } from "./GgDocTable";
 

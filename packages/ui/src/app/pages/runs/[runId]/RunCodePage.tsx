@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { MetricTile, Panel, Spinner } from "@test-cabinet/ui";
-import type { RunRecord } from "@test-cabinet/run-record";
-import type { CodeAnalysisDocument } from "@test-cabinet/run-record/code-analysis";
+import { MetricTile, Panel, Spinner } from "@clockwyrks/ui";
+import type { RunRecord } from "@clockwyrks/run-record";
+import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { useGalleryData } from "../../../data/galleryContext";
 import {

@@ -8,8 +8,8 @@
 # Astro Starlight build that type-checks as it builds).
 #
 # The gallery is built through the root `build:site` script rather than
-# `-w @test-cabinet/site`, because the site does not build on its own: it and the
-# `@test-cabinet/ui` library it consumes from source import several workspace
+# `-w @clockwyrks/site`, because the site does not build on its own: it and the
+# `@clockwyrks/ui` library it consumes from source import several workspace
 # runtime packages that publish their types only from a built `dist/`, so those
 # have to be built first, in dependency order. That order is the root script's job
 # to know — see `apps/docs/src/content/docs/development/releasing.md`, which names
@@ -32,11 +32,11 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 log "npm ci"
 npm ci
 
-log "build @test-cabinet/site (and the runtime packages it depends on)"
+log "build @clockwyrks/site (and the runtime packages it depends on)"
 npm run build:site
 
-log "build @test-cabinet/web"
-npm run build -w @test-cabinet/web
+log "build @clockwyrks/web"
+npm run build -w @clockwyrks/web
 
-log "build @test-cabinet/docs"
-npm run build -w @test-cabinet/docs
+log "build @clockwyrks/docs"
+npm run build -w @clockwyrks/docs

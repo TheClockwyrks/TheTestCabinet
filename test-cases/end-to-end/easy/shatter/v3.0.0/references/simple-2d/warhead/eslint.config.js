@@ -63,7 +63,7 @@ export default tseslint.config(
       "build/",
       "out/",
       "coverage/",
-      ".tcab/",
+      ".vendor/",
     ],
   },
   js.configs.recommended,

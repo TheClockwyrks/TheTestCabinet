@@ -11,12 +11,12 @@
 // Each burst is SEEDED FROM THE GAME'S OWN GENERATOR, so successive bursts in a
 // run scatter differently while a replay from one seed reproduces them exactly.
 
-import { ParticleSimulator } from "@test-cabinet/particle-runtime";
+import { ParticleSimulator } from "@clockwyrks/particle-runtime";
 import { art } from "./assets";
 import { BURST_DURATION, BURST_FIELD, MAX_BURSTS } from "./constants";
 import { random, takeId } from "./entities";
 import type { BurstState, SpectraState } from "./game";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 
 /**
  * The system a burst falls back to where the seeded file did not arrive.

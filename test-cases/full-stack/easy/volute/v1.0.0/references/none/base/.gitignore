@@ -1,5 +1,5 @@
 # Dependencies — reinstalled with `npm ci`; never committed. The particle
-# runtime, `@test-cabinet/particle-runtime`, is resolved from the repository's
+# runtime, `@clockwyrks/particle-runtime`, is resolved from the repository's
 # own `packages/particle-runtime` through a relative `file:` dependency that npm
 # installs as a symlink, so nothing of it is written here.
 node_modules/
@@ -21,4 +21,4 @@ playwright-report/
 *.log
 
 # Scratch that `tcab validate --implementation` writes beside the build.
-.tcab/
+.vendor/

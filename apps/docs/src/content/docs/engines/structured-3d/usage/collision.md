@@ -20,7 +20,7 @@ import {
   ColliderComponent,
   MeshComponent,
   type Vec3,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { BALL_RADIUS, CHANNELS, PALETTE } from "./constants";
 
 export class Ball extends Actor {
@@ -66,7 +66,7 @@ the collider says nothing about is ignored. A pair is resolved from both sides
 and takes the stronger of the two answers, so one declaration is enough.
 
 ```ts
-import { Actor, ColliderComponent } from "@test-cabinet/structured-3d";
+import { Actor, ColliderComponent } from "@clockwyrks/structured-3d";
 import { CHANNELS, WALL_THICKNESS } from "./constants";
 
 export class Wall extends Actor {
@@ -128,8 +128,8 @@ together.
 The handler belongs on the `Ball` above, beside its collider.
 
 ```ts
-import { add, dot, scale, sub } from "@test-cabinet/structured-3d";
-import type { EngineEventMap } from "@test-cabinet/structured-3d";
+import { add, dot, scale, sub } from "@clockwyrks/structured-3d";
+import type { EngineEventMap } from "@clockwyrks/structured-3d";
 
 export class Ball extends Actor {
   private off: (() => void) | null = null;
@@ -179,8 +179,8 @@ moments, the frame the shapes begin intersecting and the frame they stop, which
 is what a goal, a pickup, or a checkpoint wants.
 
 ```ts
-import { GameMode } from "@test-cabinet/structured-3d";
-import type { EngineEventMap } from "@test-cabinet/structured-3d";
+import { GameMode } from "@clockwyrks/structured-3d";
+import type { EngineEventMap } from "@clockwyrks/structured-3d";
 import { Ball } from "./ball";
 import { CUES, TAGS } from "./constants";
 
@@ -237,8 +237,8 @@ and name the actor itself in `ignore` so a ray leaving an actor skips its own
 collider. An actor's forward is `FORWARD` turned by its rotation.
 
 ```ts
-import { FORWARD, Pawn, add, quatRotate, vec3 } from "@test-cabinet/structured-3d";
-import type { Actor } from "@test-cabinet/structured-3d";
+import { FORWARD, Pawn, add, quatRotate, vec3 } from "@clockwyrks/structured-3d";
+import type { Actor } from "@clockwyrks/structured-3d";
 import { CHANNELS, EYE_HEIGHT, SIGHT_RANGE, TAGS } from "./constants";
 
 export class Guard extends Pawn {
@@ -270,8 +270,8 @@ pointer's logical point. The controller reads the pointer, asks the camera for
 the ray, and casts it:
 
 ```ts
-import { PlayerController } from "@test-cabinet/structured-3d";
-import type { Actor } from "@test-cabinet/structured-3d";
+import { PlayerController } from "@clockwyrks/structured-3d";
+import type { Actor } from "@clockwyrks/structured-3d";
 import { CHANNELS, PICK_RANGE } from "./constants";
 
 export class CursorController extends PlayerController {

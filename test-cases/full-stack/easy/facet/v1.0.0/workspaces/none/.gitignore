@@ -2,9 +2,9 @@
 node_modules/
 
 # Production build output — produced by `npm run build`. Every pattern here is
-# ANCHORED to the repository root on purpose: `@test-cabinet/particle-runtime`
+# ANCHORED to the repository root on purpose: `@clockwyrks/particle-runtime`
 # is vendored into this repository at
-# `.tcab/packages/@test-cabinet/particle-runtime/`, prebuilt, and its own
+# `.vendor/packages/@clockwyrks/particle-runtime/`, prebuilt, and its own
 # `dist/` is committed with the seed. An unanchored `dist/` would match that
 # directory too and leave the build unable to resolve the package.
 /dist/

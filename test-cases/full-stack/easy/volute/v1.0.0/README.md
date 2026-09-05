@@ -75,8 +75,8 @@ insertion, a grant, or a cell spend.
 - `workspaces/structured-2d/` — the same two case-owned modules against the
   framework engine. The build writes the game definition the engine drives.
 
-All three depend on `@test-cabinet/particle-runtime` at the
-`file:./.tcab/packages/@test-cabinet/particle-runtime` path the manifest's
+All three depend on `@clockwyrks/particle-runtime` at the
+`file:./.vendor/packages/@clockwyrks/particle-runtime` path the manifest's
 `packages` key requires, which is why `init` is `npm install` while
 `[build].install` stays `npm ci`. The engine workspaces additionally carry the
 engine's own `file:` dependency, written in at seed time.

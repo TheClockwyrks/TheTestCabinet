@@ -187,6 +187,11 @@ pub struct ServedValidationFile {
     pub body: Vec<u8>,
 }
 
+/// The host namespace directory produced trees carried before it was renamed to
+/// `.vendor`. Runs collected under the old name are immutable history, so every
+/// read-back path keeps resolving it.
+const LEGACY_VENDOR_DIR: &str = ".tcab";
+
 /// Resolve and read one synthesized validation media file from a produced run's
 /// output directory, for serving to a reviewer the same way [`serve_proof_file`]
 /// serves proof media.
@@ -196,24 +201,24 @@ pub struct ServedValidationFile {
 /// addressable media name a debug script's output is stored under —
 /// `<item>__<output>.<ext>` for the model's build, `<item>__<output>.baseline.<ext>`
 /// for the reference implementation (see `crate::validator::validation_media_name`).
-/// The bytes live in the collected tree under `.tcab/validation/`, so this reads
-/// straight from `implementation/.tcab/validation/<file>`. Returns `None` when the
+/// The bytes live in the collected tree under `.vendor/validation/`, so this reads
+/// straight from `implementation/.vendor/validation/<file>`. Returns `None` when the
 /// file is missing or the name would escape the directory — the caller maps that to
 /// a 404.
+///
+/// Trees collected before the host namespace was renamed carry the same media under
+/// `.tcab/validation/`. Those runs are immutable and are still served, so a miss in
+/// the current directory falls back to the legacy one rather than 404ing history.
 pub fn serve_validation_file(run_dir: &Path, file: &str) -> Option<ServedValidationFile> {
     // The name is a single flat segment; reject any path separator or traversal so a
     // request can only ever name a file directly inside the validation media dir.
     if file.is_empty() || file.contains('/') || file.contains('\\') || file.contains("..") {
         return None;
     }
-    let body = std::fs::read(
-        run_dir
-            .join("implementation")
-            .join(".tcab")
-            .join("validation")
-            .join(file),
-    )
-    .ok()?;
+    let implementation = run_dir.join("implementation");
+    let body = [".vendor", LEGACY_VENDOR_DIR].into_iter().find_map(|dir| {
+        std::fs::read(implementation.join(dir).join("validation").join(file)).ok()
+    })?;
     let labels = proof_labels(file);
     Some(ServedValidationFile {
         content_type: labels.content_type,

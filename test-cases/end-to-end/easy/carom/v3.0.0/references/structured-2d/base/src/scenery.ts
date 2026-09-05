@@ -14,8 +14,8 @@
 // `OBSTACLES` rectangle of that same index, so the picture and the collision
 // cannot drift apart.
 
-import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
-import type { DrawApi, World } from "@test-cabinet/structured-2d";
+import { Actor, DrawComponent } from "@clockwyrks/structured-2d";
+import type { DrawApi, World } from "@clockwyrks/structured-2d";
 import {
   FIELD_H,
   NET_X,

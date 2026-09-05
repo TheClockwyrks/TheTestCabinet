@@ -116,7 +116,7 @@ import {
   type SurfaceMetrics,
   type Viewport,
   type World,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { expect } from "vitest";
 import {
   type ActionName,

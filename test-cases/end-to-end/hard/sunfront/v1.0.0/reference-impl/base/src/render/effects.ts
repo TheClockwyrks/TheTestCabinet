@@ -3,7 +3,7 @@
  * effects").
  *
  * When a unit fires, it plays ONE fresh instance of its provided muzzle-flash particle
- * system (`assets/effects/*.json`), simulated live via `@test-cabinet/particle-runtime`'s
+ * system (`assets/effects/*.json`), simulated live via `@clockwyrks/particle-runtime`'s
  * `/three` `ParticleSystemPlayer`, anchored to the firing part's muzzle tip, oriented
  * along the barrel (each effect is authored firing forward along `+z`), scaled to the
  * muzzle, and disposed once its one-shot decays. The build never hand-codes a particle

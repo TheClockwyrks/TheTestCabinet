@@ -11,7 +11,7 @@ import {
   type Group,
   type Object3D,
 } from "three";
-import type { AxisSpec, JointSpec } from "@test-cabinet/run-record";
+import type { AxisSpec, JointSpec } from "@clockwyrks/run-record";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import {
   AMBIENT_INTENSITY,

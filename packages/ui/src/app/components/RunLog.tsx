@@ -1,9 +1,9 @@
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { Fragment, useMemo, useRef, type MouseEvent } from "react";
 import { Link } from "react-router";
 import type { RunSort, SortDir } from "../../client/clients";
 import type { InProgressRun } from "../../client/types";
-import { canonicalModelId } from "@test-cabinet/ui";
+import { canonicalModelId } from "@clockwyrks/ui";
 import { describeRunState } from "../data/runState";
 import { isPublishable } from "../data/useRunPublish";
 import { useFindModel } from "../data/useModels";

@@ -19,7 +19,7 @@ import {
   Actor,
   ColliderComponent,
   ShapeComponent,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { BALL_RADIUS, CHANNELS, PALETTE } from "./constants";
 
 export class Ball extends Actor {
@@ -60,7 +60,7 @@ the collider says nothing about is ignored. A pair is resolved from both sides
 and takes the stronger of the two answers, so one declaration is enough.
 
 ```ts
-import { Actor, ColliderComponent } from "@test-cabinet/structured-2d";
+import { Actor, ColliderComponent } from "@clockwyrks/structured-2d";
 import { CHANNELS, WALL_THICKNESS } from "./constants";
 
 export class Wall extends Actor {
@@ -111,7 +111,7 @@ and the axis to reflect about.
 The handler belongs on the `Ball` above, beside its collider.
 
 ```ts
-import type { EngineEventMap } from "@test-cabinet/structured-2d";
+import type { EngineEventMap } from "@clockwyrks/structured-2d";
 
 export class Ball extends Actor {
   private off: (() => void) | null = null;
@@ -163,8 +163,8 @@ moments, the frame the shapes begin intersecting and the frame they stop, which
 is what a goal, a pickup, or a checkpoint wants.
 
 ```ts
-import { GameMode } from "@test-cabinet/structured-2d";
-import type { EngineEventMap } from "@test-cabinet/structured-2d";
+import { GameMode } from "@clockwyrks/structured-2d";
+import type { EngineEventMap } from "@clockwyrks/structured-2d";
 import { Ball } from "./ball";
 import { CUES, TAGS } from "./constants";
 
@@ -221,8 +221,8 @@ and name the actor itself in `ignore` so a ray leaving an actor skips its own
 collider.
 
 ```ts
-import { Pawn } from "@test-cabinet/structured-2d";
-import type { Actor } from "@test-cabinet/structured-2d";
+import { Pawn } from "@clockwyrks/structured-2d";
+import type { Actor } from "@clockwyrks/structured-2d";
 import { CHANNELS, SIGHT_RANGE, TAGS } from "./constants";
 
 export class Guard extends Pawn {

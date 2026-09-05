@@ -27,13 +27,13 @@
 // mode never calls `setPhase`, so the inherited `phase` stays `"waiting"` and
 // `elapsed` stays `0`.
 
-import { GameInstance, GameMode, GameState } from "@test-cabinet/structured-2d";
+import { GameInstance, GameMode, GameState } from "@clockwyrks/structured-2d";
 import type {
   GameDefinition,
   InitApi,
   World,
   WorldAudio,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { Arena } from "./arena";
 import { loadSprites, NO_SPRITES, type SnakeSprites } from "./assets";
 import { defineCues, playTickEvents, stopMusicOffTheRound } from "./audio";

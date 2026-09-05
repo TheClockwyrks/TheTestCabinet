@@ -11,7 +11,7 @@
 // `metric.runTimeSeconds >= 1800` filter does not silently drop the longest runs and an
 // average is not dragged toward zero by the runs that burned the most budget. A table
 // that printed `0s` for an absent cell would give all of that back.
-import type { GgValue } from "@test-cabinet/run-record/gg-query";
+import type { GgValue } from "@clockwyrks/run-record/gg-query";
 import { GG_DATE_FIELDS, asDisplay, formatNumber } from "../query";
 
 /** What a cell shows when the field is **absent from the document**. Distinct from a

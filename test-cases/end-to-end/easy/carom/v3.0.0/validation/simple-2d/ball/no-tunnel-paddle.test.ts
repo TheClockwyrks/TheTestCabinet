@@ -27,7 +27,7 @@
 // comes within six hundred units of its face.
 
 import { afterEach, it } from "vitest";
-import { ConstantClock } from "@test-cabinet/simple-2d";
+import { ConstantClock } from "@clockwyrks/simple-2d";
 import { BALL_R, FIELD_CY, MAX_SUBSTEP, P1_X1, SPEED_CAP } from "../constants";
 import {
   assertEqual,

@@ -102,7 +102,7 @@ boundary as JSON.
 ```ts
 // validation/replay.ts
 import { commands } from "@vitest/browser/context";
-import type { Recording } from "@test-cabinet/structured-3d";
+import type { Recording } from "@clockwyrks/structured-3d";
 
 declare module "@vitest/browser/context" {
   interface BrowserCommands {

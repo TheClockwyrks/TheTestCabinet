@@ -152,11 +152,11 @@ function frozenLayout(name: string, vocabulary: readonly string[]): TouchLayout 
  *
  * @throws if `name` is not in the catalogue. The catalogue is **closed**, and an
  * unknown name throws rather than falling back to a default: a silent fallback
- * would let a run be configured for one control scheme and executed under another,
- * so the run record would describe a run that never happened. The error names every
- * valid layout, because the failure is almost always a typo in a case's
- * configuration and the fix is the list itself. Adding a layout is a deliberate
- * edit here, and a new engine version.
+ * would let a game be configured for one control scheme and played under another,
+ * so what shipped would not be what was asked for. The error names every valid
+ * layout, because the failure is almost always a typo in the configuration and the
+ * fix is the list itself. Adding a layout is a deliberate edit here, and a new
+ * engine version.
  */
 export function touchLayout(name: string): TouchLayout {
   const layout = TOUCH_LAYOUTS[name];

@@ -157,4 +157,4 @@ so a held viewport keeps the values of the frame it was read in.
 ## Exports
 
 `Viewport` is exported as a type, and `fitViewport`, `applyViewport`, and
-`syncCanvas` as functions, from `@test-cabinet/simple-2d`.
+`syncCanvas` as functions, from `@clockwyrks/simple-2d`.

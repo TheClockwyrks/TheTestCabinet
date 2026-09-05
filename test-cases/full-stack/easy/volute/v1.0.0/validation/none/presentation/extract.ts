@@ -132,7 +132,7 @@ export function nearAny(
  * The points a frame's GEOMETRY landed on, with every image draw left out.
  *
  * `specs/assets.md` has the produced particle systems played through
- * `@test-cabinet/particle-runtime`'s `./canvas` binding, which composites each
+ * `@clockwyrks/particle-runtime`'s `./canvas` binding, which composites each
  * live particle as a filled arc on the context it was handed, while every
  * produced sprite reaches the field as a `drawImage`. Dropping the image draws
  * is therefore what separates the effect from the picture it plays over.

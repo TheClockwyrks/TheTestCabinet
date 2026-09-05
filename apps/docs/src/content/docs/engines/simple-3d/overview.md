@@ -6,7 +6,7 @@ Simple 3D (slug `simple-3d`) is the 3D engine of the Simple family. It provides
 everything a 3D browser game needs around its own code and leaves the game
 itself to the model: the build writes its own simulation and its own picture.
 
-The runtime is the npm package `@test-cabinet/simple-3d`, written in
+The runtime is the npm package `@clockwyrks/simple-3d`, written in
 TypeScript over three.js and imported by a build as an ordinary dependency,
 with `three` as a peer dependency the build declares itself. Its source is
 `packages/simple-3d/`, and the documentation seeded into a run workspace is

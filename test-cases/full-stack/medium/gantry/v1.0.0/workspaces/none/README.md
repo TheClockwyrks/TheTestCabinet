@@ -36,7 +36,7 @@ the game is driven from code, so it is present and exactly as specified.
 `PATH` produces each model and sound, and the bar it meets. Commit the produced
 files under `assets/` and load them at run time. The finished repository builds
 and runs with those tools absent, so nothing is generated at build time.
-`@test-cabinet/voxel-runtime` is already a dependency, vendored under `.tcab/`,
+`@clockwyrks/voxel-runtime` is already a dependency, vendored under `.vendor/`,
 and it is what decodes a produced `.glb` into a mesh and builds the geometry the
 scene draws.
 
@@ -54,7 +54,7 @@ through.
 ## What you must not edit
 
 - **`index.html`** — the page and the canvas.
-- **`.tcab/`** — the vendored packages `package.json` resolves the voxel
+- **`.vendor/`** — the vendored packages `package.json` resolves the voxel
   runtime from.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`,

@@ -47,7 +47,7 @@
 // on-PATH tools produces each sprite, animation cycle, particle system, and
 // sound, and the exact path each lands at under `assets/`. The engine's asset
 // loader resolves every path under that root; the particle runtime
-// `@test-cabinet/particle-runtime` is already a dependency and plays a produced
+// `@clockwyrks/particle-runtime` is already a dependency and plays a produced
 // `system.json` through its canvas binding.
 
 import type {
@@ -55,7 +55,7 @@ import type {
   InitApi,
   RenderApi,
   UpdateApi,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 /**

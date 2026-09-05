@@ -7,7 +7,7 @@
 // components produced. Nothing is reimplemented — what runs is the same
 // `GameDefinition` `src/main.ts` binds to the engine in a browser.
 
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { BED_CUES } from "./audio";
 import { STAGE_W, STAGE_H, TAGS, TITLE_ITEMS } from "./constants";

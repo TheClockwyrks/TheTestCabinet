@@ -11,7 +11,7 @@
 // development and copies it into `dist/assets/` when the site is built, so the
 // same path reaches the same file either way.
 
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 
 /** The page-relative URL of one seeded file. */
 export function assetUrl(name: string): string {

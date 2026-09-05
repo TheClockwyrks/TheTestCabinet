@@ -194,6 +194,6 @@ after it.
 
 ## Exports
 
-`Actor` and `Pawn` are exported as classes from `@test-cabinet/structured-3d`.
+`Actor` and `Pawn` are exported as classes from `@clockwyrks/structured-3d`.
 `ActorClass`, `Transform`, `EndPlayReason`, `Vec3`, and `Quat` are exported as
 types from the same entry point.

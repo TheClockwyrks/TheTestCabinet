@@ -2,7 +2,7 @@
 // Diagnostics): that each one is registered, reads the live game, and changes
 // nothing.
 
-import type { DiagnosticValue } from "@test-cabinet/structured-2d";
+import type { DiagnosticValue } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DEAL_MODE, DEAL_MODE_LABEL } from "./constants";
 import { diagnosticSources } from "./diagnostics";

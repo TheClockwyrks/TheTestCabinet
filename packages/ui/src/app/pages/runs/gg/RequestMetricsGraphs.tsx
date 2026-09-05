@@ -21,7 +21,7 @@ import {
   metricLineChart,
   type ChartPalette,
   type MetricPoint,
-} from "@test-cabinet/ui";
+} from "@clockwyrks/ui";
 import type { PromptTurn, TurnTiming } from "./useGgRunState";
 import { formatCost, formatPercent } from "./GgOverviewWidgets";
 import { formatThroughput } from "./ggThroughput";

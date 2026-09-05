@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { registerDiagnostics } from "./diagnostics";
 import { createInitialState } from "./flow";
 import type { CaromState } from "./game";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 type Source = (state: DeepReadonly<CaromState>) => unknown;

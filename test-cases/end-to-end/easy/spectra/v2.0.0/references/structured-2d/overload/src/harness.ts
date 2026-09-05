@@ -25,7 +25,7 @@ import {
   createEngine,
   type Engine,
   type SurfaceMetrics,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { LAYOUT, STAGE_H, STAGE_W } from "./constants";
 import {
   BACKGROUND,

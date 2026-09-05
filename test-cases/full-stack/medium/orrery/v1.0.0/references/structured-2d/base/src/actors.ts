@@ -25,7 +25,7 @@ import {
   DrawComponent,
   type DrawApi,
   type World,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { orrerySprites } from "./assets";
 import {
   HEADING_H,

@@ -21,7 +21,7 @@
 // one step of the build's surface, driving the real mouse and the real finger,
 // reading pixels and draw calls back out, and writing the evidence a review point
 // declares — every engineless case needs exactly that, and it lives once, in
-// `@test-cabinet/case-harness`, staged beside this file as `./case-harness/`.
+// `@clockwyrks/case-harness`, staged beside this file as `./case-harness/`.
 // What is left here is what is genuinely Carom's: the shape of its snapshot, the
 // operations its `specs/instrumentation.md` requires, and the scenarios its
 // checks are posed from.

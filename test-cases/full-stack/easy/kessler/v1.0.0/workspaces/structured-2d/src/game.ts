@@ -48,11 +48,11 @@
 // `specs/assets.md` states which tool on the `PATH` makes each file, where it
 // lands under `assets/`, and the bar it is held to; `src/constants.ts` names
 // the paths. Play each produced particle system through
-// `@test-cabinet/particle-runtime`'s `./canvas` binding, from a draw component
+// `@clockwyrks/particle-runtime`'s `./canvas` binding, from a draw component
 // that puts its output in the layer order like any other picture.
 
-import { GameInstance, GameMode } from "@test-cabinet/structured-2d";
-import type { GameDefinition, InitApi } from "@test-cabinet/structured-2d";
+import { GameInstance, GameMode } from "@clockwyrks/structured-2d";
+import type { GameDefinition, InitApi } from "@clockwyrks/structured-2d";
 import { LEVEL_NAME } from "./constants";
 
 /**

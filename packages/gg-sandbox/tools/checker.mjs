@@ -38,7 +38,7 @@
 //
 // # Usage
 //
-//   GG_ARTIFACTS_OUT_DIR=<dir> npm run --workspace @test-cabinet/gg-sandbox checker
+//   GG_ARTIFACTS_OUT_DIR=<dir> npm run --workspace @clockwyrks/gg-sandbox checker
 //
 // It is run by `packages/gg-sandbox/build.sh` alongside the component, which is what
 // `scripts/gg-artifacts.sh` and this arm's artifact crate run — so ordinarily nobody invokes this

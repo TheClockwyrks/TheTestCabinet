@@ -12,7 +12,7 @@
 // against that field (see `placeRunFuel`), so a worse duplicate can see where it
 // stands — even relative to its own model's recorded best.
 
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { canonicalModelId } from "../../modelId";
 
 /** One model's best (lowest) total fuel on a single case + version + variant. */

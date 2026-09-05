@@ -136,7 +136,7 @@ a timer in code. Three sheets (well above the minimum two):
 ## 3. Particle systems — `particle-2d` (a `system.json` each; ≥3 required)
 
 Authored with `particle-2d` (emitters + forces + per-particle size/opacity/color curves),
-`render`ed to `system.json`, and played **live** through `@test-cabinet/particle-runtime`'s
+`render`ed to `system.json`, and played **live** through `@clockwyrks/particle-runtime`'s
 `/canvas` binding (`src/particles.ts`) — simulated overlays that vary play to play, not
 flat tints. Authored on a **128×128** field (the footprint each is scaled to on the map).
 

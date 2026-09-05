@@ -21,7 +21,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { GgFieldCatalog, GgInterval } from "@test-cabinet/run-record/gg-query";
+import type { GgFieldCatalog, GgInterval } from "@clockwyrks/run-record/gg-query";
 import { type Completion, type ParseResult, completeQuery } from "../query";
 import { type QueryExample, queryExamples } from "./examples";
 import { highlightSpans } from "./highlight";

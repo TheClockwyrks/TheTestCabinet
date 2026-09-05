@@ -17,8 +17,8 @@
 // goes back everywhere else. Each screen reads only the actions in its own row of
 // `specs/controls.md`, so no key ever does two things at once.
 
-import { PlayerController } from "@test-cabinet/structured-2d";
-import type { PointerSample } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
+import type { PointerSample } from "@clockwyrks/structured-2d";
 import { GAME_OVER_ITEMS, PAUSE_ITEMS, TITLE_ITEMS } from "./constants";
 import { noCues, playCues, type FrameCues } from "./audio";
 import { startRun, toTitle } from "./flow";

@@ -7,7 +7,7 @@
 // leaves the name declared and the game playable, and that the bed loops on
 // every frame without being restarted.
 
-import type { CueSpec } from "@test-cabinet/simple-2d";
+import type { CueSpec } from "@clockwyrks/simple-2d";
 import { describe, expect, it } from "vitest";
 
 import { CUE_FALLBACKS, defineCues, playCues, syncBed } from "./audio";

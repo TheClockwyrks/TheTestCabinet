@@ -48,7 +48,7 @@ Behavior that belongs to a piece rather than to the whole actor goes in a
 component of the game's own:
 
 ```ts
-import { Component } from "@test-cabinet/structured-2d";
+import { Component } from "@clockwyrks/structured-2d";
 
 export class Bob extends Component {
   private elapsed = 0;

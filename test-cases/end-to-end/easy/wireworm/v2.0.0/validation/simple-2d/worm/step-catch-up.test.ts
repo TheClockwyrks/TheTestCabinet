@@ -53,7 +53,7 @@
 // of a fifth step, so nothing lands inside it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import type { Clock } from "@test-cabinet/simple-2d";
+import type { Clock } from "@clockwyrks/simple-2d";
 import { assertDeepEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,

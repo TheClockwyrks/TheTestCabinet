@@ -61,12 +61,7 @@ use crate::capture::{GgRecorder, RecordedCommand, shell_cwd};
 /// work commit, and a merge commit), passed as one-shot `-c` overrides so gg never depends on a
 /// configured global git identity in the run container. Applied only to commands that write a
 /// commit.
-const GG_IDENTITY: &[&str] = &[
-    "-c",
-    "user.name=gg",
-    "-c",
-    "user.email=gg@test-cabinet.local",
-];
+const GG_IDENTITY: &[&str] = &["-c", "user.name=gg", "-c", "user.email=gg@clockwyrks.local"];
 
 /// The author and committer **date** gg stamps its own commits with, fixed rather than taken from
 /// the clock.

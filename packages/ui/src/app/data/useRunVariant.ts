@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { RunSubject } from "@test-cabinet/run-record";
+import type { RunSubject } from "@clockwyrks/run-record";
 import type {
   CaseVariantRef,
   CatalogStatus,

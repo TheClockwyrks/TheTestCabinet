@@ -12,7 +12,7 @@
 import { DEAL_MODE, DEAL_MODE_LABEL } from "./constants";
 import { wasteShownCount } from "./layout";
 import type { CascadeState } from "./game";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 /** Register every source the overlay draws. */

@@ -46,7 +46,7 @@ import {
   type ModeName,
   type SurgeType,
 } from "../harness";
-import { ConstantClock } from "@test-cabinet/simple-2d";
+import { ConstantClock } from "@clockwyrks/simple-2d";
 
 /* ---- Posing a mode ------------------------------------------------------- */
 

@@ -20,7 +20,7 @@
 //     figure both holds the sheet back and then runs it.
 //   * A PARTICLE BURST per cleared gem and per created cut — one of the
 //     one-shot `particle-2d` systems, simulated live through
-//     `@test-cabinet/particle-runtime`'s `ParticleCanvasPlayer`
+//     `@clockwyrks/particle-runtime`'s `ParticleCanvasPlayer`
 //     (specs/assets.md). A burst cannot be held back the way a sheet can, since
 //     it starts emitting the moment it is built, so the ones that belong to a
 //     later wave wait in a queue until their moment comes.
@@ -39,7 +39,7 @@
 // would churn a dozen canvases a step; the players are not, so each burst draws
 // its own random play rather than replaying a pooled one.
 
-import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
+import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
 import {
   BREAK_FRAMES,
   FX_AURA,

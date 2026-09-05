@@ -391,7 +391,7 @@ jobs:
         run: cargo install tauri-cli --version "^2" --locked
       - name: Install npm workspace
         run: npm ci
-      # The desktop UI (via @test-cabinet/ui) imports the compiled types of the
+      # The desktop UI (via @clockwyrks/ui) imports the compiled types of the
       # workspace runtime packages, so they have to be built before the Tauri
       # build runs the UI's own `tsc -b && vite build` (its beforeBuildCommand) —
       # otherwise those imports resolve to nothing and the UI's typecheck fails.

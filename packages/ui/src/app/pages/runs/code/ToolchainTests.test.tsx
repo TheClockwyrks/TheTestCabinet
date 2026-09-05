@@ -18,7 +18,7 @@
 
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { ToolchainTests as ToolchainTestsRecord } from "@test-cabinet/run-record";
+import type { ToolchainTests as ToolchainTestsRecord } from "@clockwyrks/run-record";
 import { ToolchainTests } from "./ToolchainTests";
 
 function tests(over: Partial<ToolchainTestsRecord> = {}): ToolchainTestsRecord {

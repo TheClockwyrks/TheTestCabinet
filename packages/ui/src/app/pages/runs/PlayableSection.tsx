@@ -1,4 +1,4 @@
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunRecord } from "@clockwyrks/run-record";
 import { PlayableEmbed } from "../../components/PlayableEmbed";
 import styles from "../../components/PlayableEmbed.module.scss";
 

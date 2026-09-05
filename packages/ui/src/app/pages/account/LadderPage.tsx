@@ -5,7 +5,7 @@ import type {
   HaltResult,
   ReviewPlanCombo,
   TopUpResult,
-} from "@test-cabinet/run-record/coverage";
+} from "@clockwyrks/run-record/coverage";
 import type {
   LadderClimber,
   LadderOut,
@@ -14,7 +14,7 @@ import type {
   LadderRungOutcome,
   LadderSchedule,
   RungTally,
-} from "@test-cabinet/run-record/ladders";
+} from "@clockwyrks/run-record/ladders";
 import type { BackendClient } from "../../../client/clients";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";

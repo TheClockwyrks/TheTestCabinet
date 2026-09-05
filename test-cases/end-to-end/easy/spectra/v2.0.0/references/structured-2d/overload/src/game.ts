@@ -29,14 +29,14 @@
 // mode never calls `setPhase`, so the inherited match phase is never written and
 // the two vocabularies never meet.
 
-import { GameInstance, GameMode, GameState } from "@test-cabinet/structured-2d";
-import type { ParticleSimulator } from "@test-cabinet/particle-runtime";
+import { GameInstance, GameMode, GameState } from "@clockwyrks/structured-2d";
+import type { ParticleSimulator } from "@clockwyrks/particle-runtime";
 import type {
   GameDefinition,
   InitApi,
   LevelDefinition,
   World,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { defineCues, noCues, playCues } from "./audio";
 import { syncField } from "./actors";
 import {

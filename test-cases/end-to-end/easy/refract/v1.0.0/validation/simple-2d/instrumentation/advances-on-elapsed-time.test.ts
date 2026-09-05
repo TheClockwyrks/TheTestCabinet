@@ -12,7 +12,7 @@
 // with clocks of this check's own, because the step size is the SUBJECT;
 // everything else in this directory steps the shared default.
 
-import { ConstantClock } from "@test-cabinet/simple-2d";
+import { ConstantClock } from "@clockwyrks/simple-2d";
 import { it } from "vitest";
 import { assertCloseTo } from "../assert";
 import { captureStill, createHarness, resetTo } from "../harness";

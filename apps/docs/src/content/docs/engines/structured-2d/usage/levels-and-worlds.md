@@ -9,7 +9,7 @@ initializes, and the game travels afterwards by naming another level.
 
 ```ts
 // src/game.ts
-import type { GameDefinition } from "@test-cabinet/structured-2d";
+import type { GameDefinition } from "@clockwyrks/structured-2d";
 import { Rally } from "./instance";
 import { arena, title } from "./levels";
 
@@ -35,7 +35,7 @@ constructed actor before it begins play.
 
 ```ts
 // src/levels.ts
-import type { LevelDefinition } from "@test-cabinet/structured-2d";
+import type { LevelDefinition } from "@clockwyrks/structured-2d";
 import { FIELD_HEIGHT, FIELD_WIDTH } from "./constants";
 import { ArenaMode } from "./arena-mode";
 import { Goal } from "./goal";
@@ -82,7 +82,7 @@ that needs a peer looks it up in `beginPlay` rather than in `configure`.
 
 ```ts
 // src/goal.ts
-import { Actor, ColliderComponent } from "@test-cabinet/structured-2d";
+import { Actor, ColliderComponent } from "@clockwyrks/structured-2d";
 import { FIELD_HEIGHT } from "./constants";
 
 export class Goal extends Actor {
@@ -156,7 +156,7 @@ fully live when the call returns, and its first `tick` is the next frame.
 
 ```ts
 // src/arena-mode.ts
-import { GameMode } from "@test-cabinet/structured-2d";
+import { GameMode } from "@clockwyrks/structured-2d";
 import { BALL_SPEED, FIELD_HEIGHT, FIELD_WIDTH } from "./constants";
 import { Ball } from "./ball";
 
@@ -214,7 +214,7 @@ repeats it, and both return a handle `clearTimer` cancels.
 
 ```ts
 // src/arena-mode.ts
-import { GameMode, type TimerHandle } from "@test-cabinet/structured-2d";
+import { GameMode, type TimerHandle } from "@clockwyrks/structured-2d";
 import { ArenaState } from "./arena-state";
 
 export class ArenaMode extends GameMode {
@@ -263,7 +263,7 @@ import {
   Actor,
   PlayerController,
   TextComponent,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 
 export class PauseMenu extends Actor {
   private player: PlayerController | null = null;

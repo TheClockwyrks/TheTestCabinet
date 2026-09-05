@@ -49,7 +49,7 @@
  *    accumulated `timeMs` in microseconds is what the encoder is given, so two
  *    recordings of the same scenario under the same scripted clock carry the same
  *    timestamps and a frame in one names its counterpart in the other. That is what
- *    lets the review page scrub a build's recording and the baseline's with one
+ *    lets a viewer scrub two recordings of the same scenario with one
  *    control. It is the *engine's* accumulated time rather than the world's for a
  *    reason a Structured engine has and a Simple one does not: `world.time` restarts
  *    at zero at every level transition, and a recording timed off it would run
@@ -245,7 +245,7 @@ const TRACK_TYPE_VIDEO = 1;
 const MAX_BLOCK_OFFSET = 32767;
 
 /** What the file says produced it, in both of the places Matroska asks. */
-const APPLICATION = "@test-cabinet/structured-3d";
+const APPLICATION = "@clockwyrks/structured-3d";
 
 /**
  * The whole file: the EBML header, then one Segment holding the capture.

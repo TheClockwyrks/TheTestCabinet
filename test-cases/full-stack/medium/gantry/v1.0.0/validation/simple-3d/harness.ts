@@ -100,7 +100,7 @@ import {
   type RenderApi,
   type SurfaceMetrics,
   type Viewport,
-} from "@test-cabinet/simple-3d";
+} from "@clockwyrks/simple-3d";
 import * as THREE from "three";
 import { expect } from "vitest";
 

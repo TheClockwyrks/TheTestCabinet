@@ -36,7 +36,7 @@
 //    so the bus declares its cues, announces every `cue:played` exactly as it
 //    would in a browser, and makes no sound.
 // 4. `OffscreenCanvas`, and a `document` that can make a canvas.
-//    `@test-cabinet/particle-runtime` composites through a context it owns, and
+//    `@clockwyrks/particle-runtime` composites through a context it owns, and
 //    a build is entitled to ask the platform for that second surface.
 //
 // EVERY SHIM IS INSTALLED BY `setup.ts`, through vitest's `setupFiles`, because

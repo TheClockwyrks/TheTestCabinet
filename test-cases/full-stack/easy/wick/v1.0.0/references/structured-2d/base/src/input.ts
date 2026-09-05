@@ -18,7 +18,7 @@
 // chrome rather than a game action, so the registry stays exactly the
 // vocabulary `src/constants.ts` fixes.
 
-import type { InitApi, InputReader } from "@test-cabinet/structured-2d";
+import type { InitApi, InputReader } from "@clockwyrks/structured-2d";
 import { ACTIONS, BINDINGS, type ActionName } from "./constants";
 import type { Held } from "./state";
 

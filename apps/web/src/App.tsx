@@ -5,20 +5,20 @@ import {
   BackendProvider,
   WorkersProvider,
   useBackend,
-} from "@test-cabinet/ui/client";
+} from "@clockwyrks/ui/client";
 import {
   GalleryApp,
   GalleryDataProvider,
   RunsRuntimeProvider,
   useLiveGallery,
-} from "@test-cabinet/ui/app";
-import { createHttpArena, fetchArenaUrl } from "@test-cabinet/ui/transport";
+} from "@clockwyrks/ui/app";
+import { createHttpArena, fetchArenaUrl } from "@clockwyrks/ui/transport";
 import {
   useBackendConnection,
   useExecConnection,
 } from "./state/useConnections";
 
-// The web console: the full shared gallery app (from @test-cabinet/ui) rendered
+// The web console: the full shared gallery app (from @clockwyrks/ui) rendered
 // against live data. It talks to a single backend URL — for the catalog and
 // published runs, and (since the per-run-Job refactor) for executing runs via the
 // backend's `/jobs` queue. That run-execution capability is the only difference

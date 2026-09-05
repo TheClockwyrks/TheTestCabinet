@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
-import { Pagination } from "@test-cabinet/ui";
+import { Pagination } from "@clockwyrks/ui";
 import { PromptHeader } from "../../components/PromptHeader";
 import { RunLog, sortStateToQuery, useRunTable } from "../../components/RunLog";
 import { RunsTabs } from "./RunsTabs";

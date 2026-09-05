@@ -355,7 +355,7 @@ happens.
 
 ## Exports
 
-`createEngine` is exported as a function from `@test-cabinet/structured-2d`.
+`createEngine` is exported as a function from `@clockwyrks/structured-2d`.
 `EngineOptions`, `SurfaceMetrics`, `Engine`, `RunOptions`, `FrameInfo`,
 `EngineEvents`, and `EngineEventMap` are exported as types from the same
 specifier, as is `Recording` with the rest of the

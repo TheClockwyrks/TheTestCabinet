@@ -15,7 +15,7 @@ import {
   quatFromEuler,
   quatLookAt,
   vec3,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { LATTICE_PITCH } from "../constants";
 import { LAYER } from "../layers";
 import {

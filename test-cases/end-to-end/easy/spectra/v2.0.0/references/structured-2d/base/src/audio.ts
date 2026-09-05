@@ -16,7 +16,7 @@
 
 import { CUES } from "./constants";
 import type { FrameEvents } from "./events";
-import type { CueSpec, InitApi, WorldAudio } from "@test-cabinet/structured-2d";
+import type { CueSpec, InitApi, WorldAudio } from "@clockwyrks/structured-2d";
 
 /** Every cue, under the name `CUES` gives it. */
 export const CUE_SPECS: Readonly<Record<string, CueSpec>> = {

@@ -83,7 +83,7 @@ import {
   type Resource,
   type SurfaceMetrics,
   type Viewport,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { BACKGROUND, game as build } from "../src/game";
 import { assertTruthy, fail } from "./assert";
 import {

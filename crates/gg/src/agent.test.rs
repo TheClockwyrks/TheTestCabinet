@@ -7755,7 +7755,7 @@ async fn a_conflicting_issue_merge_is_resolved_by_the_merge_agent() {
                         "shell",
                         json!({
                             "command": "git checkout --theirs shared.txt && git add -A && \
-                                        git -c user.name=gg -c user.email=gg@test-cabinet.local \
+                                        git -c user.name=gg -c user.email=gg@clockwyrks.local \
                                         commit --no-edit"
                         }),
                     ),

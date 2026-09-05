@@ -10,17 +10,17 @@ import type {
   ModelSpec,
   RunRecord,
   TestType,
-} from "@test-cabinet/run-record";
+} from "@clockwyrks/run-record";
 
 // Re-exported so console code can keep importing the asset-kind type from the
 // client layer alongside the shapes it discriminates.
 export type { AssetKind };
-import type { PartMesh } from "@test-cabinet/voxel-runtime";
-import type { HarnessEvent } from "@test-cabinet/run-record/event";
+import type { PartMesh } from "@clockwyrks/voxel-runtime";
+import type { HarnessEvent } from "@clockwyrks/run-record/event";
 import type {
   RunScoreOut,
   RunSummary,
-} from "@test-cabinet/run-record/snapshot";
+} from "@clockwyrks/run-record/snapshot";
 import type {
   AestheticRating,
   DomainAesthetic,

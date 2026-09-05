@@ -4,7 +4,7 @@
 # plume, ore glint, gas blast, lava sizzle, dust puff, core pulse, detonation, launch column
 # and death vent is a SIMULATED system (emitters + forces + per-particle size/opacity/color
 # curves), NOT baked frames: `render` emits a compact `system.json` the game plays LIVE via
-# @test-cabinet/particle-runtime's ParticleCanvasPlayer. Because they are simulated they vary
+# @clockwyrks/particle-runtime's ParticleCanvasPlayer. Because they are simulated they vary
 # shot to shot — that variation is the point (specs/assets.md).
 #
 # Twelve systems land under assets/fx/, one per effect the game loads (ASSET-LAYOUT.md):

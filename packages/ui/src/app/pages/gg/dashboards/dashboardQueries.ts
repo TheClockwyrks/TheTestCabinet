@@ -27,7 +27,7 @@ import type {
   GgDashboardPanel,
   GgGroupKey,
   GgQuery,
-} from "@test-cabinet/run-record/gg-query";
+} from "@clockwyrks/run-record/gg-query";
 import { compileQuery, parseQuery } from "../query";
 import { GG_DATE_FIELDS } from "../query/values";
 import { rangeFilter, type TimeRange } from "../discover/TimeRangePicker";

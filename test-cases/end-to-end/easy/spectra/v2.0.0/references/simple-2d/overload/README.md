@@ -97,7 +97,7 @@ engine, not to this game.
 
 ## What the engine owns
 
-`@test-cabinet/simple-2d` supplies everything that is the same in every browser
+`@clockwyrks/simple-2d` supplies everything that is the same in every browser
 game, and none of it is written here: the frame loop and its delta time in seconds,
 the state held by value and handed out `DeepReadonly`, the canvas fit (uniform
 scale, centred letterbox, device pixel ratio), named keyboard actions with edge
@@ -178,8 +178,8 @@ npm ci
 The engine and the particle runtime are relative `file:` dependencies on the
 repository's own `packages/`, which npm installs as symlinks, so this project builds
 and tests against their current source. A run receives the same packages under
-`.tcab/` instead, so the imports in the sources are the same either way.
-`@test-cabinet/run-record` is declared because the particle runtime re-exports a
+`.vendor/` instead, so the imports in the sources are the same either way.
+`@clockwyrks/run-record` is declared because the particle runtime re-exports a
 type from it; nothing here imports it.
 
 ## Run in development

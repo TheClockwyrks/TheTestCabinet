@@ -62,7 +62,7 @@ and its own defaults; `world`, `options`, and `state` are assigned before
 `pawnDied` do nothing, so a mode overrides only what it needs.
 
 ```ts
-import { GameMode } from "@test-cabinet/structured-3d";
+import { GameMode } from "@clockwyrks/structured-3d";
 import { ShipPawn } from "./actors";
 import { ShipController } from "./controllers";
 import { ArenaPlayerState, ArenaState } from "./state";
@@ -169,7 +169,7 @@ subclassing `GameState`, and what each participant counts by subclassing
 figure needs.
 
 ```ts
-import { GameState, PlayerState } from "@test-cabinet/structured-3d";
+import { GameState, PlayerState } from "@clockwyrks/structured-3d";
 
 export class ArenaState extends GameState {
   rounds = 0;
@@ -197,7 +197,7 @@ keeps the ending from running twice: the frame that sets `"over"` is the last
 frame the rules run in.
 
 ```ts
-import { vec3 } from "@test-cabinet/structured-3d";
+import { vec3 } from "@clockwyrks/structured-3d";
 
 override tick(dt: number): void {
   if (this.phase !== "playing") return;
@@ -231,7 +231,7 @@ transform, reading the controller's player state so the placement follows the
 participant rather than the pawn that just died:
 
 ```ts
-import { UP, VEC3_ONE, quatFromAxisAngle, vec3 } from "@test-cabinet/structured-3d";
+import { UP, VEC3_ONE, quatFromAxisAngle, vec3 } from "@clockwyrks/structured-3d";
 
 override spawnPoint(controller: Controller): Transform {
   const side = controller.playerState.index === 0 ? -1 : 1;
@@ -269,7 +269,7 @@ The options are read by the incoming mode as `this.options`, typed as unknown
 values, so the receiving mode narrows what it uses:
 
 ```ts
-import { GameMode } from "@test-cabinet/structured-3d";
+import { GameMode } from "@clockwyrks/structured-3d";
 import { Banner } from "./actors";
 
 export class TitleMode extends GameMode {

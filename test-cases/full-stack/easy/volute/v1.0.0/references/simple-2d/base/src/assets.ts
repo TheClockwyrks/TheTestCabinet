@@ -20,8 +20,8 @@
 // they live here and in the module-level table `initialize` fills rather than in
 // `VoluteState`.
 
-import type { InitApi } from "@test-cabinet/simple-2d";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { InitApi } from "@clockwyrks/simple-2d";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import { CHARGE_IDS, MACHINERY_KINDS } from "./constants";
 import type { ChargeId, MachineryKind } from "./constants";
 import type { VoluteState } from "./game";

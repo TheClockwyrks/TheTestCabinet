@@ -19,7 +19,7 @@ export default tseslint.config(
       "coverage/",
       "test-results/",
       "playwright-report/",
-      ".tcab/",
+      ".vendor/",
       "assets/",
     ],
   },

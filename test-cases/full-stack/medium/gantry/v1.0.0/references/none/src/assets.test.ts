@@ -3,7 +3,7 @@
 // the very URLs `src/assets.ts` resolves, so what is verified is the loader as
 // the page runs it — not a fixture standing in for it.
 
-import type { PartMesh } from "@test-cabinet/voxel-runtime";
+import type { PartMesh } from "@clockwyrks/voxel-runtime";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   buildModelGeometries,

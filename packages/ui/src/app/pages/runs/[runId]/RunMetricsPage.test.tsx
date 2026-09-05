@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import type { RunMetrics, RunRecord } from "@test-cabinet/run-record";
+import type { RunMetrics, RunRecord } from "@clockwyrks/run-record";
 import { RunMetricsPage } from "./RunMetricsPage";
 
 // The Metrics tab reports a run's durations beside its tokens and cost, and the

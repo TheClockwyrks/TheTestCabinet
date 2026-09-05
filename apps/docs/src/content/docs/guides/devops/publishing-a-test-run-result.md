@@ -119,7 +119,7 @@ The gallery dev server plays produced-but-unpublished runs held on disk, review
 and all:
 
 ```sh
-npm run dev -w @test-cabinet/site
+npm run dev -w @clockwyrks/site
 ```
 
 See

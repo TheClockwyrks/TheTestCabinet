@@ -24,7 +24,7 @@ import {
   createEngine,
   type Engine,
   type SurfaceMetrics,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import { afterEach, describe, expect, it } from "vitest";
 import { assetManifest } from "./assets";
 import { ladderCue, MUSIC_PLAY, MUSIC_TITLE } from "./audio";

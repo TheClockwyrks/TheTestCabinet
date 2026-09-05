@@ -11,7 +11,7 @@ frame metrics.
 ## src/main.ts
 
 ```ts
-import { createEngine } from "@test-cabinet/structured-3d";
+import { createEngine } from "@clockwyrks/structured-3d";
 import { patrol } from "./game";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
@@ -35,8 +35,8 @@ values, so each line stays in step with what produces it.
 ## src/instance.ts
 
 ```ts
-import { GameInstance } from "@test-cabinet/structured-3d";
-import type { InitApi } from "@test-cabinet/structured-3d";
+import { GameInstance } from "@clockwyrks/structured-3d";
+import type { InitApi } from "@clockwyrks/structured-3d";
 
 const BUILD = "patrol 1.4.0";
 
@@ -70,8 +70,8 @@ import {
   MeshComponent,
   quatLookAt,
   vec3,
-} from "@test-cabinet/structured-3d";
-import type { GameDefinition } from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
+import type { GameDefinition } from "@clockwyrks/structured-3d";
 import { PatrolInstance } from "./instance";
 import { PatrolMode, TAG } from "./levels/patrol-mode";
 
@@ -114,7 +114,7 @@ a rotation that shines it down and into the field. A `MeshComponent` under the
 ## src/levels/patrol-mode.ts
 
 ```ts
-import { GameMode, vec3 } from "@test-cabinet/structured-3d";
+import { GameMode, vec3 } from "@clockwyrks/structured-3d";
 
 export const TAG = "drone";
 const HALF_WIDTH = 8;

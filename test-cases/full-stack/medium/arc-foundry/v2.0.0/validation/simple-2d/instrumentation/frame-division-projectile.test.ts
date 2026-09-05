@@ -16,7 +16,7 @@
 // The tolerance is the item's own — one logical unit — because a change in step
 // size explains a little drift and nothing more.
 
-import { ConstantClock } from "@test-cabinet/simple-2d";
+import { ConstantClock } from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThan } from "../assert";
 import {

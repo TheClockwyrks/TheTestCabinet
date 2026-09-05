@@ -16,7 +16,7 @@
 // tick (`specs/ui.md`), so the simulation drops the cues it raised into a
 // {@link CueBag} and the game mode plays the bag out once the tick has finished.
 
-import type { CueSpec, InitApi, World } from "@test-cabinet/structured-2d";
+import type { CueSpec, InitApi, World } from "@clockwyrks/structured-2d";
 import { CUES, type CueName } from "./constants";
 
 /** The synthesis behind each of the ten cues. */

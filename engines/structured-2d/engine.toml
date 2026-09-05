@@ -30,11 +30,11 @@ name = "Structured 2D"
 description = "A gameplay framework of worlds, levels, game modes, actors, and controllers, with engine-owned rendering and collision, around a 2D game written in TypeScript."
 
 # The npm package carrying the runtime. It is staged into the host package store
-# with the other shippable packages, then vendored into `.tcab/engine/` in the
+# with the other shippable packages, then vendored into `.vendor/engine/` in the
 # run repository at seed time and written into the seeded workspace's
 # `package.json` as a relative `file:` dependency, so the build imports it by its
 # bare name. Its `version` in the store is what is recorded on the run.
-package = "@test-cabinet/structured-2d"
+package = "@clockwyrks/structured-2d"
 
 # The directory inside the package holding the engine's own documentation. It is
 # seeded into the run workspace at `engine/`, and the rendered prompt points the

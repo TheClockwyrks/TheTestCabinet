@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Comparison } from "@test-cabinet/run-record/comparison";
+import type { Comparison } from "@clockwyrks/run-record/comparison";
 import {
   BackendProvider,
   WorkersProvider,

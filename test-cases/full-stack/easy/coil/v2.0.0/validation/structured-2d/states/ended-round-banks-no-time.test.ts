@@ -26,7 +26,7 @@
 // the accumulator wherever the pose found it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SequenceClock } from "@test-cabinet/structured-2d";
+import { SequenceClock } from "@clockwyrks/structured-2d";
 import { assertDeepEqual, assertEqual } from "../assert";
 import { TICK_SECONDS } from "../constants";
 import {

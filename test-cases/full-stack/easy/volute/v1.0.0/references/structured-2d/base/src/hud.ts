@@ -15,7 +15,7 @@ import {
   Actor,
   DrawComponent,
   type DrawApi,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { assets } from "./assets";
 import {
   FIELD_H,

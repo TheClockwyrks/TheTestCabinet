@@ -31,7 +31,7 @@
 // seconds later when its last unit finally grounds out, and no leak drains the
 // run while a whole campaign's worth of waves is being read.
 
-import { ConstantClock } from "@test-cabinet/simple-2d";
+import { ConstantClock } from "@clockwyrks/simple-2d";
 import { assertEqual, assertTruthy, fail } from "../assert";
 import type { DifficultyId, SpawnType } from "../constants";
 import {

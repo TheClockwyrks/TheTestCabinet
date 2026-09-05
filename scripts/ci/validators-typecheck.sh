@@ -10,7 +10,7 @@
 #
 # It needs the npm workspace installed for two reasons: the pinned `typescript`
 # the checker resolves, and the packages the validators import (the engine
-# runtimes, `@test-cabinet/case-harness`, vitest, `@napi-rs/canvas`). It needs no
+# runtimes, `@clockwyrks/case-harness`, vitest, `@napi-rs/canvas`). It needs no
 # credentials, no network beyond that install, and no Rust.
 #
 # This is critical validation: both Azure DevOps and GitHub run it.

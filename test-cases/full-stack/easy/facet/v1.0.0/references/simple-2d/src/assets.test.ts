@@ -24,7 +24,7 @@ import {
 import { cueSources } from "./audio";
 import { GEM_KINDS, MAX_STRAIN } from "./constants";
 import type { FacetState } from "./game";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 
 const ASSETS = join(import.meta.dirname, "..", "public", "assets");
 

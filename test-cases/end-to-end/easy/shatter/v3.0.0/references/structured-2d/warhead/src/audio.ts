@@ -9,7 +9,7 @@
 // raising the same event twice sounds it once, and the pure half of the game
 // stays free of the runtime.
 
-import type { InitApi, WorldAudio } from "@test-cabinet/structured-2d";
+import type { InitApi, WorldAudio } from "@clockwyrks/structured-2d";
 import { CUES } from "./constants";
 
 /** What one frame raised. `thrust` is held; the rest are one-shots. */

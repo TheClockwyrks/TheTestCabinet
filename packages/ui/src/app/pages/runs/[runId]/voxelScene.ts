@@ -1,4 +1,4 @@
-import type { PartMesh } from "@test-cabinet/voxel-runtime";
+import type { PartMesh } from "@clockwyrks/voxel-runtime";
 
 /** Column-major-agnostic 3-tuple. */
 export type Vec3 = [number, number, number];

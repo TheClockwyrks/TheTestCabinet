@@ -9,7 +9,7 @@
 // It is served by the dev server and driven by `scripts/capture-showcase.mjs`.
 // Nothing here is bundled into `dist/`.
 
-import { ConstantClock, createEngine } from "@test-cabinet/simple-2d";
+import { ConstantClock, createEngine } from "@clockwyrks/simple-2d";
 import { STAGE_H, STAGE_W } from "../../src/constants";
 import { BACKGROUND, game } from "../../src/game";
 

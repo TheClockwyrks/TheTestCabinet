@@ -306,7 +306,7 @@ The `medium` factory is now drawn by hand, and a stale `large` oracle was re-sol
   would have failed a correct submission. `small`, the eight smoke oracles and all nine
   training references were re-solved and confirmed unchanged.
 - **Playback regenerated.** `replay/assets/reference-*.json` were rebuilt from the
-  scored set and re-vendored into `@test-cabinet/ui`.
+  scored set and re-vendored into `@clockwyrks/ui`.
 
 The `large` factory now builds the whole machine tree, drawn from `medium`:
 
@@ -325,4 +325,4 @@ The `large` factory now builds the whole machine tree, drawn from `medium`:
   output rate exactly matched the one inserter draining it had to be given a second
   outlet — it cost 37B on its own.
 - **Playback regenerated.** `replay/assets/reference-large.json` was rebuilt from the
-  scored set and re-vendored into `@test-cabinet/ui`.
+  scored set and re-vendored into `@clockwyrks/ui`.

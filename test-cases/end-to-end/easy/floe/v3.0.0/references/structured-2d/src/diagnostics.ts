@@ -10,7 +10,7 @@
 // world and is rebuilt with it (engine/diagnostics.md). Each closes over the
 // world it was registered for, so the panel reports the frame being drawn.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { TOTAL_LEVELS } from "./constants";
 import { bearsOf, critterOf, floesOf, vehiclesOf } from "./bodies";
 import { critterCol, critterFooting, critterRow } from "./entities";

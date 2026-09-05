@@ -133,7 +133,7 @@ looping while it runs, etc.). Draw guests at a size that fits comfortably on a p
 tile (the guest color from `specs/overview.md`); you may produce staff as their own
 small sprites/sheets so a worker reads as distinct from a guest (`specs/staff.md`).
 
-## Particle systems — `particle-2d`, played via `@test-cabinet/particle-runtime`
+## Particle systems — `particle-2d`, played via `@clockwyrks/particle-runtime`
 
 The park's celebrations, vents, and puffs are **particle systems** you author with
 `particle-2d` and **play live** — not flat shapes or hand-coded effects. `particle-2d`
@@ -153,7 +153,7 @@ authors a system (emitters, forces, per-particle size/opacity/color curves) whos
   litter** (or when litter is dropped), tying the cleanup to something you can see
   (`specs/staff.md`).
 
-**Play them with the provided runtime.** `@test-cabinet/particle-runtime` is already a
+**Play them with the provided runtime.** `@clockwyrks/particle-runtime` is already a
 dependency of your project (its `file:` entry is in your `package.json`; install and
 import it like any other dependency — do **not** fetch or reimplement it). For this 2D
 game use its **`/canvas`** binding — its `ParticleCanvasPlayer`: construct one from a

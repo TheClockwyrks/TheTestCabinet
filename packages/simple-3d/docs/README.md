@@ -1,6 +1,6 @@
 # Simple 3D
 
-`@test-cabinet/simple-3d` is the runtime a 3D browser game is built on. It owns
+`@clockwyrks/simple-3d` is the runtime a 3D browser game is built on. It owns
 the frame loop, the canvas fit, the renderer with the scene and the camera it
 draws through, the 2D screen layer composited over that picture, input, audio,
 asset loading, the debug overlay, the recorder, and the debug surface a game
@@ -44,7 +44,7 @@ The engine is an ordinary dependency, already present in the workspace's
 `package.json`:
 
 ```ts
-import { createEngine } from "@test-cabinet/simple-3d";
+import { createEngine } from "@clockwyrks/simple-3d";
 ```
 
 The clock catalogue, the touch layout catalogue, `cloneModel`, and every type
@@ -56,7 +56,7 @@ import {
   createEngine,
   ConstantClock,
   TOUCH_LAYOUTS,
-} from "@test-cabinet/simple-3d";
+} from "@clockwyrks/simple-3d";
 import type {
   CueSpec,
   Engine,
@@ -66,7 +66,7 @@ import type {
   Ray,
   Vec3,
   View,
-} from "@test-cabinet/simple-3d";
+} from "@clockwyrks/simple-3d";
 ```
 
 `DeepReadonly`, the view every reader of a game's state is handed, is the
@@ -308,8 +308,8 @@ are written as transitions, so a caller drives one with
 
 ```ts
 import * as THREE from "three";
-import { createEngine } from "@test-cabinet/simple-3d";
-import type { Game, Vec3 } from "@test-cabinet/simple-3d";
+import { createEngine } from "@clockwyrks/simple-3d";
+import type { Game, Vec3 } from "@clockwyrks/simple-3d";
 import type { DeepReadonly } from "ts-essentials";
 
 const LIMIT = 8;

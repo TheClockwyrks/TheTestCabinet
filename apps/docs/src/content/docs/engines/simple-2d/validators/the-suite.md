@@ -125,7 +125,7 @@ import {
   type Engine,
   type Game,
   type SurfaceMetrics,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import { FIELD_H, FIELD_W } from "./constants";
 import { game, type State } from "../src/game";
 import type { Debug, Mode, Screen, Snapshot } from "./debug";

@@ -1,4 +1,4 @@
-import { MetricTile } from "@test-cabinet/ui";
+import { MetricTile } from "@clockwyrks/ui";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { BUILT_IN_ORCHESTRATORS } from "../../../data/orchestrators";
 import { formatTimestamp } from "../../../format";

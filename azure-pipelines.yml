@@ -469,3 +469,5 @@ jobs:
         displayName: Show Rust toolchain
       - script: ./scripts/ci/contract-drift.sh
         displayName: Regenerate & check for drift
+      - script: ./scripts/ci/seeded-contract-check.sh
+        displayName: Seeded contract names nothing about evaluation

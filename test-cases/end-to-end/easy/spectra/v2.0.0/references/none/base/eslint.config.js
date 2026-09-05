@@ -20,7 +20,7 @@ export default tseslint.config(
       "showcase/",
       "specs/",
       "assets/",
-      ".tcab/",
+      ".vendor/",
     ],
   },
   js.configs.recommended,

@@ -10,7 +10,7 @@
 // screen the operation does not apply to leaves the state as it was; no pose
 // sounds a cue, and no pose decides an outcome.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { reconcileActors } from "./actors";
 import {
   DAWN_TIME,

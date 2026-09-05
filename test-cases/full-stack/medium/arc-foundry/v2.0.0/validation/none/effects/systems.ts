@@ -17,7 +17,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import { fail } from "../assert";
 
 /** `assets/` at the root of the produced repository, as `specs/assets.md` fixes it. */

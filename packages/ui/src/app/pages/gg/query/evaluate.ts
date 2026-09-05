@@ -27,7 +27,7 @@ import type {
   GgSortKey,
   GgStatsStage,
   GgValue,
-} from "@test-cabinet/run-record/gg-query";
+} from "@clockwyrks/run-record/gg-query";
 import {
   GG_DATE_FIELDS,
   GG_FIELD_TOP_VALUES,

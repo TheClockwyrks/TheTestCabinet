@@ -66,7 +66,7 @@ import {
 import { startBurst, stepBursts } from "./bursts";
 import { highlightedItem, itemAt, menuOf } from "./menus";
 import { stepDiveLaunching, stepSwarm } from "./swarm";
-import type { PointerSample } from "@test-cabinet/simple-2d";
+import type { PointerSample } from "@clockwyrks/simple-2d";
 
 import type { FrameInput } from "./input";
 import type { Screen } from "./game";

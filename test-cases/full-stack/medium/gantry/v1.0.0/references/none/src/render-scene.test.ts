@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
-import type { PartMesh } from "@test-cabinet/voxel-runtime";
+import type { PartMesh } from "@clockwyrks/voxel-runtime";
 import { HOIST_START, VOXELS_PER_UNIT } from "./constants";
 import { MODEL_NAMES, type ModelName } from "./assets";
 import { classDimensions, type Vec3 } from "./sim";

@@ -11,7 +11,7 @@
 // shapes drawn in code where it is not, so the game still runs, still plays and
 // still reports its state in a host that cannot decode an image at all.
 
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 
 /** One sheet's frames, in index order. A frame that failed to load is `null`. */
 export type Frames = readonly (ImageBitmap | null)[];

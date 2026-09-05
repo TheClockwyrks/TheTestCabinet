@@ -15,7 +15,7 @@ selection holds for the engine's lifetime, so every registration is attributed
 against the same vocabulary.
 
 ```ts
-import { createEngine } from "@test-cabinet/structured-3d";
+import { createEngine } from "@clockwyrks/structured-3d";
 import { game } from "./game";
 import { FIELD } from "./constants";
 
@@ -36,7 +36,7 @@ registered `"analog"`, so a deflection reaches the controller as a magnitude in
 `0..1` rather than as `0` or `1`.
 
 ```ts
-import { GameInstance, type InitApi } from "@test-cabinet/structured-3d";
+import { GameInstance, type InitApi } from "@clockwyrks/structured-3d";
 import { KEYS, STICK_ACTIONS } from "./constants";
 
 export class Rally extends GameInstance<null> {
@@ -105,7 +105,7 @@ import {
   scale,
   vec3,
   type Vec2,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { ARENA, ROVER } from "./constants";
 
 const clamp1 = (v: number): number => Math.max(-1, Math.min(1, v));
@@ -174,7 +174,7 @@ so holding both cancels out, and use `pressed` for anything that happens once
 per press.
 
 ```ts
-import { PlayerController } from "@test-cabinet/structured-3d";
+import { PlayerController } from "@clockwyrks/structured-3d";
 import { Ball } from "./ball";
 import { Rover } from "./rover";
 
@@ -228,7 +228,7 @@ import {
   quatInverse,
   quatRotate,
   sub,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { AI_DEADZONE } from "./constants";
 import { Ball } from "./ball";
 import { Rover } from "./rover";
@@ -273,7 +273,7 @@ import {
   vec3,
   type Controller,
   type Transform,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import { AIRoverController } from "./ai-controller";
 import { RoverController } from "./player-controller";
 import { Rover } from "./rover";

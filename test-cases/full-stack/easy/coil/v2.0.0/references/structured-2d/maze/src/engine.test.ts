@@ -15,7 +15,7 @@ import {
   ConstantClock,
   createEngine,
   type Engine,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { NO_SPRITES } from "./assets";
 import {

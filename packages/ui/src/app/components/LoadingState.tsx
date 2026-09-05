@@ -1,4 +1,4 @@
-import { Spinner } from "@test-cabinet/ui";
+import { Spinner } from "@clockwyrks/ui";
 import styles from "./LoadingState.module.scss";
 
 /** How much of the viewport the pending content will occupy once it resolves.

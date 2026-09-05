@@ -14,7 +14,7 @@
 // recorder and the audio probe, bracketing each driven frame around one step of
 // the build's surface, reading pixels and draw calls back out, and writing the
 // evidence a review point declares — every engineless case needs exactly that,
-// and it lives once, in `@test-cabinet/case-harness`, staged beside this file as
+// and it lives once, in `@clockwyrks/case-harness`, staged beside this file as
 // `./case-harness/`. What is left here is what is genuinely Refract's: the shape
 // of its snapshot, the operations its `specs/instrumentation.md` requires, and
 // the scenario helpers that pose a board, walk a course, and draw a beam.

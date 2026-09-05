@@ -58,7 +58,7 @@ to a component. Hold what `load` produced in a module the actors import:
 
 ```ts
 // ./assets.ts
-import type { Model } from "@test-cabinet/structured-3d";
+import type { Model } from "@clockwyrks/structured-3d";
 import type * as THREE from "three";
 
 export interface Loaded {
@@ -81,7 +81,7 @@ export function assets(): Loaded {
 
 ```ts
 // ./levels.ts
-import type { LevelDefinition } from "@test-cabinet/structured-3d";
+import type { LevelDefinition } from "@clockwyrks/structured-3d";
 import { ArenaMode } from "./modes";
 import { setLoaded } from "./assets";
 
@@ -100,7 +100,7 @@ export const arena: LevelDefinition = {
 
 ```ts
 // ./actors.ts
-import { Actor, MeshComponent, ModelComponent } from "@test-cabinet/structured-3d";
+import { Actor, MeshComponent, ModelComponent } from "@clockwyrks/structured-3d";
 import { assets } from "./assets";
 
 export class Ship extends Actor {

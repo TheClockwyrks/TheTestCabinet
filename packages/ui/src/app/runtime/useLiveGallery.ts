@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-import type { RunSubject } from "@test-cabinet/run-record";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+import type { RunSubject } from "@clockwyrks/run-record";
 import {
   NotSupportedError,
   type BackendClient,

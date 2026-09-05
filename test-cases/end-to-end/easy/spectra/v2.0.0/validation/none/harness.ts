@@ -76,7 +76,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { expect, inject } from "vitest";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { Browser, BrowserContext, CDPSession, Page } from "playwright";
 import { connectChromium } from "./chromium";
 import { assertTruthy, fail } from "./assert";

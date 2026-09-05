@@ -38,8 +38,8 @@ game is driven from code, so it is present and exactly as specified.
 exact path it lands at under `assets/`, and the bar it meets. Commit the produced
 files and load them at run time. The finished repository builds and runs with
 those tools absent, so nothing is generated at build time.
-`@test-cabinet/particle-runtime` is already a dependency, vendored under
-`.tcab/`, and it is what plays a produced particle system.
+`@clockwyrks/particle-runtime` is already a dependency, vendored under
+`.vendor/`, and it is what plays a produced particle system.
 
 Every figure the specification fixes — the stage and grid geometry, the maps, the
 component and Load stat tables, the recipes, the refinement odds, the action
@@ -54,7 +54,7 @@ browser.
 ## What you must not edit
 
 - **`index.html`** — the page and the canvas.
-- **`.tcab/`** — the vendored packages `package.json` resolves the
+- **`.vendor/`** — the vendored packages `package.json` resolves the
   produced-effect runtime from.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,

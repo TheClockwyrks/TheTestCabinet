@@ -25,7 +25,7 @@ caps that exist to keep a validator's evidence small, and drop the driver in as
 a test:
 
 The shared harness comes with it: the runner stages
-`@test-cabinet/case-harness` into a validator project as
+`@clockwyrks/case-harness` into a validator project as
 `validation/case-harness/`, so a copy made by hand has to stage it too or
 nothing in the project resolves. Both caps live in that package now rather than
 in the case's own files, which is why the two patches below name paths under it.

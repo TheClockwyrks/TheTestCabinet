@@ -47,7 +47,7 @@ binaries on `PATH`.
 | --- | --- | --- |
 | `draw` | a single sprite → PNG | a PNG the game draws |
 | `draw-sheet` | a sprite sheet → per-frame PNGs | frames the game animates |
-| `particle-2d` | a particle system → `system.json` | played live via `@test-cabinet/particle-runtime`'s `./canvas` binding |
+| `particle-2d` | a particle system → `system.json` | played live via `@clockwyrks/particle-runtime`'s `./canvas` binding |
 | `sfx-synth` | a procedural sound effect → `.wav` | played via Web Audio |
 | `sfx-sample` | a sampled effect over a declared sample pack → `.wav` | played via Web Audio |
 | `music` | sequenced music over a declared instrument bank → `.wav` + `.mid` | played via Web Audio |
@@ -56,9 +56,9 @@ binaries on `PATH`.
 
 | Binary | Produces | Consumed as |
 | --- | --- | --- |
-| `voxel` | a static voxel model → `mesh.glb` | decoded by `@test-cabinet/voxel-runtime`'s `parseGlb` |
+| `voxel` | a static voxel model → `mesh.glb` | decoded by `@clockwyrks/voxel-runtime`'s `parseGlb` |
 | `voxel-anim` | a rigged, animated model → per-part `.glb` + `rig.json` | posed and drawn via the voxel runtime's `./three` binding |
-| `particle-3d` | a volumetric particle system → `system.json` | played live via `@test-cabinet/particle-runtime`'s `./three` binding |
+| `particle-3d` | a volumetric particle system → `system.json` | played live via `@clockwyrks/particle-runtime`'s `./three` binding |
 
 Each binary's `--help` is its contract, and the
 [asset-generation binary pages](/testing/asset-generation/overview/) are the
@@ -151,11 +151,11 @@ Author `test-case.toml` per the
   regenerates its own assets fails the load check.
 - `packages` ships a Test Cabinet runtime library into the run, and is valid for
   an end-to-end, full-stack, or game-jam case. Its common use is
-  `packages = ["@test-cabinet/particle-runtime"]` so the game can play a produced
+  `packages = ["@clockwyrks/particle-runtime"]` so the game can play a produced
   `system.json` through the runtime's `./canvas` binding; a 3D case that ships a
-  produced voxel model adds `@test-cabinet/voxel-runtime`. The case's seeded
+  produced voxel model adds `@clockwyrks/voxel-runtime`. The case's seeded
   workspace `package.json` must already depend on each declared package as
-  `file:./.tcab/packages/<name>`, and resolution rejects a mismatch. Pair it with
+  `file:./.vendor/packages/<name>`, and resolution rejects a mismatch. Pair it with
   `init = "npm install …"` so the lockfile completes at seed time while
   `[build].install` stays `npm ci`.
 - `[[domain]]` entries must cover the produced assets as first-class quality

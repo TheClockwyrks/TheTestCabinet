@@ -15,7 +15,7 @@
 // awaits `loadAssets` before the start level opens, so an actor constructed
 // for that level reads each image as a plain value.
 
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import {
   BALL_SPIN_FRAMES,
   PARTICLE_PATHS,
@@ -24,7 +24,7 @@ import {
   type PodKind,
 } from "./constants";
 import type { ParticleSystemName } from "./sim";
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 
 /** Everything the build loads from the produced files. */
 export interface KesslerAssets {

@@ -17,7 +17,7 @@ through the game's own code.
 
 ## Engine-specific by construction
 
-A suite imports `@test-cabinet/simple-3d` by name and builds a
+A suite imports `@clockwyrks/simple-3d` by name and builds a
 [`Game<S, D>`](/engines/simple-3d/apis/game/) against this engine's API, so it is
 written for this engine alone. A case that supports more than one engine ships a
 set of validators for each, and each set is free to use everything its engine

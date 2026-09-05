@@ -12,7 +12,7 @@
 // see-through, plainly still where it stood and plainly carrying nothing.
 
 import * as THREE from "three";
-import { Object3DComponent } from "@test-cabinet/structured-3d";
+import { Object3DComponent } from "@clockwyrks/structured-3d";
 import { CREAK_THRESHOLD } from "../constants";
 import { LAYER } from "../layers";
 import {

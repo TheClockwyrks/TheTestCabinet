@@ -7,7 +7,7 @@
 // when a blocker is still incomplete (matching gg's backend semantics), and
 // ACTIVE when it is the one being worked (status `in_progress`).
 
-import type { GgTaskEntry } from "@test-cabinet/run-record/gg";
+import type { GgTaskEntry } from "@clockwyrks/run-record/gg";
 import styles from "./GgPanels.module.scss";
 
 interface TaskDagViewProps {

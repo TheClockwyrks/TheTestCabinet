@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, useParams } from "react-router";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunRecord } from "@clockwyrks/run-record";
 import type { StoredReview } from "../../../client/types";
 import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
@@ -12,7 +12,7 @@ import {
   GradeBadge,
   RatingBadge,
   canonicalModelId,
-} from "@test-cabinet/ui";
+} from "@clockwyrks/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { RunDeleteControl } from "../../components/RunDeleteControl";
 import { useGalleryData, type RunDetail } from "../../data/galleryContext";

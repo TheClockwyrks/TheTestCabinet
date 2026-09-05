@@ -2,7 +2,7 @@
 title: Overview
 ---
 
-The voxel runtime (`@test-cabinet/voxel-runtime`, in `packages/voxel-runtime`)
+The voxel runtime (`@clockwyrks/voxel-runtime`, in `packages/voxel-runtime`)
 is the shared TypeScript library that turns a
 [voxel-family](/testing/asset-generation/overview/#voxel-and-meshed-models)
 run's produced artifacts into a posable, renderable 3D model. The geometry
@@ -20,21 +20,21 @@ component: it ships no service and runs in no process of its own.
 
 The package ships two subpath entries so a consumer takes only what it needs.
 
-`@test-cabinet/voxel-runtime`, the root, is the pure core: the contract types,
+`@clockwyrks/voxel-runtime`, the root, is the pure core: the contract types,
 the framework-agnostic posing and animation math, linear-blend skinning, and the
 `parseGlb` and `parseSkinnedGlb` decoders that turn a part's `.glb` into a
 `PartMesh` or `SkinnedMesh` of plain typed arrays. It carries no rendering
 dependency, so a game with its own renderer, a headless consumer, or the [glTF
 exporter](#exporting-to-gltf) uses it alone.
 
-`@test-cabinet/voxel-runtime/three` is the three.js binding:
+`@clockwyrks/voxel-runtime/three` is the three.js binding:
 `buildPartGeometry`, which wraps a core `PartMesh` into a `BufferGeometry`, plus
 the `VoxelRig` and `SkinnedVoxelRig` scene objects built on the core. `three` is
 a peer dependency, so a consuming game shares its single `three` instance with
 the runtime.
 
 The core's contract types are re-exported from
-[`@test-cabinet/run-record`](/components/core/run-records/), so the runtime and
+[`@clockwyrks/run-record`](/components/core/run-records/), so the runtime and
 the backend agree on the shapes by construction.
 
 ## Loaded artifacts

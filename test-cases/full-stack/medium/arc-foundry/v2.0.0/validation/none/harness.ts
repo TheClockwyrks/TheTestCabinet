@@ -15,7 +15,7 @@
 // frame around one `advance(dt, 1)` of the build's surface, reading pixels and
 // draw calls back out, and writing the evidence a review point declares — every
 // engineless case needs exactly that, and it lives once, in
-// `@test-cabinet/case-harness`, staged beside this file as `./case-harness/`.
+// `@clockwyrks/case-harness`, staged beside this file as `./case-harness/`.
 // What is left here is what is genuinely Arc Foundry's: the shape of its
 // snapshot, the operations `specs/instrumentation.md` requires, the withholding
 // of one produced file, the snapshot readers, and the compound sequences that

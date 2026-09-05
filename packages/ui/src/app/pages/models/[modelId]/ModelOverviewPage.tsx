@@ -6,9 +6,9 @@ import {
   ReliabilityRingWidget,
   type DonutSegment,
   type ReliabilitySegment,
-} from "@test-cabinet/ui";
-import { rollupRuns } from "@test-cabinet/run-stats/rollup";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+} from "@clockwyrks/ui";
+import { rollupRuns } from "@clockwyrks/run-stats/rollup";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { LoadingState } from "../../../components/LoadingState";
 import {
   useVersionScope,

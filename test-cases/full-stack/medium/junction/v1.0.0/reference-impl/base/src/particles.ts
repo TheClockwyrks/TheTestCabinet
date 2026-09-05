@@ -1,5 +1,5 @@
 // Junction — the produced particle systems, played LIVE through
-// @test-cabinet/particle-runtime's canvas binding (specs/assets.md, ASSETS.md §3) — not
+// @clockwyrks/particle-runtime's canvas binding (specs/assets.md, ASSETS.md §3) — not
 // flat tints. Each system is simulated on its own offscreen 128×128 canvas (its authored
 // field size) and composited over the board, so — being simulated — it varies play to play.
 //
@@ -12,8 +12,8 @@
 //   Bursts — the ONE-SHOT dust (a lot developing) and fireworks (a milestone) puffs,
 //            spawned at an event position and retired when spent (mirrors valence `Bursts`).
 
-import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { FxEvent, FxKind } from "./types";
 
 const FIELD = 128; // the authored field size of every fx system

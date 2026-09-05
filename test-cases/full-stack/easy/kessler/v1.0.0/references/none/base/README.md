@@ -12,7 +12,7 @@ with no lives left. Play is a score attack over endless waves.
 The game stands on no engine and no backend: the frame loop and its fixed
 60 Hz tick, the canvas fit, the keyboard, the audio bus, the particle
 playback, and the diagnostics overlay are all part of this project. The one
-library is `@test-cabinet/particle-runtime`, resolved from this repository's
+library is `@clockwyrks/particle-runtime`, resolved from this repository's
 own `packages/` through a relative `file:` dependency, which plays the
 produced particle systems.
 

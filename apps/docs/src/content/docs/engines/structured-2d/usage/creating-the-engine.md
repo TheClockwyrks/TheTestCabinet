@@ -6,7 +6,7 @@ The engine is an ordinary dependency of the build's workspace, already present
 in its `package.json`. One import brings in the factory.
 
 ```ts
-import { createEngine } from "@test-cabinet/structured-2d";
+import { createEngine } from "@clockwyrks/structured-2d";
 ```
 
 The framework classes, the built-in components, the clock catalogue, the touch
@@ -19,12 +19,12 @@ import {
   GameInstance,
   PacedClock,
   TOUCH_LAYOUTS,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import type {
   Engine,
   GameDefinition,
   InitApi,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 ```
 
 ## Pick a logical design size
@@ -55,7 +55,7 @@ level registry, the level to open first, and the game instance class kept across
 every level.
 
 ```ts
-import type { GameDefinition } from "@test-cabinet/structured-2d";
+import type { GameDefinition } from "@clockwyrks/structured-2d";
 import { Arcade } from "./instance";
 import { Ball, Paddle, Wall } from "./actors";
 import { MenuMode, MatchMode } from "./modes";
@@ -96,8 +96,8 @@ registers the action bindings, defines the cues, and loads the assets the whole
 game needs.
 
 ```ts
-import { GameInstance } from "@test-cabinet/structured-2d";
-import type { InitApi } from "@test-cabinet/structured-2d";
+import { GameInstance } from "@clockwyrks/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 
 export class Arcade extends GameInstance<null> {
   best = 0;
@@ -126,7 +126,7 @@ the game does is observable.
 instance and opens the start level, and `engine.run` drives frames from there.
 
 ```ts
-import { createEngine } from "@test-cabinet/structured-2d";
+import { createEngine } from "@clockwyrks/structured-2d";
 import { game } from "./game";
 import { HEIGHT, WIDTH } from "./constants";
 

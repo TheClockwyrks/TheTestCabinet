@@ -1,4 +1,4 @@
-import type { GgBoardIssue } from "@test-cabinet/run-record/gg";
+import type { GgBoardIssue } from "@clockwyrks/run-record/gg";
 import panels from "./GgPanels.module.scss";
 import type { DerivedGgState, PooledMessage } from "./useGgRunState";
 import { shortTokens } from "./useGgRunState";

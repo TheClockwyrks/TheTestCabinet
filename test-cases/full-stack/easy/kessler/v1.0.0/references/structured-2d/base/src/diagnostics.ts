@@ -15,7 +15,7 @@
 import { FxActor } from "./actors";
 import { kesslerState, type KesslerState } from "./state";
 import { spanOf } from "./session";
-import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
+import type { DiagnosticValue, World } from "@clockwyrks/structured-2d";
 
 /**
  * The sources, each named and each a read through `read` at the call. Split

@@ -15,7 +15,7 @@ import type {
   GgAggFunc,
   GgInterval,
   GgValue,
-} from "@test-cabinet/run-record/gg-query";
+} from "@clockwyrks/run-record/gg-query";
 
 /**
  * The most group-by keys one `stats` stage may carry. Visualizations bind the first

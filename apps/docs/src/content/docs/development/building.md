@@ -62,33 +62,41 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
 
 ### TypeScript (npm workspace)
 
-- `packages/run-record`: `@test-cabinet/run-record`. Shared TypeScript types
+- `packages/run-record`: `@clockwyrks/run-record`. Shared TypeScript types
   and JSON Schema for the [run record](/components/core/run-records/), the
   central data contract.
-- `packages/run-stats`: `@test-cabinet/run-stats`. The framework-free rules for
+- `packages/asset-contract`: `@clockwyrks/asset-contract`. The rig and F-curve
+  shapes a produced model is described by, generated in the same pass from the
+  same Rust types. Its own package because it is the only slice of the contract
+  that may be **seeded**: the voxel and particle runtimes depend on it and are
+  vendored into a model's workspace, so whatever they depend on travels with
+  them. `run-record` re-exports these types, so a console keeps importing them
+  from there. `scripts/ci/seeded-contract-check.sh` is the gate that keeps the
+  evaluation half out of a run.
+- `packages/run-stats`: `@clockwyrks/run-stats`. The framework-free rules for
   scoring a reviewed run, each mirroring a counterpart in
   `crates/core/src/review.rs`, plus the set-level rollup that keeps a figure
   frozen at one moment comparable with the same figure recomputed later. It has
   no runtime dependencies and imports only types from `run-record`, so it runs in
   a bundle, a build script, or a worker alike. `packages/ui`'s `ratings` module
   re-exports the scoring half alongside its display metadata.
-- `packages/browser-driver`: `@test-cabinet/browser-driver`. The Playwright
+- `packages/browser-driver`: `@clockwyrks/browser-driver`. The Playwright
   driver script the [validator](/components/core/validation/) shells out to,
   used to render reference mockups and to drive and screenshot a produced
   implementation.
-- `packages/ui`: `@test-cabinet/ui`. The shared
+- `packages/ui`: `@clockwyrks/ui`. The shared
   [UI library](/components/ui/overview/) hosting the routed gallery application
   and the presentational primitives; the site, web console, and desktop UI are
   thin hosts over it.
 - `packages/voxel-runtime` and `packages/particle-runtime`. The runtimes that
   pose and render a produced voxel rig and simulate a produced particle system.
-- `packages/simple-2d`: `@test-cabinet/simple-2d`. The Simple 2D
+- `packages/simple-2d`: `@clockwyrks/simple-2d`. The Simple 2D
   [engine](/components/core/engines/), providing the frame loop, input actions,
   audio, assets, and diagnostics a produced game builds on, plus the host
   interface a driver binds to. It is staged into the host package store and
   vendored into the run repository at seed time, and its package version is the
   engine version recorded on the run.
-- `packages/structured-2d`: `@test-cabinet/structured-2d`. The Structured 2D
+- `packages/structured-2d`: `@clockwyrks/structured-2d`. The Structured 2D
   [engine](/components/core/engines/), providing a gameplay framework of worlds,
   levels, game modes, actors, and controllers, with engine-owned rendering and
   collision, around a 2D game written in TypeScript. It is staged and vendored
@@ -96,14 +104,14 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
   version recorded on the run.
 - `packages/gg-sandbox`: the TypeScript and JavaScript arm of gg's
   responses-as-code sandbox.
-- `apps/desktop`: `@test-cabinet/desktop`. The React + Vite UI the Tauri
+- `apps/desktop`: `@clockwyrks/desktop`. The React + Vite UI the Tauri
   desktop app loads.
-- `apps/site`: `@test-cabinet/site`. The static
+- `apps/site`: `@clockwyrks/site`. The static
   [gallery site](/components/site/overview/) that displays published run
   records.
-- `apps/web`: `@test-cabinet/web`. The browser
+- `apps/web`: `@clockwyrks/web`. The browser
   [web console](/components/web/overview/) that enqueues runs at the backend.
-- `apps/docs`: `@test-cabinet/docs`. This Astro Starlight documentation site.
+- `apps/docs`: `@clockwyrks/docs`. This Astro Starlight documentation site.
 
 ### Reference implementations
 
@@ -124,7 +132,7 @@ npm ci                             # in the reference's own directory
 
 A reference installed over an unbuilt engine installs cleanly and fails at
 `npm run typecheck` instead, reporting
-`TS2307: Cannot find module '@test-cabinet/<slug>'` ahead of the property errors
+`TS2307: Cannot find module '@clockwyrks/<slug>'` ahead of the property errors
 that the failed resolution produces.
 
 ## Building Rust
@@ -346,7 +354,7 @@ The other root scripts delegate to each workspace that defines them:
 
 `npm run test` runs `vitest` in each workspace and is one of the pre-commit
 gates. Iterate on the gallery's own suite with `npm run test -w
-@test-cabinet/ui`. On a clean checkout, build the workspace runtime packages
+@clockwyrks/ui`. On a clean checkout, build the workspace runtime packages
 first with `npm run build:packages`, since the tests import them from a built
 `dist/`.
 
@@ -403,10 +411,11 @@ test-case authoring and variant guides refer to under "Validate your work".
 The run-record (and arena, job-API, backend) data contract has a single source of
 truth: the Rust types that derive `ts_rs::TS` and `schemars::JsonSchema` behind
 their `contract` feature, in `crates/core` and `crates/backend`. The TypeScript
-bindings under `packages/run-record/src/` and the JSON Schemas under
-`apps/docs/public/schema/` are generated from those types by
-`crates/contract-codegen`. After changing any contract type, regenerate and
-commit:
+bindings under `packages/run-record/src/` and `packages/asset-contract/src/` —
+one generator, two packages, because only the latter may be seeded into a run —
+and the JSON Schemas under `apps/docs/public/schema/` are generated from those
+types by `crates/contract-codegen`. After changing any contract type, regenerate
+and commit:
 
 ```sh
 npm run gen:contract

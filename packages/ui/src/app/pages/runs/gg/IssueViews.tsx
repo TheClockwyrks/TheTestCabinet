@@ -7,7 +7,7 @@
 // single `IssueState` — the one badge an issue shows — and everything else (the blocked-by
 // edges, a review's actionable items) is a part rendered beneath it.
 
-import type { GgBoardIssue } from "@test-cabinet/run-record/gg";
+import type { GgBoardIssue } from "@clockwyrks/run-record/gg";
 import styles from "./GgPanels.module.scss";
 
 // The derived readiness of an issue: a done issue is done and a failed one is failed

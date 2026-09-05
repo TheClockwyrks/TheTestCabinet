@@ -49,7 +49,7 @@ import {
   setCamera,
 } from "./state";
 import type { GameRun, GantryState } from "./game";
-import type { DiagnosticValue, InputReader } from "@test-cabinet/structured-3d";
+import type { DiagnosticValue, InputReader } from "@clockwyrks/structured-3d";
 
 /** A tick covers this many seconds (`specs/overview.md`). */
 export const TICK_DT = 1 / TICK_HZ;

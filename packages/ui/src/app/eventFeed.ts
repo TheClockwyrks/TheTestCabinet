@@ -13,7 +13,7 @@ import type {
   GgLimitKind,
   GgTelemetryEvent,
   GgTurnErrorKind,
-} from "@test-cabinet/run-record/gg";
+} from "@clockwyrks/run-record/gg";
 
 // How each execution ceiling reads in a breach line. Typed as a total record over
 // `GgLimitKind` so a ceiling added to the contract is a compile error here rather

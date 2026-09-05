@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunRecord } from "@clockwyrks/run-record";
 import type { ReviewItem } from "../../../../client/types";
 import {
   autoVerdictMap,

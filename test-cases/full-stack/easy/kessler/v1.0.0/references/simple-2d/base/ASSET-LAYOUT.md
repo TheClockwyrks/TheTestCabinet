@@ -36,7 +36,7 @@ reference fit and drawn centered on their object with no draw-time scaling.
 ## Particle systems — `scripts/gen-fx.sh`
 
 Each is a simulated `system.json` played live through
-`@test-cabinet/particle-runtime`'s `./canvas` binding on the same context the field is
+`@clockwyrks/particle-runtime`'s `./canvas` binding on the same context the field is
 drawn into; every play varies. All three are authored **radially symmetric** (centered
 point/disc emitters, 360-degree cones, no gravity, no wind) on a neutral 128 x 128
 field, so an instance reads correctly at any bearing around the planet; placing and

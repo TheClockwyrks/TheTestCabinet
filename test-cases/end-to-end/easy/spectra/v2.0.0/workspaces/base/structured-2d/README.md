@@ -90,7 +90,7 @@ afterwards. The engine's documentation defines every other piece of that recipe.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
   and `.gitignore`.
-- **`.tcab/`** — the vendored engine and the vendored particle runtime.
+- **`.vendor/`** — the vendored engine and the vendored particle runtime.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the
 `package-lock.json` — the build is installed with `npm ci`. Leave the existing

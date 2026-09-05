@@ -1,8 +1,8 @@
 // The game definition, the state contract, and the framework objects.
 
 import { describe, expect, it } from "vitest";
-import { GameState } from "@test-cabinet/structured-2d";
-import type { World } from "@test-cabinet/structured-2d";
+import { GameState } from "@clockwyrks/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { BACKGROUND, FacetState, facetState, game } from "./game";
 import { Bench } from "./bench";
 import { FacetController } from "./controller";

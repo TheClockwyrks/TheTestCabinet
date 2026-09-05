@@ -29,7 +29,7 @@
 
 import { menuFor, menuItemAt } from "./menu";
 import type { CaromState, PointerPress } from "./game";
-import type { UpdateApi } from "@test-cabinet/simple-2d";
+import type { UpdateApi } from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 /** What one frame of pointer and touch input did to a menu. */

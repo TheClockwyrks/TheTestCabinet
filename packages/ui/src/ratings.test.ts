@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { formatPoints } from "./ratings";
 
 // The scoring and aggregation rules this module used to own now live in
-// `@test-cabinet/run-stats`, and their tests moved with them
+// `@clockwyrks/run-stats`, and their tests moved with them
 // (packages/run-stats/src/scoring.test.ts). What remains here is the display
 // formatting the UI kept.
 

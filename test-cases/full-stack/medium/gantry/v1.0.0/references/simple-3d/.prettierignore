@@ -8,7 +8,7 @@ node_modules/
 coverage/
 test-results/
 playwright-report/
-.tcab/
+.vendor/
 package-lock.json
 assets/
 

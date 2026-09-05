@@ -1,7 +1,7 @@
 // One frame of simulation, and what it does when the world is not a whole one.
 
 import { describe, expect, it, vi } from "vitest";
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { advanceFrame } from "./frame";
 import { applyCore } from "./bridge";
 import { FacetState } from "./game";

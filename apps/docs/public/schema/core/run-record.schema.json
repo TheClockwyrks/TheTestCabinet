@@ -1319,7 +1319,7 @@
       ]
     },
     "ModelSpec": {
-      "description": "The resolved `[model]` of a voxel-animation case: the rig the model must\nproduce — named parts in a parent/child hierarchy and the named joints a\nconsuming game (or an auto-play clip) drives. This is the **required** contract\n(the scoring targets and the stable, game-facing joint interface); at run time\nthe model may add further parts and joints of its own, which are recorded in\nthe produced `rig.json` but are not required here. Carried into the run record\n(see [`crate::validation::VoxelGenResult`]) so the review and viewer UIs know\nthe joint interface without a separate catalog lookup.",
+      "description": "The resolved `[model]` of a voxel-animation case: the rig the model must\nproduce — named parts in a parent/child hierarchy and the named joints a\nconsuming game (or an auto-play clip) drives. This is the **required**\ninterface, the parts and joints a consuming game may rely on by name; a\nproduced rig may carry further parts and joints of its own, which `rig.json`\nrecords and nothing here requires.",
       "properties": {
         "animations": {
           "description": "The model's **animations** — one unified type across the pipeline. On the\n*required* contract each is a declaration (its `joints` set, `tracks` empty),\nseeded into `rig.json` from t=0; on the *produced* rig each additionally\ncarries the model-authored F-curve `tracks`. Empty when the case declares\nnone.",

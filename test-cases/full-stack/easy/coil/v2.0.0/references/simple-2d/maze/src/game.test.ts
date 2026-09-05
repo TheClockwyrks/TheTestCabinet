@@ -29,7 +29,7 @@ import {
 } from "./game";
 import { HOWTO_ITEMS, menuItems } from "./menus";
 import { menuItemRect } from "./menus";
-import type { PointerSample, UpdateApi } from "@test-cabinet/simple-2d";
+import type { PointerSample, UpdateApi } from "@clockwyrks/simple-2d";
 
 function opening(seed = 1): CoilState {
   return createInitialState(NO_SPRITES, false, seed);

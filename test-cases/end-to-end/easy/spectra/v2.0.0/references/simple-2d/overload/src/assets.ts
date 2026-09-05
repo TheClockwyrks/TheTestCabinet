@@ -12,8 +12,8 @@
 // reports its state in a host that cannot decode an image at all.
 
 import { BURST_SYSTEM, SPRITES } from "./constants";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
+import type { InitApi } from "@clockwyrks/simple-2d";
 
 /** The four seeded silhouettes, by the name each is drawn for. */
 export type SpriteName = keyof typeof SPRITES;

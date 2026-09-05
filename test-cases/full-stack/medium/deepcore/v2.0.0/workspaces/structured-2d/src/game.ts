@@ -40,8 +40,8 @@
 // `1` and no rotation; `specs/world.md` states where it sits and how its lead
 // builds and unwinds.
 
-import { GameInstance, GameMode } from "@test-cabinet/structured-2d";
-import type { GameDefinition, InitApi } from "@test-cabinet/structured-2d";
+import { GameInstance, GameMode } from "@clockwyrks/structured-2d";
+import type { GameDefinition, InitApi } from "@clockwyrks/structured-2d";
 
 /**
  * The stage background, a CSS color string. `src/main.ts` hands it to the engine

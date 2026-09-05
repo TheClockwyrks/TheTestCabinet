@@ -1,12 +1,12 @@
 import { useMemo, type ReactNode } from "react";
-import type { TestType } from "@test-cabinet/run-record";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { TestType } from "@clockwyrks/run-record";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import {
   AestheticBadge,
   GradeBadge,
   RatingBadge,
   canonicalModelId,
-} from "@test-cabinet/ui";
+} from "@clockwyrks/ui";
 import type { InProgressRun } from "../../client/types";
 import {
   asGrade,

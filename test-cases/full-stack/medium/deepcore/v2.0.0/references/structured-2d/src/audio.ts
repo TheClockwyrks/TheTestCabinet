@@ -21,7 +21,7 @@
 import { CUES } from "./constants";
 import type { CueName } from "./constants";
 import type { DeepcoreState } from "./game";
-import type { CueSpec, InitApi, WorldAudio } from "@test-cabinet/structured-2d";
+import type { CueSpec, InitApi, WorldAudio } from "@clockwyrks/structured-2d";
 
 /** The cues that sound continuously while their condition holds. */
 export const LOOP_CUES = [

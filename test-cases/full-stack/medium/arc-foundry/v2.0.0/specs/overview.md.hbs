@@ -95,7 +95,7 @@ fixed over it.
 ### What stays as it is
 
 - `index.html`, the page and the canvas the stage is fitted into.
-- `.tcab/`, holding the vendored particle runtime that `package.json` resolves that
+- `.vendor/`, holding the vendored particle runtime that `package.json` resolves that
   dependency from.
 - The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
   `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
@@ -142,7 +142,7 @@ carries is `readonly`, because the engine hands it out read-only and replaces it
   `game` to it, and runs.
 - `src/constants.ts`, holding every figure this specification fixes.
 - `index.html`, the page and the canvas the engine fits the stage into.
-- `.tcab/`, holding the vendored engine and the particle runtime that `package.json`
+- `.vendor/`, holding the vendored engine and the particle runtime that `package.json`
   resolves those dependencies from.
 - `engine/`, the engine's own documentation.
 - The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
@@ -193,7 +193,7 @@ authoritative state is held in, and `FoundryDebugApi`, the debug and automation 
   `game` to it, and runs.
 - `src/constants.ts`, holding every figure this specification fixes.
 - `index.html`, the page and the canvas the engine fits the stage into.
-- `.tcab/`, holding the vendored engine and the particle runtime that `package.json`
+- `.vendor/`, holding the vendored engine and the particle runtime that `package.json`
   resolves those dependencies from.
 - `engine/`, the engine's own documentation.
 - The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,

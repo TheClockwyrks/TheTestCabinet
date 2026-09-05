@@ -40,7 +40,7 @@ import type {
   InitApi,
   RenderApi,
   UpdateApi,
-} from "@test-cabinet/simple-3d";
+} from "@clockwyrks/simple-3d";
 import { ACTIONS, BINDINGS, type CueName } from "./constants";
 import type { Obstacle, SiteLoad } from "./constants";
 import { loadProducedAssets } from "./assets";

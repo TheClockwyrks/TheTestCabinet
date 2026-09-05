@@ -7,7 +7,7 @@
 // a root-absolute "/assets/…" URL. The tools are never invoked by `npm run build`; the game
 // only loads their output.
 
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { Cue, FxKind, Tool, ZoneKind } from "./types";
 import { TOOL_BY_KIND } from "./constants";
 

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   CoverageGroup,
   CoverageGroupInput,
-} from "@test-cabinet/run-record/coverage";
+} from "@clockwyrks/run-record/coverage";
 import type { BackendClient } from "../../../client/clients";
 import { BackendProvider } from "../../../client/context";
 import {

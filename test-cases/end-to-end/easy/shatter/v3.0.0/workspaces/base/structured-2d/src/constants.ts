@@ -22,7 +22,7 @@
 // aspect of the appearance to the build, and BACKGROUND is the build's own
 // export from `src/game.ts`.
 
-import type { ActionBinding } from "@test-cabinet/structured-2d";
+import type { ActionBinding } from "@clockwyrks/structured-2d";
 
 // ---- Field and star (specs/field.md) -------------------------------------
 

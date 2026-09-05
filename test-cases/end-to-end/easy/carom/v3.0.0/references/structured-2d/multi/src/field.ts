@@ -20,7 +20,7 @@
 // outgoing world is captured as it stands, and the incoming one is posed back
 // into it once the engine has built it.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { Ball } from "./ball";
 import {
   BALL_COUNT,

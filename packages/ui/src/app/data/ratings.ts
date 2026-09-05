@@ -1,4 +1,4 @@
-// The rating model now lives in `@test-cabinet/ui` (the single source of truth,
+// The rating model now lives in `@clockwyrks/ui` (the single source of truth,
 // mirroring the `Rating` enum in the Rust core, crates/core/src/review.rs) so the
 // gallery, the web console, and the desktop app all share one definition. This
 // module re-exports it and keeps the site-only writeup frontmatter parser, which
@@ -70,7 +70,7 @@ export {
   type AggregateScore,
   aggregateScore,
   aggregateRating,
-} from "@test-cabinet/ui";
+} from "@clockwyrks/ui";
 
 import {
   isAestheticRating,
@@ -82,7 +82,7 @@ import {
   type DomainRating,
   type GradeStatus,
   type ReviewVerdict,
-} from "@test-cabinet/ui";
+} from "@clockwyrks/ui";
 
 /**
  * Narrow a summary card's overall-grade field — a `VerdictStatus`, which also

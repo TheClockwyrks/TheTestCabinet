@@ -55,7 +55,7 @@
 // `bands.match-destroys`.
 
 import { afterEach, it } from "vitest";
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { FLUX_SHIMMER, fluxWindow } from "../constants";
 import {
   assertCloseTo,

@@ -93,7 +93,7 @@ documentation defines every other piece of that recipe.
 - **`index.html`** — the page and the canvas the engine fits the stage into.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.
-- **`.tcab/`** — the vendored engine.
+- **`.vendor/`** — the vendored engine.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the
 `package-lock.json` — the build is installed with `npm ci`. Leave the existing

@@ -7,7 +7,7 @@ import type {
   InitApi,
   InputReader,
   TouchLayout,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 
 /** An `InitApi.input` that records what was registered against it. */
 function recorder(layout: TouchLayout | null): {

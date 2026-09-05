@@ -21,8 +21,8 @@
 // specs/ui.md); on the menus and the pause screen it stands exactly where it
 // was.
 
-import { DrawComponent, Pawn } from "@test-cabinet/structured-2d";
-import type { DrawApi } from "@test-cabinet/structured-2d";
+import { DrawComponent, Pawn } from "@clockwyrks/structured-2d";
+import type { DrawApi } from "@clockwyrks/structured-2d";
 import { PADDLE_HALF, PADDLE_W } from "./constants";
 import { glowRect, type Ctx } from "./draw";
 import { integratePaddle, paddleBounds, type Side } from "./sim";

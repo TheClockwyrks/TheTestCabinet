@@ -1,7 +1,7 @@
 // Fathom — the actions the game registers, and the layout it is written for.
 
 import { describe, expect, it } from "vitest";
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 import { ACTIONS, BINDINGS, LAYOUT } from "./constants";
 import { MOVE_ACTIONS, registerActions } from "./input";
 

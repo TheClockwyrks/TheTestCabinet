@@ -3,8 +3,8 @@ node_modules/
 
 # Production build output — produced by `npm run build`. Every pattern here is
 # ANCHORED to the repository root on purpose: the engine is vendored into this
-# repository at `.tcab/engine/@test-cabinet/simple-2d/`, and the particle
-# runtime at `.tcab/packages/@test-cabinet/particle-runtime/`, both prebuilt,
+# repository at `.vendor/engine/@clockwyrks/simple-2d/`, and the particle
+# runtime at `.vendor/packages/@clockwyrks/particle-runtime/`, both prebuilt,
 # with their own `dist/` committed alongside the seed. An unanchored `dist/`
 # would match those directories too and leave the build unable to resolve them.
 /dist/

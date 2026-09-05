@@ -19,7 +19,7 @@ import type { ReactNode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { GgSavedAgent } from "@test-cabinet/run-record/gg";
+import type { GgSavedAgent } from "@clockwyrks/run-record/gg";
 import {
   BackendProvider,
   type BackendContextValue,

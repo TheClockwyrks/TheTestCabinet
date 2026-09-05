@@ -5,7 +5,7 @@
 # These are authored systems, not baked frames: `particle-2d` records emitters,
 # forces, and per-particle curves and its render step writes the `system.json`
 # that is the asset. The game plays them live through
-# `@test-cabinet/particle-runtime`'s ParticleCanvasPlayer, so every burst is
+# `@clockwyrks/particle-runtime`'s ParticleCanvasPlayer, so every burst is
 # simulated afresh and no two look quite alike — which is correct.
 #
 # Produces, under assets/fx/ (4 system.json files):

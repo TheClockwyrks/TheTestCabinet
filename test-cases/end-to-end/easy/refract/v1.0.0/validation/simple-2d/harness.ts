@@ -67,7 +67,7 @@ import {
   type Resource,
   type SurfaceMetrics,
   type Viewport,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 import { BACKGROUND, game as build, type RefractState } from "../src/game";
 import { assertEqual, fail } from "./assert";

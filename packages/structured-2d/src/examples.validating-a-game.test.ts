@@ -38,7 +38,7 @@ import { GameMode } from "./game-mode";
  *   `Snapshot` interfaces the page declares twice — once by the build and once
  *   by the suite, both from the same instrumentation spec — are declared once.
  * - Imports name the engine's own modules instead of the published package
- *   `@test-cabinet/structured-2d` (this file *is* that package).
+ *   `@clockwyrks/structured-2d` (this file *is* that package).
  * - The docs page fixes the case's specification (the table of figures) but
  *   leaves the build's own source — the actors, the controller, and the two
  *   game modes — to the model under test. A reference build of that case is

@@ -22,7 +22,7 @@ import type {
   GgFieldCatalog,
   GgQuery,
   GgRunDoc,
-} from "@test-cabinet/run-record/gg-query";
+} from "@clockwyrks/run-record/gg-query";
 import { evaluate, fieldCatalog } from "./evaluate";
 
 /** One case: a query and what it must produce. */

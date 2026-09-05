@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
-import { MetricTile, Panel } from "@test-cabinet/ui";
+import { MetricTile, Panel } from "@clockwyrks/ui";
 import type {
   PerformanceCaseResult,
   PerformanceResult,
   RunRecord,
-} from "@test-cabinet/run-record";
+} from "@clockwyrks/run-record";
 import { formatInteger } from "../../../format";
 import { useCaseRunSummaries } from "../../../data/useRuns";
 import { useFindModel } from "../../../data/useModels";

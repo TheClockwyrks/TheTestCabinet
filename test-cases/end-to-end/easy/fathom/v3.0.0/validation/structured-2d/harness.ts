@@ -67,7 +67,7 @@ import {
   type SurfaceMetrics,
   type Viewport,
   type World,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { BACKGROUND, game as build } from "../src/game";
 import { assertTruthy, fail } from "./assert";
 import { BINDINGS, LAYOUT, STAGE_H, STAGE_W, TICK_HZ } from "./constants";

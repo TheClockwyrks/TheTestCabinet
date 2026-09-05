@@ -18,7 +18,7 @@ world units, so the helper converts a world point through the camera and then
 through the viewport.
 
 ```ts
-import type { Vec2 } from "@test-cabinet/structured-2d";
+import type { Vec2 } from "@clockwyrks/structured-2d";
 import type { Harness } from "./harness";
 
 export function sample(h: Harness, point: Vec2) {

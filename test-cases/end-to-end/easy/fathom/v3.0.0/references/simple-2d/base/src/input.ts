@@ -22,7 +22,7 @@ import type {
   InitApi,
   PointerSample,
   UpdateApi,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 
 /**
  * Register every action, bound to its keys.

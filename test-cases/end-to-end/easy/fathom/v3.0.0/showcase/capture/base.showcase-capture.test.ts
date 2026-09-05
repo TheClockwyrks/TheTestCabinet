@@ -45,7 +45,7 @@ import { dirname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, it } from "vitest";
 import { Image, loadImage } from "@napi-rs/canvas";
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { GRID_COLS, GRID_ROWS, SCORE_DRIFTER } from "../src/constants";
 import { DIRS, cellIndex, type Cell, type Dir } from "../src/grid";
 import { Maze, type TileTest } from "../src/maze";

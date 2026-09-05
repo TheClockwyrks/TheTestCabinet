@@ -22,7 +22,7 @@ import {
   Pawn,
   type DrawApi,
   type World,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { kesslerAssets } from "./assets";
 import { RINGS, TAGS } from "./constants";
 import { FxLayer } from "./fx";

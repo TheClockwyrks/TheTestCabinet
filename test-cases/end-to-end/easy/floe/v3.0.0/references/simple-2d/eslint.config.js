@@ -84,7 +84,7 @@ export default tseslint.config(
       "out/",
       "coverage/",
       "proof/",
-      ".tcab/",
+      ".vendor/",
     ],
   },
   js.configs.recommended,

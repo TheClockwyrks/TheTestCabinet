@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import { ACTIONS, BINDINGS, LAYOUT } from "./constants";
 import { pressed, registerActions } from "./input";
 import type { FacetState } from "./game";
-import { TOUCH_LAYOUTS } from "@test-cabinet/simple-2d";
+import { TOUCH_LAYOUTS } from "@clockwyrks/simple-2d";
 import type {
   ActionBinding,
   InitApi,
   UpdateApi,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 
 describe("registerActions", () => {
   it("registers every action against the keys BINDINGS names", () => {

@@ -6,7 +6,7 @@ The per-test-case graphs group runs by the `(harness, model)` pair, so the same
 model under two harnesses stays two series. Merging them would average a
 multiple-fold cost gap into one meaningless number.
 
-The graphs live in the shared `@test-cabinet/ui` package, so the internal
+The graphs live in the shared `@clockwyrks/ui` package, so the internal
 console and the public site group runs identically.
 
 ## Aggregators

@@ -64,7 +64,7 @@ name up in the rig, rather than hard-coding it.
 
 You do **not** write a glTF loader or an animation mixer, and you do **not** fetch any
 other art: the runtime that decodes and poses these rigs,
-**`@test-cabinet/voxel-runtime`**, is already a dependency of your project (it is in
+**`@clockwyrks/voxel-runtime`**, is already a dependency of your project (it is in
 your `package.json`; run your install as usual and import it by name). It is the same
 library the rigs were authored against. For each entity, at load time:
 
@@ -142,7 +142,7 @@ roughly once a second. Do **not** hold a single instance on continuously.
 ### Play them with the provided runtime
 
 You do **not** write a particle simulator, and you do **not** fetch anything: the
-runtime that plays these systems, **`@test-cabinet/particle-runtime`**, is already a
+runtime that plays these systems, **`@clockwyrks/particle-runtime`**, is already a
 dependency of your project (it is in your `package.json`; run your install as usual
 and import it by name, like any other dependency). It is the *same* library the
 effects were authored against, so each flash plays in your game exactly as intended.

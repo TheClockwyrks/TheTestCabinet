@@ -1,7 +1,7 @@
 // Re-vendor the Foray replay assets the UI bundles from their single source of
 // truth, the foray case's replay bundle.
 //
-// The shared gallery app (`@test-cabinet/ui`) draws match replays on a <canvas>
+// The shared gallery app (`@clockwyrks/ui`) draws match replays on a <canvas>
 // with its own copy of the renderer + sprite assets, so the public site, web
 // console and desktop app all play a match identically without each fetching the
 // case bundle. That copy must stay in lockstep with the case's bundle, or the UI

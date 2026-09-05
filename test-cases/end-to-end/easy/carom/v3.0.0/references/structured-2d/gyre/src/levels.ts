@@ -17,7 +17,7 @@
 // (src/carry.ts) — after the mode's `beginPlay` has seated the paddles, which
 // is also what puts the ball last in spawn order so it ticks after them.
 
-import type { ActorSpec, LevelDefinition } from "@test-cabinet/structured-2d";
+import type { ActorSpec, LevelDefinition } from "@clockwyrks/structured-2d";
 import { FIELD_CY, TAGS } from "./constants";
 import { Hud } from "./hud";
 import { MatchMode } from "./match-mode";

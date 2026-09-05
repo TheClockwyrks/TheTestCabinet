@@ -2,11 +2,11 @@ import { render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunRecord } from "@clockwyrks/run-record";
 import type {
   CodeAnalysisDocument,
   CodeAnalysisSummary,
-} from "@test-cabinet/run-record/code-analysis";
+} from "@clockwyrks/run-record/code-analysis";
 import { RunCodePage } from "./RunCodePage";
 
 // The page's chrome reads app-wide contexts that say nothing about the analysis. Stub

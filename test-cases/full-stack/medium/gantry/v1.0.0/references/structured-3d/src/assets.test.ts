@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Model } from "@test-cabinet/structured-3d";
+import type { Model } from "@clockwyrks/structured-3d";
 import {
   loadModels,
   MODEL_NAMES,

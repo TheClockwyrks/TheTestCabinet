@@ -9,7 +9,7 @@ engine owns the loop, runs `update` and then `render` once per frame, and hands
 each function only the part of itself that function may use.
 
 ```ts
-import type { Game } from "@test-cabinet/simple-2d";
+import type { Game } from "@clockwyrks/simple-2d";
 
 const TURN_RATE = 260;   // logical pixels per second squared
 const THRUST = 420;      // logical pixels per second squared
@@ -73,7 +73,7 @@ The game is bound when the engine is created, and initialization is a separate
 step that resolves to the state.
 
 ```ts
-import { createEngine } from "@test-cabinet/simple-2d";
+import { createEngine } from "@clockwyrks/simple-2d";
 import { game } from "./game";
 
 const engine = createEngine({ canvas, width: 640, height: 360, game });

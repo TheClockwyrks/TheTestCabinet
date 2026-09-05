@@ -18,7 +18,7 @@ to sweep to, a gain, and a duration in milliseconds. The fields and their
 defaults are specified in the [audio API](/engines/simple-3d/apis/audio/).
 
 ```ts
-import type { InitApi } from "@test-cabinet/simple-3d";
+import type { InitApi } from "@clockwyrks/simple-3d";
 
 function defineCues(api: InitApi): void {
   api.audio.define("place", { wave: "square", freq: 440, durationMs: 60 });
@@ -48,7 +48,7 @@ returns immediately, is safe several times in one frame, and succeeds while
 muted.
 
 ```ts
-import type { UpdateApi } from "@test-cabinet/simple-3d";
+import type { UpdateApi } from "@clockwyrks/simple-3d";
 import type { DeepReadonly } from "ts-essentials";
 
 function update(state: DeepReadonly<Yard>, api: UpdateApi, dt: number): Yard {
@@ -158,8 +158,8 @@ initialization, and `render` finds them there.
 
 ```ts
 import * as THREE from "three";
-import { cloneModel } from "@test-cabinet/simple-3d";
-import type { Game, InitApi, Model } from "@test-cabinet/simple-3d";
+import { cloneModel } from "@clockwyrks/simple-3d";
+import type { Game, InitApi, Model } from "@clockwyrks/simple-3d";
 
 interface State {
   readonly icon: ImageBitmap;

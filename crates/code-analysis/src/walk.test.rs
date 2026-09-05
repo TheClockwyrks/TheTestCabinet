@@ -200,7 +200,7 @@ fn a_root_level_engine_file_is_kept() {
     assert_eq!(paths(&walked(root.path())), vec!["engine.ts"]);
 }
 
-/// `.tcab/` is floored **wholesale**, not child by child. All three of its children are
+/// `.vendor/` is floored **wholesale**, not child by child. All three of its children are
 /// host-written — the vendored engine runtime, the case's vendored packages and the
 /// host-written validation media — and a fourth added later must stay out of the authored set
 /// without a second edit to the floor.
@@ -209,15 +209,15 @@ fn the_hosts_own_tcab_directory_is_floored_wholesale() {
     let root = tree(&[
         ("src/game.ts", "export const a = 1;\n"),
         (
-            ".tcab/engine/@test-cabinet/simple-2d/dist/index.js",
+            ".vendor/engine/@clockwyrks/simple-2d/dist/index.js",
             "export const e = 1;\n",
         ),
         (
-            ".tcab/engine/@test-cabinet/simple-2d/readme.md",
+            ".vendor/engine/@clockwyrks/simple-2d/readme.md",
             "# simple-2d\n",
         ),
-        (".tcab/packages/whatever.tgz", "not really a tarball\n"),
-        (".tcab/validation/x.png.txt", "not really an image\n"),
+        (".vendor/packages/whatever.tgz", "not really a tarball\n"),
+        (".vendor/validation/x.png.txt", "not really an image\n"),
     ]);
     let walk = walked(root.path());
     assert_eq!(paths(&walk), vec!["src/game.ts"]);
@@ -235,7 +235,7 @@ fn the_engine_runtime_is_floored_by_rule_and_not_by_its_dist_directory() {
     let root = tree(&[
         ("src/game.ts", "export const a = 1;\n"),
         (
-            ".tcab/engine/@test-cabinet/simple-2d/lib/index.js",
+            ".vendor/engine/@clockwyrks/simple-2d/lib/index.js",
             "export const e = 1;\n",
         ),
     ]);
@@ -260,7 +260,7 @@ fn the_root_floor_is_derived_from_the_hosts_own_path_constants() {
 }
 
 /// The defect the conditional exists to prevent, and the reason `engine` is not simply a
-/// second entry beside `.tcab`.
+/// second entry beside `.vendor`.
 ///
 /// A `none`-engine run seeds no documentation at the root at all — `vendor_engine` copies it
 /// only for an engine that has a package to copy it from — so a top-level `engine/` on such a
@@ -289,13 +289,13 @@ fn a_root_engine_directory_is_kept_when_the_run_seeded_none() {
     assert_eq!(walk.skipped_files, 0);
 }
 
-/// The host's own directory needs no permission from the caller: `.tcab/` is a namespace The
+/// The host's own directory needs no permission from the caller: `.vendor/` is a namespace The
 /// Test Cabinet owns, so it is floored at the root of every tree, whatever the run seeded.
 #[test]
 fn the_hosts_own_directory_is_floored_whatever_the_run_seeded() {
     let root = tree(&[
         ("src/game.ts", "export const a = 1;\n"),
-        (".tcab/packages/whatever.tgz", "not really a tarball\n"),
+        (".vendor/packages/whatever.tgz", "not really a tarball\n"),
     ]);
     for walk in [walked(root.path()), walked_with_engine_docs(root.path())] {
         assert_eq!(paths(&walk), vec!["src/game.ts"]);

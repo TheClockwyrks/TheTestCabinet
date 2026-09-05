@@ -35,9 +35,9 @@ Read the doc first; the code location is where the implementation lives.
 | Web console | [`components/web/overview.md`](apps/docs/src/content/docs/components/web/overview.md) | `apps/web/` |
 | Backend (private def/results server) | [`components/backend/`](apps/docs/src/content/docs/components/backend/) | `crates/backend/` |
 | Site (public gallery) | [`components/site/`](apps/docs/src/content/docs/components/site/) | `apps/site/` |
-| UI library (`@test-cabinet/ui`) | [`components/ui/overview.md`](apps/docs/src/content/docs/components/ui/overview.md) | `packages/ui/` |
-| Voxel runtime (`@test-cabinet/voxel-runtime` — poses/renders a produced voxel rig; pure-core + three) | [`components/voxel-runtime/overview.md`](apps/docs/src/content/docs/components/voxel-runtime/overview.md) | `packages/voxel-runtime/` |
-| Particle runtime (`@test-cabinet/particle-runtime` — simulates/renders a produced particle `system.json`; pure-core + three + canvas) | [`components/particle-runtime/overview.md`](apps/docs/src/content/docs/components/particle-runtime/overview.md) | `packages/particle-runtime/` |
+| UI library (`@clockwyrks/ui`) | [`components/ui/overview.md`](apps/docs/src/content/docs/components/ui/overview.md) | `packages/ui/` |
+| Voxel runtime (`@clockwyrks/voxel-runtime` — poses/renders a produced voxel rig; pure-core + three) | [`components/voxel-runtime/overview.md`](apps/docs/src/content/docs/components/voxel-runtime/overview.md) | `packages/voxel-runtime/` |
+| Particle runtime (`@clockwyrks/particle-runtime` — simulates/renders a produced particle `system.json`; pure-core + three + canvas) | [`components/particle-runtime/overview.md`](apps/docs/src/content/docs/components/particle-runtime/overview.md) | `packages/particle-runtime/` |
 | Docs site | [`components/docs/overview.md`](apps/docs/src/content/docs/components/docs/overview.md) | `apps/docs/` |
 
 **Naming gotcha:** the docs call the desktop app the **Tauri app** and the
@@ -45,10 +45,15 @@ browser runner/reporter the **web console**, but on disk the desktop crate is
 `crates/desktop` and the desktop UI is `apps/desktop`. Don't go looking for a
 `tauri` directory.
 
-Other shared packages: `packages/run-record/` (`@test-cabinet/run-record` —
+Other shared packages: `packages/run-record/` (`@clockwyrks/run-record` —
 TypeScript types + JSON Schema for the run record contract; see
 [`components/core/run-records.md`](apps/docs/src/content/docs/components/core/run-records.md)),
-`packages/run-stats/` (`@test-cabinet/run-stats` — the framework-free scoring
+`packages/asset-contract/` (`@clockwyrks/asset-contract` — the rig and F-curve
+shapes a produced model is described by, generated alongside `run-record` from the
+same Rust types but kept in its own package because the voxel and particle runtimes
+depend on it and are vendored into a model's workspace, which `run-record` must
+never be; `scripts/ci/seeded-contract-check.sh` is the gate),
+`packages/run-stats/` (`@clockwyrks/run-stats` — the framework-free scoring
 rules, each mirroring a counterpart in `crates/core/src/review.rs`, plus the
 set-level rollup that lets a figure frozen at one moment and the same figure
 recomputed later be compared; `packages/ui`'s `ratings` module re-exports the

@@ -13,7 +13,7 @@ import { noCues } from "./audio";
 import { liveState, poseDrone, run } from "./fixtures";
 import { burstSystem, burstSystemLoaded, loadArt } from "./sprites";
 import { installAssetHost } from "./harness";
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 
 /** The engine's asset loaders, over this project's own `assets/` directory. */
 function loader(): InitApi["assets"] {

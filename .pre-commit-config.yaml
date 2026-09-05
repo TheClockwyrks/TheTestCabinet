@@ -130,6 +130,17 @@ repos:
         always_run: true
         pass_filenames: false
 
+      - id: seeded-contract
+        name: seeded contract package
+        description: Reject evaluation vocabulary in the generated contract package that is vendored into a model's workspace.
+        entry: scripts/ci/seeded-contract-check.sh
+        language: script
+        # Greps the whole generated package, which changes as a side effect of a
+        # Rust doc comment rather than of editing anything under it, so staging is
+        # not what decides whether this needs to run.
+        always_run: true
+        pass_filenames: false
+
       - id: no-nul-bytes
         name: NUL bytes in text files
         description: Reject a NUL byte in a file git reads as text, which makes grep and rg report zero matches in it.

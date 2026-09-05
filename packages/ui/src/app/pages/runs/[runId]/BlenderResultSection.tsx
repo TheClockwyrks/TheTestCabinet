@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
-import type { AnimationSpec, JointSpec } from "@test-cabinet/run-record";
+import type { AnimationSpec, JointSpec } from "@clockwyrks/run-record";
 import { type VoxelResultView } from "../../../data/galleryContext";
 import { prefersReducedMotion, supportsWebGL } from "../../../components/webgl";
 import { FullscreenViewport } from "./FullscreenViewport";

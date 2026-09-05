@@ -22,7 +22,7 @@ import type { GlStub } from "./testing/gl";
  * module-level cube, the same three functions, the same `ts-essentials` import the
  * page's prose calls "the one import beside the engine and `three`" — and the boot
  * module is followed line for line. The engine is imported from `./index` rather
- * than from `"@test-cabinet/simple-3d"`, which is the same module reached from
+ * than from `"@clockwyrks/simple-3d"`, which is the same module reached from
  * inside the package.
  *
  * Only what a headless environment forces is adapted, and each adaptation is

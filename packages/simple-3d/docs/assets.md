@@ -135,8 +135,8 @@ the joint the exporter named in the file.
 
 ```ts
 import * as THREE from "three";
-import { cloneModel } from "@test-cabinet/simple-3d";
-import type { Model } from "@test-cabinet/simple-3d";
+import { cloneModel } from "@clockwyrks/simple-3d";
+import type { Model } from "@clockwyrks/simple-3d";
 
 const templates = new Map<string, Model>();
 const cranes = new Map<number, THREE.Group>();

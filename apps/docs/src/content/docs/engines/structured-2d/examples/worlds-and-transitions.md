@@ -10,7 +10,7 @@ object that survives a level transition.
 ## src/constants.ts
 
 ```ts
-import type { ActionBinding } from "@test-cabinet/structured-2d";
+import type { ActionBinding } from "@clockwyrks/structured-2d";
 
 export const WIDTH = 640;
 export const HEIGHT = 360;
@@ -34,7 +34,7 @@ export const RESULTS_SECONDS = 4;
 ## src/main.ts
 
 ```ts
-import { createEngine } from "@test-cabinet/structured-2d";
+import { createEngine } from "@clockwyrks/structured-2d";
 import { BACKGROUND, HEIGHT, WIDTH } from "./constants";
 import { relay } from "./game";
 
@@ -55,7 +55,7 @@ await engine.run();
 ## src/game.ts
 
 ```ts
-import type { GameDefinition } from "@test-cabinet/structured-2d";
+import type { GameDefinition } from "@clockwyrks/structured-2d";
 import { LEVELS } from "./constants";
 import { RelayInstance } from "./instance";
 import { MatchMode } from "./levels/match-mode";
@@ -79,7 +79,7 @@ constructs when that level is opened, and `startLevel` names a key of `levels`.
 ## src/instance.ts
 
 ```ts
-import { GameInstance, type InitApi } from "@test-cabinet/structured-2d";
+import { GameInstance, type InitApi } from "@clockwyrks/structured-2d";
 import { ACTIONS } from "./constants";
 
 let built: RelayInstance | null = null;
@@ -112,8 +112,8 @@ so a constructor sets defaults and nothing more.
 ## src/levels/menu-mode.ts
 
 ```ts
-import { Actor, GameMode, TextComponent } from "@test-cabinet/structured-2d";
-import type { PlayerController } from "@test-cabinet/structured-2d";
+import { Actor, GameMode, TextComponent } from "@clockwyrks/structured-2d";
+import type { PlayerController } from "@clockwyrks/structured-2d";
 import { HEIGHT, LEVELS, TEXT, WIDTH } from "../constants";
 import { instance } from "../instance";
 
@@ -148,8 +148,8 @@ the build reads an action.
 ## src/levels/match-mode.ts
 
 ```ts
-import { Actor, GameMode, TextComponent } from "@test-cabinet/structured-2d";
-import type { PlayerController } from "@test-cabinet/structured-2d";
+import { Actor, GameMode, TextComponent } from "@clockwyrks/structured-2d";
+import type { PlayerController } from "@clockwyrks/structured-2d";
 import { HEIGHT, LEVELS, MATCH_SECONDS, TEXT, WIDTH } from "../constants";
 
 class Readout extends Actor {
@@ -190,7 +190,7 @@ match time rather than world time.
 ## src/levels/results-mode.ts
 
 ```ts
-import { Actor, GameMode, TextComponent } from "@test-cabinet/structured-2d";
+import { Actor, GameMode, TextComponent } from "@clockwyrks/structured-2d";
 import { HEIGHT, LEVELS, RESULTS_SECONDS, TEXT, WIDTH } from "../constants";
 import { instance } from "../instance";
 

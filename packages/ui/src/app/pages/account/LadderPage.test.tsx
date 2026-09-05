@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   TopUpBlocked,
   TopUpResult,
-} from "@test-cabinet/run-record/coverage";
+} from "@clockwyrks/run-record/coverage";
 import type {
   LadderCell,
   LadderClimber,
@@ -13,8 +13,8 @@ import type {
   LadderProgressRung,
   LadderRungOutcome,
   RungTally,
-} from "@test-cabinet/run-record/ladders";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+} from "@clockwyrks/run-record/ladders";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import type { BackendClient } from "../../../client/clients";
 import {
   sectionReturnTo,

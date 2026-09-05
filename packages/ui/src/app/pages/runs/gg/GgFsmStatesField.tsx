@@ -22,7 +22,7 @@ import {
   type StateDraft,
   type TransitionDraft,
 } from "./ggConfigDraft";
-import type { GgModuleKind } from "@test-cabinet/run-record/gg";
+import type { GgModuleKind } from "@clockwyrks/run-record/gg";
 import runExec from "../RunExec.module.scss";
 import gg from "./GgConfigEditor.module.scss";
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { GgProgramLanguage } from "@test-cabinet/run-record/gg";
+import type { GgProgramLanguage } from "@clockwyrks/run-record/gg";
 import type {
   GgReference,
   GgReferenceApi,
@@ -7,7 +7,7 @@ import type {
   GgReferenceEntry,
   GgReferenceLanguage,
   GgReferenceModule,
-} from "@test-cabinet/run-record/gg-reference";
+} from "@clockwyrks/run-record/gg-reference";
 import { LoadingState } from "../../../components/LoadingState";
 import { FsFileRow, FsFolder, useFsFolders } from "../../runs/gg/GgFsExplorer";
 import { fsIndent } from "../../runs/gg/ggFsTree";

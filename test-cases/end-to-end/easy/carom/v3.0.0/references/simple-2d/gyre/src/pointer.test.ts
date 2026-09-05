@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { createInitialState, type CaromState, type Screen } from "./game";
 import { itemCenter, menuFor, PAUSE_MENU, TITLE_MENU } from "./menus";
 import { resolvePointer } from "./pointer";
-import type { PointerSample } from "@test-cabinet/simple-2d";
+import type { PointerSample } from "@clockwyrks/simple-2d";
 
 /** The center of item `index` on `screen`, where a pointer selects it. */
 function center(screen: Screen, index: number): { x: number; y: number } {

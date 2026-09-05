@@ -956,7 +956,7 @@ async fn case_metadata_inlines_specs_and_description() {
     // A declared runtime package: its UI-only description is looked up from core's
     // registry at snapshot time (never stored), so the static gallery's Inputs tab
     // can show it.
-    m.packages = vec!["@test-cabinet/particle-runtime".to_string()];
+    m.packages = vec!["@clockwyrks/particle-runtime".to_string()];
 
     let (_tmp, store) = empty_store();
     for (key, body) in [("spec/rules.md", "# Rules"), ("spec/build.py", "# build")] {
@@ -1007,7 +1007,7 @@ async fn case_metadata_inlines_specs_and_description() {
     // core's registry at snapshot time.
     assert_eq!(
         parsed["packages"][0]["name"],
-        "@test-cabinet/particle-runtime"
+        "@clockwyrks/particle-runtime"
     );
     assert!(
         parsed["packages"][0]["description"]

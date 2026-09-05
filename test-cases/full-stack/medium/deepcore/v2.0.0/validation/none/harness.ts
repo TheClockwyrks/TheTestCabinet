@@ -14,7 +14,7 @@
 // recorder and the audio probe, bracketing each driven frame around one
 // `advance` of the build's surface, reading pixels and draw calls back out, and
 // writing the evidence a review item declares — every engineless case needs
-// exactly that, and it lives once, in `@test-cabinet/case-harness`, staged beside
+// exactly that, and it lives once, in `@clockwyrks/case-harness`, staged beside
 // this file as `./case-harness/`. What is left here is what is genuinely
 // Deepcore's: the shape of its snapshot, the operations
 // `specs/instrumentation.md` requires, the mine's own geometry, and the scene a

@@ -11,7 +11,7 @@ import type {
   InitApi,
   PointerSample as EnginePointerSample,
   TouchLayout,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import { describe, expect, it } from "vitest";
 
 import { ACTIONS, BINDINGS } from "./constants";

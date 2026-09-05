@@ -22,7 +22,7 @@ import {
 } from "./flow";
 import { CoilState } from "./game";
 import { HOWTO_ITEMS, menuItemRect, menuItems } from "./menus";
-import type { PointerSample } from "@test-cabinet/structured-2d";
+import type { PointerSample } from "@clockwyrks/structured-2d";
 
 function opening(seed = 1): CoilState {
   const state = new CoilState();

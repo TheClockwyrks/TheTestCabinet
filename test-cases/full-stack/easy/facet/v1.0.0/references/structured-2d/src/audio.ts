@@ -34,7 +34,7 @@
 // already in that state, which is the shape engine/audio.md asks a loop to be
 // driven in.
 
-import type { CueSpec, InitApi, WorldAudio } from "@test-cabinet/structured-2d";
+import type { CueSpec, InitApi, WorldAudio } from "@clockwyrks/structured-2d";
 import { CUES, MAX_MULTIPLIER } from "./constants";
 import { LADDER_RUNGS } from "./assets";
 import type { FacetEvents } from "./core";

@@ -1,4 +1,4 @@
-// `@test-cabinet/ui/transport` — the shared HTTP transports the live consoles use.
+// `@clockwyrks/ui/transport` — the shared HTTP transports the live consoles use.
 //
 // Both the web console and the Tauri desktop app talk to the same backend over
 // the same HTTP API (the backend serves the catalog and published data, owns the

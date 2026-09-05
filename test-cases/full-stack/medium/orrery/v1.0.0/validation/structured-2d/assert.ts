@@ -17,7 +17,7 @@
 // line, one `Actual:` line, no file paths and no prose around them.
 //
 // WHY THIS IS A COPY AND `validation/none/assert.ts` IS NOT. The vocabulary is
-// the shared validator harness's (`@test-cabinet/case-harness`), and the
+// the shared validator harness's (`@clockwyrks/case-harness`), and the
 // engineless project re-exports it — but that package is staged only into an
 // engineless project, so an ENGINE project cannot reach it. Orrery's rule is that
 // a suite deciding one review item is the SAME TEXT under all three engines, so

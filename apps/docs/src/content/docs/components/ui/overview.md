@@ -2,7 +2,7 @@
 title: Overview
 ---
 
-The UI library (`@test-cabinet/ui`, in `packages/ui`) is the shared frontend
+The UI library (`@clockwyrks/ui`, in `packages/ui`) is the shared frontend
 code for The Test Cabinet's three GUIs: the [public
 site](/components/site/overview/), the [web console](/components/web/overview/),
 and the [Tauri app](/components/tauri/overview/). It hosts the entire routed
@@ -18,13 +18,13 @@ data comes from and whether they enable run execution.
 
 A host imports only the entries it needs.
 
-| Entry                         | Contents                                                           |
-| ----------------------------- | ------------------------------------------------------------------ |
-| `@test-cabinet/ui`            | Presentational primitives, the rating model, and model-id helpers. |
-| `@test-cabinet/ui/app`        | The full routed gallery application and its data context.          |
-| `@test-cabinet/ui/client`     | The transport-agnostic client interfaces and their React contexts. |
-| `@test-cabinet/ui/transport`  | The HTTP transports the live consoles mount.                       |
-| `@test-cabinet/ui/tokens.css` | The `--tcab-*` theme token defaults.                               |
+| Entry                       | Contents                                                           |
+| --------------------------- | ------------------------------------------------------------------ |
+| `@clockwyrks/ui`            | Presentational primitives, the rating model, and model-id helpers. |
+| `@clockwyrks/ui/app`        | The full routed gallery application and its data context.          |
+| `@clockwyrks/ui/client`     | The transport-agnostic client interfaces and their React contexts. |
+| `@clockwyrks/ui/transport`  | The HTTP transports the live consoles mount.                       |
+| `@clockwyrks/ui/tokens.css` | The `--tcab-*` theme token defaults.                               |
 
 ## The gallery application
 

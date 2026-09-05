@@ -1,4 +1,4 @@
-import { Markdown, Panel } from "@test-cabinet/ui";
+import { Markdown, Panel } from "@clockwyrks/ui";
 import { AboutLayout } from "../../layouts/about/AboutLayout";
 // The Metrics tab (`/about/metrics`): what the benchmark measures and what it
 // deliberately doesn't. Pulled in raw and handed to the shared <Markdown>

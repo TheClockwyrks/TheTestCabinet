@@ -15,7 +15,7 @@
 // so the controller flips it on the world's bus and the mode's tick mirrors the
 // result back for the HUD to read.
 
-import { PlayerController } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
 import { startMusic } from "./audio";
 import { handleAction, handlePointer } from "./flow";
 import { coilState } from "./game";

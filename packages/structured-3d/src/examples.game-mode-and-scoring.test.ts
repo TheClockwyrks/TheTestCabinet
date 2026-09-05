@@ -44,7 +44,7 @@ import type { InstalledContexts } from "./testing/canvas";
  *
  * The example's modules appear below in the page's order, verbatim except for
  * the seams a test environment forces and nothing else: the package specifier
- * `@test-cabinet/structured-3d` becomes this package's own entry point (this
+ * `@clockwyrks/structured-3d` becomes this package's own entry point (this
  * file *is* that package), the canvas `main.ts` finds by `querySelector` is
  * written into the document first, every canvas in that document answers
  * `getContext` through the harness stubs because jsdom has neither a GPU nor a

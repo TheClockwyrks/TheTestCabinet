@@ -30,7 +30,7 @@ the run image's `PATH` (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-s
 `music`) and committed under [`assets/`](assets/) — see the case's `specs/assets.md`.
 At runtime the game only *loads* those committed files; the tools are not invoked by the
 build. The particle bursts (muzzle flash, blood, impact, dust, fire, explosion) play
-live through **`@test-cabinet/particle-runtime`** (vendored under [`vendor/`](vendor/)
+live through **`@clockwyrks/particle-runtime`** (vendored under [`vendor/`](vendor/)
 so a plain `npm ci` resolves it outside the monorepo), and the sounds through the Web
 Audio API.
 
@@ -97,7 +97,7 @@ never a root-absolute URL.
   `items/`, `icons/`), the `settler/` and `raider/` sprite-sheet frames, the `fx/`
   particle systems, and the `audio/` `.wav`s (see [`ASSETS.md`](ASSETS.md)).
 - [`vendor/particle-runtime/`](vendor/) — a vendored, prebuilt copy of
-  `@test-cabinet/particle-runtime` so a plain `npm ci` resolves it outside the monorepo.
+  `@clockwyrks/particle-runtime` so a plain `npm ci` resolves it outside the monorepo.
 - [`scripts/`](scripts/) — the re-runnable asset producers, one per family
   (`gen-sprites.sh`, `gen-animations.sh`, `gen-particles.sh`, `gen-audio.sh`), each
   invoking the on-`PATH` tools.

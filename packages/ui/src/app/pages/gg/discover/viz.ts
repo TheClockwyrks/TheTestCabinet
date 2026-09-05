@@ -45,15 +45,15 @@ import type {
   GgBucket,
   GgDistribution,
   GgGroupKey,
-} from "@test-cabinet/run-record/gg-query";
+} from "@clockwyrks/run-record/gg-query";
 import type {
   BarPoint,
   DistributionGroup,
   StackedBarSegment,
   StackedSeries,
   TimeSeriesPoint,
-} from "@test-cabinet/ui";
-import { CATEGORICAL_COLORS, categoricalColor } from "@test-cabinet/ui";
+} from "@clockwyrks/ui";
+import { CATEGORICAL_COLORS, categoricalColor } from "@clockwyrks/ui";
 import { compareCodePoints } from "../query";
 import { ABSENT, formatAggValue, formatBucketKey, formatTimestamp } from "./cells";
 

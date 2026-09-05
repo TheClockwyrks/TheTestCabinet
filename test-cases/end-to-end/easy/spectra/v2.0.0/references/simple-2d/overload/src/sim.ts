@@ -25,7 +25,7 @@ import type {
   Screen,
   SpectraState,
 } from "./game";
-import type { ParticleSimulator } from "@test-cabinet/particle-runtime";
+import type { ParticleSimulator } from "@clockwyrks/particle-runtime";
 import type { DeepReadonly } from "ts-essentials";
 
 /**

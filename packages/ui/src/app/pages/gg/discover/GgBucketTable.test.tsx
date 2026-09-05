@@ -14,7 +14,7 @@
 // claim is about what an operator sees at the end of the pipeline.
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { GgRunDoc } from "@test-cabinet/run-record/gg-query";
+import type { GgRunDoc } from "@clockwyrks/run-record/gg-query";
 import { compileQuery, evaluate, parseQuery } from "../query";
 import { GgBucketTable } from "./GgBucketTable";
 

@@ -6,7 +6,7 @@ import type {
   CoverageGroupKind,
   ReviewPlanCase,
   ReviewPlanCombo,
-} from "@test-cabinet/run-record/coverage";
+} from "@clockwyrks/run-record/coverage";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";

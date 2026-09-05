@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { CoverageFile, ToolchainCoverage } from "@test-cabinet/run-record";
-import type { CodeFileEntry } from "@test-cabinet/run-record/code-analysis";
+import type { CoverageFile, ToolchainCoverage } from "@clockwyrks/run-record";
+import type { CodeFileEntry } from "@clockwyrks/run-record/code-analysis";
 import {
   coveragePercent,
   formatCoveragePercent,

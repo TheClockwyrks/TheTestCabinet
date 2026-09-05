@@ -7,12 +7,12 @@
 // whatever the yard behind it is doing. The one drawn piece is the legend for
 // the utilization ramp, which is a gradient rather than a readout.
 
-import { DrawComponent } from "@test-cabinet/structured-3d";
+import { DrawComponent } from "@clockwyrks/structured-3d";
 import type {
   DrawApi,
   ShapeComponent,
   TextComponent,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import {
   CREAK_THRESHOLD,
   RUN_SPEEDS,

@@ -9,7 +9,7 @@
 // under test.
 
 import { describe, expect, it } from "vitest";
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import {
   ALERT_TIME,
   DEN_RELEASE_GAP,

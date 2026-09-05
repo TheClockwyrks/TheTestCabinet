@@ -33,7 +33,7 @@
 //     npx vitest run --config validation/vitest.config.ts \
 //     validation/showcase-capture.test.ts
 
-import { ConstantClock } from "@test-cabinet/structured-2d";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { it } from "vitest";
 
 import { STAMPS_PER_LEVEL } from "../src/constants";

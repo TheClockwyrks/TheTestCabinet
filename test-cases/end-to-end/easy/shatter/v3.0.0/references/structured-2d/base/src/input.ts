@@ -14,7 +14,7 @@
 // so either button of a touch pad fires, and `Escape` deliberately drives both
 // `pause` and `back` — the screen decides which of the two applies.
 
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 import { ACTIONS, BINDINGS, LAYOUT } from "./constants";
 
 /**

@@ -18,7 +18,7 @@ import type {
   GgSortKey,
   GgStatsStage,
   GgValue,
-} from "@test-cabinet/run-record/gg-query";
+} from "@clockwyrks/run-record/gg-query";
 import type { FilterNode, LiteralNode, QueryNode } from "./ast";
 import { GG_MAX_GROUP_KEYS } from "./values";
 

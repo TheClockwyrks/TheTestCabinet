@@ -1,7 +1,7 @@
 // Facet — the one drawing surface the game asks for that the engine does not
 // hand it: a scratch canvas for a particle burst.
 //
-// `@test-cabinet/particle-runtime`'s `ParticleCanvasPlayer` composites into a
+// `@clockwyrks/particle-runtime`'s `ParticleCanvasPlayer` composites into a
 // context it owns outright, the size of its system's own field, which
 // `src/effects.ts` then blits over the board. The engine owns the stage canvas
 // and nothing else, so this module is where that second surface comes from —

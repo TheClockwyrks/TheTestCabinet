@@ -38,7 +38,7 @@
 // engine's registered actions are driven at its input seam), and no overlay
 // drawing or toggle (the engine draws the panel and owns the backtick key).
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { Ball, ballOf, spawnBallActor } from "./ball";
 import { CaromMode } from "./carom-mode";
 import {

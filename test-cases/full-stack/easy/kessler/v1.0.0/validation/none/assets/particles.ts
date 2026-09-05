@@ -6,7 +6,7 @@
 // of the three `assets/*-system-produced` points, which are about FILES rather
 // than about a drive. `specs/assets.md` fixes each system's path — `burst`,
 // `spark` and `burnup` under `assets/particles/` — and what accepts it: "Play
-// them through `@test-cabinet/particle-runtime`, an installed dependency
+// them through `@clockwyrks/particle-runtime`, an installed dependency
 // imported by its bare name", where "a player is constructed over a parsed
 // system" and "the package's own types are the authoritative API". So the
 // authority on whether a file IS a particle system is the runtime itself: the
@@ -31,7 +31,7 @@ import type {
   ParticleSimulator,
   ParticleSystem,
   RenderParticle,
-} from "@test-cabinet/particle-runtime";
+} from "@clockwyrks/particle-runtime";
 import type { Harness } from "../harness";
 
 /**
@@ -77,7 +77,7 @@ export interface SystemRead {
  * Read one produced system and hand it to the runtime.
  *
  * The stages are the point's own claims, in order: the file exists, it parses
- * as JSON, and `@test-cabinet/particle-runtime`'s own `ParticleSimulator`
+ * as JSON, and `@clockwyrks/particle-runtime`'s own `ParticleSimulator`
  * constructs over it and steps through one full duration without throwing —
  * which is what "a particle system the runtime accepts" is. Each stage that
  * cannot be passed comes back as the `reason`.
@@ -107,11 +107,11 @@ export async function readSystem(file: string): Promise<SystemRead> {
   let Simulator: typeof ParticleSimulator;
   try {
     ({ ParticleSimulator: Simulator } =
-      await import("@test-cabinet/particle-runtime"));
+      await import("@clockwyrks/particle-runtime"));
   } catch (error) {
     return {
       system: null,
-      reason: `@test-cabinet/particle-runtime could not be imported: ${String(error)}`,
+      reason: `@clockwyrks/particle-runtime could not be imported: ${String(error)}`,
       particles: [],
     };
   }
@@ -204,7 +204,7 @@ export async function showParticleSystem(
           ctx.globalAlpha = 1;
         }
         const caption = document.createElement("div");
-        caption.textContent = `${shown.file} — ${shown.dots.length} particles, simulated by @test-cabinet/particle-runtime`;
+        caption.textContent = `${shown.file} — ${shown.dots.length} particles, simulated by @clockwyrks/particle-runtime`;
         sheet.append(canvas, caption);
         document.body.append(sheet);
       },

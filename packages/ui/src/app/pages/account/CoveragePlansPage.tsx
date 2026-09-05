@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
-import type { CoveragePlanSummary } from "@test-cabinet/run-record/coverage";
+import type { CoveragePlanSummary } from "@clockwyrks/run-record/coverage";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { LoadingState } from "../../components/LoadingState";

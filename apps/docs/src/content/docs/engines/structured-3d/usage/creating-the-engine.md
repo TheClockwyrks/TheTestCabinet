@@ -6,7 +6,7 @@ The engine is an ordinary dependency of the build's workspace, already present
 in its `package.json`. One import brings in the factory.
 
 ```ts
-import { createEngine } from "@test-cabinet/structured-3d";
+import { createEngine } from "@clockwyrks/structured-3d";
 ```
 
 The framework classes, the built-in components, the clock catalogue, the touch
@@ -20,19 +20,19 @@ import {
   PacedClock,
   TOUCH_LAYOUTS,
   vec3,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 import type {
   Engine,
   GameDefinition,
   InitApi,
-} from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
 ```
 
 ## The peer dependency on `three`
 
 `three` is a peer dependency of the engine rather than something it re-exports.
 The build declares `three` in its own `package.json`, and the engine, the build,
-and `@test-cabinet/voxel-runtime/three` all resolve to that one copy, so a
+and `@clockwyrks/voxel-runtime/three` all resolve to that one copy, so a
 texture the build loads, a geometry it constructs, and an object the pipeline
 places are instances of the same classes.
 
@@ -43,7 +43,7 @@ from `THREE.Object3D` and its subclasses.
 
 ```ts
 import * as THREE from "three";
-import { MeshComponent } from "@test-cabinet/structured-3d";
+import { MeshComponent } from "@clockwyrks/structured-3d";
 
 const ring = new MeshComponent({
   geometry: { kind: "custom", geometry: new THREE.TorusGeometry(1, 0.2, 12, 48) },
@@ -88,8 +88,8 @@ level registry, the level to open first, and the game instance class kept across
 every level.
 
 ```ts
-import type { GameDefinition } from "@test-cabinet/structured-3d";
-import { vec3 } from "@test-cabinet/structured-3d";
+import type { GameDefinition } from "@clockwyrks/structured-3d";
+import { vec3 } from "@clockwyrks/structured-3d";
 import { Arcade } from "./instance";
 import { Ball, Paddle, Wall } from "./actors";
 import { MenuMode, MatchMode } from "./modes";
@@ -138,8 +138,8 @@ registers the action bindings, defines the cues, and loads the assets the whole
 game needs.
 
 ```ts
-import { GameInstance } from "@test-cabinet/structured-3d";
-import type { InitApi } from "@test-cabinet/structured-3d";
+import { GameInstance } from "@clockwyrks/structured-3d";
+import type { InitApi } from "@clockwyrks/structured-3d";
 
 export class Arcade extends GameInstance<null> {
   best = 0;
@@ -170,7 +170,7 @@ here.
 instance and opens the start level, and `engine.run` drives frames from there.
 
 ```ts
-import { createEngine } from "@test-cabinet/structured-3d";
+import { createEngine } from "@clockwyrks/structured-3d";
 import { game } from "./game";
 import { HEIGHT, WIDTH } from "./constants";
 

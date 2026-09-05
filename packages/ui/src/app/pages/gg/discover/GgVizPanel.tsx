@@ -24,7 +24,7 @@ import type {
   GgAggColumn,
   GgBucket,
   GgGroupKey,
-} from "@test-cabinet/run-record/gg-query";
+} from "@clockwyrks/run-record/gg-query";
 import {
   ChartWidget,
   MetricTile,
@@ -33,7 +33,7 @@ import {
   stackedBarChart,
   timeSeriesChart,
   type ChartPalette,
-} from "@test-cabinet/ui";
+} from "@clockwyrks/ui";
 import { chooseVisualizations, type GgViz, type GgVizNote } from "./viz";
 import styles from "./GgDiscover.module.scss";
 

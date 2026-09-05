@@ -10,11 +10,11 @@ reference.
 
 ## Entry point
 
-The package `@test-cabinet/structured-2d` has one entry point.
+The package `@clockwyrks/structured-2d` has one entry point.
 
 | Specifier | Provides |
 | --- | --- |
-| `@test-cabinet/structured-2d` | `createEngine`, the framework classes, the built-in components, the clocks, `TOUCH_LAYOUTS`, the viewport functions, `RECORDING_FORMAT`, and every type a game or a validator names. |
+| `@clockwyrks/structured-2d` | `createEngine`, the framework classes, the built-in components, the clocks, `TOUCH_LAYOUTS`, the viewport functions, `RECORDING_FORMAT`, and every type a game or a validator names. |
 
 A game and a validator both import it. A validator constructs the engine over
 the build's own game definition, installs a scripted

@@ -1,5 +1,5 @@
-import { Panel } from "@test-cabinet/ui";
-import type { RunRecord } from "@test-cabinet/run-record";
+import { Panel } from "@clockwyrks/ui";
+import type { RunRecord } from "@clockwyrks/run-record";
 import { LoadingState } from "../../../components/LoadingState";
 import {
   VariantInputsView,

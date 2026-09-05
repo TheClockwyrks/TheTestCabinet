@@ -1,5 +1,5 @@
 # Dependencies — reinstalled with `npm ci`. The engine,
-# `@test-cabinet/simple-2d`, is resolved from the repository's own
+# `@clockwyrks/simple-2d`, is resolved from the repository's own
 # `packages/simple-2d` through a relative `file:` dependency that npm installs
 # as a symlink, so nothing of it is written here.
 node_modules/
@@ -21,7 +21,7 @@ playwright-report/
 *.log
 
 # Scratch that `tcab validate --implementation` writes beside the build.
-.tcab/
+.vendor/
 
 # The case's validator project, staged in by hand to run the suite or a
 # showcase capture against this build (see showcase/capture/README.md).

@@ -93,6 +93,7 @@ run("npx", [
   "--log-level",
   "warn",
   "packages/run-record/src/**/*.ts",
+  "packages/asset-contract/src/**/*.ts",
   "apps/docs/public/schema/**/*.json",
 ]);
 

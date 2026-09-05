@@ -48,12 +48,12 @@
 // on-PATH tools produces each sprite, animation cycle, particle system, and
 // sound, and the exact path each lands at under `assets/`. The engine's asset
 // loader resolves every path under that root; the particle runtime
-// `@test-cabinet/particle-runtime` is already a dependency, and because the
+// `@clockwyrks/particle-runtime` is already a dependency, and because the
 // declarative pipeline draws no particles, a produced `system.json` is played
 // through its canvas binding from a draw component handed the raw context.
 
-import { GameInstance, GameMode } from "@test-cabinet/structured-2d";
-import type { GameDefinition, InitApi } from "@test-cabinet/structured-2d";
+import { GameInstance, GameMode } from "@clockwyrks/structured-2d";
+import type { GameDefinition, InitApi } from "@clockwyrks/structured-2d";
 
 /**
  * The stage background, a CSS color string. `src/main.ts` hands it to the engine

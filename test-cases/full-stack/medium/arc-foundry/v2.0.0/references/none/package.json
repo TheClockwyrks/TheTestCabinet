@@ -14,7 +14,7 @@
     "test": "vitest run --coverage"
   },
   "dependencies": {
-    "@test-cabinet/particle-runtime": "file:vendor/particle-runtime"
+    "@clockwyrks/particle-runtime": "file:vendor/particle-runtime"
   },
   "devDependencies": {
     "@eslint/js": "^9",

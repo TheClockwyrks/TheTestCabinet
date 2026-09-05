@@ -505,7 +505,7 @@ after it.
 `Component`, `RenderComponent`, `MeshComponent`, `ModelComponent`,
 `LightComponent`, `Object3DComponent`, `SpriteComponent`, `ShapeComponent`,
 `TextComponent`, `DrawComponent`, `CameraComponent`, and `ColliderComponent` are
-exported as classes from `@test-cabinet/structured-3d`. `ComponentClass`,
+exported as classes from `@clockwyrks/structured-3d`. `ComponentClass`,
 `RenderSpace`, `MeshGeometry`, `MaterialSpec`, `NodeHandle`, `LightSpec`,
 `Model`, `SpriteOptions`, `Shape2D`, `ShapeOptions`, `TextOptions`, `DrawApi`,
 `ColliderOptions`, `Vec2`, `Vec3`, `Quat`, `Mat4`, and `Rect` are exported as

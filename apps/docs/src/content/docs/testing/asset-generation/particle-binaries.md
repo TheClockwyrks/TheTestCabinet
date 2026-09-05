@@ -253,7 +253,7 @@ nothing.
 ## Runtime consumption
 
 The shared TypeScript package
-[`@test-cabinet/particle-runtime`](/components/particle-runtime/overview/) turns a
+[`@clockwyrks/particle-runtime`](/components/particle-runtime/overview/) turns a
 particle run's `system.json` into a playable effect by simulating it live:
 
 - The pure core runs the simulation from `system.json`, stepping the emitters and

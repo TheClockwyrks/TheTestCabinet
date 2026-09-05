@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { Panel } from "@test-cabinet/ui";
+import { Panel } from "@clockwyrks/ui";
 import { useAuth } from "../../../client/auth";
 import { LoadingState } from "../../components/LoadingState";
 import { useGalleryData } from "../../data/galleryContext";

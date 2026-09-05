@@ -19,7 +19,7 @@ reaches a verdict.
 
 ## Engine-specific by construction
 
-A suite imports `@test-cabinet/structured-2d` by name and drives a
+A suite imports `@clockwyrks/structured-2d` by name and drives a
 [`GameDefinition`](/engines/structured-2d/apis/game-instance/) built against
 this engine's API, so it is written for this engine alone. A case that supports
 more than one engine ships a set of validators for each, and each set is free to

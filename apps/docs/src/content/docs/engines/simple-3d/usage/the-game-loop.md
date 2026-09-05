@@ -10,7 +10,7 @@ each function only the part of itself that function may use.
 
 ```ts
 import * as THREE from "three";
-import type { Game } from "@test-cabinet/simple-3d";
+import type { Game } from "@clockwyrks/simple-3d";
 
 const TURN_RATE = 2.4;       // radians per second
 const THRUST = 6;            // world units per second squared
@@ -108,7 +108,7 @@ The game is bound when the engine is created, and initialization is a separate
 step that resolves to the state.
 
 ```ts
-import { createEngine } from "@test-cabinet/simple-3d";
+import { createEngine } from "@clockwyrks/simple-3d";
 import { game } from "./game";
 
 const engine = createEngine({ canvas, width: 1280, height: 720, game });
@@ -169,7 +169,7 @@ whose fields are all loaded; textures and models are three objects, which go in
 the render cache or, for a model placed once, straight into `api.scene`.
 
 ```ts
-import type { Model } from "@test-cabinet/simple-3d";
+import type { Model } from "@clockwyrks/simple-3d";
 
 interface State {
   readonly icons: { readonly hook: ImageBitmap; readonly load: ImageBitmap };

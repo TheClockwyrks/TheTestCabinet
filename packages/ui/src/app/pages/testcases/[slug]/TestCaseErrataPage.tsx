@@ -1,4 +1,4 @@
-import { Markdown, Panel } from "@test-cabinet/ui";
+import { Markdown, Panel } from "@clockwyrks/ui";
 import type { ErratumSeverity, TestCaseDetail } from "../../../data/testCases";
 import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
 import styles from "./TestCaseErrataPage.module.scss";

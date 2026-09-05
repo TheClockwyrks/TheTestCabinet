@@ -60,7 +60,7 @@
   --ttc-grid: rgba(255, 94, 58, 0.5);
   --ttc-scanline: rgba(0, 0, 0, 0.4);
 
-  // Map the shared `@test-cabinet/ui` token contract (`--tcab-*`) onto this
+  // Map the shared `@clockwyrks/ui` token contract (`--tcab-*`) onto this
   // site's synthwave palette, so the primitives moved into that library render
   // exactly as they did when they lived here. The library ships its own defaults
   // (ui/src/styles/tokens.css); the site overrides them rather than importing

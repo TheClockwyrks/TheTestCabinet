@@ -9,7 +9,7 @@
 
 import { createCanvas } from "@napi-rs/canvas";
 import { describe, expect, it } from "vitest";
-import type { DrawOp, DrawValue, Recording } from "@test-cabinet/structured-2d";
+import type { DrawOp, DrawValue, Recording } from "@clockwyrks/structured-2d";
 import { assets } from "./assets";
 import { CHARGE_IDS, PATH_LENGTH, SPACING } from "./constants";
 import type { PosedCore } from "./debug";

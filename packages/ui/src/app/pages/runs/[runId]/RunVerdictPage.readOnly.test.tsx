@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DebugScriptResult, RunRecord } from "@test-cabinet/run-record";
+import type { DebugScriptResult, RunRecord } from "@clockwyrks/run-record";
 import { RunVerdictPage } from "./RunVerdictPage";
 
 // The read-only Verdict tab as a PUBLIC visitor sees it — the static gallery,

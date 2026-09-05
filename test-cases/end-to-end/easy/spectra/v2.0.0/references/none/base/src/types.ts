@@ -13,7 +13,7 @@
 import type {
   ParticleSimulator,
   ParticleSystem,
-} from "@test-cabinet/particle-runtime";
+} from "@clockwyrks/particle-runtime";
 
 import type { Band, CueName } from "./constants";
 import type { Path } from "./paths";

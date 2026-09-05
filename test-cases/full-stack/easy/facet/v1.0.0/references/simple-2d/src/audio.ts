@@ -35,7 +35,7 @@
 import { CUES, MAX_MULTIPLIER } from "./constants";
 import { LADDER_RUNGS } from "./assets";
 import type { FacetState, Screen } from "./game";
-import type { CueSpec, InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type { CueSpec, InitApi, UpdateApi } from "@clockwyrks/simple-2d";
 import type { FacetEvents } from "./core";
 
 /** The cue one rung of the chain ladder is played under, `1` the lowest. */

@@ -1,6 +1,6 @@
 // Midway — the produced particle systems, played LIVE (specs/assets.md, ASSETS.md §3).
 //
-// Each effect is simulated live through @test-cabinet/particle-runtime's canvas binding —
+// Each effect is simulated live through @clockwyrks/particle-runtime's canvas binding —
 // never a flat flash or baked frames. ONE-SHOTS (fireworks over the park, a janitor's
 // cleanup puff) run once and are pruned; LOOPS (a steam vent over a serving food/drink
 // stall, a sparkle over a running ride) are held by a key while the stall/ride is active
@@ -8,8 +8,8 @@
 // 128x128 field canvas and composited over the park at the event's world position; being
 // simulated, each play varies.
 
-import { ParticleCanvasPlayer } from "@test-cabinet/particle-runtime/canvas";
-import type { ParticleSystem } from "@test-cabinet/particle-runtime";
+import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
+import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { FxKind } from "./types";
 
 const FIELD = 128; // the authored field size of every fx system

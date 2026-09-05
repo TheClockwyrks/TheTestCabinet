@@ -7,7 +7,7 @@ It provides a gameplay framework a game is written inside, engine-owned
 rendering, and the services around both: the frame loop, collision detection,
 input, audio, assets, and diagnostics.
 
-The runtime is the npm package `@test-cabinet/structured-3d`, written in
+The runtime is the npm package `@clockwyrks/structured-3d`, written in
 TypeScript over three.js and imported by a build as an ordinary dependency,
 with `three` as a peer dependency the build declares itself. Its source is
 `packages/structured-3d/`, and the documentation seeded into a run workspace is

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { useGalleryData } from "./galleryContext";
 import type { RunQuery, RunQueryResult } from "./runQuery";
 

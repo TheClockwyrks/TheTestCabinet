@@ -45,7 +45,7 @@ leaves the palette, the type and the layout to the build, so the look lives in
 `src/theme.ts` rather than beside the case-fixed figures in `src/constants.ts`.
 The ship and the three drones are drawn from the sprite art seeded under
 `assets/`, and a destroyed drone pops with the seeded particle system played
-through `@test-cabinet/particle-runtime`.
+through `@clockwyrks/particle-runtime`.
 
 This is a self-contained static web app — plain **TypeScript** inside the engine's
 gameplay framework, drawing to an **HTML5 canvas**, bundled with **Vite**. No
@@ -81,7 +81,7 @@ the engine, not to this game.
 
 ## What the engine owns
 
-`@test-cabinet/structured-2d` is a gameplay framework as much as a runtime, and
+`@clockwyrks/structured-2d` is a gameplay framework as much as a runtime, and
 none of what it owns is written here: the frame loop and its replaceable clock, the
 construction and ticking of the framework objects in a fixed order, the rendering
 pipeline and the camera, the canvas fit (uniform scale, centered letterbox, device
@@ -188,14 +188,14 @@ Then, in this directory:
 npm ci
 ```
 
-The engine, `@test-cabinet/structured-2d`, and the particle runtime,
-`@test-cabinet/particle-runtime`, are relative `file:` dependencies on the
+The engine, `@clockwyrks/structured-2d`, and the particle runtime,
+`@clockwyrks/particle-runtime`, are relative `file:` dependencies on the
 repository's own `packages/`, which npm installs as symlinks, so this project
-builds and tests against their current source. `@test-cabinet/run-record` is
+builds and tests against their current source. `@clockwyrks/run-record` is
 declared even though nothing here imports it: the particle runtime re-exports a
 type from it, so a `file:` install of the runtime would otherwise leave `tsc`
 reaching for a package npm would try to fetch from the registry. A run receives the
-same packages under `.tcab/` instead, so the imports in the sources are the same
+same packages under `.vendor/` instead, so the imports in the sources are the same
 either way.
 
 ## Run in development

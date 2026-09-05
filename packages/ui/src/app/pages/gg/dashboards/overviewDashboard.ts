@@ -12,7 +12,7 @@
 // id in the `gg_dashboard` table, and it cannot be edited in place. Duplicating it into
 // an account's own board is how an operator makes it theirs — the same relationship the
 // built-in gg configurations have to the saved ones.
-import type { GgDashboard } from "@test-cabinet/run-record/gg-query";
+import type { GgDashboard } from "@clockwyrks/run-record/gg-query";
 
 /**
  * The id the built-in board answers to in the URL.

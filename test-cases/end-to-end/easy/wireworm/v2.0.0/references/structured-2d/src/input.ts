@@ -12,7 +12,7 @@
 // system actions every layout carries. Both `a` and `b` are bound to `Space`, so
 // either button of a touch pad fires.
 
-import type { InitApi } from "@test-cabinet/structured-2d";
+import type { InitApi } from "@clockwyrks/structured-2d";
 import { ACTIONS, BINDINGS, LAYOUT } from "./constants";
 
 /**

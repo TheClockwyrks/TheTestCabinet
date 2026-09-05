@@ -10,7 +10,7 @@
  * and the recording the recorder writes is read by a player that never imports
  * the engine. Keeping the declarations in a module with no *value* imports
  * means the entry points cannot drift apart, and that
- * `@test-cabinet/structured-3d` can be consumed for its types alone without
+ * `@clockwyrks/structured-3d` can be consumed for its types alone without
  * pulling in the DOM-bound engine.
  *
  * Everything declared here is free of the framework classes — no `Actor`, no
@@ -19,7 +19,7 @@
  * `three`, which supplies the objects the 3D surface is written in terms of: a
  * texture a material samples, a geometry a mesh is built from, and the node
  * tree a loaded model carries. `three` is a peer dependency the build declares
- * itself, so the engine, the build, and `@test-cabinet/voxel-runtime/three`
+ * itself, so the engine, the build, and `@clockwyrks/voxel-runtime/three`
  * share one instance, and the engine re-exports nothing from it.
  *
  * Everything here mirrors the API pages under

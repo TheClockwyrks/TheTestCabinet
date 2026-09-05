@@ -32,7 +32,7 @@ import type { InstalledContexts } from "./testing/canvas";
  * The documentation's "Pawns and Controllers" example, transcribed and run.
  *
  * The sections below are the example's own modules, verbatim except for the
- * import paths — the example imports `@test-cabinet/structured-3d`, which from
+ * import paths — the example imports `@clockwyrks/structured-3d`, which from
  * inside the package is `./index` — and for their order: a single file has to
  * declare a class before the module-level `duel` that names it, so `game.ts`
  * follows the actors, the controllers, and the mode rather than preceding them

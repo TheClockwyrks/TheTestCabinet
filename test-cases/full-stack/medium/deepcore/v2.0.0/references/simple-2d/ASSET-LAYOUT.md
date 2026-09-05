@@ -98,7 +98,7 @@ accumulated time rather than the wall clock, and mirrored to face west.
 
 ## Particle VFX — `scripts/gen-fx.sh` (`particle-2d` → `system.json`)
 
-Simulated live through `@test-cabinet/particle-runtime`'s `ParticleSimulator` and drawn by
+Simulated live through `@clockwyrks/particle-runtime`'s `ParticleSimulator` and drawn by
 `src/effects.ts` straight into the mine's own transform, so a burst sits at its event's
 world position and scrolls with the cell it happened at. The world footprint per kind is
 set in `src/effects.ts` (`FOOTPRINT`), scaled to the 80-unit tile.

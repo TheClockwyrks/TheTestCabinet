@@ -88,7 +88,7 @@ key belongs to the engine, not to this game.
 
 ## What the engine owns
 
-`@test-cabinet/simple-2d` supplies everything that is the same in every browser
+`@clockwyrks/simple-2d` supplies everything that is the same in every browser
 game, and none of it is written here: the frame loop and its delta time in
 seconds, the state held by value and handed out `DeepReadonly`, the canvas fit
 (uniform scale, centered letterbox, device pixel ratio), named keyboard actions
@@ -153,7 +153,7 @@ arrive degrades rather than throwing: its lookup answers `null`, the renderer
 falls back for it, and the game stays playable.
 
 The particle systems are **simulated live** through
-`@test-cabinet/particle-runtime`'s `ParticleCanvasPlayer`, so they vary from play
+`@clockwyrks/particle-runtime`'s `ParticleCanvasPlayer`, so they vary from play
 to play. Three of the four are one-shots thrown at a cell; the fourth, the **cut
 aura**, loops, and one player is held for every `brilliant`, `star`, and `prism`
 standing on the board, taken up and given back as cuts arrive and clear, so a cut
@@ -241,11 +241,11 @@ Then, in this directory:
 npm ci
 ```
 
-The engine (`@test-cabinet/simple-2d`) and the particle runtime
-(`@test-cabinet/particle-runtime`) are relative `file:` dependencies on the
+The engine (`@clockwyrks/simple-2d`) and the particle runtime
+(`@clockwyrks/particle-runtime`) are relative `file:` dependencies on the
 repository's `packages/`, which npm installs as symlinks, so this project builds
 and tests against their current source. A run receives the same packages under
-`.tcab/` instead, so the imports in the sources are the same either way.
+`.vendor/` instead, so the imports in the sources are the same either way.
 
 ## Run in development
 

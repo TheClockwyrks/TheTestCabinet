@@ -317,6 +317,6 @@ while the recorder is armed discards the capture and disarms the recorder.
 
 ## Exports
 
-`createEngine` is exported as a function from `@test-cabinet/simple-3d`.
+`createEngine` is exported as a function from `@clockwyrks/simple-3d`.
 `EngineOptions`, `SurfaceMetrics`, `Engine`, `RunOptions`, `SceneCamera`,
 `Transition`, and `DeepReadonly` are exported as types.

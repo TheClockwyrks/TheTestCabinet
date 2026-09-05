@@ -1,4 +1,4 @@
-import { MetricTile } from "@test-cabinet/ui";
+import { MetricTile } from "@clockwyrks/ui";
 import {
   formatRunTime,
   formatStageDuration,

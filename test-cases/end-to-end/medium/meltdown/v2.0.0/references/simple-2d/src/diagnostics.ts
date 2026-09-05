@@ -13,7 +13,7 @@ import { routesOf } from "./routes";
 import { tileAt } from "./geometry";
 import { waveCountOf } from "./modes";
 import { redlineOf } from "./stats";
-import type { InitApi } from "@test-cabinet/simple-2d";
+import type { InitApi } from "@clockwyrks/simple-2d";
 import type { MeltdownState } from "./game";
 
 export function registerDiagnostics(api: InitApi<MeltdownState>): void {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds and tests the Tauri desktop app — BOTH of its halves: the React UI
-# (`apps/desktop`, which consumes `@test-cabinet/ui` from source) and the Rust
+# (`apps/desktop`, which consumes `@clockwyrks/ui` from source) and the Rust
 # shell (`crates/desktop`).
 #
 # WHY THIS EXISTS. The desktop app used to be validated nowhere except the
@@ -16,8 +16,8 @@
 # single documented gap — see scripts/ci/README.md.
 #
 # WHY THE npm PACKAGES ARE BUILT FIRST. The desktop UI reaches
-# `@test-cabinet/run-record`, `@test-cabinet/run-stats`, and the two runtimes
-# through `@test-cabinet/ui`, and each of those publishes its entry points from a
+# `@clockwyrks/run-record`, `@clockwyrks/run-stats`, and the two runtimes
+# through `@clockwyrks/ui`, and each of those publishes its entry points from a
 # built `dist/`. On a clean checkout (which is what CI is) their imports resolve
 # to nothing and the UI's typecheck collapses into a hundred cascading errors.
 # The list of packages and the order to build them in is the root
@@ -45,8 +45,8 @@ npm ci
 log "build the workspace runtime packages the desktop UI imports"
 npm run build:packages
 
-log "build @test-cabinet/desktop (tsc -b && vite build)"
-npm run build -w @test-cabinet/desktop
+log "build @clockwyrks/desktop (tsc -b && vite build)"
+npm run build -w @clockwyrks/desktop
 
 # The Rust shell. `rust-lint.sh` and `rust-test.sh` both pass
 # `--exclude test-cabinet-desktop` so their runners need no GUI system libraries;

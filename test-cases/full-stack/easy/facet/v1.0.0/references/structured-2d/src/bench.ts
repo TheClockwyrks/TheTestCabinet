@@ -23,8 +23,8 @@
 // and `FacetMode.tick` reaches it through `world.find(Bench)` to hand it what
 // the frame's transitions threw and to bring its auras level with the board.
 
-import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
-import type { DrawApi } from "@test-cabinet/structured-2d";
+import { Actor, DrawComponent } from "@clockwyrks/structured-2d";
+import type { DrawApi } from "@clockwyrks/structured-2d";
 import { assets } from "./assets";
 import { domScratch, Presentation } from "./effects";
 import { facetState } from "./game";

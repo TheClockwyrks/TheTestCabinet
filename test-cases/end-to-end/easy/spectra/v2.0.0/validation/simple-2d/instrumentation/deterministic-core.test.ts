@@ -57,7 +57,7 @@
 // `swarm/dive-bends-toward-player`, and not the contact rule, which is
 // `bands/match-destroys`.
 
-import { ConstantClock } from "@test-cabinet/simple-2d";
+import { ConstantClock } from "@clockwyrks/simple-2d";
 import { afterEach, it } from "vitest";
 import { FLUX_SHIMMER, fluxHold, fluxWindow } from "../constants";
 import {

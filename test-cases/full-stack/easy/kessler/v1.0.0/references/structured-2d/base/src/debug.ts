@@ -32,7 +32,7 @@ import { kesslerState, type KesslerState } from "./state";
 import { normalizeDeg, pointAt, polarOf } from "./polar";
 import { launchParkedBall } from "./sim";
 import { spanOf, piercingNow } from "./session";
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 
 /** The snapshot `specs/instrumentation.md` fixes, as a plain object. */
 export interface KesslerSnapshot {

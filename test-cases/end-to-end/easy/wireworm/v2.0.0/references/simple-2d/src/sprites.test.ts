@@ -15,7 +15,7 @@ import {
   ConstantClock,
   createEngine,
   type SurfaceMetrics,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { LAYOUT, STAGE_H, STAGE_W, tileCX, tileCY } from "./constants";
 import {

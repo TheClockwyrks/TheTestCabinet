@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { GgSavedAgent } from "@test-cabinet/run-record/gg";
+import type { GgSavedAgent } from "@clockwyrks/run-record/gg";
 import { useAuth } from "../../../../client/auth";
 import { useOptionalBackend } from "../../../../client/context";
 

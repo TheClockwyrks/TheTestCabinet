@@ -27,8 +27,8 @@ import type {
   CoverageFile,
   CoverageMetric,
   ToolchainCoverage,
-} from "@test-cabinet/run-record";
-import type { CodeFileEntry } from "@test-cabinet/run-record/code-analysis";
+} from "@clockwyrks/run-record";
+import type { CodeFileEntry } from "@clockwyrks/run-record/code-analysis";
 
 /** One measured quantity: how many there are, and how many the tests reached. The
  * structural shape both a record `CoverageMetric` and a rolled-up directory total have,

@@ -18,7 +18,7 @@
 // key arrives, then the tick it steers. The controller holds nothing
 // authoritative of its own.
 
-import { PlayerController } from "@test-cabinet/structured-2d";
+import { PlayerController } from "@clockwyrks/structured-2d";
 import type { CueName } from "./constants";
 import { handleAction } from "./flow";
 import { heldMovement, pointerFrame, pressedActions } from "./input";

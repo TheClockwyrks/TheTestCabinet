@@ -15,7 +15,7 @@
 // from. What the specification asks is which things the frame put on screen and
 // where, and a reader counting entries is counting things.
 
-import type { PartMesh } from "@test-cabinet/voxel-runtime";
+import type { PartMesh } from "@clockwyrks/voxel-runtime";
 import type { ModelName } from "./assets";
 import { VOXELS_PER_UNIT } from "./constants";
 import { classDimensions, type Vec3 } from "./sim";

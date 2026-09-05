@@ -10,7 +10,7 @@
 // has decoded. A hall whose sound did not arrive should still play, so a name
 // that is not available is simply not played.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { World } from "@clockwyrks/structured-2d";
 import { CUES } from "./constants";
 import type { CueName } from "./constants";
 import { cueAvailable } from "./assets";

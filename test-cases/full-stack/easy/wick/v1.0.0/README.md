@@ -145,7 +145,7 @@ failure cap. A reviewer rates the run's aesthetics and may override a verdict.
 review item at `<category>/<id>.test.ts`, and every item on the checklist names
 that path in its `validation` key. The `none` suites serve `dist/` and drive the
 built site in Chromium through `window.__wick`, over the shared engineless kit
-in `@test-cabinet/case-harness`; the two engine projects run in process against
+in `@clockwyrks/case-harness`; the two engine projects run in process against
 the vendored engine, step a scripted clock frame by frame, and reach the
 surface through `engine.debug`. The three run the same scenarios and differ only
 in how they reach the build. Every threshold traces to a figure or rule in the

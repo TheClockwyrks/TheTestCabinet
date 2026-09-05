@@ -66,7 +66,7 @@ carries a worked example of driving it that way.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
   and `.gitignore`.
-- **`.tcab/`** — the vendored engine.
+- **`.vendor/`** — the vendored engine.
 - **`engine/`** — the engine's own documentation.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the

@@ -1,11 +1,11 @@
 // assets/runtime-import — finding the particle runtime's canvas binding in the
 // build's own source.
 //
-// specs/assets.md: "Play them through `@test-cabinet/particle-runtime`, an
+// specs/assets.md: "Play them through `@clockwyrks/particle-runtime`, an
 // installed dependency imported by its bare name, using its `./canvas`
 // binding". The import is a fact about the build's source, so it is read
 // there: every source module the build wrote is scanned for the bare
-// specifier `@test-cabinet/particle-runtime/canvas`, in any of the forms an
+// specifier `@clockwyrks/particle-runtime/canvas`, in any of the forms an
 // import takes (static, dynamic, require). The build's own test files do not
 // count — a binding only a test imports plays nothing.
 
@@ -14,7 +14,7 @@ import { join, relative } from "node:path";
 import { WORKSPACE } from "./media-out";
 
 /** The bare specifier of the runtime's 2D-canvas binding. */
-export const CANVAS_BINDING = "@test-cabinet/particle-runtime/canvas";
+export const CANVAS_BINDING = "@clockwyrks/particle-runtime/canvas";
 
 /** Directories that hold no source the shipped game is built from. */
 const SKIPPED = new Set([

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Spinner } from "@test-cabinet/ui";
+import { Spinner } from "@clockwyrks/ui";
 import type { ValidationMedia } from "../../../data/galleryContext";
 import {
   ReplayCanvas,

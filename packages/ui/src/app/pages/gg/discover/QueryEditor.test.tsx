@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   GgFieldCatalog,
   GgInterval,
-} from "@test-cabinet/run-record/gg-query";
+} from "@clockwyrks/run-record/gg-query";
 import { parseQuery } from "../query";
 import { QueryEditor } from "./QueryEditor";
 

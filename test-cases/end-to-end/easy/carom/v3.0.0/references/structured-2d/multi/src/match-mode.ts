@@ -30,12 +30,12 @@
 // lands on the frame the advanced ball is past a goal edge (specs/balls.md) —
 // parking that one ball for its own respawn while the others carry on.
 
-import { GameMode, PlayerController } from "@test-cabinet/structured-2d";
+import { GameMode, PlayerController } from "@clockwyrks/structured-2d";
 import type {
   Controller,
   InputReader,
   Transform,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { aiVelocity, threatBall } from "./ai";
 import type { Ball } from "./ball";
 import {

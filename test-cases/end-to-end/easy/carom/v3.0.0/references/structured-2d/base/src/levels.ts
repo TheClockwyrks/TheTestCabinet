@@ -18,7 +18,7 @@
 // the entities `clearWorld`, `spawnBall` and `spawnObstacle` add and remove, so
 // the level cannot be the thing that decides they are there.
 
-import type { LevelDefinition } from "@test-cabinet/structured-2d";
+import type { LevelDefinition } from "@clockwyrks/structured-2d";
 import { MatchLevelMode, TitleLevelMode } from "./carom-mode";
 import { Hud } from "./hud";
 import { Net } from "./scenery";

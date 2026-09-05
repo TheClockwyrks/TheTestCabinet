@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import type { GgModuleKind } from "@test-cabinet/run-record/gg";
+import type { GgModuleKind } from "@clockwyrks/run-record/gg";
 import type { AgentEntry } from "./ggAgentEntries";
 
 // A tiny navigation channel from the run-wide panels into the explorers that read one

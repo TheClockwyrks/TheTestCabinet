@@ -11,7 +11,7 @@
 // contents.
 
 import type { ReactNode } from "react";
-import type { GgContextSource } from "@test-cabinet/run-record/gg";
+import type { GgContextSource } from "@clockwyrks/run-record/gg";
 import panels from "./GgPanels.module.scss";
 import type { PooledMessage, PromptTurn } from "./useGgRunState";
 import { shortTokens } from "./useGgRunState";

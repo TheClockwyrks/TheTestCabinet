@@ -135,4 +135,4 @@ While idle the recorder costs nothing per frame.
 ## Exports
 
 `Recording` and `RecordedFrame` are exported as types from
-`@test-cabinet/simple-3d`.
+`@clockwyrks/simple-3d`.

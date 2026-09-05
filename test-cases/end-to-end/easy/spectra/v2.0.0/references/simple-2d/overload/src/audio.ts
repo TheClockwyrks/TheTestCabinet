@@ -18,7 +18,7 @@
 // stage, a small tick for a menu, and a hard buzzing crack for an overload.
 
 import { CUES, type CueName } from "./constants";
-import type { CueSpec, InitApi } from "@test-cabinet/simple-2d";
+import type { CueSpec, InitApi } from "@clockwyrks/simple-2d";
 
 export const CUE_SPECS: Readonly<Record<CueName, CueSpec>> = {
   [CUES.fire]: {

@@ -22,12 +22,12 @@
 // or a closure, and every other module is either arithmetic over these fields or
 // a system that writes them through the paths play runs on.
 
-import { GameInstance, GameMode, GameState } from "@test-cabinet/structured-2d";
+import { GameInstance, GameMode, GameState } from "@clockwyrks/structured-2d";
 import type {
   GameDefinition,
   InitApi,
   World,
-} from "@test-cabinet/structured-2d";
+} from "@clockwyrks/structured-2d";
 import { defineCues, noCues, playCues } from "./audio";
 import {
   DEFAULT_SEED,

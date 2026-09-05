@@ -11,7 +11,7 @@
 // The surface is read off `engine.debug`, never built here, so these checks hold
 // the same seam a caller outside the build holds.
 
-import { SpriteComponent } from "@test-cabinet/structured-2d";
+import { SpriteComponent } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ACTIONS,

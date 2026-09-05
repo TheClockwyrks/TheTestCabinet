@@ -82,7 +82,7 @@ canvas's top-left corner, and a suite that pins the surface to the stage's own
 size at a ratio of `1` dispatches logical coordinates directly.
 
 ```ts
-import type { Vec2 } from "@test-cabinet/simple-3d";
+import type { Vec2 } from "@clockwyrks/simple-3d";
 
 function pointerEvent(
   type: "pointerdown" | "pointermove" | "pointerup",
@@ -162,7 +162,7 @@ for a cue played without one, so a claim that a sound comes from the hook
 rather than from nowhere reads the payload.
 
 ```ts
-import type { Vec3 } from "@test-cabinet/simple-3d";
+import type { Vec3 } from "@clockwyrks/simple-3d";
 
 const played: { cue: string; at: Vec3 | null }[] = [];
 const off = h.engine.events.on("cue:played", ({ cue, at }) =>

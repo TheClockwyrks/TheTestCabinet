@@ -1,4 +1,4 @@
-import type { RunRecord, RunState } from "@test-cabinet/run-record";
+import type { RunRecord, RunState } from "@clockwyrks/run-record";
 
 // How a run's terminal state reads in the UI. The Rust contract
 // (`crates/core/src/run_record.rs`) is the source of truth for the states

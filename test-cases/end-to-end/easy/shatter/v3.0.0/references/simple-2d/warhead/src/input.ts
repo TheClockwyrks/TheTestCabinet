@@ -27,7 +27,7 @@ import type {
   InitApi,
   PointerSample,
   UpdateApi,
-} from "@test-cabinet/simple-2d";
+} from "@clockwyrks/simple-2d";
 
 /** Everything a frame's input amounts to, resolved once per update. */
 export interface FrameInput {

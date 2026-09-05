@@ -53,8 +53,8 @@ staged into the same host package store as the
 [shippable packages](../containers/README.md#the-shippable-test-cabinet-packages)
 by [`scripts/stage-tcab-packages.mjs`](../scripts/stage-tcab-packages.mjs).
 
-At seed time the core copies the selected engine and its `@test-cabinet` closure
-out of that store into `.tcab/engine/` inside the run repository, copies the
+At seed time the core copies the selected engine and its `@clockwyrks` closure
+out of that store into `.vendor/engine/` inside the run repository, copies the
 manifest's `docs` directory to `engine/`, and writes the dependency into the
 seeded workspace's `package.json` as a relative `file:` spec. The build imports
 the engine as an ordinary installed dependency, and the relative path resolves

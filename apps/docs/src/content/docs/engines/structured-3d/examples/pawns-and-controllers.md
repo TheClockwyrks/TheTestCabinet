@@ -9,7 +9,7 @@ same class, and the side that differs is which controller holds the pawn.
 ## src/constants.ts
 
 ```ts
-import type { ActionBinding } from "@test-cabinet/structured-3d";
+import type { ActionBinding } from "@clockwyrks/structured-3d";
 
 export const WIDTH = 640;
 export const HEIGHT = 360;
@@ -52,7 +52,7 @@ alone is logical.
 ## src/main.ts
 
 ```ts
-import { createEngine } from "@test-cabinet/structured-3d";
+import { createEngine } from "@clockwyrks/structured-3d";
 import { HEIGHT, WIDTH } from "./constants";
 import { duel } from "./game";
 
@@ -78,8 +78,8 @@ in that layout's vocabulary is tagged with it as the instance registers it.
 ## src/game.ts
 
 ```ts
-import { GameInstance } from "@test-cabinet/structured-3d";
-import type { GameDefinition, InitApi } from "@test-cabinet/structured-3d";
+import { GameInstance } from "@clockwyrks/structured-3d";
+import type { GameDefinition, InitApi } from "@clockwyrks/structured-3d";
 import { BINDINGS, LEVEL } from "./constants";
 import { Lamp } from "./actors/lamp";
 import { DuelMode } from "./levels/duel-mode";
@@ -107,7 +107,7 @@ paddles as it adds its players.
 ## src/actors/lamp.ts
 
 ```ts
-import { Actor, LightComponent, quatFromEuler } from "@test-cabinet/structured-3d";
+import { Actor, LightComponent, quatFromEuler } from "@clockwyrks/structured-3d";
 
 export class Lamp extends Actor {
   constructor() {
@@ -126,8 +126,8 @@ export class Lamp extends Actor {
 ## src/actors/paddle.ts
 
 ```ts
-import { MeshComponent, Pawn, PlayerController, vec3 } from "@test-cabinet/structured-3d";
-import type { Controller } from "@test-cabinet/structured-3d";
+import { MeshComponent, Pawn, PlayerController, vec3 } from "@clockwyrks/structured-3d";
+import type { Controller } from "@clockwyrks/structured-3d";
 import {
   COURT_HALF_HEIGHT,
   PADDLE_DEPTH,
@@ -188,7 +188,7 @@ driving. `possessedBy` is where the pawn learns which side it is on.
 ## src/controllers/paddle-player.ts
 
 ```ts
-import { PlayerController } from "@test-cabinet/structured-3d";
+import { PlayerController } from "@clockwyrks/structured-3d";
 import { Paddle } from "../actors/paddle";
 import { ACTIONS } from "../constants";
 
@@ -216,7 +216,7 @@ respawns the paddle at the mode's spawn point and possesses it.
 ## src/controllers/paddle-ai.ts
 
 ```ts
-import { AIController } from "@test-cabinet/structured-3d";
+import { AIController } from "@clockwyrks/structured-3d";
 import { Paddle } from "../actors/paddle";
 import { DEAD_ZONE, TAGS } from "../constants";
 
@@ -247,8 +247,8 @@ import {
   QUAT_IDENTITY,
   VEC3_ONE,
   vec3,
-} from "@test-cabinet/structured-3d";
-import type { Controller, Transform } from "@test-cabinet/structured-3d";
+} from "@clockwyrks/structured-3d";
+import type { Controller, Transform } from "@clockwyrks/structured-3d";
 import { Paddle } from "../actors/paddle";
 import { COURT_HALF_WIDTH } from "../constants";
 import { PaddleAI } from "../controllers/paddle-ai";

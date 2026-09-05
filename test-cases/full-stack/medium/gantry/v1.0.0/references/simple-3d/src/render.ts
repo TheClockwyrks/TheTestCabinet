@@ -12,7 +12,7 @@
 // its vertical field of view, both from `src/project.ts`, which is the same
 // lens `pick` measures through, so what is picked is what is drawn.
 
-import type { RenderApi } from "@test-cabinet/simple-3d";
+import type { RenderApi } from "@clockwyrks/simple-3d";
 import * as THREE from "three";
 import { thaw, type ReadonlyPoint } from "./convert";
 import { applyClick } from "./editor";

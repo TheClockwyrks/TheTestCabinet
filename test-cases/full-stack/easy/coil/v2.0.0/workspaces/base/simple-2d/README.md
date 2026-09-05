@@ -70,7 +70,7 @@ complete worked example of testing a game this way.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
   and `.gitignore`.
-- **`.tcab/`** — the vendored engine.
+- **`.vendor/`** — the vendored engine.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the
 `package-lock.json` — the build is installed with `npm ci`. Leave the existing

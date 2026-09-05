@@ -8,7 +8,7 @@ bundled with **Vite** (`base: "./"`), no backend, and every sprite / animation /
 particle system / sound **produced during the build** with the six on-`PATH` tools
 and committed under `assets/` (see [`ASSETS.md`](ASSETS.md), derived from
 `specs/assets.md`). The runtime only *loads* those files; the particle overlays play
-live through **`@test-cabinet/particle-runtime`** (vendored under `vendor/` so a plain
+live through **`@clockwyrks/particle-runtime`** (vendored under `vendor/` so a plain
 `npm ci` resolves it outside the monorepo).
 
 Read the eight system specs plus `specs/assets.md` and `specs/proof.md` first; this
@@ -61,7 +61,7 @@ colony against its own consumption.
   `tsc --noEmit && vite build`. Output is a self-contained static site with `index.html`
   at the root of `dist/`, correct under any base path (per-run sub-path safe).
 - **Install:** `npm ci` (a committed `package-lock.json` is required). `dependencies`:
-  `@test-cabinet/particle-runtime` via `file:vendor/particle-runtime`. `devDependencies`:
+  `@clockwyrks/particle-runtime` via `file:vendor/particle-runtime`. `devDependencies`:
   `playwright`, `typescript`, `vite`.
 - **Stage fit:** `main.ts` letterboxes the fixed `1280×720` stage into the window,
   centered, correct on load before any input and at any DPR (mirror valence `resize()` +
@@ -212,7 +212,7 @@ sim → assets/audio/particles → render/input/menus/mode → main`.
 | `sim.ts` | The **`Game` class** — the spine. Owns `world`, `delvers`, `stocks`, `jobs`, gas/power state, `state`/`speed`/`paused`, `cycle`/`cycleClock`, `score`, selection + active `tool`/`buildKind`, and the drained event queues. `fixedStep(dt)` order: **gas → power → economy (refine/grow) → delvers (needs, jobs, movement, actions) → suffocation/starvation → cycle clock → loss check → milestones**. Tools: `markDig`/`dragDig`, `placeBuild`, `cancelAt`, `cyclePriority`. Speed/pause, `startColony(mode)`, `restart()`, dev hooks for the proof script. | `Game`, `Game.fixedStep`, tool + control methods, `fxQueue`/`sndQueue`/`milestones` |
 | `assets.ts` | Load the **produced** files via Vite import globs (page-relative under any base). Sprites (`../assets/**/*.png`), fx systems (`../assets/fx/*.system.json`), audio (`../assets/audio/*.wav`). Copies valence's loader shape: `sprite(name)`, delver frame arrays, `fx`, `audioUrl`. | `loadAssets()`, `Assets` (`sprite`, `delver: Record<Anim, HTMLImageElement[]>`, `fx`, `audioUrl`) |
 | `audio.ts` | Web Audio playback — copy valence `audio.ts` structure: resume on first gesture, decode clips, `play(cue)` for dig/build/alarm, loop the **machine hum** and the **music bed**, `toggleMute()`. No autostart before a gesture. | `Audio` |
-| `particles.ts` | Plays the produced particle systems through `@test-cabinet/particle-runtime`'s canvas binding. Two parts: (a) **`GasOverlay`** — tiles the `oxygen_haze` and `co2_plume` systems over the visible open tiles, spawning/scaling each by that tile's concentration (dense haze in breathable rooms, thick plume in low CO2 tunnels), driven from `world` each frame; (b) **`Bursts`** — one-shot `dig_dust` at a mined tile and looping `machine_steam` at each running machine's vent (mirror valence `particles.ts`). | `GasOverlay` (update/draw from world+camera), `Bursts` (spawn/update/draw) |
+| `particles.ts` | Plays the produced particle systems through `@clockwyrks/particle-runtime`'s canvas binding. Two parts: (a) **`GasOverlay`** — tiles the `oxygen_haze` and `co2_plume` systems over the visible open tiles, spawning/scaling each by that tile's concentration (dense haze in breathable rooms, thick plume in low CO2 tunnels), driven from `world` each frame; (b) **`Bursts`** — one-shot `dig_dust` at a mined tile and looping `machine_steam` at each running machine's vent (mirror valence `particles.ts`). | `GasOverlay` (update/draw from world+camera), `Bursts` (spawn/update/draw) |
 | `render.ts` | **All drawing**, in the palette: the camera'd tile world (produced tile sprites, flush tiling), dig designations / build ghosts / hovered-tile cursor / priority marks, machines (produced sprites + glow when running), the gas overlay composite, delvers from the **produced sheets** (pick the `Anim` for the `DelverAct`, advance frames on a timer, mirror by `facing`), the full **HUD dashboard** (top vitals strip + bottom roster & palette, §6), milestone toasts, and every menu/state screen. Returns the frame's `Clickable[]`. | `render()`, `setRenderTime`, `setMenuIndex`, `setMuted` |
 | `input.ts` | Mouse + keyboard capture; pointer→logical mapping via the live fit transform; drag state for the **dig rectangle** and **camera pan**; **wheel zoom**; optional **edge-scroll**. Copy valence `input.ts` and add drag-rect + wheel. | `Input` (`attach`, `clicks`, `keys`, `drag`, `wheel`, `pointerLogical`, `setViewport`, `drain`) |
 | `menus.ts` | The item list per menu state (title/howto/paused/gameover), single source for renderer + keyboard nav. | `menuItems(state, game)`, `MenuItem` |

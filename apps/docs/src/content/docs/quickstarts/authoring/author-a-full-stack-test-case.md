@@ -60,8 +60,8 @@ for everything shared, with these differences.
    splits its domains into `simulation` for the code and `presentation` for the
    produced assets; mirror that split.
 6. When the game plays a produced particle `system.json`, declare
-   `packages = ["@test-cabinet/particle-runtime"]`, and add
-   `"@test-cabinet/voxel-runtime"` when it draws a produced voxel model. Set the
+   `packages = ["@clockwyrks/particle-runtime"]`, and add
+   `"@clockwyrks/voxel-runtime"` when it draws a produced voxel model. Set the
    case's `init` command to `npm install` so the injected `file:` dependencies
    resolve.
 7. Keep the asset-quality wording out of `prompt.hbs`. The harness prepends the

@@ -18,7 +18,7 @@
 // build's rule rather than by rounding.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ConstantClock } from "@test-cabinet/simple-2d";
+import { ConstantClock } from "@clockwyrks/simple-2d";
 import { assertDeepEqual, assertEqual } from "../assert";
 import { TICK_SECONDS } from "../constants";
 import {

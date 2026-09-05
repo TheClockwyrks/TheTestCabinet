@@ -73,10 +73,10 @@ at its pose, waiting, hanging, or placed.
 ## Consuming a model
 
 {{#if (eq engine.slug "none")}}
-`@test-cabinet/voxel-runtime` is already a dependency of the project; import
+`@clockwyrks/voxel-runtime` is already a dependency of the project; import
 it like any other. Decode each committed `.glb` with its `parseGlb`, which
 returns the mesh as plain typed arrays with per-vertex colors, and render it
-through the `three` binding, `@test-cabinet/voxel-runtime/three`, whose
+through the `three` binding, `@clockwyrks/voxel-runtime/three`, whose
 `buildPartGeometry` wraps the mesh into a `BufferGeometry` for the scene. The
 package's own types are the authoritative API. `three` is the project's, so
 the runtime shares the build's single instance.

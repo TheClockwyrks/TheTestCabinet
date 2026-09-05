@@ -21,7 +21,7 @@ defaults are specified in the [audio
 API](/engines/structured-3d/apis/audio/).
 
 ```ts
-import { GameInstance, type InitApi } from "@test-cabinet/structured-3d";
+import { GameInstance, type InitApi } from "@clockwyrks/structured-3d";
 
 export class ArenaGame extends GameInstance<null> {
   override async initialize(api: InitApi): Promise<null> {
@@ -61,7 +61,7 @@ it. Hold them in a module the actors that need them import.
 
 ```ts
 // assets.ts
-import type { LoadApi, Model } from "@test-cabinet/structured-3d";
+import type { LoadApi, Model } from "@clockwyrks/structured-3d";
 import type * as THREE from "three";
 
 let hull: THREE.Texture | null = null;
@@ -90,8 +90,8 @@ use them.
 
 ```ts
 // levels.ts
-import type { LevelDefinition, LoadApi } from "@test-cabinet/structured-3d";
-import { vec3 } from "@test-cabinet/structured-3d";
+import type { LevelDefinition, LoadApi } from "@clockwyrks/structured-3d";
+import { vec3 } from "@clockwyrks/structured-3d";
 import { Asteroid, Walker } from "./actors";
 import { loadArena } from "./assets";
 import { ArenaMode } from "./modes";
@@ -118,7 +118,7 @@ load.
 
 ```ts
 // actors.ts
-import { Actor, MeshComponent, ModelComponent } from "@test-cabinet/structured-3d";
+import { Actor, MeshComponent, ModelComponent } from "@clockwyrks/structured-3d";
 import { hullTexture, walkerModel } from "./assets";
 
 export class Asteroid extends Actor {
@@ -156,8 +156,8 @@ in one frame, and succeeds while muted.
 
 ```ts
 // An actor plays the cue for what happened to it.
-import { Pawn, add, scale } from "@test-cabinet/structured-3d";
-import type { Vec3 } from "@test-cabinet/structured-3d";
+import { Pawn, add, scale } from "@clockwyrks/structured-3d";
+import type { Vec3 } from "@clockwyrks/structured-3d";
 import { FIELD_WIDTH } from "./constants";
 
 export class Ship extends Pawn {
@@ -180,7 +180,7 @@ actor.
 
 ```ts
 // modes.ts
-import { GameMode } from "@test-cabinet/structured-3d";
+import { GameMode } from "@clockwyrks/structured-3d";
 import { Asteroid, Ship } from "./actors";
 import { ShipController } from "./controllers";
 
@@ -225,7 +225,7 @@ moves a running loop and does nothing for a cue that is not looping, so the
 tick calls it every frame without a guard.
 
 ```ts
-import { Actor } from "@test-cabinet/structured-3d";
+import { Actor } from "@clockwyrks/structured-3d";
 
 export class Drone extends Actor {
   beginPlay(): void {
@@ -254,7 +254,7 @@ on every tick rather than tracking whether it was started.
 
 ```ts
 // A pawn holds its engine hum for as long as it is thrusting.
-import { Pawn } from "@test-cabinet/structured-3d";
+import { Pawn } from "@clockwyrks/structured-3d";
 
 export class Ship extends Pawn {
   thrusting = false;
@@ -282,7 +282,7 @@ drive the bus from there.
 
 ```ts
 // controllers.ts
-import { PlayerController } from "@test-cabinet/structured-3d";
+import { PlayerController } from "@clockwyrks/structured-3d";
 
 export class ShipController extends PlayerController {
   tick(): void {
@@ -306,7 +306,7 @@ own loads and every level's afterwards. Registering the record as a diagnostic
 source puts the failed paths on the overlay.
 
 ```ts
-import { GameInstance, type InitApi } from "@test-cabinet/structured-3d";
+import { GameInstance, type InitApi } from "@clockwyrks/structured-3d";
 
 export class ArenaGame extends GameInstance<null> {
   private failed: string[] = [];

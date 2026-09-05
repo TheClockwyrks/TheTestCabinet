@@ -1,4 +1,4 @@
-// @test-cabinet/case-harness — the shared engineless (`none`) validation harness.
+// @clockwyrks/case-harness — the shared engineless (`none`) validation harness.
 //
 // WHAT THIS PACKAGE IS. Under an engine, a case's validators import the engine
 // and read the game in process. Under NO engine there is nothing to import: the

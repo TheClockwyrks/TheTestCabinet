@@ -3,7 +3,9 @@
 # truth and fails if a committed copy is stale.
 #
 # ONE artifact is checked here: the data contract. The TS bindings
-# (packages/run-record/src/) and the JSON Schemas (apps/docs/public/schema/) are
+# (packages/run-record/src/ and packages/asset-contract/src/ — one generator, two
+# packages, because only the latter may be seeded into a run) and the JSON Schemas
+# (apps/docs/public/schema/) are
 # generated from the Rust types that derive `ts_rs::TS` + `schemars::JsonSchema` (see
 # crates/contract-codegen and scripts/gen-contract.mjs). Any change to one of those
 # types — including the rustdoc, which is emitted into the schemas as descriptions —
@@ -83,7 +85,7 @@ log "regenerate the contract (cargo run -p contract-codegen + prettier)"
 npm run gen:contract
 
 log "check for drift"
-if ! git diff --exit-code -- packages/run-record/src apps/docs/public/schema; then
+if ! git diff --exit-code -- packages/run-record/src packages/asset-contract/src apps/docs/public/schema; then
 	cat >&2 <<'EOF'
 
 error: the generated contract artifacts are out of date.

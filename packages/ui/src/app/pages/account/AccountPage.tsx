@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router";
-import { Avatar, DonutChartWidget, Panel } from "@test-cabinet/ui";
-import type { DonutSegment } from "@test-cabinet/ui";
+import { Avatar, DonutChartWidget, Panel } from "@clockwyrks/ui";
+import type { DonutSegment } from "@clockwyrks/ui";
 import type { ReviewStatSlice, ReviewStats } from "../../../client/types";
 import { RATING_META } from "../../../ratings";
 import { PageLayout } from "../../components/PageLayout";

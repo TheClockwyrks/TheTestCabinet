@@ -3,7 +3,7 @@ import type {
   MediaKind,
   ModelSpec,
   TestType,
-} from "@test-cabinet/run-record";
+} from "@clockwyrks/run-record";
 import type {
   AssetKind,
   CaseShowcase,
@@ -63,7 +63,7 @@ export interface SeededInput {
  * npm name and a UI-only description of what it provides (never seeded into a run —
  * it exists only to explain, on the Inputs surfaces, what the package is for). */
 export interface PackageInput {
-  /** The npm package name the case declares (e.g. `@test-cabinet/particle-runtime`). */
+  /** The npm package name the case declares (e.g. `@clockwyrks/particle-runtime`). */
   name: string;
   /** The UI-only description of what the package provides. */
   description: string;

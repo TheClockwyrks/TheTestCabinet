@@ -1,7 +1,7 @@
 import { useState } from "react";
 
-import { StatusGlyph } from "@test-cabinet/ui";
-import type { DebugScriptResult } from "@test-cabinet/run-record";
+import { StatusGlyph } from "@clockwyrks/ui";
+import type { DebugScriptResult } from "@clockwyrks/run-record";
 
 import styles from "./RunDetailPages.module.scss";
 

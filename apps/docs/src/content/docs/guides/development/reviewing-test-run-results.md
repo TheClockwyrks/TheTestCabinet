@@ -78,7 +78,7 @@ The gallery dev server also previews runs held on disk, before anything is
 published:
 
 ```sh
-npm run dev -w @test-cabinet/site
+npm run dev -w @clockwyrks/site
 ```
 
 The dev-only plugin scans `runs/` for `<id>/run-record.json` and embeds the build
