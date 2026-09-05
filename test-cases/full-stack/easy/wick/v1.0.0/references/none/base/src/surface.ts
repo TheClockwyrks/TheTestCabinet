@@ -27,6 +27,7 @@ import {
 } from "./constants";
 import type { Game } from "./game";
 import { menuRects, tabRects } from "./layout";
+import { nextRandom } from "./rng";
 import {
   SWITCH_NAMES,
   type Enemy,
@@ -183,6 +184,7 @@ export interface WickDebugApi {
   setProgression(on: boolean): void;
   setTick(tick: number): void;
   setSpawnTimer(seconds: number): void;
+  advanceRng(draws: number): void;
   setPlayerPosition(x: number, y: number): void;
   setFacing(facing: Facing): void;
   setHp(hp: number): void;
@@ -491,6 +493,20 @@ export function createApi(game: Game, clock: Clock): WickDebugApi {
       pose(() => {
         run().spawnTimer = value;
       });
+    },
+
+    /**
+     * Take `draws` draws off the generator and discard them, so `rngState`
+     * lands where `draws` random choices would have left it. Nothing is
+     * chosen with what was drawn. Applies on every screen, so it runs outside
+     * `pose`.
+     */
+    advanceRng(draws) {
+      const count = whole(draws, "draws", 0);
+      const s = state();
+      for (let i = 0; i < count; i += 1) {
+        s.rngState = nextRandom(s.rngState).state;
+      }
     },
 
     setPlayerPosition(x, y) {

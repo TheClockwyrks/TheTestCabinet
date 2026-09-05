@@ -94,7 +94,9 @@ properties make it so.
   comes from it: a spawn's angle and type, an offer draw, a puddle's landing
   point, a strike's target, a swarm's direction, a chest's fallback item, and
   the bread and draft draws. The order in which the systems draw from it is
-  yours.
+  yours. `advanceRng` below takes a count of draws off the generator and
+  discards them, making no choice with them, so a scenario can reach the state
+  a known number of draws leaves and read a system's draws off `rngState`.
 
 Given the same seed, the same sequence of operations, and the same number of
 ticks, the game reaches the same `run` and `rngState` every time. The
@@ -426,6 +428,21 @@ so a clock posed past an event never fires it. Applies on a run screen.
 {{/if}}
 
 Sets `spawnTimer` to `seconds`, at least `0`. Applies on a run screen.
+
+### The generator
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `advanceRng(state, draws)`
+{{else}}
+#### `advanceRng(draws)`
+{{/if}}
+
+Takes `draws` draws off the seeded generator and discards them, so `rngState`
+lands exactly where it would have landed had the game made `draws` random
+choices, and `0` leaves it where it stands. `draws` is a whole number of at
+least `0`; anything else is invalid. It makes no choice with what it drew:
+nothing spawns, nothing is offered, nothing lands, and no cue sounds. Applies on
+every screen.
 
 ### The lamplighter
 
@@ -799,6 +816,7 @@ export interface WickDebugApi {
   setProgression(state: DeepReadonly<WickState>, on: boolean): WickState;
   setTick(state: DeepReadonly<WickState>, tick: number): WickState;
   setSpawnTimer(state: DeepReadonly<WickState>, seconds: number): WickState;
+  advanceRng(state: DeepReadonly<WickState>, draws: number): WickState;
   setPlayerPosition(
     state: DeepReadonly<WickState>,
     x: number,
@@ -938,6 +956,7 @@ export interface WickDebugApi {
   setProgression(on: boolean): void;
   setTick(tick: number): void;
   setSpawnTimer(seconds: number): void;
+  advanceRng(draws: number): void;
   setPlayerPosition(x: number, y: number): void;
   setFacing(facing: Facing): void;
   setHp(hp: number): void;

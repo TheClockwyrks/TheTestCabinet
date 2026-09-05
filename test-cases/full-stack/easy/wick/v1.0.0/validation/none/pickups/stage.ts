@@ -9,10 +9,19 @@
 // only readable over a sample, so `bread-drops`, `drafts-drop`, `bread-rate`,
 // and `draft-rate` each pose the same sample — `DROP_ROLL_KILLS` (`4000`) common
 // kills at distinct points, from one seed — and read a different fact off it.
-// `drop-at-most-one` poses a longer one, `DROP_PAIR_KILLS`, because the design
-// it exists to catch is only visible on the far rarer kill where both draws
-// land. Every sample size and every bound the counts are held to is
+// `drop-at-most-one` reads the same sample from both ends, what landed and what
+// was drawn. Every sample size and every bound the counts are held to is
 // `constants.ts`'s, computed from the two probabilities.
+//
+// WHAT THE GENERATOR IS READ FOR. The sweep reports `rngState` as the night
+// stood before its first kill and as it stood after its last. specs/
+// instrumentation.md ("A deterministic core"): the game "holds one
+// pseudo-random generator, seeded by `reset` and keeping its whole state in
+// `rngState`, and every random draw comes from it". Nothing else in the sweep
+// draws — every switch but `drops` is off, no slot is held, and a pose "changes
+// the state alone" — so the distance between the two readings is exactly the
+// draws the sweep's kills made, and `drop-at-most-one` measures it against
+// `advanceRng`.
 //
 // WHY THE KILLS ARE POSED IN ROUNDS. Every kill is a real one: a moth posed at
 // its own point and a level-1 Ember bolt posed on its center, so the next tick's
@@ -83,6 +92,13 @@ export interface KillSweep {
   kills: number;
   /** How many pickups of each kind the sample dropped. */
   counts: Record<PickupKind, number>;
+  /**
+   * `rngState` as the isolated night stood before the first kill, which is
+   * where a replay of the sweep's draws begins.
+   */
+  startRng: number;
+  /** `rngState` after the last round's tick, the whole sweep's draws behind it. */
+  endRng: number;
 }
 
 /** Pose `points` as a moth apiece with a bolt on its center, in one evaluation. */
@@ -122,9 +138,11 @@ export async function sweepCommonKills(
   h: Harness,
   kills: number = DROP_ROLL_KILLS,
 ): Promise<KillSweep> {
-  await isolate(h, { on: ["drops"] });
+  const opened = await isolate(h, { on: ["drops"] });
   const rounds: KillRound[] = [];
   const counts: Record<PickupKind, number> = { chest: 0, bread: 0, draft: 0 };
+  const startRng = opened.rngState;
+  let endRng = startRng;
   let made = 0;
   for (let from = 0; from < kills; from += ROUND_KILLS) {
     const size = Math.min(ROUND_KILLS, kills - from);
@@ -143,11 +161,12 @@ export async function sweepCommonKills(
       `the enemies left alive after round ${rounds.length}`,
     );
     made += size;
+    endRng = after.rngState;
     const pickups = after.run.pickups;
     for (const pickup of pickups) counts[pickup.kind] += 1;
     rounds.push({ points, pickups });
     await h.debug.clearGems();
     await h.debug.clearPickups();
   }
-  return { rounds, kills: made, counts };
+  return { rounds, kills: made, counts, startRng, endRng };
 }

@@ -379,6 +379,12 @@ export interface WickDebugApi {
   /** Set `tick`, `0` to `MAX_POSED_TICK`; nothing else changes. */
   setTick(tick: number): Promise<void>;
   setSpawnTimer(seconds: number): Promise<void>;
+  /**
+   * Take `draws` draws off the seeded generator and discard them, so
+   * `rngState` lands where `draws` random choices would have left it.
+   * Nothing is chosen with what was drawn. Every screen.
+   */
+  advanceRng(draws: number): Promise<void>;
   setPlayerPosition(x: number, y: number): Promise<void>;
   setFacing(facing: Facing): Promise<void>;
   /** Set `hp`, at most `maxHp`; at or below `0` ends the run on the next tick. */

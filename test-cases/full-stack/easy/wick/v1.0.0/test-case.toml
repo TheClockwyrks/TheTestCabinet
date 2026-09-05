@@ -6216,7 +6216,7 @@ validation = { script = "pickups/all-drafts-collected.test.ts", outputs = [ { id
 [[review.categories.items]]
 id = "drop-at-most-one"
 title = "A common kill drops at most one of bread and draft"
-description = "Over 4000 seeded common kills at distinct points, no two pickups share a center, so no kill dropped both bread and a draft."
+description = "Over 4000 seeded common kills at distinct points, no two pickups share a center, so no kill dropped both bread and a draft; and the generator ends the sample exactly where advanceRng leaves it after one draw for each kill that dropped bread and two for each kill that did not, so the second draw was made only when the first missed."
 domains = ["progression"]
 failure_cap = "passable"
 validation = { script = "pickups/drop-at-most-one.test.ts", outputs = [ { id = "one", name = "At most one pickup per kill", kind = "image" } ] }

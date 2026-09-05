@@ -17,13 +17,14 @@
 // to pass a run that collected nothing.
 //
 // THE CEILINGS ARE THE HARNESS'S ON PURPOSE. This project used to name its own,
-// 180s for a check and 60s for a hook, against "forty rounds of a hundred posed
-// kills". The drop roll has since grown to six hundred rounds — `DROP_PAIR_KILLS`
-// is 60000 — and the ceiling did not follow, so `pickups/drop-at-most-one` spent
-// 187s under eight-way contention against an allowance of 180 and lost its point
-// to the clock on a conformant build. That is the failure the harness's own
-// default is set against: an allowance a correct build can cross is a defect in
-// the check, and a case lowers it only to make a fast case look fast.
+// 180s for a check and 60s for a hook. `pickups/drop-at-most-one` then grew a
+// sample of sixty thousand kills, the ceiling did not follow, and the check
+// spent 187s under eight-way contention against an allowance of 180 and lost
+// its point to the clock on a conformant build. Both halves of that were wrong:
+// the sample is now the four thousand kills the other drop-roll checks share,
+// read from both ends rather than driven longer, and the ceiling is the
+// harness's. An allowance a correct build can cross is a defect in the check,
+// and a case lowers it only to make a fast case look fast.
 //
 // THE ROOT IS THE WORKSPACE, NOT THIS DIRECTORY, so a validator addresses the
 // build's output by the same relative path the build itself produced it at. It is

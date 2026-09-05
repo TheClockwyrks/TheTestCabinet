@@ -180,6 +180,8 @@ export const REQUIRED_OPS: readonly string[] = [
   // The clock
   "setTick",
   "setSpawnTimer",
+  // The generator
+  "advanceRng",
   // The lamplighter
   "setPlayerPosition",
   "setFacing",
@@ -2253,23 +2255,6 @@ export const GROUND_SHIFT_MATCH_MIN = 0.9;
 export const DROP_ROLL_KILLS = 4000;
 export const BREAD_COUNT_RANGE = { min: 40, max: 125 } as const;
 export const DRAFT_COUNT_RANGE = { min: 3, max: 45 } as const;
-
-/**
- * The kills the check that a kill drops at most ONE of the two pickups reads,
- * which is a larger sample than the counting checks above need.
- *
- * The rule is "Only when it did not, a second draw drops a draft"
- * (specs/world.md — "The drop roll"), and the design that breaks it most simply
- * makes the second draw unconditionally. Its only visible mark is the kill on
- * which BOTH draws land, which the two stated chances put at
- * `BREAD_CHANCE × DRAFT_CHANCE` (`0.02 × 0.005`, `1e-4`) per kill. Over
- * `DROP_ROLL_KILLS` that design leaves `0.4` shared centers expected and so
- * escapes about two times in three; over `60000` it leaves `6` expected and
- * escapes about one time in four hundred. The figure is derived from the two
- * chances the specification states and the number of shared centers the check
- * means to expect, never from a build.
- */
-export const DROP_PAIR_KILLS = 60_000;
 
 /* -------------------------------------------------------------------------- */
 /* The snapshot's fields (specs/instrumentation.md — "Snapshot shape")         */

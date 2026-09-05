@@ -284,6 +284,8 @@ While `drops` is on, each common enemy killed by a weapon draws from the game's
 seeded random generator on the tick it dies; while it is off no kill draws. A
 first draw, uniform on `[0, 1)`, drops bread when it is below `BREAD_CHANCE`.
 Only when it did not, a second draw drops a draft when it is below
-`DRAFT_CHANCE`. A kill therefore drops at most one of the two, and the pickup
-lands at the enemy's position beside its gem. Elites and the Dark make no draw;
-an elite drops its chest, and the Dark drops nothing.
+`DRAFT_CHANCE`. The second draw is made only in that case, so a kill that drops
+bread takes one draw off the generator and a kill that does not takes two. A
+kill therefore drops at most one of the two, and the pickup lands at the
+enemy's position beside its gem. Elites and the Dark make no draw; an elite
+drops its chest, and the Dark drops nothing.
